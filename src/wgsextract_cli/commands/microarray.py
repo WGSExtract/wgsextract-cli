@@ -371,8 +371,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                     "projection is not supported."
                 )
             require_aadr_2m(lib.resource_root("aadr/" + AADR_2M_FILENAME))
-        # Resolved once (#1249): the AADR target, the reuse inputs and the
-        # export all use this chain.
+        # AADR targets, reuse inputs, exports and manifest probes share this chain.
         aadr_chain_file = aadr_chain(
             lib.build,
             outdir,
@@ -655,7 +654,9 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             params,
             input=Path(
                 prepare_indel_vcf(
-                    _sample_vcf(input_path, vcf_sample, outdir, cleanup)
+                    _sample_vcf(
+                        input_path, vcf_sample, outdir, cleanup, trim_alt_alleles=False
+                    )
                     if vcf_sample
                     else input_path,
                     outdir,
@@ -695,6 +696,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             outdir=outdir,
             ploidy_args=ploidy_args + sex_args,
             threads=threads,
+            lifter=lifter,
         )
     combined_kit_txt = _write_microarray_combined_kit(
         params=params,
@@ -704,6 +706,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         out_vcf=out_vcf,
         ref_fasta=ref_fasta,
         ref_vcf_tab=ref_vcf_tab,
+        trim_identity_alts=gvcf or vcf_sample is not None,
     )
     legacy_combined_kit_txt = None
     if legacy_target and legacy_workdir:
@@ -719,6 +722,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             ref_fasta=ref_fasta,
             ref_vcf_tab=legacy_target,
             restrict_reference_fill=True,
+            trim_identity_alts=gvcf or vcf_sample is not None,
         )
     tallies = _convert_microarray_outputs(
         params=params,
@@ -936,7 +940,12 @@ def _vcf_input_layout(
 
 
 def _sample_vcf(
-    vcf: str, sample: str, outdir: str, cleanup: contextlib.ExitStack
+    vcf: str,
+    sample: str,
+    outdir: str,
+    cleanup: contextlib.ExitStack,
+    *,
+    trim_alt_alleles: bool = True,
 ) -> str:
     """One sample of a multi-sample VCF, as an indexed VCF in a scratch
     directory under ``outdir`` that ``cleanup`` removes."""
@@ -945,7 +954,8 @@ def _sample_vcf(
     subset = str(Path(workdir, "sample.vcf.gz"))
     try:
         run_command(
-            ["bcftools", "view", "--samples", sample, "--trim-alt-alleles"]
+            ["bcftools", "view", "--samples", sample]
+            + (["--trim-alt-alleles"] if trim_alt_alleles else [])
             + ["-Oz", "-o", subset, vcf]
         )
         run_command(["bcftools", "index", "-t", subset])

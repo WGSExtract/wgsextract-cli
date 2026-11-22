@@ -169,9 +169,12 @@ def _call_haploid_variants(bam: str, ref: str, out_vcf: str) -> int | None:
 def _warn_if_female(input_path: str, outdir: str, reference: str | None = None) -> None:
     """A female sample's chrY reads are mismapped (PAR, X-transposed regions):
     the extraction succeeds but holds no Y DNA, so say so. Say too when the
-    depth check couldn't run (a CRAM without its reference, #1249), rather than
-    passing over it silently."""
-    from .info.metrics import SEX_MEASUREMENT_UNAVAILABLE, sample_sex_evidence
+    depth check couldn't run (#1249), rather than passing over it silently."""
+    from .info.metrics import (
+        SEX_MEASUREMENT_UNAVAILABLE,
+        SEX_SAMPLING_INCOMPLETE,
+        sample_sex_evidence,
+    )
 
     sex, call, declared = sample_sex_evidence(input_path, outdir, reference=reference)
     if sex == "Female":
@@ -180,13 +183,19 @@ def _warn_if_female(input_path: str, outdir: str, reference: str | None = None) 
             f"{input_path} appears female from sampled non-PAR depth, so "
             "its chrY reads are mismapped ones: this output holds no Y-DNA.",
         )
-    elif declared is None and call.method == SEX_MEASUREMENT_UNAVAILABLE:
+    elif declared is None and call.method in (
+        SEX_MEASUREMENT_UNAVAILABLE,
+        SEX_SAMPLING_INCOMPLETE,
+    ):
+        hint = (
+            "For CRAM, check that the reference can be read or pass --ref."
+            if call.method == SEX_MEASUREMENT_UNAVAILABLE
+            else "Sampling needs supported GRCh37/38 X and Y contigs and an autosomal baseline."
+        )
         warn(
             "sex_check_skipped",
-            f"Could not measure {input_path}'s sex-chromosome depth (for a CRAM, "
-            "its reference may be missing), so it isn't known whether a female "
-            "sample's Y output holds no Y-DNA. Set the sex with 'wgsextract "
-            "sample set --sex' or pass --ref.",
+            f"Could not complete the female-sample check for {input_path}. "
+            f"{hint} You can declare the sex with 'wgsextract sample set --sex'.",
         )
 
 

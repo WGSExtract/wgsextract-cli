@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from wgsextract_cli.api.microarray import MicroarrayParams
 
 _BASES = {"A", "C", "G", "T", "N"}
+_REFERENCE_ONLY_ALTS = {".", "<NON_REF>", "<*>", "<X>"}
 
 
 # A small region's targets can all be homozygous reference; this many can't.
@@ -48,8 +49,12 @@ def _normalize_microarray_genotype(value: str) -> str | None:
     alleles = re.split(r"[/|]", value.upper())
     if all(allele in {"", "."} for allele in alleles):
         return "--"
-    if len(alleles) > 2 or any(allele not in _BASES for allele in alleles):
+    if len(alleles) > 2 or any(
+        allele not in _BASES and allele not in {"", "."} for allele in alleles
+    ):
         return None
+    if "" in alleles or "." in alleles:
+        return "--"
     return sort_alleles("".join(alleles)) if len(alleles) == 2 else alleles[0] * 2
 
 
@@ -146,6 +151,7 @@ def _write_vcf_mode_kit(
     ref_vcf_tab: str,
     reasons: dict[tuple[str, str], str] | None = None,
     restrict_reference_fill: bool = False,
+    trim_identity_alts: bool = False,
 ) -> None:
     policy = quality_policy(params)
     vcf_header = run_command(["bcftools", "view", "-h", out_vcf], capture_output=True)
@@ -160,7 +166,7 @@ def _write_vcf_mode_kit(
     unsupported: set[tuple[str, str]] = set()
     # Positions with a SNP-shaped record, which alone mark a contig as called.
     snp_records: set[tuple[str, str]] = set()
-    query = "%CHROM\t%POS\t[%TGT]\t%REF\n"
+    query = "%CHROM\t%POS\t[%TGT]\t%REF\t%ALT\n"
     if fields:
         query = "%CHROM\t%POS\t[%TGT\t%DP\t%GQ]\t%REF\t%ALT\t%FILTER\n"
     ref_at = 5 if fields else 3
@@ -176,15 +182,19 @@ def _write_vcf_mode_kit(
         outdir,
     ):
         parts = line.rstrip("\n").split("\t")
-        if len(parts) <= ref_at:
+        if len(parts) <= ref_at + 1:
             continue
-        # Each called allele must be one base (a haploid indel's GT prints
-        # like a genotype, "AT"), and a multi-base REF makes even a one-base
-        # call a deletion's or MNP's (#1249). Uncalled ALTs don't matter.
+        ref, alt = parts[ref_at].upper(), parts[ref_at + 1].upper()
+        # A reference-only record or a SNP ALT can support a SNP call.
+        # The anchor of an indel-only record cannot, even with GT=0/0 (#1249).
         genotype = (
-            None
-            if len(parts[ref_at]) != 1
-            else _normalize_microarray_genotype(parts[2])
+            _normalize_microarray_genotype(parts[2])
+            if ref in _BASES
+            and (
+                alt in _REFERENCE_ONLY_ALTS
+                or any(allele in _BASES for allele in alt.split(","))
+            )
+            else None
         )
         snp_shaped = genotype is not None
         reason = "missing_gt" if genotype == "--" else "called"
@@ -193,7 +203,14 @@ def _write_vcf_mode_kit(
             rejection = policy.rejection(parts[3], parts[4], parts[-1])
             if rejection:
                 genotype, reason = "--", rejection
-            rejection = identity.rejection("", parts[5], parts[6])
+            if trim_identity_alts and identity.needs_alleles:
+                # Keep the selected sample's biallelic strand check without
+                # stripping the record ALTs used to classify the site.
+                observed = set(re.split(r"[/|]", parts[2].upper()))
+                alt = ",".join(
+                    allele for allele in alt.split(",") if allele in observed
+                )
+            rejection = identity.rejection("", ref, alt)
             if rejection:
                 genotype, reason = "--", rejection
                 identity_rejection = rejection
@@ -526,6 +543,7 @@ def _write_microarray_combined_kit(
     ref_fasta: str,
     ref_vcf_tab: str,
     restrict_reference_fill: bool = False,
+    trim_identity_alts: bool = False,
 ) -> str:
     combined_kit_txt = str(Path(outdir, f"{base_name}_CombinedKit.txt"))
     logging.info(f"Extracting genotypes to {combined_kit_txt}...")
@@ -547,6 +565,7 @@ def _write_microarray_combined_kit(
                     ref_vcf_tab=ref_vcf_tab,
                     reasons=reasons,
                     restrict_reference_fill=restrict_reference_fill,
+                    trim_identity_alts=trim_identity_alts,
                 )
             else:
                 _write_alignment_mode_kit(

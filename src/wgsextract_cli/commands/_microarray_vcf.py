@@ -357,13 +357,14 @@ def _expand_gvcf_targets(
     ref_fasta: str,
     selection: list[str],
     outdir: str,
+    trim_alt_alleles: bool = True,
 ) -> None:
     """Write the gVCF's call at every target it covers. A reference block
     covering targets becomes one record per target (a 0/0 or ./. call with the
-    FASTA's base as REF); other records overlapping a target are kept, with
-    unobserved alleles such as <NON_REF> trimmed. Targets no record covers stay
-    absent, i.e. uncalled. Only target positions are expanded: a whole-genome
-    gVCF's blocks span billions of bases."""
+    FASTA's base as REF). When the SNP exporter disables trimming, variant
+    records retain their ALTs to distinguish indels from reference records.
+    Targets no record covers stay uncalled. Only target positions are
+    expanded: a whole-genome gVCF's blocks span billions of bases."""
     from wgsextract_cli.core.reference_evidence import reference_depth
 
     targets = _target_positions(ref_vcf_tab)
@@ -377,8 +378,16 @@ def _expand_gvcf_targets(
         records = Path(work, "records.vcf")
         regions = Path(work, "regions.txt")
         run_command(
-            ["bcftools", "view", "--targets-file", ref_vcf_tab, "--targets-overlap"]
-            + ["1", "--trim-alt-alleles", *selection]
+            [
+                "bcftools",
+                "view",
+                "--targets-file",
+                ref_vcf_tab,
+                "--targets-overlap",
+                "1",
+            ]
+            + (["--trim-alt-alleles"] if trim_alt_alleles else [])
+            + selection
             + ["-Ov", "-o", str(overlapping), gvcf]
         )
         # A variant record overlapping a block (DRAGEN writes some) outranks it.
@@ -556,7 +565,9 @@ def _prepare_microarray_vcf(
         try:
             # Step 1: Get actual variants from the input VCF that match our targets
             hit_vcf = str(Path(outdir, f"{base_name}_hits.vcf.gz"))
-            sample_args = ["--samples", sample, "--trim-alt-alleles"] if sample else []
+            # Keep uncalled ALTs: trimming can turn an indel site's 0/0 into
+            # an apparently explicit reference call (#1249).
+            sample_args = ["--samples", sample] if sample else []
             if gvcf:
                 _expand_gvcf_targets(
                     str(params.input),
@@ -565,6 +576,7 @@ def _prepare_microarray_vcf(
                     ref_fasta=ref_fasta,
                     selection=sample_args + region_args,
                     outdir=outdir,
+                    trim_alt_alleles=False,
                 )
             else:
                 # Use long-form --targets-file to avoid version conflicts

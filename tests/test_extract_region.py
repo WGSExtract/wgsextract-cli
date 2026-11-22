@@ -225,6 +225,31 @@ def test_issue_1249_y_sex_check_uses_the_reference_or_says_it_was_skipped(
     assert "sex_check_skipped" in {w.code for w in without.warnings}
 
 
+@pytest.mark.parametrize(
+    ("x_length", "y_length"),
+    [(None, 57227415), (154259566, 62460029)],
+    ids=["no-x", "t2t"],
+)
+def test_issue_1249_y_extraction_warns_when_nonpar_sampling_cannot_start(
+    tmp_path, x_length, y_length
+):
+    header = [f"@SQ\tSN:chrY\tLN:{y_length}"]
+    if x_length is not None:
+        header.insert(0, f"@SQ\tSN:chrX\tLN:{x_length}")
+    read = f"y_read\t0\tchrY\t100\t60\t10M\t*\t0\t0\t{'A' * 10}\t{'I' * 10}"
+    bam = sam_to_bam([*header, read], tmp_path / "sample.bam")
+    outdir = tmp_path / "out"
+
+    result = api.extract.region(
+        api.ExtractRegionParams(
+            input=Path(bam), outdir=outdir, target="y", formats="bam"
+        )
+    )
+
+    assert "sex_check_skipped" in {w.code for w in result.warnings}
+    assert _names(outdir / "sample_Y.bam") == {"y_read"}
+
+
 @pytest.mark.parametrize("formats", ["vcf", "fasta", "bam,vcf"])
 def test_calling_requires_a_reference_and_writes_nothing_without_one(
     genome, tmp_path, formats

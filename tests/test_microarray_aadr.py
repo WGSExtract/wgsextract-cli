@@ -58,27 +58,41 @@ def test_issue_1043_aadr_forward_chain_edit_recomputes_genotypes(tmp_path, marke
 
 
 @needs_tools("bcftools", "samtools", "bgzip", "tabix")
-def test_issue_1249_missing_aadr_chain_is_fetched_once(tmp_path, markers, monkeypatch):
+@pytest.mark.parametrize("manifest_indels", [False, True], ids=["aadr", "mixed"])
+def test_issue_1249_missing_aadr_chain_is_fetched_once(
+    tmp_path, markers, monkeypatch, manifest_indels
+):
     from tests.htslib_helpers import bgzip_index, write_fasta
     from tests.http_server import RangeServer
+    from tests.test_microarray_indels import CONTEXT, LEFT, RIGHT, _manifest
+    from tests.test_microarray_vcf_indels import _targets
     from wgsextract_cli import api
     from wgsextract_cli.core.ref_library import downloads
 
     name = microarray_targets.HG19_TO_HG38_CHAIN.name
     # GRCh37 chr1:100 (rs1) is GRCh38 chr1:200.
     data = gzip.compress(b"chain 1 chr1 1000 + 0 900 chr1 1000 + 100 1000 1\n900\n\n")
-    server = RangeServer(None, {name: data})
-    monkeypatch.setattr(downloads, "curl_progress_args", lambda: ["--silent"])
-    monkeypatch.setattr(
-        microarray_targets,
-        "HG19_TO_HG38_CHAIN",
-        microarray_targets.ChainSource(
-            name, (server.url_for(name),), hashlib.sha256(data).hexdigest()
-        ),
-    )
     library = tmp_path / "library"
     library.mkdir()
-    ref = write_fasta(library / "hs38.fa", {"chr1": "A" * 1000})
+    seq = "A" * (800 - len(LEFT)) + LEFT + "GT" + RIGHT
+    ref = write_fasta(library / "hs38.fa", {"chr1": seq.ljust(1000, "A")})
+    formats = "aadr_ho"
+    bindings = []
+    targets = None
+    if manifest_indels:
+        (library / "hg38ToHg19.over.chain.gz").write_bytes(
+            gzip.compress(b"chain 1 chr1 1000 + 100 1000 chr1 1000 + 0 900 1\n900\n\n")
+        )
+        body = library / "raw_file_templates" / "body"
+        body.mkdir(parents=True)
+        (body / "23andMe_V5_2025.txt").write_text("rs1\t1\t100\nrsProbe\t1\t700\n")
+        manifest = _manifest(
+            tmp_path / "manifest.csv",
+            [["rsProbe", "[I/D]", "37", "1", "700", CONTEXT]],
+        )
+        targets = Path(_targets(tmp_path / "targets.tab", [("chr1", 200, "rs1")]))
+        formats += ",23andme_v5_2025"
+        bindings.append(f"23andme_v5_2025={manifest}")
     plain = tmp_path / "sample.vcf"
     plain.write_text(
         "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
@@ -87,15 +101,27 @@ def test_issue_1249_missing_aadr_chain_is_fetched_once(tmp_path, markers, monkey
         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
         "chr1\t200\t.\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t1/1:30:60\n"
+        f"chr1\t800\t.\t{LEFT[-1]}GT\t{LEFT[-1]}\t.\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
     )
     out = tmp_path / "out"
+    server = RangeServer(None, {name: data})
     try:
+        monkeypatch.setattr(downloads, "curl_progress_args", lambda: ["--silent"])
+        monkeypatch.setattr(
+            microarray_targets,
+            "HG19_TO_HG38_CHAIN",
+            microarray_targets.ChainSource(
+                name, (server.url_for(name),), hashlib.sha256(data).hexdigest()
+            ),
+        )
         api.microarray.generate(
             api.MicroarrayParams(
                 input=Path(bgzip_index(plain)),
                 ref=ref,
                 outdir=out,
-                formats="aadr_ho",
+                formats=formats,
+                ref_vcf_tab=targets,
+                indel_manifest=bindings,
                 download=True,
             )
         )
@@ -103,6 +129,9 @@ def test_issue_1249_missing_aadr_chain_is_fetched_once(tmp_path, markers, monkey
     finally:
         server.close()
     assert (out / "sample_AADR_ho.geno").read_text().splitlines()[0] == "0"
+    if manifest_indels:
+        kit = (out / "sample_23andMe_V5_2025.txt").read_text()
+        assert "rsProbe\t1\t700\tDI" in kit.splitlines()
     assert len(gets) == 1
 
 
@@ -292,9 +321,13 @@ def test_mixed_2m_vendor_preflights_chain_before_consumer_target_build(
 
 @needs_tools("bcftools", "bgzip", "tabix", "samtools")
 @pytest.mark.parametrize("chroms", [("chr1", "chrX"), ("1", "X")])
-@pytest.mark.parametrize("legacy_fill", [False, True])
+@pytest.mark.parametrize(
+    ("legacy_fill", "legacy_alt", "legacy_gt"),
+    [(False, "G", "1/1"), (True, "G", "1/1"), (True, "AT", "0/0")],
+    ids=["default", "reference-fill", "issue-1249-indel-only"],
+)
 def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
-    tmp_path, installed_2m, chroms, legacy_fill
+    tmp_path, installed_2m, chroms, legacy_fill, legacy_alt, legacy_gt
 ):
     fasta = installed_2m / "genomes" / "hg19.fa"
     fasta.parent.mkdir()
@@ -310,7 +343,7 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
         '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
-        f"{chroms[0]}\t100\trs1\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t1/1:30:60\n"
+        f"{chroms[0]}\t100\trs1\tA\t{legacy_alt}\t.\tPASS\t.\tGT:DP:GQ\t{legacy_gt}:30:60\n"
         f"{chroms[1]}\t550\tnew_probe_x\tT\tC\t.\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
     )
     compressed = str(plain) + ".gz"
@@ -327,7 +360,16 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
         parallel=False,
         ref_vcf_tab=None,
         ploidy_file=None,
-        **({"assume_hom_ref": True, "min_dp": 0, "min_gq": 0} if legacy_fill else {}),
+        **(
+            {
+                "assume_hom_ref": True,
+                "min_dp": 0,
+                "min_gq": 0,
+                "exclude_filtered": False,
+            }
+            if legacy_fill
+            else {}
+        ),
     )
     result = CommandResult(command="microarray")
     with collecting(result):
@@ -343,6 +385,9 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
     args.formats = "aadr_2m,aadr_1240k,aadr_ho"
     args.outdir = str(tmp_path / "mixed")
     microarray.run(args)
+    if legacy_alt == "AT":
+        dosages = (tmp_path / "mixed" / "input_AADR_ho.geno").read_text().splitlines()
+        assert dosages[:2] == ["9", "9"]  # rs1 is indel-only; rs2 is absent.
     assert len(baseline) == 12
     assert all(
         (tmp_path / "mixed" / name).read_bytes() == data

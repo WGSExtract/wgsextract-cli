@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import needs_htslib
+from tests.htslib_helpers import bgzip_index, needs_htslib
 from tests.test_microarray_simulation import (
     FEMALE_VCF,
     _genotypes,
@@ -22,15 +22,18 @@ from wgsextract_cli.core.utils import run_command
 pytestmark = needs_htslib
 
 
+@pytest.mark.parametrize(("ins_gt", "del_gt"), [("0/1", "0/1"), ("0/0", "1/1")])
 def test_issue_1249_indel_only_marker_is_a_no_call_not_assumed_reference(
-    tmp_path, library
+    tmp_path, library, ins_gt, del_gt
 ):
     fasta, _ = library
     records = [
-        *FEMALE_VCF[:2],
-        "1 3000 . A AT 50 PASS . GT 0/1",
-        FEMALE_VCF[2],
-        "1 4500 . AC A 50 PASS . GT 0/1",
+        FEMALE_VCF[0],
+        "1 1000 . A AT 50 PASS . GT 0/0",  # Must not mask the separate SNP call.
+        FEMALE_VCF[1],
+        f"1 3000 . A AT 50 PASS . GT {ins_gt}",
+        "1 4000 . A G 50 PASS . GT 0/.",
+        f"1 4500 . AC A 50 PASS . GT {del_gt}",
         FEMALE_VCF[3],
     ]
     vcf = _vcf(tmp_path / "female.vcf", ("1", "X", "Y", "MT"), records)
@@ -44,6 +47,7 @@ def test_issue_1249_indel_only_marker_is_a_no_call_not_assumed_reference(
     report = _rows(tmp_path / "out/female_CombinedKit_reasons.tsv")
     assert report["rsRef"][-2:] == ["--", "unsupported_allele"]
     assert report["rsNoReads"][-2:] == ["--", "unsupported_allele"]
+    assert report["rsLowMapq"][-2:] == ["--", "missing_gt"]
     kit = _genotypes(tmp_path / "out" / "female_23andMe_V3.txt")
     assert (kit["rsRef"], kit["rsNoReads"]) == ("--", "--")
     assert (kit["rsHet"], kit["rsAlt"]) == ("AC", "CC")
@@ -65,7 +69,7 @@ def test_issue_1249_indel_alone_does_not_make_chry_reference_filled(
 ):
     fasta, _ = library
     # A female VCF's one chrY record: a mismapped indel at a marker.
-    records = [*FEMALE_VCF[:3], "Y 1000 . A AT 50 PASS . GT 0/1"]
+    records = [*FEMALE_VCF[:3], "Y 1000 . A AT 50 PASS . GT 0/0"]
     vcf = _vcf(tmp_path / "female.vcf", ("1", "X", "Y", "MT"), records)
     targets = _targets(
         tmp_path / "targets.tab",
@@ -84,8 +88,8 @@ def test_issue_1249_indel_alone_does_not_make_chry_reference_filled(
 
     report = _rows(tmp_path / "out/female_CombinedKit_reasons.tsv")
     assert report["rsRef"][-2:] == ["AA", "assumed_hom_ref"]
-    assert report["rsY"][-2:] == ["--", "unsupported_allele"]
     assert report["rsY2"][-2:] == ["--", "absent_contig"]
+    assert report["rsY"][-2:] == ["--", "unsupported_allele"]
 
 
 @pytest.mark.parametrize(
@@ -142,3 +146,43 @@ def test_issue_1249_uncalled_indel_alt_keeps_the_snp_call(tmp_path, library, gat
     if "--assume-hom-ref" in gates:
         # They are SNP calls, so chr1's absent markers are filled as usual.
         assert kit["rsRef"][-1] == "AA"
+
+
+@pytest.mark.parametrize("gvcf", [False, True], ids=["joint-vcf", "gvcf"])
+def test_issue_1249_sample_exports_keep_indel_sites_distinct_from_reference(
+    tmp_path, library, gvcf
+):
+    fasta, _ = library
+    source = tmp_path / "sample.vcf"
+    extra_alt = ",<NON_REF>" if gvcf else ""
+    other_column = "" if gvcf else "\tOther"
+    other_gt = "" if gvcf else "\t0/1"
+    block = "1\t2000\t.\tA\t<NON_REF>\t50\tPASS\tEND=2100\tGT\t0/0\n"
+    source.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=1,length=5000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        + (
+            '##ALT=<ID=NON_REF,Description="Any other allele">\n'
+            '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+            if gvcf
+            else ""
+        )
+        + f"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS{other_column}\n"
+        + f"1\t1000\t.\tA\tT,AT{extra_alt}\t50\tPASS\t.\tGT\t0/1{other_gt}\n"
+        + (block if gvcf else "")
+        + f"1\t3000\t.\tA\tAT{extra_alt}\t50\tPASS\t.\tGT\t0/0{other_gt}\n"
+    )
+    out = tmp_path / "out"
+
+    _microarray(
+        bgzip_index(source), fasta, out, "--assume-hom-ref", "--min-dp", "0",
+        "--min-gq", "0", "--no-exclude-filtered", "--call-reasons",
+        "--strand-ambiguous", "no-call", *(() if gvcf else ("--sample", "S")),
+    )  # fmt: skip
+
+    stem = "sample" if gvcf else "sample_S"
+    report = _rows(out / f"{stem}_CombinedKit_reasons.tsv")
+    assert report["rsRef"][-2:] == ["--", "unsupported_allele"]
+    assert report["rsHet"][-2:] == ["--", "strand_ambiguous"]
+    if gvcf:
+        assert report["rsAlt"][-2:] == ["AA", "called"]
