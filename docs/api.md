@@ -18,7 +18,7 @@ res.outputs, res.metrics, res.warnings
 Operations raise `CommandFailed` (carrying the failed `Result`) unless
 called with `check=False`. They accept a `progress` callback and a
 `CancelToken`. Operations that write files or run long run one at a time
-per process; quick read-only ones (`info`, `info chip`, `sample show`,
+per process; quick read-only ones (`info`, `info chip`, `lookup`, `sample show`,
 `ref status`, `ref library-list`, `example-genome list`, `deps check`)
 may run on several threads at once, each call with its own result, progress,
 cancellation and settings, unless asked to save files (`info` with
@@ -41,7 +41,7 @@ from its Params fields, so the API and `--help` cannot drift.
 Stability: the names exported here and the group modules (`api.extract`,
 `api.info`, `api.bam`, `api.qc`, `api.align`, `api.vcf`,
 `api.lineage`, `api.methylation`, `api.microarray`, `api.panel`, `api.ref`,
-`api.repair`, `api.genotyping`, `api.report`, `api.sample`,
+`api.repair`, `api.genotyping`, `api.report`, `api.lookup`, `api.sample`,
 `api.support`, `api.pet`, `api.analyze`, `api.sign`, `api.deps`,
 `api.examples`, `api.vep`, `api.benchmark`, `api.score`) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
@@ -2654,6 +2654,50 @@ plus a findings table, from the result manifests in its folder.
 | `results` | `tuple[Path, ...]` | `[]` | `--results` | Also read result manifests from this folder (repeatable); only runs on this sample's files are used. The --outdir is always read. |
 | `table_format` | `str` | `'tsv'` | `--format` | Format of the findings table, <sample>_personal_report_findings.tsv or .parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
 | `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; missing lists need --download), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
+
+## `api.lookup`
+
+`lookup`: one sample's genotype, evidence state and existing results at
+an rsID, a build-qualified locus or a gene.
+
+Reads only local files: the input VCF (variants-only or gVCF), its reference
+evidence and the sample's personal report. Writes nothing:
+
+```python
+res = api.lookup.lookup(api.LookupParams(input=Path("s.vcf.gz"), rsid="rs429358"))
+res.details["site"]["status"]   # confident_call, confident_reference, ...
+```
+
+See docs/lookup.md.
+
+### `api.lookup.lookup(LookupParams)`
+
+CLI: `wgsextract lookup`.
+
+`details` is the `wgsextract.lookup/1` document: `resolution`
+(and its `candidates` when the identifier is ambiguous), `site` or
+`region` (genotype, `status` and evidence state, calls),
+`interpretation` (report findings, section states) and `resources`.
+
+`LookupParams`: Look up one sample's genotype and evidence state at an rsID, a
+build-qualified locus or a gene, with what its personal report says
+there. Local files only; writes nothing.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | The sample's VCF/BCF: variants-only or a gVCF. Its gVCF (from --gvcf, or its run's manifest) tells confident reference from not assessed. |
+| `rsid` | `str \| None` | `None` | `--rsid` | dbSNP rsID, e.g. rs429358 (merged IDs follow dbSNP build 157). |
+| `gene` | `str \| None` | `None` | `--gene` | Gene symbol or alias (NCBI RefSeq), e.g. APOE: its calls and evidence, paged by --limit. |
+| `locus` | `str \| None` | `None` | `--locus` | BUILD:CHROM:POS[-END][:REF>ALT], e.g. GRCh38:chr19:44908684:T>C; with --rsid or --gene, chooses one of several placements. |
+| `sample` | `str \| None` | `None` | `--sample` | Sample of a multi-sample VCF (required for one). |
+| `gvcf` | `Path \| None` | `None` | `--gvcf` | The sample's gVCF, if not the input or recorded by its run. |
+| `report` | `Path \| None` | `None` | `--report` | Personal report JSON (or its folder) to join (default: the one in the input's folder). |
+| `build` | `str \| None` | `None` | `--build` | The input's build when its header doesn't show it. One of: `GRCh37`, `GRCh38`, `CHM13v2.0` |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `limit` | `int` | `50` | `--limit` | Calls per page of a gene or region (1-1000; default 50). |
+| `cursor` | `str \| None` | `None` | `--cursor` | next_cursor of the previous page. |
+| `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
+| `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 
 ## `api.sample`
 

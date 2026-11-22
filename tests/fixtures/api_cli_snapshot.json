@@ -15555,6 +15555,518 @@
     "prog": "wgsextract lineage y-str"
    }
   },
+  "lookup": {
+   "help": "usage: wgsextract lookup [-h] [--rsid RSID | --gene GENE] [--locus LOCUS] [--sample SAMPLE]\n                         [--gvcf GVCF] [--report REPORT] [--build {GRCh37,GRCh38,CHM13v2.0}]\n                         [--limit LIMIT] [--cursor CURSOR] [--help-all]\n\nGenotype and evidence at an rsID, locus or gene, with report findings.\n\noptions:\n  -h, --help            show this help message and exit\n  --rsid RSID           dbSNP rsID, e.g. rs429358 (merged IDs follow dbSNP build 157).\n  --gene GENE           Gene symbol or alias (NCBI RefSeq), e.g. APOE: its calls and evidence,\n                        paged by --limit.\n  --locus LOCUS         BUILD:CHROM:POS[-END][:REF>ALT], e.g. GRCh38:chr19:44908684:T>C; with\n                        --rsid or --gene, chooses one of several placements.\n  --sample SAMPLE       Sample of a multi-sample VCF (required for one).\n  --gvcf GVCF           The sample's gVCF, if not the input or recorded by its run.\n  --report REPORT       Personal report JSON (or its folder) to join (default: the one in the\n                        input's folder).\n  --build {GRCh37,GRCh38,CHM13v2.0}\n                        The input's build when its header doesn't show it.\n  --limit LIMIT         Calls per page of a gene or region (1-1000; default 50).\n  --cursor CURSOR       next_cursor of the previous page.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract lookup --help-all' lists them.\n\nexamples:\n  wgsextract lookup --input sample.vcf.gz --rsid rs429358\n  wgsextract lookup --input sample.vcf.gz --locus GRCh38:chr19:44908684:T>C\n  wgsextract lookup --input sample.vcf.gz --gene APOE --json\n\noutputs (in the output directory unless noted):\n  Prints the genotype, evidence state and report findings; writes no files\n  (--json: the wgsextract.lookup/1 document in details).\n\nneeds:\n  bcftools; seconds from existing results.\n",
+   "parser": {
+    "actions": [
+     {
+      "choices": null,
+      "class": "_HelpAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help",
+      "exclusive_group": null,
+      "help": "show this help message and exit",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "input",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--input",
+       "-i"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "outdir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--outdir",
+       "-o"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "genome",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--genome"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "ref",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--ref"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "threads",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "N|auto",
+      "nargs": null,
+      "option_strings": [
+       "--threads",
+       "-t"
+      ],
+      "required": false,
+      "type": "_thread_count_arg"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "memory",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--memory",
+       "-m"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "tmp_dir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "DIRECTORY",
+      "nargs": null,
+      "option_strings": [
+       "--tmp-dir"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "json",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "quiet",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--quiet"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "debug",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--debug"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "log_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--log-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "keep_awake",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--keep-awake",
+       "--no-keep-awake"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "atomic_output",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--atomic-output",
+       "--no-atomic-output"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "config_path",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--config"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_result_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "parent_pid",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--parent-pid"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "rsid",
+      "exclusive_group": 0,
+      "help": "dbSNP rsID, e.g. rs429358 (merged IDs follow dbSNP build 157).",
+      "metavar": "RSID",
+      "nargs": null,
+      "option_strings": [
+       "--rsid"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "gene",
+      "exclusive_group": 0,
+      "help": "Gene symbol or alias (NCBI RefSeq), e.g. APOE: its calls and evidence, paged by --limit.",
+      "metavar": "GENE",
+      "nargs": null,
+      "option_strings": [
+       "--gene"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "locus",
+      "exclusive_group": null,
+      "help": "BUILD:CHROM:POS[-END][:REF>ALT], e.g. GRCh38:chr19:44908684:T>C; with --rsid or --gene, chooses one of several placements.",
+      "metavar": "LOCUS",
+      "nargs": null,
+      "option_strings": [
+       "--locus"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "sample",
+      "exclusive_group": null,
+      "help": "Sample of a multi-sample VCF (required for one).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--sample"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "gvcf",
+      "exclusive_group": null,
+      "help": "The sample's gVCF, if not the input or recorded by its run.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--gvcf"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "report",
+      "exclusive_group": null,
+      "help": "Personal report JSON (or its folder) to join (default: the one in the input's folder).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--report"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "GRCh37",
+       "GRCh38",
+       "CHM13v2.0"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "build",
+      "exclusive_group": null,
+      "help": "The input's build when its header doesn't show it.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--build"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 50,
+      "dest": "limit",
+      "exclusive_group": null,
+      "help": "Calls per page of a gene or region (1-1000; default 50).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--limit"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "cursor",
+      "exclusive_group": null,
+      "help": "next_cursor of the previous page.",
+      "metavar": "CURSOR",
+      "nargs": null,
+      "option_strings": [
+       "--cursor"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "confidence_depth",
+      "exclusive_group": null,
+      "help": "Read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_depth 10, confidence_high_depth 20; halved for haploid calls)",
+      "metavar": [
+       "LOW",
+       "HIGH"
+      ],
+      "nargs": 2,
+      "option_strings": [
+       "--confidence-depth"
+      ],
+      "required": false,
+      "type": "_non_negative"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "confidence_gq",
+      "exclusive_group": null,
+      "help": "Genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_gq 20, confidence_high_gq 30)",
+      "metavar": [
+       "LOW",
+       "HIGH"
+      ],
+      "nargs": 2,
+      "option_strings": [
+       "--confidence-gq"
+      ],
+      "required": false,
+      "type": "_non_negative"
+     },
+     {
+      "choices": null,
+      "class": "_HelpAllAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help_all",
+      "exclusive_group": null,
+      "help": "Show this help with the advanced options too, and exit.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--help-all"
+      ],
+      "required": false,
+      "type": null
+     }
+    ],
+    "defaults": {
+     "_command": "lookup",
+     "func": "run_lookup"
+    },
+    "description": "Genotype and evidence at an rsID, locus or gene, with report findings.",
+    "formatter_class": "HelpFormatter",
+    "prog": "wgsextract lookup"
+   }
+  },
   "methylation": {
    "help": "usage: wgsextract methylation [-h] <command> ...\n\npositional arguments:\n  <command>\n    pileup    Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and\n              summary. Optional: Linux and macOS, install with `pixi install -e modkit`.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
@@ -51098,6 +51610,120 @@
    "parent_pid": null,
    "quiet": false,
    "ref": null,
+   "threads": null,
+   "tmp_dir": null
+  },
+  "lookup -i s.vcf.gz --gene APOE --limit 10 --cursor 10": {
+   "_command": "lookup",
+   "_explicit_dests": [
+    "cursor",
+    "gene",
+    "input",
+    "limit"
+   ],
+   "atomic_output": false,
+   "build": null,
+   "command": "lookup",
+   "confidence_depth": null,
+   "confidence_gq": null,
+   "cursor": "10",
+   "debug": false,
+   "full_help": false,
+   "func": "run_lookup",
+   "gene": "APOE",
+   "genome": null,
+   "gvcf": null,
+   "input": "s.vcf.gz",
+   "json": false,
+   "keep_awake": false,
+   "limit": 10,
+   "locus": null,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "parent_pid": null,
+   "quiet": false,
+   "ref": null,
+   "report": null,
+   "rsid": null,
+   "sample": null,
+   "threads": null,
+   "tmp_dir": null
+  },
+  "lookup -i s.vcf.gz --locus GRCh38:chr19:44908684:T>C --gvcf s.g.vcf.gz --report s_personal_report.json --sample S --json": {
+   "_command": "lookup",
+   "_explicit_dests": [
+    "gvcf",
+    "input",
+    "json",
+    "locus",
+    "report",
+    "sample"
+   ],
+   "atomic_output": false,
+   "build": null,
+   "command": "lookup",
+   "confidence_depth": null,
+   "confidence_gq": null,
+   "cursor": null,
+   "debug": false,
+   "full_help": false,
+   "func": "run_lookup",
+   "gene": null,
+   "genome": null,
+   "gvcf": "s.g.vcf.gz",
+   "input": "s.vcf.gz",
+   "json": true,
+   "keep_awake": false,
+   "limit": 50,
+   "locus": "GRCh38:chr19:44908684:T>C",
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "parent_pid": null,
+   "quiet": false,
+   "ref": null,
+   "report": "s_personal_report.json",
+   "rsid": null,
+   "sample": "S",
+   "threads": null,
+   "tmp_dir": null
+  },
+  "lookup -i s.vcf.gz --rsid rs429358": {
+   "_command": "lookup",
+   "_explicit_dests": [
+    "input",
+    "rsid"
+   ],
+   "atomic_output": false,
+   "build": null,
+   "command": "lookup",
+   "confidence_depth": null,
+   "confidence_gq": null,
+   "cursor": null,
+   "debug": false,
+   "full_help": false,
+   "func": "run_lookup",
+   "gene": null,
+   "genome": null,
+   "gvcf": null,
+   "input": "s.vcf.gz",
+   "json": false,
+   "keep_awake": false,
+   "limit": 50,
+   "locus": null,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "parent_pid": null,
+   "quiet": false,
+   "ref": null,
+   "report": null,
+   "rsid": "rs429358",
+   "sample": null,
    "threads": null,
    "tmp_dir": null
   },

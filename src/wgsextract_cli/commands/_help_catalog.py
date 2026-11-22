@@ -542,6 +542,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract report --genome HG002 --gene-list my_genes.bed",
         "wgsextract report --workspace HG002 --results ~/wgs-out/HG002 --format parquet",
     ),
+    "lookup": _h(
+        "Prints the genotype, evidence state and report findings; writes no "
+        "files (--json: the wgsextract.lookup/1 document in details).",
+        "wgsextract lookup --input sample.vcf.gz --rsid rs429358",
+        "wgsextract lookup --input sample.vcf.gz --locus GRCh38:chr19:44908684:T>C",
+        "wgsextract lookup --input sample.vcf.gz --gene APOE --json",
+    ),
     "report-issue": _h(
         "Prints a redacted bug report and its GitHub link and saves the "
         "report as issue-report-<time>.md in state/reports (setting "

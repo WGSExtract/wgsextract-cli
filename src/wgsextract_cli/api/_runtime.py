@@ -131,6 +131,7 @@ READ_ONLY_COMMANDS = frozenset(
     {
         "info",
         "info chip",
+        "lookup",
         "sample show",
         "ref status",
         "ref library-list",

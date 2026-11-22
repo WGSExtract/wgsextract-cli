@@ -625,6 +625,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "extract/custom": {"region": "chrM"},
     "extract/region": {"formats": "bam"},
     "info/chip": {"input": _FILE},
+    "lookup": {"locus": "GRCh38:chr1:1"},
     "info/calculate-coverage": {"input": _FILE},
     "vcf/impute": {"input": _FILE, "ref": _DATA},
     "panel/bed": {"genes": ["BRCA1"]},

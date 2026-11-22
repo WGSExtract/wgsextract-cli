@@ -12,7 +12,7 @@ Every operation takes a frozen ``*Params`` dataclass and returns a
 Operations raise ``CommandFailed`` (carrying the failed ``Result``) unless
 called with ``check=False``. They accept a ``progress`` callback and a
 ``CancelToken``. Operations that write files or run long run one at a time
-per process; quick read-only ones (``info``, ``info chip``, ``sample show``,
+per process; quick read-only ones (``info``, ``info chip``, ``lookup``, ``sample show``,
 ``ref status``, ``ref library-list``, ``example-genome list``, ``deps check``)
 may run on several threads at once, each call with its own result, progress,
 cancellation and settings, unless asked to save files (``info`` with
@@ -35,7 +35,7 @@ from its Params fields, so the API and ``--help`` cannot drift.
 Stability: the names exported here and the group modules (``api.extract``,
 ``api.info``, ``api.bam``, ``api.qc``, ``api.align``, ``api.vcf``,
 ``api.lineage``, ``api.methylation``, ``api.microarray``, ``api.panel``, ``api.ref``,
-``api.repair``, ``api.genotyping``, ``api.report``, ``api.sample``,
+``api.repair``, ``api.genotyping``, ``api.report``, ``api.lookup``, ``api.sample``,
 ``api.support``, ``api.pet``, ``api.analyze``, ``api.sign``, ``api.deps``,
 ``api.examples``, ``api.vep``, ``api.benchmark``, ``api.score``) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
@@ -68,6 +68,7 @@ from . import (
     genotyping,
     info,
     lineage,
+    lookup,
     methylation,
     microarray,
     panel,
@@ -135,6 +136,7 @@ from .genotyping import (
 )
 from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
+from .lookup import LookupParams
 from .methylation import MethylationPileupParams
 from .microarray import MicroarrayParams
 from .panel import PanelBedParams
@@ -258,6 +260,7 @@ __all__ = [
     "FileRecord",
     "InfoParams",
     "IssueReport",
+    "LookupParams",
     "MethylationPileupParams",
     "MicroarrayParams",
     "MissingDependencyError",
@@ -375,6 +378,7 @@ __all__ = [
     "info",
     "json_schema",
     "lineage",
+    "lookup",
     "methylation",
     "microarray",
     "panel",
