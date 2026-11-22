@@ -728,7 +728,18 @@ def test_1373_codeql_pr_analyzes_only_the_languages_it_touches(
             (tmp_path / name).write_text(text)
         subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
         subprocess.run(
-            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "c"],
+            [
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-qm",
+                "c",
+            ],
             cwd=tmp_path,
             check=True,
         )
