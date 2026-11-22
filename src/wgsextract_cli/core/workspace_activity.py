@@ -25,7 +25,7 @@ _lease: ContextVar[_Lease | None] = ContextVar("workspace_activity", default=Non
 _marker = re.compile(r"(use|move)-([1-9]\d*)-[a-f0-9-]+")
 
 
-def desktop_data_dir() -> Path:
+def _standard_desktop_data_dir() -> Path:
     """Use the same local application-support directory as the Node app."""
     if sys.platform == "win32":
         return (
@@ -33,6 +33,40 @@ def desktop_data_dir() -> Path:
             / "WGSExtract-gui"
         )
     return Path(user_data_dir("WGSExtract-gui", appauthor=False))
+
+
+def configured_desktop_data_dir() -> Path | None:
+    """App data supplied by the GUI for its own bundle subprocesses."""
+    override = Path(os.environ.get("WGSEXTRACT_GUI_APP_DATA", ""))
+    return override if override.is_absolute() else None
+
+
+def desktop_data_dir() -> Path:
+    """Read the location record from the calling app, or the standard app."""
+    return configured_desktop_data_dir() or _standard_desktop_data_dir()
+
+
+def _config_key(path: Path, *, resolve: bool = False) -> str:
+    # A recorded UNC path is not a reason to contact its server while looking
+    # up an unrelated local config. Use its spelling for the redirect key.
+    drive = path.drive.upper().replace("\\\\?\\UNC\\", "\\\\", 1)
+    if resolve and not drive.removeprefix("\\\\?\\").startswith("\\\\"):
+        path = path.resolve()
+    return os.path.normcase(path)
+
+
+def _redirect_keys(redirects: dict[str, str]) -> dict[str, str]:
+    keys: dict[str, str] = {}
+    for raw, target in redirects.items():
+        source = Path(raw)
+        if not source.is_absolute():
+            continue
+        keys[_config_key(source)] = target
+        try:
+            keys.setdefault(_config_key(source, resolve=True), target)
+        except (OSError, RuntimeError, ValueError):
+            continue  # An obsolete alias cannot invalidate unrelated redirects.
+    return keys
 
 
 def relocated_config_path(path: Path) -> Path:
@@ -48,12 +82,14 @@ def relocated_config_path(path: Path) -> Path:
         return path
     if not isinstance(redirects, dict):
         return path
-    by_path = {Path(source): target for source, target in redirects.items()}
-    seen: set[Path] = set()
-    while not path.exists() and isinstance(target := by_path.get(path), str):
-        if not Path(target).is_absolute() or path in seen:
+    by_path = _redirect_keys(redirects)
+    seen: set[str] = set()
+    while not path.exists() and isinstance(
+        target := by_path.get(key := _config_key(path, resolve=True)), str
+    ):
+        if not Path(target).is_absolute() or key in seen:
             raise WGSExtractError(f"Invalid moved settings path: {path}")
-        seen.add(path)
+        seen.add(key)
         path = Path(target).resolve()
     return path
 
@@ -80,7 +116,9 @@ def hold_workspace() -> ExitStack:
     """Acquire a lease that can be handed to the thread finishing a queued job."""
     import psutil
 
-    directory = desktop_data_dir() / "workspace-activity"
+    # The Node app also uses this fixed location: a standalone CLI must see a
+    # move even when it did not inherit the launching GUI's data override.
+    directory = _standard_desktop_data_dir() / "workspace-activity"
     marker = directory / f"use-{os.getpid()}-{uuid4()}"
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     # Publish before looking for moves. A mover checks for users only

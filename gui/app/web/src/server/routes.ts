@@ -304,6 +304,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 (emit, signal) => withWorkspaceMove(async () => {
                     await assertCurrentWorkspace(context, request);
                     await context.moveWorkspace(target, emit, signal);
+                    context.workspaceMoveRevision = await workspaceMoveRevision(context.manifest);
                     await emit({ type: "complete" });
                 }),
                 (error) => ({ type: "error", error }),

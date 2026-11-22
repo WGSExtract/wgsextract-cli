@@ -586,12 +586,17 @@ test("PR #531 review: nothing starts or writes while the workspace moves, so no 
 
 test("#1322: another tab's older settings cannot undo a completed folder move", async (t) => {
   const { baseURL, context, tempRoot } = await withTestServer(t, {
+    workspaceMoveRevision: "0",
     async moveWorkspace() {
       await writeFile(path.join(tempRoot, "config.toml"), 'threads = "9"\n');
       await recordWorkspaceMove(context.manifest);
     },
   });
-  const manifest = () => apiFetch(baseURL, "/api/manifest").then((response) => response.json());
+  const manifest = async () => {
+    const response = await apiFetch(baseURL, "/api/manifest");
+    assert.equal(response.status, 200);
+    return response.json();
+  };
   const before = (await manifest()).workspaceMoveRevision;
   const move = await readNDJSON(await apiFetch(baseURL, "/api/workspace-location/move", { body: { folder: "/elsewhere" } }));
   assert.equal(move.at(-1).type, "complete");

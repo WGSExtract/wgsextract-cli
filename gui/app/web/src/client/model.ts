@@ -4,6 +4,9 @@ import type { CommandContext, ConfigSetting, ControlOption, ControlSpec, RowTagS
 import type { WorkspaceRoots } from "../../../shared/workspace-paths.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { state } from "./state.js";
+
+const fallbackLabels = localizationLabels({});
+
 /** The workspaces the GUI shows paths relative to. */
 export function workspaceRoots(): WorkspaceRoots {
     return { bundle: state.bundleRootPath, users: state.usersWorkspacePath || undefined };
@@ -57,7 +60,7 @@ export function errorMessage(error: unknown): string {
         case "workspaceMoveSettingsLocked":
         case "workspaceMoveStale":
         case "workspaceMoveProtectedFolder":
-            return state.labels[message] ?? localizationLabels({})[message] ?? message;
+            return state.labels[message] ?? fallbackLabels[message] ?? message;
         default:
             return message;
     }

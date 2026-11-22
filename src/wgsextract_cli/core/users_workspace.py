@@ -14,7 +14,10 @@ from pathlib import Path
 from platformdirs import user_data_dir
 
 from wgsextract_cli.core.atomic_output import atomic_write
-from wgsextract_cli.core.workspace_activity import workspace_use
+from wgsextract_cli.core.workspace_activity import (
+    configured_desktop_data_dir,
+    workspace_use,
+)
 
 FOLDER_NAME = "wgs-extract"
 # Marks the folder as one this program made, so the desktop app adopts it
@@ -29,8 +32,15 @@ LEGACY_MYGENOMES_FOLDER = "datasets"
 
 def users_workspace() -> Path:
     """Follow the desktop's location record, including pre-split moves."""
-    for app in ("WGSExtract-gui", "dev.guiforcli.web.embed.wgsextract"):
-        record = Path(user_data_dir(app, appauthor=False)) / "settings.json"
+    app_dirs = [
+        Path(user_data_dir(app, appauthor=False))
+        for app in ("WGSExtract-gui", "dev.guiforcli.web.embed.wgsextract")
+    ]
+    override = configured_desktop_data_dir()
+    if override is not None:
+        app_dirs.insert(0, override)
+    for app_dir in dict.fromkeys(app_dirs):
+        record = app_dir / "settings.json"
         try:
             settings = json.loads(record.read_text(encoding="utf-8"))
             for key in (

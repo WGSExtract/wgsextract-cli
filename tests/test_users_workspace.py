@@ -199,7 +199,7 @@ def test_1087_interactive_cli_bootstrap_marks_workspace_before_writing_config(
     assert (path.parent / SENTINEL_NAME).is_file()
 
 
-def test_1322_cli_cannot_start_or_save_during_a_desktop_move(tmp_path):
+def test_1322_cli_cannot_start_or_save_during_a_desktop_move(tmp_path, monkeypatch):
     file = tmp_path / "config.toml"
     file.write_text("cpu_threads = 2\n")
     # The desktop publishes its PID before any files are moved.
@@ -207,6 +207,7 @@ def test_1322_cli_cannot_start_or_save_during_a_desktop_move(tmp_path):
     activity.mkdir(parents=True, exist_ok=True)
     mover = activity / f"move-{os.getpid()}-a"
     mover.touch()
+    monkeypatch.setenv("WGSEXTRACT_GUI_APP_DATA", str(tmp_path / "custom-app-data"))
     args = [
         sys.executable,
         "-m",
@@ -254,4 +255,59 @@ def test_1322_cli_saves_through_a_migrated_config_path(tmp_path):
     with config.scoped_config(previous):
         save_config({"cpu_threads": 9})
     assert config.read_toml(previous)["cpu_threads"] == 9
+    assert config.read_toml(destination)["cpu_threads"] == 7
+
+
+def test_1322_cli_follows_a_redirect_recorded_through_an_alias(tmp_path):
+    original = tmp_path / "original"
+    original.mkdir()
+    alias = tmp_path / "alias"
+    if sys.platform == "win32":
+        from _winapi import CreateJunction
+
+        CreateJunction(str(original), str(alias))
+    else:
+        alias.symlink_to(original, target_is_directory=True)
+    recorded = str(alias / "old.toml")
+    if sys.platform == "win32":
+        recorded = alias.drive.swapcase() + recorded[len(alias.drive) :]
+    destination = tmp_path / "moved.toml"
+    destination.write_text("cpu_threads = 2\n")
+    desktop = desktop_data_dir()
+    desktop.mkdir(parents=True, exist_ok=True)
+    (desktop / "settings.json").write_text(
+        json.dumps({"movedConfigPaths": {recorded: str(destination)}})
+    )
+
+    with config.scoped_config(original / "old.toml"):
+        save_config({"cpu_threads": 7})
+
+    assert not (original / "old.toml").exists()
+    assert config.read_toml(destination)["cpu_threads"] == 7
+
+
+def test_1322_app_launched_cli_uses_the_apps_overridden_location(tmp_path, monkeypatch):
+    previous = tmp_path / "old" / "config.toml"
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    destination = moved / "config.toml"
+    destination.write_text("cpu_threads = 2\n")
+    app_data = tmp_path / "custom-app-data"
+    app_data.mkdir()
+    (app_data / "settings.json").write_text(
+        json.dumps(
+            {
+                "usersWorkspaces": {"wgs-extract": str(moved)},
+                "movedConfigPaths": {str(previous): str(destination)},
+            }
+        )
+    )
+    monkeypatch.setenv("WGSEXTRACT_GUI_APP_DATA", str(app_data))
+
+    with config.scoped_config():
+        assert get_config_path() == destination
+    with config.scoped_config(previous):
+        save_config({"cpu_threads": 7})
+
+    assert not previous.exists()
     assert config.read_toml(destination)["cpu_threads"] == 7
