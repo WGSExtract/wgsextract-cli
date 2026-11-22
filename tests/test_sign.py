@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import sys
@@ -100,15 +101,81 @@ def test_1247_verify_reports_truncated_public_key_as_usage_error(
 def test_verify_fails_when_ssh_keygen_never_exits(tmp_path, outputs, monkeypatch):
     key = _key(tmp_path / "id")
     _create(outputs, key=key)
+    manifest = outputs / "SHA256SUMS"
+    real_run = subprocess.run
 
     def hang(cmd, **kwargs):
-        raise subprocess.TimeoutExpired(
-            cmd, 10, output=b"", stderr=b"incorrect signature\r\n"
-        )
+        if getattr(kwargs.get("stdin"), "name", None) == str(manifest):
+            raise subprocess.TimeoutExpired(
+                cmd, 10, output=b"", stderr=b"incorrect signature\r\n"
+            )
+        return real_run(cmd, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", hang)
-    with pytest.raises(api.CommandFailed, match="FAILED: incorrect signature$"):
-        _verify(outputs / "SHA256SUMS", public_key=Path(f"{key}.pub"))
+    with pytest.raises(api.CommandFailed, match="incorrect signature") as failed:
+        _verify(manifest, public_key=Path(f"{key}.pub"))
+    assert "ssh-keygen" in str(failed.value) and "did not finish" in str(failed.value)
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows verifier discovery")
+@pytest.mark.parametrize("fallback", ["keygen-on-path", "default-git", None])
+def test_1358_verify_skips_a_hanging_windows_openssh(
+    tmp_path, outputs, monkeypatch, fallback
+):
+    key = _key(tmp_path / "id")
+    _create(outputs, key=key)
+    manifest = outputs / "SHA256SUMS"
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    for name in ("ssh-keygen.exe", "ssh.exe"):
+        (broken / name).touch()
+    real_run = subprocess.run
+
+    def run(cmd, **kwargs):
+        exe = Path(cmd[0])
+        if exe.parent == broken:
+            if exe.name == "ssh.exe":
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="OpenSSH_for_Windows_9.5p2\n"
+                )
+            raise subprocess.TimeoutExpired(cmd, 2)
+        return real_run(cmd, **kwargs)
+
+    folders = [broken]
+    program_files = ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)")
+    git_root = None
+    if fallback:
+        for var in program_files:
+            git_ssh = Path(os.environ.get(var, "")) / "Git" / "usr" / "bin"
+            if (git_ssh / "ssh-keygen.exe").is_file():
+                git_root = git_ssh
+                break
+        if git_root is None:
+            pytest.skip("Git for Windows' OpenSSH is not in Program Files")
+        if fallback == "keygen-on-path":
+            folders.append(git_root)
+    else:
+        # Isolate discovery from the host's inbox installation. No real child runs.
+        monkeypatch.setenv("SystemRoot", str(tmp_path))
+    if fallback != "default-git":
+        for variable in program_files:
+            monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("PATH", ";".join(map(str, folders)))
+    monkeypatch.setattr(subprocess, "run", run)
+
+    if fallback:
+        verified = _verify(manifest, public_key=Path(f"{key}.pub"))
+        assert verified.metrics["files"] == 2
+        assert not verified.warnings
+    else:
+        with pytest.raises(
+            api.CommandFailed, match="Signature verification FAILED"
+        ) as failed:
+            _verify(manifest, public_key=Path(f"{key}.pub"))
+        error = str(failed.value)
+        assert str(broken / "ssh-keygen.exe") in error
+        assert "OpenSSH_for_Windows_9.5p2" in error
+        assert "Git for Windows" in error
 
 
 def test_manifest_reader_keeps_names_and_accepts_binary_mode(tmp_path):

@@ -6,12 +6,18 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path, PurePath
 
 from wgsextract_cli.api.sign import MANIFEST_NAME, SignCreateParams, SignVerifyParams
 from wgsextract_cli.cli.registration.sign import register as register
+from wgsextract_cli.commands._sign_keygen import (
+    WINDOWS_VERIFIER_HINT,
+    keygen_description,
+    windows_verifier,
+)
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import settings
@@ -169,7 +175,6 @@ def _read_manifest(manifest: PathInput) -> list[tuple[str, str]]:
 def _verify_signature(
     params: SignVerifyParams, manifest: Path, signature: Path
 ) -> None:
-    keygen = _ssh_keygen()
     with tempfile.TemporaryDirectory() as tmp:
         if params.public_key:
             with open(params.public_key, "rb") as f:
@@ -196,7 +201,9 @@ def _verify_signature(
             ]
         else:
             trust = ["check-novalidate"]
-        cmd = [keygen, "-Y", *trust, "-n", NAMESPACE, "-s", str(signature)]
+        windows = sys.platform == "win32"
+        keygen = windows_verifier() if windows else Path(_ssh_keygen())
+        cmd = [str(keygen), "-Y", *trust, "-n", NAMESPACE, "-s", str(signature)]
         with manifest.open("rb") as stdin:
             try:
                 res = subprocess.run(
@@ -208,14 +215,15 @@ def _verify_signature(
                     timeout=_VERIFY_TIMEOUT,
                 )
             except subprocess.TimeoutExpired as e:
-                # Windows' OpenSSH reports a bad signature and then never exits.
                 message = "".join(
                     s.decode(errors="replace") if isinstance(s, bytes) else s
                     for s in (e.stdout or "", e.stderr or "")
                 ).strip()
                 raise WGSExtractError(
-                    "Signature verification FAILED: "
-                    + (message or "ssh-keygen did not finish.")
+                    f"Signature verification FAILED: {keygen_description(keygen)} "
+                    "did not finish."
+                    + (f" {message}" if message else "")
+                    + (f" {WINDOWS_VERIFIER_HINT}" if windows else "")
                 ) from None
     message = (res.stdout + res.stderr).strip()
     if res.returncode != 0:
