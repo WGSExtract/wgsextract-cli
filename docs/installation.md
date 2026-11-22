@@ -123,7 +123,7 @@ Other Pixi projects may share those directories, so outside the installation
 the uninstaller deletes only this installation's environment folder from the
 environment directory (and the directory itself if the installer created it
 and it is now empty), and deletes the cache directory only if the installer
-created it and it doesn't hold the environment directory. Before asking to
+created it and it holds no Pixi environments. Before asking to
 continue, it lists exactly what it will delete, including config files and
 Pixi when `--remove-config` and `--remove-pixi` are given.
 Use `--keep-pixi-cache` and `--keep-pixi-envs` to keep this installation's

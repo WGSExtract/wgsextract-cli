@@ -233,7 +233,31 @@ project_env_dir() {
     [ "$(basename "$env_target")" = "envs" ] || return 0
     env_project="$(dirname "$env_target")"
     [ "$(dirname "$env_project")" = "$(physical_path "$PIXI_ENV_DIR")" ] || return 0
+    owned_by_install "$env_project" || return 0
     printf '%s/%s\n' "$(trim_trailing_slashes "$PIXI_ENV_DIR")" "$(basename "$env_project")"
+}
+
+# Pixi records each environment's manifest in conda-meta/pixi. A copied install
+# can link to another install's folder, so require every environment there to
+# name this install's manifest.
+owned_by_install() {
+    owned=1
+    for env_meta in "$1"/envs/*/conda-meta/pixi; do
+        [ -f "$env_meta" ] || continue
+        if grep -Fq "\"manifest_path\": \"$(physical_path "$INSTALL_DIR")/app/pixi.toml\"" "$env_meta" ||
+            grep -Fq "\"manifest_path\": \"$(trim_trailing_slashes "$INSTALL_DIR")/app/pixi.toml\"" "$env_meta"; then
+            owned=0
+        else
+            return 1
+        fi
+    done
+    return "$owned"
+}
+
+# Whether $1 holds a Pixi or conda environment (a conda-meta folder) outside $2.
+# Pixi's own cached environments (cached-envs-v0) belong to the cache.
+holds_environments() {
+    [ -n "$(find "$1" \( -path "$2" -o -name cached-envs-v0 \) -prune -o -type d -name conda-meta -print 2>/dev/null | head -n 1)" ]
 }
 
 refuse_symlinked_users_workspace() {
@@ -528,7 +552,6 @@ else
 fi
 CACHE_REMOVAL=""
 CACHE_NOTE=""
-env_dir_check="$(trim_trailing_slashes "$PIXI_ENV_DIR")"
 cache_dir_check="$(trim_trailing_slashes "$PIXI_CACHE_DIR")"
 if is_within_or_same "$PIXI_CACHE_DIR" "$INSTALL_DIR"; then
     if [ "$KEEP_PIXI_CACHE" = "1" ]; then
@@ -536,15 +559,25 @@ if is_within_or_same "$PIXI_CACHE_DIR" "$INSTALL_DIR"; then
     fi
 elif [ "$KEEP_PIXI_CACHE" = "1" ]; then
     CACHE_NOTE="Keeping Pixi cache: $PIXI_CACHE_DIR"
-elif is_within_or_same "$env_dir_check" "$cache_dir_check" ||
-    is_within_or_same "$(physical_path "$env_dir_check")" "$(physical_path "$cache_dir_check")"; then
-    CACHE_NOTE="Keeping the Pixi cache, which holds the Pixi envs folder: $PIXI_CACHE_DIR"
-elif [ -n "$CREATED_PIXI_CACHE_DIR" ] &&
-    [ "$cache_dir_check" = "$(trim_trailing_slashes "$CREATED_PIXI_CACHE_DIR")" ]; then
-    validate_removal_path "$PIXI_CACHE_DIR"
-    CACHE_REMOVAL="$PIXI_CACHE_DIR"
-else
+elif [ -z "$CREATED_PIXI_CACHE_DIR" ] ||
+    [ "$cache_dir_check" != "$(trim_trailing_slashes "$CREATED_PIXI_CACHE_DIR")" ]; then
     CACHE_NOTE="Keeping the Pixi cache, which the installer did not create and other projects may share: $PIXI_CACHE_DIR"
+else
+    validate_removal_path "$PIXI_CACHE_DIR"
+    if holds_environments "$cache_dir_check" "$ENV_REMOVAL"; then
+        # Whichever env dir was named or recorded, never delete other environments.
+        CACHE_NOTE="Keeping the Pixi cache, which holds Pixi environments: $PIXI_CACHE_DIR"
+    else
+        CACHE_REMOVAL="$PIXI_CACHE_DIR"
+    fi
+fi
+# Removing this install's environments must not take a kept cache with them.
+if [ -n "$ENV_REMOVAL" ] && [ -z "$CACHE_REMOVAL" ] &&
+    ! is_within_or_same "$PIXI_CACHE_DIR" "$INSTALL_DIR" &&
+    { is_within_or_same "$cache_dir_check" "$ENV_REMOVAL" ||
+        is_within_or_same "$(physical_path "$cache_dir_check")" "$(physical_path "$ENV_REMOVAL")"; }; then
+    ENV_NOTE="Keeping this install's Pixi environments, which hold the kept Pixi cache: $ENV_REMOVAL"
+    ENV_REMOVAL=""
 fi
 if [ "$REMOVE_CONFIG" = "1" ]; then
     refuse_symlinked_users_workspace

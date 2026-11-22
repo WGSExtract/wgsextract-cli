@@ -361,10 +361,28 @@ def test_uninstall_dry_run_keeps_install_tree(tmp_path: Path) -> None:
     assert install_dir.exists()
 
 
+def make_pixi_env(project: Path, manifest: Path) -> Path:
+    """An installed Pixi environment, which records the manifest it belongs to."""
+    env = project / "envs" / "default"
+    (env / "conda-meta").mkdir(parents=True)
+    (env / "conda-meta" / "pixi").write_text(
+        f'{{\n  "manifest_path": "{manifest}",\n  "environment_name": "default"\n}}\n',
+        encoding="utf-8",
+    )
+    (env / "keep.txt").write_text(f"{project.name}\n", encoding="utf-8")
+    return env
+
+
+def other_project_env(env_dir: Path, tmp_path: Path) -> Path:
+    return make_pixi_env(
+        env_dir / "other-project-456", tmp_path / "other" / "pixi.toml"
+    )
+
+
 def link_detached_envs(install_dir: Path, env_dir: Path, folder: str) -> Path:
     """Lay out envs the way Pixi's detached-environments setting does."""
     project = env_dir / folder
-    (project / "envs" / "default" / "conda-meta").mkdir(parents=True)
+    make_pixi_env(project, (install_dir / "app" / "pixi.toml").resolve())
     app_pixi = install_dir / "app" / ".pixi"
     app_pixi.mkdir(parents=True, exist_ok=True)
     (app_pixi / "envs").symlink_to(project / "envs", target_is_directory=True)
@@ -414,9 +432,7 @@ def test_1246_uninstall_removes_only_its_own_envs_from_a_shared_env_dir(
     install_dir = make_fake_install(tmp_path)
     env_dir = tmp_path / "shared-envs"
     own = link_detached_envs(install_dir, env_dir, "wgsextract-cli-123")
-    other = env_dir / "other-project-456" / "envs" / "default"
-    other.mkdir(parents=True)
-    (other / "keep.txt").write_text("other project\n", encoding="utf-8")
+    other = other_project_env(env_dir, tmp_path)
 
     result = run_uninstall(
         install_dir / "uninstall.sh",
@@ -430,7 +446,7 @@ def test_1246_uninstall_removes_only_its_own_envs_from_a_shared_env_dir(
     assert f"{own} (this install's Pixi environments)" in prompt
     assert f"{env_dir} (" not in prompt
     assert not own.exists()
-    assert (other / "keep.txt").read_text(encoding="utf-8") == "other project\n"
+    assert (other / "keep.txt").is_file()
     assert not install_dir.exists()
 
 
@@ -439,8 +455,7 @@ def test_1246_uninstall_keeps_env_dir_without_this_installs_envs(
 ) -> None:
     install_dir = make_fake_install(tmp_path)
     env_dir = tmp_path / "shared-envs"
-    other = env_dir / "other-project-456" / "envs"
-    other.mkdir(parents=True)
+    other = other_project_env(env_dir, tmp_path)
 
     result = run_uninstall(
         install_dir / "uninstall.sh", "--yes", "--pixi-env-dir", str(env_dir)
@@ -459,6 +474,10 @@ def test_1246_uninstall_removes_external_cache_only_if_installer_created_it(
     cache_dir = tmp_path / "shared-cache"
     (cache_dir / "pkgs").mkdir(parents=True)
     (cache_dir / "pkgs" / "other.conda").write_bytes(b"other project")
+    # Pixi's own cached environments are part of the cache, not other projects.
+    (cache_dir / "cached-envs-v0" / "63c1a1447ff92cee" / "conda-meta").mkdir(
+        parents=True
+    )
     layout: dict[str, Path] = {"pixi_cache_dir": cache_dir}
     if recorded_as_created:
         layout["created_pixi_cache_dir"] = cache_dir
@@ -482,9 +501,7 @@ def test_1246_uninstall_keeps_an_installer_created_cache_that_holds_the_env_dir(
     cache_dir = tmp_path / "pixi"
     env_dir = cache_dir / "envs"
     own = link_detached_envs(install_dir, env_dir, "wgsextract-cli-123")
-    other = env_dir / "other-project-456" / "envs" / "default"
-    other.mkdir(parents=True)
-    (other / "keep.txt").write_text("other project\n", encoding="utf-8")
+    other = other_project_env(env_dir, tmp_path)
     write_layout(
         install_dir,
         pixi_cache_dir=cache_dir,
@@ -495,7 +512,73 @@ def test_1246_uninstall_keeps_an_installer_created_cache_that_holds_the_env_dir(
     run_uninstall(install_dir / "uninstall.sh", "--yes")
 
     assert not own.exists()
-    assert (other / "keep.txt").read_text(encoding="utf-8") == "other project\n"
+    assert (other / "keep.txt").is_file()
+
+
+def test_1246_uninstall_keeps_envs_of_the_install_a_copy_links_to(
+    tmp_path: Path,
+) -> None:
+    original = make_fake_install(tmp_path / "original")
+    env_dir = tmp_path / "shared-envs"
+    original_envs = link_detached_envs(original, env_dir, "wgsextract-cli-123")
+    copy = make_fake_install(tmp_path / "copy")
+    (copy / "app" / ".pixi").mkdir()
+    (copy / "app" / ".pixi" / "envs").symlink_to(
+        original_envs / "envs", target_is_directory=True
+    )
+
+    result = run_uninstall(
+        copy / "uninstall.sh", "--yes", "--pixi-env-dir", str(env_dir)
+    )
+
+    assert "environments were not found" in result.stdout
+    assert (original_envs / "envs" / "default" / "keep.txt").is_file()
+    assert not copy.exists()
+
+
+@pytest.mark.parametrize("env_root", ["recorded-inside-cache", "elsewhere"])
+def test_1246_uninstall_keeps_an_installer_created_cache_holding_other_envs(
+    tmp_path: Path, env_root: str
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+    cache_dir = tmp_path / "pixi-cache"
+    cache_dir.mkdir()
+    layout: dict[str, Path] = {
+        "pixi_cache_dir": cache_dir,
+        "created_pixi_cache_dir": cache_dir,
+    }
+    if env_root == "recorded-inside-cache":
+        # The recorded env root is in the cache, but a different one is named.
+        layout["pixi_env_dir"] = cache_dir / "envs"
+        other = other_project_env(cache_dir / "envs", tmp_path)
+        args = ["--keep-pixi-envs", "--pixi-env-dir", str(tmp_path / "other-envs")]
+    else:
+        # Another project later kept detached environments in the cache.
+        other = other_project_env(cache_dir / "later-envs", tmp_path)
+        args = []
+    write_layout(install_dir, **layout)
+
+    result = run_uninstall(install_dir / "uninstall.sh", "--yes", *args)
+
+    assert "holds Pixi environments" in result.stdout
+    assert (other / "keep.txt").is_file()
+    assert not install_dir.exists()
+
+
+def test_1246_uninstall_keeps_its_envs_when_they_hold_the_kept_cache(
+    tmp_path: Path,
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+    env_dir = tmp_path / "envs"
+    own = link_detached_envs(install_dir, env_dir, "wgsextract-cli-123")
+    cache_dir = own / "cache"
+    (cache_dir / "pkgs").mkdir(parents=True)
+    write_layout(install_dir, pixi_cache_dir=cache_dir, pixi_env_dir=env_dir)
+
+    result = run_uninstall(install_dir / "uninstall.sh", "--yes", "--keep-pixi-cache")
+
+    assert f"{own} (this install's Pixi environments)" not in result.stdout
+    assert (cache_dir / "pkgs").is_dir()
 
 
 def test_1246_keep_flags_do_not_claim_to_keep_pixi_dirs_inside_the_install(
