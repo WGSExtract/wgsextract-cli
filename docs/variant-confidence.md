@@ -60,8 +60,9 @@ autosomal findings remain available.
 A **resource** record whose REF base differs from the FASTA (ANNOVAR's REVEL
 table keeps hg19 REF bases, about 1% of which differ on GRCh38) is excluded,
 so it can never annotate a call, with a counted
-`annotation_ref_mismatch_excluded` warning once per resource in each annotation
-step; `vcf chain-annotate` repeats its steps' `annotation_*` warnings. Counts
+`annotation_ref_mismatch_excluded` warning once per resource per command,
+including when the same resource is used in multiple workflow steps.
+`vcf chain-annotate` forwards its steps' `annotation_*` warnings. Counts
 come from records before splitting, so each multiallelic record counts once.
 A resource where more than half of at least 20 checked records differ is refused
 as built for another genome build. Fields refreshed from the resource are cleared

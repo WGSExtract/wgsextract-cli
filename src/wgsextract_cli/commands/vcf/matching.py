@@ -13,7 +13,7 @@ from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_confidence as vc
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
-from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.results import ResultWarning, current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_files import (
@@ -24,7 +24,7 @@ from wgsextract_cli.core.variant_files import (
 )
 from wgsextract_cli.core.variant_table import parse_header
 
-from .resource_ref_check import check_table_build, record_count, report_ref_mismatches
+from .resource_ref_check import check_table_build, record_count, ref_mismatch_warning
 
 
 def table_as_vcf(
@@ -263,7 +263,7 @@ def _normalize(
     clinical: bool,
     is_resource: bool = False,
     origin: str | None = None,
-) -> str:
+) -> tuple[str, ResultWarning | None]:
     fai = Path(reference + ".fai")
     if not fai.is_file():
         raise WGSExtractError(
@@ -302,13 +302,14 @@ def _normalize(
     )
     renamed = normalize_vcf_chromosomes(str(staged), list(lengths), work)
     norm = output + ".norm.gz"
+    warning = None
     # Check unsplit resources so a row with several ALTs counts only once.
     # Compute drops from records, not bcftools' version-dependent summary.
     if is_resource:
         kept = output + ".checked.gz" if has_multiallelic else norm
         _left_align(renamed, reference, kept, "x")
-        report_ref_mismatches(
-            total - record_count(kept), total, Path(origin or source).name
+        warning = ref_mismatch_warning(
+            total - record_count(kept), total, origin or source
         )
         renamed = kept
     if not is_resource or has_multiallelic:
@@ -325,7 +326,7 @@ def _normalize(
         capture_output=True,
     )
     ensure_vcf_indexed(output)
-    return output
+    return output, warning
 
 
 def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) -> str:
@@ -665,7 +666,7 @@ def normalized_inputs(
     snv_table: bool = False,
     resource_source: str | None = None,
 ) -> tuple[str, str, str]:
-    normalized_query = _normalize(
+    normalized_query, _ = _normalize(
         query, reference, str(Path(work, "query.vcf.gz")), work, False
     )
     from .resource_cache import normalized_resource
@@ -682,7 +683,7 @@ def normalized_inputs(
         else ",".join(c for c in columns.split(",") if c.startswith("INFO/"))
     )
 
-    def build() -> str:
+    def build() -> tuple[str, ResultWarning | None]:
         selected = source
         if not is_vcf:
             selected, _ = table_as_vcf(
@@ -703,10 +704,12 @@ def normalized_inputs(
             resource_source or source,
         )
 
-    resource = (
-        build()
-        if snv_table and not is_vcf
-        else normalized_resource(
+    if snv_table and not is_vcf:
+        resource, warning = build()
+        if warning:
+            warn(warning.code, warning.message, **warning.details)
+    else:
+        resource = normalized_resource(
             resource_source or source,
             reference,
             ["", [], True]
@@ -714,7 +717,6 @@ def normalized_inputs(
             else [columns, list(headers), clinical],
             build,
         )
-    )
     if clinical:
         normalized_query = _compose(
             normalized_query, resource, work, thresholds or vc.thresholds_from()

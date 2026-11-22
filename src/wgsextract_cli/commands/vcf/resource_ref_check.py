@@ -5,7 +5,10 @@ import gzip
 import zlib
 from pathlib import Path
 
-from wgsextract_cli.core.results import warn
+from wgsextract_cli.core.result_warnings import (
+    RESOURCE_REF_MISMATCH_EXCLUDED,
+    ResultWarning,
+)
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import match_chromosome_name
 
@@ -105,18 +108,25 @@ def check_table_build(
     _refuse_wrong_build(checked - record_count(kept), checked, Path(source).name)
 
 
-def report_ref_mismatches(removed: int, total: int, resource: str) -> None:
-    """Warn about the resource records ``bcftools norm -c x`` dropped for a REF
+def ref_mismatch_warning(
+    removed: int, total: int, resource: str
+) -> ResultWarning | None:
+    """Describe resource records ``bcftools norm -c x`` dropped for a REF
     that differs from the FASTA; refuse a resource that mostly differs, as it
     is for another build and its chance matches would annotate wrong variants."""
-    _refuse_wrong_build(removed, total, resource)
-    if removed:
-        warn(
-            "annotation_ref_mismatch_excluded",
-            f"Excluded {removed} of {total} records in {resource} whose REF base "
-            "differs from the reference FASTA (e.g. hg19 bases left in a GRCh38 "
-            "table); they annotate no variant. No sample records were excluded.",
-            count=removed,
-            total=total,
-            resource=resource,
-        )
+    path = Path(resource)
+    _refuse_wrong_build(removed, total, path.name)
+    if not removed:
+        return None
+    return ResultWarning(
+        RESOURCE_REF_MISMATCH_EXCLUDED,
+        f"Excluded {removed} of {total} records in {path.name} whose REF base "
+        "differs from the reference FASTA (e.g. hg19 bases left in a GRCh38 "
+        "table); they annotate no variant. No sample records were excluded.",
+        {
+            "count": removed,
+            "total": total,
+            "resource": path.name,
+            "resource_path": str(path.resolve()),
+        },
+    )

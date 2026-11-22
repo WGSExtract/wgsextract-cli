@@ -1,11 +1,13 @@
 """Issue #1325: a resource's stale REF rows are dropped, not fatal."""
 
+import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from tests.htslib_helpers import needs_tools, reference_for_vcf, run_wgsextract
+from tests.smoke_utils import state_directory_setting
 from tests.test_vcf_annotations import (
     REVEL_HEADER,
     SAMPLE_ROWS,
@@ -28,6 +30,7 @@ from wgsextract_cli.api.vcf import (
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.main import main
 
 pytestmark = needs_tools("samtools", "bcftools", "bgzip", "tabix")
 EXCLUDED = "annotation_ref_mismatch_excluded"
@@ -69,9 +72,8 @@ def test_1325_stale_revel_ref_row_is_dropped_not_fatal(
         "snv:0.812", "diffalt:.", "block:.", "del:."
     ]  # fmt: skip
     (warning,) = [w for w in result.warnings if w.code == EXCLUDED]
-    assert warning.details == {
-        "count": 1, "total": 2, "resource": "revel_hg38.tsv.gz"
-    }  # fmt: skip
+    assert (warning.details["count"], warning.details["total"]) == (1, 2)
+    assert warning.details["resource"] == "revel_hg38.tsv.gz"
 
 
 def test_1325_chain_annotate_survives_a_stale_revel_ref_row(tmp_path):
@@ -245,3 +247,54 @@ def test_1325_clinvar_companion_reports_stale_resource_rows_once_per_run(
         assert [w.details["count"] for w in result.warnings if w.code == EXCLUDED] == [
             1
         ]
+
+
+def test_1325_analyze_reports_the_clinvar_ref_warning_once(tmp_path):
+    rows = SAMPLE_ROWS[:2]
+    sample = _sample(tmp_path, rows, length=1000)
+    ref = reference_for_vcf(tmp_path / "ref" / "ref.fa.gz", sample)
+    gvcf = _vcf(Path(sample).with_name("sample.g.vcf.gz"), rows, length=1000)
+    caller_result = CommandResult(command="vcf snp")
+    caller_result.add_output(sample, "variants")
+    caller_result.add_output(gvcf, "reference_evidence")
+    caller_result.finalize(probe_tools=False)
+    caller_result.write_manifest()
+    # A plain VCF must keep the same warning identity when a step prepares a
+    # compressed copy and discovery looks up the original resource.
+    resource = tmp_path / "clinvar.vcf"
+    resource.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=1,length=1000>\n"
+        '##INFO=<ID=CLNSIG,Number=.,Type=String,Description="Significance">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "1\t100\tgood\tC\tT\t.\tPASS\tCLNSIG=Pathogenic\n"
+        "1\t200\tstale\tT\tG\t.\tPASS\tCLNSIG=Pathogenic\n",
+        encoding="utf-8",
+    )
+    config = tmp_path / "config.toml"
+    config.write_text(
+        f"clinvar_vcf_path = {json.dumps(str(resource))}\n"
+        + state_directory_setting(tmp_path),
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "analyze-result.json"
+    args = [
+        "--config", str(config), "analyze", "comprehensive", "--vcf-inputs", sample,
+        "--ref", str(ref), "--outdir", str(tmp_path / "out"), "--threads", "1",
+        "--result-file", str(manifest),
+    ]  # fmt: skip
+    for extra in ([], ["--force-step", "discovery"], []):
+        main([*args, *extra])
+        result = json.loads(manifest.read_text(encoding="utf-8"))
+        assert result["status"] == "ok", result["error"]
+        (warning,) = [w for w in result["warnings"] if w["code"] == EXCLUDED]
+        assert (warning["details"]["count"], warning["details"]["total"]) == (1, 2)
+        summary = next(
+            row for row in result["details"]["confidence"]
+            if row["role"] == "significant_variants"
+        )  # fmt: skip
+        assert (
+            summary["reference_evidence"]["checked"]["clinvar_pathogenic_sites"][
+                "sites"
+            ]
+            == 1
+        )
