@@ -227,6 +227,14 @@ def test_symbol_keeps_import_and_initialization_consumers(
         path = tmp_path / test
         path.parent.mkdir(exist_ok=True)
         import_line = test_import if test == "tests/test_report.py" else ""
+        if import_line:
+            for file, source in (
+                ("facade.py", "from .info import LABEL\n"),
+                ("outer.py", "from .facade import LABEL\n"),
+                ("entry.py", "from .outer import LABEL\n"),
+            ):
+                (target.parent / file).write_text(source)
+            import_line = import_line.replace(".info import", ".entry import")
         path.write_text(import_line + "def test_contract():\n    pass\n")
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "Existing observed report")
@@ -249,9 +257,21 @@ def test_symbol_keeps_import_and_initialization_consumers(
 
 
 def test_xunit_collection_failure_is_attributed_to_its_module(tmp_path: Path) -> None:
+    from scripts.ci_impact_diff import impact_diff
+    from scripts.ci_impact_shadow import compute
+
+    _git(tmp_path, "init", "-b", "main")
+    _git(tmp_path, "config", "user.email", "test@example.test")
+    _git(tmp_path, "config", "user.name", "Test")
+    _git(tmp_path, "config", "commit.gpgsign", "false")
     (tmp_path / "pytest.ini").touch()
     (tmp_path / "tests").mkdir()
-    (tmp_path / "tests/test_broken.py").write_text("def invalid syntax\n")
+    path = "tests/test_broken.py"
+    (tmp_path / path).write_text("def test_working():\n    pass\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "Working test")
+    (tmp_path / path).write_text("def invalid syntax\n")
+    _git(tmp_path, "commit", "-am", "Broken test")
     output = tmp_path / "out"
     output.mkdir()
     report = output / "pytest.xml"
@@ -269,6 +289,11 @@ def test_xunit_collection_failure_is_attributed_to_its_module(tmp_path: Path) ->
         capture_output=True,
     )
     assert run.returncode == 2
-    results, unmapped = file_results(report, {"tests/test_broken.py"})
+    results, unmapped = file_results(report, {path})
     assert unmapped == 0
-    assert results["tests/test_broken.py"]["failed"] == 1
+    assert results[path]["failed"] == 1
+    candidates, _, unmatched = compute(
+        tmp_path, impact_diff(tmp_path, "HEAD^1", "HEAD"), {path}, {}
+    )
+    assert unmatched == [path]
+    assert all(path in files for files in candidates.values())

@@ -96,6 +96,7 @@ class StaticUsers:
         self.importers: dict[str, set[str]] = defaultdict(set)
         self.reads: dict[str, set[str]] = {}
         self.calls: dict[str, dict[str, set[str]]] = {}
+        self.forwarded: dict[tuple[str, str, str], set[str]] = defaultdict(set)
         self.unparsed: set[str] = set()
         for path, blob in self.files.items():
             if not path.startswith("scripts/"):
@@ -125,10 +126,10 @@ class StaticUsers:
                         )
                     imports = {prefix, *(f"{prefix}.{alias.name}" for alias in aliases)}
                     self.reads[path].update(alias.name for alias in aliases)
-                    # Carry aliases through dispatch wrappers and re-exports.
                     for alias in aliases:
-                        if alias.asname:
-                            self.calls[path][alias.asname].add(alias.name)
+                        self.forwarded[(path, prefix, alias.name)].add(
+                            alias.asname or alias.name
+                        )
                 case (
                     ast.FunctionDef(name=fn, body=body)
                     | ast.AsyncFunctionDef(name=fn, body=body)
@@ -148,26 +149,31 @@ class StaticUsers:
         observed: dict[str, dict[str, list[str]]],
     ) -> set[str]:
         selected = set()
-        frontier = {path: names}
-        for _ in range(2):
-            next_round: dict[str, set[str]] = defaultdict(set)
-            for dependency, symbols in frontier.items():
-                for importer in self.importers.get(_module(dependency), set()) | {
-                    dependency
-                }:
-                    if self.reads.get(importer, set()) & symbols:
-                        if importer in tests:
-                            selected.add(importer)
-                        if next_names := {
-                            fn
-                            for fn, reads in self.calls[importer].items()
-                            if reads & symbols
-                        }:
-                            next_round[importer].update(next_names)
-                            for fn, users in observed.get(importer, {}).items():
-                                if fn.rsplit(".", 1)[-1] in next_names:
-                                    selected.update(users)
-            frontier = next_round
+        # Re-exports do not consume the two-hop caller budget.
+        pending = [(path, name, 1) for name in names]
+        visited: set[tuple[str, str, int]] = set()
+        while pending:
+            dependency, symbol, hops = pending.pop()
+            state = (dependency, symbol, hops)
+            if state in visited:
+                continue
+            visited.add(state)
+            module = _module(dependency)
+            for importer in self.importers.get(module, set()) | {dependency}:
+                if symbol not in self.reads.get(importer, ()):
+                    continue
+                if importer in tests:
+                    selected.add(importer)
+                for alias in self.forwarded.get((importer, module, symbol), ()):
+                    pending.append((importer, alias, hops))
+                call_names = {
+                    fn for fn, reads in self.calls[importer].items() if symbol in reads
+                }
+                for fn, users in observed.get(importer, {}).items():
+                    if fn.rsplit(".", 1)[-1] in call_names:
+                        selected.update(users)
+                if hops:
+                    pending.extend((importer, fn, hops - 1) for fn in call_names)
         return selected
 
     def historical_importers(self, path: str, tests: set[str]) -> set[str]:

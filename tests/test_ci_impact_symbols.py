@@ -48,6 +48,10 @@ def call(amount=2):
         (b"class Item: pass", b"class Item(metaclass=Registry): pass"),
         (b"class Item: pass", b"class Item:\n    def __init_subclass__(cls): pass"),
         (b"", b"registry.register(run)"),
+        (
+            b"def run(value: int): pass",
+            b"from __future__ import annotations\n\ndef run(value: int): pass",
+        ),
     ],
 )
 def test_import_time_side_effects_keep_the_module_scope(old: bytes, new: bytes) -> None:

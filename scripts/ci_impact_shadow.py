@@ -102,7 +102,17 @@ def compute(
 ) -> tuple[dict[str, list[str]], dict[str, set[str]], list[str]]:
     reasons: dict[str, set[str]] = defaultdict(set)
     paths = {path for row in diff.changes for path in (row.before, row.after) if path}
-    resources = test_inputs(root)
+    try:
+        resources = test_inputs(root)
+    except (SyntaxError, UnicodeError, OSError) as error:
+        filename = error.filename if isinstance(error, (SyntaxError, OSError)) else None
+        path = (
+            Path(filename).relative_to(root).as_posix()
+            if filename and Path(filename).is_relative_to(root)
+            else "test input scan"
+        )
+        reasons[path].add("unavailable-static-input-scan")
+        return {name: sorted(tests) for name in VARIANTS}, reasons, [path]
     shared = {
         t.split("::", 1)[0] for t in docs_test_targets(sorted(paths), repository=root)
     }

@@ -129,6 +129,16 @@ def symbol_delta(
 ) -> SymbolDelta:
     """Keep executable or ambiguous declaration changes module-wide."""
     left, right = (ast.parse(source).body for source in (before, after))
+    old_future, new_future = (
+        [
+            ast.dump(node)
+            for node in body
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "__future__"
+            and not node.level
+        ]
+        for body in (left, right)
+    )
     old_imports, new_imports = (
         [ast.dump(node) for node in body if isinstance(node, _IMPORTS)]
         for body in (left, right)
@@ -153,7 +163,8 @@ def symbol_delta(
     (old, old_other, old_order), (new, new_other, new_order) = layouts
     common = old.keys() & new.keys()
     out.broad = (
-        old_other != new_other
+        old_future != new_future
+        or old_other != new_other
         or _import_hooks(old) != _import_hooks(new)
         or [key for key in old_order if key in common]
         != [key for key in new_order if key in common]
