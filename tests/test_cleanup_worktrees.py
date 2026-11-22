@@ -18,6 +18,7 @@ from typing import TextIO, cast
 import pytest
 
 REPO = "WGSExtract/wgsextract-cli"
+PACKAGE_URL = "https://example.invalid/linux-64/demo-1.0-py_0.conda"
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
 if sys.platform == "linux":
     from scripts import cleanup_worktrees, worktree_activity_inspector
@@ -46,6 +47,7 @@ def repo(tmp_path: Path, proc: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     git(root, "config", "user.email", "cleanup@example.invalid")
     git(root, "remote", "add", "origin", f"https://github.com/{REPO}.git")
     (root / ".gitignore").write_text("/scratch/\n/out/\n/.pixi/\n")
+    (root / "pixi.lock").write_text(f"packages:\n- conda: {PACKAGE_URL}\n")
     (root / "source.txt").write_text("committed source\n")
     git(root, "add", ".")
     git(root, "commit", "-m", "Initial commit")
@@ -137,6 +139,36 @@ def write(path: Path, data: str) -> None:
     path.write_text(data)
 
 
+def generated_env(path: Path) -> Path:
+    env = path / ".pixi/envs/dev"
+    write(env / "CACHEDIR.TAG", "Signature: 8a477f597d28d172789f06886806bc55\n")
+    write(
+        env / "conda-meta/pixi",
+        json.dumps(
+            {
+                "environment_name": "dev",
+                "manifest_path": str(path / "pixi.toml"),
+                "pixi_version": "0.70.0",
+                "environment_lock_file_hash": "1",
+            }
+        ),
+    )
+    write(
+        env / "conda-meta/demo-1.0-py_0.json",
+        json.dumps(
+            {
+                "name": "demo",
+                "version": "1.0",
+                "build": "py_0",
+                "url": PACKAGE_URL,
+                "files": ["bin/demo"],
+            }
+        ),
+    )
+    write(env / "bin/demo", "#!/bin/sh\n")
+    return env
+
+
 def test_1393_offline_then_archive_and_remove_only_exact_merged_checkout(
     repo: Path, github: Callable[..., None]
 ) -> None:
@@ -144,7 +176,7 @@ def test_1393_offline_then_archive_and_remove_only_exact_merged_checkout(
     head = git(path, "rev-parse", "HEAD")
     write(path / "out/run/handoff.md", "completed steps\n")
     write(path / "scratch/test.py", "print('unique scratch source')\n")
-    write(path / ".pixi/envs/dev/cache.bin", "regenerable\n")
+    generated_env(path)
     github(status=91)
 
     run = cleanup(repo)
@@ -204,6 +236,91 @@ def test_1393_preserves_unknown_or_dirty_data(
     assert (path / relative).read_text() == data
 
 
+def test_1393_trims_verified_environment_without_removing_mixed_worktree(
+    repo: Path, github: Callable[..., None]
+) -> None:
+    path = topic(repo)
+    env = generated_env(path)
+    sample = path / "out/model.bam"
+    write(sample, "irreplaceable sample")
+    write(path / ".pixi/notes.py", "local scratch work")
+    write(path / "scratch/analysis.py", "print('evidence')\n")
+    (repo / "sample-link").symlink_to(sample)
+    github([pull(path)])
+
+    run = cleanup(repo, "--github", "--apply")
+    assert run.returncode == 0, run.stderr
+    assert env.is_dir()
+    run = cleanup(repo, "--github", "--trim-caches")
+    assert run.returncode == 0, run.stderr
+    assert result(repo, path)["reason"] == "cache-eligible"
+    assert env.is_dir()
+
+    run = cleanup(repo, "--github", "--trim-caches", "--apply")
+    assert run.returncode == 0, run.stderr
+    record = result(repo, path)
+    assert record["reason"] == "cache-pruned"
+    assert record["pruned_caches"] == [".pixi/envs"]
+    assert not env.exists()
+    assert git(path, "branch", "--show-current") == "stale"
+    assert sample.read_text() == "irreplaceable sample"
+    assert (path / ".pixi/notes.py").read_text() == "local scratch work"
+    saved = repo / str(record["archive"]) / "scratch/analysis.py"
+    assert saved.read_text() == (path / "scratch/analysis.py").read_text()
+
+
+@pytest.mark.parametrize(
+    "blocker",
+    [
+        "custom-file",
+        "unlocked-package",
+        "incoming-link",
+        "incoming-parent",
+        "different-head",
+        "dirty",
+    ],
+)
+def test_1393_never_prunes_a_cache_with_unverified_data_or_checkout(
+    repo: Path, github: Callable[..., None], blocker: str
+) -> None:
+    path = topic(repo)
+    env = generated_env(path)
+    write(path / "out/model.bam", "keep")
+    merged = pull(path)
+    if blocker == "custom-file":
+        write(env / "bin/private-data", "keep inside Pixi too")
+    elif blocker == "unlocked-package":
+        write(
+            env / "conda-meta/local-1.0-py_0.json",
+            json.dumps(
+                {
+                    "name": "local",
+                    "version": "1.0",
+                    "build": "py_0",
+                    "url": "file:///scratch/local-1.0-py_0.conda",
+                    "files": ["bin/private-data"],
+                }
+            ),
+        )
+        write(env / "bin/private-data", "keep the manually installed package")
+    elif blocker == "incoming-link":
+        (repo / "needs-env").symlink_to(env / "bin/demo")
+    elif blocker == "incoming-parent":
+        (repo / "needs-env").symlink_to(path / ".pixi", target_is_directory=True)
+    elif blocker == "different-head":
+        git(path, "commit", "--allow-empty", "-m", "Unpushed experiment")
+    else:
+        write(path / "new.py", "untracked script")
+    github([merged])
+
+    run = cleanup(repo, "--github", "--trim-caches", "--apply")
+    assert run.returncode == 0, run.stderr
+    assert result(repo, path)["pruned_caches"] == []
+    assert (env / "bin/demo").is_file()
+    if blocker in {"custom-file", "unlocked-package"}:
+        assert (env / "bin/private-data").read_text().startswith("keep")
+
+
 def test_1393_latest_pr_ownership_and_exact_tip_protect_unmerged_commits(
     repo: Path, github: Callable[..., None]
 ) -> None:
@@ -236,8 +353,9 @@ def test_1393_blocks_links_locked_and_outside_worktrees(
     locked = topic(repo, "locked")
     outside = topic(repo, "outside", repo.parent / "outside")
     (outside / "input").symlink_to(incoming / "source.txt")
-    (outgoing / ".pixi/envs").mkdir(parents=True)
-    (outgoing / ".pixi/envs/input").symlink_to(repo / "source.txt")
+    (outgoing / "input").symlink_to(repo / "source.txt")
+    git(outgoing, "add", "input")
+    git(outgoing, "commit", "-m", "Keep external input")
     git(repo, "worktree", "lock", str(locked))
     github([pull(path) for path in (incoming, outgoing, locked, outside)])
 
@@ -255,6 +373,8 @@ def test_1393_an_active_process_blocks_cleanup(
     repo: Path, proc: Path, github: Callable[..., None], hold: str
 ) -> None:
     path = topic(repo)
+    env = generated_env(path)
+    write(path / "out/model.bam", "sample to retain")
     code = "import sys; "
     if hold == "file":
         code += "f = open('scratch/stale/source.txt'); "
@@ -278,10 +398,10 @@ def test_1393_an_active_process_blocks_cleanup(
             assert process.stdout is not None
             assert process.stdout.readline() == "ready\n"
             (proc / str(process.pid)).symlink_to(Path("/proc") / str(process.pid))
-            run = cleanup(repo, "--apply", "--github")
+            run = cleanup(repo, "--apply", "--github", "--trim-caches")
             assert run.returncode == 0, run.stderr
             assert result(repo, path)["reason"] == "active-process"
-            assert path.is_dir()
+            assert env.is_dir()
         finally:
             process.terminate()
 

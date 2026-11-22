@@ -445,6 +445,7 @@ these commands from the primary checkout on `main`:
 python3 scripts/cleanup_worktrees.py                   # offline audit, no removals
 python3 scripts/cleanup_worktrees.py --github          # verify eligibility only
 python3 scripts/cleanup_worktrees.py --github --apply  # retire eligible worktrees
+python3 scripts/cleanup_worktrees.py --github --trim-caches  # preview cache trimming too
 ```
 
 `--github` uses an existing authenticated `gh` session to request PR metadata
@@ -465,8 +466,13 @@ work in a checkout that might be eligible for cleanup.
 Do not start work in an eligible checkout during cleanup. Symlinks are checked
 in this repository and its registered worktrees; lock a worktree if other
 projects depend on its files. Nothing manages your reference library. Samples
-and other unknown files block removal. Known Pixi and Python caches may be
-regenerated. Small UTF-8 logs under `out/` and recognised Python, shell, Lua
+and other unknown files block removal. With `--trim-caches --apply`, the same
+PR and activity checks allow trimming verified generated Pixi, Ruff, mypy and
+pytest caches in retained worktrees. Unrecognized cache contents, unlocked
+Conda packages and links to a cache block trimming that cache. Only the named
+cache directories are deleted; the checkout, branch and other files stay.
+The report distinguishes cache trimming from worktree retirement.
+Small UTF-8 logs under `out/` and recognised Python, shell, Lua
 and R source files under `scratch/` (1 MiB per file, 32 MiB total) are copied
 to a private, local directory in `out/archive/` without following links. They
 are not executed. Do not put secrets in run logs or scratch sources.
@@ -563,9 +569,11 @@ inspector and `agent-coord` for its worktree-cleanup lock and resource limits:
 
 The owner must approve the plan; agents must not approve it. The scheduled run
 uses GitHub explicitly, runs no agents, and reports success or failure in
-Sheprd. It runs the checked-out script without pulling `main` or installing
-anything. When changing the helper, update its SHA-256 in the automation and
-have the owner approve the new plan before resuming scheduled cleanup. An
+Sheprd. It retires eligible worktrees and trims verified caches in retained
+worktrees, without pulling `main` or installing anything. Update the
+inventory module's SHA-256 in the janitor if that module changes. After any
+janitor change, update its SHA-256 in the automation and have the owner
+approve the new plan before resuming scheduled cleanup. An
 inspector upgrade requires a separately reviewed administrator install as
 well as updated digests before scheduling resumes.
 
