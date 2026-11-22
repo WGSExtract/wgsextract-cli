@@ -27,7 +27,7 @@ import json
 from pathlib import Path
 
 import numpy as np
-from build import BUILD, N_NORMALIZATION, N_POPCOMP, NAME, VERSION, _read_sscore
+from build import BUILD, N_NORMALIZATION, N_POPCOMP, NAME, VERSION, _read_sscore, pgs
 from scipy import optimize
 
 
@@ -126,7 +126,11 @@ def _populations(pcs: np.ndarray, region: np.ndarray) -> dict:
     return out
 
 
-def package(work: Path, ancestry: Path, ids: list[str]) -> None:
+def package(work: Path, ancestry: Path, ids: list[str], base: Path | None) -> None:
+    """The reference file for ``ids``; with ``base``, a published reference,
+    every other curated score is copied from it unchanged (a rebuilt score
+    that ``base`` also has is compared with it), and scores no longer curated
+    are dropped."""
     ref = np.load(ancestry)
     ancestry_sha = hashlib.sha256(ancestry.read_bytes()).hexdigest()
     samples, training = _samples(work)
@@ -199,6 +203,32 @@ def package(work: Path, ancestry: Path, ids: list[str]) -> None:
         "populations": _populations(pcs, region),
         "scores": scores_info,
     }
+    if base is not None:
+        with np.load(base) as data:
+            kept = {name: data[name] for name in data.files}
+        base_info = json.loads(str(kept.pop("info")))
+        if base_info["ancestry_reference_sha256"] != ancestry_sha or not np.array_equal(
+            kept["training_rows"], arrays["training_rows"]
+        ):
+            raise SystemExit(f"{base} was built on other training samples")
+        for pgs_id in set(ids) & set(base_info["scores"]):
+            diff = np.abs(arrays[f"{pgs_id}_scores"] - kept[f"{pgs_id}_scores"])
+            print(f"{pgs_id} rebuilt: max |score - {base.name}'s| {diff.max():.3g}")
+        for pgs_id in pgs.CURATED.values():
+            if pgs_id not in ids:
+                scores_info[pgs_id] = base_info["scores"][pgs_id]
+                for part in ("rows", "frequency", "scores"):
+                    arrays[f"{pgs_id}_{part}"] = kept[f"{pgs_id}_{part}"]
+        order = [
+            *pgs.CURATED.values(),
+            *(i for i in ids if i not in pgs.CURATED.values()),
+        ]
+        info["scores"] = {pgs_id: scores_info[pgs_id] for pgs_id in order}
+        info["rebuilt_from"] = {
+            "name": base.name,
+            "sha256": hashlib.sha256(base.read_bytes()).hexdigest(),
+            "scores": ids,
+        }
     arrays["info"] = np.array(json.dumps(info))
     out = work / NAME
     np.savez_compressed(out, **arrays)

@@ -3,8 +3,10 @@
 For each curated score, the HGDP+1KG reference samples are scored with Phase
 1's variant rules, projected onto the `qc ancestry` PCA (ancestry-ref-1), and
 pgscatalog.calc's ancestry adjustments are fitted on them. The result is one
-file, ``wgsextract-pgs-hgdp1kg-v1.npz``, published as a GitHub release asset
-and downloaded by `score pgs` on first use.
+file, ``wgsextract-pgs-hgdp1kg-v2.npz``, published as a GitHub release asset
+(``pgs-ref-2``) and downloaded by `score pgs` on first use. Version 1
+(``pgs-ref-1``) had PGS000027 for BMI; version 2 replaces it with PGS005198
+(issue #1165) and copies the other ten scores from version 1 unchanged.
 
 Run each step in order with this folder's Pixi environment (plink2, NumPy,
 SciPy) and the CLI's sources on PYTHONPATH (for its scoring-file reader):
@@ -17,6 +19,9 @@ Steps:
 - ``subset``: the panel's records at the ancestry sites and at the scores'
   positions, as a small pfile (plink2 can't hold all 84M variants' IDs in a
   modest workspace).
+- ``training`` (instead of ``training_ids.py``, when rebuilding scores in a
+  published reference with ``--base``): the training samples' IDs, by
+  matching each panel sample's projection to the in-sample PCs it reproduces.
 - ``pcs``: the reference panel's samples projected onto the ancestry
   reference's 10 PCs (plink2 ``--score variance-standardize`` with the PCA's
   own allele frequencies, the projection `score pgs` applies to a user). The
@@ -37,6 +42,12 @@ Steps:
   samples (empirical distribution of the most similar region; Khera et al.
   2019 mean regression on PCs; Khan et al. 2022 / eMERGE GIRA mean+variance
   full-likelihood fit), and the reference file written with its SHA-256.
+  With ``--base`` (a published reference), only ``--ids`` are rebuilt; the
+  other curated scores are copied from it.
+
+Version 2 was built on macOS (osx-arm64) with ``--ids PGS000297 PGS005198``
+up to ``overlaps`` (PGS000297 checks the rebuild against version 1), then
+``package --ids PGS005198 --base wgsextract-pgs-hgdp1kg-v1.npz``.
 
 Data: pgsc_calc's HGDP+1kGP reference panel (pgsc_HGDP+1kGP_v1, from gnomAD
 v3.1 HGDP+1KG, CC0 1.0); the scoring files are not redistributed, only the
@@ -60,7 +71,7 @@ sys.path.insert(0, str(HERE.parents[1] / "src"))
 
 from wgsextract_cli.core import pgs  # noqa: E402
 
-VERSION = 1
+VERSION = 2
 NAME = f"wgsextract-pgs-hgdp1kg-v{VERSION}.npz"
 PANEL = "GRCh38_HGDP+1kGP_ALL"
 BUILD = "GRCh38"
@@ -129,7 +140,8 @@ def subset(
          "--make-pgen", "--out", str(out / "panel"))  # fmt: skip
 
 
-def pcs(work: Path, panel: Path, ancestry: Path, training: Path) -> None:
+def _project(work: Path, panel: Path, ancestry: Path) -> tuple[list[str], np.ndarray]:
+    """Every panel sample projected onto the ancestry reference's PCs."""
     ref = np.load(ancestry)
     chrom, pos = ref["chrom_GRCh38"], ref["pos_GRCh38"]
     alleles = [
@@ -158,7 +170,53 @@ def pcs(work: Path, panel: Path, ancestry: Path, training: Path) -> None:
            "variance-standardize", "cols=+scoresums",
            "--score-col-nums", f"3-{k + 2}", "--out", str(out / "panel"))  # fmt: skip
     samples, columns = _read_sscore(out / "panel.sscore")
-    projected = np.column_stack([columns[f"PC{i + 1}_SUM"] for i in range(k)])
+    return samples, np.column_stack([columns[f"PC{i + 1}_SUM"] for i in range(k)])
+
+
+def training(work: Path, panel: Path, ancestry: Path, base: Path) -> None:
+    """``training.tsv`` without training_ids.py (which needs Hail and gnomAD's
+    sample tables): each panel sample is matched to the training sample whose
+    in-sample PCs its projection reproduces. Only mutual nearest neighbours
+    that no other sample comes close to are accepted, and the matched rows must be exactly the training samples of
+    the published reference ``base``, which stores their rows but not IDs."""
+    ref = np.load(ancestry)
+    samples, projected = _project(work, panel, ancestry)
+    trained = ref["pca_scores"].astype(np.float64)
+    scale = float(np.sqrt((trained**2).sum(1)).mean())
+    distance = np.sqrt(np.maximum(0.0, (projected**2).sum(1)[:, None]
+                                  + (trained**2).sum(1)[None, :]
+                                  - 2 * projected @ trained.T))  # fmt: skip
+    nearest = distance.argmin(1)
+    gap = distance[np.arange(len(samples)), nearest]
+    second = np.partition(distance, 1, axis=1)[:, 1]
+    # Mutual nearest neighbours, each far closer to the other than to anyone
+    # else (relatives of training samples are near in PC space, not on them).
+    mutual = distance.argmin(0)[nearest] == np.arange(len(samples))
+    matched = mutual & (gap < 0.1 * second)
+    rows = nearest[matched]
+    with np.load(base) as data:
+        expected = set(data["training_rows"].tolist())
+    print(f"{int(matched.sum())} of {len(samples)} panel samples match a training "
+          f"sample: distance median {np.median(gap[matched]):.3g}, max "
+          f"{gap[matched].max():.3g}; next best min {second[matched].min():.3g} "
+          f"(typical |PC| {scale:.3g}); expected {len(expected)}")  # fmt: skip
+    if set(rows.tolist()) != expected:
+        raise SystemExit(
+            "the matched training samples are not the base reference's training "
+            f"set: {len(expected - set(rows.tolist()))} missing, "
+            f"{len(set(rows.tolist()) - expected)} extra"
+        )
+    with (work / "training.tsv").open("w") as f:
+        f.write("training_row\tIID\tpopulation\tregion\n")
+        for s, t in sorted(zip(np.array(samples)[matched], rows, strict=True),
+                           key=lambda x: x[1]):  # fmt: skip
+            f.write(f"{t}\t{s}\t{ref['pca_population'][t]}\t{ref['pca_region'][t]}\n")
+
+
+def pcs(work: Path, panel: Path, ancestry: Path, training: Path) -> None:
+    ref = np.load(ancestry)
+    samples, projected = _project(work, panel, ancestry)
+    k = projected.shape[1]
     trained = ref["pca_scores"].astype(np.float64)
     # The training samples by ID (training_ids.py); their projection here is
     # checked against their in-sample PCA scores.
@@ -185,7 +243,7 @@ def pcs(work: Path, panel: Path, ancestry: Path, training: Path) -> None:
         set(holdout_file.read_text().split()[1::2]) if holdout_file.is_file() else set()
     )
     psam = _psam(panel)
-    with (out / "samples.tsv").open("w") as f:
+    with (work / "pcs" / "samples.tsv").open("w") as f:
         f.write("IID\ttraining_row\theld_out\tregion\tpopulation\tpanel_superpop\tpanel_population\t"
                 + "\t".join(f"PC{i + 1}" for i in range(k)) + "\n")  # fmt: skip
         for i, s in enumerate(samples):
@@ -457,7 +515,7 @@ def overlaps(work: Path, panel: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
-        "step", choices=("subset", "pcs", "score", "overlaps", "package")
+        "step", choices=("subset", "training", "pcs", "score", "overlaps", "package")
     )
     parser.add_argument("--work", type=Path, required=True)
     parser.add_argument(
@@ -467,7 +525,12 @@ def main() -> None:
         "--ancestry", type=Path, help="wgsextract-ancestry-hgdp1kg-v1.npz"
     )
     parser.add_argument(
-        "--training", type=Path, help="training.tsv from training_ids.py"
+        "--training", type=Path, help="training.tsv from training_ids.py or training"
+    )
+    parser.add_argument(
+        "--base",
+        type=Path,
+        help="training, package: the published reference to rebuild --ids in",
     )
     parser.add_argument("--scores", type=Path, help="folder of {PGS}_GRCh38.txt.gz")
     parser.add_argument("--ids", nargs="*", default=list(pgs.CURATED.values()))
@@ -479,6 +542,8 @@ def main() -> None:
     _threads, _memory = args.threads, args.memory
     if args.step == "subset":
         subset(args.work, args.panel, args.ancestry, args.scores, args.ids, args.chrom)
+    elif args.step == "training":
+        training(args.work, args.panel, args.ancestry, args.base)
     elif args.step == "pcs":
         pcs(args.work, args.panel, args.ancestry, args.training)
     elif args.step == "score":
@@ -488,7 +553,7 @@ def main() -> None:
     else:
         from package import package
 
-        package(args.work, args.ancestry, args.ids)
+        package(args.work, args.ancestry, args.ids, args.base)
 
 
 _threads = 4

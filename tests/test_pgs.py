@@ -411,29 +411,38 @@ def test_617_download_retries_and_records_catalog_licence(
             True,
         ),
         (
+            "Creative Commons Attribution-NonCommercial-NoDerivatives 4.0 "
+            "International (CC BY-NC-ND 4.0).",
+            True,
+        ),
+        ("Creative Commons Attribution 4.0 International (CC BY 4.0).", False),
+        (
             "PGS obtained from the Catalog should be cited appropriately, and used "
             "in accordance with any licensing restrictions set by the authors.",
             False,
         ),
     ],
 )
-def test_864_bmi_alias_warns_of_its_scores_author_licence(
+def test_864_1165_trait_warns_only_of_restrictive_author_licences(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, license: str, restricted: bool
 ) -> None:
     """Issue #864: --trait bmi selected PGS000027, which only academic research
-    may use, without saying so outside the licence field."""
+    may use, without saying so outside the licence field. Issue #1165: bmi's
+    replacement is CC BY 4.0, which asks only for the citation the result
+    carries, so it must not be reported as restricted."""
     import urllib.request
 
-    url = "https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/PGS000027/h.txt.gz"
+    pgs_id = CURATED["bmi"]
+    url = f"https://ftp.ebi.ac.uk/pub/databases/spot/pgs/scores/{pgs_id}/h.txt.gz"
     payloads = {
-        "https://www.pgscatalog.org/rest/score/PGS000027/": json.dumps(
+        f"https://www.pgscatalog.org/rest/score/{pgs_id}/": json.dumps(
             {
                 "ftp_harmonized_scoring_files": {"GRCh38": {"positions": url}},
                 "license": license,
             }
         ).encode(),
         url: gzip.compress(
-            ("#pgs_id=PGS000027\n" + (FIXTURES / "additive.txt").read_text()).encode()
+            (f"#pgs_id={pgs_id}\n" + (FIXTURES / "additive.txt").read_text()).encode()
         ),
     }
 
@@ -455,7 +464,7 @@ def test_864_bmi_alias_warns_of_its_scores_author_licence(
     )
     warned = [w for w in result.warnings if w.code == "pgs_license_restricted"]
     assert bool(warned) is restricted
-    assert all("academic community" in w.message for w in warned)
+    assert all(license in w.message for w in warned)
 
 
 @pytest.fixture

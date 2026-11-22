@@ -28,7 +28,7 @@ Failed or truncated responses never replace a previously good copy.
 | `breast-cancer` | PGS000004 | Breast cancer |
 | `height` | PGS000297 | Height |
 | `t2d` | PGS000020 | Type 2 diabetes |
-| `bmi` | PGS000027 | Body mass index (authors' licence: academic research use only) |
+| `bmi` | PGS005198 | Body mass index (BMI) |
 | `stroke` | PGS000038 | Stroke |
 | `triglycerides` | PGS000063 | Triglycerides |
 | `ldl-cholesterol` | PGS000065 | LDL cholesterol |
@@ -39,9 +39,13 @@ Failed or truncated responses never replace a previously good copy.
 This is a convenience list, not a clinical recommendation or a ranking of
 predictive accuracy. Any `PGSnnnnnn` is accepted with `--pgs-id`; an uncurated
 ID emits `pgs_uncurated_score`. A Catalog score whose authors set their own
-licence emits `pgs_license_restricted` with it: PGS000027, the `bmi` score, is
-"freely available to the academic community for research use", and commercial
-use needs the Broad Institute's permission. Review the publication, development ancestry,
+licence emits `pgs_license_restricted` with it, unless the licence only asks
+for attribution (CC BY 4.0). The `bmi` score, PGS005198, is the GIANT
+consortium's multi-ancestry score (Smit et al. 2025, Nat Med), under CC BY 4.0.
+It replaced PGS000027 (Khera et al. 2019), which is only "freely available to
+the academic community for research use"
+([#1165](https://github.com/WGSExtract/wgsextract-cli/issues/1165) compares the
+candidates). Review the publication, development ancestry,
 licence and limitations before using a score. A height score in raw score
 units is **not** height in centimetres; a disease score is **not** disease
 probability.
@@ -147,8 +151,8 @@ ancestry, the way the PGS Catalog Calculator (`pgsc_calc`, its
    group. Only the scoring-file rows the reference has (the *calibration set*) count toward the calibrated score; the
    published reference file holds those rows, their reference allele
    frequencies, the reference samples' scores and the fitted models, not
-   genotypes or scoring files. It is the GitHub release `pgs-ref-1`
-   (38 MB), downloaded into `<library>/pgs/` only with `--download`,
+   genotypes or scoring files. It is the GitHub release `pgs-ref-2`
+   (SIZE_MB MB), downloaded into `<library>/pgs/` only with `--download`,
    and checked against a pinned SHA-256. Each score is
    tied to the SHA-256 of the Catalog file it was built from; if the Catalog
    changes that file, or you supply your own, there is no percentile.
@@ -183,7 +187,7 @@ over the summed per-variant variance). Assuming the imputed rows share the
 whole score's LD makes it an upper bound for scores of many correlated
 variants: on real HG002 and HG005 gaps it is 0.06-0.18 SD where the measured
 error is 0.05-0.16 SD, and without the inflation it would be half the
-measured error for PGS000027. `percentile_interval` is the resulting 95%
+measured error for PGS000027 (the scores of version 1 of the reference, #617). `percentile_interval` is the resulting 95%
 interval. The
 percentile is **withheld** (`percentile_status`, and a `pgs_uncalibrated`
 warning saying why) when:

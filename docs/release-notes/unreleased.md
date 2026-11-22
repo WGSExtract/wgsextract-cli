@@ -5,6 +5,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
+- `score pgs --trait bmi` now uses PGS005198, the GIANT consortium's
+  multi-ancestry BMI score (Smit et al. 2025, CC BY 4.0), instead of
+  PGS000027, which only academic research may use. Its ancestry-adjusted
+  percentiles need the new reference release `pgs-ref-2`, so the first run
+  after upgrading needs `--download` again. CC BY 4.0 scores no longer warn
+  `pgs_license_restricted`
+  ([#1165, BMI score](https://github.com/WGSExtract/wgsextract-cli/issues/1165)).
 - `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads
   support a call. DYS589's non-repeat boundary variation no longer appears
   as a fractional STR allele. DYS425 is left blank on all builds because
