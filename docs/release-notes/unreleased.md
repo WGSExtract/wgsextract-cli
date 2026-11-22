@@ -3,16 +3,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
-- `wgsextract deps ready -- COMMAND ...` reports whether a command line can
-  run on this computer without the network: its tools (version, Conda package
-  and recorded licence), Docker images in the local engine, NVIDIA GPUs and
-  driver, Clair3 models and wgse-deepvariant weights against their pinned
-  SHA-256, and its input, reference genome, indexes and annotation data. Each
-  item is runnable, installed, unverified, unsupported, missing, stale or
-  incompatible, with the explicit setup or download step that provides a
-  missing one. It never installs, pulls or downloads, and isn't offered by
-  the server
-  ([#1183, offline readiness report](https://github.com/WGSExtract/wgsextract-cli/issues/1183)).
 - [Migrating from WGS Extract v4](docs/migrating-from-v4.md) maps each v44.2
   button to its current desktop page and command, with changed defaults,
   features not yet equivalent and settings/reference precautions. NOTICE now
