@@ -56,6 +56,7 @@ from wgsextract_cli.core.microarray.quirks import (
 )
 from wgsextract_cli.core.microarray.targets import (
     build_genome_wide_target,
+    chain_to_grch37,
     fetch_requested_chains,
     is_genome_wide_target,
     lifted_chain,
@@ -144,7 +145,7 @@ def _target_root(lib: ReferenceLibrary) -> str | None:
     return lib.root
 
 
-def _liftover_chain_for(lib: ReferenceLibrary) -> str | None:
+def _liftover_chain_for(lib: ReferenceLibrary, *, download: bool = False) -> str | None:
     """Return the hg38->hg19 chain when liftover is needed (vendor templates use hg19)."""
     if lib.build and is_t2t_build(lib.build):
         raise WGSExtractError(
@@ -152,15 +153,17 @@ def _liftover_chain_for(lib: ReferenceLibrary) -> str | None:
         )
     if not (lib.build and is_hg38_build(lib.build)):
         return None
-    if not lib.liftover_chain:
-        raise WGSExtractError(
-            "hg38 input needs the hg38ToHg19 liftover chain "
-            "(hg38ToHg19.over.chain.gz) for microarray formats, "
-            f"but it isn't in {lib.searched_description()} (or their ref/ and "
-            "microarray/ subdirectories). Set reference_library in config.toml "
-            "to a library that has it."
-        )
-    return lib.liftover_chain
+    if lib.liftover_chain:
+        return lib.liftover_chain
+    if download and lib.root:
+        return chain_to_grch37(lib.root, "GRCh38", lib.resource_roots)
+    raise WGSExtractError(
+        "hg38 input needs the hg38ToHg19 liftover chain "
+        "(hg38ToHg19.over.chain.gz) for microarray formats, "
+        f"but it isn't in {lib.searched_description()} (or their downloads/, ref/ and "
+        "microarray/ subdirectories). Rerun with --download to fetch it, "
+        "or set reference_library in config.toml to a library that has it."
+    )
 
 
 def _convert_microarray_outputs(
@@ -460,6 +463,9 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             )
         return
 
+    if legacy_requested:
+        lib.liftover_chain = _liftover_chain_for(lib, download=params.download is True)
+
     if (
         not params.ref_vcf_tab
         and (not aadr_panels or legacy_requested)
@@ -479,10 +485,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         # version of the CLI built. A requested GRCh38 template (FTDNA's Y
         # files) needs its chain installed first for its markers to join it.
         keys = [k for k in params.formats.split(",") if aadr_panel(k) is None]
-        fetched = fetch_requested_chains(lib.root, keys, lib.resource_roots)
-        if lib.build and is_hg38_build(lib.build) and not lib.liftover_chain:
-            # hg38 input's own liftover uses the chain just installed.
-            lib.liftover_chain = fetched.get("GRCh38")
+        fetch_requested_chains(lib.root, keys, lib.resource_roots)
         ref_vcf_tab = build_genome_wide_target(
             target_root,
             lib.build,
@@ -644,8 +647,6 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         message = f"--ref-vcf-tab not found: {ref_vcf_tab}"
         raise WGSExtractError(message)
 
-    if not aadr_panels or legacy_requested:
-        _liftover_chain_for(lib)  # fail before variant calling, not after
     Path(outdir).mkdir(parents=True, exist_ok=True)
 
     start_total = time.time()
