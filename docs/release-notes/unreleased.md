@@ -18,14 +18,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
-- `vep run` on a BAM or CRAM of T2T or an unrecognised build no longer calls
-  variants with GRCh38's or GRCh37's ploidy preset, whose sex-chromosome
-  coordinates don't fit it. Like `vcf snp`, it uses the reference library's
-  ploidy file (`ploidy.txt` also serves an unrecognised build, and
-  `--assembly` picks that assembly's file) or asks for `--ploidy` or
-  `--ploidy-file`. An `--assembly` that contradicts the alignment's header
-  or its reference's index is refused
-  ([#1244, wrong-build ploidy](https://github.com/WGSExtract/wgsextract-cli/issues/1244)).
 - An interrupted reference download no longer resumes onto a different
   version of the file. Resumes were tied to the URL alone, so a file replaced
   at the same URL by one of the same size was installed as the old file's start
