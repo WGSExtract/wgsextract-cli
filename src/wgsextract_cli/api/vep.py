@@ -143,7 +143,8 @@ class VepRunParams(Params):
         None,
         help="Predefined ploidy name or value (e.g., 'human')",
         doc="bcftools ploidy name or value for calling a BAM or CRAM "
-        "(default: the build's).",
+        "(default: the GRCh37 or GRCh38 preset; other builds, such as T2T, "
+        "need this or a ploidy file).",
     )
     region: str | None = param(
         None,

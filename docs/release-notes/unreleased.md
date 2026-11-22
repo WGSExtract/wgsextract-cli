@@ -5,6 +5,11 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
+- `vep run` on a BAM or CRAM of T2T or an unrecognised build no longer calls
+  variants with GRCh38's or GRCh37's ploidy preset, whose sex-chromosome
+  coordinates don't fit it. Like `vcf snp`, it uses the reference library's
+  ploidy file or asks for `--ploidy` or `--ploidy-file`
+  ([#1244, wrong-build ploidy](https://github.com/WGSExtract/wgsextract-cli/issues/1244)).
 - `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads
   support a call. DYS589's non-repeat boundary variation no longer appears
   as a fractional STR allele. DYS425 is left blank on all builds because

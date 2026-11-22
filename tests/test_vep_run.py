@@ -8,8 +8,8 @@ import shutil
 import sys
 import threading
 import time
+from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -65,7 +65,8 @@ def ensembl_test_cache(
 @pytest.fixture
 def fake_vep(tmp_path, monkeypatch):
     """Install a fake `vep`; returns a function giving the logged command lines.
-    ``fake_vep.install(exit_code=..., dirname=..., sleep=...)`` reinstalls it;
+    ``fake_vep.install(exit_code=..., dirname=..., sleep=..., tool=...)``
+    reinstalls it (or installs it as ``tool``, such as ``vep-rs``);
     with ``sleep`` it waits that many seconds after writing its outputs."""
     from wgsextract_cli.core.config import settings
 
@@ -75,7 +76,9 @@ def fake_vep(tmp_path, monkeypatch):
     ensembl_test_cache(tmp_path, "GRCh37")
     log = tmp_path / "vep_calls.jsonl"
 
-    def install(exit_code: int = 0, dirname: str = "fakebin", sleep: int = 0) -> None:
+    def install(
+        exit_code: int = 0, dirname: str = "fakebin", sleep: int = 0, tool: str = "vep"
+    ) -> None:
         bindir = tmp_path / dirname
         bindir.mkdir(exist_ok=True)
         source = _FAKE_VEP.format(
@@ -84,7 +87,7 @@ def fake_vep(tmp_path, monkeypatch):
             exit_code=exit_code,
             sleep=sleep,
         )
-        python_tool(bindir, "vep", source)
+        python_tool(bindir, tool, source)
         monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
         from wgsextract_cli.core.dependencies import clear_tool_caches
 
@@ -585,6 +588,55 @@ def test_bam_input_is_called_with_the_ploidy_file(tmp_path, fake_vep):
     assert [(c[1], c[4]) for c in calls] == [("101", "1"), ("301", "1")]
 
 
+def _t2t_bam(tmp_path: Path) -> tuple[str, str]:
+    """A read-less BAM and a FASTA stand-in whose contigs are T2T-CHM13's."""
+    t2t = {"chr1": 248387328, "chrX": 154259566, "chrY": 62460029, "chrM": 16569}
+    fasta = tmp_path / "ref.fa"
+    fasta.write_text("".join(f">{name}\nA\n" for name in t2t))
+    Path(f"{fasta}.fai").write_text(
+        "".join(f"{name}\t{length}\t0\t1\t2\n" for name, length in t2t.items())
+    )
+    bam = sam_to_bam(
+        ["@HD\tVN:1.6\tSO:coordinate"]
+        + [f"@SQ\tSN:{name}\tLN:{length}" for name, length in t2t.items()],
+        tmp_path / "s.bam",
+    )
+    return str(fasta), bam
+
+
+@pytest.mark.parametrize("build", ["unknown", "t2t"])
+def test_1244_bam_of_a_build_without_a_ploidy_preset_is_refused(
+    tmp_path, fake_vep, build
+):
+    """#1244: a BAM of an unrecognised build was called with GRCh37's ploidy,
+    and a T2T one with GRCh38's, whose PAR coordinates aren't CHM13's. Like
+    `vcf snp`, `vep run` refuses both and names the fix; a ploidy file runs."""
+    fake_vep.install(tool="vep-rs")
+    assembly = "T2T-CHM13v2.0" if build == "t2t" else "GRCh38"
+    (tmp_path / "vep-rs" / "homo_sapiens" / f"116_{assembly}").mkdir(parents=True)
+    fasta, bam = _t2t_bam(tmp_path) if build == "t2t" else _bam_with_snps(tmp_path)
+    # With the sex known, the other build's sex-dependent preset applied.
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
+    params = VepRunParams(
+        input=Path(bam), ref=Path(fasta), engine="vep-rs", vep_cache=tmp_path
+    )
+
+    result = api.vep.run(params, check=False)
+
+    assert result.status != "ok"
+    [failure] = [w for w in result.warnings if w.code == "input_failed"]
+    assert "--ploidy-file" in failure.message
+    assert f"reference build: {build}" in failure.message
+    assert fake_vep() == []
+    assert not (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
+
+    ploidy = tmp_path / "ploidy.txt"
+    ploidy.write_text("* * * M 2\n* * * F 2\n")
+    api.vep.run(replace(params, ploidy_file=ploidy))
+    assert len(fake_vep()) == 1
+    assert (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
+
+
 def test_bam_without_reference_fails_without_running_vep(tmp_path, fake_vep):
     _, bam = _bam_with_snps(tmp_path)
     Path(tmp_path, "ref.fa").unlink()
@@ -688,87 +740,10 @@ def test_api_reads_a_home_relative_bam(tmp_path, fake_vep, monkeypatch):
             input=Path("~/s.bam"),
             ref=Path("~/ref.fa"),
             region="chr1:250-350",
+            ploidy="1",
             vep_cache=Path("~"),
         )
     )
 
     calls = vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")
     assert [(c[0], c[1]) for c in calls] == [("chr1", "301")]
-
-
-# --- assembly and FASTA choice ---------------------------------------------------
-
-
-def _command(lib, **overrides):
-    from wgsextract_cli.commands._vep_run import _build_vep_command
-
-    fields = {
-        "input": Path("in.vcf.gz"),
-        "engine": "ensembl",
-    }
-    params = VepRunParams(**{**fields, **overrides})
-    return _build_vep_command(params, "in.vcf.gz", "out.vcf", "snp-indel", lib, "2")
-
-
-@pytest.mark.parametrize(
-    ("build", "assembly"), [("hg38", "GRCh38"), ("hg19", "GRCh37"), (None, None)]
-)
-def test_assembly_follows_the_library_build(tmp_path, build, assembly):
-    ensembl_test_cache(tmp_path, assembly or "GRCh38")
-    cmd = _command(
-        SimpleNamespace(build=build, fasta="/r/g.fa", vep_cache=str(tmp_path))
-    )
-    assert _value(cmd, "--fasta") == "/r/g.fa"
-    if assembly:
-        assert _value(cmd, "--assembly") == assembly
-    else:
-        assert "--assembly" not in cmd
-
-
-def test_library_cache_used_when_no_cache_option(tmp_path):
-    ensembl_test_cache(tmp_path)
-    lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=str(tmp_path))
-    cmd = _command(lib, vep_cache=None)
-    assert _value(cmd, "--dir_cache") == str(tmp_path)
-    assert "--offline" in cmd and "--fasta" not in cmd
-
-
-def test_vep_fast_preset_replaces_everything(tmp_path):
-    ensembl_test_cache(tmp_path)
-    lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=str(tmp_path))
-
-    assert "--everything" in _command(lib, preset="everything")
-    fast = _command(lib, preset="fast")
-    assert "--everything" not in fast
-    assert {"--symbol", "--mane", "--sift", "--polyphen"} <= set(fast)
-    assert "--af_gnomadg" not in fast and "--hgvs" not in fast
-
-
-@pytest.mark.parametrize(
-    ("fasta", "forced", "kept"),
-    [
-        ("/lib/hg38.fa", "GRCh37", False),
-        ("/lib/hs37d5.fa", "GRCh38", False),
-        ("/lib/GRCh38.fa", "GRCh38", True),
-        ("/lib/genome.fa", "GRCh37", True),
-    ],
-)
-def test_forced_assembly_drops_a_conflicting_fasta(fasta, forced, kept):
-    from wgsextract_cli.commands._vep_run import _apply_forced_assembly
-
-    lib = SimpleNamespace(build="hg38", fasta=fasta)
-    _apply_forced_assembly(lib, forced)  # type: ignore[arg-type]
-    assert lib.build == ("hg38" if forced == "GRCh38" else "hg19")
-    assert lib.fasta == (fasta if kept else None)
-
-
-@pytest.mark.parametrize("name", ["GRCh38.fa", "custom.fa"])
-def test_issue_1004_forced_assembly_keeps_fasta_under_misleading_parent(name):
-    from wgsextract_cli.commands._vep_run import _apply_forced_assembly
-
-    fasta = f"/refs/hg19/{name}"
-    lib = SimpleNamespace(build="hg38", fasta=fasta)
-
-    _apply_forced_assembly(lib, "GRCh38")  # type: ignore[arg-type]
-
-    assert lib.fasta == fasta

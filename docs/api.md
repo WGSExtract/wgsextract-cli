@@ -2976,7 +2976,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `vep_args` | `str \| None` | `None` | `--vep-args` | Additional raw arguments to pass to VEP (e.g., '--everything --pick') |
 | `format` | `str` | `'vcf'` | `--format` | Output format (default: vcf) One of: `vcf`, `tab`, `json` |
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's); wins over ploidy. |
-| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the build's). |
+| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the GRCh37 or GRCh38 preset; other builds, such as T2T, need this or a ploidy file). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 
 ### `api.vep.download(VepDownloadParams)`
