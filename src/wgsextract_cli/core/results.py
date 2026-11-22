@@ -38,7 +38,13 @@ from urllib.parse import urlsplit
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core import execution_context
-from wgsextract_cli.core.artifacts import ArtifactRecord, Lifecycle, Lineage, RunRecord
+from wgsextract_cli.core.artifacts import (
+    ArtifactRecord,
+    Lifecycle,
+    Lineage,
+    Producer,
+    RunRecord,
+)
 from wgsextract_cli.core.errors import CodedError, ErrorKind, ResultError
 from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.core.tool_versions import tool_version, tools_in_command
@@ -464,17 +470,19 @@ class CommandResult:
         lifecycle: Lifecycle | None = None,
         sources: Sequence[str | os.PathLike[str]] | None = None,
         artifact: ArtifactRecord | None = None,
+        producer: Producer | None = None,
     ) -> None:
         """Register an output; it is stat'ed and fingerprinted when finalised.
 
         A BAM/CRAM/VCF/BCF output is ``final`` and made from every such input
         unless ``lifecycle`` and ``sources`` (paths of inputs or discarded
-        files) say otherwise; ``artifact`` keeps the record a step wrote."""
+        files) say otherwise; ``artifact`` keeps the record a step wrote, and
+        ``producer`` names the earlier run that wrote a reused step's file."""
         if not path:
             return
         absolute = str(Path(path).expanduser().absolute())
         with self._lock:
-            self.lineage.declare(absolute, lifecycle, sources, artifact)
+            self.lineage.declare(absolute, lifecycle, sources, artifact, producer)
             for record in self.outputs:
                 if record.path == absolute:
                     record.role = role

@@ -147,7 +147,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   `run` and `command` that did the step's work, `status` (`ok`, `failed`,
   `cancelled`, or `reused` when the step journal skipped it), and the
   journal's `reason`. A reused step names the run that did its work in the
-  earlier run. A step done inside the workflow's own process names the
+  earlier run, and so do the artifacts of the files it wrote. A step done inside the workflow's own process names the
   workflow's run. A step whose command failed is listed with its `run`,
   whose own failed manifest names this run as its `parent`.
 - **`artifact`.** A BAM, CRAM, VCF or BCF in `inputs` or `outputs` has an
@@ -155,14 +155,14 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 
   | Field | Meaning |
   | --- | --- |
-  | `origin` | `this_run`: written by this run or one of its steps. `recorded`: the manifest beside the file lists it with the same fingerprint, so its producer is known. `external`: nothing is known about its history. |
+  | `origin` | `this_run`: written by this run or one of its steps. `recorded`: written by an earlier run, named in `producer`: the manifest beside an input lists it with the same fingerprint, or a reused step's earlier run wrote the output. `external`: nothing is known about its history. |
   | `lifecycle` | `final` (a deliverable), `intermediate`, `cache` or `temp`; `null` when unknown. |
   | `retained` | `false` when the run deleted the file on purpose. |
   | `digest_kind` | `full` when the `fingerprint` read the whole file (3 MiB or less), else `sampled`. |
   | `assembly` | `hg19`, `hg38` or `t2t`, from the chr1 length in the header; `null` when it isn't recognised. |
   | `reference` | Fingerprint of the FASTA the file was made with, for this run's outputs and for recorded inputs. |
   | `samples` | The BAM's `@RG SM` names, or the VCF's sample columns. |
-  | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index isn't read, so it is `stale` on age alone. `mismatched`: another sequence dictionary, or blocks that aren't the file's. |
+  | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index (`.crai`) isn't read: only its presence is checked. `mismatched`: another sequence dictionary, or blocks that aren't the file's. |
   | `producer` | `run`, `root`, `command` and `step` of the run that wrote it. |
   | `sources` | The files it was made from: `path`, `role`, `fingerprint`, `producer` (run), `lifecycle` and `retained`. |
 

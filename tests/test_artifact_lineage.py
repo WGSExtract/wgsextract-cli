@@ -7,6 +7,7 @@ import gzip
 import json
 import os
 import shutil
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -144,6 +145,14 @@ def test_1182_bam_to_vcf_to_analyze_links_runs_sources_and_indexes(
     assert {c["status"] for c in reused.values()} == {"reused"}
     assert reused[annotate["step"]]["run"] == annotate["run"]
     assert reused[annotate["step"]]["reason"].startswith("complete")
+    # Their files name the earlier runs that wrote them, never this one.
+    written = [r["artifact"] for r in resumed["outputs"] if r.get("artifact")]
+    assert written
+    assert all(a["origin"] == "recorded" for a in written)
+    assert {a["producer"]["run"] for a in written} <= {
+        parent["run"]["id"],
+        annotate["run"],
+    }
 
 
 @needs_htslib
@@ -349,3 +358,61 @@ def test_1182_api_result_carries_the_run_and_artifacts_of_its_manifest(
     assert snps["producer"]["run"] == result.run.id == result.run.root
     assert snps["index"]["state"] == "ready"
     assert _manifest(out / "snps.vcf.manifest.json")["run"] == document["run"]
+
+
+@needs_htslib
+def test_1182_vcf_contigs_declared_without_length_keep_their_index(
+    tmp_path: Path,
+) -> None:
+    # bcftools declares a contig it meets without a header line as
+    # ##contig=<ID=chrM>; the index naming it is still the VCF's own.
+    plain = tmp_path / "calls.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=3000>\n##contig=<ID=chrM>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t5\t.\tA\tG\t.\t.\t.\nchrM\t5\t.\tA\tG\t.\t.\t.\n"
+    )
+    vcf = bgzip_index(plain)
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive", "--dry-run", "--vcf-inputs", vcf,
+        "--outdir", str(tmp_path / "out"),
+    ])  # fmt: skip
+    assert code == 0, stdout
+    assert json.loads(stdout)["inputs"][0]["artifact"]["index"]["state"] == "ready"
+
+
+@needs_htslib
+def test_1182_a_damaged_index_is_refused_not_a_crash(tmp_path: Path) -> None:
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    index = calls / "snps.vcf.gz.tbi"
+    data = bytearray(index.read_bytes())
+    data[20:40] = b"\xff" * 20  # a partial download's garbage
+    index.write_bytes(bytes(data))
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive",
+        "--vcf-inputs", str(calls / "snps.vcf.gz"), "--outdir", str(tmp_path / "a"),
+    ])  # fmt: skip
+    assert code == 1
+    assert _error_code(stdout) == "index_mismatch"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
+def test_1182_a_piped_vcf_input_is_never_opened_for_its_artifact(
+    tmp_path: Path,
+) -> None:
+    from wgsextract_cli.core.results import CommandResult
+
+    fifo = tmp_path / "calls.vcf.gz"
+    os.mkfifo(fifo)
+    result = CommandResult(command="vcf filter")
+    result.add_input(fifo, "vcf_input")
+    # Opening the pipe would block: fail instead of hanging the suite.
+    finalize = threading.Thread(
+        target=result.finalize, kwargs={"probe_tools": False}, daemon=True
+    )
+    finalize.start()
+    finalize.join(30)
+    assert not finalize.is_alive()
+    assert json.loads(result.to_json())["inputs"][0].get("artifact") is None

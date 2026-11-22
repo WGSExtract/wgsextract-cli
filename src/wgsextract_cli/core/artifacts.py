@@ -175,8 +175,8 @@ class ArtifactRecord:
         Origin,
         Constraints(
             description="this_run (written by this run or one of its steps), "
-            "recorded (a manifest beside it names its producer and its "
-            "fingerprint still matches) or external (nothing is known)."
+            "recorded (written by the earlier run named in producer) or "
+            "external (nothing is known)."
         ),
     ]
     lifecycle: Annotated[
@@ -270,7 +270,8 @@ def recorded_producer(record: FileRecord) -> _Recorded | None:
 
 
 def _annotatable(record: FileRecord) -> bool:
-    return record.kind in GENOMIC_KINDS and record.exists and "://" not in record.path
+    # A regular file: a FIFO or device (``/dev/stdin``) is never opened.
+    return record.kind in GENOMIC_KINDS and record.size_bytes is not None
 
 
 def input_artifact(record: FileRecord) -> ArtifactRecord:
@@ -307,13 +308,16 @@ def annotate(
     sources: Mapping[str, Sequence[str]],
     carried: Mapping[str, ArtifactRecord],
     discarded: Sequence[FileRecord],
+    producers: Mapping[str, Producer],
 ) -> None:
     """Fill in the artifact records of ``result``'s BAM/CRAM/VCF/BCF files.
 
     ``lifecycles`` and ``sources`` are what the command declared per output
     path (default: final, made from every genomic input); ``carried`` are a
     step's own records, kept as that step wrote them; ``discarded`` are files
-    the run made and deleted, which stay attributable as sources."""
+    the run made and deleted, which stay attributable as sources;
+    ``producers`` name the earlier run that wrote a file a reused step
+    reports. A file an earlier workflow wrote is ``recorded``."""
     for record in result.inputs:
         if _annotatable(record):
             record.artifact = input_artifact(record)
@@ -335,18 +339,22 @@ def annotate(
             record.artifact.index = index_state(
                 record.path, record.kind, read_header(record.path, record.kind)
             )
+            made = record.artifact.producer
+            if made and made.root != result.run.root:
+                record.artifact.origin = "recorded"
             continue
         facts = file_facts(record.path, record.kind)
         declared = sources.get(record.path)
+        made = producers.get(record.path, producer)
         record.artifact = ArtifactRecord(
-            origin="this_run",
+            origin="this_run" if made.root == result.run.root else "recorded",
             lifecycle=lifecycles.get(record.path, "final"),
             digest_kind=_digest_kind(record),
             assembly=facts.assembly,
             reference=reference.fingerprint if reference else None,
             samples=facts.samples,
             index=facts.index,
-            producer=producer,
+            producer=made,
             sources=default
             if declared is None
             else [edge(by_path[p]) for p in declared if p in by_path],
@@ -361,6 +369,7 @@ class Lineage:
         self.lifecycles: dict[str, Lifecycle] = {}
         self.sources: dict[str, list[str]] = {}
         self.carried: dict[str, ArtifactRecord] = {}
+        self.producers: dict[str, Producer] = {}
         self.discarded: list[FileRecord] = []
 
     def declare(
@@ -369,6 +378,7 @@ class Lineage:
         lifecycle: Lifecycle | None,
         sources: Sequence[str | os.PathLike[str]] | None,
         artifact: ArtifactRecord | None,
+        producer: Producer | None = None,
     ) -> None:
         if lifecycle is not None:
             self.lifecycles[path] = lifecycle
@@ -376,6 +386,8 @@ class Lineage:
             self.sources[path] = [str(Path(s).expanduser().absolute()) for s in sources]
         if artifact is not None:
             self.carried[path] = artifact
+        if producer is not None:
+            self.producers[path] = producer
 
     def discard(
         self, records: Sequence[FileRecord], run: RunRecord, command: str
@@ -401,9 +413,17 @@ class Lineage:
                 sources=self.sources,
                 carried=self.carried,
                 discarded=self.discarded,
+                producers=self.producers,
             )
         except Exception:  # lineage must never fail a run
             logging.warning("Could not describe the run's artifacts.", exc_info=True)
+
+
+def producer_from_dict(value: object) -> Producer | None:
+    try:
+        return Producer(**value) if isinstance(value, dict) else None
+    except TypeError:
+        return None
 
 
 def artifact_from_dict(value: object) -> ArtifactRecord | None:

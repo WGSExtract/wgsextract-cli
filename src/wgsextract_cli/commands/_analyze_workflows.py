@@ -16,7 +16,12 @@ from typing import Any, TypedDict
 
 from wgsextract_cli.commands.lineage import alignment_mito_problem
 from wgsextract_cli.core import reference_evidence, variant_confidence
-from wgsextract_cli.core.artifacts import artifact_from_dict, lineage_args
+from wgsextract_cli.core.artifacts import (
+    Producer,
+    artifact_from_dict,
+    lineage_args,
+    producer_from_dict,
+)
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
 from wgsextract_cli.core.paths import absolute_path
@@ -113,12 +118,17 @@ def _captured(handle: StepRun) -> Iterator[None]:
     for record in result.outputs:
         if record.path not in before and Path(record.path).exists():
             artifact = result.lineage.carried.get(record.path)
+            run = result.run
             handle.add_output(
                 record.path,
                 role=record.role,
                 result_kind=record.kind,
                 result_metrics=record.metrics,
                 result_artifact=dataclasses.asdict(artifact) if artifact else None,
+                # Written in this process: this run is its producer.
+                result_producer=dataclasses.asdict(
+                    Producer(run.id, run.root, result.command, run.step)
+                ),
             )
     handle.metrics["result_metrics"] = {
         name: value for name, value in result.metrics.items()
@@ -148,6 +158,7 @@ def _replay(journal: StepJournal, decision: Decision) -> None:
                 kind=item.get("result_kind"),
                 metrics=_scalars(item.get("result_metrics")),
                 artifact=artifact_from_dict(item.get("result_artifact")),
+                producer=producer_from_dict(item.get("result_producer")),
             )
     result.add_metrics(**_scalars(decision.metrics.get("result_metrics")))
     confidence = decision.metrics.get("result_confidence")

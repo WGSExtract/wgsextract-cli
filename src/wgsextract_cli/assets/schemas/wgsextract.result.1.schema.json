@@ -265,7 +265,7 @@
             "recorded",
             "external"
           ],
-          "description": "this_run (written by this run or one of its steps), recorded (a manifest beside it names its producer and its fingerprint still matches) or external (nothing is known)."
+          "description": "this_run (written by this run or one of its steps), recorded (written by the earlier run named in producer) or external (nothing is known)."
         },
         "lifecycle": {
           "anyOf": [
@@ -390,7 +390,7 @@
             "stale",
             "mismatched"
           ],
-          "description": "ready; missing; stale (older than the file); mismatched (its sequences don't match the file's header)."
+          "description": "ready; missing; stale (older than the file and pointing at blocks it no longer has); mismatched (another file's index)."
         }
       },
       "required": [

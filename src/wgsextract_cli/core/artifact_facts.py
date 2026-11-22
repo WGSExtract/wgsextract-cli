@@ -8,7 +8,9 @@ import functools
 import gzip
 import logging
 import os
+import re
 import struct
+import zlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +21,8 @@ from wgsextract_cli.core.output_schema import Constraints
 GENOMIC_KINDS = frozenset({"bam", "cram", "vcf", "bcf"})
 IndexState = Literal["ready", "missing", "stale", "mismatched"]
 _HEADER_LIMIT = 64 << 20
+# A VCF may declare a contig without its length (bcftools adds such lines).
+_CONTIG_ID = re.compile(r"^##contig=<ID=([^,>]+)", re.MULTILINE)
 
 
 @dataclass
@@ -27,8 +31,8 @@ class ArtifactIndex:
     state: Annotated[
         IndexState,
         Constraints(
-            description="ready; missing; stale (older than the file); mismatched "
-            "(its sequences don't match the file's header)."
+            description="ready; missing; stale (older than the file and pointing "
+            "at blocks it no longer has); mismatched (another file's index)."
         ),
     ]
 
@@ -71,7 +75,7 @@ def read_header(path: str | os.PathLike[str], kind: str) -> str | None:
             return _bgzf_record(file, b"BCF\x02\x02")
         if kind == "vcf":
             return _vcf_header(file)
-    except (OSError, EOFError, ValueError, struct.error):
+    except (OSError, EOFError, ValueError, struct.error, zlib.error):
         logging.debug(f"Unreadable header in {file}", exc_info=True)
     return None
 
@@ -205,7 +209,7 @@ def index_state(
     (an uncompressed VCF).
 
     ``stale``: older than the file, and pointing at blocks the file no longer
-    has (a CRAI, which isn't read, on age alone). An older index whose blocks
+    has (a CRAI isn't read: only its presence is checked). An older index whose blocks
     are all there is the file's own: downloads and copies often leave the
     index the older file. ``mismatched``: another sequence dictionary, or
     blocks that aren't the file's though the index is newer."""
@@ -220,19 +224,18 @@ def index_state(
         contents = _index_contents(index)
         older = index.stat().st_mtime_ns < file.stat().st_mtime_ns
         blocks = contents is None or _blocks_exist(file, contents.offsets)
-    except (OSError, EOFError, ValueError, struct.error, UnicodeDecodeError):
+    except (OSError, EOFError, ValueError, struct.error, zlib.error):
         return ArtifactIndex(found, "mismatched")
     if contents is not None and header is not None:
         contigs = header_lengths(header)
         if kind in ("bam", "cram") and contents.count != len(contigs):
             return ArtifactIndex(found, "mismatched")
         names = set(contents.names or ())
-        if contigs and not names <= set(contigs):
+        declared = set(contigs) | set(_CONTIG_ID.findall(header))
+        if declared and not names <= declared:
             return ArtifactIndex(found, "mismatched")
     if not blocks:
         return ArtifactIndex(found, "stale" if older else "mismatched")
-    if older and contents is None:
-        return ArtifactIndex(found, "stale")
     return ArtifactIndex(found, "ready")
 
 
