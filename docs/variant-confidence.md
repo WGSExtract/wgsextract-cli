@@ -55,8 +55,16 @@ only query records overlapping candidate MNV spans.
 The known UCSC hg19 Yoruba chrM (16,571 bases) versus GRCh37 ClinVar rCRS MT
 (16,569 bases) incompatibility excludes **resource** mitochondrial records
 with a counted `annotation_mito_reference_incompatible` warning, so compatible
-autosomal findings remain available. Sample validation and other REF/build
-mismatches remain strict.
+autosomal findings remain available.
+
+A **resource** record whose REF base differs from the FASTA (ANNOVAR's REVEL
+table keeps hg19 REF bases, about 1% of which differ on GRCh38) is excluded,
+so it can never annotate a call, with a counted
+`annotation_ref_mismatch_excluded` warning; `vcf chain-annotate` repeats its
+steps' `annotation_*` warnings. A resource where more than half of at least 20
+checked records differ is refused as built for another genome build. A
+**sample** REF that differs from the FASTA, and other build mismatches, remain
+errors.
 
 Single-sample phased SNVs can recover a ClinVar MNV only when every base differs
 between REF and ALT and all component
