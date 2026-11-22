@@ -3,14 +3,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
-- Structured outputs now have published guarantees: [output
-  contracts](../output-contracts.md) classify the result manifest, personal
-  report, sample document and HTTP responses (and the files' output roles) as
-  stable, experimental or internal. Unvalidated scientific values such as
-  `metrics` and report findings stay experimental. Every change is checked
-  against a pinned baseline of the previous release (v0.8.9), so a stable
-  field cannot be dropped or reinterpreted without an approved breaking
-  change ([#1180, output-contract tiers](https://github.com/WGSExtract/wgsextract-cli/issues/1180)).
 - [Migrating from WGS Extract v4](docs/migrating-from-v4.md) maps each v44.2
   button to its current desktop page and command, with changed defaults,
   features not yet equivalent and settings/reference precautions. NOTICE now
