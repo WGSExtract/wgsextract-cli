@@ -113,7 +113,11 @@ On Windows, some builds of the inbox OpenSSH hang while verifying signatures.
 `sign verify` first checks Git for Windows in Program Files and the Windows
 inbox OpenSSH. If neither works, it looks for `ssh-keygen.exe` on `PATH`.
 For a custom install, add its directory to `PATH`.
-Signing and unsigned checksum verification do not use this check.
+Signing still uses `ssh-keygen.exe` from `PATH` so it can use your SSH agent.
+If signing does not finish within one minute on Windows, it fails without
+leaving a signature. To use Git for Windows for signing, put its `usr\bin`
+directory ahead of the inbox OpenSSH on `PATH`.
+Unsigned checksum verification does not need OpenSSH.
 
 ## Progress and logging
 

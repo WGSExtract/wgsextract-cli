@@ -38,6 +38,8 @@ _CHUNK = 4 << 20
 _FINGERPRINT = re.compile(r"(\S+) key (SHA256:\S+)")
 # Verifying a manifest takes well under a second.
 _VERIFY_TIMEOUT = 10
+# Leave time to enter a key passphrase, but bound hangs in Win32 OpenSSH.
+_WINDOWS_SIGN_TIMEOUT = 60
 
 
 def _ssh_keygen() -> str:
@@ -146,14 +148,26 @@ def create_manifest(params: SignCreateParams) -> None:
     logging.info(f"Checksum manifest written to {manifest}")
     result = current_result()
     result.add_output(manifest, "checksums")
-    result.add_metrics(files=len(files), signed=bool(keygen))
+    result.add_metrics(files=len(files), signed=False)
 
     if keygen:
         # Inherit the terminal so ssh-keygen can prompt for a key passphrase.
         cmd = [keygen, "-Y", "sign", "-f", str(key), "-n", NAMESPACE, str(manifest)]
-        if subprocess.run(cmd).returncode != 0 or not signature.is_file():
+        timeout = _WINDOWS_SIGN_TIMEOUT if sys.platform == "win32" else None
+        try:
+            signed = subprocess.run(cmd, timeout=timeout).returncode == 0
+        except subprocess.TimeoutExpired:
+            signature.unlink(missing_ok=True)
+            raise WGSExtractError(
+                f"Signing FAILED: {keygen_description(Path(keygen))} did not finish "
+                f"within {timeout} seconds. Put Git for Windows' usr\\bin "
+                "before the inbox OpenSSH on PATH."
+            ) from None
+        if not signed or not signature.is_file():
+            signature.unlink(missing_ok=True)
             raise WGSExtractError("ssh-keygen could not sign the manifest.")
         result.add_output(signature, "signature")
+        result.add_metrics(signed=True)
         logging.info(
             f"Signature written to {signature}. Share your public key so others "
             f"can run: wgsextract sign verify {MANIFEST_NAME} --public-key KEY.pub"
