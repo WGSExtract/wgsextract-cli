@@ -53,9 +53,12 @@ def run_jobs(
     def fits(job: Job) -> bool:
         return not running or memory is None or used + job.memory <= memory
 
+    cancel = execution_context.current().cancel
     pool = ContextThreadPoolExecutor(max_workers=max(1, workers))
     try:
         while pending or running:
+            if cancel is not None:
+                cancel.raise_if_cancelled()
             while len(running) < max(1, workers):
                 job = next((j for j in pending if fits(j)), None)
                 if job is None:
@@ -80,6 +83,8 @@ def run_jobs(
         _stop(pool)
         raise
     pool.shutdown()
+    if cancel is not None:
+        cancel.raise_if_cancelled()
 
 
 def _stop(pool: ContextThreadPoolExecutor) -> None:
@@ -91,6 +96,7 @@ def _stop(pool: ContextThreadPoolExecutor) -> None:
     try:
         pool.shutdown(wait=True, cancel_futures=True)
     finally:
-        # A cancelled operation keeps refusing; its runner accepts again.
-        if context.cancel is None or not context.cancel.cancelled:
+        # A cancelled operation keeps refusing until its runner accepts again;
+        # without a scope there is no runner to do so.
+        if scope is None or context.cancel is None or not context.cancel.cancelled:
             proc_registry.accept_new(scope)

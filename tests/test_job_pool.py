@@ -7,6 +7,8 @@ import time
 
 import pytest
 
+from wgsextract_cli import api
+from wgsextract_cli.core import execution_context
 from wgsextract_cli.core.job_pool import Job, run_jobs
 from wgsextract_cli.core.utils import run_command
 
@@ -115,3 +117,14 @@ def test_1118_a_failed_job_stops_the_running_tools_and_queued_jobs():
         ).stdout.strip()
         == "ok"
     )
+
+
+def test_1118_cancelling_starts_no_more_jobs():
+    token = api.CancelToken()
+    ran: list[str] = []
+    jobs = [Job("cancels", token.cancel), Job("queued", lambda: ran.append("queued"))]
+
+    with execution_context.bound(cancel=token), pytest.raises(api.Cancelled):
+        run_jobs(jobs, workers=1)
+
+    assert ran == []
