@@ -37,3 +37,8 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   version 1 incorrectly flipped valid sister-branch markers. Use version 2,
   not version 1. First use requires `--download`; custom marker
   panels are unchanged ([#1168, Y marker polarity](https://github.com/WGSExtract/wgsextract-cli/issues/1168)).
+- `score pgs` now finds bcftools the same way its dependency check does, so
+  it scores when bcftools is installed only in the WGS Extract Pixi
+  environment rather than on `PATH`. It previously failed with "No such file
+  or directory: 'bcftools'"
+  ([#1233, PGS bcftools probes](https://github.com/WGSExtract/wgsextract-cli/issues/1233)).

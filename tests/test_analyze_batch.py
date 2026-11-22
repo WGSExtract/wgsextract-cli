@@ -3,7 +3,42 @@ import os
 import shutil
 import unittest
 
+import pytest
+
 from tests.smoke_utils import REPO_ROOT, ensure_fake_data, run_cli
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "name\néchantillon\nsecond\n",
+        "name,notes,input\néchantillon," + "x" * 1024 + ",\nsecond,,\n",
+    ],
+    ids=["single-column", "sample-ends-mid-row"],
+)
+def test_1247_batch_recovers_when_dialect_sniffing_fails(tmp_path, contents):
+    batch = tmp_path / "batch.tsv"
+    batch.write_text(contents, encoding="utf-8-sig")
+
+    rc, _, stderr = run_cli(
+        ["analyze", "comprehensive", "--batch", str(batch), "--outdir", str(tmp_path)]
+    )
+
+    assert rc == 1
+    assert (tmp_path / "échantillon").is_dir()
+    assert (tmp_path / "second").is_dir()
+    assert "Batch analysis failed" in stderr
+
+
+@pytest.mark.parametrize("contents", ["", "name,input,vcf\n"])
+def test_1247_batch_does_not_report_success_without_any_samples(tmp_path, contents):
+    batch = tmp_path / "empty.csv"
+    batch.write_text(contents, encoding="utf-8")
+    rc, _, stderr = run_cli(
+        ["analyze", "comprehensive", "--batch", str(batch), "--outdir", str(tmp_path)]
+    )
+    assert rc == 2
+    assert "--batch" in stderr and "sample row" in stderr
 
 
 class TestAnalyzeBatch(unittest.TestCase):
