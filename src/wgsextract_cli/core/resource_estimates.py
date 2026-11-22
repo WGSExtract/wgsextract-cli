@@ -584,25 +584,57 @@ def estimate_clair3(
     )
 
 
-def estimate_imputation(*, reads: bool, threads: int, bases: int) -> PreflightEstimate:
-    """HG002 chr20 measurements (#621), scaled by selected reference bases.
+def estimate_imputation(
+    *,
+    reads: bool,
+    threads: int,
+    bases: int,
+    chunk_memory: Sequence[int] = (),
+    memory_budget: int | None = None,
+) -> PreflightEstimate:
+    """HG002 chr20 measurements (#621, #1118), scaled by selected reference bases.
 
-    Sequential chunks keep memory roughly constant; thread scaling of time
-    and extrapolation beyond chr20 are estimates, not measured genome runs.
+    GLIMPSE2 runs one single-threaded chunk per thread, as many at once as
+    ``memory_budget`` holds by the chunks' ``chunk_memory`` estimates; its
+    threads don't speed up a single sample's chunk. Beagle's threads do.
+    Extrapolation beyond chr20 is an estimate, not a measured genome run.
     """
     fraction = bases / 64_444_167
-    seconds = (450 if reads else 60) * fraction * 4 / max(1, threads)
-    tool = "GLIMPSE2" if reads else "Beagle"
-    memory = 4 * GIB if reads else 8 * GIB
+    jobs = max(1, threads)
+    if not reads:
+        seconds = 60 * fraction * 4 / jobs
+        return PreflightEstimate(
+            "impute",
+            (ResourceEstimate("memory", 8 * GIB, _available_memory(), {}),),
+            (
+                f"Beagle: estimated {seconds / 3600:.2f} h at {jobs} threads for "
+                f"{bases:,} reference bases (HG002 chr20 extrapolation).",
+                "Excludes one-time panel preparation (~10 min for chr20). Actual "
+                "runtime depends on hardware and panel.",
+            ),
+        )
+    memory = 4 * GIB
+    if chunk_memory:
+        largest = sorted(chunk_memory, reverse=True)
+        jobs = min(jobs, len(largest))
+        memory = sum(largest[:jobs])
+        if memory_budget is not None:
+            memory = max(largest[0], min(memory, memory_budget))
+            typical = largest[len(largest) // 2]
+            jobs = max(1, min(jobs, memory_budget // typical))
+    # chr20's chunks took 450 s one after another; side by side they slow
+    # each other a little (4.8x at 8 on chr20, its longest chunk last).
+    seconds = 450 * fraction * (1 + 0.05 * (jobs - 1)) / jobs
     return PreflightEstimate(
         "impute",
         (ResourceEstimate("memory", memory, _available_memory(), {}),),
         (
-            f"{tool}: estimated {seconds / 3600:.2f} h at {threads} threads "
-            f"for {bases:,} reference bases (HG002 chr20 extrapolation).",
+            f"GLIMPSE2: estimated {seconds / 3600:.2f} h running {jobs} chunks at "
+            f"once, one thread each, for {bases:,} reference bases (HG002 chr20 "
+            "extrapolation).",
             "Excludes one-time panel preparation (~10 min for chr20); "
-            "GLIMPSE2 whole autosomes ~5.5 h at 4 threads, ~2.8 h at 8. "
-            "Actual runtime depends on depth, hardware and panel.",
+            "GLIMPSE2 whole autosomes ~5.6 h one chunk at a time, ~1 h eight at "
+            "once. Actual runtime depends on depth, hardware and panel.",
         ),
     )
 

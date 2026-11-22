@@ -152,7 +152,7 @@ accuracy guarantee for other ancestries or arrays.
 
 ### Resources
 
-Measured on lin-big with four threads:
+Measured on lin-big with four threads, before chunks ran side by side:
 
 | Step | chr20 wall time | Peak RSS |
 |---|---|---|
@@ -160,13 +160,27 @@ Measured on lin-big with four threads:
 | Beagle | 60 s | 3.4 GB |
 | One-time panel preparation | about 10 min | — |
 
-Extrapolating chr20 (about 2.2% of autosomal bases) gives **about 5.5 hours
-for whole-autosome GLIMPSE2 at four threads**, or **2.8 hours at eight**,
-with peak RAM near 3 GB. Beagle extrapolates to about 45 minutes. These are
-projections, not measured whole-genome runs, and exclude panel preparation.
-The original two-hour target at four threads was **not met**; memory fits
-a 16 GB machine comfortably. `vcf impute` prints its selected-chromosome
-time/RAM estimate before running; use `--threads` to select the CPU budget.
+GLIMPSE2's `--threads` only splits work between target samples, and
+`vcf impute` imputes one, so those four threads did no more than one
+([#1118, imputation speed](https://github.com/WGSExtract/wgsextract-cli/issues/1118)).
+`vcf impute` therefore runs **`--threads` chunks at once, one thread each**,
+largest first. Each chunk's peak memory is estimated from its binary
+reference (about 1.2 GB for a typical chunk, 3 GB for chr20's centromeric
+one), and chunks start only while the running ones fit in 80% of the memory
+available when the command starts, or in `--memory` per chunk; one always
+runs. Each chunk's output doesn't depend on how many run, so the result is
+identical to running them one at a time. (GLIMPSE2 2.0.1's own threads, used
+before, sometimes changed a chunk's genotypes from run to run.) A failed chunk
+stops the others, and the error names it and quotes GLIMPSE2's message.
+
+CHR20_TIMING_TABLE
+
+Extrapolating chr20 (about 2.2% of autosomal bases) gives **about 5.6 hours
+for whole-autosome GLIMPSE2 one chunk at a time, and about 1 hour with eight
+at once**, needing about 10–14 GB at eight. Beagle extrapolates to about 45
+minutes. These are projections, not measured whole-genome runs, and exclude
+panel preparation. `vcf impute` prints its selected-chromosome time/RAM
+estimate before running.
 
 The Phase 0 scripts, per-bin JSON, time.tsv and logs are retained in
 `out/621/phase0/` in the validation checkout, with the result summary on
