@@ -239,6 +239,94 @@ def _carrier_screening(ctx: _Context) -> ReportSectionDocument:
     return section
 
 
+def repeat_expansions(ctx: _Context) -> ReportSectionDocument:
+    source = ctx.latest(_command("typing str"))
+    section = _section("repeat_expansions", [source], ctx)
+    if source is None or source.status != "ok":
+        _missing(
+            section,
+            "Repeat sizes and possible expansions",
+            ctx.command_for("typing str", ctx.alignment, "cram"),
+        )
+        return section
+    caller = source.metrics.get("repeat_caller") or "unknown"
+    counts = (
+        ("flagged_repeats", "flagged"),
+        ("unconfirmed_repeats", "unconfirmed"),
+        ("normal_repeats", "normal"),
+    )
+    summary = ", ".join(
+        f"{count} {label}" if isinstance(count, int) else f"{label} count not recorded"
+        for metric, label in counts
+        for count in [source.metrics.get(metric)]
+    )
+    loci = source.details.get("requested_loci")
+    targeted = (
+        f"; targeted: {', '.join(map(str, loci))}"
+        if isinstance(loci, list) and loci
+        else ""
+    )
+    section["summary"] = (
+        f"{summary} (caller: {caller}{targeted}). Counts can overlap, for example "
+        "when clipped reads flag an unconfirmed call. Repeat sizing depends on coverage and "
+        "the caller's ability to size long alleles. A normal count does not "
+        "rule out an expansion. Technical result, not a diagnosis."
+    )
+    rows = {
+        row["locus"]: row
+        for row in source.details.get("repeat_calls") or []
+        if isinstance(row, dict) and isinstance(row.get("locus"), str)
+    }
+    findings: dict[str, dict[str, str]] = {}
+    for warning in source.records("warnings"):
+        code = warning.get("code")
+        if code not in ("repeat_outside_normal_range", "repeat_unconfirmed"):
+            continue
+        locus = (warning.get("details") or {}).get("locus")
+        if isinstance(locus, str):
+            findings.setdefault(locus, {})[code] = str(warning.get("message") or "")
+    evidence = ctx.rel(source.output("repeat_summary"))
+    for locus, warnings in sorted(findings.items()):
+        row = rows.get(locus, {})
+        coverage = row.get("coverage")
+        label = " and ".join(
+            word
+            for code, word in (
+                ("repeat_outside_normal_range", "flagged"),
+                ("repeat_unconfirmed", "unconfirmed"),
+            )
+            if code in warnings
+        )
+        call = str(row.get("status") or next(iter(warnings.values())))
+        genotype = row.get("genotype")
+        if genotype and genotype != "-":
+            call = f"{genotype} repeat units: {call}"
+        section["findings"].append(
+            _finding(
+                "repeat_expansions",
+                f"{locus} ({label})",
+                call,
+                detail=f"{caller}; locus coverage {coverage:g}x"
+                if isinstance(coverage, (int, float))
+                else str(caller),
+                confidence=str(
+                    row.get("confidence")
+                    or (
+                        variant_confidence.LOW
+                        if "repeat_unconfirmed" in warnings
+                        else NOT_ASSESSED
+                    )
+                ),
+                reasons=list(warnings),
+                basis="Repeat range, caller intervals, and read support where available",
+                evidence=evidence,
+                region=row.get("region") or None,
+                manifest=ctx.rel(source.manifest),
+            )
+        )
+    return section
+
+
 def _smn_finding(section: ReportSectionDocument, source: Source, ctx: _Context) -> None:
     from wgsextract_cli.commands.genotyping.smn import (
         MAX_COVERAGE_MAD,

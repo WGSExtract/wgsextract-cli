@@ -2507,7 +2507,8 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
   environment. A screening estimate, not a diagnosis.
 * `hla`: HLA class I and II alleles with T1K (`.t1k_genotype.tsv`,
   `.t1k_allele.tsv`/`.vcf`), from the optional `t1k` environment.
-* `repeats` (`typing str`): disease repeat expansions (`.str.tsv`), with
+* `repeats` (`typing str`): disease repeat expansions (`.str.tsv` or
+  `.str.parquet`, also in `details.repeat_calls` in the result), with
   ExpansionHunter for short reads (`.str.vcf`/`.json`, optional
   `expansionhunter` environment) or LongTR for Nanopore and PacBio reads
   (`.str.vcf.gz`, `longtr` environment; STRkit's `.str.vcf` and
@@ -2598,7 +2599,8 @@ str`; see `TypingStrParams`).
 those outside the normal range, with ExpansionHunter for short reads and
 LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
 `sex`, `repeat_caller`, `disease_repeats`, `flagged_repeats` and
-`unconfirmed_repeats`;
+`unconfirmed_repeats` and `normal_repeats`. The result's
+`details.repeat_calls` holds the same per-locus rows as the summary table;
 each flagged repeat is a `repeat_outside_normal_range` warning
 (`repeat_unconfirmed` for a low-support-only finding or an unresolved
 all-weak or incomplete call,
@@ -2612,6 +2614,8 @@ all-weak or incomplete call,
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `caller` | `str \| None` | `None` | `--caller` | Repeat caller (default: longtr for Nanopore and PacBio reads, expansionhunter for others). strkit suits Nanopore R9 reads and very long alleles. One of: `expansionhunter`, `longtr`, `strkit` |
 | `catalog` | `Path \| None` | `None` | `--catalog` | Repeat catalog in the caller's format: an ExpansionHunter variant catalog (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped catalog for the input's build, or its repeats bundled for LongTR and STRkit. |
+| `loci` | `str \| None` | `None` | `--loci` | Only size these comma-separated, case-sensitive catalog locus IDs (example: HTT,FMR1,AR). Targeted files get a separate prefix. Default: the entire catalog. |
+| `table_format` | `str` | `'tsv'` | `--format` | Repeat summary table format: tsv or parquet (needs pyarrow). Default: tsv. One of: `tsv`, `parquet` |
 | `sex` | `str \| None` | `None` | `--sex` | Sample sex (the number of chrX alleles). Default: inferred from chrX/chrY coverage. One of: `male`, `female` |
 
 ## `api.report`

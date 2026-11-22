@@ -1013,7 +1013,7 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
         line.split("\t") for line in (out / "NA12878.str.tsv").read_text().splitlines()
     ]
     assert rows[0][:2] == ["locus", "disease"]
-    table = {row[0]: row[1:] for row in rows[1:]}
+    table = {row[0]: row[1:11] for row in rows[1:] if "_" not in row[0]}
     assert table == {
         "ATXN8OS": ["SCA8", "AD", "CTG", "15/22", "15-15/22-22", "50", "71",
                     "normal", "31.0", "-"],

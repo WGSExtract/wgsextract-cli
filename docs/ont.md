@@ -667,12 +667,22 @@ pixi install -e longtr           # or -e strkit; checked, not installed
 wgsextract typing str --input sample.cram --ref hs38.fa.gz
 ```
 
-- The output contract is the same for every caller: `<stem>.str.tsv` with one
-  row per repeat, a `repeat_outside_normal_range` warning per flagged repeat
+- The output contract is the same for every caller: `<stem>.str.tsv` (or
+  `<stem>.str.parquet` with `--format parquet` and PyArrow) with one row per
+  repeat. There is a `repeat_outside_normal_range` warning per flagged repeat
   and the `repeat_caller` metric. GRCh37 has no NOTCH2NLC, so on hg19 its
   row reads "not available on hg19" with a `repeat_unavailable` warning. LongTR writes `<stem>.str.vcf.gz`; STRkit
   `<stem>.str.vcf` and `<stem>.str.strkit.json`. LongTR gives no confidence
-  interval, so its `ci` column is `-`.
+  interval, so its `ci` column is `-`. Typed allele counts, intervals and
+  support are in both formats and in `details.repeat_calls` in the result
+  JSON; see the [manifest contract](result-manifest.md#repeat-calls).
+- `--loci HTT,FMR1,AR` sizes only those case-sensitive catalog IDs. Selection
+  preserves catalog order, including all variants of a compound ExpansionHunter
+  locus. LongTR takes the ID from column 5 and STRkit from the `ID=` attribute
+  in column 4. Any unknown ID is an error. Targeted runs add a hash of the
+  selected IDs to the `.str` prefix, so they don't replace full-catalog
+  results. Custom loci without disease thresholds are still reported, with no
+  assigned disease range.
 - The bundled catalog (`commands/genotyping/str_catalog/`, rebuilt by
   `scripts/build_str_catalog.py`) uses ExpansionHunter's reference regions,
   so counts are in the units of the STRchive thresholds, with STRchive's
@@ -693,10 +703,10 @@ wgsextract typing str --input sample.cram --ref hs38.fa.gz
   copy for males or two for females (the explicit or inferred `--sex`).
   A missing allele is not evidence of homozygosity: incomplete recessive
   calls are `unresolved`, even when the observed allele is expanded.
-  Raw sizes remain in the TSV and caller files. These unresolved calls emit
+  Raw sizes remain in the table and caller files. These unresolved calls emit
   `repeat_unconfirmed`, count in `unconfirmed_repeats` rather than the normal
-  range or `flagged_repeats`, and appear in the personal report's overview
-  warnings.
+  range or `flagged_repeats`, and appear in the personal report's Repeat
+  Expansions section.
   If clipped reads independently suggest an unsized expansion, the unresolved
   call also retains `repeat_outside_normal_range`, its `flagged_repeats` count,
   and the clinical-confirmation warning.

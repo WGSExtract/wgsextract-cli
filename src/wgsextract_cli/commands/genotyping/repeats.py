@@ -10,9 +10,12 @@ intermediate or pathogenic range for its disease.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import re
 import subprocess
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +29,15 @@ from wgsextract_cli.core.alignment.sequencing import (
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.table_writer import (
+    Column,
+    Value,
+    check_format,
+    provenance,
+    table_path,
+    write_table,
+)
+from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import get_bam_header
 
@@ -91,26 +103,35 @@ THRESHOLDS = {
 MOTIF_UNCHECKED = {"RFC1"}
 
 
-def parse_expansionhunter(json_path: str) -> list[RepeatCall]:
+def parse_expansionhunter(
+    json_path: str, *, include_no_calls: bool = False
+) -> list[RepeatCall]:
     with open(json_path) as f:
         loci = json.load(f).get("LocusResults", {})
     calls = []
     for locus in loci.values():
         for variant_id, variant in (locus.get("Variants") or {}).items():
             genotype = variant.get("Genotype")
-            if not genotype:
+            if not genotype and not include_no_calls:
                 continue
-            intervals = [
-                tuple(int(bound) for bound in ci.split("-"))
-                for ci in variant["GenotypeConfidenceInterval"].split("/")
-            ]
+            raw_ci = variant.get("GenotypeConfidenceInterval")
+            intervals = (
+                [
+                    tuple(int(bound) for bound in ci.split("-"))
+                    for ci in raw_ci.split("/")
+                ]
+                if genotype and raw_ci
+                else []
+            )
             calls.append(
                 RepeatCall(
                     variant_id=variant_id,
                     repeat_unit=variant.get("RepeatUnit", ""),
                     region=variant.get("ReferenceRegion", ""),
-                    alleles=tuple(int(a) for a in genotype.split("/")),
-                    intervals=tuple((low, high) for low, high in intervals),
+                    alleles=tuple(int(a) for a in genotype.split("/"))
+                    if genotype
+                    else (),
+                    intervals=tuple((low, high) for low, high in intervals) or None,
                     coverage=float(locus.get("Coverage") or 0),
                 )
             )
@@ -288,6 +309,144 @@ def _format_reads(call: RepeatCall) -> str:
     return "/".join(map(str, call.allele_reads)) + (" (low support)" if weak else "")
 
 
+REPEAT_COLUMNS = (
+    Column("locus", "TEXT"),
+    Column("disease", "TEXT"),
+    Column("inheritance", "TEXT"),
+    Column("repeat_unit", "TEXT"),
+    Column("genotype", "TEXT"),
+    Column("ci", "TEXT"),
+    Column("normal_max", "INTEGER", null_text="-"),
+    Column("pathogenic_min", "INTEGER", null_text="-"),
+    Column("status", "TEXT", "Repeat range and caller caveats."),
+    Column("coverage", "REAL", "Caller-reported locus coverage.", spec=".1f"),
+    Column("allele_reads", "TEXT"),
+    Column("allele_1", "INTEGER", "First allele, in repeat units."),
+    Column("allele_2", "INTEGER", "Second allele, in repeat units, when called."),
+    Column("ci_1_low", "INTEGER"),
+    Column("ci_1_high", "INTEGER"),
+    Column("ci_2_low", "INTEGER"),
+    Column("ci_2_high", "INTEGER"),
+    Column("allele_1_reads", "INTEGER"),
+    Column("allele_2_reads", "INTEGER"),
+    Column(
+        "clipped_reads", "INTEGER", "Clipped reads suggesting an unsized expansion."
+    ),
+    Column("confidence", "TEXT", "Low when a caveat applies; otherwise not_assessed."),
+    Column("region", "TEXT", "Repeat interval, 0-based start and exclusive end."),
+)
+
+
+def _call_values(
+    call: RepeatCall, threshold: Threshold | None, status: str, sex: str
+) -> dict[str, Value]:
+    genotype, ci = _format_alleles(call)
+    first, second = (call.alleles + (None, None))[:2]
+    (lo1, hi1), (lo2, hi2) = ((call.intervals or ()) + ((None, None),) * 2)[:2]
+    reads1, reads2 = ((call.allele_reads or ()) + (None, None))[:2]
+    low = (
+        not call.alleles
+        or any(low_support(call))
+        or (
+            threshold is not None
+            and len(call.alleles) < _expected_copies(threshold, sex)
+        )
+        or bool(call.clipped_reads)
+        or "CI reaches pathogenic" in status
+        or "motif unchecked" in status
+    )
+    return {
+        "locus": call.variant_id,
+        "disease": threshold.disease if threshold else "-",
+        "inheritance": threshold.inheritance if threshold else "-",
+        "repeat_unit": call.repeat_unit,
+        "genotype": genotype,
+        "ci": ci,
+        "normal_max": threshold.benign_max if threshold else None,
+        "pathogenic_min": threshold.pathogenic_min if threshold else None,
+        "status": status,
+        "coverage": round(call.coverage, 1),
+        "allele_reads": _format_reads(call),
+        "allele_1": first,
+        "allele_2": second,
+        "ci_1_low": lo1,
+        "ci_1_high": hi1,
+        "ci_2_low": lo2,
+        "ci_2_high": hi2,
+        "allele_1_reads": reads1,
+        "allele_2_reads": reads2,
+        "clipped_reads": call.clipped_reads,
+        "confidence": "low" if low else "not_assessed",
+        "region": call.region,
+    }
+
+
+def _summary_rows(
+    calls: list[RepeatCall],
+    unavailable: dict[str, str] | None = None,
+    *,
+    sex: str = "female",
+    include_flanks: bool = False,
+) -> tuple[list[dict[str, Value]], list[tuple[str, str, str]]]:
+    records = []
+    flagged = []
+    unavailable = unavailable or {}
+    rows = {call.variant_id: call for call in calls}
+    for locus in unavailable:
+        rows.setdefault(locus, RepeatCall(locus, "-", "", (), None, 0.0))
+    for variant_id in sorted(rows):
+        call = rows[variant_id]
+        threshold = THRESHOLDS.get(variant_id)
+        if (
+            not include_flanks
+            and threshold is None
+            and variant_id.split("_")[0] in THRESHOLDS
+        ):
+            continue  # Flanking repeat from the default catalog.
+        why = unavailable.get(variant_id, "")
+        status = why or classify(call, threshold, sex=sex)
+        values = _call_values(call, threshold, status, sex)
+        records.append(values)
+        label = f"{variant_id} ({values['disease']}, {values['inheritance']})"
+        line = (
+            f"{label}: {call.repeat_unit} {values['genotype']}"
+            + (f" [CI {values['ci']}]" if call.intervals else "")
+            + f" {status}"
+        )
+        note = unconfirmed(call, threshold, sex=sex)
+        if why:
+            flagged.append(("repeat_unavailable", variant_id, f"{label}: {why}"))
+            continue
+        if threshold is None:
+            if call.clipped_reads:
+                flagged.append(("repeat_clipped_reads", variant_id, line))
+            continue
+        unresolved = status.startswith("unresolved")
+        if unresolved or note:
+            flagged.append(("repeat_unconfirmed", variant_id, line))
+        if call.clipped_reads or (
+            not unresolved
+            and status.removesuffix(note) not in ("normal", "-", "no call")
+        ):
+            flagged.append(("repeat_outside_normal_range", variant_id, line))
+    return records, flagged
+
+
+def _write_table(
+    path: str,
+    rows: list[dict[str, Value]],
+    table_format: str = "tsv",
+    metadata: dict[str, str] | None = None,
+) -> None:
+    write_table(
+        path,
+        REPEAT_COLUMNS,
+        ([row[column.name] for column in REPEAT_COLUMNS] for row in rows),
+        table_format,
+        metadata=metadata,
+    )
+
+
 def write_summary(
     path: str,
     calls: list[RepeatCall],
@@ -295,83 +454,80 @@ def write_summary(
     *,
     sex: str = "female",
 ) -> list[tuple[str, str, str]]:
-    """A TSV of each pathogenic repeat's call and range, with a row for each
-    repeat of ``unavailable`` (locus: why); returns the (warning code, locus,
-    line) of every one that isn't normal or rests on low-support alleles."""
-    flagged = []
-    unavailable = unavailable or {}
-    rows = {call.variant_id: call for call in calls}
-    for locus in unavailable:
-        rows.setdefault(locus, RepeatCall(locus, "-", "", (), None, 0.0))
-    with open(path, "w", newline="\n") as f:
-        f.write(
-            "locus\tdisease\tinheritance\trepeat_unit\tgenotype\tci\t"
-            "normal_max\tpathogenic_min\tstatus\tcoverage\tallele_reads\n"
-        )
-        for variant_id in sorted(rows):
-            call = rows[variant_id]
-            threshold = THRESHOLDS.get(call.variant_id)
-            known = threshold or Threshold("-", "-", 0, 0)
-            if threshold is None and call.variant_id.split("_")[0] in THRESHOLDS:
-                continue  # A flanking repeat of a catalog locus.
-            why = unavailable.get(variant_id, "")
-            status = why or classify(call, threshold, sex=sex)
-            genotype, ci = _format_alleles(call)
-            f.write(
-                "\t".join(
-                    [
-                        call.variant_id,
-                        known.disease,
-                        known.inheritance,
-                        call.repeat_unit,
-                        genotype,
-                        ci,
-                        str(known.benign_max)
-                        if threshold and known.benign_max is not None
-                        else "-",
-                        str(known.pathogenic_min) if threshold else "-",
-                        status,
-                        f"{call.coverage:.1f}",
-                        _format_reads(call),
-                    ]
+    """Write a repeat summary and return its warnings."""
+    rows, warnings = _summary_rows(calls, unavailable, sex=sex)
+    _write_table(path, rows)
+    return warnings
+
+
+def _read_eh_catalog(path: str) -> list[dict[str, object]]:
+    try:
+        loci = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(loci, list) or any(
+            not isinstance(row, dict) or not isinstance(row.get("LocusId"), str)
+            for row in loci
+        ):
+            raise ValueError("expected a JSON array of records with a LocusId")
+    except (OSError, ValueError) as e:
+        raise UsageError(f"Invalid repeat catalog {path}: {e}") from e
+    return loci
+
+
+def _eh_variants(catalog: list[dict[str, object]]) -> list[RepeatCall]:
+    """Rows for selected catalog variants the caller could not size."""
+    calls = []
+    for row in catalog:
+        name = str(row["LocusId"])
+        variant_ids = row.get("VariantId") or [name]
+        regions = row.get("ReferenceRegion")
+        regions = regions if isinstance(regions, list) else [regions]
+        motifs = re.findall(r"\(([^)]+)\)", str(row.get("LocusStructure", "")))
+        if isinstance(variant_ids, list):
+            for i, variant_id in enumerate(variant_ids):
+                calls.append(
+                    RepeatCall(
+                        str(variant_id),
+                        motifs[i] if len(motifs) == len(variant_ids) else "",
+                        str(regions[i] or "") if i < len(regions) else "",
+                        (),
+                        None,
+                        0.0,
+                    )
                 )
-                + "\n"
-            )
-            line = (
-                f"{call.variant_id} ({known.disease}, {known.inheritance}): "
-                f"{call.repeat_unit} {genotype}"
-                + (f" [CI {ci}]" if call.intervals else "")
-                + f" {status}"
-            )
-            note = unconfirmed(call, threshold, sex=sex)
-            if why:
-                line = f"{variant_id} ({known.disease}, {known.inheritance}): {why}"
-                flagged.append(("repeat_unavailable", variant_id, line))
-            elif status.startswith("unresolved"):
-                flagged.append(("repeat_unconfirmed", variant_id, line))
-                if call.clipped_reads:
-                    flagged.append(("repeat_outside_normal_range", variant_id, line))
-            elif status.removesuffix(note) not in ("normal", "-", "no call"):
-                flagged.append(("repeat_outside_normal_range", variant_id, line))
-            elif note:
-                flagged.append(("repeat_unconfirmed", variant_id, line))
-    return flagged
+    return calls
+
+
+def _requested_loci(value: str | None) -> set[str]:
+    if value is None:
+        return set()
+    ids = {item.strip() for item in value.split(",")}
+    if "" in ids:
+        raise UsageError(
+            "--loci must be a comma-separated list of nonempty catalog IDs."
+        )
+    return ids
+
+
+def _check_loci(requested: set[str], catalog_ids: set[str | None]) -> None:
+    unknown = sorted(requested - catalog_ids)
+    if unknown:
+        raise UsageError(
+            f"Unknown --loci ID(s) in the repeat catalog: {', '.join(unknown)}."
+        )
 
 
 def catalog_loci(aln: Alignment, caller: str) -> set[str]:
     """The repeats of the bundled (or ExpansionHunter's shipped) catalog for
     the input's build."""
     if caller != "expansionhunter":
-        rows = long_read_repeats.catalog_rows(aln, caller, None)
-        if caller == "longtr":
-            return {row.rsplit("\t", 1)[-1] for row in rows}
-        return {row.split("ID=")[1].split(";")[0] for row in rows}
-    with open(_catalog(aln, None)) as f:
         return {
-            variant_id
-            for locus in json.load(f)
-            for variant_id in locus.get("VariantId") or [locus["LocusId"]]
+            name
+            for row in long_read_repeats.catalog_rows(aln, caller, None)
+            if (name := long_read_repeats.bed_locus(row, caller))
         }
+    return {
+        call.variant_id for call in _eh_variants(_read_eh_catalog(_catalog(aln, None)))
+    }
 
 
 def choose_caller(choice: str | None, platform: str | None) -> str:
@@ -392,11 +548,10 @@ def choose_caller(choice: str | None, platform: str | None) -> str:
 
 
 def _run_expansionhunter(
-    aln: Alignment, reference: str, catalog: Path | None, sex: str, prefix: str,
-    debug: bool,
+    aln: Alignment, reference: str, catalog_path: str, sex: str, prefix: str,
+    debug: bool, *, include_no_calls: bool,
 ) -> list[RepeatCall]:  # fmt: skip
     expansion_hunter = env_tool("ExpansionHunter", "expansionhunter")
-    catalog_path = _catalog(aln, catalog)
     logging.info("Sizing repeat expansions with ExpansionHunter...")
     try:
         run_command(
@@ -414,14 +569,13 @@ def _run_expansionhunter(
     result = current_result()
     result.add_output(f"{prefix}.vcf", "repeat_calls")
     result.add_output(f"{prefix}.json", "expansionhunter_report")
-    return parse_expansionhunter(f"{prefix}.json")
+    return parse_expansionhunter(f"{prefix}.json", include_no_calls=include_no_calls)
 
 
 def _run_long_reads(
-    aln: Alignment, reference: str, caller: str, catalog: Path | None, sex: str,
+    aln: Alignment, reference: str, caller: str, rows: list[str], sex: str,
     prefix: str, platform: str | None,
 ) -> list[RepeatCall]:  # fmt: skip
-    rows = long_read_repeats.catalog_rows(aln, caller, catalog)
     result = current_result()
     if caller == "longtr":
         vcf = long_read_repeats.run_longtr(aln, reference, rows, sex, prefix)
@@ -434,12 +588,12 @@ def _run_long_reads(
         result.add_output(vcf, "repeat_calls")
         result.add_output(report, "strkit_report")
         calls = long_read_repeats.parse_strkit(report)
-    return long_read_repeats.with_clipped_reads(
-        aln, rows, calls, 1 if caller == "longtr" else 0
-    )
+    return long_read_repeats.with_clipped_reads(aln, rows, calls, caller)
 
 
 def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
+    check_format(params.table_format)
+    requested = _requested_loci(params.loci)
     aln = open_alignment(params)
     reference = aln.require_reference()
     platform = input_platform(aln.path, reference)
@@ -453,52 +607,98 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
             "below mean quality 30, which leaves most R9 loci uncalled. "
             "--caller strkit handles R9 reads better.",
         )
-    # Fail on a missing environment or catalog before minutes of sex inference.
+    suffix = ""
+    if requested:
+        digest = hashlib.sha256(",".join(sorted(requested)).encode()).hexdigest()[:12]
+        suffix = f"-{digest}"
+    prefix = str(Path(aln.outdir, f"{aln.stem}.str{suffix}"))
+    result = current_result()
+    result.set_reference(reference)
+    catalog_input = expand_path(params.catalog) if params.catalog else None
+    result.add_input(catalog_input, "repeat_catalog")
     if caller == "expansionhunter":
+        catalog_path = _catalog(aln, params.catalog)
+        selected = []
+        if requested:
+            catalog = _read_eh_catalog(catalog_path)
+            _check_loci(requested, {str(row["LocusId"]) for row in catalog})
+            selected = [row for row in catalog if row["LocusId"] in requested]
         env_tool("ExpansionHunter", "expansionhunter")
-        _catalog(aln, params.catalog)
+        sex = _sex(aln, params.sex)
+        with ExitStack() as stack:
+            if selected:
+                work = stack.enter_context(scratch_directory(aln.outdir, ".eh_"))
+                subset = Path(work, "catalog.json")
+                subset.write_text(json.dumps(selected), encoding="utf-8")
+                catalog_path = str(subset)
+            calls = _run_expansionhunter(
+                aln,
+                reference,
+                catalog_path,
+                sex,
+                prefix,
+                debug,
+                include_no_calls=bool(requested),
+            )
+        if selected:
+            by_id = {call.variant_id: call for call in calls}
+            for row in _eh_variants(selected):
+                by_id.setdefault(row.variant_id, row)
+            calls = list(by_id.values())
     else:
+        rows = long_read_repeats.catalog_rows(aln, caller, params.catalog)
+        if requested:
+            ids = [long_read_repeats.bed_locus(row, caller) for row in rows]
+            _check_loci(requested, set(ids))
+            rows = [
+                row for row, name in zip(rows, ids, strict=True) if name in requested
+            ]
         env_tool({"longtr": "LongTR", "strkit": "strkit"}[caller], caller)
-        long_read_repeats.catalog_rows(aln, caller, params.catalog)
-    sex = _sex(aln, params.sex)
-    tool = TOOL_NAMES[caller]
+        sex = _sex(aln, params.sex)
+        calls = _run_long_reads(aln, reference, caller, rows, sex, prefix, platform)
 
-    prefix = str(Path(aln.outdir, f"{aln.stem}.str"))
-    if caller == "expansionhunter":
-        calls = _run_expansionhunter(aln, reference, params.catalog, sex, prefix, debug)
-    else:
-        calls = _run_long_reads(
-            aln, reference, caller, params.catalog, sex, prefix, platform
-        )
-
-    summary = f"{prefix}.tsv"
+    summary = table_path(prefix, params.table_format)
     unavailable = {}
-    if params.catalog is None:
+    if params.catalog is None and not requested:
         catalog_ids = {c.variant_id for c in calls} | catalog_loci(aln, caller)
         unavailable = dict.fromkeys(
             sorted(set(THRESHOLDS) - catalog_ids),
             f"not available on {aln.build}: the bundled catalog lacks it",
         )
-    warnings = write_summary(summary, calls, unavailable, sex=sex)
+    records, warnings = _summary_rows(
+        calls,
+        unavailable,
+        sex=sex,
+        include_flanks=params.catalog is not None or bool(requested),
+    )
+    metadata = None
+    if params.table_format == "parquet":
+        inputs = [aln.path]
+        if catalog_input:
+            inputs.append(catalog_input)
+        metadata = provenance(inputs, reference_build=aln.build, sorted_by="locus")
+    _write_table(summary, records, params.table_format, metadata)
     flagged = [w for w in warnings if w[0] == "repeat_outside_normal_range"]
-    classified = sum(1 for c in calls if c.variant_id in THRESHOLDS and c.alleles)
+    classified = {
+        row["locus"]
+        for row in records
+        if row["pathogenic_min"] is not None and row["allele_1"] is not None
+    }
     uncertain = sum(w[0] == "repeat_unconfirmed" for w in warnings)
     non_normal = {locus for code, locus, _ in warnings if code != "repeat_unavailable"}
-    normal = sum(
-        1
-        for c in calls
-        if c.variant_id in THRESHOLDS and c.alleles and c.variant_id not in non_normal
+    normal = len(classified - non_normal)
+    logging.info(
+        f"{normal} of {len(classified)} disease repeats are in the normal range."
     )
-    logging.info(f"{normal} of {classified} disease repeats are in the normal range.")
-    result = current_result()
-    result.set_reference(reference)
     result.add_output(summary, "repeat_summary")
+    result.set_details({"repeat_calls": records, "requested_loci": sorted(requested)})
     result.add_metrics(
         sex=sex,
         repeat_caller=caller,
-        disease_repeats=classified,
+        disease_repeats=len(classified),
         flagged_repeats=len(flagged),
         unconfirmed_repeats=uncertain,
+        normal_repeats=normal,
     )
     for code, locus, line in warnings:
         logging.warning(f"  {line}")
@@ -508,7 +708,7 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
             "Repeat sizing from sequencing reads isn't a diagnosis; confirm "
             "anything outside the normal range with a clinical test."
         )
-    logging.info(f"Repeat calls: {summary} ({tool}: {prefix}.*)")
+    logging.info(f"Repeat calls: {summary} ({TOOL_NAMES[caller]}: {prefix}.*)")
 
 
 cmd_str = cli_handler(TypingStrParams, run_str, debug="debug")

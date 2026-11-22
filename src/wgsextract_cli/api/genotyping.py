@@ -12,7 +12,8 @@ Each writes ``<input stem>.*`` files in ``outdir``, else beside the input:
   environment. A screening estimate, not a diagnosis.
 * ``hla``: HLA class I and II alleles with T1K (``.t1k_genotype.tsv``,
   ``.t1k_allele.tsv``/``.vcf``), from the optional ``t1k`` environment.
-* ``repeats`` (``typing str``): disease repeat expansions (``.str.tsv``), with
+* ``repeats`` (``typing str``): disease repeat expansions (``.str.tsv`` or
+  ``.str.parquet``, also in ``details.repeat_calls`` in the result), with
   ExpansionHunter for short reads (``.str.vcf``/``.json``, optional
   ``expansionhunter`` environment) or LongTR for Nanopore and PacBio reads
   (``.str.vcf.gz``, ``longtr`` environment; STRkit's ``.str.vcf`` and
@@ -31,6 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from wgsextract_cli.core.results import CommandResult
+from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 
 from ._network import DownloadParams
 from ._params import Params, param
@@ -134,7 +136,8 @@ class TypingStrParams(_TypingParams):
     those outside the normal range, with ExpansionHunter for short reads and
     LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
     ``sex``, ``repeat_caller``, ``disease_repeats``, ``flagged_repeats`` and
-    ``unconfirmed_repeats``;
+    ``unconfirmed_repeats`` and ``normal_repeats``. The result's
+    ``details.repeat_calls`` holds the same per-locus rows as the summary table;
     each flagged repeat is a ``repeat_outside_normal_range`` warning
     (``repeat_unconfirmed`` for a low-support-only finding or an unresolved
     all-weak or incomplete call,
@@ -157,6 +160,21 @@ class TypingStrParams(_TypingParams):
         "LongTR and STRkit.",
         metavar="FILE",
         path="file",
+    )
+    loci: str | None = param(
+        None,
+        help="Only size these comma-separated, case-sensitive catalog locus IDs "
+        "(example: HTT,FMR1,AR). Targeted files get a separate prefix. "
+        "Default: the entire catalog.",
+        metavar="ID[,ID...]",
+    )
+    table_format: str = param(
+        "tsv",
+        help="Repeat summary table format: tsv or parquet (needs pyarrow). "
+        "Default: tsv.",
+        flags=("--format",),
+        choices=FORMATS,
+        cli_type=table_format_type(),
     )
     sex: str | None = param(
         None,

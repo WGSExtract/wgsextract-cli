@@ -701,10 +701,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract typing hla --input sample.cram",
     ),
     "typing str": _h(
-        "<stem>.str.tsv, a flagged-repeat summary, and the caller's calls: "
+        "<stem>.str.tsv (or .str.parquet), per-locus repeat calls in the "
+        "result JSON, and the caller's calls: "
         "ExpansionHunter's <stem>.str.vcf/.json, LongTR's <stem>.str.vcf.gz or "
-        "STRkit's <stem>.str.vcf and <stem>.str.strkit.json.",
+        "STRkit's <stem>.str.vcf and <stem>.str.strkit.json. Targeted runs "
+        "append a locus digest to the .str prefix.",
         "wgsextract typing str --input sample.cram",
+        "wgsextract typing str --input sample.cram --loci HTT,FMR1 --format parquet",
     ),
     "methylation pileup": _h(
         "<input stem>.<context>.bedmethyl.gz (+ .tbi) and "
