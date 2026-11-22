@@ -6881,7 +6881,7 @@
    }
   },
   "deps": {
-   "help": "usage: wgsextract deps [-h] <command> ...\n\npositional arguments:\n  <command>\n    check      Verify that all required bioinformatics tools (samtools, bcftools, etc.) are\n               installed and accessible in your system path.\n    list       List every mandatory and optional tool with its status, and whether 'deps install'\n               or 'deps uninstall' can act on it.\n    install    Download and install the Pixi environment that provides an optional tool (e.g.\n               gatk).\n    uninstall  Remove the Pixi environment that provides an optional tool, and the other tools in\n               it.\n\noptions:\n  -h, --help   show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract deps [-h] <command> ...\n\npositional arguments:\n  <command>\n    check      Verify that all required bioinformatics tools (samtools, bcftools, etc.) are\n               installed and accessible in your system path.\n    list       List every mandatory and optional tool with its status, and whether 'deps install'\n               or 'deps uninstall' can act on it.\n    ready      Report whether a command line can run on this computer without the network: its\n               tools, images, GPUs, model weights, input, reference genome and indexes, checked\n               offline without installing or downloading anything.\n    install    Download and install the Pixi environment that provides an optional tool (e.g.\n               gatk).\n    uninstall  Remove the Pixi environment that provides an optional tool, and the other tools in\n               it.\n\noptions:\n  -h, --help   show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -6905,6 +6905,7 @@
       "choices": [
        "check",
        "list",
+       "ready",
        "install",
        "uninstall"
       ],
@@ -6916,6 +6917,10 @@
        [
         "list",
         "List every mandatory and optional tool with its status, and whether 'deps install' or 'deps uninstall' can act on it."
+       ],
+       [
+        "ready",
+        "Report whether a command line can run on this computer without the network: its tools, images, GPUs, model weights, input, reference genome and indexes, checked offline without installing or downloading anything."
        ],
        [
         "install",

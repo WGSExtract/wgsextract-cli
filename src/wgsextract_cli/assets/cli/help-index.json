@@ -87,6 +87,7 @@
 {"path":"ref microarray-targets","tier":"setup","summary":"Build the genome-wide hg19 and hg38 microarray targets from the chip templates, or delete them.","key_flags":["--delete"]},
 {"path":"deps check","tier":"setup","summary":"Verify that all required bioinformatics tools (samtools, bcftools, etc.) are installed and accessible in your system path.","key_flags":["--tool"]},
 {"path":"deps list","tier":"setup","summary":"List every mandatory and optional tool with its status, and whether 'deps install' or 'deps uninstall' can act on it.","key_flags":[]},
+{"path":"deps ready","tier":"setup","summary":"Report whether a command line can run on this computer without the network: its tools, images, GPUs, model weights, input, reference genome and indexes, checked offline without installing or downloading anything.","key_flags":[]},
 {"path":"deps install","tier":"setup","summary":"Download and install the Pixi environment that provides an optional tool (e.g. gatk).","key_flags":[]},
 {"path":"deps uninstall","tier":"setup","summary":"Remove the Pixi environment that provides an optional tool, and the other tools in it.","key_flags":[]},
 {"path":"example-genome list","tier":"setup","summary":"List curated 1000 Genomes examples.","key_flags":["--target-root","--tag"]},

@@ -30,7 +30,7 @@ from tests.htslib_helpers import (
 )
 from wgsextract_cli.cli.parser import build_parser
 from wgsextract_cli.cli.platform_support import verify_platform_support
-from wgsextract_cli.commands.vcf import clair3
+from wgsextract_cli.commands.vcf import clair3, clair3_models
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.resource_estimates import estimate_clair3
 from wgsextract_cli.core.utils import (
@@ -192,7 +192,7 @@ def test_model_checksums_are_verified(tmp_path, monkeypatch, caplog):
             "files": dict.fromkeys(clair3.MODEL_FILES, good),
         }
     }
-    monkeypatch.setattr(clair3, "pinned_models", lambda: pins)
+    monkeypatch.setattr(clair3_models, "pinned_models", lambda: pins)
 
     clair3.verify_model(make_model(tmp_path / "ok", "pinned"))
     with pytest.raises(WGSExtractError, match="pinned SHA-256.*example.org/pinned"):

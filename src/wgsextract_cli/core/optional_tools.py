@@ -341,24 +341,25 @@ def _chosen(args: argparse.Namespace, optional: Iterable[str]) -> list[str]:
     return [tool for tool in chosen if tool]
 
 
-def _overridden(tool: str, args: argparse.Namespace) -> bool:
+def executable_override(tool: str, args: argparse.Namespace) -> str | None:
+    """The executable the user named for ``tool`` (its option, or its
+    config.toml setting), which the command checks itself; None when unnamed."""
     from wgsextract_cli.core.config import settings
 
     option, setting = EXECUTABLE_OVERRIDES.get(tool, (None, None))
-    return bool(
-        (option and getattr(args, option, None)) or (setting and settings.get(setting))
+    named = (option and getattr(args, option, None)) or (
+        setting and settings.get(setting)
     )
+    return str(named) if named else None
 
 
-def missing_tools(args: argparse.Namespace) -> list[str]:
-    """The optional tools the parsed command line ``args`` needs that aren't
-    installed: those every run of the command needs (``COMMAND_NEEDS``),
-    those an option selects (``--caller sniffles``, ``--plink2-check``), and
-    those the command picks by its own rules (``vcf phase``'s default
-    phaser, ``vep run``'s engine). Tools this platform can't have, and tools
-    whose executable the user named, are left to the command."""
+def command_tools(args: argparse.Namespace) -> list[str]:
+    """The external tools the parsed command line ``args`` runs, by catalog
+    name: those every run of the command needs (``COMMAND_NEEDS``), those an
+    option selects (``--caller sniffles``, ``--plink2-check``), and those the
+    command picks by its own rules (``vcf phase``'s default phaser, ``vep
+    run``'s engine)."""
     from wgsextract_cli.commands._command_needs import COMMAND_NEEDS
-    from wgsextract_cli.core.dependencies import get_tool_path
 
     command = str(getattr(args, "_command", "") or "")
     needs = COMMAND_NEEDS.get(command)
@@ -371,13 +372,22 @@ def missing_tools(args: argparse.Namespace) -> list[str]:
         wanted = [tool for tool in wanted if tool not in _VEP_TOOLS]
     if resolver := _COMMAND_TOOLS.get(command):
         wanted += resolver(args)
+    return list(dict.fromkeys(TOOL_ALIASES.get(t, t) for t in wanted))
+
+
+def missing_tools(args: argparse.Namespace) -> list[str]:
+    """The optional tools of ``command_tools`` that aren't installed. Tools
+    this platform can't have, and tools whose executable the user named, are
+    left to the command."""
+    from wgsextract_cli.core.dependencies import get_tool_path
+
     unavailable = set(platform_unavailable_tools())
     return [
         tool
-        for tool in dict.fromkeys(TOOL_ALIASES.get(t, t) for t in wanted)
+        for tool in command_tools(args)
         if tool in OPTIONAL_TOOLS
         and tool not in unavailable
-        and not _overridden(tool, args)
+        and not executable_override(tool, args)
         and not get_tool_path(tool)
         and not _unavailable_reason(tool)
     ]

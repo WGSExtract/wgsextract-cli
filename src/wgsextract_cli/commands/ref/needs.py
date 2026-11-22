@@ -77,17 +77,30 @@ def _missing_tool(tool: str, args: argparse.Namespace) -> MissingReference:
 def parse_command(argv: list[str]) -> argparse.Namespace | None:
     """``argv`` parsed as the CLI would parse it, or None when it wouldn't
     parse (running it reports that usage error itself)."""
+    try:
+        return parse_command_line(argv)
+    except UsageError:
+        return None
+
+
+def parse_command_line(argv: list[str]) -> argparse.Namespace:
+    """``argv`` parsed as the CLI would parse it; a usage error with
+    argparse's own message when it wouldn't parse or names no command."""
     from wgsextract_cli.cli.parser import build_parser, parse_args
     from wgsextract_cli.core.genome_library import apply_genome_selection
 
     parser, base_parser = build_parser()
+    errors = io.StringIO()
     try:
-        with contextlib.redirect_stderr(io.StringIO()):
+        with contextlib.redirect_stderr(errors), contextlib.redirect_stdout(errors):
             args, explicit = parse_args(parser, base_parser, argv)
-    except SystemExit:
-        return None
+    except SystemExit as error:
+        lines = errors.getvalue().strip().splitlines()
+        raise UsageError(
+            lines[-1] if lines else f"{shlex.join(argv)} doesn't parse"
+        ) from error
     if not hasattr(args, "func"):
-        return None
+        raise UsageError(f"{shlex.join(argv)} names no command to run.")
     apply_genome_selection(args, set(explicit))
     return args
 
