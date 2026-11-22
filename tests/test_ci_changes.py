@@ -7,6 +7,7 @@ import os as os
 import subprocess as subprocess
 import sys as sys
 from pathlib import Path as Path
+from pathlib import PurePosixPath as PurePosixPath
 from typing import Any as Any
 
 import pytest as pytest
@@ -15,6 +16,9 @@ from scripts import pr_checks_ready as pr_checks_ready
 from scripts.ci_changes import routes as routes
 from scripts.ci_changes import setup_checks as setup_checks
 from scripts.ci_changes import site_validation as site_validation
+from scripts.ci_codeql_scope import EXTENSIONS as EXTENSIONS
+from scripts.ci_codeql_scope import LANGUAGES as LANGUAGES
+from scripts.ci_codeql_scope import languages as codeql_languages
 from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
 from scripts.ci_select_tests import ci_test_targets as ci_test_targets
@@ -743,3 +747,10 @@ def test_1373_codeql_pr_analyzes_only_the_languages_it_touches(
         "rust",
         "actions",
     ]
+
+
+def test_1373_root_level_crate_treats_every_file_as_rust_input() -> None:
+    assert set(LANGUAGES) == set(EXTENSIONS)
+    root = {PurePosixPath(".")}
+    assert codeql_languages(["assets/logo.png"], root) == ["rust"]
+    assert codeql_languages(["assets/logo.png"], {PurePosixPath("crate")}) == []

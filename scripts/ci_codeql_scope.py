@@ -3,7 +3,8 @@
 
 A language whose files the PR leaves untouched reuses the base branch's latest
 analysis instead, so the CodeQL check still compares every category and never
-reports "configurations not found". Unknown inputs fail open to every language.
+reports "configurations not found". A path selects every language whose
+extractor may read it; CI configuration selects every language.
 """
 
 from __future__ import annotations
@@ -44,12 +45,12 @@ EXTENSIONS = {
     "rust": {".rs"},
     "actions": set(),
 }
-LANGUAGES = tuple(EXTENSIONS)
+LANGUAGES = ("python", "javascript-typescript", "rust", "actions")
 # The workflow, its scope rules and repository CI setup affect every language.
 ALL_LANGUAGE_INPUTS = (".github/", "scripts/ci_codeql_scope.py")
 
 
-def languages(paths: list[str], crate_roots: set[str]) -> list[str]:
+def languages(paths: list[str], crate_roots: set[PurePosixPath]) -> list[str]:
     """Return the languages whose analysis these changed paths may alter."""
     selected: set[str] = set()
     for path in paths:
@@ -64,7 +65,7 @@ def languages(paths: list[str], crate_roots: set[str]) -> list[str]:
             selected.add("actions")
         # Rust extraction reads manifests and anything a crate may embed.
         if pure.name in {"Cargo.toml", "Cargo.lock"} or any(
-            path.startswith(f"{root}/") for root in crate_roots
+            pure.is_relative_to(root) for root in crate_roots
         ):
             selected.add("rust")
     return [language for language in LANGUAGES if language in selected]
@@ -97,7 +98,7 @@ def main() -> None:
             "--",
         )
         crate_roots = {
-            str(PurePosixPath(manifest).parent)
+            PurePosixPath(manifest).parent
             for manifest in git_lines("ls-files", "-z", "--", "*Cargo.toml")
         }
         selected = languages(paths, crate_roots)
