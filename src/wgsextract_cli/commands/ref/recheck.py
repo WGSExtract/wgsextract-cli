@@ -34,8 +34,11 @@ def run_recheck(params: RefRecheckParams) -> None:
         result.add_output(target, "release_answers", kind="json")
     for item in document["resources"]:
         if item["status"] in ("newer_available", "different_release"):
+            # A different release that can't be ordered by date may not be newer.
             result.warn(
-                "newer_release_available",
+                "newer_release_available"
+                if item["status"] == "newer_available"
+                else "release_differs",
                 f"{item['name']}: the runs used {item['used_release']}; the answers "
                 f"name {item['latest_release']}.",
                 resource=item["id"],

@@ -467,3 +467,15 @@ def test_1179_answers_older_than_the_release_used_never_suggest_a_downgrade(
     (clinvar,) = [r for r in result.details["resources"] if r["id"] == "clinvar"]
     assert (clinvar["status"], clinvar["next_step"]) == ("unknown", None)
     assert "newer_release_available" not in [w.code for w in result.warnings]
+
+
+def test_1179_an_unordered_release_is_not_warned_about_as_newer(runs, tmp_path):
+    # Copilot review of #1363: different_release warned newer_release_available.
+    answers = _answers(tmp_path / "answers.json", "weekly-48")
+    result = api.ref.recheck(
+        api.RefRecheckParams(manifests=(runs["november"],), answers=answers)
+    )
+    (clinvar,) = [r for r in result.details["resources"] if r["id"] == "clinvar"]
+    assert clinvar["status"] == "different_release"
+    codes = [w.code for w in result.warnings]
+    assert "release_differs" in codes and "newer_release_available" not in codes

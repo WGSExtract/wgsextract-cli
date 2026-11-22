@@ -64,7 +64,8 @@ the newer release yourself (for ClinVar from NCBI, then pass it with
 the report. `wgsextract ref <resource>` installs the release this WGS Extract
 pins, often an audited mirror snapshot, which may be older than the newest. A
 truncated or failed listing is a `lookup_error`. The result has the warnings
-`newer_release_available`, `release_lookup_failed` and
+`newer_release_available`, `release_differs` (for `different_release`),
+`release_lookup_failed` and
 `resources_not_recorded`; its `details` follow `wgsextract.recheck/1`
 ([schema](../src/wgsextract_cli/assets/schemas/wgsextract.recheck.1.schema.json)),
 and `details.answers` records where the answers came from: the file's path,
