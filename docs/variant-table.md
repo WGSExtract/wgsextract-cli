@@ -96,9 +96,12 @@ severe effect first, and the table takes that one.
   multi-allelic one keeps only REF and its own ALT in AD, so its fraction
   needs FORMAT/DP. At a multi-allelic site each ALT's fraction counts every
   allele's reads, and a haploid call is read the same way as a diploid one.
-- **Missing is empty, never 0.** A site no read covers (AD `0,0`) has
-  `ad_ref` and `ad_alt` of 0 but an empty `alt_fraction`, and a VCF without
-  read counts (a genotype-only or imputed VCF) leaves all three empty.
+- **Missing is empty, never 0.** A site with no informative read (AD `0,0`,
+  whatever its DP) has `ad_ref` and `ad_alt` of 0 but an empty
+  `alt_fraction`. Without FORMAT/DP, an AD with a missing count (`.,12`)
+  falls back to the caller's VAF or AF rather than undercount the reads. A
+  VCF without read counts (a genotype-only or imputed VCF) leaves all three
+  empty.
 - **`phase_set`** comes from FORMAT/PS only when the genotype is phased
   (`|`), as WhatsHap (`vcf phase`), GATK HaplotypeCaller's physical phasing and
   Clair3 write it. An unphased `0/1` has an empty `phase_set` even if the VCF
@@ -152,14 +155,15 @@ SELECT gene, hgvs_p, gnomad_af, gnomad_popmax_af, gnomad_nhomalt
 FROM variants
 WHERE gnomad_af < 0.001 AND (gnomad_popmax_af >= 0.01 OR gnomad_nhomalt > 0);
 
--- Two heterozygous hits in one gene on the same haplotype (cis) or on
--- opposite ones (trans), within one phase block
+-- Two phased heterozygous hits in one gene on the same haplotype (cis) or
+-- on opposite ones (trans), within one phase block. Only 0|1 and 1|0: a
+-- multi-allelic site's rows (1|2) all keep the site's genotype.
 SELECT a.gene, a.hgvs_p, a.genotype, b.hgvs_p, b.genotype,
        CASE WHEN a.genotype = b.genotype THEN 'cis' ELSE 'trans' END AS phase
 FROM variants a JOIN variants b
   ON a.gene = b.gene AND a.chrom = b.chrom AND a.phase_set = b.phase_set
      AND a.pos < b.pos
-WHERE a.zygosity = 'het' AND b.zygosity = 'het'
+WHERE a.genotype IN ('0|1', '1|0') AND b.genotype IN ('0|1', '1|0')
   AND a.impact IN ('HIGH', 'MODERATE') AND b.impact IN ('HIGH', 'MODERATE');
 
 -- Heterozygous calls with skewed allele balance (possible mosaicism,

@@ -280,3 +280,20 @@ def test_1289_bcftools_dp4_is_one_samples_reads_only_in_a_one_sample_vcf(
         "--no-sqlite", "--sample", samples[-1],
     )  # fmt: skip
     assert _tsv(tmp_path / "calls_variants.tsv")["100", "T"]["alt_fraction"] == fraction
+
+
+@pytest.mark.parametrize(
+    ("fmt", "sample", "fraction"),
+    [
+        # Review of issue 1289: no informative read is unknown, not 0.
+        ("GT:AD:DP", "0/1:0,0:20", None),
+        # A missing REF count without DP would read 12 of 12 reads as ALT.
+        ("GT:AD", "0/1:.,12", None),
+        ("GT:AD:AF", "0/1:.,12:0.55", 0.55),
+        # FORMAT/DP still gives the denominator.
+        ("GT:AD:DP", "0/1:.,12:20", 0.6),
+    ],
+)
+def test_1289_unmeasured_reads_never_become_a_fraction(fmt, sample, fraction):
+    record = _record("chr1", "900", ".", "C", "T", "30", "PASS", ".", fmt, sample)
+    assert _caller_rows([record])["900", "T"]["alt_fraction"] == fraction

@@ -128,15 +128,19 @@ def alt_fraction(
     FORMAT/AD over the larger of its sum and FORMAT/DP, else the caller's
     per-ALT FORMAT/VAF (DeepVariant) or FORMAT/AF (Clair3, Mutect2), else a
     biallelic record's INFO/DP4 (pass ``info`` only for a single-sample VCF).
-    None when nothing measures it, or no reads cover the site."""
+    None when nothing measures it, or AD counts no informative read."""
     counts = _numbers(fmt.get("AD"))
     alt_count = counts[alt] if len(counts) > alt else None
     format_depth = _number(fmt.get("DP"))
     # A split record's AD keeps only REF and this ALT: only FORMAT/DP still
     # counts the reads of the ALTs split off.
     if alt_count is not None and (format_depth is not None or not split):
-        total = max(math.fsum(v or 0.0 for v in counts), format_depth or 0)
-        return alt_count / total if total else None
+        known = [v for v in counts if v is not None]
+        if not math.fsum(known):
+            return None  # no informative read: AD measures nothing
+        # Without FORMAT/DP, a missing AD count would shrink the denominator.
+        if format_depth is not None or len(known) == len(counts):
+            return alt_count / max(math.fsum(known), format_depth or 0)
     for key in ("VAF", "AF"):  # DeepVariant VAF, Clair3 AF: per ALT
         fractions = _numbers(fmt.get(key))
         if len(fractions) >= alt and fractions[alt - 1] is not None:
