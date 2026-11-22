@@ -83,7 +83,7 @@ from wgsextract_cli.core.results import (
     manifest_path_for,
     record_changed_files,
 )
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, get_resource_defaults
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, get_resource_threads
 
 from .core_commands import (
     cmd_library_list,
@@ -201,7 +201,7 @@ def run_imputation(params: RefImputationParams) -> None:
     verify_dependencies(["bcftools", "tabix", "GLIMPSE2_chunk",
                          "GLIMPSE2_split_reference", "GLIMPSE2_phase"])  # fmt: skip
     imputation_panel.check_disk(chroms, reflib)
-    threads, _memory = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     for chrom in chroms:
         path = imputation_panel.install_chromosome(
             chrom, reflib, int(threads), cancel=cancel_event()

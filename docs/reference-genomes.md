@@ -42,8 +42,30 @@ remain build evidence. Tool command-history lines in VCF headers are not.
 sequence-dictionary signature, failing on mismatch.
 `ref library --install` also verifies the signature after indexing.
 The catalog's `md5` is a sequence-name/length dictionary signature,
-**not a FASTA content checksum**. `ref count-ns` writes `_ncnt.csv` and
-`_nbin.csv` beside the FASTA, or in `--outdir`.
+**not a FASTA content checksum**.
+
+### N counts
+
+Depth and breadth leave out each reference's N (unsequenceable) bases,
+counted from that reference's own FASTA, upper- and lowercase alike. The
+release ships the counts of every catalog genome in
+`assets/reference/reference_ncounts.tsv`, read at run time, keyed by FASTA
+file name and sequence-dictionary signature (two FASTAs can share a
+signature, so one could mask regions the other doesn't). Installing a genome
+the release didn't measure counts its Ns once, into the library's own
+`genomes/reference_ncounts.tsv`.
+
+`info` and genotype QC take the counts for a `--ref` FASTA from its entry
+under the header's signature, else from that FASTA's own `_ncnt.csv` (`ref
+count-ns` writes it and `_nbin.csv` beside the FASTA, or in `--outdir`; only
+rows with a length apply), else from its entry under its name alone; never
+from another genome. Without `--ref`, they use the entry for the header's
+signature. A contig gets a count only at the length it was measured at, and
+none when two of the header's contigs share a name (chr1 and 1). Otherwise
+they warn `n_counts_unavailable` (`n_counts_ambiguous` when genomes sharing
+the signature differ) and leave the N gaps in; run `ref count-ns` on the
+reference's FASTA and pass it with `--ref`. Maintainers regenerate the
+shipped table with `scripts/gen_reference_ncounts.py`.
 
 Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
 T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.
@@ -93,9 +115,15 @@ redistribution mirror is introduced.
 ## Download safety
 
 Reference HTTP downloads resume only explicit `.partial` files bound to
-their source URL by a `.partial.source` hash sidecar. Segmented downloads
-record the URL hash and per-segment progress in `.partial.segments`.
-Legacy or invalid state and changed URLs cause the download to restart.
+their source URL and to the version of the file the server named (a strong
+ETag, else a Last-Modified date at least a second older than the reply) by
+a `.partial.source` sidecar. Segmented downloads record the URL hash, that
+version and per-segment progress in `.partial.segments`. A resume asks for the rest of that version only
+(`If-Range`): a file replaced at the same URL, even by one of the same size,
+downloads again from the start instead of mixing old and new bytes. Without a
+version from the server, a partial restarts unless a pinned SHA-256 will check
+the result, and a large file is fetched over one connection. Legacy or invalid
+state and changed URLs cause the download to restart.
 Refreshing a complete file starts from zero and preserves it until replacement
 finishes and passes available checksums, then publishes atomically.
 Diagnostic URLs omit userinfo and queries, while requests keep the original

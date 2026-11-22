@@ -307,9 +307,10 @@ def test_1213_cancelled_gnomad_disconnects_stalled_download(
     entry = mirror_catalog(source, data, allowed=stall.endswith("mirror"))
     path = "mirror-0" if stall.endswith("mirror") else "upstream"
     if stall == "segmented-mirror":
-        from wgsextract_cli.core.ref_library.segmented import ranged_size
+        from wgsextract_cli.core.ref_library.segmented import ranged_revision
 
-        monkeypatch.setattr(segmented, "ranged_size", ranged_size)
+        source.etags = True
+        monkeypatch.setattr(segmented, "ranged_revision", ranged_revision)
         monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", len(data))
     started, release, disconnected = (
         threading.Event(),

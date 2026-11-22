@@ -2,6 +2,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Literal
 
+from wgsextract_cli.core.errors import WGSExtractError
 from wgsextract_cli.core.runtime import (
     ThreadTuningProfile,
     default_thread_tuning_profile,
@@ -54,6 +55,22 @@ def parse_thread_count(value: object) -> int | None:
     return count
 
 
+def get_resource_threads(
+    threads_arg: int | str | None = None,
+    thread_profile_factory: Callable[
+        [], ThreadTuningProfile
+    ] = default_thread_tuning_profile,
+    *,
+    stage: Literal["sort", "markdup", "compression", "calling"] = "sort",
+) -> str:
+    """Resolve and record the thread plan without budgeting sort buffers."""
+    if threads_arg is not None and str(threads_arg).strip().lower() != "auto":
+        threads_arg = max(1, int(threads_arg))
+    plan = stage_thread_plan(threads_arg, thread_profile_factory=thread_profile_factory)
+    plan.record()
+    return str(getattr(plan, stage))
+
+
 def get_resource_defaults(
     threads_arg: int | str | None = None,
     memory_arg: str | None = None,
@@ -65,23 +82,27 @@ def get_resource_defaults(
 ) -> tuple[str, str]:
     """
     Calculate default CPU threads and memory if not provided.
-    Memory defaults to 25% of RAM (at least 2 GB) split across threads.
+    Memory defaults to at most 25% of effective RAM split across threads.
     """
-    if threads_arg is not None and str(threads_arg).strip().lower() != "auto":
-        threads_arg = max(1, int(threads_arg))
-    plan = stage_thread_plan(threads_arg, thread_profile_factory=thread_profile_factory)
-    plan.record()
-    threads_count = getattr(plan, stage)
-    threads = str(threads_count)
+    threads = get_resource_threads(threads_arg, thread_profile_factory, stage=stage)
 
     if memory_arg is not None and str(memory_arg).strip().lower() != "auto":
         memory = str(memory_arg)
     else:
-        import psutil
+        from wgsextract_cli.core.alignment.memory import total_memory
 
-        total_mem_gb = psutil.virtual_memory().total / (1024**3)
-        safe_mem = max(2, int(total_mem_gb * 0.25))
-        mem_per_thread = max(1, safe_mem // threads_count)
-        memory = f"{mem_per_thread}G"
+        per_thread_bytes = total_memory() // 4 // int(threads)
+        if per_thread_bytes < 1:
+            raise WGSExtractError(
+                "Not enough RAM for the automatic memory budget; lower --threads."
+            )
+        if per_thread_bytes >= 1024**3:
+            memory = f"{per_thread_bytes // 1024**3}G"
+        elif per_thread_bytes >= 1024**2:
+            memory = f"{per_thread_bytes // 1024**2}M"
+        else:
+            # Collation and JVM callers use the aggregate, without samtools' floor.
+            mib = f"{per_thread_bytes / 1024**2:.20f}".rstrip("0")
+            memory = f"{mib}M"
 
     return threads, memory

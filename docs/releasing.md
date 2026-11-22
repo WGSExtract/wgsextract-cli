@@ -67,7 +67,9 @@ it.
    *Run workflow* on the Release workflow (`gh workflow run release.yml`): it
    picks up where it stopped, publishing from the existing tag if one was
    already created. A release only becomes the latest if no newer version
-   already is. If only the app's build failed, rerun the failed jobs, or add
+   is already published; if GitHub can't list the releases after a few
+   retries, the run fails without publishing rather than guess, so rerun it.
+   If only the app's build failed, rerun the failed jobs, or add
    the app to the existing release with
    `gh workflow run gui-distribution.yml -f tag=vX.Y.Z`.
 

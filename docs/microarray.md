@@ -49,10 +49,12 @@ most once.
 All chips' markers are genotyped together against one genome-wide target list.
 `ref bootstrap` supplies no such list; first use builds
 `microarray/All_SNPs_<build>_ref.tab.gz` from templates and later runs reuse it.
-The hg38 list uses UCSC's hg19ToHg38 chain in the reference library. Install
-missing public assets explicitly; [network permissions](privacy.md) still
-apply. Reads below MAPQ 10 are ignored: ambiguous mapping becomes a no-call,
-not a guessed homozygote.
+The hg38 list uses UCSC's `hg19ToHg38.over.chain.gz` to place the targets.
+GRCh38 input also needs `hg38ToHg19.over.chain.gz` to export hg19 coordinates,
+even if you supply an existing target list. Use `microarray --download` to
+fetch missing chains into the reference library. The input stays local; see
+[network permissions](privacy.md). Reads below MAPQ 10 are ignored: ambiguous
+mapping becomes a no-call, not a guessed homozygote.
 
 hg38 exports cache exact hg38-to-hg19 projections in the configured library's
 `microarray/hg19-coordinates/`. Keys include chain content, ordered source
@@ -68,7 +70,9 @@ Defaults require sample **DP ≥10**, **GQ ≥20**, and FILTER `PASS` or `.`.
 Missing required fields produce no-calls. For internally called single-sample
 BAM/CRAM reference calls only, bcftools' reference-call QUAL substitutes when
 it omits GQ. Supplied VCFs never use that fallback. Multi-sample VCFs require
-`--sample`.
+`--sample`. If sample selection encounters undeclared VCF contigs, it reads
+the contig names from the records and repairs the header in the working stream.
+The original VCF is not rewritten.
 
 Absent VCF markers are **no-calls**, not reference genotypes: variant-only
 VCFs do not establish coverage. Explicit `0/0` records and gVCF reference-block
@@ -81,6 +85,11 @@ Unsafe legacy absence-as-reference behaviour requires
 `--assume-hom-ref --min-dp 0 --min-gq 0`; `--no-exclude-filtered` additionally
 accepts failing FILTER records. These can invent calls at unassessed sites or
 retain weak evidence: use only with independently established callability.
+Indel-only or MNP records do not support a SNP call (`unsupported_allele`),
+even when the genotype is `0/0`. They do not make a chromosome count as
+called. A mixed SNP/indel record can still support a SNP call if the genotype
+uses only single-base alleles; a partially missing SNP genotype is a no-call
+(`missing_gt`).
 Imputed VCFs without DP/GQ also require explicit threshold overrides; their
 imputation-confidence mask still applies.
 

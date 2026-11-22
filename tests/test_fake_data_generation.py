@@ -76,7 +76,7 @@ def _mismatches(ref: str, record: list[str]) -> list[int]:
 
 
 def _generate(outdir: Path, monkeypatch: pytest.MonkeyPatch, **kwargs) -> Path:
-    monkeypatch.setattr(fake_data, "get_resource_defaults", lambda *_: ("2", "1G"))
+    monkeypatch.setattr(fake_data, "get_resource_threads", lambda: "2")
     outdir.mkdir(parents=True, exist_ok=True)
     fake_data.generate_fake_genomics_data(str(outdir), **kwargs)
     return outdir

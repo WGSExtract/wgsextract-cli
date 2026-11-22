@@ -21,7 +21,7 @@ from wgsextract_cli.core.results import current_result, manifest_path_for, warn
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
 )
 
 # ssh-keygen -Y signature namespace, so a signature made for another purpose
@@ -126,7 +126,7 @@ def create_manifest(params: SignCreateParams) -> None:
             "File names with newlines or backslashes can't be listed."
         )
 
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     logging.info(f"Hashing {len(files)} file(s)...")
     digests = _hash_files(files, threads)
 
@@ -172,8 +172,14 @@ def _verify_signature(
     keygen = _ssh_keygen()
     with tempfile.TemporaryDirectory() as tmp:
         if params.public_key:
-            with open(params.public_key) as f:
-                key_type, key_data = f.read().split()[:2]
+            with open(params.public_key, "rb") as f:
+                fields = f.read().split(maxsplit=2)
+            try:
+                key_type, key_data = (field.decode("ascii") for field in fields[:2])
+            except ValueError as exc:
+                raise UsageError(
+                    "--public-key must contain an ASCII SSH key type and key data."
+                ) from exc
             allowed = Path(tmp) / "allowed_signers"
             with allowed.open("w", newline="\n") as f:
                 f.write(f'{_SIGNER} namespaces="{NAMESPACE}" {key_type} {key_data}\n')
@@ -262,7 +268,7 @@ def verify_manifest(params: SignVerifyParams) -> None:
         name for (_, name), p in zip(entries, paths, strict=True) if not p.is_file()
     ]
     present = [(e, p) for e, p in zip(entries, paths, strict=True) if p.is_file()]
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     logging.info(f"Checking {len(entries)} file(s)...")
     digests = _hash_files([p for _, p in present], threads)
     changed = [
