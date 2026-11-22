@@ -27,7 +27,7 @@ from tests.htslib_helpers import (
 from wgsextract_cli.commands.vcf import callers
 from wgsextract_cli.core import paths
 from wgsextract_cli.core.dependencies import clear_tool_caches
-from wgsextract_cli.core.utils import run_command
+from wgsextract_cli.core.utils import UsageError, run_command
 from wgsextract_cli.main import main
 
 SNP = 1000  # 1-based position of the sample's homozygous SNP
@@ -122,6 +122,10 @@ def test_1247_freebayes_region_bed_keeps_grouped_coordinates_and_colons(
     assert _call(
         "freebayes", genome, genome.cram, tmp_path, "-r", "chr1:1,000-1,050"
     ) == [genome.call]
+    with pytest.raises(UsageError, match="Ambiguous --region"):
+        callers.write_region_bed(
+            "chr1:100-200", {"chr1": 5000, "chr1:100-200": 101}, str(bed)
+        )
 
 
 # --- GATK HaplotypeCaller --------------------------------------------------------

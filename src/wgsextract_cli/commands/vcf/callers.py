@@ -156,6 +156,12 @@ def write_region_bed(region: str, lengths: dict[str, int], bed: str) -> None:
             raise UsageError(f"Ambiguous --region {part!r}; use a BED file.")
         selection = part
         contig, colon, span = part.rpartition(":")
+        if (
+            part in lengths
+            and contig in lengths
+            and re.fullmatch(r"[0-9]+(?:-[0-9]*)?|-[0-9]+", span)
+        ):
+            raise UsageError(f"Ambiguous --region {part!r}; use a BED file.")
         if part not in lengths and colon:
             start, dash, end = span.partition("-")
             if not end:

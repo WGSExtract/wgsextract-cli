@@ -3,20 +3,30 @@ import os
 import shutil
 import unittest
 
+import pytest
+
 from tests.smoke_utils import REPO_ROOT, ensure_fake_data, run_cli
 
 
-def test_1247_one_column_batch_reports_missing_samples(tmp_path):
+@pytest.mark.parametrize(
+    "contents",
+    [
+        "name\néchantillon\nsecond\n",
+        "name,notes,input\néchantillon," + "x" * 1024 + ",\nsecond,,\n",
+    ],
+    ids=["single-column", "sample-ends-mid-row"],
+)
+def test_1247_batch_recovers_when_dialect_sniffing_fails(tmp_path, contents):
     batch = tmp_path / "batch.tsv"
-    batch.write_text("name\néchantillon\nsecond\n", encoding="utf-8-sig")
+    batch.write_text(contents, encoding="utf-8-sig")
 
-    rc, stdout, stderr = run_cli(
+    rc, _, stderr = run_cli(
         ["analyze", "comprehensive", "--batch", str(batch), "--outdir", str(tmp_path)]
     )
 
     assert rc == 1
-    assert "BATCH PROCESSING: échantillon" in stdout
-    assert "BATCH PROCESSING: second" in stdout
+    assert (tmp_path / "échantillon").is_dir()
+    assert (tmp_path / "second").is_dir()
     assert "Batch analysis failed" in stderr
 
 

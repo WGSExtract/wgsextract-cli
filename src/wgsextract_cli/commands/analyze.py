@@ -263,12 +263,19 @@ def run_batch_comprehensive(job: AnalyzeJob, batch_file: str) -> None:
         raise WGSExtractError(f"Batch file not found: {batch_file}")
 
     with open(batch_file, encoding="utf-8-sig", newline="") as f:
-        # Only CSV and TSV delimiters are meaningful; a single column has neither.
+        preview = f.read(1024)
+        sniffer = csv.Sniffer()
         dialect: str | type[csv.Dialect]
         try:
-            dialect = csv.Sniffer().sniff(f.read(1024), delimiters=",\t")
+            dialect = sniffer.sniff(preview, delimiters=",\t")
         except csv.Error:
-            dialect = "excel-tab"
+            # The sample may end mid-row. Try the complete header before
+            # assuming there is no delimiter.
+            f.seek(0)
+            try:
+                dialect = sniffer.sniff(f.readline(), delimiters=",\t")
+            except csv.Error:
+                dialect = "excel-tab"
         f.seek(0)
         reader = csv.DictReader(f, dialect=dialect)
 

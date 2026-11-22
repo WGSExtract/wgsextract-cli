@@ -54,6 +54,9 @@ def test_signed_manifest_verifies_and_detects_tampering(tmp_path, outputs):
         )
 
     public_key = Path(f"{key}.pub")
+    # SSH comments need not have the same encoding as the key fields.
+    key_fields = public_key.read_bytes().split()[:2]
+    public_key.write_bytes(b" ".join(key_fields) + b" Pr\xe9nom\n")
     _verify(manifest, public_key=public_key)
 
     (outputs / "sub" / "b name.vcf").write_text("tampered\n")
