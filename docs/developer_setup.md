@@ -490,7 +490,9 @@ repository, checks the local Unix peer UID, and returns matching numeric PIDs
 or an unverifiable result, never process paths or arguments. The service
 cannot run Git, remove a checkout, or run caller-supplied commands. If a
 process's mount namespace or view of the root cannot be safely compared, it
-does not certify inactivity.
+does not certify inactivity. A private root or masked `/home` alone does not
+prove inactivity: the inspector still checks retained descriptors, mappings,
+working directories and invocation paths, and rejects visible mount aliases.
 
 From the separately reviewed revision, as the ordinary repository owner,
 stage the exact committed blobs and prepare local settings under `out/`.

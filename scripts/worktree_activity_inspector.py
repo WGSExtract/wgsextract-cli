@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
 import os
@@ -141,6 +142,8 @@ class Mount(NamedTuple):
     device: str
     backing: Path
     point: Path
+    number: int = 0
+    parent: int = 0
 
 
 def mount_path(value: str) -> Path:
@@ -150,7 +153,13 @@ def mount_path(value: str) -> Path:
 def mounts(fd: int) -> set[Mount]:
     with proc_text(fd, "mountinfo") as table:
         return {
-            Mount(fields[2], mount_path(fields[3]), mount_path(fields[4]))
+            Mount(
+                fields[2],
+                mount_path(fields[3]),
+                mount_path(fields[4]),
+                int(fields[0]),
+                int(fields[1]),
+            )
             for line in table
             if (fields := line.split(maxsplit=5))
         }
@@ -181,36 +190,121 @@ def check_mounts(records: set[Mount], candidates: dict[Path, tuple[int, int]]) -
 
 
 @contextmanager
-def process_root(fd: int) -> Iterator[int]:
-    if os.readlink("root", dir_fd=fd) != "/":
+def process_root(fd: int) -> Iterator[tuple[int, Path]]:
+    label = Path(os.readlink("root", dir_fd=fd))
+    if not label.is_absolute():
         raise Unverifiable
     root = os.open("root", os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC, dir_fd=fd)
     try:
-        yield root
+        yield root, label
     finally:
         os.close(root)
+
+
+def mount_number(fd: int) -> int:
+    with (PROC / "self" / "fdinfo" / str(fd)).open() as data:
+        for line in data:
+            if line.startswith("mnt_id:"):
+                return int(line.partition(":")[2])
+    raise Unverifiable
+
+
+def visible_mount(root: int, path: Path) -> tuple[int, tuple[int, int] | None]:
+    """Identify the mount at the path, or at its last accessible ancestor."""
+    with ExitStack() as stack:
+        current = root
+        for part in path.parts[1:]:
+            try:
+                fd = os.open(
+                    part, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=current
+                )
+            except (FileNotFoundError, NotADirectoryError):
+                return mount_number(current), None
+            stack.callback(os.close, fd)
+            if stat.S_ISLNK(os.fstat(fd).st_mode):
+                raise Unverifiable
+            current = fd
+        return mount_number(current), identity(current)
+
+
+def target_mount(records: set[Mount], path: Path) -> Mount:
+    covering = [record for record in records if path.is_relative_to(record.point)]
+    if not covering:
+        raise Unverifiable
+    deepest = max(len(row.point.parts) for row in covering)
+    choices = [row for row in covering if len(row.point.parts) == deepest]
+    if len(choices) != 1:
+        raise Unverifiable
+    return choices[0]
 
 
 def check_view(
     fd: int,
     root: int,
+    base: Path,
     host_mounts: set[Mount],
     candidates: dict[Path, tuple[int, int]],
-) -> set[Mount]:
+) -> tuple[set[Mount], set[int]]:
     records = mounts(fd)
-    if records != host_mounts:
-        check_mounts(records, candidates)
-    for path, expected in candidates.items():
-        with ExitStack() as stack:
-            current = root
-            for part in path.parts[1:]:
-                current = stack.enter_context(directory(current, part))
-            if identity(current) != expected:
+    devices: set[int] = set()
+    if base != Path("/"):
+        with directory(-1, "/") as observer:
+            root_identity = identity(root)
+            if visible_mount(observer, base)[1] != root_identity and any(
+                expected[0] == root_identity[0] for expected in candidates.values()
+            ):
                 raise Unverifiable
-    return records
+    for path, expected in candidates.items():
+        if base == Path("/") and records == host_mounts:
+            with ExitStack() as stack:
+                current = root
+                for part in path.parts[1:]:
+                    current = stack.enter_context(directory(current, part))
+                if identity(current) != expected:
+                    raise Unverifiable
+            continue
+        host = target_mount(host_mounts, path)
+        backing = host.backing / path.relative_to(host.point)
+        visible: Mount | None = None
+        visible_identity = None
+        if path.is_relative_to(base):
+            own_path = Path("/") / path.relative_to(base)
+            canonical_id, visible_identity = visible_mount(root, own_path)
+            visible = next((row for row in records if row.number == canonical_id), None)
+            if visible is None:
+                raise Unverifiable
+        for row in records:
+            if row.device != host.device:
+                continue
+            if backing.is_relative_to(row.backing):
+                projected = row.point / backing.relative_to(row.backing)
+                canonical = path
+            elif row.backing.is_relative_to(backing):
+                projected = row.point
+                canonical = path / row.backing.relative_to(backing)
+            else:
+                continue
+            if (
+                base / projected.relative_to("/") != canonical
+                and visible_mount(root, projected)[0] == row.number
+            ):
+                raise Unverifiable
+            if base / projected.relative_to("/") != canonical:
+                # A covered alias may still have surviving users. Its
+                # underlying mount ID is checked against live references.
+                devices.add(expected[0])
+        if visible_identity != expected:
+            if (
+                visible is not None
+                and visible.device == host.device
+                and visible.backing / own_path.relative_to(visible.point) == backing
+            ):
+                raise Unverifiable
+            devices.add(expected[0])
+    return records, devices
 
 
-def resolve_argument(root: int, argument: Path) -> Path | None:
+def resolve_argument(root: int, argument: Path, mounts: set[Mount]) -> Path | None:
     """Follow argv path metadata within the target process's pinned root."""
     remaining = deque(argument.parts[1:])
     links = 0
@@ -222,11 +316,24 @@ def resolve_argument(root: int, argument: Path) -> Path | None:
                 if len(resolved) > 1:
                     resolved.pop()
                 continue
-            fd = os.open(
-                part, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=resolved[-1][1]
-            )
-            stack.callback(os.close, fd)
-            mode = os.fstat(fd).st_mode
+            parent = resolved[-1][1]
+            try:
+                fd = os.open(
+                    part, os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent
+                )
+                stack.callback(os.close, fd)
+                mode = os.fstat(fd).st_mode
+            except PermissionError:
+                path = Path("/", *(name for name, _ in resolved[1:]), part)
+                # Access-controlled filesystems can refuse even O_PATH on
+                # their root. That exact mountpoint cannot be a symlink;
+                # any inaccessible name below it remains unverifiable.
+                if not remaining and any(
+                    row.point == path and row.parent == mount_number(parent)
+                    for row in mounts
+                ):
+                    return path
+                raise
             if stat.S_ISLNK(mode):
                 links += 1
                 if links > 40:
@@ -244,33 +351,81 @@ def resolve_argument(root: int, argument: Path) -> Path | None:
     return Path("/", *(name for name, _ in resolved[1:]))
 
 
-def fs_targets(fd: int) -> Iterator[Path]:
-    yield Path(os.readlink("cwd", dir_fd=fd).removesuffix(" (deleted)"))
+def observed_path(
+    owner: int,
+    name: str,
+    root: int,
+    base: Path,
+    devices: set[int],
+    candidates: dict[Path, tuple[int, int]],
+) -> Path | None:
+    text = os.readlink(name, dir_fd=owner)
+    if not text.startswith("/"):
+        return None
+    path = Path(text.removesuffix(" (deleted)"))
+    if devices and not any(path.is_relative_to(candidate) for candidate in candidates):
+        ref = os.open(name, os.O_PATH | os.O_CLOEXEC, dir_fd=owner)
+        try:
+            observed = identity(ref)
+            if observed[0] in devices:
+                if path.is_relative_to(base):
+                    relative = Path("/") / path.relative_to(base)
+                    if visible_mount(root, relative) != (mount_number(ref), observed):
+                        raise Unverifiable
+                else:
+                    with directory(-1, "/") as observer:
+                        if visible_mount(observer, path)[1] != observed:
+                            raise Unverifiable
+        finally:
+            os.close(ref)
+    return path
+
+
+def fs_targets(
+    fd: int,
+    root: int,
+    base: Path,
+    devices: set[int],
+    candidates: dict[Path, tuple[int, int]],
+) -> Iterator[Path]:
+    cwd = observed_path(fd, "cwd", root, base, devices, candidates)
+    if cwd is None:
+        raise Unverifiable
+    yield cwd
     with directory(fd, "fd") as descriptors:
         for number in os.listdir(descriptors):
             try:
-                target = os.readlink(number, dir_fd=descriptors)
+                path = observed_path(
+                    descriptors, number, root, base, devices, candidates
+                )
             except FileNotFoundError:
                 # The descriptor closed between listing and reading it.
                 continue
-            if target.startswith("/"):
-                yield Path(target.removesuffix(" (deleted)"))
+            if path is not None:
+                yield path
 
 
 def process_targets(
     fd: int,
     root: int,
+    base: Path,
     pid: str,
     host_mounts: set[Mount],
     candidates: dict[Path, tuple[int, int]],
+    devices: set[int],
+    records: set[Mount],
 ) -> Iterator[Path]:
-    observed = fs_targets(fd)
+    yield base
+    observed = fs_targets(fd, root, base, devices, candidates)
     cwd = next(observed)
     if not cwd.is_absolute():
         raise Unverifiable
     yield cwd
     yield from observed
-    yield Path(os.readlink("exe", dir_fd=fd).removesuffix(" (deleted)"))
+    executable = observed_path(fd, "exe", root, base, devices, candidates)
+    if executable is None:
+        raise Unverifiable
+    yield executable
     # A Linux thread can unshare its filesystem context or descriptor table.
     namespace = os.readlink("ns/mnt", dir_fd=fd)
     root_id = identity(root)
@@ -280,13 +435,24 @@ def process_targets(
                 continue
             try:
                 with directory(tasks, tid) as thread:
-                    with process_root(thread) as thread_root:
+                    with process_root(thread) as (thread_root, thread_base):
+                        yield thread_base
+                        thread_devices = devices
                         if (
                             os.readlink("ns/mnt", dir_fd=thread) != namespace
                             or identity(thread_root) != root_id
+                            or thread_base != base
                         ):
-                            check_view(thread, thread_root, host_mounts, candidates)
-                        yield from fs_targets(thread)
+                            _, thread_devices = check_view(
+                                thread,
+                                thread_root,
+                                thread_base,
+                                host_mounts,
+                                candidates,
+                            )
+                        yield from fs_targets(
+                            thread, thread_root, thread_base, thread_devices, candidates
+                        )
             except (FileNotFoundError, ProcessLookupError):
                 try:
                     with directory(tasks, tid) as thread:
@@ -298,27 +464,59 @@ def process_targets(
         for line in data:
             parts = line.rstrip("\n").split(maxsplit=5)
             if len(parts) == 6 and parts[5].startswith("/"):
-                path = parts[5].replace(r"\012", "\n").removesuffix(" (deleted)")
-                yield Path(path)
+                path = Path(parts[5].replace(r"\012", "\n").removesuffix(" (deleted)"))
+                if devices and not any(
+                    path.is_relative_to(candidate) for candidate in candidates
+                ):
+                    major, minor = parts[3].split(":")
+                    mapped = (os.makedev(int(major, 16), int(minor, 16)), int(parts[4]))
+                    if mapped[0] in devices:
+                        if path.is_relative_to(base):
+                            relative = Path("/") / path.relative_to(base)
+                            existing = visible_mount(root, relative)[1]
+                        else:
+                            with directory(-1, "/") as observer:
+                                existing = visible_mount(observer, path)[1]
+                        if existing != mapped:
+                            raise Unverifiable
+                yield path
     with os.fdopen(os.open("cmdline", REG, dir_fd=fd), "rb") as data:
         arguments = data.read(2**21 + 1)
     if len(arguments) > 2**21 or not arguments.endswith(b"\0"):
         raise Unverifiable
+    # A chroot on a different device with no mounted children has no
+    # pathname route to a candidate, including via procfs magic links.
+    separate_root = (
+        base != Path("/")
+        and not records
+        and all(identity(root)[0] != expected[0] for expected in candidates.values())
+    )
     for raw in arguments.split(b"\0"):
         if not raw or raw.startswith(b"-"):
             continue
         arg = Path(os.fsdecode(raw))
+        if base != Path("/"):
+            # An interpreter can keep argv after entering a private root.
+            yield Path(os.path.normpath(arg if arg.is_absolute() else cwd / arg))
         if not arg.is_absolute():
-            arg = cwd / arg
-        yield Path(os.path.normpath(arg))
-        if len(raw) <= 4096:
+            if not cwd.is_relative_to(base):
+                raise Unverifiable
+            arg = Path("/") / cwd.relative_to(base) / arg
+        else:
+            arg = Path("/") / str(arg).lstrip("/")
+        yield base / Path(os.path.normpath(arg)).relative_to("/")
+        if len(raw) <= 4096 and not separate_root:
             # An argument need not name a file. Never open its contents.
             try:
-                resolved = resolve_argument(root, arg)
+                resolved = resolve_argument(root, arg, records)
             except (FileNotFoundError, NotADirectoryError):
                 continue
+            except OSError as error:
+                if error.errno != errno.ENAMETOOLONG:
+                    raise
+                continue
             if resolved is not None:
-                yield resolved
+                yield base / resolved.relative_to("/")
 
 
 def host_mount_table(proc: int) -> set[Mount]:
@@ -369,10 +567,19 @@ def inspect(
                     start = start_time(fd)
                     namespace = os.readlink("ns/mnt", dir_fd=fd)
                     seen: set[str] = set()
-                    with process_root(fd) as view:
-                        records = check_view(fd, view, host_mounts, candidates)
+                    with process_root(fd) as (view, base):
+                        records, devices = check_view(
+                            fd, view, base, host_mounts, candidates
+                        )
                         for path in process_targets(
-                            fd, view, name, host_mounts, candidates
+                            fd,
+                            view,
+                            base,
+                            name,
+                            host_mounts,
+                            candidates,
+                            devices,
+                            records,
                         ):
                             seen.update(
                                 p.name for p in candidates if path.is_relative_to(p)
@@ -381,8 +588,10 @@ def inspect(
                         if state in TERMINAL:
                             require_group_exited(fd, name)
                             continue
-                        with process_root(fd) as latest_view:
-                            if identity(latest_view) != identity(view):
+                        with process_root(fd) as (latest_view, latest_base):
+                            if latest_base != base or identity(latest_view) != identity(
+                                view
+                            ):
                                 raise Unverifiable
                         if (
                             start_time(fd) != start
