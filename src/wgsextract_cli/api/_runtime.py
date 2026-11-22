@@ -7,7 +7,7 @@ import logging
 import os
 import threading
 from collections.abc import Callable, Collection, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol, TypeVar
 
@@ -390,7 +390,7 @@ def _run(
         default_outdir = getattr(params, "outdir", None) is None and not settings.get(
             "output_directory"
         )
-        params = with_config_defaults(params)
+        params = _one_vcf_input(with_config_defaults(params))
         result.provenance.params = redact_params(params.to_dict())
         unregister = (
             cancel.on_cancel(lambda: proc_registry.cancel(scope)) if cancel else None
@@ -432,10 +432,36 @@ def _run(
     return result, error, created if default_outdir else None, card_path
 
 
+def _one_vcf_input(params: P) -> P:
+    """Of ``input`` and ``vcf_input``, keep only the VCF an operation on one
+    VCF reads (``vcf_input`` wins; ``proband`` overrides both), as
+    ``resolve_vcf_input`` leaves the CLI's arguments, so the API records the
+    same inputs and params."""
+    if not params.VCF_INPUT_OVERRIDES_INPUT:
+        return params
+    unread: dict[str, None] = {"input": None}
+    if getattr(params, "proband", None) is not None:
+        unread["vcf_input"] = None
+    elif getattr(params, "vcf_input", None) is None:
+        return params
+    narrowed = replace(params, **unread)
+    # replace() drops which fields config.toml filled; keep them.
+    object.__setattr__(
+        narrowed,
+        "_config_default_fields",
+        params._config_default_fields - unread.keys(),
+    )
+    return narrowed
+
+
 def _prepare(params: Params, result: CommandResult) -> Path | None:
-    """What dispatch does before a command: record and check the input, make
+    """What dispatch does before a command: record and check the inputs, make
     the output folder."""
-    from wgsextract_cli.cli.dispatch import checks_alignment_input, reports_status
+    from wgsextract_cli.cli.dispatch import (
+        INPUT_ARGS,
+        checks_alignment_input,
+        reports_status,
+    )
 
     if reports_status(params):
         return None
@@ -444,10 +470,12 @@ def _prepare(params: Params, result: CommandResult) -> Path | None:
     if isinstance(input_path, str) and is_url(input_path):
         check_public(input_path)  # Before a secret in it is recorded.
         result.add_input(input_path, "input")
+    for name, role in INPUT_ARGS.items():
+        path = getattr(params, name, None)
+        if isinstance(path, Path) and path.expanduser().exists():
+            result.add_input(path.expanduser(), role)
     if isinstance(input_path, Path):
         input_path = input_path.expanduser()
-        if input_path.exists():
-            result.add_input(input_path, "input")
         if input_path.suffix.lower() in {".bam", ".cram"} and checks_alignment_input(
             params.COMMAND
         ):

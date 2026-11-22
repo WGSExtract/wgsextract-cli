@@ -7,6 +7,7 @@ import os
 import queue
 import socket
 import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler
@@ -171,6 +172,9 @@ def test_1173_review_loopback_rejects_public_advertisement(tmp_path: Path) -> No
         manager.shutdown()
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows always uses handle-relative opens"
+)
 def test_1173_review_unsafe_platform_fails_closed_before_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -192,18 +196,22 @@ def test_1173_review_directory_and_fdopen_failures_do_not_leak_descriptors(
 ) -> None:
     file = tmp_path / "regular"
     file.write_bytes(b"reads")
+    # A subdirectory, not the root: the walk opens its ancestors before refusing.
+    directory = tmp_path / "directory"
+    directory.mkdir()
     process = psutil.Process()
+    open_handles = process.num_handles if sys.platform == "win32" else process.num_fds
     with remote_server(tmp_path) as server:
         request(server, "/v1/health")
-        baseline = process.num_fds()
+        baseline = open_handles()
         for _ in range(8):
             assert (
                 request(
-                    server, "/v1/viewer-file?" + urlencode({"path": str(tmp_path)})
+                    server, "/v1/viewer-file?" + urlencode({"path": str(directory)})
                 )[0]
                 == 403
             )
-        assert process.num_fds() <= baseline + 2
+        assert open_handles() <= baseline + 2
 
         def fdopen_failure(*args: object, **kwargs: object) -> None:
             raise OSError(errno.EIO, "cannot wrap descriptor")
@@ -214,7 +222,7 @@ def test_1173_review_directory_and_fdopen_failures_do_not_leak_descriptors(
                 request(server, "/v1/viewer-file?" + urlencode({"path": str(file)}))[0]
                 == 403
             )
-        assert process.num_fds() <= baseline + 2
+        assert open_handles() <= baseline + 2
 
 
 @requires_safe_reads
@@ -244,6 +252,12 @@ def test_1173_review_read_error_aborts_without_appending_http_bytes(
 
         def close(self) -> None:
             self.file.close()
+
+        def __enter__(self) -> "BrokenRead":
+            return self
+
+        def __exit__(self, *exc: object) -> None:
+            self.close()
 
     monkeypatch.setattr(os, "fdopen", BrokenRead)
     with remote_server(tmp_path) as server:

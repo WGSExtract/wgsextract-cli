@@ -223,7 +223,7 @@ def test_info_format_is_read_before_or_after_the_subcommand(argv, expected):
 
 
 def test_info_chromosome_rows_parse_the_breadth():
-    from wgsextract_cli.commands.info.runner import _chromosome_rows
+    from wgsextract_cli.commands.info._tables import _chromosome_rows
 
     table = (
         "Seq Name,Model Len,Model N Len,# Segs Map,Map Gbases,Map ARD,"
@@ -240,7 +240,7 @@ def test_info_chromosome_rows_parse_the_breadth():
 
 
 def test_info_qc_row_types_the_manifest_metrics(tmp_path):
-    from wgsextract_cli.commands.info.runner import QC_TABLE, _qc_row
+    from wgsextract_cli.commands.info._tables import QC_TABLE, _qc_row
 
     row = _qc_row({"sex": "Male", "is_paired": True, "avg_read_len": 150, "x": 1})
     named = dict(zip([c.name for c in QC_TABLE], row, strict=True))
