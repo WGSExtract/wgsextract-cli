@@ -43,7 +43,7 @@ from .operations import (
 )
 from .transport import Job as JobView
 from .transport import JobError, JobEvent, JobProgress, JobSummary, Kind, Status
-from .worker_process import detached, discard_worker, kill_tree, kill_worker
+from .worker_process import detached, discard_worker, kill_tree
 
 FINISHED = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
 RECORD_SCHEMA = "wgsextract.job/1"
@@ -182,8 +182,6 @@ class JobManager:
         # Folders each queued or running job writes in, for _pump.
         self._writes: dict[str, frozenset[str]] = {}
         self._cancelling: set[str] = set()
-        # Jobs whose request could not be sent, with why, for their followers.
-        self._start_failures: dict[str, str] = {}
         # Finished jobs whose record or summary is not saved yet (a full
         # disk), in order: kept in memory and retried, never evicted.
         self._unsaved: dict[str, None] = {}
@@ -565,17 +563,21 @@ class JobManager:
             log.close()
             self._finish(job, "failed", error=f"Could not start a worker: {e}")
             return False
-        # The worker waits for its request, so it can be stopped safely until
-        # its record is saved and its follower (which reaps it and frees its
-        # slot) runs.
+        # The worker runs nothing until it has its request, and its follower
+        # (which reaps it and frees its slot) waits until the request is
+        # sent: until then, any failure stops and reaps the worker here.
+        sent = threading.Event()
         try:
             job.status = "running"
             job.started = _now()
             self._save(job)
             self._workers[job.id] = worker
             threading.Thread(
-                target=self._follow, args=(job, worker, log), daemon=True
+                target=self._follow, args=(job, worker, log, sent), daemon=True
             ).start()
+            assert worker.stdin is not None
+            worker.stdin.write(line)
+            worker.stdin.flush()
         except Exception as e:
             self._workers.pop(job.id, None)
             discard_worker(worker, CANCEL_GRACE_SECONDS)
@@ -584,22 +586,23 @@ class JobManager:
             logging.warning(f"Job {job.id} could not start: {e}")
             self._finish(job, "failed", error=f"Could not start the job: {e}")
             return False
-        try:
-            assert worker.stdin is not None
-            worker.stdin.write(line)
-            worker.stdin.flush()
-        except (OSError, ValueError) as e:
-            # Without its whole request the worker runs nothing; its follower
-            # reaps it and fails the job.
-            logging.warning(f"Job {job.id} could not start: {e}")
-            self._start_failures[job.id] = f"Could not start the job: {e}"
-            kill_worker(worker.pid)
-            return True
+        finally:
+            sent.set()
         self._event(job, "status", status="running")
         return True
 
-    def _follow(self, job: Job, worker: subprocess.Popen[str], log: Any) -> None:
+    def _follow(
+        self,
+        job: Job,
+        worker: subprocess.Popen[str],
+        log: Any,
+        sent: threading.Event,
+    ) -> None:
         """Read a worker's events until it exits (runs without the lock)."""
+        sent.wait()
+        with self._lock:
+            if self._workers.get(job.id) is not worker:
+                return  # It could not start: _start stopped and reaped it.
         assert worker.stdout is not None
         result: dict[str, Any] | None = None
         for line in worker.stdout:
@@ -630,7 +633,6 @@ class JobManager:
         log.close()
         with self._lock:
             self._workers.pop(job.id, None)
-            start_failure = self._start_failures.pop(job.id, None)
             if worker.stdin:
                 with contextlib.suppress(OSError):
                     worker.stdin.close()
@@ -644,9 +646,6 @@ class JobManager:
                 job.result = result
                 job.exit_code = result.get("exit_code", code)
                 self._finish(job, status, error_record=result.get("error"))
-            elif start_failure is not None and not self._stopping:
-                job.exit_code = code
-                self._finish(job, "failed", error=start_failure)
             else:
                 job.exit_code = code
                 cancelled = job.id in self._cancelling
@@ -718,7 +717,10 @@ class JobManager:
                 saved = False
                 logging.warning(f"Could not save job {job_id}'s record: {e}")
             try:
-                with contextlib.closing(sqlite3.connect(self._history)) as db, db:
+                with (
+                    contextlib.closing(sqlite3.connect(self._history, timeout=0)) as db,
+                    db,
+                ):
                     self._index_summary(db, job)
             except (OSError, sqlite3.Error) as e:
                 saved = False
