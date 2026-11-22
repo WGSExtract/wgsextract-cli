@@ -120,7 +120,7 @@ def _text_copy(
     clinical: bool,
     allowed: set[str] | None = None,
     incompatible_mito: set[str] | None = None,
-) -> None:
+) -> tuple[int, bool]:
     text = run_command(["bcftools", "view", "-h", source], capture_output=True).stdout
     if clinical:
         text = "\n".join(
@@ -144,6 +144,8 @@ def _text_copy(
                 ce.TIER: "ClinVar review tier; not sequencing confidence",
             }
         )
+    records_written = 0
+    has_multiallelic = False
     with output.open("w", newline="\n") as handle:
         for line in text.splitlines():
             if line.startswith("#CHROM"):
@@ -179,6 +181,8 @@ def _text_copy(
                     skipped.add(fields[0])
                     skipped_count += 1
                     continue
+                records_written += 1
+                has_multiallelic |= "," in fields[4]
                 info = dict(item.partition("=")[::2] for item in fields[7].split(";"))
                 if clinical:
                     for tag in (ce.IDENTITY, ce.STARS, ce.TIER):
@@ -241,6 +245,14 @@ def _text_copy(
             "Excluded resource mitochondrial records: UCSC hg19 Yoruba chrM and GRCh37 rCRS MT are incompatible. Autosomal records remain validated.",
             count=mito_count,
         )
+    return records_written, has_multiallelic
+
+
+def _left_align(source: str, reference: str, output: str, check_ref: str) -> None:
+    run_command(
+        ["bcftools", "norm", "-f", reference, "-c", check_ref, "-Oz", "-o", output, source],
+        capture_output=True,
+    )  # fmt: skip
 
 
 def _normalize(
@@ -285,39 +297,29 @@ def _normalize(
         if is_resource
         else None
     )
-    _text_copy(source, staged, clinical, allowed, incompatible_mito)
-    renamed = normalize_vcf_chromosomes(str(staged), list(lengths), work)
-    split = output + ".split.gz"
-    run_command(
-        [
-            "bcftools",
-            "norm",
-            "-m",
-            "-any",
-            "--old-rec-tag",
-            SPLIT_TAG,
-            "-Oz",
-            "-o",
-            split,
-            renamed,
-        ],
-        capture_output=True,
+    total, has_multiallelic = _text_copy(
+        source, staged, clinical, allowed, incompatible_mito
     )
+    renamed = normalize_vcf_chromosomes(str(staged), list(lengths), work)
     norm = output + ".norm.gz"
-    # A query REF that differs from the FASTA means the wrong build: fail. A
-    # resource can carry a few stale REF bases (REVEL keeps hg19's), which are
-    # dropped so they can't stop the run or annotate a variant. Dropped records
-    # are counted, as bcftools' summary of them varies between versions.
-    run_command(
-        ["bcftools", "norm", "-f", reference, "-c", "x" if is_resource else "e",
-         "-Oz", "-o", norm, split],
-        capture_output=True,
-    )  # fmt: skip
+    # Check unsplit resources so a row with several ALTs counts only once.
+    # Compute drops from records, not bcftools' version-dependent summary.
     if is_resource:
-        total = record_count(split)
+        kept = output + ".checked.gz" if has_multiallelic else norm
+        _left_align(renamed, reference, kept, "x")
         report_ref_mismatches(
-            total - record_count(norm), total, Path(origin or source).name
+            total - record_count(kept), total, Path(origin or source).name
         )
+        renamed = kept
+    if not is_resource or has_multiallelic:
+        split = output + ".split.gz"
+        run_command(
+            ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
+             "-Oz", "-o", split, renamed],
+            capture_output=True,
+        )  # fmt: skip
+        # Left-align split alleles independently, without dropping sample rows.
+        _left_align(split, reference, norm, "e")
     run_command(
         ["bcftools", "sort", "-T", str(Path(work, "sort")), "-Oz", "-o", output, norm],
         capture_output=True,

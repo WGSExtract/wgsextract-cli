@@ -26,7 +26,7 @@ def normalized_resource(
         ["bcftools", "--version"], capture_output=True
     ).stdout.splitlines()[0]
     key = hashlib.sha256(
-        json.dumps([3, identity, version, options], sort_keys=True).encode()
+        json.dumps([4, identity, version, options], sort_keys=True).encode()
     ).hexdigest()
     cache = wgsextract_cache_root() / "normalized-resources" / key
     cache.mkdir(parents=True, exist_ok=True)

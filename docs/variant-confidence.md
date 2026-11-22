@@ -35,8 +35,8 @@ online genome service. A visual check does not replace clinical confirmation.
 
 `vcf clinvar` requires a matching indexed FASTA (`--ref`, or the resolved
 reference library). It normalizes working copies of both inputs with
-`bcftools norm -f` and splits multiallelics before matching; incompatible
-REF bases or contig lengths fail rather than being silently corrected.
+`bcftools norm -f` and splits multiallelics before matching. Incompatible
+sample REF bases or contig lengths fail rather than being silently corrected.
 Original alleles and sample fields remain in `WGSE_ORIGINAL` (URL-encoded
 JSON), alongside `OLD_MULTIALLELIC` provenance. Originals are not rewritten.
 Shared VCF and allele-table annotation uses this normalization when a
@@ -60,9 +60,12 @@ autosomal findings remain available.
 A **resource** record whose REF base differs from the FASTA (ANNOVAR's REVEL
 table keeps hg19 REF bases, about 1% of which differ on GRCh38) is excluded,
 so it can never annotate a call, with a counted
-`annotation_ref_mismatch_excluded` warning; `vcf chain-annotate` repeats its
-steps' `annotation_*` warnings. A resource where more than half of at least 20
-checked records differ is refused as built for another genome build. Allele
+`annotation_ref_mismatch_excluded` warning once per resource in each annotation
+step; `vcf chain-annotate` repeats its steps' `annotation_*` warnings. Counts
+come from records before splitting, so each multiallelic record counts once.
+A resource where more than half of at least 20 checked records differ is refused
+as built for another genome build. Fields refreshed from the resource are cleared
+first, so pre-existing scores on unmatched calls cannot pass a score filter. Allele
 tables (REVEL, CADD, AlphaMissense, PharmGKB) are checked this way on up to
 1,000 SNV rows read from 64 compressed blocks spread through the file, so a
 small query can't hide a table's build. A **sample** REF that differs from the
