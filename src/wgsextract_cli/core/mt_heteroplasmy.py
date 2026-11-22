@@ -110,6 +110,7 @@ class Call:
     level: float | None
     depth: int | None
     passed: bool
+    record: int
 
 
 @dataclass(frozen=True)
@@ -145,24 +146,42 @@ def _opener(path: Path) -> Any:
     return gzip.open if path.name.endswith(".gz") else open
 
 
+def _levels(alts: int, genotype: str, af: str) -> dict[int, float | None]:
+    """Each ALT's level (by allele index). With several ALTs, mutserve gives
+    one AF per allele in the genotype's order (``2/1:0.7,0.3``: ALT 2 at 70%);
+    a level it can't pair, as in a comma-decimal locale, is unknown."""
+    if alts == 1:
+        return {1: _number(af)}
+    called = [int(a) for a in genotype.replace("|", "/").split("/") if a.isdigit()]
+    called = [a for a in called if a > 0]
+    parts = af.split(",")
+    if len(parts) != len(called):
+        return {}
+    return {a: _number(p) for a, p in zip(called, parts, strict=True)}
+
+
 def read_calls(path: Path) -> dict[int, list[Call]]:
     """mutserve's VCF calls by position."""
     calls: dict[int, list[Call]] = {}
     with _opener(path)(path, "rt", encoding="utf-8") as stream:
-        for line in stream:
+        for number, line in enumerate(stream):
             if line.startswith("#") or not line.strip():
                 continue
             fields = line.rstrip("\n").split("\t")
             values = dict(zip(fields[8].split(":"), fields[9].split(":"), strict=False))
-            for alt in fields[4].split(","):
+            alts = fields[4].split(",")
+            genotype = values.get("GT", "")
+            levels = _levels(len(alts), genotype, values.get("AF", ""))
+            for index, alt in enumerate(alts, 1):
                 calls.setdefault(int(fields[1]), []).append(
                     Call(
                         ref=fields[3],
                         alt=alt,
-                        genotype=values.get("GT", ""),
-                        level=_number(values.get("AF")),
+                        genotype=genotype,
+                        level=levels.get(index),
                         depth=_whole(values.get("DP")),
                         passed=fields[6] in ("PASS", "."),
+                        record=number,
                     )
                 )
     return calls
@@ -196,10 +215,12 @@ def depth_summary(reads: Mapping[int, Reads], length: int) -> dict[str, float]:
 
 
 def count_calls(calls: Mapping[int, Iterable[Call]]) -> dict[str, int]:
-    """mutserve's PASS calls: homoplasmies (one allele) and heteroplasmies."""
-    passed = [c for found in calls.values() for c in found if c.passed]
-    mixed = sum(_mixture(c.genotype) for c in passed)
-    return {"homoplasmies": len(passed) - mixed, "heteroplasmies": mixed}
+    """mutserve's PASS records: homoplasmies (one allele) and heteroplasmies."""
+    records = {
+        c.record: c.genotype for found in calls.values() for c in found if c.passed
+    }
+    mixed = sum(_mixture(genotype) for genotype in records.values())
+    return {"homoplasmies": len(records) - mixed, "heteroplasmies": mixed}
 
 
 def _mixture(genotype: str) -> bool:
@@ -281,12 +302,13 @@ def assess(
     low = ["mt_low_depth"] if reads.depth < MIN_DEPTH else []
     call = next((c for c in calls if c.alt == alt and c.passed), None)
     if call is not None:
-        if overall == 0 or call.level is None:
+        if overall == 0:
             return Assessment(NOT_ASSESSED, ["mt_evidence_conflict"], depth=reads.depth)
-        found.level = call.level
-        if call.level >= HOMOPLASMIC_LEVEL:
+        # A level mutserve wrote in a form that can't be read: the reads' own.
+        level = found.level = overall if call.level is None else call.level
+        if level >= HOMOPLASMIC_LEVEL:
             found.state = HOMOPLASMIC
-        elif call.level >= SUPPORTED_LEVEL:
+        elif level >= SUPPORTED_LEVEL:
             found.state = HETEROPLASMIC
         else:
             found.state = WEAK

@@ -234,6 +234,24 @@ def test_1175_low_depth_and_conflicting_evidence_are_not_negatives(
     assert (site["state"], site["reasons"]) == (state, reasons)
 
 
+def test_1175_two_alts_at_one_site_keep_their_own_levels(tmp_path):
+    """PR review: mutserve gives one AF per allele, in GT order (2/1: ALT 2
+    first); both m.8993 variants are heteroplasmic, not conflicts."""
+    folder = tmp_path / "kit"
+    fractions = {"C": "0.3", "G": "0.7"}
+    raw = "\t".join(
+        ["s", "8993", "T", "G", "C", "G", "C", "500", "500", "1000", "0", "0.0"]
+        + [fractions.get(b, "0.0") for b in "ACGTDN"] * 2
+    )
+    call = "chrM\t8993\t.\tT\tC,G\t.\tPASS\t.\tGT:AF:DP\t2/1:0.7,0.3:1000\n"
+    _mutserve_run(folder, calls=(call,), raw=(raw + "\n",))
+    sites = _sites(pr.build_report(folder))
+    levels = [
+        (sites[v]["state"], sites[v]["level"]) for v in ("m.8993T>G", "m.8993T>C")
+    ]
+    assert levels == [("heteroplasmic", 0.7), ("heteroplasmic", 0.3)]
+
+
 def test_1175_chm13_evidence_is_read_at_rcrs_positions(tmp_path):
     folder = tmp_path / "kit"
     # m.1555 is CHM13v2.0 chrM 979.
