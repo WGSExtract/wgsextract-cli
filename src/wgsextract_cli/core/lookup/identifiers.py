@@ -227,20 +227,30 @@ def resolve_rsid(rsid: str, build: str, reflib: str) -> RsidResolution:
     return resolution
 
 
+_CHUNK = 8 << 20
+
+
 def _scan_placements(path: Path, wanted: set[str]) -> list[Placement]:
-    """Rows of a CHROM, POS, ID table whose ID is one of ``wanted``."""
-    with gzip.open(path, "rb") as stream:
-        data = stream.read()
+    """Rows of a CHROM, POS, ID table whose ID is one of ``wanted``, in one
+    streaming pass over whole lines (memory bounded by the chunk size)."""
+    needles = {name: b"\t" + name.encode() + b"\n" for name in wanted}
     found: dict[tuple[str, int], set[str]] = {}
-    for name in wanted:
-        needle = b"\t" + name.encode() + b"\n"
-        at = data.find(needle)
-        while at >= 0:
-            row = data[data.rfind(b"\n", 0, at) + 1 : at].split(b"\t")
-            if len(row) != 2 or not row[1].isdigit():
-                raise ValueError(f"malformed row for {name}")
-            found.setdefault((row[0].decode(), int(row[1])), set()).add(name)
-            at = data.find(needle, at + 1)
+    carry = b""
+    with gzip.open(path, "rb") as stream:
+        while chunk := stream.read(_CHUNK):
+            data = carry + chunk
+            cut = data.rfind(b"\n") + 1
+            data, carry = data[:cut], data[cut:]
+            for name, needle in needles.items():
+                at = data.find(needle)
+                while at >= 0:
+                    row = data[data.rfind(b"\n", 0, at) + 1 : at].split(b"\t")
+                    if len(row) != 2 or not row[1].isdigit():
+                        raise ValueError(f"malformed row for {name}")
+                    found.setdefault((row[0].decode(), int(row[1])), set()).add(name)
+                    at = data.find(needle, at + 1)
+    if carry.strip():
+        raise ValueError("the table doesn't end with a newline")
     return [
         Placement(chrom, pos, tuple(sorted(ids)))
         for (chrom, pos), ids in sorted(found.items())
