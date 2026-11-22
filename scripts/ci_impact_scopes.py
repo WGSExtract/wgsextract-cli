@@ -149,6 +149,7 @@ def shadow_candidates(
     declarations: Mapping[str, Iterable[str]],
     *,
     symbol_module_users: Mapping[str, Iterable[str]] | None = None,
+    widely_called_shared: Iterable[str] | None = None,
 ) -> dict[str, list[str]]:
     """Compare variants without changing the authoritative selection.
 
@@ -158,6 +159,7 @@ def shadow_candidates(
     decisive = set(shared)
     tight = set(decisive)
     symbol = set(decisive)
+    widely_called = set(widely_called_shared or ())
     universe = set(tests)
     for path, users in module_users.items():
         candidates = set(users)
@@ -165,13 +167,18 @@ def shadow_candidates(
         if path not in scopes or scopes[path].initialization:
             tight.update(candidates)
         if symbol_module_users is not None:
-            symbol.update(symbol_module_users.get(path, candidates))
+            scoped = set(symbol_module_users.get(path, candidates))
+            symbol.update(scoped)
+            widely_called.update(scoped)
     for path, changed in scopes.items():
         if path.startswith("src/") and changed.functions and not changed.initialization:
             contracts = module_contract_tests(path, universe, declarations)
             tight.update(contracts)
             symbol.update(contracts)
+            widely_called.update(contracts)
     variants = {"decisive": decisive, "tight": tight}
     if symbol_module_users is not None:
         variants["symbol"] = symbol
+        if widely_called_shared is not None:
+            variants["widely_called"] = widely_called
     return {name: sorted(targets & universe) for name, targets in variants.items()}
