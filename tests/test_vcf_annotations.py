@@ -459,8 +459,9 @@ def test_chain_annotate_runs_each_installed_step_on_the_last_output(
     assert _query(final, "%CHROM:%ID:%CLNSIG:%REVEL\n") == [
         "chr1:snv:Pathogenic:0.9", "chr1:diffalt:.:.", "chr1:block:.:.", "chr1:del:.:."
     ]  # fmt: skip
-    assert sorted(os.listdir(outdir)) == [
+    assert sorted(n for n in os.listdir(outdir) if n[0] != ".") == [
         "chain_annotated.vcf.gz",
+        "chain_annotated.vcf.gz.steps.json",
         "chain_annotated.vcf.gz.tbi",
     ]
 
@@ -493,7 +494,11 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
         run_wgsextract("vcf", "chain-annotate", "--input", str(input_vcf),
                        "--ref", lib, "--annotations", "clinvar")  # fmt: skip
     assert sorted(os.listdir(tmp_path)) == ["in.vcf.gz", "wgse"]
-    assert os.listdir(tmp_path / "wgse") == ["chain_step_1_clinvar"]
+    # The journal records the failed step, so a rerun resumes there (#1291).
+    assert sorted(n for n in os.listdir(tmp_path / "wgse") if n[0] != ".") == [
+        "chain_annotated.vcf.gz.steps.json",
+        "chain_step_1_clinvar",
+    ]
 
 
 @needs_bcftools

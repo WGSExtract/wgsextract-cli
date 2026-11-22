@@ -1378,7 +1378,10 @@ Run the chain; output role `annotated_vcf`; `annotations_applied` is a
 metric.
 
 `VcfChainAnnotateParams`: Several annotations applied in turn, as `chain_annotated.vcf.gz`;
-steps whose tool or data is missing are skipped with a warning.
+steps whose tool or data is missing are skipped with a warning. With
+`region` or `bed`, only the calls there are annotated. Completed steps
+are recorded in `chain_annotated.vcf.gz.steps.json` and skipped on a
+rerun whose inputs, settings and tools are unchanged.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1386,8 +1389,15 @@ steps whose tool or data is missing are skipped with a warning.
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `annotations` | `str` | `'clinvar,revel,phylop,gnomad,vep'` | `--annotations` | Comma-separated list of annotations to apply in order (default: clinvar,revel,phylop,gnomad,vep). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `annotations` | `str` | `'clinvar,revel,phylop,gnomad,vep'` | `--annotations` | Comma-separated annotations to apply in order, each once; choose from clinvar, revel, phylop, cadd, gerp, gnomad, spliceai, alphamissense, pharmgkb, vep. |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Only annotate the calls in these regions: comma-separated contigs or intervals (e.g. chr22 or 22:1-1000000), named as in the VCF or with or without its 'chr' prefix. |
+| `bed` | `Path \| None` | `None` | `--bed` | Only annotate the calls in this BED file's regions (e.g. a gene panel); its contigs may be named with or without the VCF's 'chr' prefix. |
+| `table_format` | `str \| None` | `None` | `--format` | Also save the annotated calls as chain_annotated_variants.tsv or .parquet (needs pyarrow), with chain_annotated_variants.sqlite, as 'vcf table' does. None saves no table. One of: `tsv`, `parquet` |
 | `keep_intermediates` | `bool` | `False` | `--keep-intermediates` | Keep intermediate VCF files generated during the chain process. |
+| `restart` | `bool` | `False` | `--force`, `--no-resume` | Rerun every step, ignoring the steps an earlier run completed. |
+| `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: subset, clinvar, revel, phylop, cadd, gerp, gnomad, spliceai, alphamissense, pharmgkb, vep, publish, table. One of: `subset`, `clinvar`, `revel`, `phylop`, `cadd`, `gerp`, `gnomad`, `spliceai`, `alphamissense`, `pharmgkb`, `vep`, `publish`, `table` |
+| `dry_run` | `bool` | `False` | `--dry-run` | Log which steps would run or be skipped, and why, and run none. |
 
 ### `api.vcf.call_types(value: str) -> list[str]`
 

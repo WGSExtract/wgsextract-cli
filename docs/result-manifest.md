@@ -175,6 +175,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `mt_haplogroup_skipped` | `analyze comprehensive` | `lineage mt-haplogroup` would refuse the alignment's chrM (hg19's Yoruba, another rotation of the rCRS, or a CHM13 header without CHM13's chrM in the reference); the analysis went on without an mtDNA haplogroup. |
 | `y_haplogroup_failed` | `analyze comprehensive` | `lineage y-haplogroup` failed (often too few chrY reads); the analysis went on without it, and a rerun retries it. |
 | `annotation_skipped`, `annotation_failed` | `vcf chain-annotate`, `analyze` | One annotation was skipped (`annotation`, `reason`) or failed. |
+| `bed_contigs_not_in_vcf` | `vcf chain-annotate --bed` | The BED names contigs the VCF lacks, under either `chr` naming (`contigs`); their regions were left out. |
 | `read_groups_mixed`, `read_group_conflict` | `bam unalign`, `bam merge` | Read groups differ in a way that loses or merges information. |
 | `read_group_renamed` | `bam merge` | Runs with identical `@RG` lines that name no run (`PU`, ONT `runid=`) keep separate read groups; the later ones get suffixed IDs (`read_groups`). |
 | `read_name_collision`, `sample_name_assumed` | `bam merge` | Different reads in two runs share names (`inputs`), so name-based tools may pair them; no input names its sample, so `SM` is the output name (`sample`). |

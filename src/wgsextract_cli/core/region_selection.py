@@ -26,7 +26,8 @@ def literal_region(selection: str, lengths: dict[str, int]) -> tuple[str, int, i
     return chrom, start - 1, end
 
 
-def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
+def bed_intervals(path: str) -> list[tuple[str, int, int]]:
+    """A BED/BED.gz/BEDPE file's (contig, 0-based start, end) rows, as given."""
     lower = path.lower()
     opener = gzip.open if lower.endswith(".gz") else open
     rows = []
@@ -100,7 +101,7 @@ def selected_intervals(
     intervals: Intervals = {}
     for selection in region_items(region, commas=commas):
         if selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
-            rows = _bed_intervals(selection)
+            rows = bed_intervals(selection)
         else:
             rows = [literal_region(selection, lengths)]
         for chrom, start, end in rows:

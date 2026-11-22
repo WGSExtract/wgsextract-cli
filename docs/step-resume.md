@@ -1,7 +1,7 @@
 # Resuming long workflows
 
-A whole-genome `realign`, `vcf deepvariant` or `analyze comprehensive` runs
-for hours as a series of steps. Each records its completion, so a run stopped
+A whole-genome `realign`, `vcf deepvariant`, `analyze comprehensive` or
+`vcf chain-annotate` runs for hours as a series of steps. Each records its completion, so a run stopped
 by a crash, Ctrl-C, an out-of-memory kill or a reboot resumes when you rerun
 the same command. Steps that finished are skipped, and the run restarts at
 the first step that didn't.
@@ -11,6 +11,7 @@ the first step that didn't.
 | `realign` | `extract` (BAM/CRAM to FASTQ), `align` (map, mark duplicates, sort), `index` | `<output>.steps.json`, e.g. `sample_aligned.bam.steps.json` |
 | `vcf deepvariant` | `stage_reads` (CRAM 3.1 inputs only), `make_examples`, `call_variants`, `postprocess_variants` | `deepvariant.vcf.gz.steps.json` |
 | `analyze comprehensive` | `info`, `mt-haplogroup`, `y-haplogroup`, `snp`, `indel`, then `annotate:<vcf>` and `discovery:<vcf>` for each VCF | `analyze.steps.json` in the output folder (each batch sample's own folder) |
+| `vcf chain-annotate` | `subset` (with `--region` or `--bed`), one step per annotation (`clinvar`, `revel`, ...), `publish`, then `table` (with `--format`) | `chain_annotated.vcf.gz.steps.json` |
 
 ## When a step is skipped
 
@@ -164,6 +165,14 @@ identity for its directory inputs, so the steps that read one run once more,
 with the reason `is a directory whose contents an earlier wgsextract didn't
 record`.
 
+`vcf chain-annotate` keeps each step's folder (`chain_step_<n>_<annotation>`)
+until the chain finishes, so a rerun after a failed or cancelled step skips
+the steps before it. It then removes them (unless `--keep-intermediates`); a
+rerun of a finished chain with the same input, annotation data, settings and
+tools skips straight to `publish`, which records them all. Changing
+`--annotations`, `--region` or `--bed`, or the input VCF, reruns the steps
+whose inputs changed and every step after them.
+
 ## Partial outputs
 
 A step is marked `running` in the journal before it starts. It is marked
@@ -191,7 +200,7 @@ work folder is gone, every stage (see [reference-evidence.md](reference-evidence
 
 ## Options
 
-Each of the three commands takes these options:
+Each of these commands takes these options:
 
 | Option | Effect |
 |---|---|

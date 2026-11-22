@@ -12,13 +12,19 @@ from wgsextract_cli.api._shared import (
     check_confidence,
     confidence_depth_param,
     confidence_gq_param,
+    dry_run_param,
+    force_steps_param,
     ref_param,
+    restart_param,
+    table_format_param,
+    threads_param,
 )
 from wgsextract_cli.core.utils import UsageError
 
 from .shared import (
     _AnnotatorParams,
     _min_score_param,
+    _region_param,
     _resource_param,
     _VcfFileParams,
 )
@@ -372,21 +378,65 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
         check_confidence(self)
 
 
+# The annotations ``vcf chain-annotate`` can apply, each a step of its chain.
+CHAIN_ANNOTATIONS = (
+    "clinvar", "revel", "phylop", "cadd", "gerp", "gnomad", "spliceai",
+    "alphamissense", "pharmgkb", "vep",
+)  # fmt: skip
+# Its steps, for --force-step: subset (with region or bed), one per
+# annotation, publish (chain_annotated.vcf.gz) and table (with table_format).
+CHAIN_STEPS = ("subset", *CHAIN_ANNOTATIONS, "publish", "table")
+
+
 @dataclass(frozen=True, kw_only=True)
 class VcfChainAnnotateParams(_VcfFileParams):
     """Several annotations applied in turn, as ``chain_annotated.vcf.gz``;
-    steps whose tool or data is missing are skipped with a warning."""
+    steps whose tool or data is missing are skipped with a warning. With
+    ``region`` or ``bed``, only the calls there are annotated. Completed steps
+    are recorded in ``chain_annotated.vcf.gz.steps.json`` and skipped on a
+    rerun whose inputs, settings and tools are unchanged."""
 
     COMMAND = "vcf chain-annotate"
 
     ref: Path | None = ref_param()
+    threads: int | None = threads_param()
     annotations: str = param(
         "clinvar,revel,phylop,gnomad,vep",
         help="Comma-separated list of annotations to apply in order (default: "
         "clinvar,revel,phylop,gnomad,vep).",
+        doc="Comma-separated annotations to apply in order, each once; "
+        f"choose from {', '.join(CHAIN_ANNOTATIONS)}.",
+    )
+    region: str | None = _region_param(
+        "Only annotate the calls in these regions: comma-separated contigs or "
+        "intervals (e.g. chr22 or 22:1-1000000), named as in the VCF or with "
+        "or without its 'chr' prefix.",
+        exclusive="scope",
+    )
+    bed: Path | None = param(
+        None,
+        help="Only annotate the calls in this BED file's regions (e.g. a gene "
+        "panel); its contigs may be named with or without the VCF's 'chr' "
+        "prefix.",
+        path="file",
+        metavar="BED",
+        exclusive="scope",
+    )
+    table_format: str | None = table_format_param(
+        "Also save the annotated calls as chain_annotated_variants.tsv or "
+        ".parquet (needs pyarrow), with chain_annotated_variants.sqlite, as "
+        "'vcf table' does"
     )
     keep_intermediates: bool = param(
         False,
         help="Keep intermediate VCF files generated during the chain process.",
         action="store_true",
     )
+    restart: bool = restart_param()
+    force_steps: tuple[str, ...] | None = force_steps_param(CHAIN_STEPS)
+    dry_run: bool = dry_run_param()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.region and self.bed:
+            raise UsageError("Give --region or --bed, not both.")

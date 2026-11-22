@@ -85,8 +85,8 @@ def _deepvariant_items(params: Any, text: str) -> list[str]:
 
 
 @_public
-def _region_param(help: str = "Chromosomal region") -> Any:
-    return param(None, help=help, flags=("-r", "--region"))
+def _region_param(help: str = "Chromosomal region", **kwargs: Any) -> Any:
+    return param(None, help=help, flags=("-r", "--region"), **kwargs)
 
 
 @dataclass(frozen=True, kw_only=True)
