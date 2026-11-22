@@ -3,14 +3,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## New
 
-- `extract ydna-bam`, `extract y-mt-extract` and `extract region --target
-  y|ymt` take `--y-scope associated`, which also keeps the reads on the
-  reference's Y-associated contigs (GRCh38 `chrY_KI270740v1_random`, under its
-  UCSC, GenBank or RefSeq name), as WGS Extract v4's Y and Y+MT BAMs did. A
-  contig is kept only when its length (and checksum, if recorded) match GRCh38's; outputs are
-  `_Y_associated.*` and the result lists each considered contig and why. The
-  default `--y-scope primary` is unchanged
-  ([#1184, Y-associated contig preset](https://github.com/WGSExtract/wgsextract-cli/issues/1184)).
 - [Migrating from WGS Extract v4](docs/migrating-from-v4.md) maps each v44.2
   button to its current desktop page and command, with changed defaults,
   features not yet equivalent and settings/reference precautions. NOTICE now
