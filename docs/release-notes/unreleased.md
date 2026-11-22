@@ -18,16 +18,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
-- `uninstall.sh` no longer deletes a Pixi environment or cache directory
-  outside the installation whole, which removed other Pixi projects'
-  environments sharing it. It now removes only this installation's environment
-  folder, and an external cache only if the installer created it; installs
-  from earlier versions keep their external cache. It lists exactly what it
-  will delete before asking to continue, and `--remove-config` refuses a
-  symlinked users workspace before deleting anything rather than after
-  removing the installation
-  ([#1246, uninstall removes shared Pixi folders](https://github.com/WGSExtract/wgsextract-cli/issues/1246)).
-
 - An interrupted reference download no longer resumes onto a different
   version of the file. Resumes were tied to the URL alone, so a file replaced
   at the same URL by one of the same size was installed as the old file's start
