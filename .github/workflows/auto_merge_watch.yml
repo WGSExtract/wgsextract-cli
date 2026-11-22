@@ -1,0 +1,45 @@
+# GitHub never enqueues a pull request that conflicts with its base, even with
+# auto-merge enabled, and doesn't say so (#1281, ready-to-merge delay). After
+# each main push, and every few hours for auto-merge enabled on an already
+# conflicting PR, label such PRs auto-merge-blocked and ask their authors once
+# to merge main; the label clears when the conflict does.
+#
+# It runs main's own script and only calls the GitHub API; it never checks out
+# or executes PR code.
+name: Auto-merge conflict watch
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '41 */3 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  # Finish a run so a label is never left without its comment; a newer
+  # pending run replaces older pending ones and rechecks every open PR.
+  group: auto-merge-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Flag PRs whose auto-merge is blocked by conflicts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # A just-pushed main needs a moment before PRs report conflicts.
+          SETTLE: ${{ github.event_name == 'push' && '15' || '0' }}
+        run: python3 -m scripts.ci_auto_merge_watch --repository "$GITHUB_REPOSITORY" --settle "$SETTLE"
