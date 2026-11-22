@@ -33,6 +33,7 @@ from __future__ import annotations
 import csv
 import gzip
 import json
+import math
 import statistics
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
@@ -47,6 +48,9 @@ HOMOPLASMIC_LEVEL = 0.95
 SUPPORTED_LEVEL = 0.10
 EVIDENCE_LEVEL = 0.01
 MIN_DEPTH = 100
+# How far a call's level may differ from its reads' ALT fraction: mutserve
+# prints levels to 2-3 decimals; HG002's calls agree with their reads to 0.0005.
+LEVEL_TOLERANCE = 0.02
 # mutserve call settings (haplocheck's own workflow); the level is EVIDENCE_LEVEL.
 MAPQ, BASEQ = 30, 20
 
@@ -187,17 +191,42 @@ def read_calls(path: Path) -> dict[int, list[Call]]:
     return calls
 
 
+def _depth(row: Mapping[str, str | None], column: str) -> int:
+    depth = _whole(row.get(column))
+    if depth is None or depth < 0:
+        raise ValueError(f"position {row.get('POS')}: no {column}")
+    return depth
+
+
+def _fractions(
+    row: Mapping[str, str | None], strand: str, depth: int
+) -> dict[str, float]:
+    """A strand's base fractions. On a strand with reads each must be a number
+    from 0 to 1: an unreadable one is not a zero (it would make a negative)."""
+    fractions = {}
+    for base in "ACGTDN":
+        column = f"%{base if strand == 'fwd' else base.lower()}"
+        value = _number(row.get(column))
+        valid = value is not None and math.isfinite(value) and 0 <= value <= 1
+        if depth and not valid:
+            raise ValueError(f"position {row.get('POS')}: unreadable {column}")
+        fractions[base] = value if valid and value is not None else 0.0
+    return fractions
+
+
 def read_reads(path: Path) -> dict[int, Reads]:
-    """mutserve's raw table (``--write-raw``) by position."""
+    """mutserve's raw table (``--write-raw``) by position; ValueError for a
+    row that can't be read."""
     reads: dict[int, Reads] = {}
     with _opener(path)(path, "rt", encoding="utf-8", newline="") as stream:
         for row in csv.DictReader(stream, delimiter="\t"):
+            fwd, rev = _depth(row, "COV-FWD"), _depth(row, "COV-REV")
             reads[int(row["POS"])] = Reads(
                 ref=row["REF"],
-                depth_fwd=_whole(row.get("COV-FWD")) or 0,
-                depth_rev=_whole(row.get("COV-REV")) or 0,
-                fwd={b: _number(row.get(f"%{b}")) or 0.0 for b in "ACGTDN"},
-                rev={b: _number(row.get(f"%{b.lower()}")) or 0.0 for b in "ACGTDN"},
+                depth_fwd=fwd,
+                depth_rev=rev,
+                fwd=_fractions(row, "fwd", fwd),
+                rev=_fractions(row, "rev", rev),
             )
     return reads
 
@@ -302,7 +331,14 @@ def assess(
     low = ["mt_low_depth"] if reads.depth < MIN_DEPTH else []
     call = next((c for c in calls if c.alt == alt and c.passed), None)
     if call is not None:
-        if overall == 0:
+        # The call must be the reads': both come from the same filtered reads.
+        disagrees = (
+            call.level is not None and abs(call.level - overall) > LEVEL_TOLERANCE
+        ) or (
+            call.depth is not None
+            and abs(call.depth - reads.depth) > max(1, reads.depth // 100)
+        )
+        if overall == 0 or disagrees:
             return Assessment(NOT_ASSESSED, ["mt_evidence_conflict"], depth=reads.depth)
         # A level mutserve wrote in a form that can't be read: the reads' own.
         level = found.level = overall if call.level is None else call.level

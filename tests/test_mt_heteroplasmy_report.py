@@ -218,6 +218,9 @@ def test_1175_an_unconfirmed_mt_reference_assesses_nothing(tmp_path):
          "weak_evidence", ["mt_below_supported_level"]),
         # The read table's base disagrees with the reviewed variant's REF.
         ((_raw_row(1555, "C", 500, 500, "G", 0.3),), (), "not_assessed", ["mt_reference_conflict"]),
+        # PR review: a 100% call over reads with 30% ALT is a conflict, not a homoplasmy.
+        ((_raw_row(1555, "A", 500, 500, "G", 0.3),), (_call(1555, "A", "G", "1", 1.0, 1000),),
+         "not_assessed", ["mt_evidence_conflict"]),
         # A call without reads behind it.
         ((), (_call(1555, "A", "G", "1", 1.0, 900),), "not_assessed", ["mt_evidence_conflict"]),
         # No ALT at 60 reads doesn't rule out a 10% heteroplasmy.
@@ -250,6 +253,28 @@ def test_1175_two_alts_at_one_site_keep_their_own_levels(tmp_path):
         (sites[v]["state"], sites[v]["level"]) for v in ("m.8993T>G", "m.8993T>C")
     ]
     assert levels == [("heteroplasmic", 0.7), ("heteroplasmic", 0.3)]
+
+
+def test_1175_an_unreadable_base_fraction_is_not_a_negative(tmp_path):
+    """PR review: an unreadable %G on a covered strand made 1,000 reads look
+    like a supported negative; the evidence is unreadable instead."""
+    folder = tmp_path / "kit"
+    row = _raw_row(1555, "A", 500, 500, "G", 0.0).split("\t")
+    row[14] = "x"  # %G
+    _mutserve_run(folder, raw=("\t".join(row),))
+    section = pr.build_report(folder)["sections"]["mitochondrial"]
+    assert "mt_evidence_missing" in {w["code"] for w in section["warnings"]}
+    assert _sites({"sections": {"mitochondrial": section}})["m.1555A>G"]["state"] == (
+        "not_assessed"
+    )
+
+
+def test_1175_an_uncovered_strand_needs_no_fractions(tmp_path):
+    folder = tmp_path / "kit"
+    row = _raw_row(1555, "A", 150, 0, "G", 0.0).split("\t")
+    row[18:24] = ["NaN"] * 6  # the reverse strand's fractions
+    _mutserve_run(folder, raw=("\t".join(row) + "\n",))
+    assert _sites(pr.build_report(folder))["m.1555A>G"]["state"] == "not_detected"
 
 
 def test_1175_chm13_evidence_is_read_at_rcrs_positions(tmp_path):
