@@ -10829,7 +10829,7 @@
    }
   },
   "extract region": {
-   "help": "usage: wgsextract extract region [-h] --target {mt,y,ymt,autox} [--formats LIST] [--poz]\n                                 [--ybrowse]\n\noptions:\n  -h, --help            show this help message and exit\n  --target {mt,y,ymt,autox}\n                        Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox\n                        (autosomes and chrX).\n  --formats LIST        Comma-separated formats to write: fasta (consensus sequence), bam (reads)\n                        and vcf (variant calls), e.g. bam,vcf.\n  --poz                 With --target y and the bam format: restrict the BAM's Y reads to the\n                        bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T).\n  --ybrowse             With --target y and the vcf format: call installed, allele-annotated\n                        yBrowse SNP targets (GRCh38 only; no downloads) into\n                        <input>_Y_ybrowse.vcf.gz instead.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract region --input sample.cram --target ymt --formats bam,vcf\n  wgsextract extract region --input sample.cram --target mt --formats fasta\n  wgsextract extract region --input sample.cram --target autox --formats vcf,fasta\n\noutputs (in the output directory unless noted):\n  Per chosen format: <input stem>_mtDNA|Y|Y_MT|autosomes_X.bam (+ .bai),\n  <input stem>_MT|Y|Y_MT|autosomes_X.vcf.gz (+ .tbi) and .fasta.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, tabix;\n  hours on a 30x genome.\n",
+   "help": "usage: wgsextract extract region [-h] --target {mt,y,ymt,autox} [--formats LIST] [--poz]\n                                 [--y-scope SCOPE] [--ybrowse]\n\noptions:\n  -h, --help            show this help message and exit\n  --target {mt,y,ymt,autox}\n                        Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox\n                        (autosomes and chrX).\n  --formats LIST        Comma-separated formats to write: fasta (consensus sequence), bam (reads)\n                        and vcf (variant calls), e.g. bam,vcf.\n  --poz                 With --target y and the bam format: restrict the BAM's Y reads to the\n                        bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T).\n  --y-scope SCOPE       Y contigs to read: primary (chrY only) or associated (also the reference's\n                        qualified Y-associated contigs, as WGS Extract v4 did; GRCh38\n                        chrY_KI270740v1_random). Written as <input>_..._associated.\n  --ybrowse             With --target y and the vcf format: call installed, allele-annotated\n                        yBrowse SNP targets (GRCh38 only; no downloads) into\n                        <input>_Y_ybrowse.vcf.gz instead.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract region --input sample.cram --target ymt --formats bam,vcf\n  wgsextract extract region --input sample.cram --target mt --formats fasta\n  wgsextract extract region --input sample.cram --target autox --formats vcf,fasta\n\noutputs (in the output directory unless noted):\n  Per chosen format: <input stem>_mtDNA|Y|Y_MT|autosomes_X.bam (+ .bai),\n  <input stem>_MT|Y|Y_MT|autosomes_X.vcf.gz (+ .tbi) and .fasta.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, tabix;\n  hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -11177,6 +11177,25 @@
       "nargs": 0,
       "option_strings": [
        "--poz"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "primary",
+       "associated"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "primary",
+      "dest": "y_scope",
+      "exclusive_group": null,
+      "help": "Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated.",
+      "metavar": "SCOPE",
+      "nargs": null,
+      "option_strings": [
+       "--y-scope"
       ],
       "required": false,
       "type": null
@@ -11566,7 +11585,7 @@
    }
   },
   "extract y-mt-extract": {
-   "help": "usage: wgsextract extract y-mt-extract [-h]\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract y-mt-extract --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y_MT.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
+   "help": "usage: wgsextract extract y-mt-extract [-h] [--y-scope SCOPE]\n\noptions:\n  -h, --help       show this help message and exit\n  --y-scope SCOPE  Y contigs to read: primary (chrY only) or associated (also the reference's\n                   qualified Y-associated contigs, as WGS Extract v4 did; GRCh38\n                   chrY_KI270740v1_random). Written as <input>_..._associated.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract y-mt-extract --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y_MT.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -11866,6 +11885,25 @@
       "type": "int"
      },
      {
+      "choices": [
+       "primary",
+       "associated"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "primary",
+      "dest": "y_scope",
+      "exclusive_group": null,
+      "help": "Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated.",
+      "metavar": "SCOPE",
+      "nargs": null,
+      "option_strings": [
+       "--y-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
       "choices": null,
       "class": "_HelpAllAction",
       "const": null,
@@ -11892,7 +11930,7 @@
    }
   },
   "extract ydna-bam": {
-   "help": "usage: wgsextract extract ydna-bam [-h] [--poz]\n\noptions:\n  -h, --help  show this help message and exit\n  --poz       Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or\n              T2T).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract ydna-bam --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
+   "help": "usage: wgsextract extract ydna-bam [-h] [--poz] [--y-scope SCOPE]\n\noptions:\n  -h, --help       show this help message and exit\n  --poz            Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38\n                   or T2T).\n  --y-scope SCOPE  Y contigs to read: primary (chrY only) or associated (also the reference's\n                   qualified Y-associated contigs, as WGS Extract v4 did; GRCh38\n                   chrY_KI270740v1_random). Written as <input>_..._associated.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract ydna-bam --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -12203,6 +12241,25 @@
       "nargs": 0,
       "option_strings": [
        "--poz"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "primary",
+       "associated"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "primary",
+      "dest": "y_scope",
+      "exclusive_group": null,
+      "help": "Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated.",
+      "metavar": "SCOPE",
+      "nargs": null,
+      "option_strings": [
+       "--y-scope"
       ],
       "required": false,
       "type": null
@@ -50639,6 +50696,7 @@
    "target": "y",
    "threads": null,
    "tmp_dir": null,
+   "y_scope": "primary",
    "ybrowse": false
   },
   "extract region -i x.bam --target ymt --formats bam,vcf": {
@@ -50670,6 +50728,7 @@
    "target": "ymt",
    "threads": null,
    "tmp_dir": null,
+   "y_scope": "primary",
    "ybrowse": false
   },
   "extract unmapped -i x.bam --fastq": {
@@ -50723,7 +50782,8 @@
    "quiet": false,
    "ref": null,
    "threads": null,
-   "tmp_dir": null
+   "tmp_dir": null,
+   "y_scope": "primary"
   },
   "extract ydna-bam -i x.bam --poz": {
    "_command": "extract ydna-bam",
@@ -50750,7 +50810,8 @@
    "quiet": false,
    "ref": null,
    "threads": null,
-   "tmp_dir": null
+   "tmp_dir": null,
+   "y_scope": "primary"
   },
   "extract ydna-vcf -i x.bam --ybrowse": {
    "_command": "extract ydna-vcf",
