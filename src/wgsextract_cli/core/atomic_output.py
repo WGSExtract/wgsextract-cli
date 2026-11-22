@@ -7,6 +7,7 @@ import logging
 import os
 import shutil
 import stat
+import sys
 import tempfile
 import unicodedata
 import uuid
@@ -188,7 +189,7 @@ def _preserve_output_permissions(
     ):
         os.chown(staged, info.st_uid, info.st_gid)
     staged.chmod(info.st_mode & 0o777)
-    if hasattr(os, "getxattr"):
+    if sys.platform == "linux":  # POSIX ACLs; Python has xattr calls only here
         acl_name = "system.posix_acl_access"
         try:
             acl = os.getxattr(final, acl_name)
