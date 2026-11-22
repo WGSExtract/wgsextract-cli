@@ -17,6 +17,7 @@ parent the chromosome came from or detect heterodisomy. See docs/roh.md.
 
 from __future__ import annotations
 
+import bisect
 import dataclasses
 import gzip
 import json
@@ -33,7 +34,6 @@ from wgsextract_cli.api.qc import QcRohParams
 from wgsextract_cli.core import roh_af, roh_document, roh_regions
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import canonical_build
-from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.errors import CodedError
 from wgsextract_cli.core.panel import load_annotations
@@ -64,6 +64,8 @@ FROH_MIN_BP = 1_500_000
 # A run ends where consecutive markers are further apart than this (as PLINK's
 # --homozyg-gap): a centromere or an uncalled stretch carries no evidence.
 MAX_GAP_BP = 1_000_000
+# A run is terminal only if it reaches a marker this close to the end.
+TERMINAL_MARGIN_BP = 1_000_000
 LONG_BP = 5_000_000
 VARIANTS_ONLY = (
     "The VCF has no hom-ref calls, so runs are found from heterozygous and "
@@ -283,18 +285,22 @@ class _Run:
 
 
 def _parse_roh(
-    output: Path, markers_out: Path
+    output: Path, markers_out: Path, scope: list[Region]
 ) -> tuple[list[RohSegment], dict[str, tuple[int, int]], int]:
-    """Runs of AZ sites, split where consecutive markers are more than
-    ``MAX_GAP_BP`` apart; each contig's first and last marker; and the bases
-    the markers cover (the F_ROH denominator: from first to last marker, less
-    those gaps). Writes the per-site states (ST lines) to ``markers_out``."""
+    """Runs of AZ sites, ended at each scope range's edge and where
+    consecutive markers are more than ``MAX_GAP_BP`` apart; each contig's
+    first and last marker; and the bases the markers cover (the F_ROH
+    denominator: from first to last marker of each range, less those gaps).
+    Writes the per-site states (ST lines) to ``markers_out``."""
     segments: list[RohSegment] = []
     spans: dict[str, tuple[int, int]] = {}
+    starts: dict[str, list[int]] = {}
+    for region in scope:
+        starts.setdefault(region.contig, []).append(region.start)
     covered = 0
     run: _Run | None = None
     block_start = previous = 0
-    chrom_now = ""
+    block: tuple[str, int] | None = None
 
     def close() -> None:
         nonlocal run
@@ -313,11 +319,12 @@ def _parse_roh(
                 continue
             _, _, chrom, pos, state, quality = line.rstrip("\n").split("\t")
             position = int(pos)
-            if chrom != chrom_now or position - previous > MAX_GAP_BP:
+            here = (chrom, bisect.bisect_right(starts.get(bare(chrom), []), position))
+            if here != block or position - previous > MAX_GAP_BP:
                 close()
-                if chrom_now:
+                if block is not None:
                     covered += previous - block_start + 1
-                block_start, chrom_now = position, chrom
+                block_start, block = position, here
             first, _ = spans.get(chrom, (position, position))
             spans[chrom] = (first, position)
             previous = position
@@ -332,21 +339,33 @@ def _parse_roh(
                 f"{chrom}\t{pos}\t{'AZ' if state == '1' else 'HW'}\t{quality}\n"
             )
         close()
-        if chrom_now:
+        if block is not None:
             covered += previous - block_start + 1
     return segments, spans, covered
 
 
 def _position(
-    segment: RohSegment, whole: set[str], spans: dict[str, tuple[int, int]]
+    segment: RohSegment,
+    whole: set[str],
+    spans: dict[str, tuple[int, int]],
+    lengths: dict[str, int],
 ) -> Position:
+    """terminal when the run reaches a marker within ``TERMINAL_MARGIN_BP`` of
+    the chromosome's end (its start too, but not the centromeric start of an
+    acrocentric one); undetermined when it reaches a last marker that isn't
+    near the end, or the scope was part of the chromosome."""
     contig = bare(segment.chrom)
     if contig not in whole:
         return "undetermined"
     first, last = spans[segment.chrom]
-    if segment.end >= last or (segment.start <= first and contig not in ACROCENTRIC):
-        return "terminal"
-    return "interstitial"
+    ends = []
+    if segment.end >= last:
+        ends.append(lengths[contig] - last <= TERMINAL_MARGIN_BP)
+    if segment.start <= first and contig not in ACROCENTRIC:
+        ends.append(first <= TERMINAL_MARGIN_BP)
+    if not ends:
+        return "interstitial"
+    return "terminal" if any(ends) else "undetermined"
 
 
 def _document_region(
@@ -391,11 +410,6 @@ def _flag_message(
     )
 
 
-def _cache_root() -> Path | None:
-    library = settings.get("reference_library")
-    return Path(expand_path(str(library)), roh_af.CACHE_FOLDER) if library else None
-
-
 def run_roh(params: QcRohParams) -> None:
     verify_dependencies(["bcftools", "bgzip", "tabix"])
     vcf = expand_path(params.input)
@@ -409,7 +423,7 @@ def run_roh(params: QcRohParams) -> None:
         )
     sample = _sample(vcf, params.sample)
     lengths = header_contig_lengths(header)
-    contigs = list(lengths) or re.findall(r"^##contig=<ID=([^,>]+)", header, re.M)
+    contigs = roh_af.header_contig_ids(header)
     build = _build(params, lengths, vcf)
     chr_prefix = _chr_prefix(vcf, contigs)
     scope = parse_scope(params.regions, contigs, build)
@@ -447,16 +461,19 @@ def run_roh(params: QcRohParams) -> None:
         dir=scratch_parent(outdir), prefix=".wgse_roh_"
     ) as tmp:
         work = Path(tmp)
-        table = roh_af.prepare(source, scope_contigs, chr_prefix, _cache_root(), work)
-        if table.status == "reused":
-            logging.info(
-                f"Reusing the allele-frequency table prepared from {source.path.name}."
-            )
-        logging.info(f"Selecting {sample}'s markers in {scope_text}...")
-        markers, counts = _select_markers(vcf, sample, scope_text, min_gq, work)
-        logging.info("Finding runs of homozygosity with bcftools roh...")
-        output, used = _run_roh(markers, table.path, work)
-        segments, spans, covered = _parse_roh(output, markers_out)
+        with roh_af.prepared(
+            source, scope_contigs, chr_prefix, roh_af.cache_root(), work
+        ) as table:
+            if table.status == "reused":
+                logging.info(
+                    "Reusing the allele-frequency table prepared from "
+                    f"{source.path.name}."
+                )
+            logging.info(f"Selecting {sample}'s markers in {scope_text}...")
+            markers, counts = _select_markers(vcf, sample, scope_text, min_gq, work)
+            logging.info("Finding runs of homozygosity with bcftools roh...")
+            output, used = _run_roh(markers, table.path, work)
+        segments, spans, covered = _parse_roh(output, markers_out, scope)
     if used == 0:
         raise CodedError(
             "roh_no_markers",
@@ -492,10 +509,11 @@ def _document(
 ) -> roh_document.RohDocument:
     terminal_bp = round(params.flag_terminal_mb * 1e6)
     interstitial_bp = round(params.flag_interstitial_mb * 1e6)
+    lengths = {bare(k): v for k, v in load_annotations(build).contigs.items()}
     rows: list[roh_document.Segment] = []
     flags: list[roh_document.Flag] = []
     for segment in segments:
-        position = _position(segment, whole, spans)
+        position = _position(segment, whole, spans, lengths)
         overlaps = [
             r for r in imprinted.regions
             if r.overlaps(segment.chrom, segment.start, segment.end)
@@ -559,7 +577,7 @@ def _document(
             f"Runs of 5 Mb or more on {len(long_chroms)} chromosomes are a pattern "
             "more typical of parents who share ancestry than of uniparental disomy."
         )
-    identity = source.identity
+    identity = table.source
     return roh_document.RohDocument(
         schema=roh_document.SCHEMA_ID,
         input=str(absolute_path(vcf)),

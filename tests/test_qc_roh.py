@@ -7,6 +7,7 @@ included) with runs of homozygosity placed inside and outside GNAS
 
 import json
 import random
+from collections.abc import Collection
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,12 @@ from wgsextract_cli.cli.parser import build_parser, parse_args
 from wgsextract_cli.core import results, roh_regions
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.panel import load_annotations
+from wgsextract_cli.server.operations import (
+    PathGuard,
+    RequestError,
+    find,
+    params_from_json,
+)
 
 pytestmark = needs_htslib
 
@@ -33,12 +40,19 @@ OUTSIDE = (20_000_000, 32_000_000)
 TO_THE_END = (58_000_000, LAST)
 
 
-def _header(build: str, chr_prefix: bool, fmt: bool) -> str:
+def _header(
+    build: str, chr_prefix: bool, fmt: bool, lengthless: Collection[str] = ()
+) -> str:
+    """A header of the build's autosomes; those in ``lengthless`` (or all,
+    with "*") are declared without a length."""
     lines = ["##fileformat=VCFv4.2"]
     for name, length in load_annotations(build).contigs.items():
         if name.removeprefix("chr").isdigit():
             contig = name if chr_prefix else name.removeprefix("chr")
-            lines.append(f"##contig=<ID={contig},length={length}>")
+            if "*" in lengthless or name.removeprefix("chr") in lengthless:
+                lines.append(f"##contig=<ID={contig}>")
+            else:
+                lines.append(f"##contig=<ID={contig},length={length}>")
     lines.append('##INFO=<ID=AF,Number=A,Type=Float,Description="Population AF">')
     if fmt:
         lines.append('##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">')
@@ -63,16 +77,18 @@ def _sample(
     runs: list[tuple[int, int]],
     interruption: str | None = None,
     others: bool = False,
+    last: int = LAST,
+    lengthless: Collection[str] = (),
 ) -> str:
     """chr20 calls: hom inside ``runs``, Hardy-Weinberg draws elsewhere. An
     ``interruption`` puts 30 heterozygous calls at 56.0-56.3 Mb: real (het),
     GQ 5 (weak) or without a genotype (missing), or leaves 55-58 Mb without
     calls (gap). ``others`` adds ten heterozygous calls on every other
-    autosome."""
+    autosome; ``last`` is the last marker."""
     rng = random.Random(1174)
     other = "chr{}\t{}\t.\tA\tG\t50\tPASS\t.\tGT:GQ\t0/1:60"
     rows = _elsewhere(range(1, 20), other) if others else []
-    for pos in range(FIRST, LAST + 1, STEP):
+    for pos in range(FIRST, last + 1, STEP):
         p = _af(pos)
         if interruption == "gap" and 55_000_000 <= pos < 58_000_000:
             continue
@@ -87,23 +103,33 @@ def _sample(
         rows.append(f"chr20\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT:GQ\t{gt}:{gq}")
     rows += _elsewhere(range(21, 23), other) if others else []
     plain = tmp / "sample.vcf"
-    plain.write_text(_header("hg38", True, True) + "\n".join(rows) + "\n")
+    header = _header("hg38", True, True, lengthless)
+    plain.write_text(header + "\n".join(rows) + "\n")
     return bgzip_index(plain)
 
 
-def _frequencies(tmp: Path, build: str = "hg38", shift: float = 0.0) -> str:
-    """Population AFs at every marker, contigs named 20 (the sample says chr20)."""
-    other = "{}\t{}\t.\tA\tG\t.\tPASS\tAF=0.5"
+def _frequencies(
+    tmp: Path,
+    build: str = "hg38",
+    shift: float = 0.0,
+    chr_prefix: bool = False,
+    lengthless: Collection[str] = (),
+) -> str:
+    """Population AFs at every marker, contigs named 20 (the sample says chr20)
+    unless ``chr_prefix``."""
+    chr_ = "chr" if chr_prefix else ""
+    other = chr_ + "{}\t{}\t.\tA\tG\t.\tPASS\tAF=0.5"
     rows = (
         _elsewhere(range(1, 20), other)
         + [
-            f"20\t{pos}\t.\tA\tG\t.\tPASS\tAF={_af(pos) + shift:.3f}"
+            f"{chr_}20\t{pos}\t.\tA\tG\t.\tPASS\tAF={_af(pos) + shift:.3f}"
             for pos in range(FIRST, LAST + 1, STEP)
         ]
         + _elsewhere(range(21, 23), other)
     )
     plain = tmp / f"pop_{build}.vcf"
-    plain.write_text(_header(build, False, False) + "\n".join(rows) + "\n")
+    header = _header(build, chr_prefix, False, lengthless)
+    plain.write_text(header + "\n".join(rows) + "\n")
     return bgzip_index(plain)
 
 
@@ -188,6 +214,66 @@ def test_issue_1174_terminal_only_when_the_whole_chromosome_is_assessed(tmp_path
     assert part["flags"] == []
 
 
+def test_pr_1349_review_runs_stop_where_coverage_stops_short_of_the_end(tmp_path):
+    """PR #1349 review: markers ending at 59 Mb made a 9 Mb run over GNAS
+    terminal, flagged at 5 Mb, though chr20 runs on to 64.4 Mb."""
+    vcf = _sample(tmp_path, [(50_000_000, 59_000_000)], last=59_000_000)
+    document = _document(_roh(tmp_path, vcf, _frequencies(tmp_path)))
+
+    assert _covering(document, 58_850_000)["position"] == "undetermined"
+    assert document["flags"] == []
+
+
+def test_pr_1349_review_runs_end_at_the_edges_of_scope_ranges(tmp_path):
+    """PR #1349 review: two ranges leaving out GNAS were joined into one
+    12 Mb run that was flagged over the excluded interval."""
+    vcf = _sample(tmp_path, [INSIDE_GNAS])
+    ranges = "chr20:50000000-58500000,chr20:59200000-62000000"
+    document = _document(_roh(tmp_path, vcf, _frequencies(tmp_path), regions=ranges))
+
+    assert all(
+        s["end"] <= 58_500_000 or s["start"] >= 59_200_000 for s in document["segments"]
+    )
+    assert document["flags"] == []
+    # Markers every 10 kb from each range's start to its end; the hole between
+    # the ranges isn't counted.
+    covered = (58_500_000 - 50_000_000 + 1) + (62_000_000 - 59_200_000 + 1)
+    assert document["scope"]["denominator_bp"] == covered
+
+
+@pytest.mark.parametrize("side", ["sample", "frequencies"])
+def test_pr_1349_review_contigs_declared_without_a_length_are_used(tmp_path, side):
+    """PR #1349 review: a chr20 declared without a length was left out of the
+    default scope, and AF contigs named chr20 were looked up as 20."""
+    if side == "sample":
+        vcf = _sample(tmp_path, [INSIDE_GNAS], lengthless={"20"})
+        frequencies = _frequencies(tmp_path)
+        options: dict[str, object] = {}
+    else:
+        vcf = _sample(tmp_path, [INSIDE_GNAS])
+        frequencies = _frequencies(tmp_path, chr_prefix=True, lengthless="*")
+        options = {"af_build": "hg38"}
+    document = _document(_roh(tmp_path, vcf, frequencies, **options))
+
+    assert "chr20" in document["scope"]["contigs"]
+    assert document["markers"]["used"] > 6000
+    assert len(document["flags"]) == 1
+
+
+def test_pr_1349_review_af_cache_is_a_path_the_server_checks(tmp_path, monkeypatch):
+    """PR #1349 review: the prepared-AF cache in the reference library was
+    written without the server's path guard seeing it."""
+    library = tmp_path / "library"
+    monkeypatch.setitem(settings, "reference_library", str(library))
+    data = tmp_path / "data"
+    request = {"input": str(data / "s.vcf.gz"), "af_file": str(data / "af.vcf.gz")}
+    params = params_from_json(find("qc/roh"), request)
+    with pytest.raises(RequestError) as refused:
+        PathGuard([data]).check(params)
+    assert refused.value.code == "path_not_allowed"
+    PathGuard([data, library]).check(params)
+
+
 def test_issue_1174_runs_end_at_gaps_without_markers(tmp_path):
     """On HG002 (GIAB v4.2.1), runs spanning the chr9 centromere's 18 Mb
     without markers were reported as one 21.8 Mb run."""
@@ -250,6 +336,11 @@ def test_issue_1174_mismatched_builds_and_missing_resources_are_refused(tmp_path
     bed.write_text("track name=imprinted db=hg19\nchr20\t57414802\t57486247\tGNAS\n")
     wrong = _roh(tmp_path, vcf, _frequencies(tmp_path), imprinted_regions=bed)
     assert wrong.error.code == "roh_regions_build_mismatch"
+
+    # PR #1349 review: a reversed interval would match runs across it.
+    bed.write_text("track db=hg38\nchr20\t60000000\t58000000\tGNAS\n")
+    reversed_ = _roh(tmp_path, vcf, _frequencies(tmp_path), imprinted_regions=bed)
+    assert reversed_.error.code == "roh_regions_unreadable"
     assert not (tmp_path / "out" / "sample.roh.tsv").exists()
 
 

@@ -129,12 +129,14 @@ def from_bed(path: Path, build: str) -> RegionSet:
         fields = line.rstrip("\n").split("\t")
         try:
             chrom, start, end = fields[0], int(fields[1]), int(fields[2])
-        except (IndexError, ValueError) as e:
+        except (IndexError, ValueError):
+            chrom, start, end = "", 0, 0
+        if not chrom or not 0 <= start < end:
             raise CodedError(
                 "roh_regions_unreadable",
-                f"--imprinted-regions {path} line {number} isn't BED "
-                "(chrom, start, end, name, conditions).",
-            ) from e
+                f"--imprinted-regions {path} line {number} isn't a BED interval "
+                "(chrom, 0-based start, end after start, name, conditions).",
+            )
         name = (
             fields[3] if len(fields) > 3 and fields[3] else f"{chrom}:{start + 1}-{end}"
         )

@@ -402,6 +402,20 @@ class QcRohParams(Params):
         metavar="MB",
     )
 
+    def _af_cache(self) -> Path | None:
+        from wgsextract_cli.core.roh_af import cache_root
+
+        return cache_root()
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        # The AF table prepared from af_file is kept in the reference library.
+        if (cache := self._af_cache()) is not None:
+            yield "af_file", cache
+
+    def write_folders(self) -> Iterator[Path]:
+        if (cache := self._af_cache()) is not None:
+            yield cache
+
 
 @dataclass(frozen=True, kw_only=True)
 class FakeDataParams(Params):

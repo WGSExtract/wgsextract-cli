@@ -178,8 +178,9 @@ class Segment:
         Position,
         Constraints(
             description="terminal: reaches the last (or, except on acrocentric "
-            "chromosomes, the first) marker of a whole assessed chromosome; "
-            "undetermined: the scope was part of a chromosome."
+            "chromosomes, the first) marker of a whole assessed chromosome, "
+            "within 1 Mb of its end; undetermined: that marker is further "
+            "from the end, or the scope was part of the chromosome."
         ),
     ]
     imprinted_regions: list[str]

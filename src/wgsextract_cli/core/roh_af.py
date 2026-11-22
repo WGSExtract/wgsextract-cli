@@ -12,6 +12,7 @@ downloaded: the file is the user's.
 
 from __future__ import annotations
 
+import contextlib
 import gzip
 import hashlib
 import json
@@ -45,6 +46,11 @@ AUTOSOMES = tuple(str(n) for n in range(1, 23))
 
 Kind = Literal["vcf", "table"]
 Prepared = Literal["built", "reused", "uncached"]
+
+
+def header_contig_ids(header: str) -> list[str]:
+    """Every contig a VCF header declares, with a length or without."""
+    return re.findall(r"^##contig=<(?:[^>]*,)?ID=([^,>]+)", header, re.MULTILINE)
 
 
 def build_of_lengths(lengths: dict[str, int]) -> str | None:
@@ -154,7 +160,7 @@ def _vcf_rows(
     header = run_command(
         ["bcftools", "view", "-h", str(source.path)], capture_output=True
     ).stdout
-    named = {bare(c): c for c in header_contig_lengths(header)}
+    named = {bare(c): c for c in header_contig_ids(header)}
     wanted = ",".join(named.get(c, c) for c in contigs)
     indexed = any(Path(str(source.path) + ext).is_file() for ext in (".tbi", ".csi"))
     query = ["bcftools", "query", "-i", 'TYPE="snp" && N_ALT=1',
@@ -238,6 +244,18 @@ class PreparedTable:
     rows: int
     status: Prepared
     reason: str | None
+    # The source as the table was made from it, read under the cache lock.
+    source: FileIdentity
+
+
+def cache_root() -> Path | None:
+    """``<reference_library>/roh``, where prepared tables are kept, or None
+    when no reference library is configured."""
+    from wgsextract_cli.core.config import settings
+    from wgsextract_cli.core.paths import expand_path
+
+    library = settings.get("reference_library")
+    return Path(expand_path(str(library)), CACHE_FOLDER) if library else None
 
 
 def _key(source: AfSource, contigs: list[str], chr_prefix: bool) -> str:
@@ -254,7 +272,7 @@ def _key(source: AfSource, contigs: list[str], chr_prefix: bool) -> str:
     return short_key(hashlib.sha256(payload.encode()))
 
 
-def _reuse_reason(folder: Path, source: AfSource) -> str | None:
+def _reuse_reason(folder: Path, source: AfSource, current: FileIdentity) -> str | None:
     """None when the cached table can be reused, else why it is rebuilt."""
     record_path = folder / "source.json"
     table = folder / "af.tab.gz"
@@ -264,7 +282,7 @@ def _reuse_reason(folder: Path, source: AfSource) -> str | None:
         record = json.loads(record_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return "its record is unreadable"
-    if drift := file_drift(record["source"], source.identity):
+    if drift := file_drift(record["source"], current):
         return f"{source.path.name} {drift}"
     if not Path(str(table) + ".tbi").is_file():
         return "the prepared table's index is missing"
@@ -273,28 +291,36 @@ def _reuse_reason(folder: Path, source: AfSource) -> str | None:
     return None
 
 
-def prepare(
+@contextlib.contextmanager
+def prepared(
     source: AfSource,
     contigs: list[str],
     chr_prefix: bool,
-    cache_root: Path | None,
+    cache: Path | None,
     work: Path,
-) -> PreparedTable:
+) -> Iterator[PreparedTable]:
     """The bcftools roh AF table for ``contigs`` (bare names), named as the
-    sample names them: reused from ``cache_root`` while the source is
-    unchanged, else built (into ``work`` when there is no cache)."""
-    if cache_root is None:
+    sample names them: reused from ``cache`` while the source is unchanged,
+    else built (into ``work`` when there is no cache). A cached table stays
+    locked while the caller uses it, so another run can't rebuild it from a
+    new release meanwhile, and the source identity it reports is the one the
+    table was made from."""
+    if cache is None:
+        current = file_identity(source.path)
         dest = work / "af.tab.gz"
         rows = _write_table(source, contigs, chr_prefix, dest, work)
-        return PreparedTable(dest, rows, "uncached", None)
-    folder = cache_root / _key(source, contigs, chr_prefix)
+        yield PreparedTable(dest, rows, "uncached", None, current)
+        return
+    folder = cache / _key(source, contigs, chr_prefix)
     folder.mkdir(parents=True, exist_ok=True)
     table = folder / "af.tab.gz"
     with build_lock(str(folder / "prepare.lock")):
-        reason = _reuse_reason(folder, source)
+        current = file_identity(source.path)
+        reason = _reuse_reason(folder, source, current)
         if reason is None:
             record = json.loads((folder / "source.json").read_text(encoding="utf-8"))
-            return PreparedTable(table, int(record["rows"]), "reused", None)
+            yield PreparedTable(table, int(record["rows"]), "reused", None, current)
+            return
         logging.info(
             f"Preparing allele frequencies from {source.path.name} ({reason})..."
         )
@@ -304,7 +330,7 @@ def prepare(
         os.replace(str(staged) + ".tbi", str(table) + ".tbi")
         os.replace(staged, table)
         record = {
-            "source": source.identity,
+            "source": current,
             "path": str(source.path.absolute()),
             "tag": source.tag,
             "build": source.build,
@@ -314,4 +340,4 @@ def prepare(
             "table": file_identity(table),
         }
         (folder / "source.json").write_text(json.dumps(record, indent=1), "utf-8")
-    return PreparedTable(table, rows, "built", reason)
+        yield PreparedTable(table, rows, "built", reason, current)

@@ -57,7 +57,9 @@ Use `bcftools concat` to join chromosomes into one file for a whole-genome run.
 `reference_library` is set, keeps it in `<library>/roh/<key>/` with the
 file's identity. Later runs reuse it (`"prepared": "reused"` in the report)
 until the file changes, for example a new release saved under the same name,
-which rebuilds it and says why (`prepared_reason`). Without a reference
+which rebuilds it and says why (`prepared_reason`). A run holds a lock on
+the table while it uses it, so a run started on the new release waits
+rather than replace the table under it. Without a reference
 library the table is made for each run.
 
 **Terms.** gnomAD's primary data are CC0, with attribution requested; its
@@ -86,7 +88,8 @@ probabilities are bcftools' defaults, passed explicitly.
 A run ends where two consecutive markers are more than 1 Mb apart, as in
 PLINK's `--homozyg-gap`: a centromere or an uncalled stretch carries no
 evidence. Without that, HG002's chromosome 9 had one 21.8 Mb "run" across
-its centromere.
+its centromere. A run also ends at the edge of each `--regions` range, so
+bases left out between two ranges count neither in a run nor in F_ROH.
 
 A VCF of variants only (most callers' output) has no hom-ref calls, so runs
 are found from heterozygous and hom-alt calls; their ends are less precise
@@ -115,9 +118,11 @@ of the imprinted regions below and is long enough:
 
 - 5 Mb (`--flag-terminal-mb`) when it reaches a chromosome end: the last
   marker, or the first except on the acrocentric chromosomes 13-15, 21 and
-  22, whose first markers are at the centromere. This is decided only when
-  the whole chromosome is in scope; a run in a partial range counts as
-  interstitial (`position: undetermined`).
+  22, whose first markers are at the centromere, and that marker is within
+  1 Mb of the end. This is decided only when the whole chromosome is in
+  scope. A run in a partial range, or one reaching a last marker that stops
+  short of the end (the VCF or the AF file has no sites beyond it), counts
+  as interstitial (`position: undetermined`).
 - 10 Mb (`--flag-interstitial-mb`) otherwise.
 
 It also needs 100 markers and an average bcftools quality of 30. These are
@@ -159,7 +164,8 @@ domain; GRCh37, GRCh38 and T2T), so its coordinates always match the build.
 `--imprinted-regions` takes your own BED (chrom, start, end, name,
 `;`-separated conditions) whose `track` line declares its build (`track
 name=imprinted db=hg38`); a BED for another build is refused
-(`roh_regions_build_mismatch`).
+(`roh_regions_build_mismatch`), as is a row whose start isn't before its end
+(`roh_regions_unreadable`).
 
 ## Outputs
 
@@ -180,6 +186,7 @@ flag is also a warning (`investigate_possible_isodisomy`).
 Errors have codes: `roh_af_missing`, `roh_af_build_mismatch`,
 `roh_af_build_unknown`, `roh_af_tag_missing`, `roh_af_unreadable`,
 `roh_af_unsorted`, `roh_regions_build_mismatch`, `roh_regions_build_unknown`,
+`roh_regions_unreadable`,
 `roh_gvcf` and `roh_no_markers`.
 
 ## Validation
