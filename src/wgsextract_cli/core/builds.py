@@ -128,6 +128,20 @@ def build_from_path(path: str) -> str | None:
     return None
 
 
+def reference_header_name(value: str) -> str:
+    """The part of a VCF ``##reference=`` value that can name a build: a path
+    or URL's file name alone, as tools write the reference's full path and a
+    folder name (a project called chm13) says nothing about the file."""
+    value = value.strip().strip('<>"')
+    if "/" in value or "\\" in value:
+        value = re.split(r"[/\\]", value.split("?")[0].rstrip("/\\"))[-1]
+    return value
+
+
+def build_from_reference_header(value: str) -> str | None:
+    return build_from_path(reference_header_name(value))
+
+
 def build_from_chr1_length(contig_lengths: dict[str, int]) -> str | None:
     """Identify the human assembly from the chr1 length of a sequence dictionary."""
     for name in ("chr1", "1"):

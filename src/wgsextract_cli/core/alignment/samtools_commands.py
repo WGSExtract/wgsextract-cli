@@ -7,6 +7,7 @@ from os import fspath
 from pathlib import Path
 
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.errors import WGSExtractError
 from wgsextract_cli.core.paths import PathInput, append_suffix
 
 
@@ -73,27 +74,28 @@ def sort_memory(
 ) -> str:
     """The per-thread memory (-m) to give samtools (or sambamba) sort for a
     ``memory`` budget: no more than ``input_bytes`` of read files can fill
-    (but at least 16M), and with -@ × -m at most SORT_RAM_FRACTION of this
-    computer's RAM, so the sort can reserve its buffers. ``memory`` itself is
-    returned when it is no larger; ``log`` says when it is lowered."""
-    import psutil
+    (but at least 16M), and with -@ × -m at most SORT_RAM_FRACTION of
+    effective RAM, leaving room for other pipeline allocations. ``memory``
+    itself is returned when it is no larger; ``log`` says when it is lowered."""
+    from wgsextract_cli.core.alignment.memory import total_memory
 
     count = max(1, int(threads))
     amount, unit = parse_memory(memory)
     requested = amount * (1024 if unit == "G" else 1)
-    total = int(psutil.virtual_memory().total)
+    total = total_memory()
     chosen = int(total * SORT_RAM_FRACTION) // count // _MIB
-    reason = (
-        f"-@ × -m stays within half of this computer's {total / 1024**3:.1f} GiB RAM"
-    )
+    reason = f"-@ × -m stays within half of the effective {total / 1024**3:.1f} GiB RAM"
+    if chosen < 1 or requested < 1:
+        raise WGSExtractError(
+            "The sort memory budget cannot provide samtools sort's minimum "
+            "of 1 MiB per thread; lower --threads or adjust --memory."
+        )
     if input_bytes is not None:
         fill = max(0, input_bytes) * DECODED_BYTES_PER_INPUT_BYTE
         filled = max(math.ceil(fill / count / _MIB), _MIN_SORT_MIB)
         if filled < chosen:
             chosen = filled
             reason = f"{input_bytes / 1e6:.1f} MB of reads fill at most {fill / _MIB:.0f} MiB"
-    # samtools refuses less than 1M a thread.
-    chosen = max(chosen, 1)
     if chosen >= requested:
         return memory
     if log:

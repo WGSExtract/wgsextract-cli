@@ -71,6 +71,7 @@ jobs:
           pixi run -e lint -x actionlint
           pixi run -e lint -x python scripts/validate_github_actions.py
           pixi run -e lint -x mypy src/wgsextract_cli
+          pixi run -e lint -x mypy --platform darwin src/wgsextract_cli
       - name: Advisory test-smell annotations (never fails)
         run: pixi run -e lint -x python scripts/test_smells.py --base HEAD^1 --github
   test-ubuntu:

@@ -47,7 +47,7 @@ from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     run_command,
     run_pipeline,
 )
@@ -360,7 +360,7 @@ def _call_heteroplasmies(
     run_command(["samtools", "index", str(tmp / chrm_bam)])
     with (tmp / "chrM.fasta").open("w", encoding="utf-8", newline="\n") as out:
         run_command(["samtools", "faidx", fasta, chr_m], stdout=out)
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     calls = "heteroplasmies.vcf.gz"
     logging.info("Calling mtDNA heteroplasmies with mutserve...")
     current_result().record_tool_command(["mutserve"])
