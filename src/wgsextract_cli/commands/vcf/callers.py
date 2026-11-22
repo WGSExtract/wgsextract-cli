@@ -27,7 +27,11 @@ from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import java_local_path
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths, reference_dict_path
-from wgsextract_cli.core.region_selection import is_region_file, region_items
+from wgsextract_cli.core.region_selection import (
+    is_region_file,
+    literal_region,
+    region_items,
+)
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
@@ -132,20 +136,44 @@ def _cleanup_gatk_temp_input(temp_input: str | None) -> None:
             logging.warning(f"Failed to remove temporary GATK artifact {path}: {e}")
 
 
+_REGION_FIELD = re.compile(
+    r"\s*[^,\s]+:[0-9]+(?:,[0-9]{3})*-[0-9]+(?:,[0-9]{3})*(?=\s*(?:,|$))|[^,]+"
+)
+
+
 def write_region_bed(region: str, lengths: dict[str, int], bed: str) -> None:
-    """chr1:1000-1050,chr2 (1-based, inclusive) as BED (0-based, half-open)."""
+    """Write 1-based inclusive regions as 0-based half-open BED intervals."""
     if is_region_file(region):
         shutil.copyfile(region, bed)
         return
-    with open(bed, "w", newline="\n") as f:
-        for part in (r.strip() for r in region.split(",") if r.strip()):
-            contig, _, span = part.partition(":")
-            start, _, end = span.partition("-")
-            if not end and contig not in lengths:
-                raise WGSExtractError(f"{contig} isn't in the reference.")
-            first = int(start) - 1 if start else 0
-            last = int(end) if end else lengths[contig]
-            f.write(f"{contig}\t{first}\t{last}\n")
+    rows = []
+    for match in _REGION_FIELD.finditer(region):
+        part = match[0].strip()
+        if not part:
+            continue
+        # A three-digit contig after a range can also look like a digit group.
+        if any(fragment in lengths for fragment in part.split(",")[1:]):
+            raise UsageError(f"Ambiguous --region {part!r}; use a BED file.")
+        selection = part
+        contig, colon, span = part.rpartition(":")
+        if part not in lengths and colon:
+            start, dash, end = span.partition("-")
+            if not end:
+                if contig not in lengths:
+                    raise UsageError(f"Unknown contig in --region: {contig!r}.")
+                selection = f"{contig}:{start or '1'}-{lengths[contig]}"
+            elif dash and not start:
+                selection = f"{contig}:1-{end}"
+        try:
+            chrom, first, last = literal_region(selection, lengths)
+        except ValueError as exc:
+            raise UsageError(
+                f"Invalid --region {part!r}; expected a contig, contig:start-end, or a BED file."
+            ) from exc
+        rows.append(f"{chrom}\t{first}\t{last}\n")
+    if not rows:
+        raise UsageError("--region must contain at least one interval.")
+    Path(bed).write_text("".join(rows), encoding="utf-8", newline="\n")
 
 
 def _gatk_cram_hint(input_file: str, stderr: object) -> str | None:
@@ -206,9 +234,10 @@ def run_freebayes(params: VcfFreebayesParams) -> None:
             # Decode CRAM with samtools and stream uncompressed BAM to freebayes.
             # It can't seek in a stream, so its calls are cut to the region
             # afterwards: the streamed reads overlap the region's edges.
-            view_cmd = ["samtools", "view", "-u", "-h", "-T", use_ref, "--", input_file]
-            if region:
-                view_cmd += region_items(region, commas=True)
+            view_cmd = ["samtools", "view", "-u", "-h", "-T", use_ref]
+            if bed:
+                view_cmd += ["-M", "-L", bed]
+            view_cmd += ["--", input_file]
             stages = [view_cmd, ["freebayes", "-f", use_ref, "--stdin"]]
             keep = ["-T", bed] if bed else []
         else:

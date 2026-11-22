@@ -6,6 +6,20 @@ import unittest
 from tests.smoke_utils import REPO_ROOT, ensure_fake_data, run_cli
 
 
+def test_1247_one_column_batch_reports_missing_samples(tmp_path):
+    batch = tmp_path / "batch.tsv"
+    batch.write_text("name\néchantillon\nsecond\n", encoding="utf-8-sig")
+
+    rc, stdout, stderr = run_cli(
+        ["analyze", "comprehensive", "--batch", str(batch), "--outdir", str(tmp_path)]
+    )
+
+    assert rc == 1
+    assert "BATCH PROCESSING: échantillon" in stdout
+    assert "BATCH PROCESSING: second" in stdout
+    assert "Batch analysis failed" in stderr
+
+
 class TestAnalyzeBatch(unittest.TestCase):
     def setUp(self):
         self.outdir = str(REPO_ROOT / "out" / "tests" / "analyze_batch")

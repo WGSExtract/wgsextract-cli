@@ -147,7 +147,10 @@ def _pileup(
     mpileup = ["bcftools", "mpileup", "-f", reference, "-R", str(regions), "-a", "FORMAT/AD", "-B", "-I", "-q", "20", "-Q", "20",
                "-d", "500", "-Ou", path]  # fmt: skip
     query = ["bcftools", "query", "-f", "%POS\t%REF\t%ALT\t[%AD]\n"]
-    with popen(mpileup, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as pile:
+    with (
+        tempfile.TemporaryFile(dir=regions.parent) as stderr,
+        popen(mpileup, stdout=subprocess.PIPE, stderr=stderr) as pile,
+    ):
         with popen(query, stdin=pile.stdout, stdout=subprocess.PIPE, text=True) as q:
             assert pile.stdout is not None and q.stdout is not None
             pile.stdout.close()
@@ -159,11 +162,13 @@ def _pileup(
                     alts,
                     [int(x) if x != "." else 0 for x in ad.split(",")],
                 )
-        _, error = pile.communicate()
-        if pile.returncode:
-            raise WGSExtractError(
-                f"bcftools mpileup failed on {contig}: {error.decode(errors='replace')[-800:]}"
-            )
+        if pile.wait():
+            size = stderr.seek(0, io.SEEK_END)
+            stderr.seek(max(0, size - 3200))
+            error = stderr.read().decode(errors="replace")[-800:]
+            raise WGSExtractError(f"bcftools mpileup failed on {contig}: {error}")
+        if q.returncode:
+            raise WGSExtractError(f"bcftools query failed on {contig}.")
 
 
 def _alignment_genotypes(

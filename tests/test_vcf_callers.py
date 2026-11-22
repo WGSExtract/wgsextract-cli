@@ -105,6 +105,25 @@ def test_freebayes_cram_region_excludes_calls_outside_it(genome, tmp_path):
     assert _call("freebayes", genome, genome.cram, tmp_path, "-r", region) == []
 
 
+@needs_freebayes
+def test_1247_freebayes_region_bed_keeps_grouped_coordinates_and_colons(
+    genome, tmp_path
+):
+    bed = tmp_path / "regions.bed"
+    callers.write_region_bed(
+        "chr1:1,000-1,050, HLA-A*01:01:2-10",
+        {"chr1": 5000, "HLA-A*01:01": 100},
+        str(bed),
+    )
+    assert bed.read_text(encoding="utf-8").splitlines() == [
+        "chr1\t999\t1050",
+        "HLA-A*01:01\t1\t10",
+    ]
+    assert _call(
+        "freebayes", genome, genome.cram, tmp_path, "-r", "chr1:1,000-1,050"
+    ) == [genome.call]
+
+
 # --- GATK HaplotypeCaller --------------------------------------------------------
 
 

@@ -5,6 +5,7 @@ from pathlib import Path, PureWindowsPath
 
 import pytest
 
+from tests.smoke_utils import run_cli
 from wgsextract_cli import api
 from wgsextract_cli.commands.sign import _manifest_name, _read_manifest
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
@@ -74,6 +75,23 @@ def test_verify_rejects_other_key_and_edited_manifest(tmp_path, outputs):
     manifest.write_text(manifest.read_text().replace("a.txt", "a.txt "))
     with pytest.raises(api.CommandFailed, match="Signature verification FAILED"):
         _verify(manifest, public_key=Path(f"{key}.pub"))
+
+
+@pytest.mark.parametrize("contents", ["", "ssh-ed25519\n"])
+def test_1247_verify_reports_truncated_public_key_as_usage_error(
+    tmp_path, outputs, contents
+):
+    key = _key(tmp_path / "id")
+    _create(outputs, key=key)
+    public_key = tmp_path / "truncated.pub"
+    public_key.write_text(contents, encoding="utf-8")
+
+    rc, _, stderr = run_cli(
+        ["sign", "verify", str(outputs / "SHA256SUMS"), "--public-key", str(public_key)]
+    )
+
+    assert rc == 2
+    assert "--public-key" in stderr and "key data" in stderr
 
 
 def test_verify_fails_when_ssh_keygen_never_exits(tmp_path, outputs, monkeypatch):

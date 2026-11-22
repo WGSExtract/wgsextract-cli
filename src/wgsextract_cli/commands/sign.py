@@ -172,8 +172,13 @@ def _verify_signature(
     keygen = _ssh_keygen()
     with tempfile.TemporaryDirectory() as tmp:
         if params.public_key:
-            with open(params.public_key) as f:
-                key_type, key_data = f.read().split()[:2]
+            with open(params.public_key, encoding="utf-8") as f:
+                fields = f.read().split(maxsplit=2)
+            if len(fields) < 2:
+                raise UsageError(
+                    "--public-key must contain an SSH key type and key data."
+                )
+            key_type, key_data = fields[:2]
             allowed = Path(tmp) / "allowed_signers"
             with allowed.open("w", newline="\n") as f:
                 f.write(f'{_SIGNER} namespaces="{NAMESPACE}" {key_type} {key_data}\n')

@@ -262,9 +262,13 @@ def run_batch_comprehensive(job: AnalyzeJob, batch_file: str) -> None:
     if not Path(batch_file).exists():
         raise WGSExtractError(f"Batch file not found: {batch_file}")
 
-    with open(batch_file) as f:
-        # Detect delimiter (CSV or TSV)
-        dialect = csv.Sniffer().sniff(f.read(1024))
+    with open(batch_file, encoding="utf-8-sig", newline="") as f:
+        # Only CSV and TSV delimiters are meaningful; a single column has neither.
+        dialect: str | type[csv.Dialect]
+        try:
+            dialect = csv.Sniffer().sniff(f.read(1024), delimiters=",\t")
+        except csv.Error:
+            dialect = "excel-tab"
         f.seek(0)
         reader = csv.DictReader(f, dialect=dialect)
 
@@ -419,7 +423,7 @@ def run_batch_gen(params: AnalyzeBatchGenParams) -> None:
     output_path = str(params.output)
     _print(f"Writing batch file to: {output_path}")
 
-    with open(output_path, "w", newline="") as out:
+    with open(output_path, "w", encoding="utf-8", newline="") as out:
         writer = csv.writer(out)
         writer.writerow(["name", "input", "vcf"])
         for name, data in sorted(samples.items()):
