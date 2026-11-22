@@ -311,3 +311,25 @@ def test_1322_app_launched_cli_uses_the_apps_overridden_location(tmp_path, monke
 
     assert not previous.exists()
     assert config.read_toml(destination)["cpu_threads"] == 7
+
+
+def test_1322_save_reloads_settings_after_an_explicit_config_moves(tmp_path):
+    previous = tmp_path / "old.toml"
+    destination = tmp_path / "new.toml"
+    previous.write_text("cpu_threads = 2\nram_gb = 4\n")
+    desktop = desktop_data_dir()
+    desktop.mkdir(parents=True, exist_ok=True)
+
+    with config.scoped_config(previous):
+        assert settings["cpu_threads"] == 2
+        previous.rename(destination)
+        (desktop / "settings.json").write_text(
+            json.dumps({"movedConfigPaths": {str(previous): str(destination)}})
+        )
+        save_config({"cpu_threads": 7})
+
+        assert settings["cpu_threads"] == 7
+        assert settings["ram_gb"] == 4
+        assert get_config_path() == destination
+    assert not previous.exists()
+    assert config.read_toml(destination)["cpu_threads"] == 7

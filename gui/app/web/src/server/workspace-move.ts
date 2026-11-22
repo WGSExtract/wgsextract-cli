@@ -130,19 +130,27 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
     }
     await assertUsableTarget(to, from, [sourceRoot, bundleRoot, coordination]);
     const move: FolderMove = { from, fromReal: await existingRealPath(from), to };
-    const movedConfigs: MovedConfigPath[] = [];
+    const movedConfigs = new Map<string, string>();
     const copiedConfigs = new Set<string>();
     for (const settingsFile of settingsFiles) {
         const relocated = relocatePath(settingsFile, from, to);
         if (relocated !== settingsFile) {
             const parent = await existingRealPath(path.dirname(settingsFile));
             const canonical = path.join(parent, path.basename(settingsFile));
-            movedConfigs.push([settingsFile, relocated]);
+            movedConfigs.set(settingsFile, relocated);
             // A directory link may lead out of the workspace. Its target is not
             // copied, so keep that file and redirect only the moved link's path.
             if (isSameOrInsidePath(move.fromReal, canonical)) {
-                if (canonical !== settingsFile) movedConfigs.push([canonical, relocated]);
+                movedConfigs.set(canonical, relocated);
                 copiedConfigs.add(canonical);
+            }
+            // A file symlink also has an independently usable config path.
+            // Retire its real target only if that file was copied with it.
+            const realFile = await existingRealPath(settingsFile);
+            const realDestination = relocatePath(realFile, move.fromReal, to);
+            if (realDestination !== realFile) {
+                movedConfigs.set(realFile, realDestination);
+                copiedConfigs.add(realFile);
             }
         }
     }
@@ -186,7 +194,7 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
             }
         }
         signal.throwIfAborted();
-        await save(movedConfigs);
+        await save([...movedConfigs]);
     }
     catch (error) {
         for (const [previous, retired] of retiredConfigs) {

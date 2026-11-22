@@ -33,7 +33,7 @@ from wgsextract_cli.api._params import with_config_defaults
 from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.reference_assets import reference_genomes_dir
 from wgsextract_cli.core.utils import WGSExtractError
-from wgsextract_cli.core.workspace_activity import hold_workspace
+from wgsextract_cli.core.workspace_activity import WorkspaceLease, hold_workspace
 
 from .job_paths import (
     INPUT_NAMES,
@@ -190,7 +190,7 @@ class JobManager:
         self._workers: dict[str, subprocess.Popen[str]] = {}
         # Folders each queued or running job writes in, for _pump.
         self._writes: dict[str, frozenset[str]] = {}
-        self._workspace_leases: dict[str, contextlib.ExitStack] = {}
+        self._workspace_leases: dict[str, WorkspaceLease] = {}
         self._cancelling: set[str] = set()
         # Finished jobs whose record or summary is not saved yet (a full
         # disk), in order: kept in memory and retried, never evicted.
@@ -361,7 +361,7 @@ class JobManager:
             workspace = hold_workspace()
         except WGSExtractError as error:
             raise RequestError(409, "workspace_busy", str(error)) from error
-        with workspace:
+        with workspace.cleanup:
             return self._submit(
                 op, params, card=card, job_id=job_id, workspace=workspace
             )
@@ -373,7 +373,7 @@ class JobManager:
         *,
         card: bool | None,
         job_id: str | None,
-        workspace: contextlib.ExitStack,
+        workspace: WorkspaceLease,
     ) -> Job:
         if job_id is not None:
             self.check_job_id(job_id)
@@ -422,7 +422,9 @@ class JobManager:
                 del self._writes[job.id]
                 raise
             self._event(job, "status", status="queued")
-            self._workspace_leases[job.id] = workspace.pop_all()
+            self._workspace_leases[job.id] = WorkspaceLease(
+                workspace.name, workspace.cleanup.pop_all()
+            )
             if op.kind == "query":
                 self._start(job)
             else:
@@ -562,6 +564,7 @@ class JobManager:
         """Start a job's worker; False if it could not start (job failed)."""
         request = {
             "op": job.op,
+            "workspace_lease": self._workspace_leases[job.id].name,
             "params": job.params,
             "config": str(self.config_path) if self.config_path else None,
             "debug": self.debug,
@@ -738,7 +741,7 @@ class JobManager:
         finally:
             workspace = self._workspace_leases.pop(job.id, None)
             if workspace is not None:
-                workspace.close()
+                workspace.cleanup.close()
 
     def _save_finished(self) -> None:
         """Record finished jobs not yet saved; those saved may be evicted."""

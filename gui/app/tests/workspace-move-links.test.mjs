@@ -135,45 +135,53 @@ for (const volume of ["the same volume", "another volume"]) {
   });
 }
 
-test("#1322: cross-volume cleanup failure leaves no writable config at the old path", async (t) => {
-  const { root, source, bundle, users } = await fixture(t);
-  await prepareBundleWorkspace(manifest, source);
-  const oldFile = path.join(users, "config.toml");
-  await writeFile(oldFile, "cpu_threads = 3\n");
-  const external = path.join(root, "external");
-  await mkdir(external);
-  const externalConfig = path.join(external, "chosen.toml");
-  await writeFile(externalConfig, "cpu_threads = 4\n");
-  await symlink(external, path.join(users, "settings"), "junction");
-  await writeFile(path.join(bundle, "state.json"), JSON.stringify({
-    configFilePaths: { paths: path.join(users, "settings", "chosen.toml") },
-  }));
-  const target = path.join(root, "new-drive");
-  failRenames(t, { folder: users });
-  const fsPromises = createRequire(import.meta.url)("node:fs/promises");
-  const originalRm = fsPromises.rm;
-  fsPromises.rm = async (candidate, options) => {
-    if (candidate === users) {
-      throw Object.assign(new Error("Windows kept a file open in the old folder"), { code: "EPERM" });
-    }
-    return originalRm(candidate, options);
-  };
-  syncBuiltinESMExports();
-  t.after(() => {
-    fsPromises.rm = originalRm;
+for (const linkConfig of [false, true]) {
+  test(`#1322: cross-volume cleanup failure retires the old ${linkConfig ? "linked" : "regular"} config`, async (t) => {
+    const { root, source, bundle, users } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const oldFile = path.join(users, "config.toml");
+    const realFile = linkConfig ? path.join(users, "real-settings.toml") : oldFile;
+    await writeFile(realFile, "cpu_threads = 3\n");
+    if (linkConfig && !await trySymlink(t, path.basename(realFile), oldFile, "file")) return;
+    const external = path.join(root, "external");
+    await mkdir(external);
+    const externalConfig = path.join(external, "chosen.toml");
+    await writeFile(externalConfig, "cpu_threads = 4\n");
+    await symlink(external, path.join(users, "settings"), "junction");
+    await writeFile(path.join(bundle, "state.json"), JSON.stringify({
+      configFilePaths: { paths: path.join(users, "settings", "chosen.toml") },
+    }));
+    const target = path.join(root, "new-drive");
+    failRenames(t, { folder: users });
+    const fsPromises = createRequire(import.meta.url)("node:fs/promises");
+    const originalRm = fsPromises.rm;
+    fsPromises.rm = async (candidate, options) => {
+      if (candidate === users) {
+        throw Object.assign(new Error("Windows kept a file open in the old folder"), { code: "EPERM" });
+      }
+      return originalRm(candidate, options);
+    };
     syncBuiltinESMExports();
+    t.after(() => {
+      fsPromises.rm = originalRm;
+      syncBuiltinESMExports();
+    });
+
+    await move({ sourceRoot: source, bundleRoot: bundle, folder: target });
+
+    await stat(users);
+    await assert.rejects(stat(oldFile), { code: "ENOENT" });
+    const newFile = path.join(target, "config.toml");
+    const newRealFile = path.join(target, path.basename(realFile));
+    assert.match(await readFile(newFile, "utf8"), /cpu_threads = 3/);
+    assert.match(await readFile(externalConfig, "utf8"), /cpu_threads = 4/);
+    assert.match(await readFile(path.join(target, "settings", "chosen.toml"), "utf8"), /cpu_threads = 4/);
+    const redirects = JSON.parse(await readFile(appSettingsPath(), "utf8")).movedConfigPaths;
+    assert.equal(redirects[oldFile], newFile);
+    assert.equal(redirects[realFile], newRealFile);
+    await assert.rejects(stat(realFile), { code: "ENOENT" });
   });
-
-  await move({ sourceRoot: source, bundleRoot: bundle, folder: target });
-
-  await stat(users);
-  await assert.rejects(stat(oldFile), { code: "ENOENT" });
-  const newFile = path.join(target, "config.toml");
-  assert.match(await readFile(newFile, "utf8"), /cpu_threads = 3/);
-  assert.match(await readFile(externalConfig, "utf8"), /cpu_threads = 4/);
-  assert.match(await readFile(path.join(target, "settings", "chosen.toml"), "utf8"), /cpu_threads = 4/);
-  assert.equal(JSON.parse(await readFile(appSettingsPath(), "utf8")).movedConfigPaths[oldFile], newFile);
-});
+}
 
 for (const [step, failing] of [["saving the app's state", "state.json"], ["relinking", "current.fa"]]) {
   test(`1239 a move that fails ${step} after renaming the folder puts its symlinks back as they were`, async (t) => {

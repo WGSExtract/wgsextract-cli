@@ -21,6 +21,12 @@ class _Lease:
     active: bool = True
 
 
+@dataclass
+class WorkspaceLease:
+    name: str
+    cleanup: ExitStack
+
+
 _lease: ContextVar[_Lease | None] = ContextVar("workspace_activity", default=None)
 _marker = re.compile(r"(use|move)-([1-9]\d*)-[a-f0-9-]+")
 
@@ -95,14 +101,14 @@ def relocated_config_path(path: Path) -> Path:
 
 
 @contextmanager
-def workspace_use() -> Iterator[None]:
+def workspace_use(admitted_by: str | None = None) -> Iterator[None]:
     """Announce work before resolving its paths, and hold through publication."""
     outer = _lease.get()
     if outer is not None and outer.active:
         yield
         return
 
-    with hold_workspace():
+    with hold_workspace(admitted_by).cleanup:
         lease = _Lease()
         token = _lease.set(lease)
         try:
@@ -112,7 +118,7 @@ def workspace_use() -> Iterator[None]:
             _lease.reset(token)
 
 
-def hold_workspace() -> ExitStack:
+def hold_workspace(admitted_by: str | None = None) -> WorkspaceLease:
     """Acquire a lease that can be handed to the thread finishing a queued job."""
     import psutil
 
@@ -126,6 +132,20 @@ def hold_workspace() -> ExitStack:
     marker.touch(exist_ok=False)
     with ExitStack() as cleanup:
         cleanup.callback(marker.unlink, missing_ok=True)
+        if admitted_by is not None:
+            # The manager already prevented any move from starting. Publish
+            # the worker's own marker first, so it stays protected if the
+            # manager exits while the worker is cancelling.
+            admission = _marker.fullmatch(admitted_by)
+            if (
+                not admission
+                or admission[1] != "use"
+                or int(admission[2]) != os.getppid()
+                or not (directory / admitted_by).is_file()
+                or not psutil.pid_exists(int(admission[2]))
+            ):
+                raise WGSExtractError("The job lost its workspace lease.")
+            return WorkspaceLease(marker.name, cleanup.pop_all())
         for other in directory.iterdir():
             match = _marker.fullmatch(other.name)
             if match is None:
@@ -136,4 +156,4 @@ def hold_workspace() -> ExitStack:
                 raise WGSExtractError(
                     "The workspace is being moved. Try again when the move has finished."
                 )
-        return cleanup.pop_all()
+        return WorkspaceLease(marker.name, cleanup.pop_all())

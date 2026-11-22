@@ -492,7 +492,11 @@ def save_config(updates: dict[str, Any]) -> None:
     """Save configuration updates to the config.toml file."""
     import tomli_w
 
-    config_path = relocated_config_path(get_config_path())
+    with _load_lock:
+        state = _state()
+        selected = state.path
+        config_path = get_config_path()
+    config_path = relocated_config_path(config_path)
 
     current_config = {}
     if config_path.exists():
@@ -534,7 +538,10 @@ def save_config(updates: dict[str, Any]) -> None:
         claim_users_workspace(config_path.parent)
     config_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write(config_path, tomli_w.dumps(current_config).encode("utf-8"))
-    reload_settings()
+    with _load_lock:
+        if selected is not None and state.path == selected:
+            state.path = config_path
+        reload_settings()
 
 
 @overload
