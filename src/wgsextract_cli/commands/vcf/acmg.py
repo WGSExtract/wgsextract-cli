@@ -12,7 +12,6 @@ as VUS), so a run whose databases lack one of the required sources is refused.
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import os
@@ -21,7 +20,7 @@ import struct
 import subprocess
 import tempfile
 import zipfile
-from collections import Counter, deque
+from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -39,14 +38,12 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    _is_sigpipe,
-    get_resource_defaults,
+    get_resource_threads,
     popen,
 )
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
@@ -63,6 +60,7 @@ from wgsextract_cli.core.variant_table import (
     split_origin,
 )
 
+from ._acmg_fastvep import _FastVep
 from .annotation_helpers import annotation_context, resource
 from .basic import vcf_input_handler
 
@@ -97,7 +95,6 @@ _TAGS = ("ACMG_CLASS", "ACMG_CRITERIA", "ACMG_TRANSCRIPT")
 _OURS = tuple(f"##INFO=<ID={tag}," for tag in _TAGS) + ("##WGSE_ACMG=",)
 # Printed once fastVEP has loaded its databases and checked them, before it
 # reads a record (we always pass --pick-order).
-_SETUP_DONE = "Using --pick order"
 _MISSING = re.compile(r"sources the classifier reads are not loaded: (.+?)\.?$")
 _GNOMAD_LACKS = re.compile(
     r"the gnomAD databases that are loaded hold nothing of chromosomes (.+?), which"
@@ -307,108 +304,6 @@ def _check_setup(lines: list[str], contigs: Iterable[str]) -> set[str]:
     return unused
 
 
-class _FastVep:
-    """fastVEP reading the input (minus CSQ) from bcftools; stderr is read
-    until its setup is done, then drained by a thread."""
-
-    def __init__(self, command: list[str], strip: list[str], env: dict[str, str]):
-        self.strip = popen(
-            strip, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        self.proc = popen(
-            command,
-            stdin=self.strip.stdout,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            env=env,
-        )
-        assert self.strip.stdout is not None and self.proc.stderr is not None
-        self.strip.stdout.close()  # fastVEP holds the pipe now
-        self.tail: deque[str] = deque(maxlen=40)
-        self.strip_tail: deque[str] = deque(maxlen=10)
-        assert self.strip.stderr is not None
-        strip_err = self.strip.stderr
-        self._strip_drain = context_thread(
-            target=lambda: self.strip_tail.extend(strip_err), daemon=True
-        )
-        self._strip_drain.start()
-        self.setup: list[str] = []
-        self.ready = False
-        # Others the run starts and close() must stop: the reader and writer.
-        self.others: list[subprocess.Popen[str]] = []
-        for line in self.proc.stderr:
-            line = line.rstrip("\n")
-            self.setup.append(line)
-            logging.debug("fastVEP: %s", line)
-            if line.startswith(_SETUP_DONE):
-                self.ready = True
-                break
-        stderr = self.proc.stderr
-        self._drain = context_thread(target=self._read, args=(stderr,), daemon=True)
-        self._drain.start()
-
-    def _read(self, stderr: IO[str]) -> None:
-        for line in stderr:
-            line = line.rstrip("\n")
-            self.tail.append(line)
-            if line.startswith("warning:"):
-                logging.warning("fastVEP %s", line)
-
-    @property
-    def stdout(self) -> IO[str]:
-        assert self.proc.stdout is not None
-        return self.proc.stdout
-
-    def close(self) -> None:
-        for proc in (self.proc, self.strip, *self.others):
-            if proc.poll() is None:
-                proc.kill()
-            proc.wait()
-            for stream in (proc.stdin, proc.stdout):
-                if stream is not None and not stream.closed:
-                    with contextlib.suppress(OSError):
-                        stream.close()
-
-    def require_ready(self) -> None:
-        """fastVEP stopped before its setup was done: say why."""
-        if not self.ready:
-            self.proc.wait()
-            detail = "\n".join(self.setup).strip()
-            raise WGSExtractError(f"fastVEP failed before reading the input: {detail}")
-
-    def check(self) -> None:
-        self._drain.join(timeout=30)
-        self._strip_drain.join(timeout=30)
-        self._raise_failure(self.strip.wait(), self.proc.wait())
-
-    def check_exited(self) -> None:
-        """After the merge failed: raise the tools' error if one of them
-        failed (fastVEP stopping makes the merge fail too), else return."""
-        try:
-            fastvep = self.proc.wait(timeout=5)
-            strip = self.strip.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            return
-        self._drain.join(timeout=5)
-        self._strip_drain.join(timeout=5)
-        self._raise_failure(strip, fastvep)
-
-    def _raise_failure(self, strip: int, fastvep: int) -> None:
-        detail = "".join(self.strip_tail).strip()
-        # Windows reports a failed stdout write instead of SIGPIPE when fastVEP
-        # stops. Preserve genuine input errors, but report the downstream cause.
-        broken_pipe = _is_sigpipe(strip) or any(
-            line.strip() == "[main_vcfannotate] Error: failed to write to -"
-            for line in detail.splitlines()
-        )
-        if strip != 0 and not (broken_pipe and fastvep != 0):
-            raise WGSExtractError(f"bcftools failed reading the input: {detail}")
-        if fastvep != 0:
-            detail = "\n".join([*self.setup[-10:], *self.tail]).strip()
-            raise WGSExtractError(f"fastVEP failed: {detail}")
-
-
 def _records(lines: Iterable[str]) -> Iterator[list[str]]:
     for line in lines:
         if not line.startswith("#"):
@@ -593,7 +488,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
         )
     contigs = vcf_index_chromosomes(vcf)
     _require_library_sources(databases, params.site_data)
-    threads = int(get_resource_defaults(params.threads)[0])
+    threads = int(get_resource_threads(params.threads))
     wanted, left_out = _per_run_plan(databases, contigs, params.site_data, sa_dir)
     result = current_result()
     with (

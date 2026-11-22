@@ -29,6 +29,8 @@ CI_TESTS = (
     "tests/test_ci_scheduling.py",
     "tests/test_ci_moves.py",
     "tests/test_ci_nightly.py",
+    "tests/test_ci_auto_merge_watch.py",
+    "tests/test_ci_release_latest.py",
 )
 SMOKE_TESTS = ("tests/test_microarray_vendor_formats.py", "tests/test_table_writer.py")
 OS_WORKFLOWS = {

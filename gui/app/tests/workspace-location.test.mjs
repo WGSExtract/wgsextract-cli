@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { parse as parseToml, stringify as stringifyToml } from "smol-toml";
 import { fileURLToPath } from "node:url";
+import { dataEnvironment, fixture, manifest, move, settingsControl, settingsIn } from "./workspace-fixture.mjs";
 
 const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/web/src/server/bundle-uninstall-cli.js");
 const { saveConfig } = await import("../dist/web/src/server/config-store.js");
@@ -13,79 +14,8 @@ const { applicationSupportDirectory, normalizeContext } = await import("../dist/
 const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
 const { appDataWorkspacesDirectory, appSettingsPath } = await import("../dist/web/src/server/workspace-location.js");
 const { saveUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo } = await import("../dist/web/src/server/users-workspace.js");
-const { moveWorkspace } = await import("../dist/web/src/server/workspace-move.js");
 const { relocateSettingsFile, restoreRewrittenFile } = await import("../dist/web/src/server/settings-relocation.js");
 const { displayWorkspacePath, relocatePath } = await import("../dist/shared/workspace-paths.js");
-const { parseFlatToml } = await import("../dist/shared/rendering.js");
-
-const settingsControl = {
-  id: "paths",
-  label: "Paths",
-  kind: "configEditor",
-  configFile: { path: "{{usersWorkspace}}/config.toml", previousPaths: ["{{bundleWorkspace}}/config.toml"], format: "toml" },
-  settings: [
-    { id: "output", key: "output_directory", label: "Output", kind: "path", moveContents: true },
-    { id: "reference", key: "reference_library", label: "Reference", kind: "path", moveContents: true },
-    { id: "genomes", key: "reference_genome_library", label: "Genomes", kind: "path", moveContents: true },
-    { id: "elsewhere", key: "elsewhere", label: "Elsewhere", kind: "path" },
-  ],
-};
-const manifest = {
-  id: "location.bundle",
-  displayName: "Location Fixture",
-  summary: "Tests where workspaces live.",
-  defaultUsersWorkspace: "~/visible-workspace",
-  pages: [{ id: "main", title: "Main", summary: "Main page.", sections: [{ id: "main", controls: [settingsControl] }] }],
-};
-
-function dataEnvironment(root) {
-  return {
-    HOME: root,
-    USERPROFILE: root,
-    XDG_DATA_HOME: path.join(root, "data"),
-    LOCALAPPDATA: path.join(root, "data"),
-    WGSEXTRACT_GUI_APP_DATA_NAME: "test.app",
-  };
-}
-
-async function fixture(t, fixtureManifest = manifest) {
-  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-workspace-location-"));
-  const original = {};
-  for (const [key, value] of Object.entries(dataEnvironment(root))) {
-    original[key] = process.env[key];
-    process.env[key] = value;
-  }
-  t.after(async () => {
-    for (const [key, value] of Object.entries(original)) {
-      if (value === undefined) {
-        delete process.env[key];
-      } else {
-        process.env[key] = value;
-      }
-    }
-    await rm(root, { force: true, recursive: true });
-  });
-  const source = path.join(root, "source");
-  await mkdir(source, { recursive: true });
-  await writeFile(path.join(source, "manifest.json"), JSON.stringify(fixtureManifest));
-  return {
-    root,
-    source,
-    bundle: path.join(
-      process.platform === "darwin" ? path.join(root, "Library", "Application Support") : path.join(root, "data"),
-      "test.app", "BundleWorkspaces", "location.bundle",
-    ),
-    users: path.join(root, "visible-workspace"),
-  };
-}
-
-function move(request) {
-  return moveWorkspace({ manifest, onProgress: () => undefined, signal: new AbortController().signal, ...request });
-}
-
-async function settingsIn(file) {
-  return { ...parseFlatToml(await readFile(file, "utf8")) };
-}
 
 test("the bundle workspace is the app's, in its data folder; the users workspace is a visible folder in the home folder", async (t) => {
   const { root, source, bundle, users } = await fixture(t);

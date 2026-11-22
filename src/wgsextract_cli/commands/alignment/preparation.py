@@ -49,6 +49,7 @@ from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
     get_resource_defaults,
+    get_resource_threads,
 )
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
@@ -79,6 +80,7 @@ from .common import (
     StreamingMemoryUnavailable,
     _AlignSetup,
     aligned_output_path,
+    duplicate_marker,
     ensure_bwa_alt_file,
     ensure_bwa_index,
 )
@@ -132,7 +134,10 @@ def _prepare_alignment(
     verify_dependencies(tools)
     validate_output_profile(job.output_profile or "default")
     log_dependency_info(tools)
-    threads, memory = get_resource_defaults(job.threads, job.memory)
+    if samtools_sort:
+        threads, memory = get_resource_defaults(job.threads, job.memory)
+    else:
+        threads, memory = get_resource_threads(job.threads), None
 
     if not job.r1:
         raise UsageError("--r1 is required unless --genome resolves read inputs.")
@@ -148,6 +153,7 @@ def _prepare_alignment(
         {label: path for label, path in paths_to_check.items() if not is_url(path)}
     )
     if samtools_sort:
+        assert memory is not None
         memory = sort_memory(
             threads, memory, input_bytes=regular_files_bytes(paths_to_check.values())
         )
@@ -221,7 +227,7 @@ def _bwa_setup(
         mem3 = bwa_mem3_command(job)
         require_bwa_mem3_index(setup.ref)
     setup = _validated_read_setup(job, setup)
-    samblaster = bool(job.r2) and get_tool_path("samblaster") is not None
+    samblaster = duplicate_marker(paired=bool(job.r2)) == "samblaster"
     if job.input_reads is not None:
         reads, read_length = job.input_reads
     elif setup.r1.lower().endswith((".bam", ".cram")):
@@ -242,7 +248,7 @@ def _bwa_setup(
             job,
             setup.ref,
             threads=setup.threads,
-            memory=setup.memory,
+            memory=setup.sort_budget,
             samblaster=samblaster,
             reads=reads,
             read_length=read_length,
@@ -262,7 +268,7 @@ def _bwa_setup(
         model,
         threads=setup.threads,
         alignment_threads=setup.alignment_threads,
-        memory=setup.memory,
+        memory=setup.sort_budget,
         samblaster=samblaster,
         reads=reads,
         platform=job.platform,
@@ -284,7 +290,7 @@ def _bwa_setup(
             reference=setup.ref,
             threads=setup.threads,
             alignment_threads=setup.alignment_threads,
-            memory=setup.memory,
+            memory=setup.sort_budget,
             aligner=model,
             samblaster=samblaster,
             reads=reads,
@@ -318,7 +324,7 @@ def _bwa_setup(
             model,
             threads=setup.threads,
             alignment_threads=setup.alignment_threads,
-            memory=setup.memory,
+            memory=setup.sort_budget,
             samblaster=samblaster,
             reads=reads,
             platform=job.platform,

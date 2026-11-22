@@ -104,6 +104,14 @@ jobs:
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+      # Stdlib-only and instant, so fragment-only PRs need no extra runner.
+      # A release's queue commit must not leave late fragments unassembled.
+      # PR runs check out the merge commit, whose first parent is the base it
+      # was built on; the event's base.sha can be older.
+      - name: Check release-note fragments
+        env:
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+        run: python3 scripts/release_notes.py check --base "${QUEUE_BASE:-HEAD^1}"
 
   draft-fast:
     name: Draft lint and fast tests
@@ -127,6 +135,8 @@ jobs:
           pixi run -e lint -x actionlint
           pixi run -e lint -x python scripts/validate_github_actions.py
           pixi run -e lint -x mypy src/wgsextract_cli
+          pixi run -e lint -x mypy --platform darwin src/wgsextract_cli
+          pixi run -e lint -x mypy --platform win32 src/wgsextract_cli
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.13"

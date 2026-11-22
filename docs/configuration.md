@@ -92,8 +92,9 @@ folder is searched first, then configured `reference_library`, for chains,
 ploidy files, chip templates and annotations. Missing-file errors name the
 searched folders. See [dataset discovery and example genomes](sample-workspace.md#dataset-library).
 
-For resource defaults, `memory = "auto"` starts from 25% of RAM split across
-threads, subject to floors/caps; `"2G"` sets a per-thread budget. See
+For resource defaults, `memory = "auto"` uses up to 25% of effective RAM
+(including Linux cgroup v2 limits) split across threads; `"2G"` sets a
+per-thread budget, still subject to the sort caps. See
 [threads and memory](hardware.md#threads-and-memory) rather than treating it
 as a whole-pipeline RAM cap.
 

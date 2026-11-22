@@ -21,9 +21,18 @@ Do not perform actions that could cause irreversible data loss.
 - Do not modify or delete unknown data.
 - Do not use destructive Git commands unless explicitly requested.
 
-## Greenfield Stage: No Backward Compatibility
+## Compatibility for Shipped Releases
 
-This project is in the greenfield stage and has not been released. Do **not** add backward-compatibility shims, legacy fallbacks, or deprecation paths. When changing a format, schema, file layout, or API, update every call site and test in the same change. If a rename or restructure leaves a "legacy path also works" branch behind, delete it. This rule will be relaxed once the project ships and is removed from this file.
+Update all internal call sites and tests together when changing a format, schema,
+file layout, or API. Don't add shims for internal renames or unreleased formats.
+
+Keep narrowly scoped, tested migrations for data or settings written by shipped
+releases. Write the current format and document which versions need the migration.
+Keep the v0.8.8 workspace migrations for direct upgrades from v0.8.5–v0.8.7:
+they preserve existing workspace locations, settings, and saved state. Revisit
+them when defining the v1.0 upgrade policy. Remove a migration only once direct
+upgrades from the affected releases are no longer supported and release notes
+document a safe upgrade path.
 
 ## Project Layout
 

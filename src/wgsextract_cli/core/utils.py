@@ -51,10 +51,14 @@ from wgsextract_cli.core.progress import Heartbeat, Worker, process_cpu_seconds
 from wgsextract_cli.core.resource_policy import (
     get_resource_defaults as _get_resource_defaults,
 )
+from wgsextract_cli.core.resource_policy import (
+    get_resource_threads as get_resource_threads,
+)
 from wgsextract_cli.core.run_log import active_run_log, record_command
 from wgsextract_cli.core.runtime import (
     default_thread_tuning_profile as default_thread_tuning_profile,
 )
+from wgsextract_cli.core.windows_app_control import blocked_child, launch_error_message
 
 _process_group_kwargs = process_group_kwargs
 
@@ -105,6 +109,8 @@ class ToolExecutionError(WGSExtractError, subprocess.CalledProcessError):
         output = self.stderr or ""
         if isinstance(output, bytes):
             output = output.decode(errors="replace")
+        if block := blocked_child(output):
+            return block
         tail = "\n".join(redact_urls(str(output)).strip().splitlines()[-8:])[-2000:]
         tool = Path(str(self.cmd[0])).name if self.cmd else "Tool"
         return f"{tool} failed (exit {self.returncode}): {tail or 'no error output'}"
@@ -381,10 +387,7 @@ def run_command(
             if fd is not None:
                 os.close(fd)
         _start_relays(relays, launched=False)
-        raise ToolLaunchError(
-            f"Could not start {Path(cmd_list[0]).name}: {error.strerror or error}. "
-            "Run 'wgsextract deps check' to validate installed tools."
-        ) from error
+        raise ToolLaunchError(launch_error_message(cmd_list[0], error)) from error
 
     relay_threads = _start_relays(relays, launched=True)
     if stderr_read is not None:
@@ -536,10 +539,7 @@ def popen(
         )
     except OSError as error:
         _start_relays(relays, launched=False)
-        raise ToolLaunchError(
-            f"Could not start {Path(cmd_list[0]).name}: {error.strerror or error}. "
-            "Run 'wgsextract deps check' to validate installed tools."
-        ) from error
+        raise ToolLaunchError(launch_error_message(cmd_list[0], error)) from error
     if isinstance(process, _RelayedPopen):
         process.relays = _start_relays(relays, launched=True)
     proc_registry.register_process(cmd_str, process)
@@ -781,7 +781,9 @@ def run_pipeline(
                     logging.debug(f"{stage_name} stderr:\n{tail}")
                 continue
             detail = f"{stage_name} (exit {returncode})"
-            if tail:
+            if block := blocked_child(tail):
+                detail += f": {block}"
+            elif tail:
                 detail += f":\n{tail}"
             failures.append(detail)
         if failures:

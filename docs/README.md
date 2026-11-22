@@ -11,6 +11,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | Guide | Task |
 | --- | --- |
 | [Installation](installation.md) | Install, pin versions, update or uninstall |
+| [Migrating from v4](migrating-from-v4.md) | Map WGS Extract v4 buttons to current pages/commands and read what changed |
 | [Running commands](usage.md) | Discover help, understand outputs/progress, log runs or report a problem |
 | [Privacy](privacy.md) | Review network permissions and destinations |
 | [Windows](windows.md) | Use native Windows tools and GATK |
@@ -79,7 +80,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Releasing](releasing.md) | Release the CLI and desktop app together |
 | [Bootstrap compression results](bootstrap_compression_results.md) | Read historical compression measurements |
 
-Release notes: [unreleased](release-notes/unreleased.md),
+Release notes: [unreleased](release-notes/unreleased/README.md),
 [v0.8.9](release-notes/v0.8.9.md), [v0.8.8](release-notes/v0.8.8.md), [v0.8.7](release-notes/v0.8.7.md),
 [v0.8.6](release-notes/v0.8.6.md), [v0.8.5](release-notes/v0.8.5.md).
 Documentation inputs under `data/` include the
