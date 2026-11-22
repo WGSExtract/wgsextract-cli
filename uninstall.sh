@@ -82,7 +82,9 @@ Options:
   --dry-run                 Print resolved paths and exit without changing anything.
   --help, -h                Show this help.
 
-The uninstaller removes the WGS Extract install tree and launchers. Interactive
+The uninstaller removes the WGS Extract install tree and launchers. Outside the
+install, it removes only this install's environments from a Pixi envs folder,
+and a Pixi cache folder only if the installer created it. Interactive
 runs ask whether to remove Pixi from ~/.pixi too; noninteractive --yes runs keep
 Pixi unless --remove-pixi is also set.
 EOF
@@ -218,6 +220,25 @@ validate_removal_path() {
 validate_install_marker() {
     if [ -d "$INSTALL_DIR" ] && [ ! -f "$INSTALL_DIR/app/pixi.toml" ]; then
         fail "$INSTALL_DIR does not look like a WGS Extract CLI install created by install.sh."
+    fi
+}
+
+# Pixi keeps a project's detached environments in <env dir>/<name>-<hash>/envs
+# and links app/.pixi/envs there. Other projects may share the env dir, so only
+# this install's folder is ever removed from it.
+project_env_dir() {
+    env_link="$INSTALL_DIR/app/.pixi/envs"
+    [ -L "$env_link" ] || return 0
+    env_target="$(CDPATH= cd -P "$env_link" 2>/dev/null && pwd -P)" || return 0
+    [ "$(basename "$env_target")" = "envs" ] || return 0
+    env_project="$(dirname "$env_target")"
+    [ "$(dirname "$env_project")" = "$(physical_path "$PIXI_ENV_DIR")" ] || return 0
+    printf '%s/%s\n' "$(trim_trailing_slashes "$PIXI_ENV_DIR")" "$(basename "$env_project")"
+}
+
+refuse_symlinked_users_workspace() {
+    if has_symlink_component "$HOME/wgs-extract"; then
+        fail "Refusing to remove users workspace config through a symlink: $HOME/wgs-extract/config.toml"
     fi
 }
 
@@ -454,6 +475,8 @@ INSTALL_DIR="$(absolute_path "$INSTALL_DIR_RAW")"
 DEFAULT_BIN_DIR="$INSTALL_DIR"
 DEFAULT_PIXI_CACHE_DIR="$INSTALL_DIR/.pixi/cache"
 DEFAULT_PIXI_ENV_DIR="$INSTALL_DIR/app/.pixi/envs"
+CREATED_PIXI_CACHE_DIR=""
+CREATED_PIXI_ENV_DIR=""
 # install.sh records the directories it used; options and env vars still win.
 if [ -f "$INSTALL_DIR/install-layout.txt" ]; then
     while IFS="$(printf '\t')" read -r layout_key layout_path; do
@@ -465,6 +488,8 @@ if [ -f "$INSTALL_DIR/install-layout.txt" ]; then
             bin_dir) DEFAULT_BIN_DIR="$layout_path" ;;
             pixi_cache_dir) DEFAULT_PIXI_CACHE_DIR="$layout_path" ;;
             pixi_env_dir) DEFAULT_PIXI_ENV_DIR="$layout_path" ;;
+            created_pixi_cache_dir) CREATED_PIXI_CACHE_DIR="$layout_path" ;;
+            created_pixi_env_dir) CREATED_PIXI_ENV_DIR="$layout_path" ;;
         esac
     done < "$INSTALL_DIR/install-layout.txt"
 fi
@@ -475,6 +500,34 @@ PIXI_ENV_DIR="$(absolute_path "${PIXI_ENV_DIR_RAW:-$DEFAULT_PIXI_ENV_DIR}")"
 USER_PIXI_HOME="$HOME/.pixi"
 
 validate_removal_path "$INSTALL_DIR"
+
+# Decide what goes before asking, so the prompt names exactly what is deleted.
+ENV_REMOVAL=""
+ENV_NOTE=""
+if [ "$KEEP_PIXI_ENVS" = "1" ]; then
+    ENV_NOTE="Keeping Pixi environments."
+elif ! is_within_or_same "$PIXI_ENV_DIR" "$INSTALL_DIR"; then
+    ENV_REMOVAL="$(project_env_dir)"
+    if [ -n "$ENV_REMOVAL" ]; then
+        validate_removal_path "$ENV_REMOVAL"
+        ENV_NOTE="Keeping anything else in the Pixi envs folder: $PIXI_ENV_DIR"
+    else
+        ENV_NOTE="Keeping the Pixi envs folder; this install's environments were not found in it: $PIXI_ENV_DIR"
+    fi
+fi
+CACHE_REMOVAL=""
+CACHE_NOTE=""
+if [ "$KEEP_PIXI_CACHE" = "1" ]; then
+    CACHE_NOTE="Keeping Pixi cache."
+elif ! is_within_or_same "$PIXI_CACHE_DIR" "$INSTALL_DIR"; then
+    if [ -n "$CREATED_PIXI_CACHE_DIR" ] &&
+        [ "$(trim_trailing_slashes "$PIXI_CACHE_DIR")" = "$(trim_trailing_slashes "$CREATED_PIXI_CACHE_DIR")" ]; then
+        validate_removal_path "$PIXI_CACHE_DIR"
+        CACHE_REMOVAL="$PIXI_CACHE_DIR"
+    else
+        CACHE_NOTE="Keeping the Pixi cache, which the installer did not create and other projects may share: $PIXI_CACHE_DIR"
+    fi
+fi
 
 log "--- WGS Extract CLI uninstaller ---"
 log "Install directory: $INSTALL_DIR"
@@ -499,7 +552,22 @@ case "$PIXI_REMOVAL" in
         ;;
 esac
 log ""
-log "This removes the WGS Extract CLI install."
+log "This removes:"
+log "  $INSTALL_DIR (the WGS Extract CLI install)"
+if ! is_within_or_same "$LAUNCHER" "$INSTALL_DIR"; then
+    log "  $LAUNCHER (launcher)"
+fi
+if [ -n "$ENV_REMOVAL" ]; then
+    log "  $ENV_REMOVAL (this install's Pixi environments)"
+fi
+if [ -n "$CACHE_REMOVAL" ]; then
+    log "  $CACHE_REMOVAL (the Pixi cache the installer created)"
+fi
+for removal_note in "$ENV_NOTE" "$CACHE_NOTE"; do
+    if [ -n "$removal_note" ]; then
+        log "$removal_note"
+    fi
+done
 log ""
 
 if [ "$DRY_RUN" = "1" ]; then
@@ -508,6 +576,9 @@ if [ "$DRY_RUN" = "1" ]; then
 fi
 
 validate_install_marker
+if [ "$REMOVE_CONFIG" = "1" ]; then
+    refuse_symlinked_users_workspace
+fi
 
 if [ "$ASSUME_YES" = "0" ]; then
     printf 'Continue? [y/N] '
@@ -535,24 +606,15 @@ else
     remove_empty_dir "$BIN_DIR"
 fi
 
-if [ "$KEEP_PIXI_ENVS" = "0" ]; then
-    if is_within_or_same "$PIXI_ENV_DIR" "$INSTALL_DIR"; then
-        log "Pixi envs are inside the install directory and will be removed with it."
-    else
-        remove_dir "$PIXI_ENV_DIR"
-    fi
-else
-    log "Keeping Pixi environments."
+if [ -n "$ENV_REMOVAL" ]; then
+    remove_dir "$ENV_REMOVAL"
 fi
-
-if [ "$KEEP_PIXI_CACHE" = "0" ]; then
-    if is_within_or_same "$PIXI_CACHE_DIR" "$INSTALL_DIR"; then
-        log "Pixi cache is inside the install directory and will be removed with it."
-    else
-        remove_dir "$PIXI_CACHE_DIR"
-    fi
-else
-    log "Keeping Pixi cache."
+if [ "$KEEP_PIXI_ENVS" = "0" ] && [ -n "$CREATED_PIXI_ENV_DIR" ] &&
+    [ "$(trim_trailing_slashes "$PIXI_ENV_DIR")" = "$(trim_trailing_slashes "$CREATED_PIXI_ENV_DIR")" ]; then
+    remove_empty_dir "$PIXI_ENV_DIR"
+fi
+if [ -n "$CACHE_REMOVAL" ]; then
+    remove_dir "$CACHE_REMOVAL"
 fi
 
 created_dirs=""
@@ -567,11 +629,10 @@ fi
 remove_dir "$INSTALL_DIR"
 
 if [ "$REMOVE_CONFIG" = "1" ]; then
-    config_paths | while IFS= read -r config_path; do
+    # Loop in this shell, not a pipeline subshell, so `fail` exits the uninstaller.
+    while IFS= read -r config_path; do
         if [ "$config_path" = "$HOME/wgs-extract/config.toml" ]; then
-            if has_symlink_component "$(dirname "$config_path")"; then
-                fail "Refusing to remove users workspace config through a symlink: $config_path"
-            fi
+            refuse_symlinked_users_workspace
             users_marker="$HOME/wgs-extract/.users-workspace"
             if [ ! -f "$users_marker" ] || [ -L "$users_marker" ] || [ "$(cat "$users_marker")" != "WGS Extract users workspace" ]; then
                 log "Keeping config in an unmarked users workspace: $config_path"
@@ -581,13 +642,17 @@ if [ "$REMOVE_CONFIG" = "1" ]; then
         remove_file "$config_path"
         remove_empty_users_workspace_marker "$(dirname "$config_path")"
         remove_empty_dir "$(dirname "$config_path")"
-    done
+    done <<EOF
+$(config_paths)
+EOF
     # Config parents that only exist because of this install (recorded by install.sh).
-    printf '%s\n' "$created_dirs" | while IFS= read -r created_dir; do
+    while IFS= read -r created_dir; do
         if [ -n "$created_dir" ]; then
             remove_empty_dir "$created_dir"
         fi
-    done
+    done <<EOF
+$created_dirs
+EOF
 else
     log "Keeping WGS Extract config.toml."
 fi

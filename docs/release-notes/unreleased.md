@@ -5,6 +5,16 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
+- `uninstall.sh` no longer deletes a Pixi environment or cache directory
+  outside the installation whole, which removed other Pixi projects'
+  environments sharing it. It now removes only this installation's environment
+  folder, and an external cache only if the installer created it; installs
+  from earlier versions keep their external cache. It lists exactly what it
+  will delete before asking to continue, and `--remove-config` refuses a
+  symlinked users workspace before deleting anything rather than after
+  removing the installation
+  ([#1246, uninstall removes shared Pixi folders](https://github.com/WGSExtract/wgsextract-cli/issues/1246)).
+
 - `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads
   support a call. DYS589's non-repeat boundary variation no longer appears
   as a fractional STR allele. DYS425 is left blank on all builds because

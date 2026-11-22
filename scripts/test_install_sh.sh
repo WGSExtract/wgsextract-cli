@@ -22,7 +22,10 @@ fake_pixi_archive="$work_dir/fake-pixi.tar.gz"
 test_installer="$work_dir/install-under-test.sh"
 
 rm -rf "$work_dir"
-mkdir -p "$source_dir" "$home_dir" "$pixi_cache_dir" "$pixi_env_dir" "$fake_bin" "$fake_pixi_source"
+mkdir -p "$source_dir" "$home_dir" "$fake_bin" "$fake_pixi_source"
+# The env dir is shared with another project; the installer creates the cache.
+other_project_envs="$pixi_env_dir/other-project-1/envs/default"
+mkdir -p "$other_project_envs"
 
 cd "$repo_root"
 git ls-files --cached --others --exclude-standard | while IFS= read -r path; do
@@ -187,6 +190,12 @@ test -d "$install_dir/app/src/wgsextract_cli"
 # A custom env dir must really hold the environments (pixi reads it from config).
 grep -F "detached-environments" "$install_dir/app/.pixi/config.toml" >/dev/null
 find "$pixi_env_dir" -path "*/envs/default/bin/python*" | grep . >/dev/null
+created_cache_record="$(printf 'created_pixi_cache_dir\t%s' "$pixi_cache_dir")"
+grep -Fx "$created_cache_record" "$install_dir/install-layout.txt" >/dev/null
+if grep -F created_pixi_env_dir "$install_dir/install-layout.txt" >/dev/null; then
+    printf 'pre-existing Pixi env dir was recorded as created by the installer\n' >&2
+    exit 1
+fi
 # Pixi may leave app/.pixi/envs as a symlink to the detached location, but the
 # environment itself must not be installed inside app/.
 if [ -e "$install_dir/app/.pixi/envs" ] && [ ! -L "$install_dir/app/.pixi/envs" ]; then
@@ -211,12 +220,19 @@ WGSEXTRACT_NO_OPEN=1 \
 sh "$test_installer"
 test "$(cat "$install_dir/app/reference/genomes/keep.fa")" = "genome"
 "$install_dir/wgsextract" --help >/dev/null
+# An update keeps the record that the first install created the cache.
+grep -Fx "$created_cache_record" "$install_dir/install-layout.txt" >/dev/null
 
 # Uninstall without repeating the custom directories: install-layout.txt has them.
 HOME="$home_dir" PATH="$fake_bin:$PATH" "$install_dir/uninstall.sh" --yes >/dev/null
 test ! -e "$install_dir"
-test ! -e "$pixi_env_dir"
 test ! -e "$pixi_cache_dir"
+# Only this install's environments leave the shared env dir.
+test -d "$other_project_envs"
+if find "$pixi_env_dir" -mindepth 1 -maxdepth 1 -name 'wgsextract-cli-*' | grep . >/dev/null; then
+    printf 'uninstall left wgsextract-cli environments in %s\n' "$pixi_env_dir" >&2
+    exit 1
+fi
 
 embedded_install_dir="$work_dir/embedded-install"
 embedded_home_dir="$work_dir/embedded-home"

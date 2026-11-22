@@ -138,7 +138,7 @@ def test_1087_uninstall_keeps_config_in_an_unmarked_user_folder(tmp_path: Path) 
     assert config.read_text() == "unrelated = true\n"
 
 
-def test_1087_uninstall_does_not_remove_workspace_config_through_a_symlink(
+def test_1087_1246_uninstall_refuses_symlinked_workspace_config_before_removing(
     tmp_path: Path,
 ) -> None:
     install = make_fake_install(tmp_path)
@@ -149,15 +149,21 @@ def test_1087_uninstall_does_not_remove_workspace_config_through_a_symlink(
     (shared / "config.toml").write_text("cpu_threads = 3\n")
     (home / "wgs-extract").symlink_to(shared, target_is_directory=True)
 
-    with pytest.raises(subprocess.CalledProcessError):
-        run_uninstall(
-            install / "uninstall.sh",
-            "--yes",
-            "--keep-pixi",
-            "--remove-config",
-            env={"HOME": str(home)},
-        )
+    result = subprocess.run(
+        [SH, str(install / "uninstall.sh"), "--yes", "--keep-pixi", "--remove-config"],
+        env={**os.environ, "HOME": str(home)},
+        text=True,
+        capture_output=True,
+    )
+
+    assert result.returncode != 0
+    assert (
+        "Refusing to remove users workspace config through a symlink" in result.stderr
+    )
+    assert "Uninstall complete." not in result.stdout
     assert (shared / "config.toml").read_text() == "cpu_threads = 3\n"
+    # The refusal comes before anything is deleted, not after the install is gone.
+    assert (install / "app" / "pixi.toml").is_file()
 
 
 def test_uninstall_yes_keeps_pixi_by_default(tmp_path: Path) -> None:
@@ -355,33 +361,118 @@ def test_uninstall_dry_run_keeps_install_tree(tmp_path: Path) -> None:
     assert install_dir.exists()
 
 
-def test_uninstall_removes_external_paths_when_configured(tmp_path: Path) -> None:
+def link_detached_envs(install_dir: Path, env_dir: Path, folder: str) -> Path:
+    """Lay out envs the way Pixi's detached-environments setting does."""
+    project = env_dir / folder
+    (project / "envs" / "default" / "conda-meta").mkdir(parents=True)
+    app_pixi = install_dir / "app" / ".pixi"
+    app_pixi.mkdir(parents=True, exist_ok=True)
+    (app_pixi / "envs").symlink_to(project / "envs", target_is_directory=True)
+    return project
+
+
+def write_layout(install_dir: Path, **paths: Path | str) -> None:
+    (install_dir / "install-layout.txt").write_text(
+        "".join(f"{key}\t{path}\n" for key, path in paths.items()), encoding="utf-8"
+    )
+
+
+def test_uninstall_removes_external_launcher_and_installer_created_pixi_dirs(
+    tmp_path: Path,
+) -> None:
     install_dir = make_fake_install(tmp_path)
     bin_dir = tmp_path / "bin"
     cache_dir = tmp_path / "cache"
     env_dir = tmp_path / "envs"
     bin_dir.mkdir()
     cache_dir.mkdir()
-    env_dir.mkdir()
+    link_detached_envs(install_dir, env_dir, "wgsextract-cli-123")
     (bin_dir / "wgsextract").write_text(
         '#!/bin/sh\n# WGS Extract CLI installer launcher\nexec /path/to/pixi run wgsextract "$@"\n',
         encoding="utf-8",
     )
-
-    run_uninstall(
-        install_dir / "uninstall.sh",
-        "--yes",
-        env={
-            "WGSEXTRACT_BIN_DIR": str(bin_dir),
-            "WGSEXTRACT_PIXI_CACHE_DIR": str(cache_dir),
-            "WGSEXTRACT_PIXI_ENV_DIR": str(env_dir),
-        },
+    write_layout(
+        install_dir,
+        bin_dir=bin_dir,
+        pixi_cache_dir=cache_dir,
+        pixi_env_dir=env_dir,
+        created_pixi_cache_dir=cache_dir,
+        created_pixi_env_dir=env_dir,
     )
+
+    run_uninstall(install_dir / "uninstall.sh", "--yes")
 
     assert not install_dir.exists()
     assert not (bin_dir / "wgsextract").exists()
     assert not cache_dir.exists()
     assert not env_dir.exists()
+
+
+def test_1246_uninstall_removes_only_its_own_envs_from_a_shared_env_dir(
+    tmp_path: Path,
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+    env_dir = tmp_path / "shared-envs"
+    own = link_detached_envs(install_dir, env_dir, "wgsextract-cli-123")
+    other = env_dir / "other-project-456" / "envs" / "default"
+    other.mkdir(parents=True)
+    (other / "keep.txt").write_text("other project\n", encoding="utf-8")
+
+    result = run_uninstall(
+        install_dir / "uninstall.sh",
+        "--pixi-env-dir",
+        str(env_dir),
+        env={"HOME": str(tmp_path / "home")},
+        input_text="y\n",
+    )
+
+    prompt = result.stdout.split("Continue?")[0]
+    assert f"{own} (this install's Pixi environments)" in prompt
+    assert f"{env_dir} (" not in prompt
+    assert not own.exists()
+    assert (other / "keep.txt").read_text(encoding="utf-8") == "other project\n"
+    assert not install_dir.exists()
+
+
+def test_1246_uninstall_keeps_env_dir_without_this_installs_envs(
+    tmp_path: Path,
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+    env_dir = tmp_path / "shared-envs"
+    other = env_dir / "other-project-456" / "envs"
+    other.mkdir(parents=True)
+
+    result = run_uninstall(
+        install_dir / "uninstall.sh", "--yes", "--pixi-env-dir", str(env_dir)
+    )
+
+    assert "environments were not found" in result.stdout
+    assert other.is_dir()
+    assert not install_dir.exists()
+
+
+@pytest.mark.parametrize("recorded_as_created", [False, True])
+def test_1246_uninstall_removes_external_cache_only_if_installer_created_it(
+    tmp_path: Path, recorded_as_created: bool
+) -> None:
+    install_dir = make_fake_install(tmp_path)
+    cache_dir = tmp_path / "shared-cache"
+    (cache_dir / "pkgs").mkdir(parents=True)
+    (cache_dir / "pkgs" / "other.conda").write_bytes(b"other project")
+    layout: dict[str, Path] = {"pixi_cache_dir": cache_dir}
+    if recorded_as_created:
+        layout["created_pixi_cache_dir"] = cache_dir
+    write_layout(install_dir, **layout)
+
+    result = run_uninstall(install_dir / "uninstall.sh", "--dry-run")
+    assert (
+        f"{cache_dir} (the Pixi cache the installer created)" in result.stdout
+    ) is recorded_as_created
+
+    run_uninstall(install_dir / "uninstall.sh", "--yes")
+
+    assert cache_dir.exists() is not recorded_as_created
+    assert not install_dir.exists()
 
 
 def test_uninstall_refuses_external_launcher_that_is_not_generated(
@@ -409,33 +500,18 @@ def test_uninstall_refuses_external_launcher_that_is_not_generated(
     assert install_dir.exists()
 
 
-def test_uninstall_refuses_unsafe_external_directory(tmp_path: Path) -> None:
+@pytest.mark.parametrize("cache_dir", ["/", "/usr/../usr"])
+def test_uninstall_refuses_unsafe_external_directory(
+    tmp_path: Path, cache_dir: str
+) -> None:
     install_dir = make_fake_install(tmp_path)
-
-    result = subprocess.run(
-        [SH, str(install_dir / "uninstall.sh"), "--yes"],
-        env={
-            **os.environ,
-            "WGSEXTRACT_PIXI_CACHE_DIR": "/",
-        },
-        text=True,
-        capture_output=True,
+    write_layout(
+        install_dir, pixi_cache_dir=cache_dir, created_pixi_cache_dir=cache_dir
     )
 
-    assert result.returncode != 0
-    assert "Refusing to remove unsafe directory" in result.stderr
-    assert install_dir.exists()
-
-
-def test_uninstall_refuses_normalized_unsafe_external_directory(tmp_path: Path) -> None:
-    install_dir = make_fake_install(tmp_path)
-
     result = subprocess.run(
         [SH, str(install_dir / "uninstall.sh"), "--yes"],
-        env={
-            **os.environ,
-            "WGSEXTRACT_PIXI_CACHE_DIR": "/usr/../usr",
-        },
+        env=os.environ,
         text=True,
         capture_output=True,
     )
@@ -453,13 +529,14 @@ def test_uninstall_refuses_symlinked_external_directory(tmp_path: Path) -> None:
     cache_dir.mkdir(parents=True)
     (cache_dir / "keep.txt").write_text("do not delete\n", encoding="utf-8")
     link_dir.symlink_to(victim_dir, target_is_directory=True)
+    linked_cache = link_dir / "cache"
+    write_layout(
+        install_dir, pixi_cache_dir=linked_cache, created_pixi_cache_dir=linked_cache
+    )
 
     result = subprocess.run(
         [SH, str(install_dir / "uninstall.sh"), "--yes"],
-        env={
-            **os.environ,
-            "WGSEXTRACT_PIXI_CACHE_DIR": str(link_dir / "cache"),
-        },
+        env=os.environ,
         text=True,
         capture_output=True,
     )

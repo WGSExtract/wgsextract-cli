@@ -119,10 +119,14 @@ nothing else was added.
 Custom `WGSEXTRACT_BIN_DIR`, `WGSEXTRACT_PIXI_CACHE_DIR` and
 `WGSEXTRACT_PIXI_ENV_DIR` locations are recorded at install time.
 `--bin-dir`, `--pixi-cache-dir` and `--pixi-env-dir` override those records.
-**Recorded cache and environment directories outside the installation are
-also deleted by default.** Use `--keep-pixi-cache` and `--keep-pixi-envs`
-to preserve those external directories; these flags do not preserve files
-inside the installation being removed.
+Other Pixi projects may share those directories, so outside the installation
+the uninstaller deletes only this installation's environment folder from the
+environment directory (and the directory itself if the installer created it
+and it is now empty), and deletes the cache directory only if the installer
+created it. Before asking to continue, it lists exactly what it will delete.
+Use `--keep-pixi-cache` and `--keep-pixi-envs` to keep this installation's
+external cache and environments; these flags do not preserve files inside the
+installation being removed.
 Windows has its [own uninstaller](windows.md).
 
 On every platform, `--remove-config` includes the owned default users
