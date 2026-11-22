@@ -70,12 +70,16 @@ def tool(name: str) -> str:
     return str(path)
 
 
-def run(argv: Sequence[object], **kwargs: Any) -> subprocess.CompletedProcess[Any]:
-    return subprocess.run([str(a) for a in argv], check=True, **kwargs)
+def run(argv: Sequence[object], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    """Run a command the way the CLI does: a tool resolved to a Pixi wrapper
+    command (``pixi run -e ... samtools``) is split into its words."""
+    from wgsextract_cli.core.utils import run_command
+
+    return run_command([str(a) for a in argv], **kwargs)
 
 
 def output(argv: Sequence[object], **kwargs: Any) -> str:
-    return str(run(argv, capture_output=True, text=True, **kwargs).stdout)
+    return run(argv, capture_output=True, **kwargs).stdout
 
 
 def environment() -> dict[str, Any]:
@@ -169,7 +173,8 @@ def synthetic(outdir: Path) -> int:
     print(f"Wrote {path}")
     states = collections.Counter(c["outcome"] for c in cases)
     print(", ".join(f"{n} {s}" for s, n in sorted(states.items())))
-    if result.returncode or {"failed", "not run", "skipped"} & set(states):
+    fixes = {fix["outcome"] for fix in evidence["completed_fixes"]}
+    if result.returncode or {"failed", "not run", "skipped"} & (set(states) | fixes):
         return 1
     return 0
 
@@ -220,9 +225,9 @@ def fetch_reference(cache: Path, public: dict[str, Any], source: Path | None) ->
 
 
 def records_sha256(bam: Path) -> str:
-    view = subprocess.Popen(
-        [tool("samtools"), "view", str(bam)], stdout=subprocess.PIPE
-    )
+    from wgsextract_cli.core.utils import popen
+
+    view = popen([tool("samtools"), "view", str(bam)], stdout=subprocess.PIPE)
     stream = view.stdout
     assert stream is not None
     digest = hashlib.sha256()
@@ -310,18 +315,40 @@ def v44_2_outputs(path: Path) -> dict[str, dict[str, str]]:
 
 
 def verified_cache(cache: Path, public: dict[str, Any]) -> dict[str, Path]:
+    """The cached public inputs, each rechecked against its pin, so a file
+    changed after ``fetch`` cannot stand in for the recorded one."""
+    reflib = cache / "reflib"
+    contig = public["reference"]["contig"]
     paths = {
         "bam": cache / "HG00096.slice.bam",
-        "fasta": cache / "reflib" / f"{public['reference']['contig']}.fa",
+        "fasta": reflib / f"{contig}.fa",
         "targets": cache / "targets.tab.gz",
-        "ploidy": cache / "reflib" / "microarray" / "ploidy.txt",
+        "ploidy": reflib / "microarray" / "ploidy.txt",
     }
-    missing = [str(p) for p in paths.values() if not p.exists()]
+    members = {
+        reflib / member.removeprefix(ZIP_PREFIX): expected
+        for member, expected in public["reference_zip_members"].items()
+    }
+    required = [*paths.values(), cache / "targets.tab", *members]
+    missing = [str(p) for p in required if not p.exists()]
     if missing:
         raise CorpusError(
             f"Missing public corpus inputs ({', '.join(missing)}). Run "
             f"`python scripts/v4_differential_corpus.py fetch --cache {cache} --download`."
         )
+    for path, expected in members.items():
+        if sha256(path) != expected:
+            raise CorpusError(f"{path} does not match its pinned SHA-256; refetch it.")
+    with gzip.open(paths["targets"], "rb") as packed:
+        targets = packed.read()
+    if hashlib.sha256(targets).hexdigest() != public["targets_sha256"] or (
+        sha256(cache / "targets.tab") != public["targets_sha256"]
+    ):
+        raise CorpusError(
+            f"{paths['targets']} does not match the pinned target subset."
+        )
+    if contig_md5(paths["fasta"], contig) != public["reference"]["md5"]:
+        raise CorpusError(f"{paths['fasta']} is not GRCh38 {contig}.")
     if records_sha256(paths["bam"]) != public["records_sha256"]:
         raise CorpusError(f"{paths['bam']} records do not match the pinned digest.")
     return paths
@@ -508,6 +535,8 @@ def public_run(cache: Path, outdir: Path) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    from wgsextract_cli.core.utils import WGSExtractError
+
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -536,7 +565,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "fetch":
             return fetch(args.cache.resolve(), args.download, args.reference)
         return public_run(args.cache.resolve(), args.outdir.resolve())
-    except (CorpusError, subprocess.CalledProcessError) as error:
+    except (CorpusError, WGSExtractError, subprocess.CalledProcessError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
 

@@ -11,6 +11,7 @@ CombinedKit calling ``program/microarray.py:643-644,683-692`` and mtDNA VCF
 """
 
 import gzip
+import hashlib
 import itertools
 import json
 import random
@@ -442,3 +443,96 @@ def test_migration_guide_names_current_commands_and_parseable_examples():
     named = {name for name in named if name and "_" not in name}  # not settings
     assert len(named) >= 20
     assert named <= {entry.path for entry in command_index(parser)}, named
+
+
+def test_public_corpus_rejects_a_cached_input_changed_after_fetch(tmp_path, capsys):
+    """#1375 review: `public` rechecks every pinned cached input, not only the
+    slice BAM, so an edited ploidy file, chain or template cannot pass."""
+    from scripts.v4_differential_corpus import ZIP_PREFIX, load_corpus, main
+
+    public = load_corpus()["public"]
+    cache = tmp_path / "cache"
+    reflib = cache / "reflib"
+    for member in public["reference_zip_members"]:
+        path = reflib / member.removeprefix(ZIP_PREFIX)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("edited after fetch\n")
+    for path in (cache / "HG00096.slice.bam", reflib / "chr20.fa"):
+        path.write_text("placeholder\n")
+    for name in ("targets.tab", "targets.tab.gz"):
+        (cache / name).write_text("placeholder\n")
+
+    assert main(["public", "--cache", str(cache), "--outdir", str(tmp_path / "o")]) == 1
+    assert "does not match its pinned SHA-256" in capsys.readouterr().err
+    assert not (tmp_path / "o" / "public").exists()  # nothing ran
+
+
+def test_public_corpus_runs_tools_resolved_to_wrapper_commands(tmp_path, monkeypatch):
+    """#1375 review: a tool installed only in a Pixi environment resolves to a
+    wrapper command (``pixi run -e ENV samtools``), not one executable path."""
+    import os
+    import subprocess
+    import sys
+
+    from scripts import v4_differential_corpus as corpus
+    from wgsextract_cli.core import dependencies
+
+    samtools = get_tool_path("samtools")
+    seqs = _genome({}, ("chr1",))
+    header = [f"@SQ\tSN:chr1\tLN:{LENGTH}", "@RG\tID:s\tSM:s"]
+    bam = sam_to_bam(header + _reads(seqs, "chr1", 500, "A", "r"), tmp_path / "s.bam")
+    direct = run_command([samtools, "view", bam], capture_output=True).stdout
+    wrapper = tmp_path / "samtools_wrapper.py"
+    wrapper.write_text(
+        f"import subprocess, sys\n"
+        f"sys.exit(subprocess.call([{samtools!r}, *sys.argv[1:]]))\n"
+    )
+    parts = [sys.executable, str(wrapper)]
+    command = subprocess.list2cmdline(parts) if os.name == "nt" else shlex.join(parts)
+    monkeypatch.setattr(
+        dependencies,
+        "get_tool_path",
+        lambda name: command if name == "samtools" else None,
+    )
+
+    digest = corpus.records_sha256(Path(bam))
+
+    assert digest == hashlib.sha256(direct.encode()).hexdigest()
+
+
+def test_synthetic_corpus_fails_when_a_completed_fix_did_not_run(tmp_path, monkeypatch):
+    """#1375 review: a skipped completed-fix regression fails the run even
+    when every comparison case passes."""
+    from scripts import v4_differential_corpus as corpus
+
+    tests = tmp_path / "test_evidence.py"
+    tests.write_text(
+        "import pytest\n\n"
+        "def test_case_passes():\n    pass\n\n"
+        "def test_fix_is_skipped():\n    pytest.skip('not run here')\n"
+    )
+    record = tmp_path / "corpus.json"
+    record.write_text(
+        json.dumps(
+            {
+                "pins": {},
+                "cases": [
+                    {
+                        "id": "case",
+                        "relation": "parity",
+                        "tracking": None,
+                        "evidence": f"{tests}::test_case_passes",
+                    }
+                ],
+                "completed_fixes": [
+                    {"issue": "#0", "evidence": f"{tests}::test_fix_is_skipped"}
+                ],
+            }
+        )
+    )
+    monkeypatch.setattr(corpus, "CORPUS", record)
+
+    assert corpus.synthetic(tmp_path / "out") == 1
+    evidence = json.loads((tmp_path / "out" / "synthetic-evidence.json").read_text())
+    assert [c["outcome"] for c in evidence["cases"]] == ["passed"]
+    assert [f["outcome"] for f in evidence["completed_fixes"]] == ["skipped"]
