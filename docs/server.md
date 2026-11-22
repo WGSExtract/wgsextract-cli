@@ -243,7 +243,10 @@ curl -H "Authorization: ******" \
   its `genomes` folder.
 - **Isolation.** Each job runs the API function in its own worker process.
   A crash or a cancel affects only that job. Its log, at the CLI's log level
-  (`--debug` for more), is `<state>/server/jobs/<id>.log`.
+  (`--debug` for more), is `<state>/server/jobs/<id>.log`. A worker gets its
+  job only once the job is recorded as running. If the worker can't be
+  started, recorded or given its job (a full disk, say), the job fails with
+  the reason in its `error`, the worker is stopped and the slot freed.
 - **Cancelling.** A queued job is cancelled immediately. A running job gets
   the API's `CancelToken`: tools stop, including running containers, and the
   manifest is written with status `cancelled` (exit code 130). If the job is
@@ -252,10 +255,12 @@ curl -H "Authorization: ******" \
   always-atomic exception: its failed or cancelled validation/writes preserve
   previous completed outputs.
 - **Persistence.** Job records are kept in `<state>/server/jobs/<id>.json`,
-  so a restarted server still lists the earlier jobs and their results. Jobs
-  that were queued or running when a server stopped are marked
-  `interrupted`. Start them again with `rerun`; commands with step-level
-  resume ([step-resume.md](step-resume.md)) continue from their last finished
+  so a restarted server still lists the earlier jobs and their results. A
+  finished job whose record can't be saved yet stays listed and is saved
+  once the disk recovers, when another job finishes. Jobs that were queued
+  or running when a server stopped are marked `interrupted`. Start them
+  again with `rerun`; commands with step-level resume
+  ([step-resume.md](step-resume.md)) continue from their last finished
   step. One HTTP server uses a state folder at a time; a second one refuses
   to start.
 
