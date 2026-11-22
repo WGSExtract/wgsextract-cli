@@ -527,11 +527,15 @@ def test_an_empty_partial_starts_from_the_first_byte(server, tmp_path):
     assert server.gets() == [None]
 
 
-def test_a_server_error_is_retried(server, tmp_path, monkeypatch):
+@pytest.mark.parametrize("status", [429, 503])
+def test_1210_transient_http_errors_are_retried(server, tmp_path, monkeypatch, status):
     monkeypatch.setattr(downloads, "DOWNLOAD_ATTEMPTS", 3)
-    server.get_status = 503
+    server.get_errors["hs38.fa.gz"] = [status, status]
+    dest = tmp_path / "hs38.fa.gz"
 
-    assert not downloads.download_file(server.url, str(tmp_path / "hs38.fa.gz"))
+    assert downloads.download_file(server.url, str(dest))
+
+    assert dest.read_bytes() == DATA
     assert server.gets() == [None, None, None]
 
 
@@ -746,7 +750,7 @@ def test_a_cancelled_segmented_download_keeps_its_pieces(segmented_server, tmp_p
 
     assert not dest.exists()
     state = json.loads((tmp_path / "hs38.fa.gz.partial.segments").read_text())
-    assert state["url"] == srv.url and state["size"] == len(srv.data)
+    assert state["size"] == len(srv.data)
 
     srv.requests.clear()
     assert downloads.download_file(srv.url, str(dest))

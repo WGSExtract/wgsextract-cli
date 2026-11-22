@@ -166,10 +166,11 @@ the input (default `4G`; `0` aligns in one pass):
 - When every chunk is done, each group is sorted across the chunks and
   appended to the output, and its pieces are deleted.
 - Work lives in `<output>.chunks/`, and `state.json` there records each
-  finished chunk and appended group. A run that is killed resumes at its
-  first unfinished chunk or group. A changed input, reference, format,
-  `--chunk-size` or minimap2 build starts the chunks over. `--no-resume` or
-  `--force` also does. A rerun that aligns in one pass removes the directory.
+  finished chunk and appended group. An interrupted or cancelled run
+  resumes at its first unfinished chunk or group. Changing the input,
+  reference, format, `--chunk-size`, minimap2 build, CRAM decoding settings,
+  or read extraction settings starts the chunks over. `--no-resume` and
+  `--force` also start over. A rerun that aligns in one pass removes the directory.
 - The records are the same as a single pass's, in the same order. Only the
   header differs: minimap2's `@PG` names the index, and there is no
   `samtools sort` `@PG`.

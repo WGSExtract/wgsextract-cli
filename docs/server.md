@@ -119,6 +119,7 @@ Responses are compact JSON, except viewer file bytes. Errors are
 | 403 | A path outside the allowed folders (`path_not_allowed`), a request that deletes data (`destructive`), or a bad Host or Origin |
 | 404 | Unknown operation or job |
 | 409 | Cancelling a finished job |
+| 411 | Missing `Content-Length` on an operation submission |
 
 A failed analysis is not an HTTP error. Its job finishes with status
 `failed` and the manifest's `error`.
@@ -158,7 +159,8 @@ A submission can include `X-WGSE-Job-ID` with a client-generated lowercase
 UUIDv4. The HTTP server advertises this as `"client_job_ids": true` in its
 discovery file and `--ready-json` output. If the reply is lost, look up the
 original job with `GET /v1/jobs/{id}`.
-The server returns `409` if that ID already exists and does not start a second job.
+After reading the request body, the server returns `409` if that ID already
+exists, without decoding the JSON or starting a second job.
 A lookup that does not find the job is not proof that a submission still in
 flight was rejected.
 
@@ -168,6 +170,16 @@ flight was rejected.
 `exit_code` and `error`, and the operation's result manifest as `result`.
 The manifest's `provenance` (tool versions and the full parameters) appears
 only with `full=1`, to keep responses short.
+
+Operation submissions require `Content-Length` (use `0` for an empty body).
+Requests using `Transfer-Encoding` are rejected with 400. The server closes
+the connection if it cannot read the complete request body within 10 seconds.
+
+The event stream keeps the latest 1,024 events per job for active jobs and
+the 128 most recently finished jobs. Reconnecting with an older event ID
+returns only the events still in memory. Older job records and logs remain
+available on disk, but their events are not replayed.
+Job listings use a compact on-disk index rebuilt from the records on startup.
 
 ### Lookups
 

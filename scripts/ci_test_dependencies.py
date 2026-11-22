@@ -179,9 +179,16 @@ def docs_test_targets(
 
 
 class TestInputs:
-    def __init__(self, root: Path, test: Path, tree: ast.Module) -> None:
+    def __init__(
+        self,
+        root: Path,
+        test: Path,
+        tree: ast.Module,
+        top_directories: frozenset[str],
+    ) -> None:
         self.root = root
         self.test = test
+        self.top_directories = top_directories
         self.bindings = {
             target.id: node.value
             for node in tree.body
@@ -256,7 +263,7 @@ class TestInputs:
                     if (
                         first not in {"", ".", ".."}
                         and not any(char in str(path) for char in "*?[")
-                        and (path.suffix or (self.root / first).is_dir())
+                        and (path.suffix or first in self.top_directories)
                     ):
                         return self.root / path
             if isinstance(node.func, ast.Attribute):
@@ -285,7 +292,9 @@ def test_inputs(root: Path = ROOT) -> dict[str, frozenset[str]]:
     root = root.resolve()
     references: defaultdict[str, set[str]] = defaultdict(set)
 
-    def record(path: Path, reader: str, *, directory: bool = True) -> None:
+    def record(
+        path: Path, reader: str, *, directory: bool = True, files_only: bool = False
+    ) -> None:
         path = Path(os.path.normpath(path))
         try:
             relative = path.relative_to(root).as_posix()
@@ -293,14 +302,23 @@ def test_inputs(root: Path = ROOT) -> dict[str, frozenset[str]]:
             return
         if relative == "." or relative.split("/")[0] in IGNORED:
             return
+        # Directory anchors are not reads; calls/globs capture directories
+        # passed to readers, including copytree helpers.
+        if files_only and path.is_dir():
+            return
         references[relative].add(reader)
         if directory and (path.is_dir() or not path.suffix):
             references[f"{relative}/**"].add(reader)
 
+    # Match path prefixes by name: statting root / prefix would follow
+    # drive-like text such as "E: failed" off the repository on Windows.
+    top_directories = frozenset(
+        child.name for child in root.iterdir() if child.is_dir()
+    )
     for test in sorted((root / "tests").rglob("*.py")):
         tree = ast.parse(test.read_text(encoding="utf-8"), filename=str(test))
         reader = test.relative_to(root).as_posix()
-        resolver = TestInputs(root, test, tree)
+        resolver = TestInputs(root, test, tree, top_directories)
         parents = {
             child: node
             for node in ast.walk(tree)
@@ -319,7 +337,7 @@ def test_inputs(root: Path = ROOT) -> dict[str, frozenset[str]]:
                 )
             if literal and "/" in literal and "\n" not in literal:
                 first = literal.removeprefix("./").split("/")[0]
-                if first not in IGNORED | {"", ".", ".."} and (root / first).is_dir():
+                if first in top_directories:
                     record(root / literal.removeprefix("./"), reader)
 
             if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
@@ -327,14 +345,12 @@ def test_inputs(root: Path = ROOT) -> dict[str, frozenset[str]]:
                 if isinstance(parent, ast.BinOp) and isinstance(parent.op, ast.Div):
                     continue
                 value = resolver.value(node)
-                # Directory anchors are not reads; calls/globs below capture
-                # directories passed to readers, including copytree helpers.
-                if isinstance(value, Path) and not value.is_dir():
-                    record(value, reader)
+                if isinstance(value, Path):
+                    record(value, reader, files_only=True)
             elif isinstance(node, ast.Call):
                 value = resolver.value(node)
-                if isinstance(value, Path) and not value.is_dir():
-                    record(value, reader)
+                if isinstance(value, Path):
+                    record(value, reader, files_only=True)
                 for arg in [*node.args, *(kw.value for kw in node.keywords)]:
                     value = resolver.value(arg)
                     if isinstance(value, Path):

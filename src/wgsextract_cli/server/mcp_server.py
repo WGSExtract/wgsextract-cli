@@ -231,17 +231,22 @@ class McpTools:
             return QUERIES[name].run(self.guard, arguments), False
         if name == "list_jobs":
             status = arguments.get("status")
+            if status is not None and not isinstance(status, str):
+                raise RequestError(400, "usage", "status must be a string.")
             return {
                 "jobs": [
-                    {"id": j.id, "op": j.op, "status": j.status, "created": j.created}
-                    for j in self.manager.jobs()
-                    if status is None or j.status == status
+                    {key: value for key, value in job.items() if key != "finished"}
+                    for job in self.manager.summaries(status)
                 ]
             }, False
         if name == "job_status":
             job = self._job(arguments)
-            wait = arguments.get("wait_seconds") or 0
-            if not isinstance(wait, (int, float)) or not 0 <= wait <= MAX_WAIT_SECONDS:
+            wait = arguments.get("wait_seconds", 0)
+            if (
+                isinstance(wait, bool)
+                or not isinstance(wait, (int, float))
+                or not 0 <= wait <= MAX_WAIT_SECONDS
+            ):
                 raise RequestError(
                     400, "usage", f"wait_seconds must be 0 to {MAX_WAIT_SECONDS:g}."
                 )
@@ -259,7 +264,7 @@ class McpTools:
         """Wait for a job, relaying its events to ``progress``."""
         after = 0
         while True:
-            events, finished = self.manager.events(job.id, after, 15.0)
+            events, finished = self.manager.events(job, after, 15.0)
             for event in events:
                 after = event["seq"]
                 if progress is not None:
@@ -292,7 +297,7 @@ class McpServer:
         self._out = stdout
         self._write_lock = threading.Lock()
         # Running tool calls by JSON-RPC request id, for notifications/cancelled.
-        self._calls: dict[object, str] = {}
+        self._calls: dict[object, str | None] = {}
         self._cancelled: set[object] = set()
         self._threads: list[threading.Thread] = []
         self._calls_lock = threading.Lock()
@@ -351,6 +356,16 @@ class McpServer:
             self._error(request_id, INVALID_PARAMS, "params must be an object.")
             return
         if method == "tools/call":
+            if isinstance(request_id, bool) or not isinstance(request_id, (str, int)):
+                self._error(None, INVALID_REQUEST, "Invalid request ID.")
+                return
+            with self._calls_lock:
+                duplicate = request_id in self._calls
+                if not duplicate:
+                    self._calls[request_id] = None
+            if duplicate:
+                self._error(request_id, INVALID_REQUEST, "Request ID already in use.")
+                return
             # Tools can take minutes, so each runs on its own thread.
             thread = threading.Thread(
                 target=self._call_tool, args=(request_id, params), daemon=True
@@ -379,19 +394,22 @@ class McpServer:
 
     def _notification(self, method: str, params: dict[str, Any]) -> None:
         if method == "notifications/cancelled":
-            if not isinstance(params.get("requestId"), (str, int)):
+            request_id = params.get("requestId")
+            if isinstance(request_id, bool) or not isinstance(request_id, (str, int)):
                 return
             with self._calls_lock:
-                job_id = self._calls.get(params.get("requestId"))
-                if job_id:
-                    self._cancelled.add(params.get("requestId"))
-            if job_id:
+                if request_id not in self._calls:
+                    return
+                self._cancelled.add(request_id)
+                job_id = self._calls[request_id]
+            if job_id is not None:
                 self.manager.cancel(job_id)
 
     def _call_tool(self, request_id: object, params: dict[str, Any]) -> None:
         name = params.get("name")
         arguments = params.get("arguments") or {}
         progress_token = (params.get("_meta") or {}).get("progressToken")
+        error: str | None = None
         try:
             result = self.tools.call(
                 name,
@@ -400,21 +418,25 @@ class McpServer:
                 started=lambda job_id: self._started(request_id, job_id),
             )
         except InvalidParams as e:
-            self._error(request_id, INVALID_PARAMS, str(e))
-            return
+            error = str(e)
+            result = {}
         finally:
             with self._calls_lock:
                 self._calls.pop(request_id, None)
-        with self._calls_lock:
-            if request_id in self._cancelled:
-                # The client gave up on it, so it expects no response.
+                cancelled = request_id in self._cancelled
                 self._cancelled.discard(request_id)
-                return
-        self._reply(request_id, result)
+        if not cancelled:
+            if error is None:
+                self._reply(request_id, result)
+            else:
+                self._error(request_id, INVALID_PARAMS, error)
 
     def _started(self, request_id: object, job_id: str) -> None:
         with self._calls_lock:
             self._calls[request_id] = job_id
+            late = request_id in self._cancelled
+        if late:
+            self.manager.cancel(job_id)
 
     def _progress(self, token: object) -> Progress | None:
         if token is None:

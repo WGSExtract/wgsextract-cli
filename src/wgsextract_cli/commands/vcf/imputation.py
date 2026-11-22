@@ -50,6 +50,7 @@ from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
     get_resource_defaults,
+    get_resource_threads,
     run_command,
     run_pipeline,
 )
@@ -432,7 +433,10 @@ def run_impute(params: VcfImputeParams) -> None:
         imputation_panel.require(c, reflib, version if reads_mode else None)
         for c in chroms
     ]
-    threads, memory = get_resource_defaults(params.threads, params.memory)
+    if reads_mode:
+        threads, memory = get_resource_threads(params.threads), None
+    else:
+        threads, memory = get_resource_defaults(params.threads, params.memory)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     tool = "GLIMPSE2" if reads_mode else "Beagle"
     preflight_resources(
@@ -450,6 +454,7 @@ def run_impute(params: VcfImputeParams) -> None:
         if reads_mode:
             parts, metrics = _glimpse(params, panels, threads, outdir, work)
         else:
+            assert memory is not None
             parts, metrics = _beagle(params, panels, threads, memory, work)
         with safe_output(out_vcf) as staged:
             _label(parts, tool, version, params, work, staged)

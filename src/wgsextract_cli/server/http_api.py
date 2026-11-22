@@ -23,6 +23,7 @@ from urllib.parse import parse_qs, urlsplit
 from wgsextract_cli import __version__
 
 from .http_limits import LimitedHandler, LimitedHTTPServer
+from .job_logs import read_job_log
 from .jobs import Job, JobManager
 from .listener import exact_headers, parse_listener
 from .operations import PathGuard, RequestError, find, operations, params_from_json
@@ -31,6 +32,7 @@ from .transport import Health, Index, Jobs, OperationDescription, Operations
 from .transport import Job as JobView
 
 MAX_BODY_BYTES = 1 << 20
+BODY_TIMEOUT_SECONDS = 10.0
 MAX_WAIT_SECONDS = 600.0
 SSE_KEEPALIVE_SECONDS = 15.0
 
@@ -275,16 +277,31 @@ class Handler(LimitedHandler):
             self.server.allowed_origins if viewer or not self.server.loopback else None,
         )
 
-    def _body(self) -> object:
+    def _read_body(self) -> bytes:
+        if "Transfer-Encoding" in self.headers:
+            raise RequestError(400, "bad_length", "Transfer-Encoding is not supported.")
+        lengths = self.headers.get_all("Content-Length", [])
+        if not lengths:
+            raise RequestError(411, "bad_length", "Content-Length is required.")
+        value = lengths[0].strip(" \t")
         try:
-            length = int(self.headers.get("Content-Length") or 0)
+            length = (
+                int(value)
+                if len(lengths) == 1 and re.fullmatch(r"[0-9]+", value)
+                else -1
+            )
         except ValueError:
             length = -1
         if length < 0:
             raise RequestError(400, "bad_length", "Invalid Content-Length.")
         if length > MAX_BODY_BYTES:
             raise RequestError(413, "too_large", "The request body is too large.")
-        raw = self.rfile.read(length) if length else b""
+        raw = self.read_body(length, timeout=BODY_TIMEOUT_SECONDS) if length else b""
+        if len(raw) != length:
+            raise RequestError(400, "bad_length", "Incomplete request body.")
+        return raw
+
+    def _decode_body(self, raw: bytes) -> object:
         if not raw:
             return {}
         content_type = self.headers.get("Content-Type", "")
@@ -389,13 +406,15 @@ class Handler(LimitedHandler):
         )
 
     def run_op(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
+        # Closing with unread POST data can reset the connection before the
+        # client receives the conflict. Read the body without validating JSON yet.
+        raw = self._read_body()
         job_id = self.headers.get("X-WGSE-Job-ID")
         if job_id is not None:
             self.server.manager.check_job_id(job_id)
         op = find(match["op"])
         wait = _wait(query)
-        body = self._body()
-        params = params_from_json(op, body)
+        params = params_from_json(op, self._decode_body(raw))
         params = self.server.guard.check(params)
         card = _flag(query, "card") if "card" in query else None
         job = self.server.manager.submit(
@@ -415,14 +434,8 @@ class Handler(LimitedHandler):
         return job
 
     def list_jobs(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
-        jobs = self.server.manager.jobs()
         status = query.get("status", [None])[-1]
-        self._send_json(
-            200,
-            Jobs(
-                jobs=[j.summary() for j in jobs if status is None or j.status == status]
-            ),
-        )
+        self._send_json(200, Jobs(jobs=self.server.manager.summaries(status)))
 
     def get_job(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
         job = self._job(match)
@@ -450,23 +463,21 @@ class Handler(LimitedHandler):
     def job_log(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
         job = self._job(match)
         try:
-            lines = (
-                self.server.manager.log_path(job.id)
-                .read_text(encoding="utf-8", errors="replace")
-                .splitlines()
-            )
-        except FileNotFoundError:
-            lines = []
-        try:
             tail = int(query.get("tail", ["200"])[-1])
+            if tail < 0:
+                raise ValueError
         except ValueError:
-            raise RequestError(400, "usage", "tail must be an integer.") from None
-        data = ("\n".join(lines[-tail:] if tail > 0 else lines) + "\n").encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
+            raise RequestError(
+                400, "usage", "tail must be a nonnegative integer."
+            ) from None
+        with read_job_log(self.server.manager.log_path(job.id), tail) as chunks:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            for chunk in chunks:
+                self.wfile.write(chunk)
 
     def job_events(self, match: re.Match[str], query: dict[str, list[str]]) -> None:
         """Server-sent events: each event's ``id`` is its ``seq``; the stream
@@ -484,7 +495,7 @@ class Handler(LimitedHandler):
         self.close_connection = True
         while True:
             events, finished = self.server.manager.events(
-                job.id, after, SSE_KEEPALIVE_SECONDS
+                job, after, SSE_KEEPALIVE_SECONDS
             )
             for event in events:
                 after = event["seq"]
@@ -620,7 +631,7 @@ def openapi_document(
                 "responses": {
                     "200": _response("Finished within ?wait", "Job"),
                     "202": _response("Queued or running", "Job"),
-                    **_errors(400, 401, 403, 404, 409),
+                    **_errors(400, 401, 403, 404, 409, 411, 413, 415),
                 },
             },
         }
@@ -726,7 +737,12 @@ def openapi_document(
             "/v1/jobs/{id}/log": {
                 "parameters": [
                     _JOB_ID,
-                    {"name": "tail", "in": "query", "schema": {"type": "integer"}},
+                    {
+                        "name": "tail",
+                        "in": "query",
+                        "description": "Number of lines to return; 0 returns the full log.",
+                        "schema": {"type": "integer", "minimum": 0, "default": 200},
+                    },
                 ],
                 "get": {
                     "operationId": "job_log",
@@ -735,7 +751,8 @@ def openapi_document(
                         "200": {
                             "description": "Log text",
                             "content": {"text/plain": {}},
-                        }
+                        },
+                        **_errors(400, 401, 403, 404),
                     },
                 },
             },

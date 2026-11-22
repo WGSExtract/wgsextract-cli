@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import sys
+import threading
 
 import pytest
 
@@ -43,6 +44,50 @@ from wgsextract_cli.server.operations import (
     find,
     params_from_json,
 )
+
+
+def test_1209_cancel_wins_when_worker_exits_before_cancel_thread(tmp_path, monkeypatch):
+    workers = []
+    spawn = subprocess.Popen
+
+    def capture_worker(*args, **kwargs):
+        worker = spawn(*args, **kwargs)
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr(subprocess, "Popen", capture_worker)
+    manager = JobManager(
+        tmp_path / "jobs",
+        config_path=None,
+        worker_command=[
+            sys.executable,
+            "-c",
+            "import sys; sys.stdin.readline(); sys.stdin.readline()",
+        ],
+    )
+    delayed = []
+    start = threading.Thread.start
+
+    def postpone(thread):
+        delayed.append(thread)
+
+    try:
+        job = manager.submit(
+            find("example-genome/list"), {"target_root": str(tmp_path)}
+        )
+        # Delay scheduling the stop thread while the real worker exits without a result.
+        with monkeypatch.context() as schedule:
+            schedule.setattr(threading.Thread, "start", postpone)
+            manager.cancel(job.id)
+        workers[-1].terminate()
+        done = manager.wait(job.id, 10)
+        assert done is not None
+        assert (done.status, done.exit_code) == ("cancelled", 130)
+    finally:
+        for thread in delayed:
+            start(thread)
+            thread.join(timeout=10)
+        manager.shutdown()
 
 
 def test_1235_client_job_id_recovers_original_job_and_refuses_duplicate(client, work):

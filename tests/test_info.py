@@ -6,14 +6,16 @@ import subprocess
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
-from tests.htslib_helpers import sam_to_bam
+from tests.htslib_helpers import needs_tools, sam_to_bam
 from wgsextract_cli.commands.info import coverage, metrics, render, runner
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.results import CommandResult, collecting
+from wgsextract_cli.core.sample_workspace import SampleWorkspace
+from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.main import main
 
@@ -51,7 +53,6 @@ def info_env(tmp_path, monkeypatch):
         "get_file_stats": (50.0, True),
         "run_body_sample": BODY_SAMPLE,
         "parse_idxstats": IDXSTATS,
-        "load_n_counts": {},
     }
     calls: dict[str, int] = {}
     for name, value in mocks.items():
@@ -130,6 +131,56 @@ def test_info_cache_invalidated_when_input_changes(info_env):
     sample.write_bytes(b"a different, replaced input file")
     _run_info(sample, "info")
     assert calls["run_body_sample"] == 2
+
+
+@needs_tools("samtools")
+def test_1215_info_recomputes_metrics_for_same_size_and_mtime_bam(tmp_path):
+    sample = tmp_path / "sample.bam"
+    samtools = get_tool_path("samtools")
+    assert samtools is not None
+    (tmp_path / "genome-config.toml").write_text("")
+    workspace = SampleWorkspace(tmp_path)
+
+    def bam_bytes(read_length, read_name):
+        bases, quality = "A" * read_length, "I" * read_length
+        sam = (
+            "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:1\tLN:248956422\n"
+            f"{read_name}\t0\t1\t10\t60\t{read_length}M\t*\t0\t0\t{bases}\t{quality}\n"
+        )
+        return subprocess.run(
+            [*_tool_command_parts(samtools), "view", "-u", "--no-PG", "-"],
+            input=sam.encode(),
+            capture_output=True,
+            check=True,
+        ).stdout
+
+    # Two extra bases occupy three bytes in uncompressed BAM. Shorten the
+    # read name by three bytes so both valid BAMs have the same size.
+    sample.write_bytes(bam_bytes(20, "read000"))
+    assert "20 bp" in _run_info(sample, "info")
+    workspace.record("sex", sample, "Female", method="screening", confidence="high")
+    assert workspace.detected("sex", sample) is not None
+    cache = tmp_path / "sample.bam.wgse_info.json"
+    assert json.loads(cache.read_text())["avg_read_len"] == 20
+    before = sample.stat()
+
+    sample.write_bytes(bam_bytes(22, "read"))
+    os.utime(sample, ns=(before.st_atime_ns, before.st_mtime_ns))
+    after = sample.stat()
+    assert (after.st_ino, after.st_size, after.st_mtime_ns) == (
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+    )
+    assert "22 bp" in _run_info(sample, "info")
+    assert json.loads(cache.read_text())["avg_read_len"] == 22
+    assert workspace.detected("sex", sample) is None
+    read_length = workspace.detected("read_length", sample)
+    assert read_length is not None and read_length.value == 22
+
+
+def test_1215_cached_info_returns_no_metrics_for_a_missing_input(tmp_path):
+    assert metrics.cached_info(str(tmp_path / "missing.bam")) is None
 
 
 @pytest.mark.parametrize("payload", ['{"filename": "x", "avg_read_len": 99}', "{bad"])
@@ -444,27 +495,6 @@ def _stat(name, length, mapped):
     return {"name": name, "length": length, "mapped": mapped, "unmapped": 0}
 
 
-def test_chrom_table_skips_full_assembly_n_counts_for_trimmed_contigs():
-    # A 1 Mb slice of hg19 chr20 must not get chr20's ~3.5 Mb of N gaps.
-    table = metrics.generate_chrom_table(
-        [_stat("20", 1_000_001, 50_000)], 100.0, "Unknown", "hg19 (Chr)"
-    )
-    chr20 = next(row for row in table if row[1] == "20")
-    assert chr20[3] == 0
-    assert chr20[6] > 0  # positive average read depth
-
-
-def test_chrom_table_applies_n_counts_to_standard_assembly():
-    table = metrics.generate_chrom_table(
-        [_stat("1", 249_250_621, 10), _stat("20", 63_025_520, 10)],
-        100.0,
-        "Unknown",
-        "hg19 (Chr)",
-    )
-    chr20 = next(row for row in table if row[1] == "20")
-    assert chr20[3] > 0
-
-
 @pytest.mark.parametrize(
     "path", ["/data/s.cram", r"C:\Users\Lab User\s.cram", "relative:name.cram"]
 )
@@ -595,17 +625,75 @@ def test_detailed_coverage_bins_leave_ns_out_and_feed_detailed_info(tmp_path):
     rows = [ln for ln in report.read_text().splitlines() if not ln.startswith("#")]
     chr1 = next(r for r in csv.DictReader(rows, delimiter="\t"))
     assert chr1["Model N Len"] == "5000"
-    assert chr1["Depth 0 bases"] == "0"
+    assert chr1["Depth 0 bases"] == "5000"  # the Ns, which the fractions leave out
+    assert float(chr1["Depth 0 fraction"]) == 0.0
     assert float(chr1["Depth 1-3 fraction"]) == 1.0
 
-    # Even without the metrics cache, the saved coverage result is reused.
+    # Without the metrics cache, Detailed Info reuses the saved coverage result.
+    (tmp_path / "s.bam.wgse_info.json").unlink()
     _run_info(
         bam, "info", "--detailed", "--no-cache", "--ref", str(ref), "--format", "tsv"
     )
     assert _table_breadth(tmp_path / "s.bam_chromosomes.tsv")["chr1"] == "100"
 
 
-def test_bins_report_from_before_n_column_is_not_current(tmp_path):
+def _bins_total(text: str) -> str:
+    return next(ln for ln in text.splitlines() if ln.startswith("Total")).split()[-2]
+
+
+def test_n_counts_counted_after_detailed_coverage_update_it_without_rescan(
+    tmp_path, monkeypatch
+):
+    """Review of the N-aware bins: a reference counted (ref count-ns) after a
+    run must change the reused reports, not leave the old figures."""
+    from wgsextract_cli.commands.info import bins
+
+    bam, ref = _half_n_genome(tmp_path)
+    ncnt = tmp_path / "ref_ncnt.csv"
+    counts = ncnt.read_text()
+    ncnt.unlink()
+    manifest = json.loads(
+        _run_info(
+            bam,
+            "--json",
+            "info",
+            "calculate-coverage",
+            "--with-bins",
+            "--ref",
+            str(ref),
+        )
+    )
+    assert "n_counts_unavailable" in {w["code"] for w in manifest["warnings"]}
+    assert _table_breadth_from_cache(tmp_path)["chr1"] == "50 %"
+
+    ncnt.write_text(counts)
+    status = json.loads(
+        _run_info(bam, "--json", "info", "calculate-coverage", "--status")
+    )
+    assert status["details"]["current"] is True
+    monkeypatch.setattr(
+        bins, "popen", Mock(side_effect=AssertionError("bins must be reused"))
+    )
+    shown = _run_info(
+        bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
+    )
+    assert _bins_total(shown) == "93.10"
+    report = tmp_path / "s.bam_coverage_bins.tsv"
+    rows = [ln for ln in report.read_text().splitlines() if not ln.startswith("#")]
+    assert next(csv.DictReader(rows, delimiter="\t"))["Model N Len"] == "5000"
+    assert _table_breadth_from_cache(tmp_path)["chr1"] == "100 %"
+
+
+def _table_breadth_from_cache(folder: Path) -> dict[str, str]:
+    cache = json.loads((folder / "s.bam.wgse_info.json").read_text())
+    rows = list(csv.reader(io.StringIO(cache["chrom_table_csv"])))
+    col = rows[0].index("Breadth Coverage")
+    return {r[0]: r[col] for r in rows[1:]}
+
+
+def test_bins_report_from_before_n_column_is_reused_with_ns(tmp_path, monkeypatch):
+    from wgsextract_cli.commands.info import bins
+
     bam, ref = _half_n_genome(tmp_path)
     _run_info(bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref))
     report = tmp_path / "s.bam_coverage_bins.tsv"
@@ -615,11 +703,68 @@ def test_bins_report_from_before_n_column_is_not_current(tmp_path):
         if not line.startswith("#")
     ]
     report.write_text("\n".join(old) + "\n")
-    status = json.loads(
-        _run_info(bam, "--json", "info", "calculate-coverage", "--status")
+    monkeypatch.setattr(
+        bins, "popen", Mock(side_effect=AssertionError("bins must be reused"))
     )
-    assert status["details"]["current"] is False
     rerun = _run_info(
         bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
     )
-    assert "N Len" in rerun
+    assert _bins_total(rerun) == "93.10"
+    assert "Model N Len" in report.read_text()
+
+
+def test_bins_report_from_1203_is_not_double_n_subtracted(tmp_path, monkeypatch):
+    """Review of #1271: #1203 saved depth 0 less the Ns; reusing it subtracted
+    them again."""
+    from wgsextract_cli.commands.info import bins
+
+    bam, ref = _half_n_genome(tmp_path)
+    _run_info(bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref))
+    report = tmp_path / "s.bam_coverage_bins.tsv"
+    lines = report.read_text().splitlines()
+    for i, line in enumerate(lines):
+        cols = line.split("\t")
+        if cols[0] == "chr1":  # as #1203 wrote it: 5,000 Ns, none uncovered
+            lines[i] = "\t".join([*cols[:3], "0", *cols[4:]])
+    report.write_text("\n".join(lines) + "\n")
+    monkeypatch.setattr(
+        bins, "popen", Mock(side_effect=AssertionError("bins must be reused"))
+    )
+    shown = _run_info(
+        bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
+    )
+    assert _bins_total(shown) == "93.10"
+    rows = [ln for ln in report.read_text().splitlines() if not ln.startswith("#")]
+    assert next(csv.DictReader(rows, delimiter="\t"))["Depth 0 bases"] == "5000"
+
+
+def test_partial_region_needs_no_n_counts_and_csv_is_one_table(tmp_path):
+    """Review of #1271: a partial span keeps every coordinate, so it must not
+    ask for N counts; with --csv and --with-bins only the bins CSV prints."""
+    bam, ref = _half_n_genome(tmp_path)
+    (tmp_path / "ref_ncnt.csv").unlink()
+    args = ("calculate-coverage", "-r", "chr1:1-6000", "--ref", str(ref))
+    manifest = json.loads(_run_info(bam, "--json", "info", *args))
+    assert "n_counts_unavailable" not in {w["code"] for w in manifest["warnings"]}
+    out = _run_info(bam, "info", "--csv", *args, "--with-bins")
+    rows = list(csv.reader(out.splitlines()))
+    assert [r[0] for r in rows] == ["Seq Name", "chr1"]
+
+
+def test_truncated_bins_report_is_rescanned(tmp_path):
+    """Review of #1271: a truncated row made reuse raise IndexError."""
+    bam, ref = _half_n_genome(tmp_path)
+    _run_info(bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref))
+    report = tmp_path / "s.bam_coverage_bins.tsv"
+    lines = report.read_text().splitlines()
+    report.write_text(
+        "\n".join(
+            ln if not ln.startswith("chr1") else "chr1\t10000\t5000\t5000"
+            for ln in lines
+        )
+        + "\n"
+    )
+    shown = _run_info(
+        bam, "info", "calculate-coverage", "--with-bins", "--ref", str(ref)
+    )
+    assert _bins_total(shown) == "93.10"

@@ -27,7 +27,7 @@ from wgsextract_cli.core.temp_directory import (
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     run_command,
 )
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG, Thresholds
@@ -254,7 +254,7 @@ def annotate_vcf(
             f"The {label} output {ann_out} would overwrite its input {input_vcf}; "
             "pass --outdir to write it to another folder."
         )
-    n_threads = int(get_resource_defaults(threads)[0])
+    n_threads = int(get_resource_threads(threads))
     original_chromosomes = vcf_chromosomes(input_vcf)
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(outdir), prefix=".wgse_annotate_"

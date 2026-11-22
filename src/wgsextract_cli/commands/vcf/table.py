@@ -16,7 +16,10 @@ from pathlib import Path
 from wgsextract_cli.api.vcf import VcfTableParams
 from wgsextract_cli.core import acmg
 from wgsextract_cli.core.atomic_output import atomic_output
-from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
+from wgsextract_cli.core.builds import (
+    build_from_chr1_length,
+    build_from_reference_header,
+)
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.paths import absolute_path
@@ -78,7 +81,7 @@ def _reference_build(header: VcfHeader) -> str | None:
         return build
     for line in header.lines:
         if line.startswith("##reference="):
-            return build_from_path(line.partition("=")[2])
+            return build_from_reference_header(line.partition("=")[2])
     return None
 
 

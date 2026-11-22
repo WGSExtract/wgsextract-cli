@@ -1169,7 +1169,7 @@ def test_a_resource_with_no_build_installed_fails(tmp_path):
 def test_resource_download_rejects_html_payload(tmp_path):
     from wgsextract_cli.core import annotation_resources as ar
 
-    def fake_download(_url, dest, *_args):
+    def fake_download(_url, dest, *_args, **_kwargs):
         Path(dest).write_text("<html>login</html>")
         return True
 

@@ -23,4 +23,7 @@ release PR runs `python scripts/release_notes.py assemble X.Y.Z`, which writes
 
 Deprecations must be announced here, under `## Deprecated`.
 `python scripts/release_notes.py check` checks the names and sections; every
-PR's routing job (`changes` in PR area checks) runs it.
+PR's routing job (`changes` in PR area checks) runs it. A branch that still
+edits the old shared `docs/release-notes/unreleased.md` fails that check: after
+merging main, keep that file deleted and move the branch's own entries into a
+fragment.

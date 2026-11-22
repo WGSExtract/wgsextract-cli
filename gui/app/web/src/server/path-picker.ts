@@ -115,7 +115,7 @@ export function takeNativePickerEndpoint(token: string, environment: NodeJS.Proc
 }
 
 async function runTauriNativePicker(endpoint: NativePickerEndpoint, kind: PathPickerKind, title: string, defaultLocation: string): Promise<string | null> {
-    const params = new URLSearchParams({ kind, title, defaultPath: defaultLocation });
+    const params = new URLSearchParams({ kind, title, defaultPath: defaultLocation ? path.resolve(defaultLocation) : "" });
     const response = await fetch(`http://127.0.0.1:${endpoint.port}/pick?${params}`, {
         headers: { [apiTokenHeader]: endpoint.token },
     });
