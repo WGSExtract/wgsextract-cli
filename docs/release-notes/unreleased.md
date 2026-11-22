@@ -13,6 +13,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   `--ploidy-file`. An `--assembly` that contradicts the alignment's header
   or its reference's index is refused
   ([#1244, wrong-build ploidy](https://github.com/WGSExtract/wgsextract-cli/issues/1244)).
+- `ref cadd` keeps a complete CADD score table whose index download failed or
+  was cancelled: the next run checks the table against its published MD5 and
+  fetches only the missing index, instead of downloading the ~85 GB SNV table
+  again. A table in place that fails the check is reported, not removed.
+  `ref revel` now downloads over https and checks each file against a pinned
+  SHA-256
+  ([#1245, CADD index retry and REVEL integrity](https://github.com/WGSExtract/wgsextract-cli/issues/1245)).
 - `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads
   support a call. DYS589's non-repeat boundary variation no longer appears
   as a fractional STR allele. DYS425 is left blank on all builds because
