@@ -11,6 +11,7 @@ dropped and counted; nothing is guessed, and nothing derived is redistributed.
 
 import gzip
 import json
+import logging
 import tempfile
 from collections import Counter
 from pathlib import Path
@@ -133,28 +134,32 @@ def is_grch37(fasta: Path) -> bool:
 
 
 def grch37_fasta(library: Path, fasta: Path | None) -> Path:
-    """``fasta``, else the one indexed GRCh37 FASTA in the library's genomes."""
-    if fasta is not None:
-        if _y_contig(fasta) is None:
-            raise WGSExtractError(
-                f"{fasta} is not an indexed GRCh37 FASTA (chrY/Y length "
-                f"{Y_LENGTH:,}, chr1 {CHR1_LENGTH:,}); index it with "
-                "wgsextract ref index, or give another with --ref FASTA."
-            )
+    """``fasta`` when it is an indexed GRCh37 FASTA, else the first one in the
+    library or its genomes folder (warning that ``fasta`` was passed over)."""
+    if fasta is not None and is_grch37(fasta):
         return fasta
     found = [
         Path(candidate)
         for directory in (library, Path(reference_genomes_dir(library)))
         for candidate in reference_fasta_candidates(directory)
-        if _y_contig(Path(candidate))
+        if is_grch37(Path(candidate))
     ]
-    if not found:
-        raise WGSExtractError(
-            "--grch37 checks the lifted alleles against an indexed GRCh37 FASTA "
-            f"(chrY/Y length {Y_LENGTH:,}), and the library has none. Give one "
-            "with --ref FASTA."
-        )
-    return found[0]
+    wrong = (
+        f"{fasta} is not an indexed GRCh37 FASTA (chrY/Y length {Y_LENGTH:,}, "
+        f"chr1 {CHR1_LENGTH:,})"
+        if fasta is not None
+        else ""
+    )
+    if found:
+        if wrong:
+            logging.warning(f"{wrong}; checking the lifted alleles against {found[0]}.")
+        return found[0]
+    raise WGSExtractError(
+        (f"{wrong}, and the library has no other. " if wrong else "")
+        + "--grch37 checks the lifted alleles against an indexed GRCh37 FASTA "
+        f"(chrY/Y length {Y_LENGTH:,}): give one with --ref FASTA, indexed with "
+        "wgsextract ref index."
+    )
 
 
 def _y_sequence(fasta: Path, contig: str, work: Path) -> str:
@@ -179,8 +184,9 @@ def _complement_info(info: str) -> str:
 
 
 def _lift(sites38: Path, lifter: YLiftOver, sequence: str, out: TextIO) -> Counter[str]:
-    """Write each placed, reference-checked allele to ``out`` (unsorted,
-    GRCh37 coordinates, its GRCh38 position kept as INFO/SRC38)."""
+    """Write each placed allele to ``out`` (unsorted, GRCh37 coordinates), its
+    GRCh38 position as INFO/SRC38 and its reference check as INFO/LIFT, so a
+    position another GRCh38 site lands on is dropped whatever its check."""
     counts: Counter[str] = Counter()
     with gzip.open(sites38, "rt", encoding="utf-8") as source:
         for line in source:
@@ -198,23 +204,24 @@ def _lift(sites38: Path, lifter: YLiftOver, sequence: str, out: TextIO) -> Count
                 info = _complement_info(info)
             base = sequence[placed.position - 1] if placed.position <= Y_LENGTH else "N"
             if base not in _BASES:
-                counts["grch37_reference_N"] += 1
-                continue
-            if base == alt:
-                counts["ref_alt_inverted"] += 1
-                ref, alt = alt, ref
-            elif base != ref:
-                counts["neither_allele_matches"] += 1
-                continue
-            info = f"SRC38={pos}" + ("" if info == "." else f";{info}")
+                check = "grch37_reference_N"
+            elif base == alt:
+                check, ref, alt = "ref_alt_inverted", alt, ref
+            else:
+                check = "ok" if base == ref else "neither_allele_matches"
+            info = f"SRC38={pos};LIFT={check}" + ("" if info == "." else f";{info}")
             out.write(f"chrY\t{placed.position}\t{names}\t{ref}\t{alt}\t.\t.\t{info}\n")
     return counts
+
+
+def _info(info: str) -> dict[str, str]:
+    return dict(item.split("=", 1) for item in info.split(";") if "=" in item)
 
 
 def _group(records: list[list[str]]) -> Group:
     group: Group = {}
     for _, _, names, ref, alt, _, _, info in records:
-        fields = dict(item.split("=", 1) for item in info.split(";") if "=" in item)
+        fields = _info(info)
         values = group.setdefault((ref, alt), (set(), set(), set(), set()))
         values[0].update(n for n in names.split(";") if n != ".")
         for index, tag in enumerate(("HG", "ISOGG", "AA"), start=1):
@@ -237,14 +244,23 @@ def _write_sites(sorted_vcf: Path, directory: Path, counts: Counter[str]) -> Non
         sites.write(sites_header(Y_LENGTH, f"##ybrowse_scope={SCOPE}\n"))
 
         def flush(pos: int, records: list[list[str]]) -> None:
-            if not records:
-                return
-            if len({r[7].split(";", 1)[0] for r in records}) > 1:
+            fields = [_info(r[7]) for r in records]
+            if len({f["SRC38"] for f in fields}) > 1:
                 counts["many_to_one"] += len(records)
-            elif len({r[3] for r in records}) > 1:
-                counts["conflicting_ref"] += len(records)
-            else:
-                group = _group(records)
+                return
+            kept = []
+            for record, info in zip(records, fields, strict=True):
+                check = info["LIFT"]
+                if check not in ("ok", "ref_alt_inverted"):
+                    counts[check] += 1
+                    continue
+                if check != "ok":
+                    counts[check] += 1
+                kept.append(record)
+            if len({r[3] for r in kept}) > 1:
+                counts["conflicting_ref"] += len(kept)
+            elif kept:
+                group = _group(kept)
                 counts["grch37_alleles"] += write_group(pos, group, sites, targets)
 
         position = 0
@@ -254,10 +270,12 @@ def _write_sites(sorted_vcf: Path, directory: Path, counts: Counter[str]) -> Non
                 continue
             cols = line.rstrip("\n").split("\t")
             if int(cols[1]) != position:
-                flush(position, records)
+                if records:
+                    flush(position, records)
                 position, records = int(cols[1]), []
             records.append(cols)
-        flush(position, records)
+        if records:
+            flush(position, records)
 
 
 def derive(
@@ -280,7 +298,9 @@ def derive(
                 sites_header(
                     Y_LENGTH,
                     '##INFO=<ID=SRC38,Number=1,Type=Integer,Description="GRCh38'
-                    ' position">\n',
+                    ' position">\n'
+                    '##INFO=<ID=LIFT,Number=1,Type=String,Description="GRCh37'
+                    ' reference check">\n',
                 )
             )
             counts = _lift(source_dir / "sites.vcf.gz", lifter, sequence, out)

@@ -236,9 +236,7 @@ def run_ybrowse(params: RefYbrowseParams) -> None:
         library, params.chain, params.download
     )
     ref = params.ref if params.ref and params.ref.is_file() else None
-    fasta = ybrowse_grch37.grch37_fasta(
-        library, ref if ref and ybrowse_grch37.is_grch37(ref) else None
-    )
+    fasta = ybrowse_grch37.grch37_fasta(library, ref)
     if params.snapshot:
         installed = install_snapshot(library, params.snapshot)
         _record_installed(installed)
