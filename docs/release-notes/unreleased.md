@@ -22,6 +22,7 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 - `microarray` gives the same kit from a plain `.vcf` or an unindexed `.bcf`
   as from the same calls bgzipped and indexed. Such input skipped matching
   its chromosome names to the targets' (`1` or `chr1`, `MT` or `chrM`), so
-  every marker became a no-call, and `--region` failed. It is now sorted,
+  every marker became a no-call, and `--region` failed. It is now
   compressed and indexed in the run's temporary work, never beside the
-  input ([#1242, unindexed VCF no-calls](https://github.com/WGSExtract/wgsextract-cli/issues/1242)).
+  input, in its own record order (sorted only when unsorted); kits made
+  from it before are regenerated ([#1242, unindexed VCF no-calls](https://github.com/WGSExtract/wgsextract-cli/issues/1242)).

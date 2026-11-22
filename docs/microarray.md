@@ -71,10 +71,14 @@ it omits GQ. Supplied VCFs never use that fallback. Multi-sample VCFs require
 `--sample`.
 
 VCF input may be bgzipped (`.vcf.gz`, indexed beside itself when it has no
-index), an indexed or unindexed `.bcf`, or a plain `.vcf`. A plain VCF or an
-unindexed BCF is sorted, compressed and indexed in the run's temporary work,
-never beside the input, so its chromosome naming (`1` or `chr1`, `MT` or
-`chrM`) is matched to the targets' and `--region` works as for bgzipped input.
+index), an indexed or unindexed `.bcf`, or a plain `.vcf`. A plain VCF, an
+unindexed BCF, or a bgzipped VCF that can't be indexed where it is (unsorted,
+or in a read-only folder) is compressed and indexed as a working copy in the
+run's temporary work, never beside the input, so its chromosome naming (`1`
+or `chr1`, `MT` or `chrM`) is matched to the targets' and `--region` works as
+for bgzipped input. The copy keeps only the `--sample` you chose, and keeps
+the input's record order: only unsorted input is sorted, and `##contig`
+lines it lacks are added to the copy first.
 
 Absent VCF markers are **no-calls**, not reference genotypes: variant-only
 VCFs do not establish coverage. Explicit `0/0` records and gVCF reference-block

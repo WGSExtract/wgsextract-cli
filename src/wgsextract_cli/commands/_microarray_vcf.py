@@ -39,8 +39,8 @@ from wgsextract_cli.core.utils import (
 from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
     has_vcf_index,
+    indexed_vcf_copy,
     match_chromosome_name,
-    sorted_indexed_copy,
     vcf_index_chromosomes,
 )
 
@@ -508,22 +508,50 @@ def _no_call_low_confidence_imputed(vcf: str, outdir: str, base_name: str) -> st
     return out
 
 
-def _indexed_vcf_input(vcf: str, outdir: str, cleanup: contextlib.ExitStack) -> str:
-    """The input VCF in a form bcftools can read by region and list the
-    contigs of, so its naming (1 or chr1, MT or chrM) is matched to the
-    targets'. A bgzipped VCF is indexed beside itself when called; a plain
-    VCF or an unindexed BCF is sorted, compressed and indexed in a scratch
-    directory under ``outdir`` that ``cleanup`` removes, never beside the
-    input (issue #1242)."""
-    if vcf.endswith((".gz", ".bgz")) or has_vcf_index(vcf):
-        return vcf
+def _calling_vcf(
+    vcf: str,
+    sample: str | None,
+    outdir: str,
+    cleanup: contextlib.ExitStack,
+    *,
+    select_sample: bool = False,
+) -> tuple[str, str | None]:
+    """The VCF to call from, readable by region with its contigs listed so
+    their naming (1 or chr1, MT or chrM) is matched to the targets', and the
+    sample still to select from it. A bgzipped VCF is indexed beside itself;
+    one that can't be (unsorted, or in a read-only folder), a plain VCF and
+    an unindexed BCF are copied, bgzipped and indexed, of only ``sample``,
+    into a scratch directory under ``outdir`` that ``cleanup`` removes,
+    never beside the input (issue #1242). ``select_sample`` copies an
+    indexed input's sample too, for callers that read one sample."""
+    indexed = False
+    if Path(vcf).suffix.lower() in {".gz", ".bgz"}:
+        try:
+            ensure_vcf_indexed(vcf)
+            indexed = True
+        except (OSError, subprocess.SubprocessError) as e:
+            logging.info(f"Could not index {vcf} where it is ({e}).")
+    else:
+        indexed = has_vcf_index(vcf)
+    if indexed and not (sample and select_sample):
+        return vcf, sample
+    return _vcf_copy(vcf, sample, outdir, cleanup), None
+
+
+def _vcf_copy(
+    vcf: str, sample: str | None, outdir: str, cleanup: contextlib.ExitStack
+) -> str:
+    """An indexed copy of ``vcf``, of only ``sample`` when given, in a
+    scratch directory under ``outdir`` that ``cleanup`` removes."""
     Path(outdir).mkdir(parents=True, exist_ok=True)
     workdir = cleanup.enter_context(scratch_directory(outdir, "VcfInput_"))
-    logging.info(f"Compressing and indexing a working copy of {vcf}...")
+    logging.info(f"Preparing an indexed working copy of {vcf}...")
     try:
-        return sorted_indexed_copy(vcf, workdir)
+        return indexed_vcf_copy(vcf, workdir, sample)
     except (OSError, subprocess.SubprocessError) as e:
-        raise WGSExtractError(f"Could not prepare {vcf} for reading: {e}") from e
+        if sample:
+            raise WGSExtractError(f"Could not select sample '{sample}': {e}") from e
+        raise WGSExtractError(f"Could not prepare {vcf}: {e}") from e
 
 
 def _prepare_microarray_vcf(

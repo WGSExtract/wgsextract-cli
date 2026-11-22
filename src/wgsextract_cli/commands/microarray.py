@@ -46,7 +46,6 @@ from wgsextract_cli.core.microarray.indels import (
     IndelCalls,
     call_manifest_indels,
     indel_manifest_bindings,
-    prepare_indel_vcf,
 )
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import (
@@ -77,7 +76,6 @@ from wgsextract_cli.core.table_writer import (
     table_path,
     write_table,
 )
-from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
@@ -102,10 +100,11 @@ from ._microarray_combined import (
 )
 from ._microarray_vcf import (
     _alignment_chromosomes,
-    _indexed_vcf_input,
+    _calling_vcf,
     _normalize_region_args_for_input,
     _prepare_microarray_vcf,
     _prepare_vcf_target_tab_for_input,
+    _vcf_copy,
 )
 
 PACKAGED_ASSETS = absolute_path(__file__).parents[1] / "assets"
@@ -445,7 +444,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             if vcf_sample:
                 chm13_params = replace(
                     params,
-                    input=Path(_sample_vcf(input_path, vcf_sample, outdir, cleanup)),
+                    input=Path(_vcf_copy(input_path, vcf_sample, outdir, cleanup)),
                 )
             combined = run_chm13(
                 chm13_params,
@@ -553,6 +552,10 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         aadr_panels=aadr_panels,
         aadr_chain=aadr_chain_file,
     )
+    if is_vcf:
+        # Outputs from before issue #1242 called unindexed VCFs without
+        # matching their contig names to the targets'.
+        inputs["vcf_preparation_policy"] = "indexed-contig-normalization-v1"
     units, unit_formats = _output_units(
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
     )
@@ -668,15 +671,10 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         warn_about_alignment(input_path, ref_fasta)
     calling_input, sample = input_path, vcf_sample
     if is_vcf:
-        calling_input = _indexed_vcf_input(input_path, outdir, cleanup)
-    if indel_bindings and is_vcf:
-        calling_input = prepare_indel_vcf(
-            _sample_vcf(calling_input, vcf_sample, outdir, cleanup)
-            if vcf_sample
-            else calling_input,
-            outdir,
+        # The indel caller reads one sample, so an indel run selects it here.
+        calling_input, sample = _calling_vcf(
+            input_path, vcf_sample, outdir, cleanup, select_sample=bool(indel_bindings)
         )
-        sample = None  # the calling input is already the selected sample
     calling_params = replace(params, input=Path(calling_input))
 
     start_vcf = time.time()
@@ -947,25 +945,6 @@ def _vcf_input_layout(
         )
         params = replace(params, assume_hom_ref=False)
     return (requested if len(samples) > 1 else None), gvcf, params
-
-
-def _sample_vcf(
-    vcf: str, sample: str, outdir: str, cleanup: contextlib.ExitStack
-) -> str:
-    """One sample of a multi-sample VCF, as an indexed VCF in a scratch
-    directory under ``outdir`` that ``cleanup`` removes."""
-    Path(outdir).mkdir(parents=True, exist_ok=True)
-    workdir = cleanup.enter_context(scratch_directory(outdir, "Sample_"))
-    subset = str(Path(workdir, "sample.vcf.gz"))
-    try:
-        run_command(
-            ["bcftools", "view", "--samples", sample, "--trim-alt-alleles"]
-            + ["-Oz", "-o", subset, vcf]
-        )
-        run_command(["bcftools", "index", "-t", subset])
-    except (OSError, subprocess.SubprocessError) as e:
-        raise WGSExtractError(f"Could not select sample '{sample}': {e}") from e
-    return subset
 
 
 run = cli_handler(MicroarrayParams, run_microarray)
