@@ -28,7 +28,10 @@ from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfPharmcatParams
 from wgsextract_cli.core import reference_evidence, runtime, variant_confidence
-from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
+from wgsextract_cli.core.builds import (
+    build_from_chr1_length,
+    build_from_reference_header,
+)
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.pharmcat_resources import REFERENCE_FASTA as REFERENCE_FASTA
@@ -301,7 +304,7 @@ def _vcf_build(vcf: str) -> str | None:
         return by_length
     for line in header.stdout.splitlines():
         if line.startswith("##reference="):
-            return build_from_path(line.partition("=")[2])
+            return build_from_reference_header(line.partition("=")[2])
     return None
 
 
