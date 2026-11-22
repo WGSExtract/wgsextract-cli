@@ -220,11 +220,13 @@ def test_1146_cancelled_reference_transfer_neither_retries_nor_extracts(
                 transfer = pool.submit(resources.ensure_reference, str(tmp_path))
             try:
                 assert started.wait(5)
-                partial = next(tmp_path.glob("*.partial"))
+                partial = tmp_path / ".pharmcat-reference.tar.partial"
                 deadline = time.monotonic() + 5
-                while partial.stat().st_size == 0 and time.monotonic() < deadline:
+                while time.monotonic() < deadline:
+                    if partial.exists() and partial.stat().st_size > 0:
+                        break
                     time.sleep(0.01)
-                assert partial.stat().st_size > 0
+                assert partial.exists() and partial.stat().st_size > 0
                 token.cancel()
                 release.set()
                 with pytest.raises(Cancelled):
@@ -234,7 +236,6 @@ def test_1146_cancelled_reference_transfer_neither_retries_nor_extracts(
                 server.body_pauses.clear()
         assert server.gets() == [None]
         assert not any((tmp_path / name).exists() for name in reference_files)
-        partial = next(tmp_path.glob("*.partial"))
         assert 0 < partial.stat().st_size < len(complete)
         resources.ensure_reference(str(tmp_path))
         assert len(server.gets()) == 2
