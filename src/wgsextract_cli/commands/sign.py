@@ -21,7 +21,7 @@ from wgsextract_cli.core.results import current_result, manifest_path_for, warn
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
 )
 
 # ssh-keygen -Y signature namespace, so a signature made for another purpose
@@ -126,7 +126,7 @@ def create_manifest(params: SignCreateParams) -> None:
             "File names with newlines or backslashes can't be listed."
         )
 
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     logging.info(f"Hashing {len(files)} file(s)...")
     digests = _hash_files(files, threads)
 
@@ -262,7 +262,7 @@ def verify_manifest(params: SignVerifyParams) -> None:
         name for (_, name), p in zip(entries, paths, strict=True) if not p.is_file()
     ]
     present = [(e, p) for e, p in zip(entries, paths, strict=True) if p.is_file()]
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     logging.info(f"Checking {len(entries)} file(s)...")
     digests = _hash_files([p for _, p in present], threads)
     changed = [

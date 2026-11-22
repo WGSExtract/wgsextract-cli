@@ -429,7 +429,7 @@ def align_bwa(
             command,
             out_bam,
             threads=setup.threads,
-            memory=setup.memory,
+            memory=setup.sort_budget,
             fmt=job.format,
             output_profile=job.output_profile or "default",
             ref=setup.ref,
