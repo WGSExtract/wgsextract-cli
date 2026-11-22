@@ -100,7 +100,7 @@ def test_1322_failed_worker_start_does_not_keep_workspace_busy(tmp_path):
             find("example-genome/list"), {"target_root": str(tmp_path)}, job_id=job_id
         )
         assert job.status == "failed"
-        assert job.error and "Could not start a worker" in job.error["message"]
+        assert job.error and "job log" in job.error["message"]
         assert not list((desktop_data_dir() / "workspace-activity").iterdir())
     finally:
         manager.shutdown()
