@@ -429,7 +429,7 @@ def _trio_from_alignments(
         is_hg38_build,
         ploidy_for_build,
     )
-    from wgsextract_cli.core.utils import get_resource_defaults
+    from wgsextract_cli.core.utils import get_resource_threads
 
     from ..info.metrics import sample_sex
 
@@ -492,7 +492,7 @@ def _trio_from_alignments(
     proband_sex = "M" if proband_sex == "male" else "F"
     for alignment in alignments:
         warn_about_alignment(alignment, lib.fasta)
-    threads = int(get_resource_defaults(params.threads, None)[0])
+    threads = int(get_resource_threads(params.threads))
     joint = joint_trio_vcf(
         alignments,
         [proband_sex, "F", "M"],
