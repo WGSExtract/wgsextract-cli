@@ -63,7 +63,10 @@ def run_jobs(
                 pending.remove(job)
                 running[pool.submit(job.run)] = job
                 used += job.memory
-            done, _ = wait(running, return_when=FIRST_COMPLETED)
+            # A timed wait: an endless one defers Ctrl-C on Windows.
+            done: set[Future[None]] = set()
+            while not done:
+                done, _ = wait(running, timeout=0.5, return_when=FIRST_COMPLETED)
             for future in done:
                 job = running.pop(future)
                 used -= job.memory
