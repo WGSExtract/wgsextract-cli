@@ -176,6 +176,21 @@ def candidate(root: Path, tree: Worktree, trees: list[Worktree]) -> str:
 def link_blocks(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]:
     if not paths:
         return set()
+    for attempt in range(3):
+        try:
+            return scan_links(root, trees, paths)
+        except FileNotFoundError as error:
+            if attempt == 2:
+                raise CleanupError(
+                    f"Dependency scan could not finish after 3 attempts: {error}"
+                ) from error
+            # A directory can be renamed with its links intact. Restart the
+            # whole walk so its new location is examined too.
+            trees = worktrees(root)
+    raise AssertionError("unreachable dependency scan retry")
+
+
+def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]:
     # The primary walk includes registered worktrees under the repository.
     locations = {root}
     for tree in trees:
