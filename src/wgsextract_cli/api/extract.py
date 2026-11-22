@@ -89,7 +89,7 @@ class YdnaBamParams(_ExtractParams):
     poz: bool = param(
         False,
         help="Restrict Y reads to the bundled CombBED/McDonald/Poznik union "
-        "(GRCh37/38 only).",
+        "(GRCh37, GRCh38 or T2T).",
         action="store_true",
     )
 
@@ -192,7 +192,7 @@ class ExtractRegionParams(_ExtractParams):
         False,
         help="With --target y and the bam format: restrict the BAM's Y reads to the "
         "bundled "
-        "CombBED/McDonald/Poznik union (GRCh37/38 only).",
+        "CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T).",
         action="store_true",
     )
     ybrowse: bool = param(

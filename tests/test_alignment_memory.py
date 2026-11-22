@@ -8,6 +8,7 @@ import pytest
 from tests.htslib_helpers import (
     needs_tools,
     run_wgsextract,
+    sam_to_bam,
     write_fasta,
     write_read_pairs,
 )
@@ -15,11 +16,22 @@ from wgsextract_cli.core import resource_estimates as resources
 from wgsextract_cli.core import results
 from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.resource_policy import get_resource_defaults
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 GIB = 1024**3
 MIB = 1024**2
 ULTIMA_READS = 313_736_048
+
+
+@pytest.mark.parametrize(("total_gib", "expected"), [(16, "682M"), (32, "1G")])
+def test_1232_resource_defaults_accept_auto(ram, total_gib, expected):
+    ram(total_gib * GIB)
+    threads, memory = get_resource_defaults(
+        "auto", "auto", lambda: SimpleNamespace(threads=6)
+    )
+    assert threads == "6"
+    assert memory == expected
 
 
 def test_stream_collation_can_make_an_otherwise_fitting_mem2_pipeline_unsafe(
@@ -412,7 +424,7 @@ def _align_logged(
     samtools sort command it ran, the output's primary records and the log."""
     from wgsextract_cli.main import main
 
-    genome = "".join(random.Random(781).choice("ACGT") for _ in range(50_000))
+    genome = "".join(random.Random(781).choices("ACGT", k=50_000))
     ref = write_fasta(tmp_path / "ref.fa", {"chr1": genome})
     r1, r2 = tmp_path / "reads_R1.fastq", tmp_path / "reads_R2.fastq"
     write_read_pairs(genome, r1, r2, [i * 7 % 49_000 for i in range(pairs)])
@@ -438,7 +450,7 @@ def _align_logged(
 @needs_tools("bwa", "samtools")
 @pytest.mark.parametrize(
     ("pairs", "total", "reason"),
-    [(300, 4 * GIB, "MB of reads fill"), (4000, GIB // 8, "half of this computer's")],
+    [(300, 4 * GIB, "MB of reads fill"), (4000, GIB // 8, "half of the effective")],
 )
 def test_many_sort_threads_get_buffers_samtools_can_reserve(
     tmp_path, ram, pairs, total, reason
@@ -458,6 +470,53 @@ def test_many_sort_threads_get_buffers_samtools_can_reserve(
 
 
 @needs_tools("bwa", "samtools")
+@pytest.mark.parametrize(
+    ("pairs", "memory", "max_mib", "reason"),
+    [
+        (30_000, "auto", 64, None),
+        (30_000, "2G", 128, "half of the effective"),
+        (300, "auto", 16, "MB of reads fill"),
+    ],
+    ids=["large-auto", "large-explicit", "small-auto"],
+)
+def test_1232_sort_fits_process_memory_limit(
+    tmp_path, monkeypatch, pairs, memory, max_mib, reason
+):
+    """A 128 GiB host must not drive sort allocations in a 2 GiB cgroup."""
+    fake_files = {
+        Path("/proc/self/cgroup"): "0::/\n",
+        Path("/proc/self/mountinfo"): "",
+        Path("/sys/fs/cgroup/memory.max"): str(2 * GIB),
+        Path("/sys/fs/cgroup/memory.current"): str(32 * MIB),
+        Path("/sys/fs/cgroup/memory.stat"): "inactive_file 0\n",
+    }
+    read_text = Path.read_text
+
+    def read_os_file(path, *args, **kwargs):
+        if path in fake_files:
+            return fake_files[path]
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", read_os_file)
+    monkeypatch.setattr(
+        alignment_memory.psutil,
+        "virtual_memory",
+        lambda: SimpleNamespace(total=128 * GIB, available=120 * GIB),
+    )
+    sort, primary, log = _align_logged(
+        tmp_path, pairs, "--threads", "8", "--memory", memory
+    )
+    assert primary == 2 * pairs
+    # contract: explicit worker count is preserved; aggregate sort buffers leave
+    # room for the rest of the pipeline inside the cgroup, even on a large host.
+    assert sort[sort.index("-@") + 1] == "8"
+    per_thread = sort[sort.index("-m") + 1]
+    assert per_thread.endswith("M") and 0 < int(per_thread[:-1]) <= max_mib
+    if reason:
+        assert reason in log
+
+
+@needs_tools("bwa", "samtools")
 def test_sort_memory_within_the_machine_and_input_is_passed_unchanged(tmp_path, ram):
     """#781: only a sort budget samtools can't reserve, or its reads can't
     fill, is lowered."""
@@ -469,6 +528,29 @@ def test_sort_memory_within_the_machine_and_input_is_passed_unchanged(tmp_path, 
     # contract: the user's --memory is the sort's per-thread buffer.
     assert sort[sort.index("-m") + 1] == "32M"
     assert "Lowering samtools sort memory" not in log
+
+
+@needs_tools("samtools")
+def test_1232_sub_mib_per_thread_budget_allows_collation_but_not_sort(tmp_path, ram):
+    """Collation sizes buckets from total memory, not samtools sort's floor."""
+    from wgsextract_cli import api
+
+    input_bam = sam_to_bam(
+        [
+            "@SQ\tSN:chr1\tLN:1000",
+            "pair\t99\tchr1\t10\t60\t1M\t=\t30\t21\tA\tI",
+            "pair\t147\tchr1\t30\t60\t1M\t=\t10\t-21\tC\tI",
+        ],
+        tmp_path / "reads.bam",
+    )
+    ram(16 * MIB)
+    options = {"input": input_bam, "outdir": tmp_path, "threads": 8, "memory": "auto"}
+    api.bam.unalign(api.BamUnalignParams(**options, r1="r1.fq", r2="r2.fq"))
+    assert (tmp_path / "r1.fq").read_text().splitlines()[:2] == ["@pair", "A"]
+    assert (tmp_path / "r2.fq").read_text().splitlines()[:2] == ["@pair", "G"]
+    with pytest.raises(api.CommandFailed, match=r"minimum.*1 MiB.*--threads"):
+        api.bam.sort(api.BamSortParams(**options))
+    assert not list(tmp_path.glob("*_sorted.bam"))
 
 
 def test_guard_counts_the_sort_buffers_samtools_reserves(tmp_path, monkeypatch):

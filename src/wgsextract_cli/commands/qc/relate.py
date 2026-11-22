@@ -59,7 +59,7 @@ from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     run_command,
 )
 from wgsextract_cli.core.variant_files import calculate_bam_md5, verify_paths_exist
@@ -730,7 +730,7 @@ def run_relate(params: RelateParams) -> None:
     verify_dependencies([SOMALIER, "samtools", "bcftools"])
     check_format(params.table_format)
     log_dependency_info([SOMALIER])
-    threads = int(get_resource_defaults(params.threads, None)[0])
+    threads = int(get_resource_threads(params.threads))
     ped_rows = _ped_rows(ped) if ped else None
     outdir = (
         Path(expand_path(params.outdir)) if params.outdir else params.default_outdir()

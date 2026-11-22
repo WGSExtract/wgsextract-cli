@@ -13,13 +13,10 @@ from __future__ import annotations
 
 # Keep facade declarations ordered for stable public API documentation.
 # ruff: noqa: E402
-import dataclasses as dataclasses
-from collections.abc import Callable as Callable
 from collections.abc import Iterator as Iterator
 from dataclasses import dataclass as dataclass
 from pathlib import Path as Path
 from typing import Any as Any
-from typing import TypeVar as TypeVar
 
 from wgsextract_cli.core.messages import CLI_HELP as CLI_HELP
 from wgsextract_cli.core.mimalloc import SETTINGS as MIMALLOC_SETTINGS  # noqa: F401
@@ -117,21 +114,6 @@ from .vcf_specs.shared import _resource_param as _resource_param
 from .vcf_specs.shared import _vcf_input_param as _vcf_input_param
 from .vcf_specs.shared import _VcfFileParams as _VcfFileParams
 
-_P = TypeVar("_P", bound=_VcfFileParams)
-
-
-def _run_on_vcf(
-    params: _P,
-    impl: Callable[[_P], None],
-    progress: ProgressCallback | None,
-    cancel: CancelToken | None,
-    check: bool,
-) -> CommandResult:
-    if params.vcf_input is not None:
-        # Only the chosen VCF is read and recorded, as the input.
-        params = dataclasses.replace(params, input=params.vcf_input, vcf_input=None)
-    return execute(params, impl, progress=progress, cancel=cancel, check=check)
-
 
 def annotate(
     params: VcfAnnotateParams,
@@ -143,7 +125,7 @@ def annotate(
     """Annotate; output role ``annotated``, with the record count in its metrics."""
     from wgsextract_cli.commands.vcf.basic import run_annotate
 
-    return _run_on_vcf(params, run_annotate, progress, cancel, check)
+    return execute(params, run_annotate, progress=progress, cancel=cancel, check=check)
 
 
 def filter(
@@ -156,7 +138,7 @@ def filter(
     """Filter; output role ``filtered_vcf``, with the record count in its metrics."""
     from wgsextract_cli.commands.vcf.filter_trio import run_filter
 
-    return _run_on_vcf(params, run_filter, progress, cancel, check)
+    return execute(params, run_filter, progress=progress, cancel=cancel, check=check)
 
 
 def table(
@@ -170,7 +152,7 @@ def table(
     ``rows`` is a metric."""
     from wgsextract_cli.commands.vcf.table import run_table
 
-    return _run_on_vcf(params, run_table, progress, cancel, check)
+    return execute(params, run_table, progress=progress, cancel=cancel, check=check)
 
 
 def to_fasta(
@@ -184,7 +166,7 @@ def to_fasta(
     ``chain``)."""
     from wgsextract_cli.commands.vcf.consensus import run_to_fasta
 
-    return _run_on_vcf(params, run_to_fasta, progress, cancel, check)
+    return execute(params, run_to_fasta, progress=progress, cancel=cancel, check=check)
 
 
 def trio(
@@ -199,10 +181,7 @@ def trio(
     ``trio_denovo_isolated`` from BAM/CRAMs)."""
     from wgsextract_cli.commands.vcf.filter_trio import run_trio
 
-    if params.proband is not None:
-        # The proband overrides the other inputs: only it is read and recorded.
-        params = dataclasses.replace(params, input=params.proband, vcf_input=None)
-    return _run_on_vcf(params, run_trio, progress, cancel, check)
+    return execute(params, run_trio, progress=progress, cancel=cancel, check=check)
 
 
 def clinvar(
@@ -216,7 +195,7 @@ def clinvar(
     ``clinvar_pathogenic``."""
     from wgsextract_cli.commands.vcf.clinvar_revel import run_clinvar
 
-    return _run_on_vcf(params, run_clinvar, progress, cancel, check)
+    return execute(params, run_clinvar, progress=progress, cancel=cancel, check=check)
 
 
 def revel(
@@ -230,7 +209,7 @@ def revel(
     ``filtered_vcf``."""
     from wgsextract_cli.commands.vcf.clinvar_revel import run_revel
 
-    return _run_on_vcf(params, run_revel, progress, cancel, check)
+    return execute(params, run_revel, progress=progress, cancel=cancel, check=check)
 
 
 def phylop(
@@ -244,7 +223,7 @@ def phylop(
     ``filtered_vcf``."""
     from wgsextract_cli.commands.vcf.population import run_phylop
 
-    return _run_on_vcf(params, run_phylop, progress, cancel, check)
+    return execute(params, run_phylop, progress=progress, cancel=cancel, check=check)
 
 
 def cadd(
@@ -258,7 +237,7 @@ def cadd(
     ``filtered_vcf``."""
     from wgsextract_cli.commands.vcf.deleteriousness import run_cadd
 
-    return _run_on_vcf(params, run_cadd, progress, cancel, check)
+    return execute(params, run_cadd, progress=progress, cancel=cancel, check=check)
 
 
 def gerp(
@@ -272,7 +251,7 @@ def gerp(
     ``filtered_vcf``."""
     from wgsextract_cli.commands.vcf.deleteriousness import run_gerp
 
-    return _run_on_vcf(params, run_gerp, progress, cancel, check)
+    return execute(params, run_gerp, progress=progress, cancel=cancel, check=check)
 
 
 def gnomad(
@@ -286,7 +265,7 @@ def gnomad(
     ``rare_variants``."""
     from wgsextract_cli.commands.vcf.population import run_gnomad
 
-    return _run_on_vcf(params, run_gnomad, progress, cancel, check)
+    return execute(params, run_gnomad, progress=progress, cancel=cancel, check=check)
 
 
 def sv_freq(
@@ -301,7 +280,7 @@ def sv_freq(
     frequency class in the metrics."""
     from wgsextract_cli.commands.vcf.sv_frequency import run_sv_freq
 
-    return _run_on_vcf(params, run_sv_freq, progress, cancel, check)
+    return execute(params, run_sv_freq, progress=progress, cancel=cancel, check=check)
 
 
 def spliceai(
@@ -314,7 +293,7 @@ def spliceai(
     """Annotate with SpliceAI; output role ``annotated_vcf``."""
     from wgsextract_cli.commands.vcf.splicing import run_spliceai
 
-    return _run_on_vcf(params, run_spliceai, progress, cancel, check)
+    return execute(params, run_spliceai, progress=progress, cancel=cancel, check=check)
 
 
 def acmg(
@@ -328,7 +307,7 @@ def acmg(
     and ``acmg_summary``, with the class counts in the metrics."""
     from wgsextract_cli.commands.vcf.acmg import run_acmg
 
-    return _run_on_vcf(params, run_acmg, progress, cancel, check)
+    return execute(params, run_acmg, progress=progress, cancel=cancel, check=check)
 
 
 def alphamissense(
@@ -342,7 +321,9 @@ def alphamissense(
     ``min_score``, ``filtered_vcf``."""
     from wgsextract_cli.commands.vcf.splicing import run_alphamissense
 
-    return _run_on_vcf(params, run_alphamissense, progress, cancel, check)
+    return execute(
+        params, run_alphamissense, progress=progress, cancel=cancel, check=check
+    )
 
 
 def pharmgkb(
@@ -355,7 +336,7 @@ def pharmgkb(
     """Annotate with PharmGKB; output role ``annotated_vcf``."""
     from wgsextract_cli.commands.vcf.splicing import run_pharmgkb
 
-    return _run_on_vcf(params, run_pharmgkb, progress, cancel, check)
+    return execute(params, run_pharmgkb, progress=progress, cancel=cancel, check=check)
 
 
 def pharmcat(
@@ -369,7 +350,7 @@ def pharmcat(
     ``pharmcat_phenotypes``."""
     from wgsextract_cli.commands.vcf.pharmcat import run_pharmcat
 
-    return _run_on_vcf(params, run_pharmcat, progress, cancel, check)
+    return execute(params, run_pharmcat, progress=progress, cancel=cancel, check=check)
 
 
 def chain_annotate(
@@ -383,7 +364,9 @@ def chain_annotate(
     metric."""
     from wgsextract_cli.commands.vcf.chain import run_chain_annotate
 
-    return _run_on_vcf(params, run_chain_annotate, progress, cancel, check)
+    return execute(
+        params, run_chain_annotate, progress=progress, cancel=cancel, check=check
+    )
 
 
 __all__ = [

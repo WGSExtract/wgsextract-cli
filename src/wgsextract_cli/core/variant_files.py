@@ -24,7 +24,6 @@ from .utils import (
     MissingDependencyError,
     UsageError,
     WGSExtractError,
-    popen,
     run_command,
 )
 
@@ -254,73 +253,6 @@ def ensure_vcf_prepared(
             tmp_path.unlink()
     ensure_vcf_indexed(gz_path)
     return str(gz_path)
-
-
-def has_vcf_index(vcf_path: PathInput) -> bool:
-    """Whether bcftools finds an index for a VCF or BCF, so it can be read by
-    region and its contigs listed."""
-    try:
-        res = run_command(
-            ["bcftools", "index", "--nrecords", vcf_path],
-            capture_output=True,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return False
-    return res.returncode == 0
-
-
-def indexed_vcf_copy(
-    vcf_path: PathInput, workdir: PathInput, sample: str | None = None
-) -> str:
-    """A bgzipped, indexed copy, in ``workdir``, of a VCF or BCF that can't
-    be indexed where it is (a plain VCF, or a file whose folder mustn't gain
-    files), of only ``sample`` when given. Sorted input keeps its record
-    order, which ``bcftools sort`` would change for records at one position.
-    Unsorted input is sorted, after declaring the contigs its header omits:
-    ``bcftools sort`` rejects records on undeclared contigs."""
-    copy = Path(workdir, "input.vcf.gz")
-    samples = ["--samples", sample, "--trim-alt-alleles"] if sample else []
-    run_command(["bcftools", "view", *samples, "-Oz", "-o", copy, vcf_path])
-    index = ["bcftools", "index", "-f"]
-    if run_command([*index, copy], capture_output=True, check=False).returncode == 0:
-        return str(copy)
-    logging.info(f"{vcf_path} is not sorted; sorting a working copy...")
-    declared = _declare_contigs(copy, Path(workdir, "declared.vcf.gz"))
-    if declared != copy:
-        copy.unlink()
-    prepared = Path(workdir, "sorted.vcf.gz")
-    run_command(
-        ["bcftools", "sort", "-m", "128M", "-T", Path(workdir, "sort")]
-        + ["-Oz", "-o", prepared, declared]
-    )
-    declared.unlink()  # one compressed copy at a time, for whole genomes
-    run_command([*index, prepared])
-    return str(prepared)
-
-
-def _declare_contigs(vcf: Path, out: Path) -> Path:
-    """``vcf``, or a copy at ``out`` whose header declares every contig its
-    records use."""
-    header = run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
-    declared = set(re.findall(r"^##contig=<ID=([^,>]+)", header, re.MULTILINE))
-    used: dict[str, None] = {}
-    command = ["bcftools", "query", "-f", "%CHROM\\n", str(vcf)]
-    with popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as query:
-        assert query.stdout is not None
-        for line in query.stdout:
-            used.setdefault(line.rstrip(b"\r\n").decode(), None)
-        if query.wait():
-            raise subprocess.CalledProcessError(query.returncode, command)
-    missing = [contig for contig in used if contig not in declared]
-    if not missing:
-        return vcf
-    head, chrom_line = header.rstrip("\n").rsplit("\n", 1)
-    contigs = [f"##contig=<ID={contig}>" for contig in missing]
-    new_header = Path(out.parent, "header.txt")
-    new_header.write_text("\n".join([head, *contigs, chrom_line]) + "\n", newline="\n")
-    run_command(["bcftools", "reheader", "-h", new_header, "-o", out, vcf])
-    return out
 
 
 def get_vcf_samples(vcf_path: PathInput) -> list[str]:
