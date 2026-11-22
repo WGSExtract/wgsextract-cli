@@ -293,6 +293,12 @@ Other commands' metrics:
   `bam merge` adds `merged_inputs`, `read_groups` and, for indexed inputs,
   the combined `autosomal_depth` (each run's in `details.runs`); `bam unalign`
   its `read_groups`.
+- Y extractions (`extract ydna-bam`, `extract y-mt-extract`, `extract region
+  --target y|ymt`) record each output's `y_scope` and its comma-separated
+  `contigs`; `details` holds `y_scope` and `contigs`, one row per considered
+  contig (`name`, `length`, `role`, `included`, `reason`, and for a BAM its
+  `mapped_records` and `placed_unmapped_records`). See
+  [Y-associated contigs](lineage.md#y-associated-contigs---y-scope).
 - `qc fastp` records read counts before and after filtering, the Q30 rate and
   duplication rate; `qc fastqc` the module pass/warn/fail counts and total
   sequences (`r2_`-prefixed for `--r2`); `qc vcf` the `bcftools stats` totals (records, SNPs, indels,

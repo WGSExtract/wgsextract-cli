@@ -46,6 +46,7 @@ from wgsextract_cli.core.variant_files import (
     get_chr_name,
 )
 from wgsextract_cli.core.warnings import print_warning
+from wgsextract_cli.core.y_contigs import ContigSelection, select_contigs
 
 from ._extract_helpers import (
     BaseArgs,
@@ -80,6 +81,50 @@ def _setup(params: _ExtractParams, tools: list[str]) -> BaseArgs:
 
 def _published(path: str, role: str) -> None:
     current_result().add_output(path, role)
+
+
+def _scope_suffix(scope: str) -> str:
+    return "" if scope == "primary" else f"_{scope}"
+
+
+def y_selection(
+    input_path: str,
+    base: BaseArgs,
+    scope: str,
+    *,
+    mt: bool = False,
+    calls: bool = False,
+) -> ContigSelection:
+    """The input's Y (and with ``mt`` chrM) contigs under ``scope``, checked
+    against the reference when it decodes a CRAM or ``calls`` use it."""
+    selection = select_contigs(
+        get_bam_header(input_path, base.cram_opt) or "",
+        scope,
+        mt=mt,
+        source=input_path,
+    )
+    for choice in selection.choices:
+        if choice.role == "y_associated":
+            logging.info(
+                f"{choice.name}: {'included' if choice.included else 'excluded'}"
+                f" ({choice.reason})."
+            )
+    if base.ref and (calls or input_path.lower().endswith(".cram")):
+        selection.check_reference(base.ref)
+    return selection
+
+
+def _published_y(
+    path: str, role: str, selection: ContigSelection, *, bam: str | None = None
+) -> None:
+    """Publish a Y output with the contigs it covers; the result's details
+    give each considered contig, why, and ``bam``'s records on it."""
+    current_result().add_output(
+        path,
+        role,
+        metrics={"y_scope": selection.scope, "contigs": ",".join(selection.contigs)},
+    )
+    current_result().set_details(selection.record(bam))
 
 
 def require_reference(
@@ -296,16 +341,16 @@ def run_ydna_bam(params: YdnaBamParams) -> None:
     print_warning("ButtonYOnlyBAM", threads=base.threads)
     _warn_if_female(input_path, base.outdir, base.ref)
 
-    chr_y = get_chr_name(input_path, "Y", base.cram_opt)
     use_poz = params.poz
-    out_bam = derive_output_path(
-        input_path, base.outdir, "_Y_poz.bam" if use_poz else "_Y.bam"
-    )
+    selection = y_selection(input_path, base, params.y_scope)
+    chr_y = selection.contigs[0]
+    suffix = "_Y_poz.bam" if use_poz else f"_Y{_scope_suffix(params.y_scope)}.bam"
+    out_bam = derive_output_path(input_path, base.outdir, suffix)
 
-    logging.info(LOG_MESSAGES["extracting_y"].format(chr_y=chr_y, output=out_bam))
+    read = chr_y if use_poz else ", ".join(selection.contigs)
+    logging.info(LOG_MESSAGES["extracting_y"].format(chr_y=read, output=out_bam))
     try:
         if use_poz:
-            from wgsextract_cli.core.alignment.metadata import get_bam_header
             from wgsextract_cli.core.ref_library.models import sequence_lengths
 
             from ._extract_poz import poz_bed
@@ -326,13 +371,13 @@ def run_ydna_bam(params: YdnaBamParams) -> None:
                 base,
                 input_path,
                 out_bam,
-                [chr_y],
-                contents=f"{chr_y} reads",
+                selection.contigs,
+                contents=f"{', '.join(selection.contigs)} reads",
                 empty_hint="a female sample has none",
             )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"Y BAM extraction failed: {e}") from e
-    _published(out_bam, "y_bam")
+    _published_y(out_bam, "y_bam", selection, bam=out_bam)
 
 
 def run_ydna_vcf(params: YdnaVcfParams) -> None:
@@ -374,9 +419,10 @@ def run_y_mt_extract(params: YMtExtractParams) -> None:
     print_warning("ButtonYMTBAM", threads=base.threads)
     _warn_if_female(input_path, base.outdir, base.ref)
 
-    chr_y = get_chr_name(input_path, "Y", base.cram_opt)
-    chr_m = get_chr_name(input_path, "MT", base.cram_opt)
-    out_bam = derive_output_path(input_path, base.outdir, "_Y_MT.bam")
+    selection = y_selection(input_path, base, params.y_scope, mt=True)
+    out_bam = derive_output_path(
+        input_path, base.outdir, f"_Y_MT{_scope_suffix(params.y_scope)}.bam"
+    )
 
     logging.info(LOG_MESSAGES["extracting_y_mt"].format(output=out_bam))
     try:
@@ -384,12 +430,12 @@ def run_y_mt_extract(params: YMtExtractParams) -> None:
             base,
             input_path,
             out_bam,
-            [chr_y, chr_m],
-            contents=f"{chr_y} or {chr_m} reads",
+            selection.contigs,
+            contents=f"{' or '.join(selection.contigs)} reads",
         )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"Y+MT extraction failed: {e}") from e
-    _published(out_bam, "y_mt_bam")
+    _published_y(out_bam, "y_mt_bam", selection, bam=out_bam)
 
 
 def run_unmapped(params: UnmappedParams) -> None:
