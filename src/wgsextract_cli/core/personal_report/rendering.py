@@ -154,11 +154,13 @@ def _callability(
     notes = [section["note"]]
     if section.get("exon_model"):
         t = section.get("thresholds", {})
+        depth, gq = t.get("min_depth"), t.get("min_gq")
+        read = "read means callable reference or a call"
+        if isinstance(depth, (int, float)) and isinstance(gq, (int, float)):
+            read += f", at depth {depth:g}+ (and GQ {gq:g}+ where the gVCF has GQ)"
         notes.append(
             f"Exon model: {section['exon_model']}. Assessed: {section.get('scope')}; "
-            f"read means callable reference or a call, at depth {t.get('min_depth'):g}+ "
-            f"(and GQ {t.get('min_gq'):g}+ where the gVCF has GQ), outside known "
-            "short-read limitations."
+            f"{read}, outside known short-read limitations."
         )
     if classes := section.get("unassessed_variant_classes"):
         notes.append("Not assessed even where callable: " + " ".join(classes.values()))

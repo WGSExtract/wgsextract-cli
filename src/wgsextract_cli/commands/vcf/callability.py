@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -44,6 +45,17 @@ def _reference_file(header: str) -> str | None:
             # Only the name: a full path would reveal the user's folders.
             return Path(line.split("=", 1)[1].removeprefix("file://")).name or None
     return None
+
+
+def _relative(path: str, folder: Path) -> str:
+    """``path`` relative to ``folder`` (where the JSON is), so the document
+    names no private folders; absolute only on another drive (Windows)."""
+    try:
+        return Path(
+            os.path.relpath(Path(path).absolute(), folder.absolute())
+        ).as_posix()
+    except ValueError:
+        return str(Path(path).absolute())
 
 
 def _genes(spec: str | None) -> tuple[dict[str, Any], list[str]]:
@@ -120,7 +132,7 @@ def run_callability(params: VcfCallabilityParams) -> None:
             "fasta": _reference_file(header),
         },
         "evidence": {
-            "file": str(Path(gvcf).absolute()),
+            "file": _relative(gvcf, outdir),
             "engine": provenance_.engine if provenance_ else None,
             "engine_version": provenance_.version if provenance_ else None,
             "quality_model": source.quality_model,

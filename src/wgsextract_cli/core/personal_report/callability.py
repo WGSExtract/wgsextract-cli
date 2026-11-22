@@ -72,7 +72,8 @@ def _not_callable(gene: Mapping[str, Any]) -> str:
     return "; ".join(
         f"exon{'s' * (len(numbers) > 1)} {ec.ranges(numbers)} "
         + status.replace("_", " ")
-        for status, numbers in gene["not_callable"].items()
+        for status in ec.NOT_CALLABLE_ORDER
+        if (numbers := gene["not_callable"].get(status))
     )
 
 
@@ -105,15 +106,13 @@ def _result(
     return "not_readable", "no P/LP call, but not every coding exon was read"
 
 
-def _same_calls(ctx: _Context, source: Source, gvcf: str) -> bool:
+def _same_calls(ctx: _Context, source: Source, gvcf: Path) -> bool:
     """Whether the ClinVar run read the calls this gVCF belongs to: its VCF
     is the callability run's input, or that VCF's gVCF is this one."""
     clinvar = ctx.latest(_command_or_role("vcf clinvar", "clinvar_pathogenic"))
     if clinvar is None or clinvar.status != "ok":
         return True
-    ours = {p.resolve() for p in source.sample_files()} | {
-        source.locate(gvcf).resolve()
-    }
+    ours = {p.resolve() for p in source.sample_files()} | {gvcf.resolve()}
     theirs: set[Path] = set()
     for vcf in clinvar.sample_files():
         theirs.add(vcf.resolve())
@@ -127,6 +126,7 @@ def _blocked(
     source: Source,
     document: Mapping[str, Any],
     clinvar: ReportClinvarDocument,
+    gvcf: Path,
 ) -> str | None:
     """Why the ClinVar section's silence can't be read gene by gene, if it
     can't; each reason is also a section warning."""
@@ -135,7 +135,7 @@ def _blocked(
         return f"the exon assessment is on {build} but the ClinVar run on {theirs}"
     if clinvar["status"] != "ok":
         return None
-    if not _same_calls(ctx, source, str(document["evidence"]["file"])):
+    if not _same_calls(ctx, source, gvcf):
         return "the ClinVar run annotated other variant calls than the assessed gVCF's"
     codes = {w["code"] for w in clinvar["warnings"]}
     if clinvar.get("counts", {}).get("unplaced") or codes & _INCOMPLETE:
@@ -189,7 +189,9 @@ def _exon_callability(
     described = ReportGeneListDocument(**document["gene_list"])  # type: ignore[typeddict-item]
     section["title"] = SECTIONS["exon_callability"].format(gene_list=described["name"])
     build = document.get("build")
-    blocked = _blocked(ctx, source, document, clinvar)
+    # The gVCF, recorded relative to the document.
+    gvcf = path.parent / str(document["evidence"]["file"]) if path else Path()
+    blocked = _blocked(ctx, source, document, clinvar, gvcf)
     if blocked:
         section["warnings"].append(
             ReportWarningDocument(
@@ -234,7 +236,7 @@ def _exon_callability(
     section["thresholds"] = thresholds
     section["genes"] = genes
     section["all_exons"] = ctx.rel(source.output("exon_callability_table"))
-    section["evidence"] = ctx.rel(source.locate(str(document["evidence"]["file"])))
+    section["evidence"] = ctx.rel(gvcf)
     section["unassessed_variant_classes"] = dict(document["unassessed_variant_classes"])
     states = {s: sum(g["state"] == s for g in genes) for s in ec.GENE_STATES}
     results = {r: sum(g["result"] == r for g in genes) for r in RESULTS}

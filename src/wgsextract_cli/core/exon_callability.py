@@ -68,6 +68,8 @@ EXON_STATUSES = {
     NOT_RUN: "the caller did not assess these bases",
     NOT_APPLICABLE: "not expected in this sample (ploidy 0, such as chrY in a woman)",
 }
+# How a gene lists its exons that are not callable, the most severe first.
+NOT_CALLABLE_ORDER = (NOT_READABLE, PARTIAL, SPECIALIST, NOT_RUN)
 # A gene's technical state, from its coding exons.
 GENE_STATES = {
     CALLABLE: "every coding exon callable",
@@ -448,10 +450,11 @@ class GeneResult:
 
     def document(self) -> dict[str, Any]:
         statuses = Counter(e.status for e in self.exons)
-        not_callable: dict[str, list[int]] = {}
-        for e in self.scoped:
-            if e.status != CALLABLE:
-                not_callable.setdefault(e.status, []).append(e.exon.number)
+        not_callable = {
+            status: numbers
+            for status in NOT_CALLABLE_ORDER
+            if (numbers := [e.exon.number for e in self.scoped if e.status == status])
+        }
         bases = sum(e.bases for e in self.scoped)
         readable = sum(e.readable for e in self.scoped)
         return {

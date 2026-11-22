@@ -217,6 +217,8 @@ def test_1177_records_model_reference_evidence_and_thresholds(sample: Path) -> N
     assert document["evidence"]["engine"] == "bcftools"
     assert document["evidence"]["quality_model"] == "depth_only"
     assert document["evidence"]["region"] == "chr7:1-5500"
+    # Relative to the document: no private folder names (PR #1357 review).
+    assert document["evidence"]["file"] == "bcftools.g.vcf.gz"
     assert (document["thresholds"]["min_depth"], document["thresholds"]["flank"]) == (
         15.0,
         5,
@@ -342,8 +344,13 @@ def test_1177_report_separates_not_reported_not_readable_and_not_run(
         "GENEC": ("not_run", "not_run"),
         "GENED": ("not_run", "not_run"),
     }
-    genea = next(g for g in section["genes"] if g["gene"] == "GENEA")
-    assert genea["exons_not_callable"] == "exon 3 not readable"
+    exons = {g["gene"]: g["exons_not_callable"] for g in section["genes"]}
+    assert exons["GENEA"] == "exon 3 not readable"
+    # The most severe first, whatever the exon order (PR #1357 review).
+    assert exons["GENEB"] == (
+        "exon 1 not readable; exon 3 partial; exon 2 specialist required; "
+        "exon 4 not run"
+    )
     assert section["counts"]["result_not_reported"] == 1
     assert section["all_exons"] == "exon_callability.tsv"
     assert section["evidence"] == "bcftools.g.vcf.gz"
@@ -368,6 +375,26 @@ def _results(folder: Path, tmp_path: Path) -> tuple[dict[str, str], set[str]]:
     return (
         {g["gene"]: g["result"] for g in section["genes"]},
         {w["code"] for w in section["warnings"]},
+    )
+
+
+@needs_htslib
+def test_1177_report_renders_a_callability_document_without_thresholds(
+    sample: Path, tmp_path: Path
+) -> None:
+    """PR #1357 review: a document lacking min_depth/min_gq (edited, or from
+    another version) crashed the HTML and Markdown rendering."""
+    folder = _copy_with_callability(sample, tmp_path)
+    path = folder / "exon_callability.json"
+    document = json.loads(path.read_text())
+    del document["thresholds"]["min_depth"], document["thresholds"]["min_gq"]
+    path.write_text(json.dumps(document))
+    code, _, report = _report(folder, tmp_path / "report")
+    assert code == 0
+    assert report["sections"]["exon_callability"]["status"] == "ok"
+    assert (
+        "outside known short-read limitations"
+        in (tmp_path / "report" / "S_personal_report.md").read_text()
     )
 
 

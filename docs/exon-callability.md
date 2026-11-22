@@ -134,10 +134,11 @@ differ. Contig names may differ by `chr` (and M/MT).
 - `exon_callability.json` (role `exon_callability`, schema
   `wgsextract.exon_callability/1`): the gene list, the exon model (file,
   SHA-256, transcripts and source lines), the reference identity (build, the
-  contigs checked, the FASTA's name), the evidence (gVCF, engine and version,
-  quality model, minimum mapping quality, assessed region), the thresholds,
-  counts, and per gene its `state`, `reasons`, exons per status, the exon
-  numbers not callable, and its assessed, read and limited bases.
+  contigs checked, the FASTA's name), the evidence (the gVCF, relative to the
+  document; engine and version, quality model, minimum mapping quality,
+  assessed region), the thresholds, counts, and per gene its `state`,
+  `reasons`, exons per status, the exon numbers not callable (most severe
+  status first), and its assessed, read and limited bases.
 - `exon_callability.tsv` (role `exon_callability_table`): one row per coding
   exon with its status, reasons, assessed region, bases per evidence state,
   read and limited bases, and limitation intervals.
