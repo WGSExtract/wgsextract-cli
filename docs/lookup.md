@@ -29,7 +29,11 @@ same `wgsextract.lookup/1` document as the result's `details`.
   warns `lookup_no_reference_evidence`.
 - `--report`: the sample's [personal report](personal-report.md) JSON, or
   its folder. By default the one report in the input's folder is used; with
-  several, none is chosen and the answer lists them.
+  several, none is chosen and the answer lists them. A report found there but
+  made from another VCF isn't joined (`report_for_other_input`), nor is any
+  report for a multi-sample VCF's second or later sample, because reports
+  judge its first (`report_for_other_sample`). A section made on another
+  build joins nothing (`build_mismatch`).
 - `--build`: only when the input's header doesn't show its build (chr1's
   length or `##reference`). A different `--build`, or a `--locus` on another
   build, is refused: lookup never converts coordinates between builds.

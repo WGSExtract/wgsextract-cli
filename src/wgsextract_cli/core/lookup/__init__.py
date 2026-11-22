@@ -23,7 +23,6 @@ from wgsextract_cli.core.builds import (
 from wgsextract_cli.core.reference_evidence import (
     ReferenceEvidence,
     companion,
-    readable,
 )
 from wgsextract_cli.core.utils import UsageError
 
@@ -229,7 +228,7 @@ def _resolve(request: Request, build: str) -> _Target:
 
 
 def _evidence(
-    request: Request, source: genotypes.VcfSource, work: Path
+    request: Request, source: genotypes.VcfSource, locus: Locus, work: Path
 ) -> tuple[genotypes.Evidence | None, genotypes.VcfSource | None, str | None]:
     """The reference evidence for the sample, its records' source, and why
     none was used when one was found but can't serve."""
@@ -258,9 +257,7 @@ def _evidence(
             raise UsageError(
                 f"The reference evidence {path} is on another build than {source.path}."
             )
-    usable = readable(path, source.sample, work)
-    if usable is None:
-        return None, None, f"{path} has no sample {source.sample}"
+    usable = genotypes.evidence_file(gvcf, locus, work)
     return (
         genotypes.Evidence(ReferenceEvidence(usable), path, origin),
         gvcf,
@@ -317,7 +314,7 @@ def lookup(request: Request) -> dict[str, object]:
     note = None
     if target.locus is not None:
         with tempfile.TemporaryDirectory(prefix="wgse_lookup_") as work:
-            evidence, gvcf, note = _evidence(request, source, Path(work))
+            evidence, gvcf, note = _evidence(request, source, target.locus, Path(work))
             document["reference_evidence"] = (
                 {"path": evidence.path, "origin": evidence.origin} if evidence else None
             )
@@ -343,6 +340,8 @@ def lookup(request: Request) -> dict[str, object]:
             [target.locus],
             target.genes,
             whole_genes=bool(request.gene),
+            build=build,
+            first_sample=source.first_sample,
         )
     if note:
         document["reference_evidence_unused"] = note

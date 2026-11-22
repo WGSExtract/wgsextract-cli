@@ -3,6 +3,7 @@ findings at an rsID, locus or gene, from local files only."""
 
 import gzip
 import json
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -300,6 +301,52 @@ def test_1178_report_findings_and_unrun_analyses_are_attributed(reported):
     assert any("pharmcat" in m["command"] for m in pharmacogenomics["missing"])
     gene = _lookup(input=vcf, report=report, gene="MUTYH").details
     assert gene["region"]["phase_sets"][0]["positions"] == [45329439, 45330515]
+
+
+def test_1178_report_of_another_input_or_build_joins_nothing(reported, tmp_path):
+    # Review of #1178: a report beside the input but made from another VCF,
+    # or a GRCh37 section, must not put findings at this GRCh38 site.
+    vcf, report = reported
+    (document,) = report.glob("*_personal_report.json")
+    other = tmp_path / "other"
+    other.mkdir()
+    copy = Path(shutil.copy(vcf, other / "renamed.vcf.gz"))
+    shutil.copy(f"{vcf}.tbi", other / "renamed.vcf.gz.tbi")
+    shutil.copy(document, other)
+    found = _lookup(input=copy, locus="GRCh38:1:45329439").details["interpretation"]
+    assert (found["status"], found.get("findings")) == ("report_for_other_input", None)
+    content = json.loads(document.read_text())
+    content["sections"]["clinvar"]["build"] = "hg19"
+    grch37 = tmp_path / "grch37_personal_report.json"
+    grch37.write_text(json.dumps(content))
+    found = _lookup(input=vcf, report=grch37, locus="GRCh38:1:45329439").details[
+        "interpretation"
+    ]
+    sections = {s["section"]: s["status"] for s in found["sections"]}
+    assert (found["findings"], sections["clinvar"]) == ([], "build_mismatch")
+
+
+def test_1178_multi_sample_gvcf_is_read_for_the_chosen_sample(tmp_path):
+    # #1178: evidence of a multi-sample gVCF is the chosen sample's.
+    blocks = [
+        "chr1\t900\t.\tA\t<*>\t0\tPASS\tEND=999\tGT:GQ:MIN_DP\t0/0:60:2\t0/0:60:30",
+    ]
+    calls = ["chr1\t1000\t.\tA\tG\t50\tPASS\t.\tGT:DP:GQ\t0/1:30:60\t0/0:30:60"]
+    header = Provenance("deepvariant", "1.9", "gq", region="chr1:900-999").header()
+    gvcf = _vcf(
+        tmp_path / "two.g.vcf",
+        blocks,
+        header + '\n##ALT=<ID=*,Description="Any">\n',
+        samples="A\tB",
+    )
+    vcf = _vcf(tmp_path / "two.vcf", calls, samples="A\tB")
+
+    def status(name: str) -> str:
+        return _lookup(
+            input=Path(vcf), gvcf=Path(gvcf), sample=name, locus="GRCh38:chr1:950"
+        ).details["site"]["status"]
+
+    assert (status("A"), status("B")) == ("weak_evidence", "confident_reference")
 
 
 def test_1178_without_a_report_says_how_to_make_one(sample):

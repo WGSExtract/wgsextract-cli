@@ -40,14 +40,12 @@ def _call_line(call: Mapping[str, Any]) -> str:
 
 
 def _print_interpretation(found: Mapping[str, Any]) -> None:
-    status = found["status"]
-    if status == "no_report":
-        human_output(f"\nReport: none found; run '{found['command']}' to add results.")
-        return
-    if status == "ambiguous_report":
-        human_output("\nReport: several found; choose one with --report:")
-        for path in found["candidates"]:
+    if found["status"] != "joined":
+        human_output(f"\nReport: {found['message']}")
+        for path in found.get("candidates") or []:
             human_output(f"  {path}")
+        if found.get("command"):
+            human_output(f"  To make one: {found['command']}")
         return
     report = found["report"]
     human_output(f"\nReport {report['path']} ({report.get('generated')}):")

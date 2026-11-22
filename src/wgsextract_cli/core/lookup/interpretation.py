@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core.builds import canonical_build
+
 from .identifiers import Locus, contig_key
 
 REPORT_SUFFIX = "_personal_report.json"
@@ -134,10 +136,14 @@ def join(
     genes: Sequence[str],
     *,
     whole_genes: bool,
+    build: str,
+    first_sample: bool,
 ) -> dict[str, object]:
     """The report's findings at ``loci`` or about ``genes`` (any of their
     sites when ``whole_genes``), and the state of each section that could
-    hold them."""
+    hold them. A report found beside the input but made from another VCF, a
+    sample other than the VCF's first (the one reports judge) and a section
+    on another build join nothing."""
     command = f"wgsextract report --input {input_path}"
     path, candidates = report_path(explicit, input_path)
     if path is None:
@@ -155,6 +161,22 @@ def join(
             "command": command,
         }
     document = _load(path)
+    made_from = (document.get("sample") or {}).get("vcf")
+    if explicit is None and made_from and made_from != input_path.name:
+        return {
+            "status": "report_for_other_input",
+            "candidates": [str(path)],
+            "message": f"The report beside the input was made from {made_from}, "
+            "not this VCF; give --report to join it anyway.",
+            "command": command,
+        }
+    if not first_sample:
+        return {
+            "status": "report_for_other_sample",
+            "candidates": [str(path)],
+            "message": "Reports judge a multi-sample VCF's first sample, not the "
+            "one chosen with --sample, so none is joined.",
+        }
     sections = document.get("sections") or {}
     findings: list[dict[str, object]] = []
     states: list[dict[str, object]] = []
@@ -163,7 +185,9 @@ def join(
         if not isinstance(section, Mapping):
             continue
         matched = 0
-        for finding in section.get("findings") or []:
+        section_build = canonical_build(str(section.get("build") or "")) or None
+        other_build = section_build not in (None, canonical_build(build))
+        for finding in [] if other_build else section.get("findings") or []:
             if not isinstance(finding, Mapping):
                 continue
             how = _match(finding, loci, genes, whole_genes=whole_genes)
@@ -179,7 +203,7 @@ def join(
         state: dict[str, object] = {
             "section": name,
             "title": section.get("title"),
-            "status": section.get("status"),
+            "status": "build_mismatch" if other_build else section.get("status"),
             "matched": matched,
         }
         if section.get("status") == "not_run":

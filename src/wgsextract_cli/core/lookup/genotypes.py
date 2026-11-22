@@ -84,6 +84,7 @@ class VcfSource:
     path: str
     sample: str
     samples: int
+    first_sample: bool
     lengths: dict[str, int]
     header: str
     indexed: bool
@@ -126,6 +127,7 @@ def open_vcf(path: str, sample: str | None, *, option: str = "--input") -> VcfSo
         path,
         sample,
         len(names),
+        sample == names[0],
         header_contig_lengths(header),
         header,
         indexed,
@@ -154,6 +156,38 @@ def records(source: VcfSource, chrom: str, start: int, end: int) -> list[list[st
             f"{(e.stderr or '').strip()[-300:]}"
         ) from None
     return [line.split("\t") for line in completed.stdout.splitlines() if line]
+
+
+# Reference blocks, and Clair3's deletion anchors, can start this far before
+# the bases asked about.
+EVIDENCE_PAD = 1000
+
+
+def evidence_file(source: VcfSource, locus: Locus, work: Path) -> str:
+    """The sample's gVCF, as the classifier reads it: the file itself when it
+    is an indexed, bgzipped single-sample VCF, else the sample's records
+    around ``locus`` copied into ``work`` (never the whole genome)."""
+    if source.samples == 1 and source.indexed and source.path.endswith((".gz", ".bgz")):
+        return source.path
+    out = work / "evidence.g.vcf.gz"
+    chrom = local_contig(locus.chrom, source.contigs)
+    command = ["bcftools", "view", "--no-version", "-s", source.sample, "-Oz"]
+    if chrom is None:
+        command.append("-h")
+    else:
+        span = (
+            f"{chrom}:{max(1, locus.start - EVIDENCE_PAD)}-{locus.end + EVIDENCE_PAD}"
+        )
+        command += ["-r" if source.indexed else "-t", span]
+    try:
+        run_command([*command, "-o", str(out), source.path])
+        run_command(["bcftools", "index", "-t", str(out)])
+    except subprocess.CalledProcessError as e:
+        raise WGSExtractError(
+            f"Reading reference evidence {source.path} failed: "
+            f"{(e.stderr or '').strip()[-300:]}"
+        ) from None
+    return str(out)
 
 
 # Calls -----------------------------------------------------------------------
