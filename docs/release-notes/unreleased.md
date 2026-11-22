@@ -18,12 +18,6 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
-- `microarray` and `lineage y-haplogroup` now read gnomAD-style `.vcf.bgz`
-  files and upper-case VCF names such as `KIT.VCF.GZ` as VCFs, rather than
-  treating them as alignments or refusing them; `lineage mt-haplogroup` also
-  accepts `.vcf.bgz`. Reference builds that earlier versions recorded in a
-  sample workspace are detected again once
-  ([#1243, .vcf.bgz not recognised](https://github.com/WGSExtract/wgsextract-cli/issues/1243)).
 - An interrupted reference download no longer resumes onto a different
   version of the file. Resumes were tied to the URL alone, so a file replaced
   at the same URL by one of the same size was installed as the old file's start
