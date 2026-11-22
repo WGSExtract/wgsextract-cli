@@ -15,6 +15,7 @@ import psutil
 import pytest
 
 from tests.disk_volumes import GIB, Volumes
+from tests.fat_volume import exfat_volume as exfat_volume
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
 from wgsextract_cli.core.temp_directory import (
     configured_temp_directory,
@@ -481,3 +482,67 @@ def test_link_new_file_publishes_once_from_a_tmp_dir_on_another_volume(
         temp_directory.link_new_file(work / "report.html", output / "report.html")
     assert (output / "report.html").read_bytes() == b"new"
     assert [p.name for p in output.iterdir()] == ["report.html"]
+
+
+def _visible(folder: Path) -> list[str]:
+    # macOS keeps ._ metadata files on exFAT; publication locks are hidden too.
+    return sorted(p.name for p in folder.iterdir() if not p.name.startswith("."))
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV],
+    ids=["EPERM", "ENOTSUP", "EOPNOTSUPP", "tmp-dir-on-another-volume"],
+)
+def test_1241_link_new_file_publishes_once_without_hard_links(
+    tmp_path, monkeypatch, refusal
+):
+    """#1241: on exFAT, FAT32 and some SMB shares link() is refused, so
+    `qc multiqc` failed with "Operation not supported"."""
+    from wgsextract_cli.core import temp_directory
+
+    work, output = tmp_path / "work", tmp_path / "out"
+    work.mkdir()
+    output.mkdir()
+    (work / "report.html").write_bytes(b"new")
+    modified = 1_700_000_000_000_000_000
+    os.utime(work / "report.html", ns=(modified, modified))
+
+    def no_hard_links(source, destination):
+        # OS boundary: a volume without hard links; from a --tmp-dir on
+        # another volume, link() is refused as cross-device first.
+        if refusal == errno.EXDEV and Path(source).parent != Path(destination).parent:
+            raise OSError(errno.EXDEV, os.strerror(errno.EXDEV), str(source))
+        code = errno.ENOTSUP if refusal == errno.EXDEV else refusal
+        raise OSError(code, os.strerror(code), str(source))
+
+    monkeypatch.setattr(os, "link", no_hard_links)
+    temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    assert (output / "report.html").stat().st_mtime_ns == modified
+    (work / "report.html").write_bytes(b"newer")
+    with pytest.raises(FileExistsError):
+        temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    assert not [p for p in output.iterdir() if p.name.endswith(".partial")]
+    assert _visible(output) == ["report.html"]
+
+
+@pytest.mark.parametrize("tmp_dir_elsewhere", [False, True], ids=["same", "across"])
+def test_1241_link_new_file_publishes_once_on_a_real_exfat_volume(
+    tmp_path, exfat_volume, tmp_dir_elsewhere
+):
+    """#1241, on a real exFAT volume rather than a refused link() call."""
+    from wgsextract_cli.core import temp_directory
+
+    work = tmp_path / "work" if tmp_dir_elsewhere else exfat_volume / "work"
+    output = exfat_volume / "out"
+    work.mkdir()
+    output.mkdir()
+    (work / "report.html").write_bytes(b"new")
+    temp_directory.link_new_file(work / "report.html", output / "report.html")
+    (work / "report.html").write_bytes(b"newer")
+    with pytest.raises(FileExistsError):
+        temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    assert _visible(output) == ["report.html"]
