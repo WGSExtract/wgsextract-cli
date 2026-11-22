@@ -370,8 +370,8 @@ def run_discovery_filter(
     return count
 
 
-def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> None:
-    """Helper to run a wgsextract subcommand."""
+def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> dict[str, Scalar]:
+    """Run a wgsextract subcommand and return its reported metrics."""
     cmd = [
         sys.executable,
         "-m",
@@ -407,6 +407,7 @@ def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> None:
     if "--outdir" in cmd_args:
         outdir = Path(cmd_args[cmd_args.index("--outdir") + 1])
         outdir.mkdir(parents=True, exist_ok=True)
+    metrics: dict[str, Scalar] = {}
     with _stage_dir(outdir) as stage:
         result_file = Path(stage, "result.json")
         cmd.extend(["--result-file", str(result_file)])
@@ -416,7 +417,8 @@ def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> None:
             record_step_result(result_file)
             logging.warning(f"Subcommand failed: {' '.join(cmd)}. Error: {e}")
             raise WGSExtractError("Subcommand failed: " + " ".join(cmd)) from e
-        record_step_result(result_file)
+        metrics = record_step_result(result_file)
+    return metrics
 
 
 @contextlib.contextmanager
@@ -451,9 +453,10 @@ def _scalars(values: object) -> dict[str, Scalar]:
     }
 
 
-def record_step_result(document: Path) -> None:
+def record_step_result(document: Path) -> dict[str, Scalar]:
     """Carry a step's result document into this run's: its manifest, its
-    outputs with their metrics and its warnings with their details."""
+    outputs with their metrics and its warnings with their details. Return
+    the step's top-level metrics separately."""
     try:
         step = json.loads(document.read_text(encoding="utf-8"))
         command = str(step["command"])
@@ -465,7 +468,7 @@ def record_step_result(document: Path) -> None:
         if isinstance(reference, dict) and reference.get("path"):
             inputs.append({"role": "reference", "path": reference["path"]})
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return
+        return {}
     if running := _RUNNING.get():
         declared = {
             str(Path(p).absolute()) for p in running.decision.step.inputs.values() if p
@@ -496,6 +499,7 @@ def record_step_result(document: Path) -> None:
             # The step already logged it; record it without logging it twice.
             details = {**_scalars(item.get("details")), "step": command}
             result.warn(str(item["code"]), str(item.get("message", "")), **details)
+    return _scalars(step.get("metrics"))
 
 
 def run_vcf_workflow(
@@ -647,18 +651,6 @@ def generate_summary_report(results: Sequence[AnalyzeResult], outdir: str) -> No
     _print("=" * 60 + "\n")
 
 
-def _cached_gender(cache_file: str) -> str:
-    try:
-        with open(cache_file) as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return "Unknown"
-    except (OSError, json.JSONDecodeError) as e:
-        logging.debug("Failed to read cached info metrics from %s: %s", cache_file, e)
-        return "Unknown"
-    return str(data.get("gender", "Unknown")) if isinstance(data, dict) else "Unknown"
-
-
 def run_bam_chain(
     job: AnalyzeJob, input_file: str, outdir: str, journal: StepJournal
 ) -> str:
@@ -678,16 +670,16 @@ def run_bam_chain(
 
     # 1. Info (detailed: shows the table and detects the sex)
     info = ["info", "--detailed", "--input", input_file, "--outdir", outdir]
-    cache_file = str(Path(outdir, f"{Path(input_file).name}.wgse_info.json"))
 
     def run_info(handle: StepRun) -> None:
-        run_cli_subcommand(info, job)
         # 2. The detected sex drives the lineage steps.
-        handle.metrics["gender"] = _cached_gender(cache_file)
+        handle.metrics["gender"] = run_cli_subcommand(info, job).get("sex", "Unknown")
 
     _, metrics = run_step(
         journal,
-        subcommand_step("info", info, outputs=[cache_file], tools=["samtools"]),
+        subcommand_step(
+            "info", info, params={"sex_from_result": True}, tools=["samtools"]
+        ),
         run_info,
     )
     gender = str(metrics.get("gender") or "Unknown")
