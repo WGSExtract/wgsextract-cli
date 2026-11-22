@@ -202,8 +202,9 @@ Repeat until complete or blocked:
 6. If PR state changes while you are working, re-read state before resolving threads or merging.
 7. Continue until no failing/pending required checks, no unresolved material threads, no unhandled requested changes, and no new review comments remain.
 
-Keep at most four active implementers per machine for light work (AGENTS.md
-"Agent budget"); heavy compute stays under the resource coordinator. Implementers report after
+Keep four implementers actively working per machine for light work (AGENTS.md
+"Agent budget"); waiting agents hand their wait to the supervisor and don't count.
+Heavy compute stays under the resource coordinator. Implementers report after
 pushing; supervisors own CI/review watchers and launch fresh, scoped agents
 only for actionable fixes. Before retiring or transferring a wait, write
 `out/<issue>/handoff.md` (state, commits, evidence, next action, watcher/lease
