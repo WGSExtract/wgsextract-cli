@@ -15,7 +15,7 @@ from wgsextract_cli.cli.parser import build_parser, parse_args
 from wgsextract_cli.commands._analyze_workflows import run_discovery_filter
 from wgsextract_cli.core import results
 from wgsextract_cli.core.utils import UsageError, run_command
-from wgsextract_cli.core.variant_confidence import Thresholds, label_records
+from wgsextract_cli.core.variant_confidence import Thresholds, label_records, label_vcf
 
 needs_bcftools = needs_tools("bcftools", "bgzip", "tabix")
 HG38_CHR1 = 248956422
@@ -120,6 +120,29 @@ def _labels(vcf: str | Path) -> list[str]:
         capture_output=True,
     )
     return out.stdout.splitlines()
+
+
+@needs_bcftools
+def test_1248_item_3_split_reference_record_keeps_confidence_for_both_alts(tmp_path):
+    source = _vcf(
+        tmp_path / "sample.vcf.gz",
+        ["100 . A G,T 50 PASS . GT:AD:DP:GQ 0/0:14,0,0:14:99"],
+    )
+    labelled = tmp_path / "labelled.vcf.gz"
+    thresholds = Thresholds(min_depth=10, high_depth=20, min_gq=20, high_gq=30)
+    summary = label_vcf(source, labelled, thresholds, include_reference=True)
+    assert summary.carried == 1
+
+    split = tmp_path / "split.vcf"
+    run_command(["bcftools", "norm", "-m", "-any", "-o", str(split), str(labelled)])
+    queried = run_command(
+        ["bcftools", "query", "-f", "%ALT:%WGSE_CONF:%WGSE_CONF_REASONS\n", str(split)],
+        capture_output=True,
+    )
+    assert queried.stdout.splitlines() == [
+        "G:moderate:moderate_depth",
+        "T:moderate:moderate_depth",
+    ]
 
 
 def _table(path: Path) -> list[dict[str, str]]:

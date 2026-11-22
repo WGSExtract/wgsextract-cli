@@ -44,6 +44,7 @@ from pathlib import Path
 from threading import Event
 from typing import IO
 
+from wgsextract_cli.core.alignment.cram_counts import open_crai
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
@@ -74,7 +75,7 @@ Window = tuple[str, int, int]
 def _cram_contigs(index: str, names: list[str]) -> set[str]:
     """CRAI reference IDs avoid launching workers for empty CRAM contigs."""
     try:
-        with gzip.open(index, "rt") as source:
+        with open_crai(index) as source:
             ids = {int(line.split("\t", 1)[0]) for line in source if line.strip()}
         # -2 denotes a multi-reference slice, which may contain any contig.
         if -2 in ids or any(index >= len(names) or index < -2 for index in ids):
