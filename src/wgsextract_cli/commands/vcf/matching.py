@@ -156,7 +156,7 @@ def _text_copy(
                         )
             handle.write(line + "\n")
         # Streaming a prepared BGZF VCF avoids capturing a whole genome.
-        opener = gzip.open if source.endswith((".gz", ".bgz")) else open
+        opener = gzip.open if source.lower().endswith((".gz", ".bgz")) else open
         skipped = set()
         skipped_count = 0
         mito_count = 0
