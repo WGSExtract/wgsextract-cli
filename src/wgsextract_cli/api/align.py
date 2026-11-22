@@ -93,10 +93,12 @@ def _dense_suffix_array_param() -> Any:
 def _prefer_native_gpu_param() -> Any:
     return param(
         None,
-        help="If no GPU plan fits the RAM budget even after the sort-memory "
+        help="Enable CUDA BWA on Windows (CPU by default). On other hosts, "
+        "if no GPU plan fits the RAM budget even after the sort-memory "
         "step-down, use the GPU anyway instead of the slower CPU path; may swap "
         "heavily. Default: config prefer_native_gpu, else off.",
-        doc="Prefer native GPU speed over the RAM-budget CPU fallback. Sort "
+        doc="Opt in to CUDA BWA on Windows (CPU by default). On other hosts, "
+        "prefer the native GPU over the RAM-budget CPU fallback. Sort "
         "memory is stepped down first; explicit --memory is kept, otherwise "
         "at most 256M per thread. May swap heavily.",
         action="boolean_optional",

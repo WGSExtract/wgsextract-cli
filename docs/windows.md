@@ -263,13 +263,19 @@ builds this executable. It is not yet pinned in the default Pixi environment;
 the CLI does not install it. Without a usable executable, or with
 `--native-aligners off`, alignment continues with stock BWA.
 
-With a supported NVIDIA GPU and driver, `wgse-bwa` can use its CUDA backend
-without Docker, WSL, or a separate CUDA Toolkit installation. This is distinct
-from the Linux-only `--gpu` Parabricks option. The native build uses the CPU
-if no supported GPU is available or memory is tight. Windows can charge
+The CLI uses `wgse-bwa` on the CPU by default, even with an NVIDIA GPU. On a
+Ryzen 9 9900X3D and RTX 5080, `wgsextract align` on 5 million HG002 pairs
+took 1,126 s on CUDA and 564 s on the CPU, with identical decoded BAM records.
+Direct `wgse-bwa mem` was faster on CUDA with a smaller batch size, but
+the CLI keeps its fixed batch size because changing it can alter alignments.
+
+To try CUDA, pass `--prefer-native-gpu` to `align` or `realign`, or set
+`prefer_native_gpu = true` in `config.toml`. CUDA needs a supported NVIDIA
+GPU and driver, not Docker, WSL or a CUDA Toolkit installation. It is distinct
+from the Linux-only `--gpu` Parabricks option. Windows can charge
 CUDA allocations to system commit even when physical RAM is available:
 the preflight checks remaining commit (RAM plus page file) separately from
-RAM. `--prefer-native-gpu` cannot override insufficient commit.
+RAM. `--prefer-native-gpu` does not override either check on Windows.
 
 ## Upgrading from a WSL or MSYS2 setup
 

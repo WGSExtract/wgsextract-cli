@@ -251,7 +251,8 @@ class Settings:
     )
     prefer_native_gpu: bool = setting(
         False,
-        "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "
+        "`align`/`realign`: opt in to CUDA BWA on Windows; elsewhere, prefer "
+        "wgse-bwa's native GPU even above the RAM "
         "budget after normal sort step-down; retain explicit memory, otherwise "
         "cap default/config sort at 256M (may swap heavily)",
     )

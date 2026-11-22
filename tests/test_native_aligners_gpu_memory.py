@@ -50,43 +50,13 @@ from wgsextract_cli.core.alignment.memory import (
 from wgsextract_cli.core.config import settings
 
 
-@needs_tools("bwa", "samtools")
-@pytest.mark.parametrize(
-    ("mode", "backend", "reason"),
-    [
-        ("missing", None, None),
-        ("unusable", None, None),
-        ("cpu", "cpu", None),
-        ("cuda", "cuda", None),
-        ("low-commit", "cpu", "windows_commit_budget_cpu"),
-        ("commit-stepdown", "cuda", "windows_commit_budget_low_sort"),
-    ],
-)
-def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
-    tmp_path, monkeypatch, ram, caplog, mode, backend, reason
-):
-    """Only an installed, valid wgse-bwa runs; low commit rules CUDA out despite RAM."""
-    monkeypatch.setattr(
-        native_aligners,
-        "platform",
-        Namespace(system=lambda: "Windows", machine=lambda: "AMD64"),
-    )
-    ram(64 * GIB)
-    caplog.set_level("INFO")
-    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+def _windows_bwa_candidate(tmp_path, capabilities):
     real = shutil.which("bwa")
     assert real is not None
-    candidate = tmp_path / "missing" / "wgse-bwa.exe"
-    if mode != "missing":
-        capabilities = (
-            "not JSON"
-            if mode == "unusable"
-            else _cuda_capabilities("bwa", cuda_available=mode != "cpu")
-        )
-        candidate = python_tool(
-            tmp_path / "custom aligner",
-            "custom-bwa",
-            f"""\
+    return python_tool(
+        tmp_path / "custom aligner",
+        "custom-bwa",
+        f"""\
 import subprocess, sys
 args = sys.argv[1:]
 if args[:1] == ["capabilities"]:
@@ -96,7 +66,45 @@ if args[:1] == ["--backend"]:
     args = args[2:]
 sys.exit(subprocess.call([{real!r}, *args]))
 """,
+    )
+
+
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize(
+    ("mode", "backend", "reason"),
+    [
+        ("missing", None, None),
+        ("unusable", None, None),
+        ("cpu", "cpu", None),
+        ("cuda-defaults-to-cpu", "cpu", None),
+        ("cuda", "cuda", None),
+        ("cuda-config", "cuda", None),
+        ("cuda-config-disabled", "cpu", None),
+        ("low-ram", "cpu", "memory_budget_cpu"),
+        ("low-commit", "cpu", "windows_commit_budget_cpu"),
+        ("commit-stepdown", "cuda", "windows_commit_budget_low_sort"),
+    ],
+)
+def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
+    tmp_path, monkeypatch, ram, caplog, mode, backend, reason
+):
+    """Only a valid native build runs, and Windows CUDA is opt-in and budgeted."""
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Windows", machine=lambda: "AMD64"),
+    )
+    ram(11 * GIB // 2 if mode == "low-ram" else 64 * GIB)
+    caplog.set_level("INFO")
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    candidate = tmp_path / "missing" / "wgse-bwa.exe"
+    if mode != "missing":
+        capabilities = (
+            "not JSON"
+            if mode == "unusable"
+            else _cuda_capabilities("bwa", cuda_available=mode != "cpu")
         )
+        candidate = _windows_bwa_candidate(tmp_path, capabilities)
     monkeypatch.setitem(settings, "wgse_bwa_path", str(candidate))
     commit = {"low-commit": 4 * GIB, "commit-stepdown": 23 * GIB // 4}
     monkeypatch.setattr(
@@ -110,7 +118,14 @@ sys.exit(subprocess.call([{real!r}, *args]))
 
     monkeypatch.setattr(common, "get_tool_path", without_samblaster)
     monkeypatch.setattr(preparation, "get_tool_path", without_samblaster)
-    options = ["--prefer-native-gpu"] if mode == "low-commit" else []
+    monkeypatch.setitem(settings, "prefer_native_gpu", mode.startswith("cuda-config"))
+    options = (
+        ["--prefer-native-gpu"]
+        if mode in {"cuda", "low-ram", "low-commit", "commit-stepdown"}
+        else ["--no-prefer-native-gpu"]
+        if mode == "cuda-config-disabled"
+        else []
+    )
     sort_memory = "1G" if mode == "commit-stepdown" else "256M"
     bam, result = _align(reads, tmp_path / "out", *options, memory=sort_memory)
     upstream, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
@@ -125,6 +140,35 @@ sys.exit(subprocess.call([{real!r}, *args]))
         assert "Windows commit" in caplog.text
     if mode == "commit-stepdown":
         assert result.metrics["native_aligner_sort_memory_actual"] == "768M"
+
+
+@needs_tools("bwa", "samtools")
+def test_issue1119_realign_reruns_when_windows_cuda_is_enabled(
+    tmp_path, monkeypatch, ram
+):
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Windows", machine=lambda: "AMD64"),
+    )
+    monkeypatch.setattr(short_reads, "windows_available_commit", lambda: 32 * GIB)
+    candidate = _windows_bwa_candidate(tmp_path, _cuda_capabilities("bwa"))
+    monkeypatch.setitem(settings, "wgse_bwa_path", str(candidate))
+    monkeypatch.setitem(settings, "prefer_native_gpu", False)
+    ram(64 * GIB)
+    reads = _short_reads(tmp_path)
+    source, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    out = tmp_path / "out"
+    options = {"r1": reads.r1, "r2": reads.r2, "threads": 2, "memory": "256M"}
+
+    first = _run_realign(source, reads.ref, out, **options)
+    (bam,) = out.glob("*_aligned.bam")
+    assert first.metrics["native_aligner_backend"] == "cpu"
+    control = _samtools("view", str(bam))
+
+    opted_in = _run_realign(source, reads.ref, out, prefer_native_gpu=True, **options)
+    assert opted_in.metrics["native_aligner_backend"] == "cuda"
+    assert _samtools("view", str(bam)) == control
 
 
 @pytest.mark.usefixtures("apple_silicon")

@@ -286,6 +286,17 @@ def native_short_read_aligner(
         aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
     elif tool != "bwa":
         aligner = AlignerCommand(tool, native, gpu=True)
+    elif (
+        native.gpu == "cuda"
+        and on_windows_x64()
+        and not native_gpu_preference(job.prefer_native_gpu)
+    ):
+        if announce:
+            logging.info(
+                "Windows CUDA is opt-in: --prefer-native-gpu enables it when "
+                "the alignment fits. Using wgse-bwa on the CPU."
+            )
+        aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
     else:
         aligner, memory = _bwa_gpu_fit(
             job,
@@ -323,11 +334,8 @@ def _bwa_gpu_fit(
     gpu = bwa_gpu_memory(ref, reads, dense_sa_file=dense_sa is not None)
     dense_sa_bytes = dense_sa.stat().st_size if dense_sa else 0
     budget = _gpu_budget(additional_ram_bytes)
-    commit = (
-        windows_available_commit()
-        if native.gpu == "cuda" and on_windows_x64()
-        else None
-    )
+    windows_cuda = native.gpu == "cuda" and on_windows_x64()
+    commit = windows_available_commit() if windows_cuda else None
     amount, unit = parse_memory(memory)
     mib = amount * (1024 if unit == "G" else 1)
     candidates = [memory] + [
@@ -368,6 +376,7 @@ def _bwa_gpu_fit(
     preferred_memory = memory if job.memory_explicit or mib <= 256 else "256M"
     if (
         fitting is None
+        and not windows_cuda
         and native_gpu_preference(job.prefer_native_gpu)
         and commit_fits(preferred_memory)
     ):
@@ -468,13 +477,20 @@ def _bwa_gpu_fit(
                 commit / 1024**3,
             )
         else:
-            logging.info(
-                f"Running {native.binary} on the CPU: with its {_gpu_name(native)} GPU backend "
-                f"the alignment is estimated to need {gpu_estimate / 1024**3:.1f} "
-                f"GiB, more than the {budget / 1024**3:.1f} GiB memory budget. "
-                "CPU fallback was about 2.5x slower on the measured 16 GB M1 whole "
-                "genome. Use --prefer-native-gpu (config prefer_native_gpu=true) "
+            override = (
+                ""
+                if windows_cuda
+                else " Use --prefer-native-gpu (config prefer_native_gpu=true) "
                 "to favor speed instead, accepting possible heavy swapping."
+            )
+            logging.info(
+                "Running %s on the CPU: with its %s GPU backend the alignment "
+                "is estimated to need %.1f GiB, more than the %.1f GiB memory budget.%s",
+                native.binary,
+                _gpu_name(native),
+                gpu_estimate / 1024**3,
+                budget / 1024**3,
+                override,
             )
         cpu_budget = min(budget, commit) if commit is not None else budget
         if mib > 256 and needed(memory, 0)[0] > cpu_budget:
