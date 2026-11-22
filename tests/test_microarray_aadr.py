@@ -57,6 +57,55 @@ def test_issue_1043_aadr_forward_chain_edit_recomputes_genotypes(tmp_path, marke
     assert all(not output.metrics.get("reused") for output in result.outputs)
 
 
+@needs_tools("bcftools", "samtools", "bgzip", "tabix")
+def test_issue_1249_missing_aadr_chain_is_fetched_once(tmp_path, markers, monkeypatch):
+    from tests.htslib_helpers import bgzip_index, write_fasta
+    from tests.http_server import RangeServer
+    from wgsextract_cli import api
+    from wgsextract_cli.core.ref_library import downloads
+
+    name = microarray_targets.HG19_TO_HG38_CHAIN.name
+    # GRCh37 chr1:100 (rs1) is GRCh38 chr1:200.
+    data = gzip.compress(b"chain 1 chr1 1000 + 0 900 chr1 1000 + 100 1000 1\n900\n\n")
+    server = RangeServer(None, {name: data})
+    monkeypatch.setattr(downloads, "curl_progress_args", lambda: ["--silent"])
+    monkeypatch.setattr(
+        microarray_targets,
+        "HG19_TO_HG38_CHAIN",
+        microarray_targets.ChainSource(
+            name, (server.url_for(name),), hashlib.sha256(data).hexdigest()
+        ),
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+    ref = write_fasta(library / "hs38.fa", {"chr1": "A" * 1000})
+    plain = tmp_path / "sample.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        "chr1\t200\t.\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t1/1:30:60\n"
+    )
+    out = tmp_path / "out"
+    try:
+        api.microarray.generate(
+            api.MicroarrayParams(
+                input=Path(bgzip_index(plain)),
+                ref=ref,
+                outdir=out,
+                formats="aadr_ho",
+                download=True,
+            )
+        )
+        gets = server.gets()
+    finally:
+        server.close()
+    assert (out / "sample_AADR_ho.geno").read_text().splitlines()[0] == "0"
+    assert len(gets) == 1
+
+
 @pytest.fixture
 def markers(tmp_path, monkeypatch):
     source = tmp_path / "markers.tsv.gz"
@@ -492,7 +541,8 @@ def test_aadr_dispatch_uses_input_build_calls_without_reverse_chain(tmp_path, ma
     calls.write_text("rs1\t1\t100\tAA\n")
     library = tmp_path / "library"
     library.mkdir()
-    (library / "hg19ToHg38.over.chain.gz").write_bytes(
+    chain = library / "hg19ToHg38.over.chain.gz"
+    chain.write_bytes(
         gzip.compress(b"chain 1000 chr1 1000 + 0 1000 chr1 1000 + 0 1000 1\n1000\n\n")
     )
     microarray._convert_microarray_outputs(
@@ -503,6 +553,7 @@ def test_aadr_dispatch_uses_input_build_calls_without_reverse_chain(tmp_path, ma
         combined_kit_txt=str(calls),
         ref_fasta=str(library / "hg38.fa"),
         start_total=time.time(),
+        aadr_liftover=LiftOver(str(chain)),
     )
     assert (tmp_path / "input_AADR_ho.geno").read_text() == "2\n9\n9\n"
     assert not (tmp_path / "input_CombinedKit_hg19.txt").exists()

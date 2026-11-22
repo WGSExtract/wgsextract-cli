@@ -9,6 +9,8 @@ from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
 
+from pyliftover import LiftOver
+
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.cli.registration.microarray import register as register
@@ -33,7 +35,6 @@ from wgsextract_cli.core.genotype_qc import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.microarray.aadr import (
     aadr_chain,
-    aadr_lifter,
     aadr_panel,
     aadr_vcf_nocalls,
     build_aadr_target,
@@ -170,6 +171,7 @@ def _convert_microarray_outputs(
     start_total: float,
     aadr_vcf: str | None = None,
     aadr_workdir: str | None = None,
+    aadr_liftover: LiftOver | None = None,
     indel_calls: IndelCalls | None = None,
     legacy_combined_kit_txt: str | None = None,
     formats: list[str] | None = None,
@@ -230,7 +232,6 @@ def _convert_microarray_outputs(
     # 4. Convert to vendor formats
     start_fmt = time.time()
     tallies: dict[str, GenotypeTally] = {}
-    aadr_liftover = None
     vcf_nocalls = None
     written_panels: set[str] = set()
     for fmt_key in requested_formats:
@@ -240,22 +241,8 @@ def _convert_microarray_outputs(
                 continue
             output_prefix = str(Path(outdir, f"{base_name}_AADR_{panel}"))
             try:
-                if not written_panels:
-                    if any(aadr_panel(key) == "2m" for key in requested_formats):
-                        aadr_liftover = aadr_lifter(
-                            lib.build,
-                            aadr_workdir or outdir,
-                            getattr(lib, "root", None),
-                            allow_download=False,
-                        )
-                    else:
-                        aadr_liftover = aadr_lifter(
-                            lib.build,
-                            aadr_workdir or outdir,
-                            getattr(lib, "root", None),
-                        )
-                    if aadr_vcf:
-                        vcf_nocalls = aadr_vcf_nocalls(aadr_vcf, aadr_workdir or outdir)
+                if not written_panels and aadr_vcf:
+                    vcf_nocalls = aadr_vcf_nocalls(aadr_vcf, aadr_workdir or outdir)
                 write_aadr_outputs(
                     panel,
                     (
@@ -384,18 +371,15 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                     "projection is not supported."
                 )
             require_aadr_2m(lib.resource_root("aadr/" + AADR_2M_FILENAME))
+        # Resolved once (#1249): the AADR target, the reuse inputs and the
+        # export all use this chain.
         aadr_chain_file = aadr_chain(
             lib.build,
             outdir,
             lib.resource_root(_HG19_TO_HG38),
             allow_download="2m" not in aadr_panels,
         )
-        lifter = aadr_lifter(
-            lib.build,
-            outdir,
-            lib.resource_root(_HG19_TO_HG38),
-            allow_download="2m" not in aadr_panels,
-        )
+        lifter = LiftOver(aadr_chain_file) if aadr_chain_file else None
 
     logging.debug(f"Resolved Reference FASTA: {ref_fasta}")
     logging.debug(f"Resolved Target SNP Tab: {ref_vcf_tab}")
@@ -746,6 +730,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         start_total=start_total,
         aadr_vcf=out_vcf if is_vcf and aadr_panels else None,
         aadr_workdir=calling_outdir if aadr_panels else None,
+        aadr_liftover=lifter,
         indel_calls=indel_calls,
         legacy_combined_kit_txt=legacy_combined_kit_txt,
         # The combined kit was just written; skip the up-to-date kits.
