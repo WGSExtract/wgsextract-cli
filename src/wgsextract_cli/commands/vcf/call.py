@@ -190,6 +190,9 @@ def run_call(params: VcfCallParams) -> None:
         merge_vcfs(parts, out_vcf)
         _remove_parts(parts)
         record_variants(out_vcf, "merged_variants", None if small and gvcf else total)
+        # The merge is made from the parts, which the manifest keeps as
+        # discarded temporary files rather than deliverables.
+        current_result().add_output(out_vcf, "merged_variants", sources=parts)
 
 
 def _variant_count(role: str) -> int | None:
@@ -201,16 +204,13 @@ def _variant_count(role: str) -> int | None:
 
 
 def _remove_parts(parts: list[str]) -> None:
-    """Delete the merged parts and their indexes, and drop them from the result."""
-    removed: set[str] = set()
+    """Delete the merged parts and their indexes; the result keeps them as
+    discarded temporary files, not outputs."""
+    result = current_result()
     for part in parts:
         for path in (part, part + ".tbi", part + ".csi"):
-            file = Path(path)
-            if file.exists():
-                file.unlink()
-            removed.add(str(file.expanduser().absolute()))
-    result = current_result()
-    result.outputs[:] = [r for r in result.outputs if r.path not in removed]
+            result.discard_output(path)
+            Path(path).unlink(missing_ok=True)
 
 
 cmd_call = cli_handler(VcfCallParams, run_call)

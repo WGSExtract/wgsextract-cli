@@ -202,6 +202,10 @@ def test_1220_comprehensive_keeps_configured_vcf_out_of_explicit_bam_run(
     assert code == 0, stdout + stderr
     manifest = json.loads((outdir / "analyze.manifest.json").read_text())
     assert {(r["role"], r["path"]) for r in manifest["inputs"]} == expected_inputs
+    # #1182: an external VCF naming another sample than the reads is warned
+    # about, not refused: its sample column may only be named differently.
+    warned = {w["code"] for w in manifest["warnings"]}
+    assert ("sample_mismatch" in warned) == (selection == "configured-pair")
     findings = [
         call
         for record in manifest["outputs"]

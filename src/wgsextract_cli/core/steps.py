@@ -185,7 +185,7 @@ def _json_value(value: object) -> object:
 
 
 def _tool_versions(tools: Sequence[str]) -> dict[str, str | None]:
-    from wgsextract_cli.core.results import tool_version
+    from wgsextract_cli.core.tool_versions import tool_version
 
     return {tool: tool_version(tool) for tool in sorted(set(tools))}
 

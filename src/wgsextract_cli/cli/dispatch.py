@@ -81,6 +81,11 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
         or str(getattr(args, "command", None) or "wgsextract")
     )
     result.provenance.argv = redact_argv(getattr(args, "_argv", None) or sys.argv[1:])
+    result.run.join(
+        getattr(args, "_parent_run", None),
+        getattr(args, "_root_run", None),
+        getattr(args, "_run_step", None),
+    )
     result.provenance.params = params_from_args(args)
     if not as_json:
         result.stream_text(_to_stdout)

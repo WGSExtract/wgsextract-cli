@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams
+from wgsextract_cli.core.artifacts import lineage_args
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -162,6 +163,7 @@ def run_chain_annotate(
             if reference:
                 cmd += ["--ref", str(reference)]
             cmd += _step_resource_args(ann, lib)
+            cmd += lineage_args(current_result().run, ann)
 
             try:
                 # Captured so chained runs stay readable; surfaced on failure.

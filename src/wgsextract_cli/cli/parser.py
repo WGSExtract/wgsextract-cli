@@ -642,6 +642,11 @@ def add_shared_arguments(
     # (docs/result-manifest.md). analyze reads its steps' results this way,
     # and so does the desktop app. Hidden from help like other caller flags.
     add("--result-file", dest="_result_file", metavar="PATH", help=argparse.SUPPRESS)
+    # A workflow (analyze) starting this run as one of its steps names its own
+    # run, its root run and the step, so the manifests link (#1182).
+    add("--parent-run", dest="_parent_run", metavar="ID", help=argparse.SUPPRESS)
+    add("--root-run", dest="_root_run", metavar="ID", help=argparse.SUPPRESS)
+    add("--run-step", dest="_run_step", metavar="STEP", help=argparse.SUPPRESS)
     add(
         "--parent-pid",
         type=int,
