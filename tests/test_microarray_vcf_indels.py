@@ -116,3 +116,29 @@ def test_issue_1249_haploid_indel_is_not_read_as_a_heterozygous_snp(
     if "--call-reasons" in gates:
         report = _rows(tmp_path / "out/male_CombinedKit_reasons.tsv")
         assert report["rsY"][-1] == report["rsMT"][-1] == "unsupported_allele"
+
+
+@pytest.mark.parametrize(
+    "gates",
+    [
+        ("--call-reasons",),
+        ("--assume-hom-ref", "--min-dp", "0", "--min-gq", "0", "--no-exclude-filtered"),
+    ],
+    ids=["default-gates", "no-gates"],
+)
+def test_issue_1249_uncalled_indel_alt_keeps_the_snp_call(tmp_path, library, gates):
+    fasta, _ = library
+    # GATK/DeepVariant multiallelics: the sample calls only the SNP allele.
+    records = [
+        "1 1000 . A C,AC 50 PASS . GT 0/1",
+        "1 2000 . A C,AT 50 PASS . GT 1/1",
+    ]
+    vcf = _vcf(tmp_path / "male.vcf", ("1", "X", "Y", "MT"), records)
+
+    _microarray(vcf, fasta, tmp_path / "out", *gates)
+
+    kit = _rows(tmp_path / "out/male_CombinedKit.txt")
+    assert (kit["rsHet"][-1], kit["rsAlt"][-1]) == ("AC", "CC")
+    if "--assume-hom-ref" in gates:
+        # They are SNP calls, so chr1's absent markers are filled as usual.
+        assert kit["rsRef"][-1] == "AA"

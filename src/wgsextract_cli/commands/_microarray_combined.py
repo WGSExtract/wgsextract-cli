@@ -53,16 +53,6 @@ def _normalize_microarray_genotype(value: str) -> str | None:
     return sort_alleles("".join(alleles)) if len(alleles) == 2 else alleles[0] * 2
 
 
-def _changes_length(ref: str, alt: str) -> bool:
-    """Whether a record is an indel or MNP: its REF or a sequence ALT isn't one
-    base. Symbolic, spanning-deletion and missing ALTs carry no length."""
-    return len(ref) != 1 or any(
-        len(allele) != 1
-        for allele in alt.split(",")
-        if not allele.startswith("<") and allele not in {"*", "."}
-    )
-
-
 def _combined_kit_chrom(chrom: str) -> str:
     return "MT" if chrom in ("chrM", "M", "chrMT") else chrom.removeprefix("chr")
 
@@ -170,10 +160,10 @@ def _write_vcf_mode_kit(
     unsupported: set[tuple[str, str]] = set()
     # Positions with a SNP-shaped record, which alone mark a contig as called.
     snp_records: set[tuple[str, str]] = set()
-    query = "%CHROM\t%POS\t[%TGT]\t%REF\t%ALT\n"
+    query = "%CHROM\t%POS\t[%TGT]\t%REF\n"
     if fields:
         query = "%CHROM\t%POS\t[%TGT\t%DP\t%GQ]\t%REF\t%ALT\t%FILTER\n"
-    ref_at, alt_at = (5, 6) if fields else (3, 4)
+    ref_at = 5 if fields else 3
     for line in _command_lines(
         [
             "bcftools",
@@ -186,13 +176,14 @@ def _write_vcf_mode_kit(
         outdir,
     ):
         parts = line.rstrip("\n").split("\t")
-        if len(parts) <= alt_at:
+        if len(parts) <= ref_at:
             continue
-        # A haploid indel's GT reads like a SNP genotype ("AT"), so its
-        # alleles' lengths decide (#1249).
+        # Each called allele must be one base (a haploid indel's GT prints
+        # like a genotype, "AT"), and a multi-base REF makes even a one-base
+        # call a deletion's or MNP's (#1249). Uncalled ALTs don't matter.
         genotype = (
             None
-            if _changes_length(parts[ref_at], parts[alt_at])
+            if len(parts[ref_at]) != 1
             else _normalize_microarray_genotype(parts[2])
         )
         snp_shaped = genotype is not None
