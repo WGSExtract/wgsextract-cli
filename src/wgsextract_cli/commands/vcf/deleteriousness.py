@@ -98,6 +98,7 @@ def run_cadd(params: VcfCaddParams) -> None:
                 threads=params.threads,
                 reference=lib.fasta,
                 annotation_source=indel_file,
+                keep_existing=True,
             )
 
     run_min_score_filter(

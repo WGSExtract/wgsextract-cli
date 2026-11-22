@@ -22,7 +22,10 @@ from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import get_tool_version, verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
-from wgsextract_cli.core.native_pairhmm import neon_pairhmm_command
+from wgsextract_cli.core.native_pairhmm import (
+    cuda_pairhmm_java_options,
+    neon_pairhmm_command,
+)
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import java_local_path
@@ -316,6 +319,8 @@ def run_gatk(params: VcfGatkParams) -> None:
                 "--pair-hmm-neon does not accelerate Ultima's flow likelihood model."
             )
     require_native_tool("gatk")
+    if params.pair_hmm_cuda is not None:
+        gatk_command += cuda_pairhmm_java_options(params.pair_hmm_cuda, _gatk_version())
     if params.gpu and params.scatter:
         raise UsageError("GATK --scatter cannot be combined with --gpu.")
     gvcf = None
@@ -435,6 +440,10 @@ def _run_gatk(
     # Ultima's own pipeline calls with the flow-based likelihood model.
     flow_args = []
     if ultima.alignment_flow_data(input_file, ref).flow_aware:
+        if params.pair_hmm_cuda is not None:
+            raise UsageError(
+                "--pair-hmm-cuda does not accelerate Ultima's flow likelihood model."
+            )
         if params.pair_hmm_neon is not None:
             raise UsageError(
                 "--pair-hmm-neon does not accelerate Ultima's flow likelihood model."
@@ -518,12 +527,12 @@ def _run_gatk(
             + ["--sample-ploidy", str(sample_ploidy)]
             + region_args
         )
+        if params.pair_hmm_cuda is not None or params.pair_hmm_neon is not None:
+            cmd += ["--native-pair-hmm-threads", _threads]
         if params.pair_hmm_neon is not None:
             # contract: require double to avoid the known float block-DP
             # regression; difficult-region exact parity remains unqualified.
             cmd += [
-                "--native-pair-hmm-threads",
-                _threads,
                 "--native-pair-hmm-use-double-precision",
                 "true",
             ]

@@ -8,7 +8,7 @@ from wgsextract_cli.core.builds import build_from_chr1_length
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError
 
-_Y_BUILDS = {59_373_566: "hg19", 57_227_415: "hg38"}
+_Y_BUILDS = {59_373_566: "hg19", 57_227_415: "hg38", 62_460_029: "t2t"}
 _BEDS = files("wgsextract_cli").joinpath("assets").joinpath("reference").joinpath("poz")
 
 
@@ -19,9 +19,9 @@ def poz_bed(contigs: dict[str, int], chromosome: str, outdir: str) -> Iterator[s
     chr1_build = build_from_chr1_length(contigs)
     if not build or (chr1_build is not None and chr1_build != build):
         raise WGSExtractError(
-            "--poz supports only GRCh37/hg19 and GRCh38 Y coordinates. "
-            "Unknown, inconsistent or T2T Y assemblies need an independently "
-            "validated BED; use extract custom --region <bed>."
+            "--poz supports only GRCh37/hg19, GRCh38 and T2T-CHM13v2.0 Y "
+            "coordinates. Unknown or inconsistent Y assemblies need an "
+            "independently validated BED; use extract custom --region <bed>."
         )
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(outdir), prefix=".poz_"
