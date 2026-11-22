@@ -256,6 +256,47 @@ def test_symbol_keeps_import_and_initialization_consumers(
     assert set(candidates["widely_called"]) == expected
 
 
+@pytest.mark.parametrize("edit", ["deleted function", "changed external default"])
+def test_selection_keeps_observed_interface_users(tmp_path: Path, edit: str) -> None:
+    from scripts.ci_impact_diff import impact_diff
+    from scripts.ci_impact_shadow import compute
+
+    _git(tmp_path, "init", "-b", "main")
+    _git(tmp_path, "config", "user.email", "test@example.test")
+    _git(tmp_path, "config", "user.name", "Test")
+    _git(tmp_path, "config", "commit.gpgsign", "false")
+    src = "src/wgsextract_cli/info.py"
+    target = tmp_path / src
+    target.parent.mkdir(parents=True)
+    caller = "src/wgsextract_cli/commands/lookup.py"
+    (tmp_path / caller).parent.mkdir()
+    default = edit == "changed external default"
+    target.write_text("VALUE = 1\n" if default else "def lookup():\n    return 1\n")
+    (tmp_path / caller).write_text(
+        "from wgsextract_cli.info import VALUE\n"
+        "def lookup(value=VALUE):\n    return value\n"
+    )
+    tests = [f"tests/test_client_{n}.py" for n in range(6)]
+    (tmp_path / "tests").mkdir()
+    for path in tests:
+        (tmp_path / path).write_text("def test_lookup():\n    pass\n")
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "Existing observed interface")
+    target.write_text("VALUE = 2\n" if default else "")
+    _git(tmp_path, "commit", "-am", "Change interface")
+    candidates, _, _ = compute(
+        tmp_path,
+        impact_diff(tmp_path, "HEAD^1", "HEAD"),
+        set(tests),
+        {
+            "functions": {(caller if default else src): {"lookup": tests}},
+            "modules": {src: tests, caller: tests},
+            "observed_tests": tests,
+        },
+    )
+    assert candidates["symbol"] == candidates["widely_called"] == tests
+
+
 def test_xunit_collection_failure_is_attributed_to_its_module(tmp_path: Path) -> None:
     from scripts.ci_impact_diff import impact_diff
     from scripts.ci_impact_shadow import compute

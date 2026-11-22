@@ -250,7 +250,7 @@ def compute(
                 groups,
                 contracts,
                 change=change_scope,
-                existed=fn in before_scopes.functions,
+                existed=fn in before_scopes.functions and fn in after_scopes.functions,
             )
             wide_calls.update(sampled.selected)
         legacy_module = decisive_module_scope(

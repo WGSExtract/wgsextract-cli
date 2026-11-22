@@ -130,11 +130,8 @@ class StaticUsers:
                         self.forwarded[(path, prefix, alias.name)].add(
                             alias.asname or alias.name
                         )
-                case (
-                    ast.FunctionDef(name=fn, body=body)
-                    | ast.AsyncFunctionDef(name=fn, body=body)
-                ):
-                    self.calls[path][fn].update(*(map(_reads, body)))
+                case ast.FunctionDef(name=fn) | ast.AsyncFunctionDef(name=fn):
+                    self.calls[path][fn].update(_reads(node))
                     continue
                 case _:
                     continue
