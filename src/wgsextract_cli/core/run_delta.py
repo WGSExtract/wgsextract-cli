@@ -200,28 +200,41 @@ def _sample(
 
 
 def _build(
+    path: Path,
     document: Mapping[str, Any],
     report: Mapping[str, Any] | None,
     resources: Sequence[ResourceRecord],
 ) -> str | None:
-    found: list[object] = []
+    """The run's reference build. Every section, the reference and each
+    resource that names a build must agree: a run mixing builds is refused."""
+    found: list[tuple[str, object]] = []
     if report is not None:
         sections = report.get("sections") or {}
         found += [
-            (sections.get(n) or {}).get("build") for n in ("clinvar", "acmg_research")
+            (n, (sections.get(n) or {}).get("build"))
+            for n in ("clinvar", "acmg_research")
         ]
         found += [
-            f.get("value")
+            ("overview", f.get("value"))
             for f in (sections.get("overview") or {}).get("facts") or []
             if isinstance(f, Mapping) and f.get("name") == "build"
         ]
-    found.append(
-        ((document.get("provenance") or {}).get("reference") or {}).get("build")
-    )
-    found += [r.build for r in resources]
-    return next(
-        (b for v in found if isinstance(v, str) and (b := canonical_build(v))), None
-    )
+    reference = (document.get("provenance") or {}).get("reference") or {}
+    found.append(("reference", reference.get("build")))
+    found += [(f"resource {r.id}", r.build) for r in resources]
+    builds = {
+        where: build
+        for where, value in found
+        if isinstance(value, str) and (build := canonical_build(value))
+    }
+    if len(set(builds.values())) > 1:
+        evidence = ", ".join(f"{where} {build}" for where, build in builds.items())
+        raise CodedError(
+            "delta_build_mismatch",
+            f"{path} mixes reference builds ({evidence}); its positions can't be "
+            "compared with another run's.",
+        )
+    return next(iter(builds.values()), None)
 
 
 def _run(
@@ -237,7 +250,7 @@ def _run(
             finished=provenance.get("finished") or None,
             version=provenance.get("version") or None,
             sample=_sample(document, report),
-            build=_build(document, report, resources or []),
+            build=_build(path, document, report, resources or []),
             resources_recorded=resources is not None,
         ),
         resources,

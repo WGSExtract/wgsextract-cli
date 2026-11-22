@@ -285,6 +285,13 @@ def test_1179_timestamps_and_ordering_are_ignored(runs, tmp_path):
             lambda d: d["details"]["sections"]["clinvar"].update(build="hg19"),
             "delta_build_mismatch",
         ),
+        # Copilot review of #1363: one section on another build was compared.
+        (
+            lambda d: d["details"]["sections"].update(
+                acmg_research={"status": "ok", "build": "hg19", "findings": []}
+            ),
+            "delta_build_mismatch",
+        ),
         (lambda d: d.update(command="vcf clinvar"), "delta_command_mismatch"),
         (lambda d: d.update(schema="wgsextract.result/9"), "unsupported_schema"),
         (

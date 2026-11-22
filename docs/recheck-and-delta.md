@@ -137,8 +137,8 @@ removals. These are technical results, not diagnosis.
 
 The command refuses runs it can't compare, with error codes
 `delta_command_mismatch` (different commands), `delta_sample_mismatch`
-(different samples), `delta_build_mismatch` (hg19 against hg38: positions
-differ) and `unsupported_schema` (not a `wgsextract.result/1` manifest, or a
+(different samples), `delta_build_mismatch` (hg19 against hg38, or a run whose
+sections, reference or resources name different builds: positions differ) and `unsupported_schema` (not a `wgsextract.result/1` manifest, or a
 report of another schema). Its `details` follow `wgsextract.delta/1`
 ([schema](../src/wgsextract_cli/assets/schemas/wgsextract.delta.1.schema.json)).
 
