@@ -27,7 +27,8 @@ export async function refuseLinkedMoveFolders(...folders: string[]) {
                 if (process.platform === "win32" && errnoCode(error) === "EINVAL") return null;
                 throw error;
             });
-            const target = rawTarget && await realpath(link).catch(() => rawTarget);
+            const resolved = await realpath(link).catch(() => null);
+            const target = resolved && (rawTarget !== null || path.relative(link, resolved) !== "") ? resolved : rawTarget;
             throw new LinkedMoveFolderError(link, target);
         }
     }
