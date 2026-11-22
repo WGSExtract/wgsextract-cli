@@ -3,8 +3,6 @@
 import gzip
 import logging
 import os
-import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -13,9 +11,9 @@ from tests.fake_tool_launchers import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import consensus
+from wgsextract_cli.core import file_lock
 from wgsextract_cli.core.atomic_output import atomic_output_mode
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
-from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
@@ -356,27 +354,42 @@ def test_1236_successful_retry_keeps_private_consensus_permissions(tmp_path):
     assert fasta.stat().st_mode & 0o777 == 0o600
 
 
-def test_1236_cancelled_api_retry_waiting_to_publish_preserves_outputs(tmp_path):
+def test_1236_cancelled_api_retry_waiting_to_publish_preserves_outputs(
+    tmp_path, monkeypatch
+):
     out = tmp_path / "out"
     ref = tmp_path / "ref.fa"
     vcf = tmp_path / "v.vcf.gz"
-    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain")
+    _to_fasta(tmp_path, _rec(12, "TA", "T", "1/1"), "--chain", "--threads", "1")
     expected = _consensus_outputs(out)
     _vcf(vcf, _rec(12, "T", "C", "1/1"))
-    params = api.vcf.VcfToFastaParams(input=vcf, ref=ref, outdir=out, chain=True)
+    params = api.vcf.VcfToFastaParams(
+        input=vcf, ref=ref, outdir=out, chain=True, threads=1
+    )
     cancel = api.CancelToken()
-    guard = next(out.glob(".wgse_publish-*.guard"))
+    lock_path = next(out.glob(".wgse_publish-*.guard")).with_suffix("")
+    exclusive_lock = file_lock.exclusive_lock
 
-    with ThreadPoolExecutor(max_workers=1) as workers:
-        with exclusive_lock(guard.with_suffix("")):
-            run = workers.submit(api.vcf.to_fasta, params, cancel=cancel, check=False)
-            deadline = time.monotonic() + 10
-            while not any(out.glob(".wgse_publish_*/*.gzi")):
-                assert not run.done(), run.result()
-                assert time.monotonic() < deadline, "consensus never reached indexing"
-                time.sleep(0.01)
-            cancel.cancel()
-            assert run.result(timeout=5).status == "cancelled"
+    def cancel_during_lock_wait(path, *args, checkpoint=None, **kwargs):
+        if path != lock_path or checkpoint is None:
+            return exclusive_lock(path, *args, checkpoint=checkpoint, **kwargs)
+        first_attempt = True
+
+        def checkpoint_retry():
+            nonlocal first_attempt
+            # #1348: the held guard forces a retry, independent of indexing speed.
+            if not first_attempt:
+                cancel.cancel()
+            first_attempt = False
+            checkpoint()
+
+        return exclusive_lock(path, *args, checkpoint=checkpoint_retry, **kwargs)
+
+    with exclusive_lock(lock_path):
+        monkeypatch.setattr(file_lock, "exclusive_lock", cancel_during_lock_wait)
+        assert (
+            api.vcf.to_fasta(params, cancel=cancel, check=False).status == "cancelled"
+        )
 
     assert _consensus_outputs(out) == expected
 
