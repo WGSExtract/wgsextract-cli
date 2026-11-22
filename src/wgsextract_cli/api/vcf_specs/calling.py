@@ -28,6 +28,7 @@ from .shared import (
     _deepvariant_items,
     _public,
     _region_param,
+    _structural_region_param,
     reference_evidence_param,
 )
 
@@ -147,8 +148,8 @@ class VcfCnvParams(_CallerParams):
 
     COMMAND = "vcf cnv"
 
-    region: str | None = _region_param(
-        "One region, a comma-separated list, or a BED file.", may_name_file=True
+    region: str | None = _structural_region_param(
+        "One region, a comma-separated list, or a BED file."
     )
     map: str | None = param(
         None,
@@ -171,10 +172,9 @@ class VcfSvParams(_CallerParams):
 
     COMMAND = "vcf sv"
 
-    region: str | None = _region_param(
+    region: str | None = _structural_region_param(
         "Delly/Sniffles: one region, a comma-separated list, or BED; "
         "pbsv: one region only.",
-        may_name_file=True,
     )
     caller: str | None = param(
         None,
@@ -256,10 +256,9 @@ class VcfCallParams(_CallerParams):
 
     COMMAND = "vcf call"
 
-    region: str | None = _region_param(
+    region: str | None = _structural_region_param(
         "One region, a comma-separated list, or BED (Delly/Sniffles without "
         "SNP/indel calling); pbsv: one region only.",
-        may_name_file=True,
     )
     types: str = param(
         "snp,indel",

@@ -3,6 +3,7 @@ import io
 import logging
 import subprocess
 import tempfile
+import zlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -106,7 +107,7 @@ def _validated_intervals(
 ) -> Intervals:
     try:
         return alignment_intervals(region, reference, alignment)
-    except (EOFError, ValueError, OSError) as error:
+    except (EOFError, ValueError, OSError, zlib.error) as error:
         raise UsageError(f"Invalid region (--region): {error}") from error
 
 

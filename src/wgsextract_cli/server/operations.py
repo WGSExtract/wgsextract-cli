@@ -40,7 +40,7 @@ QUERIES = READ_ONLY_COMMANDS
 
 # What follows the contig of an interval (chr1:1-100, X:1,000-): a drive
 # letter followed by it on Windows is still a region, not a file path.
-_INTERVAL_END = re.compile(r"\d[\d,]*(-[\d,]*)?")
+_INTERVAL_END = re.compile(r"(?:\d[\d,]*(-[\d,]*)?|-\d[\d,]*)")
 
 
 class RequestError(Exception):
