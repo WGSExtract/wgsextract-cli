@@ -327,17 +327,50 @@ def _write_report(
             )
 
 
-def _write_vcf(path: Path, header: list[str], lines: list[str], work: Path) -> None:
+def _write_vcf(
+    path: Path,
+    header: list[str],
+    lines: list[str],
+    accepted: set[tuple[int, str]],
+    work: Path,
+) -> None:
+    """The candidate alleles alone: records are split, keeping the AD sum (the
+    other alleles' reads go to REF, so AD gives the reported AF), and only the
+    accepted (POS, ALT) records are kept."""
     plain = work / "candidates.vcf"
     with plain.open("w", encoding="utf-8", newline="\n") as stream:
         stream.writelines(header[:-1])
         stream.write("##wgsextract_y_private=Candidate private Y SNVs; not confirmed\n")
         stream.write(header[-1])
         stream.writelines(lines)
+    split = work / "candidates.split.vcf"
+    run_command(
+        [
+            "bcftools",
+            "norm",
+            "-m",
+            "-any",
+            "--keep-sum",
+            "AD",
+            "-Ov",
+            "-o",
+            str(split),
+            str(plain),
+        ]
+    )
+    kept = work / "candidates.kept.vcf"
+    with (
+        split.open(encoding="utf-8") as source,
+        kept.open("w", encoding="utf-8", newline="\n") as stream,
+    ):
+        for line in source:
+            cols = line.split("\t", 5)
+            if line.startswith("#") or (int(cols[1]), cols[4].upper()) in accepted:
+                stream.write(line)
     for index in (Path(f"{path}.tbi"), Path(f"{path}.csi")):
         index.unlink(missing_ok=True)
     with path.open("wb") as out:
-        run_command(["bgzip", "-c", str(plain)], stdout=out)
+        run_command(["bgzip", "-c", str(kept)], stdout=out)
     run_command(["tabix", "-f", "-p", "vcf", str(path)])
 
 
@@ -554,7 +587,8 @@ def run_y_private(params: YPrivateParams) -> None:
             f"candidates {counts['candidates']}.",
         ]
         _write_report(report, report_header, candidates)
-        _write_vcf(candidate_vcf, header, lines, work)
+        accepted = {(row["pos"], row["alt"]) for row in candidates}
+        _write_vcf(candidate_vcf, header, lines, accepted, work)
 
     result.add_output(report, "y_private_candidates")
     result.add_output(candidate_vcf, "y_private_vcf")

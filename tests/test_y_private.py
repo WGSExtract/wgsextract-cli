@@ -308,3 +308,23 @@ def test_reads_of_several_samples_are_refused(tmp_path, library):
     bam = sam_to_bam(lines, tmp_path / "pair.bam")
     with pytest.raises(CommandFailed, match="read groups name 2"):
         _private(input=Path(bam), outdir=tmp_path / "out")
+
+
+def test_candidate_vcf_holds_only_the_reported_alleles(tmp_path, library):
+    """Review of #1402: a multiallelic record exports only its candidate ALT,
+    with AD still summing every allele's reads."""
+    row = f"chrY\t{YFULL_KNOWN}\t.\tA\tT,G\t60\tPASS\t.\tGT:AD\t1/2:0,19,1"
+    vcf = _vcf(tmp_path / "kit.vcf", T2T_Y, [row])
+    result = _private(input=Path(vcf), outdir=tmp_path / "out")
+    assert [(c["alt"], c["af"]) for c in result.details["candidates"]] == [("T", 0.95)]
+    records = run_command(
+        [
+            "bcftools",
+            "query",
+            "-f",
+            "%POS\t%ALT[\t%AD]\n",
+            str(tmp_path / "out/y_private/kit.y_private.vcf.gz"),
+        ],
+        capture_output=True,
+    ).stdout.splitlines()
+    assert records == [f"{YFULL_KNOWN}\tT\t1,19"]
