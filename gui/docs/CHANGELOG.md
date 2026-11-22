@@ -6,9 +6,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Fixed
-- Settings refuses a move if the user's workspace, the library folder being moved, or the chosen destination is itself a symbolic link or Windows junction. Nothing is moved or changed. To relocate a linked folder, move its target manually and update the setting. For a linked destination, select the actual folder instead of its link. Links inside the folder being moved are unaffected ([#1340, moving a linked folder](https://github.com/WGSExtract/wgsextract-cli/issues/1340)).
+- The genome viewer's file endpoints answer a `HEAD` without a `Range` with `200` and the file's full size for files over 32 MiB too, instead of `416`; whole-file `GET`s keep their 32 MiB limit ([#1227](https://github.com/WGSExtract/wgsextract-cli/issues/1227)).
 - Moving the users workspace or a library folder keeps the symbolic links in it working, on the same disk or to another one. A link to a file inside the moved folder now points at that file's new place (a relative link stays relative), instead of at the old folder; a link to something outside the folder still points there, and is moved as a link, never copied in. Windows folder links fall back to junctions when symbolic links aren't allowed ([#1239, links broken by a move](https://github.com/WGSExtract/wgsextract-cli/issues/1239)).
 - A run, setup or workspace move whose window disconnected before its progress stream began no longer starts, instead of running (and holding the workspace) with nobody listening; a progress write waiting on a stalled window always settles when the stream is cancelled ([#1234, backpressured progress on disconnect](https://github.com/WGSExtract/wgsextract-cli/issues/1234)).
+- Settings refuses a move if the user's workspace, the library folder being moved, or the chosen destination is itself a symbolic link or Windows junction. Nothing is moved or changed. To relocate a linked folder, move its target manually and update the setting. For a linked destination, select the actual folder instead of its link. Links inside the folder being moved are unaffected ([#1340, moving a linked folder](https://github.com/WGSExtract/wgsextract-cli/issues/1340)).
 
 ## [0.8.9] - 2026-11-21
 

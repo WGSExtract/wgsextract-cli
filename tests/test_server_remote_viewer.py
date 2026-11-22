@@ -302,6 +302,25 @@ def test_issue_1160_explicit_large_range_streams_and_fallback_is_bounded(
         assert headers["Content-Length"] == str(size)
 
 
+@requires_safe_reads
+def test_issue_1227_unranged_head_reports_size_over_fallback_limit(
+    tmp_path: Path,
+) -> None:
+    file = tmp_path / secrets.token_hex(12)
+    size = 33 * 1024 * 1024
+    with file.open("wb") as output:
+        output.truncate(size)
+    with remote_server(tmp_path) as server:
+        target = "/v1/viewer-file?" + urlencode({"path": str(file)})
+        status, headers, body = request(server, target, method="HEAD")
+        assert (status, body) == (200, b"")
+        assert headers["Content-Length"] == str(size)
+        assert headers["Accept-Ranges"] == "bytes"
+        assert "Content-Range" not in headers
+        assert request(server, target)[0] == 416
+        assert request(server, target, method="HEAD", token=False)[0] == 401
+
+
 def test_issue_1160_server_table_config_round_trip(tmp_path: Path) -> None:
     config = tmp_path / "config.toml"
     config.write_text(
