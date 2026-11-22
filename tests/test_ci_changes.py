@@ -17,6 +17,7 @@ from scripts.ci_changes import setup_checks as setup_checks
 from scripts.ci_changes import site_validation as site_validation
 from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
+from scripts.ci_select_tests import ci_test_targets as ci_test_targets
 from scripts.ci_select_tests import select_tests as select_tests
 from scripts.ci_test_dependencies import DOCS_ONLY_SCRIPTS as DOCS_ONLY_SCRIPTS
 from scripts.ci_test_dependencies import DOCS_TEST_TARGETS as DOCS_TEST_TARGETS
@@ -628,3 +629,14 @@ def test_802_router_exception_cannot_be_hidden_by_the_summary_pipeline(
 )
 def test_1045_setup_heavy_checks_follow_their_inputs(path: str, selected: bool) -> None:
     assert setup_checks([path]) is selected
+
+
+def test_1229_release_helper_edits_run_only_the_ci_policy_lane() -> None:
+    paths = [
+        "scripts/ci_release_latest.py",
+        "tests/test_ci_release_latest.py",
+        ".github/workflows/release.yml",
+    ]
+    for changed in [*([path] for path in paths), paths]:
+        assert not routes(changed)["cli"], changed
+        assert "tests/test_ci_release_latest.py" in ci_test_targets(changed), changed
