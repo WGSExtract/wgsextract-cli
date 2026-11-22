@@ -5,6 +5,13 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
 
 ## Fixes
 
+- `ref cadd` keeps a complete CADD score table whose index download failed or
+  was cancelled: the next run checks the table against its published MD5 and
+  fetches only the missing index, instead of downloading the ~85 GB SNV table
+  again. A table in place that fails the check is reported, not removed.
+  `ref revel` now downloads over https and checks each file against a pinned
+  SHA-256
+  ([#1245, CADD index retry and REVEL integrity](https://github.com/WGSExtract/wgsextract-cli/issues/1245)).
 - `lineage y-str` now calls DYS448, DYS459 and DYS589 on T2T when reads
   support a call. DYS589's non-repeat boundary variation no longer appears
   as a fractional STR allele. DYS425 is left blank on all builds because
@@ -24,3 +31,8 @@ land; the release PR renames this file to vX.Y.Z.md (see docs/releasing.md). -->
   rather than on `PATH`, so it redacts them from the report. It previously
   could not start the tools and left those names in
   ([#1314, report sample redaction](https://github.com/WGSExtract/wgsextract-cli/issues/1314)).
+- `score pgs` now finds bcftools the same way its dependency check does, so
+  it scores when bcftools is installed only in the WGS Extract Pixi
+  environment rather than on `PATH`. It previously failed with "No such file
+  or directory: 'bcftools'"
+  ([#1233, PGS bcftools probes](https://github.com/WGSExtract/wgsextract-cli/issues/1233)).
