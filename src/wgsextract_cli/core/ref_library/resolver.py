@@ -144,9 +144,6 @@ class ReferenceLibrary:
         self.ploidy_file: str | None = None
         self.vep_cache: str | None = None
         self.build: str | None = None
-        # What the input itself shows (header, signature or a recorded fact),
-        # unlike `build`, which may come from the FASTA or a path name.
-        self.input_build: str | None = None
 
         if not self.root:
             return
@@ -270,21 +267,6 @@ class ReferenceLibrary:
     def _detect_build(
         self, header_target: str | None, root_path: str | None
     ) -> str | None:
-        build = self._build_from_input(header_target)
-        from_input = header_target is not None and header_target == self.input_path
-        if build and (from_input or self._build_from_signature()):
-            self.input_build = canonical_build(build)
-        if not build and self.fasta:
-            build = fasta_build(self.fasta)
-        assert self.root is not None
-        return (
-            build
-            or build_hint(self.resource_roots[0], self.input_path, root_path)
-            or None
-        )
-
-    def _build_from_input(self, header_target: str | None) -> str | None:
-        """The build the input's own header, signature or recorded fact names."""
         build = self._build_from_signature()
         method = "header contig MD5 signature"
         sample = header_target if header_target == self.input_path else None
@@ -311,7 +293,14 @@ class ReferenceLibrary:
                 method=method,
                 confidence="high",
             )
-        return build
+        if not build and self.fasta:
+            build = fasta_build(self.fasta)
+        assert self.root is not None
+        return (
+            build
+            or build_hint(self.resource_roots[0], self.input_path, root_path)
+            or None
+        )
 
     def _build_from_signature(self) -> str | None:
         if not self.md5:

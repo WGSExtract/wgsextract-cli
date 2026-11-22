@@ -19,17 +19,22 @@ def _vep_rs_caches(tmp_path: Path, *assemblies: str) -> None:
         (tmp_path / "vep-rs" / "homo_sapiens" / f"116_{assembly}").mkdir(parents=True)
 
 
-def _t2t_bam(tmp_path: Path) -> tuple[str, str]:
-    """A read-less BAM and a FASTA stand-in whose contigs are T2T-CHM13's."""
-    t2t = {"chr1": 248387328, "chrX": 154259566, "chrY": 62460029, "chrM": 16569}
+_T2T = {"chr1": 248387328, "chrX": 154259566, "chrY": 62460029, "chrM": 16569}
+
+
+def _read_less_bam(
+    tmp_path: Path, contigs: dict[str, int], bam_contigs: list[str] | None = None
+) -> tuple[str, str]:
+    """A FASTA stand-in indexed with ``contigs`` and a read-less BAM whose
+    header lists ``bam_contigs`` of them (default: all)."""
     fasta = tmp_path / "ref.fa"
-    fasta.write_text("".join(f">{name}\nA\n" for name in t2t))
+    fasta.write_text("".join(f">{name}\nA\n" for name in contigs))
     Path(f"{fasta}.fai").write_text(
-        "".join(f"{name}\t{length}\t0\t1\t2\n" for name, length in t2t.items())
+        "".join(f"{name}\t{length}\t0\t1\t2\n" for name, length in contigs.items())
     )
     bam = sam_to_bam(
         ["@HD\tVN:1.6\tSO:coordinate"]
-        + [f"@SQ\tSN:{name}\tLN:{length}" for name, length in t2t.items()],
+        + [f"@SQ\tSN:{name}\tLN:{contigs[name]}" for name in bam_contigs or contigs],
         tmp_path / "s.bam",
     )
     return str(fasta), bam
@@ -44,7 +49,9 @@ def test_1244_bam_of_a_build_without_a_ploidy_preset_is_refused(
     `vcf snp`, `vep run` refuses both and names the fix; a ploidy file runs."""
     fake_vep.install(tool="vep-rs")
     _vep_rs_caches(tmp_path, "T2T-CHM13v2.0" if build == "t2t" else "GRCh38")
-    fasta, bam = _t2t_bam(tmp_path) if build == "t2t" else _bam_with_snps(tmp_path)
+    fasta, bam = (
+        _read_less_bam(tmp_path, _T2T) if build == "t2t" else _bam_with_snps(tmp_path)
+    )
     # With the sex known, the other build's sex-dependent preset applied.
     run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
     params = VepRunParams(
@@ -67,13 +74,18 @@ def test_1244_bam_of_a_build_without_a_ploidy_preset_is_refused(
     assert (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
 
 
-def test_1244_assembly_contradicting_the_alignment_is_refused(tmp_path, fake_vep):
-    """Copilot review of #1333 (vep run wrong-build ploidy): `--assembly
+@pytest.mark.parametrize("shown_by", ["header", "reference"])
+def test_1244_assembly_contradicting_the_alignment_is_refused(
+    tmp_path, fake_vep, shown_by
+):
+    """Copilot reviews of #1333 (vep run wrong-build ploidy): `--assembly
     GRCh38` on a T2T BAM with a neutrally named FASTA bypassed the refusal and
-    called it with GRCh38's ploidy."""
+    called it with GRCh38's ploidy, also when only the FASTA's index showed
+    T2T because the BAM's header lacked chr1."""
     fake_vep.install(tool="vep-rs")
     _vep_rs_caches(tmp_path, "GRCh38")
-    fasta, bam = _t2t_bam(tmp_path)
+    bam_contigs = None if shown_by == "header" else ["chrX", "chrY", "chrM"]
+    fasta, bam = _read_less_bam(tmp_path, _T2T, bam_contigs)
     run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
     params = VepRunParams(
         input=Path(bam),
@@ -88,6 +100,29 @@ def test_1244_assembly_contradicting_the_alignment_is_refused(tmp_path, fake_vep
     [failure] = [w for w in result.warnings if w.code == "input_failed"]
     assert "t2t" in failure.message and "--assembly" in failure.message
     assert fake_vep() == []
+
+
+def test_1244_contig_count_alone_does_not_refuse_an_assembly(tmp_path, fake_vep):
+    """Copilot review of #1333 (vep run wrong-build ploidy): an 86-contig
+    header without chr1, which only its contig count calls hg19, refused
+    `--assembly GRCh38` despite a matching FASTA and an explicit ploidy."""
+    fake_vep.install(tool="vep-rs")
+    _vep_rs_caches(tmp_path, "GRCh38")
+    fasta, bam = _read_less_bam(tmp_path, {f"c{i}": 1000 for i in range(1, 87)})
+
+    api.vep.run(
+        VepRunParams(
+            input=Path(bam),
+            ref=Path(fasta),
+            engine="vep-rs",
+            vep_cache=tmp_path,
+            vep_assembly="GRCh38",
+            ploidy="2",
+        )
+    )
+
+    assert len(fake_vep()) == 1
+    assert (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
 
 
 @pytest.mark.parametrize(
