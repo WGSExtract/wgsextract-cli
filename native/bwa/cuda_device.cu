@@ -628,7 +628,7 @@ std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::stri
     const wgse_gpu_error status = WGSE_GPU(GetDeviceCount)(&count);
     if (status != WGSE_GPU_SUCCESS || count == 0) {
         reason = status != WGSE_GPU_SUCCESS
-            ? std::string("no usable NVIDIA GPU: ") + WGSE_GPU(GetErrorString)(status)
+            ? "no usable NVIDIA GPU: " + error_description(status)
             : "no NVIDIA GPU";
         return nullptr;
     }
@@ -642,7 +642,7 @@ std::unique_ptr<Device> make_cuda_device(const DeviceOptions &options, std::stri
         if (WGSE_GPU(SetDevice)(ordinal) != WGSE_GPU_SUCCESS) continue;
         const wgse_gpu_error kernels = runs_kernels();
         if (kernels != WGSE_GPU_SUCCESS) {
-            unsupported = WGSE_GPU(GetErrorString)(kernels);
+            unsupported = error_description(kernels);
             continue;
         }
         if (WGSE_GPU(MemGetInfo)(&free, &total) != WGSE_GPU_SUCCESS) continue;

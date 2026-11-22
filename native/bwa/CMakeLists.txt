@@ -169,6 +169,13 @@ if(BUILD_TESTING)
         PASS_REGULAR_EXPRESSION "\"engine\":\"bwa\".*\"metal_hardware_supported\":.*\"cuda_available\":.*\"cuda_hardware_supported\":")
     add_test(NAME bwa_smoke COMMAND ${WGSE_TEST_SHELL} "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
         $<TARGET_FILE:wgse-bwa> "${CMAKE_CURRENT_BINARY_DIR}/smoke" force-gpu)
+    if(WGSE_CUDA)
+        add_test(NAME bwa_cuda_cpu_fallback
+            COMMAND ${WGSE_TEST_SHELL} "${PROJECT_SOURCE_DIR}/tests/smoke.sh"
+            $<TARGET_FILE:wgse-bwa-release-cli> "${CMAKE_CURRENT_BINARY_DIR}/cuda-cpu-fallback"
+            cuda-cpu-fallback)
+        set_tests_properties(bwa_cuda_cpu_fallback PROPERTIES ENVIRONMENT "CUDA_VISIBLE_DEVICES=-1")
+    endif()
     if(APPLE)
         add_executable(seeding_benchmark tests/seeding_benchmark.mm)
         target_compile_options(seeding_benchmark PRIVATE -fobjc-arc -Wall -Wextra -Werror)

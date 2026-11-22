@@ -21,9 +21,9 @@ cmake -S native -B build -G Ninja -DCMAKE_BUILD_TYPE=Release ^
     -DFETCHCONTENT_SOURCE_DIR_MEM3="%SRC_DIR%\mem3" -DFETCHCONTENT_FULLY_DISCONNECTED=ON || exit /b 1
 cmake --build build --parallel 8 || exit /b 1
 
-rem This is a CPU/no-driver smoke even if the build host has a GPU.
+rem Test without a visible GPU, including on hosted runners without a CUDA driver.
 set "CUDA_VISIBLE_DEVICES=-1"
-ctest --test-dir build -R "^bwa_(release_dense_sa|capabilities|smoke)$" --output-on-failure || exit /b 1
+ctest --test-dir build -R "^bwa_(release_dense_sa|capabilities|smoke|cuda_cpu_fallback)$" --output-on-failure || exit /b 1
 
 rem Don't ship the binary with the benchmark/failure-injection flags enabled.
 cmake -S native -B build -DBUILD_TESTING=OFF || exit /b 1

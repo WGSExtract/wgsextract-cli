@@ -1080,7 +1080,8 @@ Unlike Apple's unified memory, a discrete GPU has its own:
 - **Host memory:** the pinned batch buffers add about 0.7 GiB.
 - **Runtime:** the CUDA runtime is linked statically, so the package needs only
   the NVIDIA driver, and only for `--cuda`. Without a usable driver or GPU,
-  `capabilities --json` reports `cuda_available: false`.
+  `capabilities --json` reports `cuda_available: false` and `--backend auto`
+  aligns on the CPU.
 - **Watchdog:** every wait for the GPU is bounded, by the larger of 60 s and 20
   times that stage's slowest batch so far. A batch that overruns (a hung GPU)
   is finished on the CPU with the same output. `--cuda` then exits 1, and
