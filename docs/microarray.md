@@ -81,6 +81,8 @@ Unsafe legacy absence-as-reference behaviour requires
 `--assume-hom-ref --min-dp 0 --min-gq 0`; `--no-exclude-filtered` additionally
 accepts failing FILTER records. These can invent calls at unassessed sites or
 retain weak evidence: use only with independently established callability.
+A marker whose only VCF records have indel or symbolic alleles is a no-call
+(`unsupported_allele`), never filled as reference.
 Imputed VCFs without DP/GQ also require explicit threshold overrides; their
 imputation-confidence mask still applies.
 

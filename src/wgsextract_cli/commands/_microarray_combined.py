@@ -157,6 +157,7 @@ def _write_vcf_mode_kit(
     variant_calls: dict[tuple[str, str], str] = {}
     variant_reasons: dict[tuple[str, str], str] = {}
     strand_masked: set[tuple[str, str]] = set()
+    unsupported: set[tuple[str, str]] = set()
     query = "%CHROM\t%POS\t[%TGT]\n"
     if fields:
         query = "%CHROM\t%POS\t[%TGT\t%DP\t%GQ]\t%REF\t%ALT\t%FILTER\n"
@@ -187,6 +188,11 @@ def _write_vcf_mode_kit(
                 identity_rejection = rejection
         if genotype is None:
             if not (policy.min_dp or policy.min_gq or policy.exclude_filtered):
+                # Ungated, a SNP record at the marker keeps its call, but an
+                # indel alone is no evidence of the reference (#1249).
+                unsupported.update(
+                    (alias, parts[1]) for alias in chromosome_aliases(parts[0])
+                )
                 continue
             genotype, reason = "--", "unsupported_allele"
         for alias in chromosome_aliases(parts[0]):
@@ -198,6 +204,9 @@ def _write_vcf_mode_kit(
             variant_calls[key] = "--" if masked else genotype
             if reasons is not None:
                 variant_reasons[key] = "strand_ambiguous" if masked else reason
+    for key in unsupported - variant_calls.keys():
+        variant_calls[key] = "--"
+        variant_reasons[key] = "unsupported_allele"
     logging.info(f"Found {len(variant_calls)} variants in input VCF matching targets.")
     # Absent targets read as the reference only on chromosomes the VCF has
     # calls on: a woman's VCF has no chrY, which mustn't become Y genotypes.
