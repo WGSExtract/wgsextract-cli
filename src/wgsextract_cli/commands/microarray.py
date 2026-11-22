@@ -557,6 +557,8 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         aadr_panels=aadr_panels,
         aadr_chain=aadr_chain_file,
     )
+    if vcf_sample:
+        inputs["vcf_sample_preparation_policy"] = "contig-aware-v1"
     units, unit_formats = _output_units(
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
     )

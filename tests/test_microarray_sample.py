@@ -1,5 +1,7 @@
 import gzip
+import json
 import logging
+import os
 
 import pytest
 
@@ -8,6 +10,7 @@ from tests.test_microarray_simulation import LENGTH, _library, _microarray, _row
 from tests.test_microarray_simulation import (
     _synthetic_templates_only as _synthetic_templates_only,
 )
+from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import run_command
 
 pytestmark = needs_htslib
@@ -100,3 +103,38 @@ def test_issue_1341_selects_sample_with_undeclared_contigs(tmp_path, caplog, lay
         assert kits[1]["rsX"][-1] == "AG"
     if layout == "gvcf":
         assert kits[1]["rsRef"][-1] == "AA"
+
+
+def test_issue_1341_stale_no_call_sample_kit_is_regenerated(tmp_path):
+    fasta, _ = _library(tmp_path / "reference")
+    vcf = tmp_path / "cohort.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=1,length=5000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tOTHER\tPICK\n"
+        "1\t1000\t.\tA\tC\t50\tPASS\t.\tGT:DP:GQ\t0/0:30:60\t0/1:30:60\n"
+    )
+    outdir = tmp_path / "out"
+
+    def run():
+        with collecting(CommandResult(command="microarray")):
+            _microarray(str(vcf), fasta, outdir, "--sample", "PICK")
+
+    run()
+    kit = outdir / "cohort_PICK_CombinedKit.txt"
+    assert _rows(kit)["rsHet"][-1] == "AC"
+    stamp = kit.stat()
+    kit.write_text(kit.read_text().replace("rsHet\t1\t1000\tAC", "rsHet\t1\t1000\t--"))
+    # Match the saved output identity: the reuse policy is the only stale input.
+    os.utime(kit, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+    assert _rows(kit)["rsHet"][-1] == "--"
+    assert (outdir / f"{kit.name}.inputs.json").is_file()
+    for receipt in outdir.glob("*.inputs.json"):
+        data = json.loads(receipt.read_text())
+        data["inputs"].pop("vcf_sample_preparation_policy", None)
+        receipt.write_text(json.dumps(data))
+    run()
+    assert _rows(kit)["rsHet"][-1] == "AC"
