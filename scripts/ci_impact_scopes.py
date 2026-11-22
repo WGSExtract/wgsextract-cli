@@ -6,6 +6,7 @@ import ast
 from collections import defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from pathlib import PurePosixPath
 
 _Function = ast.FunctionDef | ast.AsyncFunctionDef
@@ -28,6 +29,33 @@ class ModuleScopes:
 class ChangedScopes:
     initialization: bool
     functions: frozenset[str]
+
+
+def decisive_module_scope(
+    before: bytes, after: bytes, old: ModuleScopes, new: ModuleScopes
+) -> bool:
+    """Preserve the historical line-based module arm in the decisive baseline."""
+    scopes = []
+    for index in (old, new):
+        scopes.append(
+            {
+                line: name
+                for name, bodies in index.functions.items()
+                for body in bodies
+                for line in range(body.first_line, body.last_line + 1)
+            }
+        )
+    common = old.functions.keys() & new.functions.keys()
+    diff = SequenceMatcher(
+        None, before.splitlines(), after.splitlines(), autojunk=False
+    )
+    return any(
+        scope.get(line + 1) not in common
+        for tag, a, b, c, d in diff.get_opcodes()
+        if tag != "equal"
+        for scope, lines in zip(scopes, (range(a, b), range(c, d)), strict=True)
+        for line in lines
+    )
 
 
 class _Index(ast.NodeTransformer):

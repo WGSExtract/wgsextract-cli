@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import gzip
 import hashlib
 import json
@@ -15,9 +16,10 @@ from typing import TypedDict
 
 import coverage
 
+from scripts.ci_impact_results import file_results
 from scripts.ci_impact_scopes import module_scopes
 
-SCHEMA = 1
+SCHEMA = 2
 PHASES = {"setup", "run", "teardown"}
 
 
@@ -25,6 +27,7 @@ class Observations(TypedDict):
     modules: dict[str, list[str]]
     functions: dict[str, dict[str, list[str]]]
     observed_tests: list[str]
+    symbol_reads: dict[str, dict[str, list[str]]]
 
 
 def _context_file(context: str, tracked: set[str]) -> str | None:
@@ -42,6 +45,7 @@ def read_observations(
 ) -> Observations:
     modules: dict[str, list[str]] = {}
     functions: dict[str, dict[str, list[str]]] = {}
+    symbol_reads: dict[str, dict[str, list[str]]] = {}
     observed_tests: set[str] = set()
     for filename in sorted(data.measured_files()):
         # Do not export checkout-external paths or the contents of tests' inputs.
@@ -52,9 +56,19 @@ def read_observations(
         if name not in tracked or path.suffix != ".py":
             continue
         hits = data.contexts_by_lineno(filename)
-        scope = module_scopes(path.read_bytes())
+        source = path.read_bytes()
+        scope = module_scopes(source)
+        loaded: dict[int, set[str]] = defaultdict(set)
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(
+                node.ctx, ast.Load
+            ):
+                loaded[node.lineno].add(
+                    node.id if isinstance(node, ast.Name) else node.attr
+                )
         test_files: set[str] = set()
         by_function: dict[str, set[str]] = defaultdict(set)
+        by_symbol: dict[str, set[str]] = defaultdict(set)
         # Visit innermost scopes first. An enclosing body's span includes its
         # nested definitions even though their bodies execute separately.
         owners: dict[int, str] = {}
@@ -71,6 +85,9 @@ def read_observations(
         for line, contexts in hits.items():
             files = _observed_files(contexts, tracked)
             test_files.update(files)
+            if files:
+                for symbol in loaded.get(line, ()):
+                    by_symbol[symbol].update(files)
             if (
                 files
                 and (owner := owners.get(line))
@@ -84,10 +101,15 @@ def read_observations(
             functions[name] = {
                 fn: sorted(files) for fn, files in sorted(by_function.items())
             }
+        if by_symbol:
+            symbol_reads[name] = {
+                symbol: sorted(files) for symbol, files in sorted(by_symbol.items())
+            }
     return {
         "modules": modules,
         "functions": functions,
         "observed_tests": sorted(observed_tests),
+        "symbol_reads": symbol_reads,
     }
 
 
@@ -101,6 +123,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--run-id", type=int, required=True)
     parser.add_argument("--attempt", type=int, required=True)
+    parser.add_argument("--junit", type=Path)
     args = parser.parse_args()
     root = Path.cwd().resolve()
     if not args.coverage_file.is_file():
@@ -124,10 +147,23 @@ def main() -> None:
         "machine": platform.machine(),
         "python": platform.python_version(),
         "lock_sha256": lock_sha256,
+        "profile": "ubuntu-x64/all/skip-independent=false",
     }
+    timings = {}
+    if args.junit is not None:
+        results, _ = file_results(args.junit, tracked)
+        timings = {
+            file: result["seconds"]
+            for file, result in results.items()
+            if result["passed"] or result["failed"]
+        }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(args.output, "wt", encoding="utf-8") as stream:
-        json.dump({"manifest": manifest, **observations}, stream, separators=(",", ":"))
+        json.dump(
+            {"manifest": manifest, **observations, "seconds": timings},
+            stream,
+            separators=(",", ":"),
+        )
 
 
 if __name__ == "__main__":

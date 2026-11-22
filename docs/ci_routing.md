@@ -868,3 +868,34 @@ Smoke contexts change from `smoke (OS, package)` / `smoke (OS, benchmark)` to
 `required` and `Ready PR area checks` names and dependencies are unchanged.
 Failure observation, red-main matching and flake-ledger retries use the same
 normalized PR/main job names; historical shard failures remain historical data.
+
+### Reading the Linux shadow report
+
+On ready PRs that run regular Ubuntu x64 pytest on a hosted runner, the
+`test-selection-shadow` artifact records four advisory selections: decisive,
+tight, symbol and widely-called helpers. The job summary shows the current
+selection, per-candidate files and timing estimates, and omitted observed
+failures. The artifact contains the full file sets, rule reasons, exact tested
+merge tree and parents, and the regular pytest receipt. Separate generic,
+smoke, and installer jobs are outside this comparison. A certified or
+path-skipped Linux job produces no hosted comparison; missing evidence does
+not count as a pass.
+
+Scheduled Ubuntu runs that execute the full suite write a versioned Python
+coverage-context map and per-file test timings. PRs can restore that read-only
+map. An absent map, incompatible lock or unreachable source SHA is reported
+explicitly. Test-minute estimates sum recorded pytest durations; they omit
+unmeasured files and are not wall-clock predictions. Python tracing does not
+measure external tools or every file reader, so an unmatched input is a
+measurement gap to investigate, not permission to change CI selection.
+
+Every candidate includes the newline source scanner for changed package Python,
+and the tool-contract scanner for command or CLI Python changes. The historical
+oracle's narrower writer-only rule added 19 file-runs and recovered six
+complete misses; the broader source rule trades a few more short runs for
+coverage of writers that are moved or indirect. Shared-base failures, such as
+the tabix failure from the step-resume PR and the unrelated PowerShell
+qualification failure from GUI/installer preflight, do not justify adding
+edges from those PR changes. Both belong to the nightly backstop. A newly
+observed omission in a PR report must be triaged for origin, retries and
+incomplete runs before it counts as a miss.
