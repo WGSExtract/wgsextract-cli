@@ -296,10 +296,16 @@ def check_vcf_build(
     vcf_path: PathInput, lengths: Mapping[str, int], against: str
 ) -> None:
     """Fail when the VCF's ##contig lengths show a build other than ``against``'s."""
+    check_header_build(get_bam_header(vcf_path), lengths, against)
+
+
+def check_header_build(header: str, lengths: Mapping[str, int], against: str) -> None:
+    """Fail when a VCF header's ##contig lengths show a build other than
+    ``against``'s."""
     contigs = list(lengths)
     mismatched = [
         f"{name} ({length:,} vs {lengths[other]:,})"
-        for name, length in header_contig_lengths(get_bam_header(vcf_path)).items()
+        for name, length in header_contig_lengths(header).items()
         if (other := match_chromosome_name(name, contigs)) and lengths[other] != length
     ]
     if mismatched:
@@ -345,6 +351,33 @@ def vcf_index_chromosomes(vcf_path: PathInput) -> list[str]:
         for line in (res.stdout or "").splitlines()
         if line.strip()
     ]
+
+
+def header_attributes(body: str) -> dict[str, str]:
+    """``key=value`` pairs of a structured header line's ``<...>`` body, in
+    any order; commas and ``=`` inside quoted values don't split it."""
+    pairs: dict[str, str] = {}
+    key, value, quoted, escaped, in_value = "", "", False, False, False
+    for char in body + ",":
+        if escaped:
+            value += char
+            escaped = False
+        elif quoted and char == "\\":
+            value += char
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+            value += char
+        elif char == "," and not quoted:
+            pairs.setdefault(key.strip(), value.strip())
+            key, value, in_value = "", "", False
+        elif char == "=" and not in_value:
+            in_value = True
+        elif in_value:
+            value += char
+        else:
+            key += char
+    return pairs
 
 
 def vcf_header_chromosomes(header: str) -> list[str]:

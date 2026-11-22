@@ -1075,6 +1075,31 @@ Build the consensus (role `consensus_fasta`, and `liftover_chain` with
 | `mask` | `Path \| None` | `None` | `--mask` | BED file of regions to replace with N (e.g. low coverage). |
 | `chain` | `bool` | `False` | `--chain` | Also write a chain file mapping reference coordinates to the consensus (indels shift positions). |
 
+### `api.vcf.prepare(VcfPrepareParams)`
+
+CLI: `wgsextract vcf prepare`.
+
+Write the prepared VCF (role `prepared_vcf`, with its `records`) and
+its index (`prepared_vcf_index`); every repair is a `vcf_prepare_*`
+warning.
+
+`VcfPrepareParams`: Repair a VCF that downstream tools reject (plain gzip, unsorted, missing
+or stale index, undeclared contigs or IDs, other contig names than the
+reference) into `<stem>_prepared.vcf.gz` with its index; never changes
+the input. With `ref`, contigs take the reference's names, order and
+lengths and REFs are checked; `normalize` also splits multiallelic
+records and left-aligns indels. Each repair is a structured warning.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `output` | `Path \| None` | `None` | `--output` | Prepared VCF to write, ending in .vcf.gz (default: <outdir>/<input stem>_prepared.vcf.gz); never the input itself. |
+| `normalize` | `bool` | `False` | `--normalize` | Also split multiallelic records and left-align indels against --ref (bcftools norm -m -any); originals are kept in INFO. |
+
 ### `api.vcf.trio(VcfTrioParams)`
 
 CLI: `wgsextract vcf trio`.

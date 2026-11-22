@@ -311,6 +311,10 @@ Other commands' metrics:
   combined CYP2D6+CYP2D7 copy number; one diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
   `sma_carrier` and `sma_affected`); `repair` the records read and
   repaired.
+- `vcf prepare` records `records_in`, `records_out`, the input's
+  compression and index state and the number of `repairs`, with one
+  `vcf_prepare_*` warning per repair
+  ([variants.md](variants.md#preparing-a-vcf-from-a-provider)).
 - `microarray` on hg38 input records how the hg38-to-hg19 liftover placed the
   CombinedKit's sites: `liftover_lifted`, and the no-calls by reason,
   `liftover_unmapped`, `liftover_alt_contig`, `liftover_ambiguous` (more than

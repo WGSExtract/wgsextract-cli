@@ -157,6 +157,40 @@ class VcfToFastaParams(_VcfFileParams):
 
 
 @dataclass(frozen=True, kw_only=True)
+class VcfPrepareParams(_VcfFileParams):
+    """Repair a VCF that downstream tools reject (plain gzip, unsorted, missing
+    or stale index, undeclared contigs or IDs, other contig names than the
+    reference) into ``<stem>_prepared.vcf.gz`` with its index; never changes
+    the input. With ``ref``, contigs take the reference's names, order and
+    lengths and REFs are checked; ``normalize`` also splits multiallelic
+    records and left-aligns indels. Each repair is a structured warning."""
+
+    COMMAND = "vcf prepare"
+
+    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    ref: Path | None = ref_param()
+    threads: int | None = threads_param()
+    output: Path | None = param(
+        None,
+        help="Prepared VCF to write, ending in .vcf.gz (default: "
+        "<outdir>/<input>_prepared.vcf.gz).",
+        doc="Prepared VCF to write, ending in .vcf.gz (default: "
+        "<outdir>/<input stem>_prepared.vcf.gz); never the input itself.",
+        path="file",
+    )
+    normalize: bool = param(
+        False,
+        help="Also split multiallelic records and left-align indels against "
+        "--ref (bcftools norm -m -any); originals are kept in INFO.",
+        action="store_true",
+    )
+
+    def write_folders(self) -> Iterator[Path]:
+        if self.output is not None:
+            yield self.output.parent
+
+
+@dataclass(frozen=True, kw_only=True)
 class VcfTrioParams(_VcfFileParams):
     """Calls matching an inheritance mode in a child and both parents, as
     ``trio_<mode>.vcf.gz``. Three VCFs are merged; three BAM/CRAMs are first

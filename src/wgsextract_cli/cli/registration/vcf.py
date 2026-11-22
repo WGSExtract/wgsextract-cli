@@ -27,6 +27,7 @@ from wgsextract_cli.api.vcf import (
     VcfPharmgkbParams,
     VcfPhaseParams,
     VcfPhylopParams,
+    VcfPrepareParams,
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
@@ -67,6 +68,7 @@ cmd_gnomad = command_handler("wgsextract_cli.commands.vcf.population", "cmd_gnom
 cmd_impute = command_handler("wgsextract_cli.commands.vcf.imputation", "cmd_impute")
 cmd_indel = command_handler("wgsextract_cli.commands.vcf.basic", "cmd_indel")
 cmd_pharmcat = command_handler("wgsextract_cli.commands.vcf.pharmcat", "cmd_pharmcat")
+cmd_prepare = command_handler("wgsextract_cli.commands.vcf.prepare", "cmd_prepare")
 cmd_pharmgkb = command_handler("wgsextract_cli.commands.vcf.splicing", "cmd_pharmgkb")
 cmd_phase = command_handler("wgsextract_cli.commands.vcf.phasing", "cmd_phase")
 cmd_phylop = command_handler("wgsextract_cli.commands.vcf.population", "cmd_phylop")
@@ -145,6 +147,14 @@ def register(
         "Export variants and their annotations (gene, consequence, ClinVar, gnomAD, genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and an SQLite database to query.",
         VcfTableParams,
         cmd_table,
+    )
+    _add_vcf_command(
+        vcf_subs,
+        base_parser,
+        "prepare",
+        CLI_HELP["cmd_vcf-prepare"],
+        VcfPrepareParams,
+        cmd_prepare,
     )
     _add_vcf_command(
         vcf_subs,

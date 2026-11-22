@@ -101,6 +101,7 @@ from .vcf_specs.annotations import VcfSvFreqParams as VcfSvFreqParams
 from .vcf_specs.files import HAPLOTYPES as HAPLOTYPES
 from .vcf_specs.files import VcfAnnotateParams as VcfAnnotateParams
 from .vcf_specs.files import VcfFilterParams as VcfFilterParams
+from .vcf_specs.files import VcfPrepareParams as VcfPrepareParams
 from .vcf_specs.files import VcfTableParams as VcfTableParams
 from .vcf_specs.files import VcfToFastaParams as VcfToFastaParams
 from .vcf_specs.files import VcfTrioParams as VcfTrioParams
@@ -167,6 +168,21 @@ def to_fasta(
     from wgsextract_cli.commands.vcf.consensus import run_to_fasta
 
     return execute(params, run_to_fasta, progress=progress, cancel=cancel, check=check)
+
+
+def prepare(
+    params: VcfPrepareParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Write the prepared VCF (role ``prepared_vcf``, with its ``records``) and
+    its index (``prepared_vcf_index``); every repair is a ``vcf_prepare_*``
+    warning."""
+    from wgsextract_cli.commands.vcf.prepare import run_prepare
+
+    return execute(params, run_prepare, progress=progress, cancel=cancel, check=check)
 
 
 def trio(
@@ -384,6 +400,7 @@ __all__ = [
     "VcfPharmcatParams",
     "VcfPharmgkbParams",
     "VcfPhylopParams",
+    "VcfPrepareParams",
     "VcfRevelParams",
     "VcfSnpParams",
     "VcfSpliceaiParams",
@@ -403,6 +420,7 @@ __all__ = [
     "pharmcat",
     "pharmgkb",
     "phylop",
+    "prepare",
     "revel",
     "snp",
     "spliceai",
