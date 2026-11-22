@@ -117,6 +117,13 @@ def test_unsigned_manifest_checks_hashes_only(outputs):
         _verify(manifest, public_key=Path("x.pub"))
 
 
+def test_1232_checksum_does_not_need_sort_buffers(outputs, ram):
+    """A low-memory process can still hash files with an explicit worker count."""
+    ram(256 * 1024**2)
+    _create(outputs, threads=128)
+    assert _verify(outputs / "SHA256SUMS", threads=128).metrics["files"] == 2
+
+
 def test_unvalidated_signature_is_a_result_warning(tmp_path, outputs):
     # PR #495 review: API clients couldn't tell an intact signature from one
     # checked against a trusted key.

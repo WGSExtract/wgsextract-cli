@@ -145,6 +145,7 @@ def _setup(
         memory=getattr(params, "memory", None),
         region=params.region,
         stage="sort" if sort else "compression",
+        budget_memory=sort or isinstance(params, BamUnalignParams),
     )
     region = region_or_gene(params.region, params.gene, params.input, base.ref)
     return fspath(params.input), base, region
@@ -170,6 +171,7 @@ def run_identify(params: BamIdentifyParams) -> None:
 def run_sort(params: BamSortParams) -> None:
     input_path, base, region = _setup(params, sort=True)
     threads, memory, outdir, cram_opt, resolved_ref = base
+    assert memory is not None
     memory = sort_memory(threads, memory, input_bytes=regular_files_bytes([input_path]))
 
     fmt, ext = _alignment_format(input_path)
@@ -276,7 +278,12 @@ def run_unsort(params: BamUnsortParams) -> None:
     log_dependency_info(["samtools"])
     input_path = fspath(params.input)
     _, _, outdir, cram_opt, _ = base_args(
-        input_path, ref=params.ref, outdir=params.outdir, threads=None, memory=None
+        input_path,
+        ref=params.ref,
+        outdir=params.outdir,
+        threads=None,
+        memory=None,
+        budget_memory=False,
     )
 
     _, ext = _alignment_format(input_path)
@@ -391,6 +398,7 @@ def run_to_bam(params: BamToBamParams) -> None:
 def run_unalign(params: BamUnalignParams) -> None:
     input_path, base, region = _setup(params)
     threads, memory, outdir, cram_opt, resolved_ref = base
+    assert memory is not None
 
     _preflight_sort_space(
         input_path, outdir, "Name", "Name Sort", region, "ButtonUnalignBAM", threads

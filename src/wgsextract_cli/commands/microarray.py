@@ -82,7 +82,7 @@ from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     run_command,
 )
 from wgsextract_cli.core.variant_files import (
@@ -340,7 +340,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
 
     logging.debug(f"Input file: {str(absolute_path(input_path))}")
 
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     outdir = (
         str(params.outdir) if params.outdir else str(absolute_path(input_path).parent)
     )
