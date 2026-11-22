@@ -108,6 +108,45 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
         run: python3 scripts/output_contracts.py check --base "$BASE"
+      # Stdlib-only and instant, so fragment-only PRs need no extra runner.
+      # A release's queue commit must not leave late fragments unassembled.
+      # PR runs check out the merge commit, whose first parent is the base it
+      # was built on; the event's base.sha can be older.
+      - name: Check release-note fragments
+        env:
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+        run: python3 scripts/release_notes.py check --base "${QUEUE_BASE:-HEAD^1}"
+
+  # Frees runners held by merge groups GitHub already invalidated (#1373). Not in
+  # `required`'s needs, and the script only warns on API errors, so it never
+  # fails or blocks a group.
+  cancel-stale-queue:
+    name: Cancel invalidated merge groups
+    if: github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      # The write token runs only trusted base code, never queued PR changes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.merge_group.base_sha }}
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Cancel runs whose queue ref was deleted
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_REF: ${{ github.event.merge_group.base_ref }}
+        run: |
+          if [ ! -f scripts/ci_cancel_stale_queue.py ]; then
+            echo "Trusted base has no queue cleanup; skipping."
+            exit 0
+          fi
+          python3 -m scripts.ci_cancel_stale_queue --repository "$GITHUB_REPOSITORY" \
+            --workflow pr_ci.yml --base "$BASE_REF" --run-id "$GITHUB_RUN_ID" --ref "$GITHUB_REF"
 
   draft-fast:
     name: Draft lint and fast tests

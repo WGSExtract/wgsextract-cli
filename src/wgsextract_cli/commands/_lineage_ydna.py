@@ -36,10 +36,9 @@ from wgsextract_cli.core.variant_files import (
     chromosome_aliases,
     ensure_vcf_indexed,
     get_vcf_chr_name,
+    is_vcf_path,
     verify_paths_exist,
 )
-
-VCF_SUFFIXES = (".vcf", ".vcf.gz")
 
 
 def _number(text: str | None) -> float | None:
@@ -123,7 +122,7 @@ def run_y_haplogroup(params: YHaplogroupParams, *, tree_links: bool = False) -> 
     verify_paths_exist({"--input": input_file})
 
     input_lower = input_file.lower()
-    is_vcf = input_lower.endswith((*VCF_SUFFIXES, ".bcf"))
+    is_vcf = is_vcf_path(input_file)
     if not is_vcf and not input_lower.endswith((".bam", ".cram")):
         raise WGSExtractError(
             "Native Yleaf accepts BAM, CRAM or single-sample VCF/BCF. "

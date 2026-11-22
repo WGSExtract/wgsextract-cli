@@ -33,6 +33,7 @@ from wgsextract_cli.core.microarray.templates import (
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import (
+    is_vcf_path,
     match_chromosome_name,
     vcf_index_chromosomes,
 )
@@ -399,7 +400,7 @@ def call_manifest_indels(
     target_gz = str(targets) + ".gz"
     run_command(["tabix", "-s", "1", "-b", "2", "-e", "2", target_gz])
     vcf = str(Path(workdir, "indels.vcf.gz"))
-    is_vcf = str(params.input).endswith((".vcf", ".vcf.gz", ".bcf"))
+    is_vcf = is_vcf_path(params.input)
     if is_vcf:
         source = prepare_indel_vcf(str(params.input), workdir)
         chroms = vcf_index_chromosomes(source)

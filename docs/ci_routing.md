@@ -35,9 +35,13 @@ to hide a removed stable field ([output contracts](output-contracts.md)).
 
 Drafts run **no validation runner jobs**, including documentation and secret checks.
 The API-only collaborator Copilot-review requester is the deliberate exception:
-it can request a draft review on `opened`, but never checks out or executes PR
-code. The default-branch ruleset also reviews owner drafts. Readiness remains
-the point where validation starts, not the first opportunity for review.
+it can request a draft review on `opened`, skips the readiness request when
+Copilot already reviewed the head, and never checks out or executes PR
+code. The default-branch ruleset also reviews owner drafts when they are opened,
+but not later pushes; agents request a fresh draft review after pushing
+(`gh pr edit N --add-reviewer @copilot`) and handle its threads before
+readiness (#1281). Readiness remains the point where validation starts, not the
+first opportunity for review, so review rounds no longer rerun the matrix.
 Before `gh pr ready`, run `pixi run lint`, the routing/workflow-policy tests,
 relevant product tests and type checks, documentation freshness checks if docs
 changed, and `pixi run pre-commit run gitleaks --all-files` locally. The former
@@ -364,7 +368,71 @@ Whole-suite baseline savings are about 22 Linux runner-minutes plus 1–3 generi
 minutes (package smoke remains), or about 33 additional minutes for macOS ARM64.
 Sparse selected PRs save less.
 
-### Per-test PR selection
+### Decisive test selection rollout
+
+[#1339 (decisive test selection)](https://github.com/WGSExtract/wgsextract-cli/issues/1339)
+changes the selection policy in stages. This policy change does not change
+which tests CI runs today.
+
+1. Collect a versioned dependency map on trusted Linux x64 main/nightly runs.
+   Record the source SHA, run and attempt, platform, interpreter, lockfile,
+   and test/tool profile. Report missing or incomplete evidence explicitly.
+2. On ready PRs, report what the decisive selector would choose next to what
+   the current selector chooses. Record the diff/base/head and tested tree,
+   map provenance, selected and omitted test files, rule reasons, and
+   unmatched inputs. The report does not control test or job selection,
+   cache reuse, certification, or the `required` result.
+3. Enable the selector only for regular Linux x64 pytest after reviewing
+   roughly 20 comparable ready PRs over at least a few days, with no confirmed
+   misses or untriaged discrepancies. Check outcomes for omitted tests
+   against the existing runs and report savings net of map collection and
+   reporting. Cancelled or incomplete runs do not count as evidence; a
+   passing shadow report cannot show that a test absent from both selections
+   passed. Keep the existing selector for other platforms.
+
+The decisive rules cover the complete diff, including both sides of moves
+and the base tree for deletions:
+
+| Changed input | Select |
+|---|---|
+| Observed Python function body | Tests that executed the function |
+| Module/class initialization, imports, signatures or defaults | Observed module users and literal importers |
+| New or unobserved function | Tests of known callers within two static hops, plus explicit symbol and module consumers |
+| New Python module | Tests of the head's importers and callers with local imports |
+| Shared helpers and fixtures | Helper callers and fixture users; autouse fixtures select their directory scope |
+| Data or generated files | Observed and static readers |
+| Package/tool manifests or locks | Users of the changed packages or tools in the affected environments |
+| Native, packaging, shell or CI inputs | Declared tool/package families, static readers and existing routes |
+
+Always include changed or added tests and applicable contract tests. A
+universal dependency such as root pytest configuration, the interpreter or
+a root autouse fixture can select the entire lane; name the scope in the
+report. An unmatched input is a gap to investigate. Before relying on the
+new selector, give it a declared consumer or contract test, or record a
+reviewed reason why it has no runtime effect. Unknown inputs do not
+implicitly select every test under the decisive policy.
+
+Before narrowing main pushes, put the backstop in place: one full regular
+suite run per day on latest `main`, without reusing a prior push's pass as
+its result. Feed verified passing results into the existing test-result
+cache ([#915 (passed-test cache)](https://github.com/WGSExtract/wgsextract-cli/issues/915)).
+Main pushes then use the merge queue's selection and cache rules instead
+of repeating the full suite on each commit. Keep test-selection receipts
+for the tested trees. If nightly fails, rerun only the failing tests on
+first-parent main trees since the last comparable full pass to locate the
+first reproducibly bad commit. Do not infer a miss from timing or from a
+single failure: distinguish omissions from flakes, runner failures and
+interactions between merges. File a `ci-automation` issue for a confirmed
+omission, naming the PR, failing test and selection rule, and requesting a
+selector regression. This does not replace other OS, smoke, installer,
+certification, or merged-tree guard coverage, including `python-size`.
+
+The replay estimated 39.2% fewer regular Ubuntu pytest minutes and retained
+all 140 independently identified test targets and the known escape tests
+and guards. The historical replay is a cost estimate, not evidence from
+live shadow runs.
+
+### Current per-test PR selection
 
 `scripts/ci_select_tests.py` selects individual test files, not whole areas.
 Its AST import graph follows transitive imports, relative imports,
@@ -533,15 +601,16 @@ changelog exceptions. Mixed Markdown/code pushes still run normally.
 and cannot start independently on a push or PR.
 Generated references legitimately change with code inputs; the PR/merge-queue
 docs or CLI lane already checked freshness before `required` passed.
-The secret scan remains unfiltered on every main push; Pages retains its
-existing site-source filters.
+The secret scan and the auto-merge conflict watch (below) remain unfiltered
+on every main push; Pages retains its existing site-source filters.
 
 Install Lab, GUI distribution/CI/developer setup and macOS aligners/DeepVariant
 retain the area-scoped main-push filters from #904 (main-push coalescing),
 including the final `!**/*.md` exclusion. Their PR triggers use the same
 Markdown exclusion (Install Lab is invoked through PR area routing).
-A Markdown-only main push therefore starts only gitleaks, plus Pages for
-site sources; none of these six workflows or the OS suite starts.
+A Markdown-only main push therefore starts only gitleaks and the conflict
+watch, plus Pages for site sources; none of these six workflows or the OS
+suite starts.
 See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
 policy files and generated/test-checked references still require PRs.
 
@@ -748,6 +817,13 @@ checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff for ancillary lanes; Ubuntu retains full
 test coverage even for docs-only groups.
+When a queued PR is pushed to, dequeued or fails, GitHub deletes its
+`gh-readonly-queue` ref and those of later groups, then rebuilds them. Each
+queue run's `cancel-stale-queue` job (outside `required`, `actions: write` only
+there, running the trusted base commit's script) cancels this workflow's still-active queue runs whose ref is gone,
+never its own run and nothing when its own ref is missing; API errors are
+warnings. The lost-runner observer likewise never retries a cancelled queue run
+whose ref is gone.
 
 Agents enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` after
 every check, advisory ones included, is green, and don't update branches that
@@ -790,6 +866,45 @@ commits. Queue runs need only the `required` set; their smaller matrix must not
 be rejected for omitting the PR-only gate or advisory jobs.
 The autopilot skill
 documents this rule too. This validator does not itself merge anything.
+
+Auto-merge never enqueues a PR that conflicts with its base, and GitHub
+doesn't say so (#1281; one such PR waited about three hours). After every main
+push, every three hours and on manual dispatch, *Auto-merge conflict watch*
+(`auto_merge_watch.yml`, one five-minute API-only job running
+`scripts/ci_auto_merge_watch.py` from main) labels each open PR whose
+auto-merge is enabled and whose mergeability is `CONFLICTING`
+`auto-merge-blocked`, creating the label if needed, and comments asking the
+author to merge the base branch. It comments before labelling, once per PR
+head per blockage: a hidden marker in its comment names the head, and only a
+marker newer than the label's last removal counts. So a failed run retries
+without repeating the comment, while a new head that still conflicts, or a
+conflict that returns after clearing, is announced again. One PR's API
+failure doesn't stop the others; the run fails at the end. The label is removed
+when the conflict is gone, auto-merge is turned off, or the PR closes or merges.
+It waits for GitHub to compute an auto-merging PR's mergeability after a push
+and leaves it alone if that stays unknown. `--dry-run` reports without changing anything.
+
+Routing (`changes`) also runs `python3 scripts/release_notes.py check --base`,
+the stdlib-only release-note fragment check (#1281), so a PR adding only a
+fragment under `docs/release-notes/unreleased/` needs no other runner. With the
+base (a PR merge commit's first parent, or the queue group's base), it also
+fails a release, a change that adds a `vX.Y.Z.md` or bumps the version, while
+fragments remain, so none is left out of that release or announced twice.
+
+### Ready admission
+
+The Free plan runs at most 20 hosted jobs at once and GitHub gives queued
+jobs no priority, so a burst of ready PRs starves the merge queue (#1373).
+Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait`. It
+reads queued and in-progress runs and their jobs through `gh api` (read-only)
+and exits 0 when admission is fine. It exits 3 (hold) while any
+`merge_group` job is queued for a runner, or while more than `--max-ready`
+(default 4) ready-PR area matrices are in flight. `--wait` polls with
+exponential backoff, polling a last time at `--timeout` seconds; `--json`
+prints the counts. The check reserves nothing, so each supervisor admits one
+PR at a time and starts the next check only once the previous PR's ready run
+is visible; concurrent supervisors can overshoot `--max-ready` by at most one
+run each.
 
 ## Cache plan
 
