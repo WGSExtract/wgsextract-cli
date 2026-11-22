@@ -162,7 +162,7 @@ def chunk_memory(binary: Path) -> int:
 def glimpse_memory_budget(memory: str | None, jobs: int) -> int:
     """The memory the chunks running at once may use: ``--memory`` per job,
     or a share of the memory available now."""
-    if memory is None:
+    if memory is None or memory.strip().lower() == "auto":
         return int(available_memory() * MEMORY_SHARE)
     try:
         amount, unit = parse_memory(memory)

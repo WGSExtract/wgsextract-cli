@@ -26,6 +26,7 @@ from tests.htslib_helpers import bgzip_index, needs_htslib
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf.imputation import beagle_command
 from wgsextract_cli.core import dependencies, imputation_panel
+from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.tool_catalog import (
@@ -209,6 +210,26 @@ def test_1118_chunks_side_by_side_impute_what_one_at_a_time_does(reflib, tmp_pat
 
     assert len(one) > 1000
     assert many == one
+
+
+@needs_htslib
+@needs_glimpse
+@pytest.mark.parametrize("source", ["option", "config"])
+def test_1118_auto_memory_imputes_reads(reflib, tmp_path, monkeypatch, source):
+    if source == "config":
+        monkeypatch.setitem(settings, "memory_limit", "auto")
+
+    result = api.vcf.impute(
+        api.VcfImputeParams(
+            input=FIXTURE / "reads.bam",
+            ref=reflib,
+            outdir=tmp_path,
+            threads=2,
+            memory="auto" if source == "option" else None,
+        )
+    )
+
+    assert result.metrics["imputed_sites"] > 1000
 
 
 @needs_htslib

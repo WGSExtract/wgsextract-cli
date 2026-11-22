@@ -51,6 +51,14 @@ def test_1118_jobs_run_side_by_side_within_workers_and_memory():
     assert tracker.peak_memory <= 6
 
 
+def test_1118_jobs_that_fit_run_at_the_same_time():
+    # Each job waits for the other: run one at a time, the barrier breaks.
+    both = threading.Barrier(2, timeout=10)
+    jobs = [Job(name, lambda: both.wait(), 3) for name in ("a", "b")]
+
+    run_jobs(jobs, workers=2, memory=6)
+
+
 def test_1118_a_job_larger_than_the_budget_still_runs_alone():
     tracker = _Tracker()
 
