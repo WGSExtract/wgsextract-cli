@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -83,7 +84,9 @@ def github(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[..., Non
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gh = bin_dir / "gh"
-    monkeypatch.setenv("PATH", str(bin_dir) + os.pathsep + os.environ["PATH"])
+    monkeypatch.setenv(
+        "PATH", str(bin_dir) + os.pathsep + os.environ.get("PATH", os.defpath)
+    )
 
     def install(*pages: list[dict[str, object]], status: int = 0) -> None:
         response = [
@@ -138,6 +141,21 @@ def result(root: Path, path: Path) -> dict[str, object]:
 def write(path: Path, data: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(data)
+
+
+def test_1393_offline_audit_fixture_works_with_path_unset(
+    repo: Path, monkeypatch: pytest.MonkeyPatch, request: pytest.FixtureRequest
+) -> None:
+    if not shutil.which("git", path=os.defpath):
+        pytest.skip("Git is not installed on the OS default search path")
+    path = topic(repo)
+    monkeypatch.delenv("PATH", raising=False)
+    request.getfixturevalue("github")(status=91)
+
+    run = cleanup(repo)
+    assert run.returncode == 0, run.stderr
+    assert result(repo, path)["reason"] == "github-not-checked"
+    assert path.is_dir()
 
 
 def generated_env(path: Path) -> Path:
