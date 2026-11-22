@@ -300,7 +300,7 @@ jobs:
             out/pure-move-collection.log
       - name: Export scheduled Linux test observations
         id: impact-map
-        if: inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.regular-pytest.outcome == 'success'
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.regular-pytest.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 3
         run: >-
@@ -309,7 +309,7 @@ jobs:
           --output out/test-impact-map/linux.json.gz
           --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
       - name: Save main's Linux observation map
-        if: inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.impact-map.outcome == 'success'
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.impact-map.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 2
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0

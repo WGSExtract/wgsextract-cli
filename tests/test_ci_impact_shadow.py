@@ -174,10 +174,42 @@ def test_foreign_observation_map_is_not_comparable(tmp_path: Path) -> None:
     assert gap and "outside" in gap
 
 
-@pytest.mark.parametrize("initialization", [False, True])
-def test_symbol_keeps_users_of_changed_import_bindings(
+@pytest.mark.parametrize(
+    ("before", "after", "test_import", "broad"),
+    [
+        (
+            "import sys\n\ndef report():\n    return sys.platform\n",
+            "import os as sys\n\ndef report():\n    return sys.platform\n",
+            "",
+            False,
+        ),
+        (
+            "import sys\nLABEL = sys.platform\n",
+            "import os as sys\nLABEL = sys.platform\n",
+            "",
+            True,
+        ),
+        (
+            "from sys import platform as LABEL\n",
+            "from os import name as LABEL\n",
+            "from wgsextract_cli.info import LABEL\n",
+            False,
+        ),
+        ("BASE = 1\nDERIVED = BASE * 2\n", "BASE = 2\nDERIVED = BASE * 2\n", "", True),
+        (
+            "BASE = 1\ndef report(value=BASE):\n    return value\n",
+            "BASE = 2\ndef report(value=BASE):\n    return value\n",
+            "",
+            True,
+        ),
+    ],
+)
+def test_symbol_keeps_import_and_initialization_consumers(
     tmp_path: Path,
-    initialization: bool,
+    before: str,
+    after: str,
+    test_import: str,
+    broad: bool,
 ) -> None:
     from scripts.ci_impact_diff import impact_diff
     from scripts.ci_impact_shadow import compute
@@ -189,21 +221,17 @@ def test_symbol_keeps_users_of_changed_import_bindings(
     src = "src/wgsextract_cli/info.py"
     target = tmp_path / src
     target.parent.mkdir(parents=True)
-    body = (
-        "LABEL = sys.platform\n\ndef report():\n    return LABEL\n"
-        if initialization
-        else "def report():\n    return sys.platform\n"
-    )
-    target.write_text("import sys\n\n" + body)
+    target.write_text(before)
     tested = {"tests/test_report.py", "tests/test_other_api.py"}
     for test in tested:
         path = tmp_path / test
         path.parent.mkdir(exist_ok=True)
-        path.write_text("def test_contract():\n    pass\n")
+        import_line = test_import if test == "tests/test_report.py" else ""
+        path.write_text(import_line + "def test_contract():\n    pass\n")
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "Existing observed report")
-    target.write_text("import os as sys\n\n" + body)
-    _git(tmp_path, "commit", "-am", "Remove used import")
+    target.write_text(after)
+    _git(tmp_path, "commit", "-am", "Change reader input")
 
     candidates, _, _ = compute(
         tmp_path,
@@ -215,7 +243,7 @@ def test_symbol_keeps_users_of_changed_import_bindings(
         },
     )
     assert set(candidates["decisive"]) == tested
-    expected = tested if initialization else {"tests/test_report.py"}
+    expected = tested if broad else {"tests/test_report.py"}
     assert set(candidates["symbol"]) == expected
     assert set(candidates["widely_called"]) == expected
 

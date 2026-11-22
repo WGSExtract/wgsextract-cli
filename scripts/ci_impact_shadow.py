@@ -274,7 +274,9 @@ def compute(
                             )
                         for p, _, index in trees:
                             scoped.update(
-                                index.symbol_users(p, affected, tests, functions)
+                                index.symbol_users(
+                                    p, affected | bindings, tests, functions
+                                )
                             )
                         if affected:
                             reasons[source].add("changed-import-binding-callers")
@@ -282,6 +284,12 @@ def compute(
                                 scoped.update(module_users[source])
                 if delta.symbols:
                     reasons[source].add("structural-symbol-users")
+                    if any(
+                        initialization_reads(blob, delta.symbols)
+                        for blob in (before, after)
+                    ):
+                        scoped.update(module_users[source])
+                        reasons[source].add("derived-symbol-initialization-users")
                     for fn, users in functions.get(source, {}).items():
                         if fn.split(".", 1)[0] in delta.symbols:
                             scoped.update(users)
