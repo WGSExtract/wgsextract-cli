@@ -91,16 +91,18 @@ def get_resource_defaults(
     else:
         from wgsextract_cli.core.alignment.memory import total_memory
 
-        per_thread_mib = total_memory() // 4 // int(threads) // (1024**2)
-        if per_thread_mib < 1:
+        per_thread_bytes = total_memory() // 4 // int(threads)
+        if per_thread_bytes < 1:
             raise WGSExtractError(
-                "Not enough RAM for 1 MiB per thread in the automatic memory budget; "
-                "lower --threads."
+                "Not enough RAM for the automatic memory budget; lower --threads."
             )
-        memory = (
-            f"{per_thread_mib // 1024}G"
-            if per_thread_mib >= 1024
-            else f"{per_thread_mib}M"
-        )
+        if per_thread_bytes >= 1024**3:
+            memory = f"{per_thread_bytes // 1024**3}G"
+        elif per_thread_bytes >= 1024**2:
+            memory = f"{per_thread_bytes // 1024**2}M"
+        else:
+            # Collation and JVM callers use the aggregate, without samtools' floor.
+            mib = f"{per_thread_bytes / 1024**2:.20f}".rstrip("0")
+            memory = f"{mib}M"
 
     return threads, memory

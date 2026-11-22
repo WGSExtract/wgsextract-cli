@@ -8,6 +8,7 @@ import pytest
 from tests.htslib_helpers import (
     needs_tools,
     run_wgsextract,
+    sam_to_bam,
     write_fasta,
     write_read_pairs,
 )
@@ -516,6 +517,29 @@ def test_sort_memory_within_the_machine_and_input_is_passed_unchanged(tmp_path, 
     # contract: the user's --memory is the sort's per-thread buffer.
     assert sort[sort.index("-m") + 1] == "32M"
     assert "Lowering samtools sort memory" not in log
+
+
+@needs_tools("samtools")
+def test_1232_sub_mib_per_thread_budget_allows_collation_but_not_sort(tmp_path, ram):
+    """Collation sizes buckets from total memory, not samtools sort's floor."""
+    from wgsextract_cli import api
+
+    input_bam = sam_to_bam(
+        [
+            "@SQ\tSN:chr1\tLN:1000",
+            "pair\t99\tchr1\t10\t60\t1M\t=\t30\t21\tA\tI",
+            "pair\t147\tchr1\t30\t60\t1M\t=\t10\t-21\tC\tI",
+        ],
+        tmp_path / "reads.bam",
+    )
+    ram(16 * MIB)
+    options = {"input": input_bam, "outdir": tmp_path, "threads": 8, "memory": "auto"}
+    api.bam.unalign(api.BamUnalignParams(**options, r1="r1.fq", r2="r2.fq"))
+    assert (tmp_path / "r1.fq").read_text().splitlines()[:2] == ["@pair", "A"]
+    assert (tmp_path / "r2.fq").read_text().splitlines()[:2] == ["@pair", "G"]
+    with pytest.raises(api.CommandFailed, match=r"minimum.*1 MiB.*--threads"):
+        api.bam.sort(api.BamSortParams(**options))
+    assert not list(tmp_path.glob("*_sorted.bam"))
 
 
 def test_guard_counts_the_sort_buffers_samtools_reserves(tmp_path, monkeypatch):

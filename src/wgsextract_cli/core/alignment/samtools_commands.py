@@ -85,10 +85,10 @@ def sort_memory(
     total = total_memory()
     chosen = int(total * SORT_RAM_FRACTION) // count // _MIB
     reason = f"-@ × -m stays within half of the effective {total / 1024**3:.1f} GiB RAM"
-    if chosen < 1:
+    if chosen < 1 or requested < 1:
         raise WGSExtractError(
-            "Not enough RAM for samtools sort's minimum of 1 MiB per thread; "
-            "lower --threads."
+            "The sort memory budget cannot provide samtools sort's minimum "
+            "of 1 MiB per thread; lower --threads or adjust --memory."
         )
     if input_bytes is not None:
         fill = max(0, input_bytes) * DECODED_BYTES_PER_INPUT_BYTE

@@ -382,7 +382,8 @@ The CLI logs when that lowers `--memory`. The input bound never goes below 16M p
 thread, but the RAM cap can lower that further. If the budget cannot provide
 samtools' minimum of 1 MiB per thread, lower `--threads`. Records and their
 order are unchanged: a sort that fits its input sorts in memory, and a sort
-that spills merges its spills stably.
+that spills merges its spills stably. FASTQ collation uses the total budget
+to size its buckets and does not have samtools sort's per-thread minimum.
 Alignment memory checks count the sort's reservation (threads × `-m`) at
 least, as well as what its reads fill. `realign`'s checks before extracting
 FASTQs use the requested `--memory`, so they never ask for less than its
