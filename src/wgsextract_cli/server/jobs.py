@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import secrets
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -377,8 +378,14 @@ class JobManager:
                 raise RequestError(503, "stopping", "The server is stopping.")
             self._jobs[job.id] = job
             self._writes[job.id] = self._write_folders(op, job)
+            try:
+                self._save(job)
+            except OSError:
+                # Nothing started: refuse the request and forget the job.
+                del self._jobs[job.id]
+                del self._writes[job.id]
+                raise
             self._event(job, "status", status="queued")
-            self._save(job)
             if op.kind == "query":
                 self._start(job)
             else:
@@ -527,7 +534,11 @@ class JobManager:
             if self.card is False
             else (job.card if job.card is not None else self.card),
         }
-        log = open(self.log_path(job.id), "a", encoding="utf-8", newline="\n")  # noqa: SIM115
+        try:
+            log = open(self.log_path(job.id), "a", encoding="utf-8", newline="\n")  # noqa: SIM115
+        except OSError as e:
+            self._finish(job, "failed", error=f"Could not open the job log: {e}")
+            return False
         try:
             worker = subprocess.Popen(
                 self.worker_command,
@@ -543,17 +554,28 @@ class JobManager:
             log.close()
             self._finish(job, "failed", error=f"Could not start a worker: {e}")
             return False
-        assert worker.stdin is not None
-        worker.stdin.write(json.dumps(request) + "\n")
-        worker.stdin.flush()
-        self._workers[job.id] = worker
-        job.status = "running"
-        job.started = _now()
+        # Until its follower runs, nothing else reaps this worker or frees its
+        # slot: any failure before then stops it here.
+        try:
+            assert worker.stdin is not None
+            worker.stdin.write(json.dumps(request) + "\n")
+            worker.stdin.flush()
+            job.status = "running"
+            job.started = _now()
+            self._save(job)
+            self._workers[job.id] = worker
+            threading.Thread(
+                target=self._follow, args=(job, worker, log), daemon=True
+            ).start()
+        except Exception as e:
+            self._workers.pop(job.id, None)
+            _discard_worker(worker)
+            log.close()
+            job.started = None
+            logging.warning(f"Job {job.id} could not start: {e}")
+            self._finish(job, "failed", error=f"Could not start the job: {e}")
+            return False
         self._event(job, "status", status="running")
-        self._save(job)
-        threading.Thread(
-            target=self._follow, args=(job, worker, log), daemon=True
-        ).start()
         return True
 
     def _follow(self, job: Job, worker: subprocess.Popen[str], log: Any) -> None:
@@ -656,12 +678,36 @@ class JobManager:
             }
         self._writes.pop(job.id, None)
         self._event(job, "status", status=status)
-        self._save(job)
-        with contextlib.closing(sqlite3.connect(self._history)) as db, db:
-            self._index_summary(db, job)
         self._finished.append(job.id)
         if len(self._finished) > MAX_FINISHED_JOBS:
             del self._jobs[self._finished.popleft()]
+        # The job is over whether or not its record can be written (a full
+        # disk): its slot and folders are free already.
+        try:
+            self._save(job)
+            with contextlib.closing(sqlite3.connect(self._history)) as db, db:
+                self._index_summary(db, job)
+        except (OSError, sqlite3.Error) as e:
+            logging.warning(f"Could not record job {job.id} as {status}: {e}")
+
+
+def _discard_worker(worker: subprocess.Popen[str]) -> None:
+    """Kill a worker that never got going, with anything it started, close
+    its pipes and reap it."""
+    _kill_tree(worker.pid)
+    if sys.platform != "win32":
+        # It leads its own process group (see _detached): this also stops
+        # what has left its tree.
+        with contextlib.suppress(OSError):
+            os.killpg(worker.pid, signal.SIGKILL)
+    for pipe in (worker.stdin, worker.stdout):
+        if pipe is not None:
+            with contextlib.suppress(OSError, ValueError):
+                pipe.close()
+    try:
+        worker.wait(CANCEL_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        logging.warning(f"Worker {worker.pid} did not stop after being killed.")
 
 
 def _detached() -> dict[str, Any]:

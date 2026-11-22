@@ -241,7 +241,10 @@ curl -H "Authorization: ******" \
   its `genomes` folder.
 - **Isolation.** Each job runs the API function in its own worker process.
   A crash or a cancel affects only that job. Its log, at the CLI's log level
-  (`--debug` for more), is `<state>/server/jobs/<id>.log`.
+  (`--debug` for more), is `<state>/server/jobs/<id>.log`. A job whose worker
+  can't be started, given its request or recorded as running (a full disk,
+  say) fails with the reason in its `error`; its worker is stopped and its
+  slot freed.
 - **Cancelling.** A queued job is cancelled immediately. A running job gets
   the API's `CancelToken`: tools stop, including running containers, and the
   manifest is written with status `cancelled` (exit code 130). If the job is
