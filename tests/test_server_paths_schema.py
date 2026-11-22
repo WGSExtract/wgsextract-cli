@@ -102,16 +102,17 @@ def test_path_guard_covers_every_vcf_path(op, field, value):
 def test_path_guard_covers_every_ref_path(op, field, value):
     # #346: the ref commands became server operations; each file or library
     # they read or write must be inside an allowed folder.
-    guard = PathGuard([r"C:\data"], allow_destructive=True, pathmod=_RecordingFlavour())
-    paths = [item.name for name, item in _REF_PATHS if name == op]
-    allowed = {name: rf"C:\data\{name}" for name in paths}
-    if op == "ref/library":
-        allowed["install"] = "hg38"
-    if op == "ref/library-delete":
-        allowed["genome"] = "hg38"
+    guard = PathGuard([_DATA], allow_destructive=True, pathmod=_RecordingFlavour())
+    item = next(f for f in find(op).fields() if f.name == field)
+    allowed = {
+        **_base_request(op),
+        **_COMPANIONS.get((op, field), {}),
+        field: _path_value(item, rf"{_DATA}\{field}"),
+    }
     guard.check(params_from_json(find(op), allowed))
+    bad = {**allowed, field: _path_value(item, value)}
     with pytest.raises(RequestError) as refused:
-        guard.check(params_from_json(find(op), {**allowed, field: value}))
+        guard.check(params_from_json(find(op), bad))
     assert refused.value.code in ("usage", "path_not_allowed")
 
 

@@ -649,6 +649,7 @@ _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("bam/to-ubam", "r1"): {"input": None, "r1": _FILE},
     ("bam/to-ubam", "r2"): {"input": None, "r1": _FILE},
     ("vcf/impute", "vcf_input"): {"input": None, "vcf_input": _FILE},
+    ("ref/recheck", "save_answers"): {"online": True},
 }
 
 
