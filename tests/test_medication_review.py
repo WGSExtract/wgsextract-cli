@@ -412,6 +412,34 @@ def test_1176_contraindication_needs_a_confident_disease_gene_call(
     assert "CPIC® database v1.61.0" in pr.render_html(report)
 
 
+@pytest.mark.parametrize(
+    ("outside", "keys", "status"),
+    [
+        ("*57:01/*08:01", "*57:01 positive", "advisory"),
+        # An outside call that isn't the newest T1K call (an older run, or a
+        # hand-written file) must not give HLA-B*57:01 carriers standard dosing.
+        ("*44:02/*08:01", "*57:01 negative", "withheld"),
+    ],
+)
+def test_1176_hla_outside_call_must_match_the_t1k_call_it_rests_on(
+    tmp_path, served_cpic, outside, keys, status
+):
+    folder = _sample(tmp_path)
+    _manifest(
+        folder,
+        "HG002_hla",
+        "typing hla",
+        inputs=((folder / "HG002.cram", "input"),),
+        metrics={"HLA-A": "*02:01:01/*01:01:01", "HLA-B": "*57:01:01/*08:01:01"},
+    )
+    _pharmcat(folder, {"HLA-B": [(outside, keys, keys)]}, {}, outside=("HLA-B",))
+    finding = _advisories(_review(folder, "abacavir"))["abacavir"]
+    assert finding["advisory"]["status"] == status
+    assert finding["advisory"]["contraindication"] is (status == "advisory")
+    if status == "withheld":
+        assert "outside_call_mismatch" in finding["confidence_reasons"]
+
+
 # --- AC: local context, recorded release and context, no implicit downloads --
 
 

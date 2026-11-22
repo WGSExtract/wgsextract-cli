@@ -139,8 +139,9 @@ and conflicting ones do not. Missing or partial reference evidence, unresolved
 Cyrius calls, the combined CYP2D6+CYP2D7 copy number and ambiguous PharmCAT
 alternatives therefore never become a single actionable result. A gene PharmCAT took from an outside call rests on that
 caller's finding in this report (Cyrius for CYP2D6, T1K for HLA): with none it
-is `not_assessed` (`outside_call_unverified`), and a CYP2D6 outside call that
-differs from the newest resolved Cyrius call is `low` (`outside_call_mismatch`).
+is `not_assessed` (`outside_call_unverified`), and an outside call that differs
+from that caller's newest call (a resolved Cyrius diplotype, or T1K's alleles
+at PharmCAT's two-field resolution) is `low` (`outside_call_mismatch`).
 
 **Medication-adjusted phenotype.** A listed medication changes a phenotype
 only through a rule in `assets/report/pgx_context_rules.json` (version

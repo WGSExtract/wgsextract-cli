@@ -62,7 +62,7 @@ def _pharmacogenomics(ctx: _Context) -> ReportSectionDocument:
             "HLA-A and HLA-B alleles (T1K)",
             ctx.command_for("typing hla", ctx.alignment, "cram"),
         )
-    _check_outside_calls(section, cyrius, ctx)
+    _check_outside_calls(section, cyrius, hla, ctx)
     gene_statuses: dict[str | None, str] = {}
     priority = {"resolved": 0, "ambiguous": 1, "no_call": 2}
     for finding in section["findings"]:
@@ -170,17 +170,38 @@ def _pharmcat_findings(
 
 
 def _check_outside_calls(
-    section: ReportSectionDocument, cyrius: Source | None, ctx: _Context
+    section: ReportSectionDocument,
+    cyrius: Source | None,
+    hla: Source | None,
+    ctx: _Context,
 ) -> None:
     """Rest each gene PharmCAT took from an outside call on that call's own
-    evidence: this report's Cyrius (CYP2D6) or T1K (HLA) finding for the gene.
+    evidence: this report's Cyrius (CYP2D6) or T1K (HLA) finding for the gene,
+    and only while PharmCAT's diplotype is that caller's newest call.
     Unresolved Cyrius candidates stay a note, never a call."""
     from wgsextract_cli.commands.genotyping.cyp2d6 import pharmcat_copy_numbers
+    from wgsextract_cli.commands.genotyping.hla import PHARMCAT_GENES, two_field
 
     callers = {
         f["gene"]: f for f in section["findings"] if f["gene"] and "pgx" not in f
     }
     metrics = cyrius.metrics if cyrius is not None and cyrius.status == "ok" else {}
+    # Each caller's call as PharmCAT names it; None when it made no usable one.
+    called: dict[str, list[str] | None] = {}
+    if metrics:
+        genotype = str(metrics.get("cyp2d6_genotype") or "")
+        resolved = genotype and metrics.get("cyp2d6_call_status") == "resolved"
+        called["CYP2D6"] = (
+            sorted(pharmcat_copy_numbers(genotype).split("/")) if resolved else None
+        )
+    if hla is not None and hla.status == "ok":
+        for gene in PHARMCAT_GENES:
+            diplotype = str(hla.metrics.get(gene) or "")
+            called[gene] = (
+                sorted(two_field(a) for a in diplotype.split("/"))
+                if diplotype
+                else None
+            )
     for gene, state in list(ctx.pgx_genes.items()):
         if state.source != "PharmCAT outside call":
             continue
@@ -190,13 +211,10 @@ def _check_outside_calls(
         if caller is not None:
             evidence = caller["confidence"]
             reasons = tuple(caller["confidence_reasons"])
-        if gene == "CYP2D6" and metrics:
-            called = str(metrics.get("cyp2d6_genotype") or "")
-            ours = sorted(pharmcat_copy_numbers(called).split("/")) if called else []
-            if metrics.get("cyp2d6_call_status") != "resolved" or any(
-                sorted(a.diplotype.split("/")) != ours for a in state.alternatives
-            ):
-                evidence, reasons = variant_confidence.LOW, ("outside_call_mismatch",)
+        if gene in called and any(
+            sorted(a.diplotype.split("/")) != called[gene] for a in state.alternatives
+        ):
+            evidence, reasons = variant_confidence.LOW, ("outside_call_mismatch",)
         ctx.pgx_genes[gene] = replace(state, evidence=evidence, reasons=reasons)
     cyp2d6 = ctx.pgx_genes.get("CYP2D6")
     if (
