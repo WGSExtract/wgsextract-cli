@@ -128,9 +128,9 @@ def _populations(pcs: np.ndarray, region: np.ndarray) -> dict:
 
 def package(work: Path, ancestry: Path, ids: list[str], base: Path | None) -> None:
     """The reference file for ``ids``; with ``base``, a published reference,
-    every other curated score is copied from it unchanged (a rebuilt score
-    that ``base`` also has is compared with it), and scores no longer curated
-    are dropped."""
+    every other curated score is copied from it unchanged, scores no longer
+    curated are dropped, and ``ids`` must include a score of ``base`` whose
+    sums check the training samples' genotypes."""
     ref = np.load(ancestry)
     ancestry_sha = hashlib.sha256(ancestry.read_bytes()).hexdigest()
     samples, training = _samples(work)
@@ -211,17 +211,41 @@ def package(work: Path, ancestry: Path, ids: list[str], base: Path | None) -> No
             kept["training_rows"], arrays["training_rows"]
         ):
             raise SystemExit(f"{base} was built on other training samples")
-        for pgs_id in set(ids) & set(base_info["scores"]):
-            diff = np.abs(arrays[f"{pgs_id}_scores"] - kept[f"{pgs_id}_scores"])
-            print(f"{pgs_id} rebuilt: max |score - {base.name}'s| {diff.max():.3g}")
+        # The training samples' panel IDs (from ``build.py training``) are
+        # only as right as their genotypes: a score built from the same
+        # scoring file as in the base must reproduce the base's sums for every
+        # training sample, and is then kept from the base.
+        checked = [
+            i
+            for i in ids
+            if i in base_info["scores"]
+            and summary[i]["sha256"] == base_info["scores"][i]["scoring_file_sha256"]
+        ]
+        if not checked:
+            raise SystemExit(
+                "--base needs a score in --ids built from the same scoring file as "
+                "in the base (for example PGS000297) to check the training samples"
+            )
+        for pgs_id in checked:
+            expected = kept[f"{pgs_id}_scores"]
+            diff = np.abs(arrays[f"{pgs_id}_scores"] - expected).max()
+            print(f"{pgs_id} rebuilt: max |score - {base.name}'s| {diff:.3g}")
+            if diff > 1e-6 * max(1.0, float(np.abs(expected).max())):
+                raise SystemExit(f"{pgs_id}'s sums differ from {base.name}'s")
+        rebuilt = [i for i in ids if i not in checked]
+        arrays = {"training_rows": arrays["training_rows"]} | {
+            f"{i}_{part}": arrays[f"{i}_{part}"]
+            for i in rebuilt
+            for part in ("rows", "frequency", "scores")
+        }
         for pgs_id in pgs.CURATED.values():
-            if pgs_id not in ids:
+            if pgs_id not in rebuilt:
                 scores_info[pgs_id] = base_info["scores"][pgs_id]
                 for part in ("rows", "frequency", "scores"):
                     arrays[f"{pgs_id}_{part}"] = kept[f"{pgs_id}_{part}"]
         order = [
             *pgs.CURATED.values(),
-            *(i for i in ids if i not in pgs.CURATED.values()),
+            *(i for i in rebuilt if i not in pgs.CURATED.values()),
         ]
         info["scores"] = {pgs_id: scores_info[pgs_id] for pgs_id in order}
         # The same training samples' populations, up to rounding in the
@@ -230,7 +254,7 @@ def package(work: Path, ancestry: Path, ids: list[str], base: Path | None) -> No
         info["rebuilt_from"] = {
             "name": base.name,
             "sha256": hashlib.sha256(base.read_bytes()).hexdigest(),
-            "scores": ids,
+            "scores": rebuilt,
         }
     arrays["info"] = np.array(json.dumps(info))
     out = work / NAME

@@ -43,11 +43,13 @@ Steps:
   2019 mean regression on PCs; Khan et al. 2022 / eMERGE GIRA mean+variance
   full-likelihood fit), and the reference file written with its SHA-256.
   With ``--base`` (a published reference), only ``--ids`` are rebuilt; the
-  other curated scores are copied from it.
+  other curated scores are copied from it. ``--ids`` must also name a score
+  of the base built from the same scoring file: its sums must reproduce the
+  base's, which checks that ``training`` matched the right individuals.
 
 Version 2 was built on macOS (osx-arm64) with ``--ids PGS000297 PGS005198``
 up to ``overlaps`` (PGS000297's sums reproduce version 1's exactly), then
-``package --ids PGS005198 --base wgsextract-pgs-hgdp1kg-v1.npz``.
+``package --ids PGS000297 PGS005198 --base wgsextract-pgs-hgdp1kg-v1.npz``.
 
 Data: pgsc_calc's HGDP+1kGP reference panel (pgsc_HGDP+1kGP_v1, from gnomAD
 v3.1 HGDP+1KG, CC0 1.0); the scoring files are not redistributed, only the
@@ -177,9 +179,9 @@ def training(work: Path, panel: Path, ancestry: Path, base: Path) -> None:
     """``training.tsv`` without training_ids.py (which needs Hail and gnomAD's
     sample tables): each training sample of the published reference ``base``
     (which stores their PCA rows, not IDs) is matched to the panel sample whose
-    projection reproduces its in-sample PCs. The matches must be distinct;
-    ``package --base`` then checks them by reproducing ``base``'s sums for a
-    rebuilt score."""
+    projection reproduces its in-sample PCs. The matches must be distinct and
+    close; ``package --base`` then checks them by reproducing ``base``'s sums
+    for a score built from the same scoring file."""
     ref = np.load(ancestry)
     samples, projected = _project(work, panel, ancestry)
     with np.load(base) as data:
@@ -198,6 +200,18 @@ def training(work: Path, panel: Path, ancestry: Path, base: Path) -> None:
           f"(typical |PC| {scale:.3g})")  # fmt: skip
     if len(set(nearest.tolist())) != len(rows):
         raise SystemExit("two training samples match the same panel sample")
+    # Version 1's training samples are at most 1.4 (0.9% of |PC|) from their
+    # projections; anything far beyond is not the same individual.
+    far = gap > 0.02 * scale
+    if far.any():
+        raise SystemExit(f"{int(far.sum())} training samples have no panel sample "
+                         f"within {0.02 * scale:.3g} of their PCs")  # fmt: skip
+    # PCs can't tell close relatives apart (two of version 1's samples have
+    # one about as close as themselves); package --base checks identity by
+    # reproducing the base's sums from the matched genotypes.
+    near = second < 2 * gap
+    print(f"{int(near.sum())} matches have a second panel sample within twice "
+          f"the distance; package --base checks them by their genotypes")  # fmt: skip
     with (work / "training.tsv").open("w") as f:
         f.write("training_row\tIID\tpopulation\tregion\n")
         for t, n in zip(rows, nearest, strict=True):
