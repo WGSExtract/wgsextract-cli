@@ -362,7 +362,71 @@ Whole-suite baseline savings are about 22 Linux runner-minutes plus 1–3 generi
 minutes (package smoke remains), or about 33 additional minutes for macOS ARM64.
 Sparse selected PRs save less.
 
-### Per-test PR selection
+### Decisive test selection rollout
+
+[#1339 (decisive test selection)](https://github.com/WGSExtract/wgsextract-cli/issues/1339)
+changes the selection policy in stages. This policy change does not change
+which tests CI runs today.
+
+1. Collect a versioned dependency map on trusted Linux x64 main/nightly runs.
+   Record the source SHA, run and attempt, platform, interpreter, lockfile,
+   and test/tool profile. Report missing or incomplete evidence explicitly.
+2. On ready PRs, report what the decisive selector would choose next to what
+   the current selector chooses. Record the diff/base/head and tested tree,
+   map provenance, selected and omitted test files, rule reasons, and
+   unmatched inputs. The report does not control test or job selection,
+   cache reuse, certification, or the `required` result.
+3. Enable the selector only for regular Linux x64 pytest after reviewing
+   roughly 20 comparable ready PRs over at least a few days, with no confirmed
+   misses or untriaged discrepancies. Check outcomes for omitted tests
+   against the existing runs and report savings net of map collection and
+   reporting. Cancelled or incomplete runs do not count as evidence; a
+   passing shadow report cannot show that a test absent from both selections
+   passed. Keep the existing selector for other platforms.
+
+The decisive rules cover the complete diff, including both sides of moves
+and the base tree for deletions:
+
+| Changed input | Select |
+|---|---|
+| Observed Python function body | Tests that executed the function |
+| Module/class initialization, imports, signatures or defaults | Observed module users and literal importers |
+| New or unobserved function | Tests of known callers within two static hops, plus explicit symbol and module consumers |
+| New Python module | Tests of the head's importers and callers with local imports |
+| Shared helpers and fixtures | Helper callers and fixture users; autouse fixtures select their directory scope |
+| Data or generated files | Observed and static readers |
+| Package/tool manifests or locks | Users of the changed packages or tools in the affected environments |
+| Native, packaging, shell or CI inputs | Declared tool/package families, static readers and existing routes |
+
+Always include changed or added tests and applicable contract tests. A
+universal dependency such as root pytest configuration, the interpreter or
+a root autouse fixture can select the entire lane; name the scope in the
+report. An unmatched input is a gap to investigate. Before relying on the
+new selector, give it a declared consumer or contract test, or record a
+reviewed reason why it has no runtime effect. Unknown inputs do not
+implicitly select every test under the decisive policy.
+
+Before narrowing main pushes, put the backstop in place: one full regular
+suite run per day on latest `main`, without reusing a prior push's pass as
+its result. Feed verified passing results into the existing test-result
+cache ([#915 (passed-test cache)](https://github.com/WGSExtract/wgsextract-cli/issues/915)).
+Main pushes then use the merge queue's selection and cache rules instead
+of repeating the full suite on each commit. Keep test-selection receipts
+for the tested trees. If nightly fails, rerun only the failing tests on
+first-parent main trees since the last comparable full pass to locate the
+first reproducibly bad commit. Do not infer a miss from timing or from a
+single failure: distinguish omissions from flakes, runner failures and
+interactions between merges. File a `ci-automation` issue for a confirmed
+omission, naming the PR, failing test and selection rule, and requesting a
+selector regression. This does not replace other OS, smoke, installer,
+certification, or merged-tree guard coverage, including `python-size`.
+
+The replay estimated 39.2% fewer regular Ubuntu pytest minutes and retained
+all 140 independently identified test targets and the known escape tests
+and guards. The historical replay is a cost estimate, not evidence from
+live shadow runs.
+
+### Current per-test PR selection
 
 `scripts/ci_select_tests.py` selects individual test files, not whole areas.
 Its AST import graph follows transitive imports, relative imports,
@@ -747,6 +811,13 @@ checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
 group's `base_sha...head_sha` diff for ancillary lanes; Ubuntu retains full
 test coverage even for docs-only groups.
+When a queued PR is pushed to, dequeued or fails, GitHub deletes its
+`gh-readonly-queue` ref and those of later groups, then rebuilds them. Each
+queue run's `cancel-stale-queue` job (outside `required`, `actions: write` only
+there, running the trusted base commit's script) cancels this workflow's still-active queue runs whose ref is gone,
+never its own run and nothing when its own ref is missing; API errors are
+warnings. The lost-runner observer likewise never retries a cancelled queue run
+whose ref is gone.
 
 Agents enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` after
 every check, advisory ones included, is green, and don't update branches that
@@ -813,6 +884,21 @@ fragment under `docs/release-notes/unreleased/` needs no other runner. With the
 base (a PR merge commit's first parent, or the queue group's base), it also
 fails a release, a change that adds a `vX.Y.Z.md` or bumps the version, while
 fragments remain, so none is left out of that release or announced twice.
+
+### Ready admission
+
+The Free plan runs at most 20 hosted jobs at once and GitHub gives queued
+jobs no priority, so a burst of ready PRs starves the merge queue (#1373).
+Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait`. It
+reads queued and in-progress runs and their jobs through `gh api` (read-only)
+and exits 0 when admission is fine. It exits 3 (hold) while any
+`merge_group` job is queued for a runner, or while more than `--max-ready`
+(default 4) ready-PR area matrices are in flight. `--wait` polls with
+exponential backoff, polling a last time at `--timeout` seconds; `--json`
+prints the counts. The check reserves nothing, so each supervisor admits one
+PR at a time and starts the next check only once the previous PR's ready run
+is visible; concurrent supervisors can overshoot `--max-ready` by at most one
+run each.
 
 ## Cache plan
 

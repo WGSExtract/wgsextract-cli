@@ -143,7 +143,7 @@ export class ViewerFiles {
             response.setHeader("accept-ranges", "bytes");
             response.setHeader("cache-control", "no-store");
             response.setHeader("content-type", "application/octet-stream");
-            const range = byteRange(request.headers.range, info.size);
+            const range = byteRange(request.headers.range, info.size, request.method === "HEAD");
             if (!range) {
                 response.setHeader("content-range", `bytes */${info.size}`);
                 response.writeHead(416);
@@ -189,9 +189,10 @@ function sameToken(actual: string, expected: string) {
     return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function byteRange(header: string | undefined, size: number) {
+/** The whole-file fallback limit bounds response bodies, so a bodyless HEAD can report any size. */
+export function byteRange(header: string | undefined, size: number, bodyless = false) {
     if (!header) {
-        return size <= maximumReadBytes ? { start: 0, end: size - 1, partial: false } : undefined;
+        return bodyless || size <= maximumReadBytes ? { start: 0, end: size - 1, partial: false } : undefined;
     }
     const match = /^bytes=(\d*)-(\d*)$/.exec(header);
     if (!match || (!match[1] && !match[2]) || size === 0) {

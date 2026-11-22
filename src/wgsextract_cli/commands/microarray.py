@@ -87,6 +87,7 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
+    is_vcf_path,
     verify_paths_exist,
 )
 from wgsextract_cli.core.variant_sample import (
@@ -337,7 +338,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     log_dependency_info(["bcftools", "tabix", "bgzip", "samtools"])
     table_format = params.table_format
     check_format(table_format)
-    is_vcf = input_path.endswith((".vcf", ".vcf.gz", ".bcf"))
+    is_vcf = is_vcf_path(input_path)
     if params.sample and not is_vcf:
         raise UsageError(
             "--sample picks one sample of a multi-sample VCF; BAM/CRAM input "

@@ -8,7 +8,7 @@ from urllib.parse import unquote
 
 import pytest
 
-from tests.htslib_helpers import needs_htslib, write_fasta
+from tests.htslib_helpers import bgzip_index, needs_htslib, write_fasta
 from wgsextract_cli.api.vcf import VcfCaddParams, VcfClinvarParams, cadd, clinvar
 from wgsextract_cli.core import personal_report, variant_table
 from wgsextract_cli.core.utils import WGSExtractError
@@ -121,6 +121,23 @@ def test_836_equivalent_indels_recover_identical_report_findings(
         "C",
     )
     assert (sample.read_bytes(), resource.read_bytes()) == originals
+
+
+def test_issue_1243_upper_case_compressed_vcfs_are_annotated(tmp_path):
+    # KIT.VCF.GZ and an upper-case resource were read as plain text and failed.
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": SEQ})
+    plain = vcf(
+        tmp_path / "kit.vcf", ["3 sample AA A 99 PASS . GT:DP:GQ:AD 0/1:30:99:15,15"]
+    )
+    sample = Path(bgzip_index(plain, tmp_path / "KIT.VCF.GZ"))
+    plain = vcf(
+        tmp_path / "clinvar.vcf",
+        ["5 VCVdel AA A . PASS CLNSIG=Pathogenic;CLNDN=MAP;GENEINFO=MUTYH:4595 GT 0/1"],
+        resource=True,
+    )
+    resource = Path(bgzip_index(plain, tmp_path / "CLINVAR.VCF.BGZ"))
+    (found,) = records(annotate(tmp_path / "out", sample, resource, ref))
+    assert found[:5] == ["1", "2", "sample", "CA", "C"]
 
 
 @pytest.mark.parametrize(
