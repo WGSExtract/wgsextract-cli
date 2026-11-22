@@ -284,7 +284,7 @@ metric counts them).
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
-| `ybrowse` | `bool` | `False` | `--ybrowse` | Call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads). |
+| `ybrowse` | `bool` | `False` | `--ybrowse` | Call installed, allele-annotated yBrowse SNP targets (GRCh38, or GRCh37 after ref ybrowse --grch37; no downloads). |
 
 ### `api.extract.y_mt_extract(YMtExtractParams)`
 
@@ -376,7 +376,7 @@ are mismapped.
 | `target` | `str` | required | `--target` | Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox (autosomes and chrX). One of: `mt`, `y`, `ymt`, `autox` |
 | `formats` | `str \| None` | `None` | `--formats` | Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf. |
 | `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T). |
-| `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
+| `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38, or GRCh37 after ref ybrowse --grch37; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
 
 ## `api.bam`
 
@@ -1967,12 +1967,18 @@ CLI: `wgsextract ref ybrowse`.
 Install the snapshot; output role `reference_resource`.
 
 `RefYbrowseParams`: Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
-library, or delete the installed snapshots.
+library, or delete the installed snapshots. `grch37` also lifts the
+installed GRCh38 sites to GRCh37 with Ensembl's GRCh38->GRCh37 chain and
+checks them against a GRCh37 FASTA; YBrowse publishes no usable GRCh37
+file.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed yBrowse snapshots |
 | `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream pin. |
+| `grch37` | `bool` | `False` | `--grch37` | Derive GRCh37 sites from the installed GRCh38 snapshot (installing --snapshot first when given): lift them with Ensembl's GRCh38->GRCh37 chain and check each allele against the GRCh37 FASTA --ref names, else the library's. |
+| `chain` | `Path \| None` | `None` | `--chain` | With --grch37, lift with this GRCh38->GRCh37 chain instead of Ensembl's pinned chain. |
+| `download` | `bool` | `False` | `--download` | With --grch37, download Ensembl's pinned GRCh38->GRCh37 chain (730 KB, ftp.ensembl.org) when the library lacks it; no sample data is sent. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.download(RefDownloadParams)`

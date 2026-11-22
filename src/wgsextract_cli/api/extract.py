@@ -103,8 +103,8 @@ class YdnaVcfParams(_ExtractParams):
 
     ybrowse: bool = param(
         False,
-        help="Call installed, allele-annotated yBrowse SNP targets (GRCh38 only; "
-        "no downloads).",
+        help="Call installed, allele-annotated yBrowse SNP targets (GRCh38, or "
+        "GRCh37 after ref ybrowse --grch37; no downloads).",
         action="store_true",
     )
 
@@ -199,7 +199,8 @@ class ExtractRegionParams(_ExtractParams):
         False,
         help="With --target y and the vcf format: call installed, allele-annotated "
         "yBrowse "
-        "SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz "
+        "SNP targets (GRCh38, or GRCh37 after ref ybrowse --grch37; no "
+        "downloads) into <input>_Y_ybrowse.vcf.gz "
         "instead.",
         action="store_true",
     )

@@ -8,7 +8,7 @@ import logging
 import re
 import tempfile
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import TextIO, cast
 
@@ -18,7 +18,12 @@ SOURCE_URL = "https://ybrowse.org/gbrowse2/gff/snps_hg38.vcf.gz"
 SOURCE_SHA256 = "b7984349c575c3d582933993a92770d6143603d3b895d3a0612340b167f37b62"
 COPYRIGHT = "CC-BY-SA Thomas Krahn YSEQ (2022)."
 Y_LENGTH = 57_227_415
-_FILES = ("sites.vcf.gz", "sites.vcf.gz.tbi", "targets.tsv.gz", "targets.tsv.gz.tbi")
+RESOURCE_FILES = (
+    "sites.vcf.gz",
+    "sites.vcf.gz.tbi",
+    "targets.tsv.gz",
+    "targets.tsv.gz.tbi",
+)
 _BASES = set("ACGT")
 
 
@@ -66,12 +71,27 @@ def _validate_header(lines: list[str]) -> None:
             )
 
 
-def _write_group(
-    pos: int,
-    group: dict[tuple[str, str], tuple[set[str], set[str], set[str], set[str]]],
-    sites: TextIO,
-    targets: TextIO,
-) -> int:
+def sites_header(y_length: int, extra: str = "") -> str:
+    """The header of a resource's sites.vcf.gz, its chrY ``y_length`` long."""
+    return (
+        "##fileformat=VCFv4.2\n"
+        f'##copyright="{COPYRIGHT}"\n'
+        f"##contig=<ID=chrY,length={y_length}>\n"
+        '##INFO=<ID=AA,Number=.,Type=String,Description="yBrowse ancestral'
+        ' alleles; compare with called GT and REF/ALT">\n'
+        '##INFO=<ID=HG,Number=.,Type=String,Description="yBrowse marker'
+        ' haplogroups; derivation depends on AA and GT, not ALT alone">\n'
+        '##INFO=<ID=ISOGG,Number=.,Type=String,Description="yBrowse ISOGG'
+        ' marker haplogroups; compare AA and GT">\n'
+        f"{extra}"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    )
+
+
+Group = dict[tuple[str, str], tuple[set[str], set[str], set[str], set[str]]]
+
+
+def write_group(pos: int, group: Group, sites: TextIO, targets: TextIO) -> int:
     if not group:
         return 0
     refs = {ref for ref, _ in group}
@@ -94,6 +114,24 @@ def _write_group(
     return len(group)
 
 
+def compress_resource(directory: Path) -> None:
+    """bgzip and index the plain sites.vcf and targets.tsv in ``directory``."""
+    for name, index_args in (
+        ("sites.vcf", ["-p", "vcf"]),
+        ("targets.tsv", ["-s", "1", "-b", "2", "-e", "2"]),
+    ):
+        plain = directory / name
+        compressed = directory / f"{name}.gz"
+        with compressed.open("wb") as out:
+            run_command(["bgzip", "-c", str(plain)], stdout=out)
+        run_command(["tabix", *index_args, str(compressed)])
+        plain.unlink()
+
+
+def resource_hashes(directory: Path) -> dict[str, str]:
+    return {name: file_sha256(directory / name) for name in RESOURCE_FILES}
+
+
 def prepare_snapshot(snapshot: Path, directory: Path) -> dict[str, object]:
     """Stream sorted SNPs, aggregating aliases only for identical REF/ALT."""
     sites_path = directory / "sites.vcf"
@@ -101,7 +139,7 @@ def prepare_snapshot(snapshot: Path, directory: Path) -> dict[str, object]:
     header: list[str] = []
     records = alleles = skipped = 0
     position = 0
-    group: dict[tuple[str, str], tuple[set[str], set[str], set[str], set[str]]] = {}
+    group: Group = {}
     try:
         with (
             _text(snapshot) as source,
@@ -114,18 +152,7 @@ def prepare_snapshot(snapshot: Path, directory: Path) -> dict[str, object]:
                     continue
                 if line.startswith("#CHROM\t"):
                     _validate_header(header)
-                    sites.write(
-                        "##fileformat=VCFv4.2\n"
-                        f'##copyright="{COPYRIGHT}"\n'
-                        f"##contig=<ID=chrY,length={Y_LENGTH}>\n"
-                        '##INFO=<ID=AA,Number=.,Type=String,Description="yBrowse ancestral'
-                        ' alleles; compare with called GT and REF/ALT">\n'
-                        '##INFO=<ID=HG,Number=.,Type=String,Description="yBrowse marker'
-                        ' haplogroups; derivation depends on AA and GT, not ALT alone">\n'
-                        '##INFO=<ID=ISOGG,Number=.,Type=String,Description="yBrowse ISOGG'
-                        ' marker haplogroups; compare AA and GT">\n'
-                        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
-                    )
+                    sites.write(sites_header(Y_LENGTH))
                     break
             else:
                 raise WGSExtractError("yBrowse snapshot lacks its #CHROM header.")
@@ -141,7 +168,7 @@ def prepare_snapshot(snapshot: Path, directory: Path) -> dict[str, object]:
                         "yBrowse positions are unsorted/outside GRCh38 Y."
                     )
                 if pos != position:
-                    alleles += _write_group(position, group, sites, targets)
+                    alleles += write_group(position, group, sites, targets)
                     group = {}
                     position = pos
                 records += 1
@@ -174,20 +201,12 @@ def prepare_snapshot(snapshot: Path, directory: Path) -> dict[str, object]:
                     ancestral.update(
                         n for n in info.get("AA", "").split(",") if n not in ("", ".")
                     )
-            alleles += _write_group(position, group, sites, targets)
+            alleles += write_group(position, group, sites, targets)
         if not alleles:
             raise WGSExtractError("yBrowse snapshot has no usable SNP alleles.")
     except (OSError, EOFError, UnicodeError, ValueError) as exc:
         raise WGSExtractError(f"Invalid yBrowse snapshot: {exc}") from exc
-    for plain, index_args in (
-        (sites_path, ["-p", "vcf"]),
-        (targets_path, ["-s", "1", "-b", "2", "-e", "2"]),
-    ):
-        compressed = Path(str(plain) + ".gz")
-        with compressed.open("wb") as out:
-            run_command(["bgzip", "-c", str(plain)], stdout=out)
-        run_command(["tabix", *index_args, str(compressed)])
-        plain.unlink()
+    compress_resource(directory)
     return {
         "schema": 1,
         "assembly": "GRCh38",
@@ -200,7 +219,7 @@ def prepare_snapshot(snapshot: Path, directory: Path) -> dict[str, object]:
         "snp_alleles": alleles,
         "skipped_non_snp_records": skipped,
         "sites_only": True,
-        "files": {name: file_sha256(directory / name) for name in _FILES},
+        "files": resource_hashes(directory),
     }
 
 
@@ -252,26 +271,54 @@ def install_snapshot(library: Path, snapshot: Path | None = None) -> Path:
             json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n"
         )
         version = str(manifest["source_sha256"])
-        destination = root / version
-        if not destination.exists():
-            resource.rename(destination)
-        else:
+
+        def valid(existing: Path) -> bool:
             try:
-                _validate_resource(destination)
+                _validate_resource(existing)
             except WGSExtractError:
-                previous = stage / "previous"
-                destination.rename(previous)
-                try:
-                    resource.rename(destination)
-                except OSError:
-                    previous.rename(destination)
-                    raise
-        pointer = stage / "current.json"
-        pointer.write_text(
-            json.dumps({"version": version}), encoding="utf-8", newline="\n"
-        )
-        pointer.replace(root / "current.json")
+                return False
+            return True
+
+        return publish(root, stage, resource, version, keep=valid)
+
+
+def publish(
+    root: Path,
+    stage: Path,
+    resource: Path,
+    version: str,
+    keep: Callable[[Path], bool],
+) -> Path:
+    """Move the staged ``resource`` to ``root/version`` (unless ``keep`` says
+    the copy already there stays) and point ``root/current.json`` at it."""
+    destination = root / version
+    if not destination.exists():
+        resource.rename(destination)
+    elif not keep(destination):
+        previous = stage / "previous"
+        destination.rename(previous)
+        try:
+            resource.rename(destination)
+        except OSError:
+            previous.rename(destination)
+            raise
+    pointer = stage / "current.json"
+    pointer.write_text(json.dumps({"version": version}), encoding="utf-8", newline="\n")
+    pointer.replace(root / "current.json")
     return destination
+
+
+def current_version(root: Path) -> str | None:
+    """The version ``root/current.json`` names, None when it names none."""
+    try:
+        version = json.loads((root / "current.json").read_text(encoding="utf-8"))[
+            "version"
+        ]
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    if isinstance(version, str) and re.fullmatch(r"[a-f0-9]{64}", version):
+        return version
+    return None
 
 
 def _validate_resource(directory: Path) -> dict[str, object]:
@@ -289,7 +336,8 @@ def _validate_resource(directory: Path) -> dict[str, object]:
         ):
             raise ValueError("unsupported manifest")
         if any(
-            file_sha256(directory / name) != manifest["files"][name] for name in _FILES
+            file_sha256(directory / name) != manifest["files"][name]
+            for name in RESOURCE_FILES
         ):
             raise ValueError("resource checksum mismatch")
         return cast(dict[str, object], manifest)
@@ -301,16 +349,11 @@ def _validate_resource(directory: Path) -> dict[str, object]:
 
 def installed_snapshot(library: Path) -> tuple[Path, dict[str, object]]:
     root = library / "ybrowse" / "hg38"
-    try:
-        version = json.loads((root / "current.json").read_text(encoding="utf-8"))[
-            "version"
-        ]
-        if not isinstance(version, str) or not re.fullmatch(r"[a-f0-9]{64}", version):
-            raise ValueError("invalid snapshot version")
-    except (OSError, ValueError, KeyError, TypeError) as exc:
+    version = current_version(root)
+    if version is None:
         raise WGSExtractError(
             "No verified GRCh38 yBrowse resource. Install explicitly with "
             "wgsextract ref ybrowse --install [--snapshot PATH] --ref LIBRARY."
-        ) from exc
+        )
     directory = root / version
     return directory, _validate_resource(directory)

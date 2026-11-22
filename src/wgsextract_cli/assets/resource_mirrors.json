@@ -3779,6 +3779,23 @@
       "upstream_size_at_audit": 1400139,
       "upstream_last_modified": "Sun, 31 Mar 2019 16:40:48 GMT",
       "licence_snapshot_url": "https://www.internationalgenome.org/1000-genomes-summary/"
+    },
+    {
+      "id": "ensembl-grch38-to-grch37-chain",
+      "upstream_url": "https://ftp.ensembl.org/pub/assembly_mapping/homo_sapiens/GRCh38_to_GRCh37.chain.gz",
+      "version": "Ensembl assembly mapping, Last-Modified 2014-07-25",
+      "redistributable": true,
+      "licence": "Ensembl data: no restrictions on access or use",
+      "licence_url": "https://www.ensembl.org/info/about/legal/disclaimer.html",
+      "attribution": "Ensembl; https://www.ensembl.org",
+      "reason": "Ensembl places no restrictions on its data. Not mirrored: ref ybrowse --grch37 fetches the pinned upstream file only with --download (owner decision on #1186).",
+      "retrieved_at": "2026-11-22T21:30:58+00:00",
+      "size": 730394,
+      "sha256": "6bee5bfdd6defc0fb2bd388ef51819c32bbfae1d3e7a3345aa5ebbdc3dd492b1",
+      "parts": [],
+      "upstream_size_at_audit": 730394,
+      "upstream_last_modified": "Fri, 25 Jul 2014 13:52:51 GMT",
+      "licence_snapshot_url": "https://www.ensembl.org/info/about/legal/disclaimer.html"
     }
   ]
 }
