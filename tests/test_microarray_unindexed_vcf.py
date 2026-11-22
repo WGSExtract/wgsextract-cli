@@ -2,6 +2,8 @@
 index, on the simulation's tiny library."""
 
 import json
+import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -133,6 +135,38 @@ def test_issue_1242_plain_vcf_layouts_get_the_bgzipped_kit(
     kit = (tmp_path / "out-plain/female_23andMe_V3.txt").read_text()
     assert kit == (tmp_path / "out-indexed/female_23andMe_V3.txt").read_text()
     assert "rsAlt\t1\t2000\tCC" in kit  # the later of two calls at one position
+
+
+@pytest.mark.parametrize("problem", ["unsorted", "read-only folder"])
+def test_issue_1242_bgzipped_vcf_that_cannot_be_indexed_uses_a_copy(
+    tmp_path, library, problem
+):
+    """Review of the #1242 fix: an unindexed .vcf.gz that tabix can't index
+    where it is stopped the run instead of using an indexed working copy."""
+    if problem == "read-only folder" and (sys.platform == "win32" or os.geteuid() == 0):
+        pytest.skip("needs a folder the run can't write")
+    fasta, _ = library
+    (tmp_path / "indexed").mkdir()
+    vcf_gz = sim._vcf(tmp_path / "indexed/female.vcf", ("1", "X"), sim.FEMALE_VCF)
+    folder = tmp_path / "lab"
+    folder.mkdir()
+    records = sim.FEMALE_VCF[::-1] if problem == "unsorted" else sim.FEMALE_VCF
+    plain = _plain_vcf(folder / "female.vcf", records)
+    with (folder / "female.vcf.gz").open("wb") as out:
+        run_command([get_tool_path("bgzip"), "-c", plain], stdout=out)
+    Path(plain).unlink()
+    if problem == "read-only folder":
+        folder.chmod(0o555)
+    try:
+        sim._microarray(str(folder / "female.vcf.gz"), fasta, tmp_path / "out")
+        assert [p.name for p in folder.iterdir()] == ["female.vcf.gz"]
+    finally:
+        folder.chmod(0o755)
+
+    sim._microarray(vcf_gz, fasta, tmp_path / "out-indexed")
+    kit = (tmp_path / "out/female_23andMe_V3.txt").read_text()
+    assert kit == (tmp_path / "out-indexed/female_23andMe_V3.txt").read_text()
+    assert not list((tmp_path / "out").rglob("input.vcf.gz"))
 
 
 def test_issue_1242_plain_multi_sample_vcf_exports_the_chosen_sample(tmp_path, library):

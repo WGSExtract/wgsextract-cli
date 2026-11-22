@@ -32,6 +32,7 @@ from wgsextract_cli.core.temp_directory import (
     scratch_parent,
 )
 from wgsextract_cli.core.utils import (
+    MissingDependencyError,
     WGSExtractError,
     run_command,
     run_pipeline,
@@ -529,8 +530,15 @@ def _calling_vcf(
         try:
             ensure_vcf_indexed(vcf)
             indexed = True
-        except (OSError, subprocess.SubprocessError) as e:
-            logging.info(f"Could not index {vcf} where it is ({e}).")
+        except WGSExtractError as e:
+            # Only a failed tabix run or write falls back to a copy; a missing
+            # tool, or an input that changed or shares an index name, stops.
+            failure = (OSError, subprocess.SubprocessError)
+            if isinstance(e, MissingDependencyError) or not isinstance(
+                e.__cause__, failure
+            ):
+                raise
+            logging.info(f"Using a working copy: {e}")
     else:
         indexed = has_vcf_index(vcf)
     if indexed and not (sample and select_sample):
