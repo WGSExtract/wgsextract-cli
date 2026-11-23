@@ -1,0 +1,68 @@
+context:
+  # native/bwa/CMakeLists.txt's WGSE_BWA_VERSION.
+  version: "0.14.1"
+
+package:
+  name: wgse-bwa
+  version: ${{ version }}
+
+source:
+  - path: ../../../../native
+    target_directory: native
+  - path: ../../../../LICENSE
+  - path: ../../compat
+    target_directory: packaging/windows/compat
+  - url: https://github.com/lh3/bwa/archive/refs/tags/v0.7.19.tar.gz
+    sha256: cdff5db67652c5b805a3df08c4e813a822c65791913eccfb3cf7d528588f37bc
+    target_directory: bwa
+    patches:
+      - ../bwa/patches/0001-windows-native-build.patch
+  - url: https://github.com/fg-labs/bwa-mem3/archive/refs/tags/v0.16.0.tar.gz
+    sha256: 28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
+    target_directory: mem3
+  - url: https://zlib.net/fossils/zlib-1.3.1.tar.gz
+    sha256: 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+    target_directory: zlib
+
+build:
+  number: 0
+  string: win64_wgse_${{ build_number }}
+  skip:
+    - not win64
+  script:
+    - call "%RECIPE_DIR%\build.cmd"
+
+requirements:
+  build:
+    - vs_win-64 2022.*
+    - clang ==22.1.8
+    - lld ==23.1.6
+    - cmake 4.5.*
+    - ninja 1.13.*
+    - cuda-nvcc ==13.5.37
+    - cuda-cudart-static ==13.5.37
+  # The C and CUDA runtimes are both linked statically.
+  ignore_run_exports:
+    from_package:
+      - vs_win-64
+      - cuda-nvcc
+    by_name:
+      - cuda-version
+      - cuda-cudart
+
+tests:
+  - script:
+      - wgse-bwa --version
+      - wgse-bwa capabilities --json
+      - 'wgse-bwa capabilities --json | findstr /R /C:"cpu_available[^:]*:true"'
+
+about:
+  homepage: https://github.com/WGSExtract/wgsextract-cli/tree/main/native
+  license: GPL-3.0-or-later AND Zlib
+  license_file:
+    - LICENSE
+    - bwa/COPYING
+    - mem3/LICENSE
+    - native/bwa/SEEDING-LICENSE
+    - zlib/LICENSE
+  summary: BWA 0.7.19 with exact CPU and CUDA backends, built natively for Windows x86-64.

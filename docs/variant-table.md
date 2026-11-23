@@ -34,6 +34,40 @@ above works.
 - A multi-sample VCF uses its first sample, or the one named with `--sample`.
 - `--region chr22` or `--region chr1:1000000-2000000` exports one region.
 
+### Slice a VCF to a panel
+
+Use the same options on `vcf filter` and `vcf table`:
+
+```bash
+wgsextract vcf filter --vcf-input sample.vcf.gz --genes BRCA1,BRCA2 --bed targets.bed
+wgsextract vcf table --vcf-input sample.vcf.gz --preset acmg-sf --region chr17
+```
+
+Repeat `--gene SYMBOL` or `--genes SYMBOL1,SYMBOL2`, give `--gene-file FILE`,
+or select a `--preset` listed by `wgsextract panel bed --list-presets`. A gene
+file accepts names separated by spaces, commas or newlines; `#` starts a
+comment. Symbols and unique aliases resolve offline against the bundled RefSeq
+gene spans. An unknown name or ambiguous alias is an error. The VCF header or
+the `.fai` of a matching `--ref` FASTA must identify GRCh37, GRCh38 or
+CHM13v2.0. If `--ref` is a local library and the header doesn't identify a
+build, its indexed FASTAs must point to a single build. Filenames alone
+don't identify an assembly. `--pad-kb` pads each whole gene span on both
+sides (default: no padding).
+
+The commands take the **union** of the gene spans and the zero-based,
+half-open `--bed` intervals (plain or gzipped), then **intersect** it with
+`--region` if given. `--region` takes a contig, a 1-based position or an
+inclusive range; separate multiple regions with commas. Contig names such
+as `chr17` and `17` match automatically. Supply BED coordinates for the VCF's
+assembly; this is not liftover. A VCF record is kept if it overlaps the final
+intervals, without duplicating records from overlapping targets. A panel with
+no matches returns a header-only VCF or table. Other filters (such as `--expr`
+or `--sample`) still apply.
+
+The result manifest's `details.panel` records the resolved genes and presets,
+the final intervals in VCF contig naming (BED coordinates), and the SHA-256
+of the BED file as supplied.
+
 ## Columns
 
 | Column | Type | Meaning |
@@ -54,6 +88,15 @@ above works.
 | `sv_af`, `sv_freq` | real, text | A structural variant's population frequency and its class (`common`, `low`, `rare` or `novel`), from [`vcf sv-freq`](sv-frequency.md). |
 | `acmg_class`, `acmg_criteria`, `acmg_transcript` | text | **Research use only; not a diagnosis.** fastVEP's automated ACMG/AMP class (`P`, `LP`, `VUS`, `LB`, `B`), the criteria it found met (`&`-separated) and the transcript it classified on, from [`vcf acmg`](acmg.md). Empty when the VCF has no classes. |
 | `imputed`, `genotype_probability` | integer, real | `1` when the genotype was imputed from a reference panel (`INFO/IMP`, from [`vcf impute`](imputation.md)), else `0`; and the largest FORMAT/GP when its values are probabilities in [0, 1]. Unrecognised/phred-scaled scores leave the probability empty. Imputed rows below `vcf impute`'s thresholds have `filter` `ImpLowConf`. |
+| `phase_set` | text | The sample's `FORMAT/PS` for a phased genotype, otherwise empty. Compare phase sets only within the same sample and chromosome. Use `genotype` together with `phase_set` to see which alleles are on the same haplotype. |
+| `alt_fraction` | real | This ALT's depth divided by the sum of `FORMAT/AD` across REF and all ALTs in the record. If depths are incomplete or sum to zero, falls back to the allele's `FORMAT/VAF`, then `FORMAT/AF`, if present and in [0, 1]. `INFO/AF` is not a read fraction. |
+| `transcript_id` | text | The transcript associated with `consequence`: VEP `Feature` or SnpEff `Feature_ID`. Empty for non-transcript effects. |
+| `gnomad_popmax_af` | real | Maximum allele frequency across gnomAD genetic ancestry groups for this ALT (`GNOMAD_POPMAX_AF` from `vcf gnomad`, a native gnomAD `AF_grpmax_joint`/`AF_grpmax`/`AF_popmax` field, or a gnomAD-specific group-maximum field in VEP `CSQ`). VEP `MAX_AF` combines databases and is not a fallback. |
+| `gnomad_nhomalt` | integer | Count of homozygotes for this ALT in gnomAD (`GNOMAD_NHOMALT` from `vcf gnomad`, native `nhomalt_joint`/`nhomalt`, or a gnomAD homozygote count in VEP `CSQ`). A known count of zero is distinct from a missing count. |
+
+When a WGSE annotation splits a multi-allelic record, it saves the original
+AD total so the read fraction stays the same. A known split without a
+complete original total can only use `FORMAT/VAF` or `FORMAT/AF`.
 
 The TSV has a header row and leaves missing values empty. The SQLite database
 has the table `variants` with these columns, `columns` (each column's type and
@@ -61,6 +104,16 @@ meaning, for an agent to read first) and `metadata` (wgsextract version,
 source VCF and its SHA-256, sample, reference build, region, annotations found,
 row count and command line). It is indexed on `gene`, `rsid` and
 `(chrom, pos)`.
+
+[`/v1/variants` and MCP `query_variants`](server.md) can return these
+columns from any of the table formats. They omit fields that are missing.
+
+Newly built `ref gnomad --release 4.1` tables retain the joint dataset's
+`AF_grpmax_joint` and `nhomalt_joint`. `vcf gnomad` carries them into its
+annotated VCF and, with `--max-af`, its confidence table. Older five-column
+gnomAD tables still supply `gnomad_af`, but do not have the two additional
+statistics. To rebuild an installed table, move it and its index aside before
+running `ref gnomad --release 4.1` again (this streams about 900 GB).
 
 A table of a [`vcf acmg`](acmg.md) VCF keeps the research-only disclaimer
 where its readers look: the `acmg_*` column descriptions, the metadata key

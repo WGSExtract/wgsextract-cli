@@ -1,3 +1,4 @@
+import gzip
 import logging
 import re
 import subprocess
@@ -13,8 +14,9 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_prepared, is_vcf_path
+from wgsextract_cli.core.variant_table import parse_header
 
 from .annotation_helpers import (
     annotate_vcf,
@@ -30,7 +32,14 @@ from .bigwig_scores import annotate_from_bigwig
 
 PHYLOP_ANNOTATED = "phylop_annotated.vcf.gz"
 GNOMAD_ANNOTATED = "gnomad_annotated.vcf.gz"
-GNOMAD_COLUMNS = ("GNOMAD_AF",)
+_GNOMAD_TAGS = {
+    "GNOMAD_AF": ("Float", "gnomAD Allele Frequency"),
+    "GNOMAD_POPMAX_AF": ("Float", "gnomAD maximum genetic ancestry group frequency"),
+    "GNOMAD_NHOMALT": (
+        "Integer",
+        "gnomAD count of homozygous individuals for this ALT",
+    ),
+}
 
 
 def run_phylop(params: VcfPhylopParams) -> None:
@@ -112,6 +121,44 @@ def _annotate_from_phylop_table(
         )
 
 
+def _gnomad_vcf_columns(path: str) -> tuple[list[str], list[str]]:
+    text = run_command(["bcftools", "view", "-h", path], capture_output=True).stdout
+    tags = parse_header(text.splitlines()).info_number
+    sources = {
+        "GNOMAD_AF": ("AF_joint", "AF"),
+        "GNOMAD_POPMAX_AF": ("AF_grpmax_joint", "AF_grpmax", "AF_popmax"),
+        "GNOMAD_NHOMALT": ("nhomalt_joint", "nhomalt"),
+    }
+    columns, destinations = [], []
+    for dest, names in sources.items():
+        source = next((name for name in names if name in tags), None)
+        if source is None and dest == "GNOMAD_AF":
+            source = "AF"  # preserve the error for a resource with no frequency
+        if source:
+            columns.append(f"INFO/{dest}:=INFO/{source}")
+            destinations.append(dest)
+    return columns, destinations
+
+
+def _gnomad_table_columns(path: str) -> tuple[list[str], list[str]]:
+    columns = ["CHROM", "POS", "REF", "ALT", "INFO/GNOMAD_AF"]
+    destinations = ["GNOMAD_AF"]
+    extras = {"AF_grpmax_joint": "GNOMAD_POPMAX_AF", "nhomalt_joint": "GNOMAD_NHOMALT"}
+    with gzip.open(path, "rt") as table:
+        for line in table:
+            if line.startswith("#CHROM\t"):
+                for name in line.rstrip().split("\t")[5:]:
+                    if dest := extras.get(name):
+                        destinations.append(dest)
+                        columns.append(f"INFO/{dest}")
+                    else:
+                        columns.append("-")
+                break
+            if not line.startswith("#"):
+                break
+    return columns, destinations
+
+
 def run_gnomad(params: VcfGnomadParams) -> None:
     verify_dependencies(["bcftools", "tabix"])
     log_dependency_info(["bcftools", "tabix"])
@@ -125,25 +172,27 @@ def run_gnomad(params: VcfGnomadParams) -> None:
 
     # Transfer AF as GNOMAD_AF to avoid colliding with the caller's AF.
     ann_out = str(Path(outdir, GNOMAD_ANNOTATED))
-    header = [
-        '##INFO=<ID=GNOMAD_AF,Number=A,Type=Float,Description="gnomAD Allele Frequency">'
-    ]
     if is_vcf_path(gnomad_file, bcf=False):
         annotation = ensure_vcf_prepared(gnomad_file)
-        columns = "INFO/GNOMAD_AF:=INFO/AF"
+        columns, destinations = _gnomad_vcf_columns(annotation)
     else:
-        # `ref gnomad --release 4.1` table: #CHROM, POS, REF, ALT, AF
         annotation = prepare_tabix_annotation(gnomad_file, "gnomAD")
-        columns = "CHROM,POS,REF,ALT,INFO/GNOMAD_AF"
+        columns, destinations = _gnomad_table_columns(annotation)
+    header = [
+        f'##INFO=<ID={dest},Number=A,Type={kind},Description="{description}">'
+        for dest in destinations
+        for kind, description in [_GNOMAD_TAGS[dest]]
+    ]
     annotate_vcf(
         ensure_vcf_prepared(input_file),
         annotation,
-        columns,
+        ",".join(columns),
         ann_out,
         outdir,
         "gnomAD",
         header,
         threads=params.threads,
+        remove=[f"INFO/{tag}" for tag in _GNOMAD_TAGS if tag not in destinations],
         reference=lib.fasta,
         annotation_source=gnomad_file,
     )
@@ -165,7 +214,7 @@ def run_gnomad(params: VcfGnomadParams) -> None:
             filter_out,
             variant_confidence.thresholds_from(params),
             include=f"GNOMAD_AF < {params.max_af} || GNOMAD_AF='.'",
-            summary_columns=GNOMAD_COLUMNS,
+            summary_columns=destinations,
             samples=(input_file,),
         )
         with tempfile.TemporaryDirectory(prefix=".wgse_evidence_", dir=outdir) as work:
@@ -176,7 +225,7 @@ def run_gnomad(params: VcfGnomadParams) -> None:
         raise WGSExtractError(f"gnomAD filtering failed: {e}") from e
     table = re.sub(r"\.vcf\.gz$", ".confidence.tsv", filter_out)
     variant_confidence.write_table(
-        table, summary, GNOMAD_COLUMNS, f"Calls with gnomAD AF < {params.max_af}"
+        table, summary, destinations, f"Calls with gnomAD AF < {params.max_af}"
     )
     variant_confidence.record(
         summary,

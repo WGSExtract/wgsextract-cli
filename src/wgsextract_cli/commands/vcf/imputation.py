@@ -289,19 +289,21 @@ def beagle_command(prefix: Path) -> list[str]:
     """``java -jar beagle.jar`` from the imputation environment, the jar checked
     against its pinned digest."""
     jars = sorted(prefix.glob("share/beagle-*/beagle.jar"))
-    java = (
-        prefix / "Library" / "bin" / "java.exe"
-        if sys.platform == "win32"
-        else prefix / "bin" / "java"
-    )
+    if sys.platform == "win32":
+        launchers = [prefix / "Library" / "bin" / "java.exe"]
+    else:
+        # conda-forge's OpenJDK may expose only its JVM home, not a bin symlink.
+        launchers = [prefix / "bin" / "java", prefix / "lib" / "jvm" / "bin" / "java"]
     if not jars:
         raise WGSExtractError(
             f"Beagle jar missing: expected {prefix / 'share'}/beagle-*/beagle.jar. "
             f"Restore it with `pixi install -e {ENV}`."
         )
-    if not java.is_file():
+    java = next((launcher for launcher in launchers if launcher.is_file()), None)
+    if java is None:
+        expected = " or ".join(str(launcher) for launcher in launchers)
         raise WGSExtractError(
-            f"Java executable missing: expected {java}. Restore OpenJDK with "
+            f"Java executable missing: expected {expected}. Restore OpenJDK with "
             f"`pixi install -e {ENV}`."
         )
     digest = hashlib.sha256(jars[-1].read_bytes()).hexdigest()

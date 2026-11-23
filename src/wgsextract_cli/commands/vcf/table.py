@@ -35,13 +35,13 @@ from wgsextract_cli.core.table_writer import (
     provenance,
     table_path,
 )
+from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
     popen,
-    run_command,
 )
-from wgsextract_cli.core.variant_files import ensure_vcf_prepared, get_vcf_samples
+from wgsextract_cli.core.variant_files import get_vcf_samples
 from wgsextract_cli.core.variant_table import (
     COLUMNS,
     Row,
@@ -51,6 +51,7 @@ from wgsextract_cli.core.variant_table import (
 )
 
 from .basic import require_vcf_input, vcf_input_handler
+from .panel_slice import indexed_vcf, resolve_panel_slice
 from .pharmcat import summarize
 
 _VCF_SUFFIX = re.compile(r"\.(g?vcf(\.b?gz)?|bcf)$", re.IGNORECASE)
@@ -221,19 +222,6 @@ def _write_tables(
     return count
 
 
-def _indexed_input(path: str) -> str:
-    """``path`` with a current index, for a region query. A BCF is indexed
-    in place with ``bcftools index`` (CSI); text VCFs go through the usual
-    bgzip + tabix preparation."""
-    if not path.lower().endswith(".bcf"):
-        return ensure_vcf_prepared(path)
-    index = Path(path + ".csi")
-    if not index.exists() or index.stat().st_mtime < Path(path).stat().st_mtime:
-        logging.info(f"Indexing {path}...")
-        run_command(["bcftools", "index", "-f", path])
-    return path
-
-
 def run_table(params: VcfTableParams) -> None:
     verify_dependencies(["bcftools"])
     check_format(params.table_format)
@@ -243,8 +231,11 @@ def run_table(params: VcfTableParams) -> None:
     outdir = str(absolute_path(params.outdir or Path(input_vcf).parent))
     Path(outdir).mkdir(parents=True, exist_ok=True)
     source = input_vcf
-    if params.region:
-        input_vcf = _indexed_input(input_vcf)  # -r needs an index
+    scope = resolve_panel_slice(params, source)
+    if scope is not None:
+        input_vcf = scope.prepared
+    elif params.region:
+        input_vcf = indexed_vcf(input_vcf)
     samples, sample = _select_sample(input_vcf, params.sample)
     pharmcat = _pharmcat_calls(
         os.fspath(params.pharmcat_json) if params.pharmcat_json else None
@@ -260,15 +251,17 @@ def run_table(params: VcfTableParams) -> None:
     command = ["bcftools", "view", "--no-version"]
     if sample and len(samples) > 1:
         command += ["-s", sample, "-I"]  # -I: keep INFO as it is
-    if params.region:
-        command += ["-r", params.region]
-    command.append(input_vcf)
-
     logging.info(f"Writing the variant table from {input_vcf}...")
-    stream = _VcfStream(command)
-    try:
+    with ExitStack() as stack:
+        if scope is not None:
+            work = stack.enter_context(scratch_directory(outdir, ".wgse_table_panel_"))
+            command += scope.args(work)
+        elif params.region:
+            command += ["-r", params.region]
+        stream = _VcfStream([*command, input_vcf])
+        stack.callback(stream.close)
         header = stream.header
-        build = _reference_build(header)
+        build = (scope.build if scope else None) or _reference_build(header)
         annotations = ",".join(header.annotations)
         research_acmg = "acmg" in header.annotations
         # A full pass over the VCF, so only when SQLite or Parquet keeps it.
@@ -298,9 +291,6 @@ def run_table(params: VcfTableParams) -> None:
             sqlite_path,
             metadata,
         )
-    finally:
-        stream.close()
-
     result.add_output(out_table, "variant_table", metrics={"rows": rows})
     if sqlite_path:
         result.add_output(
