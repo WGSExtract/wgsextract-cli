@@ -246,31 +246,34 @@ def _pipeline(commands: Sequence[Sequence[str]], scratch: Path) -> Iterator[IO[b
 def target_depths(
     input_path: str,
     reference: str | None,
-    bed: Path,
+    scratch_bed: Path,
     targets: Sequence[BedTarget],
     lengths: Mapping[str, int],
     *,
     depth_options: Sequence[str] = (),
 ) -> dict[str, dict[int, int]]:
-    """Fill the targets' histograms; returns each contig's, overlaps once.
+    """Write the merged intervals to ``scratch_bed`` and fill the target
+    histograms. Return each contig's histogram with overlaps counted once.
 
     With an index only the reads over the targets are decoded (``samtools
     view -M -L``); ``samtools depth -b`` alone reads the whole file.
     """
     merged = _merged(targets, {name: i for i, name in enumerate(lengths)})
-    bed.write_text("".join(f"{c}\t{s}\t{e}\n" for c, s, e in merged), newline="\n")
+    scratch_bed.write_text(
+        "".join(f"{c}\t{s}\t{e}\n" for c, s, e in merged), newline="\n"
+    )
     ref = _cram_reference_opts(input_path, reference)
-    depth = ["samtools", "depth", "-a", "-b", str(bed), *depth_options]
+    depth = ["samtools", "depth", "-a", "-b", str(scratch_bed), *depth_options]
     index = alignment_index(input_path)
     if index:
         commands = [
-            ["samtools", "view", "-u", "-M", "-L", str(bed), *ref,
+            ["samtools", "view", "-u", "-M", "-L", str(scratch_bed), *ref,
              f"{input_path}##idx##{index}"],
             [*depth, "-"],
         ]  # fmt: skip
     else:
         commands = [[*depth, *ref, input_path]]
-    with _pipeline(commands, bed.parent) as stream:
+    with _pipeline(commands, scratch_bed.parent) as stream:
         try:
             return _count_depths(stream, targets)
         except ValueError as exc:
