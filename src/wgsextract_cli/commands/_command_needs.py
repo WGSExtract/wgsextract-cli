@@ -175,8 +175,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf pharmcat": _n(
         MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip curl"
     ),
-    # Input preparation, including bgzip, belongs to the selected child annotators.
-    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="samtools vep vep-rs"),
+    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep vep-rs"),
     # Minutes with vep-rs, the default; hours with Ensembl VEP.
     "vep run": _n(MINUTES, "bcftools", "tabix", "vep-rs", optional="samtools vep"),
     "vep download": _n(DOWNLOAD, "samtools", "vep-cache-builder", optional="curl tar"),
@@ -252,6 +251,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "qc ancestry": _n(MINUTES, "samtools", optional="bcftools curl"),
     "score pgs": _n(MINUTES, "bcftools", optional="plink2 curl"),
     "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
+    "qc roh": _n(MINUTES, "bcftools", "bgzip", "tabix"),
     "qc fake-data": _n(
         SECONDS,
         "bcftools",
@@ -267,6 +267,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "analyze batch-gen": _n(INSTANT),
     "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),
     "typing smn": _n(MINUTES, "smn_caller.py", "samtools", optional="bcftools"),
+    "typing target-cnv": _n(SECONDS, "samtools", optional="bcftools curl"),
     "typing hla": _n(
         MINUTES, "run-t1k", "samtools", "t1k-build.pl", optional="bcftools"
     ),
@@ -276,6 +277,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         optional="ExpansionHunter LongTR strkit bcftools",
     ),
     "methylation pileup": _n(HOURS, "modkit", "samtools", "tabix", optional="bcftools"),
+    "methylation regions": _n(MINUTES, "samtools", optional="curl"),
     "pet-align": _n(
         HOURS, "bcftools", "bwa", "samtools", optional="bwa-mem2 sambamba samblaster"
     ),

@@ -778,6 +778,39 @@ test("PR #530 review: a section shown by a value from its own data source appear
   }
 });
 
+test("#1230 changing a setting saves only that setting, never this window's older values of the rest", async () => {
+  resetState();
+  const { configSettingChanged, fieldValueChanged } = await import("../dist/web/src/client/operations.js");
+  const control = {
+    id: "paths",
+    kind: "configEditor",
+    configFile: { path: "{{usersWorkspace}}/config.toml", format: "toml" },
+    settings: [
+      { id: "out_dir", key: "output_directory", kind: "path" },
+      { id: "ref_path", key: "reference_library", kind: "path" },
+    ],
+  };
+  state.manifest = { pages: [{ id: "settings", title: "Settings", sections: [{ id: "s", controls: [control] }] }] };
+  state.uiMode = "advanced";
+  state.configValues = { "paths.out_dir": "/loaded/output", "paths.ref_path": "/loaded/lib" };
+  const saved = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (path, options) => {
+    if (path === "/api/config/save") {
+      saved.push(JSON.parse(options.body).values);
+      return Promise.resolve(new Response(JSON.stringify({ path: "/u/config.toml", keyCount: 1 }), { status: 200, headers: { "content-type": "application/json" } }));
+    }
+    return Promise.resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+  };
+  try {
+    await configSettingChanged("/new/output", control.settings[0], control);
+    await fieldValueChanged("/bound/lib", { id: "ref_path", kind: "path" });
+    assert.deepEqual(saved, [{ output_directory: "/new/output" }, { reference_library: "/bound/lib" }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("1087 Basic mode ignores advanced-only overrides without erasing shared settings", async () => {
   resetState();
   const { saveConfig, configSettingChanged, fieldValueChanged } = await import("../dist/web/src/client/operations.js");

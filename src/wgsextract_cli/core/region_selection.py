@@ -222,4 +222,9 @@ def selected_intervals(
                 intervals.setdefault(chrom, []).append((start, end))
     if not intervals:
         raise ValueError("Selection covers no reference bases.")
+    return merge_intervals(intervals)
+
+
+def merge_intervals(intervals: Intervals) -> Intervals:
+    """Union each contig's intervals, in ascending coordinate order."""
     return {chrom: merge_ranges(ranges) for chrom, ranges in intervals.items()}

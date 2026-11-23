@@ -193,6 +193,9 @@ Agreement per (variant, transcript) pair, where Ensembl VEP has a value:
   or one larger than `--max_sv_size`) stay in vep-rs's output without `CSQ`;
   Ensembl VEP leaves them out.
 
-`vep run` warns `vep_cache_gaps` when the cache it uses lacks known variants
-or predictions. The full comparison, including fastVEP, vareffect and bcftools
-csq, is in [#602](https://github.com/WGSExtract/wgsextract-cli/issues/602).
+`vep run` warns `vep_cache_gaps` when the cache it uses lacks known variants,
+gnomAD frequencies or predictions, and `vcf table` warns `gnomad_af_missing`
+when its `gnomad_af` column would be empty for want of them; VEP's 1000
+Genomes `AF` and `MAX_AF` go to the table's `kg_af` and `max_af` instead. The
+full comparison, including fastVEP, vareffect and bcftools csq, is in
+[#602](https://github.com/WGSExtract/wgsextract-cli/issues/602).

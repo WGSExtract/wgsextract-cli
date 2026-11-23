@@ -304,11 +304,14 @@ class AlignerCommand:
         )
 
 
-def native_gpu_preference(value: bool | None) -> bool:
-    """The explicit speed preference, else config.toml's opt-in."""
+def native_gpu_preference(value: bool | None) -> bool | None:
+    """A run override takes precedence over config; None leaves it automatic."""
     from wgsextract_cli.core.config import settings
 
-    return value if value is not None else bool(settings.get("prefer_native_gpu"))
+    if value is not None:
+        return value
+    configured = settings.get("prefer_native_gpu")
+    return configured if isinstance(configured, bool) else None
 
 
 def native_setting(value: str | None) -> str:

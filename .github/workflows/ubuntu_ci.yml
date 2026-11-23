@@ -1,6 +1,7 @@
 name: CI Ubuntu
 
-# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
+# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix
+# (main pushes run the files their merge group left to them, #1373).
 on:
   push:
     branches: [ main ]
@@ -93,6 +94,8 @@ jobs:
       skip-generic: ${{ github.event_name == 'pull_request' }}
       setup-checks: ${{ github.event_name != 'pull_request' || inputs.setup-checks }}
       move-modules: ${{ inputs.move-modules || '[]' }}
+      # The merge queue runs this suite, so main skips what it already ran (#1373).
+      queue-dedupe: true
 
   optional-tools:
     needs: nightly

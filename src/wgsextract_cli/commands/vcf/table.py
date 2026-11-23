@@ -43,7 +43,9 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import get_vcf_samples
 from wgsextract_cli.core.variant_table import (
+    COLUMN_NAMES,
     COLUMNS,
+    VEP_GNOMAD_AF,
     Row,
     VcfHeader,
     parse_header,
@@ -117,6 +119,53 @@ def _batches(rows: Iterable[Row]) -> Iterator[list[Row]]:
             batch = []
     if batch:
         yield batch
+
+
+# The population frequency columns; the first two name the source they hold.
+_FREQUENCIES = ("gnomad_af", "kg_af", "max_af")
+_SOURCES = {"gnomad_af": "gnomad", "kg_af": "1000genomes"}
+
+
+def _count_frequencies(rows: Iterable[Row], counts: dict[str, int]) -> Iterator[Row]:
+    """Pass ``rows`` through, counting in ``counts`` the rows that have a
+    value in each population frequency column."""
+    columns = {name: COLUMN_NAMES.index(name) for name in _FREQUENCIES}
+    for row in rows:
+        for name, i in columns.items():
+            if row[i] is not None:
+                counts[name] += 1
+        yield row
+
+
+def _warn_missing_gnomad(
+    vcf: str, header: VcfHeader, rows: int, counts: dict[str, int]
+) -> None:
+    """Say so when no row has a gnomAD frequency, so an empty gnomad_af isn't
+    read as rare (#1354). The data can't always tell a cache without gnomAD
+    (a vep-rs cache from `vep download` gives VEP 1000 Genomes frequencies
+    only) from variants gnomAD lacks, so where VEP declares gnomAD fields
+    the warning says both are possible."""
+    if not rows or counts["gnomad_af"] or "GNOMAD_AF" in header.info_number:
+        return
+    kg = f", though it filled kg_af (1000 Genomes) on {counts['kg_af']:,} rows"
+    if set(header.csq_fields or ()) & set(VEP_GNOMAD_AF):
+        held = (
+            f"VEP left every gnomAD field empty{kg if counts['kg_af'] else ''}. "
+            "Either VEP's cache has no gnomAD frequencies (a vep-rs cache from "
+            "'vep download' has none) or no variant matched gnomAD, so an empty "
+            "gnomad_af may mean not annotated rather than rare"
+        )
+    else:
+        held = (
+            "it has no gnomAD annotation, so an empty gnomad_af means not "
+            "annotated, not rare"
+        )
+    warn(
+        "gnomad_af_missing",
+        f"No row of {vcf} has a gnomAD frequency: {held}. Run 'wgsextract vcf "
+        "gnomad' on the VCF before filtering on rarity.",
+        path=vcf,
+    )
 
 
 def _pharmcat_calls(path: str | None) -> dict[str, tuple[str, str]]:
@@ -197,9 +246,11 @@ def _write_tables(
     table_format: str,
     sqlite_path: str | None,
     metadata: dict[str, str],
+    frequencies: dict[str, int],
 ) -> int:
     """Stream ``rows`` into the table file (and SQLite database); return the
-    count. Each file appears under its final name only once complete."""
+    count, and count in ``frequencies`` the rows with each population
+    frequency. Each file appears under its final name only once complete."""
     with ExitStack() as stack:
         table = stack.enter_context(
             TableWriter(table_path, COLUMNS, table_format, metadata=metadata)
@@ -211,14 +262,22 @@ def _write_tables(
             _create_sqlite(db)
         insert = f"INSERT INTO {TABLE} VALUES ({', '.join('?' * len(COLUMNS))})"
         count = 0
-        for batch in _batches(rows):
+        for batch in _batches(_count_frequencies(rows, frequencies)):
             table.write(batch)
             if db is not None:
                 db.executemany(insert, batch)
             count += len(batch)
         stream.check()
         if db is not None:
-            _finish_sqlite(db, {**metadata, "rows": str(count)})
+            sources = [s for k, s in _SOURCES.items() if frequencies[k]]
+            _finish_sqlite(
+                db,
+                {
+                    **metadata,
+                    "rows": str(count),
+                    "population_af_sources": ",".join(sources),
+                },
+            )
     return count
 
 
@@ -277,6 +336,7 @@ def run_table(params: VcfTableParams) -> None:
             carried_only=str(not params.all_alleles).lower(),
             acmg_disclaimer=acmg.DISCLAIMER if research_acmg else None,
         )
+        frequencies = dict.fromkeys(_FREQUENCIES, 0)
         rows = _write_tables(
             stream,
             variant_rows(
@@ -290,6 +350,7 @@ def run_table(params: VcfTableParams) -> None:
             params.table_format,
             sqlite_path,
             metadata,
+            frequencies,
         )
     result.add_output(out_table, "variant_table", metrics={"rows": rows})
     if sqlite_path:
@@ -297,9 +358,15 @@ def run_table(params: VcfTableParams) -> None:
             sqlite_path, "variant_database", kind="sqlite", metrics={"rows": rows}
         )
     result.add_metrics(
-        rows=rows, sample=sample, reference_build=build, annotations=annotations
+        rows=rows,
+        sample=sample,
+        reference_build=build,
+        annotations=annotations,
+        **{f"{name}_rows": n for name, n in frequencies.items()},
     )
-    if not header.annotations:
+    if header.annotations:
+        _warn_missing_gnomad(input_vcf, header, rows, frequencies)
+    else:
         warn(
             "nothing_annotated",
             f"{input_vcf} has no VEP, SnpEff, ClinVar, gnomAD or PharmGKB "

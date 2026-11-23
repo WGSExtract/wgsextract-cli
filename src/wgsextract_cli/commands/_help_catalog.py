@@ -334,8 +334,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "--sa-dir acmg_sa --gff3 Homo_sapiens.GRCh38.116.gff3.gz",
     ),
     "vcf chain-annotate": _h(
-        "chain_annotated.vcf.gz (+ .tbi).",
-        f"wgsextract vcf chain-annotate {_VCF_IN} --annotations clinvar,gnomad",
+        "chain_annotated.vcf.gz (+ index), chain_annotate.steps.json; "
+        "with --to-table, chain_annotated_variants.tsv (or .parquet) and .sqlite.",
+        f"wgsextract vcf chain-annotate {_VCF_IN} --annotations clinvar,gnomad "
+        "--region chr22:19000000-20000000 --threads 4 --to-table",
     ),
     "vcf pharmcat": _h(
         "<stem>.report.html and <stem>.phenotype.json from PharmCAT.",
@@ -680,6 +682,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract qc contamination --input sample.cram",
         "wgsextract qc contamination --input sample.bam --sites 10k",
     ),
+    "qc roh": _h(
+        "<stem>.roh.tsv (runs), <stem>.roh.json (wgsextract.roh/1: evidence, "
+        "scope, F_ROH, isodisomy review flags, provenance) and "
+        "<stem>.roh.markers.tsv.gz.",
+        "wgsextract qc roh --input sample.vcf.gz --af-file gnomad.genomes.v4.1.sites.chr15.vcf.bgz --regions chr15",
+        "wgsextract qc roh --input sample.vcf.gz --af-file 1kgp_af.vcf.gz --af-tag EUR_AF",
+    ),
     "qc fake-data": _h(
         "fake.cram, fake.bam, fake.vcf or fake_R1/_R2.fastq.gz, and the fake "
         "reference.",
@@ -714,6 +723,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "status in the result's metrics.",
         "wgsextract typing smn --input sample.cram",
     ),
+    "typing target-cnv": _h(
+        "<stem>.target-cnv.tsv: copy-number class, confidence and callability per BED interval.",
+        "wgsextract typing target-cnv -i sample.bam --bed targets.bed --ref hg38.fa.gz",
+        "wgsextract typing target-cnv -i sample.cram --bed targets.bed --ref hg38.fa.gz --download",
+    ),
     "typing hla": _h(
         "<stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.",
         "wgsextract typing hla --input sample.cram",
@@ -731,6 +745,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "<input stem>.<context>.bedmethyl.parquet.",
         "wgsextract methylation pileup --input ont.bam",
         "wgsextract methylation pileup --input ont.bam --format parquet",
+    ),
+    "methylation regions": _h(
+        "<input stem>.<build>.<preset>.methylation.tsv (or .parquet) and its run manifest.",
+        "wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa "
+        "--build hg38 --preset promoters",
     ),
     "pet-align": _h(
         "<reads stem>_<species>.bam or .cram (+ index) and "
