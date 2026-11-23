@@ -165,6 +165,11 @@ does redistribute positions with attribution and share-alike notice below.
 
 Calling never downloads or refreshes. It validates samtools/bcftools/bgzip/tabix,
 an indexed matching GRCh38 FASTA, and REF-allele agreement before calling.
+Sites where the FASTA's chrY is N, such as the PARs masked in hs38 and the
+GRCh38 no-alt analysis set, are skipped, not called; their count is in the
+VCF header (`##ybrowse_excluded_reference_N_sites`) and the
+`ybrowse_reference_n_sites_excluded` warning. Any other REF mismatch stops
+the run.
 `_Y_ybrowse.vcf.gz` has haploid genotypes at installed targets, aliases in ID
 and allele-matched HG/ISOGG annotations. Duplicate aliases combine only for
 the same REF/ALT. Multiallelic splitting never turns another ALT into reference;

@@ -74,6 +74,16 @@ it omits GQ. Supplied VCFs never use that fallback. Multi-sample VCFs require
 the contig names from the records and repairs the header in the working stream.
 The original VCF is not rewritten.
 
+VCF input may be bgzipped (`.vcf.gz`), a `.bcf`, or a plain `.vcf`. Indexed
+input is read in place, and an unindexed `.vcf.gz` is indexed beside itself
+unless `--sample` is given. Any other input (a plain VCF, an unindexed BCF,
+an unindexed `.vcf.gz` with `--sample`, or one that can't be indexed where it
+is because it is unsorted or in a read-only folder) is compressed and indexed
+as a working copy in the run's temporary work, never beside the input, so its
+chromosome naming (`1` or `chr1`, `MT` or `chrM`) is matched to the targets'
+and `--region` works as for indexed input. The copy keeps only the `--sample`
+you chose, and keeps the input's record order: only unsorted input is sorted.
+
 Absent VCF markers are **no-calls**, not reference genotypes: variant-only
 VCFs do not establish coverage. Explicit `0/0` records and gVCF reference-block
 interiors need the same gates as alternate calls. Block `MIN_DP`, when present,

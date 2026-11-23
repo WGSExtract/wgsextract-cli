@@ -36,7 +36,13 @@ from pathlib import Path
 import numpy as np
 
 HERE = Path(__file__).resolve().parent
-NAME = "wgsextract-pgs-hgdp1kg-v1.npz"
+NAME = "wgsextract-pgs-hgdp1kg-v2.npz"
+
+
+def _built(work: Path, scores: dict) -> list[str]:
+    """The scores built in ``work``: with ``package --base``, the others were
+    copied from the base reference and are validated with it."""
+    return [i for i in scores if (work / "scores" / f"{i}.all.npy").is_file()]
 
 
 def _samples(work: Path) -> list[dict[str, str]]:
@@ -63,7 +69,7 @@ def ours(work: Path, targets: list[str]) -> None:
     )
     rows = []
     samples = _samples(work)
-    for pgs_id in reference.info["scores"]:
+    for pgs_id in _built(work, reference.info["scores"]):
         scores = np.load(work / "scores" / f"{pgs_id}.all.npy")
         for s, value in zip(samples, scores, strict=True):
             if int(s["training_row"]) >= 0:
@@ -135,7 +141,7 @@ def phase1(work: Path, scores: Path, samples: list[str]) -> None:
             Path(f"{tmp}/{s}.vcf").write_text("".join(head) + "".join(rows))
             subprocess.run(["bcftools", "view", "-e", 'TYPE!="snp" && (GT="RR" || GT="mis")',
                             "-Oz", "-o", f"{tmp}/{s}.vcf.gz", f"{tmp}/{s}.vcf"], check=True)  # fmt: skip
-        for pgs_id in reference.info["scores"]:
+        for pgs_id in _built(work, reference.info["scores"]):
             with (work / "scores" / f"{pgs_id}.rows.tsv").open() as f:
                 rows = list(csv.DictReader(f, delimiter="\t"))
             # The reference's missing genotypes are imputed with panel-wide
@@ -181,7 +187,7 @@ def theirs(work: Path) -> None:
     ref = samples[samples["Unrelated"]].copy().set_index("IID")
     ours_df = pd.read_csv(work / "validate" / "ours.tsv", sep="\t")
     report: dict = {}
-    for pgs_id in info["scores"]:
+    for pgs_id in _built(work, info["scores"]):
         scores = np.load(work / "scores" / f"{pgs_id}.all.npy")
         all_scores = pd.Series(scores, index=samples["IID"])
         ref["score"] = all_scores.loc[ref.index].values

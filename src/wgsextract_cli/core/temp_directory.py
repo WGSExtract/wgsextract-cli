@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from wgsextract_cli.core.atomic_output import publication_lock
 from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -104,42 +105,94 @@ def input_scratch_directory(fallback: PathInput | None = None) -> str:
     return directories[key]
 
 
-def move_file(source: PathInput, destination: PathInput) -> None:
+def move_file(
+    source: PathInput, destination: PathInput, *, locked: bool = False
+) -> None:
     """Move a finished file out of the temporary work into place, replacing
     ``destination``. A rename when both are on one volume; otherwise (a
     ``--tmp-dir`` on another disk) a copy beside ``destination``, then a
-    rename, so ``destination`` is never left half-written."""
+    rename, so ``destination`` is never left half-written. ``locked`` holds
+    the name's publication lock while replacing it, for a name that
+    ``link_new_file`` may publish too."""
+    final = Path(destination)
     try:
-        os.replace(source, destination)
+        with _publishing(final, locked):
+            os.replace(source, final)
         return
     except OSError as error:
         if error.errno != errno.EXDEV:
             raise
-    final = Path(destination)
     staged = final.with_name(f".{final.name}.{uuid.uuid4().hex}.partial")
     try:
         shutil.copy2(source, staged)
-        os.replace(staged, final)
+        with _publishing(final, locked):
+            os.replace(staged, final)
     finally:
         staged.unlink(missing_ok=True)
     Path(source).unlink()
 
 
+def _publishing(
+    final: Path, locked: bool = True
+) -> contextlib.AbstractContextManager[None]:
+    return publication_lock(final) if locked else contextlib.nullcontext()
+
+
+# link() errors meaning the volume can't hard-link at all (exFAT, FAT32, some
+# SMB and NFS shares), or the file has too many links. Windows reports FAT's
+# ERROR_INVALID_FUNCTION as EINVAL.
+_NO_HARD_LINK = frozenset(
+    {
+        errno.EPERM,
+        errno.ENOTSUP,
+        errno.EOPNOTSUPP,
+        errno.ENOSYS,
+        errno.EMLINK,
+        errno.EINVAL,
+    }
+)
+
+
 def link_new_file(source: PathInput, destination: PathInput) -> None:
     """Publish a finished file from the temporary work as ``destination``
     only if no file has that name: FileExistsError otherwise. A hard link on
-    one volume; across volumes a copy beside ``destination``, then a link."""
-    try:
-        os.link(source, destination)
-        return
-    except OSError as error:
-        if error.errno != errno.EXDEV:
-            raise
+    one volume; across volumes a copy beside ``destination``, then a link. On
+    a volume without hard links, the copy is renamed into place instead."""
     final = Path(destination)
+    # Every link or rename into ``final`` holds its publication lock (copies
+    # happen outside it), so another run's link or locked replacement can't
+    # land between a fallback's existence check and its rename.
+    with _publishing(final):
+        try:
+            os.link(source, final)
+            return
+        except OSError as error:
+            if error.errno != errno.EXDEV and error.errno not in _NO_HARD_LINK:
+                raise
+            linkable = error.errno == errno.EXDEV
     staged = final.with_name(f".{final.name}.{uuid.uuid4().hex}.partial")
     try:
         shutil.copy2(source, staged)
-        os.link(staged, final)
+        with _publishing(final):
+            if linkable:
+                try:
+                    os.link(staged, final)
+                    return
+                except OSError as error:
+                    if error.errno not in _NO_HARD_LINK:
+                        raise
+            # Without hard links nothing both checks that a name is free and
+            # fills it with a complete file in one step (macOS's RENAME_EXCL
+            # is unsupported on exFAT too). Under the lock, WGS Extract runs
+            # can't race each other and readers only ever see a complete
+            # file, but a program that ignores the lock and creates ``final``
+            # between the check and the rename has its file replaced. On
+            # Windows os.rename itself refuses an existing name.
+            if os.path.lexists(final):
+                raise FileExistsError(
+                    errno.EEXIST, os.strerror(errno.EEXIST), str(final)
+                )
+            os.rename(staged, final)
     finally:
         staged.unlink(missing_ok=True)
 

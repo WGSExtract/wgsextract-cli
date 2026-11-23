@@ -18,7 +18,7 @@ from wgsextract_cli.core.ref_library.assets import read_fai_lengths, sequence_di
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.temp_directory import scratch_parent
+from wgsextract_cli.core.temp_directory import link_new_file, scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -244,7 +244,7 @@ def write_intervals(path: Path, intervals: list[PloidyInterval]) -> str:
         with os.fdopen(fd, "w", newline="\n") as stream:
             stream.write(content)
         try:
-            os.link(temporary, path)
+            link_new_file(temporary, path)
         except FileExistsError:
             if path.read_text() != content:
                 raise WGSExtractError(
