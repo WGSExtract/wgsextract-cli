@@ -589,22 +589,19 @@ def test_sniffles_1250_calls_and_checks_every_region(tmp_path, long_read, bed):
 
 
 @needs_htslib
-@pytest.mark.parametrize("bed", [False, True])
-def test_pbsv_1250_rejects_multi_region_before_any_call(tmp_path, long_read, bed):
+@pytest.mark.parametrize("suffix", ["", ".bed", ".bedpe", ".bedpe.gz"])
+def test_pbsv_1250_rejects_multi_region_before_any_call(tmp_path, long_read, suffix):
     callers, bam, ref = long_read
-    region = "chr1:1-10,chr1:20000-40000"
-    if bed:
-        path = tmp_path / "targets.bed"
-        path.write_text("chr1\t0\t10\nchr1\t19999\t40000\n")
-        region = str(path)
+    region = f"targets{suffix}" if suffix else "chr1:1-10,chr1:20000-40000"
+    message = "BEDPE is not supported" if "bedpe" in suffix else "one region only"
     out = tmp_path / "out"
-    with pytest.raises(UsageError, match="pbsv supports one region only"):
+    with pytest.raises(UsageError, match=message):
         _run("sv", bam, ref, out, "--caller", "pbsv", "--region", region)
     result = _combined_call(
         bam, ref, out, region, types="snp,sv", sv_caller="pbsv", ploidy="2", check=False
     )
     assert result.exit_code == 2
-    assert result.error and "pbsv supports one region only" in result.error.message
+    assert result.error and message in result.error.message
     assert not callers.calls
     assert not list(out.glob("*.vcf*"))
 

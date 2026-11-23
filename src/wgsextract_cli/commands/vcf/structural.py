@@ -122,6 +122,8 @@ def _calling_intervals(input_file: str, ref: str, region: str) -> Intervals:
 def validate_pbsv_region(region: str | None) -> None:
     if region is None:
         return
+    if region.lower().endswith((".bedpe", ".bedpe.gz")):
+        raise UsageError("BEDPE is not supported; use a single text region with pbsv.")
     try:
         if not is_bed_selection(region) and len(comma_region_items(region)) == 1:
             return
