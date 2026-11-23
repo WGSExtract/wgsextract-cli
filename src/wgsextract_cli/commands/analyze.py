@@ -11,6 +11,7 @@ from typing import TypedDict
 from wgsextract_cli.api._params import job_values
 from wgsextract_cli.api.analyze import AnalyzeBatchGenParams, AnalyzeComprehensiveParams
 from wgsextract_cli.cli.registration.analyze import register as register
+from wgsextract_cli.core.artifact_checks import require_consumable
 from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -104,6 +105,14 @@ def cmd_comprehensive(job: AnalyzeJob) -> None:
         paths_to_verify[f"vcf-input-{i}"] = v
 
     verify_paths_exist(paths_to_verify)
+    # Before any step: an index of another file, another build or another
+    # person's calls would only surface as wrong results (#1182).
+    require_consumable(
+        ([("input", input_file)] if input_file else [])
+        + [("vcf_input", vcf) for vcf in vcf_inputs],
+        reference=job.ref if job.ref and Path(job.ref).is_file() else None,
+        same_sample=True,
+    )
 
     outdir = str(absolute_path(job.outdir or os.getcwd()))
     vcf_plan = _plan_vcf_workflows(vcf_inputs, outdir, input_file)
