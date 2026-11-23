@@ -1,7 +1,8 @@
-import { contextValue } from "./rendering-context.js";
+import { contextPathList, contextValue } from "./rendering-context.js";
 import type { CommandContext, CommandSpec, LooseRecord } from "./types.js";
 
 const PLACEHOLDER_PATTERN = /\{\{([^}]+)\}\}/g;
+const SINGLE_PLACEHOLDER_PATTERN = /^\{\{([^}]+)\}\}$/;
 
 export function interpolate(value: unknown, context: CommandContext): string {
     return String(value ?? "").replace(PLACEHOLDER_PATTERN, (_, rawPlaceholder) => {
@@ -28,16 +29,50 @@ export function missingPlaceholders(command: CommandSpec, context: CommandContex
     });
 }
 
-export function renderedCommand(command: CommandSpec, context: CommandContext): CommandSpec {
-    const optionalArguments = (command.optionalArguments ?? []).flatMap((group) => {
-        if (missingRequiredPlaceholders(group, context).length > 0) {
+function expandGroup(group: string[], context: CommandContext): string[] {
+    const listPlaceholders = placeholdersIn(group).filter((placeholder) => contextPathList(context, placeholder) !== undefined);
+    if (listPlaceholders.length === 1) {
+        const listPlaceholder = listPlaceholders[0]!;
+        const items = contextPathList(context, listPlaceholder) ?? [];
+        if (items.length === 0) {
             return [];
         }
-        return group.map((argument) => interpolate(argument, context));
+        const otherMissing = placeholdersIn(group).filter(
+            (placeholder) => placeholder !== listPlaceholder && String(contextValue(context, placeholder) ?? "").trim().length === 0,
+        );
+        if (otherMissing.length > 0) {
+            return [];
+        }
+        return items.flatMap((item) =>
+            group.map((argument) =>
+                argument.replace(PLACEHOLDER_PATTERN, (_, rawPlaceholder) => {
+                    const placeholder = rawPlaceholder.trim();
+                    return placeholder === listPlaceholder ? item : String(contextValue(context, placeholder) ?? "");
+                }),
+            ),
+        );
+    }
+    if (missingRequiredPlaceholders(group, context).length > 0) {
+        return [];
+    }
+    return group.map((argument) => interpolate(argument, context));
+}
+
+export function renderedCommand(command: CommandSpec, context: CommandContext): CommandSpec {
+    const optionalArguments = (command.optionalArguments ?? []).flatMap((group) => expandGroup(group, context));
+    const baseArguments = (command.arguments ?? []).flatMap((argument) => {
+        const single = SINGLE_PLACEHOLDER_PATTERN.exec(String(argument ?? "").trim());
+        if (single) {
+            const list = contextPathList(context, single[1]!.trim());
+            if (list !== undefined) {
+                return list;
+            }
+        }
+        return [interpolate(argument, context)];
     });
     return {
         executable: interpolate(command.executable, context),
-        arguments: [...(command.arguments ?? []).map((argument) => interpolate(argument, context)), ...optionalArguments],
+        arguments: [...baseArguments, ...optionalArguments],
     };
 }
 export function displayCommand(command: CommandSpec, context: CommandContext): string {

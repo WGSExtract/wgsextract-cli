@@ -498,3 +498,30 @@ def test_windows_gatk_rejects_an_unqualified_jar_abi(tmp_path, monkeypatch):
 def test_windows_gatk_rejects_incomplete_older_sidecar(tmp_path, monkeypatch, missing):
     prefix = _gatk_prefix(tmp_path, tuple(n for n in GKL if n != missing))
     assert _windows_gatk(tmp_path, monkeypatch, prefix) is None
+
+
+def test_default_env_probe_does_not_leak_system_path_multiqc(
+    tmp_path, monkeypatch, fake_pixi
+):
+    """A stale system multiqc on PATH must not fool default-env probing into
+    skipping the installed Pixi multiqc environment."""
+    from wgsextract_cli.core import dependencies
+
+    default_prefix = tmp_path / "envs" / "default"
+    (default_prefix / "bin").mkdir(parents=True)
+    host_bin = tmp_path / "system-bin"
+    python_tool(host_bin, "multiqc", 'print("multiqc, version 1.15")')
+    mqc_prefix = fake_pixi.env("multiqc")
+    python_tool(mqc_prefix / "bin", "multiqc", 'print("multiqc, version 1.35")')
+
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: False)
+    monkeypatch.setenv("PIXI_EXE", str(fake_pixi.exe))
+    monkeypatch.setenv("PATH", str(host_bin))
+    _in_environment(monkeypatch, "default", default_prefix, windows=False)
+    dependencies.clear_tool_caches()
+
+    resolved = dependencies.get_tool_path("multiqc")
+    assert resolved is not None
+    assert "-e multiqc" in resolved
+    assert str(host_bin) not in resolved
+    dependencies.clear_tool_caches()

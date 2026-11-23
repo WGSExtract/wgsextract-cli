@@ -157,6 +157,7 @@ export interface ConfigSaveResponse {
 export interface PathPickResponse {
     cancelled?: boolean;
     path?: string;
+    paths?: string[];
 }
 
 export interface FileStateResponse {

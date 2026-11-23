@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, stat, statfs } from "node:fs/promises";
 import { homedir, platform, tmpdir } from "node:os";
 import path from "node:path";
-import { commandLine, evaluateNumeric, interpolate, renderedCommand } from "../../../shared/rendering.js";
+import { commandLine, evaluateNumeric, firstPathValue, interpolate, renderedCommand } from "../../../shared/rendering.js";
 import { commandWithResultArguments, parseResultDocumentText, resultDocumentInFile, type ResultDocument, type ResultDocumentSpec } from "../../../shared/result-document.js";
 import type { ActionSpec, BundleManifest, CommandContext, DataSourcePayload, Labels, LastResultDocumentPaths, LooseRecord, ProcessResult, RunProcess, StringMap, ValueMap } from "../../../shared/types.js";
 import { decodeXML, environmentKey, formatGB, resolveBundlePath, resolveUserPath, bundleEnvironment } from "./paths.js";
@@ -380,7 +380,7 @@ async function precheckContextValue(context: CommandContext, placeholder: string
     if (separator > 0 && separator < placeholder.length - 1) {
         const fieldID = placeholder.slice(0, separator);
         const property = placeholder.slice(separator + 1);
-        const rawPath = context.fieldValues?.[fieldID] ?? context.configValues?.[fieldID];
+        const rawPath = firstPathValue(context.fieldValues?.[fieldID] ?? context.configValues?.[fieldID]);
         if (property === "fileSizeGB" || property === "fileSize") {
             const bytes = await fileSizeBytes(rawPath, bundleRoot);
             if (!Number.isFinite(bytes)) {

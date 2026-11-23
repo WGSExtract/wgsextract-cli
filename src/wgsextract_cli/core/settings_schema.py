@@ -231,6 +231,17 @@ class Settings:
     dorado_executable: str | None = setting(
         None, "Path to ONT's dorado executable for `basecall`", path=True
     )
+    discvrseq_jar: str | None = setting(
+        None, "Path to DISCVRseq.jar for `vcf variantqc`", path=True
+    )
+    java17_executable: str | None = setting(
+        None,
+        "Path to a Java 17 binary for tools requiring Java 17 (such as `vcf variantqc`)",
+        path=True,
+    )
+    granite_executable: str | None = setting(
+        None, "Path to the granite executable for `vcf granite-qc`", path=True
+    )
     native_aligners: str | None = setting(
         None,
         "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "

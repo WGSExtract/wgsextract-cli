@@ -13,6 +13,7 @@ from pathlib import Path
 from wgsextract_cli.core import runtime
 from wgsextract_cli.core.paths import absolute_path, expand_path, java_local_path
 from wgsextract_cli.core.tool_catalog import (
+    ENV_ONLY_TOOLS,
     JAVA_JAR,
     PIXI_ENVS_WITHOUT_PYTHON,
     PIXI_TOOL_ENVS,
@@ -275,7 +276,9 @@ def locked_for_platform(tool: str) -> bool | None:
     return PIXI_TOOL_PACKAGES.get(tool, tool) in packages
 
 
-def _probe_environment(prefix: str, tool_names: list[str], windows: bool) -> str | None:
+def _probe_environment(
+    prefix: str, tool_names: list[str], windows: bool, allow_path: bool = False
+) -> str | None:
     """How to run a tool from the Pixi environment at prefix, as "kind:value"
     (direct-name, gatk, jar or script), or None.
 
@@ -283,6 +286,7 @@ def _probe_environment(prefix: str, tool_names: list[str], windows: bool) -> str
     sent to that environment's Python, so it imports what it needs itself.
     """
     import json
+    import os
     import shutil
     import zipfile
     from pathlib import Path
@@ -333,9 +337,33 @@ def _probe_environment(prefix: str, tool_names: list[str], windows: bool) -> str
             jar = root / "bin" / (tool + ".jar")
             if jar.exists():
                 return "jar:" + str(jar.resolve())
+        if tool == "java":
+            for candidate in (
+                root / "Library" / "bin" / "java.exe",
+                root / "Library" / "lib" / "jvm" / "bin" / "java.exe",
+                root / "lib" / "jvm" / "bin" / "java",
+                root / "bin" / "java",
+            ):
+                if candidate.is_file():
+                    return "binary:" + str(candidate.resolve())
 
+    env_dirs = (
+        [
+            root,
+            root / "Library" / "mingw-w64" / "bin",
+            root / "Library" / "usr" / "bin",
+            root / "Library" / "bin",
+            root / "Scripts",
+            root / "bin",
+        ]
+        if windows
+        else [root / "bin"]
+    )
+    env_path = os.pathsep.join(str(d) for d in env_dirs if d.is_dir())
     for tool in tool_names:
-        if shutil.which(tool):
+        if (env_path and shutil.which(tool, path=env_path)) or (
+            allow_path and shutil.which(tool)
+        ):
             return "direct-name:" + tool
 
     for tool in tool_names:
@@ -416,9 +444,12 @@ def _host_pixi_tool_command(tool: str) -> str | None:
     current = os.environ.get("PIXI_ENVIRONMENT_NAME")
     found = (
         _probe_environment(
-            sys.prefix, list(executable_names), runtime.is_windows_host()
+            sys.prefix,
+            list(executable_names),
+            runtime.is_windows_host(),
+            allow_path=(current == env),
         )
-        if current and (current == env or executable_names != ("python",))
+        if current and (current == env or tool not in ENV_ONLY_TOOLS)
         else None
     )
     in_env = bool(found) or current == env
@@ -438,7 +469,28 @@ def _host_pixi_tool_command(tool: str) -> str | None:
     def command(args: list[str]) -> str:
         if not in_env:
             return _pixi_run_command(pixi_cmd, env, args)
-        program = sys.executable if args[0] == "python" else shutil.which(args[0])
+        if args[0] == "python":
+            program: str | None = sys.executable
+        else:
+            env_bin = os.pathsep.join(
+                str(d)
+                for d in (
+                    (
+                        Path(sys.prefix),
+                        Path(sys.prefix, "Library", "mingw-w64", "bin"),
+                        Path(sys.prefix, "Library", "usr", "bin"),
+                        Path(sys.prefix, "Library", "bin"),
+                        Path(sys.prefix, "Scripts"),
+                        Path(sys.prefix, "bin"),
+                    )
+                    if runtime.is_windows_host()
+                    else (Path(sys.prefix, "bin"),)
+                )
+                if d.is_dir()
+            )
+            program = (
+                shutil.which(args[0], path=env_bin) if env_bin else None
+            ) or shutil.which(args[0])
         return _join_command([program or args[0], *args[1:]])
 
     if not found:
@@ -450,6 +502,8 @@ def _host_pixi_tool_command(tool: str) -> str | None:
 
     if kind == "direct-name":
         return command([value])
+    if kind == "binary":
+        return _join_command([value])
     if kind == "gatk":
         return command(json.loads(value))
     if kind == "jar":

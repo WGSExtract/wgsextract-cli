@@ -1,7 +1,20 @@
 import type { ViewerGenes } from "./viewer-genes.js";
 import type { ViewerCytobands } from "./viewer-cytobands.js";
 
-export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound" | "trackCompression" | "trackContigs" | "trackInvalid" | "trackTooLarge" | "trackLimit" | "trackMissing" | "trackUnsupported" | "trackIndexMissing" | "geneNotFound" | "geneSearchUnavailable";
+export type ViewerProblem = "referenceMissing" | "referenceIndexMissing" | "referenceCompressedIndexMissing" | "tracksMissing" | "indexMissing" | "unsupportedFile" | "ambiguousFile" | "invalidLocus" | "locusNotFound" | "trackCompression" | "trackContigs" | "trackInvalid" | "trackTooLarge" | "trackLimit" | "trackMissing" | "trackUnsupported" | "trackIndexMissing" | "geneNotFound" | "geneSearchUnavailable" | "rsidNotFound" | "rsidSearchUnavailable" | "rsidIndexInvalid";
+
+export interface ViewerRsidNotice {
+    code: string;
+    fileName: string;
+    build: string;
+}
+
+export interface ViewerRsidStatus {
+    available: boolean;
+    fileName: string;
+    build?: string;
+    notices?: ViewerRsidNotice[];
+}
 
 export class ViewerFileError extends Error {
     constructor(readonly code: ViewerProblem, readonly fileName = "") {
@@ -12,7 +25,7 @@ export class ViewerFileError extends Error {
 export interface LocalTrack<Source = File> {
     name: string;
     type: "alignment" | "variant" | "annotation" | "wig";
-    format: "bam" | "cram" | "vcf" | "bed" | "bedgraph" | "bigwig";
+    format: "bam" | "cram" | "vcf" | "bed" | "bedgraph" | "bigwig" | "rsid-tab";
     url: Source;
     indexURL?: Source;
     headers?: Record<string, string>;
@@ -34,6 +47,7 @@ export interface LocalViewerFiles<Source = File> {
     genes?: ViewerGenes;
     cytobands?: ViewerCytobands;
     transcripts?: ViewerTranscripts<Source>;
+    rsids?: ViewerRsidStatus;
 }
 
 export interface LibraryViewerSession {
@@ -120,4 +134,24 @@ export function localViewerLocus(value: string): string {
         throw new ViewerFileError("invalidLocus");
     }
     return `${match[1]}:${start}-${end}`;
+}
+
+export interface ViewerNavigationCopy {
+    labelKey: "navigationCoordsOnly" | "navigation" | "navigationWithRsidOnly" | "navigationWithRsid";
+    helpKey: "navigationHelpCoordsOnly" | "geneHelp" | "navigationHelpWithRsidOnly" | "navigationHelpWithRsid";
+    placeholder: string;
+}
+
+/** Selects the navigation label, help text, and placeholder matching the locally loaded search indexes. */
+export function viewerNavigationCopy(genesAvailable: boolean, rsidSearchAvailable: boolean): ViewerNavigationCopy {
+    if (genesAvailable && rsidSearchAvailable) {
+        return { labelKey: "navigationWithRsid", helpKey: "navigationHelpWithRsid", placeholder: "chr1:1000-2000, APOE, rs429358" };
+    }
+    if (genesAvailable) {
+        return { labelKey: "navigation", helpKey: "geneHelp", placeholder: "chr1:1000-2000, APOE" };
+    }
+    if (rsidSearchAvailable) {
+        return { labelKey: "navigationWithRsidOnly", helpKey: "navigationHelpWithRsidOnly", placeholder: "chr1:1000-2000, rs429358" };
+    }
+    return { labelKey: "navigationCoordsOnly", helpKey: "navigationHelpCoordsOnly", placeholder: "chr1:1000-2000" };
 }

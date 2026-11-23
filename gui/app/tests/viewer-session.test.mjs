@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { copyFile, mkdir, mkdtemp, open as openFile, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
@@ -460,11 +461,25 @@ test("#1148: missing tabix, unsupported gzip, corrupt data and oversized text gi
     }
 });
 
-test("#1148: extra tracks cannot widen library roots or smuggle traversal", async (t) => {
+test("viewer opens indexed alignments and supplemental tracks outside My Genomes while rejecting traversal and remote URLs", async (t) => {
     const f = await trackFixtures(t);
-    const outside = path.join(f.root, "outside.bed");
-    await writeFile(outside, "1\t200\t230\n");
-    for (const file of [outside, `${f.library}/unused/../panels.bed`, "https://example.com/panel.bed"]) {
+    await writeFile(`${f.fasta}.fai`, "1\t3000\t3\t60\t61\n");
+    const externalDir = path.join(f.root, "external-drive");
+    await mkdir(externalDir);
+    const externalBam = path.join(externalDir, "outside.bam");
+    await writeFile(externalBam, "reads");
+    await writeFile(`${externalBam}.bai`, "index");
+    const outsideBed = path.join(externalDir, "outside.bed");
+    await writeFile(outsideBed, "1\t200\t230\n");
+
+    const ok = await f.open(externalBam, "", [outsideBed]);
+    assert.equal(ok.status, 200);
+    const session = await ok.json();
+    assert.deepEqual(session.files.tracks.map((track) => track.name), ["outside.bam", "outside.bed"]);
+    assert.equal(await (await fetch(`${f.base}${session.files.tracks[0].url}`, { headers: session.files.tracks[0].headers })).text(), "reads");
+    assert.equal(await (await fetch(`${f.base}${session.files.tracks[1].url}`, { headers: session.files.tracks[1].headers })).text(), "1\t200\t230\n");
+
+    for (const file of [`${f.library}/unused/../panels.bed`, "https://example.com/panel.bed", "relative.bed"]) {
         assert.equal((await f.open(f.input, "", [file])).status, 403);
     }
     for (const tracks of ["panel.bed", [1]]) {
@@ -477,14 +492,13 @@ test("#1150: excess supplemental paths return the localized track-limit problem"
     assert.deepEqual(await (await f.open(f.input, "", Array(17).fill(path.join(f.library, "panels.bed")))).json(), { problem: "trackLimit" });
 });
 
-test("#1150: missing supplemental files name the bad line; missing outside paths remain forbidden", async (t) => {
+test("#1150: missing supplemental files return trackMissing regardless of folder", async (t) => {
     const f = await fixture(t);
-    for (const file of [path.join(f.library, "missing.bed"), path.join(f.input, "mistyped.bed")]) {
+    for (const file of [path.join(f.library, "missing.bed"), path.join(f.input, "mistyped.bed"), path.join(f.root, "missing.bed")]) {
         const response = await f.open(f.input, "", [file]);
         assert.equal(response.status, 200);
         assert.deepEqual(await response.json(), { problem: "trackMissing", fileName: path.basename(file) });
     }
-    assert.equal((await f.open(f.input, "", [path.join(f.root, "missing.bed")])).status, 403);
 });
 
 test("#1150: supplemental type and adjacent tabix recovery differ from manual read/index selection", async (t) => {
@@ -584,13 +598,16 @@ test("#1150: bigWig data and index offsets and required headers must be inside a
     assert.deepEqual(await (await f.open(f.input, "", [file])).json(), { problem: "trackInvalid", fileName: "coverage.bw" });
 });
 
-test("#1148: supplemental symlinks cannot escape the configured library", async (t) => {
-    const f = await trackFixtures(t);
-    const outside = path.join(f.root, "outside.bed");
-    const escape = path.join(f.library, "escape.bed");
-    await writeFile(outside, "1\t200\t230\n");
+test("#1148: reference library annotations never follow escaping symlinks", async (t) => {
+    const f = await geneFixture(t, "chr1", 248956422);
+    const downloads = path.dirname(f.table);
+    const outside = path.join(f.root, "outside_clinvar.vcf.gz");
+    await writeFile(outside, minimalBgzf("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\nchr1\t100\trs1\tA\tG\t.\t.\t.\n"));
+    await writeFile(`${outside}.tbi`, minimalTabix(["chr1"], "vcf"));
+    const escape = path.join(downloads, "clinvar_hg38.vcf.gz");
     try {
         await symlink(outside, escape);
+        await symlink(`${outside}.tbi`, `${escape}.tbi`);
     } catch (error) {
         if (process.platform === "win32" && error.code === "EPERM") {
             t.skip("Windows symlink creation needs elevation or Developer Mode.");
@@ -598,5 +615,189 @@ test("#1148: supplemental symlinks cannot escape the configured library", async 
         }
         throw error;
     }
-    assert.equal((await f.open(f.input, "", [escape])).status, 403);
+    const session = await (await f.open()).json();
+    assert.deepEqual(session.files.tracks.map((track) => track.name), ["sample.bam"]);
+});
+
+function minimalBgzf(text) {
+    const gz = gzipSync(Buffer.from(text, "utf8"));
+    // Insert a valid BGZF BC subfield (6 bytes) into the gzip header and update FLG=FEXTRA.
+    const extra = Buffer.from([6, 0, 66, 67, 2, 0, 0, 0]);
+    const block = Buffer.concat([gz.subarray(0, 3), Buffer.from([gz[3] | 4]), gz.subarray(4, 10), extra, gz.subarray(10)]);
+    block.writeUInt16LE(block.length - 1, 16);
+    return block;
+}
+
+function minimalTabix(contigs, preset) {
+    const names = Buffer.from(`${contigs.join("\0")}\0`, "utf8");
+    const header = Buffer.alloc(36);
+    header.write("TBI\x01", 0, "ascii");
+    header.writeInt32LE(contigs.length, 4);
+    header.writeInt32LE(preset === "vcf" ? 2 : 0, 8);
+    header.writeInt32LE(1, 12);
+    header.writeInt32LE(2, 16);
+    header.writeInt32LE(preset === "vcf" ? 0 : 2, 20);
+    header.writeInt32LE("#".charCodeAt(0), 24);
+    header.writeInt32LE(0, 28);
+    header.writeInt32LE(names.length, 32);
+    // One empty reference entry (0 bins, 0 intervals) per contig.
+    const body = Buffer.alloc(contigs.length * 8);
+    return gzipSync(Buffer.concat([header, names, body]));
+}
+
+test("installed rsID and variant annotation files auto-load for the matching build and decode safely", async (t) => {
+    const f = await geneFixture(t, "chr1", 248956422);
+    const downloads = path.dirname(f.table);
+    const microarray = path.join(path.dirname(f.fasta), "microarray");
+    await mkdir(microarray, { recursive: true });
+
+    const rsidPath = path.join(microarray, "All_SNPs_hg38_ref.tab.gz");
+    await writeFile(rsidPath, minimalBgzf("#CHROM\tPOS\tID\nchr1\t1000\trs12345\n"));
+    await writeFile(`${rsidPath}.tbi`, minimalTabix(["chr1"], "rsid-tab"));
+
+    const clinvarPath = path.join(downloads, "clinvar_hg38.vcf.gz");
+    await writeFile(clinvarPath, minimalBgzf("##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n1\t1000\trs12345\tA\tG\t.\t.\t.\n"));
+    await writeFile(`${clinvarPath}.tbi`, minimalTabix(["1"], "vcf"));
+
+    // Wrong-build and unindexed files must never be loaded.
+    const wrongBuild = path.join(microarray, "All_SNPs_hg19_ref.tab.gz");
+    await writeFile(wrongBuild, minimalBgzf("#CHROM\tPOS\tID\nchr1\t1000\trs99999\n"));
+    await writeFile(`${wrongBuild}.tbi`, minimalTabix(["chr1"], "rsid-tab"));
+    await writeFile(path.join(downloads, "dbsnp_hg38.vcf.gz"), minimalBgzf("##fileformat=VCFv4.2\n"));
+
+    const session = await (await f.open()).json();
+    const names = session.files.tracks.map((track) => track.name);
+    assert.deepEqual(names, ["sample.bam", "rsIDs", "ClinVar"]);
+
+    const rsidTrack = session.files.tracks.find((track) => track.name === "rsIDs");
+    assert.equal(rsidTrack.format, "rsid-tab");
+    assert.equal(rsidTrack.type, "annotation");
+    assert.equal((await fetch(`${f.base}${rsidTrack.url}`, { headers: rsidTrack.headers })).status, 200);
+    const decodedTrack = validatedBedGraphTrack(rsidTrack, () => {});
+    assert.equal(decodedTrack.format, "bed");
+    assert.deepEqual(decodedTrack.decode(["chr1", "1000", "rs12345"]), { chr: "chr1", start: 999, end: 1000, name: "rs12345" });
+    assert.equal(decodedTrack.decode(["#CHROM", "POS", "ID"]), undefined);
+
+    const clinvarTrack = session.files.tracks.find((track) => track.name === "ClinVar");
+    assert.equal(clinvarTrack.format, "vcf");
+    assert.equal(clinvarTrack.type, "variant");
+});
+
+test("legacy ref/ directory is searched for installed genes and cytobands", async (t) => {
+    const f = await geneFixture(t, "chr1", 248956422);
+    const legacyRef = path.join(path.dirname(f.fasta), "ref");
+    await mkdir(legacyRef, { recursive: true });
+    await writeFile(path.join(legacyRef, "genes_hg38.tsv"), "symbol\tchrom\tstart\tend\nLEGACY_GENE\tchr1\t100\t200\n");
+    await writeFile(path.join(legacyRef, "cytobands_hg38.tsv"), cytobandTable(248956422));
+    const session = await (await f.open()).json();
+    assert.equal(session.files.genes.features[0].name, "LEGACY_GENE");
+    assert.equal(session.files.cytobands.features.length, 2);
+});
+
+function writeRsidSqlite(file, build, rows) {
+    const db = new DatabaseSync(file);
+    try {
+        db.exec("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;");
+        db.exec("CREATE TABLE chroms (cid INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE);");
+        db.exec("CREATE TABLE rsids (rsid INTEGER PRIMARY KEY, cid INTEGER NOT NULL, pos INTEGER NOT NULL);");
+        const chroms = new Map();
+        const insertChrom = db.prepare("INSERT INTO chroms (cid, name) VALUES (?, ?)");
+        const insertRsid = db.prepare("INSERT INTO rsids (rsid, cid, pos) VALUES (?, ?, ?)");
+        for (const [rsid, chrom, pos] of rows) {
+            let cid = chroms.get(chrom);
+            if (!cid) {
+                cid = chroms.size + 1;
+                chroms.set(chrom, cid);
+                insertChrom.run(cid, chrom);
+            }
+            insertRsid.run(rsid, cid, pos);
+        }
+        const insertMeta = db.prepare("INSERT INTO meta (key, value) VALUES (?, ?)");
+        insertMeta.run("schema_version", "1");
+        insertMeta.run("build", build);
+        insertMeta.run("source", "dbSNP_b151_common");
+        insertMeta.run("count", String(rows.length));
+    } finally {
+        db.close();
+    }
+}
+
+test("installed dbSNP common rsIDs auto-load as a track and resolve offline 100 bp rsID searches", async (t) => {
+    const f = await geneFixture(t, "chr1", 248956422);
+    await writeFile(`${f.fasta}.fai`, "chr1\t248956422\t6\t4\t5\nchr19\t58617616\t6\t4\t5\nchrX\t156040895\t6\t4\t5\n");
+    const downloads = path.dirname(f.table);
+    const dbsnpVcf = path.join(downloads, "dbsnp_common_hg38.vcf.gz");
+    await writeFile(dbsnpVcf, minimalBgzf("##fileformat=VCFv4.0\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n19\t44908684\trs429358\tT\tC\t.\t.\tCOMMON=1\n"));
+    await writeFile(`${dbsnpVcf}.tbi`, minimalTabix(["1", "19", "X"], "vcf"));
+    const sqlitePath = path.join(downloads, "dbsnp_common_hg38.rsid.sqlite");
+    writeRsidSqlite(sqlitePath, "hg38", [
+        [429358, "19", 44908684],
+        [1001, "1", 10],
+        [2002, "X", 154032200],
+    ]);
+
+    const session = await (await f.open()).json();
+    assert.deepEqual(session.files.tracks.map((track) => track.name), ["sample.bam", "dbSNP"]);
+    assert.deepEqual(session.files.rsids, { available: true, fileName: "dbsnp_common_hg38.rsid.sqlite", build: "hg38", notices: [] });
+
+    // Opening directly with an initial rsID resolves when dbSNP is installed.
+    const directRsid = await (await f.open(f.input, "rs429358")).json();
+    assert.equal(directRsid.locus, "chr19:44908635-44908734");
+    assert.deepEqual(await (await f.open(f.input, "rs404")).json(), { problem: "rsidNotFound" });
+
+    const lookup = (body, headers = { "x-gfc-token": "viewer-test" }) => fetch(`${f.base}/api/viewer/rsid`, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify(body),
+    });
+
+    assert.equal((await lookup({ id: session.id, rsid: "rs429358" }, {})).status, 401);
+    assert.deepEqual(await (await lookup({ id: session.id, rsid: "RS429358" })).json(), {
+        locus: "chr19:44908635-44908734",
+        rsid: "rs429358",
+    });
+    assert.deepEqual(await (await lookup({ id: session.id, rsid: "rs1001" })).json(), {
+        locus: "chr1:1-100",
+        rsid: "rs1001",
+    });
+    assert.deepEqual(await (await lookup({ id: session.id, rsid: "rs2002" })).json(), {
+        locus: "chrX:154032151-154032250",
+        rsid: "rs2002",
+    });
+    assert.deepEqual(await (await lookup({ id: session.id, rsid: "rs404" })).json(), { problem: "rsidNotFound" });
+    assert.deepEqual(await (await lookup({ id: session.id, rsid: "APOE" })).json(), { problem: "invalidLocus" });
+
+    await fetch(`${f.base}/api/viewer/close`, {
+        method: "POST",
+        headers: { "x-gfc-token": "viewer-test", "content-type": "application/json" },
+        body: JSON.stringify({ id: session.id }),
+    });
+    assert.deepEqual(await (await lookup({ id: session.id, rsid: "rs429358" })).json(), { problem: "rsidSearchUnavailable" });
+});
+
+test("dbSNP rsID search rejects wrong-build databases and escaping symlinks and reports missing notice", async (t) => {
+    const f = await geneFixture(t, "chr1", 248956422);
+    const missing = await (await f.open()).json();
+    assert.equal(missing.files.rsids.available, false);
+    assert.deepEqual(missing.files.rsids.notices, [{ code: "rsidMissing", fileName: "dbsnp_common_hg38.rsid.sqlite", build: "GRCh38" }]);
+
+    const downloads = path.dirname(f.table);
+    const sqlitePath = path.join(downloads, "dbsnp_common_hg38.rsid.sqlite");
+    writeRsidSqlite(sqlitePath, "hg19", [[429358, "1", 1000]]);
+    const wrongBuild = await (await f.open()).json();
+    assert.equal(wrongBuild.files.rsids.available, false);
+    assert.equal(wrongBuild.files.rsids.notices[0].code, "rsidIndexInvalid");
+    await rm(sqlitePath);
+
+    const outside = path.join(f.root, "outside-rsids.sqlite");
+    writeRsidSqlite(outside, "hg38", [[429358, "1", 1000]]);
+    try {
+        await symlink(outside, sqlitePath);
+    } catch (error) {
+        if (["EPERM", "EACCES", "ENOTSUP"].includes(error.code)) return t.skip("Symlinks unavailable.");
+        throw error;
+    }
+    const escaped = await (await f.open()).json();
+    assert.equal(escaped.files.rsids.available, false);
+    assert.equal(escaped.files.rsids.notices[0].code, "rsidIndexInvalid");
 });
