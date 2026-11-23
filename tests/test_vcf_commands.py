@@ -899,7 +899,7 @@ def test_1289_gnomad_v4_build_and_annotation_keep_group_max_and_homozygotes(tmp_
 def test_1289_gnomad_annotation_accepts_old_tables_and_vcf(tmp_path, resource_format):
     if resource_format == "legacy_tsv":
         resource = tmp_path / "old.tsv"
-        resource.write_text("#CHROM\tPOS\tREF\tALT\tAF\nchr1\t100\tC\tT\t0.25\n")
+        resource.write_bytes(b"#CHROM\tPOS\tREF\tALT\tAF\nchr1\t100\tC\tT\t0.25\n")
     else:
         resource = Path(
             _write_vcf(

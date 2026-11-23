@@ -249,7 +249,9 @@ def _with_original_ad(vcf: str, work: str) -> str:
         if not parsed.samples or "AD" not in parsed.format_number:
             return vcf
         path = str(Path(work, "with-ad-totals.vcf.gz"))
-        with gzip.open(path, "wt", compresslevel=1, encoding="utf-8") as output:
+        with gzip.open(
+            path, "wt", compresslevel=1, encoding="utf-8", newline="\n"
+        ) as output:
             output.writelines(
                 with_ad_totals(header, source, ad_total_header(parsed.format_number))
             )

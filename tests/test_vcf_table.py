@@ -539,7 +539,8 @@ def test_1289_phased_alleles_and_picked_transcripts_round_trip(tmp_path):
         "\tGT:AD:PS:VAF:AF\t1/2:.,2,8:100:0.25,.:0.125,0.375,0.5\n"
         "chr1\t300\t.\tA\tT\t.\tPASS\t"
         f"CSQ={csq_reg}\tGT:AD:PS:AF\t0|1:10,0:.:0.5,0.5\n"
-        "chr1\t400\t.\tA\tT\t.\tPASS\tAF=0.25\tGT:AD\t0/1:0,0\n"
+        "chr1\t400\t.\tA\tT\t.\tPASS\tAF=0.25\tGT:AD\t0/1:0,0\n",
+        newline="\n",
     )
     args = ("vcf", "table", "--vcf-input", bgzip_index(sample))
     for fmt in ("tsv", "parquet"):
@@ -585,11 +586,12 @@ def test_1289_split_annotation_preserves_original_allele_fraction(
     plain.write_text(
         header
         + "chr1\t100\t.\tC\tG,T\t.\tPASS\t.\tGT:AD:VAF\t1|2:10,2,8:.,.\n"
-        + "chr1\t200\t.\tC\tG,T\t.\tPASS\t.\tGT:AD:VAF\t1|2:10,2,.:0.05,0.4\n"
+        + "chr1\t200\t.\tC\tG,T\t.\tPASS\t.\tGT:AD:VAF\t1|2:10,2,.:0.05,0.4\n",
+        newline="\n",
     )
     sample = bgzip_index(plain)
     resource = tmp_path / "gnomad.tsv"
-    resource.write_text("chr1\t100\tC\tG\t0.05\n")
+    resource.write_text("chr1\t100\tC\tG\t0.05\n", newline="\n")
     outdir = tmp_path / "out"
     ref_args = ()
     if with_reference:
@@ -620,7 +622,8 @@ def test_1289_missing_fields_in_unannotated_vcf_stay_empty(tmp_path):
         "##contig=<ID=chr1,length=100>\n"
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n"
-        "chr1\t50\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\n"
+        "chr1\t50\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\n",
+        newline="\n",
     )
     result = CommandResult("vcf table")
     with collecting(result):
