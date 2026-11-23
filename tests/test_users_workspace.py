@@ -235,6 +235,17 @@ def test_1322_cli_cannot_start_or_save_during_a_desktop_move(tmp_path, monkeypat
     assert not list(activity.iterdir())
 
 
+def test_1322_cli_without_the_desktop_app_leaves_no_app_folder(tmp_path):
+    # Install Lab: a CLI-only uninstall left the app's workspace-activity folder.
+    file = tmp_path / "config.toml"
+    file.write_text("cpu_threads = 2\n")
+    with config.scoped_config(file):
+        save_config({"cpu_threads": 7})
+
+    assert config.read_toml(file)["cpu_threads"] == 7
+    assert not desktop_data_dir().exists()
+
+
 def test_1322_admitted_workflow_child_survives_a_refused_move(tmp_path, capfd):
     settings_file = tmp_path / "config.toml"
     settings_file.write_text(
@@ -242,6 +253,7 @@ def test_1322_admitted_workflow_child_survives_a_refused_move(tmp_path, capfd):
         encoding="utf-8",
     )
     activity = desktop_data_dir() / "workspace-activity"
+    activity.mkdir(parents=True)
     with config.scoped_config(settings_file), workspace_use():
         # A mover publishes first, but the parent's active lease means it will
         # refuse the move. Keep its marker present through the child's startup.

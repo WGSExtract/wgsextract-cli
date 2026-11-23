@@ -61,6 +61,8 @@ export interface RequestHandlerContext {
     jobServer: JobServer | undefined;
     localizedBundleLoader: {
         load: (locale?: string, preferredLocales?: string[]) => Promise<LocalizedBundle>;
+        /** The startup preload, which holds a workspace use while it bootstraps the settings files. */
+        preloaded?: Promise<unknown> | undefined;
     };
     loadBundle: (requestedSource: string) => Promise<LooseRecord>;
     /** Moves the users workspace, or one setting's folder, and loads the bundle again. */
@@ -331,6 +333,8 @@ export function createRequestHandler(context: RequestHandlerContext) {
             const controlID = optionalString(body, "controlID");
             const key = optionalString(body, "key");
             const target: WorkspaceMoveTarget = { folder, ...(controlID && key ? { setting: { controlID, key } } : {}) };
+            // The app's own startup preload is not a running command; wait for it instead of refusing the move as busy.
+            await context.localizedBundleLoader.preloaded?.catch(() => undefined);
             await streamNDJSON(
                 response,
                 (emit, signal) => withWorkspaceMove(async () => {

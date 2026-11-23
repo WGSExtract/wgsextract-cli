@@ -321,6 +321,8 @@ for (const linkConfig of [false, true]) {
     const realFile = linkConfig ? path.join(users, "real-settings.toml") : oldFile;
     await writeFile(realFile, "cpu_threads = 3\n");
     if (linkConfig && !await trySymlink(t, path.basename(realFile), oldFile, "file")) return;
+    // Redirects name a link's target by its real path (no 8.3 short names on Windows runners).
+    const realFileKey = await realpath(realFile);
     const external = path.join(root, "external");
     await mkdir(external);
     const externalConfig = path.join(external, "chosen.toml");
@@ -356,7 +358,7 @@ for (const linkConfig of [false, true]) {
     assert.match(await readFile(path.join(target, "settings", "chosen.toml"), "utf8"), /cpu_threads = 4/);
     const redirects = JSON.parse(await readFile(appSettingsPath(), "utf8")).movedConfigPaths;
     assert.equal(redirects[oldFile], newFile);
-    assert.equal(redirects[realFile], newRealFile);
+    assert.equal(redirects[realFileKey], newRealFile);
     await assert.rejects(stat(realFile), { code: "ENOENT" });
   });
 }

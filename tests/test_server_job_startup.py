@@ -163,6 +163,7 @@ else:
     op = find("example-genome/download")
     params = {"target_root": str(tmp_path), "dry_run": True}
     move = desktop_data_dir() / "workspace-activity" / f"move-{os.getpid()}-a"
+    move.parent.mkdir(parents=True)
     try:
         holder = manager.submit(op, params)
         queued = manager.submit(op, params)

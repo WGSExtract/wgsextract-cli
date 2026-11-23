@@ -18,13 +18,14 @@ from wgsextract_cli.core.errors import WGSExtractError
 
 @dataclass
 class _Lease:
-    name: str
+    name: str | None
     active: bool = True
 
 
 @dataclass
 class WorkspaceLease:
-    name: str
+    # None: no desktop app has run on this computer, so no marker was published.
+    name: str | None
     cleanup: ExitStack
 
 
@@ -36,7 +37,7 @@ WORKSPACE_LEASE_ARGUMENT = "--workspace-lease="
 def forward_workspace_admission(command: list[str]) -> list[str]:
     """Pass the active lease to a direct ``python -m wgsextract_cli.main`` child."""
     lease = _lease.get()
-    if lease is None or not lease.active:
+    if lease is None or not lease.active or lease.name is None:
         return command
     return [*command[:3], WORKSPACE_LEASE_ARGUMENT + lease.name, *command[3:]]
 
@@ -141,7 +142,15 @@ def hold_workspace(admitted_by: str | None = None) -> WorkspaceLease:
     # move even when it did not inherit the launching GUI's data override.
     directory = _standard_desktop_data_dir() / "workspace-activity"
     marker = directory / f"use-{os.getpid()}-{uuid4()}"
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        directory.mkdir(exist_ok=True, mode=0o700)
+    except FileNotFoundError:
+        # The app creates its data folder when it starts, before it can move
+        # anything. Without one there is no mover, and a CLI-only install must
+        # not create the app's folder (its uninstall would leave it behind).
+        if admitted_by is not None:
+            raise WGSExtractError("The job lost its workspace lease.") from None
+        return WorkspaceLease(None, ExitStack())
     # Publish before looking for moves. A mover checks for users only
     # after publishing its own marker. No file handle stays open.
     marker.touch(exist_ok=False)

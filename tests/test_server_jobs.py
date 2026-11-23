@@ -92,6 +92,7 @@ def test_1209_cancel_wins_when_worker_exits_before_cancel_thread(tmp_path, monke
 
 
 def test_1322_failed_worker_start_does_not_keep_workspace_busy(tmp_path):
+    (desktop_data_dir() / "workspace-activity").mkdir(parents=True)
     manager = JobManager(tmp_path / "jobs", config_path=None)
     job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
     manager.log_path(job_id).mkdir()  # An OS error when opening the log.
