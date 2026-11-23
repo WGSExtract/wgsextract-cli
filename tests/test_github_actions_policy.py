@@ -430,29 +430,37 @@ def test_916_pr_refs_cannot_save_compiler_caches(
     else:
         condition = text.split("- name: Save successful compiler objects", 1)[1]
         condition = condition.split("uses:", 1)[0]
-    values = {
+    values: dict[str, str | bool] = {
         "github.ref": ref,
         "github.event_name": event,
         "github.actor": actor,
         "inputs.phase": "save",
         "inputs.writer": "true",
     }
-    for name, value in values.items():
-        condition = condition.replace(name, repr(value))
     condition = (
         condition.split("if:", 1)[-1]
         .replace(">-", "")
         .replace("${{", "")
         .replace("}}", "")
     )
+    assert matches_workflow_condition(condition, values) is expected
+    if ref.startswith("refs/pull/"):
+        assert re.search(r"measure-916-[a-z]+-v1", text)
+
+
+def matches_workflow_condition(condition: str, values: dict[str, str | bool]) -> bool:
+    for name, value in values.items():
+        condition = condition.replace(name, repr(value))
     condition = condition.replace("&&", " and ").replace("||", " or ")
+    condition = re.sub(r"!(?!=)", " not ", condition)
     tree = ast.parse(" ".join(condition.split()), mode="eval")
 
-    # CI contract: evaluate the actual writer guard for PR, tag, main and
-    # owner dispatch contexts, without executing code from a workflow.
+    # Evaluate only the boolean/comparison subset, never execute workflow code.
     def matches(node: ast.AST) -> bool | str:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (str, bool)):
             return node.value
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return not matches(node.operand)
         if isinstance(node, ast.BoolOp):
             truth_values = [bool(matches(value)) for value in node.values]
             return (
@@ -460,15 +468,15 @@ def test_916_pr_refs_cannot_save_compiler_caches(
             )
         if isinstance(node, ast.Compare) and len(node.ops) == 1:
             left, right = matches(node.left), matches(node.comparators[0])
+            if isinstance(left, str) and isinstance(right, str):
+                left, right = left.lower(), right.lower()
             if isinstance(node.ops[0], ast.Eq):
                 return left == right
             if isinstance(node.ops[0], ast.NotEq):
                 return left != right
-        raise AssertionError(f"Unreviewed writer condition: {ast.dump(node)}")
+        raise AssertionError(f"Unreviewed workflow condition: {ast.dump(node)}")
 
-    assert matches(tree.body) is expected
-    if ref.startswith("refs/pull/"):
-        assert re.search(r"measure-916-[a-z]+-v1", text)
+    return bool(matches(tree.body))
 
 
 CLI_PUSH_WORKFLOWS = {

@@ -476,3 +476,32 @@ test("WGSExtract exposes My Genomes and reference genome library controls in Typ
   assert.deepEqual(repairVcfAction.command.arguments, ["repair", "ftdna-vcf", "--input", "{{vcf_path}}"]);
   assert.deepEqual(repairVcfAction.command.optionalArguments[0], ["--outdir", "{{out_dir}}"]);
 });
+
+test("WGSExtract Microarray page exposes CombinedKit v5 and all #1107 consumer formats", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
+  const microarray = bundle.manifest.pages.find((page) => page.id === "microarray");
+  assert.ok(microarray, "microarray page exists");
+  const formats = microarray.sections
+    .flatMap((section) => section.controls ?? [])
+    .find((control) => control.id === "microarray_formats");
+  assert.ok(formats, "microarray_formats control exists");
+
+  const byId = new Map(formats.options.map((option) => [option.id, option]));
+  assert.equal(byId.get("all")?.title, "v5");
+  assert.match(byId.get("all")?.groupTooltip ?? "", /CombinedKit v5 expands CombinedKit v3/);
+
+  const v5Formats = [
+    "ancestry_v2ab", "ancestry_v2cd", "ancestry_v2e",
+    "ftdna_v4", "ftdna_v2y", "ftdna_v3y", "ftdna_v4y",
+    "myheritage_v3", "tellmegen", "genera", "mthfr",
+    "meudna_v1", "meudna_v2", "selfdecode", "nucleus",
+  ];
+  for (const id of v5Formats) {
+    assert.ok(byId.has(id), `missing CombinedKit v5 format option: ${id}`);
+    assert.notEqual(byId.get(id)?.advancedOnly, true, `${id} should be visible in Basic mode`);
+  }
+  for (const id of ["23andme_v2", "23andme_v5_2025", "ftdna_v1_affy"]) {
+    assert.equal(byId.get(id)?.advancedOnly, true, `${id} should be an advanced option`);
+  }
+});

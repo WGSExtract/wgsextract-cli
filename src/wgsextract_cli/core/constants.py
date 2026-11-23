@@ -259,9 +259,10 @@ REF_GENOME_FILENAMES = {
 
 # Reference library bootstrap, built by scripts/build_reference_bootstrap.py.
 # Since v0.2.0 it carries no YBrowse data (#509); `ref ybrowse --install` fetches it.
-BOOTSTRAP_VERSION = "0.2.0"
+# Since v0.3.0 it expands CombinedKit v3 with the CombinedKit v5 microarray templates (#1107).
+BOOTSTRAP_VERSION = "0.3.0"
 BOOTSTRAP_URL = f"https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-bootstrap-v{BOOTSTRAP_VERSION}/wgsextract-reference-bootstrap-{BOOTSTRAP_VERSION}.tar.gz"
-BOOTSTRAP_SHA256 = "03d7f58ba813c12e1efed048466f62959dc51f996d95aace76105c49fefca8e9"
+BOOTSTRAP_SHA256 = "d6f656f6ac833a77a31eaa957f930023e5054980087305a9655dd0ea07cd49f7"
 BOOTSTRAP_FILENAME = "wgsextract-reference-bootstrap.tar.gz"
 
 # Delly mappability map files `ref status` reports (Delly 2 no longer needs them).

@@ -130,6 +130,9 @@ def test_download_bootstrap_normalizes_existing_assets_and_installs_ploidy(
     nested_ref.mkdir(parents=True)
     (nested_ref / "All_SNPs_hg19_ref.tab.gz").write_text("snps\n", encoding="utf-8")
     (nested_ref / ".DS_Store").write_text("metadata\n", encoding="utf-8")
+    (reflib / f".bootstrap-{constants.BOOTSTRAP_VERSION}").write_text(
+        constants.BOOTSTRAP_SHA256 + "\n", encoding="utf-8"
+    )
 
     monkeypatch.setattr(
         reference_processing,
