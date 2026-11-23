@@ -26,6 +26,7 @@ from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.contamination import warn_if_contaminated
 from wgsextract_cli.core.microarray.templates import GenotypeTally, is_autosome
 from wgsextract_cli.core.paths import PathInput
+from wgsextract_cli.core.region_selection import Intervals
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -88,9 +89,13 @@ def region_parts(region: str) -> list[str]:
     return [p for p in _REGION_SEPARATOR.split(region.strip()) if p]
 
 
-def region_targets(region: str | None) -> set[str]:
-    """The targets a `-r` region (contig[:start-end][,...]) covers; autosomes
+def region_targets(
+    region: str | None, *, intervals: Intervals | None = None
+) -> set[str]:
+    """QC targets from validated intervals or a textual region; autosomes
     for a whole-genome run."""
+    if intervals is not None:
+        return {target for contig in intervals if (target := contig_target(contig))}
     if not region:
         return {AUTOSOMES}
     contigs = (part.rpartition(":")[0] or part for part in region_parts(region))
@@ -347,6 +352,7 @@ def _depths_to_judge(
     ref: str | None,
     min_depth: float | None,
     region: str | None,
+    intervals: Intervals | None,
 ) -> tuple[dict[str, float], str, bool | None] | None:
     """Depths over `region`; else the whole-input estimate, with any target it
     finds low measured again over the bases its reads cover. Also whether the
@@ -354,14 +360,18 @@ def _depths_to_judge(
     found = target_depths(alignment, outdir, ref)
     depths, source = (dict(found[0]), found[1]) if found else ({}, "")
     male = _is_male(depths) if CHR_X in depths and CHR_Y in depths else None
-    if region:
-        judged, where = targets, f"in {region}"
+    if region or intervals is not None:
+        judged, where = targets, f"in {region}" if region else "in selected intervals"
     else:
         judged = [t for t, *_ in low_depth_targets(depths, targets, min_depth)]
         where = "with reads"
     try:
         measured = (
-            covered_depths(alignment, judged, region=region, ref=ref) if judged else {}
+            covered_depths(
+                alignment, judged, region=region, ref=ref, selection=intervals
+            )
+            if judged
+            else {}
         )
     except (OSError, ValueError, WGSExtractError) as e:
         logging.debug(f"Could not measure the depth of {alignment}: {e}")
@@ -477,10 +487,12 @@ def covered_depths(
     *,
     region: str | None = None,
     ref: str | None = None,
+    selection: Intervals | None = None,
 ) -> dict[str, float]:
-    """Mean depth per target: over `region`, or else over the bases its reads
-    cover on the contigs holding them, which is what calling sees in a slice,
-    an `extract` output or a panel (#430).
+    """Mean depth per target over validated `selection` or textual `region`.
+    With neither, measure the bases its reads cover on the contigs holding
+    them, which is what calling sees in a slice, an `extract` output or a
+    panel (#430).
 
     About 200 evenly spaced 1 kb windows are read, spaced widely enough that
     few long reads are decoded twice. Without a region, only bases with reads
@@ -493,7 +505,14 @@ def covered_depths(
     wanted = set(targets)
     if alignment.lower().endswith(".cram") and not (ref and Path(ref).is_file()):
         return {}
-    if region:
+    regional = bool(region) or selection is not None
+    if selection is not None:
+        intervals = [
+            (contig, start + 1, end)
+            for contig, ranges in selection.items()
+            for start, end in ranges
+        ]
+    elif region:
         lengths = sequence_lengths(get_bam_header(alignment, ref))
         intervals = _region_intervals(region, lengths)
     else:
@@ -503,7 +522,7 @@ def covered_depths(
         return {}
     windows = [(c, s + 1, e) for c, s, e in _sample_windows(intervals, COVERED_WINDOWS)]
     rows = _bedcov(alignment, windows, ref)
-    if not region:
+    if not regional:
         found = {contig_target(c) for (c, *_), _d, covered in rows if covered}
         rows += _bedcov(
             alignment, [i for i in intervals if contig_target(i[0]) not in found], ref
@@ -514,7 +533,7 @@ def covered_depths(
         target = contig_target(contig)
         if target in wanted:
             depth[target] += summed
-            span[target] += end - start + 1 if region else covered
+            span[target] += end - start + 1 if regional else covered
     return {t: depth[t] / span[t] if span[t] else 0.0 for t in wanted}
 
 
@@ -526,18 +545,21 @@ def warn_low_depth(
     ref: str | None = None,
     min_depth: float | None = None,
     region: str | None = None,
+    intervals: Intervals | None = None,
 ) -> dict[str, float] | None:
     """Warn about each of `targets` that low_depth_targets finds too shallow:
-    over `region` when given, else over the whole input, re-checked over the
-    bases its reads cover before warning. Also warn when `qc contamination`
-    recorded the sample as contaminated."""
+    over validated `intervals` or textual `region` when given, else over the
+    whole input, re-checked over the bases its reads cover before warning.
+    Also warn when `qc contamination` recorded the sample as contaminated."""
     targets = [t for t in TARGETS if t in set(targets)]
     if not targets or not alignment.lower().endswith((".bam", ".cram")):
         return None
     warn_if_contaminated(alignment)
     if not any(_depth_thresholds(min_depth)):
         return None
-    found = _depths_to_judge(alignment, targets, outdir, ref, min_depth, region)
+    found = _depths_to_judge(
+        alignment, targets, outdir, ref, min_depth, region, intervals
+    )
     if found is None or not any(t in found[0] for t in targets):
         logging.info(
             f"Mean depth of {Path(alignment).name} isn't known without reading it; "

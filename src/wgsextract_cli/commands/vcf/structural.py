@@ -62,7 +62,7 @@ def _cram_args(input_path: str, ref: str) -> list[str]:
 
 @contextmanager
 def _region_input_bam(
-    input_file: str, region: str | None, outdir: str, ref: str, failure_label: str
+    input_file: str, region: Intervals | None, outdir: str, ref: str, failure_label: str
 ) -> Iterator[str]:
     """Yield input_file, or a temporary indexed BAM of region removed on exit."""
     if region is None:
@@ -73,7 +73,7 @@ def _region_input_bam(
         dir=scratch_parent(outdir), prefix=".wgse_region_"
     ) as tmp:
         temp_bam = str(Path(tmp, "region.bam"))
-        logging.info(f"Extracting region {region} to temporary BAM...")
+        logging.info("Extracting selected regions to temporary BAM...")
         try:
             _extract_region_bam_with_reference_header(input_file, region, ref, temp_bam)
             run_command(["samtools", "index", temp_bam], capture_output=True)
@@ -111,6 +111,14 @@ def _validated_intervals(
         raise UsageError(f"Invalid region (--region): {error}") from error
 
 
+def _calling_intervals(input_file: str, ref: str, region: str) -> Intervals:
+    return _validated_intervals(
+        region,
+        dict(_reference_contigs(ref)),
+        header_contig_lengths(get_bam_header(input_file, ref)),
+    )
+
+
 def validate_pbsv_region(region: str | None) -> None:
     if region is None:
         return
@@ -137,11 +145,7 @@ def mixed_call_region(input_file: str, ref: str | None, region: str) -> str:
         raise WGSExtractError(
             LOG_MESSAGES["ref_required_for"].format(task="variant calling")
         )
-    intervals = _validated_intervals(
-        region,
-        dict(_reference_contigs(resolved)),
-        header_contig_lengths(get_bam_header(input_file, resolved)),
-    )
+    intervals = _calling_intervals(input_file, resolved, region)
     # bcftools treats every comma as a region separator, including digit grouping.
     return ",".join(
         f"{chrom}:{start + 1}-{end}"
@@ -172,7 +176,7 @@ def _stderr_tail(stream: IO[bytes], max_lines: int = 20) -> str:
 
 
 def _extract_region_bam_with_reference_header(
-    input_file: str, region: str, ref: str, temp_bam: str
+    input_file: str, intervals: Intervals, ref: str, temp_bam: str
 ) -> None:
     """
     Write region of input_file as BAM whose @SQ lines are exactly the reference's contigs.
@@ -188,7 +192,6 @@ def _extract_region_bam_with_reference_header(
     ).stdout
     reference = dict(_reference_contigs(ref))
     alignment = header_contig_lengths(header)
-    intervals = _validated_intervals(region, reference, alignment)
     bed = Path(temp_bam).with_suffix(".bed")
     write_bed_intervals(bed, intervals)
     # The iterator emits reads in input-header order. Rewriting @SQ can change it.
@@ -289,7 +292,9 @@ def _record_calls(out_vcf: str, role: str, ref: str, region: str | None) -> None
 def run_cnv(params: VcfCnvParams) -> None:
     """``vcf cnv``: delly cnv into ``cnv.vcf.gz``."""
     verify_dependencies(["delly", "bcftools", "tabix", "samtools"])
-    setup = setup_caller(params, allow_reference_subset=True)
+    setup = setup_caller(
+        params, allow_reference_subset=True, resolve_regions=_calling_intervals
+    )
     outdir, ref = setup.outdir, setup.ref
 
     out_bcf = str(Path(outdir, "cnv.bcf"))
@@ -304,7 +309,7 @@ def run_cnv(params: VcfCnvParams) -> None:
     ploidy_args = ["-y", str(params.ploidy)] if params.ploidy is not None else []
 
     with _region_input_bam(
-        str(params.input), params.region, outdir, ref, "CNV"
+        str(params.input), setup.intervals, outdir, ref, "CNV"
     ) as input_file:
         try:
             run_command(
@@ -391,7 +396,7 @@ def run_sv_sniffles(params: VcfSvParams) -> None:
     """``vcf sv`` with Sniffles into ``sniffles.vcf.gz``."""
     verify_dependencies(["sniffles", "bcftools", "tabix", "samtools"])
     log_dependency_info(["sniffles", "bcftools", "tabix", "samtools"])
-    setup = setup_caller(params)
+    setup = setup_caller(params, resolve_regions=_calling_intervals)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
 
     out_vcf = str(Path(outdir, "sniffles.vcf.gz"))
@@ -418,12 +423,9 @@ def run_sv_sniffles(params: VcfSvParams) -> None:
         samples = {g["SM"] for g in read_groups(header) if g.get("SM")}
         if len(samples) == 1:
             cmd += ["--sample-id", samples.pop()]
-        if region is not None:
+        if setup.intervals is not None:
             bed_path = Path(work, "region.bed")
-            intervals = _validated_intervals(
-                region, dict(_reference_contigs(ref)), header_contig_lengths(header)
-            )
-            write_bed_intervals(bed_path, intervals)
+            write_bed_intervals(bed_path, setup.intervals)
             cmd.extend(["--regions", str(bed_path)])
         try:
             run_command(cmd)
@@ -549,7 +551,9 @@ def run_sv(params: VcfSvParams) -> None:
         return
 
     verify_dependencies(["delly", "bcftools", "tabix", "samtools"])
-    setup = setup_caller(params, allow_reference_subset=True)
+    setup = setup_caller(
+        params, allow_reference_subset=True, resolve_regions=_calling_intervals
+    )
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
 
     out_bcf = str(Path(outdir, "sv.bcf"))
@@ -557,7 +561,7 @@ def run_sv(params: VcfSvParams) -> None:
     logging.info(LOG_MESSAGES["vcf_calling_sv"].format(caller="delly", output=out_vcf))
 
     with _region_input_bam(
-        str(params.input), params.region, outdir, ref, "SV"
+        str(params.input), setup.intervals, outdir, ref, "SV"
     ) as input_file:
         try:
             # Delly 2 short-read SV discovery; note `-h` is its thread count.

@@ -261,7 +261,7 @@ def test_region_bam_1250_takes_reference_contigs_without_duplicating_reads(tmp_p
     bam, ref = _sample(tmp_path)
     region_bam = str(tmp_path / "region.bam")
     structural._extract_region_bam_with_reference_header(
-        bam, "chr1:4,000-5,500,chr1:5000-6000", ref, region_bam
+        bam, {"chr1": [(3999, 6000)]}, ref, region_bam
     )
     samtools = get_tool_path("samtools")
     header = run_command([samtools, "view", "-H", region_bam], capture_output=True)
@@ -294,7 +294,7 @@ def test_region_bam_1250_is_indexable_in_reference_contig_order(tmp_path):
     )
     extracted = str(tmp_path / "selected.bam")
     structural._extract_region_bam_with_reference_header(
-        bam, "chr2,chr1", str(ref), extracted
+        bam, {"chr2": [(0, 50)], "chr1": [(0, 50)]}, str(ref), extracted
     )
     run_command(["samtools", "index", extracted])
     reads = run_command(["samtools", "view", extracted], capture_output=True).stdout
@@ -574,18 +574,18 @@ def test_sniffles_takes_a_region_as_a_bed_file(tmp_path, long_read):
 
 @needs_htslib
 @pytest.mark.parametrize("bed", [False, True])
-def test_sniffles_1250_receives_every_region(tmp_path, long_read, bed):
+def test_sniffles_1250_calls_and_checks_every_region(tmp_path, long_read, bed):
     callers, bam, ref = long_read
     region = "chr1:1-10,chr1:20,000-40,000"
     if bed:
-        path = tmp_path / "targets.bed"
-        path.write_text("track name=targets\nchr1\t0\t10\nchr1\t19999\t40000\n")
-        region = str(path)
-    out = tmp_path / "out"
-    _run("sv", bam, ref, out, "--caller", "sniffles", "--region", region)
+        region = str(tmp_path / "targets.bed")
+        Path(region).write_text("track name=targets\nchr1\t0\t10\nchr1\t19999\t40000\n")
+    result = _sv(bam, ref, tmp_path, caller="sniffles", region=region, qc_min_depth=7)
     (run,) = callers.runs
     assert run["bed"].splitlines() == ["chr1\t0\t10", "chr1\t19999\t40000"]
-    assert _near_deletion(_records(out / "sniffles.vcf.gz"))
+    assert _near_deletion(_records(tmp_path / "sniffles.vcf.gz"))
+    (low,) = [w for w in result.warnings if w.code == "low_coverage"]
+    assert low.details == {"target": "autosomes", "depth": 0.0, "threshold": 7}
 
 
 @needs_htslib
