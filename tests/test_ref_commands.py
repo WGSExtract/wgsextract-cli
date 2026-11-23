@@ -1084,7 +1084,7 @@ def _resource(name: str, **fields):
         ("spliceai", {}, SPLICEAI_URLS, "spliceai_{}.vcf.gz", "vcf-indexed"),
         (
             "gnomad",
-            {"release": "2.1.1"},
+            {"release": "2.1.1", "download": True},
             GNOMAD_URLS,
             "gnomad_{}.vcf.bgz",
             "vcf-bgzf",
@@ -1113,6 +1113,11 @@ def test_resource_commands_install_indexed_files(
             server.files[f"{build}/source{suffix}"] = data
         monkeypatch.setitem(urls, build, server.url_for(f"{build}/source"))
     lib = tmp_path / "library"
+
+    if command == "gnomad":
+        with pytest.raises(api.CommandFailed, match="missing.*--download"):
+            api.ref.gnomad(api.RefGnomadParams(ref=lib))
+        assert not server.requests
 
     _resource(command, ref=lib, **extra)
 
@@ -1188,13 +1193,8 @@ def _cadd_hg19() -> list[str]:
         ("phylop", {"build": "hg19"}, ["phylop_hg19.bw"]),
         ("gerp", {"build": "hg19"}, ["gerp_hg19.bw"]),
         ("cadd", {"build": "hg19"}, _cadd_hg19()),
-        (
-            "gnomad",
-            {"release": "4.1"},
-            ["gnomad_hg38.tsv.gz", "gnomad_hg38.tsv.gz.tbi"],
-        ),
     ],
-    ids=["phylop", "gerp", "cadd", "gnomad-4.1"],
+    ids=["phylop", "gerp", "cadd"],
 )
 def test_installed_resources_are_found_for_the_requested_build_or_release(
     tmp_path, monkeypatch, server, command, extra, installed
@@ -1205,7 +1205,6 @@ def test_installed_resources_are_found_for_the_requested_build_or_release(
         for build in urls:
             monkeypatch.setitem(urls, build, server.url_for(build))
     monkeypatch.setattr(annotation_resources, "CADD_BASE_URL", server.base)
-    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", server.url_for("{contig}"))
     (tmp_path / "downloads").mkdir()
     for file in installed:
         (tmp_path / "downloads" / file).write_bytes(b"installed")

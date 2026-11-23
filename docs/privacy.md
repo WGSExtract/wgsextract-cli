@@ -61,11 +61,13 @@ queries. The separate `vep download` command fetches public data only.
 | `vcf pharmcat --download` | `zenodo.org`, via PharmCAT's reference downloader (record 7288118) | Public GRCh38 reference archive/index filenames, not pharmacogenetic variants or sample files |
 | `ref index --aligner bwa-mem2 --download` | Published hs38DH index on Amazon S3 | Reference index filenames, not read/sample information; without permission the index is built locally if RAM permits |
 | `typing hla --download` | IPD-IMGT/HLA's public distribution, via T1K (GitHub ANHIG/IMGTHLA) | Allele-database identifiers, not reads or HLA calls |
+| `typing target-cnv --download` | NCBI (`ftp-trace.ncbi.nlm.nih.gov`), GIAB v3.5 stratifications | Assembly name in two fixed BED URLs; no target intervals, reads, sample identifiers or calls |
 | `lineage mt-haplogroup --download` | GitHub `genepi/phylotree-fu-rcrs`, `genepi/phylotree-rcrs-17`, `genebygene/mitotree` releases/CDN | Selected tree ID/version, not haplogroup or variants |
 | `lineage y-haplogroup --download` | GitHub WGSExtract releases/CDN; configured custom-tree host | Tree ID/version and selected reference build/table; custom-tree URL, not sample markers/calls |
 | `report --download` | GitHub WGSExtract releases/CDN | Selected public gene-list filename/version, not findings |
 | `score pgs --download` | `www.pgscatalog.org`, `ftp.ebi.ac.uk`, GitHub WGSExtract releases/CDN | PGS ID, coordinate build, public scoring weights and calibration/ancestry asset names, not sample scores or genotypes |
 | `basecall --download` | Oxford Nanopore's Dorado model distribution | Model/modification names and POD5 chemistry metadata used to select a model. No signal/read files are uploaded. For offline use pass a local `--model` directory without `--modified-bases`. |
+| `methylation regions --download` | `hgdownload.soe.ucsc.edu` | Pinned public hg38 `cpgIslandExt` filename; no sample positions or calls. The flag is local-only, and the server can read an allowed, preinstalled table. |
 | `ref library --remote-sizes` / desktop **Look up sizes** | Each catalog entry's host, including UCSC, NCBI and EBI | HTTP(S) HEAD or FTP SIZE requests for public reference filenames with missing or at least 30-day-old cached sizes; no sample data |
 | `realign --input https://…` | The URL's host and redirects | Explicitly selected remote alignment/index; HEAD, index download and sample-derived genomic byte ranges. Use a local file to avoid disclosing access patterns. Server clients cannot supply URLs. |
 | `benchmark --dataset real` / `--dataset-url` | Selected public benchmark host | Dataset/index URLs; this explicitly selected dataset mode downloads public test data |

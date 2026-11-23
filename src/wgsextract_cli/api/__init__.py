@@ -132,6 +132,14 @@ from .genotyping import (
     TypingHlaParams,
     TypingSmnParams,
     TypingStrParams,
+    TypingTargetCnvParams,
+)
+from .info import (
+    CalculateCoverageParams,
+    ChipParams,
+    CoverageSampleParams,
+    InfoGeneParams,
+    InfoParams,
 )
 from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
 from .lineage import (
@@ -141,8 +149,10 @@ from .lineage import (
     YStrParams,
 )
 from .methylation import MethylationPileupParams
+from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
+from .methylation import MethylationPileupParams, MethylationRegionsParams
 from .microarray import MicroarrayParams
-from .panel import PanelBedParams
+from .panel import PanelBedParams, PanelCheckParams
 from .pet import PetAlignParams
 from .qc import (
     FakeDataParams,
@@ -152,6 +162,7 @@ from .qc import (
     MultiqcParams,
     QcAncestryParams,
     QcContaminationParams,
+    QcRohParams,
     QcVcfParams,
     RelateParams,
 )
@@ -261,9 +272,11 @@ __all__ = [
     "FastpParams",
     "FastqcParams",
     "FileRecord",
+    "InfoGeneParams",
     "InfoParams",
     "IssueReport",
     "MethylationPileupParams",
+    "MethylationRegionsParams",
     "MicroarrayParams",
     "MissingDependencyError",
     "MitoFastaParams",
@@ -271,6 +284,7 @@ __all__ = [
     "MtBamParams",
     "MtHaplogroupParams",
     "PanelBedParams",
+    "PanelCheckParams",
     "MultiqcMetricsParams",
     "MultiqcParams",
     "Params",
@@ -279,6 +293,7 @@ __all__ = [
     "ProgressEvent",
     "QcAncestryParams",
     "QcContaminationParams",
+    "QcRohParams",
     "QcVcfParams",
     "RealignParams",
     "RelateParams",
@@ -329,6 +344,7 @@ __all__ = [
     "TypingSmnParams",
     "TypingHlaParams",
     "TypingStrParams",
+    "TypingTargetCnvParams",
     "UsageError",
     "VcfAcmgParams",
     "VcfAlphamissenseParams",

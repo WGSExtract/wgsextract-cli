@@ -134,6 +134,42 @@ Unknown and inconsistent assemblies are rejected.
 Bundled BED [provenance and licence](../src/wgsextract_cli/assets/reference/poz/NOTICE.txt) require
 no download. Without `--poz`, whole-Y extraction is unchanged.
 
+### Y-associated contigs (`--y-scope`)
+
+`extract ydna-bam`, `extract y-mt-extract` and `extract region --target y|ymt`
+read only the primary chrY (and chrM) by default: `--y-scope primary`.
+`--y-scope associated` adds the reference's Y-associated contigs, writing
+`_Y_associated.bam`, `_Y_MT_associated.bam` (and for `region`,
+`_Y_associated.vcf.gz`/`.fasta`). Of GRCh37, GRCh38 and T2T-CHM13v2.0 only
+GRCh38 assigns one: the 37,240 bp unlocalized scaffold `chrY_KI270740v1_random`,
+also named `KI270740.1`, `NT_187395.1` and `HSCHRY_RANDOM_CTG1` (NCBI assembly
+report GCA_000001405.15). The alignment header's contig is read only when its
+length, its `M5` (if recorded) and a GRCh38-length chrY all match; a
+same-named contig that differs, or a Y-like name no supported assembly assigns
+to Y, is listed and left out. On GRCh37 and T2T the associated scope reads
+chrY alone. A header without @SQ lines or a chrY fails; so does calling, or a
+CRAM, whose reference lacks the included contig or has no `.fai` or `.dict`
+to show it. Nothing is downloaded.
+
+Records are taken by position, as for chrY: secondary, supplementary and
+unmapped mates placed on a selected contig are kept, each record once, in
+header order with a BAM index; a mate mapped elsewhere and unplaced unmapped
+reads are not. The result's `details` list each considered contig with
+`included`, `reason` and, for BAMs, `mapped_records` and
+`placed_unmapped_records`; outputs record `y_scope` and `contigs`. `--poz`
+and `--ybrowse` take primary chrY only.
+
+**Differences from WGS Extract v4.** v44.2 always added
+`chrY_KI270740v1_random` to chr-named build-38 Y and Y+MT BAMs
+(`_chrY.bam`, `_chrYM.bam`), by name only, and never for `Y`/`KI270740.1`
+naming. `--y-scope associated` keeps those reads under any of the names above.
+On HG002 (GRCh38 no-alt, 35x) its Y and Y+MT BAMs hold exactly the records
+of v44.2's commands (7,372,465 and 9,938,023; primary chrY alone 7,368,299).
+v44.2 left its BAMs unindexed; these are indexed. It is opt-in so the default
+outputs keep their meaning. It restores retained reads; no change in
+haplogroup predictions was measured, and tools that read only chrY
+coordinates ignore the contig.
+
 `extract unmapped --fastq` adds `_unmapped_R1.fastq.gz`,
 `_unmapped_R2.fastq.gz`, `_unmapped_SE.fastq.gz` (unpaired) and
 `_unmapped_singletons.fastq.gz` (absent mates). Without it, only BAM is written.

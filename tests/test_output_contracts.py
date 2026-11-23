@@ -216,6 +216,26 @@ def test_1180_additive_output_fields_are_permitted(repo: Path) -> None:
     } <= added
 
 
+def test_1448_experimental_change_hints_point_to_release_note_fragments(
+    repo: Path,
+) -> None:
+    edit(
+        repo,
+        f"{SCHEMAS}/wgsextract.report.1.schema.json",
+        lambda schema: schema["required"].remove("guide"),
+    )
+    edit(repo, baselines.REGISTRY, lambda registry: registry["roles"].pop("aadr"))
+
+    found = errors(contracts.check(repo))
+
+    for key in (
+        "experimental_requiredness_changed wgsextract.report/1:guide",
+        "experimental_role_removed roles:aadr",
+    ):
+        assert "docs/release-notes/unreleased/" in found[key].message
+        assert "unreleased.md" not in found[key].message
+
+
 def test_1180_experimental_changes_need_a_release_note_notice(repo: Path) -> None:
     edit(
         repo,
@@ -225,9 +245,9 @@ def test_1180_experimental_changes_need_a_release_note_notice(repo: Path) -> Non
             schema["required"].remove("guide"),
         ),
     )
-    found = errors(contracts.check(repo))
-    unannounced = found["experimental_field_removed wgsextract.report/1:guide"]
-    assert "docs/release-notes/unreleased.md" in unannounced.message
+    assert "experimental_field_removed wgsextract.report/1:guide" in errors(
+        contracts.check(repo)
+    )
 
     # A mention in the baseline release's own notes is history, not a notice.
     with (repo / "docs/release-notes/v0.8.9.md").open("a", encoding="utf-8") as old:
@@ -235,10 +255,10 @@ def test_1180_experimental_changes_need_a_release_note_notice(repo: Path) -> Non
     assert "experimental_field_removed wgsextract.report/1:guide" in errors(
         contracts.check(repo)
     )
-    with (repo / "docs/release-notes/unreleased.md").open(
-        "a", encoding="utf-8"
-    ) as notes:
-        notes.write("\n- The report's `wgsextract.report/1:guide` field is gone.\n")
+    (repo / "docs/release-notes/unreleased/1180-report-guide.md").write_text(
+        "## Changed\n\n- The report's `wgsextract.report/1:guide` field is gone.\n",
+        encoding="utf-8",
+    )
     found_after = contracts.check(repo)
     assert not errors(found_after)
     assert any(
@@ -333,8 +353,9 @@ def test_1180_removing_a_document_with_stable_fields_is_a_stable_break(
     """Review of #1365: an experimental document's stable `schema` and
     `generated` fields vanished behind a mere release-note notice."""
     edit(repo, baselines.REGISTRY, lambda r: r["documents"].pop("wgsextract.report/1"))
-    with (repo / "docs/release-notes/unreleased.md").open("a", encoding="utf-8") as f:
-        f.write("\n- `wgsextract.report/1:` is gone.\n")
+    (repo / "docs/release-notes/unreleased/1180-report-document.md").write_text(
+        "## Removed\n\n- `wgsextract.report/1:` is gone.\n", encoding="utf-8"
+    )
     assert "stable_document_removed wgsextract.report/1:" in errors(
         contracts.check(repo)
     )

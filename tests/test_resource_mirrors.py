@@ -275,8 +275,10 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
     vcf = (
         "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
         '##INFO=<ID=AF_joint,Number=A,Type=Float,Description="AF">\n'
+        '##INFO=<ID=AF_grpmax_joint,Number=A,Type=Float,Description="grpmax AF">\n'
+        '##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="homozygotes">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
-        "chr1\t100\t.\tA\tG\t.\tPASS\tAF_joint=0.25\n"
+        "chr1\t100\t.\tA\tG\t.\tPASS\tAF_joint=0.25;AF_grpmax_joint=0.5;nhomalt_joint=1\n"
         "chr1\t200\t.\tC\tT\t.\tPASS\tAF_joint=0.5\n"
     )
     data = gzip.compress(vcf.encode())
@@ -285,12 +287,14 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
         source.files["mirror-1"] = b"broken"
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", entry["upstream_url"])
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
-    assert gnomad_af.build_gnomad_af(str(tmp_path / "library"), workers=1, attempts=1)
+    assert gnomad_af.build_gnomad_af(
+        str(tmp_path / "library"), workers=1, attempts=1, download=True
+    )
     table = tmp_path / "library/downloads/gnomad_hg38.tsv.gz"
     with gzip.open(table, "rt") as output:
         assert output.read().splitlines()[-2:] == [
-            "chr1\t100\tA\tG\t0.25",
-            "chr1\t200\tC\tT\t0.5",
+            "chr1\t100\tA\tG\t0.25\t0.5\t1",
+            "chr1\t200\tC\tT\t0.5\t.\t.",
         ]
     assert ("upstream" in source.paths) is corrupt_second_part
     assert table.with_suffix(table.suffix + ".tbi").is_file()
@@ -327,7 +331,9 @@ def test_1213_cancelled_gnomad_disconnects_stalled_download(
     def build():
         result.append(
             api.ref.gnomad(
-                api.RefGnomadParams(ref=tmp_path, release="4.1", threads=1),
+                api.RefGnomadParams(
+                    ref=tmp_path, release="4.1", threads=1, download=True
+                ),
                 cancel=cancel,
                 check=False,
             )
@@ -378,6 +384,7 @@ def test_1213_cli_sigterm_disconnects_gnomad(source, tmp_path):
             "gnomad",
             "--release",
             "4.1",
+            "--download",
             "--threads",
             "1",
             "--ref",

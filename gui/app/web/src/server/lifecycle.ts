@@ -1,5 +1,5 @@
 import type { Server } from "node:http";
-import { errnoCode } from "./errors.js";
+import { errnoCode, errorMessage } from "./errors.js";
 
 // Upper bound for shutdown; process-tree termination escalates to SIGKILL well before this.
 const shutdownDeadlineMs = 10_000;
@@ -11,6 +11,7 @@ interface ShutdownControllerOptions {
 
 export function createShutdownController({ getServer, terminateAllProcesses }: ShutdownControllerOptions) {
     let isShuttingDown = false;
+    const stopProcesses = () => terminateAllProcesses().catch((error: unknown) => console.warn(errorMessage(error)));
     const shutdown = (reason: string) => {
         if (isShuttingDown) {
             return;
@@ -20,7 +21,7 @@ export function createShutdownController({ getServer, terminateAllProcesses }: S
         const exit = () => process.exit(exitCode);
         getServer()?.close();
         setTimeout(exit, shutdownDeadlineMs).unref();
-        void terminateAllProcesses().finally(exit);
+        void stopProcesses().finally(exit);
     };
     return {
         shutdown,
@@ -28,7 +29,7 @@ export function createShutdownController({ getServer, terminateAllProcesses }: S
             for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
                 process.once(signal, () => shutdown(signal));
             }
-            process.once("beforeExit", () => void terminateAllProcesses());
+            process.once("beforeExit", () => void stopProcesses());
             process.once("uncaughtException", (error) => {
                 console.error(error);
                 shutdown("uncaughtException");

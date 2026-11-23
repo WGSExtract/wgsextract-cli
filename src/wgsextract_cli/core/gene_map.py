@@ -1,10 +1,19 @@
 import csv
 import gzip
+import hashlib
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 from wgsextract_cli.core.annotation_resources import CancelEvent
 from wgsextract_cli.core.builds import canonical_build
+from wgsextract_cli.core.gene_models import (
+    TRANSCRIPTS_NAME,
+    Transcript,
+    delete_transcripts,
+    from_refgene,
+    write_transcripts,
+)
 from wgsextract_cli.core.ref_library.assets import library_of_genomes_dir
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.ref_library.layout import (
@@ -182,7 +191,25 @@ def delete_gene_maps(reflib_dir: str) -> bool:
                 except OSError as e:
                     logging.error(f"Failed to delete {tsv_path}: {e}")
                     success = False
+        for left in delete_transcripts(reflib_dir, build):
+            logging.error(f"Failed to delete {left}.")
+            success = False
     return success
+
+
+def _transcripts_header(build: str, url: str, download: str) -> list[str]:
+    digest = hashlib.sha256()
+    with open(download, "rb") as f:
+        while chunk := f.read(1 << 20):
+            digest.update(chunk)
+    day = datetime.now(timezone.utc).date().isoformat()
+    return [
+        f"Transcripts of UCSC refGene ({build}), NCBI RefSeq transcripts on "
+        f"primary contigs; public domain. Source: {url} (sha256 "
+        f"{digest.hexdigest()}), downloaded {day}.",
+        'BED12, 0-based and half-open; the name is "SYMBOL|ACCESSION"; '
+        "thickStart/thickEnd mark the CDS. Built by wgsextract ref gene-map.",
+    ]
 
 
 def download_gene_maps(
@@ -215,13 +242,14 @@ def download_gene_maps(
             # 2. Parse UCSC format to simple TSV
             # UCSC refGene columns: 2=chrom, 4=txStart, 5=txEnd, 12=name2(Symbol)
             gene_data: dict[str, tuple[str, int, int]] = {}
+            transcripts: list[Transcript] = []
 
             with gzip.open(gz_path, "rt") as f_in:
                 for i, line in enumerate(f_in):
                     if i % 1000 == 0 and cancel_event and cancel_event.is_set():
                         return False
 
-                    cols = line.split("\t")
+                    cols = line.rstrip("\n").split("\t")
                     if len(cols) < 13:
                         continue
 
@@ -229,6 +257,9 @@ def download_gene_maps(
                     gene_data[symbol] = _merge_gene_range(
                         gene_data.get(symbol), cols[2], int(cols[4]), int(cols[5])
                     )
+                    transcript = from_refgene(cols)
+                    if transcript and _is_primary_contig(transcript.chrom):
+                        transcripts.append(transcript)
 
             # 3. Write processed TSV, 1-based (refGene's txStart is 0-based),
             # through a temporary file so a failed write leaves no partial map.
@@ -239,11 +270,19 @@ def download_gene_maps(
                     c, s, e = gene_data[symbol]
                     f_out.write(f"{symbol}\t{c}\t{s + 1}\t{e}\n")
             Path(tmp_tsv).replace(tsv_path)
+            write_transcripts(
+                transcripts,
+                Path(target_dir, TRANSCRIPTS_NAME.format(build=build)),
+                _transcripts_header(build, url, gz_path),
+            )
 
-            logging.info(f"Successfully processed {len(gene_data)} genes for {build}")
+            logging.info(
+                f"Successfully processed {len(gene_data)} genes and "
+                f"{len(transcripts)} transcripts for {build}"
+            )
             Path(gz_path).unlink()  # Cleanup
 
-        except (OSError, EOFError, gzip.BadGzipFile, ValueError) as e:
+        except (OSError, EOFError, gzip.BadGzipFile, ValueError, WGSExtractError) as e:
             logging.error(f"Failed to setup {build} gene map: {e}")
             Path(tsv_path + ".tmp").unlink(missing_ok=True)
             success = False
