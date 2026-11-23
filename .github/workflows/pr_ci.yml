@@ -139,6 +139,10 @@ jobs:
             echo '::warning::Linux selector verification unavailable; the current selection remains in force when the gate cannot validate its inputs.'
             exit 1
           fi
+      - name: Compare output contracts with the base's pinned baselines
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
+        run: python3 scripts/output_contracts.py check --base "$BASE"
       # Stdlib-only and instant, so fragment-only PRs need no extra runner.
       # A release's queue commit must not leave late fragments unassembled.
       # PR runs check out the merge commit, whose first parent is the base it

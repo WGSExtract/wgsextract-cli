@@ -247,7 +247,8 @@ class StepJournal:
         self._pending: dict[str, str] = {}  # output path -> step rerunning it
         self._remote: dict[str, RemoteFile] = {}  # URL input -> its HEAD
         self._lock = contextlib.ExitStack()
-        self._tag: str | None = None  # the environment's RUN_TAG before a step
+        self._previous_tag: str | None = None
+        self._tag_active = False
 
     @classmethod
     def for_output(
@@ -340,17 +341,25 @@ class StepJournal:
             )
 
     def _tag_processes(self, token: str | None) -> None:
-        """Tag the processes started from now on as ``token``'s (None: untag)."""
-        if token is None:
-            if self._tag is not None:
-                os.environ[RUN_TAG] = self._tag
-            else:
+        """Tag newly launched processes, or restore the previous tag on None."""
+        if token is not None:
+            if not self._tag_active:
+                self._previous_tag = os.environ.get(RUN_TAG)
+                self._tag_active = True
+            os.environ[RUN_TAG] = token
+        elif self._tag_active:
+            if self._previous_tag is None:
                 os.environ.pop(RUN_TAG, None)
-            self._tag = None
-            return
-        if self._tag is None:
-            self._tag = os.environ.get(RUN_TAG, "")
-        os.environ[RUN_TAG] = token
+            else:
+                os.environ[RUN_TAG] = self._previous_tag
+                if sys.platform == "win32" and self._previous_tag == "":
+                    import ctypes
+
+                    # The Windows CRT deletes variables set to an empty value.
+                    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+                    if not kernel32.SetEnvironmentVariableW(RUN_TAG, ""):
+                        raise ctypes.WinError(ctypes.get_last_error())
+            self._tag_active = False
 
     def __exit__(
         self,
@@ -684,8 +693,11 @@ class StepJournal:
     ) -> Iterator[StepRun]:
         """``start`` the step, yield, then ``finish`` it unless that raised."""
         handle = self.start(decision, keep_partial=keep_partial)
-        yield handle
-        self.finish(handle)
+        try:
+            yield handle
+            self.finish(handle)
+        finally:
+            self._tag_processes(None)
 
     def start(self, decision: Decision, *, keep_partial: bool = False) -> StepRun:
         """Mark the step running. Stale staged outputs of an interrupted
@@ -726,7 +738,12 @@ class StepJournal:
 
     def finish(self, handle: StepRun) -> None:
         """Record the step complete, once its outputs are all written."""
-        self._complete(handle.decision, handle, time.monotonic() - handle.clock)
+        seconds = time.monotonic() - handle.clock
+        try:
+            self._complete(handle.decision, handle, seconds)
+        finally:
+            self._tag_processes(None)
+        logging.info(f"Step {handle.decision.step.name} complete in {seconds:.0f} s.")
 
     def _complete(self, decision: Decision, handle: StepRun, seconds: float) -> None:
         step = decision.step
@@ -788,8 +805,6 @@ class StepJournal:
         }
         self._steps[step.name] = dict(record)
         self._save()
-        self._tag_processes(None)
-        logging.info(f"Step {step.name} complete in {seconds:.0f} s.")
 
     def _directory_output(
         self, step: Step, path: Path, members: object
