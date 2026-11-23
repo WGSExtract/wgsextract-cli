@@ -225,20 +225,28 @@ def configured_hook_paths(root: Path) -> set[Path]:
     ).split("\0")
     if records.pop():
         raise CleanupError("Incomplete Git hook configuration")
-    paths = set()
+    paths: set[Path] = set()
     for record in records:
         _, separator, command = record.partition("\n")
         if not separator:
             raise CleanupError("Git hook configuration has no command value")
+        if any(char in command for char in "$`*?["):
+            raise CleanupError("Cannot verify configured Git hook shell expansion")
         # Shell punctuation can delimit adjacent command words without whitespace.
         lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
         lexer.whitespace_split = True
         lexer.commenters = ""
         try:
             for word in lexer:
+                if "~" in word[1:]:
+                    raise CleanupError(
+                        "Cannot verify configured Git hook shell expansion"
+                    )
                 for token in (word, word.partition("=")[2]):
                     if token:
-                        paths.add(Path(token).expanduser())
+                        path = Path(token)
+                        # Tokenization cannot distinguish a quoted tilde.
+                        paths.update((path, path.expanduser()))
         except ValueError as error:
             raise CleanupError("Cannot tokenize configured Git hook command") from error
     return paths

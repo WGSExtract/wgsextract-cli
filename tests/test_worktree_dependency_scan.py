@@ -40,18 +40,22 @@ pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process g
         "custom-relative",
         "receive",
         "config",
+        "config-substitution",
+        "config-glob",
     ],
 )
 def test_1393_preserves_primary_git_hooks_using_a_stale_worktree(
     repo: Path, github: Callable[..., None], location: str
 ) -> None:
-    if location == "config":
+    configured = location.startswith("config")
+    dynamic = location in {"config-substitution", "config-glob"}
+    if configured:
         version = git(repo, "version").split()[2].split(".")
         if tuple(map(int, version[:2])) < (2, 56):
             pytest.skip("config-defined hooks require Git 2.56")
     path = topic(repo)
     hook = "pre-receive" if location == "receive" else "pre-commit"
-    target = path / "hooks" / ("lint script" if location == "config" else hook)
+    target = path / "hooks" / ("lint script" if configured else hook)
     write(target, "#!/bin/sh\nexit 0\n")
     target.chmod(0o755)
     git(path, "add", "hooks")
@@ -71,13 +75,17 @@ def test_1393_preserves_primary_git_hooks_using_a_stale_worktree(
             cwd = repo / ".git"
         hooks = target.parent
         git(repo, "config", "core.hooksPath", os.path.relpath(hooks, cwd))
-    if location == "config":
-        git(
-            repo,
-            "config",
-            "hook.lint.command",
-            shlex.join(["sh", str(target.relative_to(repo))]),
-        )
+    if configured:
+        relative = target.relative_to(repo)
+        if location == "config-substitution":
+            command = (
+                f'sh "$(git rev-parse --show-toplevel)"/{shlex.quote(str(relative))}'
+            )
+        elif location == "config-glob":
+            command = f"sh scratch/st*/hooks/{shlex.quote(target.name)}"
+        else:
+            command = shlex.join(["sh", str(relative)])
+        git(repo, "config", "hook.lint.command", command)
         git(repo, "config", "hook.lint.event", hook)
     elif hooks != target.parent:
         (hooks / hook).symlink_to(target)
@@ -85,8 +93,13 @@ def test_1393_preserves_primary_git_hooks_using_a_stale_worktree(
     github([pull(path)])
 
     run = cleanup(repo, "--apply", "--github")
-    assert run.returncode == 0, run.stderr
-    assert result(repo, path)["reason"] == "symlink-dependency"
+    if dynamic:
+        assert path.is_dir()
+        assert run.returncode == 1
+        assert "shell expansion" in str(manifest(repo)["error"])
+    else:
+        assert run.returncode == 0, run.stderr
+        assert result(repo, path)["reason"] == "symlink-dependency"
     git(cwd, "hook", "run", hook)
 
 
