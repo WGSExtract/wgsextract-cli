@@ -109,13 +109,14 @@ class VcfGerpParams(_AnnotatorParams):
 
 @dataclass(frozen=True, kw_only=True)
 class VcfGnomadParams(_AnnotatorParams):
-    """gnomAD allele frequencies (GNOMAD_AF) as ``gnomad_annotated.vcf.gz``."""
+    """gnomAD allele frequencies and available homozygote counts as
+    ``gnomad_annotated.vcf.gz``."""
 
     COMMAND = "vcf gnomad"
 
     gnomad_file: Path | None = _resource_param(
         "Path to gnomAD data: a sites VCF, or the allele-frequency table "
-        "from 'ref gnomad --release 4.1'.",
+        "from 'ref gnomad --release 4.1 --download'.",
         "gnomad_vcf_path",
     )
     max_af: float | None = param(

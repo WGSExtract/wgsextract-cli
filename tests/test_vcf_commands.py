@@ -822,9 +822,11 @@ def test_1289_gnomad_v4_build_and_annotation_keep_group_max_and_homozygotes(tmp_
     ):
         # HEAD succeeds; the chr3 download fails after the other parts finish.
         server.drop_paths.add("chr3.vcf.bgz")
-        assert not gnomad_af.build_gnomad_af(str(reflib), workers=2, attempts=1)
+        assert not gnomad_af.build_gnomad_af(
+            str(reflib), workers=2, attempts=1, download=True
+        )
         server.get_paths.clear()
-        assert gnomad_af.build_gnomad_af(str(reflib), workers=2)
+        assert gnomad_af.build_gnomad_af(str(reflib), workers=2, download=True)
         assert server.get_paths == ["chr3.vcf.bgz"]
 
     table = reflib / "downloads" / "gnomad_hg38.tsv.gz"

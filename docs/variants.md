@@ -214,9 +214,17 @@ Configure `confidence_*`,
 or override `--confidence-depth LOW HIGH` / `--confidence-gq LOW HIGH`.
 See [rules, rationale and validation](variant-confidence.md).
 
-- `ref gnomad --release 4.1` streams native-GRCh38 exome/genome VCFs
-  (~880 GB, hours) into an allele-frequency-only table. Default 2.1.1 is
-  exome-only, lifted to hg38.
+- `ref gnomad --release 4.1 --download` streams the native-GRCh38 joint
+  exome/genome VCFs (~880 GB, hours). For each passing ALT with positive joint
+  frequency, the table keeps the joint frequency, maximum ancestry-group
+  frequency and alternate homozygote count. `vcf gnomad` transfers them to
+  `GNOMAD_AF`, `GNOMAD_POPMAX_AF` and `GNOMAD_NHOMALT`, respectively.
+  Older tables remain readable, but may omit fields or combine multiple ALTs
+  in one row. The same `--download` command rebuilds them in the current
+  per-allele format. Without `--download`, `ref gnomad
+  --release 4.1` checks the local table and can recreate a missing index
+  without fetching data. `ref gnomad --download` installs the default release,
+  2.1.1, which is exome-only and lifted to hg38.
 - `ref cadd` gets CADD v1.7 (~85 GB/build); `ref gerp` gets GERP++ bigWig.
   Annotation adds `CADD_RAW`/`CADD_PHRED` and `GERP`.
 - GERP/PhyloP bigWig lookups reuse bounded per-contig windows (pyBigWig's

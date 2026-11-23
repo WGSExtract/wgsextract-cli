@@ -30052,7 +30052,7 @@
    }
   },
   "ref gnomad": {
-   "help": "usage: wgsextract ref gnomad [-h] [--release {2.1.1,4.1}]\n\noptions:\n  -h, --help            show this help message and exit\n  --release {2.1.1,4.1}\n                        2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native\n                        hg38 exomes+genomes, streamed (~900 GB, hours) into an allele-frequency-\n                        only table of ~5 GB; --threads sets parallel streams.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref gnomad\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): gnomAD allele-frequency files.\n\nneeds:\n  no external tools; depending on options and inputs, also: bcftools, bgzip,\n  curl, tabix; depends on download speed.\n",
+   "help": "usage: wgsextract ref gnomad [-h] [--release {2.1.1,4.1}] [--download]\n\noptions:\n  -h, --help            show this help message and exit\n  --release {2.1.1,4.1}\n                        2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native\n                        hg38 exomes+genomes, with allele frequency, maximum ancestry-group\n                        frequency and homozygote counts; --threads sets parallel streams.\n  --download            Allow fetching the public sites VCFs for the selected release (4.1 streams\n                        ~900 GB, hours, to build or rebuild the table).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref gnomad --download\n  wgsextract ref gnomad --release 4.1 --download\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): gnomAD allele-frequency files.\n\nneeds:\n  no external tools; depending on options and inputs, also: bcftools, bgzip,\n  curl, tabix; depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -30409,11 +30409,27 @@
       "default": "2.1.1",
       "dest": "release",
       "exclusive_group": null,
-      "help": "2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native hg38 exomes+genomes, streamed (~900 GB, hours) into an allele-frequency-only table of ~5 GB; --threads sets parallel streams.",
+      "help": "2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native hg38 exomes+genomes, with allele frequency, maximum ancestry-group frequency and homozygote counts; --threads sets parallel streams.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
        "--release"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Allow fetching the public sites VCFs for the selected release (4.1 streams ~900 GB, hours, to build or rebuild the table).",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download"
       ],
       "required": false,
       "type": null
@@ -47372,7 +47388,7 @@
    }
   },
   "vcf gnomad": {
-   "help": "usage: wgsextract vcf gnomad [-h] [--vcf-input VCF_INPUT] [--gnomad-file GNOMAD_FILE]\n                             [--max-af MAX_AF] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --gnomad-file GNOMAD_FILE\n                        Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref\n                        gnomad --release 4.1'.\n  --max-af MAX_AF       Maximum Allele Frequency to filter for (e.g., 0.01 for 1%).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf gnomad --help-all' lists them.\n\nexamples:\n  wgsextract vcf gnomad --vcf-input sample.vcf.gz --max-af 0.01\n\noutputs (in the output directory unless noted):\n  gnomad_annotated.vcf.gz (+ .tbi); with --max-af AF, also\n  gnomad_af_lt_AF.vcf.gz and its .confidence.tsv table.\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: bgzip, samtools;\n  minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf gnomad [-h] [--vcf-input VCF_INPUT] [--gnomad-file GNOMAD_FILE]\n                             [--max-af MAX_AF] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --gnomad-file GNOMAD_FILE\n                        Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref\n                        gnomad --release 4.1 --download'.\n  --max-af MAX_AF       Maximum Allele Frequency to filter for (e.g., 0.01 for 1%).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf gnomad --help-all' lists them.\n\nexamples:\n  wgsextract vcf gnomad --vcf-input sample.vcf.gz --max-af 0.01\n\noutputs (in the output directory unless noted):\n  gnomad_annotated.vcf.gz (+ .tbi); with --max-af AF, also\n  gnomad_af_lt_AF.vcf.gz and its .confidence.tsv table.\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: bgzip, samtools;\n  minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -47742,7 +47758,7 @@
       "default": null,
       "dest": "gnomad_file",
       "exclusive_group": null,
-      "help": "Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref gnomad --release 4.1'.",
+      "help": "Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref gnomad --release 4.1 --download'.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -59718,6 +59734,7 @@
    "atomic_output": false,
    "command": "ref",
    "debug": false,
+   "download": false,
    "full_help": false,
    "func": "run_gnomad",
    "genome": null,

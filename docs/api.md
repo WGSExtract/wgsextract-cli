@@ -1302,7 +1302,8 @@ CLI: `wgsextract vcf gnomad`.
 Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 `rare_variants`.
 
-`VcfGnomadParams`: gnomAD allele frequencies (GNOMAD_AF) as `gnomad_annotated.vcf.gz`.
+`VcfGnomadParams`: gnomAD allele frequencies and available homozygote counts as
+`gnomad_annotated.vcf.gz`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1311,7 +1312,7 @@ Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `gnomad_file` | `Path \| None` | `None` (config `gnomad_vcf_path`) | `--gnomad-file` | Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref gnomad --release 4.1'. |
+| `gnomad_file` | `Path \| None` | `None` (config `gnomad_vcf_path`) | `--gnomad-file` | Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref gnomad --release 4.1 --download'. |
 | `max_af` | `float \| None` | `None` | `--max-af` | Also write the calls rarer than this gnomAD allele frequency (or absent from gnomAD), with confidence labels. |
 | `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 | `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
@@ -2344,14 +2345,15 @@ CLI: `wgsextract ref gnomad`.
 
 Download or build gnomAD; output role `reference_resource` for each file.
 
-`RefGnomadParams`: Download gnomAD allele frequencies: the 2.1.1 exome sites VCFs, or
-build the 4.1 frequency table.
+`RefGnomadParams`: Check or download the gnomAD 2.1.1 exome sites VCFs or the gnomAD 4.1
+frequency and homozygote-count table.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `release` | `str` | `'2.1.1'` | `--release` | 2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native hg38 exomes+genomes, streamed (~900 GB, hours) into an allele-frequency-only table of ~5 GB; --threads sets parallel streams. One of: `2.1.1`, `4.1` |
+| `release` | `str` | `'2.1.1'` | `--release` | 2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native hg38 exomes+genomes, with allele frequency, maximum ancestry-group frequency and homozygote counts; --threads sets parallel streams. One of: `2.1.1`, `4.1` |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `download` | `bool` | `False` | `--download` | Allow fetching the public sites VCFs for the selected release (4.1 streams ~900 GB, hours, to build or rebuild the table). |
 
 ### `api.ref.spliceai(RefSpliceaiParams)`
 
