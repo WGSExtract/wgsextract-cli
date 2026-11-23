@@ -24,17 +24,30 @@ SHA = re.compile(r"[0-9a-f]{40}")
 TEST = re.compile(r"tests/(?:[A-Za-z0-9_]+/)*test_[A-Za-z0-9_]+\.py")
 
 
-def failing_targets(junit: Path, files: set[str]) -> dict[str, list[str]]:
+def failing_targets(junit: Path, files: set[str]) -> dict[str, dict[str, str]]:
     """Keep the exact parameterized cases where xUnit exposes their node IDs."""
-    targets: dict[str, set[str]] = {}
+    targets: dict[str, dict[str, str]] = {}
     modules = {file.removesuffix(".py").replace("/", "."): file for file in files}
     for case in ET.parse(junit).iter("testcase"):
         error = case.find("error")
-        if error is None and case.find("failure") is None:
+        failure = error if error is not None else case.find("failure")
+        if failure is None:
             continue
+        detail = (failure.text or "").strip().splitlines()
+        last_error = next(
+            (
+                line.strip()
+                for line in reversed(detail)
+                if line.lstrip().startswith("E ")
+            ),
+            "",
+        )
+        signature = " ".join(
+            (failure.tag + " " + failure.get("message", "") + " " + last_error).split()
+        )
         if error is not None and error.get("message") == "collection failure":
             if file := modules.get(case.get("name", "")):
-                targets.setdefault(file, set()).add(file)
+                targets.setdefault(file, {})[file] = signature
             continue
         name = case.get("name", "")
         classname = case.get("classname", "")
@@ -47,10 +60,10 @@ def failing_targets(junit: Path, files: set[str]) -> dict[str, list[str]]:
             if file := modules.get(prefix):
                 suffix = classname[len(prefix) :].lstrip(".").replace(".", "::")
                 target = "::".join(part for part in (file, suffix, name) if part)
-                targets.setdefault(file, set()).add(target)
+                targets.setdefault(file, {})[target] = signature
                 break
             prefix = prefix.rpartition(".")[0]
-    return {file: sorted(nodes) for file, nodes in targets.items()}
+    return targets
 
 
 def first_bad(
@@ -111,7 +124,9 @@ def green_nightly(gh: GitHub, root: Path, run: int, head: str) -> str | None:
     return None
 
 
-def replay(root: Path, workspace: Path, sha: str, test: str, nodes: list[str]) -> str:
+def replay(
+    root: Path, workspace: Path, sha: str, test: str, node: str, signature: str
+) -> str:
     """Use the already prepared local tools; never install historical inputs."""
     if not SHA.fullmatch(sha) or not TEST.fullmatch(test):
         return "unknown"
@@ -148,7 +163,7 @@ def replay(root: Path, workspace: Path, sha: str, test: str, nodes: list[str]) -
                         "0",
                         "--basetemp=out/replay",
                         f"--junitxml={junit}",
-                        *nodes,
+                        node,
                     ],
                     cwd=worktree,
                     env=env,
@@ -165,7 +180,8 @@ def replay(root: Path, workspace: Path, sha: str, test: str, nodes: list[str]) -
         if row is None or unmapped:
             return "unknown"
         if proc.returncode in {1, 2} and row["failed"]:
-            return "fail"
+            found = failing_targets(junit, {test}).get(test, {}).get(node)
+            return "fail" if found == signature else "unknown"
         return (
             "pass"
             if proc.returncode == 0 and row["passed"] and not row["skipped"]
@@ -268,10 +284,12 @@ def investigate(gh: GitHub, junit: Path, run: int, output: Path) -> None:
         return
     reports: list[dict[str, Any]] = []
     for test, nodes in sorted(failed.items()):
-        for node in nodes:
+        for node, signature in sorted(nodes.items()):
 
-            def runner(sha: str, test: str = test, node: str = node) -> str:
-                return replay(root, output.parent, sha, test, [node])
+            def runner(
+                sha: str, test: str = test, node: str = node, signature: str = signature
+            ) -> str:
+                return replay(root, output.parent, sha, test, node, signature)
 
             if runner(head) != "fail" or runner(baseline) != "pass":
                 print(f"{test}: no reproducible current failure or passing baseline")

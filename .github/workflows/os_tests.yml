@@ -251,7 +251,7 @@ jobs:
         run: |
           args=(-n logical --ci-tier "$TIER" --ci-shard "$SHARD")
           if [ "$SKIP_INDEPENDENT" = true ]; then args+=(--ci-skip-independent); fi
-          if [ "$EVENT" != pull_request ] && [ "$EVENT" != merge_group ] && { [ "$OS" != ubuntu ] || [ "$EVENT" != push ] || [ "$SYMBOL_DISABLED" = true ]; }; then
+          if [ "$EVENT" != pull_request ] && [ "$EVENT" != merge_group ]; then
             args+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
           fi
           if [ "$OS" = ubuntu ] && [ "$EVENT" = schedule ]; then
@@ -262,7 +262,7 @@ jobs:
             cache+=(--cache-read main=out/test-cache/main/passed.json)
             cache+=(--cache-read pr=out/test-cache/pr/passed.json)
             cache+=(--cache-record out/test-cache/pr/passed.json --summary "$GITHUB_STEP_SUMMARY")
-          elif [ "$EVENT" = merge_group ] || { [ "$OS" = ubuntu ] && [ "$EVENT" = push ] && [ "$SYMBOL_DISABLED" != true ]; }; then
+          elif [ "$EVENT" = merge_group ]; then
             cache+=(--cache-read main=out/test-cache/main/passed.json --summary "$GITHUB_STEP_SUMMARY")
           elif [ "$REF" = refs/heads/main ]; then
             cache+=(--cache-record out/test-cache/main/passed.json)
@@ -281,6 +281,10 @@ jobs:
               && selected=$(jq -ce '.selection | if type=="string" and .=="all" or type=="array" then . else error("invalid selector output") end' out/test-selection-gate.json); then
               if [ "$selected" = '"all"' ]; then TEST_SELECTION=all; else TEST_SELECTION="$selected"; fi
               mode=$(jq -r .mode out/test-selection-gate.json)
+              if [ "$mode" = symbol ] && [ "$EVENT" = push ]; then
+                cache=(--cache-job "os=$OS tier=$TIER shard=$SHARD skip-independent=$SKIP_INDEPENDENT"
+                       --cache-read main=out/test-cache/main/passed.json --summary "$GITHUB_STEP_SUMMARY")
+              fi
               if [ "$mode" != symbol ] && [ "$mode" != universal-full ]; then
                 echo "::warning::Linux symbol gate did not activate: $mode; retained current selection."
               fi

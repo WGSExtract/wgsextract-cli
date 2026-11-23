@@ -118,6 +118,24 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
         assert selected["mode"] == "symbol"
         assert expected <= set(selected["selection"])
         assert "tests/test_legacy.py" not in selected["selection"]
+        if path.endswith("/writer.py"):
+            git("switch", "--detach", base)
+            newer_test = "tests/test_new_since_map.py"
+            Path(newer_test).write_text("def test_new_caller():\n    pass\n")
+            git("add", newer_test)
+            git("commit", "-qm", "Add a new caller after the nightly map")
+            newer_base = git("rev-parse", "HEAD")
+            source.write_text("def write(path):\n    path.write_text('after')\n")
+            git("commit", "-qam", "Edit writer against newer base")
+            checked = plan(
+                tmp_path,
+                event="pull_request",
+                base=newer_base,
+                observations=map_path,
+                legacy=legacy,
+                disabled=False,
+            )
+            assert newer_test in checked["selection"]
     else:
         assert run_gate() == {"mode": "universal-full", "selection": "all"}
 
@@ -146,8 +164,10 @@ def test_backstop_replays_only_the_failed_parameter_and_collection_module(
         </testsuite>"""
     )
     assert failing_targets(junit, {"tests/test_writer.py", "tests/test_broken.py"}) == {
-        "tests/test_writer.py": ["tests/test_writer.py::TestWriter::test_write[bad]"],
-        "tests/test_broken.py": ["tests/test_broken.py"],
+        "tests/test_writer.py": {
+            "tests/test_writer.py::TestWriter::test_write[bad]": "failure"
+        },
+        "tests/test_broken.py": {"tests/test_broken.py": "error collection failure"},
     }
 
 

@@ -1025,7 +1025,10 @@ certificates, other OS lanes, or merged-tree checks. The repository Actions
 variable `CI_DISABLE_SYMBOL_SELECTION=true` restores legacy Linux selection
 for newly started runs; rerun a job to apply it to an in-flight PR. A missing,
 stale (over 48 hours), incompatible or unavailable map retains the existing
-input and emits a warning. The gate's own PR runs the same planner against
+input and emits a warning. With a usable ancestor map, the gate adds tests
+introduced or changed since recording and observed users of intervening
+source changes; changed test helper inputs retain the existing selection.
+The gate's own PR runs the same planner against
 its synthetic merge tree even if regular hosted pytest was certified. All
 four advisory reports remain available and distinguish legacy-selected,
 enforced and actually observed files.
@@ -1036,7 +1039,8 @@ scheduled Ubuntu run never reads that cache and refreshes it after a full
 regular run. Where the suite provides pytest node IDs, the failure replay
 reruns only those cases, otherwise a collection error replays its one test
 module. It checks first-parent trees in order since the last verified
-passing daily run, requires a clean baseline and repeats the first failure.
+passing daily run, requires a clean baseline and repeats the first matching
+failure signature.
 It will not automatically attribute skipped cases, a dependency-lock
 change, unobserved trees or an unrelated shared-base failure. To open a
 `ci-automation` miss, the first bad commit must map to a PR whose passing run

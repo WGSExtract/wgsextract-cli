@@ -129,6 +129,7 @@ jobs:
           TEST_SELECTION: ${{ steps.diff.outputs.tests }}
           SYMBOL_DISABLED: ${{ vars.CI_DISABLE_SYMBOL_SELECTION }}
         run: |
+          set -o pipefail
           flags=()
           if [ "$SYMBOL_DISABLED" = true ]; then flags+=(--disabled); fi
           if ! timeout 60 pixi run -e dev --no-install python -m scripts.ci_impact_gate \

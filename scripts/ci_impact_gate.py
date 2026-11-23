@@ -55,7 +55,24 @@ def plan(
         return {"mode": "universal-full", "selection": "all"}
     if unmatched or not candidates["symbol"]:
         return {**fallback, "mode": "legacy-unmatched-or-empty"}
-    return {"mode": "symbol", "selection": candidates["symbol"]}
+    drift = impact_diff(root, manifest["source_sha"], diff.base)
+    extra = set()
+    for change in drift.changes:
+        for path in (change.before, change.after):
+            if path is None:
+                continue
+            if path in tests:
+                extra.add(path)
+            elif path.startswith("tests/") and not path.rsplit("/", 1)[-1].startswith(
+                "test_"
+            ):
+                return {**fallback, "mode": "legacy-test-harness-changed-since-map"}
+            elif path.startswith("src/wgsextract_cli/"):
+                extra.update(evidence["modules"].get(path, ()))
+    return {
+        "mode": "symbol",
+        "selection": sorted(set(candidates["symbol"]) | (extra & tests)),
+    }
 
 
 def main() -> None:
