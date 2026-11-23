@@ -367,8 +367,18 @@ def test_tmp_dir_overrides_the_configured_one_for_one_run(
     provenance = json.loads(
         log.with_suffix(".log.provenance.json").read_text(encoding="utf-8")
     )
-    (sort_cmd,) = (cmd for cmd in provenance["commands"] if "sort" in cmd)
+    sorts = [
+        cmd
+        for cmd in provenance["commands"]
+        if any(
+            Path(executable).stem == "samtools" and subcommand == "sort"
+            for executable, subcommand in zip(cmd, cmd[1:], strict=False)
+        )
+    ]
+    assert len(sorts) == 1, provenance["commands"]
+    (sort_cmd,) = sorts
     # contract: samtools uses -T as the spill directory/prefix for this run.
+    assert "-T" in sort_cmd, sort_cmd
     prefix = Path(sort_cmd[sort_cmd.index("-T") + 1])
     assert prefix.resolve().is_relative_to(chosen.resolve())
     # The run's workspace is removed, also after a failure, and the override
