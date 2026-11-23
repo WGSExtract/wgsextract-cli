@@ -73,6 +73,11 @@ def test_1458_bp3_and_region_flags_reach_fastvep(
     assert "BA1" in criteria[1121]
     assert "BA1" not in criteria[1130]  # BED segdup ends at 1-based position 1130
     assert "BA1" in criteria[1150]
+    assert {
+        pos: info["ACMG_GNOMAD_REGION"]
+        for pos, info in calls.items()
+        if "ACMG_GNOMAD_REGION" in info
+    } == {1120: "lcr", 1130: "segdup"}
     assert result.details["gnomad_region_flags_not_evaluated"] == {}
     summary = json.loads((tmp_path / "out" / "acmg_summary.json").read_text())
     assert "BP3" not in summary["criteria_not_evaluated"]

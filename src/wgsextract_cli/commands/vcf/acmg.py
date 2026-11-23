@@ -31,7 +31,7 @@ from wgsextract_cli.api._runtime import cancel_event, checkpoint
 from wgsextract_cli.api.vcf import VcfAcmgParams
 from wgsextract_cli.core import acmg_data, acmg_sites, read_scope
 from wgsextract_cli.core.acmg import DISCLAIMER
-from wgsextract_cli.core.acmg_regions import REGION_FLAGS
+from wgsextract_cli.core.acmg_regions import region_tracks
 from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -62,6 +62,7 @@ from wgsextract_cli.core.variant_table import (
 )
 
 from ._acmg_fastvep import _FastVep
+from ._acmg_region_note import REGION_HEADER, REGION_INFO, RegionNotes, region_coverage
 from .annotation_helpers import annotation_context, resource
 from .basic import vcf_input_handler
 
@@ -97,7 +98,7 @@ _V1_HEADERS = {b"FSTSA_01": (5, 4), b"FSTSI_01": (4, 3), b"FSTGA_01": (4, 3)}
 _V2_CHUNK = re.compile(r"^fastsa/([^/]+)/\d+/")
 _NUCLEAR = {str(n) for n in range(1, 23)} | {"X", "Y"}
 _TAGS = ("ACMG_CLASS", "ACMG_CRITERIA", "ACMG_TRANSCRIPT")
-_OURS = tuple(f"##INFO=<ID={tag}," for tag in _TAGS) + ("##WGSE_ACMG=",)
+_OURS = tuple(f"##INFO=<ID={tag}," for tag in (*_TAGS, REGION_INFO)) + ("##WGSE_ACMG=",)
 # Printed once fastVEP has loaded its databases and checked them, before it
 # reads a record (we always pass --pick-order).
 _MISSING = re.compile(r"sources the classifier reads are not loaded: (.+?)\.?$")
@@ -112,6 +113,7 @@ _HEADER = (
     'the ACMG/AMP criteria fastVEP found met, joined by &">',
     '##INFO=<ID=ACMG_TRANSCRIPT,Number=A,Type=String,Description="The '
     'transcript fastVEP classified the allele on">',
+    REGION_HEADER,
 )
 _UNSAFE = re.compile(r"[,;=\s]")
 
@@ -369,11 +371,21 @@ def _classify(
 
 def _without_ours(info: str) -> str:
     """INFO without the ACMG_* fields of an earlier ``vcf acmg`` run."""
-    kept = [kv for kv in info.split(";") if kv.partition("=")[0] not in _TAGS]
+    kept = [
+        kv
+        for kv in info.split(";")
+        if kv.partition("=")[0] not in (*_TAGS, REGION_INFO)
+    ]
     return ";".join(kept) if kept and info != "." else "."
 
 
-def _merge(source: IO[str], fastvep: IO[str], sink: IO[str], meta: list[str]) -> _Tally:
+def _merge(
+    source: IO[str],
+    fastvep: IO[str],
+    sink: IO[str],
+    meta: list[str],
+    region_notes: RegionNotes,
+) -> _Tally:
     """Copy the input VCF to ``sink`` with fastVEP's classes added, replacing
     those of an earlier run. fastVEP writes the records in input order; one
     it skipped stays unclassified."""
@@ -418,6 +430,8 @@ def _merge(source: IO[str], fastvep: IO[str], sink: IO[str], meta: list[str]) ->
             added = ";".join(
                 f"{tag}={','.join(v)}" for tag, v in zip(_TAGS, values, strict=True)
             )
+            if region := region_notes.at(fields[0], fields[1]):
+                added += f";{REGION_INFO}={region}"
             fields[7] = added if fields[7] in ("", ".") else f"{fields[7]};{added}"
         sink.write("\t".join(fields) + "\n")
     if pending is not None:
@@ -443,46 +457,6 @@ def _inventory(databases: Iterable[_Database]) -> list[dict[str, object]]:
             }
         )
     return found
-
-
-def _missing_region_flags(
-    databases: list[_Database],
-    site_dbs: list[acmg_sites.SiteDatabase],
-    manifest: Mapping[str, object],
-    contigs: Iterable[str],
-) -> dict[str, list[str]]:
-    entries = manifest.get("databases")
-    library = (
-        {e["file"]: e for e in entries.values() if e.get("file")}
-        if isinstance(entries, dict)
-        else {}
-    )
-    run = {
-        p.name: db.meta for db in site_dbs for p in db.paths if db.source == "gnomad"
-    }
-    covered: dict[str, set[str]] = {}
-    for db in databases:
-        if db.source.lower() != "gnomad":
-            continue
-        entry = run.get(db.path.name)
-        if entry is None:
-            entry = library.get(db.path.name, {})
-            if entry.get("bytes") != db.path.stat().st_size:
-                entry = {}
-        flags = set(entry.get("region_tracks", {}))
-        for chrom in db.chromosomes or ():
-            key = _contig_key(chrom)
-            covered[key] = covered.get(key, flags) & flags
-    names = list(contigs)
-    return {
-        flag: missing
-        for flag in REGION_FLAGS
-        if (
-            missing := [
-                c for c in names if flag not in covered.get(_contig_key(c), set())
-            ]
-        )
-    }
 
 
 def run_acmg(params: VcfAcmgParams) -> None:
@@ -554,9 +528,18 @@ def run_acmg(params: VcfAcmgParams) -> None:
         inventory = _inventory(databases)
         skipped = _unclassifiable(databases, contigs)
         classified = [c for c in contigs if c not in skipped]
-        region_flags_missing = _missing_region_flags(
-            databases, site_dbs, library_manifest, classified
+        region_flags_missing, matching = region_coverage(
+            (
+                (db.path, db.chromosomes or ())
+                for db in databases
+                if db.source.lower() == "gnomad"
+            ),
+            site_dbs,
+            library_manifest,
+            classified,
+            region_tracks(Path(sa_dir), library_manifest),
         )
+        region_notes = RegionNotes(Path(sa_dir), matching)
         if region_flags_missing:
             warn(
                 "acmg_gnomad_region_flags_not_evaluated",
@@ -651,7 +634,9 @@ def run_acmg(params: VcfAcmgParams) -> None:
                 run.others.append(bgzip)
                 assert view.stdout is not None and bgzip.stdin is not None
                 try:
-                    tally = _merge(view.stdout, run.stdout, bgzip.stdin, meta)
+                    tally = _merge(
+                        view.stdout, run.stdout, bgzip.stdin, meta, region_notes
+                    )
                 except Exception:
                     run.check_exited()
                     raise

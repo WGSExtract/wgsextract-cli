@@ -59,7 +59,7 @@ def add_region_flags(
             (int(start), int(end))
             for _, start, end in (line.split("\t") for line in text.splitlines())
         ]
-    annotated = vcf.with_name(f"{vcf.stem}.regions.vcf.gz")
+    annotated = vcf.with_name(f"{vcf.name.removesuffix('.vcf.gz')}.regions.vcf.gz")
     with (
         gzip.open(vcf, "rb") as source,
         gzip.open(annotated, "wb", compresslevel=3) as out,

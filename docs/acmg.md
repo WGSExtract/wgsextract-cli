@@ -23,6 +23,12 @@ wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg
 - `acmg_annotated.vcf.gz` (+ `.tbi` or `.csi`): the input VCF, vep-rs consequences
   unchanged, with three INFO fields per ALT allele: `ACMG_CLASS`,
   `ACMG_CRITERIA` (the criteria met, joined by `&`) and `ACMG_TRANSCRIPT`.
+  The optional record-level `ACMG_GNOMAD_REGION` note shows `lcr`, `segdup`,
+  or `lcr&segdup` at the written VCF position when those masks were used for
+  that chromosome and the local tracks are still available. fastVEP does
+  not write withheld criteria to `ACMG_CRITERIA`. The note is not proof
+  that a given allele lost evidence: the veto requires a matching gnomAD
+  allele, and an indel's lookup may use a left-aligned position.
   The header carries the disclaimer in `##WGSE_ACMG`. Classifying an
   `acmg_annotated.vcf.gz` again replaces its earlier classes. The new VCF and
   index are published only after indexing succeeds; a failed index build

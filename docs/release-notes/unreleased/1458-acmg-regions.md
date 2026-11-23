@@ -4,7 +4,8 @@
   withhold population evidence at flagged sites under fastVEP's default rule.
   This can shift benign calls to VUS: 8,669 alleles (17.0%) did so on HG002
   chr22, with no new pathogenic or likely pathogenic calls.
-  The VCF and run report identify evidence that couldn't be evaluated
+  The VCF marks calls at flagged positions and the run report identifies
+  evidence that couldn't be evaluated
   ([#1458, ACMG region tracks](https://github.com/WGSExtract/wgsextract-cli/issues/1458)).
 
 ## Changed

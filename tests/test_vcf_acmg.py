@@ -177,6 +177,7 @@ def test_acmg_classes_go_into_the_vep_rs_vcf_with_the_disclaimer(tmp_path):
         == summary["gnomad_region_flags_not_evaluated"]
     )
     assert 'GnomadRegionFlagsNotEvaluated="lcr:1;segdup:1"' in text
+    assert "ACMG_GNOMAD_REGION=" not in text
     assert {"acmg_bp3_not_evaluated", "acmg_gnomad_region_flags_not_evaluated"} <= {
         w.code for w in result.warnings
     }

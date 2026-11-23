@@ -36,7 +36,8 @@ def region_bed(
     source: Path, bed: Path, flag: str, chromosomes: tuple[str, ...]
 ) -> None:
     """Convert the gnomAD resource as its GRCh38 Hail importer reads it."""
-    rows = []
+    rows: dict[str, list[int]] = {}
+    end_mask = (1 << 32) - 1
     with source.open() as stream:
         for line in stream:
             if not line.strip() or line.startswith("#"):
@@ -52,12 +53,18 @@ def region_bed(
             if flag == "lcr" and left == "0":
                 continue  # gnomAD's importer skips invalid GRCh38 intervals
             start, end = _interval(left, right, source, closed=flag == "lcr")
-            rows.append((chrom, start, end))
+            if end > end_mask:
+                raise WGSExtractError(f"Invalid coordinate in {source.name}: {end}.")
+            # Sort by start then end without retaining a tuple per interval.
+            rows.setdefault(chrom, []).append((start << 32) | end)
     if not rows:
         raise WGSExtractError(f"No primary chromosome intervals in {source.name}.")
     with bed.open("w", newline="\n") as out:
-        for chrom, start, end in sorted(rows):
-            out.write(f"{chrom}\t{start}\t{end}\n")
+        for chrom in sorted(rows):
+            intervals = rows[chrom]
+            intervals.sort()
+            for encoded in intervals:
+                out.write(f"{chrom}\t{encoded >> 32}\t{encoded & end_mask}\n")
 
 
 def _interval(
