@@ -17,6 +17,7 @@ from wgsextract_cli.commands.registry import (
 from wgsextract_cli.core.config import get_config_path, settings
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.resource_policy import parse_thread_count
+from wgsextract_cli.core.users_workspace import write_initial_config
 
 from .config_view import configuration_rows
 from .help import (
@@ -69,7 +70,7 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # native_aligners = "auto"
 # Windows x86-64: optional path to a local wgse-bwa build
 # wgse_bwa_path = 'C:\\tools\\wgse-bwa.exe'
-# prefer_native_gpu = false  # Windows CUDA is opt-in
+# prefer_native_gpu = false  # Force CPU for wgse-bwa on Windows
 # wgse-bwa reads the dense suffix-array file `ref dense-sa` builds (opt-in)
 # dense_suffix_array = false
 # Apple Silicon: bcftools calls variants with wgse-mimalloc when installed: "auto" or "off"
@@ -742,14 +743,13 @@ def bootstrap_default_config(config_path: Path) -> None:
             .strip()
             .lower()
         )
-        if choice == "y":
-            from wgsextract_cli.core.users_workspace import write_initial_config
-
-            write_initial_config(config_path, DEFAULT_CONFIG)
+        if choice != "y":
+            print("\nSkipping bootstrap.")
+        elif write_initial_config(config_path, DEFAULT_CONFIG):
             print(f"\n✅ Created default config at {config_path}")
             print("You can now edit this file to persist your settings.")
         else:
-            print("\nSkipping bootstrap.")
+            print(f"\n{config_path} was created meanwhile; leaving it as it is.")
     except (EOFError, KeyboardInterrupt):
         print("\nBootstrap cancelled.")
 

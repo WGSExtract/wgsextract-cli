@@ -209,6 +209,43 @@ ONT detection/`--ont` or `--long-read` selects Sniffles; `--pacbio` supports
 pbsv/Sniffles. Explicit `--caller` wins, but Delly with a long-read flag
 or pbsv with ONT is rejected. See [structural variants](ont.md#structural-variants).
 
+Delly (`vcf sv` and `vcf cnv`) and Sniffles accept a single region, a
+comma-separated list such as `chr1:1-10000,chr1:20000-40000`, or a BED file.
+Text ranges are 1-based and inclusive; BED intervals are 0-based and half-open.
+Low-coverage checks sample the same selected intervals with either format.
+For Delly and Sniffles, `chr1:1000` or `chr1:1000-` runs through the end of
+the contig, and `chr1:-1000` starts at base 1. BEDPE files are not supported.
+Region contigs must be present in both the alignment and the reference. pbsv
+accepts one region only, not a list or BED file. The same limits apply to
+`vcf call --types sv` or `--types cnv`. If SNPs or indels are also requested,
+use text regions: the small-variant stage does not accept a BED file.
+
+## One gene
+
+`info gene --gene SYMBOL` puts one gene's local evidence together, offline: its
+span from the bundled NCBI RefSeq annotations (aliases resolve, as in
+`panel bed`), its RefSeq transcripts and exons when `ref gene-map` installed
+them, the sample's carried variants in it from `--vcf-input` (the same columns
+as `vcf table`: consequence, ClinVar, gnomAD frequency, research-only ACMG
+class) and `samtools depth` over each exon of `--input` (BAM or CRAM) against
+`--min-depth` (default: config `confidence_min_depth`). Each variant is tagged
+with the filters it passes: `rare_damaging` (gnomAD AF below 1%, or absent from
+an annotated gnomAD, with HIGH or MODERATE impact), `clinvar_plp` and
+`acmg_plp`. `--export all|rare-damaging|clinvar-plp|acmg-plp` writes those rows
+as `<vcf stem>_<GENE>_<filter>_variants.tsv` with the table's provenance header.
+
+```sh
+wgsextract info gene --gene BRCA1 --input sample.cram --vcf-input sample_annotated.vcf.gz
+```
+
+`--json` puts the `wgsextract.gene/1` document in `details`: `gene`,
+`transcripts`, `variants` (rows, the annotations present and the header lines
+each came from), `coverage` (gene, 100 bins and each distinct exon, with
+`below` when any base is under the threshold) and `notices`. A notice names
+what is missing and the command that makes it (`ref gene-map`, `vep run`,
+`vcf clinvar`, `vcf gnomad`, `vcf acmg`, `vcf call`); nothing is downloaded.
+The desktop app's [gene page](../gui/docs/gene-page.md) shows this document.
+
 ## Annotation resources
 
 Gene filtering (`--gene`) requires rebuilt/current `ref gene-map` maps,
@@ -221,9 +258,17 @@ Configure `confidence_*`,
 or override `--confidence-depth LOW HIGH` / `--confidence-gq LOW HIGH`.
 See [rules, rationale and validation](variant-confidence.md).
 
-- `ref gnomad --release 4.1` streams native-GRCh38 exome/genome VCFs
-  (~880 GB, hours) into an allele-frequency-only table. Default 2.1.1 is
-  exome-only, lifted to hg38.
+- `ref gnomad --release 4.1 --download` streams the native-GRCh38 joint
+  exome/genome VCFs (~880 GB, hours). For each passing ALT with positive joint
+  frequency, the table keeps the joint frequency, maximum ancestry-group
+  frequency and alternate homozygote count. `vcf gnomad` transfers them to
+  `GNOMAD_AF`, `GNOMAD_POPMAX_AF` and `GNOMAD_NHOMALT`, respectively.
+  Older tables remain readable, but may omit fields or combine multiple ALTs
+  in one row. The same `--download` command rebuilds them in the current
+  per-allele format. Without `--download`, `ref gnomad
+  --release 4.1` checks the local table and can recreate a missing index
+  without fetching data. `ref gnomad --download` installs the default release,
+  2.1.1, which is exome-only and lifted to hg38.
 - `ref cadd` gets CADD v1.7 (~85 GB/build); `ref gerp` gets GERP++ bigWig.
   Annotation adds `CADD_RAW`/`CADD_PHRED` and `GERP`.
 - GERP/PhyloP bigWig lookups reuse bounded per-contig windows (pyBigWig's
@@ -283,3 +328,51 @@ index FASTA with `--hla-index PATH`. STR typing compares with
 [STRchive](https://strchive.org) ranges; give `--sex` or infer from depth.
 For ONT/PacBio use LongTR (`longtr`) or `--caller strkit` (`strkit`).
 See [repeat expansions](ont.md#repeat-expansions).
+
+### Target copy-number screening
+
+Use `typing target-cnv` to estimate germline copy number over named intervals
+in an indexed short-read WGS BAM or CRAM. Supply a matching indexed FASTA
+and a BED (zero-based start, exclusive end; optional target name in column 4).
+For gene spans, use `panel bed --build BUILD --genes SYMBOLS --pad-kb 0`.
+
+```sh
+wgsextract typing target-cnv -i sample.cram --ref hs38.fa.gz --bed targets.bed
+```
+
+The `<stem>.target-cnv.tsv` report includes mean read depth, GC fraction,
+the GC-matched baseline depth, and a copy-number class (`0`, `1`, `2`, or
+`3+`). The estimate is twice the target-to-autosomal depth ratio. The
+baseline uses roughly 220 distributed 1 kb windows; reads and bases below
+quality 20, duplicates, secondary and supplementary alignments are
+excluded, and overlapping mates are counted once. BED targets cannot
+contribute their own depth to the baseline. A GC bin is five percentage
+points wide and needs at least five windows with coverage on at least
+80% of their bases. The command refuses
+sparse baseline coverage or median depth below 10×; a target gets `no_call`
+if its GC bin lacks support or its autosome has no covered baseline window.
+Confidence depends on how far the estimate is from a class boundary relative
+to baseline depth variation; it is not a validated probability.
+
+The bundled GIAB v3.5 masks run offline on GRCh37, GRCh38, and
+T2T-CHM13v2.0. They round difficult intervals outward to 1 kb. Add
+`--download` to use the original mask boundaries; this fetches only
+two public BEDs for the assembly into the reference library, never
+sending any target or sample data. Masked intervals are usually withheld as
+`specialist_caller_required`. The exception is an exact whole-gene RefSeq
+span for a curated deletion locus: GSTM1, GSTT1, UGT2B17, RHD, LCE3B or
+LCE3C, when present on that reference's primary assembly (for example, GSTT1
+has no primary span in the bundled GRCh38 annotations). BED labels alone do
+not qualify an interval. Relative to GC-matched diploid depth,
+ratios ≤0.15, 0.35–0.65, and 0.85–1.25 give CN 0, 1, and 2 respectively,
+with `medium` confidence and reason `masked_region_curated_call`. Other
+ratios stay withheld. On GRCh37/38, the `specialist` column recommends
+`typing smn`, `typing cyp2d6`, or external [RHtyper](https://github.com/disonchang/RHtyper)
+where applicable. A depth call does not determine RHD alleles or blood type.
+
+The existing sex check supplies the expected CN for non-PAR X and Y
+targets. Unknown sex and pseudoautosomal targets are not called; a
+non-PAR Y target in a sample inferred or declared female is
+`not_applicable`, not a deletion. This is a screen, not a diagnosis.
+It does not find breakpoints, resolve paralogs, or distinguish
+alleles or mosaic states. It is not intended for panels or exomes.

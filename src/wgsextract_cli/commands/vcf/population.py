@@ -1,4 +1,3 @@
-import gzip
 import logging
 import re
 import subprocess
@@ -11,9 +10,14 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
+from wgsextract_cli.core.gnomad_af import (
+    GNOMAD_AF_TABLE,
+    GNOMAD_V4_REBUILD,
+    gnomad_table_header,
+)
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
-from wgsextract_cli.core.results import current_result
+from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_prepared, is_vcf_path
 from wgsextract_cli.core.variant_table import parse_header
@@ -133,29 +137,23 @@ def _gnomad_vcf_columns(path: str) -> tuple[list[str], list[str]]:
     for dest, names in sources.items():
         source = next((name for name in names if name in tags), None)
         if source is None and dest == "GNOMAD_AF":
-            source = "AF"  # preserve the error for a resource with no frequency
+            source = "AF"  # Preserve the error for a VCF without frequency.
         if source:
             columns.append(f"INFO/{dest}:=INFO/{source}")
             destinations.append(dest)
     return columns, destinations
 
 
-def _gnomad_table_columns(path: str) -> tuple[list[str], list[str]]:
+def _gnomad_table_columns(fields: tuple[str, ...]) -> tuple[list[str], list[str]]:
     columns = ["CHROM", "POS", "REF", "ALT", "INFO/GNOMAD_AF"]
     destinations = ["GNOMAD_AF"]
     extras = {"AF_grpmax_joint": "GNOMAD_POPMAX_AF", "nhomalt_joint": "GNOMAD_NHOMALT"}
-    with gzip.open(path, "rt") as table:
-        for line in table:
-            if line.startswith("#CHROM\t"):
-                for name in line.rstrip().split("\t")[5:]:
-                    if dest := extras.get(name):
-                        destinations.append(dest)
-                        columns.append(f"INFO/{dest}")
-                    else:
-                        columns.append("-")
-                break
-            if not line.startswith("#"):
-                break
+    for name in fields[5:]:
+        if dest := extras.get(name):
+            destinations.append(dest)
+            columns.append(f"INFO/{dest}")
+        else:
+            columns.append("-")
     return columns, destinations
 
 
@@ -166,7 +164,9 @@ def run_gnomad(params: VcfGnomadParams) -> None:
     logging.info(f"Annotating VCF with gnomAD data: {input_file}")
 
     gnomad_file = require_annotation_file(
-        resource(params, "gnomad_file", lib.gnomad_vcf), "vcf_gnomad_missing", "gnomad"
+        resource(params, "gnomad_file", lib.gnomad_vcf),
+        "vcf_gnomad_missing",
+        "gnomad --download",
     )
     logging.info(f"Using gnomAD file: {gnomad_file}")
 
@@ -177,7 +177,17 @@ def run_gnomad(params: VcfGnomadParams) -> None:
         columns, destinations = _gnomad_vcf_columns(annotation)
     else:
         annotation = prepare_tabix_annotation(gnomad_file, "gnomAD")
-        columns, destinations = _gnomad_table_columns(annotation)
+        table_header = gnomad_table_header(annotation)
+        columns, destinations = _gnomad_table_columns(table_header.columns)
+        if (
+            table_header.joint or Path(gnomad_file).name == GNOMAD_AF_TABLE
+        ) and not table_header.is_current:
+            warn(
+                "gnomad_table_stale",
+                "The gnomAD v4.1 table is not in the current per-allele format. "
+                f"To rebuild, run: {GNOMAD_V4_REBUILD}",
+                path=gnomad_file,
+            )
     header = [
         f'##INFO=<ID={dest},Number=A,Type={kind},Description="{description}">'
         for dest in destinations
