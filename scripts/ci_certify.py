@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -160,11 +161,22 @@ def run_layer(
             stream.write(f"\n$ {json.dumps(command)} (cwd={cwd or '.'})\n")
             stream.flush()
             print(f"{name}: {' '.join(command[:7])}", flush=True)
+            env = None
+            if (
+                name in {"macos-arm64", "linux-arm64"}
+                and "tests/test_imputation.py" in command
+            ):
+                # Imputation must use the verified package, not a GLIMPSE2
+                # already on the certifier's PATH (possibly under Rosetta).
+                env = os.environ.copy()
+                prefix = Path(".pixi/envs/imputation/bin").resolve()
+                env["PATH"] = f"{prefix}{os.pathsep}{env.get('PATH', '')}"
             try:
                 if stream_output:
                     with subprocess.Popen(
                         command,
                         cwd=cwd,
+                        env=env,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
                         text=True,
@@ -183,6 +195,7 @@ def run_layer(
                     subprocess.run(
                         command,
                         cwd=cwd,
+                        env=env,
                         stdout=stream,
                         stderr=subprocess.STDOUT,
                         check=True,

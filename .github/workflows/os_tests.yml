@@ -208,6 +208,7 @@ jobs:
         run: |
           mkdir -p out
           pixi install --locked -e imputation
+          export PATH="$PWD/.pixi/envs/imputation/bin:$PATH"
           pixi run --locked -e dev pytest tests/test_imputation.py -rs \
             --basetemp=out/imputation-tmp --junitxml=out/imputation-e2e.xml
           pixi run --locked -e dev python -c "import xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').find('testsuite'); assert s is not None and int(s.get('tests', '0')) > 0 and s.get('skipped') == '0'"
