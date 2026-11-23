@@ -392,7 +392,7 @@ class ReferenceEvidence:
             return [(name, 1, length) for name, length in self.lengths.items()]
         try:
             selected = selected_intervals(
-                region, self.lengths, commas=True, allow_files=self.allow_region_files
+                region, self.lengths, commas=True, files=self.allow_region_files
             )
         except ValueError:
             return None

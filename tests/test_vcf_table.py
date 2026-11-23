@@ -327,6 +327,8 @@ def test_vcf_table_flattens_annotations_one_row_per_carried_allele(
         "sample_variants.sqlite": "variant_database",
     }
     assert result.metrics["rows"] == 8
+    assert metadata["population_af_sources"] == "gnomad"
+    assert "gnomad_af_missing" not in {w.code for w in result.warnings}
 
 
 @needs_htslib
@@ -729,3 +731,59 @@ def test_629_a_table_without_acmg_classes_says_nothing_of_them(annotated_vcf, tm
     assert "acmg_disclaimer" not in keys
     assert classes == (0,)
     assert "acmg_research_only" not in {w.code for w in result.warnings}
+
+
+# A vep-rs cache from `vep download` fills VEP's 1000 Genomes AF and MAX_AF and
+# declares, but never fills, the gnomAD fields.
+VEP_RS_CSQ = "Allele|Consequence|IMPACT|SYMBOL|AF|EUR_AF|gnomADe_AF|gnomADg_AF|MAX_AF"
+
+
+@needs_htslib
+def test_1354_vep_1000_genomes_frequencies_never_pass_for_gnomad(tmp_path):
+    header = HEADER.replace(f"Format: {CSQ}", f"Format: {VEP_RS_CSQ}").replace(
+        "##INFO=<ID=GNOMAD_AF", "##INFO=<ID=OTHER_AF"
+    )
+    plain = tmp_path / "vep.vcf"
+    plain.write_text(
+        header
+        + _record("chr1", "100", "rs1", "A", "G", "50", "PASS",
+                  "CSQ=G|missense_variant|MODERATE|GENEA|0.0755|0.3|||0.3",
+                  "GT", "0/1")
+        # Two co-located known variants: VEP joins their frequencies with '&'.
+        + _record("chr1", "200", "rs2", "C", "T", "50", "PASS",
+                  "CSQ=T|intron_variant|MODIFIER|GENEB|0.0002&0.4|0.5|||0.0004&0.6",
+                  "GT", "1/1")
+    )  # fmt: skip
+    out = tmp_path / "out"
+    result = CommandResult("vcf table")
+    with collecting(result):
+        run_wgsextract(
+            "vcf", "table", "--vcf-input", bgzip_index(plain), "--outdir", str(out)
+        )  # fmt: skip
+
+    rows = _tsv(out / "vep_variants.tsv")
+    freqs = ("gnomad_af", "gnomad_popmax_af", "gnomad_nhomalt", "kg_af", "max_af")
+    assert [rows["100", "G"][c] for c in freqs] == ["", "", "", "0.0755", "0.3"]
+    # The highest of co-located variants' values: common is never read as rare.
+    assert [rows["200", "T"][c] for c in freqs] == ["", "", "", "0.4", "0.6"]
+    db = sqlite3.connect(out / "vep_variants.sqlite")
+    metadata = dict(db.execute("SELECT key, value FROM metadata"))
+    db.close()
+    assert metadata["population_af_sources"] == "1000genomes"
+    assert (result.metrics["gnomad_af_rows"], result.metrics["kg_af_rows"]) == (0, 2)
+    warning = next(w for w in result.warnings if w.code == "gnomad_af_missing")
+    assert "1000 Genomes" in warning.message and "vcf gnomad" in warning.message
+    # VEP declares gnomAD fields: a cache without gnomAD and variants gnomAD
+    # lacks look alike, so the warning doesn't claim which (PR #1366 review).
+    assert "may mean not annotated" in warning.message
+
+
+def test_1354_vep_gnomad_frequency_fills_gnomad_af():
+    records = [
+        _record("chr1", "100", ".", "A", "G", "50", "PASS",
+                "CSQ=G|missense_variant|MODERATE|GENEA|0.1|0.2|0.5|0.01&0.03|0.2",
+                "GT", "0/1"),
+    ]  # fmt: skip
+    row = _rows(records, VEP_RS_CSQ)["100", "G"]
+    # gnomAD genomes first, then exomes; never the 1000 Genomes AF.
+    assert (row["gnomad_af"], row["kg_af"], row["max_af"]) == (0.03, 0.1, 0.2)

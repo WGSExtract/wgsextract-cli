@@ -1,6 +1,7 @@
 """Issue #1295: local allele agreement is not genotype or reference agreement."""
 
 import csv
+import gzip
 import hashlib
 import json
 from dataclasses import replace
@@ -308,6 +309,22 @@ def test_compare_1295_bed_is_applied_after_left_alignment(tmp_path):
         capture_output=True,
     ).stdout
     assert intersection.splitlines() == ["chr1\t1\tCA\tC\t11"]
+
+
+def test_compare_1295_truncated_bed_reports_invalid_scope(callsets, tmp_path):
+    a, b, _ = callsets
+    bed = tmp_path / "panel.bed.gz"
+    bed.write_bytes(gzip.compress(b"chr1\t0\t10\n")[:-4])
+    outdir = tmp_path / "comparison"
+    result = api.vcf.compare(
+        api.VcfCompareParams(
+            callset=_inputs(a, b), sample=("a=NA",), bed=bed, outdir=outdir
+        ),
+        check=False,
+    )
+    assert result.exit_code == 2
+    assert "Invalid comparison scope" in result.error.message
+    assert not (outdir / "compare.summary.tsv").exists()
 
 
 def test_compare_1295_nway_parquet_excludes_conflicting_duplicates_from_support(

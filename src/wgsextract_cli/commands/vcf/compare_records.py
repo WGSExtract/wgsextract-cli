@@ -13,7 +13,11 @@ from typing import TextIO
 
 from wgsextract_cli.core.reference_evidence import ReferenceEvidence, site_state
 from wgsextract_cli.core.reference_evidence_records import Span, State
-from wgsextract_cli.core.region_selection import bed_intervals, literal_region
+from wgsextract_cli.core.region_selection import (
+    bed_intervals,
+    bounded_intervals,
+    literal_region,
+)
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.variant_confidence import Thresholds
 from wgsextract_cli.core.variant_files import match_chromosome_name
@@ -22,6 +26,19 @@ from .compare_inputs import PARTIAL, Dictionary, genotype
 
 Allele = tuple[str, int, str, str]
 _SMALL_BASES = frozenset("ACGTN")
+
+
+def _scope_contigs(
+    rows: Iterable[tuple[str, int, int]], bounds: dict[str, int]
+) -> Iterator[tuple[str, int, int]]:
+    aliases: dict[str, str] = {}
+    for name, start, end in rows:
+        if name not in aliases:
+            chrom = match_chromosome_name(name, bounds)
+            if chrom is None:
+                raise UsageError(f"Comparison scope names unknown contig {name!r}.")
+            aliases[name] = chrom
+        yield aliases[name], start, end
 
 
 class Scope:
@@ -44,27 +61,14 @@ class Scope:
                 rows = [literal_region(target + region[len(name) :], bounds)]
             else:
                 rows = []
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, EOFError) as exc:
             raise UsageError(f"Invalid comparison scope: {exc}") from exc
-        by_contig: dict[str, list[tuple[int, int]]] = {}
-        for name, start, end in rows:
-            chrom = match_chromosome_name(name, bounds)
-            if chrom is None:
-                raise UsageError(f"Comparison scope names unknown contig {name!r}.")
-            end = min(end, bounds[chrom])
-            if start < end:
-                by_contig.setdefault(chrom, []).append((start, end))
-        self.intervals: dict[str, tuple[list[int], list[int]]] = {}
-        for chrom, intervals in by_contig.items():
-            starts: list[int] = []
-            ends: list[int] = []
-            for start, end in sorted(intervals):
-                if ends and start <= ends[-1]:
-                    ends[-1] = max(ends[-1], end)
-                else:
-                    starts.append(start)
-                    ends.append(end)
-            self.intervals[chrom] = starts, ends
+        self.intervals = {
+            chrom: ([start for start, _ in intervals], [end for _, end in intervals])
+            for chrom, intervals in bounded_intervals(
+                _scope_contigs(rows, bounds), bounds
+            ).items()
+        }
         if self.limited and not self.intervals:
             raise UsageError("Comparison scope covers no reference bases.")
 

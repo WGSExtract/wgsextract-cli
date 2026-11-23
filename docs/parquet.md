@@ -10,6 +10,7 @@ same columns, types and provenance in both formats.
 | `vcf compare` | Pairwise allele concordance, N-way support, and optional per-allele states ([docs](variant-comparison.md)) | `compare.summary.tsv`, `compare.support.tsv`, optional `compare.variants.tsv` | The requested tables as `.parquet`; `compare.summary.json` is unchanged. |
 | `methylation pileup` | Per-modification summary | `<stem>.<context>.methylation.tsv` | `<stem>.<context>.methylation.parquet` |
 | `methylation pileup` | Every site in modkit's bedMethyl | Not written: `.bedmethyl.gz` is the source | `<stem>.<context>.bedmethyl.parquet`, besides the bedMethyl |
+| `methylation regions` | RefSeq promoters or UCSC CpG islands | `<stem>.<build>.<preset>.methylation.tsv` | `<stem>.<build>.<preset>.methylation.parquet` |
 | `info` (with `--format`, which implies `--detailed`), `info calculate-coverage`, `info coverage-sample` | Per-chromosome counts and breadth | Written only with `--format` | `<input>_chromosomes.parquet` |
 | The same | QC stats, one row: the manifest's `info` metrics | Written only with `--format` | `<input>_qc.parquet` |
 | `info calculate-coverage --bins` | Depth bands per contig | `<input>_coverage_bins.tsv` | `<input>_coverage_bins.parquet` |
