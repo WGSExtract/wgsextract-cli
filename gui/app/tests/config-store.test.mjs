@@ -240,16 +240,20 @@ test("#1230 a settings file linked through a linked folder and .. to a file not 
   await assert.rejects(stat(path.join(bundleRoot, "saved.toml")), { code: "ENOENT" });
 });
 
-test("#1230 a path through a symlinked folder and .. is saved where the filesystem resolves it, as the CLI does", async (t) => {
+test("#1230 saving through a linked folder and .. follows the CLI's platform path semantics", async (t) => {
   const bundleRoot = await tempDirectory(t);
-  await mkdir(path.join(bundleRoot, "real", "sub"), { recursive: true });
-  await symlink(path.join(bundleRoot, "real", "sub"), path.join(bundleRoot, "link"), "junction");
+  const real = path.join(bundleRoot, "real");
+  const link = path.join(bundleRoot, "link");
+  await mkdir(path.join(real, "sub"), { recursive: true });
+  await symlink(path.join(real, "sub"), link, "junction");
   const control = textSettingsControl(["first"]);
 
-  await saveConfig(control, path.join(bundleRoot, "link") + `${path.sep}..${path.sep}config.toml`, { first: "1" }, bundleRoot);
+  await saveConfig(control, `${link}${path.sep}..${path.sep}config.toml`, { first: "1" }, bundleRoot);
 
-  assert.deepEqual({ ...parseSavedToml(await readFile(path.join(bundleRoot, "real", "config.toml"), "utf8")) }, { first: "1" });
-  await assert.rejects(stat(path.join(bundleRoot, "config.toml")), { code: "ENOENT" });
+  // Python's Windows realpath normalizes `..` before following links. On POSIX the link is followed first.
+  const [expected, unexpected] = process.platform === "win32" ? [bundleRoot, real] : [real, bundleRoot];
+  assert.deepEqual({ ...parseSavedToml(await readFile(path.join(expected, "config.toml"), "utf8")) }, { first: "1" });
+  await assert.rejects(stat(path.join(unexpected, "config.toml")), { code: "ENOENT" });
 });
 
 test("#1230 a slow save keeps its lock however long it takes", async (t) => {
