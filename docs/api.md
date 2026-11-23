@@ -1857,7 +1857,7 @@ chains require `download`; lifting sample coordinates stays local.
 | `aadr_sex` | `str` | `'U'` | `--aadr-sex` | AADR metadata sex only; does not change genotype calling (default: U) One of: `U`, `M`, `F` |
 | `parallel` | `bool \| None` | `None` | `--parallel` | Call chromosomes in parallel workers (default: on with --threads above 1; calls are identical to one stream) |
 | `ref_vcf_tab` | `Path \| None` | `None` | `--ref-vcf-tab` | Master tabulated list of all consumer microarray SNPs (auto-resolved from --ref if possible) |
-| `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's, else the GRCh37 or GRCh38 preset; a build other than these and CHM13 needs one). |
+| `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's, else the GRCh37 or GRCh38 preset). Other builds need one, except CHM13, which uses its own PAR ploidy and doesn't take one. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample to use from a multi-sample VCF (e.g. a joint-called nf-core/sarek VCF); required when the VCF has more than one |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |

@@ -155,8 +155,8 @@ class MicroarrayParams(DownloadParams):
         help="File defining ploidy per chromosome (auto-resolved from --ref if "
         "possible)",
         doc="Ploidy file for calling a BAM or CRAM (default: the reference "
-        "library's, else the GRCh37 or GRCh38 preset; a build other than these "
-        "and CHM13 needs one).",
+        "library's, else the GRCh37 or GRCh38 preset). Other builds need one, "
+        "except CHM13, which uses its own PAR ploidy and doesn't take one.",
         path="file",
     )
     sample: str | None = param(
