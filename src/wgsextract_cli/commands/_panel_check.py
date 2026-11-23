@@ -120,22 +120,26 @@ def _groups(
     return records, problems
 
 
-def _coding_genes_at(notes: panel.Annotations, chrom: str, pos: int) -> list[str]:
-    return sorted(
-        {
-            locus.symbol
-            for key, loci in notes.loci.items()
-            if notes.genes[key].cds_bp
-            for locus in loci
-            if locus.chrom == chrom and locus.start < pos <= locus.end
-        }
-    )
+def _coding_loci(notes: panel.Annotations) -> dict[str, list[panel.Locus]]:
+    """Coding genes' loci by chromosome, once per run."""
+    by_chrom: dict[str, list[panel.Locus]] = {}
+    for key, loci in notes.loci.items():
+        if notes.genes[key].cds_bp:
+            for locus in loci:
+                by_chrom.setdefault(locus.chrom, []).append(locus)
+    return by_chrom
+
+
+def _genes_at(loci: list[panel.Locus], pos: int) -> list[str]:
+    """Symbols of the loci holding 1-based ``pos``."""
+    return sorted({x.symbol for x in loci if x.start < pos <= x.end})
 
 
 def _sites(
     document: Mapping[str, Any], notes: panel.Annotations, same_build: bool
 ) -> list[dict[str, Any]]:
     records = []
+    coding = _coding_loci(notes) if same_build and document.get("sites") else {}
     for site in document.get("sites", []):
         position = panel_spec.parse_position(site["locus"])
         record: dict[str, Any] = {
@@ -144,7 +148,7 @@ def _sites(
             "rsid": site.get("rsid"),
         }
         if same_build:
-            record["genes"] = _coding_genes_at(notes, position.chrom, position.pos)
+            record["genes"] = _genes_at(coding.get(position.chrom, []), position.pos)
         records.append(record)
     return records
 

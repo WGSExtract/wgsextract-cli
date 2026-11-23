@@ -119,6 +119,14 @@ def _xref(attrs: dict[str, str], prefix: str) -> str:
     )
 
 
+def _hgnc(xref: str) -> str:
+    """'HGNC:613' from NCBI's 'HGNC:HGNC:613' (xref value 'HGNC:613') or a
+    bare 'HGNC:613' (xref value '613')."""
+    if xref.isdigit():
+        return f"HGNC:{xref}"
+    return xref if xref.startswith("HGNC:") and xref[5:].isdigit() else ""
+
+
 def _coding(
     transcripts: dict[str, tuple[str, str, str]],
     cds: dict[tuple[str, str], int],
@@ -191,7 +199,7 @@ def genes(gff: Path, names: dict[str, str]) -> list[Row]:
                 _xref(attrs, "GeneID"),
                 attrs.get("gene_biotype", f[2]),
                 ",".join(synonyms),
-                hgnc_id if hgnc_id.startswith("HGNC:") else "",
+                _hgnc(hgnc_id),
             ]
     coding = _coding(transcripts, cds)
     built: list[Row] = []

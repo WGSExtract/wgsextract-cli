@@ -107,7 +107,7 @@ alleles = { a = ["C", "T"], b = ["T", "T"], c = ["T", "C"] }
 null_sets = 1000                     # 100 to 100000; default 1000
 match_on = ["callable_cds_bp"]       # the only covariate in this version
 bins = 20                            # 2 to 100; default 20
-seed = 1287                          # default: derived from the panel and the input
+seed = 1287                          # unset: the audit derives one from the panel's SHA-256 and its input
 ```
 
 A panel needs at least one group, site or haplotype.

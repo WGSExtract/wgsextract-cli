@@ -468,10 +468,15 @@ def _constrain(value: Any, rule: Constraints, path: str, out: list[Problem]) -> 
             messages.append("must not be empty")
     out.extend(Problem("bad_value", path, text) for text in messages)
     if rule.uniqueItems:
-        keys = [json.dumps(item) for item in value]
-        repeated = [item for i, item in enumerate(value) if keys.index(keys[i]) != i]
+        seen: set[str] = set()
+        repeated: dict[str, None] = {}
+        for item in value:
+            key = json.dumps(item, sort_keys=True)
+            if key in seen:
+                repeated[key] = None
+            seen.add(key)
         if repeated:
-            listed = ", ".join(json.dumps(item) for item in repeated)
+            listed = ", ".join(repeated)
             out.append(Problem("duplicate", path, f"lists {listed} more than once"))
 
 
