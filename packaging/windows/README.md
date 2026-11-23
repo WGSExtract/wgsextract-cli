@@ -145,9 +145,10 @@ pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id `
     --output-dir out/conda --target-platform win-64
 ```
 
-The build runs a CPU alignment smoke with CUDA hidden, then packages the
-release executable and checks its capabilities. Neither installation nor
-CPU alignment requires an NVIDIA driver.
+The build tests CPU alignment with CUDA disabled, then packages the release
+executable and checks its capabilities. The package installs and runs on the
+CPU without an NVIDIA driver. Only the optional CUDA backend requires a
+supported NVIDIA GPU and driver; no CUDA Toolkit installation is needed.
 [Windows alignment](../../docs/windows.md#optional-wgse-bwa-with-nvidia-cuda)
 documents how to opt in to CUDA or override the packaged build.
 
