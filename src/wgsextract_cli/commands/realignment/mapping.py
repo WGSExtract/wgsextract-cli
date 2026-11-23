@@ -84,7 +84,7 @@ def _align_step(
             **(
                 {"prefer_native_gpu": True}
                 if aligner in align_cmd.BWA_ALIGNERS
-                and _native_gpu_plan_key(job, target, reads)
+                and _records_native_gpu_preference(job, target, reads)
                 else {}
             ),
         },
@@ -94,7 +94,7 @@ def _align_step(
     )
 
 
-def _native_gpu_plan_key(
+def _records_native_gpu_preference(
     job: RealignJob, target: str | None, reads: dict[str, str | None]
 ) -> bool:
     """Key Windows CUDA policy or an explicit override of a GPU RAM limit."""

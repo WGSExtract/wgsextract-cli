@@ -182,7 +182,7 @@ from .realignment.mapping import (
     _native_aligner_metrics as _native_aligner_metrics,
 )
 from .realignment.mapping import (
-    _native_gpu_plan_key as _native_gpu_plan_key,
+    _records_native_gpu_preference as _records_native_gpu_preference,
 )
 from .realignment.mapping import (
     _resume_alignment as _resume_alignment,

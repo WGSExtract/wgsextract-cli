@@ -137,7 +137,7 @@ elseif(WGSE_CUDA)
 endif()
 
 set(cli_sources main.cpp)
-if(WIN32)
+if(MSVC)
     # The classic heap can serialize CUDA mate-rescue workers at large -K.
     list(APPEND cli_sources windows-heap.manifest)
 endif()
