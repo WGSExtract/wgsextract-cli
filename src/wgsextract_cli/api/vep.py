@@ -94,8 +94,9 @@ class VepRunParams(Params):
         None,
         help="Reference assembly for VEP (GRCh37, GRCh38 or T2T-CHM13v2.0)",
         doc="Assembly VEP annotates against (default: the reference's build); "
-        "a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs "
-        "vep-rs.",
+        "a resolved FASTA of another build is not used, and a BAM or CRAM "
+        "whose header or reference index shows another build is refused. "
+        "T2T-CHM13v2.0 needs vep-rs.",
         flags=("--assembly",),
         hidden_flags=("--vep-assembly",),
         choices=ASSEMBLIES,
@@ -143,7 +144,8 @@ class VepRunParams(Params):
         None,
         help="Predefined ploidy name or value (e.g., 'human')",
         doc="bcftools ploidy name or value for calling a BAM or CRAM "
-        "(default: the build's).",
+        "(default: the GRCh37 or GRCh38 preset; other builds, such as T2T, "
+        "need this or a ploidy file).",
     )
     region: str | None = param(
         None,
@@ -273,10 +275,11 @@ class VepDownloadParams(_VepCacheParams):
     )
     variations: bool = param(
         True,
-        help="vep-rs: include known variants (Existing_variation, frequencies; "
-        "~15 GB; default: on)",
+        help="vep-rs: include known variants (Existing_variation, 1000 Genomes "
+        "frequencies, not gnomAD; ~15 GB; default: on)",
         doc="vep-rs: include Ensembl's known variants (Existing_variation, "
-        "1000 Genomes frequencies; ~15 GB).",
+        "1000 Genomes frequencies; ~15 GB). Ensembl publishes no gnomAD "
+        "frequencies to build from: use `vcf gnomad` for those.",
         action="boolean_optional",
     )
 

@@ -178,8 +178,11 @@ def caller_setup(
         raise WGSExtractError(
             LOG_MESSAGES["ref_required_for"].format(task="variant calling")
         )
+    from wgsextract_cli.core.artifact_checks import require_consumable
     from wgsextract_cli.core.calling_reference import validate_calling_reference
 
+    # A region is read through the index; whole-file calling streams the reads.
+    require_consumable([("input", input_file)], need_index=["input"] * bool(region))
     validate_calling_reference(
         input_file, resolved_ref, allow_reference_subset=allow_reference_subset
     )

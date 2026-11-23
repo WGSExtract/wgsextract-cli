@@ -10,6 +10,9 @@ Each writes ``<input stem>.*`` files in ``outdir``, else beside the input:
 * ``smn``: SMN1/SMN2 copy number and SMA carrier status with
   SMNCopyNumberCaller (``.smn.tsv``/``.json``), from the optional ``smn``
   environment. A screening estimate, not a diagnosis.
+* ``target_cnv``: screen short-read WGS for copy number over BED intervals
+  (``.target-cnv.tsv``). Uses an indexed matching FASTA, with an offline
+  baseline and callability mask for GRCh37, GRCh38 and T2T-CHM13v2.0.
 * ``hla``: HLA class I and II alleles with T1K (``.t1k_genotype.tsv``,
   ``.t1k_allele.tsv``/``.vcf``), from the optional ``t1k`` environment.
 * ``repeats`` (``typing str``): disease repeat expansions (``.str.tsv`` or
@@ -82,6 +85,47 @@ class TypingSmnParams(_TypingParams):
     ``median_depth`` and ``coverage_mad``."""
 
     COMMAND = "typing smn"
+
+
+@dataclass(frozen=True, kw_only=True)
+class TypingTargetCnvParams(_TypingParams):
+    """Estimate copy-number classes (0, 1, 2, 3+) with heuristic confidence
+    from GC-matched autosomal depth in short-read whole-genome sequencing.
+    Masked targets require a specialist, except whole curated deletion loci
+    with clear depth evidence. This is a screen, not a diagnosis."""
+
+    COMMAND = "typing target-cnv"
+
+    input: Path = input_param("Indexed short-read WGS BAM or CRAM.")
+    bed: Path = param(
+        help="Target intervals in a BED (0-based, end-exclusive; optional name in column 4).",
+        path="file",
+        metavar="BED",
+        required_message="--bed (target intervals) is required.",
+    )
+    download: bool = param(
+        False,
+        help="Use exact GIAB v3.5 masks, downloading missing public BEDs from "
+        "NCBI into the reference library. No sample data is sent.",
+        action="store_true",
+        writes=True,
+        safe_value=False,
+    )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        if self.download:
+            from wgsextract_cli.commands.genotyping.target_cnv_data import (
+                mask_cache_paths,
+            )
+
+            for path in mask_cache_paths():
+                yield "ref", path
+
+    def write_folders(self) -> Iterator[Path]:
+        if self.download:
+            from wgsextract_cli.commands.genotyping.target_cnv_data import mask_cache
+
+            yield mask_cache()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -211,6 +255,21 @@ def smn(
     return execute(params, run_smn, progress=progress, cancel=cancel, check=check)
 
 
+def target_cnv(
+    params: TypingTargetCnvParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Screen BED targets for short-read copy number (see ``TypingTargetCnvParams``)."""
+    from wgsextract_cli.commands.genotyping.target_cnv import run_target_cnv
+
+    return execute(
+        params, run_target_cnv, progress=progress, cancel=cancel, check=check
+    )
+
+
 def hla(
     params: TypingHlaParams,
     *,
@@ -243,8 +302,10 @@ __all__ = [
     "TypingHlaParams",
     "TypingSmnParams",
     "TypingStrParams",
+    "TypingTargetCnvParams",
     "cyp2d6",
     "hla",
     "repeats",
     "smn",
+    "target_cnv",
 ]

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 
 from wgsextract_cli.api._cli import add_arguments
-from wgsextract_cli.api.panel import PanelBedParams
+from wgsextract_cli.api.panel import PanelBedParams, PanelCheckParams
 from wgsextract_cli.cli._lazy import command_handler
 from wgsextract_cli.core.messages import CLI_HELP
 
@@ -26,5 +26,17 @@ def register(
     sub.set_defaults(
         func=command_handler(
             "wgsextract_cli.commands.panel", "run_panel_bed", PanelBedParams
+        )
+    )
+    sub = subs.add_parser(
+        "check",
+        parents=[base_parser],
+        help=CLI_HELP["cmd_panel-check"],
+        description=CLI_HELP["cmd_panel-check"],
+    )
+    add_arguments(sub, PanelCheckParams)
+    sub.set_defaults(
+        func=command_handler(
+            "wgsextract_cli.commands._panel_check", "run_panel_check", PanelCheckParams
         )
     )

@@ -23,6 +23,7 @@ from tests.htslib_helpers import (
 from wgsextract_cli import api
 from wgsextract_cli.api import VcfSvParams
 from wgsextract_cli.commands.vcf import structural
+from wgsextract_cli.core.artifact_checks import ArtifactIncompatible
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -192,13 +193,24 @@ def test_region_bam_takes_the_reference_contigs(tmp_path):
 @needs_delly
 def test_region_extraction_and_delly_failures_are_reported(tmp_path):
     bam, ref = _sample(tmp_path)
-    # Without its index the BAM's region can't be read.
+    # Without its index the BAM's region can't be read: refused up front (#1182).
     unindexed = tmp_path / "unindexed.bam"
     shutil.copy(bam, unindexed)
+    for command in ("sv", "cnv"):
+        with pytest.raises(ArtifactIncompatible) as refused:
+            _run(command, str(unindexed), ref, tmp_path / "out", "--region", "chr1")
+        assert refused.value.code == "index_missing"
+    # A corrupt block past the header fails the region's extraction.
+    corrupt = tmp_path / "corrupt.bam"
+    shutil.copy(bam, corrupt)
+    run_command([get_tool_path("samtools"), "index", str(corrupt)])
+    data = bytearray(corrupt.read_bytes())
+    data[len(data) // 2] ^= 0xFF
+    corrupt.write_bytes(bytes(data))
     with pytest.raises(WGSExtractError, match="SV region extraction failed.*exit 1"):
-        _run("sv", str(unindexed), ref, tmp_path / "out", "--region", "chr1")
+        _run("sv", str(corrupt), ref, tmp_path / "out", "--region", "chr1")
     with pytest.raises(WGSExtractError, match="CNV region extraction failed"):
-        _run("cnv", str(unindexed), ref, tmp_path / "out", "--region", "chr1")
+        _run("cnv", str(corrupt), ref, tmp_path / "out", "--region", "chr1")
     # Too few reads in the region for Delly to estimate the library.
     with pytest.raises(WGSExtractError, match="SV calling failed with exit code 1"):
         _run("sv", bam, ref, tmp_path / "out", "--region", "chr1:100-300")

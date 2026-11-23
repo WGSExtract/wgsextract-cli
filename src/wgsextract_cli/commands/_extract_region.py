@@ -43,13 +43,9 @@ _AUTOSOMES_X = [*map(str, range(1, 23)), "X"]
 
 
 def _contigs(target: str, input_path: str, cram_opt: list[str]) -> list[str]:
-    """The target's contigs as the alignment names them."""
+    """The mt or autox target's contigs as the alignment names them."""
     if target == "mt":
         return [get_chr_name(input_path, "MT", cram_opt)]
-    if target == "y":
-        return [get_chr_name(input_path, "Y", cram_opt)]
-    if target == "ymt":
-        return [get_chr_name(input_path, n, cram_opt) for n in ("Y", "MT")]
     present = sequence_lengths(get_bam_header(input_path, cram_opt))
     contigs = [
         name
@@ -69,9 +65,12 @@ def run_region(params: ExtractRegionParams) -> None:
         _CALLING_TOOLS,
         _SAMTOOLS,
         _published,
+        _published_y,
+        _scope_suffix,
         _setup,
         _warn_if_female,
         require_reference,
+        y_selection,
     )
 
     target = _TARGETS[params.target]
@@ -81,21 +80,44 @@ def run_region(params: ExtractRegionParams) -> None:
     base = _setup(params, [*tools, "bgzip"] if params.ybrowse else tools)
     input_path = str(params.input)
     ref = require_reference(base.ref, "region calling", input_path) if calls else None
-    contigs = _contigs(params.target, input_path, base.cram_opt)
+    selection = (
+        y_selection(
+            input_path, base, params.y_scope, mt=params.target == "ymt", calls=calls
+        )
+        if target.has_y
+        else None
+    )
+    contigs = (
+        selection.contigs
+        if selection
+        else _contigs(params.target, input_path, base.cram_opt)
+    )
     if target.has_y and not params.ybrowse:  # call_ybrowse warns itself
         _warn_if_female(input_path, base.outdir, base.ref)
 
     def out(suffix: str) -> str:
         return derive_output_path(input_path, base.outdir, suffix)
 
-    out_bam = out("_Y_poz.bam" if params.poz else target.bam_suffix)
-    out_vcf = out(f"_{target.label}.vcf.gz")
-    out_fasta = out(f"_{target.label}.fasta")
+    label = target.label + _scope_suffix(params.y_scope)
+    bam_suffix = target.bam_suffix.replace(
+        ".bam", f"{_scope_suffix(params.y_scope)}.bam"
+    )
+    out_bam = out("_Y_poz.bam" if params.poz else bam_suffix)
+    out_vcf = out(f"_{label}.vcf.gz")
+    out_fasta = out(f"_{label}.fasta")
     outputs = [
         *([out_bam, out_bam + ".bai"] if params.bam else []),
         *([out_vcf, out_vcf + ".tbi"] if keep_vcf else []),
         *([out_fasta] if params.fasta else []),
     ]
+
+    def publish(path: str, role: str) -> None:
+        if selection:
+            bam = out_bam if params.bam else None
+            _published_y(path, role, selection, bam=bam)
+        else:
+            _published(path, role)
+
     logging.info(
         f"Extracting {', '.join(contigs)} from {input_path} into {base.outdir}..."
     )
@@ -110,7 +132,7 @@ def run_region(params: ExtractRegionParams) -> None:
         ):
             if params.bam:
                 _write_bam(base, input_path, out_bam, contigs, target, params.poz)
-                _published(out_bam, f"{target.role}_bam")
+                publish(out_bam, f"{target.role}_bam")
             if calls:
                 assert ref is not None
                 vcf = out_vcf if keep_vcf else str(Path(work, "calls.vcf.gz"))
@@ -121,10 +143,10 @@ def run_region(params: ExtractRegionParams) -> None:
                 else:
                     _call_haploid(base, input_path, ref, contigs, vcf)
                 if keep_vcf:
-                    _published(out_vcf, f"{target.role}_vcf")
+                    publish(out_vcf, f"{target.role}_vcf")
                 if params.fasta:
                     _consensus(ref, contigs, vcf, out_fasta, params.target == "autox")
-                    _published(out_fasta, f"{target.role}_fasta")
+                    publish(out_fasta, f"{target.role}_fasta")
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"Region extraction failed: {e}") from e
     if params.ybrowse:

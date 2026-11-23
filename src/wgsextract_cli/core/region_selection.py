@@ -26,15 +26,20 @@ def literal_region(selection: str, lengths: dict[str, int]) -> tuple[str, int, i
     return chrom, start - 1, end
 
 
-def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
+def bed_intervals(path: str) -> list[tuple[str, int, int]]:
+    """Read zero-based, half-open intervals from BED, BED.gz or BEDPE."""
     lower = path.lower()
     opener = gzip.open if lower.endswith(".gz") else open
     rows = []
     with opener(path, "rt") as source:
         for line in source:
-            if not line.strip() or line.startswith(("#", "track", "browser")):
-                continue
             fields = line.split()
+            if (
+                not fields
+                or fields[0].startswith("#")
+                or fields[0] in {"track", "browser"}
+            ):
+                continue
             try:
                 if lower.endswith(".bedpe"):
                     if fields[0] != fields[3]:
@@ -42,7 +47,7 @@ def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
                     chrom, start, end = fields[0], int(fields[1]), int(fields[5])
                 else:
                     chrom, start, end = fields[0], int(fields[1]), int(fields[2])
-            except IndexError as error:
+            except (IndexError, ValueError) as error:
                 raise ValueError(f"Invalid interval: {line.strip()}") from error
             if start < 0 or end < start:
                 raise ValueError(f"Invalid interval: {line.strip()}")
@@ -78,14 +83,25 @@ def region_output_suffix(region: str) -> str:
     return f"{len(region_items(region, commas=True))}regions-{digest}"
 
 
-def region_items(region: str, *, commas: bool) -> list[str]:
+def region_items(region: str, *, commas: bool, files: bool = True) -> list[str]:
     """The regions and BED files in a ``--region`` list: GATK and Parabricks
     separate them with commas, DeepVariant on the CPU with whitespace."""
-    if is_region_file(region):
+    if files and is_region_file(region):
         return [region]
     if commas:
         return [item.strip() for item in region.split(",") if item.strip()]
     return region.split()
+
+
+def merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Union overlapping or touching half-open ranges on one contig."""
+    union: list[tuple[int, int]] = []
+    for start, end in sorted(ranges):
+        if union and start <= union[-1][1]:
+            union[-1] = (union[-1][0], max(union[-1][1], end))
+        else:
+            union.append((start, end))
+    return union
 
 
 def selected_intervals(
@@ -100,7 +116,7 @@ def selected_intervals(
     intervals: Intervals = {}
     for selection in region_items(region, commas=commas):
         if selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
-            rows = _bed_intervals(selection)
+            rows = bed_intervals(selection)
         else:
             rows = [literal_region(selection, lengths)]
         for chrom, start, end in rows:
@@ -109,15 +125,11 @@ def selected_intervals(
             start, end = min(start, lengths[chrom]), min(end, lengths[chrom])
             if end > start:
                 intervals.setdefault(chrom, []).append((start, end))
-    merged: Intervals = {}
-    for chrom, ranges in intervals.items():
-        union: list[tuple[int, int]] = []
-        for start, end in sorted(ranges):
-            if union and start <= union[-1][1]:
-                union[-1] = (union[-1][0], max(union[-1][1], end))
-            else:
-                union.append((start, end))
-        merged[chrom] = union
-    if not merged:
+    if not intervals:
         raise ValueError("Selection covers no reference bases.")
-    return merged
+    return merge_intervals(intervals)
+
+
+def merge_intervals(intervals: Intervals) -> Intervals:
+    """Union each contig's intervals, in ascending coordinate order."""
+    return {chrom: merge_ranges(ranges) for chrom, ranges in intervals.items()}

@@ -11,7 +11,11 @@ from wgsextract_cli.core.alignment.samtools_commands import (
     regular_files_bytes,
     sort_memory,
 )
-from wgsextract_cli.core.native_aligners import native_gpu_preference
+from wgsextract_cli.core.native_aligners import (
+    find_native_aligner,
+    native_gpu_preference,
+    on_windows_x64,
+)
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.steps import Decision, Step, StepJournal
 from wgsextract_cli.core.utils import (
@@ -80,7 +84,7 @@ def _align_step(
             **(
                 {"prefer_native_gpu": True}
                 if aligner in align_cmd.BWA_ALIGNERS
-                and _native_gpu_preference_changes_plan(job, target, reads)
+                and _records_native_gpu_preference(job, target, reads)
                 else {}
             ),
         },
@@ -90,16 +94,25 @@ def _align_step(
     )
 
 
-def _native_gpu_preference_changes_plan(
+def _records_native_gpu_preference(
     job: RealignJob, target: str | None, reads: dict[str, str | None]
 ) -> bool:
-    """Key the speed preference only when normal native GPU plans cannot fit."""
+    """Key Windows CUDA policy or an explicit override of a GPU RAM limit."""
+    preference = native_gpu_preference(job.prefer_native_gpu)
+    tool = align_cmd.short_read_tool(job)
+    if on_windows_x64():
+        # Use the same CUDA availability signal as alignment. Leave RAM and
+        # commit estimates, including any streaming reserve, to execution.
+        if preference is False or job.gpu or tool != "bwa":
+            return False
+        native = find_native_aligner("bwa", job.native_aligners, probe=True)
+        return native is not None and native.cuda_available
     if (
-        not native_gpu_preference(job.prefer_native_gpu)
+        preference is not True
         or job.gpu
         or not target
         or not Path(target).is_file()
-        or align_cmd.short_read_tool(job) not in align_cmd.BWA_ALIGNERS
+        or tool not in align_cmd.BWA_ALIGNERS
     ):
         return False
     threads, memory = get_resource_defaults(job.threads, job.memory)
