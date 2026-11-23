@@ -1,5 +1,7 @@
 """Review regressions for sex aliases, exclusions and policy publication."""
 
+import errno
+import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,6 +9,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.fake_tools import require_bare_name_fakes
+from tests.fat_volume import exfat_volume as exfat_volume
 from tests.htslib_helpers import (
     needs_htslib,
     run_wgsextract,
@@ -24,7 +27,7 @@ from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfClair3Params, VcfDeepvariantParams, VcfGatkParams
 from wgsextract_cli.commands.vcf.caller_ploidy import PloidyInterval, write_intervals
 from wgsextract_cli.core.sample_workspace import SampleWorkspace
-from wgsextract_cli.core.utils import run_command
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 pytestmark = needs_htslib
 
@@ -141,6 +144,37 @@ def test_concurrent_policy_publication_never_exposes_partial_beds(tmp_path):
     assert all(content == observed[0] for content in observed)
     assert len(observed[0].splitlines()) == 1000
     assert b"\r" not in observed[0]
+
+
+@pytest.mark.parametrize("volume", ["link-refused", "exfat"])
+def test_1241_policy_publishes_once_without_hard_links(
+    tmp_path, monkeypatch, request, volume
+):
+    """#1241: on exFAT, FAT32 and some SMB shares every partitioned GATK,
+    Clair3 and DeepVariant call failed with "Operation not supported"
+    writing its ploidy policy."""
+    if volume == "exfat":
+        folder = request.getfixturevalue("exfat_volume")
+    else:
+        folder = tmp_path
+
+        def no_hard_links(source, destination):
+            # OS boundary: link() on a volume without hard links.
+            raise OSError(errno.ENOTSUP, os.strerror(errno.ENOTSUP), str(source))
+
+        monkeypatch.setattr(os, "link", no_hard_links)
+    intervals = [PloidyInterval("chrX", i * 2, i * 2 + 1, 1) for i in range(1000)]
+
+    def publish(_):
+        return Path(write_intervals(folder / "policy.bed", intervals)).read_bytes()
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        observed = set(pool.map(publish, range(16)))
+    assert len(observed) == 1
+    assert len(observed.pop().splitlines()) == 1000
+    next(folder.glob("policy-*.bed")).write_text("chrX\t0\t1\n")
+    with pytest.raises(WGSExtractError, match="policy input has changed"):
+        write_intervals(folder / "policy.bed", intervals)
 
 
 def test_whole_reference_clair3_ploidy_does_not_add_alt_or_decoy_calls(

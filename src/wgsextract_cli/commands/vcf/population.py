@@ -14,10 +14,9 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.utils import WGSExtractError
-from wgsextract_cli.core.variant_files import ensure_vcf_prepared
+from wgsextract_cli.core.variant_files import ensure_vcf_prepared, is_vcf_path
 
 from .annotation_helpers import (
-    VCF_SUFFIXES,
     annotate_vcf,
     annotation_context,
     prepare_tabix_annotation,
@@ -84,7 +83,7 @@ def _annotate_from_phylop_table(
 ) -> None:
     """A PhyloP VCF, or a TSV of #Chr, Start, End, Score, the user supplied."""
     phylop_vcf = prepare_tabix_annotation(phylop_file, "PhyloP")
-    if phylop_vcf.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(phylop_vcf, bcf=False):
         annotate_vcf(
             ensure_vcf_prepared(input_file),
             phylop_vcf,
@@ -129,7 +128,7 @@ def run_gnomad(params: VcfGnomadParams) -> None:
     header = [
         '##INFO=<ID=GNOMAD_AF,Number=A,Type=Float,Description="gnomAD Allele Frequency">'
     ]
-    if gnomad_file.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(gnomad_file, bcf=False):
         annotation = ensure_vcf_prepared(gnomad_file)
         columns = "INFO/GNOMAD_AF:=INFO/AF"
     else:

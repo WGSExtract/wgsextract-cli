@@ -1,5 +1,6 @@
 import contextlib
 import hashlib
+import itertools
 import logging
 import os
 import re
@@ -26,6 +27,15 @@ from .utils import (
     WGSExtractError,
     run_command,
 )
+
+VCF_SUFFIXES = (".vcf", ".vcf.gz", ".vcf.bgz")
+
+
+def is_vcf_path(path: PathInput, *, bcf: bool = True) -> bool:
+    """Whether ``path`` is named as a plain or bgzipped VCF, or (unless
+    ``bcf`` is False) a BCF, ignoring case."""
+    suffixes = (*VCF_SUFFIXES, ".bcf") if bcf else VCF_SUFFIXES
+    return fspath(path).lower().endswith(suffixes)
 
 
 def resolve_reference(
@@ -63,15 +73,25 @@ def verify_paths_exist(paths_dict: Mapping[str, PathInput | None]) -> None:
         raise WGSExtractError("\n".join(problems))
 
 
+def _short_index_sibling(vcf: Path) -> Path | None:
+    """Another bgzipped VCF (``x.vcf.gz`` beside ``x.vcf.bgz``, in any case)
+    that HTSlib would pair with ``vcf``'s short index name ``x.vcf.csi``."""
+    for ext in ("gz", "bgz"):
+        for letters in itertools.product(*((c, c.upper()) for c in ext)):
+            candidate = vcf.with_suffix("." + "".join(letters))
+            if candidate.is_file() and not candidate.samefile(vcf):
+                return candidate
+    return None
+
+
 def ensure_vcf_indexed(vcf_path: PathInput) -> None:
     """Create an index when missing, or refresh all sidecars if any look stale."""
     vcf = Path(vcf_path)
-    if vcf.suffix not in {".gz", ".bgz"}:
+    if vcf.suffix.lower() not in {".gz", ".bgz"}:
         # We can't index plain VCF easily with tabix
         return
 
     vcf_mtime = vcf.stat().st_mtime_ns
-    sibling = vcf.with_suffix(".bgz" if vcf.suffix == ".gz" else ".gz")
     indexes: list[tuple[int, Path]] = []
     for ext in (".tbi", ".csi"):
         # HTSlib searches for both sample.vcf.gz.csi and sample.vcf.csi (and
@@ -81,7 +101,7 @@ def ensure_vcf_indexed(vcf_path: PathInput) -> None:
                 mtime = index.stat().st_mtime_ns
             except FileNotFoundError:
                 continue
-            if index == vcf.with_suffix(ext) and sibling.is_file():
+            if index == vcf.with_suffix(ext) and (sibling := _short_index_sibling(vcf)):
                 raise WGSExtractError(
                     f"{vcf} and {sibling} share the index name {index}. "
                     "Copy the intended VCF without its indexes to a separate "
@@ -218,7 +238,7 @@ def ensure_vcf_prepared(
     if vcf_path.lower().endswith((".bam", ".cram")):
         return vcf_path
 
-    if vcf_path.endswith(".gz") or vcf_path.endswith(".bgz"):
+    if vcf_path.lower().endswith((".gz", ".bgz")):
         ensure_vcf_indexed(vcf_path)
         return vcf_path
 

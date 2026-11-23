@@ -227,3 +227,34 @@ def test_build_detected_from_a_folder_name_before_is_detected_again(
     library.mkdir()
     lib = ReferenceLibrary(library, input_path=sample, skip_full_search=True)
     assert lib.build == "hg38"
+
+
+@needs_htslib
+def test_issue_1243_build_an_earlier_version_recorded_is_detected_again(
+    tmp_path: Path,
+) -> None:
+    # A .vcf.bgz build recorded before it was read as a VCF must not stick.
+    from wgsextract_cli.core import sample_workspace
+
+    vcf = tmp_path / "sample.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=248956422>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    )
+    sample = bgzip_index(vcf, tmp_path / "sample.vcf.bgz")
+    fact = '[detected."sample.vcf.bgz".build'
+    (tmp_path / sample_workspace.WORKSPACE_FILE).write_text(
+        f'schema = "{sample_workspace.SCHEMA_ID}"\n'
+        '[detected."sample.vcf.bgz"]\n'
+        f'fingerprint = "{sample_workspace.file_fingerprint(sample)}"\n'
+        f'{fact}]\nvalue = "hg19"\nmethod = "alignment header contigs"\n'
+        'confidence = "high"\nversion = 1\nby = "wgsextract 0.1"\n'
+        'at = "2020-01-01T00:00:00+00:00"\n',
+        newline="\n",
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+
+    lib = ReferenceLibrary(library, input_path=sample, skip_full_search=True)
+
+    assert lib.build == "hg38"
