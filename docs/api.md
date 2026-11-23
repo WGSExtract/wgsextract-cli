@@ -43,7 +43,7 @@ Stability: the names exported here and the group modules (`api.extract`,
 `api.lineage`, `api.methylation`, `api.microarray`, `api.panel`, `api.ref`,
 `api.repair`, `api.genotyping`, `api.report`, `api.sample`,
 `api.support`, `api.pet`, `api.analyze`, `api.sign`, `api.deps`,
-`api.examples`, `api.vep`, `api.benchmark`, `api.score`) follow
+`api.examples`, `api.vep`, `api.benchmark`, `api.score`, `api.fastq`) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
 a breaking change.
 Modules whose names start with `_` are private and may change at any time.
@@ -576,6 +576,38 @@ without read groups gets one from `sample`, `library` and
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
+
+## `api.fastq`
+
+Create and restore lossless, reference-free FASTQ archives.
+
+### `api.fastq.archive(FastqArchiveParams)`
+
+CLI: `wgsextract fastq archive`.
+
+Write a new archive (output role `fastq_archive`).
+
+`FastqArchiveParams`: Archive a single-end FASTQ or a synchronized pair without changing the input.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `r1` | `Path` | required | `--r1` | First or only FASTQ; plain, gzip or BGZF. |
+| `r2` | `Path \| None` | `None` | `--r2` | Matching read 2 FASTQ. |
+| `output` | `Path` | required | `--output` | New .wgfq archive to write. |
+
+### `api.fastq.restore(FastqRestoreParams)`
+
+CLI: `wgsextract fastq restore`.
+
+Restore verified reads (output roles `fastq_r1` and `fastq_r2`).
+
+`FastqRestoreParams`: Verify a FASTQ archive and restore the original, uncompressed FASTQ bytes.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | The .wgfq archive to restore. |
+| `output` | `Path` | required | `--output` | New plain FASTQ for read 1 (or single-end reads). |
+| `output_r2` | `Path \| None` | `None` | `--output-r2` | New plain FASTQ for read 2; required for a paired archive. |
 
 ## `api.qc`
 

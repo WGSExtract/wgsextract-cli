@@ -239,6 +239,8 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "bam identify": _n(SECONDS, *_SAM, optional="bcftools", scale=""),
     "bam merge": _n(HOURS, *_SAM, optional="bcftools"),
     "bam to-ubam": _n(HOURS, *_SAM, optional="bcftools"),
+    "fastq archive": _n(MINUTES),
+    "fastq restore": _n(MINUTES),
     "qc fastp": _n(MINUTES, "fastp"),
     "qc fastqc": _n(HOURS, "fastqc", optional="bcftools multiqc"),
     "qc multiqc": _n(SECONDS, "multiqc", optional="bcftools fastqc", scale=""),

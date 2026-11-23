@@ -33,6 +33,7 @@ GROUPS = (
     api.info,
     api.extract,
     api.bam,
+    api.fastq,
     api.qc,
     api.align,
     api.pet,

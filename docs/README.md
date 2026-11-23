@@ -31,6 +31,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | Guide | Task |
 | --- | --- |
 | [Commands](commands.md) | Find a command starting from your input |
+| [FASTQ archives](fastq-archive.md) | Compress and restore reads offline without changing FASTQ bytes |
 | [Microarray](microarray.md) | Export consumer files with explicit call/identity policies |
 | [Microarray indels](microarray-indels.md) | Supply sequence-defined insertion/deletion probes |
 | [CHM13 microarrays](microarray-chm13.md) | Project qualified CHM13 input to hg19/rCRS |

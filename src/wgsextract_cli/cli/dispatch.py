@@ -37,7 +37,14 @@ from .platform_support import verify_platform_support
 READ_ONLY_COMMANDS = frozenset(
     {"help", "config", "deps", "report-issue", "sample", "serve"}
 )
-_NO_ALIGNMENT_PREFLIGHT = {*READ_ONLY_COMMANDS, "ref", "benchmark", "sign", "report"}
+_NO_ALIGNMENT_PREFLIGHT = {
+    *READ_ONLY_COMMANDS,
+    "ref",
+    "benchmark",
+    "sign",
+    "report",
+    "fastq",
+}
 
 
 def checks_alignment_input(path: str) -> bool:
@@ -62,6 +69,12 @@ INPUT_ARGS = {
     "r1": "fastq_r1",
     "r2": "fastq_r2",
 }
+
+
+def input_role(command: str, dest: str) -> str:
+    if command == "fastq restore" and dest == "input":
+        return "fastq_archive"
+    return INPUT_ARGS[dest]
 
 
 def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None:
@@ -289,7 +302,8 @@ def _run_command(
             "output_directory"
         )
     result.provenance.params = params_from_args(args)
-    for dest, role in INPUT_ARGS.items():
+    for dest in INPUT_ARGS:
+        role = input_role(result.command, dest)
         value = getattr(args, dest, None)
         if isinstance(value, str) and value and Path(value).expanduser().exists():
             result.add_input(value, role)

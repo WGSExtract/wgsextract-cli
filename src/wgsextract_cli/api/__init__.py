@@ -37,7 +37,7 @@ Stability: the names exported here and the group modules (``api.extract``,
 ``api.lineage``, ``api.methylation``, ``api.microarray``, ``api.panel``, ``api.ref``,
 ``api.repair``, ``api.genotyping``, ``api.report``, ``api.sample``,
 ``api.support``, ``api.pet``, ``api.analyze``, ``api.sign``, ``api.deps``,
-``api.examples``, ``api.vep``, ``api.benchmark``, ``api.score``) follow
+``api.examples``, ``api.vep``, ``api.benchmark``, ``api.score``, ``api.fastq``) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
 a breaking change.
 Modules whose names start with ``_`` are private and may change at any time.
@@ -65,6 +65,7 @@ from . import (
     deps,
     examples,
     extract,
+    fastq,
     genotyping,
     info,
     lineage,
@@ -127,6 +128,7 @@ from .extract import (
     YdnaVcfParams,
     YMtExtractParams,
 )
+from .fastq import FastqArchiveParams, FastqRestoreParams
 from .genotyping import (
     TypingCyp2d6Params,
     TypingHlaParams,
@@ -222,6 +224,9 @@ from .vcf import (
 from .vep import VepDeleteParams, VepDownloadParams, VepRunParams, VepVerifyParams
 
 __all__ = [
+    "FastqArchiveParams",
+    "FastqRestoreParams",
+    "fastq",
     "AlignParams",
     "AnalyzeBatchGenParams",
     "AnalyzeComprehensiveParams",
