@@ -256,3 +256,26 @@ def test_1290_build_resolution_can_use_an_indexed_reference_in_a_library(tmp_pat
         api.VcfFilterParams(vcf_input=vcf, outdir=tmp_path, gene="BRCA1", ref=library)
     )
     assert _ids(tmp_path / "filtered.vcf.gz") == ["brca1"]
+
+
+def test_1290_long_deletion_overlaps_disjoint_targets_only_once(tmp_path):
+    vcf = tmp_path / "deletion.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=1,length=248956422>\n"
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="End position">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "1\t10\tlong_deletion\tA\t<DEL>\t50\tPASS\tEND=2000000\n"
+        "1\t21\tfirst\tA\tT\t50\tPASS\t.\n"
+        "1\t26\toutside\tA\tT\t50\tPASS\t.\n"
+        "1\t1000001\tsecond\tA\tT\t50\tPASS\t.\n",
+        encoding="utf-8",
+    )
+    bed = tmp_path / "targets.bed"
+    bed.write_text("chr1\t20\t21\nchr1\t1000000\t1000001\n", encoding="utf-8")
+
+    result = api.vcf.filter(
+        api.VcfFilterParams(vcf_input=vcf, outdir=tmp_path, bed=bed)
+    )
+    filtered = tmp_path / "filtered.vcf.gz"
+    assert _ids(filtered) == ["long_deletion", "first", "second"]
+    assert next(o for o in result.outputs if o.role == "filtered_vcf").index
