@@ -227,3 +227,18 @@ def test_fastq_archive_1432_preserves_a_line_at_the_documented_limit(tmp_path):
     api.fastq.archive(api.FastqArchiveParams(r1=reads, output=archive))
     api.fastq.restore(api.FastqRestoreParams(input=archive, output=restored))
     assert restored.read_bytes() == original
+
+
+def test_fastq_archive_1432_allows_distinct_case_on_case_sensitive_storage(tmp_path):
+    (tmp_path / "case-probe").touch()
+    if (tmp_path / "CASE-PROBE").exists():
+        pytest.skip("test storage is case-insensitive")
+    r1, r2, archive = (tmp_path / name for name in ("r1.fq", "r2.fq", "reads.wgfq"))
+    r1.write_bytes(R1)
+    r2.write_bytes(R2)
+    api.fastq.archive(api.FastqArchiveParams(r1=r1, r2=r2, output=archive))
+    first, second = (tmp_path / name for name in ("mate.fq", "MATE.fq"))
+    api.fastq.restore(
+        api.FastqRestoreParams(input=archive, output=first, output_r2=second)
+    )
+    assert (first.read_bytes(), second.read_bytes()) == (R1, R2)

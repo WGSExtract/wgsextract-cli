@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import unicodedata
 import zlib
 from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path
@@ -13,7 +12,6 @@ from typing import TYPE_CHECKING
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.fastq import FastqArchiveParams, FastqRestoreParams
-from wgsextract_cli.core.atomic_output import publication_lock
 from wgsextract_cli.core.errors import CodedError
 from wgsextract_cli.core.fastq_archive import (
     FastqArchiveError,
@@ -34,9 +32,7 @@ if TYPE_CHECKING:
 
 
 def _destination_key(path: Path) -> str:
-    return unicodedata.normalize(
-        "NFC", os.path.normcase(str(path.resolve())).casefold()
-    )
+    return os.path.normcase(str(path.resolve()))
 
 
 def _validate_sources(paths: tuple[Path, ...]) -> None:
@@ -78,10 +74,9 @@ def _stage_outputs(paths: tuple[Path, ...]) -> Iterator[tuple[FastqWriter, ...]]
                 "fastq_output_conflict", "One FASTQ output cannot contain the other."
             )
     with ExitStack() as staged:
-        ordered = sorted(zip(keys, paths, strict=True))
-        for _, path in ordered:
+        for path in paths:
             path.parent.mkdir(parents=True, exist_ok=True)
-            staged.enter_context(publication_lock(path, checkpoint=checkpoint))
+        for path in paths:
             if path.exists() or path.is_symlink():
                 raise CodedError(
                     "fastq_output_conflict", f"Output already exists: {path}"
@@ -108,12 +103,26 @@ def _stage_outputs(paths: tuple[Path, ...]) -> Iterator[tuple[FastqWriter, ...]]
                 # created by another process while this run was working.
                 path.hardlink_to(temporary)
                 published.append((temporary, path))
-        except OSError:
-            for temporary, path in published:
-                with suppress(OSError):
-                    if path.samefile(temporary):
-                        path.unlink()
-            raise
+        except FileExistsError as error:
+            raise CodedError(
+                "fastq_output_conflict",
+                f"Output already exists: {error.filename or path}",
+            ) from error
+        except OSError as error:
+            raise CodedError(
+                "fastq_publication_failed",
+                f"Could not publish {path} without replacing it: {error}",
+            ) from error
+        finally:
+            if len(published) != len(paths):
+                _rollback_outputs(published)
+
+
+def _rollback_outputs(published: list[tuple[Path, Path]]) -> None:
+    for temporary, path in published:
+        with suppress(OSError):
+            if path.samefile(temporary):
+                path.unlink()
 
 
 def run_archive(params: FastqArchiveParams) -> None:
