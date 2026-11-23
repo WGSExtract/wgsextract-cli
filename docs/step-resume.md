@@ -11,6 +11,7 @@ the first step that didn't.
 | `realign` | `extract` (BAM/CRAM to FASTQ), `align` (map, mark duplicates, sort), `index` | `<output>.steps.json`, e.g. `sample_aligned.bam.steps.json` |
 | `vcf deepvariant` | `stage_reads` (CRAM 3.1 inputs only), `make_examples`, `call_variants`, `postprocess_variants` | `deepvariant.vcf.gz.steps.json` |
 | `analyze comprehensive` | `info`, `mt-haplogroup`, `y-haplogroup`, `snp`, `indel`, then `annotate:<vcf>` and `discovery:<vcf>` for each VCF | `analyze.steps.json` in the output folder (each batch sample's own folder) |
+| `vcf chain-annotate` | Optional `select`, each annotation in order (e.g. `clinvar:1`), and `trim` if needed | `chain_annotate.steps.json` in the output folder |
 
 ## When a step is skipped
 
@@ -57,6 +58,16 @@ journal records each file's `digest` (`algorithm` and `strength`).
 
 Settings that don't change a step's output, such as threads and memory, are
 left out of its key. You can therefore resume with a different `--threads`.
+
+`vcf chain-annotate` keeps intermediate VCFs on failure and removes them
+after success unless you pass `--keep-intermediates`. Rerun after a failure
+with the same output folder to reuse completed annotations. Use
+`--force-step clinvar` to rerun every ClinVar step and the steps that depend
+on it, or `--force` (`--restart`) to rerun the chain. With `--region` or
+`--bed`, the chain reads only relevant contigs for steps that can move a
+variant during normalization or compose one from neighboring records. It
+then trims to the requested intervals, so those variants are not lost at
+interval boundaries.
 
 With `--tmp-dir` or `temp_directory`, a failed `realign` retains completed
 FASTQs in its run workspace. Rerunning the same command reuses those files

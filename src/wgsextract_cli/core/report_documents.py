@@ -115,6 +115,7 @@ ReportFindingSection = Literal[
     "lineage",
     "pharmacogenomics",
     "carrier_screening",
+    "repeat_expansions",
     "clinvar",
     "acmg_research",
     "structural_variants",
@@ -540,6 +541,7 @@ class ReportSectionsDocument(
 ):
     ancestry: ReportAncestryDocument
     carrier_screening: ReportSectionDocument
+    repeat_expansions: ReportSectionDocument
     exon_callability: Annotated[
         ReportCallabilityDocument,
         Constraints(

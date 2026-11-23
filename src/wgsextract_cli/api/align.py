@@ -83,10 +83,10 @@ def _dense_suffix_array_param() -> Any:
 def _prefer_native_gpu_param() -> Any:
     return param(
         None,
-        help="Prefer native GPU alignment. See docs/configuration.md for "
-        "platform and memory limits.",
-        doc="Prefer native GPU alignment, subject to platform and memory limits. "
-        "See the configuration guide.",
+        help="Prefer native GPU alignment. Windows CUDA is automatic when it fits; "
+        "--no-prefer-native-gpu forces CPU there.",
+        doc="Windows CUDA is automatic within RAM and commit limits; false forces CPU. "
+        "Elsewhere, true can override RAM limits. See the configuration guide.",
         action="boolean_optional",
         config_key="prefer_native_gpu",
     )

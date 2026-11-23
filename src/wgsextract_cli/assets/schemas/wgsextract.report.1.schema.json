@@ -133,6 +133,9 @@
         "carrier_screening": {
           "$ref": "#/$defs/section"
         },
+        "repeat_expansions": {
+          "$ref": "#/$defs/section"
+        },
         "exon_callability": {
           "$ref": "#/$defs/reportCallability",
           "description": "Which coding exons of the gene list the sample's gVCF could read (vcf callability), and what the ClinVar section's silence means per gene."
@@ -227,6 +230,7 @@
             "lineage",
             "pharmacogenomics",
             "carrier_screening",
+            "repeat_expansions",
             "clinvar",
             "acmg_research",
             "structural_variants"

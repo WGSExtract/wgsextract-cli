@@ -103,6 +103,22 @@ def test_nanopore_reads_go_to_longtr_and_an_expanded_htt_is_pathogenic(
 
 
 @needs_longtr
+def test_1286_real_longtr_sizes_only_the_requested_repeat(tmp_path, ref, catalog):
+    catalog.write_text(CATALOG_ROW + "chr4\t6101\t6160\tCTG\tATXN2\n")
+    reads = [_read(f"n{i}", 20) for i in range(15)]
+    reads += [_read(f"e{i}", 45) for i in range(15)]
+    result = _run(_sample(tmp_path, reads), ref, catalog, tmp_path / "out", loci="HTT")
+
+    [row] = result.details["repeat_calls"]
+    assert (row["locus"], row["allele_1"], row["allele_2"]) == ("HTT", 20, 45)
+    [vcf] = [o.path for o in result.outputs if o.role == "repeat_calls"]
+    with gzip.open(vcf, "rt") as stream:
+        assert [line.split("\t")[2] for line in stream if not line.startswith("#")] == [
+            "HTT"
+        ]
+
+
+@needs_longtr
 def test_reads_clipped_at_a_repeat_flag_an_expansion_longtr_cannot_size(
     tmp_path, ref, catalog
 ):

@@ -29,6 +29,7 @@ export interface ReportSectionsDocument {
     acmg_research?: ReportAcmgDocument;
     ancestry?: ReportAncestryDocument;
     carrier_screening?: ReportSectionDocument;
+    repeat_expansions?: ReportSectionDocument;
     exon_callability?: ReportCallabilityDocument;
 }
 
@@ -46,7 +47,7 @@ export interface ReportOverviewDocument {
 }
 
 export interface ReportFindingDocument {
-    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "clinvar" | "acmg_research" | "structural_variants";
+    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "repeat_expansions" | "clinvar" | "acmg_research" | "structural_variants";
     label: string;
     value: string;
     detail: string | null;

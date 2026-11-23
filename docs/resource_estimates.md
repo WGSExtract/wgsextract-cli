@@ -259,13 +259,14 @@ The read-only `estimate_resources` API does not change settings itself:
 callers supply their resolved backend allowance and sort memory.
 On macOS and Linux, `--prefer-native-gpu` / config `prefer_native_gpu = true`
 can replace a RAM-budget CPU fallback after normal GPU sort step-down fails,
-at the risk of heavy swap. [Windows CUDA](windows.md#optional-wgse-bwa-with-nvidia-cuda)
-does not use this override. Explicit `--memory` is retained on an override;
-default/config memory is capped at
-256M, subject to general sort limits. The manifest's
+at the risk of heavy swap. Explicit `--memory` is retained on an override;
+default/config memory is capped at 256M, subject to general sort limits.
+[Windows CUDA](windows.md#wgse-bwa-and-optional-nvidia-cuda) is automatic when
+RAM and commit both fit, and never bypasses either check.
+`--no-prefer-native-gpu` forces CPU on Windows. The manifest's
 `native_aligner_backend_reason`, `native_aligner_memory_estimate_bytes`,
 `native_aligner_memory_budget_bytes`, `native_aligner_sort_memory_requested`
-and `native_aligner_sort_memory_actual` explain fallback or opt-in and survive
+and `native_aligner_sort_memory_actual` explain fallback or an override and survive
 resume. The fallback estimate is the smallest considered GPU plan, not the
 selected CPU pipeline's estimate.
 For paired Metal BWA, automatic selection also tries compressed staging before

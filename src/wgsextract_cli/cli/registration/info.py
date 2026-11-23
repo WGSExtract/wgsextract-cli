@@ -7,6 +7,7 @@ from wgsextract_cli.api.info import (
     CalculateCoverageParams,
     ChipParams,
     CoverageSampleParams,
+    InfoGeneParams,
     InfoParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
@@ -14,6 +15,7 @@ from wgsextract_cli.core.messages import CLI_HELP
 
 run = command_handler("wgsextract_cli.commands.info.runner", "run")
 chip_handler = command_handler("wgsextract_cli.commands.info.chip", "run")
+gene_handler = command_handler("wgsextract_cli.commands.info.gene", "run")
 
 
 def _inherit_format(parser: argparse.ArgumentParser) -> None:
@@ -48,6 +50,14 @@ def register(
     add_arguments(samp_cov, CoverageSampleParams)
     _inherit_format(samp_cov)
     samp_cov.set_defaults(func=run)
+    gene_parser = info_subs.add_parser(
+        "gene",
+        parents=[base_parser],
+        help=CLI_HELP["cmd_info-gene"],
+        description=CLI_HELP["cmd_info-gene"],
+    )
+    add_arguments(gene_parser, InfoGeneParams)
+    gene_parser.set_defaults(func=gene_handler)
     chip_parser = info_subs.add_parser(
         "chip", parents=[base_parser], help=CLI_HELP["cmd_info-chip"]
     )

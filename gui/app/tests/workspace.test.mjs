@@ -297,7 +297,7 @@ test("bundle state persists selected page id", async () => {
   const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-state-"));
 
   try {
-    const { loadBundleState, saveBundleState } = await import("../dist/web/src/server/config-store.js");
+    const { loadBundleState, saveBundleState } = await import("../dist/web/src/server/bundle-state.js");
     await saveBundleState(
       {
         localizationCode: "en",

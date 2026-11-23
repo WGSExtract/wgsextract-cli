@@ -272,6 +272,9 @@ from .genotyping import (
 from .genotyping import (
     _smn_finding as _smn_finding,
 )
+from .genotyping import (
+    repeat_expansions,
+)
 from .overview import (
     _INFO_FACTS as _INFO_FACTS,
 )
@@ -335,7 +338,7 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column(
         "section",
         TEXT,
-        "Report section: lineage, pharmacogenomics, carrier_screening, clinvar, "
+        "Report section: lineage, pharmacogenomics, carrier_screening, repeat_expansions, clinvar, "
         "acmg_research or structural_variants.",
     ),
     Column("label", TEXT, "What the finding is, e.g. 'BRCA2 Pathogenic'."),
@@ -466,6 +469,7 @@ def build_report(
         ancestry=_ancestry(ctx),
         pharmacogenomics=_pharmacogenomics(ctx),
         carrier_screening=_carrier_screening(ctx),
+        repeat_expansions=repeat_expansions(ctx),
         clinvar=clinvar,
         exon_callability=_exon_callability(ctx, clinvar),
         **research_section,
