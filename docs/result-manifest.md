@@ -164,6 +164,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `unconfirmed_clinical_findings` | `vcf clinvar`, `analyze` | The sample carries ClinVar pathogenic/likely pathogenic calls (`count`): a technical screen to confirm with an accredited laboratory, not a diagnosis. |
 | `confidence_first_sample_only` | confidence labelling | A multi-sample VCF was judged by its first sample (`sample`). |
 | `sample_female` | Y extraction | Female sample; Y outputs will be empty or noise. |
+| `ybrowse_reference_n_sites_excluded` | `extract ydna-vcf --ybrowse` | The reference chrY is N at some yBrowse sites (the PARs in hs38 and the GRCh38 no-alt analysis set), so they were not called (`sites`, `contig`). The `ybrowse_excluded_reference_n_sites` metric and the VCF header's `##ybrowse_excluded_reference_N_sites` give the count. |
 | `sex_check_skipped` | Y extraction | The female-sample check couldn't run to completion (for example, the alignment lacks supported GRCh37/38 contigs or the CRAM reference couldn't be read). Declare the sex with `sample set --sex`, or pass `--ref` if a CRAM reference is missing. |
 | `build_unknown`, `build_unsupported` | personal report, Y haplogroup | The reference build is unknown or unsupported by the tool. |
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
@@ -245,6 +246,12 @@ Adding optional fields, warning codes, output roles, metrics or `details` keys i
 backward compatible and keeps `wgsextract.result/1`. Removing or renaming a field,
 or changing its meaning or type, requires `wgsextract.result/2` and a new schema
 file. Check `schema` before reading a document.
+
+The envelope fields are **stable**; `details`, `metrics` values and
+`provenance.params` are **experimental**, because they follow each command and
+its unvalidated scientific calls. [Output contracts](output-contracts.md)
+lists every tier and how each change is checked against the previous
+release's pinned baseline.
 
 ## Compatibility
 

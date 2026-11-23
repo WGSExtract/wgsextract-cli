@@ -46,7 +46,6 @@ from wgsextract_cli.core.microarray.indels import (
     IndelCalls,
     call_manifest_indels,
     indel_manifest_bindings,
-    prepare_indel_vcf,
 )
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import (
@@ -86,12 +85,10 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
+    is_vcf_path,
     verify_paths_exist,
 )
-from wgsextract_cli.core.variant_sample import (
-    has_sample_input_index,
-    indexed_sample_vcf,
-)
+from wgsextract_cli.core.variant_sample import indexed_sample_vcf, prepare_input_vcf
 from wgsextract_cli.core.warnings import print_warning
 
 from . import _microarray_reuse as reuse
@@ -336,7 +333,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     log_dependency_info(["bcftools", "tabix", "bgzip", "samtools"])
     table_format = params.table_format
     check_format(table_format)
-    is_vcf = input_path.endswith((".vcf", ".vcf.gz", ".bcf"))
+    is_vcf = is_vcf_path(input_path)
     if params.sample and not is_vcf:
         raise UsageError(
             "--sample picks one sample of a multi-sample VCF; BAM/CRAM input "
@@ -540,6 +537,9 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         inputs["vcf_sample_preparation_policy"] = "contig-aware-v1"
     if is_vcf:
         inputs["vcf_snp_evidence_policy"] = "original-record-alleles-v1"
+        # Outputs from before issue #1242 called unindexed VCFs without
+        # matching their contig names to the targets'.
+        inputs["vcf_preparation_policy"] = "indexed-contig-normalization-v1"
     units, unit_formats = _output_units(
         params, outdir, base_name, indel_bindings, bool(aadr_panels), table_format
     )
@@ -651,22 +651,13 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
     combined_vcf = out_vcf
     if not is_vcf:
         warn_about_alignment(input_path, ref_fasta)
-    calling_params = params
-    if vcf_sample and (
-        indel_bindings or (region_args and not has_sample_input_index(input_path))
-    ):
-        calling_params = replace(
-            params,
-            input=Path(
-                indexed_sample_vcf(
-                    input_path, vcf_sample, outdir, cleanup, trim_alt_alleles=False
-                )
-            ),
+    calling_input, sample = input_path, vcf_sample
+    if is_vcf:
+        # The indel caller reads one sample, so an indel run selects it here.
+        calling_input, sample = prepare_input_vcf(
+            input_path, vcf_sample, outdir, cleanup, select_sample=bool(indel_bindings)
         )
-    elif indel_bindings and is_vcf:
-        calling_params = replace(
-            params, input=Path(prepare_indel_vcf(input_path, outdir))
-        )
+    calling_params = replace(params, input=Path(calling_input))
 
     start_vcf = time.time()
     indel_calls = None
@@ -685,7 +676,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         out_vcf=out_vcf,
         input_chroms=input_chroms,
         # A working copy already contains only the selected sample.
-        sample=None if calling_params is not params else vcf_sample,
+        sample=sample,
         gvcf=gvcf,
     )
     record_kept(combined_vcf, outdir, "combined_vcf")

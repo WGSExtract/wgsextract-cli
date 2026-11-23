@@ -36,13 +36,25 @@ it.
    below).
 
 2. **Write the release notes** in `docs/release-notes/vX.Y.Z.md`, in the same
-   PR: what users get, under `## New` and `## Fixes` (see v0.4.2 and v0.4.3),
-   plus `## Deprecated` when commands are deprecated, and the app's changes
+   PR: what users get, under `## Changed`, `## New` and `## Fixes`, plus
+   `## Deprecated` when commands are deprecated, and the app's changes
    (`gui/docs/CHANGELOG.md`'s Unreleased section), ending with a compare
-   link (`.../compare/vPREVIOUS...vX.Y.Z`). Start from
-   `docs/release-notes/unreleased.md`, where PRs record entries as they land
-   (deprecations must be announced there), and rename it; the deprecated
-   commands are also listed in `DEPRECATIONS` in
+   link (`.../compare/vPREVIOUS...vX.Y.Z`). PRs record their entries as they
+   land, each in its own fragment under `docs/release-notes/unreleased/`
+   (deprecations must be announced there; see its README). Start with
+
+   ```bash
+   python scripts/release_notes.py assemble X.Y.Z
+   ```
+
+   which writes the notes file from the fragments, grouped by section, with
+   the title and a compare link from the newest older release tag, and deletes
+   the fragments. Then add a short summary under the title and the app's
+   changes under `## Desktop app`. If a fragment lands on main before the
+   release PR merges, the PR's checks fail: move its entries into the notes
+   file and delete it; a version bump that leaves fragments fails the same
+   way. The deprecated commands are also listed in
+   `DEPRECATIONS` in
    `src/wgsextract_cli/commands/registry.py`. A command deprecated in one minor
    release is removed in the next, so a release that reaches a deprecation's
    `remove_in` version removes the command. The PRs since the last release are
@@ -87,6 +99,14 @@ release**), or with
 `gh release edit vX.Y.Z --notes-file notes.md --draft=false --latest`.
 Pushing a `vX.Y.Z` tag by hand still works too, and also uses the notes file
 if the tagged commit has one.
+
+4. **Pin the output-contract baseline** once the tag exists, in a follow-up
+   PR: `git fetch origin tag vX.Y.Z`, then
+   `python scripts/output_contracts.py pin --release vX.Y.Z` writes
+   `contracts/baselines/vX.Y.Z.json` (the tag, its commit and a digest) from
+   the tag's own files, and the PR removes any `approved_breaks` entries the
+   new baseline absorbed. Later changes are compared with it; see
+   [output contracts](output-contracts.md).
 
 ## 2. What the app's release needs
 

@@ -8,11 +8,69 @@ two, yet the finished step was skipped and its output kept release one.
 import json
 import os
 import shutil
+import subprocess
+import sys
+from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
 
-from wgsextract_cli.core.steps import ResumePolicy, Step, StepJournal
+from wgsextract_cli.core.steps import RUN_TAG, ResumePolicy, Step, StepJournal
+
+
+@pytest.mark.parametrize("previous", [None, "", "outer-run"])
+@pytest.mark.parametrize("fails", [False, True])
+def test_1248_item_4_step_and_journal_restore_inherited_run_tag(
+    tmp_path, monkeypatch, previous, fails
+):
+    if previous is None:
+        monkeypatch.delenv(RUN_TAG, raising=False)
+    else:
+        monkeypatch.setenv(RUN_TAG, previous)
+
+    with StepJournal(tmp_path / "steps.json", "synthetic", ResumePolicy()) as journal:
+        decision = journal.decide(Step("call"))
+        outcome = (
+            pytest.raises(RuntimeError, match="caller failed")
+            if fails
+            else nullcontext()
+        )
+        with outcome, journal.running(decision):
+            assert os.environ.get(RUN_TAG) not in {None, "", previous}
+            if fails:
+                raise RuntimeError("caller failed")
+        assert os.environ.get(RUN_TAG) == previous
+    assert os.environ.get(RUN_TAG) == previous
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows CRT drops empty values")
+def test_1248_item_4_windows_children_inherit_an_empty_tag_after_the_step(tmp_path):
+    code = """
+import json
+import subprocess
+import sys
+from wgsextract_cli.core.steps import RUN_TAG, ResumePolicy, Step, StepJournal
+
+def child_tag():
+    return subprocess.check_output(
+        [sys.executable, "-c", f"import os; print(repr(os.environ.get({RUN_TAG!r})))"],
+        text=True,
+    ).strip()
+
+before = child_tag()
+with StepJournal(sys.argv[1], "synthetic", ResumePolicy()) as journal:
+    with journal.running(journal.decide(Step("call"))):
+        pass
+print(json.dumps([before, child_tag()]))
+"""
+    parent = subprocess.run(
+        [sys.executable, "-c", code, str(tmp_path / "steps.json")],
+        env={**os.environ, RUN_TAG: ""},
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    assert json.loads(parent.stdout) == ["''", "''"]
 
 
 def test_1214_journal_lock_cleanup_preserves_original_workflow_error(tmp_path):
@@ -226,7 +284,7 @@ def test_process_exiting_during_the_tag_scan_is_skipped(
     """psutil's macOS proc_environ raised SystemError and crashed realign."""
     import psutil
 
-    from wgsextract_cli.core.steps import RUN_TAG, tagged_processes
+    from wgsextract_cli.core.steps import tagged_processes
 
     class FakeProcess:
         def __init__(self, pid: int, environ: dict[str, str] | None) -> None:
