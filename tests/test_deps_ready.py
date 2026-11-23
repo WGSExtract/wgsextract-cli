@@ -196,6 +196,20 @@ def test_1183_clair3_names_hosts_it_cant_run_on(offline, monkeypatch, capsys, sa
     assert "Apple Silicon" in clair3_host["detail"]
 
 
+@pytest.mark.skipif(os.name != "nt", reason="requires a native Windows host")
+def test_1183_clair3_readiness_recommends_wsl2_on_native_windows(
+    offline, capsys, tmp_path
+):
+    code, details = ready(
+        capsys, "vcf", "clair3", "--input", str(tmp_path / "reads.bam")
+    )
+
+    clair3_host = item(details, "platform", "Clair3 host")
+    assert (code, clair3_host["status"]) == (3, "unsupported")
+    assert clair3_host["blocking"] is True
+    assert "WSL2" in clair3_host["detail"]
+
+
 # Copilot review round 1 on PR #1371 ------------------------------------------
 
 

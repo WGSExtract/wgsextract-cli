@@ -51,7 +51,8 @@ def no_pulls(docker) -> None:
 
 
 @pytest.fixture
-def ont(tmp_path):
+def ont(tmp_path, fake_clair3):
+    """Build reads only after the caller fixture checks launcher support."""
     (tmp_path / "ont").mkdir()
     return snp_sample(tmp_path / "ont", DORADO_RG)
 
@@ -61,7 +62,7 @@ def ont(tmp_path):
 
 @needs_tools("samtools", "bcftools", "tabix")
 def test_1183_a_clair3_model_that_fails_its_digest_blocks_the_run(
-    offline, linux_x86, fake_clair3, ont, tmp_path, capsys
+    offline, linux_x86, ont, tmp_path, capsys
 ):
     model = make_model(tmp_path / "models", PINNED_MODEL, b"not the published weights")
 
@@ -85,7 +86,7 @@ def test_1183_a_clair3_model_that_fails_its_digest_blocks_the_run(
 
 @needs_tools("samtools", "bcftools", "tabix")
 def test_1183_an_unpinned_clair3_model_is_ready_but_unverified(
-    offline, linux_x86, fake_clair3, ont, tmp_path, capsys
+    offline, linux_x86, ont, tmp_path, capsys
 ):
     model = make_model(tmp_path / "models", "my_r1041_model")
 
