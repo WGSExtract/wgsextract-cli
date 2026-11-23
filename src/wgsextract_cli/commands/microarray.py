@@ -60,6 +60,7 @@ from wgsextract_cli.core.microarray.targets import (
     build_genome_wide_target,
     chain_to_grch37,
     fetch_requested_chains,
+    installed_lifted_chain,
     is_genome_wide_target,
     lifted_chain,
     output_chain_key,
@@ -184,8 +185,8 @@ def _convert_microarray_outputs(
 ) -> dict[str, GenotypeTally]:
     """Write the requested outputs (``formats``, default all of
     ``params.formats``); return each vendor file's autosomal tally."""
+    from wgsextract_cli.core.microarray.combined_v3 import convert_to_combined_v3
     from wgsextract_cli.core.microarray.templates import (
-        convert_to_combined_v3,
         convert_to_vendor_format,
         get_template_format,
         liftover_hg38_to_hg19,
@@ -287,11 +288,15 @@ def _convert_microarray_outputs(
             if real_fmt == COMBINED_V3_FORMAT:
                 hg18_chain = (
                     lifted_chain(lib.root, "NCBI36", lib.resource_roots)
-                    if lib.root
-                    else None
+                    if params.download is True and lib.root
+                    else installed_lifted_chain(lib.root, "NCBI36", lib.resource_roots)
                 )
                 tallies[real_fmt] = convert_to_combined_v3(
-                    final_txt, output_file, template_search_roots, hg18_chain
+                    final_txt,
+                    output_file,
+                    template_search_roots,
+                    hg18_chain,
+                    identity=identity,
                 )
             else:
                 lift_chain = (
@@ -575,7 +580,14 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                     _template_search_roots(ref_fasta, lib), key
                 )
             ]
-            if (fmt := get_template_format(key)) and (lifted := fmt.get("build")):
+            if key == COMBINED_V3_FORMAT:
+                chain = (
+                    lifted_chain(lib.root, "NCBI36", lib.resource_roots)
+                    if params.download is True and lib.root
+                    else installed_lifted_chain(lib.root, "NCBI36", lib.resource_roots)
+                )
+                units[key].extra[output_chain_key("NCBI36")] = resource_identity(chain)
+            elif (fmt := get_template_format(key)) and (lifted := fmt.get("build")):
                 chain = lifted_chain(lib.root, lifted, lib.resource_roots)
                 units[key].extra[output_chain_key(lifted)] = resource_identity(chain)
     for unit in units.values():

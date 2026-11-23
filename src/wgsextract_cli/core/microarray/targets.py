@@ -416,6 +416,17 @@ def chain_to_grch37(reflib_dir: str, build: str, search: Sequence[str] = ()) -> 
     return _chain(reflib_dir, _CHAINS_TO_GRCH37[build], search)
 
 
+def installed_lifted_chain(
+    reflib_dir: str | None, build: str, search: Sequence[str] = ()
+) -> str | None:
+    """An already-installed chain from ``build`` to GRCh37, without downloading."""
+    source = _CHAINS_TO_GRCH37.get(build)
+    if source is None:
+        return None
+    dirs = [*search, *([reflib_dir] if reflib_dir else [])]
+    return _installed_chain(reflib_dir or "", source, dirs) if dirs else None
+
+
 def lifted_chain(
     reflib_dir: str | None, build: str, search: Sequence[str] = ()
 ) -> str | None:

@@ -511,11 +511,18 @@ def run_chm13(
         suffix = info["suffix"] if info else ".txt"
         kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
         if real_format == COMBINED_V3_FORMAT:
-            from wgsextract_cli.core.microarray.templates import convert_to_combined_v3
+            from wgsextract_cli.core.microarray.combined_v3 import (
+                convert_to_combined_v3,
+            )
 
-            hg18_chain = lifted_chain(lib.root, "NCBI36", roots) if lib.root else None
+            hg18_path = microarray_chm13_cache.installed_chains(roots).get("NCBI36")
             tallies[real_format] = convert_to_combined_v3(
-                str(combined), kit, roots, hg18_chain
+                str(combined),
+                kit,
+                roots,
+                str(hg18_path) if hg18_path else None,
+                identity=identity,
+                rejected_ids=rejected_ids,
             )
             record_kit(kit, real_format, tallies[real_format])
             continue
