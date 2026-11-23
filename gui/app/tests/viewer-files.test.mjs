@@ -140,6 +140,26 @@ test("#1148: a high-depth region larger than 32 MiB streams completely and can b
     assert.equal((await fetch(url, { headers })).status, 401);
 });
 
+test("#1227: an un-ranged HEAD reports the size of a file over 32 MiB without reading it", async (t) => {
+    const f = await fixture(t);
+    const size = 33 * 1024 ** 2;
+    const handle = await open(f.file, "r+");
+    await handle.truncate(size);
+    await handle.close();
+    const grant = await f.files.grant([f.file], [f.library], "bundle");
+    const url = `${f.base}${grant.urls.get(f.file)}`;
+    const head = await fetch(url, { method: "HEAD", headers: grant.headers });
+    assert.equal(head.status, 200);
+    assert.equal(head.headers.get("content-length"), String(size));
+    assert.equal(head.headers.get("accept-ranges"), "bytes");
+    assert.equal(head.headers.get("content-range"), null);
+    assert.equal(await head.text(), "");
+    assert.deepEqual(f.reads, []);
+    assert.equal((await fetch(url, { headers: grant.headers })).status, 416);
+    assert.equal((await fetch(url, { method: "HEAD", headers: { "x-gfc-viewer-token": "wrong" } })).status, 401);
+    assert.equal((await fetch(f.url, { method: "HEAD", headers: f.grant.headers })).status, 409);
+});
+
 test("#1212: a deleted viewer file returns 404 and a missing library returns 403", async (t) => {
     const f = await fixture(t);
     const missingRoot = path.join(f.library, "optional");

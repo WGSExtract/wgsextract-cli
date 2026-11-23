@@ -279,8 +279,10 @@ def test_other_computers_align_with_upstream_bwa(
     tmp_path, bwa_bin, monkeypatch, machine
 ):
     reads = _short_reads(tmp_path)
-    _install_build(bwa_bin, "bwa")
     system, arch = machine
+    # Intel Macs ignore the native build, but Windows x64 uses it when installed.
+    if system == "Darwin":
+        _install_build(bwa_bin, "bwa")
     monkeypatch.setattr(
         native_aligners,
         "platform",
@@ -291,6 +293,23 @@ def test_other_computers_align_with_upstream_bwa(
 
     assert _mapper(bam).startswith("bwa mem ")
     assert _native(result) == {} and not result.warnings
+
+
+def test_issue1119_windows_aligns_with_wgse_bwa_on_path(tmp_path, bwa_bin, monkeypatch):
+    reads = _short_reads(tmp_path)
+    _install_build(bwa_bin, "bwa", _cuda_capabilities("bwa"))
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Windows", machine=lambda: "AMD64"),
+    )
+
+    bam, result = _align(reads, tmp_path / "out")
+
+    assert _mapper(bam).startswith("wgse-bwa mem ")
+    assert result.metrics["native_aligner"] == "wgse-bwa"
+    assert result.metrics["native_aligner_backend"] == "cpu"
+    assert not result.warnings
 
 
 @pytest.mark.usefixtures("apple_silicon")

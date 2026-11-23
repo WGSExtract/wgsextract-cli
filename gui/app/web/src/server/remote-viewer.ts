@@ -140,7 +140,7 @@ export class RemoteViewer {
         }
         if (request.method !== "GET" && request.method !== "HEAD") throw new HttpError(405, "remoteReadOnly");
         const address = await this.connection.require(grant.connectionID);
-        const range = byteRange(request.headers.range, file.size);
+        const range = byteRange(request.headers.range, file.size, request.method === "HEAD");
         if (!range) {
             response.writeHead(416, { "content-range": `bytes */${file.size}`, "content-length": "0" });
             response.end();

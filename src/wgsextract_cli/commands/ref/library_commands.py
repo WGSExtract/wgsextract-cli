@@ -490,7 +490,10 @@ def run_gnomad(params: RefGnomadParams) -> None:
     if params.release == "4.1":
         workers = int(params.threads) if params.threads else 6
         _run_downloader(
-            reflib, "gnomAD v4.1", lambda lib: build_gnomad_af(lib, workers), "build"
+            reflib,
+            "gnomAD v4.1",
+            lambda lib: build_gnomad_af(lib, workers, cancel_event=cancel_event()),
+            "build",
         )
     else:
         _run_downloader(reflib, "gnomAD", download_gnomad)
@@ -553,7 +556,7 @@ def run_bootstrap(params: RefBootstrapParams) -> None:
 
     logging.info("Starting reference library bootstrap...")
     before = file_snapshot(reflib)
-    if not download_bootstrap(reflib):
+    if not download_bootstrap(reflib, cancel_event=cancel_event()):
         raise WGSExtractError("Reference library bootstrap failed.")
     # GRCh38 microarray targets and AADR exports lift with this chain. The
     # AADR 2M panel itself is not part of the bootstrap: its server is slow,

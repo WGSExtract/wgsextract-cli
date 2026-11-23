@@ -16,8 +16,8 @@ from pathlib import Path
 import pytest
 from pyliftover import LiftOver
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools
-from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.commands.benchmark.chip import (
     CONSUMER_FORMATS,
     read_chip_export,

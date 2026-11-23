@@ -46,8 +46,14 @@ def bump(tmp_path, monkeypatch):
 
 
 def test_989_bumps_release_versions_and_openapi(bump, tmp_path):
-    original = json.loads((tmp_path / OPENAPI).read_text(encoding="utf-8"))
+    before = (tmp_path / OPENAPI).read_text(encoding="utf-8").splitlines()
+    original = json.loads("\n".join(before))
     assert bump.main(["bump", "9.8.7"]) == 0
+    # Issue #1416: only the info line changes; one entry per line keeps merging.
+    after = (tmp_path / OPENAPI).read_text(encoding="utf-8").splitlines()
+    assert [
+        line[:7] for line, old in zip(after, before, strict=True) if line != old
+    ] == ['"info":']
     for name in FILES:
         assert '"9.8.7"' in (tmp_path / name).read_text()
     original["info"]["version"] = "9.8.7"

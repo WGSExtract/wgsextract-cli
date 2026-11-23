@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, reference_for_vcf, run_wgsextract
-from tests.smoke_utils import state_directory_setting
 from tests.test_vcf_annotations import (
     REVEL_HEADER,
     SAMPLE_ROWS,
