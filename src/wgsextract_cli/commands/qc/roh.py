@@ -40,10 +40,11 @@ from wgsextract_cli.core.panel import load_annotations
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
-from wgsextract_cli.core.results import current_result, tool_version, warn
+from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.roh_document import Position
 from wgsextract_cli.core.roh_regions import bare
 from wgsextract_cli.core.temp_directory import scratch_parent
+from wgsextract_cli.core.tool_versions import tool_version
 from wgsextract_cli.core.utils import UsageError, popen, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import verify_paths_exist
 

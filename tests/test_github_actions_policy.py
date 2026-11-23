@@ -17,6 +17,7 @@ from scripts import validate_github_actions as policy
 from scripts.check_remote_resources import live_test_targets as live_test_targets
 from scripts.ci_cancel_stale_queue import main as cancel_stale_main
 from scripts.ci_changes import routes as routes
+from scripts.ci_codeql_scope import LANGUAGES as LANGUAGES
 from scripts.ci_github import GitHub as GitHub
 from scripts.ci_optional_tools import main as optional_main
 from scripts.ci_optional_tools import require_executed as require_executed

@@ -49,6 +49,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [VEP engines](vep-engines.md) | Annotate with vep-rs or Ensembl VEP |
 | [SV frequencies](sv-frequency.md) | Match structural variants to population frequencies |
 | [ACMG](acmg.md) | Use research-only classification with fastVEP |
+| [Research panels](panel.md) | Write and check a research panel file of genes, filters, sites and haplotypes |
 | [Personal report](personal-report.md) | Read findings with links to evidence, not diagnoses |
 | [Contamination](contamination.md) | Screen for another person's DNA |
 | [Relatedness](relate.md) | Check sex, relatedness and continental ancestry |

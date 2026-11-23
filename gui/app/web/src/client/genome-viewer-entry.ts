@@ -10,6 +10,6 @@ export function bindGenomeViewerEvents() {
         button.addEventListener("click", () => openGenomeViewer(state.localizationCode, state.labels, button, String(state.fieldValues[button.dataset.viewReads ?? ""] ?? "")));
     });
     elements<HTMLButtonElement>("[data-result-viewer]").forEach((button) => {
-        button.addEventListener("click", () => openGenomeViewer(state.localizationCode, state.labels, button, button.dataset.resultViewer ?? "", button.dataset.viewerLocus ?? ""));
+        button.addEventListener("click", () => openGenomeViewer(state.localizationCode, state.labels, button, button.dataset.resultViewer ?? "", button.dataset.viewerLocus ?? "", button.dataset.viewerBuild ?? ""));
     });
 }

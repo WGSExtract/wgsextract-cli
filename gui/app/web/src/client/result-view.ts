@@ -3,6 +3,7 @@ import type { ActionReference, CommandContext } from "../../../shared/types.js";
 import { displayWorkspacePath } from "../../../shared/workspace-paths.js";
 import { isViewerTrack, viewerResultLocus } from "../../../shared/viewer-result.js";
 import { workspaceRoots } from "./model.js";
+import { renderViewerRowTables } from "./result-viewer-rows.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { state } from "./state.js";
 
@@ -32,6 +33,7 @@ export function renderResultSummary(document: ResultDocument | undefined): strin
         <dl class="result-metrics">
           ${metrics.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(formatScalar(value))}</dd>`).join("")}
         </dl>` : ""}
+      ${renderViewerRowTables(document)}
       ${document.outputs.length ? `
         <h4>${escapeHTML(labels.resultOutputsTitle ?? "Output files")}</h4>
         <ul class="result-outputs">${document.outputs.map((output) => renderOutput(output, document)).join("")}</ul>` : ""}

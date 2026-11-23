@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from wgsextract_cli.core import roh_document  # noqa: E402
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
+from wgsextract_cli.core.panel_spec import panel_schema  # noqa: E402
 from wgsextract_cli.core.result_schema import result_schema  # noqa: E402
 from wgsextract_cli.core.sample_document import (  # noqa: E402
     SAMPLE_SHAPES,
@@ -39,11 +40,13 @@ RESULT_OUTPUT = (
     ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json"
 )
 ROH_OUTPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.roh.1.schema.json"
+# An input format, not an output: the research panel files `panel check` reads.
+PANEL_INPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json"
 
 
 def roh_schema() -> dict[str, object]:
     r = roh_document
-    shapes = {
+    shapes: dict[object, Shape] = {
         r.RohDocument: Shape("document", additional=False),
         r.Scope: Shape("scope", additional=False),
         r.PopulationFrequencies: Shape("populationFrequencies", additional=False),
@@ -99,6 +102,7 @@ def documents() -> dict[Path, dict[str, object]]:
         STEP_OUTPUT: steps,
         RESULT_OUTPUT: result_schema(),
         ROH_OUTPUT: roh_schema(),
+        PANEL_INPUT: panel_schema(),
     }
 
 
