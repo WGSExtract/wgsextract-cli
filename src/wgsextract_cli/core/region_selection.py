@@ -2,7 +2,10 @@
 
 import gzip
 import hashlib
+import io
+import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
 
 Intervals = dict[str, list[tuple[int, int]]]
@@ -53,28 +56,50 @@ def bed_intervals(path: str) -> list[tuple[str, int, int]]:
     """Read zero-based, half-open intervals from BED, BED.gz or BEDPE."""
     lower = path.lower()
     opener = gzip.open if lower.endswith(".gz") else open
-    rows = []
     with opener(path, "rt") as source:
-        for line in source:
-            fields = line.split()
-            if (
-                not fields
-                or fields[0].startswith("#")
-                or fields[0] in {"track", "browser"}
-            ):
-                continue
-            try:
-                if lower.endswith(".bedpe"):
-                    if fields[0] != fields[3]:
-                        continue
-                    chrom, start, end = fields[0], int(fields[1]), int(fields[5])
-                else:
-                    chrom, start, end = fields[0], int(fields[1]), int(fields[2])
-            except (IndexError, ValueError) as error:
-                raise ValueError(f"Invalid interval: {line.strip()}") from error
-            if start < 0 or end < start:
-                raise ValueError(f"Invalid interval: {line.strip()}")
-            rows.append((chrom, start, end))
+        return _parse_bed(source, bedpe=lower.endswith(".bedpe"))
+
+
+def bed_intervals_and_sha256(path: Path) -> tuple[list[tuple[str, int, int]], str]:
+    """Parse BED and hash its original bytes through the same file descriptor."""
+    digest = hashlib.sha256()
+    lower = path.name.lower()
+    with path.open("rb") as raw:
+        before = os.fstat(raw.fileno())
+        while chunk := raw.read(1 << 20):
+            digest.update(chunk)
+        raw.seek(0)
+        binary = gzip.GzipFile(fileobj=raw) if lower.endswith(".gz") else raw
+        with io.TextIOWrapper(binary, encoding="utf-8") as source:
+            rows = _parse_bed(source, bedpe=lower.endswith(".bedpe"))
+            after = os.fstat(raw.fileno())
+        if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        ):
+            raise ValueError(f"{path} changed while it was being read.")
+    return rows, digest.hexdigest()
+
+
+def _parse_bed(source: Iterable[str], *, bedpe: bool) -> list[tuple[str, int, int]]:
+    rows = []
+    for line in source:
+        fields = line.split()
+        if not fields or fields[0].startswith("#") or fields[0] in {"track", "browser"}:
+            continue
+        try:
+            if bedpe:
+                if fields[0] != fields[3]:
+                    continue
+                chrom, start, end = fields[0], int(fields[1]), int(fields[5])
+            else:
+                chrom, start, end = fields[0], int(fields[1]), int(fields[2])
+        except (IndexError, ValueError) as error:
+            raise ValueError(f"Invalid interval: {line.strip()}") from error
+        if start < 0 or end < start:
+            raise ValueError(f"Invalid interval: {line.strip()}")
+        rows.append((chrom, start, end))
     return rows
 
 
