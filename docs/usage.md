@@ -109,6 +109,15 @@ only allowed folders.
 `sign create` writes `SHA256SUMS`, also readable by `sha256sum -c`.
 `--key` signs it with `ssh-keygen -Y sign`; `sign verify` checks the signature
 against a trusted key, then re-hashes every file.
+On Windows, some builds of the inbox OpenSSH hang while verifying signatures.
+`sign verify` first checks Git for Windows in Program Files and the Windows
+inbox OpenSSH. If neither works, it looks for `ssh-keygen.exe` on `PATH`.
+For a custom install, add its directory to `PATH`.
+Signing still uses `ssh-keygen.exe` from `PATH` so it can use your SSH agent.
+If signing does not finish within one minute on Windows, it fails without
+leaving a signature. To use Git for Windows for signing, put its `usr\bin`
+directory ahead of the inbox OpenSSH on `PATH`.
+Unsigned checksum verification does not need OpenSSH.
 
 ## Progress and logging
 

@@ -1650,6 +1650,10 @@ has GP below `min_gp` (GLIMPSE2: 0.9, Beagle: 0.95) are FILTERed
 `min_info` is an explicit opt-in site filter, meaningful only for
 multi-sample cohorts. Install panel chromosomes with `ref imputation`.
 
+GLIMPSE2 runs `threads` chunks at once, one thread each, largest
+first, as many as fit the memory available (or `memory` per chunk);
+the output doesn't depend on how many.
+
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | Low-coverage BAM or CRAM to impute with GLIMPSE2 (about 0.5-8x). |

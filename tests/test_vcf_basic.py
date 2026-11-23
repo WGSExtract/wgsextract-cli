@@ -569,6 +569,42 @@ def test_1231_refresh_does_not_overwrite_a_siblings_short_index(rewritten_vcf):
 
 
 @needs_htslib
+@pytest.mark.parametrize(
+    ("name", "other"), [("KIT.VCF.GZ", "KIT.VCF.BGZ"), ("KIT.VCF.BGZ", "KIT.VCF.GZ")]
+)
+def test_issue_1243_upper_case_siblings_sharing_a_short_index_are_refused(
+    tmp_path, name, other
+):
+    # A sibling was looked up in lower case only, so on case-sensitive disks
+    # KIT.VCF.GZ overwrote KIT.VCF.BGZ's short index.
+    vcf, sibling = tmp_path / name, tmp_path / other
+    _write_index_test_vcf(vcf, 50000)
+    _write_index_test_vcf(sibling, 90000)
+    run_command(["tabix", "-C", "-p", "vcf", sibling])
+    Path(f"{sibling}.csi").rename(tmp_path / "KIT.VCF.csi")
+
+    with pytest.raises(WGSExtractError, match="share the index name"):
+        ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(sibling), 90000) == "rs90000\n"
+
+
+@needs_htslib
+def test_issue_1243_upper_case_vcf_refreshes_its_own_short_index(tmp_path):
+    # Its own short index isn't a sibling's, whatever case the disk folds.
+    vcf = tmp_path / "KIT.VCF.BGZ"
+    _write_index_test_vcf(vcf, 100)
+    run_command(["tabix", "-C", "-p", "vcf", vcf])
+    short = Path(f"{vcf}.csi").rename(tmp_path / "KIT.VCF.csi")
+    _write_index_test_vcf(vcf, 50000)
+    os.utime(short, (1_000_000, 1_000_000))
+
+    ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(vcf)) == "rs50000\n"
+
+
+@needs_htslib
 @pytest.mark.skipif(os.name == "nt", reason="POSIX file permissions")
 def test_1231_refresh_preserves_restrictive_index_permissions(rewritten_vcf):
     vcf = rewritten_vcf
