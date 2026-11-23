@@ -714,6 +714,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract methylation pileup --input ont.bam",
         "wgsextract methylation pileup --input ont.bam --format parquet",
     ),
+    "methylation regions": _h(
+        "<input stem>.<build>.<preset>.methylation.tsv (or .parquet) and its run manifest.",
+        "wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa "
+        "--build hg38 --preset promoters",
+    ),
     "pet-align": _h(
         "<reads stem>_<species>.bam or .cram (+ index) and "
         "<reads stem>_<species>.vcf.gz (+ .tbi).",

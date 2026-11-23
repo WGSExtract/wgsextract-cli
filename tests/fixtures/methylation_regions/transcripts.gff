@@ -1,0 +1,22 @@
+##gff-version 3
+NC_TEST.1	RefSeq	gene	3	95	.	+	.	ID=gene-a;Name=GOOD;Dbxref=GeneID:1
+NC_TEST.1	RefSeq	mRNA	3	10	.	+	.	ID=a;Parent=gene-a;transcript_id=NM_1.1;tag=MANE Select
+NC_TEST.1	RefSeq	exon	3	10	.	+	.	Parent=a
+NC_TEST.1	RefSeq	mRNA	15	85	.	+	.	ID=b;Parent=gene-a;transcript_id=NM_2.1;tag=RefSeq Select
+NC_TEST.1	RefSeq	exon	15	85	.	+	.	Parent=b
+NC_TEST.1	RefSeq	gene	20	99	.	-	.	ID=gene-b;Name=REVERSE;Dbxref=GeneID:2
+NC_TEST.1	RefSeq	mRNA	20	99	.	-	.	ID=c;Parent=gene-b;transcript_id=NR_99.1
+NC_TEST.1	RefSeq	exon	97	99	.	-	.	Parent=c
+NC_TEST.1	RefSeq	mRNA	70	95	.	-	.	ID=d;Parent=gene-b;transcript_id=NR_12.1
+NC_TEST.1	RefSeq	exon	89	95	.	-	.	Parent=d
+NC_TEST.1	RefSeq	mRNA	70	91	.	-	.	ID=e;Parent=gene-b;transcript_id=NR_10.1
+NC_TEST.1	RefSeq	exon	85	91	.	-	.	Parent=e
+NC_TEST.1	RefSeq	gene	7	11	.	+	.	ID=gene-c;Name=NO_RNA;Dbxref=GeneID:3
+NC_TEST.1	RefSeq	gene	5	90	.	+	.	ID=gene-d;Name=SELECT;Dbxref=GeneID:4
+NC_TEST.1	RefSeq	mRNA	6	87	.	+	.	ID=f;Parent=gene-d;transcript_id=NR_5.1
+NC_TEST.1	RefSeq	exon	6	87	.	+	.	Parent=f
+NC_TEST.1	RefSeq	mRNA	22	28	.	+	.	ID=g;Parent=gene-d;transcript_id=NR_7.1;tag=RefSeq Select
+NC_TEST.1	RefSeq	exon	22	28	.	+	.	Parent=g
+NC_TEST.1	RefSeq	gene	28	34	.	-	.	ID=gene-e;Name=TRNA;Dbxref=GeneID:5
+NC_TEST.1	RefSeq	tRNA	28	34	.	-	.	ID=rna-gene-e;Parent=gene-e
+NC_TEST.1	RefSeq	exon	28	34	.	-	.	Parent=rna-gene-e

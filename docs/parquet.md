@@ -9,6 +9,7 @@ same columns, types and provenance in both formats.
 | `vcf table` | One row per variant allele ([docs](variant-table.md)) | `<stem>_variants.tsv` | `<stem>_variants.parquet`, in place of the TSV. The SQLite database is unchanged. |
 | `methylation pileup` | Per-modification summary | `<stem>.<context>.methylation.tsv` | `<stem>.<context>.methylation.parquet` |
 | `methylation pileup` | Every site in modkit's bedMethyl | Not written: `.bedmethyl.gz` is the source | `<stem>.<context>.bedmethyl.parquet`, besides the bedMethyl |
+| `methylation regions` | RefSeq promoters or UCSC CpG islands | `<stem>.<build>.<preset>.methylation.tsv` | `<stem>.<build>.<preset>.methylation.parquet` |
 | `info` (with `--format`, which implies `--detailed`), `info calculate-coverage`, `info coverage-sample` | Per-chromosome counts and breadth | Written only with `--format` | `<input>_chromosomes.parquet` |
 | The same | QC stats, one row: the manifest's `info` metrics | Written only with `--format` | `<input>_qc.parquet` |
 | `info calculate-coverage --bins` | Depth bands per contig | `<input>_coverage_bins.tsv` | `<input>_coverage_bins.parquet` |
