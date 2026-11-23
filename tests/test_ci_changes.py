@@ -683,6 +683,14 @@ def test_1229_release_helper_edits_run_only_the_ci_policy_lane() -> None:
         assert "tests/test_ci_release_latest.py" in ci_test_targets(changed), changed
 
 
+def test_1373_main_push_dedupe_edits_run_the_cache_regressions() -> None:
+    for path in ("scripts/ci_merge_group_passes.py", "scripts/ci_run_tests.py"):
+        assert not routes([path])["cli"], path
+        assert "tests/test_ci_test_cache.py" in ci_test_targets([path]), path
+    workflow = [".github/workflows/os_tests.yml"]
+    assert "tests/test_github_actions_policy.py" in ci_test_targets(workflow)
+
+
 CODEQL_SCOPE = Path(__file__).resolve().parents[1] / "scripts/ci_codeql_scope.py"
 
 
@@ -696,7 +704,8 @@ def codeql_scope(repo: Path, *args: str) -> list[str]:
     )
     key, _, value = result.stdout.strip().partition("=")
     assert key == "analyze"
-    return json.loads(value)
+    languages: list[str] = json.loads(value)
+    return languages
 
 
 @pytest.mark.parametrize(

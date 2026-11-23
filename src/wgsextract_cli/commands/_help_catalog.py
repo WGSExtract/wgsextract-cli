@@ -75,6 +75,16 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "info cache.",
         "wgsextract info coverage-sample --input sample.cram",
     ),
+    "info gene": _h(
+        "Prints the gene's span, transcripts, variant counts and exon coverage; "
+        "--json has the full wgsextract.gene/1 document in details. With "
+        "--export, <vcf stem>_<gene>_<filter>_variants.tsv.",
+        "wgsextract info gene --gene BRCA1 --input sample.cram "
+        "--vcf-input sample_annotated.vcf.gz",
+        "wgsextract info gene --gene BRCA2 --vcf-input sample_annotated.vcf.gz "
+        "--export clinvar-plp",
+        "wgsextract info gene --gene CFTR --input sample.bam --min-depth 20 --json",
+    ),
     "info chip": _h(
         "Prints the vendor, chip and matching --formats template; writes no files.",
         "wgsextract info chip --input genome_raw_data.txt",
@@ -264,15 +274,15 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     ),
     "vcf filter": _h(
         "filtered.vcf.gz (+ .tbi).",
+        f"wgsextract vcf filter {_VCF_IN} --genes BRCA1,BRCA2 --bed targets.bed",
         f"wgsextract vcf filter {_VCF_IN} --expr 'QUAL>30'",
-        f"wgsextract vcf filter {_VCF_IN} --gene BRCA1",
     ),
     "vcf table": _h(
         "<input stem>_variants.tsv (or .parquet with --format parquet) and "
         "<input stem>_variants.sqlite: one row per variant allele, with its "
         "annotations.",
-        f"wgsextract vcf table {_VCF_IN}",
-        "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --region chr22",
+        f"wgsextract vcf table {_VCF_IN} --bed targets.bed",
+        f"wgsextract vcf table {_VCF_IN} --preset acmg-sf --region chr17",
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --format parquet",
     ),
     "vcf clinvar": _h(
@@ -324,8 +334,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "--sa-dir acmg_sa --gff3 Homo_sapiens.GRCh38.116.gff3.gz",
     ),
     "vcf chain-annotate": _h(
-        "chain_annotated.vcf.gz (+ .tbi).",
-        f"wgsextract vcf chain-annotate {_VCF_IN} --annotations clinvar,gnomad",
+        "chain_annotated.vcf.gz (+ index), chain_annotate.steps.json; "
+        "with --to-table, chain_annotated_variants.tsv (or .parquet) and .sqlite.",
+        f"wgsextract vcf chain-annotate {_VCF_IN} --annotations clinvar,gnomad "
+        "--region chr22:19000000-20000000 --threads 4 --to-table",
     ),
     "vcf pharmcat": _h(
         "<stem>.report.html and <stem>.phenotype.json from PharmCAT.",
@@ -440,7 +452,9 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref cytobands --build hg38",
     ),
     "ref gene-map": _h(
-        f"{_LIBRARY}: the hg19 and hg38 gene maps (--delete removes them).",
+        f"{_LIBRARY}: the hg19 and hg38 gene maps and their indexed RefSeq "
+        "transcript and exon models, transcripts_<build>.bed.gz, for the genome "
+        "viewer and info gene (--delete removes them).",
         "wgsextract ref gene-map",
     ),
     "ref clinvar": _h(
@@ -449,7 +463,8 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     ),
     "ref gnomad": _h(
         f"{_LIBRARY}: gnomAD allele-frequency files.",
-        "wgsextract ref gnomad",
+        "wgsextract ref gnomad --download",
+        "wgsextract ref gnomad --release 4.1 --download",
     ),
     "ref revel": _h(f"{_LIBRARY}: REVEL score files.", "wgsextract ref revel"),
     "ref pharmgkb": _h(
@@ -685,6 +700,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract qc contamination --input sample.cram",
         "wgsextract qc contamination --input sample.bam --sites 10k",
     ),
+    "qc roh": _h(
+        "<stem>.roh.tsv (runs), <stem>.roh.json (wgsextract.roh/1: evidence, "
+        "scope, F_ROH, isodisomy review flags, provenance) and "
+        "<stem>.roh.markers.tsv.gz.",
+        "wgsextract qc roh --input sample.vcf.gz --af-file gnomad.genomes.v4.1.sites.chr15.vcf.bgz --regions chr15",
+        "wgsextract qc roh --input sample.vcf.gz --af-file 1kgp_af.vcf.gz --af-tag EUR_AF",
+    ),
     "qc fake-data": _h(
         "fake.cram, fake.bam, fake.vcf or fake_R1/_R2.fastq.gz, and the fake "
         "reference.",
@@ -719,15 +741,23 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "status in the result's metrics.",
         "wgsextract typing smn --input sample.cram",
     ),
+    "typing target-cnv": _h(
+        "<stem>.target-cnv.tsv: copy-number class, confidence and callability per BED interval.",
+        "wgsextract typing target-cnv -i sample.bam --bed targets.bed --ref hg38.fa.gz",
+        "wgsextract typing target-cnv -i sample.cram --bed targets.bed --ref hg38.fa.gz --download",
+    ),
     "typing hla": _h(
         "<stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.",
         "wgsextract typing hla --input sample.cram",
     ),
     "typing str": _h(
-        "<stem>.str.tsv, a flagged-repeat summary, and the caller's calls: "
+        "<stem>.str.tsv (or .str.parquet), per-locus repeat calls in the "
+        "result JSON, and the caller's calls: "
         "ExpansionHunter's <stem>.str.vcf/.json, LongTR's <stem>.str.vcf.gz or "
-        "STRkit's <stem>.str.vcf and <stem>.str.strkit.json.",
+        "STRkit's <stem>.str.vcf and <stem>.str.strkit.json. Targeted runs "
+        "append a locus digest to the .str prefix.",
         "wgsextract typing str --input sample.cram",
+        "wgsextract typing str --input sample.cram --loci HTT,FMR1 --format parquet",
     ),
     "methylation pileup": _h(
         "<input stem>.<context>.bedmethyl.gz (+ .tbi) and "
@@ -736,6 +766,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "<input stem>.<context>.bedmethyl.parquet.",
         "wgsextract methylation pileup --input ont.bam",
         "wgsextract methylation pileup --input ont.bam --format parquet",
+    ),
+    "methylation regions": _h(
+        "<input stem>.<build>.<preset>.methylation.tsv (or .parquet) and its run manifest.",
+        "wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa "
+        "--build hg38 --preset promoters",
     ),
     "pet-align": _h(
         "<reads stem>_<species>.bam or .cram (+ index) and "

@@ -156,10 +156,35 @@ def test_vcf_paths_cover_every_resource():
     assert {"clinvar_file", "cadd_indel_file", "am_file", "mother", "father",
             "proband", "mask", "pharmcat_json", "outside_call",
             "ann_vcf"} <= guarded  # fmt: skip
+    assert {
+        (op, field)
+        for op in ("vcf/filter", "vcf/table")
+        for field in ("bed", "gene_file")
+    } <= {(op, item.name) for op, item in _VCF_PATHS}
     # PR #452 review: <ref>/pharmcat is the pipeline's default folder.
     for field in ("pharmcat_dir", "ref"):
         with pytest.raises(RequestError, match="can't be set by a server request"):
             params_from_json(find("vcf/pharmcat"), {field: r"C:\data\pc"})
+
+
+def test_1290_gene_panel_checks_reference_index_path(tmp_path):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    ref = allowed / "ref.fa"
+    ref.touch()
+    outside = tmp_path / "outside.fai"
+    outside.touch()
+    try:
+        (allowed / "ref.fa.fai").symlink_to(outside)
+    except OSError:
+        pytest.skip("can't create symlinks here")
+    params = params_from_json(
+        find("vcf/table"),
+        {"vcf_input": str(allowed / "sample.vcf"), "ref": str(ref), "genes": ["BRCA1"]},
+    )
+    with pytest.raises(RequestError, match="ref_index") as refused:
+        PathGuard([str(allowed)]).check(params)
+    assert refused.value.code == "path_not_allowed"
 
 
 @pytest.mark.parametrize(
@@ -325,6 +350,8 @@ def test_path_guard_covers_every_typing_path(op, field, value):
     # (an HLA index or STR catalog included) must be inside an allowed folder.
     guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
     allowed = {"input": r"C:\data\a.bam", "outdir": r"C:\data"}
+    if op == "typing/target-cnv":
+        allowed["bed"] = r"C:\data\targets.bed"
     guard.check(params_from_json(find(op), allowed))
     with pytest.raises(RequestError) as refused:
         guard.check(params_from_json(find(op), {**allowed, field: value}))
@@ -333,9 +360,10 @@ def test_path_guard_covers_every_typing_path(op, field, value):
 
 def test_typing_paths_cover_every_file():
     assert {(op, item.name) for op, item in _TYPING_PATHS} == {
-        *((f"typing/{name}", f) for name in ("cyp2d6", "hla", "smn", "str")
+        *((f"typing/{name}", f) for name in ("cyp2d6", "hla", "smn", "str", "target-cnv")
           for f in ("input", "ref", "outdir")),
         ("typing/hla", "hla_index"), ("typing/str", "catalog"),
+        ("typing/target-cnv", "bed"),
     }  # fmt: skip
 
 
@@ -419,6 +447,31 @@ def test_path_guard_covers_every_methylation_path(field, value):
 
 def test_methylation_paths_cover_every_file():
     assert {item.name for item in _METHYLATION_PATHS} == {"input", "ref", "outdir"}
+
+
+def test_1293_methylation_regions_server_cannot_download_or_follow_an_external_index(
+    tmp_path,
+):
+    data = tmp_path / "data"
+    data.mkdir()
+    ref = data / "reference.fa"
+    op = find("methylation/regions")
+    body = {
+        "input": str(data / "sample.bedmethyl"),
+        "ref": str(ref),
+        "build": "t2t",
+        "preset": "promoters",
+    }
+    with pytest.raises(RequestError) as refused:
+        params_from_json(op, {**body, "download": True})
+    assert refused.value.code == "usage"
+    try:
+        (data / "reference.fa.fai").symlink_to(tmp_path / "outside.fai")
+    except OSError:
+        pytest.skip("creating symlinks is not permitted")
+    with pytest.raises(RequestError) as refused:
+        PathGuard([str(data)]).check(params_from_json(op, body))
+    assert refused.value.code == "path_not_allowed"
 
 
 @pytest.mark.parametrize(("op", "field"), _EVERY_PATH, ids=map("-".join, _EVERY_PATH))

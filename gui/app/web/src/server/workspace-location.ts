@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { BundleManifest } from "../../../shared/types.js";
-import { writeFileAtomically } from "./config-store.js";
+import { writeFileAtomically } from "./atomic-file.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { applicationSupportDirectory, appSupportContainerName, appSupportDirectory, defaultAppDataName, safePathComponent } from "./paths.js";
 

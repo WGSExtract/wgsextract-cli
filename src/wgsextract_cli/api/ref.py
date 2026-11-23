@@ -23,7 +23,7 @@ from wgsextract_cli.core.utils import UsageError
 
 from ._network import DownloadParams
 from ._params import Params, param
-from ._ref_library import _InLibrary, _library_named
+from ._ref_library import _InLibrary, _library_named, _library_ref_param
 from ._ref_recheck import RefRecheckParams as RefRecheckParams
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import optional_input_param, ref_param, threads_param
@@ -310,19 +310,6 @@ class RefLibraryParams(_InLibrary, Params):
             )
 
 
-def _library_ref_param() -> Any:
-    return param(
-        None,
-        doc="Reference library folder, or a FASTA in it (default: config "
-        "reference_fasta's library, else reference_library, else the default "
-        "library).",
-        flags=("--ref",),
-        path="file_or_directory",
-        shared=True,
-        config_key="reference_fasta",
-    )
-
-
 class _ConfiguredLibrary(_InLibrary, Params):
     """An operation on the library ``ref`` names, else the configured FASTA's."""
 
@@ -572,8 +559,8 @@ class RefPhylopParams(_Resource):
 
 @dataclass(frozen=True, kw_only=True)
 class RefGnomadParams(_Resource):
-    """Download gnomAD allele frequencies: the 2.1.1 exome sites VCFs, or
-    build the 4.1 frequency table."""
+    """Check or download the gnomAD 2.1.1 exome sites VCFs or the gnomAD 4.1
+    frequency and homozygote-count table."""
 
     COMMAND = "ref gnomad"
 
@@ -581,12 +568,19 @@ class RefGnomadParams(_Resource):
         "2.1.1",
         help=(
             "2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). "
-            "4.1: native hg38 exomes+genomes, streamed (~900 GB, hours) into an "
-            "allele-frequency-only table of ~5 GB; --threads sets parallel streams."
+            "4.1: native hg38 exomes+genomes, with allele frequency, maximum "
+            "ancestry-group frequency and homozygote counts; --threads sets parallel streams."
         ),
         choices=GNOMAD_RELEASES,
     )
     threads: int | None = threads_param()
+    download: bool = param(
+        False,
+        help="Allow fetching the public sites VCFs for the selected release "
+        "(4.1 streams ~900 GB, hours, to build or rebuild the table).",
+        action="store_true",
+        writes=True,
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
