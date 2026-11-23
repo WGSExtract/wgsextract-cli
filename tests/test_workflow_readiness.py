@@ -1,5 +1,6 @@
 """Focused workflow readiness regressions."""
 
+import ast
 import json
 import re
 from fnmatch import fnmatchcase
@@ -10,9 +11,6 @@ import pytest
 from scripts import validate_github_actions as policy
 from tests.test_github_actions_policy import (
     WORKFLOWS as WORKFLOWS,
-)
-from tests.test_github_actions_policy import (
-    draft_concurrency_group as draft_concurrency_group,
 )
 from tests.test_github_actions_policy import (
     event_path_filters as event_path_filters,
@@ -26,9 +24,127 @@ from tests.test_github_actions_policy import (
 from tests.test_github_actions_policy import (
     triggered_workflows as triggered_workflows,
 )
-from tests.test_github_actions_policy import (
-    workflow_concurrency as workflow_concurrency,
-)
+
+
+def workflow_concurrency(workflow: Path) -> dict[str, str]:
+    """Read workflow-level concurrency without assuming a YAML indent width."""
+    lines = workflow.read_text().splitlines()
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r"concurrency:\s*(?:#.*)?", line)
+        ),
+        None,
+    )
+    if start is None:
+        return {}
+    fields: dict[str, str] = {}
+    field_indent = None
+    folded_key = None
+    for line in lines[start + 1 :]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if not indent:
+            break
+        if field_indent is None:
+            field_indent = indent
+        if indent > field_indent and folded_key is not None:
+            fields[folded_key] = f"{fields[folded_key]} {line.strip()}".lstrip()
+            continue
+        key, separator, value = line.strip().partition(":")
+        if separator:
+            folded_key = key if value.strip() == ">-" else None
+            fields[key] = "" if folded_key else value.strip()
+    return fields
+
+
+def draft_concurrency_group(workflow: Path, *, draft: bool, action: str) -> str:
+    """Render the draft-dependent expression; keep identical PR context opaque."""
+    return render_concurrency_group(
+        workflow_concurrency(workflow)["group"],
+        {"github.event.pull_request.draft": draft, "github.event.action": action},
+    )
+
+
+def render_concurrency_group(
+    group: str, values: dict[str, str | bool | tuple[str, ...]]
+) -> str:
+    def render(expression: re.Match[str]) -> str:
+        source = expression[1]
+        if not any(name in source for name in values):
+            return expression[0]
+        for name, context_value in values.items():
+            source = source.replace(name, repr(context_value))
+        tree = ast.parse(
+            source.replace("&&", " and ").replace("||", " or ").strip(), mode="eval"
+        )
+
+        def value(node: ast.AST) -> object:
+            if isinstance(node, ast.Constant):
+                return node.value
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "contains"
+                and len(node.args) == 2
+                and not node.keywords
+            ):
+                labels, label = node.args
+                if isinstance(labels, ast.Tuple):
+                    return str(value(label)).casefold() in {
+                        str(value(item)).casefold() for item in labels.elts
+                    }
+            if isinstance(node, ast.BoolOp):
+                result = value(node.values[0])
+                for child in node.values[1:]:
+                    if (isinstance(node.op, ast.And) and not result) or (
+                        isinstance(node.op, ast.Or) and result
+                    ):
+                        return result
+                    result = value(child)
+                return result
+            if isinstance(node, ast.Compare) and len(node.ops) == 1:
+                left, right = value(node.left), value(node.comparators[0])
+                if isinstance(node.ops[0], ast.NotEq):
+                    return left != right
+                if isinstance(node.ops[0], ast.Eq):
+                    return left == right
+            raise AssertionError(f"Unsupported concurrency expression: {source}")
+
+        return str(value(tree.body))
+
+    return re.sub(r"\$\{\{(.*?)\}\}", render, group)
+
+
+def test_1488_noop_pr_runs_do_not_queue_behind_failure_observers() -> None:
+    concurrency = workflow_concurrency(WORKFLOWS / "rerun_lost_runners.yml")
+
+    def group(event: str, run_id: str, *labels: str) -> str:
+        return render_concurrency_group(
+            concurrency["group"],
+            {
+                "github.event_name": event,
+                "github.run_id": run_id,
+                "github.event.pull_request.labels.*.name": labels,
+            },
+        )
+
+    # contract: serialize shared state updates, not PR runs without ci-red-main.
+    observations = group("workflow_run", "1")
+    assert group("workflow_run", "2") == observations
+    assert group("pull_request_target", "3", "bug", "ci-red-main") == observations
+    weekly = group("schedule", "4")
+    assert group("schedule", "5") == weekly
+    no_op_runs = {
+        group("pull_request_target", "6"),
+        group("pull_request_target", "7"),
+        group("pull_request_target", "8", "ci-red-main-related"),
+    }
+    assert len(no_op_runs | {observations, weekly}) == 5
+    assert concurrency["queue"] == "max"
+    assert concurrency["cancel-in-progress"] == "false"
 
 
 def test_1237_gui_upload_requires_the_build_matrix_signed_updater_targets() -> None:

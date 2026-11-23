@@ -709,6 +709,11 @@ merges still run the matching workflows. Coalescing limits each workflow's
 main-push backlog to its newest run; it does not promise a fixed saving in
 runner-minutes or a measured queue-wait target.
 
+Workflow completions and PR events carrying `ci-red-main` share the observer
+queue so they cannot update quarantine state concurrently. Other PR events do
+no work and use a separate group per run, so a full observer queue cannot
+block their startup. The weekly rollup keeps its own group.
+
 The failure observer treats a cancelled superseded main run as obsolete:
 no retry, red-main update or flake exemption from its partial passes.
 Cancelled runs do not replace the last conclusive main failure/success used
