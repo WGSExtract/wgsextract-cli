@@ -78,7 +78,7 @@ of the BED file as supplied.
 | `consequence`, `impact` | text | Sequence Ontology terms (`&`-separated) and HIGH/MODERATE/LOW/MODIFIER, from the chosen transcript. |
 | `hgvs_c`, `hgvs_p` | text | HGVS coding and protein change on the chosen transcript. |
 | `clinvar_significance`, `clinvar_condition` | text | ClinVar `CLNSIG` and `CLNDN` (from `vcf clinvar`; else VEP's `CLIN_SIG`). |
-| `gnomad_af` | real | gnomAD allele frequency of this ALT (from `vcf gnomad`; else VEP's `gnomADg_AF`, then `gnomADe_AF`, then `gnomAD_AF`). |
+| `gnomad_af` | real | gnomAD allele frequency of this ALT (from `vcf gnomad`; else VEP's `gnomADg_AF`, then `gnomADe_AF`, then `gnomAD_AF`). Empty when gnomAD lacks the ALT, or when the VCF has no gnomAD annotation: a vep-rs cache from `vep download` has none, so run `vcf gnomad` (see [Population frequencies](#population-frequencies)). |
 | `genotype`, `zygosity` | text | The sample's GT (`0/1`, `1\|1`, ...), and its copies of this ALT: `het`, `hom_alt`, `hemizygous`, `not_carried` or `no_call`. |
 | `depth`, `gq`, `qual`, `filter` | integer, integer, real, text | Read depth (FORMAT/DP, else the sum of AD, else INFO/DP), genotype quality, QUAL and FILTER. |
 | `confidence` | text | The depth-aware `high`/`moderate`/`low` label in `INFO/WGSE_CONF`, when the VCF has one ([variant-confidence.md](variant-confidence.md)). |
@@ -93,6 +93,7 @@ of the BED file as supplied.
 | `transcript_id` | text | The transcript associated with `consequence`: VEP `Feature` or SnpEff `Feature_ID`. Empty for non-transcript effects. |
 | `gnomad_popmax_af` | real | Maximum allele frequency across gnomAD genetic ancestry groups for this ALT (`GNOMAD_POPMAX_AF` from `vcf gnomad`, a native gnomAD `AF_grpmax_joint`/`AF_grpmax`/`AF_popmax` field, or a gnomAD-specific group-maximum field in VEP `CSQ`). VEP `MAX_AF` combines databases and is not a fallback. |
 | `gnomad_nhomalt` | integer | Count of homozygotes for this ALT in gnomAD (`GNOMAD_NHOMALT` from `vcf gnomad`, native `nhomalt_joint`/`nhomalt`, or a gnomAD homozygote count in VEP `CSQ`). A known count of zero is distinct from a missing count. |
+| `kg_af`, `max_af` | real | VEP's 1000 Genomes phase 3 frequency of this ALT over all populations (`AF`), and its `MAX_AF`: the highest frequency in any population VEP's cache has, gnomAD and 1000 Genomes with Ensembl VEP's cache but 1000 Genomes only with a vep-rs cache from `vep download`. Where VEP lists several co-located known variants, the highest value. |
 
 When a WGSE annotation splits a multi-allelic record, it saves the original
 AD total so the read fraction stays the same. A known split without a
@@ -102,8 +103,8 @@ The TSV has a header row and leaves missing values empty. The SQLite database
 has the table `variants` with these columns, `columns` (each column's type and
 meaning, for an agent to read first) and `metadata` (wgsextract version,
 source VCF and its SHA-256, sample, reference build, region, annotations found,
-row count and command line). It is indexed on `gene`, `rsid` and
-`(chrom, pos)`.
+`population_af_sources`, row count and command line). It is indexed on `gene`,
+`rsid` and `(chrom, pos)`.
 
 [`/v1/variants` and MCP `query_variants`](server.md) can return these
 columns from any of the table formats. They omit fields that are missing.
@@ -133,6 +134,21 @@ table keeps one per allele, as VEP's `--pick` would: the one VEP flagged
 `PICK`, else the MANE Select transcript, then the canonical one, then a
 protein-coding one, then the most severe consequence. SnpEff lists the most
 severe effect first, and the table takes that one.
+
+## Population frequencies
+
+`gnomad_af` holds gnomAD frequencies only. VEP with a vep-rs cache built by
+`vep download` fills just the 1000 Genomes frequencies: Ensembl publishes no
+gnomAD frequencies to build the cache from, so VEP's `gnomADe_*` and
+`gnomADg_*` fields stay empty. Those 1000 Genomes values go to `kg_af` and
+`max_af`, never to `gnomad_af`. When no row has a gnomAD frequency and the VCF
+has no `vcf gnomad` annotation, `vcf table` warns `gnomad_af_missing`: an
+empty `gnomad_af` may then mean "not annotated" rather than "rare" (VEP leaves
+its gnomAD fields empty both for a cache without gnomAD and for variants
+gnomAD lacks, so the warning names both). The metadata key
+`population_af_sources` (`gnomad`, `1000genomes`, both or neither) and the
+manifest metrics `gnomad_af_rows`, `kg_af_rows` and `max_af_rows` say which
+frequencies the table holds. Run `vcf gnomad` before filtering on rarity.
 
 ## Example queries
 
@@ -168,11 +184,13 @@ SELECT gene, rsid, clinvar_significance, confidence, confidence_reasons
 FROM variants
 WHERE clinvar_significance IS NOT NULL AND confidence IN ('low', 'moderate');
 
--- Rare protein-changing variants (absent from gnomAD or below 0.1%)
-SELECT gene, hgvs_p, consequence, gnomad_af, zygosity
+-- Protein-changing variants with a measured gnomAD frequency below 0.1%
+-- and no known VEP population frequency at or above 0.1%
+SELECT gene, hgvs_p, consequence, gnomad_af, max_af, zygosity
 FROM variants
 WHERE impact IN ('HIGH', 'MODERATE')
-  AND (gnomad_af IS NULL OR gnomad_af < 0.001)
+  AND gnomad_af < 0.001
+  AND (max_af IS NULL OR max_af < 0.001)
   AND filter = 'PASS';
 
 -- Homozygous loss-of-function candidates
