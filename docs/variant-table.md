@@ -57,6 +57,11 @@ above works.
 | `phase_set` | text | The phase block (FORMAT/PS) of a phased genotype (`0\|1`). Calls with the same `phase_set` on one chromosome are phased to each other; see [Read evidence and phasing](#read-evidence-and-phasing). |
 | `alt_fraction`, `ad_ref`, `ad_alt` | real, integer, integer | The fraction of the sample's reads carrying this ALT (0-1), and the REF and ALT read counts from FORMAT/AD. |
 | `gnomad_popmax_af`, `gnomad_nhomalt` | real, integer | gnomAD's highest frequency of this ALT among non-bottlenecked genetic ancestry groups (grpmax, called popmax before v4), and the number of homozygous-ALT individuals in gnomAD. From `vcf gnomad` with a gnomAD VCF that has `AF_grpmax` (or `AF_popmax`) and `nhomalt`; `gnomad_popmax_af` else from VEP's per-group gnomAD frequencies. |
+| `revel`, `alphamissense_score`, `alphamissense_class` | real, real, text | REVEL and AlphaMissense missense pathogenicity (0-1) and AlphaMissense's class (`likely_benign`, `ambiguous`, `likely_pathogenic`), from `vcf revel` and `vcf alphamissense`; see [In-silico scores](#in-silico-scores). |
+| `cadd_raw`, `cadd_phred` | real, real | CADD's raw and PHRED-scaled deleteriousness scores, from `vcf cadd`. |
+| `spliceai_max` | real | The highest of the ALT's four SpliceAI delta scores (`DS_AG`, `DS_AL`, `DS_DG`, `DS_DL`, 0-1), for the row's gene when SpliceAI scored it, from `vcf spliceai`. |
+| `phylop`, `gerp` | real, real | PhyloP and GERP++ conservation of the position, from `vcf phylop` and `vcf gerp`. |
+| `sift_score`, `sift_prediction`, `polyphen_score`, `polyphen_prediction` | real, text, real, text | VEP's SIFT and PolyPhen-2 for the chosen transcript (for example `deleterious` 0.01, `probably_damaging` 0.998). |
 | `imputed`, `genotype_probability` | integer, real | `1` when the genotype was imputed from a reference panel (`INFO/IMP`, from [`vcf impute`](imputation.md)), else `0`; and the largest FORMAT/GP when its values are probabilities in [0, 1]. Unrecognised/phred-scaled scores leave the probability empty. Imputed rows below `vcf impute`'s thresholds have `filter` `ImpLowConf`. |
 
 The TSV has a header row and leaves missing values empty. The SQLite database
@@ -84,6 +89,50 @@ table keeps one per allele, as VEP's `--pick` would: the one VEP flagged
 `PICK`, else the MANE Select transcript, then the canonical one, then a
 protein-coding one, then the most severe consequence. SnpEff lists the most
 severe effect first, and the table takes that one.
+
+## In-silico scores
+
+The score columns read what the annotation commands wrote; `vcf table` never
+downloads or computes a score. Annotate first, in any order:
+
+```bash
+wgsextract vcf revel --vcf-input sample.vcf.gz
+wgsextract vcf cadd --vcf-input revel_annotated.vcf.gz
+wgsextract vcf table --vcf-input cadd_annotated.vcf.gz
+```
+
+or all at once with `vcf chain-annotate --vcf-input sample.vcf.gz
+--annotations revel,alphamissense,cadd,spliceai,phylop,gerp`. Each command
+reads its scores from the reference library (`ref revel`, `ref cadd` and so
+on install them) or from a file you name.
+
+- **Which source.** Each score comes from the first of these that has it:
+  1. the INFO field of our annotation command: `REVEL`, `am_pathogenicity` and
+     `am_class`, `CADD_RAW` and `CADD_PHRED`, `SpliceAI`, `PHYLOP`, `GERP`;
+  2. fastVEP's INFO fields: `FV_REVEL`, `FV_ALPHAMISSENSE`, `FV_PHYLOP`,
+     `FV_GERP` (and `SpliceAI`, which it writes in the same format);
+  3. VEP's CSQ: the REVEL, AlphaMissense, CADD, SpliceAI (`split_output=1`) and
+     Conservation (GERP) plugins, then dbNSFP's `REVEL_score`,
+     `AlphaMissense_score`/`AlphaMissense_pred`, `CADD_raw`/`CADD_phred`,
+     `phyloP100way_vertebrate` and `GERP++_RS`.
+
+  SIFT and PolyPhen come from VEP's CSQ, else fastVEP's `FV_DBNSFP`.
+- **Which transcript.** Scores that describe a transcript (REVEL,
+  AlphaMissense, SIFT, PolyPhen) are the chosen transcript's, the one
+  `transcript_id` names. CADD, PhyloP and GERP describe the variant or its
+  position, so another of the allele's transcripts gives them when the chosen
+  one has none. A CSQ field listing several values (`&`) gives the highest.
+- **SpliceAI** lists a score per gene, and per ALT at a multi-allelic site;
+  `spliceai_max` reads the row's own ALT, and its gene when SpliceAI scored
+  it, else the highest of any gene. A missing delta (`.`) is skipped.
+- **Unscored is empty, never 0.** A variant without a score, such as an indel
+  the REVEL table doesn't list, leaves the column empty, so `revel IS NULL`
+  means not scored and `revel < 0.5` means scored benign.
+- **One score per ALT.** Our annotation commands split multi-allelic sites,
+  so each ALT has its own scores. In a VCF annotated elsewhere, a per-site
+  (`Number=1`) score of a record with several ALTs can't be told apart and
+  stays empty; PhyloP and GERP, which belong to the position, apply to every
+  ALT.
 
 ## Read evidence and phasing
 
@@ -171,6 +220,17 @@ WHERE a.genotype IN ('0|1', '1|0') AND b.genotype IN ('0|1', '1|0')
 SELECT chrom, pos, gene, genotype, ad_ref, ad_alt, alt_fraction
 FROM variants
 WHERE zygosity = 'het' AND alt_fraction < 0.25 AND ad_alt >= 3;
+
+-- Rare missense variants predicted damaging, and the scores behind them
+SELECT gene, hgvs_p, revel, alphamissense_score, cadd_phred, zygosity
+FROM variants
+WHERE consequence LIKE '%missense_variant%'
+  AND (gnomad_af IS NULL OR gnomad_af < 0.001)
+  AND (revel >= 0.5 OR alphamissense_class = 'likely_pathogenic');
+
+-- Variants SpliceAI predicts to change splicing
+SELECT gene, hgvs_c, spliceai_max, consequence
+FROM variants WHERE spliceai_max >= 0.5 ORDER BY spliceai_max DESC;
 
 -- Homozygous loss-of-function candidates
 SELECT gene, hgvs_c, hgvs_p, consequence

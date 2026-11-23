@@ -233,3 +233,33 @@ def test_1289_variant_pages_return_read_phase_and_gnomad_columns(
         },
         {"pos": 200},
     ]
+
+
+def test_1284_variant_pages_return_in_silico_score_columns(tmp_path: Path) -> None:
+    """Issue 1284: /v1/variants (and MCP query_variants) return the score
+    columns typed, and leave out the ones a row has no score for."""
+    table = tmp_path / "sample_variants.tsv"
+    table.write_text(
+        "chrom\tpos\trevel\talphamissense_class\tcadd_phred\tspliceai_max\tgerp\n"
+        "chr1\t100\t0.93\tlikely_pathogenic\t30.0\t0.95\t-1.0\n"
+        "chr1\t200\t\t\t\t\t\n",
+        encoding="utf-8",
+    )
+    columns = "pos,revel,alphamissense_class,cadd_phred,spliceai_max,gerp"
+    with _serve(tmp_path, [tmp_path]) as client:
+        status, body = client.request(
+            "GET", f"/variants?path={table}&columns={columns}"
+        )
+    assert status == 200
+    validate(body, "VariantPage")
+    assert body["rows"] == [
+        {
+            "pos": 100,
+            "revel": 0.93,
+            "alphamissense_class": "likely_pathogenic",
+            "cadd_phred": 30.0,
+            "spliceai_max": 0.95,
+            "gerp": -1.0,
+        },
+        {"pos": 200},
+    ]

@@ -6,14 +6,10 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract
+from wgsextract_cli.core.csq_alleles import vep_allele
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import run_command
-from wgsextract_cli.core.variant_table import (
-    COLUMN_NAMES,
-    parse_header,
-    variant_rows,
-    vep_allele,
-)
+from wgsextract_cli.core.variant_table import COLUMN_NAMES, parse_header, variant_rows
 
 CSQ = (
     "Allele|Consequence|IMPACT|SYMBOL|Gene|Feature_type|Feature|BIOTYPE|HGVSc|"
