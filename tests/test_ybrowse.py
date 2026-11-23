@@ -75,22 +75,65 @@ def test_install_strips_samples_aggregates_only_matching_alleles_and_detects_cor
     assert ybrowse.installed_snapshot(library)[0] == installed
 
 
-def test_download_drift_fails_without_replacing_installed_pointer(
+def test_invalid_download_fails_without_replacing_installed_pointer(
     tmp_path, monkeypatch
 ):
     monkeypatch.setattr(
         ybrowse.urllib.request,
         "urlopen",
-        lambda *a, **kw: io.BytesIO(b"changed upstream"),
+        lambda *a, **kw: io.BytesIO(b"not a valid vcf"),
     )
     root = tmp_path / "ybrowse" / "hg38"
     root.mkdir(parents=True)
     pointer = root / "current.json"
     pointer.write_text('{"version":"previous"}')
-    with pytest.raises(WGSExtractError, match="hash mismatch.*--snapshot"):
+    with pytest.raises(WGSExtractError, match="#CHROM|not a VCF"):
         ybrowse.install_snapshot(tmp_path)
     assert pointer.read_text() == '{"version":"previous"}'
     assert list(root.iterdir()) == [pointer]
+
+
+def test_truncated_download_fails_without_replacing_installed_pointer(
+    tmp_path, monkeypatch
+):
+    payload = gzip.compress(mini_snapshot(tmp_path / "mini.vcf").read_bytes())
+
+    class _TruncatedResponse(io.BytesIO):
+        headers = {"Content-Length": str(len(payload) + 128)}
+
+    monkeypatch.setattr(
+        ybrowse.urllib.request,
+        "urlopen",
+        lambda *a, **kw: _TruncatedResponse(payload),
+    )
+    root = tmp_path / "ybrowse" / "hg38"
+    root.mkdir(parents=True)
+    pointer = root / "current.json"
+    pointer.write_text('{"version":"previous"}')
+    with pytest.raises(WGSExtractError, match="truncated"):
+        ybrowse.install_snapshot(tmp_path)
+    assert pointer.read_text() == '{"version":"previous"}'
+    assert list(root.iterdir()) == [pointer]
+
+
+@needs_htslib
+def test_daily_upstream_download_with_new_hash_installs_cleanly(tmp_path, monkeypatch):
+    payload = gzip.compress(mini_snapshot(tmp_path / "daily.vcf").read_bytes())
+
+    class _DailyResponse(io.BytesIO):
+        headers = {"Content-Length": str(len(payload))}
+
+    monkeypatch.setattr(
+        ybrowse.urllib.request,
+        "urlopen",
+        lambda *a, **kw: _DailyResponse(payload),
+    )
+    library = tmp_path / "library"
+    installed = ybrowse.install_snapshot(library)
+    manifest = json.loads((installed / "manifest.json").read_text())
+    assert manifest["source_kind"] == "verified-download"
+    assert manifest["snp_alleles"] == 4
+    assert ybrowse.installed_snapshot(library)[0] == installed
 
 
 @pytest.mark.parametrize(
