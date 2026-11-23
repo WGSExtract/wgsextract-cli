@@ -177,15 +177,15 @@ def run_gnomad(params: VcfGnomadParams) -> None:
         columns, destinations = _gnomad_vcf_columns(annotation)
     else:
         annotation = prepare_tabix_annotation(gnomad_file, "gnomAD")
-        fields, joint = gnomad_table_header(annotation)
-        columns, destinations = _gnomad_table_columns(fields)
-        if (joint or Path(gnomad_file).name == GNOMAD_AF_TABLE) and len(
-            destinations
-        ) < len(_GNOMAD_TAGS):
+        table_header = gnomad_table_header(annotation)
+        columns, destinations = _gnomad_table_columns(table_header.columns)
+        if (
+            table_header.joint or Path(gnomad_file).name == GNOMAD_AF_TABLE
+        ) and not table_header.is_current:
             warn(
                 "gnomad_table_stale",
-                "The gnomAD v4.1 table lacks ancestry-group frequency "
-                f"or homozygote counts. To rebuild, run: {GNOMAD_V4_REBUILD}",
+                "The gnomAD v4.1 table is not in the current per-allele format. "
+                f"To rebuild, run: {GNOMAD_V4_REBUILD}",
                 path=gnomad_file,
             )
     header = [

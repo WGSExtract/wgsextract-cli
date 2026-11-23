@@ -40,6 +40,65 @@ def _query(path: Path, fmt: str) -> list[str]:
     ).stdout.splitlines()
 
 
+@pytest.mark.parametrize(
+    "legacy_metadata",
+    ["PASS sites with AF_joint > 0", "PASS alleles with AF_joint > 0; table schema 2"],
+)
+def test_1419_same_columns_do_not_make_old_gnomad_tables_current(
+    tmp_path, monkeypatch, legacy_metadata
+):
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    table = downloads / "gnomad_hg38.tsv.gz"
+    old = downloads / "old.tsv"
+    old.write_bytes(
+        (
+            f"## gnomAD v4.1 joint exomes+genomes, {legacy_metadata}\n"
+            "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint\n"
+            "chr1\t100\tC\tT,G\t0.25,0\t0.5,0\t1,0\n"
+        ).encode()
+    )
+    with table.open("wb") as out:
+        run_command(["bgzip", "-c", str(old)], stdout=out)
+    run_command(["tabix", "-s", "1", "-b", "2", "-e", "2", str(table)])
+
+    sample = _vcf(tmp_path / "sample.vcf", "chr1", "chr1\t100\t.\tC\tT\t.\tPASS\t.\n")
+    joint = _vcf(
+        tmp_path / "chr1.vcf",
+        "chr1",
+        "{c}\t100\t.\tC\tT,G\t.\tPASS\t"
+        "AF_joint=0.25,0;AF_grpmax_joint=0.5,0;nhomalt_joint=1,0\n",
+        JOINT_INFO,
+    )
+    check = api.RefGnomadParams(ref=tmp_path, release="4.1")
+    with serving(files={joint.name: joint.read_bytes()}) as server:
+        monkeypatch.setattr(
+            gnomad_af, "GNOMAD_V4_URL", server.url_for("{contig}.vcf.gz")
+        )
+        monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
+
+        with pytest.raises(api.CommandFailed, match="needs rebuilding.*--download"):
+            api.ref.gnomad(check)
+        result = api.vcf.gnomad(
+            api.VcfGnomadParams(
+                vcf_input=sample, gnomad_file=table, outdir=tmp_path / "out"
+            )
+        )
+        warning = next(w for w in result.warnings if w.code == "gnomad_table_stale")
+        assert "--release 4.1 --download" in warning.message
+        assert not server.requests
+
+        api.ref.gnomad(api.RefGnomadParams(ref=tmp_path, release="4.1", download=True))
+        assert server.get_paths == [joint.name]
+        server.requests.clear()
+        api.ref.gnomad(check)
+        assert not server.requests
+
+    assert run_command(
+        ["tabix", str(table), "chr1:100-100"], capture_output=True
+    ).stdout.splitlines() == ["chr1\t100\tC\tT\t0.25\t0.5\t1"]
+
+
 def test_1419_gnomad_v4_rebuild_keeps_allele_specific_annotations(
     tmp_path, monkeypatch
 ):

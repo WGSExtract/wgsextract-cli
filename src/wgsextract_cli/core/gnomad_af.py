@@ -13,6 +13,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, wait
 from contextlib import suppress
+from dataclasses import dataclass
 from http.client import HTTPException
 from pathlib import Path
 from typing import IO
@@ -53,6 +54,7 @@ GNOMAD_AF_TABLE = "gnomad_hg38.tsv.gz"
 GNOMAD_V4_REBUILD = "wgsextract ref gnomad --release 4.1 --download"
 _TABLE_SCHEMA = 3
 _JOINT_HEADER = "## gnomAD v4.1 joint exomes+genomes,"
+_SCHEMA_MARKER = f"; table schema {_TABLE_SCHEMA}"
 _GNOMAD_V4_FIELDS = ("AF_joint", "AF_grpmax_joint", "nhomalt_joint")
 _GNOMAD_V4_COLUMNS = ("#CHROM", "POS", "REF", "ALT", "AF", *_GNOMAD_V4_FIELDS[1:])
 # Sites gnomAD itself filtered out count as absent, so rare-variant filtering
@@ -67,29 +69,44 @@ _GNOMAD_V4_QUERY = (
     + "\n",
 )
 _GNOMAD_V4_HEADER = (
-    f"{_JOINT_HEADER} PASS alleles with AF_joint > 0; table schema {_TABLE_SCHEMA}\n"
+    f"{_JOINT_HEADER} PASS alleles with AF_joint > 0{_SCHEMA_MARKER}\n"
     + "\t".join(_GNOMAD_V4_COLUMNS)
     + "\n"
 )
 
 
-def gnomad_table_header(path: str) -> tuple[tuple[str, ...], bool]:
-    """Read the columns and whether the header identifies the joint v4.1 table."""
-    joint = False
+@dataclass(frozen=True)
+class GnomadTableHeader:
+    columns: tuple[str, ...]
+    joint: bool
+    has_current_schema: bool
+
+    @property
+    def is_current(self) -> bool:
+        return self.has_current_schema and self.columns == _GNOMAD_V4_COLUMNS
+
+
+def gnomad_table_header(path: str) -> GnomadTableHeader:
+    """Read the column names and joint v4.1 build metadata."""
+    joint = has_current_schema = False
     with gzip.open(path, "rt", encoding="utf-8") as table:
         for line in table:
+            line = line.rstrip("\r\n")
             if line.startswith("#CHROM\t"):
-                return tuple(line.rstrip("\r\n").split("\t")), joint
+                return GnomadTableHeader(
+                    tuple(line.split("\t")), joint, has_current_schema
+                )
             if not line.startswith("#"):
                 break
-            joint |= line.startswith(_JOINT_HEADER)
-    return (), joint
+            if line.startswith(_JOINT_HEADER):
+                joint = True
+                has_current_schema |= line.endswith(_SCHEMA_MARKER)
+    return GnomadTableHeader((), joint, has_current_schema)
 
 
-def _has_current_columns(path: str) -> bool:
+def _is_current_table(path: str) -> bool:
     try:
-        columns, _ = gnomad_table_header(path)
-        return columns == _GNOMAD_V4_COLUMNS
+        return gnomad_table_header(path).is_current
     except (OSError, EOFError, UnicodeError):
         return False
 
@@ -292,7 +309,7 @@ def build_gnomad_af(
     per-contig parts, which are then concatenated (BGZF allows that) and indexed.
     """
     dest = str(download_path(reflib_dir, GNOMAD_AF_TABLE))
-    if _has_current_columns(dest):
+    if _is_current_table(dest):
         if not Path(dest + ".tbi").is_file():
             verify_dependencies(["tabix"])
             _index_table(dest)
@@ -300,7 +317,7 @@ def build_gnomad_af(
         return True
     if not download:
         problem = (
-            "needs rebuilding to provide AF_grpmax_joint and nhomalt_joint"
+            "needs rebuilding to use the current per-allele format"
             if Path(dest).is_file()
             else "is not installed"
         )

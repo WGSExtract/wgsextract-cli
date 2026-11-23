@@ -219,8 +219,9 @@ See [rules, rationale and validation](variant-confidence.md).
   frequency, the table keeps the joint frequency, maximum ancestry-group
   frequency and alternate homozygote count. `vcf gnomad` transfers them to
   `GNOMAD_AF`, `GNOMAD_POPMAX_AF` and `GNOMAD_NHOMALT`, respectively.
-  Older tables still supply `GNOMAD_AF`; the same `--download` command rebuilds
-  them for the two additional fields. Without `--download`, `ref gnomad
+  Older tables remain readable, but may omit fields or combine multiple ALTs
+  in one row. The same `--download` command rebuilds them in the current
+  per-allele format. Without `--download`, `ref gnomad
   --release 4.1` checks the local table and can recreate a missing index
   without fetching data. `ref gnomad --download` installs the default release,
   2.1.1, which is exome-only and lifted to hg38.
