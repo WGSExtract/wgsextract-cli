@@ -107,7 +107,7 @@ test("viewer navigation copy matches available gene-map and dbSNP indexes and UI
   const stringsPath = path.resolve(import.meta.dirname, "../../resources/BuiltinStrings/strings.en.toml");
   const rawStrings = fs.readFileSync(stringsPath, "utf8");
   const viewerStrings = Object.fromEntries(
-    [...rawStrings.matchAll(/^"viewer\.([^"]+)"\s*=\s*"((?:\\.|[^"])*)"/gm)].map(([, key, value]) => [key, value]),
+    [...rawStrings.matchAll(/^"viewer\.([^"]+)"\s*=\s*"((?:\\.|[^"\\])*)"/gm)].map(([, key, value]) => [key, value]),
   );
 
   for (const [key, value] of Object.entries(viewerStrings)) {
