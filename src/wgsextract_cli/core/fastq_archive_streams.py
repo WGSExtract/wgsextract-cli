@@ -193,7 +193,7 @@ def _validate_columns(columns: list[list[bytes]], final_lf: bool) -> None:
             not name.startswith(b"@")
             or not separator.startswith(b"+")
             or (not quality and not quality_has_lf)
-            or max(len(name), len(sequence), len(separator)) >= MAX_LINE
+            or max(len(name), len(sequence), len(separator)) + 1 > MAX_LINE
             or len(quality) + quality_has_lf > MAX_LINE
             or len(sequence) - sequence.endswith(b"\r")
             != len(quality) - (quality_has_lf and quality.endswith(b"\r"))

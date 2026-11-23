@@ -128,18 +128,22 @@ def publish(result: CommandResult, card: Path | None) -> Path | None:
 
 
 def _is_result_data(result: CommandResult, path: Path) -> bool:
-    if not path.exists() and not path.is_symlink():
-        return False
-    resolved = path.resolve()
-    for record in (*result.inputs, *result.outputs):
-        if "://" in record.path:
-            continue
-        candidate = Path(record.path)
-        if candidate.resolve() == resolved:
-            return True
-        with contextlib.suppress(OSError):
-            if candidate.samefile(path):
+    try:
+        if not path.exists() and not path.is_symlink():
+            return False
+        resolved = path.resolve()
+        for record in (*result.inputs, *result.outputs):
+            if "://" in record.path:
+                continue
+            candidate = Path(record.path)
+            if candidate.resolve() == resolved:
                 return True
+            with contextlib.suppress(OSError):
+                if candidate.samefile(path):
+                    return True
+    except (OSError, RuntimeError):
+        # If identity cannot be established, leave the potentially aliased file alone.
+        return True
     return False
 
 

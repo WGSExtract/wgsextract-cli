@@ -215,3 +215,15 @@ def test_fastq_archive_1432_expands_home_paths_in_the_python_api(tmp_path, monke
     )
     assert (tmp_path / "restored.fq").read_bytes() == original
     assert Path(result.outputs[0].path) == tmp_path / "restored.fq"
+
+
+def test_fastq_archive_1432_preserves_a_line_at_the_documented_limit(tmp_path):
+    reads, archive, restored = (
+        tmp_path / name for name in ("r.fq", "r.wgfq", "restored.fq")
+    )
+    bases = b"A" * ((8 << 20) - 1)
+    original = b"@long\n" + bases + b"\n+\n" + b"F" * len(bases) + b"\n"
+    reads.write_bytes(original)
+    api.fastq.archive(api.FastqArchiveParams(r1=reads, output=archive))
+    api.fastq.restore(api.FastqRestoreParams(input=archive, output=restored))
+    assert restored.read_bytes() == original
