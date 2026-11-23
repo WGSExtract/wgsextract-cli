@@ -61,10 +61,12 @@ def cohort(tmp_path):
             "chr1\t20\t.\tAA\tCA,A\t.\tPASS\t.\tGT:DP:GQ\t0/1:20:60\n"
             "chr1\t30\t.\tA\tG\t.\tLowQual\t.\tGT:DP:GQ\t0/1:20:50\n"
             "chr1\t40\t.\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t1/.:20:60\n",
-            "chr1\t1\t.\tA\t<NON_REF>\t.\tPASS\tEND=9\tGT:MIN_DP:GQ\t0/0:15:50\n",
+            "chr1\t1\t.\tA\t<NON_REF>\t.\tPASS\tEND=9\tGT:MIN_DP:GQ\t0/0:15:50\n"
+            "chr1\t16\t.\tA\t<NON_REF>\t.\tPASS\tEND=19\tGT:MIN_DP:GQ\t0/0:15:50\n",
         ),
         (
             "chr1\t10\t.\tA\tT\t.\tPASS\t.\tGT:DP:GQ\t1:15:50\n"
+            "chr1\t19\t.\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t0/1:20:50\n"
             "chr1\t20\t.\tA\tC\t.\tPASS\t.\tGT:DP:GQ:FT\t0/0:20:50:LowQual\n",
             "chr1\t15\t.\tA\t<NON_REF>\t.\tPASS\tEND=25\tGT:MIN_DP:GQ\t0/0:12:60\n",
         ),
@@ -144,6 +146,7 @@ def test_1288_cohort_counts_reference_missing_other_alt_and_partial(cohort, tmp_
         ("10", "C"),
         ("10", "G"),
         ("10", "T"),
+        ("19", "G"),
         ("20", "C"),
         ("30", "G"),
         ("40", "G"),
@@ -160,6 +163,8 @@ def test_1288_cohort_counts_reference_missing_other_alt_and_partial(cohort, tmp_
             ("0", "1") if alt == "T" else ("1", "0")
         )
     assert rows["20", "C"]["an"] == "2"
+    assert rows["19", "G"]["an"] == "4"
+    assert rows["19", "G"]["reference_called_samples"] == "1"
     assert rows["20", "C"]["uncallable_samples"] == "2"
     assert rows["20", "C"]["not_assessed_samples"] == "1"
     assert rows["30", "G"]["an"] == "0"
@@ -364,11 +369,12 @@ def test_1288_cohort_checks_relatedness_flags_for_renamed_vcf_samples(cohort, tm
         )
     b["evidence"] = _binding(evidence_b)
     vcf_a = tmp_path / a["variants"]["path"]
-    label_a, label_b = f"{vcf_a.stem}_{a['sample']}", f"{vcf_b.stem}_{b['sample']}"
+    old_path = tmp_path / "secret-old-alias.vcf"
+    label_a, label_b = f"{old_path.stem}_{a['sample']}", f"{vcf_b.stem}_{b['sample']}"
     samples = tmp_path / "secret-relate.samples.tsv"
     samples.write_text(
         "input\tsample\tsex\tsex_confidence\tcalled_sites_only\n"
-        f"{vcf_a}\t{label_a}\tUnknown\tlow\tfalse\n"
+        f"{old_path}\t{label_a}\tUnknown\tlow\tfalse\n"
         f"{vcf_b}\t{label_b}\tUnknown\tlow\tfalse\n",
         encoding="utf-8",
         newline="\n",
@@ -387,8 +393,8 @@ def test_1288_cohort_checks_relatedness_flags_for_renamed_vcf_samples(cohort, tm
                 "command": "qc relate",
                 "status": "ok",
                 "inputs": [
-                    {"role": "input", "fingerprint": fingerprint(p)}
-                    for p in (vcf_a, vcf_b)
+                    {"role": "input", "path": str(alias), "fingerprint": fingerprint(p)}
+                    for alias, p in ((old_path, vcf_a), (vcf_b, vcf_b))
                 ],
                 "outputs": [
                     {"role": "relate_samples", "fingerprint": fingerprint(samples)},

@@ -80,6 +80,9 @@ An uncarried indel ALT cannot hide a padded SNV; a genotype carrying an
 unsupported allele remains uncallable for overlapping SNVs. Separately
 represented conflicting calls cannot be reconciled. The summary does not
 copy file-specific annotation or provenance strings into the allele table.
+It stages normalized BCFs and one chromosome of text records per input in
+the temporary workload directory. It reads those records in small buffers
+without running a process per participant during the merge.
 
 The table (`cohort.variants.tsv` or `.parquet`) has one row per normalized
 `chrom,pos,ref,alt` with an observed ALT genotype, even if that genotype did

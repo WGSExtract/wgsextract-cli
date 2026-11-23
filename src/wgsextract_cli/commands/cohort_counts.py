@@ -44,6 +44,7 @@ class Record:
     start: int
     end: int
     calls: dict[int, Call]
+    transparent_padding: bool
 
 
 def _snv(ref: str, alt: str) -> tuple[int, str] | None:
@@ -106,7 +107,7 @@ def _record(row: list[str], pos: int, gq: bool, thresholds: Thresholds) -> Recor
             else None
         )
         calls[pos + offset] = Call(base, candidates, genotype)
-    return Record(pos, end, calls)
+    return Record(pos, end, calls, passed)
 
 
 def _events(
@@ -178,8 +179,12 @@ def _site_rows(
     missing: Counter[State] = Counter()
     for sample, cursor in enumerate(evidence):
         state = cursor.at(pos)
-        current = [record for record in active[sample] if record.end >= pos]
-        active[sample] = current
+        active[sample] = [record for record in active[sample] if record.end >= pos]
+        current = [
+            record
+            for record in active[sample]
+            if pos in record.calls or not record.transparent_padding
+        ]
         if state is State.EXCLUDED_BY_POLICY:
             missing[state] += 1
         elif current:

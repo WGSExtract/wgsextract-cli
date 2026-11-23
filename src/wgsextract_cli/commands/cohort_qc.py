@@ -86,16 +86,22 @@ def _read_relatedness(
         matching = [row["fingerprint"] for row in qc["outputs"] if row["role"] == role]
         if matching != [fingerprint(table.path)]:
             raise ValueError
-    inputs = {row["fingerprint"] for row in qc["inputs"] if row["role"] == "input"}
+    inputs: dict[str, set[Path]] = defaultdict(set)
+    for row in qc["inputs"]:
+        if row["role"] == "input" and isinstance(row.get("fingerprint"), str):
+            inputs[row["fingerprint"]].add(Path(row["path"]))
     sources: dict[tuple[Path, str], set[int]] = defaultdict(set)
     for index, person in enumerate(participants):
         for artifact in (person.variants, person.alignment):
-            if artifact is not None and fingerprint(artifact.path) in inputs:
-                sources[artifact.path, person.sample].add(index)
-                # qc relate prefixes names that occur in more than one input.
-                sources[
-                    artifact.path, f"{input_stem(artifact.path)}_{person.sample}"
-                ].add(index)
+            if artifact is None or (digest := fingerprint(artifact.path)) is None:
+                continue
+            if digest not in inputs:
+                continue
+            # The prior manifest may name a symlink or old path. It only
+            # supplies aliases for an already verified fingerprint; never open it.
+            for source in inputs[digest] | {artifact.path}:
+                sources[source, person.sample].add(index)
+                sources[source, f"{input_stem(source)}_{person.sample}"].add(index)
     by_sample: dict[str, int] = {}
     joined: dict[int, dict[str, object]] = {}
     for row in _records(

@@ -22,7 +22,7 @@ from wgsextract_cli.core.builds import (
 from wgsextract_cli.core.reference_evidence import GQ, HEADER_KEY, ReferenceEvidence
 from wgsextract_cli.core.reference_resolver import header_contig_lengths
 from wgsextract_cli.core.region_selection import literal_region
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen, run_command
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import detect_caller
 from wgsextract_cli.core.variant_files import (
     chromosome_rename_mapping,
@@ -258,25 +258,38 @@ def prepare_participant(
     )
 
 
+def _buffered_records(path: Path) -> Iterator[list[str]]:
+    offset = 0
+    while True:
+        # No open handle survives a yield: fan-in uses a small buffer per
+        # sample, not two live processes/handles per sample.
+        with path.open("rb") as stream:
+            stream.seek(offset)
+            lines = stream.readlines(64 * 1024)
+            offset = stream.tell()
+        if not lines:
+            return
+        for line in lines:
+            yield line.rstrip(b"\r\n").decode("utf-8", errors="replace").split("\t")
+
+
 @contextmanager
 def chromosome_records(path: Path, chrom: str) -> Iterator[Iterator[list[str]]]:
-    proc = popen(
-        ["bcftools", "view", "-H", "-r", chrom, path.name],
-        cwd=path.parent,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
-    assert proc.stdout is not None
+    stage = path.with_name("chromosome.records")
     try:
-        yield (line.rstrip("\n").split("\t") for line in proc.stdout)
-        # Confirm a successful exit even if there were no records.
-        for _ in proc.stdout:
-            pass
-        if proc.wait():
-            raise UsageError("bcftools could not stream a prepared cohort chromosome.")
+        try:
+            with stage.open("wb") as output:
+                run_command(
+                    ["bcftools", "view", "-H", "-r", chrom, path.name],
+                    cwd=path.parent,
+                    stdout=output,
+                    capture_output=True,
+                    private_arguments=True,
+                )
+        except (OSError, WGSExtractError, subprocess.SubprocessError) as error:
+            raise UsageError(
+                "bcftools could not stage a prepared cohort chromosome."
+            ) from error
+        yield _buffered_records(stage)
     finally:
-        proc.stdout.close()
-        if proc.poll() is None:
-            proc.kill()
-            proc.wait()
+        stage.unlink(missing_ok=True)
