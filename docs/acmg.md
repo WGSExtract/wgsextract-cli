@@ -167,8 +167,8 @@ databases with `fastvep sa-build`:
 | REVEL v1.3 | 667 MB | `revel_chr22.osa2`, 4 MB; about 0.4 GB | free for non-commercial use; others contact the authors |
 | SpliceAI (Illumina, MANE SNVs via Ensembl) | 28.9 GB | `spliceai_chr22.osa2`, 228 MB; about 15 GB | academic and not-for-profit use only |
 | UCSC phyloP100way | 5.5 GB (chr22: 69 MB) | `phylop_chr22.osa2`, 75 MB; about 6 GB | freely available for public use |
-| UCSC hg38 RepeatMasker | 156 MB | `repeatmasker.osi` | [UCSC data terms](https://genome.ucsc.edu/goldenPath/credits.html); cite UCSC and RepeatMasker |
-| gnomAD GRCh38 LCRFromHengHg38 / GRCh38_segdups | small interval tables | `gnomad_lcr.bed.gz` / `gnomad_segdup.bed.gz` | CC0; cite gnomAD |
+| UCSC hg38 RepeatMasker | 156 MB | `repeatmasker.osi`, 14 MB | [UCSC data terms](https://genome.ucsc.edu/goldenPath/credits.html); cite UCSC and RepeatMasker |
+| gnomAD GRCh38 LCRFromHengHg38 / GRCh38_segdups | 50 MB / 0.18 MB | `gnomad_lcr.bed.gz` / `gnomad_segdup.bed.gz`, 13 MB / 0.07 MB | CC0; cite gnomAD |
 
 You download these yourself and their terms apply to you; WGS Extract never
 mirrors them or the databases built from them, and you shouldn't share the

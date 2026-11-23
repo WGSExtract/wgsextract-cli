@@ -188,14 +188,15 @@ _DB_BYTES = {
     "clinvar_protein": 21e6,
     "gnomad_genes": 2e6,
     "omim": 1e6,
-    "repeatmasker": 60e6,
-    "lcr": 3e6,
+    "repeatmasker": 16e6,
+    "lcr": 15e6,
     "segdup": 1e6,
 }
 # Staging bytes a per-chromosome build holds at its peak: gnomAD's reduced VCF
 # per byte streamed, the SpliceAI cut and the REVEL rows per megabase.
 _TEMP_PER_SOURCE_BYTE = {"gnomad": 0.09}
 _TEMP_PER_MB = {"spliceai": 9.4e6, "revel": 2.1e6}
+_TEMP_BYTES = {"repeatmasker": 25_000_000, "lcr": 65_000_000, "segdup": 1_000_000}
 
 
 def fastvep_version() -> str:
@@ -449,7 +450,7 @@ def make_plan(
                         source.key,
                         download=size(source_url(source.key)),
                         database=int(_DB_BYTES[source.key]),
-                        temp=35_000_000 if source.key == "repeatmasker" else 0,
+                        temp=_TEMP_BYTES.get(source.key, 0),
                     )
                 )
             continue
