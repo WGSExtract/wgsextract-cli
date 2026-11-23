@@ -17,10 +17,9 @@ from wgsextract_cli.core.pharmgkb import INFO_HEADER as PHARMGKB_INFO_HEADER
 from wgsextract_cli.core.pharmgkb import table_provenance
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError
-from wgsextract_cli.core.variant_files import ensure_vcf_prepared
+from wgsextract_cli.core.variant_files import ensure_vcf_prepared, is_vcf_path
 
 from .annotation_helpers import (
-    VCF_SUFFIXES,
     annotate_vcf,
     annotation_context,
     prepare_tabix_annotation,
@@ -76,7 +75,7 @@ def run_alphamissense(params: VcfAlphamissenseParams) -> None:
     )
     am_vcf = prepare_tabix_annotation(am_file, "AlphaMissense")
     ann_out = str(Path(outdir, ALPHAMISSENSE_ANNOTATED))
-    if am_vcf.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(am_vcf, bcf=False):
         annotate_vcf(
             ensure_vcf_prepared(input_file),
             am_vcf,
@@ -138,7 +137,7 @@ def run_pharmgkb(params: VcfPharmgkbParams) -> None:
         pharmgkb_file, "vcf_pharmgkb_missing", "pharmgkb"
     )
     ann_out = str(Path(outdir, PHARMGKB_ANNOTATED))
-    if pharmgkb_file.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(pharmgkb_file, bcf=False):
         annotate_vcf(
             ensure_vcf_prepared(input_file),
             ensure_vcf_prepared(pharmgkb_file),

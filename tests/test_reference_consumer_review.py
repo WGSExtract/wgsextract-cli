@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 
 from tests.ancestry_helpers import NAME, build
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import bgzip_index, needs_htslib, write_fasta
-from tests.smoke_utils import state_directory_setting
 from wgsextract_cli import api
 from wgsextract_cli.commands.qc.ancestry import vcf_genotypes
 from wgsextract_cli.core.ancestry_reference import AncestryReference

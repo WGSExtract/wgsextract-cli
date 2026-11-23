@@ -100,6 +100,14 @@ release**), or with
 Pushing a `vX.Y.Z` tag by hand still works too, and also uses the notes file
 if the tagged commit has one.
 
+4. **Pin the output-contract baseline** once the tag exists, in a follow-up
+   PR: `git fetch origin tag vX.Y.Z`, then
+   `python scripts/output_contracts.py pin --release vX.Y.Z` writes
+   `contracts/baselines/vX.Y.Z.json` (the tag, its commit and a digest) from
+   the tag's own files, and the PR removes any `approved_breaks` entries the
+   new baseline absorbed. Later changes are compared with it; see
+   [output contracts](output-contracts.md).
+
 ## 2. What the app's release needs
 
 - **Secrets and variables.** The app's build reads the Apple signing and
