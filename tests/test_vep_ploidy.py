@@ -1,5 +1,6 @@
 """`vep run` ploidy for calling a BAM or CRAM (#1244)."""
 
+import gzip
 from dataclasses import replace
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from tests.test_vep_run import _bam_with_snps
 from tests.test_vep_run import fake_vep as fake_vep
 from wgsextract_cli import api
 from wgsextract_cli.api import VepRunParams
+from wgsextract_cli.core.ref_library.assets import sequence_signature
 
 pytestmark = needs_htslib
 
@@ -204,7 +206,14 @@ def test_1346_stale_header_md5_does_not_choose_ploidy_over_contig_lengths(
 
 @pytest.mark.parametrize(
     "override",
-    ["--assembly GRCh37", "-FAS=foreign.fa", "--as GRCh37", "--fa foreign.fa"],
+    [
+        "--assembly GRCh37",
+        "-FAS=foreign.fa",
+        "--as GRCh37",
+        "--fa foreign.fa",
+        "--grch37",
+        "--grc",
+    ],
 )
 def test_1435_raw_vep_arguments_cannot_replace_validated_inputs(
     tmp_path, fake_vep, override
@@ -220,6 +229,32 @@ def test_1435_raw_vep_arguments_cannot_replace_validated_inputs(
 
     assert result.status == "failed"
     assert "--vep-args" in str(result.error) and "--assembly" in str(result.error)
+    assert fake_vep() == []
+
+
+def test_1435_vep_detects_an_unindexed_gzip_reference_by_signature(
+    tmp_path, fake_vep, monkeypatch
+):
+    from wgsextract_cli.core.constants import REFERENCE_MODELS
+
+    fasta = tmp_path / "reference.fa.gz"
+    fasta.write_bytes(gzip.compress(b">NC_000001.11\nAAAA\n>NC_000002.12\nCCCC\n"))
+    signature = sequence_signature({"NC_000001.11": 4, "NC_000002.12": 4})
+    monkeypatch.setitem(REFERENCE_MODELS, signature, ["hg38", "", "catalog.fa.gz"])
+    bam = sam_to_bam(["@SQ\tSN:NC_000002.12\tLN:4"], tmp_path / "subset.bam")
+
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(bam), ref=fasta, engine="ensembl", vep_cache=tmp_path,
+            vep_assembly="GRCh37", ploidy="2",
+        ),
+        check=False,
+    )  # fmt: skip
+
+    [failure] = [w for w in result.warnings if w.code == "input_failed"]
+    assert (
+        "--ref is hg38" in failure.message and "--assembly is GRCh37" in failure.message
+    )
     assert fake_vep() == []
 
 

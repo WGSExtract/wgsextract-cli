@@ -205,7 +205,7 @@ def fasta_index_build(
         )
     except (OSError, UnicodeDecodeError):
         dictionary = []
-    lengths = read_fai_lengths(fasta) or {
+    lengths = lengths or {
         row["SN"]: int(row["LN"])
         for row in dictionary
         if "SN" in row and row.get("LN", "").isdigit()

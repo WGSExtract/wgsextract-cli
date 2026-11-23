@@ -176,9 +176,8 @@ def refuse_unsupported_args(
     if not vep_args:
         return
     args = shlex.split(vep_args)
-    if calling and any(
-        _refuses(("--assembly", "--fasta"), t, min_prefix=2) for t in args
-    ):
+    calling_options = ("--assembly", "--fasta", "--grch37")
+    if calling and any(_refuses(calling_options, t, min_prefix=2) for t in args):
         raise WGSExtractError(
             "For BAM/CRAM input, use --assembly and --ref instead of setting "
             "VEP's assembly or FASTA in --vep-args."
