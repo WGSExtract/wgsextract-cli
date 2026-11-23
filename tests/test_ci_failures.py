@@ -64,6 +64,7 @@ class ReplayGitHub(GitHub):
         self.on_label_delete: Callable[[], None] | None = None
         self.on_audit: Callable[[], None] | None = None
         self.runs: list[dict[str, Any]] = []
+        self.queue_refs: set[str] = set()
         self.superseded = False
         self.refuse_audit = False
         self.refuse_issues = False
@@ -116,6 +117,13 @@ class ReplayGitHub(GitHub):
             }
         if parts[0] == "check-runs":
             return self.annotations
+        if parts[:2] == ["git", "matching-refs"]:
+            prefix = "refs/" + "/".join(parts[2:])
+            return [
+                {"ref": f"refs/heads/{ref}"}
+                for ref in sorted(self.queue_refs)
+                if f"refs/heads/{ref}".startswith(prefix)
+            ]
         if parts == ["labels"]:
             if method == "GET":
                 return [{"name": name} for name in self.repository_labels]
@@ -403,6 +411,27 @@ def test_910_redrafted_install_lab_cancellation_cannot_restart_ready_payload(
         assert "Retry not dispatched" in ledger_comments(api)[0]
     else:
         assert api.issues == []
+
+
+@pytest.mark.parametrize("ref_live", [False, True])
+def test_1373_cancelled_merge_group_is_retried_only_while_its_queue_ref_exists(
+    ref_live: bool,
+) -> None:
+    api = ReplayGitHub()
+    branch = "gh-readonly-queue/main/pr-7-" + "a" * 40
+    api.run.update(
+        name="PR area checks / checks_requested / queue",
+        path=".github/workflows/pr_ci.yml",
+        event="merge_group",
+        head_branch=branch,
+        conclusion="cancelled",
+        pull_requests=[],
+    )
+    api.jobs[1] = [recorded("lost_runner")]
+    # A rebuilt group shares the prefix but is a different, live ref.
+    api.queue_refs = {branch + "-rebuilt"} | ({branch} if ref_live else set())
+    Observer(api).process(api.run)
+    assert bool(api.retried) is ref_live
 
 
 def test_lost_runner_after_a_step_is_also_retried() -> None:

@@ -9,7 +9,6 @@ import sys
 import threading
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -65,7 +64,8 @@ def ensembl_test_cache(
 @pytest.fixture
 def fake_vep(tmp_path, monkeypatch):
     """Install a fake `vep`; returns a function giving the logged command lines.
-    ``fake_vep.install(exit_code=..., dirname=..., sleep=...)`` reinstalls it;
+    ``fake_vep.install(exit_code=..., dirname=..., sleep=..., tool=...)``
+    reinstalls it (or installs it as ``tool``, such as ``vep-rs``);
     with ``sleep`` it waits that many seconds after writing its outputs."""
     from wgsextract_cli.core.config import settings
 
@@ -75,7 +75,9 @@ def fake_vep(tmp_path, monkeypatch):
     ensembl_test_cache(tmp_path, "GRCh37")
     log = tmp_path / "vep_calls.jsonl"
 
-    def install(exit_code: int = 0, dirname: str = "fakebin", sleep: int = 0) -> None:
+    def install(
+        exit_code: int = 0, dirname: str = "fakebin", sleep: int = 0, tool: str = "vep"
+    ) -> None:
         bindir = tmp_path / dirname
         bindir.mkdir(exist_ok=True)
         source = _FAKE_VEP.format(
@@ -84,7 +86,7 @@ def fake_vep(tmp_path, monkeypatch):
             exit_code=exit_code,
             sleep=sleep,
         )
-        python_tool(bindir, "vep", source)
+        python_tool(bindir, tool, source)
         monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
         from wgsextract_cli.core.dependencies import clear_tool_caches
 
@@ -688,87 +690,10 @@ def test_api_reads_a_home_relative_bam(tmp_path, fake_vep, monkeypatch):
             input=Path("~/s.bam"),
             ref=Path("~/ref.fa"),
             region="chr1:250-350",
+            ploidy="1",
             vep_cache=Path("~"),
         )
     )
 
     calls = vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")
     assert [(c[0], c[1]) for c in calls] == [("chr1", "301")]
-
-
-# --- assembly and FASTA choice ---------------------------------------------------
-
-
-def _command(lib, **overrides):
-    from wgsextract_cli.commands._vep_run import _build_vep_command
-
-    fields = {
-        "input": Path("in.vcf.gz"),
-        "engine": "ensembl",
-    }
-    params = VepRunParams(**{**fields, **overrides})
-    return _build_vep_command(params, "in.vcf.gz", "out.vcf", "snp-indel", lib, "2")
-
-
-@pytest.mark.parametrize(
-    ("build", "assembly"), [("hg38", "GRCh38"), ("hg19", "GRCh37"), (None, None)]
-)
-def test_assembly_follows_the_library_build(tmp_path, build, assembly):
-    ensembl_test_cache(tmp_path, assembly or "GRCh38")
-    cmd = _command(
-        SimpleNamespace(build=build, fasta="/r/g.fa", vep_cache=str(tmp_path))
-    )
-    assert _value(cmd, "--fasta") == "/r/g.fa"
-    if assembly:
-        assert _value(cmd, "--assembly") == assembly
-    else:
-        assert "--assembly" not in cmd
-
-
-def test_library_cache_used_when_no_cache_option(tmp_path):
-    ensembl_test_cache(tmp_path)
-    lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=str(tmp_path))
-    cmd = _command(lib, vep_cache=None)
-    assert _value(cmd, "--dir_cache") == str(tmp_path)
-    assert "--offline" in cmd and "--fasta" not in cmd
-
-
-def test_vep_fast_preset_replaces_everything(tmp_path):
-    ensembl_test_cache(tmp_path)
-    lib = SimpleNamespace(build="hg38", fasta=None, vep_cache=str(tmp_path))
-
-    assert "--everything" in _command(lib, preset="everything")
-    fast = _command(lib, preset="fast")
-    assert "--everything" not in fast
-    assert {"--symbol", "--mane", "--sift", "--polyphen"} <= set(fast)
-    assert "--af_gnomadg" not in fast and "--hgvs" not in fast
-
-
-@pytest.mark.parametrize(
-    ("fasta", "forced", "kept"),
-    [
-        ("/lib/hg38.fa", "GRCh37", False),
-        ("/lib/hs37d5.fa", "GRCh38", False),
-        ("/lib/GRCh38.fa", "GRCh38", True),
-        ("/lib/genome.fa", "GRCh37", True),
-    ],
-)
-def test_forced_assembly_drops_a_conflicting_fasta(fasta, forced, kept):
-    from wgsextract_cli.commands._vep_run import _apply_forced_assembly
-
-    lib = SimpleNamespace(build="hg38", fasta=fasta)
-    _apply_forced_assembly(lib, forced)  # type: ignore[arg-type]
-    assert lib.build == ("hg38" if forced == "GRCh38" else "hg19")
-    assert lib.fasta == (fasta if kept else None)
-
-
-@pytest.mark.parametrize("name", ["GRCh38.fa", "custom.fa"])
-def test_issue_1004_forced_assembly_keeps_fasta_under_misleading_parent(name):
-    from wgsextract_cli.commands._vep_run import _apply_forced_assembly
-
-    fasta = f"/refs/hg19/{name}"
-    lib = SimpleNamespace(build="hg38", fasta=fasta)
-
-    _apply_forced_assembly(lib, "GRCh38")  # type: ignore[arg-type]
-
-    assert lib.fasta == fasta

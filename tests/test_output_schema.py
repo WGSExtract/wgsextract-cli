@@ -9,6 +9,8 @@ from typing import Annotated, ClassVar, Literal, TypedDict
 import jsonschema
 import pytest
 
+from wgsextract_cli.core.artifact_facts import ArtifactIndex
+from wgsextract_cli.core.artifacts import ArtifactRecord, Producer, SourceEdge
 from wgsextract_cli.core.output_schema import Constraints, Shape, output_schema
 from wgsextract_cli.core.results import FileRecord
 
@@ -102,7 +104,13 @@ def test_929_dataclass_file_output_keeps_defaulted_fields_required(
     record = FileRecord.describe(source, "input")
     schema = output_schema(
         FileRecord,
-        shapes={FileRecord: Shape("file", additional=False)},
+        shapes={
+            FileRecord: Shape("file", additional=False),
+            ArtifactRecord: Shape("artifact"),
+            ArtifactIndex: Shape("artifact_index"),
+            Producer: Shape("producer"),
+            SourceEdge: Shape("source_edge"),
+        },
         schema_id="urn:test:file",
         title="File",
         description="A complete dataclass file record.",
