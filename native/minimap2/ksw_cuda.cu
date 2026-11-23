@@ -48,7 +48,7 @@ int choose_device(size_t &free_bytes, std::string &reason) {
     const wgse_gpu_error error = WGSE_GPU(GetDeviceCount)(&count);
     if (error != WGSE_GPU_SUCCESS || count == 0) {
         (void)WGSE_GPU(GetLastError)();
-        reason = error != WGSE_GPU_SUCCESS ? WGSE_GPU(GetErrorString)(error) : "no CUDA device";
+        reason = error != WGSE_GPU_SUCCESS ? error_description(error) : "no CUDA device";
         return -1;
     }
     int best = -1;

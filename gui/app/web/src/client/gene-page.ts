@@ -126,7 +126,7 @@ export function openGenePage(opener: HTMLElement) {
             });
         } else if (target.matches("[data-gene-viewer]") && current) {
             const locus = current.doc.gene.locus;
-            openGenomeViewer(state.localizationCode, state.labels, target, current.inputs.alignment || current.inputs.vcf, locus, container, text("backToGene"));
+            openGenomeViewer(state.localizationCode, state.labels, target, current.inputs.alignment || current.inputs.vcf, locus, { host: container, backLabel: text("backToGene") });
         } else if (target.matches("[data-gene-export]") && current) {
             const exporting = current;
             const exportStatus = container.querySelector<HTMLElement>("[data-gene-export-status]");

@@ -83,12 +83,13 @@ async function context(t, cli) {
 }
 
 test("#1166: the gene page runs the local CLI with the selected settings and lets exports be revealed", async (t) => {
-    const table = "/genomes/wgse/s_BRCA1_clinvar-plp_variants.tsv";
+    const filename = "s_BRCA1_clinvar-plp_variants.tsv";
     const f = await context(t, (args) => ({
         exitCode: 0, stderr: "",
         stdout: JSON.stringify(cliResult(page, args.includes("--export")
             ? [{ path: table, role: "variant_table", kind: "tsv", metrics: { rows: 1 } }] : [])),
     }));
+    const table = path.join(path.dirname(f.vcf), "wgse", filename);
     const paths = new ResultPaths();
     const signal = new AbortController().signal;
     const shown = await openGenePage({ gene: "brca1", vcf: "{{usersWorkspace}}/mygenomes/s.vcf.gz", minDepth: 20 }, f.context, paths, signal);
@@ -102,6 +103,7 @@ test("#1166: the gene page runs the local CLI with the selected settings and let
     assert.equal(exported.exportPath, table);
     assert.equal(exported.exportRows, 1);
     assert.equal(paths.has(table), true, "Show in folder may reveal only the table the CLI reported.");
+    assert.equal(paths.has(path.join(path.dirname(f.vcf), filename)), false, "A matching filename in another folder cannot be revealed.");
 });
 
 test("#1166: bad input and CLI failures are problems the page can explain", async (t) => {

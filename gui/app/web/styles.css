@@ -1732,6 +1732,42 @@ tbody tr + tr {
   margin: 0;
 }
 
+.result-viewer-rows {
+  max-block-size: 24rem;
+  overflow: auto;
+}
+
+.result-viewer-rows table {
+  border-collapse: collapse;
+  inline-size: 100%;
+}
+
+.result-viewer-rows th,
+.result-viewer-rows td {
+  padding: 2px 8px 2px 0;
+  text-align: start;
+  vertical-align: middle;
+}
+
+.result-viewer-rows thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--terminal-bg);
+}
+
+.result-viewer-row-reason,
+.result-viewer-rows-note {
+  color: var(--muted);
+}
+
+.result-viewer-row-reason {
+  margin-inline-start: 6px;
+}
+
+.result-viewer-rows-note {
+  margin: 2px 0 4px;
+}
+
 .result-summary details pre {
   padding: 6px 0;
 }

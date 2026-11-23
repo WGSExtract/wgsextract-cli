@@ -1,6 +1,7 @@
 import type { Labels } from "../../../shared/types.js";
 import type { LibraryViewerResult } from "./genome-viewer-library.js";
 import { api } from "./api.js";
+import { isViewerBuild } from "../../../shared/viewer-rows.js";
 import type { RemoteViewerResult } from "./genome-viewer-remote.js";
 
 let pane: HTMLElement | undefined;
@@ -9,7 +10,8 @@ let pane: HTMLElement | undefined;
  * A sibling of #app survives command-output renders without unloading either document or its streams.
  * `host` is the page the viewer covers and returns to: #app, or the gene page.
  */
-export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLElement, inputPath = "", locus = "", host?: HTMLElement, backLabel?: string) {
+export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLElement, inputPath = "", locus = "", options: { build?: string; host?: HTMLElement; backLabel?: string } = {}) {
+    const { build = "", host, backLabel } = options;
     if (pane) {
         return;
     }
@@ -71,6 +73,7 @@ export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLEle
                 strings: labels.viewerStrings ?? {},
                 inputPath,
                 locus,
+                build,
             }, location.origin);
         }
         if (event.origin === location.origin && event.source === frame.contentWindow && event.data?.type === "genomeViewerRemoteRequest"
@@ -100,7 +103,10 @@ export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLEle
             && typeof event.data.requestID === "string" && typeof event.data.path === "string" && typeof event.data.locus === "string") {
             const generation = ++selection;
             cancelPending();
-            void api<LibraryViewerResult>("/api/viewer/open", { body: { path: event.data.path, locus: event.data.locus, tracks: event.data.tracks ?? [] } })
+            void api<LibraryViewerResult>("/api/viewer/open", { body: {
+                path: event.data.path, locus: event.data.locus, tracks: event.data.tracks ?? [],
+                ...(isViewerBuild(event.data.build) ? { build: event.data.build } : {}),
+            } })
                 .catch((): LibraryViewerResult => ({ problem: "libraryUnavailable" }))
                 .then((result) => {
                     if ("id" in result) {

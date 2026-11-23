@@ -143,7 +143,7 @@ from .info import (
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
 from .methylation import MethylationPileupParams
 from .microarray import MicroarrayParams
-from .panel import PanelBedParams
+from .panel import PanelBedParams, PanelCheckParams
 from .pet import PetAlignParams
 from .qc import (
     FakeDataParams,
@@ -273,6 +273,7 @@ __all__ = [
     "MtBamParams",
     "MtHaplogroupParams",
     "PanelBedParams",
+    "PanelCheckParams",
     "MultiqcMetricsParams",
     "MultiqcParams",
     "Params",
