@@ -335,7 +335,7 @@ def _publish(
             ],
             capture_output=True,
         )
-        run_command(["bcftools", "index", anchor])
+        run_command(["bcftools", "index", "--csi", anchor])
     publish_output_set({path: destination / path.name for path in paths.values()})
     for role, path in paths.items():
         result.add_output(destination / path.name, role)

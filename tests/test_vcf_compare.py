@@ -131,6 +131,7 @@ def test_compare_1295_counts_carried_alt_and_genotype_separately(callsets, tmp_p
         "70": "filtered",
     }
     anchor = outdir / "compare.anchor.vcf.gz"
+    assert (outdir / "compare.anchor.vcf.gz.csi").is_file()
     indexed = run_command(
         [
             "bcftools",
@@ -200,6 +201,25 @@ def test_compare_1295_strict_exclusion_requires_callable_gvcf(callsets, tmp_path
     assert {"vcf_compare_no_reference_evidence"} <= {
         warning.code for warning in result.warnings
     }
+
+
+def test_compare_1295_concordance_counts_callable_one_sided_alleles(callsets, tmp_path):
+    a, b, gvcf = callsets
+    api.vcf.compare(
+        api.VcfCompareParams(
+            callset=_inputs(a, b),
+            sample=("a=NA",),
+            reference_evidence="gvcf",
+            gvcf=(f"b={gvcf}",),
+            outdir=tmp_path,
+        )
+    )
+    totals = next(
+        row
+        for row in _rows(tmp_path / "compare.summary.tsv")
+        if row["variant_type"] == "all"
+    )
+    assert (totals["a_only_observed"], totals["a_only_callable"]) == ("6", "1")
 
 
 def test_compare_1295_unverified_override_does_not_bypass_known_mismatch(tmp_path):

@@ -78,10 +78,10 @@ def region_output_suffix(region: str) -> str:
     return f"{len(region_items(region, commas=True))}regions-{digest}"
 
 
-def region_items(region: str, *, commas: bool) -> list[str]:
+def region_items(region: str, *, commas: bool, allow_files: bool = True) -> list[str]:
     """The regions and BED files in a ``--region`` list: GATK and Parabricks
     separate them with commas, DeepVariant on the CPU with whitespace."""
-    if is_region_file(region):
+    if allow_files and is_region_file(region):
         return [region]
     if commas:
         return [item.strip() for item in region.split(",") if item.strip()]
@@ -103,13 +103,7 @@ def selected_intervals(
     With ``allow_files=False``, only literal regions are recognized.
     """
     intervals: Intervals = {}
-    items = (
-        region_items(region, commas=commas)
-        if allow_files
-        else (region.split(",") if commas else region.split())
-    )
-    for item in items:
-        selection = item if allow_files else item.strip()
+    for selection in region_items(region, commas=commas, allow_files=allow_files):
         if allow_files and selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
             rows = bed_intervals(selection)
         else:
