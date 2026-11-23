@@ -1,5 +1,6 @@
 import contextlib
 import dataclasses
+import itertools
 import json
 import logging
 import re
@@ -20,8 +21,10 @@ from wgsextract_cli.core.artifacts import (
     Producer,
     artifact_from_dict,
     ended_as,
+    finished_step,
     lineage_args,
     producer_from_dict,
+    started_step,
     unrecorded_output,
 )
 from wgsextract_cli.core.config import config_args
@@ -454,6 +457,9 @@ def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> dict[str, Scalar
         running = _RUNNING.get()
         step = running.decision.step.name if running else None
         cmd += lineage_args(current_result().run, step)
+        if running:
+            words = itertools.takewhile(lambda word: word[:1] != "-", cmd_args)
+            started_step(running.metrics, " ".join(words))
         try:
             run_command(cmd)
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
@@ -524,15 +530,8 @@ def record_step_result(document: Path) -> dict[str, Scalar]:
     child = step.get("run")
     child = child if isinstance(child, dict) else {}
     if running:
-        runs = running.metrics.setdefault("result_runs", [])
-        assert isinstance(runs, list)
-        runs.append(
-            {
-                "run": child.get("id"),
-                "command": command,
-                "status": step.get("status") or "ok",
-            }
-        )
+        status = step.get("status") or "ok"
+        finished_step(running.metrics, child.get("id"), command, status)
     if step.get("manifest"):
         result.add_output(step["manifest"], "step_manifest", kind="json")
     for output in outputs:

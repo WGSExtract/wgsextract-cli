@@ -256,6 +256,8 @@ def test_1379_a_cancelled_analysis_lists_its_interrupted_step_as_cancelled(
     assert result.status == "cancelled"
     [step] = result.run.children
     assert step.step.startswith("annotate:") and step.status == "cancelled"
+    # Its command never started: no run did the step's work, this one included.
+    assert (step.run, step.command) == (None, "vcf chain-annotate")
 
 
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="needs named pipes")
@@ -280,3 +282,58 @@ def test_1379_a_pipe_named_like_a_manifest_never_blocks_the_result(
     finalize.join(30)
     assert not finalize.is_alive()
     assert json.loads(result.to_json())["inputs"][0]["artifact"]["origin"] == "external"
+
+
+@needs_htslib
+def test_1379_reads_vouch_only_for_vcfs_named_by_their_sample(tmp_path: Path) -> None:
+    # Review of #1427: `vcf phase` writes the reads' phasing into another
+    # VCF's sample; that sample name isn't the reads' to vouch for.
+    from wgsextract_cli.core.results import CommandResult
+
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    (calls / "snps.vcf.manifest.json").unlink()  # an external VCF
+    vcf = calls / "snps.vcf.gz"
+    names = tmp_path / "names.txt"
+    names.write_text("lab-id-7\n")
+    lab = tmp_path / "lab.vcf.gz"
+    run_command(["bcftools", "reheader", "-s", str(names), "-o", str(lab), str(vcf)])
+    run_command(["tabix", "-p", "vcf", str(lab)])
+    phased = tmp_path / "phased.vcf.gz"
+    run_command(["bcftools", "view", "-Oz", "-o", str(phased), str(lab)])
+    named = tmp_path / "named.vcf.gz"
+    run_command(["bcftools", "view", "-Oz", "-o", str(named), str(vcf)])
+    result = CommandResult(command="vcf phase")
+    result.add_input(sample.bam, "input")
+    result.add_input(lab, "vcf_input")
+    result.add_output(phased, "phased_vcf")
+    result.add_output(named, "named_vcf")
+    result.finalize(probe_tools=False)
+    document = json.loads(result.to_json())
+    assert _output(document, "phased_vcf")["artifact"]["called_from"] == []
+    called = _output(document, "named_vcf")["artifact"]["called_from"]
+    assert [Path(r["path"]).name for r in called] == ["s.bam"]
+
+
+@needs_htslib
+def test_1379_a_malformed_manifest_beside_calls_only_loses_their_producer(
+    tmp_path: Path,
+) -> None:
+    # Review of #1427: a manifest whose outputs isn't a list crashed the
+    # producer lookup, and with it analyze's sample check.
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    (calls / "snps.vcf.manifest.json").write_text(
+        json.dumps({"schema": "wgsextract.result/1", "outputs": 1})
+    )
+    other = _bam(tmp_path / "other.bam", 3000, sample="NA12878")
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive", "--dry-run", "--input", other,
+        "--vcf-inputs", str(calls / "snps.vcf.gz"), "--outdir", str(tmp_path / "a"),
+    ])  # fmt: skip
+    assert code == 0, stdout
+    document = json.loads(stdout)
+    assert "sample_mismatch" in {w["code"] for w in document["warnings"]}
+    assert document["inputs"][1]["artifact"]["origin"] == "external"

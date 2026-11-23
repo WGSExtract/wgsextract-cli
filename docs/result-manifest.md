@@ -149,7 +149,8 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   journal's `reason`. A reused step names the run that did its work in the
   earlier run, and so do the artifacts of the files it wrote. A step done inside the workflow's own process names the
   workflow's run. A step whose command failed is listed with its `run`,
-  whose own failed manifest names this run as its `parent`. A step
+  whose own failed manifest names this run as its `parent`; one whose
+  command never started or left no result has `run: null`. A step
   interrupted by cancelling the run is `cancelled`, like the run.
   `vcf chain-annotate` lists each annotator it ran (`step` is the
   annotation, such as `clinvar`), since their manifests are removed with
@@ -169,7 +170,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index (`.crai`) isn't read: only its presence is checked. `mismatched`: another sequence dictionary, blocks that aren't the file's, or an unreadable index. Every index a reader may pick is checked (htslib picks a `.csi` before a `.bai` or `.tbi`), and the first unusable one is reported. |
   | `producer` | `run`, `root`, `command` and `step` of the run that wrote it. |
   | `sources` | The files it was made from: `path`, `role`, `fingerprint`, `producer` (run), `lifecycle` and `retained`. |
-  | `called_from` | For a VCF or BCF: the reads (as `sources` entries) wgsextract called it from, directly or through filters and annotations that kept its samples, so its sample columns are those reads' `@RG SM`. Empty when nothing vouches for that: an external VCF, or one whose samples were renamed. |
+  | `called_from` | For a VCF or BCF: the reads (as `sources` entries) wgsextract called it from, directly or through filters and annotations that kept its samples, so its sample columns are those reads' `@RG SM`. It names the reads only when its samples are among their `@RG SM` (for a CRAM, whose header isn't read, when no other VCF went into it). Empty when nothing vouches for that: an external VCF, one whose samples were renamed, or one that took its sample from another VCF, as `vcf phase` does. |
 
   The facts come from the file itself: its header (read without running a
   tool; a CRAM's header isn't read, so its assembly and samples are

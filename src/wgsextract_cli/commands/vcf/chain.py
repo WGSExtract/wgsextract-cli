@@ -205,6 +205,7 @@ def run_chain_annotate(
             cmd += _step_resource_args(ann, lib)
             cmd += lineage_args(current_result().run, ann)
             result_file = Path(step_outdir, "step.result.json")
+            result_file.unlink(missing_ok=True)  # an earlier, killed attempt's
             cmd += ["--result-file", str(result_file)]
             reason = f"annotation {i + 1} of {len(annotations)}"
 

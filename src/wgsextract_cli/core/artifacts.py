@@ -180,6 +180,29 @@ def ended_as(error: BaseException) -> Literal["failed", "cancelled"]:
     return "cancelled" if stopped else "failed"
 
 
+def started_step(metrics: dict[str, object], command: str) -> None:
+    """List a workflow step's ``command`` as it starts, with no run until
+    its result names one (``finished_step``): one that never starts, or
+    leaves no result, isn't credited to the workflow's own run."""
+    runs = metrics.setdefault("result_runs", [])
+    if isinstance(runs, list):
+        runs.append({"run": None, "command": command})
+
+
+def finished_step(
+    metrics: dict[str, object], run: object, command: str, status: object
+) -> None:
+    """Name the run, command and status of a step's command from its result."""
+    runs = metrics.setdefault("result_runs", [])
+    assert isinstance(runs, list)
+    entry = {"run": run, "command": command, "status": status}
+    started = [r for r in runs if r.get("run") is None and "status" not in r]
+    if started:
+        started[-1].update(entry)
+    else:
+        runs.append(entry)
+
+
 def lineage_args(run: RunRecord, step: str | None = None) -> list[str]:
     """The hidden global options that make a wgsextract subprocess ``step``
     of ``run``."""
@@ -319,7 +342,8 @@ def _producer_in(manifest: Path, record: FileRecord) -> _Recorded | None:
         return None
     run = document.get("run")
     run = run if isinstance(run, dict) else {}
-    for output in document.get("outputs") or []:
+    outputs = document.get("outputs")
+    for output in outputs if isinstance(outputs, list) else []:
         if (
             not isinstance(output, dict)
             or output.get("path") != record.path
@@ -405,27 +429,36 @@ def _called_from(
     sources: Sequence[SourceEdge],
     by_path: Mapping[str, FileRecord],
 ) -> list[SourceEdge]:
-    """The reads a VCF/BCF output's calls come from: its BAM/CRAM sources,
-    and the reads its VCF sources were called from when it keeps their
-    samples (a filtered or annotated copy). Without them nothing vouches
-    that its sample columns name those reads' sample."""
-    if record.kind not in ("vcf", "bcf"):
+    """The reads a VCF/BCF output's calls come from, when its sample columns
+    are theirs: its BAM/CRAM sources when it names only their @RG SM (or,
+    for reads whose SM isn't known, such as a CRAM's, when no other VCF
+    could have named them), and the reads its VCF sources were called from
+    when it keeps their samples (a filtered or annotated copy). A VCF made
+    with the reads but named by another VCF (``vcf phase``) has none."""
+    if record.kind not in ("vcf", "bcf") or not samples:
         return []
+    named = set(samples)
     found: dict[tuple[str, str | None], SourceEdge] = {}
+    reads: list[tuple[SourceEdge, ArtifactRecord]] = []
+    named_by_another = False
     for source in sources:
         origin = by_path.get(source.path)
-        if origin is None:
+        artifact = origin.artifact if origin else None
+        if origin is None or artifact is None:
             continue
         if origin.kind in ("bam", "cram"):
+            reads.append((source, artifact))
+            continue
+        # This run's own temporary calls (vcf call --merge's parts) name nothing.
+        named_by_another |= artifact.origin != "this_run"
+        if named <= set(artifact.samples):
+            for called in artifact.called_from:
+                found.setdefault((called.path, called.fingerprint), called)
+    sms = {sm for _, artifact in reads for sm in artifact.samples}
+    unknown = any(not artifact.samples for _, artifact in reads)
+    if named <= sms or (unknown and not named_by_another):
+        for source, _ in reads:
             found.setdefault((source.path, source.fingerprint), source)
-        elif (
-            (artifact := origin.artifact)
-            and artifact.called_from
-            and samples
-            and set(samples) <= set(artifact.samples)
-        ):
-            for reads in artifact.called_from:
-                found.setdefault((reads.path, reads.fingerprint), reads)
     return list(found.values())
 
 
