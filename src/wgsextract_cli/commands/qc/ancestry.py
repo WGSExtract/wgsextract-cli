@@ -51,7 +51,7 @@ from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
-from wgsextract_cli.core.microarray_revisions import decode_text, read_raw_bytes
+from wgsextract_cli.core.microarray.revisions import decode_text, read_raw_bytes
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import (
     input_stem,
@@ -68,7 +68,11 @@ from wgsextract_cli.core.utils import (
     popen,
     run_command,
 )
-from wgsextract_cli.core.variant_files import vcf_header_chromosomes, verify_paths_exist
+from wgsextract_cli.core.variant_files import (
+    is_vcf_path,
+    vcf_header_chromosomes,
+    verify_paths_exist,
+)
 
 from ..genotyping.common import open_alignment
 from ._relate_vcf import (
@@ -86,7 +90,6 @@ GUIDE = "docs/ancestry.md"
 # they are reported with a warning (docs/ancestry.md, measured in #620).
 MIN_SITES = 2_000
 WARN_SITES = 10_000
-_VCF_SUFFIXES = (".vcf", ".vcf.gz", ".vcf.bgz", ".bcf")
 _PASSING = (".", "PASS")
 _SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -113,7 +116,7 @@ def _input_kind(path: str) -> str:
     lower = path.lower()
     if lower.endswith((".bam", ".cram")):
         return "alignment"
-    if lower.endswith(_VCF_SUFFIXES):
+    if is_vcf_path(path):
         return "vcf"
     return "microarray"
 

@@ -16,8 +16,10 @@ from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.results import ResultWarning, current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
+from wgsextract_cli.core.variant_depths import ad_total_header, preserve_ad_total
 from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
+    is_vcf_path,
     match_chromosome_name,
     normalize_vcf_chromosomes,
     vcf_chromosomes,
@@ -130,7 +132,8 @@ def _text_copy(
                 tuple(f"##INFO=<ID={tag}," for tag in (ce.IDENTITY, ce.STARS, ce.TIER))
             )
         )
-    info_numbers = parse_header(text.splitlines()).info_number
+    header = parse_header(text.splitlines())
+    info_numbers = header.info_number
     definitions = (
         {}
         if allowed is not None
@@ -149,6 +152,8 @@ def _text_copy(
     with output.open("w", newline="\n") as handle:
         for line in text.splitlines():
             if line.startswith("#CHROM"):
+                if allowed is None and header.samples:
+                    handle.write(ad_total_header(header.format_number))
                 for contig in vcf_chromosomes(source):
                     if (
                         f"##contig=<ID={contig}," not in text
@@ -165,7 +170,7 @@ def _text_copy(
                         )
             handle.write(line + "\n")
         # Streaming a prepared BGZF VCF avoids capturing a whole genome.
-        opener = gzip.open if source.endswith((".gz", ".bgz")) else open
+        opener = gzip.open if source.lower().endswith((".gz", ".bgz")) else open
         skipped = set()
         skipped_count = 0
         mito_count = 0
@@ -231,6 +236,8 @@ def _text_copy(
                 fields[7] = (
                     ";".join(f"{k}={v}" if v else k for k, v in info.items()) or "."
                 )
+                if allowed is None and "AD" in header.format_number:
+                    preserve_ad_total(fields)
                 handle.write("\t".join(fields) + "\n")
     if skipped:
         warn(
@@ -671,7 +678,7 @@ def normalized_inputs(
     )
     from .resource_cache import normalized_resource
 
-    is_vcf = resource.lower().endswith((".vcf", ".vcf.gz", ".vcf.bgz"))
+    is_vcf = is_vcf_path(resource, bcf=False)
     if not is_vcf and (
         "REF" not in columns.split(",") or "ALT" not in columns.split(",")
     ):

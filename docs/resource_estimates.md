@@ -40,12 +40,15 @@ are advisory. Choose a reproducible dataset/profile before comparing hosts.
 
 `vcf impute` prints estimated memory and runtime before starting. HG002 chr20
 measurements at four threads: GLIMPSE2 phase/ligate 431–464 s and 2.2–3.1 GB
-peak RSS; Beagle 60 s and 3.4 GB. The memory preflight reserves a conservative
-4 GiB for GLIMPSE2 and 8 GiB for Beagle. Sequential chromosomes/chunks keep
-memory bounded; runtime scales with selected reference bases and thread count.
-The extrapolated whole-autosome GLIMPSE2 time is about 5.5 h at four threads,
-or 2.8 h at eight, excluding one-time panel preparation. These are not measured
-whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
+peak RSS; Beagle 60 s and 3.4 GB, with 8 GiB reserved. GLIMPSE2's threads
+don't speed up one sample, so `vcf impute` runs `--threads` GLIMPSE2 chunks at
+once, one thread each, within 80% of the available memory (or `--memory` per
+chunk), estimating each chunk's peak from its binary reference; the preflight
+reports the peak of the largest chunks that run together. The extrapolated
+whole-autosome GLIMPSE2 time is about 5.6 h one chunk at a time and about 1 h
+with eight at once, excluding one-time panel preparation. These are not
+measured whole-genome runtimes. See [imputation](imputation.md#resources) for
+the chr20 timings, accuracy and limits.
 
 ## Lossless output profile measurements
 
@@ -254,13 +257,16 @@ SSD swap traffic must not be conflated
 ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
 The read-only `estimate_resources` API does not change settings itself:
 callers supply their resolved backend allowance and sort memory.
-`--prefer-native-gpu` / config `prefer_native_gpu = true` applies only after
-normal GPU sort step-down fails, replacing CPU fallback at the risk of heavy
-swap. Explicit `--memory` is retained; default/config memory is capped at
-256M, subject to general sort limits. The manifest's
+On macOS and Linux, `--prefer-native-gpu` / config `prefer_native_gpu = true`
+can replace a RAM-budget CPU fallback after normal GPU sort step-down fails,
+at the risk of heavy swap. Explicit `--memory` is retained on an override;
+default/config memory is capped at 256M, subject to general sort limits.
+[Windows CUDA](windows.md#wgse-bwa-and-optional-nvidia-cuda) is automatic when
+RAM and commit both fit, and never bypasses either check.
+`--no-prefer-native-gpu` forces CPU on Windows. The manifest's
 `native_aligner_backend_reason`, `native_aligner_memory_estimate_bytes`,
 `native_aligner_memory_budget_bytes`, `native_aligner_sort_memory_requested`
-and `native_aligner_sort_memory_actual` explain fallback or opt-in and survive
+and `native_aligner_sort_memory_actual` explain fallback or an override and survive
 resume. The fallback estimate is the smallest considered GPU plan, not the
 selected CPU pipeline's estimate.
 For paired Metal BWA, automatic selection also tries compressed staging before

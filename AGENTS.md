@@ -24,12 +24,17 @@ Only request `help --all --json --full` when the entire schema dump is needed.
 
 ## Python Formatting & Linting
 
-PR pytest selection follows the static import graph and test file inputs
-(`scripts/ci_select_tests.py`); uncertainty fails open. CI-only edits run
+PR pytest selection is moving to explicit dependency rules in
+[`docs/ci_routing.md`](docs/ci_routing.md#decisive-test-selection-rollout).
+The current selector remains authoritative during shadow mode. Once enabled
+for a lane, the decisive selector reports unmatched inputs and runs the full
+lane only for named universal scopes. CI-only edits still run
 policy/routing/readiness tests, with one-OS smoke for changed matrix workflows.
-Main/nightly keep full coverage; merge-queue Ubuntu runs the full selection
-minus files whose dependency hash already passed on main (test cache, #915). See `docs/ci_routing.md`;
-add a selector regression for any missed test, never weaken the safety net.
+Before narrowing main pushes to the merge queue's selection and passed-test
+cache rules, establish the daily full latest-main backstop, cache refresh and
+miss attribution. Keep other platform lanes, required checks, merged-tree
+guards and certification intact. Add a selector regression for each confirmed
+miss.
 
 - **Always** run `pixi run ruff check --fix {file_path}` and `pixi run ruff format {file_path}` after editing a Python file in this directory.
 - **Always** run `pixi run mypy {file_path}` (or `pixi run mypy src/wgsextract_cli`) to check for type errors before concluding a task.
@@ -91,6 +96,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - Open PRs as drafts (`gh pr create --draft`) once the branch passes the local gate. Drafts run no CI. The gate: run an independent review agent, fix its findings, run `pixi run lint`, the routing/lint tests (`tests/test_ci_changes.py`, `tests/test_github_actions_policy.py`), relevant local tests/type checks, documentation checks if docs changed (the `DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` and `scripts/validate_site_sources.py`), and the secret scan (`pixi run pre-commit run gitleaks --all-files`). Self-review the diff against AGENTS.md.
   - **Copilot reviews the draft, before readiness**, so the ready-time matrix runs once instead of once per review round. Ruleset `15885247` reviews a PR when it is opened, drafts included, but not on later pushes (`review_draft_pull_requests=true`, `review_on_push=false`; checked 2026-11-21). After pushing changes to a draft, request a fresh review with `gh pr edit N --add-reviewer @copilot`. Fix or decline all its threads in one batch (see Babysitting), then certify that head and mark it ready. Don't change repository settings yourself.
   - Mark ready only when local review and checks pass and the draft's Copilot threads are handled: readiness starts the area-selected full matrix. Draft pushes and ready-to-draft transitions allocate no CI runners; do not wait for draft checks or a draft `required` result.
+  - Ready admission (#1373, merge-queue starvation): certify macOS (and Windows where a host exists) too, so hosted runs skip. Right before `gh pr ready`, run `python scripts/ci_capacity.py --wait` in a background watcher; mark ready only on exit 0 (3 = hold for the merge queue or too many ready matrices). Each supervisor admits one PR at a time: the next check waits until the last admitted PR's ready run is visible.
   - The PR uses `Fixes #N` and lands under the babysitting rules below.
   - Owner-account agents run `just certify` on the clean pushed PR head before `gh pr ready`, under `agent-coord` on shared hosts (at most four pytest workers). Prepare each checkout's locked environments first, then `just certify-setup` to retain verified wheels (`--reference` for full Ubuntu/macOS suites; repeat `-e` for supplemental environments). Local certification never installs or downloads inputs. For macOS ARM64, lin-mid runs `just certify --remote randy-mini`: it holds the coordinator lock, fetches exact SHAs into a dedicated worktree, prepares missing pinned inputs (not environments), preserves 25 GiB disk free, and streams logs back. GitHub credentials and status posting stay on lin-mid. See `docs/ci_routing.md`.
   - Heavy compute goes through the host's resource coordinator, short timing runs included; running outside it starves everyone else's queue. On a host without one, check the load first and keep to a share that leaves room for others.
@@ -139,6 +145,7 @@ Auto-merge is now safe for area-selected checks because `required` includes the 
 - Collect all open review threads, fix or decline them together, run local checks, then push **one batch per review round**, not one push per thread. Resolve handled threads only after the fixes are pushed or the refusal is posted.
 - Notify the owning agent when new threads appear; handle them within one hour or hand off explicitly. Transfer CI waits to the supervisor/watcher, not an implementer's polling loop.
 - Before enqueueing, require the current head's latest non-draft area run after the latest ready transition, including its passing `required` check: `gh pr checks "$PR" --json bucket,name,workflow,link | python scripts/pr_checks_ready.py --pr "$PR"`. Drafts have no CI result; readiness must produce fresh validation, even without a new push. Verify reviews and mergeability separately.
+- Never push to an enqueued PR: dequeue it first (`gh pr merge PR --disable-auto`), so the rest of the queue is not invalidated.
 - Push follow-up commits and wait for CI to rerun. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`), not the whole run or a new push.
 - Don't update a branch just because it's BEHIND main. Update it only when it's DIRTY (conflicts) or main changed the same area (generated files, the help budget); the merge queue tests it against the latest main anyway.
 - Auto-merge never enqueues a DIRTY PR. The *Auto-merge conflict watch* workflow (`scripts/ci_auto_merge_watch.py`) labels such PRs `auto-merge-blocked` and comments once after each main push; merge main, resolve the conflicts and push, and the label clears itself.

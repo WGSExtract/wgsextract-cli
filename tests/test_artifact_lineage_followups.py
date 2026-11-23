@@ -228,6 +228,31 @@ def test_1379_chain_annotate_lists_its_annotators_runs(tmp_path: Path) -> None:
 
 
 @needs_htslib
+def test_1379_resumed_chain_keeps_the_annotators_original_run(tmp_path: Path) -> None:
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    config = _clinvar_config(tmp_path, sample)
+    out = tmp_path / "out"
+    argv = [
+        "--config", str(config), "vcf", "chain-annotate", "--annotations", "clinvar",
+        "--input", str(calls / "snps.vcf.gz"), "--outdir", str(out),
+    ]  # fmt: skip
+    manifest = out / "chain_annotated.vcf.manifest.json"
+    code, _, stderr = run_cli([*argv, "--keep-intermediates"])
+    assert code == 0, stderr
+    [original] = _manifest(manifest)["run"]["children"]
+
+    code, _, stderr = run_cli(argv)
+    assert code == 0, stderr
+    [reused] = _manifest(manifest)["run"]["children"]
+    assert reused["status"] == "reused"
+    assert reused["run"] and reused["run"] == original["run"]
+    assert reused["command"] == "vcf clinvar"
+    assert not list(out.glob("chain_step_*"))
+
+
+@needs_htslib
 def test_1379_a_cancelled_analysis_lists_its_interrupted_step_as_cancelled(
     tmp_path: Path,
 ) -> None:

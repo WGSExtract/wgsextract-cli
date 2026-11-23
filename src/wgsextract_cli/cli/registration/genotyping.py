@@ -8,6 +8,7 @@ from wgsextract_cli.api.genotyping import (
     TypingHlaParams,
     TypingSmnParams,
     TypingStrParams,
+    TypingTargetCnvParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
 from wgsextract_cli.core.messages import CLI_HELP
@@ -16,6 +17,9 @@ cmd_cyp2d6 = command_handler("wgsextract_cli.commands.genotyping.cyp2d6", "cmd_c
 cmd_hla = command_handler("wgsextract_cli.commands.genotyping.hla", "cmd_hla")
 cmd_smn = command_handler("wgsextract_cli.commands.genotyping.smn", "cmd_smn")
 cmd_str = command_handler("wgsextract_cli.commands.genotyping.repeats", "cmd_str")
+cmd_target_cnv = command_handler(
+    "wgsextract_cli.commands.genotyping.target_cnv", "cmd_target_cnv"
+)
 
 
 def register(
@@ -40,3 +44,8 @@ def register(
     )
     add_arguments(repeats, TypingStrParams)
     repeats.set_defaults(func=cmd_str)
+    target_cnv = subs.add_parser(
+        "target-cnv", parents=[base_parser], help=CLI_HELP["cmd_typing-target-cnv"]
+    )
+    add_arguments(target_cnv, TypingTargetCnvParams)
+    target_cnv.set_defaults(func=cmd_target_cnv)

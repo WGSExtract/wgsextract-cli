@@ -29,6 +29,27 @@ from tests.test_github_actions_policy import (
 )
 
 
+def test_1237_gui_upload_requires_the_build_matrix_signed_updater_targets() -> None:
+    build = (WORKFLOWS / "gui-build.yml").read_text()
+    distribution = (WORKFLOWS / "gui-distribution.yml").read_text()
+    publisher = distribution.split("\n  publish:\n", 1)[1]
+    validation, upload = publisher.split("- name: Upload the app to the release", 1)
+
+    # CI contract: require the same target list that drove the installers,
+    # and block uploads (including replacements) when feed validation fails.
+    assert "artifact_name: ${{ fromJSON(inputs.targets) }}" in build
+    assert "targets: ${{ inputs.targets }}" in build
+    assert "value: ${{ jobs.tauri.outputs.targets }}" in build
+    assert "needs: tauri" in publisher
+    assert "inputs.tag != ''" in publisher.split("steps:", 1)[0]
+    assert "ref: ${{ github.workflow_sha }}" in validation
+    assert "EXPECTED_TARGETS: ${{ needs.tauri.outputs.targets }}" in validation
+    assert '--expected-targets "$EXPECTED_TARGETS"' in validation
+    assert "--allow-unsigned" not in publisher
+    assert "continue-on-error" not in validation
+    assert "gh release upload" in upload and "gh release upload" not in validation
+
+
 @pytest.mark.parametrize(
     "workflow",
     [
@@ -119,7 +140,9 @@ def test_1045_draft_review_request_never_executes_pr_code() -> None:
         "cli_smoke.yml",
     ],
 )
-def test_1045_nightly_full_matrix_is_gated_before_setup(workflow: str) -> None:
+def test_nightly_reuses_green_main_except_for_linux_shadow_observations(
+    workflow: str,
+) -> None:
     source = (WORKFLOWS / workflow).read_text()
     assert "uses: ./.github/workflows/nightly_guard.yml" in source
     assert f"workflow: {workflow}" in source
@@ -128,31 +151,40 @@ def test_1045_nightly_full_matrix_is_gated_before_setup(workflow: str) -> None:
         if name == "nightly":
             continue
         assert "needs: nightly" in body
-        gate = re.search(r"\((needs\.nightly\.[^)]+)\)", body)
+        gate = re.search(r"\(([^()\n]*needs\.nightly\.result[^()\n]*)\)", body)
         assert gate is not None
-        for result, skip, run in [
-            ("success", "true", False),
-            ("success", "false", True),
-            ("failure", "", True),
-            ("failure", "true", True),
-            ("skipped", "", True),
+        for event, result, skip, run in [
+            ("schedule", "success", "true", False),
+            ("schedule", "success", "false", True),
+            ("schedule", "failure", "", True),
+            ("schedule", "failure", "true", True),
+            ("push", "success", "true", False),
+            ("push", "skipped", "", True),
         ]:
+            # contract: the #1339 full daily Ubuntu run must seed fresh observations.
+            if event == "schedule" and (workflow, name) == (
+                "ubuntu_ci.yml",
+                "test-ubuntu",
+            ):
+                run = True
             expression = (
                 gate[1]
                 .replace("needs.nightly.result", repr(result))
                 .replace("needs.nightly.outputs.skip", repr(skip))
+                .replace("github.event_name", repr(event))
             )
             tree = ast.parse(expression.replace("||", " or "), mode="eval").body
             assert isinstance(tree, ast.BoolOp) and isinstance(tree.op, ast.Or)
             decisions = []
             for compare in tree.values:
                 assert isinstance(compare, ast.Compare)
-                assert isinstance(compare.ops[0], ast.NotEq)
-                decisions.append(
-                    ast.literal_eval(compare.left)
-                    != ast.literal_eval(compare.comparators[0])
+                op = compare.ops[0]
+                assert isinstance(op, (ast.Eq, ast.NotEq))
+                equal = ast.literal_eval(compare.left) == ast.literal_eval(
+                    compare.comparators[0]
                 )
-            assert any(decisions) is run, (workflow, name, result, skip)
+                decisions.append(equal if isinstance(op, ast.Eq) else not equal)
+            assert any(decisions) is run, (workflow, name, event, result, skip)
 
 
 def test_1045_move_import_collection_cannot_be_skipped_by_writer_certificates() -> None:

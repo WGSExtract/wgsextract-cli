@@ -133,24 +133,22 @@ class RunRecord:
         command: str,
         reason: str,
         outcome: Literal["ok", "failed", "cancelled"],
-    ) -> None:
+    ) -> ChildRun:
         """List the run that did ``step`` from its result ``document``; one
         that left none (it never started, or was killed) by ``outcome``."""
         document = document if isinstance(document, dict) else {}
         run = document.get("run")
         child = run.get("id") if isinstance(run, dict) else None
         status = document.get("status")
-        self.children.append(
-            ChildRun(
-                step=step,
-                run=child
-                if isinstance(child, str) and _RUN_ID.fullmatch(child)
-                else None,
-                command=str(document.get("command") or command),
-                status=status if status in ("ok", "failed", "cancelled") else outcome,
-                reason=reason,
-            )
+        record = ChildRun(
+            step=step,
+            run=child if isinstance(child, str) and _RUN_ID.fullmatch(child) else None,
+            command=str(document.get("command") or command),
+            status=status if status in ("ok", "failed", "cancelled") else outcome,
+            reason=reason,
         )
+        self.children.append(record)
+        return record
 
     def join(self, parent: str | None, root: str | None, step: str | None) -> None:
         """Make this run the ``step`` of ``parent`` in the workflow ``root``

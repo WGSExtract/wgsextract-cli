@@ -15,7 +15,8 @@ from typing import ClassVar, TypedDict
 
 import pytest
 
-from tests.smoke_utils import REPO_ROOT, ensure_fake_data, isolate_home, vep_cache_dir
+from tests.home_isolation import isolate_home
+from tests.smoke_utils import REPO_ROOT, ensure_fake_data, vep_cache_dir
 from wgsextract_cli.cli.platform_support import verify_platform_support
 from wgsextract_cli.core.config import reload_settings, settings
 from wgsextract_cli.core.dependencies import (
@@ -85,11 +86,6 @@ class E2EResult(TypedDict):
 def _prepare_fake_data() -> tuple[str, str]:
     ensure_fake_data(str(FAKE_DIR))
     ref = FAKE_DIR / "fake_ref.fa"
-    # A gene map for `vcf filter --gene`.
-    gene_map = FAKE_DIR / "downloads" / "genes_hg38.tsv"
-    if not gene_map.exists():
-        gene_map.parent.mkdir(parents=True, exist_ok=True)
-        gene_map.write_text("symbol\tchrom\tstart\tend\nBRCA1\tchr1\t1\t1000000\n")
     return str(ref), str(FAKE_DIR / "fake.bam")
 
 
@@ -405,11 +401,9 @@ class E2EBase:
                 "BRCA1",
                 "--input",
                 "{input}",
-                "--ref",
-                "{ref}",
             ],
             "ButtonBAMStats",
-            input_path=str(FAKE_DIR / "fake.vcf.gz"),
+            input_path=str(REPO_ROOT / "tests" / "fixtures" / "vcf_panel_grch38.vcf"),
         )
 
     def test_34_vcf_trio_denovo(self, tmp_path: Path) -> None:

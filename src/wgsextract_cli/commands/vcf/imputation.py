@@ -6,14 +6,23 @@ computes genotype likelihoods from the reads at the panel's sites), Beagle 5
 for a genotype-only VCF such as microarray calls. Both come from the opt-in
 ``imputation`` Pixi environment, checked and never installed.
 
+GLIMPSE2's threads only split work between samples, and there is one, so its
+chunks run side by side instead, one thread each (``core.job_pool``): up to
+``--threads`` at once, largest first, within a memory budget estimated from
+each chunk's binary reference. Each chunk's output is the same however many
+run, so the result matches running them one at a time.
+
 The output is labelled so nothing downstream mistakes it for direct calls:
 every imputed record has INFO/IMP, the header names the tool and panel in a
 ``##wgsextract_imputation`` line, and imputed records below the per-genotype
 GP threshold are FILTERed ``ImpLowConf``. Site INFO/DR2 filtering is opt-in.
 """
 
+import functools
 import hashlib
+import itertools
 import logging
+import os
 import re
 import sys
 import tempfile
@@ -22,6 +31,7 @@ from pathlib import Path
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfImputeParams
 from wgsextract_cli.core import imputation_panel
+from wgsextract_cli.core.alignment.memory import available_memory
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependency_checks import (
@@ -34,11 +44,13 @@ from wgsextract_cli.core.imputation_panel import (
 )
 from wgsextract_cli.core.imputed_vcf import HEADER_KEY
 from wgsextract_cli.core.imputed_vcf import LOW_CONFIDENCE_FILTER as LOW_CONFIDENCE
+from wgsextract_cli.core.job_pool import Job, run_jobs
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.ref_library.assets import reference_library_of
 from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.resource_estimates import (
+    GIB,
     estimate_imputation,
     preflight_resources,
 )
@@ -47,6 +59,7 @@ from wgsextract_cli.core.samtools_commands import alignment_index, parse_memory
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
+    ToolExecutionError,
     UsageError,
     WGSExtractError,
     get_resource_defaults,
@@ -67,6 +80,13 @@ OUTPUT = "imputed.vcf.gz"
 BEAGLE_JAR_SHA256 = "7319f4af9638be05c18dcc1bfb8fb41a58a09293507ebf0d54617d0e40df5a70"
 # Mean autosomal depth above which calling the reads directly beats imputing.
 DIRECT_CALLING_DEPTH = 8.0
+# GLIMPSE2 2.0.1 phase at one thread peaked at about 18 bytes of RSS per byte
+# of its chunk's binary reference plus 0.6 GB on HG002 1x chr20 (#1118):
+# 1.2 GB for a typical chunk, 3.0 GB for the centromeric one. With a margin:
+CHUNK_RSS_PER_BIN_BYTE = 20
+CHUNK_RSS_BASE = 768 * 1024**2
+# The share of the memory available at the start the chunks may use together.
+MEMORY_SHARE = 0.8
 
 
 def _library(ref: Path | None) -> str | None:
@@ -134,10 +154,48 @@ def _warn_depth(reads: str, outdir: str, ref: str | None) -> float | None:
     return depth
 
 
+def chunk_memory(binary: Path) -> int:
+    """GLIMPSE2_phase's estimated peak RSS for one chunk at one thread."""
+    return CHUNK_RSS_PER_BIN_BYTE * binary.stat().st_size + CHUNK_RSS_BASE
+
+
+def glimpse_memory_budget(memory: str | None, jobs: int) -> int:
+    """The memory the chunks running at once may use: ``--memory`` per job,
+    or a share of the memory available now."""
+    if memory is None or memory.strip().lower() == "auto":
+        return int(available_memory() * MEMORY_SHARE)
+    try:
+        amount, unit = parse_memory(memory)
+    except ValueError as e:
+        raise UsageError(f"--memory: {e}") from e
+    return int(amount * (GIB if unit == "G" else 1024**2) * jobs)
+
+
+def _glimpse_tool(
+    cmd: list[object], log: Path, what: str, *, report_to_log: bool = False
+) -> None:
+    """Run a GLIMPSE2 tool whose report goes to ``log``, not the terminal
+    (chunks run side by side); a failure quotes the log's end."""
+    try:
+        with open(log if report_to_log else os.devnull, "w", newline="\n") as report:
+            run_command(cmd, stdout=report)
+    except ToolExecutionError as e:
+        tail = ""
+        if log.is_file():
+            lines = log.read_text(errors="replace").strip().splitlines()
+            errors = [i for i, line in enumerate(lines) if line.startswith("ERROR")]
+            tail = "\n".join(lines[errors[-1] :] if errors else lines[-10:])
+        raise WGSExtractError(
+            f"{Path(str(cmd[0])).name} failed on {what} (exit {e.returncode}):"
+            f"\n{tail or e}"
+        ) from e
+
+
 def _glimpse(
     params: VcfImputeParams,
     panels: list[imputation_panel.ChromosomePanel],
-    threads: str,
+    jobs: int,
+    memory_budget: int,
     outdir: str,
     work: Path,
 ) -> tuple[list[Path], dict[str, Scalar]]:
@@ -163,32 +221,64 @@ def _glimpse(
     _check_contigs(sequence_lengths(header), panels, reads)
     sample = _reads_sample(header, reads)
     depth = _warn_depth(reads, outdir, fasta)
-    parts = []
-    for panel in panels:
-        chunks = []
-        for i, (_in_region, out_region, binary) in enumerate(panel.chunks):
-            out = work / f"{panel.chrom}.{i}.bcf"
-            logging.info(
-                f"GLIMPSE2: {panel.chrom} chunk {i + 1} of {len(panel.chunks)} "
-                f"({out_region})"
-            )
-            run_command(
-                ["GLIMPSE2_phase", "--bam-file", reads, "--ind-name", sample,
-                 "--reference", binary, "--output", out, "--threads", threads,
-                 *(["--fasta", fasta] if fasta else []),
-                 "--log", work / f"{panel.chrom}.{i}.log"]
-            )  # fmt: skip
-            chunks.append(out)
+    total = sum(len(panel.chunks) for panel in panels)
+    finished = itertools.count(1)
+
+    def phase(chrom: str, i: int, region: str, binary: Path) -> None:
+        log = work / f"{chrom}.{i}.log"
+        # One thread: GLIMPSE2 shares threads among samples, and there is one.
+        _glimpse_tool(
+            ["GLIMPSE2_phase", "--bam-file", reads, "--ind-name", sample,
+             "--reference", binary, "--output", work / f"{chrom}.{i}.bcf",
+             "--threads", "1", *(["--fasta", fasta] if fasta else []),
+             "--log", log],
+            log, f"{chrom} chunk {i + 1} ({region})",
+        )  # fmt: skip
+        logging.info(
+            f"GLIMPSE2: phased {chrom} chunk {i + 1} ({region}), "
+            f"{next(finished)} of {total} chunks"
+        )
+
+    def ligate(panel: imputation_panel.ChromosomePanel) -> None:
         listing = work / f"{panel.chrom}.chunks.txt"
-        listing.write_text("".join(f"{c}\n" for c in chunks), newline="\n")
+        listing.write_text(
+            "".join(
+                f"{work / f'{panel.chrom}.{i}.bcf'}\n" for i in range(len(panel.chunks))
+            ),
+            newline="\n",
+        )
         ligated = work / f"{panel.chrom}.bcf"
-        run_command(
+        # GLIMPSE2_ligate has no --log: its report goes there instead.
+        _glimpse_tool(
             ["GLIMPSE2_ligate", "--input", listing, "--output", ligated,
-             "--threads", threads]
+             "--threads", "1"],
+            work / f"{panel.chrom}.ligate.log", panel.chrom, report_to_log=True,
         )  # fmt: skip
         if not ligated.is_file():
             raise WGSExtractError(f"GLIMPSE2_ligate wrote no {panel.chrom} output.")
-        parts.append(ligated)
+
+    chunks = [
+        Job(
+            f"{panel.chrom} chunk {i + 1}",
+            functools.partial(phase, panel.chrom, i, out_region, binary),
+            chunk_memory(binary),
+            panel.chrom,
+        )
+        for panel in panels
+        for i, (_in_region, out_region, binary) in enumerate(panel.chunks)
+    ]
+    # Largest first, so the slowest chunks don't start last.
+    chunks.sort(key=lambda job: job.memory, reverse=True)
+    then = {
+        panel.chrom: Job(f"{panel.chrom} ligate", functools.partial(ligate, panel))
+        for panel in panels
+    }
+    logging.info(
+        f"GLIMPSE2: {total} chunks, up to {jobs} at once within "
+        f"{memory_budget / GIB:.1f} GiB"
+    )
+    run_jobs(chunks, workers=jobs, memory=memory_budget, then=then)
+    parts = [work / f"{panel.chrom}.bcf" for panel in panels]
     metrics: dict[str, Scalar] = {"sample": sample}
     if depth is not None:
         metrics["autosomal_depth"] = round(depth, 2)
@@ -199,19 +289,21 @@ def beagle_command(prefix: Path) -> list[str]:
     """``java -jar beagle.jar`` from the imputation environment, the jar checked
     against its pinned digest."""
     jars = sorted(prefix.glob("share/beagle-*/beagle.jar"))
-    java = (
-        prefix / "Library" / "bin" / "java.exe"
-        if sys.platform == "win32"
-        else prefix / "bin" / "java"
-    )
+    if sys.platform == "win32":
+        launchers = [prefix / "Library" / "bin" / "java.exe"]
+    else:
+        # conda-forge's OpenJDK may expose only its JVM home, not a bin symlink.
+        launchers = [prefix / "bin" / "java", prefix / "lib" / "jvm" / "bin" / "java"]
     if not jars:
         raise WGSExtractError(
             f"Beagle jar missing: expected {prefix / 'share'}/beagle-*/beagle.jar. "
             f"Restore it with `pixi install -e {ENV}`."
         )
-    if not java.is_file():
+    java = next((launcher for launcher in launchers if launcher.is_file()), None)
+    if java is None:
+        expected = " or ".join(str(launcher) for launcher in launchers)
         raise WGSExtractError(
-            f"Java executable missing: expected {java}. Restore OpenJDK with "
+            f"Java executable missing: expected {expected}. Restore OpenJDK with "
             f"`pixi install -e {ENV}`."
         )
     digest = hashlib.sha256(jars[-1].read_bytes()).hexdigest()
@@ -434,9 +526,11 @@ def run_impute(params: VcfImputeParams) -> None:
         for c in chroms
     ]
     if reads_mode:
-        threads, memory = get_resource_threads(params.threads), None
+        # GLIMPSE2 runs a chunk per thread, side by side.
+        threads, memory = get_resource_threads(params.threads), params.memory
     else:
         threads, memory = get_resource_defaults(params.threads, params.memory)
+    budget = glimpse_memory_budget(memory, int(threads)) if reads_mode else None
     Path(outdir).mkdir(parents=True, exist_ok=True)
     tool = "GLIMPSE2" if reads_mode else "Beagle"
     preflight_resources(
@@ -444,6 +538,12 @@ def run_impute(params: VcfImputeParams) -> None:
             reads=reads_mode,
             threads=int(threads),
             bases=sum(_panel_length(p.panel, p.chrom) or 0 for p in panels),
+            chunk_memory=[
+                chunk_memory(binary) for p in panels for _i, _o, binary in p.chunks
+            ]
+            if reads_mode
+            else (),
+            memory_budget=budget,
         )
     )
     logging.info(f"Imputing {', '.join(chroms)} with {tool} into {out_vcf}")
@@ -451,8 +551,10 @@ def run_impute(params: VcfImputeParams) -> None:
         dir=scratch_parent(outdir), prefix=".wgse_impute_"
     ) as tmp:
         work = Path(tmp)
-        if reads_mode:
-            parts, metrics = _glimpse(params, panels, threads, outdir, work)
+        if budget is not None:
+            parts, metrics = _glimpse(
+                params, panels, int(threads), budget, outdir, work
+            )
         else:
             assert memory is not None
             parts, metrics = _beagle(params, panels, threads, memory, work)
