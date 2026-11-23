@@ -53,12 +53,20 @@ def _indexed_contigs(source: str) -> list[str]:
     return []
 
 
-def _record_contigs(source: str) -> list[str]:
+def _record_contigs(source: str, needed: set[str]) -> list[str]:
     # Plain VCFs may omit the contig dictionary and have no index.
     command = ["bcftools", "query", "-f", "%CHROM\\n", source]
     with popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as query:
         assert query.stdout is not None
-        contigs = dict.fromkeys(line.rstrip(b"\r\n").decode() for line in query.stdout)
+        contigs: dict[str, None] = {}
+        for line in query.stdout:
+            name = line.rstrip(b"\r\n").decode()
+            contigs[name] = None
+            needed.discard(name)
+            if not needed:
+                # An exact match wins over an alias; no later row can change it.
+                query.terminate()
+                return list(contigs)
         if query.wait():
             raise UsageError(f"Cannot read contig names from VCF: {source}")
     return list(contigs)
@@ -155,17 +163,20 @@ def _clip_bed(
     return clipped
 
 
-def _needs_record_contigs(region: str | None, declared: Collection[str]) -> bool:
+def _missing_region_contigs(region: str | None, declared: Collection[str]) -> set[str]:
+    needed: set[str] = set()
     for part in (region or "").split(","):
         item = part.strip()
+        if not item or item in declared:
+            continue
         chrom, _, span = item.rpartition(":")
-        if (
-            item
-            and item not in declared
-            and (not _REGION_SPAN.fullmatch(span) or chrom not in declared)
-        ):
-            return True
-    return False
+        if chrom and _REGION_SPAN.fullmatch(span):
+            if chrom in declared:
+                continue
+            # A colon can also be part of a contig name.
+            needed.add(chrom)
+        needed.add(item)
+    return needed
 
 
 def resolve_scope(
@@ -183,11 +194,13 @@ def resolve_scope(
             raise UsageError(f"Invalid --bed {bed}: {exc}") from exc
     declared_lengths = _declared_contigs(_vcf_header(source))
     indexed = _indexed_contigs(source)
-    if not indexed and (
-        _needs_record_contigs(region, declared_lengths)
-        or any(chrom not in declared_lengths for chrom, _, _ in bed_rows)
-    ):
-        indexed = _record_contigs(source)
+    if not indexed:
+        needed = _missing_region_contigs(region, declared_lengths)
+        needed.update(
+            chrom for chrom, _, _ in bed_rows if chrom not in declared_lengths
+        )
+        if needed:
+            indexed = _record_contigs(source, needed)
     contigs = dict.fromkeys([*indexed, *declared_lengths])
     reference_index = None
     reference_lengths = {}
