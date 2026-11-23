@@ -3,7 +3,7 @@ import path from "node:path";
 import type { LibraryViewerSession } from "../../../shared/genome-viewer.js";
 import { localViewerLocus, ViewerFileError } from "../../../shared/genome-viewer.js";
 import { rcrsContig, type ViewerBuild } from "../../../shared/viewer-rows.js";
-import { loadBundleState } from "./config-store.js";
+import { loadBundleState } from "./bundle-state.js";
 import { parseConfigToml } from "./config-toml.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { findConfigEditorControl } from "./manifest-lookup.js";

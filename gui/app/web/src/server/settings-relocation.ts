@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { isDeepStrictEqual } from "node:util";
 import { relocatePath } from "../../../shared/workspace-paths.js";
 import { parseConfigToml as parseToml, serializeConfigToml as serializeToml } from "./config-toml.js";
-import { writeFileAtomically } from "./config-store.js";
+import { writeFileAtomically } from "./atomic-file.js";
 import { isErrnoCode } from "./errors.js";
 import { withSettingsFileLock } from "./settings-lock.js";
 
