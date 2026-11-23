@@ -7,11 +7,13 @@ import csv
 import hashlib
 import importlib.util
 import json
+import marshal
 import os
 import re
 import shutil
 import stat
 import sys
+import warnings
 from collections.abc import Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass, field
@@ -266,19 +268,6 @@ def pixi_environment(
             digest = base64.urlsafe_b64decode(row[1][7:] + "=").hex()
             remember(logical, (digest, None, False))
     for relative, entry in actual.items():
-        # Installed bytecode can be regenerated at runtime. Its source
-        # still has to pass the installed-file hash check.
-        if (
-            entry.is_file(follow_symlinks=False)
-            and relative.parent.name == "__pycache__"
-        ):
-            if match := re.fullmatch(
-                r"(.+)\.cpython-\d+(?:\.opt-\d+|-pytest-\d+\.\d+\.\d+)?\.pyc",
-                relative.name,
-            ):
-                source = relative.parent.parent / (match[1] + ".py")
-                if installed_hashes.get(source) and source in actual:
-                    continue
         if relative in installed_hashes:
             expected = installed_hashes[relative]
             if expected is None or not verify_installed(
@@ -287,6 +276,15 @@ def pixi_environment(
                 return False
             continue
         if relative in generated and entry.is_file(follow_symlinks=False):
+            continue
+        # The source must also pass the installed-file hash check above.
+        if (
+            entry.is_file(follow_symlinks=False)
+            and (source := bytecode_source(relative)) is not None
+            and source in actual
+            and installed_hashes.get(source)
+            and matches_bytecode(path / relative, path / source, installed=True)
+        ):
             continue
         return False
     return True
@@ -391,27 +389,51 @@ def bytecode_source(relative: Path) -> Path | None:
     return relative.parent.parent / (match[1] + ".py") if match else None
 
 
-def matches_bytecode(path: Path, source: Path) -> bool:
+def matches_bytecode(path: Path, source: Path, *, installed: bool = False) -> bool:
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as handle:
         if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
             return False
         header = handle.read(16)
+        if installed:
+            data = handle.read(MAX_FILE + 1)
     info = source.lstat()
     if (
         not stat.S_ISREG(info.st_mode)
         or len(header) != 16
         or header[:4] != importlib.util.MAGIC_NUMBER
+        or (installed and info.st_size > MAX_FILE)
     ):
         return False
     flags = int.from_bytes(header[4:8], "little")
     if flags in {1, 3}:
-        return header[8:] == importlib.util.source_hash(cache_metadata(source))
-    return (
-        flags == 0
-        and int.from_bytes(header[8:12], "little") == int(info.st_mtime) & 0xFFFFFFFF
-        and int.from_bytes(header[12:16], "little") == info.st_size & 0xFFFFFFFF
-    )
+        matches = header[8:] == importlib.util.source_hash(cache_metadata(source))
+    else:
+        matches = (
+            flags == 0
+            and int.from_bytes(header[8:12], "little")
+            == int(info.st_mtime) & 0xFFFFFFFF
+            and int.from_bytes(header[12:16], "little") == info.st_size & 0xFFFFFFFF
+        )
+    if not matches or not installed:
+        return matches
+    if len(data) > MAX_FILE or re.search(r"-pytest-\d+\.\d+\.\d+\.pyc$", path.name):
+        return False
+    optimized = re.search(r"\.opt-([12])\.pyc$", path.name)
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", SyntaxWarning)
+            expected = compile(
+                cache_metadata(source),
+                str(source),
+                "exec",
+                dont_inherit=True,
+                optimize=int(optimized[1]) if optimized else 0,
+            )
+    except SyntaxError:
+        return False
+    # Do not unmarshal untrusted bytes. Retain variants we cannot reproduce.
+    return data == marshal.dumps(expected)
 
 
 def inventory(path: Path, tracked: set[Path]) -> Inventory:

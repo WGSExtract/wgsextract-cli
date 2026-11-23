@@ -475,6 +475,9 @@ mismatched checksums retain the environment without fetching metadata.
 Only the named cache directories are deleted; the checkout, branch and other
 files stay.
 Orphaned or unrecognized Python bytecode also blocks worktree retirement.
+Unlisted bytecode in Pixi environments must match bytecode regenerated
+from verified installed source. Caches from another Python version or a
+source-rewriting tool may therefore be retained.
 The report distinguishes cache trimming from worktree retirement.
 Small UTF-8 logs under `out/` and recognised Python, shell, Lua
 and R source files under `scratch/` (1 MiB per file, 32 MiB total) are copied
@@ -558,7 +561,10 @@ Before enabling any cleanup schedule, run
 checkout **without** `--apply`. Verify it identifies a live test process as
 busy and reports a clear, otherwise eligible worktree accurately. When the
 socket is unavailable, unverifiable, or serving a different inspector digest,
-`--inspector` never falls back or removes worktrees. To suspend inspection,
+`--inspector` never falls back or removes worktrees. Local inspection checks
+each live Linux task and rejects external bind mounts of the checkout or its
+contents. It stops if any task's filesystem view or references cannot be
+verified; use the installed inspector on such hosts. To suspend inspection,
 disable the socket and stop the service; pause the Sheprd schedule as well.
 
 ### Approve the daily cleanup schedule

@@ -60,6 +60,45 @@ def test_1393_preserves_bytecode_unless_its_source_is_recoverable(
         assert compiled.read_bytes() == original
 
 
+@pytest.mark.parametrize("case", ["valid", "garbage", "forged-header", "foreign-tag"])
+def test_1393_pixi_retains_unrecognized_installed_bytecode(
+    repo: Path, github: Callable[..., None], case: str
+) -> None:
+    path = topic(repo)
+    env = generated_env(path)
+    source = env / "lib/python/site-packages/demo.py"
+    write(source, "value = 1\n")
+    record = env / "conda-meta/demo-1.0-py_0.json"
+    metadata = json.loads(record.read_text())
+    relative = str(source.relative_to(env))
+    metadata["files"].append(relative)
+    metadata["paths_data"]["paths"].append(
+        {"_path": relative, "sha256": hashlib.sha256(source.read_bytes()).hexdigest()}
+    )
+    record.write_text(json.dumps(metadata))
+    compiled = py_compile.compile(str(source), doraise=True)
+    assert compiled is not None
+    bytecode = Path(compiled)
+    if case == "garbage":
+        bytecode.write_bytes(b"unique experimental output")
+    elif case == "forged-header":
+        bytecode.write_bytes(bytecode.read_bytes()[:16] + b"unique attached data")
+    elif case == "foreign-tag":
+        bytecode = bytecode.rename(bytecode.with_name("demo.cpython-999.pyc"))
+    original = bytecode.read_bytes()
+    write(path / "out/model.bam", "keep sample")
+    github([pull(path)])
+
+    run = cleanup(repo, "--github", "--trim-caches", "--apply")
+    assert run.returncode == 0, run.stderr
+    if case == "valid":
+        assert result(repo, path)["reason"] == "cache-pruned"
+        assert not bytecode.exists()
+    else:
+        assert result(repo, path)["reason"] == "unverified-cache: .pixi/envs"
+        assert bytecode.read_bytes() == original
+
+
 @pytest.mark.parametrize(
     "case",
     [

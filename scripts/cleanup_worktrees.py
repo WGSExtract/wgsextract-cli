@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import errno
 import fcntl
 import hashlib
 import json
@@ -16,7 +15,7 @@ import struct
 import subprocess
 import sys
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -24,19 +23,29 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from scripts import cleanup_worktree_activity
     from scripts import cleanup_worktree_inventory as inventory_files
+
+    activity = cleanup_worktree_activity
 else:
     # Isolated mode excludes the checkout from the import path. Execute only
     # the checked helper bytes, rather than searching that path for imports.
-    source = Path(__file__).with_name("cleanup_worktree_inventory.py")
-    code = source.read_bytes()
-    if hashlib.sha256(code).hexdigest() != (
-        "7bf9bcc8230502eec7e81d796f1b9769553121dfcc904a0bfeeb5cf35b35151d"
-    ):
-        raise SystemExit("Worktree inventory helper version mismatch")
-    inventory_files = ModuleType("wgse_worktree_inventory")
-    sys.modules[inventory_files.__name__] = inventory_files
-    exec(compile(code, str(source), "exec"), vars(inventory_files))
+    def load_helper(name: str, digest: str) -> ModuleType:
+        source = Path(__file__).with_name(f"cleanup_worktree_{name}.py")
+        code = source.read_bytes()
+        if hashlib.sha256(code).hexdigest() != digest:
+            raise SystemExit(f"Worktree {name} helper version mismatch")
+        module = ModuleType(f"wgse_worktree_{name}")
+        sys.modules[module.__name__] = module
+        exec(compile(code, str(source), "exec"), vars(module))
+        return module
+
+    inventory_files = load_helper(
+        "inventory", "da3134e1197a585e7dd54a1a7770079c1ebd02bf8306f20a62dff64399856206"
+    )
+    activity = load_helper(
+        "activity", "92b96c9c258e7706abd80b5d18523896c88378fbd2bff9facb98757533d34ff3"
+    )
 
 REPO = "WGSExtract/wgsextract-cli"
 LEGACY_REPO = "theontho/wgsextract-cli"
@@ -220,150 +229,6 @@ def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]
                     )
                 ):
                     blocked.add(path)
-    return blocked
-
-
-def unescape_proc_path(value: str) -> str:
-    return re.sub(r"\\([0-7]{3})", lambda match: chr(int(match[1], 8)), value)
-
-
-def mounted(path: Path) -> bool:
-    with Path("/proc/self/mountinfo").open(errors="surrogateescape") as handle:
-        return any(
-            Path(unescape_proc_path(line.split()[4])).is_relative_to(path)
-            for line in handle
-        )
-
-
-def process_paths(process: Path) -> Iterator[Path]:
-    def verify_view() -> None:
-        root = process / "root"
-        if (
-            os.readlink(process / "ns/mnt") != os.readlink("/proc/self/ns/mnt")
-            or os.readlink(root) != "/"
-            or not root.samefile("/")
-        ):
-            raise OSError(
-                "Activity unverifiable: different filesystem view; use --inspector"
-            )
-
-    verify_view()
-    cwd = None
-    for name in ("cwd", "root", "exe"):
-        try:
-            path = Path(os.readlink(process / name).removesuffix(" (deleted)"))
-        except FileNotFoundError:
-            continue
-        if name == "cwd":
-            cwd = path
-        yield path
-    for fd in (process / "fd").iterdir():
-        try:
-            yield Path(os.readlink(fd).removesuffix(" (deleted)"))
-        except FileNotFoundError:
-            pass
-    for line in (process / "maps").read_text(errors="surrogateescape").splitlines():
-        fields = line.split(maxsplit=5)
-        if len(fields) == 6 and fields[5].startswith("/"):
-            yield Path(unescape_proc_path(fields[5]).removesuffix(" (deleted)"))
-    arguments = (process / "cmdline").read_bytes()
-    if not arguments:
-        raise FileNotFoundError("No userspace command line")
-    if not arguments.endswith(b"\0"):
-        raise OSError("Incomplete userspace command line")
-    for arg in arguments.split(b"\0"):
-        if not arg or arg.startswith(b"-"):
-            continue
-        path = Path(os.fsdecode(arg))
-        if not path.is_absolute():
-            if (
-                cwd is None
-                or not cwd.is_absolute()
-                or not (process / "cwd").samefile(cwd)
-            ):
-                raise OSError(
-                    "Activity unverifiable: cannot verify relative argument base"
-                )
-            path = cwd / path
-        yield Path(os.path.normpath(path))
-        try:
-            yield path.resolve(strict=True)
-        except (FileNotFoundError, NotADirectoryError):
-            # A dangling symlink can still name a candidate.
-            yield path.resolve()
-        except OSError as error:
-            if error.errno != errno.ENAMETOOLONG:
-                raise
-    verify_view()
-
-
-def inactive_group(process: Path, pid: str) -> bool:
-    fields = dict(
-        line.split(":", 1)
-        for line in (process / "status")
-        .read_text(errors="surrogateescape")
-        .splitlines()
-        if ":" in line
-    )
-    state = fields.get("State", "").strip()
-    kernel = fields.get("Kthread", "").strip()
-    if not state or kernel not in {"", "0", "1"}:
-        raise OSError(f"Activity unverifiable for PID {pid}: missing process state")
-    if kernel == "1":
-        return True
-    if state[0] not in {"Z", "X"}:
-        return False
-    try:
-        if [thread.name for thread in (process / "task").iterdir()] != [pid]:
-            raise OSError(f"Activity unverifiable for PID {pid}: surviving threads")
-    except (FileNotFoundError, ProcessLookupError):
-        # Missing task metadata is only proof of exit if this pinned PID is gone.
-        (process / "status").read_bytes()
-        raise OSError(
-            f"Activity unverifiable for PID {pid}: missing task state"
-        ) from None
-    return True
-
-
-def active_paths(paths: set[Path]) -> set[Path]:
-    blocked: set[Path] = set()
-    if not paths:
-        return blocked
-    with Path("/proc/self/mountinfo").open(errors="surrogateescape") as table:
-        for line in table:
-            before, after = line.split(" - ", 1)
-            mount, filesystem = before.split(), after.split()
-            if mount[4] == "/proc" and filesystem[0] == "proc":
-                options = (mount[5] + "," + filesystem[2]).split(",")
-                if any(
-                    option.startswith(("hidepid=", "subset="))
-                    and option not in {"hidepid=0", "hidepid=off"}
-                    for option in options
-                ):
-                    raise OSError("Activity unverifiable: restrictive proc mount")
-    for process in PROC.iterdir():
-        if not process.name.isdecimal():
-            continue
-        try:
-            fd = os.open(process, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                pinned = Path("/proc/self/fd") / str(fd)
-                if not inactive_group(pinned, process.name):
-                    try:
-                        for item in process_paths(pinned):
-                            blocked.update(
-                                path for path in paths if item.is_relative_to(path)
-                            )
-                    except (FileNotFoundError, ProcessLookupError):
-                        if not inactive_group(pinned, process.name):
-                            raise OSError(
-                                f"Activity unverifiable for PID {process.name}"
-                            ) from None
-                    inactive_group(pinned, process.name)
-            finally:
-                os.close(fd)
-        except (FileNotFoundError, ProcessLookupError):
-            continue
     return blocked
 
 
@@ -561,7 +426,7 @@ def plan(
     inventories: dict[Path, inventory_files.Inventory] = {}
     for tree in trees[1:]:
         tree.reason = candidate(root, tree, trees)
-        if not tree.reason and mounted(tree.directory):
+        if not tree.reason and activity.mounted(tree.directory):
             tree.reason = "contains-mount"
         if not tree.reason:
             inventory = contents(tree.directory)
@@ -595,7 +460,11 @@ def plan(
     ]
     try:
         paths = {tree.directory for tree in pending_activity_check}
-        active = inspected_paths(root, paths) if inspector else active_paths(paths)
+        active = (
+            inspected_paths(root, paths)
+            if inspector
+            else activity.active_paths(PROC, paths)
+        )
     except OSError:
         for tree in pending_activity_check:
             tree.reason = "activity-unverified"
@@ -614,10 +483,14 @@ def recheck(root: Path, tree: Worktree, inspector: bool) -> str:
         return "registration-changed"
     if reason := candidate(root, now, trees):
         return reason
-    if mounted(tree.directory):
+    if activity.mounted(tree.directory):
         return "contains-mount"
     paths = {tree.directory}
-    active = inspected_paths(root, paths) if inspector else active_paths(paths)
+    active = (
+        inspected_paths(root, paths)
+        if inspector
+        else activity.active_paths(PROC, paths)
+    )
     if active:
         return "active-process"
     return ""

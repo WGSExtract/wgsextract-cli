@@ -437,7 +437,7 @@ def test_1393_cannot_remove_without_process_visibility(
     def unreadable(process: Path) -> Iterator[Path]:
         raise PermissionError(f"cannot inspect {process.name}")
 
-    monkeypatch.setattr(cleanup_worktrees, "process_paths", unreadable)
+    monkeypatch.setattr(cleanup_worktrees.activity, "process_paths", unreadable)
     run = cleanup(repo, "--apply", "--github")
     assert run.returncode == 1
     assert path.is_dir()
@@ -642,13 +642,15 @@ ctypes.CDLL(None).pthread_exit(None)
             else:
                 (proc / str(process.pid)).symlink_to(Path("/proc") / str(process.pid))
                 run = cleanup(repo)
-            if worker_alive:
+            if worker_alive and use_inspector:
                 assert run.returncode == 1, run.stdout
                 assert result(repo, path)["reason"] == "activity-unverified"
                 assert f"PID {process.pid}" in str(manifest(repo)["error"])
             else:
                 assert run.returncode == 0, run.stderr
-                assert result(repo, path)["reason"] == "github-not-checked"
+                assert result(repo, path)["reason"] == (
+                    "active-process" if worker_alive else "github-not-checked"
+                )
             assert path.is_dir()
         finally:
             process.terminate()
