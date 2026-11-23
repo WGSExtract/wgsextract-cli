@@ -202,7 +202,10 @@ def test_1346_stale_header_md5_does_not_choose_ploidy_over_contig_lengths(
     assert fake_vep() == []
 
 
-@pytest.mark.parametrize("override", ["--assembly GRCh37", "-FAS=foreign.fa"])
+@pytest.mark.parametrize(
+    "override",
+    ["--assembly GRCh37", "-FAS=foreign.fa", "--as GRCh37", "--fa foreign.fa"],
+)
 def test_1435_raw_vep_arguments_cannot_replace_validated_inputs(
     tmp_path, fake_vep, override
 ):

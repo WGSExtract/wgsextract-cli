@@ -153,7 +153,7 @@ def require_assembly(engine: VepEngine, assembly: str | None) -> None:
         raise WGSExtractError(f"{engine.label} has no {assembly} cache; {hint}")
 
 
-def _refuses(options: tuple[str, ...], token: str) -> bool:
+def _refuses(options: tuple[str, ...], token: str, *, min_prefix: int = 3) -> bool:
     """Match one or two dashes, any case and Getopt abbreviations."""
     if not token.startswith("-"):
         return False
@@ -164,7 +164,7 @@ def _refuses(options: tuple[str, ...], token: str) -> bool:
         full = refused.lstrip("-")
         if name == full or name.startswith(f"{full}_"):
             return True
-        if len(name) >= 3 and full.startswith(name):
+        if len(name) >= min_prefix and full.startswith(name):
             return True
     return False
 
@@ -176,7 +176,9 @@ def refuse_unsupported_args(
     if not vep_args:
         return
     args = shlex.split(vep_args)
-    if calling and any(_refuses(("--assembly", "--fasta"), t) for t in args):
+    if calling and any(
+        _refuses(("--assembly", "--fasta"), t, min_prefix=2) for t in args
+    ):
         raise WGSExtractError(
             "For BAM/CRAM input, use --assembly and --ref instead of setting "
             "VEP's assembly or FASTA in --vep-args."
