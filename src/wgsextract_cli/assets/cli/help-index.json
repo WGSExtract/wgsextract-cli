@@ -18,6 +18,9 @@
 {"flags":["--atomic-output","--no-atomic-output"],"dest":"atomic_output","type":"flag","help":"Opt in to atomic publication (align always uses it, even with --no-atomic-output); staged tool provenance paths may differ."},
 {"flags":["--config"],"dest":"config_path","type":"string","help":"Read and save settings in this config.toml instead of the per-user one."},
 {"flags":["--result-file"],"dest":"_result_file","type":"string","help":"==SUPPRESS=="},
+{"flags":["--parent-run"],"dest":"_parent_run","type":"string","help":"==SUPPRESS=="},
+{"flags":["--root-run"],"dest":"_root_run","type":"string","help":"==SUPPRESS=="},
+{"flags":["--run-step"],"dest":"_run_step","type":"string","help":"==SUPPRESS=="},
 {"flags":["--parent-pid"],"dest":"parent_pid","type":"integer","help":"Parent Process ID to monitor."}
 ],
 "commands":[

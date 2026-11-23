@@ -9,6 +9,7 @@ from pathlib import Path
 from wgsextract_cli import __version__
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams, VcfTableParams
 from wgsextract_cli.core._confidence_rules import thresholds_from
+from wgsextract_cli.core.artifacts import lineage_args
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -361,6 +362,7 @@ def _run_steps(
         if reference:
             args += ["--ref", str(reference)]
         args += _step_resource_args(ann, lib)
+        args += lineage_args(current_result().run, ann)
         _run_annotation(
             journal, _annotation_step(ann, position, source, output, lib),
             ann, f"[{position}/{len(annotations)}]", source, output, args,
