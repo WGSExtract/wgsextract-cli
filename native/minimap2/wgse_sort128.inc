@@ -13,7 +13,9 @@
  * its walk in registers. Passes, the skipping of digits on which a bucket's keys all
  * agree, and the insertion sort of buckets of at most RS_MIN_SIZE elements follow
  * upstream's, so every pass sees the same elements in the same order. */
+#ifndef _WIN32
 #include <pthread.h>
+#endif
 
 #define WGSE_RS_LANES 4
 #define WGSE_RS_LEVELS 8
@@ -39,10 +41,6 @@ typedef struct {
 	wgse_rs_lane_t lane[WGSE_RS_LEVELS][WGSE_RS_LANES];
 } wgse_rs_t;
 
-static pthread_key_t wgse_rs_key;
-static pthread_once_t wgse_rs_once = PTHREAD_ONCE_INIT;
-static int wgse_rs_key_ok;
-
 static void wgse_rs_free(void *p)
 {
 	wgse_rs_t *w = (wgse_rs_t*)p;
@@ -50,12 +48,23 @@ static void wgse_rs_free(void *p)
 	free(w->B); free(w->D); free(w->P); free(w);
 }
 
+#ifdef _WIN32
+void *wgse_windows_sort_scratch(size_t size, void (*release)(void *));
+#else
+static pthread_key_t wgse_rs_key;
+static pthread_once_t wgse_rs_once = PTHREAD_ONCE_INIT;
+static int wgse_rs_key_ok;
 static void wgse_rs_key_init(void) { wgse_rs_key_ok = pthread_key_create(&wgse_rs_key, wgse_rs_free) == 0; }
+#endif
 
 /* The calling thread's scratch for n elements, or NULL. */
 static wgse_rs_t *wgse_rs_scratch(int64_t n)
 {
 	wgse_rs_t *w;
+#ifdef _WIN32
+	w = (wgse_rs_t*)wgse_windows_sort_scratch(sizeof(wgse_rs_t), wgse_rs_free);
+	if (w == 0) return 0;
+#else
 	pthread_once(&wgse_rs_once, wgse_rs_key_init);
 	if (!wgse_rs_key_ok) return 0; /* no key: callers use the in-place sort */
 	w = (wgse_rs_t*)pthread_getspecific(wgse_rs_key);
@@ -63,6 +72,7 @@ static wgse_rs_t *wgse_rs_scratch(int64_t n)
 		if ((w = (wgse_rs_t*)calloc(1, sizeof(wgse_rs_t))) == 0) return 0;
 		if (pthread_setspecific(wgse_rs_key, w) != 0) { free(w); return 0; }
 	}
+#endif
 	if (n > w->cap) {
 		int64_t cap = n > w->cap * 3 / 2? n : w->cap * 3 / 2;
 		if (cap > WGSE_RS_MAX) cap = WGSE_RS_MAX; /* n <= WGSE_RS_MAX */

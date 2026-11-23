@@ -23,6 +23,8 @@ constexpr const char *engine_version = "2.31-r1302";
 
 #ifdef __APPLE__
 constexpr const char *platform = "Apple Silicon", *gpu_name = "Metal", *gpu_option = "--metal";
+#elif defined(_WIN32)
+constexpr const char *platform = "Windows", *gpu_name = "CUDA", *gpu_option = "--cuda";
 #else
 constexpr const char *platform = "Linux", *gpu_name = "CUDA", *gpu_option = "--cuda";
 #endif
