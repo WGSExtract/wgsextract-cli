@@ -625,7 +625,7 @@ def run_str(params: TypingStrParams, *, debug: bool = False) -> None:
             if selected:
                 work = stack.enter_context(scratch_directory(aln.outdir, ".eh_"))
                 subset = Path(work, "catalog.json")
-                subset.write_text(json.dumps(selected), encoding="utf-8")
+                subset.write_text(json.dumps(selected), encoding="utf-8", newline="\n")
                 catalog_path = str(subset)
             calls = _run_expansionhunter(
                 aln,
