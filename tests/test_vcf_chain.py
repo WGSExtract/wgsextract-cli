@@ -201,7 +201,7 @@ def test_1475_contig_length_before_id_still_bounds_regions(
 ) -> None:
     sample = tmp_path / "reordered.vcf"
     sample.write_text(
-        "##fileformat=VCFv4.2\n##contig=<length=100,ID=chr1>\n"
+        '##fileformat=VCFv4.2\n##contig=<length=100, Description="reference, segment", ID=chr1>\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
         "chr1\t100\tlast_base\tA\tG\t.\tPASS\t.\n",
         encoding="utf-8",
