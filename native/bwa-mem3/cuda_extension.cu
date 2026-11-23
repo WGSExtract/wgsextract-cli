@@ -339,7 +339,7 @@ private:
         const wgse_gpu_error status = WGSE_GPU(EventQuery)(slot.done);
         if (status == WGSE_GPU_SUCCESS) return true;
         if (status != WGSE_GPU_NOT_READY) {
-            slot.failure = std::string("GPU seed extension: ") + WGSE_GPU(GetErrorString)(status);
+            slot.failure = "GPU seed extension: " + error_description(status);
             return true;
         }
         const double waited = std::chrono::duration<double>(
@@ -504,7 +504,7 @@ int wgse_mem3_cuda_device(std::string &reason) {
         const wgse_gpu_error status = WGSE_GPU(GetDeviceCount)(&count);
         if (status != WGSE_GPU_SUCCESS || count == 0) {
             why = status != WGSE_GPU_SUCCESS
-                ? std::string("no usable NVIDIA GPU: ") + WGSE_GPU(GetErrorString)(status)
+                ? "no usable NVIDIA GPU: " + error_description(status)
                 : "no NVIDIA GPU";
             return;
         }
@@ -515,7 +515,7 @@ int wgse_mem3_cuda_device(std::string &reason) {
             if (WGSE_GPU(SetDevice)(ordinal) != WGSE_GPU_SUCCESS) continue;
             const wgse_gpu_error kernels = runs_kernels();
             if (kernels != WGSE_GPU_SUCCESS) {
-                unsupported = WGSE_GPU(GetErrorString)(kernels);
+                unsupported = error_description(kernels);
                 continue;
             }
             if (WGSE_GPU(MemGetInfo)(&free, &total) != WGSE_GPU_SUCCESS) continue;

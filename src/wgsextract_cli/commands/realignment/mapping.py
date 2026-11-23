@@ -11,7 +11,7 @@ from wgsextract_cli.core.alignment.samtools_commands import (
     regular_files_bytes,
     sort_memory,
 )
-from wgsextract_cli.core.native_aligners import native_gpu_preference
+from wgsextract_cli.core.native_aligners import native_gpu_preference, on_windows_x64
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.steps import Decision, Step, StepJournal
 from wgsextract_cli.core.utils import (
@@ -93,7 +93,7 @@ def _align_step(
 def _native_gpu_preference_changes_plan(
     job: RealignJob, target: str | None, reads: dict[str, str | None]
 ) -> bool:
-    """Key the speed preference only when normal native GPU plans cannot fit."""
+    """Key the preference when it enables CUDA or overrides a GPU RAM limit."""
     if (
         not native_gpu_preference(job.prefer_native_gpu)
         or job.gpu
@@ -118,7 +118,7 @@ def _native_gpu_preference_changes_plan(
         reads=count,
         read_length=statistics.read_length if statistics else None,
     )
-    return (
+    return (on_windows_x64() and plan.backend == "cuda") or (
         plan.memory_decision is not None and plan.memory_decision.reason == "prefer_gpu"
     )
 

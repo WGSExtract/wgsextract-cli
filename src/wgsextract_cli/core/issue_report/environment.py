@@ -125,8 +125,8 @@ def environment_lines() -> list[str]:
 
 def tool_versions(extra: Iterable[str] = ()) -> dict[str, str]:
     """Versions of the mandatory tools and ``extra`` (those a run used)."""
-    from wgsextract_cli.core.results import tool_version
     from wgsextract_cli.core.tool_catalog import required_dependency_tools
+    from wgsextract_cli.core.tool_versions import tool_version
 
     versions: dict[str, str] = {}
     for tool in dict.fromkeys([*required_dependency_tools(False), *extra]):

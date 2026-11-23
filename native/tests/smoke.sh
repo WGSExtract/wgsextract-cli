@@ -1,7 +1,7 @@
 #!/bin/sh
 # Index and align a deterministic synthetic genome; require accurate CPU
 # mappings and, for metal modes when Metal is usable, byte-identical alignments.
-# Usage: smoke.sh <aligner> <work-dir> [metal|force-gpu|dense-sa]
+# Usage: smoke.sh <aligner> <work-dir> [metal|force-gpu|dense-sa|cuda-cpu-fallback]
 set -eu
 # shellcheck source=native/tests/seeded_random.sh
 . "$(dirname "$0")/seeded_random.sh"
@@ -90,6 +90,22 @@ if [ "$mode" = dense-sa ]; then
     fi
     grep -Fq -- '--dense-sa requires on or off' force.log
     echo "Production dense-SA options preserve alignment records"
+elif [ "$mode" = cuda-cpu-fallback ]; then
+    # #1119: CUDA's driverless probe must succeed, with or without an index.
+    "$binary" capabilities --json > capabilities.json 2> capabilities.log
+    "$binary" capabilities --json reference.fa > indexed-capabilities.json 2> indexed-capabilities.log
+    for caps in capabilities.json indexed-capabilities.json; do
+        grep -q '"cuda_available":false' "$caps"
+        grep -q '"cuda_hardware_supported":false' "$caps"
+        grep -q '"cpu_available":true' "$caps"
+    done
+    "$binary" --backend auto mem -t 4 reference.fa reads_1.fq reads_2.fq \
+        > auto.sam 2> auto.log
+    grep -q 'CPU fallback:' auto.log
+    grep -v '^@PG' cpu.sam > cpu.records
+    grep -v '^@PG' auto.sam > auto.records
+    cmp cpu.records auto.records
+    echo "CUDA unavailable; automatic alignment matches CPU"
 elif [ "$mode" = cpu ]; then
     echo "CPU alignment verified"
 else

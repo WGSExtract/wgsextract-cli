@@ -5,6 +5,7 @@ set -eu
 . "$(dirname "$0")/../../tests/seeded_random.sh"
 aligner=$1
 work=$2
+rm -rf "$work"
 mkdir -p "$work"
 cd "$work"
 
@@ -284,7 +285,12 @@ same upstream-t4.sam dense-bad.sam
 # capabilities names the file mem reads, not a damaged denser one.
 "$aligner" --dense-sa force capabilities --json reference.fa | grep -q '"interval":16,'
 # A side file from another index of the same length and base counts.
-{ echo '>chr'; sed -n 2p reference.fa | rev; } > other.fa
+awk 'NR == 2 {
+    print ">chr"
+    for (i = length($0); i > 0; --i) printf "%s", substr($0, i, 1)
+    print ""
+    exit
+}' reference.fa > other.fa
 "$aligner" index other.fa > other-index.log 2>&1
 "$aligner" densify-sa -i 8 other.fa 2> /dev/null
 mv other.fa.wgse-sa8 reference.fa.wgse-sa8
@@ -297,6 +303,7 @@ same upstream-t4.sam dense-foreign.sam
     | grep -q '"intervals":\[4,8,16\],"interval":16,'
 # Wrong samples under an intact header and checksum fail mem's spot check against
 # the index: flip bit 0 of every sample and rewrite the CRC-32C (header offset 96).
+rm reference.fa.wgse-sa8
 "$aligner" densify-sa -i 8 reference.fa 2> /dev/null
 perl -e '
     open my $f, "+<", $ARGV[0] or die; binmode $f; local $/; my $d = <$f>;

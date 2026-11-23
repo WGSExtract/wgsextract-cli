@@ -289,8 +289,8 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
     table = tmp_path / "library/downloads/gnomad_hg38.tsv.gz"
     with gzip.open(table, "rt") as output:
         assert output.read().splitlines()[-2:] == [
-            "chr1\t100\tA\tG\t0.25",
-            "chr1\t200\tC\tT\t0.5",
+            "chr1\t100\tA\tG\t0.25\t.\t.",
+            "chr1\t200\tC\tT\t0.5\t.\t.",
         ]
     assert ("upstream" in source.paths) is corrupt_second_part
     assert table.with_suffix(table.suffix + ".tbi").is_file()
