@@ -54,6 +54,7 @@ def run_jobs(
         with execution_context.bound(process_scope=scope):
             _run_jobs(jobs, workers, memory, then)
     finally:
+        # Idempotent: _stop() may already have released this scope.
         proc_registry.accept_new(scope)
 
 

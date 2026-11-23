@@ -191,10 +191,11 @@ def test_1415_cancelling_while_waiting_stops_only_its_running_tool():
             token.cancel()
             with pytest.raises(api.Cancelled):
                 result.result(timeout=5)
-            assert process.returncode not in (None, 0)
+            assert process.poll() not in (None, 0)
         finally:
             if process.poll() is None:
                 process.kill()
+                process.wait(timeout=5)
         assert unrelated.poll() is None
         unrelated.communicate(timeout=5)
         assert unrelated.returncode == 0
