@@ -14,10 +14,9 @@ import tarfile
 import tempfile
 from pathlib import Path
 
+import apt_cache
 import windows_vm
 from housekeeping import mark_used
-
-LINUX_IMAGE = "ubuntu:24.04"
 
 
 def log(message: str) -> None:
@@ -99,7 +98,7 @@ def build_gui_artifacts(
 
 
 def build_windows_gui_installer(
-    gui_repo: Path | None, installer: Path | None, serve: Path
+    gui_repo: Path | None, installer: Path | None, serve: Path, *, use_apt_cache: bool
 ) -> tuple[str, bool]:
     """The app's NSIS installer, cross-built from gui_repo unless one is given;
     returns its name and whether it carries an Authenticode signature (the
@@ -118,7 +117,14 @@ def build_windows_gui_installer(
             log("Cross-building the Windows installer in an Ubuntu container...")
             out = serve.parent / "windows-build"
             out.mkdir()
-            in_container(gui_repo, out, WINDOWS_GUI_BUILD)
+            in_container(
+                gui_repo,
+                out,
+                WINDOWS_GUI_BUILD,
+                "windows-gui-build",
+                apt_cache.WINDOWS_GUI_BUILD_PACKAGES,
+                use_apt_cache=use_apt_cache,
+            )
             (installer,) = out.glob("*-setup.exe")
     shutil.copy2(installer, serve / installer.name)
     return installer.name, pe_has_signature(installer)
@@ -128,9 +134,6 @@ def build_windows_gui_installer(
 # or cargo-xwin: in an Ubuntu container, with the Linux build's Cargo volumes.
 WINDOWS_GUI_BUILD = """
 set -eu
-export DEBIAN_FRONTEND=noninteractive
-bash /apt-install.sh curl ca-certificates git build-essential make unzip nsis lld llvm clang clang-tools \
-  python3 python3-defusedxml
 # clang-cl, llvm-rc and lld-link live in LLVM's own bin directory.
 export PATH="$(ls -d /usr/lib/llvm-*/bin | sort -V | tail -1):$PATH"
 /root/.cargo/bin/cargo --version 2>/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
@@ -153,9 +156,6 @@ chown -R "$HOST_UID:$HOST_GID" /out
 # and the build tree persist in Docker volumes between builds.
 LINUX_GUI_BUILD = """
 set -eu
-export DEBIAN_FRONTEND=noninteractive
-bash /apt-install.sh curl ca-certificates git build-essential pkg-config file xdg-utils \
-  libwebkit2gtk-4.1-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 /root/.cargo/bin/cargo --version 2>/dev/null || curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
 . /root/.cargo/env
 curl -fsSL https://nodejs.org/dist/v24.22.0/node-v24.22.0-linux-x64.tar.xz | tar -xJ -C /opt
@@ -173,7 +173,7 @@ chown -R "$HOST_UID:$HOST_GID" /out
 
 
 def build_linux_gui_package(
-    gui_repo: Path | None, package: Path | None, serve: Path
+    gui_repo: Path | None, package: Path | None, serve: Path, *, use_apt_cache: bool
 ) -> str:
     """The app's .deb, built from gui_repo unless one is given; returns its name."""
     if package is None:
@@ -181,13 +181,28 @@ def build_linux_gui_package(
         log("Building the Linux .deb in an amd64 Ubuntu container (takes a while)...")
         out = serve.parent / "linux-build"
         out.mkdir()
-        in_container(gui_repo, out, LINUX_GUI_BUILD)
+        in_container(
+            gui_repo,
+            out,
+            LINUX_GUI_BUILD,
+            "linux-gui-build",
+            apt_cache.LINUX_GUI_BUILD_PACKAGES,
+            use_apt_cache=use_apt_cache,
+        )
         (package,) = out.glob("*.deb")
     shutil.copy2(package, serve / package.name)
     return package.name
 
 
-def in_container(gui_repo: Path, out: Path, script: str) -> None:
+def in_container(
+    gui_repo: Path,
+    out: Path,
+    script: str,
+    profile: str,
+    packages: tuple[str, ...],
+    *,
+    use_apt_cache: bool,
+) -> None:
     """Run a build script in an amd64 Ubuntu container on a tarball of the
     checkout's files (at /out/src.tar.gz); it leaves its products in out."""
     listed = run(
@@ -198,16 +213,16 @@ def in_container(gui_repo: Path, out: Path, script: str) -> None:
         for rel in filter(None, listed):
             if (gui_repo / rel).exists():
                 tar.add(gui_repo / rel, arcname=rel, recursive=False)
-    docker = windows_vm.docker()
-    for used in ("docker:gui-build", f"docker:{LINUX_IMAGE}"):
+    for used in ("docker:gui-build", f"docker:{apt_cache.UBUNTU_IMAGE}"):
         mark_used(used)
-    run([docker, "run", "--rm", "--platform", "linux/amd64",
-         "-e", f"HOST_UID={os.getuid()}", "-e", f"HOST_GID={os.getgid()}",
-         *windows_vm.APT_MOUNT,
+    apt_cache.run_with_apt(
+        windows_vm.docker(), "amd64",
+        ["-e", f"HOST_UID={os.getuid()}", "-e", f"HOST_GID={os.getgid()}",
          "-v", f"{out}:/out", "-v", "wgse-lab-gui-cargo:/root/.cargo",
-         "-v", "wgse-lab-gui-rustup:/root/.rustup",
-         "-v", "wgse-lab-gui-target:/build/target",
-         LINUX_IMAGE, "bash", "-c", script])  # fmt: skip
+         "-v", "wgse-lab-gui-rustup:/root/.rustup", "-v", "wgse-lab-gui-target:/build/target"],
+        ["bash", "-ec", script],
+        profile, packages, use_cache=use_apt_cache,
+    )  # fmt: skip
 
 
 def pe_has_signature(path: Path) -> bool:
