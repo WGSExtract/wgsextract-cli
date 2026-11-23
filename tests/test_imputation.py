@@ -26,6 +26,7 @@ from tests.htslib_helpers import bgzip_index, needs_htslib
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf.imputation import beagle_command
 from wgsextract_cli.core import dependencies, imputation_panel
+from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.tool_catalog import (
@@ -186,6 +187,64 @@ def test_glimpse2_imputes_1x_reads_and_labels_them(reflib, tmp_path, caplog):
     stats = api.qc.vcf(api.QcVcfParams(vcf_input=output, outdir=tmp_path / "qc"))
     assert stats.metrics["imputed_by"] == "GLIMPSE2"
     assert "imputed_vcf" in {w.code for w in stats.warnings}
+
+
+def _imputed_genotypes(reflib: Path, outdir: Path, threads: int) -> list[list[str]]:
+    result = api.vcf.impute(
+        api.VcfImputeParams(
+            input=FIXTURE / "reads.bam", ref=reflib, outdir=outdir, threads=threads
+        )
+    )
+    (output,) = [Path(o.path) for o in result.outputs if o.role == "imputed_variants"]
+    return _query(output, "%CHROM\t%POS\t%REF\t%ALT\t%FILTER[\t%GT\t%DS\t%GP]\n")
+
+
+@needs_htslib
+@needs_glimpse
+def test_1118_chunks_side_by_side_impute_what_one_at_a_time_does(reflib, tmp_path):
+    chunks = imputation_panel.require("chr20", str(reflib), None).chunks
+    assert len(chunks) >= 2  # so they run side by side
+
+    one = _imputed_genotypes(reflib, tmp_path / "one", threads=1)
+    many = _imputed_genotypes(reflib, tmp_path / "many", threads=len(chunks))
+
+    assert len(one) > 1000
+    assert many == one
+
+
+@needs_htslib
+@needs_glimpse
+@pytest.mark.parametrize("source", ["option", "config"])
+def test_1118_auto_memory_imputes_reads(reflib, tmp_path, monkeypatch, source):
+    if source == "config":
+        monkeypatch.setitem(settings, "memory_limit", "auto")
+
+    result = api.vcf.impute(
+        api.VcfImputeParams(
+            input=FIXTURE / "reads.bam",
+            ref=reflib,
+            outdir=tmp_path,
+            threads=2,
+            memory="auto" if source == "option" else None,
+        )
+    )
+
+    assert result.metrics["imputed_sites"] > 1000
+
+
+@needs_htslib
+@needs_glimpse
+def test_1118_a_failed_chunk_names_itself_and_writes_no_output(reflib, tmp_path):
+    _in, region, binary = imputation_panel.require("chr20", str(reflib), None).chunks[1]
+    binary.write_bytes(binary.read_bytes()[:1000])
+
+    with pytest.raises(api.CommandFailed, match=re.escape(f"chr20 chunk 2 ({region})")):
+        api.vcf.impute(
+            api.VcfImputeParams(
+                input=FIXTURE / "reads.bam", ref=reflib, outdir=tmp_path, threads=4
+            )
+        )
+    assert not (tmp_path / "imputed.vcf.gz").exists()
 
 
 def _beagle_installed() -> bool:
