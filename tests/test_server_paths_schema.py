@@ -91,6 +91,28 @@ def test_path_guard_covers_every_vcf_path(op, field, value):
     assert refused.value.code in ("usage", "path_not_allowed")
 
 
+@pytest.mark.parametrize("field", ["callset", "gvcf"])
+@pytest.mark.parametrize(
+    "path", [r"D:\other\unsafe.vcf", r"D:unsafe.vcf", "unsafe.vcf"]
+)
+def test_compare_1295_path_guard_checks_paths_inside_labelled_values(field, path):
+    guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
+    op = find("vcf/compare")
+    allowed = {
+        "callset": [r"a=C:\data\a.vcf", r"b=C:\data\b.vcf"],
+        "gvcf": [r"b=C:\data\b.g.vcf"],
+        "reference_evidence": "gvcf",
+        "outdir": r"C:\data",
+    }
+    guard.check(params_from_json(op, allowed))
+    bad = [rf"b={path}"]
+    if field == "callset":
+        bad.insert(0, r"a=C:\data\a.vcf")
+    with pytest.raises(RequestError) as refused:
+        guard.check(params_from_json(op, {**allowed, field: bad}))
+    assert refused.value.code in ("usage", "path_not_allowed")
+
+
 @pytest.mark.parametrize(
     ("op", "field"),
     [(op, item.name) for op, item in _REF_PATHS],

@@ -275,6 +275,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --region chr22",
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --format parquet",
     ),
+    "vcf compare": _h(
+        "compare.summary.json and compare.summary.tsv (or .parquet); "
+        "optional compare.variants table and indexed compare.anchor.vcf.gz.",
+        "wgsextract vcf compare --callset a=caller-a.vcf.gz --callset b=caller-b.vcf.gz --ref GRCh38.fa",
+        "wgsextract vcf compare --mode unique --callset child=child.vcf.gz --callset parent=parent.g.vcf.gz --include child --exclude parent --reference-evidence gvcf --emit-vcf",
+    ),
     "vcf clinvar": _h(
         "clinvar_annotated.vcf.gz and clinvar_pathogenic.vcf.gz (+ .tbi).",
         f"wgsextract vcf clinvar {_VCF_IN}",

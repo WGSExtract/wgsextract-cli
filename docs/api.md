@@ -1050,6 +1050,32 @@ Write the table (role `variant_table`) and database (`variant_database`);
 | `no_sqlite` | `bool` | `False` | `--no-sqlite` | Write only the table file. |
 | `table_format` | `str` | `'tsv'` | `--format` | Table file format: tsv, or parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
 
+### `api.vcf.compare(VcfCompareParams)`
+
+CLI: `wgsextract vcf compare`.
+
+Write local allele concordance tables and optionally an indexed anchor VCF.
+
+`VcfCompareParams`: Compare normalized small alleles across two or more local callsets.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `callset` | `tuple[str, ...]` | required | `--callset` | Local VCF, gVCF or BCF (repeat for at least two labels). |
+| `sample` | `tuple[str, ...]` | `[]` | `--sample` | Sample for a labelled input with multiple samples. |
+| `gvcf` | `tuple[str, ...]` | `[]` | `--gvcf` | Explicit local gVCF evidence for a labelled callset. |
+| `mode` | `str` | `'concordance'` | `--mode` | Report all pairs, or select alleles shared by an include group. One of: `concordance`, `shared`, `unique` |
+| `include` | `tuple[str, ...]` | `[]` | `--include` | Required carrier in shared/unique mode; repeat. |
+| `exclude` | `tuple[str, ...]` | `[]` | `--exclude` | Required absence in shared/unique mode; repeat. |
+| `reference_evidence` | `str` | `'none'` | `--reference-evidence` | Require callable gVCF evidence for strict exclusion (default: none). One of: `none`, `gvcf` |
+| `ref` | `Path \| None` | `None` | `--ref` | Local FASTA with a .fai index (and .gzi if BGZF); enables left alignment. |
+| `allow_unverified_build` | `bool` | `False` | `--allow-unverified-build` | Allow unknown builds with a warning; never bypass a known mismatch. |
+| `bed` | `Path \| None` | `None` | `--bed` | BED scope in normalized coordinates (zero-based, half-open). |
+| `region` | `str \| None` | `None` | `--region` | One contig or interval in normalized coordinates (one-based, inclusive). |
+| `table_format` | `str` | `'tsv'` | `--format` | Concordance table format: tsv (default) or parquet (needs pyarrow). One of: `tsv`, `parquet` |
+| `emit_vcf` | `bool` | `False` | `--emit-vcf` | Write an indexed single-sample anchor VCF (first callset or first include). |
+| `emit_variants` | `bool` | `False` | `--emit-variants` | Also write per-allele states in concordance mode (always on in family modes). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+
 ### `api.vcf.to_fasta(VcfToFastaParams)`
 
 CLI: `wgsextract vcf to-fasta`.

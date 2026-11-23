@@ -128,6 +128,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf annotate": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf filter": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf table": _n(MINUTES, "bcftools", optional="bgzip tabix"),
+    "vcf compare": _n(MINUTES, "bcftools", optional="samtools tabix"),
     "vcf clinvar": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf revel": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),

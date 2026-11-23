@@ -355,6 +355,7 @@ class ReferenceEvidence:
     path: str
     known_lengths: Mapping[str, int] = field(default_factory=dict, repr=False)
     header_text: InitVar[str | None] = None
+    allow_region_files: bool = True
     lengths: dict[str, int] = field(init=False)
     provenance: Provenance | None = field(init=False)
     quality_model: str = field(init=False)
@@ -390,7 +391,9 @@ class ReferenceEvidence:
         if not region:
             return [(name, 1, length) for name, length in self.lengths.items()]
         try:
-            selected = selected_intervals(region, self.lengths, commas=True)
+            selected = selected_intervals(
+                region, self.lengths, commas=True, allow_files=self.allow_region_files
+            )
         except ValueError:
             return None
         return [
@@ -424,6 +427,7 @@ class ReferenceEvidence:
                 for contig in _CONTIG_ID.findall(header)
                 if (alias := match_chromosome_name(contig, lengths))
             },
+            allow_region_files=self.allow_region_files,
         )
         renamed = normalize_vcf_chromosomes(self.path, list(lengths), str(work))
         split = work / "evidence.split.vcf.gz"
@@ -472,7 +476,9 @@ class ReferenceEvidence:
             capture_output=True,
         )
         ensure_vcf_indexed(str(output))
-        result = ReferenceEvidence(str(output), lengths)
+        result = ReferenceEvidence(
+            str(output), lengths, allow_region_files=self.allow_region_files
+        )
         if self.provenance:
 
             def mapped(intervals: Iterable[Interval]) -> list[Interval]:

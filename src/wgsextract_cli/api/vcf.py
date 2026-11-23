@@ -98,6 +98,7 @@ from .vcf_specs.annotations import VcfPhylopParams as VcfPhylopParams
 from .vcf_specs.annotations import VcfRevelParams as VcfRevelParams
 from .vcf_specs.annotations import VcfSpliceaiParams as VcfSpliceaiParams
 from .vcf_specs.annotations import VcfSvFreqParams as VcfSvFreqParams
+from .vcf_specs.compare import VcfCompareParams as VcfCompareParams
 from .vcf_specs.files import HAPLOTYPES as HAPLOTYPES
 from .vcf_specs.files import VcfAnnotateParams as VcfAnnotateParams
 from .vcf_specs.files import VcfFilterParams as VcfFilterParams
@@ -153,6 +154,19 @@ def table(
     from wgsextract_cli.commands.vcf.table import run_table
 
     return execute(params, run_table, progress=progress, cancel=cancel, check=check)
+
+
+def compare(
+    params: VcfCompareParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Write local allele concordance tables and optionally an indexed anchor VCF."""
+    from wgsextract_cli.commands.vcf.compare import run_compare
+
+    return execute(params, run_compare, progress=progress, cancel=cancel, check=check)
 
 
 def to_fasta(
@@ -388,6 +402,7 @@ __all__ = [
     "VcfSnpParams",
     "VcfSpliceaiParams",
     "VcfTableParams",
+    "VcfCompareParams",
     "VcfToFastaParams",
     "VcfTrioParams",
     "acmg",
@@ -407,6 +422,7 @@ __all__ = [
     "snp",
     "spliceai",
     "table",
+    "compare",
     "to_fasta",
     "trio",
 ]

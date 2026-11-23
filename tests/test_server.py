@@ -642,6 +642,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "vep/download": {"vep_cache": _DATA},
     "vep/verify": {"vep_cache": _DATA},
     "vep/delete": {"vep_cache": _DATA},
+    "vcf/compare": {"callset": [f"a={_FILE}", f"b={_FILE}"]},
 }
 _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("basecall", "regions_bed"): {"alignment": _FILE, "regions_bed": _FILE},

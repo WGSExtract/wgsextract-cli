@@ -15,6 +15,7 @@ from wgsextract_cli.api.vcf import (
     VcfClair3Params,
     VcfClinvarParams,
     VcfCnvParams,
+    VcfCompareParams,
     VcfDeepvariantParams,
     VcfFilterParams,
     VcfFreebayesParams,
@@ -60,6 +61,7 @@ cmd_deepvariant = command_handler(
     "wgsextract_cli.commands.vcf.deepvariant", "cmd_deepvariant"
 )
 cmd_filter = command_handler("wgsextract_cli.commands.vcf.filter_trio", "cmd_filter")
+cmd_compare = command_handler("wgsextract_cli.commands.vcf.compare", "cmd_compare")
 cmd_freebayes = command_handler("wgsextract_cli.commands.vcf.callers", "cmd_freebayes")
 cmd_gatk = command_handler("wgsextract_cli.commands.vcf.callers", "cmd_gatk")
 cmd_gerp = command_handler("wgsextract_cli.commands.vcf.deleteriousness", "cmd_gerp")
@@ -156,6 +158,14 @@ def register(
     )
     _add_vcf_command(
         vcf_subs, base_parser, "trio", CLI_HELP["cmd_trio"], VcfTrioParams, cmd_trio
+    )
+    _add_vcf_command(
+        vcf_subs,
+        base_parser,
+        "compare",
+        "Compare normalized small alleles across local callsets.",
+        VcfCompareParams,
+        cmd_compare,
     )
     caller_commands: list[
         tuple[str, type[Params], Callable[[argparse.Namespace], None]]

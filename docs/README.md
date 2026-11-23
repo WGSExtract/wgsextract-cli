@@ -39,6 +39,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Lineage](lineage.md) | Extract Y/mtDNA, call haplogroups/STRs, set up yBrowse and review data licences |
 | [FTDNA VCF repair](ftdna-vcf-repair.md) | Turn legacy Big Y FILTER expressions into declared IDs |
 | [Variant workflows](variants.md) | Call/annotate, analyse trios and type pharmacogenes/repeats |
+| [Compare local VCFs](variant-comparison.md) | Compare calls across callers or family members |
 | [Variant confidence](variant-confidence.md) | Understand technical evidence labels and caller accuracy |
 | [Built-in genome viewer](../gui/docs/genome-viewer.md) | Inspect local reads and variants, or open an extraction result at its locus |
 | [Caller ploidy](caller-ploidy.md) | Handle sex, PARs and policy masks |

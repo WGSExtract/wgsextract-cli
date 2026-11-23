@@ -26,7 +26,7 @@ def literal_region(selection: str, lengths: dict[str, int]) -> tuple[str, int, i
     return chrom, start - 1, end
 
 
-def _bed_intervals(path: str) -> list[tuple[str, int, int]]:
+def bed_intervals(path: str) -> list[tuple[str, int, int]]:
     lower = path.lower()
     opener = gzip.open if lower.endswith(".gz") else open
     rows = []
@@ -89,7 +89,11 @@ def region_items(region: str, *, commas: bool) -> list[str]:
 
 
 def selected_intervals(
-    region: str, lengths: dict[str, int], *, commas: bool = False
+    region: str,
+    lengths: dict[str, int],
+    *,
+    commas: bool = False,
+    allow_files: bool = True,
 ) -> Intervals:
     """Union of whitespace- (or, with ``commas``, comma-) separated literals
     and BED/BED.gz/BEDPE files.
@@ -98,9 +102,15 @@ def selected_intervals(
     clipped to the contig; raises ValueError when nothing remains.
     """
     intervals: Intervals = {}
-    for selection in region_items(region, commas=commas):
-        if selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
-            rows = _bed_intervals(selection)
+    items = (
+        region_items(region, commas=commas)
+        if allow_files
+        else (region.split(",") if commas else region.split())
+    )
+    for item in items:
+        selection = item.strip()
+        if allow_files and selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
+            rows = bed_intervals(selection)
         else:
             rows = [literal_region(selection, lengths)]
         for chrom, start, end in rows:
