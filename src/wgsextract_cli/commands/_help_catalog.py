@@ -275,6 +275,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --region chr22",
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --format parquet",
     ),
+    "cohort summarize": _h(
+        "cohort.variants.tsv (or .parquet) and a result manifest; "
+        "a private participant join only with --include-identifiers.",
+        "wgsextract cohort summarize cohort.json --region chr22 --outdir summary",
+    ),
     "vcf clinvar": _h(
         "clinvar_annotated.vcf.gz and clinvar_pathogenic.vcf.gz (+ .tbi).",
         f"wgsextract vcf clinvar {_VCF_IN}",

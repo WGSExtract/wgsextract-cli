@@ -1644,6 +1644,29 @@ the output doesn't depend on how many.
 | `min_gp` | `float \| None` | `None` | `--min-gp` | Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95). |
 | `min_info` | `float \| None` | `None` | `--min-info` | Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts. |
 
+## `api.cohort`
+
+Local, callability-aware cohort summaries for research.
+
+### `api.cohort.summarize(CohortSummarizeParams)`
+
+CLI: `wgsextract cohort summarize`.
+
+Write a local allele-count table and a result manifest.
+
+`CohortSummarizeParams`: Summarize autosomal SNVs from a local cohort manifest and matched gVCFs.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `cohort_manifest` | `Path` | required | `MANIFEST` | Local cohort input manifest (wgsextract.cohort/1). |
+| `region` | `str \| None` | `None` | `--region` | Limit to an autosomal contig, interval or comma-separated list. |
+| `bed` | `Path \| None` | `None` | `--bed` | Limit to autosomal intervals from a local BED. |
+| `min_depth` | `int` | `10` | `--min-depth` | Minimum DP (block MIN_DP). |
+| `min_gq` | `int` | `20` | `--min-gq` | Minimum GQ for callers that provide it. |
+| `table_format` | `str` | `'tsv'` | `--format` | Table format: tsv or parquet (needs pyarrow). One of: `tsv`, `parquet` |
+| `include_identifiers` | `bool` | `False` | `--include-identifiers` | Also write a private participant/QC join with source paths and names. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the working folder). |
+
 ## `api.analyze`
 
 `analyze`: whole-sample workflows that chain other commands.

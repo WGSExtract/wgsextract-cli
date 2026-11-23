@@ -138,6 +138,7 @@
 {"path":"qc ancestry","tier":"advanced","summary":"Admixture-style ancestry proportions (HGDP+1KG reference components) from a BAM/CRAM, VCF or microarray file.","key_flags":["--no-download","--sample","--build","--bootstrap"]},
 {"path":"qc contamination","tier":"advanced","summary":"Estimate how much of a GRCh37/38 BAM/CRAM's DNA comes from another person (VerifyBamID2 FREEMIX).","key_flags":["--sites","--svd-prefix"]},
 {"path":"qc fake-data","tier":"advanced","summary":"Generate fake BAM, CRAM, VCF, and FASTQ files for testing.","key_flags":["--coverage","--build","--type","--full-size","--legacy-bam","--seed"]},
+{"path":"cohort summarize","tier":"advanced","summary":"Summarize autosomal SNVs from a local cohort manifest and matched gVCFs.","key_flags":["--region","--bed","--min-depth","--min-gq","--format","--include-identifiers"]},
 {"path":"repair ftdna-bam","tier":"advanced","summary":"Fix formatting errors specific to Family Tree DNA (FTDNA) BAM files that cause them to fail in standard tools like GATK.","key_flags":["--output"]},
 {"path":"repair ftdna-vcf","tier":"advanced","summary":"Fix formatting errors in FTDNA VCF files to make them compatible with modern annotation tools like VEP.","key_flags":["--output"]},
 {"path":"analyze comprehensive","tier":"advanced","summary":"Run a full-chain analysis: QC, lineage, variant calling, annotation, and significant variant filtering.","key_flags":["--vcf-inputs","--skip-calling","--batch","--no-resume","--force-step","--dry-run"]},
