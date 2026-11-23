@@ -18,6 +18,7 @@ from wgsextract_cli.core.errors import WGSExtractError
 
 @dataclass
 class _Lease:
+    name: str
     active: bool = True
 
 
@@ -29,6 +30,15 @@ class WorkspaceLease:
 
 _lease: ContextVar[_Lease | None] = ContextVar("workspace_activity", default=None)
 _marker = re.compile(r"(use|move)-([1-9]\d*)-[a-f0-9-]+")
+WORKSPACE_LEASE_ARGUMENT = "--workspace-lease="
+
+
+def forward_workspace_admission(command: list[str]) -> list[str]:
+    """Pass the active lease to a direct ``python -m wgsextract_cli.main`` child."""
+    lease = _lease.get()
+    if lease is None or not lease.active:
+        return command
+    return [*command[:3], WORKSPACE_LEASE_ARGUMENT + lease.name, *command[3:]]
 
 
 def _standard_desktop_data_dir() -> Path:
@@ -108,8 +118,9 @@ def workspace_use(admitted_by: str | None = None) -> Iterator[None]:
         yield
         return
 
-    with hold_workspace(admitted_by).cleanup:
-        lease = _Lease()
+    held = hold_workspace(admitted_by)
+    with held.cleanup:
+        lease = _Lease(held.name)
         token = _lease.set(lease)
         try:
             yield
@@ -137,9 +148,9 @@ def hold_workspace(admitted_by: str | None = None) -> WorkspaceLease:
     with ExitStack() as cleanup:
         cleanup.callback(marker.unlink, missing_ok=True)
         if admitted_by is not None:
-            # The manager already prevented any move from starting. Publish
-            # the worker's own marker first, so it stays protected if the
-            # manager exits while the worker is cancelling.
+            # The parent already prevented any move from starting. Publish
+            # the child's own marker first, so it stays protected if the
+            # parent exits while the child is still using the workspace.
             admission = _marker.fullmatch(admitted_by)
             if (
                 not admission

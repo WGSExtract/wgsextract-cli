@@ -10,8 +10,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from wgsextract_cli.api import ExtractRegionParams
 from wgsextract_cli.api._params import with_config_defaults
+from wgsextract_cli.commands._analyze_workflows import AnalyzeJob, run_cli_subcommand
 from wgsextract_cli.core import config
 from wgsextract_cli.core.config import (
     get_config_path,
@@ -21,7 +23,7 @@ from wgsextract_cli.core.config import (
     settings,
 )
 from wgsextract_cli.core.users_workspace import SENTINEL_NAME
-from wgsextract_cli.core.workspace_activity import desktop_data_dir
+from wgsextract_cli.core.workspace_activity import desktop_data_dir, workspace_use
 
 
 @pytest.fixture
@@ -230,6 +232,27 @@ def test_1322_cli_cannot_start_or_save_during_a_desktop_move(tmp_path, monkeypat
         save_config({"cpu_threads": 7})
 
     assert config.read_toml(file)["cpu_threads"] == 7
+    assert not list(activity.iterdir())
+
+
+def test_1322_admitted_workflow_child_survives_a_refused_move(tmp_path, capfd):
+    settings_file = tmp_path / "config.toml"
+    settings_file.write_text(
+        state_directory_setting(tmp_path) + f"temp_directory = '{tmp_path}'\n",
+        encoding="utf-8",
+    )
+    activity = desktop_data_dir() / "workspace-activity"
+    with config.scoped_config(settings_file), workspace_use():
+        # A mover publishes first, but the parent's active lease means it will
+        # refuse the move. Keep its marker present through the child's startup.
+        mover = activity / f"move-{os.getpid()}-a"
+        mover.touch()
+        try:
+            run_cli_subcommand(["ref", "status"], AnalyzeJob(ref=str(tmp_path)))
+        finally:
+            mover.unlink()
+
+    assert f"Reference library: {tmp_path}" in capfd.readouterr().out
     assert not list(activity.iterdir())
 
 

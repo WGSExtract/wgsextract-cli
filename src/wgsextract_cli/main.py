@@ -17,16 +17,16 @@ from .cli.parser import build_parser, config_path_from_argv, parse_args
 from .core.config import reload_settings, set_config_path
 from .core.run_log import RunLogError, run_logging
 from .core.utils import WGSExtractError
-from .core.workspace_activity import workspace_use
+from .core.workspace_activity import WORKSPACE_LEASE_ARGUMENT, workspace_use
 
 __all__ = ["main"]
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None, *, admitted_by: str | None = None) -> None:
     configure_stdio_encoding()
     with ExitStack() as workspace:
         try:
-            workspace.enter_context(workspace_use())
+            workspace.enter_context(workspace_use(admitted_by))
         except (OSError, WGSExtractError) as exc:
             print(f"Cannot use the workspace: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
@@ -86,4 +86,8 @@ def _run(argv: Sequence[str] | None, workspace: ExitStack) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    argv = sys.argv[1:]
+    if argv and argv[0].startswith(WORKSPACE_LEASE_ARGUMENT):
+        main(argv[1:], admitted_by=argv[0][len(WORKSPACE_LEASE_ARGUMENT) :])
+    else:
+        main(argv)
