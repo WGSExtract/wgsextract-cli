@@ -173,8 +173,17 @@ jobs:
             linux-aarch64) file "$bin/GLIMPSE2_phase" | grep -q 'ARM aarch64' ;;
           esac
           pixi run --locked -e dev env PATH="$bin:$PWD/.pixi/envs/dev/bin:$PATH" \
-            bash packaging/glimpse2-arm64/test-fixture.sh out/glimpse-fixture
-          cat out/glimpse-fixture/records.sha256
+            python -m pytest -q -o addopts="" --basetemp=out/glimpse-arm64 \
+            --junitxml=out/glimpse-arm64.xml tests/test_imputation.py -k imputes_1x_reads
+          pixi run --locked -e dev python -c "import xml.etree.ElementTree as ET; s = ET.parse('out/glimpse-arm64.xml').find('testsuite'); assert s is not None and s.get('tests') == '1' and s.get('skipped') == '0'"
+      - name: Diagnose Linux ARM64 phasing failures
+        if: failure() && matrix.platform == 'linux-aarch64'
+        run: |
+          find out/glimpse-arm64 -type f -name '*.bin' -print0 | while IFS= read -r -d '' ref; do
+            gdb -batch -ex run -ex bt --args out/candidate/.pixi/envs/default/bin/GLIMPSE2_phase \
+              --bam-file tests/fixtures/imputation_hg002/reads.bam --ind-name HG002 \
+              --reference "$ref" --output out/diagnostic.bcf --threads 1 || true
+          done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: glimpse2-${{ matrix.platform }}
@@ -203,17 +212,3 @@ jobs:
           description: |
             GLIMPSE2 v2.0.1 (odelaneau/GLIMPSE, MIT) for macOS and Linux ARM64.
             Built with Clang and SIMDe NEON.
-
-  baseline-linux-x86:
-    if: github.event_name == 'workflow_dispatch' && inputs.target == 'arm64'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/setup-pixi
-        with:
-          environments: dev imputation
-      - name: Record the Bioconda x86 result on HG002
-        run: |
-          pixi run --locked -e dev bash packaging/glimpse2-arm64/test-fixture.sh out/glimpse-fixture
-          cat out/glimpse-fixture/records.sha256

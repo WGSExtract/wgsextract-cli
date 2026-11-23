@@ -12,6 +12,7 @@ pinned downloads; GLIMPSE2, Beagle and bcftools run for real.
 import csv
 import errno
 import gzip
+import hashlib
 import json
 import os
 import platform
@@ -42,6 +43,12 @@ from wgsextract_cli.core.utils import (
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "imputation_hg002"
+# #1398: exact VCF records captured from the Bioconda x86-64 packages. The
+# Linux and macOS C++ standard libraries have different RNG distributions.
+X86_GLIMPSE_RECORDS = {
+    "darwin": "556db233f800f0fa9907304df36754d830f89328087324e76d43c4b42316d6e5",
+    "linux": "8b4fe53fabffa956e81453665837ff57bac740092a2a357038c7cb898e5f89db",
+}
 
 
 def _query(vcf: Path, fmt: str, *args: str) -> list[list[str]]:
@@ -180,6 +187,14 @@ def test_glimpse2_imputes_1x_reads_and_labels_them(reflib, tmp_path, caplog):
     assert "##FILTER=<ID=ImpLowConf" in header
     rows = _query(output, "%INFO/IMP\t%FILTER\n")
     assert rows and all(imp == "1" for imp, _f in rows)
+    if expected := X86_GLIMPSE_RECORDS.get(sys.platform):
+        # Omit run dates, command paths and the build banner in the header.
+        records = hashlib.sha256()
+        with gzip.open(output, "rb") as stream:
+            for line in stream:
+                if not line.startswith(b"#"):
+                    records.update(line)
+        assert records.hexdigest() == expected
     metrics = result.metrics
     assert metrics["imputed_sites"] == len(rows)
     assert "Preflight impute" in caplog.text
@@ -443,9 +458,16 @@ def test_1398_apple_silicon_reports_intel_glimpse_without_rosetta(
         dependencies.clear_tool_caches()
 
 
-@pytest.mark.parametrize("system", ["win32", "linux"])
-def test_621_beagle_diagnoses_missing_jar_java_and_unpinned_jar(
-    tmp_path, monkeypatch, system
+@pytest.mark.parametrize(
+    ("system", "java_path"),
+    [
+        ("win32", "Library/bin/java.exe"),
+        ("linux", "bin/java"),
+        ("darwin", "lib/jvm/bin/java"),
+    ],
+)
+def test_1398_beagle_validates_all_packaged_java_layouts(
+    tmp_path, monkeypatch, system, java_path
 ):
     monkeypatch.setattr(sys, "platform", system)
     with pytest.raises(WGSExtractError, match="Beagle jar missing") as error:
@@ -454,11 +476,7 @@ def test_621_beagle_diagnoses_missing_jar_java_and_unpinned_jar(
     jar = tmp_path / "share" / "beagle-5.5" / "beagle.jar"
     jar.parent.mkdir(parents=True)
     jar.write_bytes(b"not the pinned jar")
-    java = (
-        tmp_path / "Library" / "bin" / "java.exe"
-        if system == "win32"
-        else tmp_path / "bin" / "java"
-    )
+    java = tmp_path / java_path
     with pytest.raises(WGSExtractError, match="Java executable missing") as error:
         beagle_command(tmp_path)
     assert str(java) in str(error.value)

@@ -318,9 +318,9 @@ def platform_commands(
                 "tests/test_e2e_full_genome.py",
             ]
         )
+    if host != "windows-x64" and (all_tests or "tests/test_imputation.py" in targets):
+        commands.append([*pixi, "pytest", "tests/test_imputation.py", "-rs"])
     if host == "linux-x64":
-        if all_tests or "tests/test_imputation.py" in targets:
-            commands.append([*pixi, "pytest", "tests/test_imputation.py", "-rs"])
         ont = ("test_ont_hg002.py", "test_phasing.py", "test_somalier_relate.py")
         if all_tests or any(f"tests/{test}" in targets for test in ont):
             commands.append(
@@ -474,9 +474,7 @@ def required_environments(
     environments += ["vep" if host == "linux-arm64" else "vep-rs", "fastvep"]
     if host == "windows-x64":
         environments.append("gatk")
-    if host in {"linux-x64", "windows-x64"} and (
-        targets == "all" or "tests/test_imputation.py" in targets
-    ):
+    if targets == "all" or "tests/test_imputation.py" in targets:
         environments.append("imputation")
     if host == "linux-x64" and (
         targets == "all"
