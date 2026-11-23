@@ -17,8 +17,8 @@ from typing import Any
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_htslib, write_fasta
-from tests.smoke_utils import state_directory_setting
 from tests.test_microarray_library import MARKERS, _library, _sample_bam
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.commands import _microarray_reuse as reuse
