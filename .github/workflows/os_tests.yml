@@ -204,6 +204,15 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').getroot().find('testsuite'); assert s is not None; n = int(s.get('tests', '0')); skipped = int(s.get('skipped', '0')); print(n, 'tests,', skipped, 'skipped'); sys.exit(n == 0 or skipped > 0)"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Impute HG002 with the pinned macOS or Linux ARM64 tools (no skips)
+        if: (inputs.os == 'macos' || inputs.os == 'linux-arm64') && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
+        run: |
+          mkdir -p out
+          pixi install --locked -e imputation
+          export PATH="$PWD/.pixi/envs/imputation/bin:$PATH"
+          pixi run --locked -e dev pytest tests/test_imputation.py -rs \
+            --basetemp=out/imputation-tmp --junitxml=out/imputation-e2e.xml
+          pixi run --locked -e dev python -c "import xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').find('testsuite'); assert s is not None and int(s.get('tests', '0')) > 0 and s.get('skipped') == '0'"
       # Test result cache (#915): PRs and merge groups skip test files whose
       # exact dependency hash already passed on main (PRs also on an earlier
       # push of the same PR). The scheduled full run replenishes the main
