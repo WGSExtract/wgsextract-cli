@@ -276,6 +276,24 @@ def test_missing_paraphase_environment_does_not_install(
     assert not fake_pixi.installed("paraphase")
 
 
+def test_paraphase_version_error_identifies_broken_executable(
+    paraphase_env: Path, tmp_path: Path
+) -> None:
+    """A broken opt-in environment reports the executable's version error."""
+    bam, ref = _alignment(tmp_path, ("PACBIO",))
+    executable = python_tool(
+        paraphase_env / "bin",
+        "paraphase",
+        "import sys\nsys.exit('Paraphase could not load a required library')\n",
+    )
+    result = _run(bam, ref, tmp_path / "out")
+    assert result.status == "failed"
+    assert result.error is not None
+    assert str(executable) in result.error.message
+    assert "--version exit 1" in result.error.message
+    assert "required library" in result.error.message
+
+
 def test_chm13_rejects_locus_not_in_pinned_catalog(
     paraphase_env: Path, tmp_path: Path
 ) -> None:

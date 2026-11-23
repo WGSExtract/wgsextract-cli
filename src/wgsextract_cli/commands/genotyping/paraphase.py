@@ -16,6 +16,7 @@ from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.alignment.sequencing import read_group_platforms
 from wgsextract_cli.core.atomic_output import publication_lock, publish_output_set
 from wgsextract_cli.core.calling_reference import validate_calling_reference
+from wgsextract_cli.core.download_progress import redact_urls
 from wgsextract_cli.core.paraphase_document import (
     SCHEMA_ID,
     LocusCall,
@@ -200,7 +201,12 @@ def _engine(
     version_text = (probe.stdout or probe.stderr or "").strip()
     match = re.fullmatch(r"(?:paraphase\s+)?((\d+)\.(\d+)\.(\d+))", version_text, re.I)
     if probe.returncode or match is None:
-        raise WGSExtractError("Could not verify the Paraphase executable's version.")
+        diagnostic = (probe.stderr or probe.stdout or "").strip()
+        excerpt = " ".join(redact_urls(diagnostic).split())[:240]
+        raise WGSExtractError(
+            f"Could not verify the Paraphase version at {executable} "
+            f"(--version exit {probe.returncode}): {excerpt or 'no output'}."
+        )
     version = match[1]
     numbers = (int(match[2]), int(match[3]), int(match[4]))
     if license_name == BSD_LICENSE and version != PINNED_VERSION:
