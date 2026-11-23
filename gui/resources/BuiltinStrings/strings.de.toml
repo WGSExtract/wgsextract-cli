@@ -363,3 +363,5 @@
 "gene.problem.geneFailed" = "Das Gen konnte nicht gelesen werden: %{message}"  # i18n-source-hash:286060db
 "gene.problem.unavailable" = "Der lokale Dienst der App hat nicht geantwortet. Erneut versuchen."  # i18n-source-hash:1d919208
 "gene.backToGene" = "Zurück zur Genseite"  # i18n-source-hash:591898fe
+"gene.notice.vcf_contig_missing" = "Diese VCF kennt das Chromosom des Gens nicht und enthält daher keine Varianten dieses Gens."  # i18n-source-hash:a89de92f
+"gene.notice.alignment_contig_missing" = "Diese Reads kennen das Chromosom des Gens nicht, daher gibt es keine Read-Abdeckung dieses Gens."  # i18n-source-hash:7486991a

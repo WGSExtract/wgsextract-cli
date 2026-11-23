@@ -53,12 +53,12 @@ def _config(tmp_path: Path, reflib: Path) -> Path:
     return config
 
 
-def _bam(tmp_path: Path) -> str:
+def _bam(tmp_path: Path, prefix: str = "chr") -> str:
     """Reads at 30x over exon 1 and 5x over exon 2; none over exon 3."""
     lines = [
         "@HD\tVN:1.6\tSO:unsorted",
-        f"@SQ\tSN:chr1\tLN:{CHR1}",
-        f"@SQ\tSN:chr17\tLN:{CHR17}",
+        f"@SQ\tSN:{prefix}1\tLN:{CHR1}",
+        f"@SQ\tSN:{prefix}17\tLN:{CHR17}",
     ]
     reads = 0
     for (start, end), depth in zip(EXONS[:2], (30, 5), strict=True):
@@ -67,7 +67,7 @@ def _bam(tmp_path: Path) -> str:
             for _ in range(depth if (first - start) % 50 == 0 else 0):
                 reads += 1
                 lines.append(
-                    f"r{reads}\t0\tchr17\t{first + 1}\t60\t50M\t*\t0\t0\t"
+                    f"r{reads}\t0\t{prefix}17\t{first + 1}\t60\t50M\t*\t0\t0\t"
                     f"{'A' * 50}\t{'I' * 50}"
                 )
     return sam_to_bam(lines, tmp_path / "sample.bam")
@@ -217,3 +217,21 @@ def test_1166_unknown_gene_is_a_usage_error(tmp_path: Path) -> None:
     )
     assert code == 2
     assert "BRCAX1" in stderr
+
+
+@needs_htslib
+def test_1166_reads_and_variants_named_differently_both_count(
+    tmp_path: Path, library: Path
+) -> None:
+    # A GRCh37-style BAM (17) with a UCSC-style VCF (chr17): each is read in
+    # its own names, so the variant table isn't silently empty.
+    page = _gene(
+        _config(tmp_path, library),
+        "--gene", "BRCA1", "--input", _bam(tmp_path, prefix=""),
+        "--vcf-input", _vcf(tmp_path), "--min-depth", "20",
+    )["details"]  # fmt: skip
+    assert page["gene"]["locus"] == "17:43044295-43170327"
+    assert page["variants"]["region"] == "chr17:43044295-43170327"
+    assert len(page["variants"]["rows"]) == 3
+    assert page["coverage"]["exons_below"] == 2
+    assert page["notices"] == []

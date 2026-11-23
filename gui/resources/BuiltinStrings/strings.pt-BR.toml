@@ -363,3 +363,5 @@
 "gene.problem.geneFailed" = "Não foi possível ler o gene: %{message}"  # i18n-source-hash:286060db
 "gene.problem.unavailable" = "O serviço local do aplicativo não respondeu. Tente novamente."  # i18n-source-hash:1d919208
 "gene.backToGene" = "Voltar à página do gene"  # i18n-source-hash:591898fe
+"gene.notice.vcf_contig_missing" = "Este VCF não tem o cromossomo do gene, portanto não tem variantes deste gene."  # i18n-source-hash:a89de92f
+"gene.notice.alignment_contig_missing" = "Estas leituras não têm o cromossomo do gene, portanto não há cobertura de leituras deste gene."  # i18n-source-hash:7486991a

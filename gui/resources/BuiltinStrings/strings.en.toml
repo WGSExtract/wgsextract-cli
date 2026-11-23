@@ -112,6 +112,8 @@
 "gene.notice.annotation_missing.gnomad" = "This VCF has no gnomAD frequencies, so rare variants can't be picked out. Add them with:"
 "gene.notice.annotation_missing.acmg" = "This VCF has no research-only ACMG classes. Add them with:"
 "gene.notice.alignment_missing" = "No BAM or CRAM chosen, so there is no read coverage."
+"gene.notice.vcf_contig_missing" = "This VCF has no record of the gene's chromosome, so it has no variants of this gene."
+"gene.notice.alignment_contig_missing" = "These reads have no record of the gene's chromosome, so there is no read coverage of this gene."
 "gene.notice.coverage_reference_missing" = "The CRAM's reference genome isn't installed, so its reads can't be read. Install it on the Library page."
 "gene.transcriptsTitle" = "Transcripts and exons"
 "gene.transcript" = "Transcript"

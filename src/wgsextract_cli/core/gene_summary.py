@@ -15,7 +15,7 @@ import re
 import subprocess
 from array import array
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from shlex import quote
 
@@ -68,7 +68,14 @@ class GeneQuery:
 @dataclass(frozen=True)
 class GeneRegion:
     locus: panel.Locus  # annotation (chrN) names, 0-based
-    names: Mapping[str, str]  # annotation contig -> the inputs' contig
+    names: Mapping[str, str]  # annotation contig -> the input's contig
+    # Each input's own names: a BAM may say 17 where its VCF says chr17.
+    inputs: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
+
+    def of(self, path: str) -> GeneRegion | None:
+        """The gene in ``path``'s contig names; None when it lacks the contig."""
+        names = self.inputs.get(path, {})
+        return GeneRegion(self.locus, names) if self.locus.chrom in names else None
 
     def contig(self) -> str:
         return self.names.get(self.locus.chrom, self.locus.chrom)
@@ -136,16 +143,18 @@ def _build(query: GeneQuery, headers: Mapping[str, dict[str, int]]) -> str:
 def _region(
     query: GeneQuery,
     notes: panel.Annotations,
-    lengths: Mapping[str, int] | None,
+    headers: Mapping[str, Mapping[str, int]],
     warnings: list[tuple[str, str]],
 ) -> GeneRegion:
     resolved = panel.resolve_genes([query.symbol], notes)
     for given, symbol in resolved.aliases.items():
         warnings.append(("gene_alias", f"{given} is an alias of {symbol}."))
-    names = {c: c for c in notes.contigs}
-    if lengths:
-        names, _ = panel.reference_contigs(lengths, notes)
-    placed = [locus for locus in resolved.loci if locus.chrom in names]
+    inputs = {
+        path: panel.reference_contigs(lengths, notes)[0]
+        for path, lengths in headers.items()
+    }
+    known = list(inputs.values()) or [{c: c for c in notes.contigs}]
+    placed = [x for x in resolved.loci if any(x.chrom in names for names in known)]
     if not placed:
         contigs = ", ".join(sorted({x.chrom for x in resolved.loci}))
         raise UsageError(
@@ -160,7 +169,8 @@ def _region(
                 f"{placed[0].chrom}.",
             )
         )
-    return GeneRegion(placed[0], names)
+    names = next(names for names in known if placed[0].chrom in names)
+    return GeneRegion(placed[0], names, inputs)
 
 
 def _transcripts(
@@ -314,6 +324,15 @@ def _variants(
             command,
         )
         return {"status": "missing"}, None
+    region_in_vcf = region.of(query.vcf)
+    if region_in_vcf is None:
+        notices.add(
+            "vcf_contig_missing",
+            f"{Path(query.vcf).name} has no {region.locus.chrom}, so it has no "
+            "variants of this gene.",
+        )
+        return {"status": "missing"}, None
+    region = region_in_vcf
     found = read_variants(query, region)
     annotations = found.header.annotations
     _annotation_notices(query.vcf, annotations, notices)
@@ -440,6 +459,15 @@ def _coverage(
             "read; install it on the Library page or give --ref.",
         )
         return {"status": "missing"}
+    region_in_reads = region.of(query.alignment)
+    if region_in_reads is None:
+        notices.add(
+            "alignment_contig_missing",
+            f"{Path(query.alignment).name} has no {region.locus.chrom}, so there "
+            "is no read coverage of this gene.",
+        )
+        return {"status": "missing"}
+    region = region_in_reads
     locus = region.locus
     # Transcripts can reach past the annotated gene span.
     start = min([locus.start, *(t.start for t in transcripts)])
@@ -483,7 +511,7 @@ def summarise_gene(query: GeneQuery) -> GeneSummary:
         )
     notes = panel.load_annotations(build)
     warnings: list[tuple[str, str]] = []
-    region = _region(query, notes, next(iter(headers.values()), None), warnings)
+    region = _region(query, notes, headers, warnings)
     notices = Notices()
     transcripts, transcript_source = _transcripts(query, build, region, notices)
     variants, found = _variants(query, region, notices)
