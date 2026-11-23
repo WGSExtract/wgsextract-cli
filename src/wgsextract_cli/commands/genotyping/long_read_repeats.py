@@ -66,7 +66,7 @@ def bed_locus(row: str, caller: str) -> str | None:
     """A named catalog ID: LongTR column 5, or STRkit's ID attribute."""
     fields = row.split("\t")
     if caller == "longtr":
-        return fields[4] if len(fields) > 4 else None
+        return fields[4] if len(fields) > 4 and fields[4] not in ("", ".") else None
     return next(
         (item[3:] for item in fields[3].split(";") if item.startswith("ID=")), None
     )
@@ -145,7 +145,9 @@ def with_clipped_reads(
         )
         result.append(
             dataclasses.replace(
-                call, clipped_reads=clipped_reads(aln, chrom, begin, int(end))
+                call,
+                variant_id=name or region,
+                clipped_reads=clipped_reads(aln, chrom, begin, int(end)),
             )
         )
     return result

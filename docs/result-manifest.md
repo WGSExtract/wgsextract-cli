@@ -121,7 +121,9 @@ output. These are the same locus-sorted rows as the `repeat_summary` output
 (`<stem>.str.tsv` or `<stem>.str.parquet`), not the caller's own JSON.
 `details.requested_loci` contains the sorted `--loci` IDs, or `[]` for a full
 catalog run. Targeted runs append a digest of the IDs to their `.str` prefix
-so their outputs have their own manifests.
+so their outputs have their own manifests. An unnamed LongTR or STRkit locus
+uses its catalog interval (`contig:start-end`, zero-based with an exclusive
+end) as its `locus` ID.
 
 - `allele_1`, `allele_2`, `ci_1_low`, `ci_1_high`, `ci_2_low` and
   `ci_2_high` are integer repeat counts. `allele_1_reads`, `allele_2_reads`

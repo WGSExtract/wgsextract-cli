@@ -208,36 +208,95 @@ def test_1286_unknown_locus_is_rejected_before_running_caller(tmp_path, sample, 
     assert not list(out.glob("s.str*"))
 
 
+def _longtr_fixture_script():
+    vcf_header = (
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=3000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts\n"
+    )
+    longtr_header = vcf_header.splitlines(keepends=True)
+    longtr_header[2:2] = [
+        f'##{kind}=<ID={field},Number=1,Type={type_},Description="{field}">\n'
+        for kind, field, type_ in (
+            ("INFO", "START", "Integer"), ("INFO", "END", "Integer"),
+            ("INFO", "MOTIF", "String"), ("INFO", "PERIOD", "Integer"),
+            ("FORMAT", "GB", "String"), ("FORMAT", "DP", "Integer"),
+            ("FORMAT", "MALLREADS", "String"),
+        )
+    ]  # fmt: skip
+    return f"""
+vcf = {"".join(longtr_header)!r}
+for row in pathlib.Path(opt("--regions")).read_text().splitlines():
+    chrom, start, end, motif, *names = row.split("\\t")
+    name = names[0] if names else "."
+    vcf += f"{{chrom}}\\t{{start}}\\t{{name}}\\tA\\tC\\t.\\tPASS\\tSTART={{start}};END={{end}};MOTIF={{motif}};PERIOD=3\\tGB:DP:MALLREADS\\t-33|120:28:-33|27;120|1\\n"
+subprocess.run(["bcftools", "view", "-Oz", "-o", opt("--tr-vcf")], input=vcf, text=True, check=True)
+"""
+
+
+@pytest.mark.parametrize("caller", ["longtr", "strkit"])
+@needs_tools("bcftools")
+def test_1286_unnamed_bed_loci_keep_distinct_region_ids(
+    tmp_path, sample, monkeypatch, capsys, caller
+):
+    catalog = tmp_path / "anonymous.bed"
+    if caller == "longtr":
+        catalog.write_text("chr1\t1001\t1060\tCAG\nchr1\t1201\t1263\tGAA\n")
+        tools = {"LongTR": _longtr_fixture_script()}
+    else:
+        catalog.write_text("chr1\t1000\t1060\tCAG\nchr1\t1200\t1263\tMOTIF=GAA\n")
+        tools = {
+            "strkit": """
+calls = []
+for i, row in enumerate(pathlib.Path(opt("--loci")).read_text().splitlines(), 1):
+    chrom, start, end, motif = row.split("\\t")
+    calls.append({"locus_id": f"locus{i}", "contig": chrom, "start": int(start),
+                  "end": int(end), "motif": motif.removeprefix("MOTIF="),
+                  "call": [8 + i, 59 + i]})
+pathlib.Path(opt("--json")).write_text(json.dumps({"results": calls}))
+pathlib.Path(opt("--vcf")).write_text("##fileformat=VCFv4.2\\n")
+"""
+        }
+    fake_tools(monkeypatch, tmp_path, tools)
+    out = tmp_path / "results"
+    args = [
+        "typing", "str", *sample, "-o", str(out), "--catalog", str(catalog),
+        "--caller", caller, "--json",
+    ]  # fmt: skip
+    main(args)
+    result = json.loads(capsys.readouterr().out)
+    expected = [("chr1:1000-1060", 9, 60), ("chr1:1200-1263", 10, 61)]
+
+    def sizes(result):
+        return [
+            (row["locus"], row["allele_1"], row["allele_2"])
+            for row in result["details"]["repeat_calls"]
+        ]
+
+    assert sizes(result) == sizes(_manifest(out)) == expected
+    tsv = _output(result, "repeat_summary")
+    with tsv.open(encoding="utf-8") as stream:
+        assert [
+            (row["locus"], int(row["allele_1"]), int(row["allele_2"]))
+            for row in csv.DictReader(stream, delimiter="\t")
+        ] == expected
+
+    pytest.importorskip("pyarrow")
+    main([*args, "--format", "parquet"])
+    result = json.loads(capsys.readouterr().out)
+    assert sizes(result) == expected
+    _assert_parity(tsv, _output(result, "repeat_summary"), result)
+
+
 @pytest.mark.parametrize("caller", ["longtr", "strkit"])
 @needs_tools("bcftools")
 def test_1286_bed_subset_and_unconfirmed_report(tmp_path, sample, monkeypatch, caller):
     catalog = tmp_path / "loci.bed"
     loci = [("FXN", 1000), ("DMPK", 1200), ("HTT_CCG", 1400), ("ATXN2", 1600)]
-    vcf_header = (
-        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=3000>\n"
-        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts\n"
-    )
     if caller == "longtr":
         catalog.write_text(
             "".join(f"chr1\t{n + 1}\t{n + 60}\tGAA\t{name}\n" for name, n in loci)
         )
-        longtr_header = vcf_header.splitlines(keepends=True)
-        longtr_header[2:2] = [
-            f'##{kind}=<ID={field},Number=1,Type={type_},Description="{field}">\n'
-            for kind, field, type_ in (
-                ("INFO", "START", "Integer"), ("INFO", "END", "Integer"),
-                ("INFO", "MOTIF", "String"), ("INFO", "PERIOD", "Integer"),
-                ("FORMAT", "GB", "String"), ("FORMAT", "DP", "Integer"),
-                ("FORMAT", "MALLREADS", "String"),
-            )
-        ]  # fmt: skip
-        script = f"""
-vcf = {"".join(longtr_header)!r}
-for row in pathlib.Path(opt("--regions")).read_text().splitlines():
-    chrom, start, end, motif, name = row.split("\\t")
-    vcf += f"{{chrom}}\\t{{start}}\\t{{name}}\\tA\\tC\\t.\\tPASS\\tSTART={{start}};END={{end}};MOTIF={{motif}};PERIOD=3\\tGB:DP:MALLREADS\\t-33|120:28:-33|27;120|1\\n"
-subprocess.run(["bcftools", "view", "-Oz", "-o", opt("--tr-vcf")], input=vcf, text=True, check=True)
-"""
+        script = _longtr_fixture_script()
     else:
         catalog.write_text(
             "".join(f"chr1\t{n}\t{n + 60}\tMOTIF=GAA;ID={name}\n" for name, n in loci)
