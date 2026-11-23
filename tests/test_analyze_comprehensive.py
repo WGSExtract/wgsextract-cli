@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import (
     bgzip_index,
     needs_htslib,
@@ -19,7 +20,6 @@ from tests.smoke_utils import (
     REPO_ROOT,
     ensure_fake_data,
     run_cli,
-    state_directory_setting,
     yleaf_tables_cached,
 )
 from tests.test_analyze_workflows import ids, write_vcf

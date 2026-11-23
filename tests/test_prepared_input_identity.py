@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import isolate_home
 from tests.htslib_helpers import needs_tools, write_fasta
-from tests.smoke_utils import isolate_home
 from tests.test_pharmcat import SNPS, _release, _view
 from tests.test_pharmcat import _vcf as pharmcat_vcf
 from tests.test_pharmcat import pharmcat_env as pharmcat_env

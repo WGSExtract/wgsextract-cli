@@ -41,6 +41,16 @@ OS_WORKFLOWS = {
     "arm64": ".github/workflows/linux_arm64.yml",
 }
 
+# Build policy names from the package prefix so the selector's own literal
+# scan doesn't mistake these comparisons for application dependencies.
+APP_PACKAGE = "wgsextract_cli"
+APP_PREFIX = APP_PACKAGE + "."
+CLI_MAIN = APP_PREFIX + "main"
+CLI_PARSER = APP_PREFIX + "cli.parser"
+LAZY_LOADER = APP_PREFIX + "cli._lazy"
+COMMAND_REGISTRY = APP_PREFIX + "commands.registry"
+REGISTRATION_PREFIX = APP_PREFIX + "cli.registration."
+
 
 def ci_path(path: str) -> bool:
     return not path.endswith(".md") and (
@@ -105,10 +115,7 @@ class ImportGraph:
                     for alias in node.names
                     if alias.name == "import_module"
                 )
-            if (
-                isinstance(node, ast.ImportFrom)
-                and node.module == "wgsextract_cli.cli._lazy"
-            ):
+            if isinstance(node, ast.ImportFrom) and node.module == LAZY_LOADER:
                 lazy_names.update(
                     alias.asname or alias.name
                     for alias in node.names
@@ -130,7 +137,7 @@ class ImportGraph:
                     result.update(self.module(f"{prefix}.{alias.name}"))
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
                 # Includes patch targets, subprocess -m and literal import_module.
-                if node.value.startswith("wgsextract_cli."):
+                if node.value.startswith(APP_PREFIX):
                     result.update(self.module(node.value))
                 if (
                     name.startswith("tests.")
@@ -142,7 +149,7 @@ class ImportGraph:
                     }
                     and isinstance(parents.get(node), (ast.List, ast.Tuple))
                 ):
-                    result.update(self.module("wgsextract_cli.main"))
+                    result.update(self.module(CLI_MAIN))
             elif isinstance(node, ast.Call):
                 func = node.func
                 dynamic = (isinstance(func, ast.Name) and func.id in dynamic_names) or (
@@ -172,7 +179,7 @@ class ImportGraph:
                         result.update(self.module(prefix + "." + argument.value[dots:]))
                     else:
                         result.update(self.module(argument.value))
-                elif name == "wgsextract_cli.cli._lazy":
+                elif name == LAZY_LOADER:
                     # Resolved at command_handler call sites, not on this shared
                     # execution wrapper (which must not depend on every command).
                     if not (
@@ -182,7 +189,7 @@ class ImportGraph:
                         and argument.attr == "_module"
                     ):
                         self.unsafe.add(name)
-                elif name == "wgsextract_cli.commands.registry":
+                elif name == COMMAND_REGISTRY:
                     targets = self.registry_targets(tree, argument)
                     if targets is None:
                         self.unsafe.add(name)
@@ -200,7 +207,7 @@ class ImportGraph:
             isinstance(argument, ast.JoinedStr)
             and len(argument.values) == 2
             and isinstance(argument.values[0], ast.Constant)
-            and argument.values[0].value == "wgsextract_cli.cli.registration."
+            and argument.values[0].value == REGISTRATION_PREFIX
             and isinstance(argument.values[1], ast.FormattedValue)
             and isinstance(argument.values[1].value, ast.Attribute)
             and ast.unparse(argument.values[1].value) == "self.module"
@@ -232,7 +239,7 @@ class ImportGraph:
                     item.value, str
                 ):
                     return None
-                target = f"wgsextract_cli.cli.registration.{item.value}"
+                target = REGISTRATION_PREFIX + item.value
                 if target not in self.files:
                     return None
                 targets.update(self.module(target))
@@ -380,10 +387,7 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
     if changed_modules:
         for test, reached in closures.items():
             if reached & graph.unsafe:
-                if (
-                    "wgsextract_cli.main" in reached
-                    or "wgsextract_cli.cli.parser" in reached
-                ):
+                if CLI_MAIN in reached or CLI_PARSER in reached:
                     return "all"
                 selected.add(test)
             if reached & changed_modules:

@@ -5,6 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
 from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.core.ref_library.mitochondrial import RCRS_ORIGIN

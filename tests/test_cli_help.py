@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.smoke_utils import state_directory_setting
+from tests.home_isolation import state_directory_setting
 from wgsextract_cli.cli import help as cli_help
 from wgsextract_cli.cli import hints, parser
 from wgsextract_cli.commands._advanced_options import ADVANCED_OPTIONS, COMMON_ADVANCED
