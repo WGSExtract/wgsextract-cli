@@ -464,9 +464,10 @@ unverified worktrees. Use the optional inspector below when unprivileged
 process visibility is insufficient. Use `git worktree lock` before starting
 work in a checkout that might be eligible for cleanup.
 Do not start work in an eligible checkout during cleanup. Symlinks are checked
-in this repository and its registered worktrees; lock a worktree if other
-projects depend on its files. Nothing manages your reference library. Samples
-and other unknown files block removal. With `--trim-caches --apply`, the same
+in this repository and its registered worktrees, including the primary
+checkout's Git hooks (even with a custom `core.hooksPath`). Lock a worktree
+if other projects depend on its files. Nothing manages your reference library.
+Samples and other unknown files block removal. With `--trim-caches --apply`, the same
 PR and activity checks allow trimming verified generated Pixi, Ruff, mypy and
 pytest caches in retained worktrees. Unrecognized cache contents, unlocked
 Conda packages and links to a cache block trimming that cache. Pixi package
@@ -474,10 +475,11 @@ files must match local installed Conda or wheel checksums; missing or
 mismatched checksums retain the environment without fetching metadata.
 Only the named cache directories are deleted; the checkout, branch and other
 files stay.
-Orphaned or unrecognized Python bytecode also blocks worktree retirement.
-Unlisted bytecode in Pixi environments must match bytecode regenerated
-from verified installed source. Caches from another Python version or a
-source-rewriting tool may therefore be retained.
+Python bytecode blocks worktree retirement unless it can be reproduced from
+tracked or archived source. Unlisted bytecode in Pixi environments must match
+bytecode regenerated from verified installed source. A matching header is
+not enough; caches from another Python version or a source-rewriting tool
+such as pytest may therefore be retained.
 The report distinguishes cache trimming from worktree retirement.
 Small UTF-8 logs under `out/` and recognised Python, shell, Lua
 and R source files under `scratch/` (1 MiB per file, 32 MiB total) are copied

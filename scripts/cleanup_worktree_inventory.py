@@ -82,13 +82,16 @@ def read_evidence(directory: Path, relative: Path, expected: Stamp) -> bytes:
     return data
 
 
-def cache_metadata(path: Path) -> bytes:
+def cache_metadata(path: Path, limit: int = MAX_ARCHIVE) -> bytes:
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as handle:
         info = os.fstat(handle.fileno())
-        if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_ARCHIVE:
+        if not stat.S_ISREG(info.st_mode) or info.st_size > limit:
             raise ValueError("Unexpected cache metadata")
-        return handle.read(MAX_ARCHIVE + 1)
+        data = handle.read(limit + 1)
+        if len(data) > limit:
+            raise ValueError("Unexpected cache metadata")
+        return data
 
 
 def cache_tagged(path: Path) -> bool:
@@ -283,7 +286,7 @@ def pixi_environment(
             and (source := bytecode_source(relative)) is not None
             and source in actual
             and installed_hashes.get(source)
-            and matches_bytecode(path / relative, path / source, installed=True)
+            and matches_bytecode(path / relative, path / source)
         ):
             continue
         return False
@@ -389,42 +392,40 @@ def bytecode_source(relative: Path) -> Path | None:
     return relative.parent.parent / (match[1] + ".py") if match else None
 
 
-def matches_bytecode(path: Path, source: Path, *, installed: bool = False) -> bool:
+def matches_bytecode(path: Path, source: Path) -> bool:
+    if re.search(r"-pytest-\d+\.\d+\.\d+\.pyc$", path.name):
+        return False
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as handle:
         if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
             return False
         header = handle.read(16)
-        if installed:
-            data = handle.read(MAX_FILE + 1)
+        data = handle.read(MAX_FILE + 1)
     info = source.lstat()
     if (
         not stat.S_ISREG(info.st_mode)
         or len(header) != 16
         or header[:4] != importlib.util.MAGIC_NUMBER
-        or (installed and info.st_size > MAX_FILE)
+        or info.st_size > MAX_FILE
+        or len(data) > MAX_FILE
     ):
         return False
     flags = int.from_bytes(header[4:8], "little")
-    if flags in {1, 3}:
-        matches = header[8:] == importlib.util.source_hash(cache_metadata(source))
-    else:
-        matches = (
-            flags == 0
-            and int.from_bytes(header[8:12], "little")
-            == int(info.st_mtime) & 0xFFFFFFFF
-            and int.from_bytes(header[12:16], "little") == info.st_size & 0xFFFFFFFF
-        )
-    if not matches or not installed:
-        return matches
-    if len(data) > MAX_FILE or re.search(r"-pytest-\d+\.\d+\.\d+\.pyc$", path.name):
+    if flags not in {1, 3} and not (
+        flags == 0
+        and int.from_bytes(header[8:12], "little") == int(info.st_mtime) & 0xFFFFFFFF
+        and int.from_bytes(header[12:16], "little") == info.st_size & 0xFFFFFFFF
+    ):
+        return False
+    source_bytes = cache_metadata(source, MAX_FILE)
+    if flags in {1, 3} and header[8:] != importlib.util.source_hash(source_bytes):
         return False
     optimized = re.search(r"\.opt-([12])\.pyc$", path.name)
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", SyntaxWarning)
             expected = compile(
-                cache_metadata(source),
+                source_bytes,
                 str(source),
                 "exec",
                 dont_inherit=True,

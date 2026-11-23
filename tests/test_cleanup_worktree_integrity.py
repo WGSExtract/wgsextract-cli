@@ -13,6 +13,7 @@ import pytest
 from tests.test_cleanup_worktrees import (
     cleanup,
     generated_env,
+    git,
     pull,
     result,
     topic,
@@ -31,7 +32,9 @@ from tests.test_cleanup_worktrees import (
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
 
 
-@pytest.mark.parametrize("source_kind", ["orphan", "archived", "unrecognized"])
+@pytest.mark.parametrize(
+    "source_kind", ["orphan", "archived", "unrecognized", "archived-forged-header"]
+)
 def test_1393_preserves_bytecode_unless_its_source_is_recoverable(
     repo: Path, github: Callable[..., None], source_kind: str
 ) -> None:
@@ -45,6 +48,8 @@ def test_1393_preserves_bytecode_unless_its_source_is_recoverable(
         source.unlink()
     elif source_kind == "unrecognized":
         compiled.write_bytes(b"unique data stored under a cache-like name")
+    elif source_kind == "archived-forged-header":
+        compiled.write_bytes(compiled.read_bytes()[:16] + b"unique attached data")
     original = compiled.read_bytes()
     github([pull(path)])
 
@@ -57,6 +62,49 @@ def test_1393_preserves_bytecode_unless_its_source_is_recoverable(
         assert archived.read_text() == "result = 'unique local calculation'\n"
     else:
         assert str(record["reason"]).startswith("unknown-data:")
+        assert compiled.read_bytes() == original
+
+
+@pytest.mark.parametrize("case", ["timestamp", "hash", "pytest", "valid"])
+def test_1393_preserves_unreproducible_bytecode_with_a_tracked_source(
+    repo: Path, github: Callable[..., None], case: str
+) -> None:
+    path = topic(repo)
+    source = path / "demo.py"
+    write(source, "value = 1\n")
+    with (path / ".gitignore").open("a") as ignored:
+        ignored.write("__pycache__/\n")
+    git(path, "add", "demo.py", ".gitignore")
+    git(path, "commit", "-m", "Track the recoverable source")
+    cached = py_compile.compile(
+        str(source),
+        doraise=True,
+        invalidation_mode=(
+            py_compile.PycInvalidationMode.TIMESTAMP
+            if case in {"timestamp", "pytest"}
+            else py_compile.PycInvalidationMode.CHECKED_HASH
+        ),
+    )
+    assert cached is not None
+    compiled = Path(cached)
+    if case == "pytest":
+        compiled = compiled.rename(
+            compiled.with_name(f"{compiled.stem}-pytest-9.0.0.pyc")
+        )
+    elif case != "valid":
+        compiled.write_bytes(compiled.read_bytes()[:16] + b"unique attached data")
+    original = compiled.read_bytes()
+    github([pull(path)])
+
+    run = cleanup(repo, "--github", "--apply")
+    assert run.returncode == 0, run.stderr
+    if case == "valid":
+        assert result(repo, path)["reason"] == "removed"
+    else:
+        assert (
+            result(repo, path)["reason"]
+            == f"unknown-data: {compiled.relative_to(path)}"
+        )
         assert compiled.read_bytes() == original
 
 

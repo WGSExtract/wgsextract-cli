@@ -15,6 +15,7 @@ from tests.test_cleanup_worktrees import (
     pull,
     result,
     topic,
+    write,
 )
 from tests.test_cleanup_worktrees import (
     github as github,
@@ -27,6 +28,45 @@ from tests.test_cleanup_worktrees import (
 )
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
+
+
+@pytest.mark.parametrize(
+    "location",
+    ["default", "linked-default", "custom-absolute", "custom-relative", "receive"],
+)
+def test_1393_preserves_primary_git_hooks_using_a_stale_worktree(
+    repo: Path, github: Callable[..., None], location: str
+) -> None:
+    path = topic(repo)
+    target = path / "hooks" / ("pre-receive" if location == "receive" else "pre-commit")
+    write(target, "#!/bin/sh\nexit 0\n")
+    target.chmod(0o755)
+    git(path, "add", "hooks")
+    git(path, "commit", "-m", "Keep hook available to primary checkout")
+    hooks = repo / ".git" / "hooks"
+    cwd = repo
+    if location == "linked-default":
+        external = repo.parent / "operational-hooks"
+        hooks.rename(external)
+        hooks.symlink_to(external, target_is_directory=True)
+    if location == "custom-absolute":
+        hooks = repo.parent / "custom-hooks"
+        hooks.mkdir()
+        git(repo, "config", "core.hooksPath", str(hooks))
+    elif location in {"custom-relative", "receive"}:
+        if location == "receive":
+            cwd = repo / ".git"
+        hooks = target.parent
+        git(repo, "config", "core.hooksPath", os.path.relpath(hooks, cwd))
+    if hooks != target.parent:
+        (hooks / target.name).symlink_to(target)
+    git(cwd, "hook", "run", target.name)
+    github([pull(path)])
+
+    run = cleanup(repo, "--apply", "--github")
+    assert run.returncode == 0, run.stderr
+    assert result(repo, path)["reason"] == "symlink-dependency"
+    git(cwd, "hook", "run", target.name)
 
 
 @pytest.mark.parametrize(

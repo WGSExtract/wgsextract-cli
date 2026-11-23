@@ -41,7 +41,7 @@ else:
         return module
 
     inventory_files = load_helper(
-        "inventory", "da3134e1197a585e7dd54a1a7770079c1ebd02bf8306f20a62dff64399856206"
+        "inventory", "f9276431d724bebb6eed74a539e9f5330bce4c289ca6aaea73505147ce61aca6"
     )
     activity = load_helper(
         "activity", "92b96c9c258e7706abd80b5d18523896c88378fbd2bff9facb98757533d34ff3"
@@ -208,27 +208,55 @@ def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]
         if not location.is_relative_to(root) and location.is_dir():
             locations.add(location)
     blocked = set()
-    for location in locations:
-        for entry in inventory_files.entries(location, {root / ".git"}):
-            if not entry.is_symlink():
-                continue
-            link = Path(entry.path)
-            target = link.parent / os.readlink(link)
-            lexical, resolved = Path(os.path.abspath(target)), target.resolve()
-            for path in paths:
-                inside = link.is_relative_to(path)
-                if inside != resolved.is_relative_to(path) or (
-                    not inside
-                    and (
-                        lexical.is_relative_to(path)
-                        or (
-                            resolved != root
-                            and path.is_relative_to(resolved)
-                            and resolved.is_relative_to(root / "scratch")
-                        )
+
+    def check_target(link: Path, target: Path) -> None:
+        lexical, resolved = Path(os.path.abspath(target)), target.resolve()
+        for path in paths:
+            inside = link.is_relative_to(path)
+            if inside != resolved.is_relative_to(path) or (
+                not inside
+                and (
+                    lexical.is_relative_to(path)
+                    or (
+                        resolved != root
+                        and path.is_relative_to(resolved)
+                        and resolved.is_relative_to(root / "scratch")
                     )
-                ):
-                    blocked.add(path)
+                )
+            ):
+                blocked.add(path)
+
+    def check_link(entry: os.DirEntry[str]) -> None:
+        if entry.is_symlink():
+            link = Path(entry.path)
+            check_target(link, link.parent / os.readlink(link))
+
+    common = root / ".git"
+    for location in locations:
+        for entry in inventory_files.entries(location, {common}):
+            check_link(entry)
+
+    # Git runs ordinary hooks in the checkout and receive hooks in $GIT_DIR.
+    # Ask Git for the effective path without resolving away configured aliases.
+    hook_dirs = set()
+    for cwd in (root, common):
+        reported = git(cwd, "rev-parse", "--git-path", "hooks").removesuffix("\n")
+        if not reported:
+            raise CleanupError("Git did not report its hooks path")
+        hooks = cwd / reported
+        check_target(root, hooks)
+        try:
+            directory = hooks.resolve(strict=True)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        if directory.is_dir():
+            hook_dirs.add(directory)
+    # Git looks up named hooks directly in each directory; do not recurse
+    # into .git objects or arbitrary trees pointed to by core.hooksPath.
+    for directory in hook_dirs:
+        with os.scandir(directory) as children:
+            for entry in children:
+                check_link(entry)
     return blocked
 
 
