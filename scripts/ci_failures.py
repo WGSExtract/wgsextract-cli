@@ -255,7 +255,12 @@ class Observer(IssueReports):
         return self.non_flaky(self.failures(main))
 
     def retry_head_current(self, run: dict[str, Any]) -> bool:
-        """A historical ready payload must not restart a now-draft PR."""
+        """A historical ready payload must not restart a now-draft PR, nor a
+        merge group whose queue ref GitHub deleted (#1373)."""
+        if run["event"] == "merge_group":
+            branch = run["head_branch"]
+            refs = self.gh.api("GET", f"git/matching-refs/heads/{branch}")
+            return any(item["ref"] == f"refs/heads/{branch}" for item in refs)
         prs = run.get("pull_requests", [])
         if not prs:
             return str(run["event"]) != "pull_request"

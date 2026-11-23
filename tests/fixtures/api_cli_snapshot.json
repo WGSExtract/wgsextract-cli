@@ -1,7 +1,7 @@
 {
  "commands": {
   "align": {
-   "help": "usage: wgsextract align [-h] [--r1 R1] [--r2 R2]\n                        [--platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}]\n                        [--aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}] [--fast]\n                        [--prefer-native-gpu | --no-prefer-native-gpu]\n                        [--dense-suffix-array | --no-dense-suffix-array] [--sample SAMPLE]\n                        [--format {BAM,CRAM}] [--output-profile {default,archive,calling}]\n                        [--input-ref INPUT_REF] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --r1 R1               Read 1 FASTQ file\n  --r2 R2               Read 2 FASTQ file (optional)\n  --platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}\n                        Sequencing platform; selects platform-specific alignment tooling (default:\n                        detected from read groups or read names, else illumina).\n  --aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}\n                        Aligner to use. Auto uses bwa-mem2 for short reads when the reference has\n                        its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio\n                        when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple\n                        Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment)\n                        writes bwa's exact records faster, from bwa-mem2's index.\n  --fast                Align short reads with bwa-mem3's --fast speed preset (implies --aligner\n                        bwa-mem3), about twice as fast. Its alignments differ from BWA's\n                        (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast).\n                        Without it bwa-mem3 writes BWA's exact records.\n  --prefer-native-gpu, --no-prefer-native-gpu\n                        If no GPU plan fits the RAM budget even after the sort-memory step-down,\n                        use the GPU anyway instead of the slower CPU path; may swap heavily.\n                        Default: config prefer_native_gpu, else off.\n  --dense-suffix-array, --no-dense-suffix-array\n                        Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array\n                        file, built by `ref dense-sa`: the same alignments, faster, holding the\n                        file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise\n                        (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such\n                        wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it.\n                        Default: config dense_suffix_array, else off.\n  --sample SAMPLE       Sample name for the read group (default: the reads' file name).\n  --format {BAM,CRAM}   Output format (default: BAM)\n  --output-profile {default,archive,calling}\n                        Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK\n                        >=4.7); calling selects CRAM 3.0. Default: config output_profile, else\n                        default. See docs/ont.md.\n  --input-ref INPUT_REF\n                        Reference FASTA a CRAM --r1 was encoded with (default: --ref when its\n                        sequence names, lengths and MD5s match the CRAM).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n5 advanced options not shown; 'wgsextract align --help-all' lists them.\n\nexamples:\n  wgsextract align --r1 sample_R1.fastq.gz --r2 sample_R2.fastq.gz --ref hs38.fa\n  wgsextract align --r1 hifi_reads.fastq.gz --preset map-hifi --ref hs38.fa\n\noutputs (in the output directory unless noted):\n  <reads stem>_aligned.bam or .cram (+ index).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bwa, bwa-mem2,\n  bwa-mem3, curl, gatk, minimap2, pbmm2, sambamba, samblaster; hours on a 30x\n  genome.\n",
+   "help": "usage: wgsextract align [-h] [--r1 R1] [--r2 R2]\n                        [--platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}]\n                        [--aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}] [--fast]\n                        [--prefer-native-gpu | --no-prefer-native-gpu]\n                        [--dense-suffix-array | --no-dense-suffix-array] [--sample SAMPLE]\n                        [--format {BAM,CRAM}] [--output-profile {default,archive,calling}]\n                        [--input-ref INPUT_REF] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --r1 R1               Read 1 FASTQ file\n  --r2 R2               Read 2 FASTQ file (optional)\n  --platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}\n                        Sequencing platform; selects platform-specific alignment tooling (default:\n                        detected from read groups or read names, else illumina).\n  --aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}\n                        Aligner to use. Auto uses bwa-mem2 for short reads when the reference has\n                        its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio\n                        when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple\n                        Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment)\n                        writes bwa's exact records faster, from bwa-mem2's index.\n  --fast                Align short reads with bwa-mem3's --fast speed preset (implies --aligner\n                        bwa-mem3), about twice as fast. Its alignments differ from BWA's\n                        (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast).\n                        Without it bwa-mem3 writes BWA's exact records.\n  --prefer-native-gpu, --no-prefer-native-gpu\n                        Prefer native GPU alignment. See docs/configuration.md for platform and\n                        memory limits.\n  --dense-suffix-array, --no-dense-suffix-array\n                        Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array\n                        file, built by `ref dense-sa`: the same alignments, faster, holding the\n                        file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise\n                        (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such\n                        wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it.\n                        Default: config dense_suffix_array, else off.\n  --sample SAMPLE       Sample name for the read group (default: the reads' file name).\n  --format {BAM,CRAM}   Output format (default: BAM)\n  --output-profile {default,archive,calling}\n                        Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK\n                        >=4.7); calling selects CRAM 3.0. Default: config output_profile, else\n                        default. See docs/ont.md.\n  --input-ref INPUT_REF\n                        Reference FASTA a CRAM --r1 was encoded with (default: --ref when its\n                        sequence names, lengths and MD5s match the CRAM).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n5 advanced options not shown; 'wgsextract align --help-all' lists them.\n\nexamples:\n  wgsextract align --r1 sample_R1.fastq.gz --r2 sample_R2.fastq.gz --ref hs38.fa\n  wgsextract align --r1 hifi_reads.fastq.gz --preset map-hifi --ref hs38.fa\n\noutputs (in the output directory unless noted):\n  <reads stem>_aligned.bam or .cram (+ index).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bwa, bwa-mem2,\n  bwa-mem3, curl, gatk, minimap2, pbmm2, sambamba, samblaster; hours on a 30x\n  genome.\n",
    "parser": {
     "actions": [
      {
@@ -289,6 +289,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -429,7 +477,7 @@
       "default": null,
       "dest": "native_aligners",
       "exclusive_group": null,
-      "help": "On Apple Silicon, align with wgse-bwa, wgse-bwa-mem2 or wgse-minimap2 in place of bwa, bwa-mem2 or minimap2, and with wgse-bwa-mem3 in place of bwa or bwa-mem2 when the reference has bwa-mem2's index and it fits in RAM; on Linux (x86-64 and ARM64), with wgse-bwa in place of bwa, and on x86-64 with wgse-bwa-mem3 as on Apple Silicon and wgse-minimap2 in place of minimap2 (long reads' gap fills on the NVIDIA GPU). Used when they're on PATH (auto; same alignments, faster, on the Metal or NVIDIA GPU when it fits) or never (off). On Linux without wgse-bwa-mem3, auto uses Bioconda's bwa-mem3 (`pixi install -e bwa-mem3`) in its place, ahead of wgse-bwa. Default: config native_aligners, else auto. Install the builds as native/README.md describes.",
+      "help": "Use installed native aligners (auto) or upstream tools (off). See native/README.md for platform support and setup.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -445,7 +493,7 @@
       "default": null,
       "dest": "prefer_native_gpu",
       "exclusive_group": null,
-      "help": "If no GPU plan fits the RAM budget even after the sort-memory step-down, use the GPU anyway instead of the slower CPU path; may swap heavily. Default: config prefer_native_gpu, else off.",
+      "help": "Prefer native GPU alignment. See docs/configuration.md for platform and memory limits.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -924,6 +972,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -1240,6 +1336,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -1598,6 +1742,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -2134,6 +2326,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -2450,6 +2690,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -2785,6 +3073,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -3102,6 +3438,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -3515,6 +3899,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -3874,6 +4306,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -4224,6 +4704,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -4622,6 +5150,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -5048,6 +5624,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -5455,6 +6079,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -5781,6 +6453,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -6098,6 +6818,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -6569,6 +7337,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -7202,6 +8018,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -7518,6 +8382,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -7887,6 +8799,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -8203,6 +9163,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -8668,6 +9676,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -9084,6 +10140,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -9400,6 +10504,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -9785,6 +10937,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -10144,6 +11344,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -10461,6 +11709,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -10796,6 +12092,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -10834,7 +12178,7 @@
    }
   },
   "extract region": {
-   "help": "usage: wgsextract extract region [-h] --target {mt,y,ymt,autox} [--formats LIST] [--poz]\n                                 [--ybrowse]\n\noptions:\n  -h, --help            show this help message and exit\n  --target {mt,y,ymt,autox}\n                        Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox\n                        (autosomes and chrX).\n  --formats LIST        Comma-separated formats to write: fasta (consensus sequence), bam (reads)\n                        and vcf (variant calls), e.g. bam,vcf.\n  --poz                 With --target y and the bam format: restrict the BAM's Y reads to the\n                        bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T).\n  --ybrowse             With --target y and the vcf format: call installed, allele-annotated\n                        yBrowse SNP targets (GRCh38 only; no downloads) into\n                        <input>_Y_ybrowse.vcf.gz instead.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract region --input sample.cram --target ymt --formats bam,vcf\n  wgsextract extract region --input sample.cram --target mt --formats fasta\n  wgsextract extract region --input sample.cram --target autox --formats vcf,fasta\n\noutputs (in the output directory unless noted):\n  Per chosen format: <input stem>_mtDNA|Y|Y_MT|autosomes_X.bam (+ .bai),\n  <input stem>_MT|Y|Y_MT|autosomes_X.vcf.gz (+ .tbi) and .fasta.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, tabix;\n  hours on a 30x genome.\n",
+   "help": "usage: wgsextract extract region [-h] --target {mt,y,ymt,autox} [--formats LIST] [--poz]\n                                 [--y-scope SCOPE] [--ybrowse]\n\noptions:\n  -h, --help            show this help message and exit\n  --target {mt,y,ymt,autox}\n                        Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox\n                        (autosomes and chrX).\n  --formats LIST        Comma-separated formats to write: fasta (consensus sequence), bam (reads)\n                        and vcf (variant calls), e.g. bam,vcf.\n  --poz                 With --target y and the bam format: restrict the BAM's Y reads to the\n                        bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T).\n  --y-scope SCOPE       Y contigs to read: primary (chrY only) or associated (also the reference's\n                        qualified Y-associated contigs, as WGS Extract v4 did; GRCh38\n                        chrY_KI270740v1_random). Written as <input>_..._associated.\n  --ybrowse             With --target y and the vcf format: call installed, allele-annotated\n                        yBrowse SNP targets (GRCh38 only; no downloads) into\n                        <input>_Y_ybrowse.vcf.gz instead.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract region --input sample.cram --target ymt --formats bam,vcf\n  wgsextract extract region --input sample.cram --target mt --formats fasta\n  wgsextract extract region --input sample.cram --target autox --formats vcf,fasta\n\noutputs (in the output directory unless noted):\n  Per chosen format: <input stem>_mtDNA|Y|Y_MT|autosomes_X.bam (+ .bai),\n  <input stem>_MT|Y|Y_MT|autosomes_X.vcf.gz (+ .tbi) and .fasta.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, tabix;\n  hours on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -11122,6 +12466,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -11182,6 +12574,25 @@
       "nargs": 0,
       "option_strings": [
        "--poz"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "primary",
+       "associated"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "primary",
+      "dest": "y_scope",
+      "exclusive_group": null,
+      "help": "Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated.",
+      "metavar": "SCOPE",
+      "nargs": null,
+      "option_strings": [
+       "--y-scope"
       ],
       "required": false,
       "type": null
@@ -11517,6 +12928,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -11571,7 +13030,7 @@
    }
   },
   "extract y-mt-extract": {
-   "help": "usage: wgsextract extract y-mt-extract [-h]\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract y-mt-extract --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y_MT.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
+   "help": "usage: wgsextract extract y-mt-extract [-h] [--y-scope SCOPE]\n\noptions:\n  -h, --help       show this help message and exit\n  --y-scope SCOPE  Y contigs to read: primary (chrY only) or associated (also the reference's\n                   qualified Y-associated contigs, as WGS Extract v4 did; GRCh38\n                   chrY_KI270740v1_random). Written as <input>_..._associated.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract y-mt-extract --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y_MT.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -11859,6 +13318,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -11869,6 +13376,25 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": [
+       "primary",
+       "associated"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "primary",
+      "dest": "y_scope",
+      "exclusive_group": null,
+      "help": "Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated.",
+      "metavar": "SCOPE",
+      "nargs": null,
+      "option_strings": [
+       "--y-scope"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -11897,7 +13423,7 @@
    }
   },
   "extract ydna-bam": {
-   "help": "usage: wgsextract extract ydna-bam [-h] [--poz]\n\noptions:\n  -h, --help  show this help message and exit\n  --poz       Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or\n              T2T).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract ydna-bam --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
+   "help": "usage: wgsextract extract ydna-bam [-h] [--poz] [--y-scope SCOPE]\n\noptions:\n  -h, --help       show this help message and exit\n  --poz            Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38\n                   or T2T).\n  --y-scope SCOPE  Y contigs to read: primary (chrY only) or associated (also the reference's\n                   qualified Y-associated contigs, as WGS Extract v4 did; GRCh38\n                   chrY_KI270740v1_random). Written as <input>_..._associated.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract extract ydna-bam --input sample.cram\n\noutputs (in the output directory unless noted):\n  <input stem>_Y.bam (+ .bai).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, sambamba; minutes\n  on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -12176,6 +13702,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -12208,6 +13782,25 @@
       "nargs": 0,
       "option_strings": [
        "--poz"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "primary",
+       "associated"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "primary",
+      "dest": "y_scope",
+      "exclusive_group": null,
+      "help": "Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated.",
+      "metavar": "SCOPE",
+      "nargs": null,
+      "option_strings": [
+       "--y-scope"
       ],
       "required": false,
       "type": null
@@ -12518,6 +14111,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -12860,6 +14501,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -13277,6 +14966,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -13728,6 +15465,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -14061,6 +15846,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -14423,6 +16256,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -14866,6 +16747,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -15430,6 +17359,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -15862,6 +17839,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -16178,6 +18203,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -16593,6 +18666,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -17268,6 +19389,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -17717,6 +19886,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -18033,6 +20250,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -18437,6 +20702,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -18789,6 +21102,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -19247,6 +21608,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -19596,6 +22005,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -19963,6 +22420,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -20305,6 +22810,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -20622,6 +23175,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -21039,6 +23640,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -21094,7 +23743,7 @@
    }
   },
   "realign": {
-   "help": "usage: wgsextract realign [-h] [--r1 R1] [--r2 R2]\n                          [--aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}] [--fast]\n                          [--prefer-native-gpu | --no-prefer-native-gpu]\n                          [--dense-suffix-array | --no-dense-suffix-array]\n                          [--platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}]\n                          [--sample SAMPLE] [--format {BAM,CRAM}]\n                          [--output-profile {default,archive,calling}] [--chunk-size CHUNK_SIZE]\n                          [--force] [--force-step STEP] [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --r1 R1               Read 1 FASTQ file\n  --r2 R2               Read 2 FASTQ file (optional)\n  --aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}\n                        Aligner to use (matches the 'align' command).\n  --fast                Align short reads with bwa-mem3's --fast speed preset (implies --aligner\n                        bwa-mem3), about twice as fast. Its alignments differ from BWA's\n                        (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast).\n                        Without it bwa-mem3 writes BWA's exact records.\n  --prefer-native-gpu, --no-prefer-native-gpu\n                        If no GPU plan fits the RAM budget even after the sort-memory step-down,\n                        use the GPU anyway instead of the slower CPU path; may swap heavily.\n                        Default: config prefer_native_gpu, else off.\n  --dense-suffix-array, --no-dense-suffix-array\n                        Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array\n                        file, built by `ref dense-sa`: the same alignments, faster, holding the\n                        file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise\n                        (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such\n                        wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it.\n                        Default: config dense_suffix_array, else off.\n  --platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}\n                        Sequencing platform (default: detected from read groups or read names,\n                        else illumina).\n  --sample SAMPLE       Sample name to embed in read-group metadata.\n  --format {BAM,CRAM}   Output format (default: BAM)\n  --output-profile {default,archive,calling}\n                        Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK\n                        >=4.7); calling selects CRAM 3.0. Default: config output_profile, else\n                        default. See docs/ont.md.\n  --chunk-size CHUNK_SIZE\n                        ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes unfinished\n                        chunks and bounds temporary files. Requires sorted, indexed input; ignored\n                        with --keep-fastq.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        extract, align, index.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n9 advanced options not shown; 'wgsextract realign --help-all' lists them.\n\nexamples:\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa --dry-run\n\noutputs (in the output directory unless noted):\n  <input stem>_aligned.bam or .cram (+ index); with --keep-fastq, also <input\n  stem>_R1/_R2.fastq.gz (single-end ONT/PacBio: <input stem>.fastq.gz).\n  Completed steps are recorded in <output>.steps.json, so a rerun resumes\n  after a crash.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, bwa, bwa-\n  mem2, bwa-mem3, curl, gatk, minimap2, pbmm2, sambamba, samblaster; hours on\n  a 30x genome.\n",
+   "help": "usage: wgsextract realign [-h] [--r1 R1] [--r2 R2]\n                          [--aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}] [--fast]\n                          [--prefer-native-gpu | --no-prefer-native-gpu]\n                          [--dense-suffix-array | --no-dense-suffix-array]\n                          [--platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}]\n                          [--sample SAMPLE] [--format {BAM,CRAM}]\n                          [--output-profile {default,archive,calling}] [--chunk-size CHUNK_SIZE]\n                          [--force] [--force-step STEP] [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --r1 R1               Read 1 FASTQ file\n  --r2 R2               Read 2 FASTQ file (optional)\n  --aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}\n                        Aligner to use (matches the 'align' command).\n  --fast                Align short reads with bwa-mem3's --fast speed preset (implies --aligner\n                        bwa-mem3), about twice as fast. Its alignments differ from BWA's\n                        (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast).\n                        Without it bwa-mem3 writes BWA's exact records.\n  --prefer-native-gpu, --no-prefer-native-gpu\n                        Prefer native GPU alignment. See docs/configuration.md for platform and\n                        memory limits.\n  --dense-suffix-array, --no-dense-suffix-array\n                        Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array\n                        file, built by `ref dense-sa`: the same alignments, faster, holding the\n                        file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise\n                        (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such\n                        wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it.\n                        Default: config dense_suffix_array, else off.\n  --platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}\n                        Sequencing platform (default: detected from read groups or read names,\n                        else illumina).\n  --sample SAMPLE       Sample name to embed in read-group metadata.\n  --format {BAM,CRAM}   Output format (default: BAM)\n  --output-profile {default,archive,calling}\n                        Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK\n                        >=4.7); calling selects CRAM 3.0. Default: config output_profile, else\n                        default. See docs/ont.md.\n  --chunk-size CHUNK_SIZE\n                        ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes unfinished\n                        chunks and bounds temporary files. Requires sorted, indexed input; ignored\n                        with --keep-fastq.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        extract, align, index.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n9 advanced options not shown; 'wgsextract realign --help-all' lists them.\n\nexamples:\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa --dry-run\n\noutputs (in the output directory unless noted):\n  <input stem>_aligned.bam or .cram (+ index); with --keep-fastq, also <input\n  stem>_R1/_R2.fastq.gz (single-end ONT/PacBio: <input stem>.fastq.gz).\n  Completed steps are recorded in <output>.steps.json, so a rerun resumes\n  after a crash.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, bwa, bwa-\n  mem2, bwa-mem3, curl, gatk, minimap2, pbmm2, sambamba, samblaster; hours on\n  a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -21382,6 +24031,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -21474,7 +24171,7 @@
       "default": null,
       "dest": "native_aligners",
       "exclusive_group": null,
-      "help": "On Apple Silicon, align with wgse-bwa, wgse-bwa-mem2 or wgse-minimap2 in place of bwa, bwa-mem2 or minimap2, and with wgse-bwa-mem3 in place of bwa or bwa-mem2 when the reference has bwa-mem2's index and it fits in RAM; on Linux (x86-64 and ARM64), with wgse-bwa in place of bwa, and on x86-64 with wgse-bwa-mem3 as on Apple Silicon and wgse-minimap2 in place of minimap2 (long reads' gap fills on the NVIDIA GPU). Used when they're on PATH (auto; same alignments, faster, on the Metal or NVIDIA GPU when it fits) or never (off). On Linux without wgse-bwa-mem3, auto uses Bioconda's bwa-mem3 (`pixi install -e bwa-mem3`) in its place, ahead of wgse-bwa. Default: config native_aligners, else auto. Install the builds as native/README.md describes.",
+      "help": "Use installed native aligners (auto) or upstream tools (off). See native/README.md for platform support and setup.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -21490,7 +24187,7 @@
       "default": null,
       "dest": "prefer_native_gpu",
       "exclusive_group": null,
-      "help": "If no GPU plan fits the RAM budget even after the sort-memory step-down, use the GPU anyway instead of the slower CPU path; may swap heavily. Default: config prefer_native_gpu, else off.",
+      "help": "Prefer native GPU alignment. See docs/configuration.md for platform and memory limits.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -22269,6 +24966,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -22585,6 +25330,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -22952,6 +25745,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -23285,6 +26126,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -23652,6 +26541,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -23969,6 +26906,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -24323,6 +27308,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -24649,6 +27682,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -24966,6 +28047,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -25333,6 +28462,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -25666,6 +28843,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -26020,6 +29245,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -26356,6 +29629,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -26761,6 +30082,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -27135,6 +30504,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -27488,6 +30905,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -27887,6 +31352,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -28220,6 +31733,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -28574,6 +32135,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -28891,6 +32500,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -29258,6 +32915,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -29591,6 +33296,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -29991,6 +33744,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -30308,6 +34109,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -30709,6 +34558,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -31025,6 +34922,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -31376,6 +35321,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -31709,6 +35702,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -32141,6 +36182,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -32457,6 +36546,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -32975,6 +37112,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -33291,6 +37476,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -33663,6 +37896,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -34104,6 +38385,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -34420,6 +38749,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -34746,6 +39123,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -35114,6 +39539,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -35431,6 +39904,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -35974,6 +40495,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -36290,6 +40859,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -36674,6 +41291,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -37040,6 +41705,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -37440,6 +42153,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -37806,6 +42567,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -38241,6 +43050,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -38638,6 +43495,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -39021,6 +43926,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -39613,6 +44566,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -40021,6 +45022,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -40371,6 +45420,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -40838,6 +45935,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -41204,6 +46349,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -41626,6 +46819,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -42007,6 +47248,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -42479,6 +47768,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -42925,6 +48262,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -43275,6 +48660,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -43694,6 +49127,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -44069,6 +49550,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -44435,6 +49964,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -44907,6 +50484,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -45257,6 +50882,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -45725,6 +51398,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -46180,6 +51901,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -46614,6 +52383,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -47079,6 +52896,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -47580,6 +53445,54 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -47896,6 +53809,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -48345,6 +54306,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -48919,6 +54928,54 @@
       "nargs": null,
       "option_strings": [
        "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
       ],
       "required": false,
       "type": null
@@ -50644,6 +56701,7 @@
    "target": "y",
    "threads": null,
    "tmp_dir": null,
+   "y_scope": "primary",
    "ybrowse": false
   },
   "extract region -i x.bam --target ymt --formats bam,vcf": {
@@ -50675,6 +56733,7 @@
    "target": "ymt",
    "threads": null,
    "tmp_dir": null,
+   "y_scope": "primary",
    "ybrowse": false
   },
   "extract unmapped -i x.bam --fastq": {
@@ -50728,7 +56787,8 @@
    "quiet": false,
    "ref": null,
    "threads": null,
-   "tmp_dir": null
+   "tmp_dir": null,
+   "y_scope": "primary"
   },
   "extract ydna-bam -i x.bam --poz": {
    "_command": "extract ydna-bam",
@@ -50755,7 +56815,8 @@
    "quiet": false,
    "ref": null,
    "threads": null,
-   "tmp_dir": null
+   "tmp_dir": null,
+   "y_scope": "primary"
   },
   "extract ydna-vcf -i x.bam --ybrowse": {
    "_command": "extract ydna-vcf",

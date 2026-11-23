@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 from jsonschema import Draft202012Validator
 
-from tests.smoke_utils import ensure_fake_data, run_cli, state_directory_setting
+from tests.home_isolation import state_directory_setting
+from tests.smoke_utils import ensure_fake_data, run_cli
 from tests.test_server import Mcp, _serve
 from wgsextract_cli import __version__
 from wgsextract_cli.cli.dispatch import dispatch_command
