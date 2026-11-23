@@ -150,7 +150,8 @@ executable and checks its capabilities. The package installs and runs on the
 CPU without an NVIDIA driver. Only the optional CUDA backend requires a
 supported NVIDIA GPU and driver; no CUDA Toolkit installation is needed.
 [Windows alignment](../../docs/windows.md#wgse-bwa-and-optional-nvidia-cuda)
-documents how to opt in to CUDA or override the packaged build.
+documents automatic CUDA selection, how to force CPU, and how to override
+the packaged build.
 
 ### GATK kernels
 

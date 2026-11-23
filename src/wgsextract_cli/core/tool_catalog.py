@@ -131,10 +131,10 @@ def clair3_host_supported() -> bool:
 def imputation_host_supported() -> bool:
     """Hosts with the opt-in GLIMPSE2/Beagle environment."""
     system = "linux" if sys.platform.startswith("linux") else sys.platform
-    return system in {"linux", "darwin", "win32"} and platform.machine().lower() in {
-        "x86_64",
-        "amd64",
-    }
+    machine = platform.machine().lower()
+    if machine in {"x86_64", "amd64"}:
+        return system in {"linux", "darwin", "win32"}
+    return system in {"linux", "darwin"} and machine in {"arm64", "aarch64"}
 
 
 def _x86_deepvariant_host() -> bool:

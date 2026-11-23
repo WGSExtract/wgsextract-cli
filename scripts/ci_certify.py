@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -160,11 +161,22 @@ def run_layer(
             stream.write(f"\n$ {json.dumps(command)} (cwd={cwd or '.'})\n")
             stream.flush()
             print(f"{name}: {' '.join(command[:7])}", flush=True)
+            env = None
+            if (
+                name in {"macos-arm64", "linux-arm64"}
+                and "tests/test_imputation.py" in command
+            ):
+                # Imputation must use the verified package, not a GLIMPSE2
+                # already on the certifier's PATH (possibly under Rosetta).
+                env = os.environ.copy()
+                prefix = Path(".pixi/envs/imputation/bin").resolve()
+                env["PATH"] = f"{prefix}{os.pathsep}{env.get('PATH', '')}"
             try:
                 if stream_output:
                     with subprocess.Popen(
                         command,
                         cwd=cwd,
+                        env=env,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
                         text=True,
@@ -183,6 +195,7 @@ def run_layer(
                     subprocess.run(
                         command,
                         cwd=cwd,
+                        env=env,
                         stdout=stream,
                         stderr=subprocess.STDOUT,
                         check=True,
@@ -318,9 +331,9 @@ def platform_commands(
                 "tests/test_e2e_full_genome.py",
             ]
         )
+    if host != "windows-x64" and (all_tests or "tests/test_imputation.py" in targets):
+        commands.append([*pixi, "pytest", "tests/test_imputation.py", "-rs"])
     if host == "linux-x64":
-        if all_tests or "tests/test_imputation.py" in targets:
-            commands.append([*pixi, "pytest", "tests/test_imputation.py", "-rs"])
         ont = ("test_ont_hg002.py", "test_phasing.py", "test_somalier_relate.py")
         if all_tests or any(f"tests/{test}" in targets for test in ont):
             commands.append(
@@ -474,9 +487,7 @@ def required_environments(
     environments += ["vep" if host == "linux-arm64" else "vep-rs", "fastvep"]
     if host == "windows-x64":
         environments.append("gatk")
-    if host in {"linux-x64", "windows-x64"} and (
-        targets == "all" or "tests/test_imputation.py" in targets
-    ):
+    if targets == "all" or "tests/test_imputation.py" in targets:
         environments.append("imputation")
     if host == "linux-x64" and (
         targets == "all"

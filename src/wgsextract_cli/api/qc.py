@@ -316,6 +316,107 @@ class QcAncestryParams(DownloadParams):
         yield ancestry_reference.folder(library)
 
 
+_ROH_BUILDS = ("hg19", "hg38", "t2t")
+
+
+@dataclass(frozen=True, kw_only=True)
+class QcRohParams(Params):
+    """Runs of homozygosity (ROH) in a VCF sample with ``bcftools roh``, using
+    your local population allele frequencies (``af_file``, e.g. gnomAD or 1000
+    Genomes) on the sample's build. Writes ``<stem>.roh.tsv`` (segments),
+    ``<stem>.roh.json`` (``wgsextract.roh/1``: segments, marker evidence,
+    scope, F_ROH and provenance) and ``<stem>.roh.markers.tsv.gz``. A long run
+    overlapping an imprinted region (e.g. 15q11-q13) gets an educational
+    "investigate possible isodisomy" flag; ROH can't show which parent a
+    chromosome came from, and it isn't a diagnosis. See docs/roh.md."""
+
+    COMMAND = "qc roh"
+
+    input: Path = input_param(
+        "VCF/BCF of the sample's genotypes (GRCh37, GRCh38 or T2T).",
+        "--input (a VCF or BCF file) is required.",
+    )
+    af_file: Path = param(
+        help="Local population allele frequencies on the sample's build: a "
+        "gnomAD/1000 Genomes sites VCF/BCF or a bcftools roh table",
+        path="file",
+        metavar="FILE",
+        required_message="qc roh needs --af-file: local population allele "
+        "frequencies (a gnomAD or 1000 Genomes sites VCF, or a CHROM POS "
+        "REF,ALT AF table) on the sample's build. See docs/roh.md.",
+    )
+    af_tag: str = param(
+        "AF",
+        help="INFO field of --af-file holding the frequency, e.g. AF_nfe (default: AF)",
+        metavar="TAG",
+    )
+    af_build: str | None = param(
+        None,
+        help="Build of --af-file, when its header doesn't give contig lengths",
+        choices=_ROH_BUILDS,
+    )
+    af_release: str | None = param(
+        None,
+        help="Release of --af-file to record, e.g. 'gnomAD v4.1 genomes'",
+        metavar="TEXT",
+    )
+    outdir: Path | None = outdir_param()
+    sample: str | None = param(
+        None, help="The sample of a multi-sample VCF", metavar="NAME"
+    )
+    build: str | None = param(
+        None,
+        help="The input's build, when its header doesn't tell",
+        choices=_ROH_BUILDS,
+    )
+    regions: str | None = param(
+        None,
+        help="Assessed scope: comma-separated autosomes or ranges, e.g. chr20 or "
+        "chr15:20000000-30000000 (default: every autosome in the header)",
+        metavar="REGIONS",
+    )
+    imprinted_regions: Path | None = param(
+        None,
+        help="Your own BED of imprinted regions, with a 'track db=hg38' line "
+        "(default: the bundled list for the sample's build)",
+        path="file",
+        metavar="BED",
+    )
+    min_gq: int = param(
+        20,
+        help="Leave out genotypes with GQ below this; a VCF without GQ needs 0 "
+        "(default: 20)",
+        minimum=0,
+        metavar="GQ",
+    )
+    flag_terminal_mb: float = param(
+        5.0,
+        help="Flag a run reaching a chromosome end from this length (default: 5)",
+        minimum=0,
+        metavar="MB",
+    )
+    flag_interstitial_mb: float = param(
+        10.0,
+        help="Flag any other run from this length (default: 10)",
+        minimum=0,
+        metavar="MB",
+    )
+
+    def _af_cache(self) -> Path | None:
+        from wgsextract_cli.core.roh_af import cache_root
+
+        return cache_root()
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        # The AF table prepared from af_file is kept in the reference library.
+        if (cache := self._af_cache()) is not None:
+            yield "af_file", cache
+
+    def write_folders(self) -> Iterator[Path]:
+        if (cache := self._af_cache()) is not None:
+            yield cache
+
+
 @dataclass(frozen=True, kw_only=True)
 class FakeDataParams(Params):
     """Generate a small fake genome for tests: reference, reads and calls
@@ -466,6 +567,20 @@ def ancestry(
     return execute(params, run_ancestry, progress=progress, cancel=cancel, check=check)
 
 
+def roh(
+    params: QcRohParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Find runs of homozygosity (output roles ``roh_segments``, ``roh_report``
+    and ``roh_markers``; ``details`` is the ``wgsextract.roh/1`` document)."""
+    from wgsextract_cli.commands.qc.roh import run_roh
+
+    return execute(params, run_roh, progress=progress, cancel=cancel, check=check)
+
+
 def fake_data(
     params: FakeDataParams,
     *,
@@ -488,6 +603,7 @@ __all__ = [
     "MultiqcParams",
     "QcAncestryParams",
     "QcContaminationParams",
+    "QcRohParams",
     "QcVcfParams",
     "RelateParams",
     "ancestry",
@@ -498,5 +614,6 @@ __all__ = [
     "multiqc",
     "multiqc_metrics",
     "relate",
+    "roh",
     "vcf",
 ]

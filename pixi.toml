@@ -288,10 +288,10 @@ longphase = ">=2.1.1,<3"
 
 # Genotype imputation (`vcf impute`, `ref imputation`): GLIMPSE2 (MIT) imputes
 # low-coverage reads, Beagle 5 (GPL-3, run as a separate program) genotype-only
-# VCFs such as microarray calls. Bioconda builds GLIMPSE2 for Intel only.
+# VCFs such as microarray calls. Bioconda builds GLIMPSE2 for x86-64 only.
 # Opt-in environment (`pixi install -e imputation`) that the CLI runs automatically.
 [feature.imputation]
-platforms = ["linux-64", "osx-64", "win-64"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
 
 [feature.imputation.dependencies]
 beagle = "==5.5_27Feb25.75f"
@@ -299,6 +299,13 @@ openjdk = ">=17"
 
 [feature.imputation.target.unix.dependencies]
 glimpse-bio = "==2.0.1"
+
+# Native builds from packaging/glimpse2-arm64.
+[feature.imputation.target.linux-aarch64.dependencies]
+glimpse-bio = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-arm64-1/glimpse-bio-2.0.1-linuxaarch64_wgse_1.conda", sha256 = "057124c93d969726e351e68d23057571e74970d999b5e3f62978c5c1e607a5a9" }
+
+[feature.imputation.target.osx-arm64.dependencies]
+glimpse-bio = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-arm64-1/glimpse-bio-2.0.1-osxarm64_wgse_1.conda", sha256 = "495ab782024f50c00a3f9261ae7178fa6144e564532b9a780fc447b7df24569a" }
 
 # Our native Windows build; upstream Bioconda has no win-64 package.
 [feature.imputation.target.win-64.dependencies]
