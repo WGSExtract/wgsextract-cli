@@ -256,7 +256,9 @@ def test_1475_bed_reports_the_clipped_union_and_source_digest(
     args, _, _ = chain_case
     bed = tmp_path / "clipped.bed.gz"
     with gzip.open(bed, "wt", encoding="utf-8") as stream:
-        stream.write("1\t99\t100\nchr1\t98\t100\n2\t99\t1030\nchr2\t1000\t1100\n")
+        stream.write("# Région\n1\t99\t100\nchr1\t98\t100\n")
+    with gzip.open(bed, "at", encoding="utf-8") as stream:
+        stream.write("2\t99\t1030\nchr2\t1000\t1100\n")
     out = tmp_path / "clipped"
     code, stdout, errors = run_cli([
         *args, "--annotations", "clinvar", "--outdir", str(out), "--bed", str(bed),

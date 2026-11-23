@@ -56,7 +56,7 @@ def _indexed_contigs(source: str) -> list[str]:
 def _record_contigs(source: str, needed: set[str]) -> list[str]:
     # Plain VCFs may omit the contig dictionary and have no index.
     command = ["bcftools", "query", "-f", "%CHROM\\n", source]
-    with popen(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL) as query:
+    with popen(command, stdout=subprocess.PIPE) as query:
         assert query.stdout is not None
         contigs: dict[str, None] = {}
         for line in query.stdout:
@@ -67,8 +67,10 @@ def _record_contigs(source: str, needed: set[str]) -> list[str]:
                 # An exact match wins over an alias; no later row can change it.
                 query.terminate()
                 return list(contigs)
-        if query.wait():
-            raise UsageError(f"Cannot read contig names from VCF: {source}")
+        if code := query.wait():
+            raise UsageError(
+                f"Cannot read contig names from VCF: {source} (bcftools exited {code})."
+            )
     return list(contigs)
 
 
