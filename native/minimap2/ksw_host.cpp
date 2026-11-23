@@ -18,11 +18,16 @@ extern "C" {
 #include <cstring>
 #include <deque>
 #include <mutex>
-#include <sys/mman.h>
-#include <unistd.h>
 #include <string>
 #include <thread>
 #include <vector>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <sys/mman.h>
+#include <unistd.h>
+#endif
 
 namespace {
 
@@ -34,6 +39,7 @@ double now() {
 
 // Fibers: each mapping thread runs several reads, switching to another read in
 // user space while one waits for the GPU. A fiber stays on the thread that made it.
+#ifndef _WIN32
 // wgse_fiber_switch saves the callee-saved registers on the current stack, stores
 // sp to *from and resumes the stack at to; wgse_fiber_boot starts a new fiber,
 // calling its entry with its argument (fiber_frame lays out the first switch's frame).
@@ -149,6 +155,7 @@ void fiber_frame(void **frame, void *argument, void (*entry)(void *)) {
 #else
 #error "wgse-minimap2's GPU offload has fibers for arm64 macOS and x86-64 ELF only"
 #endif
+#endif
 
 // A fill queued by a read; score INT_MIN means the CPU computes it.
 struct Entry {
@@ -200,8 +207,10 @@ struct Thread {
 struct Fiber {
     enum State { Idle, Running, Waiting };
     void *sp = nullptr, *scheduler_sp = nullptr;
+#ifndef _WIN32
     void *stack = nullptr;
     size_t stack_size = 0;
+#endif
     State state = Idle;
     bool started = false;
     long index = 0;
@@ -220,25 +229,37 @@ struct For {
 
 thread_local Fiber *current_fiber = nullptr;
 
+void fiber_yield(Fiber *f) {
+#ifdef _WIN32
+    SwitchToFiber(f->scheduler_sp);
+#else
+    wgse_fiber_switch(&f->sp, f->scheduler_sp);
+#endif
+}
+
+#ifdef _WIN32
+void CALLBACK fiber_main(void *argument) {
+#else
 void fiber_main(void *argument) {
+#endif
     Fiber *f = (Fiber *)argument;
     for (;;) {
         f->job->func(f->job->data, f->index, f->tid);
         --f->read.owner->reading;
         f->state = Fiber::Idle;
-        wgse_fiber_switch(&f->sp, f->scheduler_sp);
+        fiber_yield(f);
     }
 }
 
 void fiber_resume(Fiber *f) {
     current_fiber = f;
     f->state = Fiber::Running;
+#ifdef _WIN32
+    SwitchToFiber(f->sp);
+#else
     wgse_fiber_switch(&f->scheduler_sp, f->sp);
+#endif
     current_fiber = nullptr;
-}
-
-void fiber_yield(Fiber *f) {
-    wgse_fiber_switch(&f->sp, f->scheduler_sp);
 }
 
 class Engine {
@@ -335,11 +356,16 @@ bool Engine::start(std::string &reason) {
 
 void Engine::run_for(int n_threads, For &job) {
     const int n_fibers = fibers_per_thread_;
+#ifndef _WIN32
     const size_t stack_size = (size_t)1 << 20, guard = (size_t)getpagesize();
+#endif
     std::vector<Thread> threads(n_threads);
     std::vector<Fiber> fibers((size_t)n_threads * n_fibers);
     for (size_t k = 0; k < fibers.size(); ++k) {
         Fiber &f = fibers[k];
+        f.tid = (int)k, f.job = &job;
+        f.read.owner = &threads[k / n_fibers];
+#ifndef _WIN32
         void *m = mmap(nullptr, stack_size + guard, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
         if (m == MAP_FAILED) {
             fprintf(stderr, "[wgse-minimap2] out of memory for fiber stacks\n");
@@ -347,25 +373,46 @@ void Engine::run_for(int n_threads, For &job) {
         }
         mprotect(m, guard, PROT_NONE);
         f.stack = m, f.stack_size = stack_size + guard;
-        f.tid = (int)k, f.job = &job;
-        f.read.owner = &threads[k / n_fibers];
         // The first switch to the fiber pops this frame and boots fiber_main(&f).
         void **frame = (void **)((char *)m + stack_size + guard - frame_size);
         memset(frame, 0, frame_size);
         fiber_frame(frame, &f, &fiber_main);
         f.sp = frame;
+#endif
     }
     std::vector<std::thread> pool;
     for (int t = 0; t < n_threads; ++t)
         pool.emplace_back([&, t] { thread_main(threads[t], &fibers[(size_t)t * n_fibers], n_fibers, job); });
     for (std::thread &t : pool) t.join();
     while (finishing_.load() != 0) std::this_thread::yield();
+#ifndef _WIN32
     for (Fiber &f : fibers) munmap(f.stack, f.stack_size);
+#endif
 }
 
 // Runs this thread's fibers: resumes reads whose fills are done, starts new reads,
 // and when every fiber waits, computes queued fills on the CPU or sleeps.
 void Engine::thread_main(Thread &thread, Fiber *fibers, int n_fibers, For &job) {
+#ifdef _WIN32
+    // Let Windows manage the stack guard, TEB stack bounds and register state.
+    void *scheduler = ConvertThreadToFiberEx(nullptr, FIBER_FLAG_FLOAT_SWITCH);
+    bool ready = scheduler != nullptr;
+    for (int k = 0; ready && k < n_fibers; ++k) {
+        Fiber &f = fibers[k];
+        f.scheduler_sp = scheduler;
+        f.sp = CreateFiberEx(0, size_t(1) << 20, FIBER_FLAG_FLOAT_SWITCH, fiber_main, &f);
+        ready = f.sp != nullptr;
+    }
+    if (!ready) {
+        fail("could not create Windows mapping fibers");
+        for (int k = 0; k < n_fibers; ++k)
+            if (fibers[k].sp) DeleteFiber(fibers[k].sp);
+        if (scheduler) ConvertFiberToThread();
+        for (long i; (i = job.next.fetch_add(1, std::memory_order_relaxed)) < job.n;)
+            job.func(job.data, i, fibers[0].tid);
+        return;
+    }
+#endif
     thread.km = km_init();
     void *km = km_init(); // help()'s, which runs between the fibers' allocations
     ksw_extz_t ez;
@@ -416,6 +463,10 @@ void Engine::thread_main(Thread &thread, Fiber *fibers, int n_fibers, For &job) 
     kfree(km, ez.cigar);
     km_destroy(km);
     km_destroy(thread.km);
+#ifdef _WIN32
+    for (int k = 0; k < n_fibers; ++k) DeleteFiber(fibers[k].sp);
+    ConvertFiberToThread();
+#endif
 }
 
 // Computes a few queued fills on this CPU thread, newest first, while the GPU
