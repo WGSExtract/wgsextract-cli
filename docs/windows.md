@@ -299,10 +299,10 @@ forced CPU (Ryzen 9 9900X3D, RTX 5080, 16 threads). Both runs produced
 identical decoded BAM records: 99.73% mapped and 97.85% properly paired.
 
 On the same host, `wgsextract realign` on a local HG002 BAM subset
-(19.47 million input records, below full-genome 30× coverage) took 159 s
-with automatic CUDA, compared with 33 min 49 s in the earlier CPU run
-with `windows-tools-11`. Both outputs had 99.81% mapped and 99.12% properly
-paired. The comparison includes both the package upgrade and the backend change.
+(19.47 million input records, below full-genome 30× coverage) took 154 s
+with automatic CUDA and 344 s with forced CPU. Both runs used
+`windows-tools-12`, 16 threads, and fresh output directories. Both produced
+identical decoded BAM records: 99.81% mapped and 99.12% properly paired.
 
 ## Upgrading from a WSL or MSYS2 setup
 
