@@ -53,10 +53,7 @@ def run_regions(params: MethylationRegionsParams) -> None:
             f"--phase-blocks must name a local phased.blocks.tsv: {phase_blocks}"
         )
     if params.partition_hp:
-        from wgsextract_cli.commands.methylation import (
-            MODKIT,
-            require_supported_platform,
-        )
+        from wgsextract_cli.commands.methylation import require_supported_platform
 
         require_supported_platform()
         if not alignment_index(path):
@@ -64,8 +61,8 @@ def run_regions(params: MethylationRegionsParams) -> None:
                 f"{path} needs an index (.bai/.csi/.crai): "
                 "run `wgsextract bam index` on the haplotagged alignment."
             )
-        verify_dependencies([MODKIT])
-        log_dependency_info([MODKIT])
+        verify_dependencies(["modkit"])
+        log_dependency_info(["modkit"])
     if not fasta.is_file():
         raise UsageError("--ref must be a local FASTA file, not a directory.")
     with fasta.open("rb") as handle:

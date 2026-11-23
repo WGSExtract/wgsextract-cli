@@ -89,7 +89,9 @@ def _target_alignments(reads: Path, fasta: Path, bed: Path) -> Iterator[list[str
     command = ["samtools", "view", "-M", "-L", str(bed), "-F", "0xD04"]
     if reads.suffix.lower() == ".cram":
         command.extend(("-T", str(fasta)))
-    with bed.with_suffix(".stderr").open("w+", encoding="utf-8") as stderr:
+    with bed.with_suffix(".stderr").open(
+        "w+", encoding="utf-8", newline="\n"
+    ) as stderr:
         process = popen(
             [*command, reads], stdout=subprocess.PIPE, stderr=stderr, text=True
         )
