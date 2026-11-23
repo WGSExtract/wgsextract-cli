@@ -1903,6 +1903,29 @@ methylation_combine_strands, else CpG, 5mC only and strands combined.
 | `combine_strands` | `bool \| None` | `None` | `--combine-strands` | Sum both strands of each CpG into one row on its C. True with context 'all' is an error; the config default quietly gives way. |
 | `table_format` | `str` | `'tsv'` | `--format` | Summary table format: tsv, or parquet (needs pyarrow), which also writes the sites as <stem>.<context>.bedmethyl.parquet (default: tsv) One of: `tsv`, `parquet` |
 
+### `api.methylation.regions(MethylationRegionsParams)`
+
+CLI: `wgsextract methylation regions`.
+
+Summarize methylation over the selected build-matched regions.
+
+`MethylationRegionsParams`: Summarize strand-combined CpG calls over RefSeq promoters or UCSC islands.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Coordinate-sorted, strand-combined CpG bedMethyl. |
+| `ref` | `Path` | required | `--ref` | The indexed, local FASTA used for the bedMethyl coordinates. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `build` | `str` | required | `--build` | Assembly of both bedMethyl and FASTA. One of: `hg38`, `t2t` |
+| `preset` | `str` | required | `--preset` | RefSeq promoters or UCSC masked CpG islands. One of: `promoters`, `cpg-islands` |
+| `upstream` | `int` | `2000` | `--upstream` | Promoter bases upstream of the TSS (default: 2000). |
+| `downstream` | `int` | `500` | `--downstream` | Promoter bases on the transcribed side (default: 500). |
+| `min_valid_calls` | `int` | `5` | `--min-valid-calls` | Minimum valid calls per CpG (default: 5). |
+| `min_cpgs` | `int` | `3` | `--min-cpgs` | Minimum qualifying CpGs per region (default: 3). |
+| `hydroxymethyl` | `bool` | `False` | `--5hmc` | Also report 5hmC: declares the input was generated with a 5hmC-capable model. |
+| `download` | `bool` | `False` | `--download` | Fetch the missing pinned hg38 CpG island table from UCSC. No sample data is sent. |
+| `table_format` | `str` | `'tsv'` | `--format` | Output table: tsv (default) or parquet (needs pyarrow). One of: `tsv`, `parquet` |
+
 ## `api.microarray`
 
 `microarray`: consumer microarray (23andMe, AncestryDNA, ...) and AADR

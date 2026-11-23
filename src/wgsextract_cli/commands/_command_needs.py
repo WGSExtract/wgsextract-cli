@@ -278,6 +278,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         optional="ExpansionHunter LongTR strkit bcftools",
     ),
     "methylation pileup": _n(HOURS, "modkit", "samtools", "tabix", optional="bcftools"),
+    "methylation regions": _n(MINUTES, "samtools", optional="curl"),
     "pet-align": _n(
         HOURS, "bcftools", "bwa", "samtools", optional="bwa-mem2 sambamba samblaster"
     ),

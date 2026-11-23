@@ -107,6 +107,7 @@ CLI_HELP = {
     "cmd_methylation": "Methylation (5mC/5hmC) from the base-modification (MM/ML) tags of Nanopore and PacBio HiFi reads.",
     "cmd_qc-relate": "Sex, relatedness and 1000 Genomes superpopulation of BAM/CRAM/VCF files with somalier; flags sample swaps. Optional: Linux and macOS, install with `pixi install -e somalier`.",
     "cmd_methylation-pileup": "Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and summary. Optional: Linux and macOS, install with `pixi install -e modkit`.",
+    "cmd_methylation-regions": "Summarize CpG bedMethyl over gene promoters or CpG islands.",
     "cmd_ref-cadd": "Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD indels, ~85 GB per build) with their tabix indexes.",
     "cmd_ref-gerp": "Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6 GB; hg19 from UCSC, ~7.6 GB).",
     "cmd_ref-index": "Prepare a FASTA file for use by indexing it. This is required before you can align reads or call variants against it.",
