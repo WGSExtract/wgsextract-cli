@@ -153,6 +153,7 @@ from .qc import (
     MultiqcParams,
     QcAncestryParams,
     QcContaminationParams,
+    QcRohParams,
     QcVcfParams,
     RelateParams,
 )
@@ -282,6 +283,7 @@ __all__ = [
     "ProgressEvent",
     "QcAncestryParams",
     "QcContaminationParams",
+    "QcRohParams",
     "QcVcfParams",
     "RealignParams",
     "RelateParams",

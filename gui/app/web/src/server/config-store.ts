@@ -8,6 +8,7 @@ import { parseConfigToml as parseToml, serializeConfigToml as serializeToml } fr
 import type { BundleManifest, ConfigBootstrapScriptSpec, ConfigSetting, ControlSpec, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "../../../shared/types.js";
 import { configPath, expandPathTokens, expandWorkspaceToken, isPreviousConfigPath, resolveUserPath, bundleEnvironment } from "./paths.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
+import { withSettingsFileLock } from "./settings-lock.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { normalizeUIMode, type UIMode } from "../../../shared/ui-mode.js";
 
@@ -292,8 +293,17 @@ async function movePreviousConfigFile(control: ControlSpec, bundleRoot: string) 
         if (!existsSync(previous)) {
             continue;
         }
-        await mkdir(path.dirname(target), { recursive: true });
-        await moveFile(previous, target);
+        // The CLI may save the settings file meanwhile: never move the old one over it.
+        const moved = await withSettingsFileLock(target, async (file) => {
+            if (existsSync(file)) {
+                return false;
+            }
+            await moveFile(previous, file);
+            return true;
+        });
+        if (!moved) {
+            return;
+        }
         const folder = path.dirname(previous);
         const relative = path.relative(bundleRoot, folder);
         if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
@@ -428,8 +438,14 @@ async function scriptContents(payload: LooseRecord, bundleRoot: string): Promise
     }
     return "";
 }
-async function bootstrapToml(mode: string, url: string, defaults: Record<string, unknown>) {
-    const existing = await readOptionalFlatToml(url);
+async function bootstrapToml(mode: string, filePath: string, defaults: Record<string, unknown>) {
+    if (mode !== "createIfMissing" && mode !== "mergeMissing") {
+        throw new Error(`Unsupported config bootstrap mode: ${mode}`);
+    }
+    await withSettingsFileLock(filePath, (target) => bootstrapTomlLocked(mode, target, defaults));
+}
+async function bootstrapTomlLocked(mode: string, filePath: string, defaults: Record<string, unknown>) {
+    const existing = await readOptionalFlatToml(filePath);
     if (mode === "createIfMissing" && existing != null) {
         return;
     }
@@ -444,10 +460,7 @@ async function bootstrapToml(mode: string, url: string, defaults: Record<string,
             }
         }
     }
-    if (mode !== "createIfMissing" && mode !== "mergeMissing") {
-        throw new Error(`Unsupported config bootstrap mode: ${mode}`);
-    }
-    await writeFileAtomically(url, serializeToml(next));
+    await writeFileAtomically(filePath, serializeToml(next));
 }
 async function readOptionalFlatToml(filePath: string): Promise<Record<string, unknown> | null> {
     try {
@@ -576,8 +589,6 @@ export async function loadConfig(control: ControlSpec, requestedPath: string | u
 }
 export async function saveConfig(control: ControlSpec, requestedPath: string | undefined, values: Readonly<Record<string, unknown>>, bundleRoot: string) {
     const filePath = configPath(control, requestedPath, bundleRoot);
-    // The CLI saves settings of its own in this file too, which the editor doesn't show: keep them.
-    const existing = await readOptionalFlatToml(filePath) ?? {};
     const byKey: Record<string, unknown> = {};
     for (const setting of control.settings ?? []) {
         const key = settingKey(setting);
@@ -591,12 +602,17 @@ export async function saveConfig(control: ControlSpec, requestedPath: string | u
         // The CLI reads this file too, and knows only real paths.
         byKey[key] = setting.kind === "path" && typeof value === "string" ? expandWorkspaceToken(value, bundleRoot) : value;
     }
-    // Remove former names only when the editor owns their canonical setting.
-    if (Object.hasOwn(byKey, "mygenomes_library")) {
-        delete existing.dataset_library;
-        delete existing.genome_library;
-    }
-    await writeFileAtomically(filePath, serializeToml({ ...existing, ...byKey }));
+    // The CLI and other windows save this file too, including settings the editor doesn't show: merge into
+    // what is there now, under the lock they all take.
+    await withSettingsFileLock(filePath, async (target) => {
+        const existing = await readOptionalFlatToml(target) ?? {};
+        // Remove former names only when the editor owns their canonical setting.
+        if (Object.hasOwn(byKey, "mygenomes_library")) {
+            delete existing.dataset_library;
+            delete existing.genome_library;
+        }
+        await writeFileAtomically(target, serializeToml({ ...existing, ...byKey }));
+    });
     return { path: filePath, keyCount: Object.keys(byKey).length };
 }
 

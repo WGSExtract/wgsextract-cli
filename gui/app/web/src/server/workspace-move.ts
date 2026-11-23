@@ -7,6 +7,8 @@ import { isSameOrInsidePath, relocatePath } from "../../../shared/workspace-path
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath, expandWorkspaceToken } from "./paths.js";
+import { withSettingsFileLock } from "./settings-lock.js";
+import { relocateSettingsFile, relocateStrings, restoreRewrittenFile, type RewrittenFile } from "./settings-relocation.js";
 import { createLink, type FolderMove, type PlannedLink, planLink, planLinks, type RelinkedLink, relinkMovedFolder, restoreLinks } from "./workspace-links.js";
 import { refuseLinkedMoveFolders } from "./workspace-move-guard.js";
 import { defaultUsersWorkspaceRoot, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
@@ -79,12 +81,14 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
         if (!latestFile) {
             throw new HttpError(400, `${control.label ?? control.id} does not declare a settings file.`);
         }
-        const latest = await readSettings(latestFile);
-        if (setting.key === "mygenomes_library") {
-            delete latest.dataset_library;
-            delete latest.genome_library;
-        }
-        await writeFileAtomically(latestFile, serializeToml({ ...latest, [setting.key]: target }));
+        await withSettingsFileLock(latestFile, async (file) => {
+            const latest = await readSettings(file);
+            if (setting.key === "mygenomes_library") {
+                delete latest.dataset_library;
+                delete latest.genome_library;
+            }
+            await writeFileAtomically(file, serializeToml({ ...latest, [setting.key]: target }));
+        });
     };
     if (!current || !path.isAbsolute(current) || path.relative(current, target) === "" || (await isEmptyOrMissing(current))) {
         await save();
@@ -127,7 +131,7 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
     }
     catch (error) {
         for (const file of rewritten) {
-            await writeFileAtomically(file.filePath, file.text).catch(() => undefined);
+            await restoreRewrittenFile(file).catch(() => undefined);
         }
         if (renamed) {
             await restoreLinks(move, relinked);
@@ -322,29 +326,12 @@ async function copyEntry(move: FolderMove, links: Map<string, PlannedLink>, toRo
     await utimes(to, info.atime, info.mtime);
 }
 
-/** A file's text from before it was rewritten, to put back if the move fails. */
-interface RewrittenFile {
-    filePath: string;
-    text: string;
-}
-
 async function readSettings(filePath: string): Promise<Record<string, unknown>> {
     const text = await readFile(filePath, "utf8").catch((error: unknown) => {
         ignoreMissing(error);
         return "";
     });
     return parseToml(text);
-}
-
-async function relocateSettingsFile(filePath: string, from: string, to: string, rewritten: RewrittenFile[]) {
-    const text = await readFile(filePath, "utf8").catch((error: unknown) => {
-        ignoreMissing(error);
-        return null;
-    });
-    if (text != null) {
-        rewritten.push({ filePath, text });
-        await writeFileAtomically(filePath, serializeToml(relocateStrings(parseToml(text), from, to)));
-    }
 }
 
 async function readBundleState(bundleRoot: string): Promise<Record<string, unknown> | null> {
@@ -366,17 +353,4 @@ async function relocateBundleState(bundleRoot: string, from: string, to: string,
         const relocated = relocateStrings(JSON.parse(text) as unknown, from, to);
         await writeFileAtomically(statePath, `${JSON.stringify(relocated, null, 2)}\n`);
     }
-}
-
-function relocateStrings(value: unknown, from: string, to: string): unknown {
-    if (typeof value === "string") {
-        return relocatePath(value, from, to);
-    }
-    if (Array.isArray(value)) {
-        return value.map((item) => relocateStrings(item, from, to));
-    }
-    if (value != null && typeof value === "object") {
-        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, relocateStrings(item, from, to)]));
-    }
-    return value;
 }
