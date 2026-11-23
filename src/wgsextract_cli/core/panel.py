@@ -1,8 +1,8 @@
-"""``panel bed``: genes and presets to a padded, merged BED for adaptive sampling.
+"""Bundled gene annotations, and ``panel bed``'s padded, merged target BED.
 
-Gene spans come from the bundled NCBI RefSeq annotations
-(assets/panel/genes_<build>.tsv.gz, made by scripts/build_panel_annotations.py);
-nothing is fetched at run time.
+Gene spans, HGNC IDs and coding lengths come from the bundled NCBI RefSeq
+annotations (assets/panel/genes_<build>.tsv.gz, made by
+scripts/build_panel_annotations.py); nothing is fetched at run time.
 """
 
 from __future__ import annotations
@@ -34,12 +34,32 @@ class Locus:
 
 
 @dataclass(frozen=True)
+class Gene:
+    """A gene's identifiers and the coding length of one chosen transcript
+    (none for noncoding genes and pseudogenes)."""
+
+    symbol: str
+    gene_id: str  # NCBI Gene
+    hgnc_id: str  # "HGNC:613", or "" when NCBI gives none
+    biotype: str
+    cds_bp: int | None
+    cds_transcript: str
+    cds_basis: str  # mane_select, refseq_select, longest, or ""
+
+
+@dataclass(frozen=True)
 class Annotations:
     build: str
     source: str
     contigs: Mapping[str, int]
     loci: Mapping[str, tuple[Locus, ...]]  # by upper-case symbol
     aliases: Mapping[str, tuple[str, ...]]  # upper-case synonym -> symbols
+    genes: Mapping[str, Gene]  # by upper-case symbol
+    hgnc: Mapping[str, str]  # "HGNC:613" -> upper-case symbol
+
+
+# A symbol with rows on X and Y (pseudoautosomal) keeps its best-annotated row.
+_BASIS_RANK = {"mane_select": 0, "refseq_select": 1, "longest": 2}
 
 
 @cache
@@ -50,7 +70,10 @@ def load_annotations(build: str) -> Annotations:
     contigs: dict[str, int] = {}
     loci: dict[str, list[Locus]] = {}
     aliases: dict[str, set[str]] = {}
+    genes: dict[str, Gene] = {}
+    hgnc: dict[str, str] = {}
     source = ""
+    columns: list[str] = []
     with gzip.open(io.BytesIO(resource.read_bytes()), "rt", encoding="utf-8") as f:
         for line in f:
             if line.startswith("#contig\t"):
@@ -59,20 +82,40 @@ def load_annotations(build: str) -> Annotations:
             elif line.startswith("# Genes"):
                 # "... annotation GCF_000001405.40-RS_2025_08 (...)"
                 source = f"NCBI RefSeq {line.split('annotation ', 1)[1].split()[0]}"
-            elif not line.startswith(("#", "chrom\t")):
-                chrom, start, end, symbol, _, _, synonyms = line.rstrip("\n").split(
-                    "\t"
-                )
-                locus = Locus(chrom, int(start), int(end), symbol)
-                loci.setdefault(symbol.upper(), []).append(locus)
-                for alias in filter(None, synonyms.split(",")):
+            elif line.startswith("chrom\t"):
+                columns = line.rstrip("\n").split("\t")
+            elif not line.startswith("#"):
+                row = dict(zip(columns, line.rstrip("\n").split("\t"), strict=True))
+                symbol = row["symbol"]
+                key = symbol.upper()
+                locus = Locus(row["chrom"], int(row["start"]), int(row["end"]), symbol)
+                loci.setdefault(key, []).append(locus)
+                for alias in filter(None, row["synonyms"].split(",")):
                     aliases.setdefault(alias.upper(), set()).add(symbol)
+                gene = Gene(
+                    symbol,
+                    row["gene_id"],
+                    row["hgnc_id"],
+                    row["biotype"],
+                    int(row["cds_bp"]) if row["cds_bp"] else None,
+                    row["cds_transcript"],
+                    row["cds_basis"],
+                )
+                known = genes.get(key)
+                if known is None or _BASIS_RANK.get(
+                    gene.cds_basis, 3
+                ) < _BASIS_RANK.get(known.cds_basis, 3):
+                    genes[key] = gene
+                if gene.hgnc_id:
+                    hgnc.setdefault(gene.hgnc_id, key)
     return Annotations(
         build,
         source,
         contigs,
         {k: tuple(v) for k, v in loci.items()},
         {k: tuple(sorted(v)) for k, v in aliases.items() if k not in loci},
+        genes,
+        hgnc,
     )
 
 
@@ -82,40 +125,69 @@ class Resolution:
     aliases: dict[str, str] = field(default_factory=dict)  # given -> symbol
 
 
+@dataclass(frozen=True)
+class GeneMatch:
+    """How one given gene name resolved: to a symbol (directly, as an HGNC ID
+    or as a unique alias), or not at all."""
+
+    given: str
+    symbol: str | None  # upper-case key into Annotations.loci
+    via: str  # symbol, hgnc, alias, ambiguous or unknown
+    candidates: tuple[str, ...] = ()  # an ambiguous alias's genes
+    suggestions: tuple[str, ...] = ()  # close symbols of an unknown name
+
+
+def match_gene(name: str, notes: Annotations) -> GeneMatch:
+    key = name.upper()
+    if key in notes.loci:
+        return GeneMatch(name, key, "symbol")
+    if key.startswith("HGNC:"):
+        symbol = notes.hgnc.get(key)
+        return GeneMatch(name, symbol, "hgnc" if symbol else "unknown")
+    candidates = notes.aliases.get(key, ())
+    if len(candidates) == 1:
+        return GeneMatch(name, candidates[0].upper(), "alias")
+    if candidates:
+        return GeneMatch(name, None, "ambiguous", candidates)
+    close = difflib.get_close_matches(key, notes.loci, n=3, cutoff=0.8)
+    close += sorted(s for s in notes.loci if s.startswith(key + "-"))[:5]
+    return GeneMatch(
+        name,
+        None,
+        "unknown",
+        suggestions=tuple(notes.loci[c][0].symbol for c in close),
+    )
+
+
+def match_problem(match: GeneMatch, notes: Annotations) -> str:
+    """Why an unresolved name didn't resolve, for messages."""
+    if match.via == "ambiguous":
+        return (
+            f"{match.given}: an alias of several genes "
+            f"({', '.join(match.candidates)}); give the symbol"
+        )
+    hint = (
+        f" (did you mean {', '.join(match.suggestions)}?)" if match.suggestions else ""
+    )
+    return f"{match.given}: not a gene in {notes.source}{hint}"
+
+
 def resolve_genes(names: Iterable[str], notes: Annotations) -> Resolution:
-    """Symbols (any case) or unique aliases to loci; one error lists every
-    name that is unknown or an alias of several genes."""
+    """Symbols (any case), HGNC IDs or unique aliases to loci; one error lists
+    every name that is unknown or an alias of several genes."""
     found = Resolution()
     problems: list[str] = []
     seen: set[str] = set()
     for name in names:
-        key = name.upper()
-        symbols: tuple[str, ...] = (key,) if key in notes.loci else ()
-        if not symbols:
-            candidates = notes.aliases.get(key, ())
-            if len(candidates) == 1:
-                symbols = (candidates[0].upper(),)
-                found.aliases[name] = candidates[0]
-            elif candidates:
-                problems.append(
-                    f"{name}: an alias of several genes ({', '.join(candidates)}); "
-                    "give the symbol"
-                )
-                continue
-            else:
-                close = difflib.get_close_matches(key, notes.loci, n=3, cutoff=0.8)
-                close += sorted(s for s in notes.loci if s.startswith(key + "-"))[:5]
-                hint = (
-                    f" (did you mean {', '.join(notes.loci[c][0].symbol for c in close)}?)"
-                    if close
-                    else ""
-                )
-                problems.append(f"{name}: not a gene in {notes.source}{hint}")
-                continue
-        for symbol in symbols:
-            if symbol not in seen:
-                seen.add(symbol)
-                found.loci.extend(notes.loci[symbol])
+        match = match_gene(name, notes)
+        if match.symbol is None:
+            problems.append(match_problem(match, notes))
+            continue
+        if match.via == "alias":
+            found.aliases[name] = notes.loci[match.symbol][0].symbol
+        if match.symbol not in seen:
+            seen.add(match.symbol)
+            found.loci.extend(notes.loci[match.symbol])
     if problems:
         raise UsageError("Unknown genes:\n  " + "\n  ".join(problems))
     return found
