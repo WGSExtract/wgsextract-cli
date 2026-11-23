@@ -25,6 +25,7 @@ DOCS_TEST_TARGETS = (
     "tests/test_cli_help.py",
     # Real Git/generator checks need only the same Python deps as freshness tests.
     "tests/test_regen.py",
+    "tests/test_text_newlines.py",
     "tests/test_bump_version.py",
     "tests/test_release_notes.py",
     "tests/test_build_mockup_previews.py",
@@ -83,6 +84,11 @@ DOCS_TARGET_INPUTS = {
         "docs/data/configuration-guide.md",
         "tests/cli_snapshot.py",
         "justfile",
+    ),
+    "tests/test_text_newlines.py": (
+        "scripts/regen.py",
+        "scripts/gen_*.py",
+        "tests/cli_snapshot.py",
     ),
     "tests/test_bump_version.py": (
         "scripts/bump_version*",

@@ -487,15 +487,29 @@ def test_913_prose_skips_python_tests_and_only_validates_site_sources(
         ("docs/api.md", ["tests/test_api.py::test_api_docs_are_up_to_date"]),
         ("docs/commands.md", ["tests/test_cli_help.py"]),
         ("site_src/cli.md", ["tests/test_cli_help.py"]),
-        ("scripts/regen.py", ["tests/test_regen.py"]),
+        (
+            "scripts/regen.py",
+            [
+                "tests/test_regen.py",
+                "tests/test_text_newlines.py",
+            ],
+        ),
         ("scripts/bump_version.py", ["tests/test_bump_version.py"]),
         (
             "scripts/gen_api_docs.py",
-            ["tests/test_api.py::test_api_docs_are_up_to_date", "tests/test_regen.py"],
+            [
+                "tests/test_api.py::test_api_docs_are_up_to_date",
+                "tests/test_regen.py",
+                "tests/test_text_newlines.py",
+            ],
         ),
         (
             "scripts/gen_command_docs.py",
-            ["tests/test_cli_help.py", "tests/test_regen.py"],
+            [
+                "tests/test_cli_help.py",
+                "tests/test_regen.py",
+                "tests/test_text_newlines.py",
+            ],
         ),
         (
             "docs/configuration.md",
@@ -506,6 +520,7 @@ def test_913_prose_skips_python_tests_and_only_validates_site_sources(
             [
                 "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
                 "tests/test_regen.py",
+                "tests/test_text_newlines.py",
             ],
         ),
         (
