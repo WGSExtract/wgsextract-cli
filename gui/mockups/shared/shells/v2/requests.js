@@ -15,6 +15,8 @@
   "use strict";
   var WGSM = window.WGSM;
   var S = window.WGSMSchema;
+  var analysisCards = ["analyze/comprehensive", "bam/identify", "info", "info/calculate-coverage", "info/coverage-sample", "info/chip",
+    "lineage/y-haplogroup", "lineage/mt-haplogroup", "lineage/y-str", "qc/vcf", "sign/verify", "typing/hla", "typing/cyp2d6", "typing/str", "vcf/trio"];
 
   function schema(op) {
     return S.ops[op] || null;
@@ -191,7 +193,7 @@
     return WGSM.v2edge.beforeRun(ctx, requests).then(function (ok) {
       if (!ok) return [];
       return Promise.all(requests.map(function (req) {
-        return WGSM.v2edge.send(req.op, Object.assign({}, req.params, { _mock: mock(req) }));
+        return WGSM.v2edge.send(req.op, Object.assign({}, req.params, { _mock: mock(req) }), analysisCards.indexOf(req.op) >= 0);
       }));
     });
   }
@@ -205,7 +207,10 @@
     if (/^mem2-/.test(flag)) return ["ref/index", { ref: M.fasta(rest), aligner: "bwa-mem2" }, gb, "bwa-mem2’s index for " + rest];
     if (/^ref-/.test(flag)) return ["ref/library", { install: rest }, gb, "Install reference " + rest];
     if (flag === "panel-1kg") return ["ref/imputation", {}, gb, "Install the 1000 Genomes panel"];
-    if (/^vepcache-/.test(flag)) return ["vep/download", { engine: rest }, gb, "Install the VEP cache (" + rest + ")"];
+    if (/^vepcache-/.test(flag)) {
+      var cache = rest.split(":");
+      return ["vep/download", { engine: cache[0], assembly: cache[1] || "GRCh38" }, gb, "Install the VEP cache (" + rest + ")"];
+    }
     if (flag === "alex-fixed") return ["bam/index", { input: M.realPath(M.path(M.files.alex)) }, 0.9, "Fix Alex’s BAM: install hs38d1 and index it"];
     if (/^data-/.test(flag) && schema("ref/" + rest)) return ["ref/" + rest, {}, gb, "Install " + rest];
     console.error("No operation installs " + flag);

@@ -53,7 +53,8 @@
   function plan(c) {
     var M = c.M;
     var mac = M.appleSilicon;
-    var native = M.native && c.v.native_aligners !== "off";
+    var windowsNative = M.windowsBwa && c.flag("windows-wgse-bwa");
+    var native = (M.native || windowsNative) && c.v.native_aligners !== "off";
     var index = c.flag("mem2-" + c.v.ref);
     var threads = c.v.threads || M.cores;
     var sortThreads = c.v.threads && c.v.threads !== M.cores ? threads : M.bigCores;
@@ -102,11 +103,15 @@
       two.records = "bwa-mem2’s";
       return two;
     }
-    var onGpu = native && (mac || M.nvidia);
+    var onGpu = native && (mac || M.nvidia && (!M.windowsBwa || c.v.prefer_native_gpu));
     var bwa = onGpu
-      ? cost("wgse-bwa on " + gpu, mac ? 0.28 : 0.19, 6.75 + (c.v.dense_suffix_array ? 0.8 : 0), false)
+      ? cost("wgse-bwa on " + gpu, M.windowsBwa ? null : mac ? 0.28 : 0.19, 6.75 + (c.v.dense_suffix_array ? 0.8 : 0), false)
       : cost(native ? "wgse-bwa on the CPU" : "bwa on the CPU", 0.7, 6 + (native && c.v.dense_suffix_array ? 0.8 : 0), false);
-    if (native && c.v.dense_suffix_array) bwa.rate *= 0.923;
+    if (bwa.rate !== null && native && c.v.dense_suffix_array) bwa.rate *= 0.923;
+    if (onGpu && M.windowsBwa) {
+      bwa.aligner += " if preflight passes";
+      bwa.timeText = "varies · CUDA isn’t always faster";
+    }
     bwa.records = "bwa’s exact";
     bwa.dense = native;
     return bwa;
@@ -155,11 +160,12 @@
       return { default: "Keeps the format above", archive: "CRAM 3.1, smallest; GATK 4.7 or later reads it", calling: "CRAM 3.0, which every caller reads" }[c.v.output_profile];
     }, { def: "default", labels: { default: "Default", archive: "Archive", calling: "For calling" } }),
     f.param("native_aligners", "WGS Extract’s aligners", function (c) {
+      if (c.M.windowsBwa) return "Optional wgse-bwa.exe on PATH or set in config.toml; stock BWA if missing or unusable";
       return c.M.appleSilicon ? "Builds for Apple Silicon that use the GPU, with the same records as upstream" : "wgse-bwa (on the NVIDIA GPU when there is one) and wgse-bwa-mem3, with the same records as upstream";
     }, {
       def: "auto", labels: { auto: "Use them", off: "Off" },
       when: function (c) {
-        return c.M.native;
+        return c.M.native || c.M.windowsBwa;
       },
     }),
     f.param("dense_suffix_array", "Dense suffix array", function (c) {
@@ -167,18 +173,22 @@
       return p.dense ? "About 8% faster with wgse-bwa; holds 0.8 GB more in memory. Build it once with ref dense-sa" : "Only wgse-bwa reads it; " + (p.aligner || "this aligner") + " runs here, so it would be unused";
     }, {
       when: function (c) {
-        return c.M.native;
+        return c.M.native || c.M.windowsBwa;
       },
     }),
-    f.param("prefer_native_gpu", "Use the GPU even when tight", "Stay on the GPU even when the job exceeds memory instead of falling back to the slower CPU; may swap heavily", {
+    f.param("prefer_native_gpu", "Prefer native GPU", function (c) {
+      return c.M.windowsBwa
+        ? "Opt in to CUDA instead of native CPU alignment. Needs optional wgse-bwa, a supported NVIDIA driver, sufficient RAM and Windows commit (RAM plus page file). No Docker or CUDA Toolkit."
+        : "Prefer the native GPU path instead of falling back to CPU when memory is tight.";
+    }, {
       when: function (c) {
-        return c.M.native && (c.M.metal || c.M.nvidia);
+        return (c.M.native || c.M.windowsBwa) && (c.M.metal || c.M.nvidia);
       },
     }),
     f.param("gpu", "NVIDIA Parabricks", "BWA-MEM, sorting and duplicate marking on the GPU, in Docker", {
       disabled: function (c) {
         if (c.M.parabricks) return null;
-        if (c.M.nvidia && c.M.os === "windows") return "Parabricks needs Linux; this GPU is used on Linux only";
+        if (c.M.os === "windows") return "Parabricks needs Linux. Native Windows CUDA is a separate wgse-bwa option.";
         if (c.M.nvidia) return "Parabricks needs a GPU with 16 GB or more";
         return "Needs Linux with an NVIDIA GPU of 16 GB or more";
       },
@@ -192,6 +202,9 @@
 
   function alignerNotes(c, p) {
     var notes = [];
+    if (c.M.windowsBwa && c.v.prefer_native_gpu) notes.push({ tone: "info", icon: "info", id: "windows-cuda",
+      title: "Windows CUDA is optional",
+      text: "Used only when the selected BWA path can run a validated wgse-bwa build and the NVIDIA driver, RAM and commit checks pass. Otherwise it uses the CPU. It is not automatically selected or necessarily faster." });
     if (p.blocked) notes.push({ tone: "warn", icon: "triangle-alert", id: "aligner", title: "Not on this computer", text: p.blocked + " Choose Auto, bwa or bwa-mem2." });
     if (p.needsIndex) {
       notes.push({ tone: "warn", icon: "download", id: "index", title: "bwa-mem2’s index for " + refLabel(c.v.ref) + " isn’t installed",

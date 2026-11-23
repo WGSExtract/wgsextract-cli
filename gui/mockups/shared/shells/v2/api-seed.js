@@ -18,6 +18,8 @@
       machineKey: input.machineKey && input.machineKey in input.profiles ? input.machineKey : Object.keys(input.profiles)[0],
       files: input.files,
       people: people,
+      toolEnvs: input.toolEnvs || {},
+      toolLimits: input.toolLimits || {},
       references: input.references || REFERENCES,
     };
   };
@@ -38,6 +40,7 @@
       cores: P.cores,
       bigCores: P.bigCores,
       ramGB: P.ramGB,
+      missing: P.missing || [],
       gpu: P.gpu ? { kind: P.gpu, memory_gb: P.gpuGB || null } : null,
       workspace: WORKSPACE,
       genomesPath: P.genomes[2],

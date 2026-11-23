@@ -33,6 +33,9 @@
       f.param("min_reads", "Minimum reads", "At a marker", { width: 80 }),
       f.param("base_quality", "Minimum base quality", "", { width: 80 }),
       f.param("base_majority", "Agreement (%)", "Reads that must agree at a marker", { width: 80 }),
+      f.param("assume_reference", "Assume missing sites match the reference", "Legacy opt-in for a complete variants-only VCF. By default, a missing record is not callable evidence.", {
+        when: function (c) { return c.file.kind === "vcf"; },
+      }),
     ],
     run: function (c) {
       var noY = WGSM.v2extract.noY(c);

@@ -36,7 +36,7 @@
       "Accuracy drops when your ancestry differs from the studies behind a score, which remain mostly European so far, and lifestyle, environment and family history often outweigh it. Treat scores as research only without changing medical treatment or screening. Fetching a scoring file sends only the score’s ID and build to the PGS Catalog; your genotypes stay on this computer.",
     accepts: ["vcf"], file: "helen", button: "Score",
     fields: [
-      f.select("trait", "Trait", "A curated score from the PGS Catalog, or one by its ID", [["height", "Height"], ["cad", "Coronary artery disease"], ["t2d", "Type 2 diabetes"], ["ldl-cholesterol", "LDL cholesterol"], ["triglycerides", "Triglycerides"], ["stroke", "Stroke"], ["breast-cancer", "Breast cancer"], ["prostate-cancer", "Prostate cancer"], ["lung-cancer", "Lung cancer"], ["thyroid-cancer", "Thyroid cancer"], ["bmi", "Body mass index (academic research use only)"], ["", "A PGS Catalog ID…"]], "height", { width: 260 }),
+      f.select("trait", "Trait", "A curated score from the PGS Catalog, or one by its ID", [["height", "Height"], ["cad", "Coronary artery disease"], ["t2d", "Type 2 diabetes"], ["ldl-cholesterol", "LDL cholesterol"], ["triglycerides", "Triglycerides"], ["stroke", "Stroke"], ["breast-cancer", "Breast cancer"], ["prostate-cancer", "Prostate cancer"], ["lung-cancer", "Lung cancer"], ["thyroid-cancer", "Thyroid cancer"], ["bmi", "Body mass index (PGS005198)"], ["", "A PGS Catalog ID…"]], "height", { width: 260 }),
       f.param("pgs_id", "PGS Catalog ID", "Uncurated scores carry a warning", {
         def: "PGS000001", width: 140,
         when: function (c) {

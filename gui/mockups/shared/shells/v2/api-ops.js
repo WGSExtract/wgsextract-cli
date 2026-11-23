@@ -15,6 +15,7 @@
     "sample/show": ["query", "Sample", 0.1, "Show a sample's settings"],
     "ref/status": ["query", "Reference status", 0.1, "Which reference data is installed"],
     "deps/check": ["query", "Check tools", 0.1, "Check the tools on this computer"],
+    "deps/list": ["query", "List tools", 0, "List tools and their installation status"],
     realign: ["job", "Realign", 216, "Realign a BAM or CRAM to another reference"],
     align: ["job", "Align", 300, "Align FASTQ reads to a reference"],
     "bam/index": ["job", "Index", 6, "Create a BAM or CRAM index"],
@@ -254,15 +255,19 @@
     if (op === "repair/ftdna-vcf") return output(stem + "_repaired.vcf", size * 4, "vcf");
     if (op === "sign/create") return output("SHA256SUMS", 0.000001, "text");
     if (op === "analyze/batch-gen") return output("batch.csv", 0.00001, "csv");
+    if (/^deps\//.test(op)) return [];
     if (op === "qc/multiqc") return [{ path: (p.outdir || p.input) + "/multiqc_report.html", gb: 0.005, kind: "html", role: "report" }];
     if (op === "qc/multiqc-metrics") return [{ path: (p.outdir || p.input) + "/wgsextract_metrics_mqc.json", gb: 0.0001, kind: "json", role: "report" }];
     if (op === "panel/bed") return p.list_presets ? [] : output("panel.bed", 0.0001, "bed");
     if (op === "extract/bam-subset") return output(stem + "_subset.bam", bamSize * (p.fraction || 0.1), "bam");
-    if (op === "extract/y-mt-extract") return output(stem + "_Y_MT.bam", bamSize * 0.01, "bam");
+    var associated = p.y_scope === "associated" ? "_associated" : "";
+    if (op === "extract/ydna-bam") return output(stem + "_Y" + (p.poz ? "_poz" : associated) + ".bam", bamSize * (p.poz ? 0.008 : 0.02), "bam");
+    if (op === "extract/y-mt-extract") return output(stem + "_Y_MT" + associated + ".bam", bamSize * 0.01, "bam");
     if (op === "extract/region") {
       var target = { mt: "MT", y: "Y", ymt: "Y_MT", autox: "autosomes_X" }[p.target];
       return String(p.formats || "bam").split(",").map(function (format) {
-        return { path: dir + "/" + stem + "_" + (format === "bam" && p.target === "mt" ? "mtDNA" : target) + "." + (format === "vcf" ? "vcf.gz" : format),
+        var name = format === "bam" && p.target === "mt" ? "mtDNA" : target + (format === "bam" && p.poz ? "_poz" : associated);
+        return { path: dir + "/" + stem + "_" + name + "." + (format === "vcf" ? "vcf.gz" : format),
           gb: (format === "bam" ? bamSize : format === "fasta" ? 3 : 0.2) * (p.target === "autox" ? 0.98 : p.target === "mt" ? 0.0005 : 0.01), kind: format, role: "output" };
       });
     }
@@ -278,6 +283,10 @@
     }
     if (op === "analyze/comprehensive") return output("significant_SNP_" + stem + ".vcf.gz", 0.01, "vcf");
     if (op === "vcf/to-fasta") return output(stem + "_consensus.fa.gz", p.region ? 0.001 : 0.9, "fasta");
+    if (op === "vcf/table") {
+      var tableFormat = p.table_format || "tsv";
+      return output(stem + "_variants." + tableFormat, 0.4, tableFormat).concat(p.no_sqlite ? [] : output(stem + "_variants.sqlite", 0.4, "sqlite"));
+    }
     var names = { filter: "filtered", annotate: "annotated", "chain-annotate": "chain_annotated", acmg: "acmg_annotated",
       gerp: "gerp_annotated", phylop: "phylop_annotated", pharmgkb: "pharmgkb_annotated", "sv-freq": "sv_freq_annotated" };
     var name = names[op.replace(/^vcf\//, "")];
@@ -301,6 +310,9 @@
       path = refDir(machine, ref) + "/" + ref + ".fa.gz." + (p.aligner || "bwa-mem2") + ".tar";
     } else if (op === "ref/download") {
       path = p.out || machine.workspace + "/downloads/" + base(p.url || "file");
+    } else if (op === "vep/download") {
+      if (p.assembly === "T2T-CHM13v2.0") gb = 1;
+      path = machine.workspace + "/reference/vep/" + (p.engine || "vep-rs") + "/" + (p.assembly || "GRCh38") + ".tar";
     } else {
       path = machine.workspace + "/reference/" + op.split("/")[1] + "/" + (p.assembly || "GRCh38") + ".tar";
     }
@@ -312,7 +324,7 @@
     if (op === "ref/library" && ref) return ["ref-" + ref];
     if (op === "ref/index" && ref && (p.aligner || "bwa-mem2") === "bwa-mem2") return ["mem2-" + ref];
     if (op === "ref/imputation") return ["panel-1kg"];
-    if (op === "vep/download") return ["vep-cache"];
+    if (op === "vep/download") return ["vep-cache", "vepcache-" + (p.engine || "vep-rs") + (p.assembly && p.assembly !== "GRCh38" ? ":" + p.assembly : "")];
     if (op === "ref/clinvar" || op === "ref/gnomad" || op === "ref/gnomad-sv") return [op.split("/")[1]];
     if (op === "bam/index" && file && file.needs) return [file.needs];
     return [];
@@ -346,6 +358,9 @@
     var p = params || {};
     if (op === "vcf/acmg" && !p.research_acmg) M.fail(400, "acmg_research_only", "Explicit research-only acknowledgement is required.");
     if (op === "vcf/acmg" && machine.os === "windows" && machine.arch !== "x86-64") M.fail(400, "unsupported_platform", "Windows fastVEP requires x86-64.");
+    if (p.y_scope === "associated" && (p.poz || p.ybrowse || op === "extract/region" && p.target !== "y" && p.target !== "ymt")) {
+      M.fail(400, "usage", "Associated Y contigs require a Y target without the chrY mask or yBrowse SNP targets.");
+    }
     var hint = p._mock || {};
     var file = fileFor(config, p.input || p.vcf_input || p.r1 || (p.inputs && p.inputs[0]));
     var personId = hint.person !== undefined ? hint.person : file ? file.person : null;
@@ -396,7 +411,14 @@
       fail: hint.fail ? Object.assign({ at: 0.1, message: "Simulated failure requested for this job." }, hint.fail === true ? {} : hint.fail) : null,
       thenRerun: hint.thenRerun || null,
       url: net ? p.url || "https://mock.wgsextract.invalid/" + op + "/" + base(outputs[0].path) : null,
-      inputs: file ? [{ path: file.path, kind: (file.tag || "").toLowerCase(), role: "input" }] : [],
+      inputs: ["input", "vcf_input", "r1", "r2", "manifest"].filter(function (role) {
+        return typeof p[role] === "string" && p[role];
+      }).map(function (role) {
+        var ext = p[role].match(/\.(bam|cram|vcf|bcf|fastq|fq)(?:\.(gz|bgz))?$/i);
+        return { path: p[role], kind: ext ? ext[1].toLowerCase() : "file", role: role };
+      }).concat((p.inputs || []).map(function (path) {
+        return { path: path, kind: /\.cram$/i.test(path) ? "cram" : "bam", role: "inputs" };
+      })),
       metrics: hint.metrics || {},
     };
   };

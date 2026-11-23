@@ -58,6 +58,39 @@ test("research ACMG refuses silent classification and supports Windows x86-64", 
   assert.equal(pending.status, 202);
 });
 
+test("Windows tool inventory distinguishes manual BWA from managed Pixi tools", () => {
+  const { request } = setup("windows-laptop");
+  const inventory = () => request("POST", "/v1/ops/deps/list", {}).body.result.details.tools;
+  const bwa = inventory().find(tool => tool.name === "wgse-bwa");
+  assert.equal(bwa.status, "missing");
+  assert.equal(bwa.can_install, false);
+  assert.equal(inventory().find(tool => tool.name === "gatk").can_install, true);
+  request("POST", "/v1/mock/flags", { set: ["tool-windows-laptop-gatk-installed"] });
+  assert.equal(inventory().find(tool => tool.name === "gatk").can_uninstall, true);
+  assert.equal(request("POST", "/v1/ops/deps/install", { tool: "gatk" }).status, 404);
+});
+
+test("associated Y extraction advertises its distinct output and table export keeps requested formats", () => {
+  const { request } = setup();
+  const bam = request("POST", "/v1/ops/extract/ydna-bam", { input: "/demo/reginald.bam", y_scope: "associated" });
+  assert.ok(bam.body.ui.outputs.some(out => out.path.endsWith("/wgse/reginald_Y_associated.bam")));
+  const table = request("POST", "/v1/ops/vcf/table", { vcf_input: "/demo/helen.vcf.gz", table_format: "parquet", no_sqlite: true });
+  assert.deepEqual(table.body.ui.outputs.map(out => out.path), ["/demo/wgse/helen_variants.parquet"]);
+});
+
+test("an opted-in analysis publishes a result card that the desktop route can read", () => {
+  const { request } = setup();
+  const job = request("POST", "/v1/ops/lineage/y-haplogroup?card=1", {
+    input: "/demo/reginald.bam", _mock: { hours: 0.001 },
+  }).body;
+  request("POST", "/v1/clock", { advance_s: 86400 });
+  const { result } = request("GET", `/v1/jobs/${job.id}`).body;
+  const card = result.outputs.find(out => out.role === "result_card");
+  assert.ok(card.path.endsWith(".card.html"));
+  assert.equal(request("POST", "/api/result/card", { path: card.path }).status, 200);
+  assert.equal(request("POST", "/api/result/card", { path: "/demo/other.card.html" }).status, 403);
+});
+
 test("shared CLI output setting still applies when Basic sends no outdir", () => {
   const { request } = setup();
   request("POST", "/v1/mock/scenario", { name: "empty-jobs" });

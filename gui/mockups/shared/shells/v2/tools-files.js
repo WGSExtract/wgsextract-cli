@@ -32,6 +32,10 @@
     fields: [
       action("conversion", [["bam/to-cram", "CRAM · smaller"], ["bam/to-bam", "BAM"], ["bam/to-ubam", "Unaligned BAM (uBAM)"], ["bam/unalign", "Paired FASTQ"]], "bam/to-cram"),
       f.param("cram_version", "CRAM version", "3.0 works with more readers; 3.1 may compress better", { when: function (c) { return c.v.conversion === "bam/to-cram"; } }),
+      f.param("mimalloc", "CRAM 3.1 allocator", "Auto tries the qualified Windows samtools-mimalloc encoder with a local reference; Off uses the system allocator.", {
+        unset: "Auto", labels: { auto: "Auto", off: "Off" },
+        when: function (c) { return c.M.windowsBwa && c.v.conversion === "bam/to-cram" && c.v.cram_version === "3.1"; },
+      }),
     ],
     more: [f.param("ref", "Reference FASTA", "Empty: detect the matching installed reference"), f.threads(), f.sortMemory()],
     extra: function () {
@@ -160,6 +164,8 @@
     },
     run: function (c) {
       return { hours: scale(c, 5), memGB: 1,
+        notes: c.M.os === "windows" ? [{ tone: "info", icon: "info", title: "OpenSSH on Windows",
+          text: "Verification probes for a working OpenSSH verifier and can fall back to Git for Windows if inbox OpenSSH hangs. If none works, the error lists the builds tried. Signing times out without leaving an incomplete signature." }] : [],
         blocked: c.v.sign_action === "sign/verify" && !c.v.manifest ? "Choose the checksum manifest." : null,
         makes: c.v.sign_action === "sign/create" ? "Makes SHA256SUMS and, if configured, its signature." : "Reports missing or changed files and signature trust." };
     },

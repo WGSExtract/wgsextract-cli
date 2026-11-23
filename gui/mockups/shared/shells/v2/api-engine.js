@@ -237,8 +237,8 @@
       return changed;
     }
 
-    function submit(op, params, now) {
-      var job = make(op, params, { created: now });
+    function submit(op, params, now, card) {
+      var job = make(op, params, { created: now, card: card });
       if (mock.preflight) mock.preflight(job);
       doc.jobs.push(job);
       advance(now);
@@ -253,7 +253,7 @@
       if (!mock.isDone(src)) M.fail(409, "active_job", "Cancel this job before running it again.");
       var params = clone(src.params);
       if (params._mock) delete params._mock.fail;
-      var job = make(src.op, params, { created: t });
+      var job = make(src.op, params, { created: t, card: src.card });
       if (mock.preflight) mock.preflight(job);
       job.rerunOf = src.id;
       if (job.plan.mode === "cpu" && src.stopWork) {

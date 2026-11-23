@@ -143,25 +143,86 @@
     return out;
   }
 
+  function dependencyRows(mock) {
+    var m = mock.ctx().machine;
+    var platform = m.os === "linux" ? "linux-" + m.arch : m.os === "macos" && m.arch !== "arm64" ? "macos-intel" : m.os;
+    var limits = mock.config.toolLimits[platform] || {};
+    var flags = mock.flags();
+    var mandatory = { samtools: "1.24", bcftools: "1.24", tabix: "1.24", bgzip: "1.24", bwa: "0.7.19", tar: null };
+    if (m.os !== "windows") mandatory.python3 = null;
+    function row(name, group, status, env, version, note, manageable) {
+      return { name: name, group: group, status: status, environment: env, version: version,
+        path: null, runtime: status === "installed" ? (env || group === "mandatory" ? "pixi" : "native") : null,
+        alt_env: null, environment_tools: env ? [name] : [], note: note,
+        can_install: manageable && status === "missing", can_uninstall: manageable && status === "installed" };
+    }
+    var names = { phasing: ["whatshap", "longphase"],
+      imputation: ["GLIMPSE2_phase", "GLIMPSE2_ligate", "GLIMPSE2_chunk", "GLIMPSE2_split_reference"],
+      "vep-ensembl": ["vep"], "vep-rs": ["vep-rs", "vep-cache-builder"], smn: ["smn_caller.py"],
+      t1k: ["run-t1k"], expansionhunter: ["ExpansionHunter"], clair3: ["run_clair3.sh"], pharmcat: ["pharmcat_python"],
+      deepvariant: [m.os === "macos" && m.arch === "arm64" ? "wgse-deepvariant" : "run_deepvariant"] };
+    var manual = "Supply a validated wgse-bwa.exe on PATH or set wgse_bwa_path in config.toml.";
+    var rows = Object.keys(mandatory).map(function (name) { return row(name, "mandatory", "installed", null, mandatory[name], null, false); });
+    rows.push(row("bwa-mem2", "optional", "installed", null, "2.3", null, false),
+      row("minimap2", "optional", "installed", null, "2.31", null, false));
+    Object.keys(mock.config.toolEnvs).forEach(function (name) {
+      var env = mock.config.toolEnvs[name][0];
+      var key = "tool-" + m.key + "-" + env;
+      var status = limits[name] ? "unavailable" :
+        flags[key + "-removed"] || !flags[key + "-installed"] && m.missing.indexOf(env) >= 0 ? "missing" : "installed";
+      var tools = names[name] || [name];
+      tools.forEach(function (tool) {
+        var item = row(tool, "optional", status, env, null, limits[name] || null, !limits[name]);
+        item.environment_tools = tools;
+        rows.push(item);
+      });
+    });
+    if (m.os === "windows" && m.arch === "x86-64") {
+      rows.push(row("wgse-bwa", "optional", flags["windows-wgse-bwa"] ? "installed" : "missing", null, null, manual, false));
+    }
+    return rows;
+  }
+
+  function artifact(file, producer, inputs) {
+    if (!/^(bam|cram|vcf|bcf)$/.test(file.kind)) return file;
+    return Object.assign({}, file, { artifact: {
+      origin: producer ? "this_run" : "external", lifecycle: producer ? "final" : null, retained: null,
+      digest_kind: null, assembly: null, reference: null, samples: [], index: null, producer: producer,
+      sources: (inputs || []).filter(function (input) { return /^(bam|cram|vcf|bcf)$/.test(input.kind); }).map(function (input) {
+        return { path: input.path, role: input.role, fingerprint: null, producer: null, lifecycle: null, retained: null };
+      }),
+    } });
+  }
+
   function manifest(mock, job, full) {
     if (job.status === "queued" || job.status === "running" || job.status === "interrupted") return null;
     var p = job.plan;
     var ok = job.status === "succeeded";
-    var first = p.outputs[0] ? p.outputs[0].path.replace(/\.(gz|bgz|zst|bz2|xz)$/, "") + ".manifest.json" : null;
+    var stem = p.outputs[0] ? p.outputs[0].path.replace(/\.(gz|bgz|zst|bz2|xz)$/, "") :
+      p.inputs[0] ? p.inputs[0].path.replace(/([\\/])([^\\/]+)$/, "$1wgse$1$2") + "_" + job.op.replace(/\//g, "_") : null;
+    var commandName = job.op.split("/").join(" ");
+    var runID = (job.id.replace(/[^0-9a-f]/g, "") + "00000000000000000000000000000000").slice(0, 32);
+    var producer = { run: runID, root: runID, command: commandName, step: null };
+    var card = job.card && stem && !job.params.dry_run && p.inputs.length && job.status !== "cancelled" && !/^deps\//.test(job.op);
+    var outputs = p.outputs.map(function (o) {
+      var record = { path: o.path, kind: o.kind, role: o.role, exists: ok, size_bytes: ok ? Math.round(o.gb * 1e9) : null, mtime: ok ? U.iso(job.finished) : null, fingerprint: null, index: null, metrics: {} };
+      return ok ? artifact(record, producer, p.inputs) : record;
+    });
+    if (card) outputs.push({ path: stem + ".card.html", kind: "html", role: "result_card", exists: true,
+      size_bytes: null, mtime: U.iso(job.finished), fingerprint: null, index: null, metrics: {} });
     var doc = {
       schema: "wgsextract.result/1",
-      command: job.op.split("/").join(" "),
+      command: commandName,
       status: ok ? "ok" : job.status === "cancelled" ? "cancelled" : "failed",
       exit_code: job.exit_code,
       error: job.error,
-      inputs: p.inputs,
-      outputs: p.outputs.map(function (o) {
-        return { path: o.path, kind: o.kind, role: o.role, exists: ok, size_bytes: ok ? Math.round(o.gb * 1e9) : null, mtime: ok ? U.iso(job.finished) : null, fingerprint: null, index: null, metrics: {} };
-      }),
+      inputs: p.inputs.map(function (input) { return artifact(input, null); }),
+      outputs: outputs,
+      run: { id: runID, root: runID, parent: null, step: null, children: [] },
       metrics: p.metrics,
       warnings: [],
-      details: null,
-      manifest: ok ? first : null,
+      details: job.op === "deps/list" && ok ? { tools: dependencyRows(mock) } : null,
+      manifest: stem && (ok || card) && !job.params.dry_run ? stem + ".manifest.json" : null,
     };
     if (full) {
       var params = Object.assign({}, job.params);

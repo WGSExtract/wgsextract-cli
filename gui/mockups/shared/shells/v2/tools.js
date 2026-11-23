@@ -321,7 +321,7 @@
       var missing = /isn’t installed$/.test(why);
       (out.notes = out.notes || []).unshift({ tone: "warn", icon: missing ? "wrench" : "triangle-alert", id: "unavailable", title: missing ? why : "Not on this computer",
         text: missing ? "Optional tool set; install it with pixi install --locked -e " + ctx.m.env(tool) + " (WGS Extract checks for tools without installing them)." : why + ". Connect this app to a computer that has it to run this tool.",
-        action: missing ? { label: "How to install", href: "install.html" } : null });
+        action: missing ? { label: "Manage optional tools", href: "install.html" } : null });
     });
     if (!def.noInput && !def.allowUnready && !ctx.m.ready(ctx.file) && !out.blocked) {
       out.blocked = "Fix this file first.";

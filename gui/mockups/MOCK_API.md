@@ -49,7 +49,8 @@ just mockups-api --host 0.0.0.0     # the same
 Node 18 or newer, no packages. Options: `--host` (default `127.0.0.1`;
 `0.0.0.0` lets other computers in), `--port` (default 8767), `--state FILE`
 (default `gui/mockups/out/mock-server/state.json`, ignored by git) and
-`--speed N` (simulated seconds per real second). It answers `/v1/*` only,
+`--speed N` (simulated seconds per real second). It answers `/v1/*` and a
+simulation of the desktop's `/api/result/card` route,
 with CORS open to any origin (including `Authorization`, `Content-Type`
 and Chrome's private-network preflight), so pages on GitHub Pages or
 `serve.py` can call it. It needs no token: don't expose it beyond people you
@@ -73,6 +74,13 @@ delete the state file. Everything returns to the seed, clock included.
 real routes work as they are. Pages must then do without the `"ui"` object,
 `?detail=1`, the PROPOSED and MOCK-ONLY routes, and `"_mock"` (the real
 server rejects or ignores unknown fields), or the real server grows them.
+
+The Tools on this computer demo reads `POST /v1/ops/deps/list`. Its buttons
+only change the selected mock machine; `deps install` and `deps uninstall`
+are local CLI commands in the real desktop app, not HTTP operations.
+Analysis jobs may opt into a static result card with `?card=1`. The mock
+desktop route reads only the synthetic cards named in completed job results
+and does not open files on disk.
 
 ## Browser API
 

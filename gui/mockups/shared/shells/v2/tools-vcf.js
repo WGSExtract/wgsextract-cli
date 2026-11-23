@@ -38,7 +38,7 @@
   T.define({
     slug: "annotation-chain", label: "Annotation chain", ops: ["vcf/chain-annotate"], group: "Annotate", lesson: HEALTH,
     desc: "Runs a sequence of annotations on one VCF, carrying each step’s added columns into the next.",
-    learn: "Builds one combined VCF without feeding each tool’s output into the next by hand. By default the chain runs ClinVar, REVEL, phyloP, gnomAD and VEP.\n\nAny step missing its tool or local data is skipped with a warning instead of stopping the run, so check the warnings and applied-step list when it finishes. Reference data stays local, with no silent downloads.",
+    learn: "Builds one combined VCF without feeding each tool’s output into the next by hand. By default the chain runs ClinVar, REVEL, phyloP, gnomAD and VEP.\n\nA step missing its tool or local data is skipped with a warning; a step that starts and fails stops the chain. Check the warnings, applied-step list and run lineage. Reference data stays local, with no silent downloads.",
     accepts: ["vcf"], file: "helen", button: "Run chain",
     fields: [f.param("annotations", "Steps, in order", "Comma-separated annotation names", { width: 420 }),
       f.param("keep_intermediates", "Keep each intermediate VCF", "Useful to see what each step added; needs more space")],

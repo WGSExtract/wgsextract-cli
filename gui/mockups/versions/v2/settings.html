@@ -75,14 +75,9 @@
     <h2>Diagnostics</h2>
     <div class="v2-sheet">
       <div class="v2-item">
-        <span class="v2-item__title">The tools on this computer</span>
-        <span class="v2-item__desc"><abbr class="v2-term" data-term="samtools">samtools</abbr>, <abbr class="v2-term" data-term="bcftools">bcftools</abbr> and htslib 1.21, <abbr class="v2-term" data-term="bwamem2">bwa-mem2</abbr>, <abbr class="v2-term" data-term="minimap2">minimap2</abbr>, Yleaf, HaploGrep and 8 more <code class="v2-cmd">· deps/check</code></span>
-        <span class="v2-item__aside"><button class="v2-btn v2-btn--sm v2-btn--quiet" type="button" data-toast="Checked the tools on this computer">Check again</button></span>
-      </div>
-      <div class="v2-item" data-annot-id="missing-tool">
-        <span class="v2-item__title v2-row"><span class="v2-pip" data-state="attention"></span>Some optional tool sets aren’t installed</span>
-        <span class="v2-item__desc"><abbr class="v2-term" data-term="gatk">GATK</abbr> and PharmCAT are separate packages that bundle their own dependencies (both bring their own Java). Everything else works without them, and WGS Extract only checks whether they are installed.</span>
-        <span class="v2-item__aside"><a class="v2-link" href="install.html">What’s missing</a></span>
+        <span class="v2-item__title">Tools</span>
+        <span class="v2-item__desc">Check mandatory and optional tools. Install or remove optional Pixi environments explicitly; the app never installs a tool just because an analysis needs it.</span>
+        <span class="v2-item__aside"><a class="v2-link" href="install.html">Manage tools</a></span>
       </div>
       <div class="v2-item">
         <span class="v2-item__title">Problem report</span>

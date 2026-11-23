@@ -28,8 +28,9 @@
     desc: "Runs the Variant Effect Predictor to label each variant with its gene, transcript and predicted effect on the protein.",
     learn: "After calling variants, VEP tells you what each one touches: which gene it falls in, and whether it changes a protein’s building blocks (missense), cuts the protein short, or sits between genes, as most do.\n\n" +
       "Consequence labels describe how the sequence changes without saying whether health is affected. ClinVar adds what labs have reported about known variants, Frequencies and scores adds population frequencies and model predictions, and Variant table puts them side by side for searching.\n\n" +
-      "It needs a large cache of gene data for your build, downloaded once.",
-    accepts: VCF, file: "helen", button: "Annotate with VEP",
+      "The selected engine needs a local cache for your build (including Ensembl VEP); WGS Extract does not quietly switch to an online lookup. vep-rs supports T2T-CHM13v2.0, but Ensembl VEP has no T2T cache here.\n\n" +
+      "Starting from BAM/CRAM calls variants first. T2T and unknown builds need explicit ploidy or a ploidy file for that step; an existing VCF does not need it.",
+    accepts: ["vcf", "reads"], file: "helen", button: "Annotate with VEP",
     fields: [
       f.param("engine", "Engine", function (c) {
         return c.v.engine === "ensembl" ? "Ensembl’s own VEP, the reference implementation: hours, and its own 26 GB cache" : "vep-rs: a fast Rust VEP, the default on every platform";
@@ -41,11 +42,16 @@
     ],
     more: [
       f.param("vep_assembly", "Assembly", "Empty: read from the VCF", { as: "select", unset: "From the VCF", labels: { "T2T-CHM13v2.0": "T2T-CHM13 v2.0" } }),
+      f.param("ploidy", "Ploidy", "Explicit ploidy for calling from BAM or CRAM", { when: function (c) { return c.file.kind === "reads"; } }),
+      f.param("ploidy_file", "Ploidy file", "Optional file specifying ploidy by region", { when: function (c) { return c.file.kind === "reads"; } }),
       f.region(),
     ],
     run: function (c) {
       var ensembl = c.v.engine === "ensembl";
-      var cacheFlag = ensembl ? "vepcache-ensembl" : "vepcache-vep-rs";
+      var build = c.v.vep_assembly || c.file.build;
+      var t2t = /^(T2T|chm13)/i.test(build || "");
+      var assembly = t2t ? "T2T-CHM13v2.0" : build;
+      var cacheFlag = "vepcache-" + c.v.engine + (assembly === "GRCh38" ? "" : ":" + assembly);
       var minutes = ensembl ? 214 : 8.8;
       if (c.v.preset === "fast") minutes /= 2;
       var hours = (minutes / 60) * 6 / c.M.cores * WGSM.v2region.share(c.v.region);
@@ -54,9 +60,14 @@
         makes: "Makes " + c.file.stem + ".vep." + (c.v.format === "tab" ? "tsv" : c.v.format === "json" ? "json" : "vcf.gz") + " in " + c.name + "’s folder.",
       };
       if (ensembl && c.m.unavailable("vep-ensembl")) out.blocked = c.m.unavailable("vep-ensembl") + ".";
-      if (!c.flag(cacheFlag)) {
-        out.notes.push(download(cacheFlag, ensembl ? "Ensembl VEP’s GRCh38 cache" : "vep-rs’s GRCh38 cache", ensembl ? "27.6 GB" : "17 GB",
-          { text: ensembl ? "26 GB on disk. Public data; nothing about this genome is sent." : "17 GB on disk, built after downloading (about 80 min on 2 cores, 11 GB of memory). Public data; nothing about this genome is sent." }));
+      if (ensembl && t2t) out.blocked = "Ensembl VEP has no T2T-CHM13v2.0 cache; choose vep-rs.";
+      if (c.file.kind === "reads" && !["GRCh37", "GRCh38"].includes(c.file.build) && !c.v.ploidy && !c.v.ploidy_file) {
+        out.blocked = "Set the ploidy or a ploidy file before calling from T2T or an unknown build.";
+      }
+      if (!out.blocked && !c.flag(cacheFlag)) {
+        out.notes.push(download(cacheFlag, (ensembl ? "Ensembl VEP’s " : "vep-rs’s ") + assembly + " cache", t2t ? "1 GB" : ensembl ? "27.6 GB" : "17 GB",
+          { text: (t2t ? "1.2 GB on disk; no known-variant frequencies in this cache." : "A separate cache is needed for each build and engine.") +
+            " Public data; nothing about this genome is sent." }));
         out.blocked = out.blocked || "Download the cache first.";
       }
       return out;
@@ -138,9 +149,9 @@
   T.define({
     slug: "variant-table", label: "Variant table", ops: ["vcf/table"], group: "Annotate", keywords: "spreadsheet sqlite tsv parquet search",
     lesson: { href: "learn-variants.html#genotype", label: "How to read variant genotypes" },
-    desc: "Turns a VCF into a table you can open in a spreadsheet or search by gene, one row per variant, with the annotations already added.",
-    learn: "Exports one row per variant so you can filter by gene, look up an rsID someone mentioned or sort by frequency without reading raw VCF text.\n\n" +
-      "Only annotations already in the VCF are exported, so run VEP, ClinVar or Frequencies and scores first if you want their columns included. A whole genome produces millions of rows, more than Excel can open; use the SQLite database or Parquet for the full set.",
+    desc: "Turns a VCF into a searchable table, one row per alternate allele, carrying through the genotype and available annotations.",
+    learn: "By default, the table exports only alternate alleles the sample carries. When the VCF supplies them, rows include the phase set, alternate-read fraction, selected transcript ID, gnomAD's highest ancestry-group frequency and its homozygote count.\n\n" +
+      "Read fraction is not population frequency, and a missing count is not zero. Older gnomAD reference tables may supply allele frequency without group maximum or homozygote count. Missing annotations stay blank. Use SQLite or Parquet (requires pyarrow) for a whole-genome table too large for Excel.",
     accepts: VCF, file: "helen", button: "Make the table",
     fields: [
       f.param("table_format", "Format", "Parquet is smaller and faster for large tables", { labels: { tsv: "TSV", parquet: "Parquet" } }),

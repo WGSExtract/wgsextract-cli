@@ -35,7 +35,8 @@
 
   function config() {
     var mm = WGSM.v2machine;
-    return M.buildConfig({ profiles: mm.profiles, machineKey: mm.machine.key, files: mm.baseFiles, people: WGSM.v2state.people() });
+    return M.buildConfig({ profiles: mm.profiles, machineKey: mm.machine.key, files: mm.baseFiles, people: WGSM.v2state.people(),
+      toolEnvs: mm.toolEnvs, toolLimits: mm.toolLimits });
   }
 
   function localMock() {

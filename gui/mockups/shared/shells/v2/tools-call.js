@@ -62,7 +62,7 @@
         count: c.v.merge ? "1 merged VCF" : kinds.length + (kinds.length === 1 ? " called type" : " called types"),
         hours: kinds.indexOf("sv") >= 0 || kinds.indexOf("cnv") >= 0 ? null : hours, timeText: "minutes to hours",
         memGB: 0.35 * threads + 1, disk: [[c.m.diskName(c.file), 1.2 * regionShare(c)]],
-        checks: [["bcftools", "1.21" + (fast ? ", with wgse-mimalloc" : ", system allocator"), "ok", "Found"]],
+        checks: [["bcftools", "1.24" + (c.M.os === "windows" ? ", with the packaged allocator" : fast ? ", with wgse-mimalloc" : ", system allocator"), "ok", "Found"]],
         blocked: kinds.length ? null : "Choose at least one variant type.",
         button: "Call with " + [kinds.some(function (k) { return k === "snp" || k === "indel"; }) ? "bcftools" : "", kinds.indexOf("sv") >= 0 ? c.v.sv_caller || (c.file.platform === "ont" ? "Sniffles" : "Delly") : "", kinds.indexOf("cnv") >= 0 ? "Delly CNV" : ""].filter(Boolean).join(", "),
         makes: "Saved in " + c.name + "’s folder.", jobName: "SNPs and indels for " + c.name,
@@ -154,7 +154,8 @@
     lesson: { href: "learn-files.html#calling", label: "How variant calling works" },
     desc: "The Broad Institute’s variant caller, which many labs use.",
     learn: "Many clinical and research labs build their VCFs with GATK, and some downstream tools expect its output. It rebuilds the sequence locally around each candidate change, which helps with indels.\n\n" +
-      "It needs Java and is the slowest caller here. Its gVCFs are the usual route to calling a family together (joint calling). For one person, DeepVariant is usually more accurate and bcftools much faster.",
+      "It needs Java and is the slowest caller here. Its gVCFs are the usual route to calling a family together (joint calling). For one person, DeepVariant is usually more accurate and bcftools much faster.\n\n" +
+      "The local CLI also offers experimental PairHMM sidecars: CUDA on Linux x86-64 with a compatible NVIDIA GPU, or NEON on Apple Silicon. They require a locally built JAR, are not Parabricks, and aren’t available through the server API.",
     accepts: READS, file: "reginald", button: "Start HaplotypeCaller", requires: ["gatk"],
     fields: [
       f.region(), EVIDENCE("adds little time; the VCF is genotyped from it"),
@@ -339,11 +340,17 @@
       f.param("chromosomes", "Chromosomes", "Such as chr20 or chr1-22. Empty: every installed one", { width: 160 }),
       f.param("min_gp", "Minimum certainty", "Genotypes below this probability are left blank. Empty: 0.9 (GLIMPSE2), 0.95 (Beagle)", { width: 90 }),
     ],
+    more: [f.param("threads", "CPU threads", function (c) {
+      return c.file.kind === "reads" ? "Maximum concurrent GLIMPSE2 chunks, one thread each" : "Threads available to Beagle";
+    }, { width: 90 }), f.param("memory", "Memory per chunk", "Empty: schedule chunks by estimated peak size within 80% of available memory; one runs even if it exceeds the budget.", {
+      when: function (c) { return c.file.kind === "reads"; },
+    })],
     run: function (c) {
       var kit = c.file.kind === "vcf";
       /* a VCF goes to Beagle as vcf_input (requests.js); reads to GLIMPSE2 as input */
       var out = {
-        hours: kit ? 0.75 : 2.8 * 8 / (c.v.threads || c.M.cores), memGB: kit ? 3.4 : 3.1, disk: [[c.M.systemDisk, 31]],
+        hours: kit ? 0.75 : null, timeText: kit ? null : "varies with the panel and concurrent chunks",
+        memGB: kit ? 3.4 : null, disk: [[c.M.systemDisk, 31]],
         checks: [[kit ? "Beagle" : "GLIMPSE2", kit ? "5.4" : "2.0.1", "ok", "Found"]],
         notes: c.flag("panel-1kg") ? [] : [{ tone: "warn", icon: "download", id: "panel", title: "The 1000 Genomes panel isn’t installed", text: "Phased haplotypes for chr1–22: about 30 GB.", action: { label: "Download 30 GB", set: "panel-1kg", toast: "Downloading the 1000 Genomes panel (30 GB). See Jobs." } }],
         makes: "Makes an imputed VCF in " + c.name + "’s folder.",

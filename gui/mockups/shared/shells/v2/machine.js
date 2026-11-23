@@ -90,6 +90,7 @@
     /* WGS Extract's own aligner builds: Metal on Apple silicon; on Linux
      * x86-64 wgse-bwa (CUDA when there's an NVIDIA GPU) and wgse-bwa-mem3 */
     native: appleSilicon || (P.os === "linux" && P.arch === "x86-64"),
+    windowsBwa: P.os === "windows" && P.arch === "x86-64",
     appleSilicon: appleSilicon,
     platformName: { windows: "Windows", "linux-arm64": "Linux ARM64", "linux-x86-64": "Linux x86-64", macos: appleSilicon ? "Apple silicon" : "Intel Macs" }[platform],
     disks: {},
@@ -124,9 +125,14 @@
   function unavailable(name) {
     if (OWN[name]) return OWN[name];
     var env = ENVS[name];
-    /* On Apple Silicon DeepVariant is the native wgse-deepvariant build */
-    if (env && P.missing.indexOf(env[0]) >= 0) return env[1] + " isn’t installed";
+    if (env && toolMissing(env[0])) return env[1] + " isn’t installed";
     return null;
+  }
+
+  function toolMissing(env) {
+    var flag = WGSM.v2state.flag;
+    var prefix = "tool-" + key + "-" + env;
+    return flag(prefix + "-removed") || !flag(prefix + "-installed") && P.missing.indexOf(env) >= 0;
   }
 
   /* Files in the library. gb: read bases (Gb), what alignment time scales
@@ -200,6 +206,8 @@
 
   WGSM.v2machine = {
     profiles: PROFILES,
+    toolEnvs: ENVS,
+    toolLimits: LIMITS,
     machine: MACHINE,
     /* The library: the demo's files and generated ones */
     files: ALL_FILES,
@@ -209,7 +217,7 @@
     /* Optional tool sets missing here: [env, label] */
     missingSets: function () {
       return Object.keys(ENVS).filter(function (k) {
-        return P.missing.indexOf(ENVS[k][0]) >= 0 && !OWN[k];
+        return toolMissing(ENVS[k][0]) && !OWN[k];
       }).map(function (k) {
         return [ENVS[k][0], ENVS[k][1]];
       });

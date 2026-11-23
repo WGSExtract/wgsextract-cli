@@ -3,46 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Install tools · v2 · WGS Extract mockups</title>
+<title>Tools on this computer · v2 · WGS Extract mockups</title>
 <link rel="stylesheet" href="../../design-system/wgse.css">
 <link rel="stylesheet" href="../../shared/mockup.css">
 <link rel="stylesheet" href="v2.css">
 <script src="../../shared/boot.js" defer></script>
 </head>
-<body data-page-id="v2-install" data-shell="v2" data-nav="settings" data-title="Install tools" data-parent="Settings|settings.html">
+<body data-page-id="v2-install" data-shell="v2" data-nav="settings" data-title="Tools on this computer" data-parent="Settings|settings.html">
 <div class="v2-page v2-page--narrow" data-annot-id="page">
   <header class="v2-head" data-annot-id="header">
     <div class="v2-head__text">
-      <h1>Install tools</h1>
-      <p class="v2-head__sub">WGS Extract checks which analysis tools are on this computer; it doesn’t install them itself. You only need the tools for the tasks you want to run.</p>
+      <h1>Tools on this computer</h1>
+      <p class="v2-head__sub">Check mandatory tools and choose which optional ones to install. Optional tools in their own Pixi environment can be installed or removed together; tools without one must be installed yourself.</p>
     </div>
     <div class="v2-head__actions">
-      <button class="v2-btn" type="button" data-toast="Checked the tools on this computer">Check again</button>
+      <button class="v2-btn" type="button" id="v2-tools-refresh">Check again</button>
     </div>
   </header>
 
   <div class="v2-stack" data-render="v2-install" data-annot-id="missing"></div>
 
-  <section class="v2-section" data-annot-id="found">
-    <h2>Found</h2>
-    <div class="v2-sheet v2-scroll">
-      <table class="v2-table" aria-label="Tools found on this computer">
-        <thead><tr><th>Tool</th><th>Version</th><th>Used for</th></tr></thead>
-        <tbody>
-          <tr><td class="v2-table__main"><abbr class="v2-term" data-term="samtools">samtools</abbr>, <abbr class="v2-term" data-term="bcftools">bcftools</abbr>, htslib</td><td>1.21</td><td class="v2-muted">Almost everything</td></tr>
-          <tr><td class="v2-table__main"><abbr class="v2-term" data-term="bwamem2">bwa-mem2</abbr></td><td>2.2.1</td><td class="v2-muted">Align and realign</td></tr>
-          <tr><td class="v2-table__main"><abbr class="v2-term" data-term="minimap2">minimap2</abbr></td><td>2.28</td><td class="v2-muted"><abbr class="v2-term" data-term="longreads">Long reads</abbr></td></tr>
-          <tr><td class="v2-table__main">Yleaf</td><td>3.2</td><td class="v2-muted">Y <abbr class="v2-term" data-term="haplogroup">haplogroup</abbr></td></tr>
-          <tr><td class="v2-table__main">HaploGrep 3</td><td>3.2.2</td><td class="v2-muted">mtDNA haplogroup</td></tr>
-          <tr><td class="v2-table__main">somalier</td><td>0.2.19</td><td class="v2-muted"><abbr class="v2-term" data-term="relatedness">Relatedness</abbr></td></tr>
-          <tr><td class="v2-table__main">Delly</td><td>1.2.6</td><td class="v2-muted"><abbr class="v2-term" data-term="sv">Structural variants</abbr></td></tr>
-          <tr><td class="v2-table__main">T1K</td><td>1.0.5</td><td class="v2-muted"><abbr class="v2-term" data-term="hla">HLA</abbr> typing</td></tr>
-          <tr><td class="v2-table__main">and 6 more</td><td></td><td class="v2-muted">FastQC, MultiQC, VerifyBamID2, WhatsHap, ExpansionHunter, vep-rs</td></tr>
-        </tbody>
-      </table>
-    </div>
-    <code class="v2-cmd v2-dim v2-small">deps/check</code>
-  </section>
 </div>
 </body>
 </html>

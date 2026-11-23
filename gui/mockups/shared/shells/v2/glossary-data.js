@@ -368,7 +368,7 @@
       short: "Your computer’s working memory, which holds reference indexes and read buffers while genomics tools run.",
       more: "Whole-genome bwa-mem2 alignment and sorting routinely require 16–64 GB of RAM; running short forces slow disk swapping or out-of-memory exits.", learn: "learn-files.html#computing" },
     cuda: { term: "CUDA", full: "Compute Unified Device Architecture", aliases: [],
-      short: "NVIDIA’s parallel-computing runtime used by GPU builds of Dorado, DeepVariant and Parabricks.",
+      short: "NVIDIA’s parallel-computing runtime used by GPU builds of Dorado, DeepVariant, Parabricks and wgse-bwa.",
       more: "Requires a compatible NVIDIA GPU and host driver version; Mac systems with Apple silicon use Metal or CPU builds instead.", learn: "learn-files.html#computing" },
     metal: { term: "Metal", aliases: [],
       short: "Apple’s GPU compute and graphics framework on Apple silicon Macs.",

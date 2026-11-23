@@ -72,6 +72,8 @@ export function loadDemoData(M) {
     machineKey: WGSM.v2machine.machine.key,
     files: plain(WGSM.v2machine.baseFiles),
     people: plain(WGSM.v2state.people()),
+    toolEnvs: plain(WGSM.v2machine.toolEnvs),
+    toolLimits: plain(WGSM.v2machine.toolLimits),
   });
 }
 
@@ -180,7 +182,9 @@ function main() {
       return res.end();
     }
     const url = new URL(req.url, "http://mock");
-    if (!url.pathname.startsWith("/v1")) return send(404, { error: { code: "not_found", message: "The mock server answers /v1 only." } });
+    if (!url.pathname.startsWith("/v1/") && url.pathname !== "/v1" && url.pathname !== "/api/result/card") {
+      return send(404, { error: { code: "not_found", message: "Unknown mock API route." } });
+    }
     const events = /^\/v1\/jobs\/([A-Za-z0-9-]+)\/events$/.exec(url.pathname);
     if (events && req.method === "GET") return streamEvents(mock, events[1], req, res, headers);
     let body = null;

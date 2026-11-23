@@ -73,8 +73,20 @@
       var body = req.body === undefined || req.body === null ? {} : req.body;
       if (typeof body !== "object" || Array.isArray(body)) M.fail(400, "bad_json", "The body must be a JSON object of parameters.");
       M.validate(req.params.op, body);
-      var job = mock.submit(req.params.op, body, now());
+      var job = mock.submit(req.params.op, body, now(), flag(req.query, "card"));
       return { status: mock.isDone(job) ? 200 : 202, body: view(job, req.query) };
+    });
+
+    // Desktop route, not part of the CLI server's v1 API.
+    r.add("POST", "/api/result/card", "mock", function (req) {
+      var path = req.body && req.body.path;
+      var match = mock.doc().jobs.map(function (j) { return view(j, {}).result; }).find(function (result) {
+        return result && result.outputs.some(function (out) { return out.role === "result_card" && out.path === path; });
+      });
+      if (!match) M.fail(403, "not_a_result_card", "Only result cards listed in a result can be shown.");
+      var heading = match.command.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+      return { path: path, name: path.split(/[\\/]/).pop(), html: "<!doctype html><meta charset=utf-8><h1>" +
+        heading + "</h1><p>Mock result · " + match.status + "</p><p>No real genome data was processed.</p>" };
     });
 
     /* Real: summaries, newest last. PROPOSED: ?detail=1 gives full views

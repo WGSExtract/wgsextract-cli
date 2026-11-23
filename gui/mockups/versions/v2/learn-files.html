@@ -57,7 +57,8 @@
   </section>
   <section class="v2-section" id="computing">
     <h2>Hardware and software dependencies</h2>
-    <p>Heavy runs lean on <abbr class="v2-term" data-term="cpu">CPU</abbr> (central processing unit) threads, fast disk and 16–32+ GB of <abbr class="v2-term" data-term="ram">RAM</abbr> (random-access memory). A <abbr class="v2-term" data-term="gpu">GPU</abbr> (graphics processing unit) helps only supported callers, and NVIDIA CUDA (Compute Unified Device Architecture) builds differ from Apple Metal. Tools run via <abbr class="v2-term" data-term="docker">Docker</abbr> or a <abbr class="v2-term" data-term="pixi">Pixi environment</abbr>, and WGS Extract verifies they are installed before starting.</p>
+    <p>Heavy runs lean on <abbr class="v2-term" data-term="cpu">CPU</abbr> (central processing unit) threads, fast disk and 16–32+ GB of <abbr class="v2-term" data-term="ram">RAM</abbr> (random-access memory). A <abbr class="v2-term" data-term="gpu">GPU</abbr> (graphics processing unit) helps only tools built for it. On Windows x86-64, optional wgse-bwa uses the CPU by default. Opt in to NVIDIA CUDA for BWA alignment only when the driver, RAM and Windows commit budget support it. Parabricks is a separate Linux/Docker option.</p>
+    <p>WGS Extract checks for tools before starting. <a href="install.html">Tools on this computer</a> shows what’s installed and which optional <abbr class="v2-term" data-term="pixi">Pixi environments</abbr> you can choose to add or remove.</p>
   </section>
   <aside class="v2-sheet v2-sheet__pad v2-section">
     <h2>Try it</h2>

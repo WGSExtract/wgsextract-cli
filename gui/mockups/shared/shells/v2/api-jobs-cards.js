@@ -233,6 +233,22 @@
     var attrs = { dataset: { jobId: job.id } };
     if (link) attrs.href = WGSM.keepParams(link);
     var el = h(link ? "a.v2-do" : "div.v2-do", attrs, badge(job), h("span.v2-do__title", job.ui.label), cost, h("span.v2-do__desc", summary(job)));
+    var card = job.result && job.result.outputs.find(function (out) { return out.role === "result_card"; });
+    if (card) {
+      var button = h("button.v2-btn.v2-btn--sm", { type: "button", onclick: function () {
+        WGSM.v2api.post("/api/result/card", { path: card.path }).then(function (res) {
+          if (res.status !== 200) return WGSM.toast("Couldn’t open the result card.", "circle-alert");
+          var modal = h("dialog.v2-sheet.v2-sheet__pad",
+            h("h2", "Result card"),
+            h("iframe", { title: res.body.name, sandbox: "", srcdoc: res.body.html }),
+            h("form", { method: "dialog" }, h("button.v2-btn", "Close")));
+          document.body.appendChild(modal);
+          modal.addEventListener("close", function () { modal.remove(); button.focus(); }, { once: true });
+          modal.showModal();
+        });
+      } }, "Open result card");
+      el = h("div", el, button);
+    }
     return { el: el, update: function () {} };
   }
 

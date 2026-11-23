@@ -61,6 +61,17 @@
     },
   });
 
+  function yScope(when) {
+    return f.param("y_scope", "Y contigs", "Associated also includes the reference’s qualified Y contigs, such as chrY_KI270740v1_random on GRCh38.",
+      { labels: { primary: "Primary chrY", associated: "Include Y-associated" }, when: when });
+  }
+
+  function pozBuild(c) {
+    return ["GRCh37", "GRCh38", "T2T", "T2T-CHM13v2.0"].indexOf(c.file.build) >= 0;
+  }
+
+  var POZ_HELP = "Keep only reliably readable chrY regions on GRCh37, GRCh38 or T2T-CHM13v2.0. T2T uses a lifted mask; it is not independently validated.";
+
   T.define({
     slug: "y-chromosome", label: "Y chromosome", needsY: true, ops: ["extract/ydna-bam", "extract/ydna-vcf"], group: "Extract", keywords: "ydna yfull big y",
     lesson: { href: "learn-ancestry.html#lineage", label: "What a paternal lineage tells you" },
@@ -73,10 +84,11 @@
       { value: "extract/ydna-vcf", label: "VCF", aside: "≈ 2 MB", desc: "Calls at known Y SNPs, for haplogroup tools" },
     ] },
     fields: [
-      f.param("poz", "Only the reliable part", "Keep reads where Y can be read reliably (the CombBED, McDonald and Poznik regions); GRCh37 and GRCh38 only", {
-        def: true,
+      yScope(function (c) { return c.v.formats.indexOf("extract/ydna-bam") >= 0; }),
+      f.param("poz", "Only the reliable part", POZ_HELP, {
+        when: function (c) { return c.v.formats.indexOf("extract/ydna-bam") >= 0; },
         disabled: function (c) {
-          return c.file.build === "GRCh37" || c.file.build === "GRCh38" ? null : "GRCh37 and GRCh38 only";
+          return !pozBuild(c) ? "This build has no supported mask" : c.v.y_scope === "associated" ? "Available only on primary chrY" : null;
         },
       }),
       f.param("ybrowse", "Named SNPs", "Call the installed yBrowse SNP positions so each has its name", {
@@ -86,7 +98,11 @@
         },
       }),
     ],
-    requests: each("formats"),
+    requests: function (c, base) {
+      return c.v.formats.map(function (op) {
+        return op === "extract/ydna-bam" ? base(op, { poz: c.v.poz && pozBuild(c) && c.v.y_scope !== "associated" }) : base(op);
+      });
+    },
     run: function (c) {
       var n = c.v.formats.length;
       return {
@@ -218,17 +234,23 @@
         ui: true, when: function (c) { return c.v.target === "ymt" && c.v.formats === "bam"; },
       }),
     ],
-    more: [f.param("poz", "Reliable Y regions only", "CombBED/McDonald/Poznik regions; GRCh37/38 only"),
+    more: [yScope(function (c) { return c.v.target === "y" || c.v.target === "ymt"; }),
+      f.param("poz", "Reliable Y regions only", POZ_HELP, { when: function (c) { return c.v.target === "y" && c.v.formats.indexOf("bam") >= 0 && c.v.y_scope !== "associated"; } }),
       f.param("ybrowse", "Named Y SNPs", "Installed yBrowse targets; GRCh38 only"), f.threads(), f.sortMemory()],
     requests: function (c, base) {
       return [c.v.target === "ymt" && c.v.formats === "bam" && c.v.direct_ymt
-        ? base("extract/y-mt-extract") : base("extract/region", { target: c.v.target, formats: c.v.formats })];
+        ? base("extract/y-mt-extract") : base("extract/region", {
+          target: c.v.target, formats: c.v.formats,
+          y_scope: c.v.target === "y" || c.v.target === "ymt" ? c.v.y_scope : "primary",
+          poz: c.v.target === "y" && c.v.formats.indexOf("bam") >= 0 && c.v.y_scope !== "associated" && c.v.poz,
+        })];
     },
     run: function (c) {
       var y = c.v.target === "y" || c.v.target === "ymt";
       return { timeText: c.v.target === "autox" && c.v.formats !== "bam" ? "hours on a whole genome" : "minutes",
         blocked: y && noY(c) ? "No Y chromosome in this genome." :
-          c.v.poz && c.file.build !== "GRCh37" && c.file.build !== "GRCh38" ? "Reliable Y regions need GRCh37 or GRCh38." :
+          c.v.poz && c.v.target === "y" && c.v.y_scope !== "associated" && !pozBuild(c) ? "Reliable Y regions need GRCh37, GRCh38 or T2T-CHM13v2.0." :
+            y && c.v.ybrowse && c.v.y_scope === "associated" ? "Named Y SNPs require primary chrY." :
             c.v.ybrowse && c.file.build !== "GRCh38" ? "Named Y SNPs need GRCh38." : null,
         makes: "Saves the selected chromosome group beside the input; the whole genome stays." };
     },

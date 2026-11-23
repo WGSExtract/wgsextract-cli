@@ -8,11 +8,11 @@
   var READS = ["reads"];
 
   T.define({
-    slug: "coverage", label: "Coverage per chromosome", ops: ["info/calculate-coverage"], group: "Quality", keywords: "depth breadth bins targets bed",
+    slug: "coverage", label: "Detailed Coverage", ops: ["info/calculate-coverage"], group: "Quality", keywords: "depth breadth bins targets bed",
     lesson: { href: "learn-sequencing.html#depth", label: "What 30× actually means" },
     desc: "Measures how many reads cover each place in the genome: the average per chromosome, how much is covered at all, and depth on targets such as a gene panel.",
     learn: "Check a new genome here before relying on its calls: you can see if average depth matches what the lab promised, spot thin chromosomes, and confirm that X and Y depth fit the expected sex. About 30× on average, with nearly everything covered, is a good whole genome.\n\n" +
-      "Low or patchy coverage explains missing markers in DNA-test files and uncertain calls later. With a BED file of genes, it reports depth on just those, which is how labs judge a gene panel or exome.",
+      "The matching reference’s N gaps are left out of breadth and depth bins. The result card shows the bins, and Detailed Info then includes the breadth column. Low or patchy coverage explains missing markers in DNA-test files and uncertain calls later. A BED file narrows the report to target regions.",
     accepts: READS, file: "reginald", button: "Measure coverage",
     fields: [
       f.param("with_bins", "Depth bands", "How much of each chromosome has 0, 1–3, 4–7 and 8 or more reads", { def: true }),
@@ -24,7 +24,9 @@
       f.param("table_format", "Also save tables", "As .tsv or .parquet beside the input", { unset: "No", labels: { tsv: "TSV", parquet: "Parquet" } }),
     ],
     run: function (c) {
-      return { hours: null, timeText: "minutes on a 30x genome", makes: "The numbers appear on " + c.name + "’s page." };
+      return { hours: null, timeText: c.v.region || c.v.by ? "depends on the selected targets" : "1–3 hours on a whole genome",
+        disk: c.v.region || c.v.by ? [] : [[c.m.diskName(c.file), 2]],
+        makes: "Shows depth bins in the result card and adds breadth to Detailed Info for " + c.name + "." };
     },
   });
 

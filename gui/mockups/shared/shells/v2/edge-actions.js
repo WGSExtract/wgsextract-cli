@@ -37,8 +37,8 @@
     return true;
   }
 
-  function send(op, params) {
-    return api.post("/v1/ops/" + op, params || {}).then(function (res) {
+  function send(op, params, card) {
+    return api.post("/v1/ops/" + op + (card ? "?card=1" : ""), params || {}).then(function (res) {
       if (!refused(res, function (disk) {
         send(op, Object.assign({}, params, { _mock: Object.assign({}, params && params._mock, { targetDisk: disk.id }) }));
       })) {
