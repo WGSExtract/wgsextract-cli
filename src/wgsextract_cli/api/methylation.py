@@ -106,16 +106,18 @@ class MethylationRegionsParams(Params):
 
     COMMAND = "methylation regions"
 
-    input: Path = input_param("Coordinate-sorted, strand-combined CpG bedMethyl.")
+    input: Path = input_param(
+        "Sorted, strand-combined CpG bedMethyl, or indexed HP-tagged BAM/CRAM with --partition-hp."
+    )
     ref: Path = param(
-        doc="The indexed, local FASTA used for the bedMethyl coordinates.",
+        doc="The indexed, local FASTA used to align the reads or make the bedMethyl.",
         path="file",
         shared=True,
         config_key="reference_fasta",
-        required_message="--ref must name the indexed FASTA used to make the bedMethyl.",
+        required_message="--ref must name the indexed FASTA matching --input.",
     )
     outdir: Path | None = outdir_param()
-    build: str = param(choices=BUILDS, help="Assembly of both bedMethyl and FASTA.")
+    build: str = param(choices=BUILDS, help="Assembly of both input and FASTA.")
     preset: str = param(
         choices=PRESETS, help="RefSeq promoters or UCSC masked CpG islands."
     )
@@ -131,6 +133,17 @@ class MethylationRegionsParams(Params):
     min_cpgs: int = param(
         3, minimum=1, help="Minimum qualifying CpGs per region (default: 3)."
     )
+    partition_hp: bool = param(
+        False,
+        action="store_true",
+        help="Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS).",
+    )
+    phase_blocks: Path | None = param(
+        None,
+        path="file",
+        help="Matching phased.blocks.tsv from vcf phase; require region containment in one block.",
+    )
+    threads: int | None = threads_param()
     hydroxymethyl: bool = param(
         False,
         flags=("--5hmc",),
@@ -154,6 +167,15 @@ class MethylationRegionsParams(Params):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        alignment = self.input.suffix.lower() in (".bam", ".cram")
+        if self.partition_hp and not alignment:
+            raise UsageError(
+                "--partition-hp requires an indexed HP-tagged BAM or CRAM."
+            )
+        if alignment and not self.partition_hp:
+            raise UsageError("BAM or CRAM input requires --partition-hp.")
+        if self.phase_blocks is not None and not self.partition_hp:
+            raise UsageError("--phase-blocks requires --partition-hp.")
         if self.preset != "promoters" and (self.upstream, self.downstream) != (
             2000,
             500,
@@ -167,12 +189,18 @@ class MethylationRegionsParams(Params):
             ("input", self.input),
             ("ref", self.ref),
             ("outdir", self.outdir),
+            ("phase_blocks", self.phase_blocks),
         ):
             if path is not None and ".." in path.parts:
                 yield name, absolute_path(path)
         ref = absolute_path(self.ref) if ".." in self.ref.parts else self.ref
         yield "ref", append_suffix(ref, ".fai")
         yield "ref", append_suffix(ref, ".gzi")
+        if self.partition_hp:
+            from wgsextract_cli.core.samtools_commands import alignment_index
+
+            if index := alignment_index(self.input):
+                yield "input", absolute_path(index)
         if self.build == "hg38" and self.preset == "cpg-islands":
             yield "annotation", hg38_island_path()
 

@@ -1,11 +1,15 @@
-"""`methylation regions`: offline aggregation of precomputed bedMethyl."""
+"""`methylation regions`: offline pooled and haplotype-resolved CpG summaries."""
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 from wgsextract_cli.api.methylation import MethylationRegionsParams
 from wgsextract_cli.core.bgzf import is_bgzf
-from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.dependency_checks import (
+    log_dependency_info,
+    verify_dependencies,
+)
 from wgsextract_cli.core.methylation_annotations import (
     BUILDS,
     chromosomes,
@@ -21,7 +25,9 @@ from wgsextract_cli.core.methylation_regions import (
 from wgsextract_cli.core.paths import absolute_path, append_suffix
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.results import current_result, human_output
+from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.table_writer import (
+    Column,
     check_format,
     provenance,
     require_pyarrow,
@@ -29,7 +35,7 @@ from wgsextract_cli.core.table_writer import (
     write_table,
 )
 from wgsextract_cli.core.temp_directory import scratch_directory
-from wgsextract_cli.core.utils import UsageError
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, get_resource_threads
 from wgsextract_cli.core.variant_files import verify_paths_exist
 
 
@@ -37,8 +43,29 @@ def run_regions(params: MethylationRegionsParams) -> None:
     path = absolute_path(params.input.expanduser())
     fasta = absolute_path(params.ref.expanduser())
     verify_paths_exist({"--input": path, "--ref": fasta})
-    if not path.is_file() or path.suffix.lower() in (".bam", ".cram"):
-        raise UsageError("--input must be precomputed, strand-combined CpG bedMethyl.")
+    if not path.is_file():
+        raise UsageError("--input must be a local file, not a directory.")
+    phase_blocks = (
+        absolute_path(params.phase_blocks.expanduser()) if params.phase_blocks else None
+    )
+    if phase_blocks and not phase_blocks.is_file():
+        raise UsageError(
+            f"--phase-blocks must name a local phased.blocks.tsv: {phase_blocks}"
+        )
+    if params.partition_hp:
+        from wgsextract_cli.commands.methylation import (
+            MODKIT,
+            require_supported_platform,
+        )
+
+        require_supported_platform()
+        if not alignment_index(path):
+            raise WGSExtractError(
+                f"{path} needs an index (.bai/.csi/.crai): "
+                "run `wgsextract bam index` on the haplotagged alignment."
+            )
+        verify_dependencies([MODKIT])
+        log_dependency_info([MODKIT])
     if not fasta.is_file():
         raise UsageError("--ref must be a local FASTA file, not a directory.")
     with fasta.open("rb") as handle:
@@ -74,14 +101,19 @@ def run_regions(params: MethylationRegionsParams) -> None:
     codes = ("m", "h") if params.hydroxymethyl else ("m",)
     outdir = absolute_path((params.outdir or path.parent).expanduser())
     outdir.mkdir(parents=True, exist_ok=True)
-    name = path.name
-    for suffix in (".gz", ".bgz", ".bgzf", ".parquet", ".bedmethyl", ".bed"):
-        if name.lower().endswith(suffix):
-            name = name[: -len(suffix)]
+    name = path.stem if params.partition_hp else path.name
+    if not params.partition_hp:
+        for suffix in (".gz", ".bgz", ".bgzf", ".parquet", ".bedmethyl", ".bed"):
+            if name.lower().endswith(suffix):
+                name = name[: -len(suffix)]
     stem = outdir / f"{name}.{params.build}.{params.preset}.methylation"
+    if params.partition_hp:
+        stem = append_suffix(stem, ".hp")
     output = table_path(stem, params.table_format)
     result = current_result()
-    result.add_input(path, "bedmethyl")
+    result.add_input(path, "input" if params.partition_hp else "bedmethyl")
+    if phase_blocks:
+        result.add_input(phase_blocks, "phase_blocks")
     result.set_reference(fasta, params.build)
     detail = {
         "annotation": source,
@@ -93,26 +125,73 @@ def run_regions(params: MethylationRegionsParams) -> None:
     }
     if params.preset == "promoters":
         detail.update(upstream=params.upstream, downstream=params.downstream)
-    metadata = provenance(
-        [path], reference_build=params.build, region_summary=json.dumps(detail)
-    )
+    sources = [path, phase_blocks] if phase_blocks else [path]
     with scratch_directory(outdir, ".wgse_methylation_regions_") as temporary:
-        cpgs = reference_cpgs(fasta, reference, lengths, regions, Path(temporary))
-        rows = region_rows(
-            read_sites(path, params.build),
-            regions,
-            aliases,
-            lengths,
-            cpgs,
-            codes,
-            params.min_valid_calls,
-            params.min_cpgs,
+        work = Path(temporary)
+        coverage = params.min_valid_calls, params.min_cpgs
+        columns: Sequence[Column] = REGION_TABLE
+        role = "methylation_regions"
+        if params.partition_hp:
+            from wgsextract_cli.commands.methylation import PileupOptions
+            from wgsextract_cli.commands.methylation_hp import phased_pileup
+            from wgsextract_cli.core.methylation_haplotypes import (
+                HP_TABLE,
+                haplotype_rows,
+            )
+            from wgsextract_cli.core.methylation_phases import read_phase_blocks
+
+            blocks = read_phase_blocks(phase_blocks, aliases) if phase_blocks else None
+            partitions, evidence = phased_pileup(
+                path,
+                fasta,
+                compressed,
+                work,
+                aliases,
+                reference,
+                regions,
+                PileupOptions(hydroxymethyl=params.hydroxymethyl),
+                get_resource_threads(params.threads),
+            )
+            cpgs = reference_cpgs(fasta, reference, lengths, regions, work)
+            rows = haplotype_rows(
+                partitions,
+                params.build,
+                regions,
+                aliases,
+                lengths,
+                cpgs,
+                codes,
+                *coverage,
+                evidence,
+                blocks,
+            )
+            columns, role = HP_TABLE, "methylation_regions_haplotypes"
+            detail["haplotype_partition"] = {
+                "method": "modkit pileup --phased",
+                "filtering": "modkit default probability thresholds",
+                "phase_block_source": str(phase_blocks) if phase_blocks else None,
+                "phase_evidence": "PS tags of overlapping primary MM/ML alignments",
+                "delta_rule": "HP1 minus HP2 pooled percent on jointly qualifying CpGs in one PS",
+            }
+        else:
+            cpgs = reference_cpgs(fasta, reference, lengths, regions, work)
+            rows = region_rows(
+                read_sites(path, params.build),
+                regions,
+                aliases,
+                lengths,
+                cpgs,
+                codes,
+                *coverage,
+            )
+        metadata = provenance(
+            sources, reference_build=params.build, region_summary=json.dumps(detail)
         )
         row_count = write_table(
-            output, REGION_TABLE, rows, params.table_format, metadata=metadata
+            output, columns, rows, params.table_format, metadata=metadata
         )
     result.set_details(detail)
-    result.add_output(output, "methylation_regions", metrics={"rows": row_count})
+    result.add_output(output, role, metrics={"rows": row_count})
     result.set_manifest_stem(stem)
     result.add_metrics(regions=len(regions))
     human_output(

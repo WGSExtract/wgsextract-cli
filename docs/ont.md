@@ -665,7 +665,51 @@ wgsextract methylation regions -i sample.cpg.bedmethyl.gz --ref hg38.fa \
 The output is `<input stem>.<build>.<preset>.methylation.tsv`, or `.parquet`
 with `--format parquet`. The result manifest records the reference,
 annotation version and checksums, and the promoter and coverage rules.
-These are pooled, descriptive summaries, not haplotype or imprinting calls.
+Without `--partition-hp`, these are pooled, descriptive summaries.
+
+### Split region summaries by haplotype
+
+On Linux or macOS with modkit 0.6.4, add `--partition-hp` and pass the
+coordinate-sorted, indexed BAM or CRAM from `vcf phase --haplotag`. The
+alignment must retain its MM/ML tags and have HP tags on reads in the
+selected regions. Use the original indexed alignment FASTA. The command
+does not phase the reads again, and it does not fetch sample data.
+
+```bash
+wgsextract methylation regions -i phased/haplotagged.bam --ref hg38.fa \
+  --build hg38 --preset promoters --partition-hp \
+  --phase-blocks phased/phased.blocks.tsv --threads 4 --outdir reports
+```
+
+In this mode, the command writes `<input stem>.<build>.<preset>.methylation.hp.tsv`
+or `.methylation.hp.parquet`, without keeping intermediate bedMethyl files.
+The [row schema](../src/wgsextract_cli/assets/schemas/wgsextract.methylation-regions-hp.1.schema.json)
+describes the output. Each region and modification has `combined`, `hp1`,
+`hp2`, and `unphased` rows, with coverage thresholds applied independently.
+`unphased` counts are the site-level `combined` counts minus HP1 and HP2;
+they include calls without a usable HP tag. Use `observed_valid_calls` to
+see counts even below the reporting threshold. An absent or low-coverage
+partition has no percentage, not 0%.
+
+- The `combined` row reports `shared_qualified_cpgs` and, when there are
+  enough shared CpGs, `hp1_minus_hp2_pp`. This signed difference subtracts
+  HP2 from HP1 in percentage points, weighting each group by its own valid
+  depth on **the same CpGs**. It is not necessarily the difference between
+  the two partition rows' `pooled_percent` values.
+- A `single_ps` result requires one consistent PS among overlapping
+  haplotagged MM/ML reads. It does not assert phase-block bounds. Provide
+  `--phase-blocks` from the **same phasing run** to additionally require
+  the entire region to fit within one matching block (`single_block`).
+  `cross_block`, `missing_ps`, `phase_set_mismatch`, `outside_block`,
+  `no_phased_reads`, and `no_region` leave the difference blank. The phase
+  check conservatively includes reads overlapping the one-base right pad
+  used to capture reverse-strand CpG calls.
+- HP labels are local to the phase set. They do not identify maternal or
+  paternal copies, and the result does not call imprinting.
+
+The manifest records the modkit partition method, coverage cutoffs, and
+whether a phase block table was used. The pinned UCSC annotation download
+rules are the same as for the precomputed workflow.
 
 ## Phasing
 

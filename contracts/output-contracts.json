@@ -66,6 +66,11 @@
       "schema": "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
       "tier": "experimental",
       "docs": "docs/server.md"
+    },
+    "wgsextract.methylation-regions-hp/1": {
+      "schema": "src/wgsextract_cli/assets/schemas/wgsextract.methylation-regions-hp.1.schema.json",
+      "tier": "experimental",
+      "docs": "docs/ont.md"
     }
   },
   "roles": {
@@ -78,7 +83,9 @@
     "vendor_kit": {"tier": "experimental", "meaning": "A vendor-format consumer microarray kit file."},
     "variant_table": {"tier": "experimental", "meaning": "A TSV or Parquet export of VCF records and their annotations."},
     "variant_database": {"tier": "experimental", "meaning": "The SQLite export of a variant table."},
-    "aadr": {"tier": "experimental", "meaning": "An AADR research-panel export."}
+    "aadr": {"tier": "experimental", "meaning": "An AADR research-panel export."},
+    "phase_blocks": {"tier": "experimental", "meaning": "The input or output table of phased variant block bounds."},
+    "methylation_regions_haplotypes": {"tier": "experimental", "meaning": "Regional CpG summaries and phase-aware HP1 minus HP2 differences."}
   },
   "approved_breaks": []
 }

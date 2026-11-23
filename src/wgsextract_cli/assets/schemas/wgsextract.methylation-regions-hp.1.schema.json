@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wgsextract:schema:methylation-regions-hp:1",
+  "title": "wgsextract.methylation-regions-hp/1",
+  "description": "One typed row of methylation regions --partition-hp. Nulls are empty fields in TSV; the same column names are used in Parquet.",
+  "type": "object",
+  "required": [
+    "region",
+    "chrom",
+    "start",
+    "end",
+    "gene_id",
+    "transcript",
+    "strand",
+    "mod_code",
+    "status",
+    "expected_cpgs",
+    "observed_cpgs",
+    "qualified_cpgs",
+    "qualified_fraction",
+    "observed_valid_calls",
+    "valid_calls",
+    "modified_calls",
+    "median_valid_depth",
+    "pooled_percent",
+    "mean_percent",
+    "median_percent",
+    "partition",
+    "phase_status",
+    "phase_set",
+    "shared_qualified_cpgs",
+    "hp1_minus_hp2_pp"
+  ],
+  "properties": {
+    "region": {
+      "type": "string",
+      "description": "Gene symbol or CpG island identifier."
+    },
+    "chrom": {
+      "type": "string",
+      "description": "Primary chromosome in the annotation."
+    },
+    "start": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "0-based start, inclusive."
+    },
+    "end": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "0-based end, exclusive."
+    },
+    "gene_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "NCBI Gene ID for promoters."
+    },
+    "transcript": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Selected RefSeq accession or GFF transcript ID for promoters."
+    },
+    "strand": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Transcript strand for promoters."
+    },
+    "mod_code": {
+      "type": "string",
+      "description": "m for 5mC, h for 5hmC."
+    },
+    "status": {
+      "type": "string",
+      "description": "Assessed, or reason methylation could not be assessed."
+    },
+    "expected_cpgs": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Reference CpG C anchors in the region."
+    },
+    "observed_cpgs": {
+      "type": "integer",
+      "description": "CpGs with at least one valid call."
+    },
+    "qualified_cpgs": {
+      "type": "integer",
+      "description": "CpGs meeting the valid-call threshold."
+    },
+    "qualified_fraction": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Fraction of expected CpGs that qualify."
+    },
+    "observed_valid_calls": {
+      "type": "integer",
+      "description": "Valid calls at all observed CpGs."
+    },
+    "valid_calls": {
+      "type": "integer",
+      "description": "Valid calls at qualifying CpGs."
+    },
+    "modified_calls": {
+      "type": "integer",
+      "description": "Modified calls at qualifying CpGs."
+    },
+    "median_valid_depth": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Median valid calls per qualifying CpG."
+    },
+    "pooled_percent": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Percent modified, weighting CpGs by depth."
+    },
+    "mean_percent": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Unweighted mean percent across qualifying CpGs."
+    },
+    "median_percent": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "Unweighted median percent across qualifying CpGs."
+    },
+    "partition": {
+      "type": "string",
+      "description": "combined, hp1, hp2 or unphased.",
+      "enum": [
+        "combined",
+        "hp1",
+        "hp2",
+        "unphased"
+      ]
+    },
+    "phase_status": {
+      "type": "string",
+      "description": "Evidence for interpreting HP labels within the region."
+    },
+    "phase_set": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "Verified PS, when there is a single coherent set."
+    },
+    "shared_qualified_cpgs": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "description": "CpGs qualifying in both HP groups, on the combined row."
+    },
+    "hp1_minus_hp2_pp": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "description": "HP1 minus HP2 pooled percent on jointly qualifying CpGs in one phase set, on the combined row."
+    }
+  },
+  "additionalProperties": false
+}

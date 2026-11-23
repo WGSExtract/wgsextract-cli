@@ -99,7 +99,7 @@ jobs:
 
   optional-tools:
     needs: nightly
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_contamination.py') || contains(inputs.tests, 'tests/test_vcf_callers.py') || contains(inputs.tests, 'tests/test_typing_str_long_reads.py') || contains(inputs.tests, 'tests/test_methylation.py') || contains(inputs.tests, 'tests/test_genotyping_commands.py')) }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_contamination.py') || contains(inputs.tests, 'tests/test_vcf_callers.py') || contains(inputs.tests, 'tests/test_typing_str_long_reads.py') || contains(inputs.tests, 'tests/test_methylation.py') || contains(inputs.tests, 'tests/test_methylation_regions.py') || contains(inputs.tests, 'tests/test_genotyping_commands.py')) }}
     uses: ./.github/workflows/optional_tools.yml
     with:
       tests: ${{ inputs.tests || 'all' }}
