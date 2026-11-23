@@ -175,8 +175,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf pharmcat": _n(
         MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip curl"
     ),
-    # Input preparation, including bgzip, belongs to the selected child annotators.
-    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="samtools vep vep-rs"),
+    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep vep-rs"),
     # Minutes with vep-rs, the default; hours with Ensembl VEP.
     "vep run": _n(MINUTES, "bcftools", "tabix", "vep-rs", optional="samtools vep"),
     "vep download": _n(DOWNLOAD, "samtools", "vep-cache-builder", optional="curl tar"),

@@ -1460,7 +1460,8 @@ Run the chain; output role `annotated_vcf`; `annotations_applied` is a
 metric.
 
 `VcfChainAnnotateParams`: Several annotations applied in turn, as `chain_annotated.vcf.gz`;
-steps whose tool or data is missing are skipped with a warning.
+steps whose tool or data is missing are skipped with a warning. A step
+journal lets interrupted chains resume from their last completed step.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1468,8 +1469,15 @@ steps whose tool or data is missing are skipped with a warning.
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `annotations` | `str` | `'clinvar,revel,phylop,gnomad,vep'` | `--annotations` | Comma-separated list of annotations to apply in order (default: clinvar,revel,phylop,gnomad,vep). |
-| `keep_intermediates` | `bool` | `False` | `--keep-intermediates` | Keep intermediate VCF files generated during the chain process. |
+| `keep_intermediates` | `bool` | `False` | `--keep-intermediates` | Keep intermediate VCFs after success so later runs can reuse them. |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Only annotate this region (e.g. chr22:1000-2000) or comma-separated regions. |
+| `bed` | `Path \| None` | `None` | `--bed` | Only annotate regions in this 0-based BED or BED.gz file. |
+| `restart` | `bool` | `False` | `--force`, `--no-resume`, `--restart` | Rerun every step, ignoring the steps an earlier run completed. |
+| `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step`, `--force-steps` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: select, clinvar, revel, phylop, cadd, gerp, gnomad, spliceai, alphamissense, pharmgkb, vep, trim. One of: `select`, `clinvar`, `revel`, `phylop`, `cadd`, `gerp`, `gnomad`, `spliceai`, `alphamissense`, `pharmgkb`, `vep`, `trim` |
+| `to_table` | `bool` | `False` | `--to-table` | Also export a variant table and SQLite database. |
+| `table_format` | `str \| None` | `None` | `--table-format` | Format with --to-table (default: tsv). One of: `tsv`, `parquet` |
 
 ### `api.vcf.call_types(value: str) -> list[str]`
 

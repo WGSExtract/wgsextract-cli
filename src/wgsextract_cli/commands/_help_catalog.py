@@ -334,8 +334,10 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "--sa-dir acmg_sa --gff3 Homo_sapiens.GRCh38.116.gff3.gz",
     ),
     "vcf chain-annotate": _h(
-        "chain_annotated.vcf.gz (+ .tbi).",
-        f"wgsextract vcf chain-annotate {_VCF_IN} --annotations clinvar,gnomad",
+        "chain_annotated.vcf.gz (+ index), chain_annotate.steps.json; "
+        "with --to-table, chain_annotated_variants.tsv (or .parquet) and .sqlite.",
+        f"wgsextract vcf chain-annotate {_VCF_IN} --annotations clinvar,gnomad "
+        "--region chr22:19000000-20000000 --threads 4 --to-table",
     ),
     "vcf pharmcat": _h(
         "<stem>.report.html and <stem>.phenotype.json from PharmCAT.",

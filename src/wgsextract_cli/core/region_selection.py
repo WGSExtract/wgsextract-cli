@@ -33,9 +33,13 @@ def bed_intervals(path: str) -> list[tuple[str, int, int]]:
     rows = []
     with opener(path, "rt") as source:
         for line in source:
-            if not line.strip() or line.startswith(("#", "track", "browser")):
-                continue
             fields = line.split()
+            if (
+                not fields
+                or fields[0].startswith("#")
+                or fields[0] in {"track", "browser"}
+            ):
+                continue
             try:
                 if lower.endswith(".bedpe"):
                     if fields[0] != fields[3]:
@@ -43,7 +47,7 @@ def bed_intervals(path: str) -> list[tuple[str, int, int]]:
                     chrom, start, end = fields[0], int(fields[1]), int(fields[5])
                 else:
                     chrom, start, end = fields[0], int(fields[1]), int(fields[2])
-            except IndexError as error:
+            except (IndexError, ValueError) as error:
                 raise ValueError(f"Invalid interval: {line.strip()}") from error
             if start < 0 or end < start:
                 raise ValueError(f"Invalid interval: {line.strip()}")
@@ -123,4 +127,9 @@ def selected_intervals(
                 intervals.setdefault(chrom, []).append((start, end))
     if not intervals:
         raise ValueError("Selection covers no reference bases.")
+    return merge_intervals(intervals)
+
+
+def merge_intervals(intervals: Intervals) -> Intervals:
+    """Union each contig's intervals, in ascending coordinate order."""
     return {chrom: merge_ranges(ranges) for chrom, ranges in intervals.items()}
