@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from bisect import bisect_right
 from collections import deque
-from collections.abc import Generator, Iterable, Iterator
+from collections.abc import Collection, Generator, Iterable, Iterator
 from dataclasses import dataclass
 from heapq import merge
 from itertools import groupby
@@ -217,10 +217,27 @@ def _at_locus(
     return uncertain or call
 
 
+def _check_locus_reference(alleles: Collection[Allele]) -> None:
+    refs = {allele[2] for allele in alleles}
+    if len(refs) < 2:
+        return
+    known: dict[int, str] = {}
+    for ref in sorted(refs):
+        for offset, base in enumerate(ref):
+            if base in "ACGT" and known.setdefault(offset, base) != base:
+                chrom, pos, _, _ = next(iter(alleles))
+                raise UsageError(
+                    f"Conflicting REF bases at {chrom}:{pos + offset}. "
+                    "Check the callsets' builds or validate them against an indexed --ref."
+                )
+
+
 def sites(
     streams: Iterable[TextIO],
     order: dict[str, int],
     scope: Scope,
+    *,
+    check_reference: bool,
 ) -> Iterator[tuple[Allele, list[Call | None]]]:
     incoming = [records(stream, i, order) for i, stream in enumerate(streams)]
     combined = merge(*incoming, key=lambda item: item[0])
@@ -236,6 +253,8 @@ def sites(
         ]
         if not candidates:
             continue
+        if check_reference and len(observed) > 1:
+            _check_locus_reference(observed)
         resolved = {
             allele: {i: _dedup(calls) for i, calls in calls_by_input.items()}
             for allele, calls_by_input in observed.items()

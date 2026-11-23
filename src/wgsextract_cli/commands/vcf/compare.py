@@ -240,7 +240,9 @@ def _collect(
             )
             _header(streams[anchor], anchor_file, summary.labels)
         order = {name: rank for rank, name in enumerate(dictionary.names.values())}
-        for allele, observations in sites(streams, order, scope):
+        for allele, observations in sites(
+            streams, order, scope, check_reference=labeled.reference is None
+        ):
             calls = []
             for label, observation, cursor in zip(
                 summary.labels, observations, readers, strict=True

@@ -21,7 +21,9 @@ that differ in representation may not match. Inputs need a common build
 identified by header metadata or matching sequence digests. A known build,
 contig length, sequence digest, or REF mismatch is an error even with
 `--allow-unverified-build`. That switch allows only an unverifiable build
-and records a warning. No file is read from the VCF's `##reference` URL.
+and records a warning. Without a FASTA, known REF bases must agree where
+records start at the same position; `N` is unknown, and longer REF padding
+is allowed. No file is read from the VCF's `##reference` URL.
 
 `--bed panel.bed` accepts zero-based, half-open BED intervals; `--region
 chr22:100-200` accepts a one-based inclusive interval or a whole contig.

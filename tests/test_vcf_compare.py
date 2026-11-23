@@ -428,3 +428,28 @@ def test_compare_1295_output_does_not_replace_bed(tmp_path):
     assert result.exit_code == 2
     assert "would replace an input" in result.error.message
     assert bed.read_bytes() == intervals
+
+
+@pytest.mark.parametrize(
+    ("ref", "is_conflict"), [("AC", False), ("NC", False), ("TC", True)]
+)
+def test_compare_1295_rejects_conflicting_bases_without_fasta(
+    tmp_path, ref, is_conflict
+):
+    build = "##reference=GRCh38\n"
+    a = _vcf(tmp_path / "a.vcf", ["10\t.\tA\tG\t.\tPASS\t.\tGT\t0/1"], metadata=build)
+    b = _vcf(
+        tmp_path / "b.vcf", [f"10\t.\t{ref}\tT\t.\tPASS\t.\tGT\t0/1"], metadata=build
+    )
+    outdir = tmp_path / "comparison"
+    result = api.vcf.compare(
+        api.VcfCompareParams(callset=_inputs(a, b), outdir=outdir), check=False
+    )
+    if is_conflict:
+        assert result.exit_code == 2
+        assert "Conflicting REF bases" in result.error.message
+        assert "chr1:10" in result.error.message
+        assert not (outdir / "compare.summary.json").exists()
+    else:
+        assert result.exit_code == 0
+        assert result.metrics["alleles"] == 2
