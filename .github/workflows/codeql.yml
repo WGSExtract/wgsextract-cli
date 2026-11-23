@@ -38,7 +38,37 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  scope:
+    if: ${{ github.event.pull_request.draft != true }}
+    name: Choose languages
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      analyze: ${{ steps.scope.outputs.analyze }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: ${{ github.event_name == 'pull_request' && '0' || '1' }}
+          persist-credentials: false
+      # #1373: pull requests analyze only the languages they touch; pushes and
+      # the nightly schedule always analyze every language.
+      - name: Choose languages to analyze
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = pull_request ]; then
+            python3 scripts/ci_codeql_scope.py --base "$BASE" --head "$HEAD" --output "$GITHUB_OUTPUT"
+          else
+            python3 scripts/ci_codeql_scope.py --all --output "$GITHUB_OUTPUT"
+          fi
+
   analyze:
+    needs: scope
     if: ${{ github.event.pull_request.draft != true }}
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
@@ -50,12 +80,71 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A category the base branch has but the PR lacks turns the CodeQL check
+      # neutral ("configurations not found") and hides every new alert, so an
+      # unchanged language re-uploads the base branch's latest analysis instead.
+      - name: Find the base analysis of an unchanged language
+        id: base
+        if: ${{ !contains(fromJSON(needs.scope.outputs.analyze), matrix.language) }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CATEGORY: /language:${{ matrix.language }}
+          BASE_REF: refs/heads/${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Every base push analyzes all languages, so the newest 100 analyses
+          # hold each category; anything unexpected analyzes afresh instead.
+          if id=$(gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?ref=$BASE_REF&tool_name=CodeQL&per_page=100" \
+              --jq '[.[] | select(.category == env.CATEGORY and .analysis_key == ".github/workflows/codeql.yml:analyze")][0].id // empty') \
+            && [ -n "$id" ] \
+            && gh api -H "Accept: application/sarif+json" "repos/$GITHUB_REPOSITORY/code-scanning/analyses/$id" \
+              | jq 'del(.runs[].versionControlProvenance)' > "$RUNNER_TEMP/base.sarif"; then
+            echo "Reusing base analysis $id for $CATEGORY."
+            echo "mode=reuse" >> "$GITHUB_OUTPUT"
+          else
+            echo "No usable $CATEGORY analysis on $BASE_REF; analyzing instead."
+            echo "mode=analyze" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload the base analysis for this pull request
+        id: reuse
+        if: ${{ steps.base.outputs.mode == 'reuse' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: ${{ runner.temp }}/base.sarif
+          category: "/language:${{ matrix.language }}"
+      # An accepted upload blocks a second one for this category in this run,
+      # so an unconfirmed reuse fails the leg rather than re-analyzing.
+      - name: Confirm the reused configuration
+        if: ${{ steps.reuse.outcome == 'success' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SARIF_ID: ${{ steps.reuse.outputs.sarif-id }}
+          CATEGORY: /language:${{ matrix.language }}
+          ENVIRONMENT: ${{ toJSON(matrix) }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if gh api "repos/$GITHUB_REPOSITORY/code-scanning/analyses?sarif_id=$SARIF_ID&tool_name=CodeQL&per_page=100" \
+                --jq '[.[] | select(.commit_sha == env.GITHUB_SHA and .ref == env.GITHUB_REF and .category == env.CATEGORY and .analysis_key == ".github/workflows/codeql.yml:analyze" and (.environment | fromjson) == (env.ENVIRONMENT | fromjson))] | length > 0' \
+                | grep -qx true; then
+              echo "The pull request has the $CATEGORY configuration."
+              exit 0
+            fi
+            sleep $((attempt * 10))
+          done
+          echo "::error::Upload $SARIF_ID is not this workflow's $CATEGORY configuration for $GITHUB_SHA; rerun the job."
+          exit 1
       - name: Initialize CodeQL
+        if: ${{ steps.base.outcome == 'skipped' || steps.base.outputs.mode == 'analyze' || steps.reuse.outcome == 'failure' }}
         uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: ${{ matrix.language }}
           build-mode: none
       - name: Perform CodeQL analysis
+        if: ${{ steps.base.outcome == 'skipped' || steps.base.outputs.mode == 'analyze' || steps.reuse.outcome == 'failure' }}
         uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: "/language:${{ matrix.language }}"

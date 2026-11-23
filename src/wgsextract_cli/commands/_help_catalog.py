@@ -540,6 +540,12 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract panel bed --gene-file my_genes.txt -o panels",
         "wgsextract panel bed --list-presets",
     ),
+    "panel check": _h(
+        "Prints the check; writes no files (--json gives the problems, each "
+        "gene's resolution and coding length, and each group's filters).",
+        "wgsextract panel check --panel my_panel.toml",
+        "wgsextract panel check --panel my_panel.json --build hg19",
+    ),
     "report": _h(
         "<sample>_personal_report.html, .md and .json and <sample>_personal_report_findings.tsv "
         "(or .parquet with --format parquet) in the sample folder (or --outdir); "

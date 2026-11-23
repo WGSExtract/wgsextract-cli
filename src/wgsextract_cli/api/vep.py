@@ -94,8 +94,9 @@ class VepRunParams(Params):
         None,
         help="Reference assembly for VEP (GRCh37, GRCh38 or T2T-CHM13v2.0)",
         doc="Assembly VEP annotates against (default: the reference's build); "
-        "a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs "
-        "vep-rs.",
+        "a resolved FASTA of another build is not used, and a BAM or CRAM "
+        "whose header or reference index shows another build is refused. "
+        "T2T-CHM13v2.0 needs vep-rs.",
         flags=("--assembly",),
         hidden_flags=("--vep-assembly",),
         choices=ASSEMBLIES,
@@ -143,7 +144,8 @@ class VepRunParams(Params):
         None,
         help="Predefined ploidy name or value (e.g., 'human')",
         doc="bcftools ploidy name or value for calling a BAM or CRAM "
-        "(default: the build's).",
+        "(default: the GRCh37 or GRCh38 preset; other builds, such as T2T, "
+        "need this or a ploidy file).",
     )
     region: str | None = param(
         None,

@@ -105,7 +105,9 @@ def sample(tmp_path_factory: pytest.TempPathFactory) -> Path:
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
         f"7\t500\t2\t{seq[499]}\t{'C' if seq[499] != 'C' else 'G'}\t.\t.\t"
         "CLNSIG=Pathogenic;GENEINFO=GENEE:5\n"
-        f"7\t{SNP}\t1\t{seq[SNP - 1]}\t{alt}\t.\t.\tCLNSIG=Pathogenic;GENEINFO=GENEA:1\n"
+        f"7\t{SNP}\t1\t{seq[SNP - 1]}\t{alt}\t.\t.\tCLNSIG=Pathogenic;GENEINFO=GENEA:1\n",
+        encoding="utf-8",
+        newline="\n",
     )
     api.vcf.clinvar(
         api.VcfClinvarParams(
@@ -264,7 +266,9 @@ def test_1177_a_vcf_without_reference_evidence_says_how_to_get_it(
     vcf.write_text(
         "##fileformat=VCFv4.2\n##contig=<ID=chr7,length=6000>\n"
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
-        "chr7\t10\t.\tA\tC\t50\t.\t.\tGT\t0/1\n"
+        "chr7\t10\t.\tA\tC\t50\t.\t.\tGT\t0/1\n",
+        encoding="utf-8",
+        newline="\n",
     )
     result = api.vcf.callability(
         api.VcfCallabilityParams(vcf_input=Path(bgzip_index(vcf)), outdir=tmp_path),
@@ -328,7 +332,7 @@ chr7\t1001\t.\tA\t<NON_REF>\t.\t.\tEND=6000\tGT:GQ:MIN_DP\t0/0:5:30
 def test_1177_low_genotype_quality_blocks_are_not_read(tmp_path: Path) -> None:
     """A GQ gVCF (GATK-style blocks): depth 30 everywhere, but GQ 5 from 1001."""
     gvcf = tmp_path / "sample.g.vcf"
-    gvcf.write_text(_GQ_GVCF)
+    gvcf.write_text(_GQ_GVCF, encoding="utf-8", newline="\n")
     result = api.vcf.callability(
         api.VcfCallabilityParams(
             vcf_input=Path(bgzip_index(gvcf)), exons=_model(tmp_path / "exons.tsv"),
@@ -444,8 +448,11 @@ def test_1177_unplaced_clinvar_calls_leave_no_gene_not_reported(
     then read as not reported, although every exon of GENEE was read."""
     folder = _copy_with_callability(sample, tmp_path)
     clinvar = folder / "clinvar.vcf"
-    text = gzip.decompress((folder / "clinvar.vcf.gz").read_bytes()).decode()
-    clinvar.write_text(text.replace(";GENEINFO=GENEA:1", ""))
+    with gzip.open(folder / "clinvar.vcf.gz", "rt", encoding="utf-8") as source:
+        text = source.read()
+    clinvar.write_text(
+        text.replace(";GENEINFO=GENEA:1", ""), encoding="utf-8", newline="\n"
+    )
     api.vcf.clinvar(
         api.VcfClinvarParams(
             vcf_input=folder / "snps.vcf.gz", ref=folder / "ref.fa", threads=1,
@@ -573,7 +580,9 @@ def test_1177_a_grch37_gvcf_is_assessed_with_the_hg19_model(tmp_path: Path) -> N
         _GQ_GVCF.replace("##contig=<ID=chr7,length=6000>\n", contigs).split(
             "chr7\t1\t"
         )[0]
-        + "1\t1\t.\tN\t<NON_REF>\t.\t.\tEND=1000\tGT:GQ:MIN_DP\t0/0:50:30\n"
+        + "1\t1\t.\tN\t<NON_REF>\t.\t.\tEND=1000\tGT:GQ:MIN_DP\t0/0:50:30\n",
+        encoding="utf-8",
+        newline="\n",
     )
     result = api.vcf.callability(
         api.VcfCallabilityParams(vcf_input=Path(bgzip_index(gvcf)), outdir=tmp_path)
