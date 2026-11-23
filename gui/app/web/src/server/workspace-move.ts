@@ -200,18 +200,22 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
         await save([...movedConfigs]);
     }
     catch (error) {
+        // Roll back as much as possible; a failed step must not replace the move's own error.
+        const attempt = (step: string, undo: () => Promise<unknown>) => undo().catch((rollbackError: unknown) => {
+            console.warn(`Could not roll back ${step}: ${String(rollbackError)}`);
+        });
         for (const [previous, retired] of retiredConfigs) {
-            await rename(retired, previous);
+            await attempt(`retired config ${previous}`, () => rename(retired, previous));
         }
         for (const file of rewritten) {
-            await restoreRewrittenFile(file).catch(() => undefined);
+            await attempt("a rewritten settings file", () => restoreRewrittenFile(file));
         }
         if (renamed) {
-            await restoreLinks(move, relinked);
-            await rename(to, from);
+            await attempt("moved links", () => restoreLinks(move, relinked));
+            await attempt(`folder ${to} to ${from}`, () => rename(to, from));
         }
         else {
-            await rm(to, { recursive: true, force: true });
+            await attempt(`copied folder ${to}`, () => rm(to, { recursive: true, force: true }));
         }
         throw error;
     }

@@ -233,6 +233,20 @@ for (const scope of ["workspace", "setting folder", "previous config"]) {
   });
 }
 
+test("#1322: a marker that cannot be removed does not hide the work's own error", async (t) => {
+  await fixture(t);
+  const { withWorkspaceUse, workspaceActivityDirectory } = await import("../dist/web/src/server/workspace-activity.js");
+  const directory = workspaceActivityDirectory();
+  const before = new Set(await readdir(directory));
+  await assert.rejects(withWorkspaceUse(async () => {
+    const [marker] = (await readdir(directory)).filter((name) => !before.has(name));
+    // A non-empty folder in its place makes the marker's removal fail.
+    await rm(path.join(directory, marker));
+    await mkdir(path.join(directory, marker, "held"), { recursive: true });
+    throw new Error("the work failed");
+  }), /the work failed/);
+});
+
 test("#1322: a settings lock is not carried by a workspace rename", async (t) => {
   const { root, source, bundle, users } = await fixture(t);
   await prepareBundleWorkspace(manifest, source);

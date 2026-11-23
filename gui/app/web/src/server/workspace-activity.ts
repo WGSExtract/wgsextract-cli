@@ -88,6 +88,10 @@ async function withActivity<T>(kind: Activity, run: () => Promise<T>): Promise<T
         return await lease.run(entry, run);
     } finally {
         entry.active = false;
-        await rm(marker, { force: true, maxRetries: 3 });
+        // Best effort: a leftover marker must not hide run()'s own error. A
+        // dead process's marker is reclaimed by the next entrant.
+        await rm(marker, { force: true, maxRetries: 3 }).catch((error: unknown) => {
+            console.warn(`Could not remove workspace activity marker ${marker}: ${String(error)}`);
+        });
     }
 }
