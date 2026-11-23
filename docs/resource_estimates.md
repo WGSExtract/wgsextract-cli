@@ -40,12 +40,15 @@ are advisory. Choose a reproducible dataset/profile before comparing hosts.
 
 `vcf impute` prints estimated memory and runtime before starting. HG002 chr20
 measurements at four threads: GLIMPSE2 phase/ligate 431–464 s and 2.2–3.1 GB
-peak RSS; Beagle 60 s and 3.4 GB. The memory preflight reserves a conservative
-4 GiB for GLIMPSE2 and 8 GiB for Beagle. Sequential chromosomes/chunks keep
-memory bounded; runtime scales with selected reference bases and thread count.
-The extrapolated whole-autosome GLIMPSE2 time is about 5.5 h at four threads,
-or 2.8 h at eight, excluding one-time panel preparation. These are not measured
-whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
+peak RSS; Beagle 60 s and 3.4 GB, with 8 GiB reserved. GLIMPSE2's threads
+don't speed up one sample, so `vcf impute` runs `--threads` GLIMPSE2 chunks at
+once, one thread each, within 80% of the available memory (or `--memory` per
+chunk), estimating each chunk's peak from its binary reference; the preflight
+reports the peak of the largest chunks that run together. The extrapolated
+whole-autosome GLIMPSE2 time is about 5.6 h one chunk at a time and about 1 h
+with eight at once, excluding one-time panel preparation. These are not
+measured whole-genome runtimes. See [imputation](imputation.md#resources) for
+the chr20 timings, accuracy and limits.
 
 ## Lossless output profile measurements
 
