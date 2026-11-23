@@ -376,6 +376,10 @@ reminder every four hours while the same outage continues;
 The watchdog remembers the last status in
 `${XDG_STATE_HOME:-$HOME/.local/state}/mockup-server/watchdog.state`;
 use `--state-file` to give a different host or drill its own state.
+Checks sharing a state file do not overlap. On Linux, `flock` releases the
+lock when the check exits. On hosts without `flock`, if forced termination
+leaves a sibling `.lockdir` directory, remove it only after confirming no
+check is running.
 For a safe unreachable-host drill:
 
 ```sh

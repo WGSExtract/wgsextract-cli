@@ -42,6 +42,26 @@ if ! is_seconds "$now"; then
     echo "Clock must give a nonnegative integer (Unix seconds)" >&2
     exit 2
 fi
+mkdir -p "$(dirname "$state_file")"
+if command -v flock >/dev/null 2>&1; then
+    exec 9>>"$state_file.lock"
+    if flock -n -E 75 9; then
+        :
+    else
+        lock_status=$?
+        [ "$lock_status" -ne 75 ] || exit 0
+        exit "$lock_status"
+    fi
+else
+    lock_dir="$state_file.lockdir"
+    if ! mkdir "$lock_dir" 2>/dev/null; then
+        [ ! -d "$lock_dir" ] || exit 0
+        echo "Cannot lock watchdog state: $state_file" >&2
+        exit 1
+    fi
+    trap 'rmdir "$lock_dir"' 0
+    trap 'exit 1' HUP INT TERM
+fi
 previous=
 last_alert=0
 if [ -f "$state_file" ]; then
@@ -51,19 +71,18 @@ if [ -f "$state_file" ]; then
         last_alert=0
     fi
 fi
-save_state() {
-    mkdir -p "$(dirname "$state_file")"
+save_state() (
     state_tmp="$state_file.$$.new"
     (umask 077; set -C; printf '%s %s\n' "$1" "$now" > "$state_tmp")
     trap 'rm -f "$state_tmp"' 0
     mv -f "$state_tmp" "$state_file"
-}
+)
 healthy() {
     curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$url" |
         grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
 }
 alert() {
-    "$coordinator" send --to all "#776 mockup server $1 on $host$2"
+    "$coordinator" send --to all "mockup server $1 on $host$2"
 }
 if healthy; then
     case "$previous" in

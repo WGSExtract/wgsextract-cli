@@ -21,6 +21,23 @@ pytestmark = pytest.mark.skipif(
 class Watchdog:
     root: Path
 
+    def command(self, now: int) -> list[str]:
+        return [
+            str(SCRIPT),
+            "--host",
+            "unreachable.invalid",
+            "--retry-delay",
+            "0",
+            "--agent-coord",
+            str(self.root / "bin" / "coordinator"),
+            "--state-file",
+            str(self.root / "state" / "watchdog"),
+            "--reminder-interval",
+            "3600",
+            "--now",
+            str(now),
+        ]
+
     def run(
         self, *, now: int, first: str = "down", retry: str = "down", ssh: int = 0
     ) -> int:
@@ -30,21 +47,7 @@ class Watchdog:
         (self.root / "phase").write_text("first")
         bin_dir = self.root / "bin"
         result = subprocess.run(
-            [
-                str(SCRIPT),
-                "--host",
-                "unreachable.invalid",
-                "--retry-delay",
-                "0",
-                "--agent-coord",
-                str(bin_dir / "coordinator"),
-                "--state-file",
-                str(self.root / "state" / "watchdog"),
-                "--reminder-interval",
-                "3600",
-                "--now",
-                str(now),
-            ],
+            self.command(now),
             env={**os.environ, "PATH": str(bin_dir) + os.pathsep + os.defpath},
             capture_output=True,
             text=True,
@@ -164,3 +167,22 @@ def test_1451_watchdog_reports_first_successful_restart_after_a_healthy_check(
     assert watchdog.run(now=1300, retry="up") == 0
     _, next_recovery = watchdog.messages()
     assert "restarted OK" in next_recovery
+
+
+def test_1451_overlapping_watchdogs_send_only_one_outage_alert(
+    watchdog: Watchdog,
+) -> None:
+    # A second check starts while the first is waiting for its SSH restart.
+    root = shlex.quote(str(watchdog.root))
+    nested = shlex.join(watchdog.command(100))
+    (watchdog.root / "bin" / "ssh").write_text(
+        "#!/bin/sh\n"
+        f"if [ ! -f {root}/overlap ]; then\n"
+        f"    touch {root}/overlap\n"
+        f"    {nested}\n"
+        "fi\n"
+        "exit 0\n"
+    )
+    assert watchdog.run(now=100) == 1
+    (outage,) = watchdog.messages()
+    assert "down" in outage
