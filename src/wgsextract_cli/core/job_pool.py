@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, wait
+from contextlib import ExitStack
 from dataclasses import dataclass
 
 from wgsextract_cli.core import execution_context
@@ -42,6 +43,22 @@ def run_jobs(
     """Run ``jobs`` at most ``workers`` at a time within ``memory`` bytes
     (None: unbounded); ``then[group]`` runs once all of the group's jobs
     have finished."""
+    context = execution_context.current()
+    with ExitStack() as cleanup:
+        if context.cancel is not None and context.process_scope is None:
+            # A standalone caller has no API runner to own this scope.
+            scope = object()
+            cleanup.callback(proc_registry.accept_new, scope)
+            cleanup.enter_context(execution_context.bound(process_scope=scope))
+        _run_jobs(jobs, workers, memory, then)
+
+
+def _run_jobs(
+    jobs: Sequence[Job],
+    workers: int,
+    memory: int | None,
+    then: Mapping[str, Job] | None,
+) -> None:
     pending = list(jobs)
     follow = dict(then or {})
     left = Counter(
@@ -54,22 +71,34 @@ def run_jobs(
         return not running or memory is None or used + job.memory <= memory
 
     cancel = execution_context.current().cancel
+
+    def check_cancel() -> None:
+        if cancel is None or not cancel.cancelled:
+            return
+        # Don't let cancellation hide failures from completed jobs.
+        for future in running:
+            if future.done():
+                future.result()
+        cancel.raise_if_cancelled()
+
     pool = ContextThreadPoolExecutor(max_workers=max(1, workers))
     try:
         while pending or running:
-            if cancel is not None:
-                cancel.raise_if_cancelled()
+            check_cancel()
             while len(running) < max(1, workers):
                 job = next((j for j in pending if fits(j)), None)
                 if job is None:
                     break
                 pending.remove(job)
+                check_cancel()
                 running[pool.submit(job.run)] = job
                 used += job.memory
             # A timed wait: an endless one defers Ctrl-C on Windows.
             done: set[Future[None]] = set()
             while not done:
                 done, _ = wait(running, timeout=0.5, return_when=FIRST_COMPLETED)
+                if not done:
+                    check_cancel()
             for future in done:
                 job = running.pop(future)
                 used -= job.memory
@@ -79,12 +108,11 @@ def run_jobs(
                     left[group] -= 1
                     if not left[group]:
                         pending.insert(0, follow[group])
+        pool.shutdown()
+        check_cancel()
     except BaseException:
         _stop(pool)
         raise
-    pool.shutdown()
-    if cancel is not None:
-        cancel.raise_if_cancelled()
 
 
 def _stop(pool: ContextThreadPoolExecutor) -> None:
