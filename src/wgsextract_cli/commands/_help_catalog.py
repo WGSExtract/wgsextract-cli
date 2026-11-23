@@ -484,9 +484,9 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "ref acmg-data": _h(
         f"{_LIBRARY}: downloads/acmg/ holds the Ensembl GFF3, the downloads in "
         "sources/ and fastVEP's databases with acmg_data.json in sa/ (or "
-        "--sa-dir); --dry-run prints the plan and sizes only.",
+        "--sa-dir); --dry-run shows the plan, and only --download contacts publishers.",
         "wgsextract ref acmg-data --dry-run",
-        "wgsextract ref acmg-data --chromosomes chr22",
+        "wgsextract ref acmg-data --download --chromosomes chr22",
     ),
     "ref aadr": _h(
         f"{_LIBRARY}: the AADR 2M SNP panel (--delete removes it).",

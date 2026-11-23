@@ -2429,19 +2429,19 @@ Build the databases (output role `reference_resource` for each file,
 the GFF3 and `acmg_data.json`); with `dry_run`, only the plan in
 `details`.
 
-`RefAcmgDataParams`: Download the eight sources of `vcf acmg` (ClinVar and its protein
-index, gnomAD v4.1 and its gene constraint, ClinGen, REVEL, SpliceAI,
-phyloP) and the Ensembl GFF3 from their publishers, check them, and build
-fastVEP's databases. Shows each source's terms; reruns resume.
+`RefAcmgDataParams`: Prepare fastVEP's research ACMG databases, including RepeatMasker and
+gnomAD region flags, and the Ensembl GFF3. Shows each source's terms;
+reruns resume. Downloads public sources only with `--download`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+| `download` | `bool` | `False` | `--download` | Fetch missing public reference data from the publishers listed in the plan; no sample data is sent. |
 | `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes for gnomAD, SpliceAI, REVEL and phyloP: chr22, chr1-22,chrX or all (default). |
 | `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: downloads/acmg/sa in the library). |
 | `spliceai_file` | `Path \| None` | `None` | `--spliceai-file` | A GRCh38 SpliceAI VCF to use, such as Illumina's (default: the library's, downloaded from Ensembl when missing). |
 | `ensembl_release` | `str` | `'116'` | `--ensembl-release` | Ensembl release of the GFF3; match your vep-rs cache. |
 | `site_data` | `str \| None` | `None` | `--site-data` | per-run: don't build gnomAD and SpliceAI (877 GB streamed, 29 GB downloaded for a genome); vcf acmg reads each input's own sites of them. library builds them. Default: as the folder was built, else library. One of: `library`, `per-run` |
-| `dry_run` | `bool` | `False` | `--dry-run` | Show the sources, their terms, sizes and the disk needed; download nothing. |
+| `dry_run` | `bool` | `False` | `--dry-run` | Show the sources and their terms without building. Add --download to query publisher servers for size estimates without downloading files. |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 

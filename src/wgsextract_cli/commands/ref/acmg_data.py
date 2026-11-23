@@ -41,6 +41,7 @@ def run_acmg_data(params: RefAcmgDataParams) -> None:
         params.ensembl_release,
         spliceai,
         site_data=params.site_data,
+        probe=params.download,
     )
     for line in acmg_data.describe(plan, workers):
         human_output(line)
@@ -87,6 +88,16 @@ def run_acmg_data(params: RefAcmgDataParams) -> None:
         acmg_data.record_site_data(sa_dir, plan.site_data, plan.spliceai)
         human_output("Everything is built; nothing to do.")
         return
+    if not params.download:
+        missing = {step.source for step in plan.steps}
+        names = [source.label for source in acmg_data.SOURCES if source.key in missing]
+        if "gff3" in missing:
+            names.insert(0, "Ensembl GFF3")
+        raise UsageError(
+            "ACMG reference data missing or out of date: "
+            + ", ".join(names)
+            + ". Rerun `wgsextract ref acmg-data` with --download to fetch it."
+        )
     # Only a build records its outputs there: a dry run or a run with nothing
     # to do would replace the last build's inventory with an empty one.
     result.set_manifest_stem(acmg_data.folder(reflib) / "acmg_data")
