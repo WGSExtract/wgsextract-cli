@@ -7,8 +7,17 @@ Usage (from the repository root):
 Downloads NCBI RefSeq's annotation of each build (pinned by SHA-256 in
 SOURCES) into --cache, and writes src/wgsextract_cli/assets/panel/genes_<build>.tsv.gz:
 one row per gene or pseudogene on the assembled chromosomes, with its 0-based
-half-open span, NCBI Gene ID, biotype and synonyms. A gene in both
-pseudoautosomal regions has a row on X and one on Y. NCBI data is public domain.
+half-open span, NCBI Gene ID, biotype, synonyms, HGNC ID and coding length. A
+gene in both pseudoautosomal regions has a row on X and one on Y. NCBI data is
+public domain.
+
+The coding length (cds_bp) is that of one transcript per gene, named in
+cds_transcript, with cds_basis saying how it was chosen: its MANE Select
+transcript (GRCh38), else its RefSeq Select one (the GRCh37 and T2T
+annotations tag no MANE), else the transcript with the longest CDS
+(``longest``). It counts every CDS base, the stop codon included; a transcript
+with two overlapping CDS (a ribosomal frameshift) counts the longer.
+Noncoding genes and pseudogenes leave the three columns empty.
 
 NCBI names mitochondrial genes without HGNC's "MT-" prefix (RNR1, COX1); the
 rows use the HGNC symbol, from the MT-style synonym (MTRNR1 -> MT-RNR1).
@@ -24,7 +33,9 @@ import hashlib
 import re
 import urllib.parse
 import urllib.request
+from collections import defaultdict
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src" / "wgsextract_cli" / "assets" / "panel"
@@ -52,8 +63,15 @@ SOURCES: dict[str, dict[str, str]] = {
 }
 CHROMS = [f"chr{n}" for n in [*range(1, 23), "X", "Y", "M"]]
 _MT_SYNONYM = re.compile(r"^MT([A-Z0-9]+)$")
-# chrom, start, end, symbol, gene_id, biotype, synonyms
-Row = tuple[str, int, int, str, str, str, str]
+# chrom, start, end, symbol, gene_id, biotype, synonyms, hgnc_id, cds_bp,
+# cds_transcript, cds_basis
+Row = tuple[str, int, int, str, str, str, str, str, str, str, str]
+COLUMNS = (
+    "chrom start end symbol gene_id biotype synonyms "
+    "hgnc_id cds_bp cds_transcript cds_basis"
+).split()
+# Preference among a gene's coding transcripts, best first.
+_SELECT_TAGS = (("MANE Select", "mane_select"), ("RefSeq Select", "refseq_select"))
 
 
 def fetch(url: str, sha256: str, cache: Path) -> Path:
@@ -83,17 +101,84 @@ def contigs(report: Path) -> tuple[dict[str, str], dict[str, int]]:
     return names, lengths
 
 
+def _attributes(column: str) -> dict[str, str]:
+    return {
+        k: urllib.parse.unquote(v)
+        for k, _, v in (a.partition("=") for a in column.split(";"))
+    }
+
+
+def _xref(attrs: dict[str, str], prefix: str) -> str:
+    return next(
+        (
+            x.split(":", 1)[1]
+            for x in attrs.get("Dbxref", "").split(",")
+            if x.startswith(prefix + ":")
+        ),
+        "",
+    )
+
+
+def _hgnc(xref: str) -> str:
+    """'HGNC:613' from NCBI's 'HGNC:HGNC:613' (xref value 'HGNC:613') or a
+    bare 'HGNC:613' (xref value '613')."""
+    if xref.isdigit():
+        return f"HGNC:{xref}"
+    return xref if xref.startswith("HGNC:") and xref[5:].isdigit() else ""
+
+
+def _coding(
+    transcripts: dict[str, tuple[str, str, str]],
+    cds: dict[tuple[str, str], int],
+) -> dict[str, tuple[int, str, str]]:
+    """Gene feature ID -> (CDS bp, transcript, basis) of its chosen transcript.
+
+    ``transcripts`` maps a transcript's feature ID to (gene ID, accession,
+    tags); ``cds`` sums the CDS bases of each (parent ID, CDS ID). A CDS whose
+    parent is the gene itself (as on chrM) has no transcript accession.
+    """
+    per_parent: dict[str, int] = defaultdict(int)
+    for (parent, _), bases in cds.items():
+        per_parent[parent] = max(per_parent[parent], bases)
+    candidates: dict[str, list[tuple[int, int, str]]] = defaultdict(list)
+    for parent, bases in per_parent.items():
+        gene, accession, tags = transcripts.get(parent, (parent, "", ""))
+        tagged = set(tags.split(","))
+        rank = next(
+            (i for i, (tag, _) in enumerate(_SELECT_TAGS) if tag in tagged),
+            len(_SELECT_TAGS),
+        )
+        candidates[gene].append((rank, -bases, accession))
+    chosen = {}
+    for gene, options in candidates.items():
+        rank, bases, accession = min(options)
+        basis = _SELECT_TAGS[rank][1] if rank < len(_SELECT_TAGS) else "longest"
+        chosen[gene] = (-bases, accession, basis)
+    return chosen
+
+
 def genes(gff: Path, names: dict[str, str]) -> list[Row]:
-    rows: list[Row] = []
+    rows: dict[str, list[str | int]] = {}  # by the gene feature's ID
+    transcripts: dict[str, tuple[str, str, str]] = {}
+    cds: dict[tuple[str, str], int] = defaultdict(int)
     with gzip.open(gff, "rt") as handle:
         for line in handle:
             f = line.rstrip("\n").split("\t")
-            if len(f) < 9 or f[2] not in ("gene", "pseudogene") or f[0] not in names:
+            if len(f) < 9 or f[0] not in names:
                 continue
-            attrs = {
-                k: urllib.parse.unquote(v)
-                for k, _, v in (a.partition("=") for a in f[8].split(";"))
-            }
+            attrs = _attributes(f[8])
+            if f[2] == "CDS":
+                for parent in attrs["Parent"].split(","):
+                    cds[parent, attrs.get("ID", "")] += int(f[4]) - int(f[3]) + 1
+                continue
+            if f[2] not in ("gene", "pseudogene"):
+                if "ID" in attrs and attrs.get("Parent", "") in rows:
+                    transcripts[attrs["ID"]] = (
+                        attrs["Parent"],
+                        attrs.get("transcript_id", attrs.get("Name", "")),
+                        attrs.get("tag", ""),
+                    )
+                continue
             symbol = attrs.get("gene") or attrs["Name"]
             synonyms = [s for s in attrs.get("gene_synonym", "").split(",") if s]
             chrom = names[f[0]]
@@ -105,26 +190,24 @@ def genes(gff: Path, names: dict[str, str]) -> list[Row]:
                 if hgnc:
                     synonyms = [symbol, *(s for s in synonyms if s != hgnc)]
                     symbol = hgnc
-            gene_id = next(
-                (
-                    x.split(":", 1)[1]
-                    for x in attrs.get("Dbxref", "").split(",")
-                    if x.startswith("GeneID:")
-                ),
-                "",
-            )
-            rows.append(
-                (
-                    chrom,
-                    int(f[3]) - 1,
-                    int(f[4]),
-                    symbol,
-                    gene_id,
-                    attrs.get("gene_biotype", f[2]),
-                    ",".join(synonyms),
-                )
-            )
-    return rows
+            hgnc_id = _xref(attrs, "HGNC")
+            rows[attrs["ID"]] = [
+                chrom,
+                int(f[3]) - 1,
+                int(f[4]),
+                symbol,
+                _xref(attrs, "GeneID"),
+                attrs.get("gene_biotype", f[2]),
+                ",".join(synonyms),
+                _hgnc(hgnc_id),
+            ]
+    coding = _coding(transcripts, cds)
+    built: list[Row] = []
+    for gene_id, row in rows.items():
+        bases, accession, basis = coding.get(gene_id, (0, "", ""))
+        extra = (str(bases), accession, basis) if bases else ("", "", "")
+        built.append(cast(Row, (*row, *extra)))
+    return built
 
 
 def write(
@@ -136,7 +219,7 @@ def write(
     path = OUT / f"genes_{build}.tsv.gz"
     header = [f"# {note}" for note in notes]
     header += [f"#contig\t{c}\t{lengths[c]}" for c in CHROMS if c in lengths]
-    header.append("chrom\tstart\tend\tsymbol\tgene_id\tbiotype\tsynonyms")
+    header.append("\t".join(COLUMNS))
     body = "\n".join([*header, *("\t".join(map(str, r)) for r in rows)]) + "\n"
     # mtime=0: the same input gives the same bytes.
     with gzip.GzipFile(path, "wb", compresslevel=9, mtime=0) as out:
@@ -162,7 +245,10 @@ def main() -> None:
             f"Genes and pseudogenes of NCBI RefSeq annotation {src['release']} "
             f"({src['prefix']}); public domain.",
             f"Source: {base}_genomic.gff.gz (sha256 {src['gff']}).",
-            "Spans are 0-based, half-open. Built by scripts/build_panel_annotations.py.",
+            "Spans are 0-based, half-open. cds_bp is the coding length (stop codon "
+            "included) of cds_transcript: its MANE Select, else RefSeq Select, else "
+            "longest coding transcript (cds_basis). Built by "
+            "scripts/build_panel_annotations.py.",
         ]
         if build == "t2t" and not any(r[0] == "chrM" for r in rows):
             rows = rows + mito
