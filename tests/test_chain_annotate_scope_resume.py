@@ -208,3 +208,65 @@ def test_1291_replaced_cadd_indel_scores_rerun_a_finished_chain(tmp_path):
     assert _plan(result) == {"cadd": "run", "publish": "run"}
     scores = _query(outdir / "chain_annotated.vcf.gz", "%ID:%CADD_PHRED\n")
     assert "del:12" in scores
+
+
+@pytest.mark.parametrize("indexed", [True, False])
+def test_1291_records_spanning_two_bed_regions_are_kept_once(tmp_path, indexed):
+    """A gVCF block or deletion overlapping disjoint BED intervals comes out
+    once, read by the index or streamed (review of #1422)."""
+    rows = [
+        "100 blk G <NON_REF> . PASS END=900 GT 0/0",
+        "150 del " + "A" * 100 + " A . PASS . GT 1/1",
+        "500 snv C T . PASS . GT 0/1",
+    ]
+    sample = _sample(tmp_path, rows)
+    library = _library(tmp_path, sample)
+    if not indexed:
+        plain = Path(sample).with_suffix("")
+        plain.write_text(
+            subprocess.run(
+                [get_tool_path("bcftools"), "view", sample],
+                capture_output=True, text=True, check=True,
+            ).stdout,
+            encoding="utf-8",
+        )  # fmt: skip
+        sample = str(plain)
+    bed = tmp_path / "panel.bed"
+    bed.write_text("chr1\t119\t130\nchr1\t199\t210\nchr1\t399\t600\n", encoding="utf-8")
+
+    _chain(sample, library, tmp_path / "out", bed=bed)
+
+    assert _query(tmp_path / "out" / "chain_annotated.vcf.gz", "%ID\n") == [
+        "blk", "del", "snv",
+    ]  # fmt: skip
+
+
+def test_1291_changed_confidence_thresholds_rerun_clinvar(chain_inputs, monkeypatch):
+    """ClinVar labels with config.toml's thresholds (review of #1422)."""
+    from wgsextract_cli.core import config
+
+    sample, library, outdir = chain_inputs
+    _chain(sample, library, outdir)
+    monkeypatch.setitem(config.settings, "confidence_min_depth", 3.0)
+
+    result = _chain(sample, library, outdir)
+
+    assert _plan(result) == {"clinvar": "run", "revel": "run", "publish": "run"}
+
+
+def test_1291_failed_forced_rebuild_stays_resumable(chain_inputs):
+    """A --force-step rebuild that fails isn't mistaken for the finished chain
+    before it (review of #1422)."""
+    sample, library, outdir = chain_inputs
+    _chain(sample, library, outdir)
+    revel = library / "downloads" / "revel_hg38.tsv.gz"
+    revel.write_bytes(b"not a REVEL table\n")
+    Path(f"{revel}.tbi").unlink()
+    with pytest.raises(api.CommandFailed, match="'revel' failed"):
+        _chain(sample, library, outdir, force_steps=("revel",))
+
+    revel.unlink()
+    _revel(library / "downloads")
+    result = _chain(sample, library, outdir)
+
+    assert _plan(result) == {"clinvar": "skip", "revel": "run", "publish": "run"}

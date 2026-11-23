@@ -5,12 +5,14 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams, VcfTableParams
 from wgsextract_cli.api.vcf_specs.annotations import CHAIN_ANNOTATIONS
+from wgsextract_cli.core import variant_confidence
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import config_args
@@ -422,7 +424,16 @@ def run_chain_annotate(
             ann,
             inputs={"vcf": current_input, "reference": fasta, **_step_data(ann, lib)},
             outputs=[step_out],
-            params={"command": command, "ref": reference},
+            params={
+                "command": command,
+                "ref": reference,
+                # ClinVar labels composed variants with config.toml's thresholds.
+                **(
+                    {"confidence": asdict(variant_confidence.thresholds_from())}
+                    if ann == "clinvar"
+                    else {}
+                ),
+            },
             tools=["bcftools", *(vep_tool if ann == "vep" else [])],
         )
         chain.append((step, annotate))
@@ -483,6 +494,10 @@ def run_chain_annotate(
         )
         try:
             if not finished:
+                if not journal.dry_run:
+                    # A rebuild that fails must not leave the last chain's
+                    # record vouching for a finished chain.
+                    journal.retire(publish_step.name)
                 for step, action in chain:
                     folder = Path(step.outputs[0]).parent
                     decision, _ = run_step(journal, step, action, clean=[folder])
