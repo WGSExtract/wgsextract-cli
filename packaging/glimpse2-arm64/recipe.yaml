@@ -1,0 +1,50 @@
+context:
+  version: "2.0.1"
+
+package:
+  name: glimpse-bio
+  version: ${{ version }}
+
+source:
+  - url: https://github.com/odelaneau/GLIMPSE/archive/refs/tags/v${{ version }}.tar.gz
+    sha256: dcdc06fc85ca9bae6a2255caf3f985a5e6ccab5a99a0c3fe4c2fd7f8d27b0b8e
+    patches:
+      - simde.patch
+      - signed-variant-type.patch
+  - url: https://raw.githubusercontent.com/simd-everywhere/simde/v0.8.2/COPYING
+    sha256: 75ce0a8c5a7bff42fbd6f8f3b469b518132132c4f4948fb8d02b1ccb5d0df9d8
+    file_name: SIMDe-COPYING
+
+build:
+  number: 1
+  string: ${{ target_platform | replace('-', '') }}_wgse_${{ build_number }}
+  skip:
+    - not ((linux and aarch64) or (osx and arm64))
+  script:
+    - bash "$RECIPE_DIR/build.sh"
+
+requirements:
+  build:
+    - ${{ compiler('cxx') }}
+    - ${{ stdlib('c') }}
+    - make
+  host:
+    - htslib 1.24.*
+    - libboost-devel 1.85.*
+    - simde ==0.8.2
+
+tests:
+  - script:
+      - GLIMPSE2_phase --help
+      - GLIMPSE2_ligate --help
+      - GLIMPSE2_chunk --help
+      - GLIMPSE2_split_reference --help
+      - GLIMPSE2_concordance --help
+
+about:
+  homepage: https://github.com/odelaneau/GLIMPSE
+  license: MIT
+  license_file:
+    - LICENSE
+    - SIMDe-COPYING
+  summary: GLIMPSE2 low-coverage imputation built for ARM64 by WGS Extract.

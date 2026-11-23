@@ -5,8 +5,12 @@ with an experimental NVIDIA GPU backend (see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
 
 Native Windows uses [separate tool recipes](../packaging/windows/README.md).
-Its `bwa` recipe reuses the exact CPU extension kernel here, not the
-`wgse-*` GPU executables or their command-line options.
+The stock `bwa` recipe reuses the exact CPU extension kernel here;
+the Windows x86-64 `wgse-bwa` recipe builds both CPU and CUDA backends. The
+default Windows x86-64 Pixi environment includes it. When BWA is selected, the
+CLI uses CUDA automatically if `wgse-bwa` reports it available and the run fits
+Windows RAM and commit limits. Use `--no-prefer-native-gpu` or set
+`prefer_native_gpu = false` in `config.toml` to force CPU.
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
@@ -1085,7 +1089,8 @@ Unlike Apple's unified memory, a discrete GPU has its own:
 - **Host memory:** the pinned batch buffers add about 0.7 GiB.
 - **Runtime:** the CUDA runtime is linked statically, so the package needs only
   the NVIDIA driver, and only for `--cuda`. Without a usable driver or GPU,
-  `capabilities --json` reports `cuda_available: false`.
+  `capabilities --json` reports `cuda_available: false` and `--backend auto`
+  aligns on the CPU.
 - **Watchdog:** every wait for the GPU is bounded, by the larger of 60 s and 20
   times that stage's slowest batch so far. A batch that overruns (a hung GPU)
   is finished on the CPU with the same output. `--cuda` then exits 1, and
@@ -1353,6 +1358,29 @@ kernels for (such as Pascal or Volta, by default) is never selected, and
 whichever GPU backend the build and machine have. CI's runners have no NVIDIA GPU:
 `.github/workflows/linux_aligners.yml` compiles the CUDA backends (`cuda-build`)
 but can't run their tests.
+
+On Windows x86-64, `wgse-bwa` alone builds with
+`clang-cl` from a Visual Studio x64 developer prompt, the static C runtime and
+`-DWGSE_CUDA=ON` for the CUDA backend (nvcc with `cl.exe` as its host
+compiler). [windows/](windows/) supplies the POSIX functions MSVC lacks, with
+[packaging/windows/compat](../packaging/windows/compat/); BWA's source must
+carry the Windows bwa package's
+[0001 patch](../packaging/windows/recipes/bwa/patches/0001-windows-native-build.patch):
+
+```powershell
+cmake -S native -B out/native-win -G Ninja -DCMAKE_BUILD_TYPE=Release `
+    -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_LINKER=lld-link `
+    -DWGSE_CUDA=ON -DBUILD_TESTING=OFF -DZLIB_ROOT=<static /MT zlib> -DZLIB_USE_STATIC_LIBS=ON `
+    -DFETCHCONTENT_SOURCE_DIR_BWA=<patched bwa-0.7.19>
+cmake --build out/native-win
+```
+
+The executable needs only Windows' own DLLs and, for `--cuda`, the NVIDIA driver.
+Windows builds add native SM 120 code to the Linux targets, retaining
+compute 90 PTX for other newer GPUs. Use CUDA 13.5 as in the recipe, or set
+`CMAKE_CUDA_ARCHITECTURES` explicitly for a different toolkit.
+With `-DBUILD_TESTING=ON`, `ctest --test-dir out/native-win --output-on-failure`
+uses Git for Windows' Bash to run the shell-based tests; no WSL is used.
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. The public `--dense-sa on|off` switch remains

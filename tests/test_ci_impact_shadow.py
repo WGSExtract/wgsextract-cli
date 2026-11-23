@@ -22,7 +22,14 @@ def _git(root: Path, *args: str) -> str:
     return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 
 
-def test_shadow_reports_source_scans_and_base_only_failures(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "gate_receipt",
+    [None, '{"mode": "symbol",', '{"mode": "symbol", "selection": {"bad": true}}'],
+    ids=["absent", "truncated", "invalid-selection"],
+)
+def test_shadow_reports_source_scans_and_base_only_failures(
+    tmp_path: Path, gate_receipt: str | None
+) -> None:
     _git(tmp_path, "init", "-b", "main")
     _git(tmp_path, "config", "user.email", "test@example.test")
     _git(tmp_path, "config", "user.name", "Test")
@@ -103,6 +110,9 @@ def test_shadow_reports_source_scans_and_base_only_failures(tmp_path: Path) -> N
             },
             stream,
         )
+    gate = output / "gate.json"
+    if gate_receipt is not None:
+        gate.write_text(gate_receipt)
     cli = subprocess.run(
         [
             sys.executable,
@@ -126,6 +136,8 @@ def test_shadow_reports_source_scans_and_base_only_failures(tmp_path: Path) -> N
             "1",
             "--attempt",
             "1",
+            "--gate-decision",
+            str(gate),
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -135,7 +147,11 @@ def test_shadow_reports_source_scans_and_base_only_failures(tmp_path: Path) -> N
     report = json.loads((output / "report.json").read_text())
     assert report["tested_base"] == base
     assert report["pr_head"] == pr_head
-    assert report["comparable"]
+    if gate_receipt is None:
+        assert report["comparable"]
+    else:
+        assert not report["comparable"]
+        assert report["gate_mode"] == "unknown-invalid-decision"
     assert "tests/test_unrun.py" not in report["actual_results"]
     assert len(report["variants"]) == 4
     for variant in report["variants"].values():

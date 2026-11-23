@@ -37,6 +37,7 @@ EXECUTION_INPUTS = (
     ".github/workflows/windows_ci.yml",
     ".github/workflows/linux_arm64.yml",
     ".github/actions/setup-pixi/",
+    "scripts/ci_impact_results.py",
     "scripts/ci_run_tests.py",
     "scripts/ci_test_tiers.py",
     "scripts/ci_test_cache.py",
@@ -131,6 +132,8 @@ def fingerprint(job: str, *, repository: Path = ROOT) -> Fingerprint:
     hashes = {}
     for test in tests:
         digest = base.copy()
+        # Two tests with identical dependency sets are still distinct results.
+        digest.update(f"test\0{test}\0".encode())
         for path in sorted(dependencies[test] - shared):
             digest.update(f"input\0{path}\0{digests[path]}\0".encode())
         hashes[test] = digest.hexdigest()[:32]

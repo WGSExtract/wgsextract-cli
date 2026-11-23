@@ -15,7 +15,7 @@ WGS Extract's own builds of them instead, made from these recipes:
 | samblaster | samblaster |
 | gkl (GATK environment only) | JNI DLLs and a resource-only sidecar jar |
 
-Each is a native Windows executable built with MSYS2's UCRT64 GCC and linked
+These default packages use native Windows executables built with MSYS2's UCRT64 GCC and linked
 statically, so it needs only Windows' own DLLs: no MSYS2, Cygwin or WSL on the
 user's PC, and no Linux VM between the tools and the files. Each is a conda
 package (`Library\bin\*.exe`) that `pixi.toml` pins by URL and SHA-256.
@@ -123,6 +123,37 @@ for the matched-machine benchmarks and record hashes.
 
 ## Building
 
+### wgse-bwa (Windows x86-64)
+
+`wgse-bwa` is built from a separate recipe. The default win-64 Pixi environment
+pins `wgse-bwa` from `windows-tools-12`, which enables Segment Heap on Windows,
+without changing the other tool pins.
+It uses the MSVC ABI: clang-cl compiles BWA's GNU-style C
+extensions, nvcc uses Visual Studio 2022 `cl.exe` for its host code, and
+lld-link links the executable. It does not use MSYS2. CUDA 13.5 and the
+static CUDA runtime are build-time conda-forge packages, installed in the
+isolated build environment rather than system-wide on the runner. The
+Windows build includes native SM 120 code for desktop Blackwell, retains
+Turing through Hopper machine code, and ships compute 90 PTX for other
+newer GPUs. The Linux recipe continues to use CUDA 12.9 and its existing targets.
+
+Install Git for Windows (for Bash during tests) and Visual Studio 2022
+Build Tools with the x64 C++ tools and Windows SDK, then build from the root:
+
+```powershell
+pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id `
+    --recipe packaging/windows/recipes/wgse-bwa --channel conda-forge `
+    --output-dir out/conda --target-platform win-64
+```
+
+The build tests CPU alignment with CUDA disabled, then packages the release
+executable and checks its capabilities. The package installs and runs on the
+CPU without an NVIDIA driver. Only the optional CUDA backend requires a
+supported NVIDIA GPU and driver; no CUDA Toolkit installation is needed.
+[Windows alignment](../../docs/windows.md#wgse-bwa-and-optional-nvidia-cuda)
+documents automatic CUDA selection, how to force CPU, and how to override
+the packaged build.
+
 ### GATK kernels
 
 GKL is a separate Windows-only dependency of the `gatk` feature. Its
@@ -172,7 +203,7 @@ selected URL/SHA-256 entries by hand, then run `pixi lock`, preserving all
 other pins. `windows-tools-5` contains only htslib, samtools and bcftools;
 the other five tools remain pinned to their prior releases.
 
-To build on a Windows PC, install [MSYS2](https://www.msys2.org) and the
+To build the MSYS2 recipes on a Windows PC, install [MSYS2](https://www.msys2.org) and the
 packages in [msys2-packages.txt](msys2-packages.txt) (from an MSYS2 shell:
 `grep -v '^#' msys2-packages.txt | xargs pacman -S --needed`), then from the
 repository root:
@@ -180,12 +211,15 @@ repository root:
 ```powershell
 $env:MSYS2_ROOT = "C:\msys64"   # where MSYS2 is
 $env:PATH = "$env:MSYS2_ROOT\ucrt64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
+$recipes = Get-ChildItem packaging/windows/recipes -Directory |
+    Where-Object { $_.Name -ne 'wgse-bwa' } |
+    ForEach-Object { '--recipe'; $_.FullName }
 pixi exec --spec rattler-build==0.77.0 rattler-build build `
-    --recipe-dir packaging/windows/recipes --output-dir out/conda --target-platform win-64
+    @recipes --output-dir out/conda --target-platform win-64
 ```
 
-A recipe is `recipe.yaml` (source URL and SHA-256, patches, tests) plus
-`build.sh`, which sources [recipes/env.sh](recipes/env.sh) for the shared
-flags. To change a patch, unpack the source into a git repository, apply the
-patch, edit, and regenerate it with `git diff` (some upstream files are CRLF;
-`.gitattributes` keeps patches byte-exact).
+An MSYS2 recipe is `recipe.yaml` (source URL and SHA-256, patches, tests)
+plus `build.sh`, which sources [recipes/env.sh](recipes/env.sh) for the shared
+flags. `wgse-bwa` instead uses `build.cmd`. To change a patch, unpack the source
+into a git repository, apply the patch, edit, and regenerate it with `git diff`
+(some upstream files are CRLF; `.gitattributes` keeps patches byte-exact).

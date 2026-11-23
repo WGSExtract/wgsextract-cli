@@ -42,14 +42,24 @@ each sample's ploidy and isn't supported yet. A chip VCF with contigs named
 GRCh38; for a lengthless header, supply the matching GRCh38 FASTA index with
 `bcftools reheader --fai GRCh38.fa.fai` first.
 
-The optional environment supports **x86-64 Linux, Windows x64 and Intel macOS**.
+The optional environment supports **Linux and macOS (x86-64 and ARM64) and
+Windows x64**. `pixi install --locked -e imputation` installs native GLIMPSE2
+2.0.1 on Apple Silicon and Linux ARM64. The
+[ARM64 packages](https://github.com/WGSExtract/wgsextract-cli/releases/tag/glimpse2-arm64-1)
+use NEON without emulation; the HG002 fixture produces identical variant
+records to Bioconda's x86-64 build on the same OS. If an Intel binary on
+your Mac's `PATH` fails to start, move it off `PATH` to use the native Pixi
+build; Intel binaries need a compatible Rosetta runtime. If you already
+prepared a panel with the Intel build, rerun `ref imputation --install` for
+the same chromosomes to rebuild the binary chunks from the local panel.
+
 On Windows, `pixi install -e imputation` installs our native GLIMPSE2 2.0.1
 package from the `glimpse2-1` release, pinned by URL and SHA-256 in `pixi.toml`,
 alongside conda-forge's native OpenJDK and the pinned noarch Beagle jar.
 No MSYS2 or WSL runtime is needed; GLIMPSE2 phase requires an AVX2/FMA-capable
 CPU. Windows CI tests a fresh install and both tools on the real HG002 fixture
 without skips. Missing tools fail dependency validation; neither feature command
-installs tools. **Windows ARM64, Linux ARM64 and Apple Silicon remain gated off.**
+installs tools. **Windows ARM64 remains unsupported.**
 The server must allow the effective reference library and panel paths,
 not just the FASTA's `genomes/` subfolder; configured defaults and symlinks are
 checked too. Failed or version-mismatched binary-chunk builds also recheck
@@ -185,11 +195,10 @@ Bioconda's x86-64 GLIMPSE2 2.0.1 under Rosetta took:
 | `--threads 8` | 208 s (4.7x) | 7.8 / 2.6 GB |
 
 The three new runs wrote identical genotypes, dosages and probabilities. The
-old `--threads 4` run differed from them at 798 genotypes. A native arm64
-build, which
-[#1398 (native arm64 GLIMPSE2)](https://github.com/WGSExtract/wgsextract-cli/issues/1398)
-will package, phased the same chunks about twice as fast: 479 s one at a time
-and 100 s eight at once. Preparing the chr20 panel took 577 s.
+old `--threads 4` run differed from them at 798 genotypes. The native ARM64
+build phased these chunks in 479 s one at a time and 100 s eight at once in
+the initial [#1118 speed study](https://github.com/WGSExtract/wgsextract-cli/issues/1118).
+Preparing the chr20 panel took 577 s.
 
 Extrapolating chr20 (about 2.2% of autosomal bases) gives **about 5.6 hours
 for whole-autosome GLIMPSE2 one chunk at a time, and about 1 hour with eight

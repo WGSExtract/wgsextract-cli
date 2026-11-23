@@ -48,10 +48,11 @@ class Column:
     type: str
     description: str = ""
     spec: str = ""  # format() spec of the TSV text, e.g. ".2f"
+    null_text: str = ""
 
     def text(self, value: Value) -> str:
         if value is None:
-            return ""
+            return self.null_text
         if isinstance(value, bool):
             return "true" if value else "false"
         return format(value, self.spec) if self.spec else str(value)

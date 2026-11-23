@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.native_support import (
+    is_arm64_docker_host,
     require_native_tool,
     tool_unsupported_reason,
 )
@@ -325,6 +326,13 @@ def _probe_version_in(tool: str, full_cmd: list[str], cwd: str | None) -> str:
     except _SlowToStart as e:
         return f"Error: {e}"
     except OSError as e:
+        # Darwin's EBADARCH: the kernel can't launch this Mach-O architecture.
+        if tool.startswith("GLIMPSE2_") and sys.platform == "darwin" and e.errno == 86:
+            return (
+                f"Error: {tool} has an incompatible CPU architecture. "
+                "Use native GLIMPSE2 (pixi install --locked -e imputation) "
+                "and remove the Intel binary from PATH, or use Rosetta for that binary."
+            )
         return f"Error: {blocked_launch(full_cmd[0], e) or e}"
     except (subprocess.SubprocessError, RuntimeError, ValueError) as e:
         return f"Error: {str(e)}"
@@ -387,9 +395,11 @@ def verify_dependencies(
             f"Missing required core tool(s): {', '.join(missing)}"
         )
 
-    # Version Validation for critical tools
-    for tool in MINIMUM_VERSIONS:
-        if tool in tool_list and tool not in missing:
+    # Check that GLIMPSE2 launches on ARM64: PATH can still contain an Intel
+    # copy even though the supported Pixi environment now installs native tools.
+    for tool in tool_list:
+        minimum = MINIMUM_VERSIONS.get(tool)
+        if minimum or (tool.startswith("GLIMPSE2_") and is_arm64_docker_host()):
             version_str = get_tool_version(tool)
             if not version_str:
                 continue
@@ -406,8 +416,7 @@ def verify_dependencies(
             # Handle version strings like "bcftools 1.12" or "Version: 0.1.19"
 
             match = re.search(r"(\d+)\.(\d+)", version_str)
-            if match:
-                minimum = MINIMUM_VERSIONS[tool]
+            if match and minimum:
                 if (int(match.group(1)), int(match.group(2))) < minimum:
                     logging.error(
                         f"This tool requires {tool} version "

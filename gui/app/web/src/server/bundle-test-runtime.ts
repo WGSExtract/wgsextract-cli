@@ -1,7 +1,9 @@
 import { checkedOptionsForContext } from "../../../shared/rendering.js";
 import { setupStepsForPlatform } from "../../../shared/setup-platforms.js";
 import type { BundleManifest, Labels, StringMap, ValueMap } from "../../../shared/types.js";
-import { bootstrapConfigFiles, emptyBundleState, initialCheckedOptions, initialConfigFilePaths, initialConfigValues, initialFieldValues } from "./config-store.js";
+import { emptyBundleState } from "./bundle-state.js";
+import { bootstrapConfigFiles } from "./config-bootstrap.js";
+import { initialCheckedOptions, initialConfigFilePaths, initialConfigValues, initialFieldValues } from "./config-store.js";
 import { expandPathTokens, normalizeContext } from "./paths.js";
 import type { BundleTestInputs, BundleTestRuntime } from "./bundle-test-types.js";
 

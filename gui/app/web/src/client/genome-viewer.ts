@@ -11,7 +11,8 @@ import { bindRemoteViewer, remoteViewerForm } from "./genome-viewer-remote-form.
 
 interface IgvBrowser {
     genome: { cytobandSource?: ReturnType<typeof viewerCytobandSource> };
-    loadTrack(track: LocalTrack<File | string> | { name: string; type: "annotation"; features: ViewerGene[]; searchable: false }): Promise<IgvLocalTrack | undefined>;
+    loadTrack(track: LocalTrack<File | string> | { name: string; type: "annotation"; features: ViewerGene[]; searchable: false }
+        | { name: string; type: "annotation"; format: "bed"; url: string; indexURL: string; indexed: true; headers?: Record<string, string>; displayMode: "EXPANDED"; searchable: false }): Promise<IgvLocalTrack | undefined>;
     on(event: "trackclick", handler: typeof localPopupHTML): void;
     search(locus: string): Promise<boolean>;
     zoomIn(): void;
@@ -33,6 +34,8 @@ let browser: IgvBrowser | undefined;
 let remoteActive = false;
 let trackProblem: ViewerFileError | undefined;
 let geneLookup = new Map<string, string>();
+// A result row's build holds only for the file and position it opened with; editing either drops it.
+let requiredBuild = "";
 const root = document.querySelector<HTMLElement>("#genome-viewer");
 if (!root) {
     throw new Error("Missing genome viewer root.");
@@ -106,6 +109,10 @@ try {
         navigation.hidden = true;
         host.hidden = true;
     }, setBusy);
+    // Extra tracks don't move the position, so they keep the build the row requires.
+    libraryForm.addEventListener("input", (event) => {
+        if (event.target instanceof HTMLInputElement && ["library-path", "locus"].includes(event.target.name)) requiredBuild = "";
+    });
     libraryForm.addEventListener("submit", (event) => {
         event.preventDefault();
         void openLibrary(libraryForm, navigation, host);
@@ -136,6 +143,7 @@ try {
     if (labels.inputPath) {
         required<HTMLInputElement>('[name="library-path"]').value = labels.inputPath;
         required<HTMLInputElement>('[data-library] [name="locus"]').value = labels.locus ?? "";
+        requiredBuild = labels.build ?? "";
         void openLibrary(libraryForm, navigation, host);
     }
 } catch (error) {
@@ -187,6 +195,7 @@ async function openLibrary(form: HTMLFormElement, navigation: HTMLFormElement, h
             required<HTMLInputElement>('[name="library-path"]').value,
             form.querySelector<HTMLInputElement>('[name="locus"]')?.value ?? "",
             (form.querySelector<HTMLTextAreaElement>('[name="extra-tracks"]')?.value ?? "").split(/\r?\n/).map((value) => value.trim()).filter(Boolean),
+            requiredBuild,
         );
         if ("problem" in result) {
             status(result.problem, true, result.fileName ?? "");
@@ -216,7 +225,8 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         trackProblem = undefined;
         geneLookup = viewerGeneLookup(files.genes?.features ?? []);
         const geneStatus = required<HTMLElement>("[data-gene-status]");
-        geneStatus.textContent = (files.genes?.notices ?? []).map((notice) => text(notice.code).replace("%{file}", notice.fileName)).join(" ");
+        geneStatus.textContent = [...(files.genes?.notices ?? []).map((notice) => ({ ...notice, command: "" })), ...files.transcripts?.notices ?? []]
+            .map((notice) => text(notice.code).replace("%{file}", notice.fileName).replace("%{command}", notice.command)).join(" ");
         geneStatus.hidden = !geneStatus.textContent;
         const cytobandStatus = required<HTMLElement>("[data-cytoband-status]");
         cytobandStatus.textContent = (files.cytobands?.notices ?? []).map((notice) => text(notice.code)
@@ -246,6 +256,15 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         if (files.genes?.features.length) {
             const loaded = await browser.loadTrack({ name: text("geneTrack"), type: "annotation", features: files.genes.features, searchable: false });
             if (!loaded) throw new Error("Gene spans could not be loaded.");
+            disablePopupLookups(loaded);
+        }
+        const transcripts = files.transcripts;
+        if (typeof transcripts?.url === "string" && typeof transcripts.indexURL === "string") {
+            const loaded = await browser.loadTrack({
+                name: text("transcriptTrack"), type: "annotation", format: "bed", url: transcripts.url, indexURL: transcripts.indexURL,
+                indexed: true, ...(transcripts.headers ? { headers: transcripts.headers } : {}), displayMode: "EXPANDED", searchable: false,
+            });
+            if (!loaded) throw new Error("Transcript models could not be loaded.");
             disablePopupLookups(loaded);
         }
         for (const track of files.tracks) {
