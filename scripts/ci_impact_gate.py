@@ -68,7 +68,10 @@ def plan(
             ):
                 return {**fallback, "mode": "legacy-test-harness-changed-since-map"}
             elif path.startswith("src/wgsextract_cli/"):
-                extra.update(evidence["modules"].get(path, ()))
+                users = evidence["modules"].get(path, ())
+                if not users:
+                    return {**fallback, "mode": "legacy-unobserved-source-drift"}
+                extra.update(users)
     return {
         "mode": "symbol",
         "selection": sorted(set(candidates["symbol"]) | (extra & tests)),

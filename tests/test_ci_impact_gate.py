@@ -10,7 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from scripts.ci_impact_backstop import failing_targets, first_bad, verified_omission
+from scripts.ci_impact_backstop import (
+    failing_targets,
+    first_bad,
+    replay,
+    verified_omission,
+)
 from scripts.ci_impact_gate import plan
 from scripts.ci_impact_observations import SCHEMA
 
@@ -136,6 +141,25 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
                 disabled=False,
             )
             assert newer_test in checked["selection"]
+            git("switch", "--detach", newer_base)
+            new_module = source.parent / "unobserved.py"
+            new_module.write_text("VALUE = 1\n")
+            git("add", str(new_module))
+            git("commit", "-qm", "Add package source outside the map")
+            drift_base = git("rev-parse", "HEAD")
+            source.write_text("def write(path):\n    path.write_text('after')\n")
+            git("commit", "-qam", "Edit writer against unobserved source drift")
+            assert plan(
+                tmp_path,
+                event="pull_request",
+                base=drift_base,
+                observations=map_path,
+                legacy=legacy,
+                disabled=False,
+            ) == {
+                "mode": "legacy-unobserved-source-drift",
+                "selection": ["tests/test_legacy.py"],
+            }
     else:
         assert run_gate() == {"mode": "universal-full", "selection": "all"}
 
@@ -169,6 +193,42 @@ def test_backstop_replays_only_the_failed_parameter_and_collection_module(
         },
         "tests/test_broken.py": {"tests/test_broken.py": "error collection failure"},
     }
+
+
+def test_replay_reuses_tools_and_runs_historical_source(tmp_path: Path) -> None:
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-c", "core.hooksPath=/dev/null", *args], cwd=tmp_path, text=True
+        ).strip()
+
+    git("init", "-qb", "main")
+    git("config", "user.email", "test@example.test")
+    git("config", "user.name", "Test")
+    git("config", "commit.gpgsign", "false")
+    for filename in ("pixi.lock", "pixi.toml", "pyproject.toml"):
+        (tmp_path / filename).touch()
+    workspace = tmp_path / "out"
+    workspace.mkdir()
+    test = "tests/test_local_tool.py"
+    (tmp_path / "tests").mkdir()
+    (tmp_path / test).write_text(
+        "from pathlib import Path\n"
+        "def test_tool():\n"
+        "    assert Path('.pixi/envs/prepared/bin/tool').read_text() == 'ready'\n"
+    )
+    git("add", ".")
+    git("commit", "-qm", "Use prepared local tool")
+    sha = git("rev-parse", "HEAD")
+    (tmp_path / test).write_text("def test_tool():\n    assert False\n")
+    tool = tmp_path / ".pixi/envs/prepared/bin/tool"
+    tool.parent.mkdir(parents=True)
+    tool.write_text("ready")
+    assert (
+        replay(tmp_path, workspace, sha, test, f"{test}::test_tool", "failure")
+        == "pass"
+    )
+    assert tool.read_text() == "ready"
+    assert not (workspace / "tree").exists()
 
 
 def test_backstop_requires_a_real_omission_on_identical_pr_tree() -> None:

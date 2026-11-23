@@ -140,10 +140,11 @@ def replay(
             for name in ("pixi.lock", "pixi.toml", "pyproject.toml")
         ):
             return "unknown"
-        if (root / "reference").is_dir() and not (worktree / "reference").exists():
-            (worktree / "reference").symlink_to(
-                root / "reference", target_is_directory=True
-            )
+        for name in ("reference", ".pixi"):
+            prepared = root / name
+            historical = worktree / name
+            if prepared.is_dir() and not historical.exists():
+                historical.symlink_to(prepared, target_is_directory=True)
         env = os.environ.copy()
         env.pop("GH_TOKEN", None)
         env["PYTHONPATH"] = os.pathsep.join(
