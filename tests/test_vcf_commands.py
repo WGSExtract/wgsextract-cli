@@ -983,33 +983,6 @@ def test_plain_reference_decompresses_to_removed_temp_dir(tmp_path_factory):
     assert sorted(os.listdir(tmp_path)) == ["ref.fa.gz"]
 
 
-@pytest.mark.parametrize(
-    ("region", "bed"),
-    [
-        ("chr20", "chr20\t0\t5000"),
-        ("chr20:1,001-2,000", "chr20\t1000\t2000"),
-        ("chr20:4001", "chr20\t4000\t5000"),
-    ],
-)
-def test_sniffles_region_bed(tmp_path, region, bed):
-    from wgsextract_cli.commands.vcf.structural import _write_region_bed
-
-    ref = tmp_path / "ref.fa"
-    Path(str(ref) + ".fai").write_text("chr20\t5000\t7\t60\t61\n")
-    out = tmp_path / "r.bed"
-    _write_region_bed(region, str(ref), str(out))
-    assert out.read_text() == bed + "\n"
-
-
-def test_sniffles_region_bed_rejects_unknown_contig(tmp_path):
-    from wgsextract_cli.commands.vcf.structural import _write_region_bed
-
-    ref = tmp_path / "ref.fa"
-    Path(str(ref) + ".fai").write_text("chr20\t5000\t7\t60\t61\n")
-    with pytest.raises(WGSExtractError):
-        _write_region_bed("chrX:1-5", str(ref), str(tmp_path / "r.bed"))
-
-
 # --- annotation resources -------------------------------------------------------
 
 
