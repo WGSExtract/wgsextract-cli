@@ -118,10 +118,14 @@ def workspace_use(admitted_by: str | None = None) -> Iterator[None]:
             _lease.reset(token)
 
 
+def _pid_exists(pid: int) -> bool:
+    from psutil import pid_exists
+
+    return bool(pid_exists(pid))
+
+
 def hold_workspace(admitted_by: str | None = None) -> WorkspaceLease:
     """Acquire a lease that can be handed to the thread finishing a queued job."""
-    import psutil
-
     # The Node app also uses this fixed location: a standalone CLI must see a
     # move even when it did not inherit the launching GUI's data override.
     directory = _standard_desktop_data_dir() / "workspace-activity"
@@ -142,15 +146,17 @@ def hold_workspace(admitted_by: str | None = None) -> WorkspaceLease:
                 or admission[1] != "use"
                 or int(admission[2]) != os.getppid()
                 or not (directory / admitted_by).is_file()
-                or not psutil.pid_exists(int(admission[2]))
+                or not _pid_exists(int(admission[2]))
             ):
                 raise WGSExtractError("The job lost its workspace lease.")
             return WorkspaceLease(marker.name, cleanup.pop_all())
         for other in directory.iterdir():
+            if other == marker:
+                continue
             match = _marker.fullmatch(other.name)
             if match is None:
                 continue
-            if not psutil.pid_exists(int(match[2])):
+            if not _pid_exists(int(match[2])):
                 other.unlink(missing_ok=True)
             elif match[1] == "move":
                 raise WGSExtractError(
