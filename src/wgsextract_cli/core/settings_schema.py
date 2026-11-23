@@ -249,9 +249,10 @@ class Settings:
         "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0",
         choices=("default", "archive", "calling"),
     )
-    prefer_native_gpu: bool = setting(
-        False,
-        "`align`/`realign`: opt in to CUDA BWA on Windows; elsewhere, prefer "
+    prefer_native_gpu: bool | None = setting(
+        None,
+        "`align`/`realign`: on Windows, CUDA BWA is automatic when it fits; "
+        "set false to force CPU. Elsewhere, set true to prefer "
         "wgse-bwa's native GPU even above the RAM "
         "budget after normal sort step-down; retain explicit memory, otherwise "
         "cap default/config sort at 256M (may swap heavily)",
@@ -645,6 +646,7 @@ def _found(value: object) -> str:
 
 _KINDS: tuple[tuple[object, Kind], ...] = (
     (bool, "bool"),
+    (bool | None, "bool"),
     (int, "int"),
     (float, "float"),
     (str, "str"),

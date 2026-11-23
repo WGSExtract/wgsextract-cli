@@ -11,10 +11,12 @@ import platform
 import subprocess
 from collections import defaultdict
 from collections.abc import Iterable
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
-import coverage
+if TYPE_CHECKING:
+    import coverage
 
 from scripts.ci_impact_results import file_results
 from scripts.ci_impact_scopes import module_scopes
@@ -118,6 +120,8 @@ def _observed_files(contexts: Iterable[str], tracked: set[str]) -> set[str]:
 
 
 def main() -> None:
+    import coverage
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--coverage-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -148,6 +152,7 @@ def main() -> None:
         "python": platform.python_version(),
         "lock_sha256": lock_sha256,
         "profile": "ubuntu-x64/all/skip-independent=false",
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
     }
     timings = {}
     if args.junit is not None:

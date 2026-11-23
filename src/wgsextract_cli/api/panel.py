@@ -6,6 +6,12 @@ Nanopore adaptive sampling (MinKNOW) or any targeted analysis::
 
 Genes are padded (default 100 kb each side), clipped to their contig and
 merged. The bundled NCBI RefSeq annotations give the spans; no network calls.
+
+``panel check``: validate a research panel file (``wgsextract.panel/1``, TOML
+or JSON) and resolve its genes, without sample data::
+
+    res = api.panel.check(api.PanelCheckParams(panel=Path("my_panel.toml")))
+    res.details["groups"]
 """
 
 from __future__ import annotations
@@ -22,7 +28,7 @@ from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import outdir_param, ref_param
 
-__all__ = ["PanelBedParams", "bed"]
+__all__ = ["PanelBedParams", "PanelCheckParams", "bed", "check"]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -97,3 +103,41 @@ def bed(
     from wgsextract_cli.commands.panel import run_panel_bed
 
     return execute(params, run_panel_bed, progress=progress, cancel=cancel, check=check)
+
+
+@dataclass(frozen=True, kw_only=True)
+class PanelCheckParams(Params):
+    """Validate a research panel file and resolve its genes."""
+
+    COMMAND = "panel check"
+
+    panel: Path = param(
+        help="Research panel file (wgsextract.panel/1, TOML or JSON)",
+        flags=("--panel",),
+        path="file",
+        metavar="FILE",
+    )
+    build: str | None = param(
+        None,
+        help="Resolve genes in hg38 (GRCh38), t2t (CHM13v2.0) or hg19 (GRCh37) "
+        "(default: the panel's build, else hg38)",
+        flags=("--build",),
+        choices=BUILDS,
+    )
+
+
+def check(
+    params: PanelCheckParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Validate the panel (``details["valid"]``, ``details["problems"]``) and
+    resolve its genes; writes no files. An invalid panel fails with error code
+    ``panel_invalid`` and keeps the problems in ``details``."""
+    from wgsextract_cli.commands._panel_check import run_panel_check
+
+    return execute(
+        params, run_panel_check, progress=progress, cancel=cancel, check=check
+    )

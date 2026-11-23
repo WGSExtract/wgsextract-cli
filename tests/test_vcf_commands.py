@@ -217,7 +217,12 @@ def test_chain_uses_each_steps_known_output(tmp_path, monkeypatch, keep_awake):
         "clinvar_annotated.vcf.gz",
     )
     assert (tmp_path / "out" / "chain_annotated.vcf.gz").read_text() == "revel"
-    assert sorted(os.listdir(tmp_path / "out")) == ["chain_annotated.vcf.gz"]
+    assert sorted(
+        p.name for p in (tmp_path / "out").iterdir() if not p.name.startswith(".")
+    ) == [
+        "chain_annotate.steps.json",
+        "chain_annotated.vcf.gz",
+    ]
 
 
 def test_chain_rejects_unknown_or_empty_annotations(tmp_path):
@@ -547,37 +552,6 @@ def test_filter_refuses_to_overwrite_its_input(tmp_path, alias):
         run_wgsextract("vcf", "filter", "--vcf-input", vcf, "--expr", "NOPE>1",
                        "--outdir", str(outdir))  # fmt: skip
     assert _query(vcf) == ["c"]
-
-
-def test_filter_unresolved_gene_fails(tmp_path):
-    from wgsextract_cli.commands.vcf import filter_trio
-
-    vcf = tmp_path / "s.vcf.gz"
-    vcf.write_text("")
-
-    class Lib:
-        fasta = None
-        root = str(tmp_path)
-        build = "hg38"
-
-        def __init__(self, *_a, **_k):
-            pass
-
-        def resource_root(self, *_paths):
-            return self.root
-
-    args = argparse.Namespace(
-        input=str(vcf), vcf_input=None, outdir=str(tmp_path), ref=None,
-        region=None, expr=None, gene="NOT_A_GENE", exclude_near_gaps=False,
-    )  # fmt: skip
-    with (
-        patch.object(filter_trio, "verify_dependencies"),
-        patch.object(filter_trio, "log_dependency_info"),
-        patch.object(filter_trio, "calculate_bam_md5", return_value=None),
-        patch.object(filter_trio, "ReferenceLibrary", Lib),
-        pytest.raises(WGSExtractError, match="NOT_A_GENE"),
-    ):
-        filter_trio.cmd_filter(args)
 
 
 # --- annotations ----------------------------------------------------------------

@@ -48,11 +48,12 @@ export async function rememberStandaloneViewer(id: string) {
 }
 
 /** The iframe gets only a file-scoped grant, never the main app's API credential. */
-export async function requestLibraryViewer(path: string, locus: string, tracks: string[] = []): Promise<LibraryViewerResult> {
+export async function requestLibraryViewer(path: string, locus: string, tracks: string[] = [], build = ""): Promise<LibraryViewerResult> {
+    const required = build ? { build } : {};
     if (window.parent === window) {
         bindStandaloneViewerLifecycle();
         await releaseLibraryViewer();
-        const result = await api<LibraryViewerResult>("/api/viewer/open", { body: { path, locus, tracks } });
+        const result = await api<LibraryViewerResult>("/api/viewer/open", { body: { path, locus, tracks, ...required } });
         if ("id" in result) {
             await rememberStandaloneViewer(result.id);
         }
@@ -73,6 +74,6 @@ export async function requestLibraryViewer(path: string, locus: string, tracks: 
             resolve(event.data.result);
         };
         window.addEventListener("message", receive);
-        window.parent.postMessage({ type: "genomeViewerOpenLibrary", requestID, path, locus, tracks }, location.origin);
+        window.parent.postMessage({ type: "genomeViewerOpenLibrary", requestID, path, locus, tracks, ...required }, location.origin);
     });
 }

@@ -12,14 +12,15 @@ repos:
       - id: check-yaml
       - id: check-added-large-files
         # Shipped coordinate data; the CHM13 site-map loader enforces its 7 MiB cap.
-        # The panel gene spans (about 1.3 MB per build) let `panel bed` work offline.
+        # The panel gene spans and target-CNV masks enable offline runs.
         # The mockup genome viewer: vendored igv.js and its demo data, which
         # gui/mockups/build_igv_demo.py keeps to about 1.4 MB in all.
         exclude: |
           (?x)^(src/wgsextract_cli/assets/(
             microarray/raw_file_templates/body/|
             microarray/chm13/v2/chm13-sites-v1-[0-9a-f]{16}\.bin\.gz$|
-            panel/genes_(hg38|t2t|hg19)\.tsv\.gz$
+            panel/genes_(hg38|t2t|hg19)\.tsv\.gz$|
+            target_cnv/(hg38|t2t|hg19)\.mask\.bed\.gz$
           )|gui/mockups/shared/(vendor/igv/igv\.min\.js|data/igv/[^/]+)$)
   - repo: https://github.com/gitleaks/gitleaks
     # Same version as .github/workflows/gitleaks.yml; scans staged changes.
