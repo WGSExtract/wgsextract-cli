@@ -62,6 +62,16 @@ def catalog_rows(aln: Alignment, caller: str, catalog: Path | None) -> list[str]
     return rows
 
 
+def bed_locus(row: str, caller: str) -> str | None:
+    """A named catalog ID: LongTR column 5, or STRkit's ID attribute."""
+    fields = row.split("\t")
+    if caller == "longtr":
+        return fields[4] if len(fields) > 4 and fields[4] not in ("", ".") else None
+    return next(
+        (item[3:] for item in fields[3].split(";") if item.startswith("ID=")), None
+    )
+
+
 # A read soft-clipped at a repeat often holds an expansion longer than the
 # aligner would place as an insertion; neither caller sizes those reads.
 CLIP_MIN = 100
@@ -112,28 +122,32 @@ def clipped_reads(aln: Alignment, chrom: str, start: int, end: int) -> int:
 
 
 def with_clipped_reads(
-    aln: Alignment, rows: list[str], calls: list[RepeatCall], start_base: int
+    aln: Alignment, rows: list[str], calls: list[RepeatCall], caller: str
 ) -> list[RepeatCall]:
     """``calls`` plus a no-call for every catalog repeat without one, each
-    with its count of clipped reads. ``start_base`` is 1 for LongTR's
-    1-based catalog starts, 0 for STRkit's BED."""
+    with its count of clipped reads. LongTR's catalog starts are 1-based;
+    STRkit's are 0-based."""
     by_id = {call.variant_id: call for call in calls}
+    by_region = {call.region: call for call in calls}
     result = []
     for row in rows:
         chrom, start, end, *rest = row.split("\t")
-        name = rest[-1] if start_base else rest[0].split(";")[0].removeprefix("ID=")
-        begin = int(start) - start_base
-        call = by_id.get(name) or RepeatCall(
-            variant_id=name,
+        name = bed_locus(row, caller)
+        begin = int(start) - (1 if caller == "longtr" else 0)
+        region = f"{chrom}:{begin}-{end}"
+        call = (by_id.get(name) if name else by_region.get(region)) or RepeatCall(
+            variant_id=name or region,
             repeat_unit=re.split("[,;]", rest[0].split("MOTIF=")[-1])[0],
-            region=f"{chrom}:{begin}-{end}",
+            region=region,
             alleles=(),
             intervals=None,
             coverage=0.0,
         )
         result.append(
             dataclasses.replace(
-                call, clipped_reads=clipped_reads(aln, chrom, begin, int(end))
+                call,
+                variant_id=name or region,
+                clipped_reads=clipped_reads(aln, chrom, begin, int(end)),
             )
         )
     return result

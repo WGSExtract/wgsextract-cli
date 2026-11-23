@@ -51,7 +51,7 @@ from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
-from wgsextract_cli.core.microarray_revisions import decode_text, read_raw_bytes
+from wgsextract_cli.core.microarray.revisions import decode_text, read_raw_bytes
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import (
     input_stem,
