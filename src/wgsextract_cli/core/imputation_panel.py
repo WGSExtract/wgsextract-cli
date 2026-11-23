@@ -238,9 +238,8 @@ def require_supported_platform() -> None:
 
     if not imputation_host_supported():
         raise WGSExtractError(
-            "Imputation supports x86-64 Linux, Windows and Intel macOS only. "
-            "Linux ARM64 and Apple Silicon builds are not available yet. "
-            "Use x86-64 Linux (including x64 WSL2), Windows or an Intel Mac."
+            "Imputation supports Linux and macOS (x86-64 and ARM64), "
+            "and Windows x64. Windows ARM64 is not supported."
         )
 
 

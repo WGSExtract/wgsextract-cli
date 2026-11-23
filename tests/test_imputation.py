@@ -10,6 +10,7 @@ pinned downloads; GLIMPSE2, Beagle and bcftools run for real.
 """
 
 import csv
+import errno
 import gzip
 import json
 import os
@@ -28,12 +29,17 @@ from wgsextract_cli.commands.vcf.imputation import beagle_command
 from wgsextract_cli.core import dependencies, imputation_panel
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.tool_catalog import (
     imputation_host_supported,
     platform_unavailable_tools,
 )
-from wgsextract_cli.core.utils import UsageError, WGSExtractError
+from wgsextract_cli.core.utils import (
+    MissingDependencyError,
+    UsageError,
+    WGSExtractError,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "imputation_hg002"
 
@@ -370,19 +376,11 @@ def test_impute_without_an_installed_panel_says_how_to_install_it(tmp_path):
         )
 
 
-@pytest.mark.parametrize(
-    ("system", "machine"),
-    [("win32", "ARM64"), ("darwin", "arm64"), ("linux", "aarch64"), ("linux", "arm64")],
-)
 @pytest.mark.parametrize("operation", ["impute", "install"])
-def test_732_unsupported_platform_reports_gate_before_tools(
-    tmp_path, monkeypatch, system, machine, operation
-):
-    monkeypatch.setattr(sys, "platform", system)
-    monkeypatch.setattr(platform, "machine", lambda: machine)
-    with pytest.raises(
-        api.CommandFailed, match="x86-64 Linux, Windows and Intel macOS"
-    ):
+def test_732_windows_arm64_remains_unsupported(tmp_path, monkeypatch, operation):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: "ARM64")
+    with pytest.raises(api.CommandFailed, match="Windows ARM64"):
         if operation == "install":
             api.ref.imputation(
                 api.RefImputationParams(ref=tmp_path, chromosomes="chr20")
@@ -396,12 +394,16 @@ def test_732_unsupported_platform_reports_gate_before_tools(
     assert "GLIMPSE2_phase" in platform_unavailable_tools()
 
 
+@pytest.mark.parametrize(
+    ("system", "machine"),
+    [("win32", "AMD64"), ("darwin", "arm64"), ("linux", "aarch64"), ("linux", "arm64")],
+)
 @pytest.mark.parametrize("operation", ["impute", "install"])
-def test_621_windows_missing_tools_fail_validation_not_platform_gate(
-    tmp_path, monkeypatch, operation
+def test_1398_supported_platforms_validate_missing_tools(
+    tmp_path, monkeypatch, operation, system, machine
 ):
-    monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(sys, "platform", system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
     # Tool discovery is the OS boundary; no external tools are installed here.
     monkeypatch.setattr(shutil, "which", lambda command: None)
     monkeypatch.setattr(dependencies, "get_tool_path", lambda tool: None)
@@ -417,6 +419,28 @@ def test_621_windows_missing_tools_fail_validation_not_platform_gate(
                     input=FIXTURE / "reads.bam", ref=tmp_path, outdir=tmp_path
                 )
             )
+
+
+def test_1398_apple_silicon_reports_intel_glimpse_without_rosetta(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    binary = tmp_path / "GLIMPSE2_ligate"
+    binary.touch(mode=0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    def cannot_launch(*args, **kwargs):
+        raise OSError(getattr(errno, "EBADARCH", 86), "Bad CPU type in executable")
+
+    monkeypatch.setattr(subprocess, "run", cannot_launch)
+    try:
+        with pytest.raises(MissingDependencyError, match="incompatible CPU") as error:
+            verify_dependencies(["GLIMPSE2_ligate"])
+        assert "Rosetta" in str(error.value)
+        assert "pixi install --locked -e imputation" in str(error.value)
+    finally:
+        dependencies.clear_tool_caches()
 
 
 @pytest.mark.parametrize("system", ["win32", "linux"])
