@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from json_lines import dump_lines  # noqa: E402
 from server_transport_typescript import (  # noqa: E402
     report_typescript,
     result_typescript,
@@ -56,17 +57,17 @@ def artifacts() -> dict[Path, str]:
     }
     result = {}
     for path, document in documents.items():
-        # All operation inputs make pretty OpenAPI exceed the repository's file cap.
-        compact = path.name.endswith(".openapi.json")
-        result[path] = (
-            json.dumps(
-                document,
-                indent=None if compact else 2,
-                separators=(",", ":") if compact else None,
-                ensure_ascii=False,
+        if path.name.endswith(".openapi.json"):
+            # Indented, every operation's input schema makes this about 900 KB,
+            # over check-added-large-files' 500 KB cap for newly added files.
+            # Compact JSON with one operation and one schema per line stays
+            # about half that, and PRs that change different operations or
+            # schemas merge cleanly (#1416).
+            result[path] = dump_lines(
+                document, expand=(("paths",), ("components", "schemas"))
             )
-            + "\n"
-        )
+        else:
+            result[path] = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
     result[ROOT / "gui/app/shared/generated/server-transport.ts"] = typescript()
     result[ROOT / "gui/app/shared/generated/result-records.ts"] = result_typescript()
     result[ROOT / "gui/app/shared/generated/report-records.ts"] = report_typescript()

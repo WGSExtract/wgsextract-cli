@@ -5,6 +5,7 @@
 # for existing HTS tools; versioned result provenance. See provenance.json.
 # Modified 2026-11-05: versioned trees (trees.py) and their provenance.
 # Modified 2026-11-06: trees come from the registry, including custom trees.
+# Modified 2026-11-21: .vcf.bgz and upper-case VCF names are accepted as VCF input.
 """Run native Yleaf analysis on a single-sample VCF or indexed BAM/CRAM."""
 
 import csv
@@ -19,6 +20,7 @@ from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.variant_files import VCF_SUFFIXES, is_vcf_path
 
 from .data import file_sha256, manifest
 from .markers import (
@@ -135,7 +137,7 @@ def analyze(
         raise WGSExtractError(
             "Invalid Yleaf read/quality/majority/prediction threshold."
         )
-    is_vcf = input_path.name.lower().endswith((".vcf", ".vcf.gz", ".bcf"))
+    is_vcf = is_vcf_path(input_path)
     if assume_reference and (no_ref_inference or not is_vcf):
         raise WGSExtractError(
             "--assume-reference requires VCF input and cannot be combined with "
@@ -196,7 +198,7 @@ def analyze(
         markers = read_markers(marker_file)
     predictor = Predictor(selected.tree_file, selected.qc)
     sample = input_path.name
-    for suffix in (".vcf.gz", ".vcf", ".bcf", ".bam", ".cram"):
+    for suffix in (*VCF_SUFFIXES, ".bcf", ".bam", ".cram"):
         if sample.lower().endswith(suffix):
             sample = sample[: -len(suffix)]
             break

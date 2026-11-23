@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import bgzip_index, needs_htslib
 from tests.microarray_helpers import microarray_params
-from tests.smoke_utils import state_directory_setting
 from tests.test_microarray_library import _library
 
 pytestmark = needs_htslib
@@ -29,7 +29,11 @@ HEADER = (
 
 
 def _vcf(
-    path: Path, samples: list[str], records: list[str], contig: str = "chr1"
+    path: Path,
+    samples: list[str],
+    records: list[str],
+    contig: str = "chr1",
+    out: Path | None = None,
 ) -> str:
     columns = "\t".join(["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER"])
     prepared = []
@@ -47,7 +51,7 @@ def _vcf(
         + "\n"
         + "".join(prepared)
     )
-    return str(bgzip_index(path))
+    return str(bgzip_index(path, out))
 
 
 def _microarray(config: Path, vcf: str, fasta: Path, outdir: Path, *extra: str):
@@ -120,6 +124,31 @@ def test_joint_vcf_needs_a_sample_and_exports_only_that_sample(tmp_path, library
     )
     rows = json.loads((outdir / "wgsextract_microarray_mqc.json").read_text())
     assert rows["data"]["P2_N"]["autosomal_called"] > 0
+
+
+@pytest.mark.parametrize("name", ["kit.vcf.bgz", "KIT.VCF.GZ"])
+def test_issue_1243_bgz_and_upper_case_vcf_inputs_are_vcfs(tmp_path, library, name):
+    # gnomAD-style .vcf.bgz and upper-case names were taken for alignments.
+    config, fasta, _seq = library
+    stem = name.split(".")[0]
+    vcf = _vcf(
+        tmp_path / f"{stem}.vcf",
+        ["S"],
+        [
+            "chr1\t1000\t.\tA\tC\t50\tPASS\t.\tGT:GQ\t1/1:40",
+            "chr1\t2000\t.\tA\tG\t50\tPASS\t.\tGT:GQ\t0/1:40",
+            "chr1\t3000\t.\tA\tT\t50\tPASS\t.\tGT:GQ\t0/0:40",
+        ],
+        out=tmp_path / name,
+    )
+    outdir = tmp_path / "out"
+    done = _microarray(config, vcf, fasta, outdir)
+    assert done.returncode == 0, done.stderr
+    assert _kit(outdir / f"{stem}_23andMe_V3.txt") == {
+        "rs101": "CC",
+        "rs102": "AG",
+        "rs103": "AA",
+    }
 
 
 @pytest.mark.parametrize(

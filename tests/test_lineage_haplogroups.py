@@ -411,6 +411,24 @@ def test_y_haplogroup_from_vcf_uses_native_markers_only_on_chry(
     ) is tree_links
 
 
+@pytest.mark.parametrize("name", ["kit.vcf.bgz", "kit.VCF.BGZ"])
+def test_issue_1243_y_haplogroup_reads_vcf_bgz(tmp_path, capsys, native_tables, name):
+    # gnomAD-style .vcf.bgz input was refused as not a BAM, CRAM or VCF.
+    body = "".join(
+        f"chrY\t{pos}\t.\tA\tG\t50\tPASS\t.\tGT:DP\t{gt}:20\n"
+        for pos, gt in ((100, 1), (110, 1), (120, 1), (130, 1), (140, 0), (150, 0))
+    )
+    meta = '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+    vcf = _vcf(tmp_path / name, _HG38, body, "##reference=GRCh38.fa\n" + meta)
+    output = tmp_path / "o"
+    run_wgsextract(
+        "lineage", "y-haplogroup", "--input", vcf, "--outdir", str(output),
+        "--no-ref-inference",
+    )  # fmt: skip
+    assert "R1b1\tM-leaf\tVCF\t6" in capsys.readouterr().out
+    assert len(_y_rows(output, "out")) == 6
+
+
 @pytest.mark.parametrize(
     "prediction",
     [

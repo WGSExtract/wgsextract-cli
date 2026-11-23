@@ -117,6 +117,7 @@ def run_pgs(params: ScorePgsParams) -> None:
             f"{data['pgs_id']}'s authors set their own licence: {data['license']} "
             "Check that your use is allowed.",
             pgs_id=data["pgs_id"],
+            license=data["license"],
         )
     if data["match_rate"] < data["minimum_match_rate"]:
         warn(
