@@ -6,7 +6,8 @@
 
 Rewrites the default Windows-tools block, the GATK Windows-tools block (GKL) and
 the PharmCAT Windows-tools block (bcftools and htslib) with each .conda asset's
-URL and GitHub's SHA-256 digest. A GKL-only release leaves the others untouched.
+URL and GitHub's SHA-256 digest. Optional wgse-minimap2 is not pinned.
+A GKL-only release leaves the others untouched.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ PHARMCAT_BLOCK = re.compile(
     r"(# pharmcat-windows-tools-begin[^\n]*\n).*?(# pharmcat-windows-tools-end)", re.S
 )
 PHARMCAT_TOOLS = ("bcftools-", "htslib-")
+DEFAULT_PIN_EXCLUDES = ("gkl-", "wgse-minimap2-")
 # <name>-<version>-<build>.conda; names may contain dashes (bwa-mem2).
 ASSET = re.compile(r"^(?P<name>.+)-(?P<version>[^-]+)-(?P<build>[^-]+)\.conda$")
 
@@ -65,7 +67,14 @@ def main() -> None:
     text = MANIFEST.read_text(encoding="utf-8")
     printed = []
     for block, selected in (
-        (BLOCK, [asset for asset in assets if not asset["name"].startswith("gkl-")]),
+        (
+            BLOCK,
+            [
+                asset
+                for asset in assets
+                if not asset["name"].startswith(DEFAULT_PIN_EXCLUDES)
+            ],
+        ),
         (GKL_BLOCK, [asset for asset in assets if asset["name"].startswith("gkl-")]),
         (
             PHARMCAT_BLOCK,
@@ -75,11 +84,11 @@ def main() -> None:
         if not any(ASSET.match(asset["name"]) for asset in selected):
             continue
         lines = pin_lines(selected)
-        if not block.search(text):
+        match = block.search(text)
+        if match is None:
             raise SystemExit(f"{MANIFEST} has no matching Windows-tools pin block.")
-        text = block.sub(
-            lambda m, lines=lines: m[1] + "\n".join(lines) + "\n" + m[2], text, count=1
-        )
+        replacement = match[1] + "\n".join(lines) + "\n" + match[2]
+        text = text[: match.start()] + replacement + text[match.end() :]
         printed.extend(lines)
     if not printed:
         raise SystemExit("The release has no .conda packages.")
