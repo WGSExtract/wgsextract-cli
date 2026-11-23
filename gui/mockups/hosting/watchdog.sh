@@ -43,7 +43,7 @@ if ! is_seconds "$now"; then
     exit 2
 fi
 mkdir -p "$(dirname "$state_file")"
-if command -v flock >/dev/null 2>&1; then
+if flock -E 75 --help >/dev/null 2>&1; then
     exec 9>>"$state_file.lock"
     if flock -n -E 75 9; then
         :
@@ -71,12 +71,13 @@ if [ -f "$state_file" ]; then
         last_alert=0
     fi
 fi
-save_state() (
-    state_tmp="$state_file.$$.new"
+save_state() {
+    # The lock also protects this staging path. Replace leftovers from crashes.
+    state_tmp="$state_file.new"
+    rm -f "$state_tmp"
     (umask 077; set -C; printf '%s %s\n' "$1" "$now" > "$state_tmp")
-    trap 'rm -f "$state_tmp"' 0
     mv -f "$state_tmp" "$state_file"
-)
+}
 healthy() {
     curl --fail --silent --show-error --connect-timeout 10 --max-time 20 "$url" |
         grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'

@@ -169,12 +169,17 @@ def test_1451_watchdog_reports_first_successful_restart_after_a_healthy_check(
     assert "restarted OK" in next_recovery
 
 
+@pytest.mark.parametrize("old_flock", [False, True])
 def test_1451_overlapping_watchdogs_send_only_one_outage_alert(
-    watchdog: Watchdog,
+    watchdog: Watchdog, old_flock: bool
 ) -> None:
     # A second check starts while the first is waiting for its SSH restart.
     root = shlex.quote(str(watchdog.root))
     nested = shlex.join(watchdog.command(100))
+    if old_flock:
+        flock = watchdog.root / "bin" / "flock"
+        flock.write_text("#!/bin/sh\nexit 2\n")
+        flock.chmod(0o755)
     (watchdog.root / "bin" / "ssh").write_text(
         "#!/bin/sh\n"
         f"if [ ! -f {root}/overlap ]; then\n"
