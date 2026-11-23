@@ -68,7 +68,7 @@ def callsets(tmp_path):
             "10\t.\tA\tG\t.\tPASS\t.\tGT\t0|1",
             "10\t.\tA\tT\t.\tPASS\t.\tGT\t1/1",
             "20\t.\tA\tG\t.\tPASS\t.\tGT\t0/0",
-            "30\t.\tA\tC\t.\tPASS\t.\tGT\t./.",
+            "30\t.\tA\t.\t.\tPASS\t.\tGT\t./.",
             "55\t.\tA\tG\t.\tPASS\t.\tGT\t1",
             "60\t.\tA\tG\t.\tPASS\t.\tGT\t0/1",
             "70\t.\tA\tC\t.\tLowQual\t.\tGT\t0/1",
@@ -364,3 +364,67 @@ def test_compare_1295_gvcf_scopes_normalized_insertion_with_adjacent_base(tmp_pa
     assert [(r["pos"], r["b_state"], r["decision"]) for r in rows] == [
         ("10", "low_quality_reference", "inconclusive"),
     ]
+
+
+def test_compare_1295_missing_gzi_does_not_modify_input_reference(tmp_path):
+    fasta = tmp_path / "reference.fa"
+    fasta.write_text(">chr1\n" + "A" * 80 + "\n", encoding="utf-8", newline="\n")
+    ref = tmp_path / "reference.fasta.bgzf"
+    with ref.open("wb") as compressed:
+        run_command(["bgzip", "-c", fasta], stdout=compressed)
+    run_command(["samtools", "faidx", ref])
+    gzi = Path(f"{ref}.gzi")
+    gzi.unlink()
+    row = ["10\t.\tA\tG\t.\tPASS\t.\tGT\t0/1"]
+    a = _vcf(tmp_path / "a.vcf", row)
+    b = _vcf(tmp_path / "b.vcf", row)
+    result = api.vcf.compare(
+        api.VcfCompareParams(
+            callset=_inputs(a, b),
+            ref=ref,
+            outdir=tmp_path / "comparison",
+            allow_unverified_build=True,
+        ),
+        check=False,
+    )
+    assert result.exit_code == 2
+    assert ".gzi" in result.error.message
+    assert not gzi.exists()
+
+
+def test_compare_1295_region_keeps_same_position_evidence_for_exclusions(tmp_path):
+    build = "##reference=GRCh38\n"
+    a = _vcf(tmp_path / "a.vcf", ["10\t.\tAC\tA\t.\tPASS\t.\tGT\t0/1"], metadata=build)
+    b = _vcf(tmp_path / "b.vcf", ["10\t.\tA\tG\t.\tPASS\t.\tGT\t0/1"], metadata=build)
+    outdir = tmp_path / "comparison"
+    api.vcf.compare(
+        api.VcfCompareParams(
+            callset=_inputs(a, b),
+            mode="unique",
+            include=("a",),
+            exclude=("b",),
+            region="chr1:11",
+            outdir=outdir,
+        )
+    )
+    rows = _rows(outdir / "compare.variants.tsv")
+    assert [(row["ref"], row["b_state"], row["decision"]) for row in rows] == [
+        ("AC", "other_alt", "inconclusive"),
+    ]
+
+
+def test_compare_1295_output_does_not_replace_bed(tmp_path):
+    build = "##reference=GRCh38\n"
+    row = ["10\t.\tA\tG\t.\tPASS\t.\tGT\t0/1"]
+    a = _vcf(tmp_path / "a.vcf", row, metadata=build)
+    b = _vcf(tmp_path / "b.vcf", row, metadata=build)
+    bed = tmp_path / "compare.summary.tsv"
+    intervals = b"chr1\t9\t10\n"
+    bed.write_bytes(intervals)
+    result = api.vcf.compare(
+        api.VcfCompareParams(callset=_inputs(a, b), bed=bed, outdir=tmp_path),
+        check=False,
+    )
+    assert result.exit_code == 2
+    assert "would replace an input" in result.error.message
+    assert bed.read_bytes() == intervals

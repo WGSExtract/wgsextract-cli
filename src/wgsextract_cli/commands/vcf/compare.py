@@ -15,7 +15,12 @@ from wgsextract_cli.api.vcf_specs.compare import VcfCompareParams, labelled
 from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.results import (
+    MANIFEST_SUFFIX,
+    current_result,
+    human_output,
+    warn,
+)
 from wgsextract_cli.core.table_writer import (
     Column,
     TableWriter,
@@ -32,6 +37,7 @@ from .compare_inputs import (
     Dictionary,
     Input,
     prepare,
+    reference_indexes,
     require_local,
     verify_build,
 )
@@ -88,9 +94,9 @@ class Sources:
         result.add_input(self.bed, "bed")
         if self.reference is not None:
             result.add_input(self.reference, "reference")
-            result.add_input(f"{self.reference}.fai", "reference_index")
-            if self.reference.suffix.lower() in {".gz", ".bgz"}:
-                result.add_input(f"{self.reference}.gzi", "reference_index")
+            for index in reference_indexes(self.reference):
+                if index.is_file():
+                    result.add_input(index, "reference_index")
 
 
 @dataclass(frozen=True)
@@ -285,14 +291,11 @@ def _publish(
 ) -> None:
     result = current_result()
     fmt = params.table_format
-    paths = {
-        "compare_summary": Path(table_path(staged / "compare.summary", fmt)),
-        "compare_support": Path(table_path(staged / "compare.support", fmt)),
-    }
+    paths = _result_paths(staged, params)
     pairs, support = summary.pair_rows(), summary.support_rows()
     write_table(paths["compare_summary"], PAIR_COLUMNS, pairs, fmt)
     write_table(paths["compare_support"], SUPPORT_COLUMNS, support, fmt)
-    report = staged / "compare.summary.json"
+    report = paths["compare_summary_json"]
     report.write_text(
         json.dumps(
             {
@@ -316,11 +319,8 @@ def _publish(
         encoding="utf-8",
         newline="\n",
     )
-    paths["compare_summary_json"] = report
-    if params.emit_variants or params.mode != "concordance":
-        paths["compare_variants"] = Path(table_path(staged / "compare.variants", fmt))
     if params.emit_vcf:
-        anchor = staged / "compare.anchor.vcf.gz"
+        anchor = paths["compare_anchor"]
         run_command(
             [
                 "bcftools",
@@ -334,13 +334,49 @@ def _publish(
             capture_output=True,
         )
         run_command(["bcftools", "index", anchor])
-        paths["compare_anchor_index"] = Path(f"{anchor}.csi")
-        paths["compare_anchor"] = anchor
-    # Always lock on the same primary, whether or not this run requests a VCF.
-    paths["compare_summary_json"] = paths.pop("compare_summary_json")
     publish_output_set({path: destination / path.name for path in paths.values()})
     for role, path in paths.items():
         result.add_output(destination / path.name, role)
+
+
+def _result_paths(folder: Path, params: VcfCompareParams) -> dict[str, Path]:
+    fmt = params.table_format
+    paths = {
+        "compare_summary": Path(table_path(folder / "compare.summary", fmt)),
+        "compare_support": Path(table_path(folder / "compare.support", fmt)),
+    }
+    if params.emit_variants or params.mode != "concordance":
+        paths["compare_variants"] = Path(table_path(folder / "compare.variants", fmt))
+    if params.emit_vcf:
+        anchor = folder / "compare.anchor.vcf.gz"
+        paths["compare_anchor_index"] = Path(f"{anchor}.csi")
+        paths["compare_anchor"] = anchor
+    # Use this as the atomic publication lock for every output combination.
+    paths["compare_summary_json"] = folder / "compare.summary.json"
+    return paths
+
+
+def _check_destinations(
+    outdir: Path,
+    params: VcfCompareParams,
+    sources: Sources,
+) -> None:
+    inputs = [
+        item.path for item in (*sources.calls.values(), *sources.evidence.values())
+    ]
+    if sources.bed is not None:
+        inputs.append(sources.bed)
+    if sources.reference is not None:
+        inputs.extend((sources.reference, *reference_indexes(sources.reference)))
+    input_paths = {path.resolve() for path in inputs}
+    for path in (
+        *_result_paths(outdir, params).values(),
+        outdir / f"compare{MANIFEST_SUFFIX}",
+    ):
+        if path.resolve() in input_paths:
+            raise UsageError(
+                f"Comparison output {path} would replace an input. Choose another --outdir."
+            )
 
 
 def run_compare(params: VcfCompareParams) -> None:
@@ -361,11 +397,7 @@ def run_compare(params: VcfCompareParams) -> None:
     result.set_reference(sources.reference, dictionary.build)
     first = next(iter(sources.calls.values())).path
     outdir = Path(params.outdir or output_directory([first]) or first.parent)
-    input_paths = {item.path.resolve() for item in all_inputs.values()}
-    if params.emit_vcf and (outdir / "compare.anchor.vcf.gz").resolve() in input_paths:
-        raise UsageError(
-            "The comparison anchor would replace an input. Choose another --outdir."
-        )
+    _check_destinations(outdir, params, sources)
     outdir.mkdir(parents=True, exist_ok=True)
     result.set_manifest_stem(outdir / "compare")
     scope = Scope(dictionary, sources.bed, params.region)

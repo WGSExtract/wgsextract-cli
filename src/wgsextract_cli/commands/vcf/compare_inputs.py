@@ -42,6 +42,13 @@ def require_local(path: str | Path) -> Path:
     return local
 
 
+def reference_indexes(ref: Path) -> Iterator[Path]:
+    yield Path(f"{ref}.fai")
+    with ref.open("rb") as stream:
+        if stream.read(2) == b"\x1f\x8b":
+            yield Path(f"{ref}.gzi")
+
+
 @dataclass(frozen=True)
 class Input:
     path: Path
@@ -133,8 +140,12 @@ def verify_build(
         raise UsageError(
             f"Missing or unreadable reference index {ref}.fai; run samtools faidx."
         )
-    if ref is not None and ref.suffix.lower() in {".gz", ".bgz"}:
-        require_local(f"{ref}.gzi")
+    if ref is not None:
+        for index in reference_indexes(ref):
+            if not index.is_file():
+                raise UsageError(
+                    f"Missing reference index {index}; run samtools faidx."
+                )
     ref_build = build_from_chr1_length(lengths)
     declared = {s.build for s in inputs.values() if s.build is not None}
     if ref_build is not None:
@@ -308,7 +319,7 @@ def prepare(
                     and not _BASES.fullmatch(alt)
                     for alt in alts
                 )
-                if not any(_BASES.fullmatch(alt) for alt in alts):
+                if alts != ["."] and not any(_BASES.fullmatch(alt) for alt in alts):
                     continue
                 tags = [
                     tag

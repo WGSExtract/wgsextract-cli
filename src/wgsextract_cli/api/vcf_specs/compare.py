@@ -165,5 +165,4 @@ class VcfCompareParams(Params):
                 yield f"{option}[{label}]", local_path(value)
         if self.ref is not None:
             yield "ref_index", Path(f"{self.ref}.fai")
-            if self.ref.suffix.lower() in {".gz", ".bgz"}:
-                yield "ref_index", Path(f"{self.ref}.gzi")
+            yield "ref_index", Path(f"{self.ref}.gzi")

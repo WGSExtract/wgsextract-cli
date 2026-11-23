@@ -100,6 +100,7 @@ def selected_intervals(
 
     Rows on contigs absent from ``lengths`` are dropped and intervals are
     clipped to the contig; raises ValueError when nothing remains.
+    With ``allow_files=False``, only literal regions are recognized.
     """
     intervals: Intervals = {}
     items = (
@@ -108,7 +109,7 @@ def selected_intervals(
         else (region.split(",") if commas else region.split())
     )
     for item in items:
-        selection = item.strip()
+        selection = item if allow_files else item.strip()
         if allow_files and selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
             rows = bed_intervals(selection)
         else:

@@ -122,10 +122,13 @@ def records(
             fields[3].upper(),
             fields[4].upper(),
         )
-        if not alt or alt == ref or not _SMALL_BASES.issuperset(alt):
+        if not alt or alt == ref or (alt != "." and not _SMALL_BASES.issuperset(alt)):
             continue
         allele = chrom, pos, ref, alt
-        yield (order[chrom], pos), index, allele, _observation(fields, line)
+        call = _observation(fields, line)
+        if alt == "." and call.carried:
+            call = Call("no_call")
+        yield (order[chrom], pos), index, allele, call
 
 
 class EvidenceCursor:
@@ -224,8 +227,15 @@ def sites(
     for _, rows in groupby(combined, key=lambda item: item[0]):
         observed: dict[Allele, dict[int, list[Call]]] = {}
         for _, index, allele, call in rows:
-            if scope.contains(allele):
-                observed.setdefault(allele, {}).setdefault(index, []).append(call)
+            observed.setdefault(allele, {}).setdefault(index, []).append(call)
+        candidates = [
+            allele
+            for allele, observations in observed.items()
+            if scope.contains(allele)
+            and any(call.carried for source in observations.values() for call in source)
+        ]
+        if not candidates:
+            continue
         resolved = {
             allele: {i: _dedup(calls) for i, calls in calls_by_input.items()}
             for allele, calls_by_input in observed.items()
@@ -244,11 +254,8 @@ def sites(
                 for i, call in calls.items()
                 if call.state == state
             )
-        for allele, calls in sorted(resolved.items()):
-            if not any(
-                call.carried for source in observed[allele].values() for call in source
-            ):
-                continue
+        for allele in sorted(candidates):
+            calls = resolved[allele]
             yield (
                 allele,
                 [
