@@ -14,8 +14,9 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, reference_for_vcf, run_wgsextract
-from tests.smoke_utils import run_cli, state_directory_setting
+from tests.smoke_utils import run_cli
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 

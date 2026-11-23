@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools
-from tests.smoke_utils import run_cli, state_directory_setting
+from tests.smoke_utils import run_cli
 from tests.test_trio_vcfs import _vcf
 from wgsextract_cli import api
 

@@ -133,6 +133,23 @@ def test_parallel_calling_reports_each_finished_contig(
 
 
 @needs_htslib
+def test_1248_item_5_plain_crai_skips_empty_contigs(multicontig_sample, tmp_path):
+    bam, ref = multicontig_sample
+    cram = tmp_path / "sample.cram"
+    run_command(
+        ["samtools", "view", "-C", "-T", ref, "--output-fmt-option",
+         "multi_seq_per_slice=0", "-o", str(cram), bam]
+    )  # fmt: skip
+    run_command(["samtools", "index", str(cram)])
+    index = cram.with_suffix(".cram.crai")
+    index.write_bytes(gzip.decompress(index.read_bytes()))
+
+    contigs = contig_calling.populated_contigs(str(cram), ref)
+    assert "chr20" in contigs
+    assert "empty" not in contigs
+
+
+@needs_htslib
 @pytest.mark.parametrize("parallel", [None, False])
 def test_more_than_one_thread_calls_contigs_in_parallel_unless_turned_off(
     multicontig_sample: tuple[str, str], tmp_path: Path, parallel: bool | None

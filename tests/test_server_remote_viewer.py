@@ -16,7 +16,8 @@ from urllib.parse import urlencode, urlsplit
 
 import pytest
 
-from tests.smoke_utils import get_cli_command, state_directory_setting
+from tests.home_isolation import state_directory_setting
+from tests.smoke_utils import get_cli_command
 from wgsextract_cli.core.config import (
     get_config_path,
     save_config,
