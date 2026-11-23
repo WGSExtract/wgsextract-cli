@@ -102,7 +102,7 @@ def pileup(
 
 @dataclass(frozen=True, kw_only=True)
 class MethylationRegionsParams(Params):
-    """Summarize strand-combined CpG calls over RefSeq promoters or UCSC islands."""
+    """Summarize pooled or haplotype-split CpG calls over RefSeq promoters or UCSC islands."""
 
     COMMAND = "methylation regions"
 

@@ -274,6 +274,9 @@ def sites_in_regions(
     lengths: Mapping[str, int],
     anchors: Mapping[str, Sequence[int]],
     codes: Sequence[str],
+    seen_codes: set[str],
+    *,
+    include_outside: bool = False,
 ) -> Iterator[tuple[Site, list[tuple[int, int]]]]:
     """Validate a sorted site stream and find all containing regions in one sweep."""
     by_chrom: dict[str, list[tuple[int, int, int]]] = {}
@@ -285,7 +288,6 @@ def sites_in_regions(
     for bounds in by_chrom.values():
         bounds.sort()
     seen_contigs: set[str] = set()
-    seen_codes: set[str] = set()
     previous = ""
     last_position = -1
     site_codes: set[str] = set()
@@ -338,7 +340,8 @@ def sites_in_regions(
         if site.code not in codes:
             continue
         if not bounds:
-            yield site, []
+            if include_outside:
+                yield site, []
             continue
         while next_region < len(bounds) and bounds[next_region][0] <= site.start:
             _, end, index = bounds[next_region]
@@ -350,7 +353,8 @@ def sites_in_regions(
             offset = bisect_left(cpgs, site.start)
             if offset == len(cpgs) or cpgs[offset] != site.start:
                 raise UsageError(f"bedMethyl site {location} is not a CpG C in --ref.")
-        yield site, active
+        if active or include_outside:
+            yield site, active
 
     if seen_codes and seen_codes.isdisjoint(codes):
         raise UsageError(
@@ -397,9 +401,8 @@ def region_rows(
     tallies: dict[tuple[int, str], Counts] = {}
     seen_codes: set[str] = set()
     for site, active in sites_in_regions(
-        sites, regions, aliases, lengths, anchors, codes
+        sites, regions, aliases, lengths, anchors, codes, seen_codes
     ):
-        seen_codes.add(site.code)
         for _, index in active:
             key = index, site.code
             if key not in tallies:

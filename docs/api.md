@@ -1918,7 +1918,7 @@ CLI: `wgsextract methylation regions`.
 
 Summarize methylation over the selected build-matched regions.
 
-`MethylationRegionsParams`: Summarize strand-combined CpG calls over RefSeq promoters or UCSC islands.
+`MethylationRegionsParams`: Summarize pooled or haplotype-split CpG calls over RefSeq promoters or UCSC islands.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |

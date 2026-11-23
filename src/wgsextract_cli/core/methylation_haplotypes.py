@@ -122,11 +122,18 @@ def _tally_partitions(
     combined, hp1, hp2 = inputs
     streams = [_by_position(read_sites(path, build)) for path in (hp1, hp2)]
     pending = [next(stream, None) for stream in streams]
+    seen_codes: set[str] = set()
     matches = sites_in_regions(
-        read_sites(combined, build), regions, aliases, lengths, anchors, codes
+        read_sites(combined, build),
+        regions,
+        aliases,
+        lengths,
+        anchors,
+        codes,
+        seen_codes,
+        include_outside=True,
     )
     tallies: dict[tuple[int, str], PartitionCounts] = {}
-    seen_codes: set[str] = set()
     for location, group in groupby(matches, key=lambda match: _location(match[0])):
         partitions: list[dict[str, Site]] = [{}, {}]
         for i, item in enumerate(pending):
@@ -136,7 +143,6 @@ def _tally_partitions(
                 }
                 pending[i] = next(streams[i], None)
         for site, active in group:
-            seen_codes.add(site.code)
             counts = _phased_counts(site, partitions)
             for _, index in active:
                 key = index, site.code
