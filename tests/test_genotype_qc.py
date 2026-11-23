@@ -1,6 +1,7 @@
 """Low-coverage and imputation warnings: depth from the info cache, CRAM
 container headers or a BAM index, and genotype rates from written kits."""
 
+import gzip
 import json
 import logging
 import random
@@ -119,6 +120,23 @@ def test_cram_depth_comes_from_container_headers(sample, tmp_path, caplog):
     assert depths == pytest.approx({AUTOSOMES: 2.5, CHR_X: 1.25}, rel=0.1)
     assert warn_low_depth(str(cram), {MTDNA}, ref=sample["ref"]) is None
     assert "isn't known without reading it" in caplog.text
+
+
+@needs_htslib
+def test_1248_item_5_plain_crai_preserves_whole_input_depths(sample, tmp_path):
+    cram = tmp_path / "s.cram"
+    run_command(
+        ["samtools", "view", "-C", "-T", sample["ref"], "-o", str(cram), sample["bam"]]
+    )
+    run_command(["samtools", "index", str(cram)])
+    index = cram.with_suffix(".cram.crai")
+    compressed = genotype_qc.target_depths(str(cram), ref=sample["ref"])
+    # The small chrY and chrM share a container, but chr1 and chrX are known.
+    assert compressed is not None
+    assert compressed[0] == pytest.approx({AUTOSOMES: 2.5, CHR_X: 1.25})
+    index.write_bytes(gzip.decompress(index.read_bytes()))
+
+    assert genotype_qc.target_depths(str(cram), ref=sample["ref"]) == compressed
 
 
 @needs_htslib

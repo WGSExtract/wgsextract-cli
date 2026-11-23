@@ -823,6 +823,7 @@ def test_phylop_download_without_pybigwig_downloads_nothing(tmp_path):
 
 @needs_bcftools
 def test_gnomad_v4_af_table_build_and_annotation(tmp_path):
+    from tests.http_server import serving
     from wgsextract_cli.commands.vcf import population
     from wgsextract_cli.core import gnomad_af
 
@@ -842,21 +843,23 @@ def test_gnomad_v4_af_table_build_and_annotation(tmp_path):
     )
     _write_vcf(src / "chr2.vcf.bgz", "{c}\t50\t.\tA\tG\t.\tPASS\tAF_joint=0.01\n",
                contig="chr2", header=info)  # fmt: skip
+    _write_vcf(src / "chr3.vcf.bgz", "", contig="chr3", header=info)
     reflib = tmp_path / "lib"
-    url = src.as_uri() + "/{contig}.vcf.bgz"
+    files = {path.name: path.read_bytes() for path in src.glob("*.vcf.bgz")}
     with (
-        patch.object(gnomad_af, "GNOMAD_V4_URL", url),
+        serving(files=files) as server,
+        patch.object(gnomad_af, "GNOMAD_V4_URL", server.url_for("{contig}.vcf.bgz")),
         patch.object(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1", "chr2", "chr3"]),
-        patch.object(gnomad_af, "_remote_size", lambda u: 1),
     ):
-        # chr3 doesn't exist: the build fails but keeps the finished contigs.
+        # HEAD succeeds; the chr3 download fails after the other parts finish.
+        server.drop_paths.add("chr3.vcf.bgz")
         assert not gnomad_af.build_gnomad_af(str(reflib), workers=2, attempts=1)
         parts = reflib / "downloads" / ".gnomad_hg38_parts"
         assert sorted(os.listdir(parts)) == ["chr1.tsv.gz", "chr2.tsv.gz"]
 
-        _write_vcf(src / "chr3.vcf.bgz", "", contig="chr3", header=info)
-        os.remove(src / "chr1.vcf.bgz")  # resumed, so never read again
+        server.get_paths.clear()
         assert gnomad_af.build_gnomad_af(str(reflib), workers=2)
+        assert server.get_paths == ["chr3.vcf.bgz"]
 
     table = reflib / "downloads" / "gnomad_hg38.tsv.gz"
     assert (
