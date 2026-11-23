@@ -6,8 +6,8 @@ import pytest
 
 from tests import e2e_base
 from tests.fake_tools import python_tool
+from tests.home_isolation import isolate_home
 from tests.htslib_helpers import needs_htslib
-from tests.smoke_utils import isolate_home
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.pixi_tools import PIXI_TOOL_ENVS
 from wgsextract_cli.core.runtime import repo_root

@@ -3,6 +3,7 @@ the network."""
 
 import hashlib
 import secrets
+import select
 import threading
 import time
 from collections.abc import Iterator
@@ -47,6 +48,9 @@ class RangeServer:
     An If-Range naming another version than the served one gets the whole
     file (200), as from real servers, unless ignore_if_range.
     delays[path]: seconds to wait before answering a GET for path.
+    body_pauses[path]: (prefix bytes, started, release) to stall a GET;
+    None as the prefix size stalls before headers instead.
+    body_disconnects[path]: signal if a client disconnects during the pause.
     headers[path]: extra headers sent with path (as x-goog-hash on GCS).
     """
 
@@ -68,6 +72,10 @@ class RangeServer:
         self.weak_etags = False
         self.fixed_date: str | None = None
         self.delays: dict[str, float] = {}
+        self.body_pauses: dict[
+            str, tuple[int | None, threading.Event, threading.Event]
+        ] = {}
+        self.body_disconnects: dict[str, threading.Event] = {}
         self.headers: dict[str, dict[str, str]] = {}
         self.requests: list[tuple[str, str | None]] = []
         self.get_paths: list[str] = []
@@ -110,6 +118,25 @@ class RangeServer:
                     self.send_header("Last-Modified", server._date(data))
                 for name, value in server.headers.get(path, {}).items():
                     self.send_header(name, value)
+
+            def _pause(
+                self, path: str, started: threading.Event, release: threading.Event
+            ) -> None:
+                started.set()
+                if disconnected := server.body_disconnects.get(path):
+                    deadline = time.monotonic() + 10
+                    while not release.is_set() and time.monotonic() < deadline:
+                        readable, _, _ = select.select([self.connection], [], [], 0.05)
+                        if readable:
+                            try:
+                                if self.connection.recv(1):
+                                    continue
+                            except ConnectionError:
+                                pass
+                            disconnected.set()
+                            break
+                else:
+                    release.wait(10)
 
             def do_HEAD(self):
                 path = self._own_path()
@@ -177,6 +204,10 @@ class RangeServer:
                     or cut_path
                     or (code == 206 and start in server.drop_starts)
                 )
+                pause = server.body_pauses.get(path)
+                if pause and pause[0] is None:
+                    self._pause(path, pause[1], pause[2])
+                    return
                 self.send_response(code)
                 self._etag(data, path)
                 self.send_header("Accept-Ranges", "bytes")
@@ -192,6 +223,12 @@ class RangeServer:
                         server.drops = max(0, server.drops - 1)
                     self.wfile.write(body[: len(body) // 2])
                     self.close_connection = True
+                    return
+                if pause:
+                    length, started, release = pause
+                    self.wfile.write(body[:length])
+                    self.wfile.flush()
+                    self._pause(path, started, release)
                     return
                 self.wfile.write(body)
 
@@ -216,9 +253,13 @@ class RangeServer:
         from wgsextract_cli.core.ref_library import downloads
 
         cancel = threading.Event()
-        cancel.set()
         assert not downloads.download_file(
-            url, str(dest), cancel_event=cancel, use_cache=False, use_mirrors=False
+            url,
+            str(dest),
+            progress_callback=lambda *_: cancel.set(),
+            cancel_event=cancel,
+            use_cache=False,
+            use_mirrors=False,
         )
         Path(f"{dest}.partial").write_bytes(kept)
         self.requests.clear()
