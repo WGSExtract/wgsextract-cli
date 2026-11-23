@@ -21,6 +21,7 @@ CI_TESTS = (
     "tests/test_ci_required.py",
     "tests/test_ci_selection.py",
     "tests/test_github_actions_policy.py",
+    "tests/test_ci_main_dedupe_policy.py",
     "tests/test_workflow_readiness.py",
     "tests/test_workflow_paths.py",
     "tests/test_python_size.py",
