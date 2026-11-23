@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
+from wgsextract_cli.core.panel_spec import panel_schema  # noqa: E402
 from wgsextract_cli.core.release_recheck import recheck_schema  # noqa: E402
 from wgsextract_cli.core.result_schema import result_schema  # noqa: E402
 from wgsextract_cli.core.run_delta import delta_schema  # noqa: E402
@@ -40,6 +41,8 @@ RESULT_OUTPUT = (
     ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json"
 )
 SCHEMAS = ROOT / "src/wgsextract_cli/assets/schemas"
+# An input format, not an output: the research panel files `panel check` reads.
+PANEL_INPUT = SCHEMAS / "wgsextract.panel.1.schema.json"
 
 
 def documents() -> dict[Path, dict[str, object]]:
@@ -74,6 +77,7 @@ def documents() -> dict[Path, dict[str, object]]:
         RESULT_OUTPUT: result_schema(),
         SCHEMAS / "wgsextract.recheck.1.schema.json": recheck_schema(),
         SCHEMAS / "wgsextract.delta.1.schema.json": delta_schema(),
+        PANEL_INPUT: panel_schema(),
     }
 
 

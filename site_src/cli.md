@@ -134,7 +134,7 @@ Pick the line that matches your file and run its commands in order. Each command
 - `typing`: CYP2D6, SMN1/2, HLA and repeat expansions (30x WGS).
 - `methylation`: 5mC/5hmC methylation from Nanopore and PacBio reads.
 - `basecall`: Nanopore POD5 signal to reads with Dorado (optional).
-- `panel`: Gene lists to BED targets for Nanopore adaptive sampling.
+- `panel`: Gene lists to BED targets; research panel file checks.
 - `pet-align`: Align and call variants for a cat or dog genome.
 - `sign`: Checksum and sign output files; verify them.
 - `score`: Research-only polygenic scores from local genotypes.

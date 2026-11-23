@@ -38,6 +38,13 @@ from urllib.parse import urlsplit
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core import execution_context
+from wgsextract_cli.core.artifacts import (
+    ArtifactRecord,
+    Lifecycle,
+    Lineage,
+    Producer,
+    RunRecord,
+)
 from wgsextract_cli.core.errors import CodedError, ErrorKind, ResultError
 from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.core.provenance_records import (
@@ -48,6 +55,7 @@ from wgsextract_cli.core.provenance_records import (
 from wgsextract_cli.core.result_warnings import ResultWarning as ResultWarning
 from wgsextract_cli.core.result_warnings import Scalar as Scalar
 from wgsextract_cli.core.result_warnings import add_warning
+from wgsextract_cli.core.tool_versions import tool_version, tools_in_command
 
 SCHEMA_ID: Final = "wgsextract.result/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.result.1.schema.json"
@@ -107,9 +115,6 @@ _INDEX_SUFFIXES = {
 }
 _COMPRESSION_SUFFIXES = (".gz", ".bgz", ".zst", ".bz2", ".xz")
 _SECRET_NAME = re.compile(r"token|secret|password|passwd|credential|api[_-]?key", re.I)
-_VERSION = re.compile(r"\d+(?:\.\d+)+[\w.+-]*")
-# Launchers whose own version says nothing about the tool they run.
-_LAUNCHERS = {"pixi", "env", "wsl", "conda", "mamba", "micromamba", "nice", "ionice"}
 
 
 def _utc(timestamp: float) -> str:
@@ -206,6 +211,13 @@ class FileRecord:
         ),
     ] = None
     metrics: dict[str, Scalar] = field(default_factory=dict)
+    artifact: Annotated[
+        ArtifactRecord | None,
+        Constraints(
+            description="What a BAM, CRAM, VCF or BCF is and where it came from; "
+            "absent for other files."
+        ),
+    ] = field(default=None, metadata={"omit_none": True})
 
     @classmethod
     def describe(
@@ -369,60 +381,6 @@ def redact_argv(argv: Sequence[str]) -> list[str]:
     return redacted
 
 
-def tools_in_command(command: Sequence[str]) -> set[str]:
-    """Names of the external tools a command line runs (best effort)."""
-    tools: set[str] = set()
-    parts = list(command)
-    # Skip launchers such as `pixi run -e env --manifest-path X tool ...`.
-    while parts and Path(parts[0]).stem.lower() in _LAUNCHERS:
-        parts.pop(0)
-        if parts and parts[0] == "run":
-            parts.pop(0)
-        while parts and parts[0].startswith("-"):
-            option = parts.pop(0)
-            if "=" not in option and option in {
-                "-e",
-                "--environment",
-                "--manifest-path",
-                "-n",
-            }:
-                parts = parts[1:]
-    if parts:
-        tools.add(Path(parts[0]).stem)
-    tools.update(
-        tool
-        for tool in (
-            "bwa",
-            "bwa-mem2",
-            "samtools",
-            "bcftools",
-            "gatk",
-            "minimap2",
-            "samblaster",
-        )
-        if tool in command
-    )
-    if "org.broadinstitute.hellbender.Main" in command:
-        tools.add("gatk")
-    return {tool for tool in tools if tool}
-
-
-def tool_version(tool: str) -> str | None:
-    """The version number of an installed tool, or None when unknown."""
-    if tool.lower().startswith("python"):
-        return _platform.python_version()
-    from wgsextract_cli.core.dependency_checks import get_tool_version
-
-    try:
-        text = get_tool_version(tool)
-    except Exception:  # a version probe must never fail a run
-        return None
-    if not text or text.startswith("Error"):
-        return None
-    match = _VERSION.search(text)
-    return match.group(0) if match else text.strip()[:80]
-
-
 @dataclass
 class CommandResult:
     """What one command read, wrote and found; serialised as wgsextract.result/1."""
@@ -458,6 +416,10 @@ class CommandResult:
         ),
     ] = None
     provenance: Provenance = field(default_factory=Provenance)
+    run: Annotated[
+        RunRecord,
+        Constraints(description="This run's identity in its workflow."),
+    ] = field(default_factory=RunRecord)
 
     def __post_init__(self) -> None:
         self._lock = threading.Lock()
@@ -469,6 +431,7 @@ class CommandResult:
         self._text_lock = threading.RLock()
         self._text: list[str] = []
         self._text_sink: Callable[[str], object] | None = None
+        self.lineage = Lineage()
 
     # --- recording -------------------------------------------------------
 
@@ -489,12 +452,22 @@ class CommandResult:
         *,
         kind: str | None = None,
         metrics: Mapping[str, Scalar] | None = None,
+        lifecycle: Lifecycle | None = None,
+        sources: Sequence[str | os.PathLike[str]] | None = None,
+        artifact: ArtifactRecord | None = None,
+        producer: Producer | None = None,
     ) -> None:
-        """Register an output; it is stat'ed and fingerprinted when finalised."""
+        """Register an output; it is stat'ed and fingerprinted when finalised.
+
+        A BAM/CRAM/VCF/BCF output is ``final`` and made from every such input
+        unless ``lifecycle`` and ``sources`` (paths of inputs or discarded
+        files) say otherwise; ``artifact`` keeps the record a step wrote, and
+        ``producer`` names the earlier run that wrote a reused step's file."""
         if not path:
             return
         absolute = str(Path(path).expanduser().absolute())
         with self._lock:
+            self.lineage.declare(absolute, lifecycle, sources, artifact, producer)
             for record in self.outputs:
                 if record.path == absolute:
                     record.role = role
@@ -517,6 +490,15 @@ class CommandResult:
         if notice:
             logging.warning(notice)
             self.warn("primary_overwrite", notice, path=absolute)
+
+    def discard_output(self, path: str | os.PathLike[str]) -> None:
+        """Before deleting a file this run made, keep it only as a discarded
+        temporary file: attributable as a source, not listed as an output."""
+        absolute = str(Path(path).expanduser().absolute())
+        with self._lock:
+            gone = [r for r in self.outputs if r.path == absolute]
+            self.outputs[:] = [r for r in self.outputs if r.path != absolute]
+        self.lineage.discard(gone, self.run, self.command)
 
     def add_metrics(self, **metrics: Scalar) -> None:
         with self._lock:
@@ -620,6 +602,7 @@ class CommandResult:
             ref = self.provenance.params.get("ref")
             if isinstance(ref, str) and Path(ref).expanduser().is_file():
                 self.set_reference(ref)
+        self.lineage.annotate(self)
         if probe_tools:
             self.provenance.tools = {
                 tool: version

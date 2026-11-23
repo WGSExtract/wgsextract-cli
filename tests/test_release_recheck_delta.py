@@ -419,7 +419,10 @@ def test_1179_default_and_offline_paths_make_no_request(
     message = refused.error.message
     assert "NCBI ClinVar" in message and "2026-10-15" in message
     assert "--answers FILE" in message and "--online" in message
-    assert "ftp.ncbi.nlm.nih.gov" in message
+    destination = message.partition(" to ask ")[2].partition(" for the newest release")[
+        0
+    ]
+    assert destination == "ftp.ncbi.nlm.nih.gov"
     answers = _answers(tmp_path / "answers.json", "2026-11-15")
     assert (
         api.ref.recheck(

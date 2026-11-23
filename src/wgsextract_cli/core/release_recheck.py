@@ -21,6 +21,7 @@ from http.client import HTTPException
 from pathlib import Path
 from typing import Annotated, Any, Literal, TypedDict
 from urllib.error import URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from wgsextract_cli.core import read_scope, resource_releases
@@ -347,7 +348,9 @@ def missing_answers_message(used: Sequence[_Used], command: str) -> str:
         f"{u.record.release or 'release unrecorded'})"
         for u in used
     )
-    hosts = sorted({url.split("/")[2] for _key, url in online_targets(used)})
+    hosts = sorted(
+        {host for _key, url in online_targets(used) if (host := urlsplit(url).hostname)}
+    )
     online = (
         f"or rerun '{command} --online' to ask {', '.join(hosts)} for the newest "
         "release (sends no sample data: only a request for the public listing)"

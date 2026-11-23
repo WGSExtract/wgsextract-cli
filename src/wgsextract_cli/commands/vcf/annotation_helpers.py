@@ -1,3 +1,4 @@
+import gzip
 import hashlib
 import logging
 import subprocess
@@ -32,6 +33,7 @@ from wgsextract_cli.core.utils import (
     run_command,
 )
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG, Thresholds
+from wgsextract_cli.core.variant_depths import ad_total_header, with_ad_totals
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
     ensure_vcf_indexed,
@@ -40,6 +42,7 @@ from wgsextract_cli.core.variant_files import (
     vcf_chromosomes,
     vcf_index_chromosomes,
 )
+from wgsextract_cli.core.variant_table import parse_header
 
 from .basic import record_variants, require_vcf_input
 
@@ -233,6 +236,30 @@ def _run_annotate(cmd: list[str], vcf: str, out: str, work: str, threads: int) -
         Path(path).unlink()
 
 
+def _with_original_ad(vcf: str, work: str) -> str:
+    """Save complete multi-ALT AD totals before the no-reference split."""
+    opener = gzip.open if vcf.lower().endswith((".gz", ".bgz")) else open
+    with opener(vcf, "rt", encoding="utf-8") as source:
+        header = []
+        for line in source:
+            header.append(line)
+            if line.startswith("#CHROM\t"):
+                break
+        else:
+            return vcf  # bcftools reports the invalid header
+        parsed = parse_header(header)
+        if not parsed.samples or "AD" not in parsed.format_number:
+            return vcf
+        path = str(Path(work, "with-ad-totals.vcf.gz"))
+        with gzip.open(
+            path, "wt", compresslevel=1, encoding="utf-8", newline="\n"
+        ) as output:
+            output.writelines(
+                with_ad_totals(header, source, ad_total_header(parsed.format_number))
+            )
+    return path
+
+
 def annotate_vcf(
     input_vcf: str,
     annotation: str,
@@ -300,6 +327,8 @@ def annotate_vcf(
                 )
                 cmd[cmd.index("-a") + 1] = annotation
                 cmd[cmd.index("-c") + 1] = columns
+            else:
+                input_vcf = _with_original_ad(input_vcf, work)
             run_command(
                 ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
                  "-Oz", "-o", split, input_vcf],

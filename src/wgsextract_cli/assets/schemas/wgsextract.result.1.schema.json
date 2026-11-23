@@ -88,6 +88,10 @@
     },
     "provenance": {
       "$ref": "#/$defs/provenance"
+    },
+    "run": {
+      "$ref": "#/$defs/run",
+      "description": "This run's identity in its workflow."
     }
   },
   "required": [
@@ -103,7 +107,8 @@
     "resources",
     "details",
     "manifest",
-    "provenance"
+    "provenance",
+    "run"
   ],
   "additionalProperties": false,
   "$defs": {
@@ -195,6 +200,17 @@
         },
         "metrics": {
           "$ref": "#/$defs/scalars"
+        },
+        "artifact": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What a BAM, CRAM, VCF or BCF is and where it came from; absent for other files."
         }
       },
       "required": [
@@ -246,6 +262,257 @@
       "additionalProperties": {
         "$ref": "#/$defs/scalar"
       }
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "origin": {
+          "enum": [
+            "this_run",
+            "recorded",
+            "external"
+          ],
+          "description": "this_run (written by this run or one of its steps), recorded (written by the earlier run named in producer) or external (nothing is known)."
+        },
+        "lifecycle": {
+          "anyOf": [
+            {
+              "enum": [
+                "final",
+                "intermediate",
+                "cache",
+                "temp"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "final, intermediate, cache or temp; null if unknown."
+        },
+        "retained": {
+          "type": "boolean",
+          "description": "False when the run deleted it on purpose."
+        },
+        "digest_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "full",
+                "sampled"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether the fingerprint read the whole file."
+        },
+        "assembly": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "hg19, hg38 or t2t from the header's chr1 length."
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Fingerprint of the FASTA it was made with."
+        },
+        "samples": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "index": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/artifact_index"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/producer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_edge"
+          }
+        }
+      },
+      "required": [
+        "origin",
+        "lifecycle",
+        "retained",
+        "digest_kind",
+        "assembly",
+        "reference",
+        "samples",
+        "index",
+        "producer",
+        "sources"
+      ],
+      "additionalProperties": false
+    },
+    "artifact_index": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "enum": [
+            "ready",
+            "missing",
+            "stale",
+            "mismatched"
+          ],
+          "description": "ready; missing; stale (older than the file and pointing at blocks it no longer has); mismatched (another file's index)."
+        }
+      },
+      "required": [
+        "path",
+        "state"
+      ],
+      "additionalProperties": false
+    },
+    "producer": {
+      "type": "object",
+      "properties": {
+        "run": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "command": {
+          "type": "string"
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "run",
+        "root",
+        "command",
+        "step"
+      ],
+      "additionalProperties": false
+    },
+    "source_edge": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string"
+        },
+        "fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "wgse-fp1 fingerprint, as a file record's."
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run that wrote the source, when recorded."
+        },
+        "lifecycle": {
+          "anyOf": [
+            {
+              "enum": [
+                "final",
+                "intermediate",
+                "cache",
+                "temp"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retained": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "role",
+        "fingerprint",
+        "producer",
+        "lifecycle",
+        "retained"
+      ],
+      "additionalProperties": false
     },
     "warning": {
       "type": "object",
@@ -477,6 +744,114 @@
         "path",
         "build",
         "fingerprint"
+      ],
+      "additionalProperties": false
+    },
+    "run": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "root": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The workflow's first run; this run's id at the top."
+        },
+        "parent": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The run that started this one."
+        },
+        "step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "This run's step in its parent."
+        },
+        "children": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/child_run"
+          }
+        }
+      },
+      "required": [
+        "id",
+        "root",
+        "parent",
+        "step",
+        "children"
+      ],
+      "additionalProperties": false
+    },
+    "child_run": {
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "run": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[0-9a-f]{32}$"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The step's command run; null when it left no result."
+        },
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "failed",
+            "cancelled",
+            "reused"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why the step ran or was reused."
+        }
+      },
+      "required": [
+        "step",
+        "run",
+        "command",
+        "status",
+        "reason"
       ],
       "additionalProperties": false
     }

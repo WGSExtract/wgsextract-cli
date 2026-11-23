@@ -382,11 +382,11 @@ which tests CI runs today.
    map provenance, selected and omitted test files, rule reasons, and
    unmatched inputs. The report does not control test or job selection,
    cache reuse, certification, or the `required` result.
-3. Enable the selector only for regular Linux x64 pytest after reviewing
-   roughly 20 comparable ready PRs over at least a few days, with no confirmed
-   misses or untriaged discrepancies. Check outcomes for omitted tests
-   against the existing runs and report savings net of map collection and
-   reporting. Cancelled or incomplete runs do not count as evidence; a
+3. Enable symbol selection only for regular Linux x64 pytest after stage 2
+   lands and the gate passes draft review, local checks and certification.
+   The [owner approved enabling it without a 20-PR wait](https://github.com/WGSExtract/wgsextract-cli/issues/1339#issuecomment-7088656005).
+   The gate verifies its map on its own PR and retains current selection if
+   the map is missing, stale, incompatible or the analysis fails. A
    passing shadow report cannot show that a test absent from both selections
    passed. Keep the existing selector for other platforms.
 
@@ -686,6 +686,26 @@ result even when a newer push is queued or running. Pending successors only
 suppress retries of the older run; they cannot hide a failure or prevent
 reporting recovery. A delayed older result never replaces a newer completed
 verdict, and closing an old red-main issue does not certify the pending SHA.
+
+### CodeQL language scoping on pull requests (#1373)
+
+A ready PR analyzes only the CodeQL languages whose files it changes
+(`scripts/ci_codeql_scope.py`): Python for `.py`/`.pyi`, JavaScript/TypeScript
+for the extractor's file types (including JSON, YAML, HTML and XML), Rust for
+`.rs`, `Cargo.toml`/`Cargo.lock` or any file in a crate directory, and Actions
+for `action.yml`. Changes under `.github/` or to the scope script analyze every
+language. Main pushes and the nightly schedule always analyze every language.
+
+GitHub's CodeQL check turns `neutral` ("N configurations not found") and
+compares no alerts when a PR lacks a category the base branch has, so new
+alerts would pass unseen. An unchanged language therefore does not skip its
+matrix leg: it re-uploads the base branch's latest analysis for the same
+category and job, then confirms (by SARIF ID and commit) that the PR has
+that configuration. If the base analysis cannot be found, downloaded or
+uploaded, the leg analyzes afresh; an accepted upload that cannot be confirmed
+fails the leg, because GitHub rejects a second upload for the same category in
+one run. CodeQL is not part of `required`; the landing validator still rejects
+a failing CodeQL app check.
 
 ### CLI test time and tiers
 
@@ -1023,3 +1043,33 @@ qualification failure from GUI/installer preflight, do not justify adding
 edges from those PR changes. Both belong to the nightly backstop. A newly
 observed omission in a PR report must be triaged for origin, retries and
 incomplete runs before it counts as a miss.
+
+#### Linux symbol gate and daily failure replay
+
+The symbol gate changes the regular Ubuntu pytest input, not the jobs,
+certificates, other OS lanes, or merged-tree checks. The repository Actions
+variable `CI_DISABLE_SYMBOL_SELECTION=true` restores legacy Linux selection
+for newly started runs; rerun a job to apply it to an in-flight PR. A missing,
+stale (over 48 hours), incompatible or unavailable map retains the existing
+input and emits a warning. With a usable ancestor map, the gate adds tests
+introduced or changed since recording and observed users of intervening
+source changes; changed test helper inputs retain the existing selection.
+The gate's own PR runs the same planner against
+its synthetic merge tree even if regular hosted pytest was certified. All
+four advisory reports remain available and distinguish legacy-selected,
+enforced and actually observed files.
+
+Ubuntu pushes use symbol selection when the map and diff are usable, and
+the merge queue's existing passed-test cache for the resulting set. A
+scheduled Ubuntu run never reads that cache and refreshes it after a full
+regular run. Where the suite provides pytest node IDs, the failure replay
+reruns only those cases, otherwise a collection error replays its one test
+module. It checks first-parent trees in order since the last verified
+passing daily run, requires a clean baseline and repeats the first matching
+failure signature.
+It will not automatically attribute skipped cases, a dependency-lock
+change, unobserved trees or an unrelated shared-base failure. To open a
+`ci-automation` miss, the first bad commit must map to a PR whose passing run
+records an enforced symbol omission on the identical Git tree; the legacy
+selection must have included the test. Logs explain unverified outcomes and
+the stable case marker deduplicates a confirmed miss across nights.

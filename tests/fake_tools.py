@@ -2,7 +2,6 @@
 
 import json
 import shutil
-import sys
 from pathlib import Path
 
 from tests.fake_tool_launchers import only_tools as only_tools
@@ -145,12 +144,11 @@ class FakePixi:
         self._save()
         self.host_bin = root / "host-bin"
         self.host_bin.mkdir()
-        self.exe = python_tool(bindir or root / "pixi-bin", "pixi", "")
-        source = _FAKE_PIXI.format(state=str(self._state))
-        if sys.platform == "win32":
-            (self.exe.parent / "pixi.py").write_text(source)
-        else:
-            self.exe.write_text(f"#!{sys.executable}\n{source}")
+        self.exe = python_tool(
+            bindir or root / "pixi-bin",
+            "pixi",
+            _FAKE_PIXI.format(state=str(self._state)),
+        )
 
     def _save(self) -> None:
         self._state.write_text(json.dumps(self._data))
