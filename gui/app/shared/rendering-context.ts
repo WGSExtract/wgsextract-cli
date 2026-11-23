@@ -27,6 +27,7 @@ export function commandContextFromState(state: StateLike, rowValues: ValueMap = 
         configValues: { ...configValues, ...fieldValues, ...sectionValues },
         rowValues,
         placeholderLabels: placeholderLabelsFromManifest(state.manifest),
+        multiPathControls: multiPathControlsFromManifest(state.manifest),
     };
     if (state.bundleRootPath != null) {
         context.bundleRootPath = state.bundleRootPath;
@@ -101,6 +102,20 @@ function placeholderLabelsFromManifest(manifest: BundleManifest | null | undefin
         }
     }
     return labels;
+}
+
+export function multiPathControlsFromManifest(manifest: BundleManifest | null | undefined): string[] {
+    const ids = new Set<string>();
+    for (const control of allControls(manifest ?? {})) {
+        if (control.kind === "path" && control.multiple === true) {
+            ids.add(control.id);
+        }
+    }
+    return [...ids];
+}
+
+function isMultiPathControl(context: CommandContext, placeholder: string): boolean {
+    return Array.isArray(context.multiPathControls) && context.multiPathControls.includes(placeholder);
 }
 
 export function splitPathList(value: unknown): string[] {
@@ -181,7 +196,7 @@ export function contextValue(context: CommandContext, placeholder: string): Stat
         return computed;
     }
     const value = rawContextValue(context, placeholder);
-    if (typeof value === "string" && value.includes("\n")) {
+    if (typeof value === "string" && value.includes("\n") && isMultiPathControl(context, placeholder)) {
         return firstPathValue(value);
     }
     return value;

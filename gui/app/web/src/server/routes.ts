@@ -16,6 +16,7 @@ import { lastResultDocumentPaths, rememberLastResultDocument } from "./last-resu
 import { openResultPath, ResultPaths, systemOpener } from "./result-paths.js";
 import { readResultCard } from "./result-card.js";
 import { installPrerequisite, missingPrerequisites } from "./prerequisites.js";
+import { multiPathControlsFromManifest } from "../../../shared/rendering.js";
 import { resultDocumentSpecFor } from "../../../shared/result-document.js";
 import type { JobServer } from "./job-server.js";
 import { appSupportDirectory, configPath, distModulePath, normalizeContext } from "./paths.js";
@@ -457,7 +458,13 @@ async function readBody(request: IncomingMessage, context: RequestHandlerContext
 }
 
 function commandContext(body: LooseRecord, context: RequestHandlerContext) {
-    return normalizeContext(parseCommandContext(body.context), context.bundleRoot);
+    return normalizeContext(
+        {
+            ...parseCommandContext(body.context),
+            multiPathControls: multiPathControlsFromManifest(context.manifest),
+        },
+        context.bundleRoot,
+    );
 }
 
 function rememberDynamicActions(context: RequestHandlerContext, location: ReturnType<typeof parseManifestLocation>, payload: unknown) {

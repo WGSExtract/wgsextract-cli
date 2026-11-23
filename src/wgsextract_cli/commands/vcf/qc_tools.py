@@ -397,7 +397,9 @@ def run_granite_qc(params: VcfGraniteQcParams) -> None:
                 for sample in samples
             ]
             ped_path = Path(tmp, "pedigree.json")
-            ped_path.write_text(json.dumps(pedigree, indent=2), encoding="utf-8")
+            ped_path.write_text(
+                json.dumps(pedigree, indent=2), encoding="utf-8", newline="\n"
+            )
 
         cmd = [
             *granite_cmd,

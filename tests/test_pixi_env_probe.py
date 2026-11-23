@@ -526,3 +526,48 @@ def test_default_env_probe_does_not_leak_system_path_multiqc(
     assert "-e multiqc" in resolved
     assert str(host_bin) not in resolved
     dependencies.clear_tool_caches()
+
+
+@posix_pixi
+def test_probe_environment_with_pixi_uses_conda_prefix_for_pythonless_envs(
+    tmp_path, monkeypatch, fake_pixi
+):
+    """PR #1463: no-default-feature Pixi envs (verifybamid2, somalier, imputation)
+    run the host Python where sys.prefix != CONDA_PREFIX; probing must search
+    CONDA_PREFIX, not sys.prefix."""
+    vb_prefix = fake_pixi.env("verifybamid2")
+    python_tool(vb_prefix / "bin", "verifybamid2", 'print("verifybamid2")')
+    # Ensure the fake env does not ship its own python so fake_pixi uses host python
+    # (whose sys.prefix differs from CONDA_PREFIX == vb_prefix).
+    fake_python = vb_prefix / "bin" / "python"
+    if fake_python.exists():
+        fake_python.unlink()
+
+    default_prefix = tmp_path / "envs" / "default"
+    (default_prefix / "bin").mkdir(parents=True)
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: False)
+    monkeypatch.setenv("PIXI_EXE", str(fake_pixi.exe))
+    _in_environment(monkeypatch, "default", default_prefix, windows=False)
+
+    command = pixi_tools.pixi_env_tool("verifybamid2")
+    assert command is not None
+    assert "-e verifybamid2" in command
+    assert command.endswith("verifybamid2")
+
+
+@posix_pixi
+def test_probe_environment_tolerates_one_arg_shutil_which_monkeypatch(
+    tmp_path, monkeypatch
+):
+    """PR #1463: tests like test_keep_awake monkeypatch shutil.which with a
+    1-arg callable; probing the current Pixi env must not raise TypeError."""
+    import shutil
+
+    prefix = tmp_path / "env"
+    python_tool(prefix / "bin", "samtools", 'print("samtools")')
+    original_which = shutil.which
+    monkeypatch.setattr(shutil, "which", lambda name: original_which(name))
+
+    assert pixi_tools._probe_environment(str(prefix), ["samtools"], False) == (
+        "direct-name:samtools"
+    )

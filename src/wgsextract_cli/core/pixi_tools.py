@@ -360,10 +360,36 @@ def _probe_environment(
         else [root / "bin"]
     )
     env_path = os.pathsep.join(str(d) for d in env_dirs if d.is_dir())
+
+    def _which_in(name: str, search_path: str) -> str | None:
+        if not search_path:
+            return None
+        try:
+            return shutil.which(name, path=search_path)
+        except TypeError:
+            exts = (
+                [""]
+                + [
+                    e
+                    for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(
+                        os.pathsep
+                    )
+                    if e
+                ]
+                if windows
+                else [""]
+            )
+            for folder in search_path.split(os.pathsep):
+                for ext in exts:
+                    candidate = Path(folder) / (name + ext)
+                    if candidate.is_file() and (
+                        windows or os.access(candidate, os.X_OK)
+                    ):
+                        return str(candidate)
+            return None
+
     for tool in tool_names:
-        if (env_path and shutil.which(tool, path=env_path)) or (
-            allow_path and shutil.which(tool)
-        ):
+        if _which_in(tool, env_path) or (allow_path and shutil.which(tool)):
             return "direct-name:" + tool
 
     for tool in tool_names:
@@ -403,7 +429,7 @@ def _probe_environment_with_pixi(
         + "\nimport os, sys\n"
         + "env = os.environ.get('CONDA_PREFIX', sys.prefix)\n"
         + "found = os.path.isfile(os.path.join(env, 'conda-meta', 'pixi')) and "
-        + "_probe_environment(sys.prefix, sys.argv[1:], os.name == 'nt')\n"
+        + "_probe_environment(env, sys.argv[1:], os.name == 'nt')\n"
         + "print(found or '')\n"
         + "raise SystemExit(0 if found else 1)\n"
     )
@@ -488,9 +514,11 @@ def _host_pixi_tool_command(tool: str) -> str | None:
                 )
                 if d.is_dir()
             )
-            program = (
-                shutil.which(args[0], path=env_bin) if env_bin else None
-            ) or shutil.which(args[0])
+            try:
+                program = shutil.which(args[0], path=env_bin) if env_bin else None
+            except TypeError:
+                program = None
+            program = program or shutil.which(args[0])
         return _join_command([program or args[0], *args[1:]])
 
     if not found:

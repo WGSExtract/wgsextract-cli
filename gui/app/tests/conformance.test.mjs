@@ -506,13 +506,13 @@ test("WGSExtract exposes My Genomes and reference genome library controls in Typ
     .controls.find((control) => control.id === "vcf_path");
   assert.equal(vcfPathControl.multiple, true, "VCF Input allows multi-file selection");
 
-  const multiVcfContext = {
-    fieldValues: { vcf_path: "/data/first.vcf.gz\n/data/second.vcf.gz\n/data/third.vcf.gz" },
+  const multiVcfContext = commandContextFromState({
+    manifest: bundle.manifest,
+    fieldValues: { vcf_path: "/data/first.vcf.gz\n/data/second.vcf.gz\n/data/third.vcf.gz", body: "line1\nline2" },
     checkedOptions: {},
     configValues: {},
-    rowValues: {},
     bundleRootPath: wgsExtractBundleRoot,
-  };
+  });
   const basicCmd = displayCommand(vcfInfo.actions[0].command, multiVcfContext);
   assert.match(basicCmd, /vcf info --vcf-input \/data\/first\.vcf\.gz$/);
   const graniteCmd = displayCommand(vcfInfo.actions[4].command, multiVcfContext);
@@ -527,4 +527,9 @@ test("WGSExtract exposes My Genomes and reference genome library controls in Typ
     fieldValues: { vcf_path: "/data/only.vcf.gz" },
   });
   assert.match(singleVcfCmd, /vcf variantqc --vcf-input \/data\/only\.vcf\.gz$/);
+  const multilineTextCmd = displayCommand(
+    { executable: "curl", arguments: ["--data", "{{body}}"] },
+    multiVcfContext,
+  );
+  assert.equal(multilineTextCmd, "curl --data 'line1\nline2'");
 });

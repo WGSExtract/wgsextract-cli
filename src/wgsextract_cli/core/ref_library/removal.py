@@ -107,9 +107,7 @@ def remove_dbsnp(reflib: str, builds: Iterable[str] = ("hg38", "hg19")) -> list[
                     f"({lock}); delete dbSNP once it has finished."
                 )
         found = [
-            p
-            for p in dbsnp_paths(reflib, build_list)
-            if p.exists() or p.is_symlink()
+            p for p in dbsnp_paths(reflib, build_list) if p.exists() or p.is_symlink()
         ]
         removed = remove([*found, *locks])
     return [path for path in removed if path not in locks]
