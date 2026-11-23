@@ -6,6 +6,7 @@ import subprocess
 from collections import defaultdict
 from importlib.resources import files
 from pathlib import Path
+from shutil import copyfile
 
 import pytest
 
@@ -19,8 +20,10 @@ TARGETS = (
     ("1", 2_000_000, "deletion", 0),
     ("1", 2_000_100, "diploid", 10),
     ("1", 2_000_200, "duplication", 15),
+    ("1", 2_001_000, "sparse_gc_control", 20),
     ("X", 20_000_000, "X_haploid", 10),
     ("Y", 7_002_000, "Y_haploid", 10),
+    ("Y", 5_000_000, "Y_masked", 0),
     ("X", 2_000_000, "PAR", 20),
     ("5", 70_925_000, "custom_label", 20),
 )
@@ -32,6 +35,7 @@ CURATED_TARGETS = (
 )
 BASES = "ACGT" * 25
 LOW_GC = "AACT" * 25
+HIGH_GC = "GCGT" * 25
 CURATED_BASES = "GCGT" + "ACGT" * 24
 
 
@@ -118,11 +122,17 @@ def cnv_fixture(tmp_path_factory):
         chrom, start_s, end_s = row.split()
         start, end = int(start_s), int(end_s)
         seq, depth = (LOW_GC, 10) if number % 2 else (BASES, 20)
+        if number < 5:
+            seq, depth = HIGH_GC, 20
         patches[chrom][start] = (seq * 10).encode()
-        for offset in range(start, end, 100):
+        # The high-GC bin has only two well-covered windows, despite WGS-like
+        # breadth across the rest of the baseline.
+        for offset in range(start, start + 500 if number < 3 else end, 100):
             autosomal_reads.extend(reads("r", chrom, offset, seq, depth))
-    for chrom, start, _, depth in TARGETS:
+    for chrom, start, name, depth in TARGETS:
         seq = LOW_GC if chrom == "1" else BASES
+        if name == "sparse_gc_control":
+            seq = HIGH_GC
         patches[f"chr{chrom}"][start] = seq.encode()
         destination = sex_regions if chrom in {"X", "Y"} else autosomal_reads
         destination.extend(reads("r", f"chr{chrom}", start, seq, depth))
@@ -184,6 +194,8 @@ def test_1285_depth_screen_gc_mask_and_inferred_sex(cnv_fixture, tmp_path):
     assert calls["diploid"]["copy_number"] == "2"
     assert calls["duplication"]["copy_number"] == "3+"
     assert calls["duplication"]["confidence"] == "high"
+    assert calls["sparse_gc_control"]["reason"] == "no_gc_baseline"
+    assert calls["sparse_gc_control"]["copy_number"] == ""
     for name in ("X_haploid", "Y_haploid"):
         assert calls[name]["expected_copy_number"] == "1"
         assert calls[name]["copy_number"] == "1"
@@ -228,6 +240,24 @@ def test_1285_curated_calls_are_reported_but_ambiguous_targets_and_unknown_y_are
     for name in ("UGT2B17", "GSTM1"):
         assert calls[name]["state"] == "specialist_caller_required"
         assert calls[name]["copy_number"] == ""
+
+
+def test_1285_masked_y_in_declared_female_is_not_applicable(cnv_fixture, tmp_path):
+    _, bam, ref, bed = cnv_fixture
+    female = tmp_path / "female.bam"
+    copyfile(bam, female)
+    copyfile(f"{bam}.bai", f"{female}.bai")
+    api.sample.set_overrides(api.SampleSetParams(input=female, sex="female"))
+    result = api.genotyping.target_cnv(
+        api.TypingTargetCnvParams(
+            input=female, bed=bed, ref=ref, outdir=tmp_path, threads=1
+        )
+    )
+    call = _calls(tmp_path / "female.target-cnv.tsv")["Y_masked"]
+    assert result.metrics["effective_sex"] == "female"
+    assert call["expected_copy_number"] == "0"
+    assert call["state"] == "not_applicable"
+    assert call["copy_number"] == ""
 
 
 def test_1285_unknown_build_has_no_bundled_baseline(tmp_path):

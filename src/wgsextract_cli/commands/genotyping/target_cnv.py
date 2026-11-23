@@ -136,11 +136,10 @@ def _normalized_baselines(
     baseline: Sequence[BedTarget], gc: dict[Region, float]
 ) -> tuple[float, dict[int, GcBaseline], set[str]]:
     usable = [t for t in baseline if _region(t) in gc]
-    depths = [t.mean for t in usable]
-    diploid = median(depths) if depths else 0
     covered = [
         t for t in usable if t.bases_at_least(1) >= MIN_BASELINE_BREADTH * t.length
     ]
+    diploid = median(t.mean for t in covered) if covered else 0
     if (
         len(usable) < max(MIN_BASELINE_WINDOWS, len(baseline) * MIN_BASELINE_BREADTH)
         or len(covered) < len(usable) * MIN_BASELINE_BREADTH
@@ -151,7 +150,7 @@ def _normalized_baselines(
             f"data with at least {MIN_BASELINE_DEPTH}x median autosomal baseline depth."
         )
     by_gc = defaultdict[int, list[float]](list)
-    for t in usable:
+    for t in covered:
         by_gc[_gc_bin(gc[_region(t)])].append(t.mean)
     bins = {}
     for number, values in by_gc.items():
@@ -264,6 +263,11 @@ def _row(
     expected, reason = _expected(t, aln, sex)
     gc = fractions.get(_region(t))
     chrom = contig_key(t.chrom)
+    if expected == 0:
+        return TargetCall(
+            *coords, "not_applicable", "chrY_in_female", None, expected, None, None,
+            t.mean, gc, None, None,
+        )  # fmt: skip
     matched = bins.get(_gc_bin(gc)) if gc is not None else None
     if chrom not in {"X", "Y"} and t.chrom not in covered_autosomes:
         reason = reason or "chromosome_baseline_uncovered"
@@ -282,11 +286,6 @@ def _row(
         return TargetCall(
             *coords, "specialist_caller_required", "segdup_or_low_mappability",
             specialist, expected, None, None, t.mean, gc, None, None,
-        )  # fmt: skip
-    if expected == 0:
-        return TargetCall(
-            *coords, "not_applicable", "chrY_in_female", None, expected, None, None,
-            t.mean, gc, None, None,
         )  # fmt: skip
     if reason or matched is None:
         reason = reason or (

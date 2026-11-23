@@ -269,7 +269,8 @@ baseline uses roughly 220 distributed 1 kb windows; reads and bases below
 quality 20, duplicates, secondary and supplementary alignments are
 excluded, and overlapping mates are counted once. BED targets cannot
 contribute their own depth to the baseline. A GC bin is five percentage
-points wide and needs at least five usable windows. The command refuses
+points wide and needs at least five windows with coverage on at least
+80% of their bases. The command refuses
 sparse baseline coverage or median depth below 10×; a target gets `no_call`
 if its GC bin lacks support or its autosome has no covered baseline window.
 Confidence depends on how far the estimate is from a class boundary relative
