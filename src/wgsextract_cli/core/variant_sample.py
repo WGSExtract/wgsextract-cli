@@ -1,4 +1,5 @@
-"""Prepare single-sample working copies without a full-cohort intermediate."""
+"""Prepare indexed or single-sample VCF working copies without a full-cohort
+intermediate."""
 
 import gzip
 import logging
@@ -13,7 +14,14 @@ from pathlib import Path
 
 from .paths import PathInput
 from .temp_directory import move_file, scratch_directory
-from .utils import ToolExecutionError, WGSExtractError, popen, run_command, run_pipeline
+from .utils import (
+    MissingDependencyError,
+    ToolExecutionError,
+    WGSExtractError,
+    popen,
+    run_command,
+    run_pipeline,
+)
 from .variant_files import ensure_vcf_indexed, vcf_header_chromosomes
 
 
@@ -27,22 +35,81 @@ def has_sample_input_index(vcf: PathInput) -> bool:
 
 def indexed_sample_vcf(
     vcf: str,
-    sample: str,
+    sample: str | None,
     outdir: str,
     cleanup: ExitStack,
     *,
     trim_alt_alleles: bool = True,
 ) -> str:
-    """One selected sample, in an indexed scratch VCF that cleanup removes."""
+    """An indexed copy of ``vcf``, of only ``sample`` when given, in a scratch
+    directory under ``outdir`` that ``cleanup`` removes."""
     Path(outdir).mkdir(parents=True, exist_ok=True)
-    workdir = Path(cleanup.enter_context(scratch_directory(outdir, "Sample_")))
-    subset = workdir / "sample.vcf.gz"
+    prefix = "Sample_" if sample else "VcfInput_"
+    workdir = cleanup.enter_context(scratch_directory(outdir, prefix))
     try:
-        subset_vcf_sample(vcf, sample, subset, trim_alt_alleles=trim_alt_alleles)
-        ensure_sample_vcf_indexed(subset)
+        return indexed_vcf_copy(vcf, workdir, sample, trim_alt_alleles=trim_alt_alleles)
     except (OSError, subprocess.SubprocessError, WGSExtractError) as exc:
-        raise WGSExtractError(f"Could not select sample '{sample}': {exc}") from exc
-    return str(subset)
+        if sample:
+            raise WGSExtractError(f"Could not select sample '{sample}': {exc}") from exc
+        raise WGSExtractError(f"Could not prepare {vcf}: {exc}") from exc
+
+
+def indexed_vcf_copy(
+    vcf: PathInput,
+    workdir: PathInput,
+    sample: str | None = None,
+    *,
+    trim_alt_alleles: bool = False,
+) -> str:
+    """A bgzipped, indexed copy of ``vcf`` in ``workdir``, of only ``sample``
+    when given, whose header declares every contig its records use. Record
+    order is kept; unsorted input is sorted stably."""
+    copy = Path(workdir, "input.vcf.gz")
+    subset_vcf_sample(vcf, sample, copy, trim_alt_alleles=trim_alt_alleles)
+    ensure_sample_vcf_indexed(copy)
+    return str(copy)
+
+
+def prepare_input_vcf(
+    vcf: str,
+    sample: str | None,
+    outdir: str,
+    cleanup: ExitStack,
+    *,
+    select_sample: bool = False,
+) -> tuple[str, str | None]:
+    """The VCF to call from, readable by region with its contigs listed so
+    their naming (1 or chr1, MT or chrM) is matched to the targets', and the
+    sample still to select from it. An indexed input is read in place, and a
+    bgzipped one without ``sample`` is indexed beside itself. Otherwise (a
+    plain VCF, an unindexed BCF, or a bgzipped VCF that can't be indexed
+    where it is) the input, of only ``sample``, is copied and indexed in a
+    scratch directory under ``outdir`` that ``cleanup`` removes, never beside
+    the input (issue #1242). ``select_sample`` copies an indexed input's
+    sample too, for callers that read one sample."""
+    indexed = False
+    if not sample and Path(vcf).suffix.lower() in {".gz", ".bgz"}:
+        try:
+            ensure_vcf_indexed(vcf)
+            indexed = True
+        except WGSExtractError as e:
+            # Only a failed tabix run or write falls back to a copy; a missing
+            # tool, or an input that changed or shares an index name, stops.
+            failure = (OSError, subprocess.SubprocessError)
+            if isinstance(e, MissingDependencyError) or not isinstance(
+                e.__cause__, failure
+            ):
+                raise
+            logging.info(f"Using a working copy: {e}")
+    else:
+        indexed = has_sample_input_index(vcf)
+    if indexed and not (sample and select_sample):
+        return vcf, sample
+    logging.info(f"Preparing an indexed working copy of {vcf}...")
+    # Keep uncalled ALTs: trimming can turn an indel site's 0/0 into an
+    # apparently explicit reference call (#1249).
+    copy = indexed_sample_vcf(vcf, sample, outdir, cleanup, trim_alt_alleles=False)
+    return copy, None
 
 
 def ensure_sample_vcf_indexed(vcf: Path) -> None:
@@ -114,18 +181,19 @@ def _sort_sample_vcf(vcf: Path, folder: Path) -> Path:
 
 def subset_vcf_sample(
     vcf: PathInput,
-    sample: str,
+    sample: str | None,
     out: Path,
     *,
     selection: Callable[[list[str] | None], Sequence[str]] | None = None,
     output_type: str = "-Oz",
     trim_alt_alleles: bool = True,
 ) -> None:
-    """Select a sample, repairing the header only if bcftools reports a missing contig.
+    """Select a sample (every sample when None), repairing the header only if
+    bcftools reports a missing contig.
 
     A target selection can be rebuilt with the repaired contig names before retrying.
     """
-    view = ["bcftools", "view", "--samples", sample]
+    view = ["bcftools", "view", *(["--samples", sample] if sample else [])]
     if trim_alt_alleles:
         view.append("--trim-alt-alleles")
     output = [output_type, "-o", out]

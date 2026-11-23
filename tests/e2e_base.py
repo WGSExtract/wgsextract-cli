@@ -15,7 +15,8 @@ from typing import ClassVar, TypedDict
 
 import pytest
 
-from tests.smoke_utils import REPO_ROOT, ensure_fake_data, isolate_home, vep_cache_dir
+from tests.home_isolation import isolate_home
+from tests.smoke_utils import REPO_ROOT, ensure_fake_data, vep_cache_dir
 from wgsextract_cli.cli.platform_support import verify_platform_support
 from wgsextract_cli.core.config import reload_settings, settings
 from wgsextract_cli.core.dependencies import (

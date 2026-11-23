@@ -1,7 +1,7 @@
 """Ancestry-adjusted percentiles for `score pgs` (issue #617, Phase 2).
 
-The reference file ``wgsextract-pgs-hgdp1kg-v1.npz`` (built by
-scripts/pgs_reference/, published as the GitHub release ``pgs-ref-1``) holds,
+The reference file ``wgsextract-pgs-hgdp1kg-v2.npz`` (built by
+scripts/pgs_reference/, published as the GitHub release ``pgs-ref-2``) holds,
 for each curated score: which rows of the pinned Catalog scoring file the
 HGDP+1KG reference panel was scored on (the calibration set), those rows'
 effect-allele frequencies in the panel, the scores of the 3,129 training
@@ -44,9 +44,9 @@ from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.utils import WGSExtractError
 
 FOLDER = "pgs"
-NAME = "wgsextract-pgs-hgdp1kg-v1.npz"
-URL = f"https://github.com/WGSExtract/wgsextract-cli/releases/download/pgs-ref-1/{NAME}"
-SHA256 = "d73b7243825f33290484ff0aea455f21c0fc3bbd60380dc665a31003134d083d"
+NAME = "wgsextract-pgs-hgdp1kg-v2.npz"
+URL = f"https://github.com/WGSExtract/wgsextract-cli/releases/download/pgs-ref-2/{NAME}"
+SHA256 = "401be7fe9a66d925462f883a85d019210aa2e7e520a29dc8e7bf4c7381e93bf5"
 BUILD = "GRCh38"
 # The Catalog scoring files the reference was built from, by SHA-256. Only
 # these get a percentile, so other scores never download the reference.
@@ -55,7 +55,7 @@ SCORES: dict[str, str] = {
     "68d7894cec4ddc5294c3b24294aae021b8187350ba589ea8acde8ba88d33c191": "PGS000004",
     "163c0409f4059ab302873e82f9f568be5be4b361cc4c4a8526b6296cbbe391e7": "PGS000297",
     "73d7b4a7cdb93355e86c268b42e4b5014ddea4e4f02cceaff8a054a2ab909522": "PGS000020",
-    "7c0d06b5b3a932fc63de24c75081c85391ae137b106c27f67e912b09c58c4604": "PGS000027",
+    "80aaa56faf8c6c44fb6f662dcf090e3a1d12cfb0a96c9162a63990b5acec7ddd": "PGS005198",
     "ab86088702a224882cc36abe908f00f92ba4828d69d3dd6713f3e216b50fc9ce": "PGS000038",
     "54818ee38145e2656e9099a313e1c5f9aa0b57d98f02a863c02f9c0e6442cd52": "PGS000063",
     "3a3282e56cd2fe9f76d65c8eeae78ff5cbbc78810ed844d88e1185d62c6504f2": "PGS000065",
@@ -71,7 +71,6 @@ DEVELOPMENT_ANCESTRY: dict[str, frozenset[str]] = {
     "PGS000004": frozenset({"EUR"}),
     "PGS000018": frozenset({"MAE", "EUR", "NR"}),
     "PGS000020": frozenset({"EUR"}),
-    "PGS000027": frozenset({"EUR"}),
     "PGS000038": frozenset({"EUR"}),
     "PGS000063": frozenset({"EUR"}),
     "PGS000065": frozenset({"AFR", "AMR", "EAS", "EUR", "SAS"}),
@@ -79,6 +78,7 @@ DEVELOPMENT_ANCESTRY: dict[str, frozenset[str]] = {
     "PGS000070": frozenset({"EAS", "EUR"}),
     "PGS000087": frozenset({"EUR"}),
     "PGS000297": frozenset({"NR", "EUR"}),
+    "PGS005198": frozenset({"AFR", "AMR", "EAS", "EUR", "SAS"}),
 }
 # Validated bounds (docs/pgs.md, measured in #617): at most this share of the
 # calibrated score's variance may come from imputed rows; at least this share
