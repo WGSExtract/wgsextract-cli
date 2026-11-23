@@ -54,6 +54,7 @@ int getopt(int argc, char *const argv[], const char *optstring)
 	return optopt;
 }
 
+#ifndef WGSE_UPSTREAM_GETTIMEOFDAY
 int gettimeofday(struct timeval *tv, void *tz)
 {
 	FILETIME ft;
@@ -66,6 +67,7 @@ int gettimeofday(struct timeval *tv, void *tz)
 	tv->tv_usec = (long)(t % 1000000);
 	return 0;
 }
+#endif
 
 long sysconf(int name)
 {
