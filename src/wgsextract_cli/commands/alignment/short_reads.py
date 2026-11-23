@@ -289,12 +289,12 @@ def native_short_read_aligner(
     elif (
         native.gpu == "cuda"
         and on_windows_x64()
-        and not native_gpu_preference(job.prefer_native_gpu)
+        and native_gpu_preference(job.prefer_native_gpu) is False
     ):
         if announce:
             logging.info(
-                "Windows CUDA is opt-in: --prefer-native-gpu enables it when "
-                "the alignment fits. Using wgse-bwa on the CPU."
+                "Using wgse-bwa on the CPU: CUDA was disabled by "
+                "--no-prefer-native-gpu or config prefer_native_gpu=false."
             )
         aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
     else:
@@ -374,7 +374,7 @@ def _bwa_gpu_fit(
             continue
         if ram_fitting is None:
             ram_fitting = candidate
-        if commit is None or committed <= commit:
+        if not windows_cuda or (commit is not None and committed <= commit):
             fitting = candidate
             break
     preferred_memory = memory if job.memory_explicit or mib <= 256 else "256M"
@@ -469,7 +469,13 @@ def _bwa_gpu_fit(
                 ), chunk_memory
         reason = "memory_budget_cpu"
         limit = budget
-        if commit is not None and gpu_commit > commit:
+        if windows_cuda and commit is None:
+            reason = "windows_commit_unavailable_cpu"
+            logging.info(
+                "Running %s on the CPU: Windows commit headroom could not be checked.",
+                native.binary,
+            )
+        elif commit is not None and gpu_commit > commit:
             reason = "windows_commit_budget_cpu"
             gpu_estimate, limit = gpu_commit, commit
             logging.info(
