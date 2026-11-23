@@ -20,7 +20,6 @@ from wgsextract_cli.core.builds import (
     is_hg37_build,
     is_hg38_build,
     is_t2t_build,
-    ploidy_for_build,
 )
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
@@ -70,8 +69,8 @@ from wgsextract_cli.core.microarray.templates import (
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
-from wgsextract_cli.core.results import FileRecord, current_result, warn
-from wgsextract_cli.core.sample_ploidy import sex_samples_args
+from wgsextract_cli.core.results import FileRecord, current_result
+from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
 from wgsextract_cli.core.table_writer import (
     Column,
     check_format,
@@ -463,6 +462,11 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             )
         return
 
+    # Calling an alignment needs its build's ploidy; an unrecognised build is
+    # refused rather than called all-diploid (#1334). A VCF isn't called.
+    ploidy = (
+        [] if is_vcf else ploidy_args(None, ploidy_file, lib, options="--ploidy-file")
+    )
     if legacy_requested:
         lib.liftover_chain = _liftover_chain_for(lib, download=params.download is True)
 
@@ -510,23 +514,12 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             region_args = _normalize_region_args_for_input(region_args, input_chroms)
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             raise WGSExtractError(f"Microarray target normalization failed: {e}") from e
-    if ploidy_file:
-        ploidy_args = ["--ploidy-file", ploidy_file]
-    elif lib.build and (is_hg37_build(lib.build) or is_hg38_build(lib.build)):
-        ploidy_args = ["--ploidy", ploidy_for_build(lib.build)]
-    else:
-        warn(
-            "build_unknown",
-            f"Unknown reference build {lib.build!r}; calling all chromosomes diploid.",
-            build=lib.build,
-        )
-        ploidy_args = ["--ploidy", "2"]
     # Resolve declarations and evidence before deciding outputs are fresh.
     sex_args = cleanup.enter_context(
         sex_samples_args(
             input_path,
             outdir,
-            ploidy_args,
+            ploidy,
             region=region_args[1] if region_args else None,
             reference=ref_fasta,
         )
@@ -685,7 +678,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         is_vcf=is_vcf,
         ref_vcf_tab=ref_vcf_tab,
         region_args=region_args,
-        ploidy_args=ploidy_args + sex_args,
+        ploidy_args=ploidy + sex_args,
         ref_fasta=ref_fasta,
         threads=threads,
         start_vcf=start_vcf,
@@ -705,7 +698,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             params=calling_params,
             lib=lib,
             outdir=outdir,
-            ploidy_args=ploidy_args + sex_args,
+            ploidy_args=ploidy + sex_args,
             threads=threads,
             lifter=lifter,
         )

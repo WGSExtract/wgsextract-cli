@@ -23,7 +23,6 @@ from wgsextract_cli.api.vcf import (
 from wgsextract_cli.core import read_scope, ultima
 from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.alignment.metadata import get_bam_header
-from wgsextract_cli.core.builds import is_hg37_build, is_hg38_build, ploidy_for_build
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
     get_tool_version,
@@ -41,7 +40,7 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.sample_ploidy import sex_samples_args
+from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
 from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
@@ -241,34 +240,6 @@ def setup_caller(
         region=params.region,
         qc_min_depth=params.qc_min_depth,
         allow_reference_subset=allow_reference_subset,
-    )
-
-
-def _ploidy_args(args: argparse.Namespace, lib: ReferenceLibrary) -> list[str]:
-    return ploidy_args(
-        getattr(args, "ploidy", None), getattr(args, "ploidy_file", None), lib
-    )
-
-
-def ploidy_args(
-    ploidy: str | None, ploidy_file: str | None, lib: ReferenceLibrary
-) -> list[str]:
-    """bcftools call's ploidy options: the explicit choice, else the library's
-    ploidy file, else the built-in table for GRCh37/GRCh38."""
-    if not ploidy and not ploidy_file:
-        ploidy_file = lib.ploidy_file
-    if ploidy_file:
-        verify_paths_exist({"--ploidy-file": ploidy_file})
-        return ["--ploidy-file", ploidy_file]
-    if ploidy:
-        return ["--ploidy", ploidy]
-    # bcftools' predefined GRCh37/GRCh38 ploidy covers both X and chrX naming.
-    # T2T's sex-chromosome coordinates differ, so it needs a ploidy file.
-    if lib.build and (is_hg37_build(lib.build) or is_hg38_build(lib.build)):
-        return ["--ploidy", ploidy_for_build(lib.build)]
-    raise WGSExtractError(
-        "Ploidy (--ploidy or --ploidy-file) is required and could not be "
-        f"auto-resolved from --ref (reference build: {lib.build or 'unknown'})."
     )
 
 

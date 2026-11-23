@@ -108,12 +108,14 @@ def canonical_build(build: str | None) -> str | None:
     return None
 
 
-def ploidy_for_build(build: str) -> str:
-    if is_hg37_build(build):
+def ploidy_preset(build: str | None) -> str | None:
+    """bcftools' predefined ploidy for ``build``: "GRCh37" or "GRCh38". None
+    for T2T, whose PARs aren't GRCh38's, and for unrecognised builds."""
+    if build and is_hg37_build(build):
         return "GRCh37"
-    if is_hg38_build(build) or is_t2t_build(build):
+    if build and is_hg38_build(build):
         return "GRCh38"
-    raise ValueError(f"Unsupported reference build for ploidy: {build}")
+    return None
 
 
 def build_from_path(path: str) -> str | None:
