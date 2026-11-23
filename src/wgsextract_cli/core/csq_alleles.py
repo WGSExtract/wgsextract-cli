@@ -101,19 +101,21 @@ def allele_entries(
     info: Mapping[str, str],
     formats: Mapping[str, Sequence[str]],
     spellings: Sequence[str],
-    index: int,
-    n_alts: int,
-    split: bool,
     tag: str,
 ) -> list[dict[str, str]]:
     """The entries for one ALT of a pipe-delimited INFO field that leads with
-    the allele (SpliceAI's, fastVEP's FV_*), by its spelling in the VCF."""
+    the allele as the VCF spells it (SpliceAI's, fastVEP's FV_*). Each entry
+    must name the ALT: a record split elsewhere may keep its other ALTs'."""
     raw = info.get(tag)
     names = formats.get(tag)
     if not raw or not names:
         return []
     entries = csq_entries(raw, names)
-    return for_allele(entries, "ALLELE", spellings, index, n_alts, split=split)
+    for spelling in dict.fromkeys(spellings):
+        matches = [e for e in entries if e.get("ALLELE") == spelling]
+        if matches:
+            return matches
+    return []
 
 
 def split_origin(raw: str | None) -> tuple[str, list[str], int] | None:

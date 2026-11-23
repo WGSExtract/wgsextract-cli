@@ -135,17 +135,22 @@ PIPE_FORMATS: dict[str, tuple[str, ...]] = {
     FV_DBNSFP: ("ALLELE", "SIFT", "POLYPHEN"),
 }
 
-# Annotation names for the table's provenance: INFO tags or CSQ fields.
+_DELTAS = ("DS_AG", "DS_AL", "DS_DG", "DS_DL")
+_CSQ_DELTAS = tuple(f"SpliceAI_pred_{d}" for d in _DELTAS)
+
+# Annotation names for the table's provenance, and every INFO tag or CSQ
+# field that gives one of their columns.
 ANNOTATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("revel", (REVEL, FV_REVEL, "REVEL_score")),
-    ("alphamissense", (AM_SCORE, FV_AM, "AlphaMissense_score")),
-    ("cadd", (CADD_PHRED, "CADD_phred")),
-    ("spliceai", (SPLICEAI, "SpliceAI_pred_DS_AG")),
+    ("alphamissense", (AM_SCORE, AM_CLASS, FV_AM, "AlphaMissense_score",
+                       "AlphaMissense_pred")),
+    ("cadd", (CADD_RAW, CADD_PHRED, "CADD_raw", "CADD_phred")),
+    ("spliceai", (SPLICEAI, *_CSQ_DELTAS)),
     ("phylop", (PHYLOP, FV_PHYLOP, "phyloP100way_vertebrate")),
     ("gerp", (GERP, FV_GERP, "Conservation", "GERP++_RS")),
     ("sift", ("SIFT", FV_DBNSFP)),
     ("polyphen", ("PolyPhen", FV_DBNSFP)),
-)
+)  # fmt: skip
 NAMES = frozenset(name for name, _ in ANNOTATIONS)
 
 # The numeric scores of our annotators' INFO fields, in column order (with
@@ -171,8 +176,6 @@ _CSQ_SCORES = {
     "gerp": ("Conservation", "GERP++_RS"),
 }
 
-_DELTAS = ("DS_AG", "DS_AL", "DS_DG", "DS_DL")
-_CSQ_DELTAS = tuple(f"SpliceAI_pred_{d}" for d in _DELTAS)
 # dbNSFP's AlphaMissense_pred letters, most pathogenic first.
 _AM_PRED = {"P": "likely_pathogenic", "A": "ambiguous", "B": "likely_benign"}
 _AM_RANK = ("likely_pathogenic", "ambiguous", "likely_benign")
@@ -302,23 +305,29 @@ def _most_pathogenic(classes: Iterable[str | None]) -> str | None:
 
 
 def _spliceai_max(entries: Entries, gene: str | None) -> float | None:
-    """The highest delta score of SpliceAI entries already matched to the ALT,
-    of the row's gene when SpliceAI scored it."""
+    """The highest delta score of SpliceAI entries already matched to the ALT:
+    those of the row's gene, else (when it has none) of any gene."""
     # Compared decoded: fastVEP percent-encodes symbols in SpliceAI and CSQ.
     wanted = _text(gene)
     of_gene = [e for e in entries if wanted and _text(e.get("SYMBOL")) == wanted]
-    deltas = [
-        v
-        for e in (of_gene or entries)
-        for key in _DELTAS
-        if (v := _number(e.get(key))) is not None
-    ]
-    return max(deltas) if deltas else None
+    for group in (of_gene, entries):
+        deltas = [
+            v
+            for e in group
+            for key in _DELTAS
+            if (v := _number(e.get(key))) is not None
+        ]
+        if deltas:
+            return max(deltas)
+    return None
 
 
 def _csq_deltas(entry: Mapping[str, str]) -> dict[str, str]:
-    """VEP SpliceAI plugin's delta scores (its split output) as SpliceAI's."""
-    return {d: entry.get(c, "") for d, c in zip(_DELTAS, _CSQ_DELTAS, strict=True)}
+    """VEP SpliceAI plugin's gene and delta scores (its split output) as
+    SpliceAI's INFO entry has them."""
+    deltas = {d: entry.get(c, "") for d, c in zip(_DELTAS, _CSQ_DELTAS, strict=True)}
+    deltas["SYMBOL"] = entry.get("SpliceAI_pred_SYMBOL") or entry.get("SYMBOL", "")
+    return deltas
 
 
 def _fv_text(
@@ -374,10 +383,8 @@ def allele_scores(
     if am_class is None and fields.am_class:
         am_class = _csq_am_class(csq)
     spliceai = _spliceai_max(pipe_entries(SPLICEAI), gene) if SPLICEAI in info else None
-    if spliceai is None and fields.spliceai and csq is not None:
-        spliceai = _spliceai_max([_csq_deltas(csq)], None)
-        if spliceai is None:
-            spliceai = _spliceai_max([_csq_deltas(e) for e in csq_entries], None)
+    if spliceai is None and fields.spliceai:
+        spliceai = _spliceai_max([_csq_deltas(e) for e in csq_entries], gene)
     unscored: tuple[float | None, str | None] = (None, None)
     sift = polyphen = unscored
     if fields.sift and csq:

@@ -325,3 +325,57 @@ def test_1284_annotator_scores_match_across_tsv_parquet_and_sqlite(tmp_path):
     assert set(annotations.split(",")) >= {
         "revel", "alphamissense", "cadd", "spliceai", "phylop", "gerp",
     }  # fmt: skip
+
+
+def test_1284_review_a_score_entry_must_name_its_alt():
+    """Review of issue 1284: a record split without OLD_MULTIALLELIC may keep
+    another ALT's SpliceAI and fastVEP entries; they don't score this ALT."""
+    info = "SpliceAI=T|GENEA|0.9|0|0|0|1|2|3|4;FV_REVEL=T|0.8"
+    record = _record("chr1", "300", ".", "C", "G", "50", "PASS", info, "GT", "0/1")
+    assert _scores(_rows(FASTVEP_HEADER, [record])["300", "G"]) == {}
+
+
+@pytest.mark.parametrize(
+    ("tag", "value", "column", "expected"),
+    [
+        ("CADD_RAW", "1.5", "cadd_raw", 1.5),
+        ("am_class", "ambiguous", "alphamissense_class", "ambiguous"),
+    ],
+)
+def test_1284_review_one_field_of_a_pair_alone_is_exported(
+    tag, value, column, expected
+):
+    """Review of issue 1284: a VCF with only CADD_RAW (or only am_class)
+    exported nothing."""
+    header = (
+        "##fileformat=VCFv4.2\n"
+        f'##INFO=<ID={tag},Number=A,Type=String,Description="x">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    )
+    rows = _rows(header, [f"chr1\t5\t.\tA\tG\t.\tPASS\t{tag}={value}\n"],
+                 sample_index=None)  # fmt: skip
+    assert rows["5", "G"][column] == expected
+
+
+def test_1284_review_spliceai_is_the_genes_highest_else_any_genes():
+    """Review of issue 1284: the row's gene's highest delta, from any of its
+    entries; another gene's only when the row's gene has none."""
+    csq = (
+        "Allele|Consequence|SYMBOL|Feature_type|Feature|MANE_SELECT|"
+        "SpliceAI_pred_DS_AG|SpliceAI_pred_DS_AL|SpliceAI_pred_DS_DG|"
+        "SpliceAI_pred_DS_DL|SpliceAI_pred_SYMBOL"
+    )
+    header = VEP_HEADER.replace(VEP_CSQ, csq)
+    chosen = "G|missense_variant|GENEA|Transcript|ENST1|NM_1|||||GENEA"
+    other = "G|intron_variant|GENEA|Transcript|ENST2||0.1|0.4|0|0|GENEA"
+    gene_b = "G|intron_variant|GENEB|Transcript|ENST3||0.9|0|0|0|GENEB"
+    vep = _record("chr1", "100", ".", "A", "G", "50", "PASS",
+                  _csq(chosen, other, gene_b), "GT", "0/1")  # fmt: skip
+    assert _rows(header, [vep])["100", "G"]["spliceai_max"] == 0.4
+    # SpliceAI INFO: the row's gene is unscored ('.'), so GENEB's.
+    info = (
+        "CSQ=G|missense_variant|MODERATE|GENEA|Transcript|ENST1|NM_1.1||;"
+        "SpliceAI=G|GENEA|.|.|.|.|1|2|3|4,G|GENEB|0.7|0|0|0|1|2|3|4"
+    )
+    record = _record("chr1", "300", ".", "C", "G", "50", "PASS", info, "GT", "0/1")
+    assert _rows(FASTVEP_HEADER, [record])["300", "G"]["spliceai_max"] == 0.7

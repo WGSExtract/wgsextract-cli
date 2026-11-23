@@ -123,8 +123,10 @@ on install them) or from a file you name.
   position, so another of the allele's transcripts gives them when the chosen
   one has none. A CSQ field listing several values (`&`) gives the highest.
 - **SpliceAI** lists a score per gene, and per ALT at a multi-allelic site;
-  `spliceai_max` reads the row's own ALT, and its gene when SpliceAI scored
-  it, else the highest of any gene. A missing delta (`.`) is skipped.
+  `spliceai_max` reads only entries naming the row's own ALT, and is the
+  highest delta of the row's gene over all its entries (VEP's transcripts
+  included), else, when that gene has none, of any gene. A missing delta
+  (`.`) is skipped.
 - **Unscored is empty, never 0.** A variant without a score, such as an indel
   the REVEL table doesn't list, leaves the column empty, so `revel IS NULL`
   means not scored and `revel < 0.5` means scored benign.

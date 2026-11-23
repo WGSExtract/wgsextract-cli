@@ -725,9 +725,6 @@ def variant_rows(
                             info,
                             pipe_formats,
                             ann_spellings,
-                            index,
-                            n_alts,
-                            split_alt,
                         ),
                         gene,
                     )
