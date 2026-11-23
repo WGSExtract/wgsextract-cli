@@ -135,6 +135,8 @@ export function localizationLabels(table: StringMap = {}) {
         layoutDirection: layoutDirection(table["language.layoutDirection"]),
         viewerTitle: table["viewer.title"] ?? "Genome viewer",
         viewerStrings: Object.fromEntries(Object.entries(table).filter(([key]) => key.startsWith("viewer.")).map(([key, value]) => [key.slice("viewer.".length), value])),
+        geneTitle: table["gene.title"] ?? "Gene page",
+        geneStrings: Object.fromEntries(Object.entries(table).filter(([key]) => key.startsWith("gene.")).map(([key, value]) => [key.slice("gene.".length), value])),
         terminalMainTabTitle: table["app.terminal.mainTab.title"] ?? "Jobs",
         jobsEmptyLabel: table["app.jobs.empty"] ?? "No jobs have run in this session yet.",
         jobsColumnJobLabel: table["app.jobs.column.job"] ?? "Job",

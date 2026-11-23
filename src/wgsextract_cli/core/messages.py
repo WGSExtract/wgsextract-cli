@@ -24,6 +24,7 @@ CLI_HELP = {
     "arg_csv": "Output the table as CSV instead of formatted text",
     "cmd_calculate-coverage": "Generate a full breadth-of-coverage report. Uses samtools coverage to calculate exactly how much of each chromosome was sequenced.",
     "cmd_coverage-sample": "Quickly estimate per-chromosome breadth of coverage by sampling ~1,000 evenly spaced, length-weighted 1 kb windows. An estimate; use calculate-coverage for exact numbers.",
+    "cmd_info-gene": "Look at one gene from local data: its span and RefSeq transcripts, your VCF's variants in it with consequence, ClinVar, gnomAD and research-only ACMG annotations, and BAM/CRAM read depth over each exon against a callable threshold. Nothing is downloaded; missing data names the command that makes it.",
     "cmd_info-chip": "Identify the vendor, chip and revision of a consumer microarray raw-data file (23andMe, AncestryDNA, MyHeritage, FTDNA, ...) from its header and marker set, with a confidence score and the matching --formats template.",
     "cmd_report": "Summarise a sample's results (overview, QC, lineage, pharmacogenomics including HLA, ClinVar pathogenic calls in ACMG SF genes with carrier status, microarray files) as a local HTML, Markdown and JSON report with confidence-labelled findings. Reads earlier runs' result manifests and runs no analysis; its only network call downloads a built-in gene list once. Technical results, not diagnosis.",
     "cmd_basecall": "Basecall Nanopore POD5 signal with ONT's Dorado (optional; install it yourself) into an unaligned BAM that keeps the MM/ML methylation tags and feeds `align --r1`. Picks the GPU (Apple silicon, else NVIDIA) or CPU, downloads hac/sup models into the wgsextract cache, and can re-basecall only a panel's reads with sup.",
@@ -111,7 +112,7 @@ CLI_HELP = {
     "cmd_ref-download": "Download a reference FASTA from a URL (--url) to a path (--out). For curated hg19/hg38/T2T genomes use 'ref library --install'.",
     "cmd_ref-verify": "Ensure your reference genome file isn't corrupted and has all the necessary companion files (indexes, dicts).",
     "cmd_ref-count-ns": "Calculate the percentage of 'N' (unknown) bases in a genome. Useful for understanding the 'mappability' of different reference builds.",
-    "cmd_ref-gene-map": "Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).",
+    "cmd_ref-gene-map": "Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1), with the RefSeq transcript and exon models the genome viewer and info gene show.",
     "cmd_ref-library": "Opens the interactive reference manager to help you organize and download genomic data.",
     "micro_formats_help": """Comma-separated list of formats to generate (default: all).
 Variants are named by letter (h600.org's Microarray File Formats); similar

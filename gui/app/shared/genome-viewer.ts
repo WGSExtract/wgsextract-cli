@@ -20,11 +20,20 @@ export interface LocalTrack<Source = File> {
     referenceLengths?: Record<string, number>;
 }
 
+/** Installed RefSeq transcript and exon models: an indexed BED12, or notices naming the command that installs it. */
+export interface ViewerTranscripts<Source = File> {
+    url?: Source;
+    indexURL?: Source;
+    headers?: Record<string, string>;
+    notices: { code: string; fileName: string; command: string }[];
+}
+
 export interface LocalViewerFiles<Source = File> {
     reference: { id: string; name: string; fastaURL: Source; indexURL: Source; compressedIndexURL?: Source; headers?: Record<string, string>; wholeGenomeView: false };
     tracks: LocalTrack<Source>[];
     genes?: ViewerGenes;
     cytobands?: ViewerCytobands;
+    transcripts?: ViewerTranscripts<Source>;
 }
 
 export interface LibraryViewerSession {

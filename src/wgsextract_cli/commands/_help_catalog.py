@@ -75,6 +75,16 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "info cache.",
         "wgsextract info coverage-sample --input sample.cram",
     ),
+    "info gene": _h(
+        "Prints the gene's span, transcripts, variant counts and exon coverage; "
+        "--json has the full wgsextract.gene/1 document in details. With "
+        "--export, <vcf stem>_<gene>_<filter>_variants.tsv.",
+        "wgsextract info gene --gene BRCA1 --input sample.cram "
+        "--vcf-input sample_annotated.vcf.gz",
+        "wgsextract info gene --gene BRCA2 --vcf-input sample_annotated.vcf.gz "
+        "--export clinvar-plp",
+        "wgsextract info gene --gene CFTR --input sample.bam --min-depth 20 --json",
+    ),
     "info chip": _h(
         "Prints the vendor, chip and matching --formats template; writes no files.",
         "wgsextract info chip --input genome_raw_data.txt",
@@ -433,7 +443,9 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract ref cytobands --build hg38",
     ),
     "ref gene-map": _h(
-        f"{_LIBRARY}: the hg19 and hg38 gene maps (--delete removes them).",
+        f"{_LIBRARY}: the hg19 and hg38 gene maps and their indexed RefSeq "
+        "transcript and exon models, transcripts_<build>.bed.gz, for the genome "
+        "viewer and info gene (--delete removes them).",
         "wgsextract ref gene-map",
     ),
     "ref clinvar": _h(

@@ -6,6 +6,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Added
+- A **Gene page** in the WGSExtract sidebar: enter a gene symbol to see its RefSeq transcripts and exons, your variants in it (consequence, ClinVar, gnomAD, research-only ACMG; filters for rare and damaging, ClinVar P/LP and ACMG P/LP; **Export TSV**) and read depth over each exon against a callable threshold, all from `wgsextract info gene` on this computer. Missing data names the command that provides it; **Open in genome viewer** shows the gene with the new **RefSeq transcripts** track ([gene-page.md](gene-page.md), [#1166, offline gene page](https://github.com/WGSExtract/wgsextract-cli/issues/1166)).
 - A result's findings (Personal Report) and mtDNA haplogroup variants are listed under it, each with **Show in viewer** at its own position on the sample's BAM, CRAM or VCF. The viewer opens a row's contig in the matched reference's spelling (`chr1` or `1`, `chrM` or `MT`) opens ClinVar and ACMG findings only on a reference of their evidence's build, and opens Haplogrep's rCRS positions only on a mitochondrion whose sequence is the rCRS (not hg19's Yoruba or T2T's CHM13 chrM). A row without a single position, or whose sample file is missing, unindexed or outside My Genomes, shows a disabled link with the reason; `POST /api/viewer/check` checks the file without granting any bytes ([#1161, viewer links from result tables](https://github.com/WGSExtract/wgsextract-cli/issues/1161)).
 
 ### Fixed
