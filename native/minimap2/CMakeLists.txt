@@ -314,6 +314,10 @@ function(wgse_minimap2_executable name core)
     endif()
     target_compile_options(${name} PRIVATE ${wgse_minimap2_warnings})
     target_link_libraries(${name} PRIVATE ${core})
+    if(WIN32)
+        # Include the binary I/O constructor, even though no mapper symbol calls it.
+        target_link_libraries(${name} PRIVATE wgse_minimap2_platform)
+    endif()
     if(APPLE)
         # The Objective-C++ autorelease pool around minimap2's main.
         set_source_files_properties(main.cpp PROPERTIES LANGUAGE OBJCXX)

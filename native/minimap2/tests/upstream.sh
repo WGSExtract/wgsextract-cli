@@ -121,6 +121,11 @@ if [ "$mode" = cuda-cpu-fallback ]; then
     "$upstream" -ax map-ont reference.fa ont.fq > upstream.sam 2> upstream.log
     "$wgse" --backend auto -ax map-ont reference.fa ont.fq > auto.sam 2> auto.log
     grep -q 'CPU fallback: CUDA unavailable' auto.log
+    # SAM streams match the binary I/O of upstream's Windows package.
+    if od -An -tu1 -N 64 auto.sam | grep -E '[[:space:]]13[[:space:]]'; then
+        echo "Unexpected CR in the SAM header" >&2
+        exit 1
+    fi
     records upstream.sam
     records auto.sam
     cmp upstream.sam.records auto.sam.records
