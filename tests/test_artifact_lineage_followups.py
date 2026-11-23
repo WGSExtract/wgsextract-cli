@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from tests.htslib_helpers import needs_htslib, snp_sample
 from tests.smoke_utils import run_cli
@@ -28,6 +29,7 @@ from tests.test_artifact_lineage import (
     _other_vcf,
     _output,
 )
+from wgsextract_cli.core.results import load_schema
 from wgsextract_cli.core.utils import run_command
 
 
@@ -337,3 +339,66 @@ def test_1379_a_malformed_manifest_beside_calls_only_loses_their_producer(
     document = json.loads(stdout)
     assert "sample_mismatch" in {w["code"] for w in document["warnings"]}
     assert document["inputs"][1]["artifact"]["origin"] == "external"
+
+
+@needs_htslib
+def test_1379_an_external_vcf_annotated_from_recorded_calls_stays_external(
+    tmp_path: Path,
+) -> None:
+    # Review of #1427: annotating copies IDs, not genotypes, from --ann-vcf;
+    # the output's sample is still the external input's.
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    external = tmp_path / "external"
+    external.mkdir()
+    for name in ("snps.vcf.gz", "snps.vcf.gz.tbi"):
+        (external / name).write_bytes((calls / name).read_bytes())
+    out = tmp_path / "out"
+    code, _, stderr = run_cli([
+        "vcf", "annotate", "--vcf-input", str(external / "snps.vcf.gz"),
+        "--ann-vcf", str(calls / "snps.vcf.gz"), "--cols", "ID", "--outdir", str(out),
+    ])  # fmt: skip
+    assert code == 0, stderr
+    manifest = next(out.glob("*.manifest.json"))
+    annotated = _output(_manifest(manifest), "annotated")["artifact"]
+    assert annotated["samples"] == ["S"] and annotated["called_from"] == []
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("field", "value", "origin"),
+    [
+        (
+            "producer",
+            {"run": 123, "root": None, "command": "x", "step": None},
+            "external",
+        ),
+        ("producer", None, "external"),  # its history explicitly unknown
+        ("called_from", [{"path": None, "role": []}], "recorded"),
+    ],
+)
+def test_1379_a_neighbouring_manifest_is_trusted_only_when_well_formed(
+    tmp_path: Path, field: str, value: Any, origin: str
+) -> None:
+    # Review of #1427: malformed producers and ancestry were copied into the
+    # next result (breaking its schema) or turned a warning into a refusal,
+    # and a producer recorded as unknown credited the manifest's own run.
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    path = calls / "snps.vcf.manifest.json"
+    document = json.loads(path.read_text())
+    _output(document, "snps")["artifact"][field] = value
+    path.write_text(json.dumps(document))
+    other = _bam(tmp_path / "other.bam", 3000, sample="NA12878")
+    code, stdout, _ = run_cli([
+        "--json", "analyze", "comprehensive", "--dry-run", "--input", other,
+        "--vcf-inputs", str(calls / "snps.vcf.gz"), "--outdir", str(tmp_path / "a"),
+    ])  # fmt: skip
+    assert code == 0, stdout
+    result = json.loads(stdout)
+    Draft202012Validator(load_schema()).validate(result)
+    assert "sample_mismatch" in {w["code"] for w in result["warnings"]}
+    vcf = next(r for r in result["inputs"] if r["role"] == "vcf_input")["artifact"]
+    assert vcf["origin"] == origin and vcf["called_from"] == []

@@ -28,7 +28,7 @@ import os
 import re
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
@@ -351,24 +351,28 @@ def _producer_in(manifest: Path, record: FileRecord) -> _Recorded | None:
         ):
             continue
         artifact = output.get("artifact")
-        artifact = artifact if isinstance(artifact, dict) else {}
-        producer = artifact.get("producer")
-        if not isinstance(producer, dict):
-            producer = {
-                "run": run.get("id"),
-                "root": run.get("root"),
-                "command": document.get("command"),
-                "step": run.get("step"),
+        if artifact is None:  # written before artifacts: by the document's run
+            artifact = {
+                "producer": {
+                    "run": run.get("id"),
+                    "root": run.get("root"),
+                    "command": document.get("command"),
+                    "step": run.get("step"),
+                }
             }
+        # An artifact without a producer is one nobody knows the history of.
+        producer = producer_from_dict(
+            artifact.get("producer") if isinstance(artifact, dict) else None
+        )
+        if producer is None:
+            continue
+        assert isinstance(artifact, dict)
+        lifecycle = artifact.get("lifecycle")
+        reference = artifact.get("reference")
         return _Recorded(
-            Producer(
-                run=producer.get("run"),
-                root=producer.get("root"),
-                command=str(producer.get("command") or ""),
-                step=producer.get("step"),
-            ),
-            artifact.get("lifecycle"),
-            artifact.get("reference"),
+            producer,
+            lifecycle if lifecycle in _LIFECYCLES else None,
+            reference if isinstance(reference, str) else None,
             _edges(artifact.get("called_from")),
         )
     return None
@@ -430,17 +434,17 @@ def _called_from(
     by_path: Mapping[str, FileRecord],
 ) -> list[SourceEdge]:
     """The reads a VCF/BCF output's calls come from, when its sample columns
-    are theirs: its BAM/CRAM sources when it names only their @RG SM (or,
-    for reads whose SM isn't known, such as a CRAM's, when no other VCF
-    could have named them), and the reads its VCF sources were called from
-    when it keeps their samples (a filtered or annotated copy). A VCF made
-    with the reads but named by another VCF (``vcf phase``) has none."""
+    are theirs: the reads its VCF sources were called from when it keeps
+    their samples (a filtered or annotated copy), and its BAM/CRAM sources
+    when it names only their @RG SM (for reads whose SM isn't known, such
+    as a CRAM's, when no other VCF went into it). None when a VCF source
+    without that ancestry names its samples too: an external VCF phased
+    with the reads (``vcf phase``) or annotated from recorded calls."""
     if record.kind not in ("vcf", "bcf") or not samples:
         return []
     named = set(samples)
-    found: dict[tuple[str, str | None], SourceEdge] = {}
     reads: list[tuple[SourceEdge, ArtifactRecord]] = []
-    named_by_another = False
+    others: list[ArtifactRecord] = []  # VCFs that may have named its samples
     for source in sources:
         origin = by_path.get(source.path)
         artifact = origin.artifact if origin else None
@@ -448,15 +452,19 @@ def _called_from(
             continue
         if origin.kind in ("bam", "cram"):
             reads.append((source, artifact))
-            continue
         # This run's own temporary calls (vcf call --merge's parts) name nothing.
-        named_by_another |= artifact.origin != "this_run"
-        if named <= set(artifact.samples):
-            for called in artifact.called_from:
-                found.setdefault((called.path, called.fingerprint), called)
+        elif artifact.origin != "this_run":
+            others.append(artifact)
+    # Any VCF naming its samples may have supplied them, so each must vouch
+    # (an external VCF annotated from recorded calls naming the same sample
+    # keeps its own genotypes).
+    naming = [a for a in others if named <= set(a.samples)]
+    if any(not a.called_from for a in naming):
+        return []
+    found = {(e.path, e.fingerprint): e for a in naming for e in a.called_from}
     sms = {sm for _, artifact in reads for sm in artifact.samples}
     unknown = any(not artifact.samples for _, artifact in reads)
-    if named <= sms or (unknown and not named_by_another):
+    if named <= sms or (unknown and not others):
         for source, _ in reads:
             found.setdefault((source.path, source.fingerprint), source)
     return list(found.values())
@@ -586,20 +594,47 @@ class Lineage:
             logging.warning("Could not describe the run's artifacts.", exc_info=True)
 
 
+_LIFECYCLES = ("final", "intermediate", "cache", "temp")
+
+
+def _run_id(value: object) -> bool:
+    return value is None or (isinstance(value, str) and bool(_RUN_ID.fullmatch(value)))
+
+
 def producer_from_dict(value: object) -> Producer | None:
-    try:
-        return Producer(**value) if isinstance(value, dict) else None
-    except TypeError:
+    """A producer read back from a document; None for a malformed one."""
+    if not (
+        isinstance(value, dict)
+        and set(value) <= {"run", "root", "command", "step"}
+        and _run_id(value.get("run"))
+        and _run_id(value.get("root"))
+        and isinstance(value.get("command"), str)
+        and isinstance(value.get("step"), str | None)
+    ):
         return None
+    return Producer(
+        value.get("run"), value.get("root"), value["command"], value.get("step")
+    )
 
 
 def _edges(value: object) -> list[SourceEdge]:
-    if not isinstance(value, list):
-        return []
-    try:
-        return [SourceEdge(**e) for e in value if isinstance(e, dict)]
-    except TypeError:
-        return []
+    """Edges read back from a document: none if any is malformed, since
+    ancestry is trusted whole or not at all."""
+    edges: list[SourceEdge] = []
+    for item in value if isinstance(value, list) else []:
+        if not (
+            isinstance(item, dict)
+            and set(item) <= {f.name for f in fields(SourceEdge)}
+            and isinstance(item.get("path"), str)
+            and isinstance(item.get("role"), str)
+            and isinstance(item.get("fingerprint"), str | None)
+            and _run_id(item.get("producer"))
+            and item.get("lifecycle") in (*_LIFECYCLES, None)
+            and isinstance(item.get("retained", True), bool)
+        ):
+            return []
+        edges.append(SourceEdge(**item))
+    return edges
 
 
 def artifact_from_dict(value: object) -> ArtifactRecord | None:

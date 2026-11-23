@@ -170,13 +170,14 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index (`.crai`) isn't read: only its presence is checked. `mismatched`: another sequence dictionary, blocks that aren't the file's, or an unreadable index. Every index a reader may pick is checked (htslib picks a `.csi` before a `.bai` or `.tbi`), and the first unusable one is reported. |
   | `producer` | `run`, `root`, `command` and `step` of the run that wrote it. |
   | `sources` | The files it was made from: `path`, `role`, `fingerprint`, `producer` (run), `lifecycle` and `retained`. |
-  | `called_from` | For a VCF or BCF: the reads (as `sources` entries) wgsextract called it from, directly or through filters and annotations that kept its samples, so its sample columns are those reads' `@RG SM`. It names the reads only when its samples are among their `@RG SM` (for a CRAM, whose header isn't read, when no other VCF went into it). Empty when nothing vouches for that: an external VCF, one whose samples were renamed, or one that took its sample from another VCF, as `vcf phase` does. |
+  | `called_from` | For a VCF or BCF: the reads (as `sources` entries) wgsextract called it from, directly or through filters and annotations that kept its samples, so its sample columns are those reads' `@RG SM`. It names the reads only when its samples are among their `@RG SM` (for a CRAM, whose header isn't read, when no other VCF went into it). Empty when nothing vouches for that: an external VCF, one whose samples were renamed, or one another VCF without `called_from` and with the same samples went into (`vcf phase` of an external VCF, or an external VCF annotated from recorded calls). |
 
   The facts come from the file itself: its header (read without running a
   tool; a CRAM's header isn't read, so its assembly and samples are
   unknown), its index and its fingerprint. A producer is taken from the
   manifest beside the file only while that manifest still lists the same
-  fingerprint. A server job reads only manifests and indexes in the folders
+  fingerprint and names a well-formed producer (one recorded as unknown
+  stays unknown). A server job reads only manifests and indexes in the folders
   it may use, and so do the steps it starts. A copied, edited or third-party file is `external`, and
   nothing about its history is assumed. An output's `sources` are the
   run's BAM/CRAM/VCF/BCF inputs, unless the command names them. `vcf call
