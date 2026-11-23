@@ -228,6 +228,8 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
         ("dynamic", "legacy-unobserved-source-drift"),
         ("relative-dynamic", "symbol"),
         ("relative-dynamic-unknown", "legacy-unobserved-source-drift"),
+        ("builtin-fromlist", "symbol"),
+        ("builtin-fromlist-unknown", "legacy-unobserved-source-drift"),
         ("unparsed", "legacy-unobserved-source-drift"),
         ("initializer", "legacy-unobserved-source-drift"),
         ("asset", "legacy-unobserved-source-drift"),
@@ -288,6 +290,13 @@ def test_1482_symbol_gate_resolves_importable_drift_but_fails_closed(
             "from importlib import import_module as load\n"
             "def call(package):\n"
             f'    return load(name=".native_aligners", package={anchor})\n',
+        )
+    if drift in {"builtin-fromlist", "builtin-fromlist-unknown"}:
+        names = '["native_aligners"]' if drift == "builtin-fromlist" else "fromlist"
+        write(
+            dynamic_caller,
+            "def call(fromlist):\n"
+            f'    return __import__("wgsextract_cli.core", fromlist={names})\n',
         )
     if drift not in {"added", "no-importer"}:
         write(module, "def align(): return 'old'\n")
@@ -354,7 +363,7 @@ def test_1482_symbol_gate_resolves_importable_drift_but_fails_closed(
         disabled=False,
     )
     selected = [caller, "tests/test_github_actions_policy.py"]
-    if drift == "relative-dynamic":
+    if drift in {"relative-dynamic", "builtin-fromlist"}:
         selected.append(dynamic_caller)
     assert result == {
         "mode": mode,

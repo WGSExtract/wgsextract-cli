@@ -237,6 +237,24 @@ class ImportGraph:
                             self.unsafe.add(name)
                             continue
                     result.update(self.module(target))
+                    if (
+                        builtin
+                        and (names := _call_argument(node, 3, "fromlist")) is not None
+                    ):
+                        if isinstance(names, ast.Constant) and names.value is None:
+                            continue
+                        if not isinstance(names, (ast.List, ast.Tuple)):
+                            self.unsafe.add(name)
+                            continue
+                        for item in names.elts:
+                            if (
+                                isinstance(item, ast.Constant)
+                                and isinstance(item.value, str)
+                                and item.value != "*"
+                            ):
+                                result.update(self.module(f"{target}.{item.value}"))
+                            else:
+                                self.unsafe.add(name)
                 elif name == LAZY_LOADER:
                     # Resolved at command_handler call sites, not on this shared
                     # execution wrapper (which must not depend on every command).
