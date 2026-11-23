@@ -17,7 +17,7 @@ from typing import Any, Literal, TypedDict
 
 from scripts.ci_impact_diff import ImpactDiff, git_blob, impact_diff
 from scripts.ci_impact_import_smoke import smoke_package
-from scripts.ci_impact_observations import SCHEMA
+from scripts.ci_impact_observations import SCHEMA, SOURCE
 from scripts.ci_impact_results import file_results
 from scripts.ci_impact_scopes import (
     ChangedScopes,
@@ -41,7 +41,6 @@ from scripts.ci_select_tests import CI_TESTS, ci_path
 from scripts.ci_test_dependencies import docs_test_targets, test_inputs
 from scripts.ci_test_tiers import SINGLE_OS_MODULES
 
-SOURCE = "src/wgsextract_cli/"
 VARIANTS = ("decisive", "tight", "symbol", "widely_called")
 LOCKS = {"pixi.toml", "pixi.lock", "pyproject.toml"}
 
@@ -111,7 +110,12 @@ def observation_map(
 
 
 def compute(
-    root: Path, diff: ImpactDiff, tests: set[str], evidence: dict[str, Any]
+    root: Path,
+    diff: ImpactDiff,
+    tests: set[str],
+    evidence: dict[str, Any],
+    *,
+    line_override: tuple[str, str, set[str]] | None = None,
 ) -> tuple[dict[str, list[str]], dict[str, set[str]], list[str]]:
     reasons: dict[str, set[str]] = defaultdict(set)
     paths = {path for row in diff.changes for path in (row.before, row.after) if path}
@@ -130,6 +134,7 @@ def compute(
         t.split("::", 1)[0] for t in docs_test_targets(sorted(paths), repository=root)
     }
     observed_calls: set[str] = set()
+    line_calls: set[str] = set()
     wide_calls: set[str] = set()
     scopes = {}
     module_users = {}
@@ -255,6 +260,10 @@ def compute(
             else:
                 reasons[source].add("observed-function")
             observed_calls.update(callers)
+            if line_override is not None:
+                line_calls.update(
+                    line_override[2] if line_override[:2] == (source, fn) else callers
+                )
             sampled = sample_callers(
                 source,
                 fn,
@@ -328,19 +337,25 @@ def compute(
         if contracts:
             shared.update(contracts)
     # Overlapping non-sampled reasons must never be subtracted from wide.
-    return (
-        shadow_candidates(
-            shared | observed_calls,
+    candidates = shadow_candidates(
+        shared | observed_calls,
+        module_users,
+        scopes,
+        tests,
+        SYMBOL_CONTRACTS,
+        symbol_module_users=symbol_users,
+        widely_called_shared=shared | wide_calls,
+    )
+    if line_override is not None:
+        candidates["line"] = shadow_candidates(
+            shared | line_calls,
             module_users,
             scopes,
             tests,
             SYMBOL_CONTRACTS,
             symbol_module_users=symbol_users,
-            widely_called_shared=shared | wide_calls,
-        ),
-        reasons,
-        sorted(set(unmodeled)),
-    )
+        )["symbol"]
+    return candidates, reasons, sorted(set(unmodeled))
 
 
 def lane_tests(root: Path, head: str, *, skip_independent: bool) -> set[str]:
@@ -363,8 +378,11 @@ def lane_tests(root: Path, head: str, *, skip_independent: bool) -> set[str]:
 
 
 def main() -> None:
+    from scripts.ci_impact_lines import line_callers
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--observations", type=Path, required=True)
+    parser.add_argument("--line-map", type=Path)
     parser.add_argument("--junit", type=Path, required=True)
     parser.add_argument("--summary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -381,7 +399,14 @@ def main() -> None:
     ).strip()
     tests = lane_tests(root, diff.head, skip_independent=True)
     evidence, gap = observation_map(root, args.observations, diff.base)
-    candidates, reasons, unmatched = compute(root, diff, tests, evidence)
+    override, line_status = (
+        line_callers(root, diff, args.line_map, evidence, tests)
+        if args.line_map is not None
+        else (None, "no-paired-map")
+    )
+    candidates, reasons, unmatched = compute(
+        root, diff, tests, evidence, line_override=override
+    )
     import_probe = (
         smoke_package(root)
         if any("eager-import-smoke" in rule for rule in reasons.values())
@@ -406,6 +431,15 @@ def main() -> None:
     enforced = gate_decision["selection"]
     effective = tests if enforced == "all" else tests & set(enforced)
     invalid_decision = gate_decision["mode"] == "unknown-invalid-decision"
+    if override is not None and (
+        gate_decision["mode"] != "symbol"
+        or unmatched
+        or effective != set(candidates["symbol"])
+        or not candidates.get("line")
+    ):
+        line_status = "symbol-fallback-or-unmodeled"
+    if line_status != "eligible":
+        candidates["line"] = sorted(effective)
     actual: dict[str, Any] = {}
     unmapped = 0
     receipt = "No regular pytest receipt (not run, cache-only, or interrupted)."
@@ -418,7 +452,7 @@ def main() -> None:
     failures = {t for t, r in actual.items() if r["failed"]}
     passed = {t for t, r in actual.items() if r["passed"] and not r["failed"]}
     completed = failures | passed
-    seconds = evidence.get("seconds", {})
+    seconds: dict[str, float] = evidence.get("seconds", {})
     baseline_timed = requested & seconds.keys()
     baseline_minutes = (
         round(sum(seconds[t] for t in baseline_timed) / 60, 3)
@@ -468,6 +502,15 @@ def main() -> None:
         f"| current | {len(requested)} | {baseline_minutes if baseline_minutes is not None else 'n/a'} | "
         f"{len(baseline_timed)} | {len(failures - requested)} | {len(requested - completed)} |",
     ]
+
+    def estimated_with_imputation(selected: set[str]) -> float | None:
+        if not seconds:
+            return None
+        default = max(seconds.values())
+        return round(
+            sum(seconds.get(test, default) for test in sorted(selected)) / 60, 3
+        )
+
     for name, targets in candidates.items():
         selected = set(targets)
         timed = selected & seconds.keys()
@@ -482,6 +525,19 @@ def main() -> None:
             "observed_omitted_passes": sorted(passed - selected),
             "selected_without_pass_or_fail": sorted(selected - completed),
         }
+        if name == "line":
+            minutes = estimated_with_imputation(selected)
+            symbol_minutes = estimated_with_imputation(effective)
+            report["variants"][name].update(
+                status=line_status,
+                estimated_test_minutes=minutes,
+                estimated_minutes_saved_vs_enforced=(
+                    round(symbol_minutes - minutes, 3)
+                    if symbol_minutes is not None and minutes is not None
+                    else None
+                ),
+                nightly_recall=None,
+            )
         summary.append(
             f"| {name} | {len(selected)} | {minutes if minutes is not None else 'n/a'} | "
             f"{len(timed)} | {len(omitted_failures)} | {len(selected - completed)} |"
@@ -509,6 +565,9 @@ def main() -> None:
     summary.extend(
         (
             "",
+            f"Line shadow: {line_status}. Unknown line-arm timings use the maximum "
+            "observed file duration. Nightly recall is unavailable until reproducible "
+            "failures can be tied to this exact tree by the backstop.",
             f"Unmatched inputs: {len(unmatched)}. Unmapped JUnit cases: {unmapped}.",
             "An omitted failure is a triage lead, not proof of PR origin. "
             "Untested, skipped, cached and certified work is not a pass observation.",

@@ -153,7 +153,10 @@ def test_shadow_reports_source_scans_and_base_only_failures(
         assert not report["comparable"]
         assert report["gate_mode"] == "unknown-invalid-decision"
     assert "tests/test_unrun.py" not in report["actual_results"]
-    assert len(report["variants"]) == 4
+    line = report["variants"].pop("line")
+    assert line["status"] == "no-paired-map"
+    assert line["selected"] == report["effective_selected"]
+    assert line["nightly_recall"] is None
     for variant in report["variants"].values():
         assert {"tests/test_text_newlines.py", "tests/test_command_needs.py"} <= set(
             variant["selected"]
@@ -161,6 +164,169 @@ def test_shadow_reports_source_scans_and_base_only_failures(
         assert variant["observed_omitted_failures"] == ["tests/test_qualify_30x.py"]
         assert variant["estimated_test_minutes"] == 0.1
     assert "not proof of PR origin" in (output / "summary.md").read_text()
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux" or platform.machine() != "x86_64",
+    reason="trusted Linux x64 coverage profile",
+)
+@pytest.mark.parametrize(
+    "change", ["replacement", "fixture-drift", "insertion", "corrupt-cache"]
+)
+def test_1452_line_shadow_uses_prior_base_contexts_without_deduplicating_tests(
+    tmp_path: Path,
+    change: str,
+) -> None:
+    _git(tmp_path, "init", "-b", "main")
+    _git(tmp_path, "config", "user.email", "test@example.test")
+    _git(tmp_path, "config", "user.name", "Test")
+    _git(tmp_path, "config", "commit.gpgsign", "false")
+    source = "src/wgsextract_cli/branchy.py"
+    test_a, test_b, test_c, contract = [
+        f"tests/test_{name}.py" for name in ("left", "also_left", "right", "branchy")
+    ]
+    original = "def branchy(left):\n    if left:\n        return 1\n    return 2\n"
+    files = {
+        source: original,
+        "pytest.ini": "[pytest]\npythonpath = src/wgsextract_cli\n",
+        "pixi.lock": "lock\n",
+        "test-data/frozen.txt": "fixture",
+        "tests/test_text_newlines.py": "def test_newlines(): pass\n",
+        contract: "def test_contract(): pass\n",
+        **{
+            test: "from branchy import branchy\n\ndef test_branch():\n"
+            f"    assert branchy({arg}) == {expected}\n"
+            for test, arg, expected in (
+                (test_a, True, 1),
+                (test_b, True, 1),
+                (test_c, False, 2),
+            )
+        },
+    }
+    for path, contents in files.items():
+        target = tmp_path / path
+        target.parent.mkdir(exist_ok=True, parents=True)
+        target.write_text(contents)
+    _git(tmp_path, "add", ".")
+    _git(tmp_path, "commit", "-m", "Nightly tested base")
+
+    def run(*args: str) -> str:
+        result = subprocess.run(
+            [sys.executable, *args],
+            cwd=tmp_path,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        return result.stdout
+
+    def script(name: str, *args: str) -> str:
+        return run(
+            "-c",
+            "import importlib, sys; sys.path.insert(0, sys.argv.pop(1)); "
+            "importlib.import_module(sys.argv.pop(1)).main()",
+            str(ROOT),
+            f"scripts.ci_impact_{name}",
+            *args,
+        )
+
+    (tmp_path / "out").mkdir()
+    run(
+        "-m",
+        "pytest",
+        "-q",
+        "--rootdir=.",
+        "-o",
+        "addopts=",
+        "-c",
+        "pytest.ini",
+        "--basetemp=out/pytest",
+        "--cov=src/wgsextract_cli",
+        "--cov-context=test",
+        f"--cov-config={ROOT / '.github/coverage-impact.ini'}",
+        "--junitxml=out/nightly.xml",
+    )
+    metadata = ("--coverage-file", "out/.coverage", "--run-id", "1", "--attempt", "1")
+    script(
+        "observations",
+        *metadata,
+        "--junit",
+        "out/nightly.xml",
+        "--output",
+        "out/map.gz",
+    )
+    assert "bytes" in script("lines", *metadata, "--output", "out/lines.gz")
+    if change == "corrupt-cache":
+        # A gzip header followed by the reserved DEFLATE block type.
+        (tmp_path / "out/lines.gz").write_bytes(b"\x1f\x8b\x08\x00\0\0\0\0\0\xff\x07")
+    if change == "fixture-drift":
+        (tmp_path / "test-data/frozen.txt").write_text("different fixture")
+        _git(tmp_path, "commit", "-am", "Change an input outside tests")
+    _git(tmp_path, "switch", "-c", "pr")
+    changed = (
+        original.replace("    return 2", "    left = False\n    return 2")
+        if change == "insertion"
+        else original.replace("return 1", "return 10")
+    )
+    (tmp_path / source).write_text(changed)
+    _git(tmp_path, "commit", "-am", "Edit one body")
+    _git(tmp_path, "switch", "main")
+    _git(tmp_path, "merge", "--no-ff", "-m", "Synthetic PR tree", "pr")
+    script(
+        "gate",
+        "--event",
+        "pull_request",
+        "--base",
+        "HEAD^1",
+        "--legacy",
+        "all",
+        "--observations",
+        "out/map.gz",
+        "--output",
+        "out/gate.json",
+    )
+    script(
+        "shadow",
+        "--observations",
+        "out/map.gz",
+        "--line-map",
+        "out/lines.gz",
+        "--junit",
+        "out/not-run.xml",
+        "--summary",
+        "out/summary.md",
+        "--output",
+        "out/report.json",
+        "--selection",
+        "all",
+        "--outcome",
+        "skipped",
+        "--run-id",
+        "2",
+        "--attempt",
+        "1",
+        "--gate-decision",
+        "out/gate.json",
+    )
+    report = json.loads((tmp_path / "out/report.json").read_text())
+    line = report["variants"]["line"]
+    if change == "replacement":
+        assert report["gate_mode"] == "symbol"
+        assert {test_a, test_b, test_c, contract} <= set(report["effective_selected"])
+        assert line["status"] == "eligible"
+        assert set(line["selected"]) == set(report["effective_selected"]) - {test_c}
+        assert line["estimated_test_minutes"] is not None
+    else:
+        assert (
+            line["status"]
+            == {
+                "fixture-drift": "input-drift",
+                "insertion": "unanchored-edit",
+                "corrupt-cache": "invalid-or-unavailable-map",
+            }[change]
+        )
+        assert line["selected"] == report["effective_selected"]
 
 
 def test_foreign_observation_map_is_not_comparable(tmp_path: Path) -> None:

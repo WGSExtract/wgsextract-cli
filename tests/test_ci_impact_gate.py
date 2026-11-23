@@ -16,8 +16,10 @@ from scripts.ci_impact_backstop import (
     failing_targets,
     first_bad,
     green_nightly,
+    line_detection,
     replay,
     verified_omission,
+    write_line_recall,
 )
 from scripts.ci_impact_gate import plan
 from scripts.ci_impact_observations import SCHEMA
@@ -361,3 +363,48 @@ def test_backstop_requires_a_real_omission_on_identical_pr_tree() -> None:
     assert not verified_omission(
         receipt | {"effective_selected": [path]}, "tested-tree", "pr-head", path, 4
     )
+
+
+def test_1452_backstop_scores_reproducible_files_only_for_the_exact_pr_receipt(
+    tmp_path: Path,
+) -> None:
+    a, b = "tests/test_a.py", "tests/test_b.py"
+    receipt = {
+        "schema": 1,
+        "attempt": 2,
+        "run_id": 4,
+        "pr_head": "pr-head",
+        "tested_git_tree": "tested-tree",
+        "run_outcome": "failure",
+        "gate_mode": "symbol",
+        "effective_selected": [a, b],
+        "variants": {"line": {"status": "eligible", "selected": [a], "omitted": [b]}},
+    }
+    assert line_detection(receipt, "different-tree", "pr-head", a, 4, 2) is None
+    assert line_detection(receipt, "tested-tree", "pr-head", a, 4, 1) is None
+    assert (
+        line_detection(
+            receipt | {"gate_mode": "legacy"}, "tested-tree", "pr-head", a, 4, 2
+        )
+        is None
+    )
+    detections = []
+    for test in (a, a, b):
+        detection = line_detection(receipt, "tested-tree", "pr-head", test, 4, 2)
+        assert detection is not None
+        detections.append(
+            {
+                "test": test,
+                "pr": 20,
+                "pr_run": 4,
+                "commit": "first-bad",
+                "tested_git_tree": "tested-tree",
+                **detection,
+            }
+        )
+    output = tmp_path / "out/recall.json"
+    write_line_recall(output, 100, detections)
+    report = json.loads(output.read_text())["reports"][0]
+    assert report["failing_files"] == [a, b]
+    assert (report["line_caught"], report["symbol_caught"]) == (1, 2)
+    assert report["line_missed_files"] == [b]
