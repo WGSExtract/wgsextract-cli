@@ -65,8 +65,11 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # haplocheck_path = "/path/to/haplocheck"
 # haplogrep_tree = "phylotree-fu-rcrs"  # or phylotree-rcrs, mitotree-rcrs
 # jar_dir = "/path/to/jars"
-# Apple Silicon aligner builds on PATH (native/README.md): "auto" or "off"
+# Optional native aligner builds (native/README.md): "auto" or "off"
 # native_aligners = "auto"
+# Windows x86-64: optional path to a local wgse-bwa build
+# wgse_bwa_path = 'C:\\tools\\wgse-bwa.exe'
+# prefer_native_gpu = false  # Windows CUDA is opt-in
 # wgse-bwa reads the dense suffix-array file `ref dense-sa` builds (opt-in)
 # dense_suffix_array = false
 # Apple Silicon: bcftools calls variants with wgse-mimalloc when installed: "auto" or "off"
