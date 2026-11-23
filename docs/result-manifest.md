@@ -229,6 +229,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `build_unknown`, `build_unsupported` | microarray, Y haplogroup | The reference build is unknown or unsupported by the tool. |
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |
+| `panel_contigs_not_in_vcf` | `vcf filter` and `vcf table` panel selection | Panel intervals on contigs absent from the VCF were omitted. |
 | `gvcf_reference_missing`, `inconclusive_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; missing, partial or unassessed parental genotypes prevent inheritance classification. Inconclusive candidates are written separately (`count`, `mode`) and included in the personal report's overview warnings. |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |
@@ -362,6 +363,12 @@ Other commands' metrics:
   `bam merge` adds `merged_inputs`, `read_groups` and, for indexed inputs,
   the combined `autosomal_depth` (each run's in `details.runs`); `bam unalign`
   its `read_groups`.
+- Y extractions (`extract ydna-bam`, `extract y-mt-extract`, `extract region
+  --target y|ymt`) record each output's `y_scope` and its comma-separated
+  `contigs`; `details` holds `y_scope` and `contigs`, one row per considered
+  contig (`name`, `length`, `role`, `included`, `reason`, and for a BAM its
+  `mapped_records` and `placed_unmapped_records`). See
+  [Y-associated contigs](lineage.md#y-associated-contigs---y-scope).
 - `qc fastp` records read counts before and after filtering, the Q30 rate and
   duplication rate; `qc fastqc` the module pass/warn/fail counts and total
   sequences (`r2_`-prefixed for `--r2`); `qc vcf` the `bcftools stats` totals (records, SNPs, indels,

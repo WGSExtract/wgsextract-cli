@@ -255,8 +255,10 @@ CLI: `wgsextract extract ydna-bam`.
 
 Extract the chrY reads (output role `y_bam`).
 
-`YdnaBamParams`: The chrY reads as `<input>_Y.bam` (`<input>_Y_poz.bam` with `poz`).
-Warns when the sample appears female, whose chrY reads are mismapped.
+`YdnaBamParams`: The chrY reads as `<input>_Y.bam` (`<input>_Y_poz.bam` with `poz`,
+`<input>_Y_associated.bam` with `y_scope="associated"`, which also reads
+the reference's Y-associated contigs). Warns when the sample appears female,
+whose chrY reads are mismapped.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -266,6 +268,7 @@ Warns when the sample appears female, whose chrY reads are mismapped.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `poz` | `bool` | `False` | `--poz` | Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T). |
+| `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
 
 ### `api.extract.ydna_vcf(YdnaVcfParams)`
 
@@ -292,7 +295,9 @@ CLI: `wgsextract extract y-mt-extract`.
 
 Extract the chrY and chrM reads together (output role `y_mt_bam`).
 
-`YMtExtractParams`: The chrY and chrM reads in one `<input>_Y_MT.bam`.
+`YMtExtractParams`: The chrY and chrM reads in one `<input>_Y_MT.bam`, or with
+`y_scope="associated"` those and the reference's Y-associated contigs'
+in `<input>_Y_MT_associated.bam`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -301,6 +306,7 @@ Extract the chrY and chrM reads together (output role `y_mt_bam`).
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
+| `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
 
 ### `api.extract.unmapped(UnmappedParams)`
 
@@ -359,6 +365,9 @@ Extract one region in each chosen format (output roles `<t>_bam`,
 The BAM is `<input>_mtDNA.bam`, `<input>_Y.bam` (`<input>_Y_poz.bam`
 with `poz`), `<input>_Y_MT.bam` or `<input>_autosomes_X.bam`; the VCF
 and FASTA are `<input>_<MT|Y|Y_MT|autosomes_X>.vcf.gz` and `.fasta`.
+With `y_scope="associated"` the y and ymt targets also cover the
+reference's Y-associated contigs, named `<input>_Y_associated.*` and
+`<input>_Y_MT_associated.*`.
 chrM and chrY are called haploid with bcftools, indels included; autosomes
 and X are SNPs called contig by contig with the sex-aware ploidy of
 `vcf snp`. The FASTA is the region's reference with those calls applied,
@@ -376,6 +385,7 @@ are mismapped.
 | `target` | `str` | required | `--target` | Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox (autosomes and chrX). One of: `mt`, `y`, `ymt`, `autox` |
 | `formats` | `str \| None` | `None` | `--formats` | Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf. |
 | `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T). |
+| `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
 | `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
 
 ## `api.bam`
@@ -827,8 +837,8 @@ workspace.
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform; selects platform-specific alignment tooling (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner to use. Auto uses bwa-mem2 for short reads when the reference has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, from bwa-mem2's index. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
-| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU speed over the RAM-budget CPU fallback. Sort memory is stepped down first; explicit --memory is kept, otherwise at most 256M per thread. May swap heavily. |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
+| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU alignment, subject to platform and memory limits. See the configuration guide. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
 | `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
@@ -867,8 +877,8 @@ settings and tools are unchanged.
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, with r1. |
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2 or pbmm2, chosen as for align. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
-| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU speed over the RAM-budget CPU fallback. Sort memory is stepped down first; explicit --memory is kept, otherwise at most 256M per thread. May swap heavily. |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
+| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU alignment, subject to platform and memory limits. See the configuration guide. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
 | `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
@@ -1014,7 +1024,7 @@ CLI: `wgsextract vcf filter`.
 
 Filter; output role `filtered_vcf`, with the record count in its metrics.
 
-`VcfFilterParams`: Keep the calls in a region or gene, matching an expression, into
+`VcfFilterParams`: Keep the calls in a region or panel, matching an expression, into
 `filtered.vcf.gz`.
 
 | Field | Type | Default | CLI | Description |
@@ -1023,10 +1033,15 @@ Filter; output role `filtered_vcf`, with the record count in its metrics.
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `gene` | `str \| None` | `None` | `--gene` | Keep a gene by symbol (repeatable). |
+| `genes` | `tuple[str, ...]` | `[]` | `--genes` | Comma-separated gene symbols (repeatable). |
+| `gene_file` | `Path \| None` | `None` | `--gene-file` | File of gene symbols (whitespace or comma-separated; # starts a comment). |
+| `presets` | `tuple[str, ...]` | `[]` | `--preset` | Gene panel preset (repeatable): pharmacogenes, hla, autoimmune, acmg-sf, cardiac. One of: `pharmacogenes`, `hla`, `autoimmune`, `acmg-sf`, `cardiac` |
+| `bed` | `Path \| None` | `None` | `--bed` | BED or BED.gz panel, unioned with the selected gene spans. |
+| `pad_kb` | `float` | `0.0` | `--pad-kb` | Padding on each side of a gene span, in kb (default: 0). |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region(s); when a panel is given, restrict its union to these regions. |
 | `expr` | `str \| None` | `None` | `--expr` | bcftools filter expression (e.g. 'QUAL>30') |
-| `gene` | `str \| None` | `None` | `--gene` | Filter by Gene Name (e.g. BRCA1, KCNQ2) |
 | `exclude_near_gaps` | `bool` | `False` | `--exclude-near-gaps` | Exclude variants in or near genomic gaps (requires Count Ns output) |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
 
 ### `api.vcf.table(VcfTableParams)`
 
@@ -1043,7 +1058,14 @@ Write the table (role `variant_table`) and database (`variant_database`);
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Only export this region (e.g. chr22). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `gene` | `str \| None` | `None` | `--gene` | Keep a gene by symbol (repeatable). |
+| `genes` | `tuple[str, ...]` | `[]` | `--genes` | Comma-separated gene symbols (repeatable). |
+| `gene_file` | `Path \| None` | `None` | `--gene-file` | File of gene symbols (whitespace or comma-separated; # starts a comment). |
+| `presets` | `tuple[str, ...]` | `[]` | `--preset` | Gene panel preset (repeatable): pharmacogenes, hla, autoimmune, acmg-sf, cardiac. One of: `pharmacogenes`, `hla`, `autoimmune`, `acmg-sf`, `cardiac` |
+| `bed` | `Path \| None` | `None` | `--bed` | BED or BED.gz panel, unioned with the selected gene spans. |
+| `pad_kb` | `float` | `0.0` | `--pad-kb` | Padding on each side of a gene span, in kb (default: 0). |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region(s); when a panel is given, restrict its union to these regions. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample whose genotypes to use (default: the first). |
 | `all_alleles` | `bool` | `False` | `--all-alleles` | Also export ALT alleles the sample doesn't carry (0/0 calls, no-calls, the other ALT of a 0/1 multi-allelic site). |
 | `pharmcat_json` | `Path \| None` | `None` | `--pharmcat-json` | PharmCAT's <stem>.phenotype.json (from 'vcf pharmcat'), to add its diplotype and phenotype to rows in those genes. |
@@ -2980,7 +3002,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline. If the cache is missing, vep_cache_missing tells you how to fetch it with vep download. |
-| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
+| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used, and a BAM or CRAM whose header or reference index shows another build is refused. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_cache_version` | `str` | `'116'` | `--vep-cache-version` | VEP cache version (default: 116) |
 | `vcf_type` | `str` | `'auto'` | `--vcf-type` | Variant type: 'sv' and 'cnv' add VEP's structural-variant options; 'auto' detects it from the input. One of: `auto`, `snp-indel`, `sv`, `cnv` |
 | `add_chr` | `bool` | `False` | `--add-chr` | Give VEP the input with a 'chr' prefix on chromosome names. |
@@ -2989,7 +3011,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `vep_args` | `str \| None` | `None` | `--vep-args` | Additional raw arguments to pass to VEP (e.g., '--everything --pick') |
 | `format` | `str` | `'vcf'` | `--format` | Output format (default: vcf) One of: `vcf`, `tab`, `json` |
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's); wins over ploidy. |
-| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the build's). |
+| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the GRCh37 or GRCh38 preset; other builds, such as T2T, need this or a ploidy file). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 
 ### `api.vep.download(VepDownloadParams)`

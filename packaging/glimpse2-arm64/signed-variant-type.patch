@@ -1,0 +1,6 @@
+--- a/phase/src/models/phasing_hmm.h
++++ b/phase/src/models/phasing_hmm.h
+@@ -64 +64,2 @@
+-	std::vector < char > VAR_TYP;
++	// VAR_PEAK_HOM and VAR_FLAT_HET are negative, even on unsigned-char targets.
++	std::vector < signed char > VAR_TYP;

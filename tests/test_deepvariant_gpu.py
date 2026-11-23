@@ -1,16 +1,20 @@
 """Focused deepvariant gpu regressions."""
 
 import re
-import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from tests.disk_volumes import GIB
+from tests.fake_tool_launchers import expose_tool_fakes
 from tests.fake_tools import (
+    FakeDocker,
     set_gpus,
 )
 from tests.htslib_helpers import (
+    require_runnable,
+    snp_sample,
     vcf_calls,
 )
 from tests.test_deepvariant import (
@@ -18,10 +22,12 @@ from tests.test_deepvariant import (
     CPU_ID,
     OTHER_DIGEST,
     STAGES,
+    ULTIMA,
     as_pre601_journal,
     as_v085_journal,
     batch_warned,
     call,
+    configure_ultima_gpu,
     dv_flags,
     gpu_call,
     gpu_stages,
@@ -248,6 +254,26 @@ def test_replaced_tag_reruns_601(dv):
     )
 
 
+@pytest.fixture
+def gpu_preflight(tmp_path, monkeypatch):
+    """GPU and Docker queries work via PATH; no fake container is run."""
+    require_runnable("samtools", "bcftools", "tabix")
+    bindir = tmp_path / "bin"
+    docker = FakeDocker(bindir, tmp_path / "image")
+    gpus = tmp_path / "gpus.json"
+    configure_ultima_gpu(docker, gpus)
+    expose_tool_fakes(monkeypatch, bindir, "docker", "nvidia-smi")
+    monkeypatch.setattr(deepvariant, "sys", SimpleNamespace(platform="linux"))
+    monkeypatch.setattr(
+        deepvariant, "platform", SimpleNamespace(machine=lambda: "x86_64")
+    )
+    monkeypatch.setitem(deepvariant.settings, "deepvariant_native", "off")
+    sample = snp_sample(tmp_path, ULTIMA[0], tags=ULTIMA[1])
+    return SimpleNamespace(
+        sample=sample, ultima=sample, docker=docker, gpus=gpus, out=tmp_path / "out"
+    )
+
+
 @pytest.mark.parametrize(
     ("problem", "message"),
     [
@@ -259,35 +285,35 @@ def test_replaced_tag_reruns_601(dv):
     ],
 )
 def test_ultima_gpu_setup_problems_are_named_before_any_work(
-    ultima_gpu, monkeypatch, problem, message
+    gpu_preflight, monkeypatch, problem, message
 ):
     if problem == "no driver":
-        without_gpu_driver(ultima_gpu, monkeypatch)
+        without_gpu_driver(monkeypatch)
     elif problem == "broken driver":
         set_gpus(
-            ultima_gpu.gpus, error="NVIDIA-SMI couldn't communicate with the driver"
+            gpu_preflight.gpus, error="NVIDIA-SMI couldn't communicate with the driver"
         )
     elif problem == "no gpu":
-        set_gpus(ultima_gpu.gpus)
+        set_gpus(gpu_preflight.gpus)
     elif problem == "no nvidia runtime":
-        ultima_gpu.docker.set(runtimes='{"runc":{}}')
+        gpu_preflight.docker.set(runtimes='{"runc":{}}')
     else:
-        ultima_gpu.docker.set(images={})
+        gpu_preflight.docker.set(images={})
     with pytest.raises(MissingDependencyError, match=message):
-        gpu_call(ultima_gpu)
-    assert ultima_gpu.docker.runs() == []
+        gpu_call(gpu_preflight)
+    assert gpu_preflight.docker.runs() == []
 
 
 @pytest.mark.parametrize(
     ("system", "machine"),
     [("darwin", "arm64"), ("linux", "aarch64"), ("win32", "AMD64")],
 )
-def test_ultima_gpu_needs_x86_64_linux(ultima_gpu, monkeypatch, system, machine):
+def test_ultima_gpu_needs_x86_64_linux(gpu_preflight, monkeypatch, system, machine):
     monkeypatch.setattr(deepvariant.platform, "machine", lambda: machine)
-    monkeypatch.setattr(sys, "platform", system)
+    monkeypatch.setattr(deepvariant.sys, "platform", system)
     with pytest.raises(UsageError, match="--gpu is not supported"):
-        gpu_call(ultima_gpu, "--model-type", "ULTIMA")
-    assert ultima_gpu.docker.runs() == []
+        gpu_call(gpu_preflight, "--model-type", "ULTIMA")
+    assert gpu_preflight.docker.runs() == []
 
 
 def test_a_busy_gpu_stops_before_call_variants_and_a_rerun_resumes(ultima_gpu):
@@ -318,13 +344,13 @@ def test_a_busy_gpu_beside_an_idle_one_is_refused(ultima_gpu):
     assert ultima_gpu.deepvariant.stages() == ["make_examples"]
 
 
-def test_a_spaced_gpu_region_is_refused_before_reading_anything(ultima_gpu):
+def test_a_spaced_gpu_region_is_refused_before_reading_anything(gpu_preflight):
     # #488 review: serve --allow checks "/a.bed /b.bed" as one comma item, which
     # the depth check and DeepVariant would read as two files.
     with pytest.raises(UsageError, match="separated by commas"):
-        gpu_call(ultima_gpu, "-r", "chr1:1-1500 chr1:1501-3000")
-    assert ultima_gpu.docker.runs() == []
-    assert not ultima_gpu.out.exists()
+        gpu_call(gpu_preflight, "-r", "chr1:1-1500 chr1:1501-3000")
+    assert gpu_preflight.docker.runs() == []
+    assert not gpu_preflight.out.exists()
 
 
 def test_no_gpu_memory_check_runs_on_a_busy_gpu_with_a_warning(ultima_gpu):
@@ -366,7 +392,7 @@ def test_a_bypassed_memory_check_has_no_batch_warning(ultima_gpu):
 
 
 def test_a_gpu_plan_needs_no_gpu_driver(ultima_gpu, monkeypatch, capsys):
-    without_gpu_driver(ultima_gpu, monkeypatch)
+    without_gpu_driver(monkeypatch)
     gpu_call(ultima_gpu, "--dry-run")
     assert re.search(r"call_variants +run", capsys.readouterr().out)
     assert ultima_gpu.deepvariant.stages() == []
