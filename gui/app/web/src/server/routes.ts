@@ -181,6 +181,8 @@ export function createRequestHandler(context: RequestHandlerContext) {
             }
         },
         "/api/gene/open": async (request, response) => {
+            // It runs the CLI on local paths, so only this computer may ask, as with the viewer.
+            requireViewerLoopback(request);
             const body = await readBody(request, context);
             const controller = new AbortController();
             const close = () => {

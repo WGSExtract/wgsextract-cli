@@ -117,7 +117,7 @@ export function openGenePage(opener: HTMLElement) {
             app.style.display = "";
             app.inert = false;
             app.removeAttribute("aria-hidden");
-            app.querySelector<HTMLElement>("[data-gene-page-open]")?.focus() ?? opener.focus();
+            (app.querySelector<HTMLElement>("[data-gene-page-open]") ?? opener).focus();
         } else if (target.dataset.genePick) {
             const name = target.dataset.genePick;
             const input = form.elements.namedItem(name) as HTMLInputElement | null;

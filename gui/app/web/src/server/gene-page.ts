@@ -15,7 +15,7 @@ export type GenePageResult =
     | { document: GeneDocument; exportPath?: string; exportRows?: number }
     | { problem: string; fileName?: string; message?: string };
 
-const exports: readonly GeneExport[] = ["all", "rare-damaging", "clinvar-plp", "acmg-plp"];
+const geneExports: readonly GeneExport[] = ["all", "rare-damaging", "clinvar-plp", "acmg-plp"];
 const alignmentPattern = /\.(bam|cram)$/i;
 const vcfPattern = /\.(g?vcf(\.b?gz)?|bcf)$/i;
 
@@ -35,7 +35,7 @@ export async function openGenePage(body: LooseRecord, context: RequestHandlerCon
         return { problem: "invalidDepth" };
     }
     const requested = body.export;
-    if (requested != null && (typeof requested !== "string" || !exports.includes(requested as GeneExport))) {
+    if (requested != null && (typeof requested !== "string" || !geneExports.includes(requested as GeneExport))) {
         throw new HttpError(400, "Unknown gene export.");
     }
     if (requested != null && !vcf) return { problem: "exportNeedsVcf" };
