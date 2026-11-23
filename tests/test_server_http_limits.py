@@ -18,7 +18,8 @@ from urllib.parse import urlencode, urlsplit
 import psutil
 import pytest
 
-from tests.smoke_utils import get_cli_command, state_directory_setting
+from tests.home_isolation import state_directory_setting
+from tests.smoke_utils import get_cli_command
 from tests.test_server_remote_viewer import (
     HOST,
     remote_server,

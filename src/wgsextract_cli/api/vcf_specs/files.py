@@ -263,6 +263,10 @@ class VcfImputeParams(Params):
     ``ImpLowConf``. Site INFO/DR2 is not a single-sample confidence measure:
     ``min_info`` is an explicit opt-in site filter, meaningful only for
     multi-sample cohorts. Install panel chromosomes with ``ref imputation``.
+
+    GLIMPSE2 runs ``threads`` chunks at once, one thread each, largest
+    first, as many as fit the memory available (or ``memory`` per chunk);
+    the output doesn't depend on how many.
     """
 
     COMMAND = "vcf impute"

@@ -7,6 +7,7 @@ import time
 from types import FrameType
 from typing import TextIO
 
+from wgsextract_cli.core.execution_context import current
 from wgsextract_cli.core.utils import cleanup_processes
 
 SIGNAL_EXPLANATIONS = {
@@ -102,6 +103,8 @@ def install_signal_handlers() -> None:
         global _stop_signal
         _stop_signal = signum
         logging.info(f"Received {describe_signal(signum)}, cleaning up...")
+        if token := current().cancel:
+            token.cancel()
         cleanup_processes()
         sys.exit(128 + signum)
 
