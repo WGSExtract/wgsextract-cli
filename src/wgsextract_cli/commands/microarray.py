@@ -41,7 +41,10 @@ from wgsextract_cli.core.microarray.aadr import (
     validate_aadr_sample_id,
     write_aadr_outputs,
 )
-from wgsextract_cli.core.microarray.formats import resolve_format_key
+from wgsextract_cli.core.microarray.formats import (
+    COMBINED_V3_FORMAT,
+    resolve_format_key,
+)
 from wgsextract_cli.core.microarray.identity import identity_policy, load_rsid_map
 from wgsextract_cli.core.microarray.indels import (
     IndelCalls,
@@ -182,6 +185,7 @@ def _convert_microarray_outputs(
     """Write the requested outputs (``formats``, default all of
     ``params.formats``); return each vendor file's autosomal tally."""
     from wgsextract_cli.core.microarray.templates import (
+        convert_to_combined_v3,
         convert_to_vendor_format,
         get_template_format,
         liftover_hg38_to_hg19,
@@ -280,19 +284,29 @@ def _convert_microarray_outputs(
         suffix = fmt_info["suffix"] if fmt_info else ".txt"
         output_file = str(Path(outdir, f"{base_name}_{real_fmt}{suffix}"))
         try:
-            lift_chain = (
-                lifted_chain(lib.root, fmt_info["build"], lib.resource_roots)
-                if fmt_info and fmt_info.get("build") and lib.root
-                else None
-            )
-            format_converter = (
-                functools.partial(converter, indel_calls=indel_calls[real_fmt])
-                if indel_calls is not None and real_fmt in indel_calls
-                else converter
-            )
-            tallies[real_fmt] = format_converter(
-                real_fmt, final_txt, output_file, template_search_roots, lift_chain
-            )
+            if real_fmt == COMBINED_V3_FORMAT:
+                hg18_chain = (
+                    lifted_chain(lib.root, "NCBI36", lib.resource_roots)
+                    if lib.root
+                    else None
+                )
+                tallies[real_fmt] = convert_to_combined_v3(
+                    final_txt, output_file, template_search_roots, hg18_chain
+                )
+            else:
+                lift_chain = (
+                    lifted_chain(lib.root, fmt_info["build"], lib.resource_roots)
+                    if fmt_info and fmt_info.get("build") and lib.root
+                    else None
+                )
+                format_converter = (
+                    functools.partial(converter, indel_calls=indel_calls[real_fmt])
+                    if indel_calls is not None and real_fmt in indel_calls
+                    else converter
+                )
+                tallies[real_fmt] = format_converter(
+                    real_fmt, final_txt, output_file, template_search_roots, lift_chain
+                )
         except (OSError, ValueError, WGSExtractError) as e:
             raise WGSExtractError(f"Failed to generate {real_fmt}: {e}") from e
         record_kit(output_file, real_fmt, tallies[real_fmt], liftover)

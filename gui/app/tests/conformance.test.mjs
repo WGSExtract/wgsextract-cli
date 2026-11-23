@@ -488,8 +488,12 @@ test("WGSExtract Microarray page exposes CombinedKit v5 and all #1107 consumer f
   assert.ok(formats, "microarray_formats control exists");
 
   const byId = new Map(formats.options.map((option) => [option.id, option]));
+  assert.equal(byId.get("combined_v3")?.title, "v3");
+  assert.equal(byId.get("combined_v3")?.group, "Combined");
+  assert.match(byId.get("combined_v3")?.groupTooltip ?? "", /CombinedKit v3.*CombinedKit v5 expands v3/);
   assert.equal(byId.get("all")?.title, "v5");
-  assert.match(byId.get("all")?.groupTooltip ?? "", /CombinedKit v5 expands CombinedKit v3/);
+  assert.equal(byId.get("all")?.group, "Combined");
+  assert.equal(byId.get("all")?.selected, true);
 
   const v5Formats = [
     "ancestry_v2ab", "ancestry_v2cd", "ancestry_v2e",

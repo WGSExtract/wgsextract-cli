@@ -121,13 +121,40 @@ FORMAT_ALIASES = {
 }
 
 
+COMBINED_V3_FORMAT = "CombinedKit_v3"
+"""Canonical format name for the classic 14-template WGS Extract CombinedKit v3."""
+
+# The 14 classic WGS Extract v4 templates that make up CombinedKit v3 (in
+# precedence order for a site's marker ID). CombinedKit v5 (all) expands this
+# set with the newer vendor layouts.
+COMBINED_V3_TEMPLATES: tuple[str, ...] = (
+    "23andMe_V3",
+    "23andMe_V35",
+    "23andMe_V4",
+    "23andMe_V5",
+    "23andMe_SNPs_API",
+    "Ancestry_V1",
+    "Ancestry_V2",
+    "FTDNA_V2",
+    "FTDNA_V3",
+    "LDNA_V1",
+    "LDNA_V2",
+    "MyHeritage_V1",
+    "MyHeritage_V2",
+    "FTDNA_V1_Affy",
+)
+
+
 def resolve_format_key(format_key: str) -> str | None:
-    """The template name for a --formats item, or None for the combined kit
-    ("all", "combined_all" or empty). Refuses anything else: the name becomes
-    part of template and output paths."""
+    """The format name for a --formats item, or None for CombinedKit v5
+    ("all", "combined_all", "combined_v5" or empty). "combined_v3" resolves to
+    ``COMBINED_V3_FORMAT``. Refuses anything else: the name becomes part of
+    template and output paths."""
     normalized = format_key.strip().lower().replace("-", "_")
-    if normalized in {"", "all", "combined_all"}:
+    if normalized in {"", "all", "combined_all", "combined_v5", "combinedkit_v5"}:
         return None
+    if normalized in {"combined_v3", "combinedkit_v3"}:
+        return COMBINED_V3_FORMAT
     name = FORMAT_ALIASES.get(normalized) or next(
         (known for known in _TEMPLATE_FORMATS if known.lower() == normalized), None
     )

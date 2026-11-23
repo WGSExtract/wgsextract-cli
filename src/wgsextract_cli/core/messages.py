@@ -120,9 +120,11 @@ CLI_HELP = {
 Variants are named by letter (h600.org's Microarray File Formats); similar
 minor variants are merged into one file, e.g. ancestry_v2ab.
 Available formats:
-  Combined kit only (always written):
-    all (CombinedKit v5: every chip's markers in one 23andMe-style file, e.g.
-    for GEDmatch; writes no vendor files: list the vendor formats to get them)
+  Combined kits:
+    all, combined_v5 (CombinedKit v5: every chip's markers in one 23andMe-style
+    file, e.g. for GEDmatch; always written, writes no vendor files alone)
+    combined_v3 (CombinedKit v3: classic 14-template subset of CombinedKit v5,
+    written as <sample>_CombinedKit_v3.txt)
   23andMe:
     23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4 (v4a-c),
     23andme_v5, 23andme_v3+v5, 23andme_api

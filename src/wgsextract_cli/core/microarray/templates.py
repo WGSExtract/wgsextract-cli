@@ -29,7 +29,11 @@ from wgsextract_cli.core.microarray.coordinates import (
     project_coordinates,
     sole_placement,
 )
-from wgsextract_cli.core.microarray.formats import TemplateFormat
+from wgsextract_cli.core.microarray.formats import (
+    COMBINED_V3_FORMAT,
+    COMBINED_V3_TEMPLATES,
+    TemplateFormat,
+)
 
 # Re-exported: most callers find template formats here.
 from wgsextract_cli.core.microarray.formats import (
@@ -347,6 +351,15 @@ def template_resource_paths(
     templates_dir: TemplateSearchInput, format_name: str
 ) -> list[Path]:
     """The actual selected vendor header, bodies and packaged corrections."""
+    if format_name == COMBINED_V3_FORMAT:
+        paths: list[Path] = []
+        seen: set[Path] = set()
+        for name in COMBINED_V3_TEMPLATES:
+            for path in template_resource_paths(templates_dir, name):
+                if path not in seen:
+                    seen.add(path)
+                    paths.append(path)
+        return paths
     fmt = get_template_format(format_name)
     if fmt is None:
         return []
@@ -730,4 +743,53 @@ def convert_to_vendor_format(
     finally:
         if Path(tmp_path).exists():
             Path(tmp_path).unlink()
+    return autosomal
+
+
+def convert_to_combined_v3(
+    combined_kit_txt: str,
+    output_path: str,
+    templates_dir: TemplateSearchInput,
+    lift_chain: str | None = None,
+) -> GenotypeTally:
+    """Filter a GRCh37 CombinedKit v5 file to the classic 14-template
+    CombinedKit v3 marker set, restoring v3 rsID precedence."""
+    from wgsextract_cli.core.microarray.targets import collect_template_markers
+
+    search_roots = list(_iter_template_search_dirs(templates_dir))
+    chains = {"NCBI36": lift_chain} if lift_chain else None
+    v3_markers = collect_template_markers(
+        search_roots, chains=chains, formats=COMBINED_V3_TEMPLATES
+    )
+    if not v3_markers:
+        raise WGSExtractError(
+            f"CombinedKit v3 templates not found near {templates_dir!r}; "
+            "run 'wgsextract ref bootstrap' first."
+        )
+
+    tmp_path = output_path + ".tmp"
+    autosomal = GenotypeTally()
+    try:
+        with (
+            open(combined_kit_txt) as f_in,
+            open(tmp_path, "w", encoding="utf-8", newline="\n") as f_out,
+        ):
+            for line in f_in:
+                if line.startswith("#"):
+                    f_out.write(line)
+                    continue
+                parts = line.rstrip("\r\n").split("\t")
+                if len(parts) < 4 or not parts[2].isdigit():
+                    continue
+                site = (_chrom_for_liftover(parts[1]), int(parts[2]))
+                rsid = v3_markers.get(site)
+                if rsid is None:
+                    continue
+                result = parts[3]
+                if is_autosome(vendor_chrom(parts[1])):
+                    autosomal.add(result)
+                f_out.write(f"{rsid}\t{parts[1]}\t{parts[2]}\t{result}\n")
+        Path(tmp_path).replace(output_path)
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
     return autosomal

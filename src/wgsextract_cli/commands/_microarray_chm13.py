@@ -48,7 +48,10 @@ from wgsextract_cli.core.microarray.chm13_markers import (
     manifest_exclusions,
     vendor_no_calls,
 )
-from wgsextract_cli.core.microarray.formats import resolve_format_key
+from wgsextract_cli.core.microarray.formats import (
+    COMBINED_V3_FORMAT,
+    resolve_format_key,
+)
 from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
@@ -506,10 +509,19 @@ def run_chm13(
             continue
         info = get_template_format(real_format)
         suffix = info["suffix"] if info else ".txt"
+        kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
+        if real_format == COMBINED_V3_FORMAT:
+            from wgsextract_cli.core.microarray.templates import convert_to_combined_v3
+
+            hg18_chain = lifted_chain(lib.root, "NCBI36", roots) if lib.root else None
+            tallies[real_format] = convert_to_combined_v3(
+                str(combined), kit, roots, hg18_chain
+            )
+            record_kit(kit, real_format, tallies[real_format])
+            continue
         build = info.get("build") if info else None
         # Found in the library or fetched (with consent); else matched by ID.
         lift_chain = lifted_chain(lib.root, build, roots) if build else None
-        kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
         tallies[real_format] = convert_to_vendor_format(
             real_format,
             str(combined),

@@ -591,7 +591,7 @@
 "options.microarray.formats.category.consumer" = "Tests grand public"  # i18n-source-hash:52d25d2a
 "options.microarray.formats.category.reich" = "Reich Lab"  # i18n-ignore i18n-source-hash:6c06efe5
 "options.microarray.formats.group.combined" = "Combiné"  # i18n-source-hash:b6c533b5
-"options.microarray.formats.group.combined.tooltip" = "CombinedKit v5 étend CombinedKit v3 avec tous les modèles de puces grand public plus récents."  # i18n-source-hash:6c9a089d
+"options.microarray.formats.group.combined.tooltip" = "CombinedKit v3 couvre les 14 modèles grand public classiques ; CombinedKit v5 étend v3 avec tous les modèles de puces grand public plus récents."  # i18n-source-hash:002ae52b
 "options.microarray.formats.group.aadr" = "AADR"  # i18n-ignore i18n-source-hash:1f4edff5
 "options.microarray.formats.category.consumer.tooltip" = "Génère des fichiers de données RAW de puces à ADN (génotypage)."  # i18n-source-hash:c526755d
 "options.microarray.formats.category.reich.tooltip" = "Les cibles AADR produisent des fichiers PLINK + EIGENSTRAT utilisés par leurs outils."  # i18n-source-hash:ca2f7e6d

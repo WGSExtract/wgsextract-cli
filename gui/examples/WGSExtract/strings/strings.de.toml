@@ -591,7 +591,7 @@
 "options.microarray.formats.category.consumer" = "Verbrauchertests"  # i18n-source-hash:52d25d2a
 "options.microarray.formats.category.reich" = "Reich Lab"  # i18n-ignore i18n-source-hash:6c06efe5
 "options.microarray.formats.group.combined" = "Kombiniert"  # i18n-source-hash:b6c533b5
-"options.microarray.formats.group.combined.tooltip" = "CombinedKit v5 erweitert CombinedKit v3 um alle neueren Verbraucher-Chip-Vorlagen."  # i18n-source-hash:6c9a089d
+"options.microarray.formats.group.combined.tooltip" = "CombinedKit v3 deckt die klassischen 14 Verbraucher-Vorlagen ab; CombinedKit v5 erweitert v3 um alle neueren Verbraucher-Chip-Vorlagen."  # i18n-source-hash:002ae52b
 "options.microarray.formats.group.aadr" = "AADR"  # i18n-ignore i18n-source-hash:1f4edff5
 "options.microarray.formats.category.consumer.tooltip" = "Erzeugt RAW-Datendateien von Chip-Microarrays (Genotypisierung)."  # i18n-source-hash:c526755d
 "options.microarray.formats.category.reich.tooltip" = "AADR-Ziele erzeugen PLINK- und EIGENSTRAT-Dateien für deren Werkzeuge."  # i18n-source-hash:ca2f7e6d

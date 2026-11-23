@@ -148,10 +148,16 @@
           "tooltip": "controls.microarray.microarray-formats.microarray_formats.tooltip",
           "options": [
             {
+              "id": "combined_v3",
+              "title": "options.microarray.formats.v3.title",
+              "group": "options.microarray.formats.group.combined",
+              "groupTooltip": "options.microarray.formats.group.combined.tooltip",
+              "category": "options.microarray.formats.category.wgse"
+            },
+            {
               "id": "all",
               "title": "options.microarray.formats.v5.title",
               "group": "options.microarray.formats.group.combined",
-              "groupTooltip": "options.microarray.formats.group.combined.tooltip",
               "category": "options.microarray.formats.category.wgse",
               "selected": true
             },

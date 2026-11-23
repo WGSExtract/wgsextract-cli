@@ -587,7 +587,7 @@
 "options.microarray.formats.category.consumer" = "Consumer Tests"
 "options.microarray.formats.category.reich" = "Reich Lab"
 "options.microarray.formats.group.combined" = "Combined"
-"options.microarray.formats.group.combined.tooltip" = "CombinedKit v5 expands CombinedKit v3 with all newer consumer vendor templates."
+"options.microarray.formats.group.combined.tooltip" = "CombinedKit v3 covers the classic 14 consumer templates; CombinedKit v5 expands v3 with all newer consumer vendor templates."
 "options.microarray.formats.group.aadr" = "AADR"
 "options.microarray.formats.category.consumer.tooltip" = "Generate RAW chip microarray (genotyping) data files."
 "options.microarray.formats.category.reich.tooltip" = "AADR targets generate PLINK + EIGENSTRAT files used by their tools."
