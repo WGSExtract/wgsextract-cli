@@ -9,13 +9,14 @@
 # GPU) with small batches, one or several reads per thread, most fills kept on the CPU,
 # injected Metal interruptions, an injected GPU failure, which must exit 1 after the CPU
 # redoes the failed fills (0 with --backend auto), and a hung GPU.
-# Usage: upstream.sh <wgse-minimap2> <minimap2-upstream> <work-dir>
+# Usage: upstream.sh <wgse-minimap2> <minimap2-upstream> <work-dir> [cuda-cpu-fallback]
 set -eu
 # shellcheck source=native/tests/seeded_random.sh
 . "$(dirname "$0")/../../tests/seeded_random.sh"
 wgse=$1
 upstream=$2
 work=$3
+mode=${4:-}
 
 rm -rf "$work"
 mkdir -p "$work"
@@ -113,6 +114,19 @@ function quality(n,    q) {
 }'
 
 records() { grep -v '^@PG' "$1" > "$1.records"; }
+if [ "$mode" = cuda-cpu-fallback ]; then
+    "$wgse" capabilities --json > capabilities.json
+    grep -q '"cuda_available":false' capabilities.json
+    grep -q '"cuda_hardware_supported":false' capabilities.json
+    "$upstream" -ax map-ont reference.fa ont.fq > upstream.sam 2> upstream.log
+    "$wgse" --backend auto -ax map-ont reference.fa ont.fq > auto.sam 2> auto.log
+    grep -q 'CPU fallback: CUDA unavailable' auto.log
+    records upstream.sam
+    records auto.sam
+    cmp upstream.sam.records auto.sam.records
+    exit 0
+fi
+
 # The GPU option of the build's available GPU, if any.
 gpu=""
 if "$wgse" capabilities --json | grep -q '"metal_available":true'; then gpu=--metal; fi

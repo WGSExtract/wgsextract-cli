@@ -1,9 +1,12 @@
 """Focused native aligners minimap2 regressions."""
 
+import shutil
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from tests.fake_tool_launchers import expose_tool_fakes, python_tool
 from tests.fake_tools import only_tools
 from tests.test_alignment_commands import _samtools, _short_reads
 from tests.test_native_aligners import (
@@ -33,6 +36,8 @@ from tests.test_native_aligners import (
 from tests.test_native_aligners import (
     mem3_bin as mem3_bin,
 )
+from wgsextract_cli.commands.alignment import backends
+from wgsextract_cli.core import native_aligners, windows_arm64
 from wgsextract_cli.core.alignment.memory import (
     estimate_mapping_memory,
 )
@@ -158,3 +163,75 @@ def test_linux_wgse_minimap2_keeps_its_gpu_when_busy_at_the_first_probe(
     _, result = _align_single(reads, tmp_path / "out", "--platform", "hifi")
 
     assert result.metrics["native_aligner_backend"] == "cuda"
+
+
+@pytest.mark.parametrize(
+    ("installed", "cuda_available", "commit_gib", "options", "backend"),
+    [
+        (True, True, 64, (), "cuda"),
+        (True, False, 64, (), "cpu"),
+        (True, True, 64, ("--no-prefer-native-gpu",), "cpu"),
+        (True, True, 1, ("--prefer-native-gpu",), "cpu"),
+        (False, False, 64, (), None),
+    ],
+)
+def test_issue1121_windows_long_reads_select_cuda_or_fall_back(
+    tmp_path,
+    monkeypatch,
+    ram,
+    installed,
+    cuda_available,
+    commit_gib,
+    options,
+    backend,
+):
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        SimpleNamespace(system=lambda: "Windows", machine=lambda: "AMD64"),
+    )
+    monkeypatch.setattr(windows_arm64, "windows_native_machine", lambda: None)
+    monkeypatch.setattr(backends, "windows_available_commit", lambda: commit_gib * GIB)
+    ram(64 * GIB)
+    minimap2 = shutil.which("minimap2")
+    if not minimap2 or not shutil.which("samtools"):
+        pytest.skip("requires minimap2 and samtools")
+    reads = _short_reads(tmp_path)
+    if installed:
+        # Stand in for a CUDA-capable executable, but map with real minimap2.
+        bindir = tmp_path / "cuda-bin"
+        capability_file = tmp_path / "capabilities.json"
+        capability_file.write_text(_minimap2_cuda("0.4.1", cuda_available))
+        python_tool(
+            bindir,
+            "wgse-minimap2",
+            f"""
+import subprocess, sys
+from pathlib import Path
+args = sys.argv[1:]
+if args[:1] == ["capabilities"]:
+    sys.stdout.write(Path({str(capability_file)!r}).read_text())
+    sys.exit(0)
+if args[:2] == ["--backend", "auto"]:
+    args = args[2:]
+sys.exit(subprocess.run([{minimap2!r}, *args]).returncode)
+""",
+        )
+        expose_tool_fakes(monkeypatch, bindir, "wgse-minimap2")
+
+    bam, result = _align_single(reads, tmp_path / "auto", "--platform", "ont", *options)
+    upstream, _ = _align_single(
+        reads, tmp_path / "upstream", "--platform", "ont", "--native-aligners", "off"
+    )
+
+    assert result.metrics.get("native_aligner_backend") == backend
+    assert _samtools("view", bam) == _samtools("view", upstream)
+    assert not result.warnings
+    if installed and not cuda_available:
+        # A long-lived CLI/API process can recover when another job frees VRAM.
+        capability_file.write_text(_minimap2_cuda("0.4.1"))
+        retry_bam, retry = _align_single(
+            reads, tmp_path / "gpu-now-available", "--platform", "ont"
+        )
+        assert retry.metrics["native_aligner_backend"] == "cuda"
+        assert _samtools("view", retry_bam) == _samtools("view", upstream)

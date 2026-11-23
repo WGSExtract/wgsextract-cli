@@ -13,12 +13,12 @@ if(APPLE)
     endif()
     enable_language(OBJCXX)
 elseif(WIN32)
-    # Windows x86-64 builds wgse-bwa alone, MSVC-ABI (clang-cl, with nvcc's
+    # Windows x86-64 builds wgse-bwa and wgse-minimap2, MSVC-ABI (clang-cl, with nvcc's
     # cl.exe for -DWGSE_CUDA=ON) and the POSIX shims in windows/.
     if(NOT CMAKE_C_COMPILER_ID STREQUAL "Clang"
         OR NOT CMAKE_C_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"
         OR NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
-        message(FATAL_ERROR "wgse-bwa builds on Windows x86-64 with clang-cl")
+        message(FATAL_ERROR "The native aligners build on Windows x86-64 with clang-cl")
     endif()
     set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded)
 elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -30,6 +30,10 @@ if(NOT APPLE)
 endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     option(WGSE_BWA_MEM3 "Build wgse-bwa-mem3 (Linux x86-64)" ON)
+endif()
+if(WIN32)
+    option(WGSE_MINIMAP2 "Build wgse-minimap2 (Windows x86-64)" OFF)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
     option(WGSE_MINIMAP2 "Build wgse-minimap2 (Linux x86-64)" ON)
 endif()
 if(WGSE_CUDA)
@@ -57,6 +61,13 @@ set(CMAKE_OBJCXX_STANDARD 17)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 include(FetchContent)
 include(CTest)
+if(WIN32 AND BUILD_TESTING)
+    # Windows CTest can't execute scripts directly; don't use the WSL bash launcher.
+    find_package(Git REQUIRED)
+    get_filename_component(git_bin "${GIT_EXECUTABLE}" DIRECTORY)
+    find_program(WGSE_TEST_SHELL NAMES bash HINTS "${git_bin}/../bin" "${git_bin}"
+        REQUIRED NO_DEFAULT_PATH)
+endif()
 
 if(APPLE)
     add_subdirectory(metal-common)
