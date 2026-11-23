@@ -1302,7 +1302,8 @@ CLI: `wgsextract vcf gnomad`.
 Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 `rare_variants`.
 
-`VcfGnomadParams`: gnomAD allele frequencies (GNOMAD_AF) as `gnomad_annotated.vcf.gz`.
+`VcfGnomadParams`: gnomAD allele frequencies and available homozygote counts as
+`gnomad_annotated.vcf.gz`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1311,7 +1312,7 @@ Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `gnomad_file` | `Path \| None` | `None` (config `gnomad_vcf_path`) | `--gnomad-file` | Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref gnomad --release 4.1'. |
+| `gnomad_file` | `Path \| None` | `None` (config `gnomad_vcf_path`) | `--gnomad-file` | Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref gnomad --release 4.1 --download'. |
 | `max_af` | `float \| None` | `None` | `--max-af` | Also write the calls rarer than this gnomAD allele frequency (or absent from gnomAD), with confidence labels. |
 | `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 | `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
@@ -1497,7 +1498,7 @@ Call CNVs; output role `copy_number_variants`.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `region` | `str \| None` | `None` | `-r`, `--region` | One region, a comma-separated list, or a BED file. |
 | `map` | `str \| None` | `None` | `-M`, `--map` | Deprecated and ignored: Delly 2 no longer uses mappability maps. |
 | `ploidy` | `int \| None` | `None` | `--ploidy` | Baseline ploidy for delly cnv (default: 2) |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
@@ -1522,7 +1523,7 @@ or `pacbio`), else delly. The `caller_reason` metric says why.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Delly/Sniffles: one region, a comma-separated list, or BED; pbsv: one region only. |
 | `caller` | `str \| None` | `None` | `--caller` | SV caller to use (default: sniffles for ONT or --long-read, pbsv/sniffles for PacBio, detected or flagged; else delly). pbsv is PacBio-only and is refused for ONT reads. One of: `delly`, `pbsv`, `sniffles` |
 | `pacbio` | `bool` | `False` | `--pacbio` | PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS thresholds. Detected PacBio gets this automatically, without CCS thresholds for subreads (CLR). |
 | `ont` | `bool` | `False` | `--ont` | Oxford Nanopore data: use Sniffles (detected ONT input selects it automatically). |
@@ -1552,7 +1553,7 @@ command writes: `snps.vcf.gz` (`vcf snp`), `indels.vcf.gz`
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `region` | `str \| None` | `None` | `-r`, `--region` | One region, a comma-separated list, or BED (Delly/Sniffles without SNP/indel calling); pbsv: one region only. |
 | `types` | `str` | `'snp,indel'` | `--types` | Comma-separated variant types to call: snp and indel (bcftools), sv (as vcf sv picks the caller) and cnv (Delly). Default: snp,indel. |
 | `merge` | `bool` | `False` | `--merge` | Merge the called types into one variants.vcf.gz (+ .tbi), or variants.g.vcf.gz with the gVCF, in place of each type's own VCF. |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf: write SNPs and indels as one gVCF, bcftools.g.vcf.gz (+ .tbi), with reference blocks, in place of snps.vcf.gz and indels.vcf.gz; none: the variant VCFs. Default: config reference_evidence, else none. One of: `none`, `gvcf` |
@@ -2344,14 +2345,15 @@ CLI: `wgsextract ref gnomad`.
 
 Download or build gnomAD; output role `reference_resource` for each file.
 
-`RefGnomadParams`: Download gnomAD allele frequencies: the 2.1.1 exome sites VCFs, or
-build the 4.1 frequency table.
+`RefGnomadParams`: Check or download the gnomAD 2.1.1 exome sites VCFs or the gnomAD 4.1
+frequency and homozygote-count table.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `release` | `str` | `'2.1.1'` | `--release` | 2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native hg38 exomes+genomes, streamed (~900 GB, hours) into an allele-frequency-only table of ~5 GB; --threads sets parallel streams. One of: `2.1.1`, `4.1` |
+| `release` | `str` | `'2.1.1'` | `--release` | 2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native hg38 exomes+genomes, with allele frequency, maximum ancestry-group frequency and homozygote counts; --threads sets parallel streams. One of: `2.1.1`, `4.1` |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `download` | `bool` | `False` | `--download` | Allow fetching the public sites VCFs for the selected release (4.1 streams ~900 GB, hours, to build or rebuild the table). |
 
 ### `api.ref.spliceai(RefSpliceaiParams)`
 

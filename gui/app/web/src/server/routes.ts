@@ -4,7 +4,8 @@ import type { BundleManifest, Labels, LooseRecord, RunProcess } from "../../../s
 import { evaluatePrecheck, evaluateSetupInstallSizePrecheck, fileStateValues, runDataSource } from "./action-runner.js";
 import { serveBundleFavicon, serveBundleFile } from "./assets.js";
 import { loadLocaleOptions } from "./bundle-loader.js";
-import { loadConfig, saveBundleState, saveConfig } from "./config-store.js";
+import { saveBundleState } from "./bundle-state.js";
+import { loadConfig, saveConfig } from "./config-store.js";
 import { errorMessage, HttpError } from "./errors.js";
 import { contentType, json, notFound, readJSONBody, serveIndex, staticFile } from "./http.js";
 import { findConfigEditorControl, locationKey, resolveActionReference, resolveDataSource, type DynamicActions } from "./manifest-lookup.js";

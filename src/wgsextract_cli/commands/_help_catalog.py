@@ -454,7 +454,8 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     ),
     "ref gnomad": _h(
         f"{_LIBRARY}: gnomAD allele-frequency files.",
-        "wgsextract ref gnomad",
+        "wgsextract ref gnomad --download",
+        "wgsextract ref gnomad --release 4.1 --download",
     ),
     "ref revel": _h(f"{_LIBRARY}: REVEL score files.", "wgsextract ref revel"),
     "ref pharmgkb": _h(

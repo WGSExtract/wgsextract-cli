@@ -176,6 +176,17 @@ ONT detection/`--ont` or `--long-read` selects Sniffles; `--pacbio` supports
 pbsv/Sniffles. Explicit `--caller` wins, but Delly with a long-read flag
 or pbsv with ONT is rejected. See [structural variants](ont.md#structural-variants).
 
+Delly (`vcf sv` and `vcf cnv`) and Sniffles accept a single region, a
+comma-separated list such as `chr1:1-10000,chr1:20000-40000`, or a BED file.
+Text ranges are 1-based and inclusive; BED intervals are 0-based and half-open.
+Low-coverage checks sample the same selected intervals with either format.
+For Delly and Sniffles, `chr1:1000` or `chr1:1000-` runs through the end of
+the contig, and `chr1:-1000` starts at base 1. BEDPE files are not supported.
+Region contigs must be present in both the alignment and the reference. pbsv
+accepts one region only, not a list or BED file. The same limits apply to
+`vcf call --types sv` or `--types cnv`. If SNPs or indels are also requested,
+use text regions: the small-variant stage does not accept a BED file.
+
 ## One gene
 
 `info gene --gene SYMBOL` puts one gene's local evidence together, offline: its
@@ -214,9 +225,17 @@ Configure `confidence_*`,
 or override `--confidence-depth LOW HIGH` / `--confidence-gq LOW HIGH`.
 See [rules, rationale and validation](variant-confidence.md).
 
-- `ref gnomad --release 4.1` streams native-GRCh38 exome/genome VCFs
-  (~880 GB, hours) into an allele-frequency-only table. Default 2.1.1 is
-  exome-only, lifted to hg38.
+- `ref gnomad --release 4.1 --download` streams the native-GRCh38 joint
+  exome/genome VCFs (~880 GB, hours). For each passing ALT with positive joint
+  frequency, the table keeps the joint frequency, maximum ancestry-group
+  frequency and alternate homozygote count. `vcf gnomad` transfers them to
+  `GNOMAD_AF`, `GNOMAD_POPMAX_AF` and `GNOMAD_NHOMALT`, respectively.
+  Older tables remain readable, but may omit fields or combine multiple ALTs
+  in one row. The same `--download` command rebuilds them in the current
+  per-allele format. Without `--download`, `ref gnomad
+  --release 4.1` checks the local table and can recreate a missing index
+  without fetching data. `ref gnomad --download` installs the default release,
+  2.1.1, which is exome-only and lifted to hg38.
 - `ref cadd` gets CADD v1.7 (~85 GB/build); `ref gerp` gets GERP++ bigWig.
   Annotation adds `CADD_RAW`/`CADD_PHRED` and `GERP`.
 - GERP/PhyloP bigWig lookups reuse bounded per-contig windows (pyBigWig's

@@ -7,7 +7,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseFlatToml } from "../dist/shared/rendering.js";
 
-const { bootstrapConfigFiles, loadBundleState, loadConfig, saveBundleState, saveConfig, takeBundleStateWarning, writeFileAtomically } = await import("../dist/web/src/server/config-store.js");
+const { writeFileAtomically } = await import("../dist/web/src/server/atomic-file.js");
+const { loadBundleState, saveBundleState, takeBundleStateWarning } = await import("../dist/web/src/server/bundle-state.js");
+const { bootstrapConfigFiles } = await import("../dist/web/src/server/config-bootstrap.js");
+const { loadConfig, saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
 const { withSettingsFileLock } = await import("../dist/web/src/server/settings-lock.js");
 

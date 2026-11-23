@@ -301,6 +301,8 @@ def _missing_annotation(
     install = ["ref", annotation.resource, *_library_option(lib.root)]
     if annotation.per_build:
         install += ["--build", build]
+    if annotation.resource == "gnomad":
+        install.append("--download")
     return MissingReference(
         id=annotation.resource,
         kind="annotation",

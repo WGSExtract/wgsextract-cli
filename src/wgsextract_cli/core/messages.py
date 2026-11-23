@@ -267,7 +267,7 @@ LOG_MESSAGES = {
     "vcf_gerp_resolve": "Auto-resolved GERP file: {path}",
     "vcf_gerp_missing": "GERP data file not found. Please provide with --gerp-file or place it in the reference library's 'downloads/' folder as gerp_hg38.bw.",
     "vcf_gerp_done": "GERP annotation and filtering complete: {output}",
-    "vcf_gnomad_missing": "gnomAD data file not found. Please run 'ref gnomad' first.",
+    "vcf_gnomad_missing": "gnomAD data file not found.",
     "vcf_gnomad_done": "gnomAD annotation complete: {output}",
     "vcf_spliceai_missing": "SpliceAI data file not found. Please run 'ref spliceai' first.",
     "vcf_spliceai_done": "SpliceAI annotation complete: {output}",

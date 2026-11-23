@@ -170,7 +170,7 @@ test("a settings file an earlier release kept in the bundle workspace moves to t
   await mkdir(reference, { recursive: true });
   await writeFile(path.join(bundle, ".bundle-workspace"), "WGS Extract GUI workspace\n");
   await writeFile(path.join(bundle, "config.toml"), `reference_library = ${JSON.stringify(reference)}\n`);
-  const { bootstrapConfigFiles } = await import("../dist/web/src/server/config-store.js");
+  const { bootstrapConfigFiles } = await import("../dist/web/src/server/config-bootstrap.js");
 
   await prepareBundleWorkspace(manifest, source);
   await bootstrapConfigFiles(manifest, bundle, {});
@@ -209,7 +209,7 @@ for (const scope of ["workspace", "setting folder", "previous config"]) {
       exited.then(([code]) => { throw new Error(`Saver exited before it was ready (${code})`); }),
     ]);
     const folder = path.join(root, "new location");
-    const { bootstrapConfigFiles } = await import("../dist/web/src/server/config-store.js");
+    const { bootstrapConfigFiles } = await import("../dist/web/src/server/config-bootstrap.js");
     const retry = () => scope === "previous config"
       ? bootstrapConfigFiles(manifest, bundle, {})
       : move({

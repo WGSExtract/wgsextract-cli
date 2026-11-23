@@ -177,22 +177,33 @@ signature, installs the update, and restarts the app.
 
 ### GitHub Release feed generation
 
-For a release, `gui-distribution.yml` downloads the packaged artifacts, adds
-them to the `vX.Y.Z` GitHub Release, and runs (from the repository root):
+For a release, `gui-distribution.yml` downloads the packaged artifacts and
+passes the build matrix's target list as `EXPECTED_TARGETS` (a JSON array).
+Before uploading assets to the `vX.Y.Z` GitHub Release, it runs:
 
 ```bash
 python3 gui/tools/packaging/generate_update_feeds.py \
   --repo "$GITHUB_REPOSITORY" \
   --tag "$RELEASE_TAG" \
   --version "${RELEASE_TAG#v}" \
+  --expected-targets "$EXPECTED_TARGETS" \
   --artifacts-root release-artifacts \
-  --output-dir release-artifacts/update-feeds
+  --output-dir updater-feed
 ```
 
 It writes `latest.json` with `windows-x86_64`, `linux-x86_64`, and
-`darwin-aarch64`/`darwin-x86_64` entries for every signed artifact it finds.
+`darwin-aarch64`/`darwin-x86_64` entries for the release targets. Each must
+have exactly one updater artifact with a nonempty `.sig` beside it. A missing
+or ambiguous artifact or signature fails the job before it uploads anything,
+so it cannot replace an existing feed with a partial one.
 Release builds set `PACKAGE_APP_VERSION` from the tag name so the packaged apps and
 the feed agree on the update version.
+
+Artifact-only workflow runs (without a release tag) skip feed generation.
+For local development, replace `--expected-targets ...` with `--allow-unsigned`
+to write entries only for the signed platforms present, or no feed if none
+are signed. Use a clean output directory for an unsigned build so an old
+feed cannot be mistaken for a new one. This mode still rejects ambiguous artifacts.
 
 For end-to-end update testing before a production release, build the app with
 `TAURI_UPDATER_ENDPOINTS` pointed at a test release's `latest.json` instead of
