@@ -4,7 +4,8 @@ Python's text mode writes \\r\\n on Windows unless `newline=` says otherwise, so
 the same command made different files there: microarray kits with \\r\\n headers
 over \\n genotype rows, and region and target lists that htslib tools read. Every
 text-mode write in the package must pass `newline=` (normally "\\n").
-Generated references must explicitly choose LF to avoid Windows-only diffs.
+The generators run by scripts/regen.py must explicitly choose LF to avoid
+Windows-only diffs.
 """
 
 import ast

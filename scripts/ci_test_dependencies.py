@@ -87,7 +87,10 @@ DOCS_TARGET_INPUTS = {
     ),
     "tests/test_text_newlines.py": (
         "scripts/regen.py",
-        "scripts/gen_*.py",
+        "scripts/gen_*_docs.py",
+        "scripts/gen_output_schemas.py",
+        "scripts/gen_report_schema.py",
+        "scripts/gen_server_contracts.py",
         "tests/cli_snapshot.py",
     ),
     "tests/test_bump_version.py": (
