@@ -34,6 +34,40 @@ above works.
 - A multi-sample VCF uses its first sample, or the one named with `--sample`.
 - `--region chr22` or `--region chr1:1000000-2000000` exports one region.
 
+### Slice a VCF to a panel
+
+Use the same options on `vcf filter` and `vcf table`:
+
+```bash
+wgsextract vcf filter --vcf-input sample.vcf.gz --genes BRCA1,BRCA2 --bed targets.bed
+wgsextract vcf table --vcf-input sample.vcf.gz --preset acmg-sf --region chr17
+```
+
+Repeat `--gene SYMBOL` or `--genes SYMBOL1,SYMBOL2`, give `--gene-file FILE`,
+or select a `--preset` listed by `wgsextract panel bed --list-presets`. A gene
+file accepts names separated by spaces, commas or newlines; `#` starts a
+comment. Symbols and unique aliases resolve offline against the bundled RefSeq
+gene spans. An unknown name or ambiguous alias is an error. The VCF header or
+the `.fai` of a matching `--ref` FASTA must identify GRCh37, GRCh38 or
+CHM13v2.0. If `--ref` is a local library and the header doesn't identify a
+build, its indexed FASTAs must point to a single build. Filenames alone
+don't identify an assembly. `--pad-kb` pads each whole gene span on both
+sides (default: no padding).
+
+The commands take the **union** of the gene spans and the zero-based,
+half-open `--bed` intervals (plain or gzipped), then **intersect** it with
+`--region` if given. `--region` takes a contig, a 1-based position or an
+inclusive range; separate multiple regions with commas. Contig names such
+as `chr17` and `17` match automatically. Supply BED coordinates for the VCF's
+assembly; this is not liftover. A VCF record is kept if it overlaps the final
+intervals, without duplicating records from overlapping targets. A panel with
+no matches returns a header-only VCF or table. Other filters (such as `--expr`
+or `--sample`) still apply.
+
+The result manifest's `details.panel` records the resolved genes and presets,
+the final intervals in VCF contig naming (BED coordinates), and the SHA-256
+of the BED file as supplied.
+
 ## Columns
 
 | Column | Type | Meaning |
