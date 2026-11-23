@@ -27,10 +27,13 @@ import { bundleArchiveFormat } from "./bundle-archive.js";
 import { assertCurrentUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo, workspaceMoveRevision } from "./users-workspace.js";
 import { withWorkspaceMove, withWorkspaceUse } from "./workspace-activity.js";
 import type { WorkspaceMoveTarget } from "./workspace-move.js";
+import { LinkedMoveFolderError } from "./workspace-move-guard.js";
 import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
-import { openLibraryViewer, viewerLibraries } from "./viewer-session.js";
+import { checkLibraryTracks, openLibraryViewer, viewerLibraries } from "./viewer-session.js";
+import { isViewerBuild } from "../../../shared/viewer-rows.js";
 import { RemoteViewerConnection } from "./remote-viewer-connection.js";
 import { RemoteViewer } from "./remote-viewer.js";
+import { openGenePage } from "./gene-page.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
 
@@ -142,7 +145,20 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 json(response, { problem: "trackLimit" });
                 return;
             }
-            json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles, tracks));
+            const build = body.build;
+            if (build !== undefined && !isViewerBuild(build)) {
+                throw new HttpError(400, "Viewer build must be hg19 or hg38.");
+            }
+            json(response, await openLibraryViewer(requiredString(body, "path"), optionalString(body, "locus") ?? "", context, viewerFiles, tracks, build));
+        },
+        "/api/viewer/check": async (request, response) => {
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            const paths = body.paths;
+            if (!Array.isArray(paths) || paths.length > 16 || paths.some((file) => typeof file !== "string" || !file.trim() || file.length > 4096)) {
+                throw new HttpError(400, "Viewer checks take up to 16 local file paths.");
+            }
+            json(response, { tracks: await checkLibraryTracks(paths, context) });
         },
         "/api/viewer/close": jsonRoute(context, async (body) => {
             viewerFiles.revoke(requiredString(body, "id"));
@@ -197,6 +213,21 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 json(response, await remoteViewer.open(requiredString(body, "requestID"), requiredString(body, "id"),
                     requiredString(body, "path"), requiredString(body, "index"), requiredString(body, "reference"),
                     requiredString(body, "locus"), body.confirmed === true, controller.signal));
+            } finally {
+                response.off("close", close);
+            }
+        },
+        "/api/gene/open": async (request, response) => {
+            // It runs the CLI on local paths, so only this computer may ask, as with the viewer.
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            const controller = new AbortController();
+            const close = () => {
+                if (!response.writableFinished) controller.abort();
+            };
+            response.once("close", close);
+            try {
+                json(response, await openGenePage(body, context, resultPaths, controller.signal));
             } finally {
                 response.off("close", close);
             }
@@ -307,7 +338,11 @@ export function createRequestHandler(context: RequestHandlerContext) {
                     context.workspaceMoveRevision = await workspaceMoveRevision(context.manifest);
                     await emit({ type: "complete" });
                 }),
-                (error) => ({ type: "error", error }),
+                (error, cause) => ({
+                    type: "error",
+                    error,
+                    ...(cause instanceof LinkedMoveFolderError ? { linkedFolder: { link: cause.link, target: cause.target } } : {}),
+                }),
             );
         },
         "/api/config/load": jsonRoute(context, async (body) => {

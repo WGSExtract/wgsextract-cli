@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import bgzip_index, needs_htslib, sam_to_bam, write_fasta
 from tests.http_server import serving
-from tests.smoke_utils import state_directory_setting
 from wgsextract_cli import api
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path

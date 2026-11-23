@@ -6,12 +6,18 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path, PurePath
 
 from wgsextract_cli.api.sign import MANIFEST_NAME, SignCreateParams, SignVerifyParams
 from wgsextract_cli.cli.registration.sign import register as register
+from wgsextract_cli.commands._sign_keygen import (
+    WINDOWS_VERIFIER_HINT,
+    keygen_description,
+    windows_verifier,
+)
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import settings
@@ -32,6 +38,8 @@ _CHUNK = 4 << 20
 _FINGERPRINT = re.compile(r"(\S+) key (SHA256:\S+)")
 # Verifying a manifest takes well under a second.
 _VERIFY_TIMEOUT = 10
+# Leave time to enter a key passphrase, but bound hangs in Win32 OpenSSH.
+_WINDOWS_SIGN_TIMEOUT = 60
 
 
 def _ssh_keygen() -> str:
@@ -140,14 +148,26 @@ def create_manifest(params: SignCreateParams) -> None:
     logging.info(f"Checksum manifest written to {manifest}")
     result = current_result()
     result.add_output(manifest, "checksums")
-    result.add_metrics(files=len(files), signed=bool(keygen))
+    result.add_metrics(files=len(files), signed=False)
 
     if keygen:
         # Inherit the terminal so ssh-keygen can prompt for a key passphrase.
         cmd = [keygen, "-Y", "sign", "-f", str(key), "-n", NAMESPACE, str(manifest)]
-        if subprocess.run(cmd).returncode != 0 or not signature.is_file():
+        timeout = _WINDOWS_SIGN_TIMEOUT if sys.platform == "win32" else None
+        try:
+            signed = subprocess.run(cmd, timeout=timeout).returncode == 0
+        except subprocess.TimeoutExpired:
+            signature.unlink(missing_ok=True)
+            raise WGSExtractError(
+                f"Signing FAILED: {keygen_description(Path(keygen))} did not finish "
+                f"within {timeout} seconds. Put Git for Windows' usr\\bin "
+                "before the inbox OpenSSH on PATH."
+            ) from None
+        if not signed or not signature.is_file():
+            signature.unlink(missing_ok=True)
             raise WGSExtractError("ssh-keygen could not sign the manifest.")
         result.add_output(signature, "signature")
+        result.add_metrics(signed=True)
         logging.info(
             f"Signature written to {signature}. Share your public key so others "
             f"can run: wgsextract sign verify {MANIFEST_NAME} --public-key KEY.pub"
@@ -169,7 +189,6 @@ def _read_manifest(manifest: PathInput) -> list[tuple[str, str]]:
 def _verify_signature(
     params: SignVerifyParams, manifest: Path, signature: Path
 ) -> None:
-    keygen = _ssh_keygen()
     with tempfile.TemporaryDirectory() as tmp:
         if params.public_key:
             with open(params.public_key, "rb") as f:
@@ -196,7 +215,9 @@ def _verify_signature(
             ]
         else:
             trust = ["check-novalidate"]
-        cmd = [keygen, "-Y", *trust, "-n", NAMESPACE, "-s", str(signature)]
+        windows = sys.platform == "win32"
+        keygen = windows_verifier() if windows else Path(_ssh_keygen())
+        cmd = [str(keygen), "-Y", *trust, "-n", NAMESPACE, "-s", str(signature)]
         with manifest.open("rb") as stdin:
             try:
                 res = subprocess.run(
@@ -208,14 +229,15 @@ def _verify_signature(
                     timeout=_VERIFY_TIMEOUT,
                 )
             except subprocess.TimeoutExpired as e:
-                # Windows' OpenSSH reports a bad signature and then never exits.
                 message = "".join(
                     s.decode(errors="replace") if isinstance(s, bytes) else s
                     for s in (e.stdout or "", e.stderr or "")
                 ).strip()
                 raise WGSExtractError(
-                    "Signature verification FAILED: "
-                    + (message or "ssh-keygen did not finish.")
+                    f"Signature verification FAILED: {keygen_description(keygen)} "
+                    "did not finish."
+                    + (f" {message}" if message else "")
+                    + (f" {WINDOWS_VERIFIER_HINT}" if windows else "")
                 ) from None
     message = (res.stdout + res.stderr).strip()
     if res.returncode != 0:

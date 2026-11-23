@@ -14,8 +14,10 @@ from pathlib import Path
 from platformdirs import user_data_dir
 
 from wgsextract_cli.core.atomic_output import atomic_write
+from wgsextract_cli.core.file_lock import shared_file_lock
 from wgsextract_cli.core.workspace_activity import (
     configured_desktop_data_dir,
+    relocated_config_path,
     workspace_use,
 )
 
@@ -86,12 +88,17 @@ def claim_users_workspace(folder: Path) -> None:
 
 
 @workspace_use()
-def write_initial_config(config_path: Path, contents: str) -> None:
-    """Claim the default workspace before a CLI-first bootstrap populates it."""
+def write_initial_config(config_path: Path, contents: str) -> bool:
+    """Claim the default workspace before a CLI-first bootstrap populates it.
+    False when the app or another command created the file first."""
+    config_path = relocated_config_path(config_path)
     if config_path.parent == users_workspace():
         claim_users_workspace(config_path.parent)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(config_path, contents.encode("utf-8"))
+    with shared_file_lock(config_path) as target:
+        if target.exists():
+            return False
+        atomic_write(target, contents.encode("utf-8"))
+    return True
 
 
 def existing_mygenomes_library(parent: Path) -> Path | None:

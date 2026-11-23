@@ -16,6 +16,13 @@ from typing import Any, TypedDict
 
 from wgsextract_cli.commands.lineage import alignment_mito_problem
 from wgsextract_cli.core import reference_evidence, variant_confidence
+from wgsextract_cli.core.artifacts import (
+    Producer,
+    artifact_from_dict,
+    lineage_args,
+    producer_from_dict,
+    unrecorded_output,
+)
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
 from wgsextract_cli.core.paths import absolute_path
@@ -111,11 +118,18 @@ def _captured(handle: StepRun) -> Iterator[None]:
         _RUNNING.reset(token)
     for record in result.outputs:
         if record.path not in before and Path(record.path).exists():
+            artifact = result.lineage.carried.get(record.path)
+            run = result.run
             handle.add_output(
                 record.path,
                 role=record.role,
                 result_kind=record.kind,
                 result_metrics=record.metrics,
+                result_artifact=dataclasses.asdict(artifact) if artifact else None,
+                # Written in this process: this run is its producer.
+                result_producer=dataclasses.asdict(
+                    Producer(run.id, run.root, result.command, run.step)
+                ),
             )
     handle.metrics["result_metrics"] = {
         name: value for name, value in result.metrics.items()
@@ -139,11 +153,18 @@ def _replay(journal: StepJournal, decision: Decision) -> None:
     result = current_result()
     for item in decision.outputs:
         if item.get("role"):
+            path = journal.resolve(item["path"])
+            artifact = artifact_from_dict(item.get("result_artifact"))
+            producer = producer_from_dict(item.get("result_producer"))
+            if artifact is None and producer is None:
+                artifact = unrecorded_output(path, item["role"])
             result.add_output(
-                journal.resolve(item["path"]),
+                path,
                 item["role"],
                 kind=item.get("result_kind"),
                 metrics=_scalars(item.get("result_metrics")),
+                artifact=artifact,
+                producer=producer,
             )
     result.add_metrics(**_scalars(decision.metrics.get("result_metrics")))
     confidence = decision.metrics.get("result_confidence")
@@ -176,17 +197,34 @@ def run_step(
     can't reuse what an earlier attempt left there (kept when the same
     attempt is resumed).
     """
+    result = current_result()
     decision = journal.decide(step, after=after)
     if not decision.run:
         _replay(journal, decision)
+        result.run.record_step(step.name, decision.metrics, decision.reason, "reused")
         return decision, decision.metrics
     if journal.dry_run:
         return decision, decision.metrics
     if not decision.partial:
         for folder in clean:
             shutil.rmtree(folder, ignore_errors=True)
-    with journal.running(decision) as handle, _captured(handle):
-        action(handle)
+    handle: StepRun | None = None
+    try:
+        with journal.running(decision) as handle, _captured(handle):
+            action(handle)
+            if not handle.metrics.get("result_runs"):
+                # Done in this process: this run did the step's work.
+                handle.metrics["result_runs"] = [result.run.this_run(result.command)]
+    except BaseException:
+        if handle is not None:
+            # A step that failed before starting a command failed in this run.
+            handle.metrics.setdefault(
+                "result_runs", [result.run.this_run(result.command)]
+            )
+            result.run.record_step(step.name, handle.metrics, decision.reason, "failed")
+        raise
+    assert handle is not None
+    result.run.record_step(step.name, handle.metrics, decision.reason, "ok")
     return decision, handle.metrics
 
 
@@ -411,6 +449,9 @@ def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> dict[str, Scalar
     with _stage_dir(outdir) as stage:
         result_file = Path(stage, "result.json")
         cmd.extend(["--result-file", str(result_file)])
+        running = _RUNNING.get()
+        step = running.decision.step.name if running else None
+        cmd += lineage_args(current_result().run, step)
         try:
             run_command(cmd)
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
@@ -478,6 +519,18 @@ def record_step_result(document: Path) -> dict[str, Scalar]:
             if path and str(Path(path).absolute()) not in declared:
                 running.add_input(f"{item.get('role') or 'input'}:{path}", path)
     result = current_result()
+    child = step.get("run")
+    child = child if isinstance(child, dict) else {}
+    if running:
+        runs = running.metrics.setdefault("result_runs", [])
+        assert isinstance(runs, list)
+        runs.append(
+            {
+                "run": child.get("id"),
+                "command": command,
+                "status": step.get("status") or "ok",
+            }
+        )
     if step.get("manifest"):
         result.add_output(step["manifest"], "step_manifest", kind="json")
     for output in outputs:
@@ -493,6 +546,7 @@ def record_step_result(document: Path) -> dict[str, Scalar]:
                 output["role"],
                 kind=output.get("kind"),
                 metrics=_scalars(output.get("metrics")),
+                artifact=artifact_from_dict(output.get("artifact")),
             )
     for item in warnings:
         if isinstance(item, dict) and item.get("code"):
@@ -625,6 +679,8 @@ def run_vcf_workflow(
         discovery_vcf,
         "significant_variants",
         metrics={"source_vcf": str(absolute_path(vcf_path))},
+        # Made from these calls alone, not from the analysis' reads.
+        sources=[vcf_path],
     )
     count = int(metrics.get("variants") or 0)
     return {"type": v_type, "input": vcf_path, "output": discovery_vcf, "count": count}

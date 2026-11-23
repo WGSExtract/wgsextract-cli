@@ -1,4 +1,5 @@
 import type { ActionSpec, BundleManifest, BundlePage, ConfigSetting, ControlOption, ControlSpec, PageSection, RowTagSpec, StringMap } from "./types.js";
+import { linkedMoveFolderFormat, linkedMoveTargetUnavailable } from "./workspace-move-message.js";
 
 export function parseTomlStrings(text: string): StringMap {
     const values: StringMap = {};
@@ -134,6 +135,8 @@ export function localizationLabels(table: StringMap = {}) {
         layoutDirection: layoutDirection(table["language.layoutDirection"]),
         viewerTitle: table["viewer.title"] ?? "Genome viewer",
         viewerStrings: Object.fromEntries(Object.entries(table).filter(([key]) => key.startsWith("viewer.")).map(([key, value]) => [key.slice("viewer.".length), value])),
+        geneTitle: table["gene.title"] ?? "Gene page",
+        geneStrings: Object.fromEntries(Object.entries(table).filter(([key]) => key.startsWith("gene.")).map(([key, value]) => [key.slice("gene.".length), value])),
         terminalMainTabTitle: table["app.terminal.mainTab.title"] ?? "Jobs",
         jobsEmptyLabel: table["app.jobs.empty"] ?? "No jobs have run in this session yet.",
         jobsColumnJobLabel: table["app.jobs.column.job"] ?? "Job",
@@ -173,6 +176,8 @@ export function localizationLabels(table: StringMap = {}) {
         workspaceMoveSettingsLocked: table["app.workspaceLocation.error.settingsLocked"] ?? "The settings file is locked. Finish saving settings, then try the move again.",
         workspaceMoveStale: table["app.workspaceLocation.error.stale"] ?? "Another window moved the workspace. Reopen the app before using it.",
         workspaceMoveProtectedFolder: table["app.workspaceLocation.error.protectedFolder"] ?? "This folder contains app data and cannot be moved.",
+        workspaceLocationLinkedFolderFormat: table["app.workspaceLocation.linkedFolder.format"] ?? linkedMoveFolderFormat,
+        workspaceLocationLinkTargetUnavailable: table["app.workspaceLocation.linkTargetUnavailable"] ?? linkedMoveTargetUnavailable,
         terminalCopyTextLabel: table["app.terminal.copyText.label"] ?? "Copy terminal text",
         terminalCopiedTextLabel: table["app.terminal.copiedText.label"] ?? "Copied!",
         setupTitle: table["app.setup.status.title"] ?? "Setup",

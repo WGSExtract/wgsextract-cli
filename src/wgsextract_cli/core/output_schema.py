@@ -33,6 +33,9 @@ class Constraints:
     pattern: str | None = None
     format: str | None = None
     minLength: int | None = None
+    minItems: int | None = None
+    uniqueItems: bool | None = None
+    minProperties: int | None = None
     enum: tuple[str | int | float | bool | None, ...] | None = None
 
 

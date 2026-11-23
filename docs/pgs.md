@@ -28,7 +28,7 @@ Failed or truncated responses never replace a previously good copy.
 | `breast-cancer` | PGS000004 | Breast cancer |
 | `height` | PGS000297 | Height |
 | `t2d` | PGS000020 | Type 2 diabetes |
-| `bmi` | PGS000027 | Body mass index (authors' licence: academic research use only) |
+| `bmi` | PGS005198 | Body mass index (BMI) |
 | `stroke` | PGS000038 | Stroke |
 | `triglycerides` | PGS000063 | Triglycerides |
 | `ldl-cholesterol` | PGS000065 | LDL cholesterol |
@@ -39,9 +39,13 @@ Failed or truncated responses never replace a previously good copy.
 This is a convenience list, not a clinical recommendation or a ranking of
 predictive accuracy. Any `PGSnnnnnn` is accepted with `--pgs-id`; an uncurated
 ID emits `pgs_uncurated_score`. A Catalog score whose authors set their own
-licence emits `pgs_license_restricted` with it: PGS000027, the `bmi` score, is
-"freely available to the academic community for research use", and commercial
-use needs the Broad Institute's permission. Review the publication, development ancestry,
+licence emits `pgs_license_restricted` with it, unless the licence only asks
+for attribution (CC BY 4.0). The `bmi` score, PGS005198, is the GIANT
+consortium's multi-ancestry score (Smit et al. 2025, Nat Med), under CC BY 4.0.
+It replaced PGS000027 (Khera et al. 2019), which is only "freely available to
+the academic community for research use"
+([#1165](https://github.com/WGSExtract/wgsextract-cli/issues/1165) compares the
+candidates). Review the publication, development ancestry,
 licence and limitations before using a score. A height score in raw score
 units is **not** height in centimetres; a disease score is **not** disease
 probability.
@@ -147,8 +151,8 @@ ancestry, the way the PGS Catalog Calculator (`pgsc_calc`, its
    group. Only the scoring-file rows the reference has (the *calibration set*) count toward the calibrated score; the
    published reference file holds those rows, their reference allele
    frequencies, the reference samples' scores and the fitted models, not
-   genotypes or scoring files. It is the GitHub release `pgs-ref-1`
-   (38 MB), downloaded into `<library>/pgs/` only with `--download`,
+   genotypes or scoring files. It is the GitHub release `pgs-ref-2`
+   (30 MB), downloaded into `<library>/pgs/` only with `--download`,
    and checked against a pinned SHA-256. Each score is
    tied to the SHA-256 of the Catalog file it was built from; if the Catalog
    changes that file, or you supply your own, there is no percentile.
@@ -183,8 +187,8 @@ over the summed per-variant variance). Assuming the imputed rows share the
 whole score's LD makes it an upper bound for scores of many correlated
 variants: on real HG002 and HG005 gaps it is 0.06-0.18 SD where the measured
 error is 0.05-0.16 SD, and without the inflation it would be half the
-measured error for PGS000027. `percentile_interval` is the resulting 95%
-interval. The
+measured error for PGS000027 (version 1 of the reference, #617).
+`percentile_interval` is the resulting 95% interval. The
 percentile is **withheld** (`percentile_status`, and a `pgs_uncalibrated`
 warning saying why) when:
 
@@ -216,7 +220,8 @@ its similarity, the empirical percentile and Z, `z_norm1`, `z_norm2`,
 manifest's metrics add `percentile` and `z_adjusted`; the TSV adds
 `z_adjusted` and `percentile_status`.
 
-**Validation** (#617, on lin-big, 2026-11-14):
+**Validation** (#617, on lin-big, 2026-11-14, for version 1's 11 scores; version 2
+copies ten of them unchanged):
 
 - **Same rules as your sample.** For 3 reference samples and all 11 scores,
   `score pgs`'s own scorer, run on their genotypes exported as a VCF, gives
@@ -233,3 +238,19 @@ manifest's metrics add `percentile` and `z_adjusted`; the TSV adds
 - **GIAB VCFs.** HG001's GIAB v4.2.1 VCF and confident BED give calibrated
   scores within 0.18 SD of its genotypes in the reference panel, as expected
   from its imputed share.
+
+**Version 2** (#1165, on macOS, 2026-11-22) rebuilt only `bmi`'s PGS005198.
+The same build reproduces version 1's height sums exactly, and the same
+checks hold:
+
+- **Coverage.** 1,202,909 of its 1,217,710 rows (98.8%) are calibration rows.
+- **Same rules as your sample.** `score pgs`'s scorer gives the reference
+  sums of 3 reference samples to 3.9e-6.
+- **Same adjustment as pgscatalog.calc 0.3.1.** It agrees on the most similar
+  region for all 962 out-of-training samples, on Z_norm1 and Z_norm2 within
+  0.0014, and on HG002 (Z_norm2 -2.302 against -2.303).
+- **Calibrated out of sample.** Z_norm2 has mean within ±0.1 and SD
+  0.90-1.09 in AFR, AMR, CSA, EAS and EUR, with 92-97% within ±1.96. MID's
+  21 samples have mean 0.55 (SD 1.17), and the score's development
+  ancestries don't include MID, so such samples also get
+  `pgs_ancestry_mismatch`.

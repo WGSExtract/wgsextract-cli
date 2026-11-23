@@ -8,9 +8,12 @@ import { isSameOrInsidePath, relocatePath } from "../../../shared/workspace-path
 import { bundleStatePath, writeFileAtomically } from "./config-store.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath, expandWorkspaceToken } from "./paths.js";
+import { withSettingsFileLock } from "./settings-lock.js";
+import { relocateSettingsFile, relocateStrings, restoreRewrittenFile, type RewrittenFile } from "./settings-relocation.js";
 import { assertSettingsFileUnlocked, withWorkspaceMove, workspaceActivityDirectory } from "./workspace-activity.js";
 import { createLink, type FolderMove, type PlannedLink, planLink, planLinks, type RelinkedLink, relinkMovedFolder, restoreLinks } from "./workspace-links.js";
 import type { MovedConfigPath } from "./workspace-location.js";
+import { refuseLinkedMoveFolders } from "./workspace-move-guard.js";
 import { assertCurrentUsersWorkspace, defaultUsersWorkspaceRoot, recordWorkspaceMove, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
 
 /** What to move: the users workspace to `folder` (null: its default location), or with `setting`, that setting's folder. */
@@ -24,6 +27,7 @@ export interface WorkspaceMoveRequest extends WorkspaceMoveTarget {
     sourceRoot: string;
     bundleRoot: string;
     onProgress: (percent: number) => void | Promise<void>;
+    beforeMove?: () => Promise<void>;
     signal: AbortSignal;
 }
 
@@ -51,6 +55,7 @@ async function moveWorkspaceNow(request: WorkspaceMoveRequest) {
     if (!target || path.relative(from, bundleRoot) === "") {
         throw new HttpError(400, "This bundle has no users workspace to move.");
     }
+    await prepareMove(request, [from, folder ?? target, target]);
     if (path.relative(from, target) === "") {
         await saveUsersWorkspace(manifest, folder == null ? null : target);
         return;
@@ -76,40 +81,37 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
         throw new HttpError(400, `${control.label ?? control.id} does not declare a settings file.`);
     }
     await assertSettingsFileUnlocked(settingsFile);
-    const values = await readSettings(settingsFile);
+    const values = parseToml(await readSettingsText(settingsFile) ?? "");
     const current = typeof values[setting.key] === "string" ? expandWorkspaceToken(String(values[setting.key]), bundleRoot) : "";
     const target = path.resolve(expandedFolder);
+    await prepareMove(request, [...(path.isAbsolute(current) ? [current] : []), expandedFolder, target]);
     const save = async () => {
         const latestFile = (await configFiles(manifest, bundleRoot)).get(control.id);
         if (!latestFile) {
             throw new HttpError(400, `${control.label ?? control.id} does not declare a settings file.`);
         }
-        const latest = await readSettings(latestFile);
-        if (setting.key === "mygenomes_library") {
-            delete latest.dataset_library;
-            delete latest.genome_library;
-        }
-        await writeFileAtomically(latestFile, serializeToml({ ...latest, [setting.key]: target }));
+        await withSettingsFileLock(latestFile, async (file) => {
+            const previous = await readSettingsText(file);
+            const latest = parseToml(previous ?? "");
+            if (setting.key === "mygenomes_library") {
+                delete latest.dataset_library;
+                delete latest.genome_library;
+            }
+            await writeFileAtomically(file, serializeToml({ ...latest, [setting.key]: target }));
+            try {
+                await recordWorkspaceMove(manifest);
+            } catch (error) {
+                if (previous === null) await rm(file, { force: true });
+                else await writeFileAtomically(file, previous);
+                throw error;
+            }
+        });
     };
     if (!current || !path.isAbsolute(current) || path.relative(current, target) === "" || (await isEmptyOrMissing(current))) {
-        const previous = await readFile(settingsFile, "utf8").catch((error: unknown) => {
-            ignoreMissing(error);
-            return null;
-        });
-        try {
-            await save();
-            await recordWorkspaceMove(manifest);
-        } catch (error) {
-            if (previous === null) await rm(settingsFile, { force: true });
-            else await writeFileAtomically(settingsFile, previous);
-            throw error;
-        }
+        await save();
         return;
     }
-    await moveFolderAndPaths(request, current, target, async () => {
-        await save();
-        await recordWorkspaceMove(manifest);
-    });
+    await moveFolderAndPaths(request, current, target, save);
 }
 
 /** Moves `from` to `to`, then rewrites saved paths into it and runs `save`; puts everything back if a step fails. */
@@ -201,7 +203,7 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
             await rename(retired, previous);
         }
         for (const file of rewritten) {
-            await writeFileAtomically(file.filePath, file.text).catch(() => undefined);
+            await restoreRewrittenFile(file).catch(() => undefined);
         }
         if (renamed) {
             await restoreLinks(move, relinked);
@@ -218,6 +220,16 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
         });
     }
     await onProgress(100);
+}
+
+async function prepareMove(request: WorkspaceMoveRequest, folders: string[]) {
+    const paths = [...new Set(folders)];
+    await refuseLinkedMoveFolders(...paths);
+    if (request.beforeMove) {
+        await request.beforeMove();
+        // An action being stopped may have changed a folder after the first check.
+        await refuseLinkedMoveFolders(...paths);
+    }
 }
 
 async function assertMovableSettingFolder(from: string, protectedPaths: string[]) {
@@ -386,29 +398,11 @@ async function copyEntry(move: FolderMove, links: Map<string, PlannedLink>, toRo
     await utimes(to, info.atime, info.mtime);
 }
 
-/** A file's text from before it was rewritten, to put back if the move fails. */
-interface RewrittenFile {
-    filePath: string;
-    text: string;
-}
-
-async function readSettings(filePath: string): Promise<Record<string, unknown>> {
-    const text = await readFile(filePath, "utf8").catch((error: unknown) => {
-        ignoreMissing(error);
-        return "";
-    });
-    return parseToml(text);
-}
-
-async function relocateSettingsFile(filePath: string, from: string, to: string, rewritten: RewrittenFile[]) {
-    const text = await readFile(filePath, "utf8").catch((error: unknown) => {
+function readSettingsText(filePath: string): Promise<string | null> {
+    return readFile(filePath, "utf8").catch((error: unknown) => {
         ignoreMissing(error);
         return null;
     });
-    if (text != null) {
-        rewritten.push({ filePath, text });
-        await writeFileAtomically(filePath, serializeToml(relocateStrings(parseToml(text), from, to)));
-    }
 }
 
 async function readBundleState(bundleRoot: string): Promise<Record<string, unknown> | null> {
@@ -430,17 +424,4 @@ async function relocateBundleState(bundleRoot: string, from: string, to: string,
         const relocated = relocateStrings(JSON.parse(text) as unknown, from, to);
         await writeFileAtomically(statePath, `${JSON.stringify(relocated, null, 2)}\n`);
     }
-}
-
-function relocateStrings(value: unknown, from: string, to: string): unknown {
-    if (typeof value === "string") {
-        return relocatePath(value, from, to);
-    }
-    if (Array.isArray(value)) {
-        return value.map((item) => relocateStrings(item, from, to));
-    }
-    if (value != null && typeof value === "object") {
-        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, relocateStrings(item, from, to)]));
-    }
-    return value;
 }

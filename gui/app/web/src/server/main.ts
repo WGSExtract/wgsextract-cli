@@ -17,6 +17,7 @@ import { forgetSetupWithMissingTools } from "./setup-runner.js";
 import { prepareBundleWorkspace } from "./workspace.js";
 import { moveWorkspace } from "./workspace-move.js";
 import { withWorkspaceUse } from "./workspace-activity.js";
+import { LinkedMoveFolderError } from "./workspace-move-guard.js";
 import { migrateLegacyAppData } from "./workspace-location.js";
 import { usersWorkspaceFor, workspaceMoveRevision } from "./users-workspace.js";
 import { errorMessage } from "./errors.js";
@@ -94,20 +95,28 @@ const requestContext: RequestHandlerContext = {
         };
     }),
     moveWorkspace: (target, emit, signal) => exclusively(async () => {
-        await terminateAllProcesses();
+        let started = false;
         try {
             await moveWorkspace({
                 manifest: bundleRuntime.manifest,
                 sourceRoot: bundleRuntime.sourceBundleRoot,
                 bundleRoot: bundleRuntime.bundleRoot,
                 ...target,
+                beforeMove: async () => {
+                    await terminateAllProcesses();
+                    started = true;
+                },
                 onProgress: (percent) => emit({ type: "progress", percent }),
                 signal,
             });
         }
+        catch (error) {
+            if (error instanceof LinkedMoveFolderError) started = false;
+            throw error;
+        }
         finally {
             // From wherever the users workspace is recorded now, even when a step after the move itself failed.
-            useBundleRuntime(await loadBundleRuntime(bundleRuntime.sourceBundleRoot, false));
+            if (started) useBundleRuntime(await loadBundleRuntime(bundleRuntime.sourceBundleRoot, false));
         }
     }),
 };

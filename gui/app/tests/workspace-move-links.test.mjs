@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
-import { lstat, mkdir, readFile, readlink, realpath, stat, symlink, unlink, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { once } from "node:events";
+import { lstat, mkdir, readFile, readdir, readlink, realpath, rename, stat, symlink, unlink, utimes, writeFile } from "node:fs/promises";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import path from "node:path";
 import test from "node:test";
+import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 import { fixture, manifest, move, settingsControl } from "./workspace-fixture.mjs";
 
 const { saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
+const { workspaceActivityDirectory } = await import("../dist/web/src/server/workspace-activity.js");
 const { appSettingsPath } = await import("../dist/web/src/server/workspace-location.js");
 const { isSameOrInsidePath, relocatePath } = await import("../dist/shared/workspace-paths.js");
 
@@ -51,6 +57,178 @@ async function trySymlink(t, target, link, type) {
     throw error;
   }
 }
+
+async function startMoveServer(t, root, source) {
+  const server = fileURLToPath(new URL("../dist/web/src/server/main.js", import.meta.url));
+  const apiToken = randomUUID();
+  const portFile = path.join(root, "server-port");
+  const child = spawn(process.execPath, [server, "--bundle", source, "--port", "0"], {
+    env: { ...process.env, GFC_API_TOKEN: apiToken, GFC_PORT_FILE: portFile },
+    stdio: ["ignore", "ignore", "inherit"],
+  });
+  const exited = once(child, "close");
+  t.after(async () => {
+    child.kill();
+    await exited;
+  });
+  let port;
+  while (!port) {
+    assert.equal(child.exitCode, null, "GUI exited before publishing its port");
+    assert.equal(child.signalCode, null, "GUI stopped before publishing its port");
+    const text = await readFile(portFile, "utf8").catch((error) => {
+      if (error.code === "ENOENT") return "";
+      throw error;
+    });
+    if (/^\d+\n$/.test(text)) port = Number(text);
+    else await delay(20, undefined, { signal: t.signal });
+  }
+  return async (body) => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/workspace-location/move`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-gfc-token": apiToken },
+      body: JSON.stringify(body),
+      signal: t.signal,
+    });
+    assert.equal(response.status, 200);
+    return (await response.text()).trim().split("\n").map((line) => JSON.parse(line));
+  };
+}
+
+async function snapshotTree(root) {
+  const entries = [];
+  for (const name of (await readdir(root)).sort()) {
+    const entry = path.join(root, name);
+    // Admission changes the coordination directory, not the user's files.
+    if (entry === workspaceActivityDirectory()) continue;
+    const info = await lstat(entry);
+    const content = info.isSymbolicLink() ? await readlink(entry)
+      : info.isDirectory() ? await snapshotTree(entry) : await readFile(entry);
+    entries.push({ name, ino: info.ino, modified: info.mtimeMs, content });
+  }
+  return entries;
+}
+
+for (const kind of ["symlink", "junction"]) {
+  for (const scenario of ["users workspace", "library folder", "destination"]) {
+    const skip = kind === "junction" && process.platform !== "win32" && "Junctions require Windows";
+    test(`#1340 refuses a ${kind} at the ${scenario} without changing the filesystem`, { skip, timeout: 15000 }, async (t) => {
+      const { root, source, users } = await fixture(t);
+      await prepareBundleWorkspace(manifest, source);
+      const library = path.join(users, "reference-data");
+      const destination = path.join(root, "new-parent", "moved");
+      const target = path.join(root, "actual-folder");
+      const link = scenario === "users workspace" ? users : scenario === "library folder" ? library : destination;
+      if (scenario === "users workspace") {
+        await rename(users, target);
+      }
+      else {
+        await mkdir(target);
+        if (scenario === "destination") await mkdir(path.dirname(destination));
+      }
+      let rawTarget = kind === "junction" ? target : path.relative(path.dirname(link), target);
+      if (scenario === "library folder" && process.platform !== "win32") {
+        const child = path.join(target, "child");
+        await mkdir(child);
+        await symlink(child, path.join(users, "hop"), "dir");
+        rawTarget = "hop/..";
+      }
+      if (!await trySymlink(t, rawTarget, link, kind === "junction" ? "junction" : "dir")) return;
+      if (scenario === "library folder") {
+        await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(library + path.sep)}\n`);
+      }
+      const requestMove = await startMoveServer(t, root, source);
+      // Leave a timestamp a runtime reload would change even if it rewrote the same bytes.
+      await utimes(path.join(users, ".users-workspace"), 1, 1);
+      const before = await snapshotTree(root);
+      const events = await requestMove({
+        folder: destination,
+        ...(scenario === "users workspace" ? {} : { controlID: "paths", key: "reference_library" }),
+      });
+      assert.deepEqual(events.map(({ type }) => type), ["error"]);
+      const [failure] = events;
+      const reportedTarget = await realpath(target);
+      assert.deepEqual(failure.linkedFolder, { link, target: reportedTarget });
+      assert.ok(failure.error.includes(link));
+      assert.ok(failure.error.includes(reportedTarget));
+      assert.match(failure.error, /move the target yourself and update the setting/i);
+      assert.deepEqual(await snapshotTree(root), before);
+    });
+  }
+}
+
+test("#1340 refuses a source replaced with a link while running actions stop", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const target = path.join(root, "actual-workspace");
+  const reportedTarget = path.join(await realpath(root), "actual-workspace");
+  const folder = path.join(root, "new-parent", "workspace");
+  let before;
+  await assert.rejects(move({
+    sourceRoot: source, bundleRoot: bundle, folder,
+    beforeMove: async () => {
+      await rename(users, target);
+      await symlink(target, users, "junction");
+      before = await snapshotTree(root);
+    },
+  }), { link: users, target: reportedTarget });
+  assert.deepEqual(await snapshotTree(root), before);
+});
+
+test("#1340 refuses a linked destination written with .. after another link",
+  { skip: process.platform === "win32" && "POSIX resolves .. after following the link", timeout: 15000 }, async (t) => {
+    const { root, source, users } = await fixture(t);
+    await prepareBundleWorkspace(manifest, source);
+    const parent = path.join(root, "elsewhere");
+    const target = path.join(root, "target");
+    const link = path.join(parent, "moved");
+    await mkdir(path.join(parent, "sub"), { recursive: true });
+    await mkdir(target);
+    await symlink(path.join(parent, "sub"), path.join(root, "via"), "dir");
+    await symlink(target, link, "dir");
+    const library = path.join(users, "reference-data");
+    await mkdir(library);
+    await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(library)}\n`);
+    const requestMove = await startMoveServer(t, root, source);
+    const folder = `${root}/via/../moved`;
+    const before = await snapshotTree(root);
+    for (const setting of [{}, { controlID: "paths", key: "reference_library" }]) {
+      const [failure] = await requestMove({ folder, ...setting });
+      assert.equal(failure.type, "error");
+      assert.deepEqual(failure.linkedFolder, { link: folder, target: await realpath(target) });
+      assert.deepEqual(await snapshotTree(root), before);
+    }
+  });
+
+test("#1340 moves files written into an empty library while running actions stop", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const current = path.join(users, "reference-data");
+  const folder = path.join(root, "moved");
+  await mkdir(current);
+  await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(current)}\n`);
+  await move({
+    sourceRoot: source, bundleRoot: bundle, folder,
+    setting: { controlID: "paths", key: "reference_library" },
+    beforeMove: () => writeFile(path.join(current, "created-on-shutdown.txt"), "Keep me", { flag: "wx" }),
+  });
+  assert.equal(await readFile(path.join(folder, "created-on-shutdown.txt"), "utf8"), "Keep me");
+  await assert.rejects(lstat(current), { code: "ENOENT" });
+});
+
+test("#1340 names the recorded target when a library link is dangling", async (t) => {
+  const { root, source, bundle, users } = await fixture(t);
+  await prepareBundleWorkspace(manifest, source);
+  const link = path.join(users, "reference-data");
+  const target = path.join("..", "missing-library");
+  if (!await trySymlink(t, target, link, "dir")) return;
+  await writeFile(path.join(users, "config.toml"), `reference_library = ${JSON.stringify(link)}\n`);
+  const before = await snapshotTree(root);
+  await assert.rejects(move({
+    sourceRoot: source, bundleRoot: bundle, folder: path.join(root, "moved"),
+    setting: { controlID: "paths", key: "reference_library" },
+  }), { link, target });
+  assert.deepEqual(await snapshotTree(root), before);
+});
 
 /** A reference library with links into it (absolute, by its real path, relative, a folder) and out of it. */
 async function referenceWithLinks(t, root, reference) {

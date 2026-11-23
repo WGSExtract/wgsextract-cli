@@ -13,6 +13,7 @@ from wgsextract_cli.api.qc import (
     MultiqcParams,
     QcAncestryParams,
     QcContaminationParams,
+    QcRohParams,
     QcVcfParams,
     RelateParams,
 )
@@ -31,6 +32,7 @@ cmd_multiqc_metrics = command_handler(
     "wgsextract_cli.commands.qc.commands", "cmd_multiqc_metrics"
 )
 cmd_relate = command_handler("wgsextract_cli.commands.qc", "cmd_relate")
+cmd_roh = command_handler("wgsextract_cli.commands.qc.roh", "cmd_roh")
 cmd_vcf_qc = command_handler("wgsextract_cli.commands.qc.commands", "cmd_vcf_qc")
 
 
@@ -64,6 +66,7 @@ def register(
             cmd_contamination,
             CLI_HELP["cmd_qc-contamination"],
         ),
+        ("roh", QcRohParams, cmd_roh, CLI_HELP["cmd_qc-roh"]),
         ("fake-data", FakeDataParams, cmd_fake_data, CLI_HELP["cmd_fake-data"]),
     )
     for name, cls, func, help_text in commands:
