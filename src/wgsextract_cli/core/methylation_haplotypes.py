@@ -178,8 +178,10 @@ def haplotype_rows(
     empty_counts, empty_phase = PartitionCounts(), PhaseEvidence()
     for index, region in enumerate(regions):
         expected, unavailable = region_context(region, available, anchors)
-        phase_status, phase_set = evidence.get(index, empty_phase).classify(
-            region, blocks
+        phase_status, phase_set = (
+            ("contig_absent", None)
+            if unavailable == "contig_absent"
+            else evidence.get(index, empty_phase).classify(region, blocks)
         )
         for code in codes:
             counts = tallies.get((index, code), empty_counts)

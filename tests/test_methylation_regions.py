@@ -124,6 +124,8 @@ def test_1293_haplotypes_use_common_cpgs_and_keep_unphased_counts(
     assert rows[low, "hp2"]["status"] == "insufficient_coverage"
     assert rows[low, "hp2"]["pooled_percent"] == ""
     assert rows[low, "combined"]["hp1_minus_hp2_pp"] == ""
+    absent = [row for row in rows.values() if row["status"] == "contig_absent"]
+    assert absent and {row["phase_status"] for row in absent} == {"contig_absent"}
     assert result.details["haplotype_partition"]["phase_block_source"] == str(blocks)
     assert ref.stat().st_size == ref_size
 
