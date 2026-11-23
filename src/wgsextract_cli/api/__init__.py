@@ -130,6 +130,7 @@ from .extract import (
 from .genotyping import (
     TypingCyp2d6Params,
     TypingHlaParams,
+    TypingParaphaseParams,
     TypingSmnParams,
     TypingStrParams,
     TypingTargetCnvParams,
@@ -335,6 +336,7 @@ __all__ = [
     "TypingCyp2d6Params",
     "TypingSmnParams",
     "TypingHlaParams",
+    "TypingParaphaseParams",
     "TypingStrParams",
     "TypingTargetCnvParams",
     "UsageError",

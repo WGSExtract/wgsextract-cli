@@ -6,6 +6,7 @@ from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.genotyping import (
     TypingCyp2d6Params,
     TypingHlaParams,
+    TypingParaphaseParams,
     TypingSmnParams,
     TypingStrParams,
     TypingTargetCnvParams,
@@ -15,6 +16,9 @@ from wgsextract_cli.core.messages import CLI_HELP
 
 cmd_cyp2d6 = command_handler("wgsextract_cli.commands.genotyping.cyp2d6", "cmd_cyp2d6")
 cmd_hla = command_handler("wgsextract_cli.commands.genotyping.hla", "cmd_hla")
+cmd_paraphase = command_handler(
+    "wgsextract_cli.commands.genotyping.paraphase", "cmd_paraphase"
+)
 cmd_smn = command_handler("wgsextract_cli.commands.genotyping.smn", "cmd_smn")
 cmd_str = command_handler("wgsextract_cli.commands.genotyping.repeats", "cmd_str")
 cmd_target_cnv = command_handler(
@@ -36,6 +40,11 @@ def register(
     hla = subs.add_parser("hla", parents=[base_parser], help=CLI_HELP["cmd_typing-hla"])
     add_arguments(hla, TypingHlaParams)
     hla.set_defaults(func=cmd_hla)
+    paraphase = subs.add_parser(
+        "paraphase", parents=[base_parser], help=CLI_HELP["cmd_typing-paraphase"]
+    )
+    add_arguments(paraphase, TypingParaphaseParams)
+    paraphase.set_defaults(func=cmd_paraphase)
     smn = subs.add_parser("smn", parents=[base_parser], help=CLI_HELP["cmd_typing-smn"])
     add_arguments(smn, TypingSmnParams)
     smn.set_defaults(func=cmd_smn)

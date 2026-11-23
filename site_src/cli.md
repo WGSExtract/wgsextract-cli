@@ -232,6 +232,11 @@ Gene and repeat typing: `typing cyp2d6` (Cyrius), `typing hla` (T1K), and `typin
 :::
 
 ::: card
+### paraphase
+`typing paraphase` calls copy number and haplotypes at paralogous loci from PacBio HiFi reads. ONT is experimental and unvalidated. Install pinned BSD-licensed Paraphase 3.3.1 on Linux or macOS with `pixi install --locked -e paraphase`.
+:::
+
+::: card
 ### modkit
 `methylation pileup` tabulates CpG methylation from Nanopore and PacBio MM/ML tags with ONT's modkit. Linux and macOS only; install it with `pixi install --locked -e modkit`.
 :::

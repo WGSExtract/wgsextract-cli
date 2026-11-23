@@ -146,6 +146,7 @@
 {"path":"analyze batch-gen","tier":"advanced","summary":"Generate a batch configuration file from a directory of genomes.","key_flags":["--directory","--output"]},
 {"path":"typing cyp2d6","tier":"advanced","summary":"Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call.","key_flags":[]},
 {"path":"typing hla","tier":"advanced","summary":"Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT outside call for HLA-A/HLA-B.","key_flags":["--no-download","--hla-index"]},
+{"path":"typing paraphase","tier":"advanced","summary":"Type paralogous loci and copy number with Paraphase from PacBio HiFi or experimental, unvalidated ONT reads.","key_flags":["--genes","--pacbio-licensed-executable"]},
 {"path":"typing smn","tier":"advanced","summary":"Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one SMN1 copy: carrier; none: affected).","key_flags":[]},
 {"path":"typing str","tier":"advanced","summary":"Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72, ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those outside STRchive's normal range.","key_flags":["--caller","--catalog","--loci","--format","--sex"]},
 {"path":"typing target-cnv","tier":"advanced","summary":"Screen BED targets for GC-normalized copy number from short-read WGS.","key_flags":["--bed","--download"]},

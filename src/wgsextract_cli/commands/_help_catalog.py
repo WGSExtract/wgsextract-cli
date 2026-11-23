@@ -719,6 +719,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "Cyrius's <stem>.json/.tsv and <stem>.cyp2d6.pharmcat.tsv.",
         "wgsextract typing cyp2d6 --input sample.cram",
     ),
+    "typing paraphase": _h(
+        "<stem>.paraphase.tsv and .json (locus calls), plus raw Paraphase JSON, "
+        "VCFs and a haplotagged BAM.",
+        "wgsextract typing paraphase -i sample.cram --ref hs38.fa.gz --genes SMN1,PMS2,STRC -t 4",
+    ),
     "typing smn": _h(
         "SMNCopyNumberCaller's <stem>.smn.tsv/.json; copy numbers and carrier "
         "status in the result's metrics.",

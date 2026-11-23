@@ -13,6 +13,9 @@ Each writes ``<input stem>.*`` files in ``outdir``, else beside the input:
 * ``target_cnv``: screen short-read WGS for copy number over BED intervals
   (``.target-cnv.tsv``). Uses an indexed matching FASTA, with an offline
   baseline and callability mask for GRCh37, GRCh38 and T2T-CHM13v2.0.
+* ``paraphase``: copy number and haplotypes for long-read paralog loci
+  (``.paraphase.tsv``/``.json`` and raw files), using the opt-in ``paraphase``
+  environment. PacBio HiFi or experimental, unvalidated ONT.
 * ``hla``: HLA class I and II alleles with T1K (``.t1k_genotype.tsv``,
   ``.t1k_allele.tsv``/``.vcf``), from the optional ``t1k`` environment.
 * ``repeats`` (``typing str``): disease repeat expansions (``.str.tsv`` or
@@ -126,6 +129,32 @@ class TypingTargetCnvParams(_TypingParams):
             from wgsextract_cli.commands.genotyping.target_cnv_data import mask_cache
 
             yield mask_cache()
+
+
+@dataclass(frozen=True, kw_only=True)
+class TypingParaphaseParams(_TypingParams):
+    """Type paralogous loci from an indexed long-read BAM or CRAM, with
+    the matching indexed FASTA. Reports locus copy number, gene-specific
+    calls and explicit no-calls. ONT is experimental and unvalidated."""
+
+    COMMAND = "typing paraphase"
+
+    input: Path = input_param("Indexed PacBio HiFi or ONT whole-genome BAM or CRAM.")
+    genes: str | None = param(
+        None,
+        metavar="LOCI",
+        help="Comma-separated Paraphase locus names, e.g. SMN1,PMS2,STRC. "
+        "Default: all loci supported by the engine for this reference build.",
+    )
+    pacbio_licensed_executable: Path | None = param(
+        None,
+        path="file",
+        metavar="PATH",
+        local_only=True,
+        help="Opt in to a local Paraphase >=3.3.2 executable under the PacBio "
+        "Software License Agreement. Every read group must be PL:PACBIO. "
+        "Default: Paraphase 3.3.1 (BSD-3-Clause-Clear) from its Pixi environment.",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -270,6 +299,19 @@ def target_cnv(
     )
 
 
+def paraphase(
+    params: TypingParaphaseParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Type long-read paralogs (see ``TypingParaphaseParams``)."""
+    from wgsextract_cli.commands.genotyping.paraphase import run_paraphase
+
+    return execute(params, run_paraphase, progress=progress, cancel=cancel, check=check)
+
+
 def hla(
     params: TypingHlaParams,
     *,
@@ -300,11 +342,13 @@ def repeats(
 __all__ = [
     "TypingCyp2d6Params",
     "TypingHlaParams",
+    "TypingParaphaseParams",
     "TypingSmnParams",
     "TypingStrParams",
     "TypingTargetCnvParams",
     "cyp2d6",
     "hla",
+    "paraphase",
     "repeats",
     "smn",
     "target_cnv",
