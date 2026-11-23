@@ -22,8 +22,9 @@ a time, so a whole genome streams through in constant memory.
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from typing import TypeVar
 from urllib.parse import unquote
 
 from wgsextract_cli.core import acmg
@@ -31,6 +32,7 @@ from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
+from wgsextract_cli.core.variant_depths import AD_TOTAL, allele_depths, count
 
 TEXT, INTEGER, REAL = "TEXT", "INTEGER", "REAL"
 
@@ -168,6 +170,23 @@ COLUMNS: tuple[Column, ...] = (
         TEXT,
         "The transcript fastVEP classified the allele on (INFO/ACMG_TRANSCRIPT).",
     ),
+    Column("phase_set", TEXT, "The sample's FORMAT/PS, only for phased genotypes."),
+    Column(
+        "alt_fraction",
+        REAL,
+        "This ALT's read fraction: AD_alt / sum(AD), else FORMAT/VAF or FORMAT/AF.",
+    ),
+    Column(
+        "transcript_id",
+        TEXT,
+        "The chosen consequence's transcript (VEP Feature or SnpEff Feature_ID).",
+    ),
+    Column(
+        "gnomad_popmax_af",
+        REAL,
+        "Maximum gnomAD genetic ancestry group allele frequency of this ALT.",
+    ),
+    Column("gnomad_nhomalt", INTEGER, "gnomAD count of homozygotes for this ALT."),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
@@ -206,11 +225,24 @@ _UNRANKED = len(_SEVERITY)
 # VEP gnomAD frequency fields, preferred first: genomes (whole-genome
 # sequencing, like ours), then exomes, then the pre-v4 combined field.
 _VEP_GNOMAD_AF = ("gnomADg_AF", "gnomADe_AF", "gnomAD_AF")
+_POPMAX_INFO = ("GNOMAD_POPMAX_AF", "AF_grpmax_joint", "AF_grpmax", "AF_popmax")
+_NHOMALT_INFO = ("GNOMAD_NHOMALT", "nhomalt_joint", "nhomalt")
+_POPMAX_CSQ = ("gnomAD_AF_grpmax_joint", "AF_grpmax_joint") + tuple(
+    f"{source}_{field}"
+    for source in ("gnomADg", "gnomADe", "gnomAD")
+    for field in ("AF_grpmax", "AF_popmax")
+)
+_NHOMALT_CSQ = (
+    "gnomAD_nhomalt_joint",
+    "nhomalt_joint",
+    "gnomADg_nhomalt",
+    "gnomADe_nhomalt",
+    "gnomAD_nhomalt",
+)
 _PHARMGKB_LEVELS = ("1A", "1B", "2A", "2B", "3", "4")
 
-_INFO_LINE = re.compile(
-    r'^##INFO=<ID=([^,>]+),Number=([^,>]+),.*?Description="(.*)"', re.DOTALL
-)
+_FIELD_LINE = re.compile(r"^##(INFO|FORMAT)=<(.*)>$")
+_ATTRIBUTE = re.compile(r'([^,=\s]+)=("(?:[^"\\]|\\.)*"|[^,]*)')
 _FORMAT_LIST = re.compile(r"Format:\s*(.+)$")
 _GT_SPLIT = re.compile(r"[/|]")
 
@@ -220,6 +252,7 @@ class VcfHeader:
     """What the table needs from a VCF header."""
 
     info_number: dict[str, str] = field(default_factory=dict)
+    format_number: dict[str, str] = field(default_factory=dict)
     csq_fields: list[str] | None = None
     ann_fields: list[str] | None = None
     samples: list[str] = field(default_factory=list)
@@ -233,15 +266,15 @@ class VcfHeader:
             found.append("vep")
         if self.ann_fields:
             found.append("snpeff")
-        for name, key in (
-            ("clinvar", "CLNSIG"),
-            ("gnomad", "GNOMAD_AF"),
-            ("pharmgkb", "PHARMGKB"),
-            ("confidence", "WGSE_CONF"),
-            ("sv_freq", "SV_FREQ"),
-            ("acmg", acmg.CLASS),
+        for name, keys in (
+            ("clinvar", ("CLNSIG",)),
+            ("gnomad", ("GNOMAD_AF", *_POPMAX_INFO, *_NHOMALT_INFO)),
+            ("pharmgkb", ("PHARMGKB",)),
+            ("confidence", ("WGSE_CONF",)),
+            ("sv_freq", ("SV_FREQ",)),
+            ("acmg", (acmg.CLASS,)),
         ):
-            if key in self.info_number:
+            if any(key in self.info_number for key in keys):
                 found.append(name)
         return found
 
@@ -263,11 +296,19 @@ def parse_header(lines: Iterable[str]) -> VcfHeader:
         if line.startswith("#CHROM"):
             header.samples = line.split("\t")[9:]
             continue
-        match = _INFO_LINE.match(line)
+        match = _FIELD_LINE.match(line)
         if not match:
             continue
-        key, number, description = match.groups()
+        kind, body = match.groups()
+        attributes = dict(_ATTRIBUTE.findall(body))
+        key, number = attributes.get("ID"), attributes.get("Number")
+        if key is None or number is None:
+            continue
+        if kind == "FORMAT":
+            header.format_number[key] = number
+            continue
         header.info_number[key] = number
+        description = attributes.get("Description", "").strip('"')
         if key == "CSQ":
             header.csq_fields = _subfield_names(description)
         elif key == "ANN":
@@ -300,7 +341,7 @@ def _to_float(raw: str | None) -> float | None:
 
 
 def _per_allele(raw: str | None, number: str | None, alt_index: int) -> str | None:
-    """This ALT's value of an INFO field (``alt_index`` is 1-based)."""
+    """This ALT's value of a VCF field (``alt_index`` is 1-based)."""
     if raw is None:
         return None
     if number in ("A", "R"):
@@ -308,6 +349,73 @@ def _per_allele(raw: str | None, number: str | None, alt_index: int) -> str | No
         i = alt_index - 1 if number == "A" else alt_index
         return _value(values[i]) if i < len(values) else None
     return _value(raw)
+
+
+def _fraction(raw: str | None) -> float | None:
+    value = _to_float(raw)
+    return value if value is not None and 0 <= value <= 1 else None
+
+
+def _format_fraction(
+    sample: Mapping[str, str],
+    numbers: Mapping[str, str],
+    alt_index: int,
+    n_alts: int,
+    split_index: tuple[int, int] | None,
+) -> float | None:
+    for key in ("VAF", "AF"):
+        raw = _value(sample.get(key))
+        if raw is None:
+            continue
+        number = numbers.get(key)
+        if number in ("A", "R"):
+            value = _per_allele(raw, number, alt_index)
+        elif number in (None, ".", "1"):
+            index, alt_count = split_index or (alt_index, n_alts)
+            values = raw.split(",")
+            value = values[index - 1] if len(values) == alt_count else None
+        else:
+            continue
+        if (fraction := _fraction(value)) is not None:
+            return fraction
+    return None
+
+
+_Stat = TypeVar("_Stat", int, float)
+
+
+def _gnomad_stat(
+    info: Mapping[str, str],
+    numbers: Mapping[str, str],
+    alt_index: int,
+    info_keys: Sequence[str],
+    csq: Mapping[str, str] | None,
+    csq_keys: Sequence[str],
+    parse: Callable[[str | None], _Stat | None],
+) -> _Stat | None:
+    for key in info_keys:
+        if (
+            key in info
+            and (value := parse(_per_allele(info[key], numbers.get(key), alt_index)))
+            is not None
+        ):
+            return value
+    if csq:
+        for key in csq_keys:
+            if key in csq and (value := parse(csq[key])) is not None:
+                return value
+    return None
+
+
+def _transcript_id(
+    csq: Mapping[str, str], ann: Mapping[str, str], csq_consequence: str | None
+) -> str | None:
+    if csq_consequence or not ann:
+        if _value(csq.get("Feature_type")) in (None, "Transcript"):
+            return _value(csq.get("Feature"))
+    elif _value(ann.get("Feature_Type")) in (None, "transcript"):
+        return _value(ann.get("Feature_ID"))
+    return None
 
 
 # Ensembl VEP's test for a structural-variant ALT (<DEL>, breakends), which it
@@ -529,7 +637,9 @@ def variant_rows(
         if all(a in _NON_VARIANT_ALTS for a in alts):
             continue
         info = _info(info_text)
-        gt = sample_depth = gq = gp = None
+        gt = sample_depth = gq = gp = phase_set = ad_total = None
+        sample: dict[str, str] = {}
+        ad: list[int] = []
         sample_column = None if sample_index is None else 9 + sample_index
         has_sample = sample_column is not None and len(fields) > sample_column
         if sample_column is not None and has_sample:
@@ -541,11 +651,13 @@ def variant_rows(
                 )
             )
             gt = _value(sample.get("GT"))
+            if gt and "|" in gt and "/" not in gt:
+                phase_set = _value(sample.get("PS"))
             sample_depth = _to_int(sample.get("DP"))
-            if sample_depth is None and _value(sample.get("AD")):
-                ad = [_to_int(v) for v in sample["AD"].split(",")]
-                if all(v is not None for v in ad):
-                    sample_depth = sum(v for v in ad if v is not None)
+            ad = allele_depths(sample.get("AD"))
+            ad_total = sum(ad) if ad else None
+            if sample_depth is None:
+                sample_depth = ad_total
             gq = _to_int(sample.get("GQ"))
             gp = _max_probability(sample.get("GP"))
         depth = sample_depth if sample_depth is not None else _to_int(info.get("DP"))
@@ -555,6 +667,13 @@ def variant_rows(
         csq_all = csq_entries(info.get("CSQ"), csq_names)
         ann_all = csq_entries(info.get("ANN"), ann_names)
         origin = split_origin(info.get(SPLIT_TAG))
+        split_index = (
+            (origin[2], len(origin[1]))
+            if origin and len(alts) == 1 and len(origin[1]) > 1
+            else None
+        )
+        if split_index:
+            ad_total = count(sample.get(AD_TOTAL))
 
         for alt_index, alt in enumerate(alts, start=1):
             if alt in _NON_VARIANT_ALTS:
@@ -566,6 +685,13 @@ def variant_rows(
                 continue
             ann_spellings: tuple[str, ...] = (alt,)
             index, n_alts = alt_index, len(alts)
+            alt_fraction: float | None
+            if ad_total and len(ad) == n_alts + 1 and ad[alt_index] <= ad_total:
+                alt_fraction = ad[alt_index] / ad_total
+            else:
+                alt_fraction = _format_fraction(
+                    sample, header.format_number, alt_index, n_alts, split_index
+                )
             split = origin is not None and n_alts == 1
             if origin is not None and split:
                 o_ref, o_alts, index = origin
@@ -575,13 +701,13 @@ def variant_rows(
                 ann_all, "Allele", ann_spellings, index, n_alts, split=split
             )
             # SnpEff lists an allele's effects most severe first.
-            ann = ann_matches[0] if ann_matches else None
+            ann = ann_matches[0] if ann_matches else {}
+            picked = csq or {}
+            csq_consequence = _value(picked.get("Consequence"))
             pgx = _per_allele(info.get("PHARMGKB"), numbers.get("PHARMGKB"), alt_index)
             pgx_gene, pgx_level, pgx_drugs = _pharmgkb(pgx)
             gene = (
-                _value((csq or {}).get("SYMBOL"))
-                or _value((ann or {}).get("Gene_Name"))
-                or pgx_gene
+                _value(picked.get("SYMBOL")) or _value(ann.get("Gene_Name")) or pgx_gene
             )
             gnomad = _per_allele(
                 info.get("GNOMAD_AF"), numbers.get("GNOMAD_AF"), alt_index
@@ -593,9 +719,7 @@ def variant_rows(
             clnsig = _per_allele(info.get("CLNSIG"), numbers.get("CLNSIG"), alt_index)
             if clnsig is None and csq:
                 clnsig = _value(csq.get("CLIN_SIG"))
-            hgvs_p = _value((csq or {}).get("HGVSp")) or _value(
-                (ann or {}).get("HGVS.p")
-            )
+            hgvs_p = _value(picked.get("HGVSp")) or _value(ann.get("HGVS.p"))
             diplotype, phenotype = pharmcat.get(gene or "", (None, None))
             clinical = {
                 key: _per_allele(info.get(key), numbers.get(key), alt_index)
@@ -610,11 +734,9 @@ def variant_rows(
                 alt,
                 _rsids(vcf_id, csq, pgx),
                 gene,
-                _value((csq or {}).get("Consequence"))
-                or _value((ann or {}).get("Annotation")),
-                _value((csq or {}).get("IMPACT"))
-                or _value((ann or {}).get("Annotation_Impact")),
-                _value((csq or {}).get("HGVSc")) or _value((ann or {}).get("HGVS.c")),
+                csq_consequence or _value(ann.get("Annotation")),
+                _value(picked.get("IMPACT")) or _value(ann.get("Annotation_Impact")),
+                _value(picked.get("HGVSc")) or _value(ann.get("HGVS.c")),
                 unquote(hgvs_p) if hgvs_p else None,  # VEP writes '=' as %3D
                 clnsig,
                 _per_allele(info.get("CLNDN"), numbers.get("CLNDN"), alt_index),
@@ -649,5 +771,14 @@ def variant_rows(
                 *(
                     _per_allele(info.get(tag), numbers.get(tag), alt_index)
                     for tag in acmg.TAGS
+                ),
+                phase_set,
+                alt_fraction,
+                _transcript_id(picked, ann, csq_consequence),
+                _gnomad_stat(
+                    info, numbers, alt_index, _POPMAX_INFO, csq, _POPMAX_CSQ, _fraction
+                ),
+                _gnomad_stat(
+                    info, numbers, alt_index, _NHOMALT_INFO, csq, _NHOMALT_CSQ, count
                 ),
             )
