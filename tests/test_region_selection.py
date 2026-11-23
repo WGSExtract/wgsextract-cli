@@ -2,7 +2,30 @@
 
 import pytest
 
-from wgsextract_cli.core.region_selection import region_items, selected_intervals
+from wgsextract_cli.core.region_selection import (
+    alignment_intervals,
+    region_items,
+    selected_intervals,
+)
+
+
+@pytest.mark.parametrize(
+    ("region", "interval"),
+    [
+        ("chr20", (0, 5000)),
+        ("chr20:1,001-2,000", (1000, 2000)),
+        ("chr20:4001", (4000, 5000)),
+    ],
+)
+def test_sv_1250_preserves_single_region_coordinates(region, interval):
+    lengths = {"chr20": 5000}
+    assert alignment_intervals(region, lengths, lengths) == {"chr20": [interval]}
+
+
+def test_sv_1250_rejects_unknown_contig():
+    lengths = {"chr20": 5000}
+    with pytest.raises(ValueError, match="chrX"):
+        alignment_intervals("chrX:1-5", lengths, lengths)
 
 
 @pytest.mark.parametrize(("separator", "commas"), [(" ", False), (",", True)])

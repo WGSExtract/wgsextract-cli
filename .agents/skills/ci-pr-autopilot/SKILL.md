@@ -66,6 +66,12 @@ this skill created, run `gh pr ready` once that gate passes and the review
 threads are handled, unless the user explicitly requires it to remain draft.
 For an existing draft, obtain authorization before marking ready. Readiness
 starts area-selected full CI; do not land using the old draft-run checks.
+Certify macOS (and Windows where a host exists) on the exact head before
+ready. Immediately before `gh pr ready`, run `python scripts/ci_capacity.py
+--wait` in a background watcher and proceed only on exit 0 (3 = hold:
+merge-queue jobs wait for runners or too many ready matrices are in flight).
+Admit one PR at a time per supervisor: start the next check only after the
+previously admitted PR's ready area run is visible.
 
 A DIRTY PR is never enqueued by auto-merge; the `auto-merge-blocked` label
 marks one. Merge the base branch, resolve the conflicts and push.

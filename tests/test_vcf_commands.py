@@ -818,6 +818,7 @@ def test_phylop_download_without_pybigwig_downloads_nothing(tmp_path):
 
 @needs_bcftools
 def test_gnomad_v4_af_table_build_and_annotation(tmp_path):
+    from tests.http_server import serving
     from wgsextract_cli.commands.vcf import population
     from wgsextract_cli.core import gnomad_af
 
@@ -837,21 +838,23 @@ def test_gnomad_v4_af_table_build_and_annotation(tmp_path):
     )
     _write_vcf(src / "chr2.vcf.bgz", "{c}\t50\t.\tA\tG\t.\tPASS\tAF_joint=0.01\n",
                contig="chr2", header=info)  # fmt: skip
+    _write_vcf(src / "chr3.vcf.bgz", "", contig="chr3", header=info)
     reflib = tmp_path / "lib"
-    url = src.as_uri() + "/{contig}.vcf.bgz"
+    files = {path.name: path.read_bytes() for path in src.glob("*.vcf.bgz")}
     with (
-        patch.object(gnomad_af, "GNOMAD_V4_URL", url),
+        serving(files=files) as server,
+        patch.object(gnomad_af, "GNOMAD_V4_URL", server.url_for("{contig}.vcf.bgz")),
         patch.object(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1", "chr2", "chr3"]),
-        patch.object(gnomad_af, "_remote_size", lambda u: 1),
     ):
-        # chr3 doesn't exist: the build fails but keeps the finished contigs.
+        # HEAD succeeds; the chr3 download fails after the other parts finish.
+        server.drop_paths.add("chr3.vcf.bgz")
         assert not gnomad_af.build_gnomad_af(str(reflib), workers=2, attempts=1)
         parts = reflib / "downloads" / ".gnomad_hg38_parts"
         assert sorted(os.listdir(parts)) == ["chr1.tsv.gz", "chr2.tsv.gz"]
 
-        _write_vcf(src / "chr3.vcf.bgz", "", contig="chr3", header=info)
-        os.remove(src / "chr1.vcf.bgz")  # resumed, so never read again
+        server.get_paths.clear()
         assert gnomad_af.build_gnomad_af(str(reflib), workers=2)
+        assert server.get_paths == ["chr3.vcf.bgz"]
 
     table = reflib / "downloads" / "gnomad_hg38.tsv.gz"
     assert (
@@ -958,33 +961,6 @@ def test_plain_reference_decompresses_to_removed_temp_dir(tmp_path_factory):
             assert Path(plain).read_text() == ">chr1\nACGT\n"
             assert os.path.exists(plain + ".fai")
     assert sorted(os.listdir(tmp_path)) == ["ref.fa.gz"]
-
-
-@pytest.mark.parametrize(
-    ("region", "bed"),
-    [
-        ("chr20", "chr20\t0\t5000"),
-        ("chr20:1,001-2,000", "chr20\t1000\t2000"),
-        ("chr20:4001", "chr20\t4000\t5000"),
-    ],
-)
-def test_sniffles_region_bed(tmp_path, region, bed):
-    from wgsextract_cli.commands.vcf.structural import _write_region_bed
-
-    ref = tmp_path / "ref.fa"
-    Path(str(ref) + ".fai").write_text("chr20\t5000\t7\t60\t61\n")
-    out = tmp_path / "r.bed"
-    _write_region_bed(region, str(ref), str(out))
-    assert out.read_text() == bed + "\n"
-
-
-def test_sniffles_region_bed_rejects_unknown_contig(tmp_path):
-    from wgsextract_cli.commands.vcf.structural import _write_region_bed
-
-    ref = tmp_path / "ref.fa"
-    Path(str(ref) + ".fai").write_text("chr20\t5000\t7\t60\t61\n")
-    with pytest.raises(WGSExtractError):
-        _write_region_bed("chrX:1-5", str(ref), str(tmp_path / "r.bed"))
 
 
 # --- annotation resources -------------------------------------------------------
