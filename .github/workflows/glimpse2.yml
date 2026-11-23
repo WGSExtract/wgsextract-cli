@@ -176,6 +176,10 @@ jobs:
             python -m pytest -q -o addopts="" --basetemp=out/glimpse-arm64 \
             --junitxml=out/glimpse-arm64.xml tests/test_imputation.py -k imputes_1x_reads
           pixi run --locked -e dev python -c "import xml.etree.ElementTree as ET; s = ET.parse('out/glimpse-arm64.xml').find('testsuite'); assert s is not None and s.get('tests') == '1' and s.get('skipped') == '0'"
+      - uses: ./.github/actions/apt-install
+        if: failure() && matrix.platform == 'linux-aarch64'
+        with:
+          packages: gdb
       - name: Diagnose Linux ARM64 phasing failures
         if: failure() && matrix.platform == 'linux-aarch64'
         run: |
