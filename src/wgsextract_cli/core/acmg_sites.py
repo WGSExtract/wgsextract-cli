@@ -153,7 +153,7 @@ def location(
         raise WGSExtractError(
             f"The chosen SpliceAI source {local} is missing; not substituting Ensembl."
         )
-    return str(local) if local else acmg_data.SPLICEAI_URL
+    return str(local) if local else acmg_data.source_url("spliceai")
 
 
 def _spans(lines: Iterable[str], spans: dict[str, array[int]]) -> None:

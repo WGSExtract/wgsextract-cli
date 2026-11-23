@@ -47,8 +47,9 @@ first/last row order.
   The existing GQ/DP/FILTER options apply to the indel call itself. Enabled rsID
   identity rejection checks both the manifest marker and input record IDs;
   a later duplicate cannot restore a rejected call.
-  Unindexed VCF/BCF input is sorted and indexed in an invocation-local
-  `IndelInput_*` directory, never beside the original input.
+  A plain VCF or unindexed BCF is indexed as a working copy (sorted only
+  when unsorted), never beside the original input; see
+  [VCF input](microarray.md#call-evidence).
 - Verified vendor layouts are 23andMe, AncestryDNA and MyHeritage. `I` means the
   longer sequence and `D` the shorter one, regardless of which is the reference.
   Diploid homozygotes are `II`/`DD`; unphased heterozygotes are canonically `DI`.

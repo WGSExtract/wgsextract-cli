@@ -69,7 +69,7 @@ from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
-from wgsextract_cli.core.variant_files import chromosome_aliases
+from wgsextract_cli.core.variant_files import chromosome_aliases, is_vcf_path
 
 from ._microarray_combined import _command_lines, _reference_alleles
 from ._microarray_vcf import _expand_gvcf_targets, _prepare_microarray_vcf
@@ -274,7 +274,7 @@ def run_chm13(
     regions = _regions(params.region)
     if any(chrom not in names for chrom, _start, _end in regions):
         raise WGSExtractError("CHM13 region names an unsupported chromosome.")
-    is_vcf = str(params.input).endswith((".vcf", ".vcf.gz", ".vcf.bgz", ".bcf"))
+    is_vcf = is_vcf_path(params.input)
     input_chroms = None
     if not is_vcf:
         input_chroms = validate_chm13_alignment_header(
