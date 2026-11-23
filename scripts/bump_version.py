@@ -68,14 +68,19 @@ def main(argv: list[str]) -> int:
             changes[path] = text
     path = ROOT / OPENAPI
     try:
-        document = json.loads(path.read_text(encoding="utf-8"))
-        document["info"]["version"] = new
+        text = path.read_text(encoding="utf-8")
+        info = json.loads(text)["info"]
+        before = json.dumps(info, separators=(",", ":"), ensure_ascii=False)
+        info["version"] = new
+        after = json.dumps(info, separators=(",", ":"), ensure_ascii=False)
+        # gen_server_contracts.py writes info compactly on its own line; edit
+        # only that, keeping the one-entry-per-line layout (#1416).
+        if text.count(before) != 1:
+            raise ValueError("no single compact info object")
     except (OSError, ValueError, KeyError, TypeError) as e:
         print(f"Could not update {OPENAPI} ({e}); nothing changed.", file=sys.stderr)
         return 1
-    changes[path] = (
-        json.dumps(document, separators=(",", ":"), ensure_ascii=False) + "\n"
-    )
+    changes[path] = text.replace(before, after)
     # Write each to a temporary file first and rename them all into place; if
     # anything fails, put back the files already replaced.
     originals = {path: path.read_text(encoding="utf-8") for path in changes}
