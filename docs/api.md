@@ -784,6 +784,38 @@ and the `ancestry` fact; see docs/ancestry.md.
 | `build` | `str \| None` | `None` | `--build` | The input's build, when its header doesn't tell. One of: `hg19`, `hg38`, `t2t` |
 | `bootstrap` | `int` | `100` | `--bootstrap` | Bootstrap replicates for the 95% intervals; 0 skips them |
 
+### `api.qc.roh(QcRohParams)`
+
+CLI: `wgsextract qc roh`.
+
+Find runs of homozygosity (output roles `roh_segments`, `roh_report`
+and `roh_markers`; `details` is the `wgsextract.roh/1` document).
+
+`QcRohParams`: Runs of homozygosity (ROH) in a VCF sample with `bcftools roh`, using
+your local population allele frequencies (`af_file`, e.g. gnomAD or 1000
+Genomes) on the sample's build. Writes `<stem>.roh.tsv` (segments),
+`<stem>.roh.json` (`wgsextract.roh/1`: segments, marker evidence,
+scope, F_ROH and provenance) and `<stem>.roh.markers.tsv.gz`. A long run
+overlapping an imprinted region (e.g. 15q11-q13) gets an educational
+"investigate possible isodisomy" flag; ROH can't show which parent a
+chromosome came from, and it isn't a diagnosis. See docs/roh.md.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | VCF/BCF of the sample's genotypes (GRCh37, GRCh38 or T2T). |
+| `af_file` | `Path` | required | `--af-file` | Local population allele frequencies on the sample's build: a gnomAD/1000 Genomes sites VCF/BCF or a bcftools roh table |
+| `af_tag` | `str` | `'AF'` | `--af-tag` | INFO field of --af-file holding the frequency, e.g. AF_nfe (default: AF) |
+| `af_build` | `str \| None` | `None` | `--af-build` | Build of --af-file, when its header doesn't give contig lengths. One of: `hg19`, `hg38`, `t2t` |
+| `af_release` | `str \| None` | `None` | `--af-release` | Release of --af-file to record, e.g. 'gnomAD v4.1 genomes' |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `sample` | `str \| None` | `None` | `--sample` | The sample of a multi-sample VCF |
+| `build` | `str \| None` | `None` | `--build` | The input's build, when its header doesn't tell. One of: `hg19`, `hg38`, `t2t` |
+| `regions` | `str \| None` | `None` | `--regions` | Assessed scope: comma-separated autosomes or ranges, e.g. chr20 or chr15:20000000-30000000 (default: every autosome in the header) |
+| `imprinted_regions` | `Path \| None` | `None` | `--imprinted-regions` | Your own BED of imprinted regions, with a 'track db=hg38' line (default: the bundled list for the sample's build) |
+| `min_gq` | `int` | `20` | `--min-gq` | Leave out genotypes with GQ below this; a VCF without GQ needs 0 (default: 20) |
+| `flag_terminal_mb` | `float` | `5.0` | `--flag-terminal-mb` | Flag a run reaching a chromosome end from this length (default: 5) |
+| `flag_interstitial_mb` | `float` | `10.0` | `--flag-interstitial-mb` | Flag any other run from this length (default: 10) |
+
 ### `api.qc.fake_data(FakeDataParams)`
 
 CLI: `wgsextract qc fake-data`.

@@ -680,6 +680,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract qc contamination --input sample.cram",
         "wgsextract qc contamination --input sample.bam --sites 10k",
     ),
+    "qc roh": _h(
+        "<stem>.roh.tsv (runs), <stem>.roh.json (wgsextract.roh/1: evidence, "
+        "scope, F_ROH, isodisomy review flags, provenance) and "
+        "<stem>.roh.markers.tsv.gz.",
+        "wgsextract qc roh --input sample.vcf.gz --af-file gnomad.genomes.v4.1.sites.chr15.vcf.bgz --regions chr15",
+        "wgsextract qc roh --input sample.vcf.gz --af-file 1kgp_af.vcf.gz --af-tag EUR_AF",
+    ),
     "qc fake-data": _h(
         "fake.cram, fake.bam, fake.vcf or fake_R1/_R2.fastq.gz, and the fake "
         "reference.",

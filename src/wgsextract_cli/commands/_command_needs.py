@@ -252,6 +252,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "qc ancestry": _n(MINUTES, "samtools", optional="bcftools curl"),
     "score pgs": _n(MINUTES, "bcftools", optional="plink2 curl"),
     "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
+    "qc roh": _n(MINUTES, "bcftools", "bgzip", "tabix"),
     "qc fake-data": _n(
         SECONDS,
         "bcftools",

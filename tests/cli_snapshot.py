@@ -92,6 +92,7 @@ MIGRATED = (
     ("qc", "contamination"),
     ("qc", "fake-data"),
     ("qc", "relate"),
+    ("qc", "roh"),
     ("align",),
     ("realign",),
     ("basecall",),

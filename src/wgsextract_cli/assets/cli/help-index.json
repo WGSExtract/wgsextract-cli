@@ -138,6 +138,7 @@
 {"path":"qc relate","tier":"advanced","summary":"Sex, relatedness and 1000 Genomes superpopulation of BAM/CRAM/VCF files with somalier; flags sample swaps.","key_flags":["--sites","--ped","--no-ancestry","--format"]},
 {"path":"qc ancestry","tier":"advanced","summary":"Admixture-style ancestry proportions (HGDP+1KG reference components) from a BAM/CRAM, VCF or microarray file.","key_flags":["--no-download","--sample","--build","--bootstrap"]},
 {"path":"qc contamination","tier":"advanced","summary":"Estimate how much of a GRCh37/38 BAM/CRAM's DNA comes from another person (VerifyBamID2 FREEMIX).","key_flags":["--sites","--svd-prefix"]},
+{"path":"qc roh","tier":"advanced","summary":"Find runs of homozygosity in a VCF with bcftools roh and your local population allele frequencies; flags long runs over imprinted regions for review (not a diagnosis).","key_flags":["--af-file","--af-tag","--af-build","--af-release","--sample","--build","--regions"]},
 {"path":"qc fake-data","tier":"advanced","summary":"Generate fake BAM, CRAM, VCF, and FASTQ files for testing.","key_flags":["--coverage","--build","--type","--full-size","--legacy-bam","--seed"]},
 {"path":"repair ftdna-bam","tier":"advanced","summary":"Fix formatting errors specific to Family Tree DNA (FTDNA) BAM files that cause them to fail in standard tools like GATK.","key_flags":["--output"]},
 {"path":"repair ftdna-vcf","tier":"advanced","summary":"Fix formatting errors in FTDNA VCF files to make them compatible with modern annotation tools like VEP.","key_flags":["--output"]},
