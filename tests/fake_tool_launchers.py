@@ -16,15 +16,20 @@ def require_bare_name_fakes() -> None:
         pytest.skip("a .cmd fake can't stand in for a tool started by bare name")
 
 
-def only_tools(request: pytest.FixtureRequest, *tools: str) -> Path:
-    """Leave PATH with real ``tools`` and a pixi without environments."""
-    if HOST_IS_WINDOWS:
+def only_tools(
+    request: pytest.FixtureRequest, *tools: str, copy_on_windows: bool = False
+) -> Path:
+    """Isolate PATH and Pixi; opt in to copying standalone Windows executables."""
+    if HOST_IS_WINDOWS and not copy_on_windows:
         pytest.skip("links the real tools into a bin directory")
     paths = {tool: shutil.which(tool) for tool in tools}
     bindir: Path = request.getfixturevalue("fake_pixi").host_bin
     for tool, path in paths.items():
         if not path:
             pytest.skip(f"{tool} missing")
+        if HOST_IS_WINDOWS:
+            shutil.copy2(path, bindir)
+            continue
         os.symlink(path, bindir / tool)
         # bwa-mem2's Linux build runs bwa-mem2.<SIMD level> from beside itself.
         for variant in Path(path).parent.glob(f"{tool}.*"):
