@@ -127,19 +127,33 @@ class AlignmentPileup:
             if chrom in to_alignment
         }
         regions = Path(work, "alignment_loci.bed")
-        regions.write_text(
-            "".join(f"{c}\t{p - 1}\t{p}\n" for c, p in sorted(wanted)),
-            encoding="utf-8",
-            newline="\n",
-        )
+        _write_regions(regions, wanted.keys())
+        found: dict[Locus, tuple[evidence.State, int]] = {}
         pileup_filters = [
             "-B", "-C", "50",
             "-q", str(evidence.BCFTOOLS_MIN_MAPPING_QUALITY),
             "-Q", str(MIN_BASE_QUALITY),
-            "-d", str(MAX_PILEUP_DEPTH), "-f", self.reference,
+            "-d", "0", "-f", self.reference,
         ]  # fmt: skip
         try:
             reads = self._read_subset(regions, Path(work))
+            # A post-BQ depth cannot reveal truncation. Exclude high-raw-depth
+            # targets first, and disable pileup downsampling (even upstream of
+            # those targets, where reads later covering them could be discarded).
+            raw_depth = run_command(
+                ["samtools", "depth", "-J", "-b", str(regions), reads],
+                capture_output=True,
+            ).stdout
+            for line in raw_depth.splitlines():
+                chrom, pos, depth = line.split("\t")
+                if int(depth) >= MAX_PILEUP_DEPTH:
+                    locus = wanted.pop((chrom, int(pos)), None)
+                    if locus is not None:
+                        found[locus] = (evidence.State.NO_CALL, 0)
+            if not wanted:
+                return found
+            if found:
+                _write_regions(regions, wanted.keys())
             # bcftools AD/DP omits deletion placeholders and its indel model
             # may not emit a candidate. Keep the raw pileup as a veto.
             raw = run_command(
@@ -154,8 +168,7 @@ class AlignmentPileup:
                 for chrom, pos, _, depth, bases, _ in (
                     line.split("\t") for line in raw.splitlines()
                 )
-                if int(depth)
-                and (int(depth) >= MAX_PILEUP_DEPTH or set(bases) - {".", ","})
+                if int(depth) and set(bases) - {".", ","}
             }
             text = run_command(
                 [
@@ -169,7 +182,6 @@ class AlignmentPileup:
                 f"Could not pile up {self.path}. Check its index and use the exact "
                 "alignment reference FASTA with --alignment-reference."
             ) from exc
-        found: dict[Locus, tuple[evidence.State, int]] = {}
         for line in text.splitlines():
             if line.startswith("#"):
                 continue
@@ -208,6 +220,14 @@ class AlignmentPileup:
              "-o", reads, "-X", self.path, self.index]
         )  # fmt: skip
         return reads
+
+
+def _write_regions(regions: Path, loci: Set[Locus]) -> None:
+    regions.write_text(
+        "".join(f"{c}\t{p - 1}\t{p}\n" for c, p in sorted(loci)),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def _point_evidence(

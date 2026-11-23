@@ -218,6 +218,30 @@ def test_1477_refuses_vcf_assembly_without_contig_lengths(
         )  # fmt: skip
 
 
+def test_1477_pileup_limit_applies_before_base_quality(
+    tmp_path: Path, inputs: tuple[Path, Path, Path], pharmcat_env: None
+) -> None:
+    release, vcf, _ = inputs
+    reads = tmp_path / "capped.bam"
+    sam = reads.with_suffix(".sam")
+    ref = _base(110)
+    with sam.open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(
+            "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr1\tLN:400\n@RG\tID:one\tSM:HG002\n"
+        )
+        values = [(ref, "I")] * 12 + [(ref, "+")] * 10_000 + [("A", "I")] * 12
+        for i, (base, quality) in enumerate(values):
+            stream.write(
+                f"r{i}\t0\tchr1\t110\t60\t1M\t*\t0\t0\t{base}\t{quality}\tRG:Z:one\n"
+            )
+    run_command(["samtools", "view", "-b", "-o", str(reads), str(sam)])
+    run_command(["samtools", "index", str(reads)])
+    main(["vcf", "pharmcat", "--vcf-input", str(vcf), "--pharmcat-dir",
+          str(release), "--alignment", str(reads), "--outdir", str(tmp_path / "out")])  # fmt: skip
+    rows = (r.split("\t") for r in _view(release / "seen.vcf.gz", "-H"))
+    assert next(row[9] for row in rows if row[1] == "110") == "./."
+
+
 def test_1477_explicit_alignment_overrides_companion_but_not_no_calls(
     tmp_path: Path, inputs: tuple[Path, Path, Path], pharmcat_env: None
 ) -> None:

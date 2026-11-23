@@ -299,7 +299,8 @@ bases, using mapping and base quality ≥20 and excluding reads with unavailable
 quality scores. Every base must meet the lower `--confidence-depth` threshold
 with only reference support. Read-level evidence of an insertion or deletion
 also prevents a reference call. Uncovered sites, insufficient depth,
-non-reference evidence and capped pileups stay missing.
+non-reference evidence, and sites with at least 10,000 reads before base-quality
+and overlapping-mate filters stay missing.
 This supplies diploid reference evidence, not new alternate genotypes or GQ.
 
 When using an alignment, a companion gVCF, or a WGS Extract depth-only gVCF
