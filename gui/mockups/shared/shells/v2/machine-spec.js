@@ -53,6 +53,9 @@
   }
 
   M.machineSpec = {
+    windowsBwaMissingFlag: function (machine) {
+      return "tool-" + machine.key + "-wgse-bwa-missing";
+    },
     envs: ENVS,
     systemPath: systemPath,
     niceTotal: niceTotal,

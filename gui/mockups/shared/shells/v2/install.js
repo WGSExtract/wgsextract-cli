@@ -26,10 +26,11 @@
 
     function action(tool) {
       if (tool.name === "wgse-bwa") {
+        var missing = window.WGSMMock.machineSpec.windowsBwaMissingFlag(machine);
         var found = tool.status === "installed";
         return h("button.v2-btn.v2-btn--sm", { type: "button", onclick: function () {
-          changeFlag(found ? [] : ["windows-wgse-bwa"], found ? ["windows-wgse-bwa"] : []).catch(failed);
-        } }, found ? "Simulate missing build" : "Simulate supplied build");
+          changeFlag(found ? [missing] : [], found ? [] : [missing]).catch(failed);
+        } }, found ? "Simulate missing build" : "Restore bundled build");
       }
       if (!(tool.can_install || tool.can_uninstall)) return tool.status === "unavailable" ? "Not available" : tool.note ? "Install it yourself" : "";
       var remove = tool.can_uninstall;

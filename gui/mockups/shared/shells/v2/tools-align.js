@@ -19,6 +19,10 @@
   var T = WGSM.v2tools;
   var f = T.f;
 
+  function hasWindowsBwa(c) {
+    return c.M.windowsBwa && !c.flag(window.WGSMMock.machineSpec.windowsBwaMissingFlag(c.M));
+  }
+
   var REFS = [
     ["hs38", "hs38 (GRCh38)", true],
     ["T2Tv20", "T2T-CHM13 v2.0", false],
@@ -53,7 +57,7 @@
   function plan(c) {
     var M = c.M;
     var mac = M.appleSilicon;
-    var windowsNative = M.windowsBwa && c.flag("windows-wgse-bwa");
+    var windowsNative = hasWindowsBwa(c);
     var native = (M.native || windowsNative) && c.v.native_aligners !== "off";
     var index = c.flag("mem2-" + c.v.ref);
     var threads = c.v.threads || M.cores;
@@ -160,7 +164,7 @@
       return { default: "Keeps the format above", archive: "CRAM 3.1, smallest; GATK 4.7 or later reads it", calling: "CRAM 3.0, which every caller reads" }[c.v.output_profile];
     }, { def: "default", labels: { default: "Default", archive: "Archive", calling: "For calling" } }),
     f.param("native_aligners", "WGS Extract’s aligners", function (c) {
-      if (c.M.windowsBwa) return "Optional wgse-bwa.exe on PATH or set in config.toml; stock BWA if missing or unusable";
+      if (c.M.windowsBwa) return "wgse-bwa comes with the default Windows x86-64 Pixi environment. Use stock BWA by turning native aligners off.";
       return c.M.appleSilicon ? "Builds for Apple Silicon that use the GPU, with the same records as upstream" : "wgse-bwa (on the NVIDIA GPU when there is one) and wgse-bwa-mem3, with the same records as upstream";
     }, {
       def: "auto", labels: { auto: "Use them", off: "Off" },
@@ -212,10 +216,13 @@
 
   function alignerNotes(c, p) {
     var notes = [];
-    if (c.M.windowsBwa && c.M.nvidia) notes.push({ tone: "info", icon: "info", id: "windows-cuda",
-      title: "CUDA is automatic with the optional native BWA build",
-      text: "The optional wgse-bwa.exe is not bundled. When found and BWA is selected, CUDA uses a supported NVIDIA driver without Docker or a CUDA Toolkit. Preflight can reduce sort memory and falls back to CPU if RAM or commit cannot be confirmed to fit. On an RTX 5080, a 5-million-read-pair test ran about 2.2× faster with identical decoded BAM records.",
-      action: c.flag("windows-wgse-bwa") ? null : { label: "See optional tools", href: "install.html" } });
+    if (c.M.windowsBwa && !hasWindowsBwa(c)) notes.push({ tone: "warn", icon: "info", id: "windows-bwa-missing",
+      title: "The bundled wgse-bwa build is missing",
+      text: "If BWA is selected, WGS Extract uses stock BWA until a validated native build is available.",
+      action: { label: "Check tools", href: "install.html" } });
+    if (hasWindowsBwa(c) && c.M.nvidia) notes.push({ tone: "info", icon: "info", id: "windows-cuda",
+      title: "CUDA is automatic when the native BWA run fits",
+      text: "CUDA requires a supported NVIDIA driver, not Docker or a CUDA Toolkit. Preflight can reduce sort memory and falls back to CPU if available RAM or commit is insufficient or cannot be measured. On an RTX 5080, automatic CUDA was about 2.24× as fast as forced CPU for a BAM subset realignment; both produced identical decoded BAM records. This is not a full-genome estimate." });
     if (p.blocked) notes.push({ tone: "warn", icon: "triangle-alert", id: "aligner", title: "Not on this computer", text: p.blocked + " Choose Auto, bwa or bwa-mem2." });
     if (p.needsIndex) {
       notes.push({ tone: "warn", icon: "download", id: "index", title: "bwa-mem2’s index for " + refLabel(c.v.ref) + " isn’t installed",

@@ -169,7 +169,6 @@
       "vep-ensembl": ["vep"], "vep-rs": ["vep-rs", "vep-cache-builder"], smn: ["smn_caller.py"],
       t1k: ["run-t1k"], expansionhunter: ["ExpansionHunter"], clair3: ["run_clair3.sh"], pharmcat: ["pharmcat_python"],
       deepvariant: [m.os === "macos" && m.arch === "arm64" ? "wgse-deepvariant" : "run_deepvariant"] };
-    var manual = "Supply a validated wgse-bwa.exe on PATH or set wgse_bwa_path in config.toml.";
     var rows = Object.keys(mandatory).map(function (name) { return row(name, "mandatory", "installed", null, mandatory[name], null, false); });
     rows.push(row("bwa-mem2", "optional", "installed", null, "2.3", null, false),
       row("minimap2", "optional", "installed", null, "2.31", null, false));
@@ -186,7 +185,9 @@
       });
     });
     if (m.os === "windows" && m.arch === "x86-64") {
-      rows.push(row("wgse-bwa", "optional", flags["windows-wgse-bwa"] ? "installed" : "missing", null, null, manual, false));
+      var missingBwa = flags[M.machineSpec.windowsBwaMissingFlag(m)];
+      rows.push(row("wgse-bwa", "optional", missingBwa ? "missing" : "installed", "default", missingBwa ? null : "0.14.1",
+        missingBwa ? "Included in the default Windows x86-64 Pixi environment; stock BWA is used if the native build is missing or unusable." : null, false));
     }
     return rows;
   }

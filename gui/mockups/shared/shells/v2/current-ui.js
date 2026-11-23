@@ -47,6 +47,14 @@
       h("p.v2-small", "ACMG library data is installed separately. Per-run gnomAD/SpliceAI requests are a separate opt-in that sends sample-derived variant positions to Google Cloud Storage and Ensembl.")));
     if (page === "v2-install") root.appendChild(h("p.v2-notice", { "data-tone": "info" }, "fastVEP / research ACMG is available on Windows x86-64, Linux and macOS. It requires the installed fastvep tool set and local annotation databases. Clair3 on Apple Silicon: streaming MPS is an explicit GPU opt-in with the supported WGSE build."));
     if (page === "v2-settings") {
+      var temporary = root.querySelector('[data-annot-id="temporary-work"]');
+      if (temporary && W.v2machine.machine.os === "windows") {
+        temporary.after(h("details.v2-more", h("summary", "Windows work folders and Microsoft Defender"),
+          h("div.v2-more__body.v2-section",
+            h("p", "On Windows 11, if your security policy allows it, use a trusted Dev Drive with Defender performance mode for temporary files and outputs. Create the temporary folder first and keep real-time protection on."),
+            h("p.v2-small.v2-muted", "Performance mode defers scans; it does not skip them. On NTFS, leave scanning on by default: short tests found little consistent benefit from exclusions. WGS Extract never changes Defender settings."),
+            h("a.v2-link", { href: "https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/windows.md#work-folders-and-microsoft-defender" }, "Read the Windows guide"))));
+      }
       var about = root.querySelector('[data-annot-id="about"] p');
       if (about) about.textContent = "WGS Extract " + window.WGSMSchema.version + " · command line " + window.WGSMSchema.version + " · server API v1";
     }

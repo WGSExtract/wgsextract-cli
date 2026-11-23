@@ -58,12 +58,19 @@ test("research ACMG refuses silent classification and supports Windows x86-64", 
   assert.equal(pending.status, 202);
 });
 
-test("Windows tool inventory distinguishes manual BWA from managed Pixi tools", () => {
+test("Windows tool inventory bundles native BWA without a separate install action (#1453)", () => {
   const { request } = setup("windows-laptop");
   const inventory = () => request("POST", "/v1/ops/deps/list", {}).body.result.details.tools;
   const bwa = inventory().find(tool => tool.name === "wgse-bwa");
-  assert.equal(bwa.status, "missing");
+  assert.equal(bwa.status, "installed");
+  assert.equal(bwa.version, "0.14.1");
+  assert.equal(bwa.environment, "default");
   assert.equal(bwa.can_install, false);
+  assert.equal(bwa.can_uninstall, false);
+  request("POST", "/v1/mock/flags", { set: ["tool-windows-laptop-wgse-bwa-missing"] });
+  assert.equal(inventory().find(tool => tool.name === "wgse-bwa").status, "missing");
+  request("POST", "/v1/mock/flags", { unset: ["tool-windows-laptop-wgse-bwa-missing"] });
+  assert.equal(inventory().find(tool => tool.name === "wgse-bwa").status, "installed");
   assert.equal(inventory().find(tool => tool.name === "gatk").can_install, true);
   request("POST", "/v1/mock/flags", { set: ["tool-windows-laptop-gatk-installed"] });
   assert.equal(inventory().find(tool => tool.name === "gatk").can_uninstall, true);
