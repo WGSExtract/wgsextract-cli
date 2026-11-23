@@ -15,13 +15,9 @@ from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vep import VepRunParams
 from wgsextract_cli.cli.hints import quote
 from wgsextract_cli.core import read_scope
-from wgsextract_cli.core.alignment.metadata import get_vcf_build
+from wgsextract_cli.core.alignment.metadata import get_bam_header, get_vcf_build
 from wgsextract_cli.core.atomic_output import atomic_output
-from wgsextract_cli.core.builds import (
-    build_from_path,
-    canonical_build,
-    ploidy_for_build,
-)
+from wgsextract_cli.core.builds import build_from_path, canonical_build
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -31,6 +27,8 @@ from wgsextract_cli.core.errors import CodedError
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path, expand_path
+from wgsextract_cli.core.ref_library.assets import fasta_index_build
+from wgsextract_cli.core.ref_library.models import identify_reference
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.resource_estimates import (
     estimate_vep_run,
@@ -60,6 +58,7 @@ from ._vep_engines import (
     vep_engine,
 )
 from ._vep_resources import preprocess_vcf_chr_prefix
+from .vcf.basic import ploidy_args
 from .vcf.call_cleanup import indel_cleanup_pipeline
 
 GENOMIC_SUFFIXES = (".vcf", ".vcf.gz", ".bcf", ".bam", ".cram")
@@ -162,29 +161,41 @@ def _apply_forced_assembly(lib: ReferenceLibrary, vep_assembly: str | None) -> N
         lib.fasta = None
 
 
+def _refuse_conflicting_assembly(
+    bam: str, md5_sig: str | None, fasta: str | None, vep_assembly: str | None
+) -> None:
+    """Refuse an --assembly that contradicts what the alignment's header or
+    its FASTA's indexes show: the variants would be called with the wrong
+    build's ploidy and annotated against the wrong assembly. A contig count
+    or a name is too weak to refuse on."""
+    if not vep_assembly:
+        return
+    model = identify_reference(get_bam_header(bam), md5_sig)
+    shown = (
+        canonical_build(model.name)
+        if model and model.evidence in ("signature", "chr1 length")
+        else None
+    ) or (fasta_index_build(fasta) if fasta else None)
+    if shown and shown != _ASSEMBLY_BUILDS[vep_assembly]:
+        raise WGSExtractError(
+            f"{Path(bam).name} or its reference is {shown}, but --assembly is "
+            f"{vep_assembly}; drop --assembly to annotate it as its own build."
+        )
+
+
 def _call_variants_for_vep(
     params: VepRunParams,
     bam_path: str,
     ref: str,
-    lib: ReferenceLibrary,
+    ploidy: list[str],
     threads: str,
     out_vcf: str,
 ) -> None:
     region_args = ["-r", params.region] if params.region else []
-    if params.ploidy_file:
-        ploidy_args = ["--ploidy-file", str(params.ploidy_file)]
-    elif params.ploidy:
-        ploidy_args = ["--ploidy", params.ploidy]
-    elif lib.ploidy_file:
-        ploidy_args = ["--ploidy-file", lib.ploidy_file]
-    else:
-        build = canonical_build(lib.build) or "hg19"
-        ploidy_args = ["--ploidy", ploidy_for_build(build)]
-
     with sex_samples_args(
         bam_path,
         str(Path(out_vcf).parent),
-        ploidy_args,
+        ploidy,
         region=params.region,
         reference=ref,
     ) as sex_args:
@@ -193,7 +204,7 @@ def _call_variants_for_vep(
                 ["bcftools", "mpileup", "-B", "-C", "50", "-f", ref, "-Ou"]
                 + region_args
                 + [bam_path],
-                ["bcftools", "call", *ploidy_args, *sex_args, "-mv", "-P", "0"]
+                ["bcftools", "call", *ploidy, *sex_args, "-mv", "-P", "0"]
                 + ["--threads", threads, "-Ou"],
                 *indel_cleanup_pipeline(ref, out_vcf, threads, mixed=True),
             ],
@@ -408,7 +419,13 @@ def _run_vep_on_input(
         md5_sig = calculate_bam_md5(current_input, None) if is_bam else None
         ref = str(params.ref) if params.ref else None
         lib = ReferenceLibrary(ref, md5_sig, input_path=current_input)
+        if is_bam:
+            _refuse_conflicting_assembly(
+                current_input, md5_sig, lib.fasta, params.vep_assembly
+            )
         _apply_forced_assembly(lib, params.vep_assembly)
+        if params.vep_assembly:
+            lib.resolve_build_support_files()
         logging.debug(f"Resolved reference: {lib.fasta}")
         if is_bam and not lib.fasta:
             raise WGSExtractError(
@@ -416,6 +433,17 @@ def _run_vep_on_input(
                     task="variant calling from BAM/CRAM"
                 )
             )
+        # Before the slower checks, so a build without a ploidy policy (T2T,
+        # unknown) is refused as `vcf snp` refuses it, not called as another's.
+        ploidy = (
+            ploidy_args(
+                params.ploidy,
+                str(params.ploidy_file) if params.ploidy_file else None,
+                lib,
+            )
+            if is_bam
+            else []
+        )
         engine = vep_engine(params.engine)
         assembly = _vep_assembly(params, lib, None if is_bam else current_input)
         require_assembly(engine, assembly)
@@ -438,7 +466,7 @@ def _run_vep_on_input(
                 logging.info(LOG_MESSAGES["vep_calling_pre"])
                 vep_input_vcf = str(Path(work, "variants.vcf.gz"))
                 _call_variants_for_vep(
-                    params, current_input, lib.fasta, lib, threads, vep_input_vcf
+                    params, current_input, lib.fasta, ploidy, threads, vep_input_vcf
                 )
                 if assembly is None:
                     assembly = _assembly_of(get_vcf_build(vep_input_vcf))

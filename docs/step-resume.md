@@ -23,6 +23,10 @@ When a step finishes, the journal (JSON, schema `wgsextract.steps/1`) records:
 - the identity of each output, including the files in an output folder (see
   [Directory outputs](#directory-outputs))
 
+For `analyze`, it also records the command run that did each step's work, so
+the workflow's result manifest can name it in `run.children` when a later run
+skips the step (see [Run lineage and artifacts](result-manifest.md#run-lineage-and-artifacts-pilot)).
+
 The internal journal's [JSON Schema](../src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json)
 is generated from the Python models used by its writers. Its `runningStep`
 and `completeStep` definitions describe newly written records. Historical

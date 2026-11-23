@@ -8,12 +8,14 @@ import json
 import shlex
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scripts.ci_impact_results import file_results  # noqa: E402
 from scripts.ci_test_cache import (  # noqa: E402
     Fingerprint,
     Manifest,
@@ -118,6 +120,29 @@ def write_scope(path: Path, ran: list[str], skipped: dict[str, str]) -> None:
     path.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
 
 
+def record_executed(
+    output: Path, junit: Path, candidates: list[str], current: Fingerprint
+) -> None:
+    """Share only verified passing files, not files omitted by pytest itself."""
+    try:
+        results, unmapped = file_results(junit, set(candidates))
+        if unmapped:
+            raise ValueError(f"{unmapped} pytest results could not be mapped")
+        passed = {
+            current.hashes[path]
+            for path, result in results.items()
+            if path in current.hashes
+            and result["passed"]
+            and not (result["failed"] or result["skipped"])
+        }
+        if passed:
+            manifest = Manifest()
+            manifest.record(passed, current.names, datetime.now(timezone.utc))
+            manifest.save(output)
+    except (OSError, ValueError, ET.ParseError) as error:
+        print(f"Cannot share verified merge-group passes ({error}); main runs all.")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selection", default="all")
@@ -143,8 +168,10 @@ def main() -> None:
     parser.add_argument(
         "--record-executed",
         type=Path,
-        help="After a passing run, write a manifest of only the test files this "
-        "run executed (not cache skips), for a later run of the same commit.",
+        nargs=2,
+        metavar=("MANIFEST", "JUNIT"),
+        help="After a passing run, share only the test files verified by "
+        "the pytest JUnit report for a later run of the same commit.",
     )
     parser.add_argument(
         "--scope",
@@ -222,9 +249,9 @@ def main() -> None:
             ran = test_targets(json.dumps(sorted(current.hashes))) or []
         if args.cache_record:
             record_passes(args.cache_record, [*ran, *skipped], current)
-        if args.record_executed:
-            # Cache skips are excluded: a later run of this commit must run them.
-            record_passes(args.record_executed, ran, current)
+        if args.record_executed and result.returncode == 0:
+            output, junit = args.record_executed
+            record_executed(output, junit, ran, current)
     if result.returncode == 5 and targets is not None:
         print("No affected tests in this CI partition.")
         return

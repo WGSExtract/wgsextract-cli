@@ -54,6 +54,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   workflow-smoke:
@@ -79,12 +80,11 @@ jobs:
         include: ${{ fromJSON(inputs.matrix) }}
     runs-on: ${{ inputs.runner }}
     timeout-minutes: ${{ inputs.timeout-minutes }}
-    permissions:
-      contents: read
-      # Main pushes read the merge group's run, jobs and artifact (#1373).
-      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: ${{ inputs.os == 'ubuntu' && (github.event_name == 'pull_request' || github.event_name == 'schedule') && 128 || 1 }}
+          persist-credentials: false
       - name: Verify native runner architecture
         if: inputs.os == 'linux-arm64'
         run: test "$(uname -m)" = aarch64
@@ -212,12 +212,9 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       # Test result cache (#915): PRs and merge groups skip test files whose
       # exact dependency hash already passed on main (PRs also on an earlier
-      # push of the same PR). Only main (push, nightly, dispatch) writes the
-      # -main- entries they read. A merge group shares the files it executed,
-      # not its cache skips, as an artifact; a main push at that exact SHA runs
-      # only the rest (#1373), so the queue and main together run every file
-      # uncached at each main SHA, and an undeclared input that slips past the
-      # queue's cache still fails main. A PR's own entries are scoped to its ref.
+      # push of the same PR). A merge group shares only the files it executed;
+      # a main push at that exact SHA runs the rest (#1373). The daily Ubuntu run
+      # bypasses both skip sources and refreshes the main cache.
       - name: Restore test hashes that passed on main
         if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.ref == 'refs/heads/main'
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -228,12 +225,14 @@ jobs:
       - name: Find the merge group that already tested this main SHA
         id: merge-group
         if: inputs.queue-dedupe && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        continue-on-error: true
+        timeout-minutes: 2
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           ARTIFACT: test-pass-queue-${{ inputs.os }}-${{ matrix.label }}
         run: >-
-          pixi run python scripts/ci_merge_group_passes.py --repository "$GITHUB_REPOSITORY"
+          pixi run -e dev --no-install python scripts/ci_merge_group_passes.py --repository "$GITHUB_REPOSITORY"
           --sha "$GITHUB_SHA" --artifact "$ARTIFACT" --output out/test-cache/merge-group/passed.json
           --github-output "$GITHUB_OUTPUT"
       - name: Restore test hashes that passed earlier on this PR
@@ -243,7 +242,17 @@ jobs:
           path: out/test-cache/pr
           key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-${{ github.run_id }}
           restore-keys: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-
+      - name: Restore main's Linux observation map
+        if: inputs.os == 'ubuntu' && github.event_name == 'pull_request'
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-impact-map/linux.json.gz
+          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ci-impact-v2-linux-x64-
       - name: Run Tests
+        id: regular-pytest
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
@@ -252,7 +261,9 @@ jobs:
           TIER: ${{ matrix.tier }}
           SHARD: ${{ matrix.shard }}
           OS: ${{ inputs.os }}
-          MERGE_GROUP_RUN: ${{ steps.merge-group.outputs.run }}
+          QUEUE_DEDUPE: ${{ inputs.queue-dedupe }}
+          MERGE_GROUP_RUN: ${{ steps.merge-group.outcome == 'success' && steps.merge-group.outputs.run || '' }}
+          SYMBOL_DISABLED: ${{ vars.CI_DISABLE_SYMBOL_SELECTION }}
           # Ubuntu x64 alone runs the reviewed OS-independent tests.
           SKIP_INDEPENDENT: ${{ inputs.os != 'ubuntu' || inputs.skip-generic }}
         # -n logical overrides test-ci's -n auto: with psutil installed, auto
@@ -263,6 +274,9 @@ jobs:
           if [ "$EVENT" != pull_request ] && [ "$EVENT" != merge_group ]; then
             args+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
           fi
+          if [ "$OS" = ubuntu ] && [ "$EVENT" = schedule ]; then
+            args+=(--cov-context=test --cov-config=.github/coverage-impact.ini)
+          fi
           cache=(--cache-job "os=$OS tier=$TIER shard=$SHARD skip-independent=$SKIP_INDEPENDENT")
           if [ "$EVENT" = pull_request ]; then
             cache+=(--cache-read main=out/test-cache/main/passed.json)
@@ -270,7 +284,9 @@ jobs:
             cache+=(--cache-record out/test-cache/pr/passed.json --summary "$GITHUB_STEP_SUMMARY")
           elif [ "$EVENT" = merge_group ]; then
             cache+=(--cache-read main=out/test-cache/main/passed.json --summary "$GITHUB_STEP_SUMMARY")
-            cache+=(--record-executed out/test-cache/queue/passed.json)
+            if [ "$QUEUE_DEDUPE" = true ]; then
+              cache+=(--record-executed out/test-cache/queue/passed.json out/pytest.xml)
+            fi
           elif [ "$REF" = refs/heads/main ]; then
             cache+=(--cache-record out/test-cache/main/passed.json)
             # Never main's own manifest: only what the queue ran at this SHA.
@@ -281,10 +297,34 @@ jobs:
           else
             cache=()
           fi
+          # Symbol selection still gates PRs. On main it could omit files the
+          # queue skipped using older caches, so use only the exact-SHA complement.
+          if [ "$OS" = ubuntu ] && [ "$EVENT" = pull_request ]; then
+            flags=()
+            if [ "$SYMBOL_DISABLED" = true ]; then flags+=(--disabled); fi
+            if timeout 90 pixi run -e dev --no-install python -m scripts.ci_impact_gate \
+              --event "$EVENT" --base HEAD^1 --legacy "$TEST_SELECTION" \
+              --observations out/test-impact-map/linux.json.gz \
+              --output out/test-selection-gate.json "${flags[@]}" \
+              && selected=$(jq -ce '.selection | if type=="string" and .=="all" or type=="array" then . else error("invalid selector output") end' out/test-selection-gate.json); then
+              if [ "$selected" = '"all"' ]; then TEST_SELECTION=all; else TEST_SELECTION="$selected"; fi
+              mode=$(jq -r .mode out/test-selection-gate.json)
+              if [ "$mode" = universal-full ]; then
+                cache=()
+              elif [ "$mode" != symbol ]; then
+                echo "::warning::Linux symbol gate did not activate: $mode; retained current selection."
+              fi
+            else
+              rm -f out/test-selection-gate.json
+              echo '::warning::Symbol selector unavailable; retaining legacy selection.'
+            fi
+          fi
           if [ "${#cache[@]}" -gt 0 ]; then cache+=(--scope out/test-scope.json); fi
           pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" "${cache[@]}" -- "${args[@]}"
       - name: Share the test files this merge group ran with the main push
-        if: github.event_name == 'merge_group' && hashFiles('out/test-cache/queue/passed.json') != ''
+        if: inputs.queue-dedupe && github.event_name == 'merge_group' && hashFiles('out/test-cache/queue/passed.json') != ''
+        continue-on-error: true
+        timeout-minutes: 2
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-pass-queue-${{ inputs.os }}-${{ matrix.label }}
@@ -332,3 +372,64 @@ jobs:
             out/e2e-fake.xml
             out/pure-move-collection.log
             out/test-scope.json
+      - name: Export scheduled Linux test observations
+        id: impact-map
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.regular-pytest.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_observations
+          --coverage-file out/.coverage --junit out/pytest.xml
+          --output out/test-impact-map/linux.json.gz
+          --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Save main's Linux observation map
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.impact-map.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-impact-map/linux.json.gz
+          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Compare shadow selection with regular Linux pytest
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: bash
+        env:
+          TEST_SELECTION: ${{ inputs.tests }}
+          TEST_OUTCOME: ${{ steps.regular-pytest.outcome }}
+        run: |
+          pixi run -e dev --no-install python -m scripts.ci_impact_shadow \
+            --observations out/test-impact-map/linux.json.gz --junit out/pytest.xml \
+            --output out/test-selection-shadow.json --summary "$GITHUB_STEP_SUMMARY" \
+            --gate-decision out/test-selection-gate.json \
+            --selection "$TEST_SELECTION" --outcome "$TEST_OUTCOME" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            || echo '### Linux test selection shadow unavailable (report generation failed)' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload advisory Linux selection and outcome receipt
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-selection-shadow
+          path: out/test-selection-shadow.json
+          if-no-files-found: ignore
+      - name: Attribute failed daily Linux tests
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.regular-pytest.outcome == 'failure' }}
+        continue-on-error: true
+        timeout-minutes: 18
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_backstop
+          --repository "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID"
+          --junit out/pytest.xml --report out/selector-misses/report.json
+      - name: Upload scheduled selector miss receipts
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && steps.regular-pytest.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-selector-misses
+          path: out/selector-misses/report.json
+          if-no-files-found: ignore

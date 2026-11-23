@@ -42,6 +42,7 @@ from wgsextract_cli.commands.vcf import deepvariant
 from wgsextract_cli.core import (
     containers,
     native_deepvariant,
+    parabricks,
 )
 from wgsextract_cli.core.alignment import memory as alignment_memory
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
@@ -226,11 +227,12 @@ def test_missing_docker_setup_is_named(dv, monkeypatch, setup, message):
     assert dv.docker.runs() == []
 
 
-def test_windows_is_refused(dv, monkeypatch):
-    get_tool_path("run_deepvariant")  # Looked up as on Linux: not found.
+@pytest.mark.usefixtures("fake_pixi")
+def test_windows_is_refused(monkeypatch):
+    get_tool_path("run_deepvariant")  # No local runner in the isolated PATH.
     monkeypatch.setattr(sys, "platform", "win32")
     with pytest.raises(WGSExtractError, match="Windows"):
-        call(dv)
+        run_wgsextract("vcf", "deepvariant", "--input", "missing.bam")
 
 
 def test_the_image_calls_reads_from_folders_it_mounts(dv):
@@ -445,28 +447,36 @@ def postprocess(dv):
 # Ultima on the GPU (#358) --------------------------------------------------
 
 
+def configure_ultima_gpu(docker: FakeDocker, gpus: Path) -> None:
+    docker.set(gpus=True, runtimes='{"nvidia":{},"runc":{}}')
+    docker.add_image(deepvariant.DEFAULT_ULTIMA_GPU_IMAGE)
+    set_gpus(gpus, (24_576, 0))
+    fake_nvidia_smi(docker.root.parent / "bin", gpus)
+    clear_tool_caches()
+
+
 @pytest.fixture
 def ultima_gpu(dv):
     """Ultima reads on a GPU host: an RTX 3090 with nothing else on it, Docker's
     NVIDIA runtime and Google's ULTIMA GPU image, but no Parabricks."""
-    dv.docker.set(gpus=True, runtimes='{"nvidia":{},"runc":{}}')
-    dv.docker.add_image(deepvariant.DEFAULT_ULTIMA_GPU_IMAGE)
     dv.gpus = dv.tmp / "gpus.json"
-    set_gpus(dv.gpus, (24_576, 0))
-    fake_nvidia_smi(dv.docker.root.parent / "bin", dv.gpus)
-    clear_tool_caches()
+    configure_ultima_gpu(dv.docker, dv.gpus)
     dv.ultima = other_sample(dv, ULTIMA[0], tags=ULTIMA[1])
     return dv
 
 
-def without_gpu_driver(dv, monkeypatch):
-    """Only the fake Docker and the core tools on PATH: no nvidia-smi."""
-    bindir = dv.docker.root.parent / "bin"
-    for name in ("nvidia-smi", "nvidia-smi.py", "nvidia-smi.cmd"):
-        (bindir / name).unlink(missing_ok=True)
-    tools = {str(Path(path).parent) for path in CORE_TOOLS.values()}
-    monkeypatch.setenv("PATH", os.pathsep.join([str(bindir), *tools]))
-    clear_tool_caches()
+def without_gpu_driver(monkeypatch):
+    """Simulate a missing GPU driver even if the host has nvidia-smi."""
+    resolve = parabricks.get_tool_path
+
+    def no_driver(tool):
+        return None if tool == "nvidia-smi" else resolve(tool)
+
+    def unexpected_gpu_probe():
+        pytest.fail("the run tried to query GPU memory without a driver")
+
+    monkeypatch.setattr(parabricks, "get_tool_path", no_driver)
+    monkeypatch.setattr(parabricks, "gpu_memory", unexpected_gpu_probe)
 
 
 def gpu_call(dv, *options):

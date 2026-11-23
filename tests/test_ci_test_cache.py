@@ -5,8 +5,11 @@ from __future__ import annotations
 import io
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import sys
+import xml.etree.ElementTree as ET
 import zipfile
 from collections.abc import Mapping
 from datetime import datetime, timezone
@@ -196,30 +199,55 @@ def test_915_old_passes_expire_from_the_manifest() -> None:
 
 REPO = "WGSExtract/wgsextract-cli"
 SHA = "c" * 40
-QUEUE_TESTS = ["tests/test_table_writer.py", "tests/test_microarray_vendor_formats.py"]
+QUEUE_FILES = {
+    "tests/test_helper_cached.py": "def test_cached(): pass\n",
+    "tests/test_helper_executed.py": "def test_executed(): pass\n",
+    "tests/test_skipped.py": (
+        "import pytest\n\ndef test_partial(): pass\n"
+        "\ndef test_skipped(): pytest.skip('fixture')\n"
+    ),
+    "tests/test_empty.py": "# No tests collected in this file.\n",
+    "pixi.toml": '[feature.dev.tasks]\ntest-ci = "pytest"\n',
+    "pyproject.toml": '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n',
+}
+JOB = "os=test tier=all"
 
 
-def run_suite(tmp_path: Path, *args: str) -> dict[str, Any]:
-    """Run ci_run_tests with a passing stand-in pytest; return its scope report."""
+@pytest.fixture
+def suite_repo(tmp_path: Path) -> Path:
+    repo = checkout(tmp_path / "checkout", QUEUE_FILES)
+    shutil.copytree(
+        ROOT / "scripts", repo / "scripts", ignore=shutil.ignore_patterns("__pycache__")
+    )
+    return repo
+
+
+def run_suite(repo: Path, tmp_path: Path, *args: str) -> dict[str, Any]:
+    """Run the real test runner and pytest without installing a second Pixi env."""
     binary = tmp_path / "bin"
     binary.mkdir(parents=True, exist_ok=True)
     pixi = binary / "pixi"
-    pixi.write_text("#!/bin/sh\nexit 0\n")
+    pixi.write_text(
+        "#!/bin/sh\nshift 3\n"
+        f"exec {shlex.quote(sys.executable)} -m pytest "
+        f"--basetemp {shlex.quote(str(tmp_path / 'pytest'))} "
+        f'--junitxml {shlex.quote(str(tmp_path / "pytest.xml"))} "$@"\n'
+    )
     pixi.chmod(0o755)
     scope = tmp_path / "scope.json"
     result = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "scripts/ci_run_tests.py"),
+            str(repo / "scripts/ci_run_tests.py"),
             "--cache-job",
-            "os=test tier=all",
+            JOB,
             "--scope",
             str(scope),
             *args,
         ],
         capture_output=True,
         text=True,
-        cwd=ROOT,
+        cwd=repo,
         env=os.environ | {"PATH": f"{binary}{os.pathsep}{os.environ['PATH']}"},
     )
     assert result.returncode == 0, result.stderr
@@ -228,48 +256,58 @@ def run_suite(tmp_path: Path, *args: str) -> dict[str, Any]:
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX stand-in for pixi")
-def test_1373_queue_and_main_together_run_every_test_file(tmp_path: Path) -> None:
-    """Main reruns exactly what the queue skipped as cached, and nothing else."""
-    cached, executed = QUEUE_TESTS
-    current = fingerprint("os=test tier=all")
+def test_1373_queue_and_main_together_run_every_test_file(
+    suite_repo: Path, tmp_path: Path
+) -> None:
+    """Main reruns files the queue skipped, ignored, or did not collect."""
+    cached, executed = "tests/test_helper_cached.py", "tests/test_helper_executed.py"
+    current = fingerprint(JOB, repository=suite_repo)
     main_manifest = Manifest()
     main_manifest.record({current.hashes[cached]}, current.names, NOW)
     main_manifest.save(tmp_path / "main" / "passed.json")
     queue = tmp_path / "queue" / "passed.json"
 
     queue_scope = run_suite(
+        suite_repo,
         tmp_path / "group",
-        *("--selection", json.dumps(QUEUE_TESTS)),
-        *("--cache-read", f"main={tmp_path / 'main' / 'passed.json'}"),
-        *("--record-executed", str(queue)),
+        "--cache-read",
+        f"main={tmp_path / 'main' / 'passed.json'}",
+        "--record-executed",
+        str(queue),
+        str(tmp_path / "group" / "pytest.xml"),
     )
-    assert queue_scope == {"ran": [executed], "skipped": {cached: "main"}}
+    assert queue_scope["skipped"] == {cached: "main"}
 
     recorded = tmp_path / "main-after" / "passed.json"
     main_scope = run_suite(
+        suite_repo,
         tmp_path / "push",
-        *("--cache-read", f"merge-group-7={queue}"),
-        *("--cache-record", str(recorded)),
+        "--cache-read",
+        f"merge-group-7={queue}",
+        "--cache-record",
+        str(recorded),
     )
     assert main_scope["skipped"] == {executed: "merge-group-7"}
-    assert cached in main_scope["ran"]
-    every_test = set(main_scope["ran"]) | set(main_scope["skipped"])
-    assert set(queue_scope["ran"]) | set(main_scope["ran"]) == every_test
+    assert set(main_scope["ran"]) == set(current.hashes) - {executed}
+    cases = ET.parse(tmp_path / "push" / "pytest.xml").iter("testcase")
+    assert "test_cached" in {case.get("name") for case in cases}
     # Main's manifest still learns the queue's passes for later groups and PRs.
     assert Manifest.load(recorded).passed_with(current.hashes[executed], current.names)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX stand-in for pixi")
 def test_1373_main_without_a_queue_manifest_runs_the_full_suite(
+    suite_repo: Path,
     tmp_path: Path,
 ) -> None:
     scope = run_suite(
+        suite_repo,
         tmp_path,
         *("--cache-read", f"merge-group-7={tmp_path / 'missing.json'}"),
         *("--cache-record", str(tmp_path / "main" / "passed.json")),
     )
     assert scope["skipped"] == {}
-    assert set(QUEUE_TESTS) <= set(scope["ran"])
+    assert set(scope["ran"]) == set(fingerprint(JOB, repository=suite_repo).hashes)
 
 
 def queue_api(**changes: Any) -> dict[str, Any]:

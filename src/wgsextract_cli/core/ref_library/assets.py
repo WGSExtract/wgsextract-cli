@@ -179,9 +179,19 @@ def read_fai_lengths(fasta: PathInput) -> dict[str, int]:
 
 def fasta_build(fasta: PathInput) -> str | None:
     """The build a FASTA declares itself to be ("hg19", "hg38" or "t2t"), from
-    its chr1 length (.fai, else .dict), the .dict's AS assembly tags, the
-    description on its first header line, then its name; None when nothing
-    names one. Nothing here reads the sequence."""
+    its indexes (``fasta_index_build``), the description on its first header
+    line, then its name; None when nothing names one. Nothing here reads the
+    sequence."""
+    return (
+        fasta_index_build(fasta)
+        or build_from_path(_fasta_description(fasta))
+        or build_from_path(Path(fasta).name)
+    )
+
+
+def fasta_index_build(fasta: PathInput) -> str | None:
+    """The build a FASTA's indexes show: its chr1 length (.fai, else .dict),
+    then the .dict's AS assembly tags; never its name or description."""
     dict_path = Path(reference_dict_path(fasta))
     try:
         dictionary = (
@@ -197,11 +207,7 @@ def fasta_build(fasta: PathInput) -> str | None:
     build = build_from_chr1_length(lengths)
     for assembly in sorted({row["AS"] for row in dictionary if "AS" in row}):
         build = build or canonical_build(assembly) or build_from_path(assembly)
-    return (
-        build
-        or build_from_path(_fasta_description(fasta))
-        or build_from_path(Path(fasta).name)
-    )
+    return build
 
 
 def _fasta_description(fasta: PathInput) -> str:
