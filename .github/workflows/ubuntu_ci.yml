@@ -49,6 +49,7 @@ jobs:
     uses: ./.github/workflows/nightly_guard.yml
     with:
       workflow: ubuntu_ci.yml
+      main-backstop-candidate: &main-backstop-candidate ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.optional-tools-only)) }}
   lint:
     needs: nightly
     if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.smoke-only && !inputs.generic-certified }}
@@ -77,16 +78,15 @@ jobs:
       - name: Advisory test-smell annotations (never fails)
         run: pixi run -e lint -x python scripts/test_smells.py --base HEAD^1 --github
   test-ubuntu:
-    needs: nightly
     # The daily full pytest run seeds shadow observations and must not reuse
-    # a green push. The nightly guard still controls lint and optional lanes.
-    if: ${{ !cancelled() && (github.event_name == 'schedule' || needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.platform-certified && inputs.tests != '[]' }}
+    # a green push or depend on the guard runner. The guard controls other jobs.
+    if: ${{ !cancelled() && !inputs.optional-tools-only && !inputs.platform-certified && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: ubuntu
       runner: ubuntu-latest
-      # Per-test contexts use the slower C tracer only on the daily run.
-      timeout-minutes: ${{ github.event_name == 'schedule' && 80 || 48 }}
+      timeout-minutes: 48
+      main-backstop-candidate: *main-backstop-candidate
       environments: default dev vep-rs fastvep
       reference: true
       tests: ${{ inputs.tests || 'all' }}
