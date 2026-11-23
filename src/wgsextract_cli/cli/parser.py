@@ -18,6 +18,7 @@ from wgsextract_cli.core.config import get_config_path, settings
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.resource_policy import parse_thread_count
 
+from .config_view import configuration_rows
 from .help import (
     advanced_note,
     apply_help_metadata,
@@ -64,8 +65,11 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # haplocheck_path = "/path/to/haplocheck"
 # haplogrep_tree = "phylotree-fu-rcrs"  # or phylotree-rcrs, mitotree-rcrs
 # jar_dir = "/path/to/jars"
-# Apple Silicon aligner builds on PATH (native/README.md): "auto" or "off"
+# Optional native aligner builds (native/README.md): "auto" or "off"
 # native_aligners = "auto"
+# Windows x86-64: optional path to a local wgse-bwa build
+# wgse_bwa_path = 'C:\\tools\\wgse-bwa.exe'
+# prefer_native_gpu = false  # Windows CUDA is opt-in
 # wgse-bwa reads the dense suffix-array file `ref dense-sa` builds (opt-in)
 # dense_suffix_array = false
 # Apple Silicon: bcftools calls variants with wgse-mimalloc when installed: "auto" or "off"
@@ -612,6 +616,7 @@ def add_shared_arguments(
         help="Print the result manifest (wgsextract.result/1) as JSON on stdout "
         "instead of human-readable output; logs stay on stderr.",
     )
+    add("--card", action=argparse.BooleanOptionalAction, help=CLI_HELP["arg_card"])
     add("--quiet", action="store_true", help="Suppress all informational logs.")
     add("--debug", action="store_true", help=CLI_HELP["arg_debug"])
     add(
@@ -640,6 +645,11 @@ def add_shared_arguments(
     # (docs/result-manifest.md). analyze reads its steps' results this way,
     # and so does the desktop app. Hidden from help like other caller flags.
     add("--result-file", dest="_result_file", metavar="PATH", help=argparse.SUPPRESS)
+    # A workflow (analyze) starting this run as one of its steps names its own
+    # run, its root run and the step, so the manifests link (#1182).
+    add("--parent-run", dest="_parent_run", metavar="ID", help=argparse.SUPPRESS)
+    add("--root-run", dest="_root_run", metavar="ID", help=argparse.SUPPRESS)
+    add("--run-step", dest="_run_step", metavar="STEP", help=argparse.SUPPRESS)
     add(
         "--parent-pid",
         type=int,
@@ -692,16 +702,7 @@ def run_config(args: argparse.Namespace) -> None:
     print(f"{'Variable':<20} {'Value':<30} {'Status'}")
     print("-" * 65)
 
-    from wgsextract_cli.core.settings_schema import DEV_SETTINGS, DEV_TABLE, SETTINGS
-
-    dev = settings.get(DEV_TABLE)
-    dev_values = dev if isinstance(dev, dict) else {}
-    rows = [(key, item.default, settings.get(key)) for key, item in SETTINGS.items()]
-    rows += [
-        (f"{DEV_TABLE}.{key}", item.default, dev_values.get(key))
-        for key, item in DEV_SETTINGS.items()
-    ]
-    for key, default, current_val in rows:
+    for key, default, current_val in configuration_rows(settings):
         if current_val is not None:
             status = "[SET]"
             val_str = _display_config_value(key, current_val)

@@ -17,9 +17,11 @@ from wgsextract_cli.core.settings_schema import (
     DEV_SETTINGS,
     DEV_TABLE,
     MOVED_TO_DEV,
+    SERVER_SETTINGS,
     SETTINGS,
     DevSettings,
     InvalidSetting,
+    ServerSettings,
     Settings,
     check_values,
 )
@@ -108,6 +110,15 @@ def _validate_config_types(
     *,
     allow_invalid_threads: bool = False,
 ) -> None:
+    server = config.get("server", {})
+    if not isinstance(server, Mapping):
+        raise WGSExtractError(f"Invalid [server] table in {config_path}.")
+    try:
+        list(check_values(server, SERVER_SETTINGS))
+    except InvalidSetting as error:
+        raise WGSExtractError(
+            f"Invalid setting 'server.{error.key}' in {config_path}: {error}"
+        ) from None
     for key, new_key in MOVED_TO_DEV.items():
         if key in config:
             raise WGSExtractError(
@@ -199,6 +210,9 @@ def config_args(*, keep_awake: bool | None = None) -> list[str]:
     args = ["--config", str(selected)] if selected else []
     if keep_awake or (keep_awake is False and settings.get("keep_awake", False)):
         args.append("--keep-awake" if keep_awake else "--no-keep-awake")
+    # An internal step's card would describe the step; its caller writes its own.
+    if settings.get("result_card", False):
+        args.append("--no-card")
     from wgsextract_cli.core.temp_directory import configured_temp_directory
 
     temporary = configured_temp_directory()
@@ -236,6 +250,15 @@ def read_toml(path: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_bytes().decode("utf-8-sig"))
 
 
+def _read_settings_file(path: Path) -> dict[str, Any]:
+    try:
+        return read_toml(path)
+    except tomllib.TOMLDecodeError as e:
+        raise WGSExtractError(f"Invalid TOML in {path}: {e}") from e
+    except UnicodeDecodeError as e:
+        raise WGSExtractError(f"Invalid UTF-8 in {path} at byte {e.start + 1}") from e
+
+
 def load_config() -> dict[str, Any]:
     """
     Load configuration from the standard config file.
@@ -259,8 +282,8 @@ def load_config() -> dict[str, Any]:
         )
     if config_path.exists():
         try:
-            config = read_toml(config_path)
-        except (OSError, tomllib.TOMLDecodeError) as e:
+            config = _read_settings_file(config_path)
+        except OSError as e:
             logging.warning(f"Ignoring unreadable config {config_path}: {e}")
 
     for legacy_key in LEGACY_SETTINGS & config.keys():
@@ -276,11 +299,18 @@ def load_config() -> dict[str, Any]:
         - SETTINGS.keys()
         - CONFIG_ALIASES.keys()
         - MOVED_TO_DEV.keys()
-        - {DEV_TABLE},
+        - {DEV_TABLE, "server"},
         [*SETTINGS, *CONFIG_ALIASES],
         str(config_path),
     )
     dev = config.get(DEV_TABLE)
+    server = config.get("server")
+    if isinstance(server, dict):
+        _warn_unknown(
+            server.keys() - SERVER_SETTINGS.keys(),
+            SERVER_SETTINGS,
+            f"the [server] table of {config_path}",
+        )
     if isinstance(dev, dict):
         _warn_unknown(
             dev.keys() - DEV_SETTINGS.keys(),
@@ -406,6 +436,18 @@ def settings_from(values: Mapping[str, object]) -> Settings:
     return Settings(
         **cast(dict[str, Any], given),
         dev=DevSettings(**cast(dict[str, Any], dev_values)),
+        server=ServerSettings(
+            **cast(
+                dict[str, Any],
+                {
+                    name: value
+                    for _, name, value in check_values(
+                        cast(Mapping[str, object], values.get("server", {})),
+                        SERVER_SETTINGS,
+                    )
+                },
+            )
+        ),
     )
 
 
@@ -418,28 +460,30 @@ def settings_suspended() -> Iterator[None]:
         yield
 
 
-def _update_dev_table(config: dict[str, Any], updates: object) -> None:
-    """Merge ``updates`` into config's [dev] table the way save_config merges
+def _update_table(
+    config: dict[str, Any], updates: object, table_name: str, paths: frozenset[str]
+) -> None:
+    """Merge ``updates`` into a settings table the way save_config merges
     top-level settings: None or "" clears a key, and None clears the table."""
     if updates is None:
-        config.pop(DEV_TABLE, None)
+        config.pop(table_name, None)
         return
     if not isinstance(updates, Mapping):
-        config[DEV_TABLE] = updates  # rejected by _validate_config_types
+        config[table_name] = updates  # rejected by _validate_config_types
         return
-    current = config.get(DEV_TABLE)
+    current = config.get(table_name)
     dev = dict(current) if isinstance(current, Mapping) else {}
     for key, value in updates.items():
         if value is None or value == "":
             dev.pop(key, None)
-        elif key in DEV_PATH_SETTINGS:
+        elif key in paths:
             dev[key] = _normalize_path_setting(value)
         else:
             dev[key] = value
     if dev:
-        config[DEV_TABLE] = dev
+        config[table_name] = dev
     else:
-        config.pop(DEV_TABLE, None)
+        config.pop(table_name, None)
 
 
 def save_config(updates: dict[str, Any]) -> None:
@@ -452,18 +496,18 @@ def save_config(updates: dict[str, Any]) -> None:
     if config_path.exists():
         # Refuse to overwrite a config we cannot parse; that would drop the
         # user's other settings.
-        try:
-            current_config = read_toml(config_path)
-        except tomllib.TOMLDecodeError as e:
-            raise WGSExtractError(
-                f"Cannot update {config_path}: it is not valid TOML ({e})."
-            ) from e
+        current_config = _read_settings_file(config_path)
 
     for legacy_key in LEGACY_SETTINGS:
         current_config.pop(legacy_key, None)
     for key, value in updates.items():
-        if key == DEV_TABLE:
-            _update_dev_table(current_config, value)
+        if key in (DEV_TABLE, "server"):
+            _update_table(
+                current_config,
+                value,
+                key,
+                DEV_PATH_SETTINGS if key == DEV_TABLE else frozenset(),
+            )
             continue
         if key in MOVED_TO_DEV:
             if value is None or value == "":

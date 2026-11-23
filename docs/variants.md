@@ -25,6 +25,11 @@ SNP site's values.
 base (`R` → `A`), as VCF requires, preventing full hs38DH calls aborting at
 ambiguous bases. Ordinary alleles are unchanged. `vcf to-fasta` reconciles
 compatible ambiguity in temporary input, not exported VCFs or called ALTs.
+With `--uncalled auto`, a gVCF declared by WGS Extract's reference-evidence
+header or GATK-style reference confidence bands masks uncovered bases as `N`,
+even if there are no multi-base reference blocks. Without a declaration,
+the command checks the first records for reference blocks; for a variant-only
+VCF, it leaves uncovered positions as reference bases.
 Regional `vcf to-fasta --uncalled n` reads only indexed overlapping records,
 including deletions/gVCF blocks beginning before the region; whole-genome
 masking is unchanged.
@@ -155,6 +160,13 @@ FASTQs whose names SRA replaces.
 - `bam to-ubam` retains `tp`, `t0`, `tm`, `rq` and `a3` in read orientation.
 - Low-pass Ultima (MyHeritage ~2x) cannot give reliable genotypes without
   imputation; these callers do not impute. See the separate [imputation guide](imputation.md).
+
+## FreeBayes regions
+
+Pass one or more comma-separated regions to `vcf freebayes --region`, or pass a
+BED file. Text ranges use 1-based inclusive coordinates and accept thousands
+separators, as in `chr1:1,000-2,000`. If a comma could separate a whole contig
+name rather than group digits, use a BED file to make the selection explicit.
 
 ## Structural variants
 

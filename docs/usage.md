@@ -49,6 +49,16 @@ Large jobs can take hours and hundreds of gigabytes; see
 2 for usage errors (including missing input), and 3 for missing, unusable or
 too-old required tools. They make commands safe to chain in scripts.
 
+When a command prepares a BGZF-compressed VCF for indexed access, it rebuilds
+the sidecar indexes if any are older than the VCF. If a rebuild fails, the
+command stops instead of using the old index. If the input directory is
+read-only and needs a refresh, copy the VCF without its `.tbi` and `.csi`
+files to a writable directory and retry. VCFs with coordinates beyond TBI's
+range use CSI instead. Keep `.vcf.gz` and `.vcf.bgz` files with the same basename
+in separate directories if they use a shortened index name such as `sample.vcf.csi`.
+Preserve matching indexes when moving a VCF: file dates alone cannot tell whether
+the pair matches.
+
 File-writing commands record `<output>.manifest.json`: inputs and outputs
 with cheap fingerprints, metrics, structured warnings and provenance
 (versions, parameters, reference and timing). `--json` prints the result
@@ -70,6 +80,20 @@ verified steps in `.steps.json` journals. Rerunning after a crash, Ctrl-C or
 OOM skips completed steps. `--dry-run` explains the plan, `--force-step STEP`
 reruns that step and later ones, and `--force` reruns all. See [resuming](step-resume.md).
 
+`analyze comprehensive` uses `vcf_input_paths` from config only when you
+don't select inputs. A configured `input_path` can be used alongside these
+VCFs. With a BAM/CRAM selected via `--input` or `--genome`, it calls variants
+from that alignment unless you supply matching `--vcf-inputs` or use
+`--skip-calling`.
+
+When VCFs in one comprehensive run would have the same output name, each
+gets a numbered suffix. VCFs whose names don't collide keep their usual
+output names. The summary shows the source paths when filenames match.
+The manifest records the source path as `source_vcf` on each
+significant-variants output.
+If an output using the usual name would overwrite a selected input, use a
+different `--outdir`.
+
 `wgsextract report --genome ID` reads earlier manifests without running tools.
 Its local HTML, Markdown, JSON and findings table cover overview/QC, Y/mtDNA,
 pharmacogenomics (including HLA-A/B), ClinVar pathogenic calls in ACMG SF v3.3
@@ -85,6 +109,15 @@ only allowed folders.
 `sign create` writes `SHA256SUMS`, also readable by `sha256sum -c`.
 `--key` signs it with `ssh-keygen -Y sign`; `sign verify` checks the signature
 against a trusted key, then re-hashes every file.
+On Windows, some builds of the inbox OpenSSH hang while verifying signatures.
+`sign verify` first checks Git for Windows in Program Files and the Windows
+inbox OpenSSH. If neither works, it looks for `ssh-keygen.exe` on `PATH`.
+For a custom install, add its directory to `PATH`.
+Signing still uses `ssh-keygen.exe` from `PATH` so it can use your SSH agent.
+If signing does not finish within one minute on Windows, it fails without
+leaving a signature. To use Git for Windows for signing, put its `usr\bin`
+directory ahead of the inbox OpenSSH on `PATH`.
+Unsigned checksum verification does not need OpenSSH.
 
 ## Progress and logging
 
@@ -135,9 +168,19 @@ counts/fractions at depth **0 / 1–3 / 4–7 / 8+**, also written to
 fractions describe that interval. One streaming `samtools depth` pass writes
 no per-base depths. As in WGS Extract v4, base/mapping thresholds are zero;
 unmapped, secondary, QC-failed and duplicate reads and deletion bases are
-excluded, while overlapping mates count separately. Denominators include all
-reference coordinates, including Ns: the old UI's double N subtraction is
-not reproduced. Without `--bins`, summary and cache behaviour are unchanged.
+excluded, while overlapping mates count separately. A whole contig's
+reference N bases are shown as `Model N Len` and left out of the fractions'
+denominators, once (v4's double N subtraction is not reproduced); `Depth 0
+bases` still counts them. A partial `--region` keeps every coordinate. N
+counts are each reference's own, measured from its FASTA (see [reference
+genomes](reference-genomes.md#n-counts)) and applied only to contigs of the
+measured length; without them an `n_counts_unavailable` warning says breadth
+and depth include the N gaps. The printed rows are TSV (CSV with `info --csv`).
+`--with-bins` also runs the normal coverage summary but shows the bin table
+(v4's "Bin Coverage by Sequence Name") in its place, and reuses up-to-date
+whole-file reports, applying the current N counts; `info --detailed` then
+shows that run's breadth. Breadth everywhere is likewise a share of the non-N
+bases. Without `--bins`, summary and cache behaviour are unchanged.
 
 Depth parsing uses bounded 8 MiB binary chunks and byte operations, not
 per-base Python parsing or NumPy; TSVs and filters are unchanged.
@@ -166,8 +209,9 @@ wgsextract report-issue --run out/sample.vcf.gz.manifest.json --print
 
 It includes command, exit code, error, warnings, last 40 log lines, CLI
 version/install type, OS, CPU, RAM, free disk, tool versions and changed settings.
-Local redaction removes home/user/computer names, sample/file/read names,
-genotypes, VCF records, sequences, emails, tokens and secrets; paths become
+Local redaction removes home/user/computer names, sample/file/read names
+(including Parquet and SQLite variant-table filenames), genotypes, VCF records,
+sequences, emails, tokens and secrets; paths become
 placeholders such as `<path>/<file>.cram`. Sex and haplogroups are never included.
 
 Nothing is uploaded. The report and link are printed, and the complete report

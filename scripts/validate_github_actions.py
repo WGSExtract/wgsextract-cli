@@ -42,6 +42,7 @@ ALLOWED_ACTIONS = {
     "actions/upload-pages-artifact",
     "github/codeql-action/analyze",
     "github/codeql-action/init",
+    "github/codeql-action/upload-sarif",
     "msys2/setup-msys2",
     "prefix-dev/setup-pixi",
     "softprops/action-gh-release",

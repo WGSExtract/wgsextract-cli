@@ -1,4 +1,4 @@
-import type { ResultDocument, ResultFile, ResultNotice, ResultScalar } from "../../../shared/result-document.js";
+import { resultCardRole, type ResultDocument, type ResultFile, type ResultNotice, type ResultScalar } from "../../../shared/result-document.js";
 import type { ActionReference, CommandContext } from "../../../shared/types.js";
 import { displayWorkspacePath } from "../../../shared/workspace-paths.js";
 import { isViewerTrack, viewerResultLocus } from "../../../shared/viewer-result.js";
@@ -72,9 +72,13 @@ function renderOutput(output: ResultFile, document: ResultDocument): string {
       <li>
         <span class="result-role">${escapeHTML(output.role || output.kind)}</span>
         <span class="result-path" title="${escapeAttribute(output.path)}">${escapeHTML(displayWorkspacePath(output.path, workspaceRoots()))}</span>${size}
-        ${output.exists ? pathButtons(output.path) : ""}
+        ${output.exists ? `${output.role === resultCardRole ? cardButton(output.path) : ""}${pathButtons(output.path)}` : ""}
         ${viewer}
       </li>`;
+}
+
+function cardButton(filePath: string): string {
+    return `<button type="button" class="action-button secondary compact" data-result-card="${escapeAttribute(filePath)}">${escapeHTML(state.labels.resultCardViewTitle ?? "View Card")}</button>`;
 }
 
 function pathButtons(filePath: string): string {

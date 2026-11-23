@@ -56,6 +56,7 @@
       "actions": [
         {
           "id": "fastqc",
+          "openOutput": ["multiqc_report", "fastqc_report_html"],
           "title": "actions.fastq.fastq-inputs.fastqc.title",
           "tooltip": "actions.fastq.fastq-inputs.fastqc.tooltip",
           "command": {
@@ -83,6 +84,7 @@
         },
         {
           "id": "fastp",
+          "openOutput": ["fastp_report_html"],
           "title": "actions.fastq.fastq-inputs.fastp.title",
           "tooltip": "actions.fastq.fastq-inputs.fastp.tooltip",
           "command": {
@@ -142,6 +144,7 @@
       "actions": [
         {
           "id": "multiqc",
+          "openOutput": ["multiqc_report"],
           "title": "actions.fastq.post-v063.multiqc.title",
           "tooltip": "actions.fastq.post-v063.multiqc.tooltip",
           "command": {
@@ -165,6 +168,7 @@
         },
         {
           "id": "multiqc-directory",
+          "openOutput": ["multiqc_report"],
           "primaryInput": "multiqc_directory",
           "title": "actions.fastq.post-v063.multiqc-directory.title",
           "tooltip": "actions.fastq.post-v063.multiqc.tooltip",

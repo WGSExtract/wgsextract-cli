@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import sys
@@ -5,6 +6,7 @@ from pathlib import Path, PureWindowsPath
 
 import pytest
 
+from tests.smoke_utils import run_cli
 from wgsextract_cli import api
 from wgsextract_cli.commands.sign import _manifest_name, _read_manifest
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
@@ -26,7 +28,9 @@ def _verify(manifest: Path, **options: object) -> api.Result:
 
 def _key(path: Path) -> Path:
     subprocess.run(
-        ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(path)], check=True
+        ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(path)],
+        check=True,
+        timeout=10,
     )
     return path
 
@@ -53,6 +57,9 @@ def test_signed_manifest_verifies_and_detects_tampering(tmp_path, outputs):
         )
 
     public_key = Path(f"{key}.pub")
+    # SSH comments need not have the same encoding as the key fields.
+    key_fields = public_key.read_bytes().split()[:2]
+    public_key.write_bytes(b" ".join(key_fields) + b" Pr\xe9nom\n")
     _verify(manifest, public_key=public_key)
 
     (outputs / "sub" / "b name.vcf").write_text("tampered\n")
@@ -76,18 +83,173 @@ def test_verify_rejects_other_key_and_edited_manifest(tmp_path, outputs):
         _verify(manifest, public_key=Path(f"{key}.pub"))
 
 
+@pytest.mark.parametrize("contents", ["", "ssh-ed25519\n"])
+def test_1247_verify_reports_truncated_public_key_as_usage_error(
+    tmp_path, outputs, contents
+):
+    key = _key(tmp_path / "id")
+    _create(outputs, key=key)
+    public_key = tmp_path / "truncated.pub"
+    public_key.write_text(contents, encoding="utf-8")
+
+    rc, _, stderr = run_cli(
+        ["sign", "verify", str(outputs / "SHA256SUMS"), "--public-key", str(public_key)]
+    )
+
+    assert rc == 2
+    assert "--public-key" in stderr and "key data" in stderr
+
+
 def test_verify_fails_when_ssh_keygen_never_exits(tmp_path, outputs, monkeypatch):
     key = _key(tmp_path / "id")
     _create(outputs, key=key)
+    manifest = outputs / "SHA256SUMS"
+    real_run = subprocess.run
 
     def hang(cmd, **kwargs):
-        raise subprocess.TimeoutExpired(
-            cmd, 10, output=b"", stderr=b"incorrect signature\r\n"
-        )
+        if getattr(kwargs.get("stdin"), "name", None) == str(manifest):
+            raise subprocess.TimeoutExpired(
+                cmd, 10, output=b"", stderr=b"incorrect signature\r\n"
+            )
+        return real_run(cmd, **kwargs)
 
     monkeypatch.setattr(subprocess, "run", hang)
-    with pytest.raises(api.CommandFailed, match="FAILED: incorrect signature$"):
-        _verify(outputs / "SHA256SUMS", public_key=Path(f"{key}.pub"))
+    with pytest.raises(api.CommandFailed, match="incorrect signature") as failed:
+        _verify(manifest, public_key=Path(f"{key}.pub"))
+    assert "ssh-keygen" in str(failed.value) and "did not finish" in str(failed.value)
+
+
+def _git_ssh_folder() -> Path:
+    for variable in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
+        if root := os.environ.get(variable):
+            folder = Path(root) / "Git" / "usr" / "bin"
+            if (folder / "ssh-keygen.exe").is_file():
+                return folder
+    pytest.skip("Git for Windows' OpenSSH is not in Program Files")
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows verifier discovery")
+@pytest.mark.parametrize("fallback", [True, False])
+def test_1358_verify_skips_openssh_that_hangs_above_8kib(
+    tmp_path, outputs, monkeypatch, fallback
+):
+    for index in range(120):
+        (outputs / f"part-{index:03d}-chunk.txt").write_text("sample\n")
+    _create(outputs)
+    manifest = outputs / "SHA256SUMS"
+    working = _git_ssh_folder() if fallback else None
+    if working:
+        signer = working / "ssh-keygen.exe"
+        key = tmp_path / "id"
+        subprocess.run(
+            [signer, "-q", "-t", "ed25519", "-N", "", "-f", key],
+            check=True,
+            timeout=10,
+        )
+        subprocess.run(
+            [signer, "-Y", "sign", "-n", "wgsextract", "-f", key, manifest],
+            check=True,
+            timeout=10,
+        )
+        public_key = key.with_suffix(".pub")
+    else:
+        # Discovery must fail before reading the signature, with no real signer.
+        manifest.with_suffix(".sig").touch()
+        public_key = None
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    for name in ("ssh-keygen.exe", "ssh.exe"):
+        (broken / name).touch()
+    real_run = subprocess.run
+    child_env = os.environ.copy()
+
+    def run(cmd, **kwargs):
+        exe = Path(cmd[0])
+        if exe.parent == broken:
+            if exe.name == "ssh.exe":
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="OpenSSH_for_Windows_9.5p2\n"
+                )
+            if len(kwargs["stdin"].read(8193)) > 8192:
+                raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        return real_run(cmd, env=child_env, **kwargs)
+
+    folders = [broken]
+    if working:
+        folders.append(working)
+    # Isolate discovery from the host's system installs without changing the
+    # environment of the real verifier subprocess.
+    monkeypatch.setenv("SystemRoot", str(tmp_path))
+    for variable in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("PATH", ";".join(map(str, folders)))
+    monkeypatch.setattr(subprocess, "run", run)
+
+    if fallback:
+        verified = _verify(manifest, public_key=public_key)
+        assert verified.metrics["files"] == 122
+        assert not verified.warnings
+    else:
+        with pytest.raises(
+            api.CommandFailed, match=r"No working ssh-keygen\.exe"
+        ) as failed:
+            _verify(manifest)
+        error = str(failed.value)
+        assert str(broken / "ssh-keygen.exe") in error
+        assert "OpenSSH_for_Windows_9.5p2" in error
+        assert "Git for Windows" in error
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows signing timeout")
+def test_1358_sign_create_timeout_discards_incomplete_signature(
+    tmp_path, outputs, monkeypatch
+):
+    key = _key(tmp_path / "id")
+    manifest = outputs / "SHA256SUMS"
+    signature = manifest.with_suffix(".sig")
+    real_run = subprocess.run
+
+    def run(cmd, **kwargs):
+        if Path(cmd[-1]) == manifest:
+            signature.write_bytes(b"incomplete signature")
+            if timeout := kwargs.get("timeout"):
+                raise subprocess.TimeoutExpired(cmd, timeout)
+            return subprocess.CompletedProcess(cmd, 0)
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    with pytest.raises(api.CommandFailed, match="did not finish") as failed:
+        _create(outputs, key=key)
+    assert "Git for Windows" in str(failed.value)
+    assert failed.value.result.metrics["signed"] is False
+    assert manifest.is_file()
+    assert not signature.exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows verifier discovery")
+def test_1358_trusted_windows_verifier_takes_precedence_over_path(
+    tmp_path, outputs, monkeypatch
+):
+    _git_ssh_folder()
+    key = _key(tmp_path / "id")
+    other = _key(tmp_path / "other")
+    _create(outputs, key=key)
+    manifest = outputs / "SHA256SUMS"
+    path_keygen = tmp_path / "ssh-keygen.exe"
+    path_keygen.touch()
+    real_run = subprocess.run
+
+    def run(cmd, **kwargs):
+        if Path(cmd[0]) == path_keygen:
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setenv("PATH", str(tmp_path) + ";" + os.environ["PATH"])
+    monkeypatch.setattr(subprocess, "run", run)
+    _verify(manifest, public_key=Path(f"{key}.pub"))
+    with pytest.raises(api.CommandFailed, match="Signature verification FAILED"):
+        _verify(manifest, public_key=Path(f"{other}.pub"))
 
 
 def test_manifest_reader_keeps_names_and_accepts_binary_mode(tmp_path):
@@ -115,6 +277,13 @@ def test_unsigned_manifest_checks_hashes_only(outputs):
         _verify(manifest)
     with pytest.raises(api.CommandFailed, match="Signature not found"):
         _verify(manifest, public_key=Path("x.pub"))
+
+
+def test_1232_checksum_does_not_need_sort_buffers(outputs, ram):
+    """A low-memory process can still hash files with an explicit worker count."""
+    ram(256 * 1024**2)
+    _create(outputs, threads=128)
+    assert _verify(outputs / "SHA256SUMS", threads=128).metrics["files"] == 2
 
 
 def test_unvalidated_signature_is_a_result_warning(tmp_path, outputs):

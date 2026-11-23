@@ -626,3 +626,26 @@ def test_sampled_coverage_needs_a_primary_chromosome(tmp_path):
         render.run_sampled_coverage(
             "x.bam", None, [_stat("chrUn_1", 500_000, 1)], str(tmp_path / "o.json")
         )
+
+
+def test_all_n_contig_leaves_breadth_total_alone():
+    """Review: an all-N contig put its whole length back in the denominator."""
+    from wgsextract_cli.commands.info.breadth import breadth_map
+
+    result = breadth_map(
+        {"chr1": (10, 10), "chr2": (0, 10)}, with_total=True, excluded={"2": 10}
+    )
+    assert result == {"1": "100 %", "TOTAL_EST": "100 %"}
+
+
+def test_other_row_leaves_out_alt_contig_ns():
+    """Review of #1271: alt contigs' Ns now known, the Other row kept them in."""
+    table = metrics.generate_chrom_table(
+        [_stat("chr1", 1000, 10), _stat("chr1_alt", 1000, 10)],
+        100.0,
+        "Unknown",
+        "custom",
+        n_counts={"1_ALT": 500},
+    )
+    other = next(r for r in table if r[1] == "Other")
+    assert (other[3], other[6]) == (500, 2)  # 10 x 100 bp over 500 non-N bases

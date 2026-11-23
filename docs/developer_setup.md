@@ -63,6 +63,12 @@ Other optional environments are documented with their features:
 Cyrius permits noncommercial use only, no distribution/modification, and
 is not bundled.
 
+On macOS, `bio-tools` environments and the separate `pharmcat` environment
+use Apple's Accelerate BLAS so `bcftools` does not load LLVM OpenMP through
+GSL. Before starting workers, pytest removes only current-user, unwritten
+OpenMP registration files whose PID is absent. For other tools and manual
+cleanup, see [OpenMP troubleshooting](installation.md#macos-openmp-error-15-with-unknown-library).
+
 ### Benchmarking on macOS
 
 Setup creates `.metadata_never_index` in `out/`, `scratch/` and `tmp/`
@@ -296,7 +302,8 @@ from the output-schema generator's complete dataclass projections.
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
 there with its replacement and the next minor version as `remove_in`, and add
-it under `## Deprecated` in `docs/release-notes/unreleased.md`. A deprecated
+it under `## Deprecated` in a release-note fragment in
+`docs/release-notes/unreleased/` (see its README). A deprecated
 command keeps working, warns `deprecated_command` when run, and is listed apart
 in the help and docs.
 

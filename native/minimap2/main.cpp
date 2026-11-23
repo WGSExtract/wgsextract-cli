@@ -1,4 +1,7 @@
 #include "ksw_gpu.h"
+#if defined(__APPLE__) && defined(WGSE_METAL_BENCHMARK_TOOLS)
+#include "watchdog_test.h"
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -79,6 +82,11 @@ int parse_backend_options(int &argc, char **&argv, Backend &backend) {
             }
             index += 2;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
+#ifdef __APPLE__
+        } else if (strcmp(argv[index], "--gpu-inject-watchdog-start-failure") == 0) {
+            wgse::metal::inject_watchdog_start_failure();
+            ++index;
+#endif
         } else if (strcmp(argv[index], "--gpu-fibers") == 0) {
             if (!count_option(argc, argv, index, fibers)) return 2;
         } else if (strcmp(argv[index], "--gpu-batch") == 0) {

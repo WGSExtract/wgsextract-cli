@@ -4,11 +4,12 @@ import { open, realpath, stat } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { HttpError } from "./errors.js";
+import { HttpError, isErrnoCode } from "./errors.js";
 
 const maximumReadBytes = 32 * 1024 * 1024;
 const idleLifetimeMs = 60 * 60 * 1000;
 const maximumSessions = 8;
+const outsideLibraries = "Viewer path is outside the configured libraries.";
 export const viewerTokenHeader = "x-gfc-viewer-token";
 
 export function requireViewerLoopback(request: IncomingMessage) {
@@ -23,25 +24,55 @@ function inside(file: string, root: string) {
     return relative !== "" && !relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative);
 }
 
+function rethrowUnlessMissing(error: unknown): undefined {
+    if (!isErrnoCode(error, "ENOENT", "ENOTDIR")) {
+        throw error;
+    }
+    return undefined;
+}
+
+class MissingViewerPath extends HttpError {}
+
+export function isMissingViewerPath(error: unknown): boolean {
+    return error instanceof MissingViewerPath || isErrnoCode(error, "ENOENT", "ENOTDIR");
+}
+
 /** Both the spelling and canonical target must be inside the same configured library. */
 export async function guardedViewerPath(file: string, roots: string[]): Promise<string> {
     if (!path.isAbsolute(file) || file.includes("\0") || file.split(/[\\/]/).includes("..")) {
-        throw new HttpError(403, "Viewer path is outside the configured libraries.");
+        throw new HttpError(403, outsideLibraries);
     }
     const absolute = path.resolve(file);
-    if (!roots.some((root) => inside(absolute, root))) {
-        throw new HttpError(403, "Viewer path is outside the configured libraries.");
-    }
-    const canonical = await realpath(absolute);
+    let canonical: string | undefined;
+    let hasUnavailableRoot = false;
     for (const root of roots) {
-        if (inside(absolute, root) && inside(canonical, await realpath(root))) {
-            if (!(await stat(canonical)).isFile()) {
+        if (!inside(absolute, root)) {
+            continue;
+        }
+        const canonicalRoot = await realpath(root).catch(rethrowUnlessMissing);
+        if (canonicalRoot === undefined || !(await stat(canonicalRoot).catch(rethrowUnlessMissing))?.isDirectory()) {
+            hasUnavailableRoot = true;
+            continue;
+        }
+        canonical ??= await realpath(absolute).catch(rethrowUnlessMissing);
+        if (canonical === undefined) {
+            throw new MissingViewerPath(404, "Viewer file not found.");
+        }
+        if (inside(canonical, canonicalRoot)) {
+            const info = await stat(canonical).catch(rethrowUnlessMissing);
+            if (!info) {
+                throw new MissingViewerPath(404, "Viewer file not found.");
+            }
+            if (!info.isFile()) {
                 throw new HttpError(403, "Viewer paths must be regular files.");
             }
             return canonical;
         }
     }
-    throw new HttpError(403, "Viewer path is outside the configured libraries.");
+    if (canonical === undefined && hasUnavailableRoot) {
+        throw new MissingViewerPath(403, outsideLibraries);
+    }
+    throw new HttpError(403, outsideLibraries);
 }
 
 interface Grant {
@@ -112,7 +143,7 @@ export class ViewerFiles {
             response.setHeader("accept-ranges", "bytes");
             response.setHeader("cache-control", "no-store");
             response.setHeader("content-type", "application/octet-stream");
-            const range = byteRange(request.headers.range, info.size);
+            const range = byteRange(request.headers.range, info.size, request.method === "HEAD");
             if (!range) {
                 response.setHeader("content-range", `bytes */${info.size}`);
                 response.writeHead(416);
@@ -158,9 +189,10 @@ function sameToken(actual: string, expected: string) {
     return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function byteRange(header: string | undefined, size: number) {
+/** The whole-file fallback limit bounds response bodies, so a bodyless HEAD can report any size. */
+export function byteRange(header: string | undefined, size: number, bodyless = false) {
     if (!header) {
-        return size <= maximumReadBytes ? { start: 0, end: size - 1, partial: false } : undefined;
+        return bodyless || size <= maximumReadBytes ? { start: 0, end: size - 1, partial: false } : undefined;
     }
     const match = /^bytes=(\d*)-(\d*)$/.exec(header);
     if (!match || (!match[1] && !match[2]) || size === 0) {

@@ -1,17 +1,22 @@
 """Focused server lifecycle regressions."""
 
 import contextlib
+import http.client
 import json
 import os
 import signal
+import socket
 import subprocess
 import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import psutil
 import pytest
+
+from tests.home_isolation import state_directory_setting
 
 # The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
 from tests.smoke_utils import ensure_fake_data as ensure_fake_data
@@ -122,6 +127,7 @@ def test_serve_command_publishes_its_address_and_cleans_up(tmp_path, work):
         # --ready-json: the program that started the server reads it from stdout.
         assert proc.stdout is not None
         assert json.loads(proc.stdout.readline()) == info
+        assert info["client_job_ids"] is True
         if sys.platform != "win32":
             assert discovery.stat().st_mode & 0o777 == 0o600
         client = Client(info["url"].removesuffix("/v1"))
@@ -133,6 +139,98 @@ def test_serve_command_publishes_its_address_and_cleans_up(tmp_path, work):
     if sys.platform != "win32":
         assert proc.returncode == 0
         assert not discovery.exists()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")
+@pytest.mark.parametrize(
+    ("stop_signal", "remote"),
+    [(signal.SIGINT, False), (signal.SIGTERM, True)],
+    ids=["loopback-sigint", "wildcard-sigterm"],
+)
+def test_1254_signal_during_http_request_dispatch_exits_cleanly(
+    tmp_path: Path, work: Path, stop_signal: int, remote: bool
+) -> None:
+    # Let the actual HTTP request finish before returning from the OS thread
+    # startup boundary, then deliver the stop signal before the accept loop resumes.
+    code = f"""
+import os, socket, sys, threading
+from wgsextract_cli.main import main
+
+request_port = int(sys.argv.pop(1))
+peer_port = None
+accept = socket.socket.accept
+def accept_peer(listener):
+    global peer_port
+    connection, address = accept(listener)
+    if threading.current_thread() is threading.main_thread():
+        peer_port = address[1]
+    return connection, address
+
+start = threading.Thread.start
+def interrupt_start(thread):
+    start(thread)
+    if threading.current_thread() is threading.main_thread() and peer_port == request_port:
+        thread.join(timeout=10)
+        assert not thread.is_alive()
+        os.kill(os.getpid(), {stop_signal})
+
+socket.socket.accept = accept_peer
+threading.Thread.start = interrupt_start
+main()
+"""
+    config = tmp_path / "config.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + '[server]\nallowed_hosts=["genomes.example"]\n'
+    )
+    args = ["--config", str(config), "serve", "--allow", str(work), "--ready-json"]
+    if remote:
+        args += ["--listen", "0.0.0.0", "--public-url", "https://genomes.example"]
+    # Reserve the authenticated client's source port so the hook can ignore
+    # unrelated connections, even if a probe beats the test to the listener.
+    with socket.socket() as peer:
+        peer.bind(("127.0.0.1", 0))
+        with subprocess.Popen(
+            [sys.executable, "-c", code, str(peer.getsockname()[1]), *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ) as proc:
+            try:
+                assert proc.stdout is not None
+                info = json.loads(proc.stdout.readline())
+                bind = urlsplit(info.get("bind_url", info["url"]))
+                assert bind.port is not None
+                url = f"http://127.0.0.1:{bind.port}"
+                headers = {"Host": "genomes.example"} if remote else {}
+                status, _ = Client(url).request("GET", "", token=None, headers=headers)
+                assert status == 401
+
+                peer.settimeout(10)
+                peer.connect(("127.0.0.1", bind.port))
+                with contextlib.closing(
+                    http.client.HTTPConnection("127.0.0.1", bind.port)
+                ) as conn:
+                    conn.sock = peer
+                    conn.request(
+                        "GET",
+                        "/v1",
+                        headers={
+                            **headers,
+                            "Authorization": f"Bearer {info['token']}",
+                            "Connection": "close",
+                        },
+                    )
+                    with conn.getresponse() as response:
+                        assert response.status == 200
+                        assert (
+                            str(work.resolve()) in json.load(response)["allowed_paths"]
+                        )
+                assert proc.wait(timeout=10) == 0
+                assert not (tmp_path / "state" / "server" / "server.json").exists()
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX signal delivery")

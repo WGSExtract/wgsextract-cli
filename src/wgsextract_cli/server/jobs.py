@@ -14,12 +14,15 @@ import contextlib
 import json
 import logging
 import os
+import re
 import secrets
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+from collections import deque
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -40,9 +43,12 @@ from .operations import (
 )
 from .transport import Job as JobView
 from .transport import JobError, JobEvent, JobProgress, JobSummary, Kind, Status
+from .worker_process import detached, discard_worker, kill_tree
 
 FINISHED = frozenset({"succeeded", "failed", "cancelled", "interrupted"})
 RECORD_SCHEMA = "wgsextract.job/1"
+MAX_FINISHED_JOBS = 128
+MAX_JOB_EVENTS = 1024
 
 # How long a cancelled worker may take to stop its tools and write its
 # manifest before it is killed.
@@ -72,8 +78,13 @@ class Job:
     progress: JobProgress | None = None
     result: dict[str, Any] | None = None
     cancel_requested: str | None = None
+    card: bool | None = (
+        None  # its result card, as the request asked; None: the server's default
+    )
     server_pid: int = field(default_factory=os.getpid)
-    events: list[JobEvent] = field(default_factory=list, repr=False)
+    events: deque[JobEvent] = field(
+        default_factory=lambda: deque(maxlen=MAX_JOB_EVENTS), repr=False
+    )
 
     @property
     def done(self) -> bool:
@@ -149,6 +160,7 @@ class JobManager:
         default_outdir: str | None = None,
         allowed: Iterable[str | os.PathLike[str]] | None = None,
         worker_command: list[str] | None = None,
+        card: bool | None = None,
     ) -> None:
         self.directory = directory
         self.allowed = None if allowed is None else [os.fspath(a) for a in allowed]
@@ -156,6 +168,7 @@ class JobManager:
         self.config_path = config_path
         self.max_jobs = max(1, max_jobs)
         self.debug = debug
+        self.card = card  # each job's result card; None: as config.toml says
         self.worker_command = worker_command or [
             sys.executable,
             "-m",
@@ -163,11 +176,15 @@ class JobManager:
         ]
         self._lock = threading.Condition()
         self._jobs: dict[str, Job] = {}
+        self._finished: deque[str] = deque()
         self._queue: list[str] = []
         self._workers: dict[str, subprocess.Popen[str]] = {}
         # Folders each queued or running job writes in, for _pump.
         self._writes: dict[str, frozenset[str]] = {}
         self._cancelling: set[str] = set()
+        # Finished jobs whose record or summary is not saved yet (a full
+        # disk), in order: kept in memory and retried, never evicted.
+        self._unsaved: dict[str, None] = {}
         self._stopping = False
         directory.mkdir(parents=True, exist_ok=True)
         # Job records and logs hold results and paths: this user's only.
@@ -180,19 +197,25 @@ class JobManager:
             raise WGSExtractError(
                 f"Another wgsextract server is using {directory}; stop it first."
             ) from None
+        self._history = directory / "summaries.sqlite"
         self._load()
 
     # Records ---------------------------------------------------------------
 
     def _load(self) -> None:
-        jobs = []
+        # The index is derived; rebuilding also picks up older records.
+        self._history.unlink(missing_ok=True)
+        with contextlib.closing(sqlite3.connect(self._history)) as db, db:
+            db.execute(
+                "CREATE TABLE jobs (id TEXT PRIMARY KEY, status TEXT, summary TEXT)"
+            )
+            db.execute("CREATE INDEX jobs_status ON jobs (status)")
+            self._recover_records(db)
+
+    def _recover_records(self, db: sqlite3.Connection) -> None:
         for path in self.directory.glob("*.json"):
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-                data.pop("schema", None)
-                job = Job(**data)
-            except (OSError, ValueError, TypeError) as e:
-                logging.warning(f"Ignoring unreadable job record {path}: {e}")
+            job = self._read_record(path)
+            if job is None:
                 continue
             # This manager holds the folder's lock, so no other server is
             # running these jobs any more.
@@ -205,9 +228,25 @@ class JobManager:
                     "rerun it to resume from its completed steps.",
                 }
                 self._save(job)
-            jobs.append(job)
-        for job in sorted(jobs, key=lambda j: j.created):
-            self._jobs[job.id] = job
+            self._index_summary(db, job)
+
+    @staticmethod
+    def _index_summary(db: sqlite3.Connection, job: Job) -> None:
+        db.execute(
+            "INSERT OR REPLACE INTO jobs (id, status, summary) VALUES (?, ?, ?)",
+            (job.id, job.status, json.dumps(job.summary())),
+        )
+
+    def _read_record(self, path: Path) -> Job | None:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data.pop("schema", None)
+            return Job(**data)
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError, TypeError, AttributeError) as e:
+            logging.warning(f"Ignoring unreadable job record {path}: {e}")
+            return None
 
     def _save(self, job: Job) -> None:
         path = self.directory / f"{job.id}.json"
@@ -224,17 +263,43 @@ class JobManager:
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:
-            return self._jobs.get(job_id)
+            return self._get(job_id)
 
-    def jobs(self) -> list[Job]:
+    def _get(self, job_id: str) -> Job | None:
+        job = self._jobs.get(job_id)
+        if job is None and re.fullmatch(r"[A-Za-z0-9-]+", job_id):
+            return self._read_record(self.directory / f"{job_id}.json")
+        return job
+
+    def summaries(self, status: str | None = None) -> list[JobSummary]:
         with self._lock:
-            return list(self._jobs.values())
+            jobs: dict[str, JobSummary] = {}
+            if status is None or status in FINISHED:
+                with contextlib.closing(sqlite3.connect(self._history)) as db:
+                    rows = (
+                        db.execute("SELECT summary FROM jobs")
+                        if status is None
+                        else db.execute(
+                            "SELECT summary FROM jobs WHERE status = ?", (status,)
+                        )
+                    )
+                    for (summary,) in rows:
+                        item = json.loads(summary)
+                        jobs[item["id"]] = item
+            # Unfinished jobs, and finished ones not yet saved, are listed
+            # from memory.
+            for job in self._jobs.values():
+                if (not job.done or job.id in self._unsaved) and (
+                    status is None or job.status == status
+                ):
+                    jobs[job.id] = job.summary()
+        return sorted(jobs.values(), key=lambda job: job["created"])
 
     def wait(self, job_id: str, timeout: float) -> Job | None:
         """The job once finished, or as it is after ``timeout`` seconds."""
         deadline = time.monotonic() + timeout
         with self._lock:
-            job = self._jobs.get(job_id)
+            job = self._get(job_id)
             while job is not None and not job.done:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -243,13 +308,12 @@ class JobManager:
             return job
 
     def events(
-        self, job_id: str, after: int, timeout: float
+        self, job: Job, after: int, timeout: float
     ) -> tuple[list[JobEvent], bool]:
         """Events with ``seq`` above ``after``, waiting up to ``timeout`` for
         one; and whether the job has finished."""
         deadline = time.monotonic() + timeout
         with self._lock:
-            job = self._jobs[job_id]
             while True:
                 new = [e for e in job.events if e["seq"] > after]
                 remaining = deadline - time.monotonic()
@@ -259,18 +323,45 @@ class JobManager:
 
     # Changes ---------------------------------------------------------------
 
-    def submit(self, op: Operation, params: Mapping[str, Any]) -> Job:
+    def check_job_id(self, job_id: str) -> None:
+        """Reject invalid IDs and existing jobs before validating a submission."""
+        if not re.fullmatch(
+            r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
+            job_id,
+        ):
+            raise RequestError(
+                400, "invalid_job_id", "Job ID must be a lowercase UUIDv4."
+            )
+        with self._lock:
+            self._check_new_job_id(job_id)
+
+    def _check_new_job_id(self, job_id: str) -> None:
+        if job_id in self._jobs or (self.directory / f"{job_id}.json").exists():
+            raise RequestError(409, "job_id_in_use", "Job ID is already in use.")
+
+    def submit(
+        self,
+        op: Operation,
+        params: Mapping[str, Any],
+        *,
+        card: bool | None = None,
+        job_id: str | None = None,
+    ) -> Job:
+        if job_id is not None:
+            self.check_job_id(job_id)
         effective = op.request_values(
             with_config_defaults(params_from_json(op, params))
         )
         if self.default_outdir and "outdir" in effective and not params.get("outdir"):
             effective["outdir"] = self.default_outdir
         job = Job(
-            id=time.strftime("%Y%m%d-%H%M%S-", time.gmtime()) + secrets.token_hex(3),
+            id=job_id
+            or time.strftime("%Y%m%d-%H%M%S-", time.gmtime()) + secrets.token_hex(3),
             op=op.name,
             kind=op.kind,
             # Locks and workers see the folders the path checks approved.
             params=expand_paths(op, effective),
+            card=card,
         )
         names = {f.name for f in op.fields()}
         # With no input to save beside, outputs would go to the working folder.
@@ -290,12 +381,19 @@ class JobManager:
                 "job would save into the server's working folder.",
             )
         with self._lock:
+            self._check_new_job_id(job.id)
             if self._stopping:
                 raise RequestError(503, "stopping", "The server is stopping.")
             self._jobs[job.id] = job
             self._writes[job.id] = self._write_folders(op, job)
+            try:
+                self._save(job)
+            except OSError:
+                # Nothing started: refuse the request and forget the job.
+                del self._jobs[job.id]
+                del self._writes[job.id]
+                raise
             self._event(job, "status", status="queued")
-            self._save(job)
             if op.kind == "query":
                 self._start(job)
             else:
@@ -307,7 +405,7 @@ class JobManager:
         """Cancel a job: a queued one at once, a running one in the background
         (its tools are stopped and it finishes as cancelled)."""
         with self._lock:
-            job = self._jobs.get(job_id)
+            job = self._get(job_id)
             if job is None or job.done:
                 return job
             if job.id in self._queue:
@@ -316,6 +414,7 @@ class JobManager:
                 return job
             worker = self._workers.get(job.id)
             if worker is not None and job.cancel_requested is None:
+                self._cancelling.add(job.id)
                 job.cancel_requested = _now()
                 self._event(job, "status", status="cancelling")
                 threading.Thread(
@@ -334,6 +433,7 @@ class JobManager:
                 )
             self._queue.clear()
             workers = dict(self._workers)
+            self._cancelling.update(workers)
         threads = [
             threading.Thread(target=self._stop_worker, args=item)
             for item in workers.items()
@@ -437,8 +537,17 @@ class JobManager:
             "config": str(self.config_path) if self.config_path else None,
             "debug": self.debug,
             "allowed": self.allowed,
+            # A server that saves nothing (read-only MCP) writes no card, whatever a job asks.
+            "card": False
+            if self.card is False
+            else (job.card if job.card is not None else self.card),
         }
-        log = open(self.log_path(job.id), "a", encoding="utf-8", newline="\n")  # noqa: SIM115
+        line = json.dumps(request) + "\n"
+        try:
+            log = open(self.log_path(job.id), "a", encoding="utf-8", newline="\n")  # noqa: SIM115
+        except OSError as e:
+            self._finish(job, "failed", error=f"Could not open the job log: {e}")
+            return False
         try:
             worker = subprocess.Popen(
                 self.worker_command,
@@ -448,27 +557,52 @@ class JobManager:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                **_detached(),
+                **detached(),
             )
         except OSError as e:
             log.close()
             self._finish(job, "failed", error=f"Could not start a worker: {e}")
             return False
-        assert worker.stdin is not None
-        worker.stdin.write(json.dumps(request) + "\n")
-        worker.stdin.flush()
-        self._workers[job.id] = worker
-        job.status = "running"
-        job.started = _now()
+        # The worker runs nothing until it has its request, and its follower
+        # (which reaps it and frees its slot) waits until the request is
+        # sent: until then, any failure stops and reaps the worker here.
+        sent = threading.Event()
+        try:
+            job.status = "running"
+            job.started = _now()
+            self._save(job)
+            self._workers[job.id] = worker
+            threading.Thread(
+                target=self._follow, args=(job, worker, log, sent), daemon=True
+            ).start()
+            assert worker.stdin is not None
+            worker.stdin.write(line)
+            worker.stdin.flush()
+        except Exception as e:
+            self._workers.pop(job.id, None)
+            discard_worker(worker, CANCEL_GRACE_SECONDS)
+            log.close()
+            job.started = None
+            logging.warning(f"Job {job.id} could not start: {e}")
+            self._finish(job, "failed", error=f"Could not start the job: {e}")
+            return False
+        finally:
+            sent.set()
         self._event(job, "status", status="running")
-        self._save(job)
-        threading.Thread(
-            target=self._follow, args=(job, worker, log), daemon=True
-        ).start()
         return True
 
-    def _follow(self, job: Job, worker: subprocess.Popen[str], log: Any) -> None:
+    def _follow(
+        self,
+        job: Job,
+        worker: subprocess.Popen[str],
+        log: Any,
+        sent: threading.Event,
+    ) -> None:
         """Read a worker's events until it exits (runs without the lock)."""
+        sent.wait()
+        with self._lock:
+            if self._workers.get(job.id) is not worker:
+                return  # It could not start: _start stopped and reaped it.
         assert worker.stdout is not None
         result: dict[str, Any] | None = None
         for line in worker.stdout:
@@ -534,8 +668,6 @@ class JobManager:
 
     def _stop_worker(self, job_id: str, worker: subprocess.Popen[str]) -> None:
         """Ask a worker to cancel; kill it after the grace period (no lock)."""
-        with self._lock:
-            self._cancelling.add(job_id)
         try:
             assert worker.stdin is not None
             worker.stdin.write("cancel\n")
@@ -546,7 +678,7 @@ class JobManager:
             worker.wait(CANCEL_GRACE_SECONDS)
         except subprocess.TimeoutExpired:
             logging.warning(f"Job {job_id} did not stop; killing its worker.")
-            _kill_tree(worker.pid)
+            kill_tree(worker.pid)
 
     def _finish(
         self,
@@ -569,26 +701,36 @@ class JobManager:
             }
         self._writes.pop(job.id, None)
         self._event(job, "status", status=status)
-        self._save(job)
+        # The job is over whether or not it can be recorded yet: its slot and
+        # folders are free already.
+        self._unsaved[job.id] = None
+        self._save_finished()
 
-
-def _detached() -> dict[str, Any]:
-    """Run workers in their own process group: a terminal's Ctrl-C stops the
-    server, which then cancels them cleanly."""
-    if sys.platform == "win32":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    return {"start_new_session": True}
-
-
-def _kill_tree(pid: int) -> None:
-    import psutil
-
-    with contextlib.suppress(psutil.Error):
-        parent = psutil.Process(pid)
-        for child in parent.children(recursive=True):
-            with contextlib.suppress(psutil.Error):
-                child.kill()
-        parent.kill()
+    def _save_finished(self) -> None:
+        """Record finished jobs not yet saved; those saved may be evicted."""
+        for job_id in list(self._unsaved):
+            job = self._jobs[job_id]
+            saved = True
+            try:
+                self._save(job)
+            except OSError as e:
+                saved = False
+                logging.warning(f"Could not save job {job_id}'s record: {e}")
+            try:
+                with (
+                    contextlib.closing(sqlite3.connect(self._history, timeout=0)) as db,
+                    db,
+                ):
+                    self._index_summary(db, job)
+            except (OSError, sqlite3.Error) as e:
+                saved = False
+                logging.warning(f"Could not list job {job_id}: {e}")
+            if not saved:
+                continue
+            del self._unsaved[job_id]
+            self._finished.append(job_id)
+            if len(self._finished) > MAX_FINISHED_JOBS:
+                del self._jobs[self._finished.popleft()]
 
 
 def write_private_json(path: Path, data: Mapping[str, Any]) -> None:

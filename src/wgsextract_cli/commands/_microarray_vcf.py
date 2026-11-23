@@ -35,7 +35,12 @@ from wgsextract_cli.core.utils import (
 from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
     match_chromosome_name,
+    vcf_header_chromosomes,
     vcf_index_chromosomes,
+)
+from wgsextract_cli.core.variant_sample import (
+    ensure_sample_vcf_indexed,
+    subset_vcf_sample,
 )
 
 from ._microarray_combined import _command_lines, _fasta_chromosomes, _open_text
@@ -349,6 +354,47 @@ def _target_positions(ref_vcf_tab: str) -> dict[str, array[int]]:
     return {chrom: array("l", sorted(p)) for chrom, p in positions.items()}
 
 
+def _view_vcf_targets(
+    vcf: str,
+    output: Path,
+    ref_vcf_tab: str,
+    selection: list[str],
+    outdir: str,
+    *,
+    sample: str | None,
+    original_ref_vcf_tab: str | None,
+    gvcf: bool = False,
+    trim_alt_alleles: bool = False,
+) -> str:
+    output_type = "-Ov" if gvcf else "-Oz"
+    overlap = ["--targets-overlap", "1"] if gvcf else []
+
+    def targets(chroms: list[str] | None = None) -> list[str]:
+        nonlocal ref_vcf_tab
+        if chroms is not None and original_ref_vcf_tab is not None:
+            ref_vcf_tab = _prepare_vcf_target_tab_for_input(
+                original_ref_vcf_tab, vcf, outdir, chroms
+            )
+        return ["--targets-file", ref_vcf_tab, *overlap, *selection]
+
+    if sample:
+        subset_vcf_sample(
+            vcf,
+            sample,
+            output,
+            selection=targets,
+            output_type=output_type,
+            trim_alt_alleles=trim_alt_alleles,
+        )
+    else:
+        run_command(
+            ["bcftools", "view", *targets()]
+            + (["--trim-alt-alleles"] if trim_alt_alleles else [])
+            + [output_type, "-o", output, vcf]
+        )
+    return ref_vcf_tab
+
+
 def _expand_gvcf_targets(
     gvcf: str,
     out_vcf: str,
@@ -357,16 +403,18 @@ def _expand_gvcf_targets(
     ref_fasta: str,
     selection: list[str],
     outdir: str,
-) -> None:
+    trim_alt_alleles: bool = True,
+    sample: str | None = None,
+    original_ref_vcf_tab: str | None = None,
+) -> str:
     """Write the gVCF's call at every target it covers. A reference block
     covering targets becomes one record per target (a 0/0 or ./. call with the
-    FASTA's base as REF); other records overlapping a target are kept, with
-    unobserved alleles such as <NON_REF> trimmed. Targets no record covers stay
-    absent, i.e. uncalled. Only target positions are expanded: a whole-genome
-    gVCF's blocks span billions of bases."""
+    FASTA's base as REF). When the SNP exporter disables trimming, variant
+    records retain their ALTs to distinguish indels from reference records.
+    Targets no record covers stay uncalled. Only target positions are
+    expanded: a whole-genome gVCF's blocks span billions of bases."""
     from wgsextract_cli.core.reference_evidence import reference_depth
 
-    targets = _target_positions(ref_vcf_tab)
     fasta_chroms = _fasta_chromosomes(ref_fasta)
     fasta_names: dict[str, str | None] = {}
     expanded = 0
@@ -376,11 +424,18 @@ def _expand_gvcf_targets(
         overlapping = Path(work, "overlapping.vcf")
         records = Path(work, "records.vcf")
         regions = Path(work, "regions.txt")
-        run_command(
-            ["bcftools", "view", "--targets-file", ref_vcf_tab, "--targets-overlap"]
-            + ["1", "--trim-alt-alleles", *selection]
-            + ["-Ov", "-o", str(overlapping), gvcf]
+        ref_vcf_tab = _view_vcf_targets(
+            gvcf,
+            overlapping,
+            ref_vcf_tab,
+            selection,
+            outdir,
+            sample=sample,
+            original_ref_vcf_tab=original_ref_vcf_tab,
+            gvcf=True,
+            trim_alt_alleles=trim_alt_alleles,
         )
+        targets = _target_positions(ref_vcf_tab)
         # A variant record overlapping a block (DRAGEN writes some) outranks it.
         called: dict[str, set[int]] = {}
         with overlapping.open() as source:
@@ -433,8 +488,8 @@ def _expand_gvcf_targets(
                 block_info = dict(
                     item.partition("=")[::2] for item in fields[7].split(";")
                 )
-                for sample in range(9, len(fields)):
-                    values = fields[sample].split(":")
+                for sample_column in range(9, len(fields)):
+                    values = fields[sample_column].split(":")
                     values += ["."] * (len(formats) - len(values))
                     minimum = reference_depth(
                         block_info,
@@ -442,7 +497,7 @@ def _expand_gvcf_targets(
                         block=True,
                     )
                     values[depth] = str(minimum) if minimum is not None else "."
-                    fields[sample] = ":".join(values)
+                    fields[sample_column] = ":".join(values)
                 inside = targets.get(fields[0], array("l"))
                 variants = called.get(fields[0], set())
                 first = bisect_left(inside, int(fields[1]))
@@ -476,6 +531,7 @@ def _expand_gvcf_targets(
             ],
             description="gVCF target expansion",
         )
+    return ref_vcf_tab
 
 
 def _no_call_low_confidence_imputed(vcf: str, outdir: str, base_name: str) -> str:
@@ -523,7 +579,12 @@ def _prepare_microarray_vcf(
 
     try:
         if input_chroms is None:
-            if is_vcf:
+            if is_vcf and sample:
+                # Target-only selection can stream a VCF without building an index.
+                input_chroms = vcf_index_chromosomes(
+                    params.input
+                ) or vcf_header_chromosomes(get_bam_header(params.input))
+            elif is_vcf:
                 ensure_vcf_indexed(str(params.input))
                 input_chroms = vcf_index_chromosomes(str(params.input))
             else:
@@ -556,25 +617,34 @@ def _prepare_microarray_vcf(
         try:
             # Step 1: Get actual variants from the input VCF that match our targets
             hit_vcf = str(Path(outdir, f"{base_name}_hits.vcf.gz"))
-            sample_args = ["--samples", sample, "--trim-alt-alleles"] if sample else []
+            # Keep uncalled ALTs: trimming can turn an indel site's 0/0 into
+            # an apparently explicit reference call (#1249).
             if gvcf:
-                _expand_gvcf_targets(
+                ref_vcf_tab = _expand_gvcf_targets(
                     str(params.input),
                     hit_vcf,
                     ref_vcf_tab=ref_vcf_tab,
                     ref_fasta=ref_fasta,
-                    selection=sample_args + region_args,
+                    selection=region_args,
                     outdir=outdir,
+                    trim_alt_alleles=False,
+                    sample=sample,
+                    original_ref_vcf_tab=original_ref_vcf_tab,
                 )
             else:
-                # Use long-form --targets-file to avoid version conflicts
-                run_command(
-                    ["bcftools", "view", "--targets-file", ref_vcf_tab]
-                    + sample_args
-                    + region_args
-                    + ["-Oz", "-o", hit_vcf, str(params.input)]
+                ref_vcf_tab = _view_vcf_targets(
+                    str(params.input),
+                    Path(hit_vcf),
+                    ref_vcf_tab,
+                    region_args,
+                    outdir,
+                    sample=sample,
+                    original_ref_vcf_tab=original_ref_vcf_tab,
                 )
-            ensure_vcf_indexed(hit_vcf)
+            if sample:
+                ensure_sample_vcf_indexed(Path(hit_vcf))
+            else:
+                ensure_vcf_indexed(hit_vcf)
             hit_vcf = _no_call_low_confidence_imputed(hit_vcf, outdir, base_name)
 
             # Step 2: Since we need a complete file for the templates, we'll

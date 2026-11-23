@@ -23,6 +23,8 @@ on:
       - packaging/wgse-minimap2/**
       - .github/workflows/linux_aligners.yml
       - .github/actions/setup-pixi/**
+      - .github/actions/compiler-cache/**
+      - .github/actions/apt-install/**
       - "!**/*.md"
   push:
     branches: [main]
@@ -70,8 +72,7 @@ jobs:
           scope: aligners-cpu
           recipe: ${{ hashFiles('native/**/CMakeLists.txt', '.github/workflows/linux_aligners.yml') }}
 
-  # The CUDA backends (wgse-bwa and wgse-bwa-mem3) with their tests, compiled only: the
-  # runner has no GPU, so their GPU tests would skip. The packages build wgse-bwa's alone.
+  # Build the CUDA backends and verify their fallback on a runner without a GPU.
   cuda-build:
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-24.04
@@ -97,6 +98,7 @@ jobs:
                 -DCUDAToolkit_ROOT="$(dirname "$(dirname "$(command -v nvcc)")")" \
                 -DFETCHCONTENT_BASE_DIR="$PWD/out/deps"
               cmake --build out/build-cuda -j "$(nproc)"
+              ctest --test-dir out/build-cuda -R "^bwa_cuda_cpu_fallback$" --output-on-failure
               out/build-cuda/bwa-mem3/wgse-bwa-mem3 capabilities --json
               out/build-cuda/bwa-mem3/wgse-bwa-mem3 capabilities --json | grep -q "\"cuda_available\":false"'
 

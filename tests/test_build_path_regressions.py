@@ -169,3 +169,92 @@ def test_issue_1004_vcf_assembly_metadata_survives_path_fix(
     )
 
     assert get_vcf_build(bgzip_index(vcf)) == "hg38"
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("reference", "build"),
+    [
+        ("file:///data/chm13-project/ref.fa", None),
+        ("/data/hg19 work/GRCh38.fa.gz", "hg38"),
+        ("C:\\chm13\\hs37d5.fa.gz", "hg19"),
+        ("GRCh38", "hg38"),
+        # Contig assembly metadata still counts, with the usual preference.
+        ('/refs/hs37d5.fa">\n##contig=<ID=chr2,length=9,assembly="GRCh38.p14"', "hg38"),
+    ],
+)
+def test_vcf_reference_path_counts_only_its_file_name(
+    tmp_path: Path, reference: str, build: str | None
+) -> None:
+    """bcftools writes the reference's full path; a folder named chm13 made
+    VEP and PharmCAT treat a GRCh38 VCF as T2T (found certifying a worktree
+    named chm13-tests-deep-tmp)."""
+    vcf = tmp_path / "sample.vcf"
+    vcf.write_text(
+        f"##fileformat=VCFv4.2\n##reference={reference}\n"
+        "##contig=<ID=chr1,length=1000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    )
+    assert get_vcf_build(bgzip_index(vcf)) == build
+
+
+@needs_htslib
+def test_build_detected_from_a_folder_name_before_is_detected_again(
+    tmp_path: Path,
+) -> None:
+    """Review of #1299: a build recorded when the folder decided it (version 1)
+    outlived the fix, so VEP and PharmCAT kept rejecting the VCF."""
+    from wgsextract_cli.core import sample_workspace
+
+    vcf = tmp_path / "sample.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##reference=file:///chm13-project/GRCh38.fa\n"
+        "##contig=<ID=chr1,length=1000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    )
+    sample = bgzip_index(vcf)
+    name = Path(sample).name
+    fact = f'[detected."{name}".build'
+    (tmp_path / sample_workspace.WORKSPACE_FILE).write_text(
+        f'schema = "{sample_workspace.SCHEMA_ID}"\n[detected."{name}"]\n'
+        f'fingerprint = "{sample_workspace.file_fingerprint(sample)}"\n'
+        f'{fact}]\nvalue = "t2t"\nmethod = "VCF header contigs"\n'
+        'confidence = "high"\nversion = 1\nby = "wgsextract 0.8"\n'
+        'at = "2026-01-01T00:00:00+00:00"\n',
+        newline="\n",
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+    lib = ReferenceLibrary(library, input_path=sample, skip_full_search=True)
+    assert lib.build == "hg38"
+
+
+@needs_htslib
+def test_issue_1243_build_an_earlier_version_recorded_is_detected_again(
+    tmp_path: Path,
+) -> None:
+    # A .vcf.bgz build recorded before it was read as a VCF must not stick.
+    from wgsextract_cli.core import sample_workspace
+
+    vcf = tmp_path / "sample.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=248956422>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    )
+    sample = bgzip_index(vcf, tmp_path / "sample.vcf.bgz")
+    fact = '[detected."sample.vcf.bgz".build'
+    (tmp_path / sample_workspace.WORKSPACE_FILE).write_text(
+        f'schema = "{sample_workspace.SCHEMA_ID}"\n'
+        '[detected."sample.vcf.bgz"]\n'
+        f'fingerprint = "{sample_workspace.file_fingerprint(sample)}"\n'
+        f'{fact}]\nvalue = "hg19"\nmethod = "alignment header contigs"\n'
+        'confidence = "high"\nversion = 1\nby = "wgsextract 0.1"\n'
+        'at = "2020-01-01T00:00:00+00:00"\n',
+        newline="\n",
+    )
+    library = tmp_path / "library"
+    library.mkdir()
+
+    lib = ReferenceLibrary(library, input_path=sample, skip_full_search=True)
+
+    assert lib.build == "hg38"

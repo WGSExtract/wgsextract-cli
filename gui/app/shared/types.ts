@@ -107,6 +107,7 @@ export type LabelTextKey =
     | "terminalExitDetailFormat"
     | "terminalNonzeroExitSummary"
     | "terminalProcessErrorTitle"
+    | "terminalJobSubmissionUnknown"
     | "terminalProcessErrorSummary"
     | "configLoadedFormat"
     | "configLoadErrorFormat"
@@ -130,6 +131,10 @@ export type LabelTextKey =
     | "resultUsageTitle"
     | "resultMissingDependencyTitle"
     | "resultOpenSetupTitle"
+    | "resultCardTitle"
+    | "resultCardSourceFormat"
+    | "resultCardViewTitle"
+    | "resultCardCloseTitle"
     | "prerequisitesTitle"
     | "prerequisitesMessage"
     | "prerequisitesStillMissingMessage"
@@ -295,6 +300,10 @@ export interface ActionSpec {
     prerequisiteArguments?: string[];
     /** The placeholder naming the job's main input, shown in the Jobs list; else the first file path control the command uses. */
     primaryInput?: string;
+    /** Ask for the run's result card (the manifest's `resultDocument.cardArguments`, or a job's `card`) and show it when the run ends. */
+    resultCard?: boolean;
+    /** Output roles in order of preference: when the run ends, the first output it wrote with one of them opens in the system's default app. */
+    openOutput?: string[];
     [key: string]: unknown;
 }
 
@@ -574,6 +583,8 @@ export interface TerminalEntry {
     truncated?: boolean;
     command?: string;
     status?: TerminalStatus;
+    /** Present until submission is confirmed; null before the app receives the ID. */
+    pendingJobID?: string | null;
     /** The action's result document, when its command printed one. */
     result?: ResultDocument;
     /** When a job (an action or setup run) started, in epoch milliseconds. */

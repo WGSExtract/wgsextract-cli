@@ -15,6 +15,7 @@ from tests.http_server import serving
 from wgsextract_cli import api
 from wgsextract_cli.api import VepRunParams
 from wgsextract_cli.api.vep import VepDownloadParams, VepVerifyParams
+from wgsextract_cli.commands._vep_rs_cache import _expected_sums
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -337,6 +338,24 @@ def test_download_fails_when_ensembl_checksums_are_unreadable(tmp_path, monkeypa
 
     assert result.status != "ok"
     assert not (tmp_path / "c" / "vep-rs" / "homo_sapiens").exists()
+
+
+def test_1210_checksum_listing_retries_transient_server_error():
+    with serving(None, {"CHECKSUMS": b"42 1 file.gz\n"}) as srv:
+        srv.get_errors["CHECKSUMS"] = [503]
+
+        assert _expected_sums(srv.url_for("CHECKSUMS"), {}) == {"file.gz": (42, 1)}
+
+
+@pytest.mark.parametrize(("status", "requests"), [(404, 1), (429, 3)])
+def test_1210_checksum_listing_does_not_retry_indefinitely(status, requests):
+    with serving() as srv:
+        srv.statuses["CHECKSUMS"] = status
+
+        with pytest.raises(WGSExtractError, match=f"HTTP {status}"):
+            _expected_sums(srv.url_for("CHECKSUMS"), {})
+
+    assert len(srv.get_paths) == requests
 
 
 def test_delete_removes_an_unfinished_vep_rs_download(tmp_path):

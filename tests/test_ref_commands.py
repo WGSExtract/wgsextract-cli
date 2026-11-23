@@ -358,8 +358,8 @@ def test_library_list_reports_genome_status_and_resources(tmp_path, genomes, cap
     assert f"REFERENCE LIBRARY: {tmp_path}" in out
     rows = _rows(out)
     assert rows["hg38 (YSEQ)"] == ["INSTALLED", "2.0 MiB", "N-counts, VEP-GRCh38"]
-    assert rows["hs37d5 (Dante)"] == ["INCOMPLETE", "1 B"]  # no GRCh37 cache
-    assert rows["T2T_v2.0"] == ["UNINDEXED", "1 B"]
+    assert rows["hs37d5 (Dante)"] == ["INCOMPLETE", "1 B", "N-counts"]  # no VEP
+    assert rows["T2T_v2.0"] == ["UNINDEXED", "1 B", "N-counts"]
     assert rows["Dog GSD"] == ["MISSING", "", "VEP-Cache"]
     assert rows["Cat Fca126"] == ["MISSING"]  # only the dog's VEP cache is there
     assert rows["Gene Maps (hg19/hg38)"] == ["INSTALLED"]
@@ -456,7 +456,7 @@ def test_library_list_defaults_to_the_configured_fastas_library(
 
     assert result.details["library"] == str(other.parent)
     assert f"REFERENCE LIBRARY: {other.parent}" in result.text
-    assert _rows(result.text)["hg38 (YSEQ)"] == ["UNINDEXED", "1 B"]
+    assert _rows(result.text)["hg38 (YSEQ)"] == ["UNINDEXED", "1 B", "N-counts"]
 
 
 @contextmanager
@@ -769,10 +769,9 @@ def menu_library(tmp_path, server, catalog):
     genomes.mkdir()
     (genomes / "tiny.fa.gz").write_bytes(b"stale")
     (genomes / "tiny.fa.gz.fai").write_text("chrOld\t5\n")
-    partial = genomes / "part.fa.gz.partial"
-    partial.write_bytes(TINY_FA_GZ[: len(TINY_FA_GZ) // 3])
-    Path(f"{partial}.source").write_text(
-        hashlib.sha256(catalog[1]["url"].encode()).hexdigest()
+    server.etags = True
+    server.leave_partial(
+        catalog[1]["url"], genomes / "part.fa.gz", TINY_FA_GZ[: len(TINY_FA_GZ) // 3]
     )
     return genomes
 
@@ -861,8 +860,8 @@ def test_issue_825_library_delete_removes_a_genome_and_what_was_made_from_it(
     fasta = genomes / "tiny.fa.gz"
     api.ref.index(RefIndexParams(ref=fasta, aligner="bwa"))
     Path(f"{fasta}.wgse-sa16").write_bytes(b"dense")
-    (genomes / "tiny_ncnt.csv").write_text("")  # the bootstrap ships N counts
-    kept = {"tiny_ncnt.csv", *(p.name for p in genomes.glob("other*"))}
+    kept = {"reference_ncounts.tsv", ".reference_ncounts.tsv.guard"}  # never stale
+    kept |= {p.name for p in genomes.glob("other*")}
     # The index build left its lock's guard, which isn't listed as deleted.
     made = {
         p.name: p.stat().st_size
@@ -1247,4 +1246,4 @@ def test_library_list_finds_the_build_of_a_genome_from_its_signature(
     library_commands.cmd_library(Namespace(ref=str(tmp_path), list=True))
 
     row = _rows(capsys.readouterr().out)["human_g1k_v37"]
-    assert row[1:] == ["29.3 KiB", "VEP-GRCh37"]
+    assert row[1:] == ["29.3 KiB", "N-counts, VEP-GRCh37"]

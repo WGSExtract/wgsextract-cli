@@ -55,14 +55,26 @@ The loop is intentionally conservative. Prefer stopping and reporting over guess
 
 ## Review Comment Policy
 
-Before marking ready, obtain an independent local review, fix its findings,
-run `pixi run lint` and relevant tests/type checks, and self-review against
-AGENTS.md. For a draft this skill created, run `gh pr ready` after that gate
-passes, unless the user explicitly requires it to remain draft. For an existing
-draft, obtain authorization before marking ready. Readiness starts Copilot
-review and area-selected full CI; do not land using the old draft-run checks.
-Ruleset `15885247` excludes drafts and push re-reviews (checked 2026-11-13);
-request another review explicitly when needed, without changing settings.
+Before opening the draft, obtain an independent local review, fix its
+findings, run `pixi run lint` and relevant tests/type checks, and self-review
+against AGENTS.md. Copilot reviews the draft, not the ready PR: ruleset
+`15885247` reviews PRs, drafts included, when opened, but not later pushes
+(checked 2026-11-21). After pushing to a draft, request a fresh review with
+`gh pr edit <number> --add-reviewer @copilot`, wait for it, and handle all its
+threads in one batch before marking ready; don't change settings. For a draft
+this skill created, run `gh pr ready` once that gate passes and the review
+threads are handled, unless the user explicitly requires it to remain draft.
+For an existing draft, obtain authorization before marking ready. Readiness
+starts area-selected full CI; do not land using the old draft-run checks.
+Certify macOS (and Windows where a host exists) on the exact head before
+ready. Immediately before `gh pr ready`, run `python scripts/ci_capacity.py
+--wait` in a background watcher and proceed only on exit 0 (3 = hold:
+merge-queue jobs wait for runners or too many ready matrices are in flight).
+Admit one PR at a time per supervisor: start the next check only after the
+previously admitted PR's ready area run is visible.
+
+A DIRTY PR is never enqueued by auto-merge; the `auto-merge-blocked` label
+marks one. Merge the base branch, resolve the conflicts and push.
 
 Collect all open threads before editing and push one locally verified batch
 per review round. Notify the responsible agent on new threads; handle them
@@ -202,7 +214,11 @@ Repeat until complete or blocked:
 6. If PR state changes while you are working, re-read state before resolving threads or merging.
 7. Continue until no failing/pending required checks, no unresolved material threads, no unhandled requested changes, and no new review comments remain.
 
-Keep at most two active implementers per machine. Implementers report after
+Run up to four implementers actively working per machine for light work, and
+keep the slots filled while eligible work remains (AGENTS.md "Agent budget").
+Waiting agents hand their wait to the supervisor, free their slot, and are
+resumed for the same PR when a slot is free.
+Heavy compute stays under the resource coordinator. Implementers report after
 pushing; supervisors own CI/review watchers and launch fresh, scoped agents
 only for actionable fixes. Before retiring or transferring a wait, write
 `out/<issue>/handoff.md` (state, commits, evidence, next action, watcher/lease
@@ -250,7 +266,7 @@ Only land the PR when all conditions are true:
 
 Use the repository's normal merge method. If uncertain, inspect allowed merge methods or existing project convention. Prefer `gh pr merge --auto` when branch protection requires queued/auto merge, otherwise use the repo's standard method. Do not use admin override.
 
-In WGS Extract, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` once every check (advisory ones included) is green. Never merge directly. The queue retests only the `required` set against the latest `main`; if it drops the PR, fix or rerun the failure and enqueue again.
+In WGS Extract, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA` once every check (advisory ones included) is green. Never merge directly. The queue retests only the `required` set against the latest `main`; if it drops the PR, fix or rerun the failure and enqueue again. Never push to an enqueued PR: dequeue it first with `gh pr merge PR --disable-auto`, so later queue groups are not invalidated.
 
 After merging:
 

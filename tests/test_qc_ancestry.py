@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import csv
 import json
+import os
+import shutil
 from pathlib import Path
 
 import jsonschema
@@ -12,6 +14,7 @@ import numpy as np
 import pytest
 
 from tests.ancestry_helpers import build, calls_vcf, raw_23andme, reads_bam
+from tests.fake_tool_launchers import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import needs_htslib
 from wgsextract_cli import api
 from wgsextract_cli.core import (
@@ -119,6 +122,43 @@ def test_bam_reads_give_the_proportions_and_record_a_fact(tmp_path, sample):
 
 
 @needs_htslib
+@pytest.mark.parametrize("query_fails", [False, True])
+def test_1247_ancestry_finishes_when_tools_fill_stderr(
+    tmp_path, sample, monkeypatch, query_fails
+):
+    require_bare_name_fakes()
+    bcftools = shutil.which("bcftools")
+    assert bcftools is not None
+    bam = reads_bam(sample, tmp_path / "noisy.bam", depth=10)
+    bindir = tmp_path / "bin"
+    python_tool(
+        bindir,
+        "bcftools",
+        "import os, signal, sys\n"
+        "if sys.argv[1:2] == ['mpileup']:\n"
+        "    signal.alarm(15)\n"
+        "    sys.stderr.write('mpileup warning\\n' * 32768)\n"
+        "    sys.stderr.flush()\n"
+        "    signal.alarm(0)\n"
+        f"if {query_fails!r} and sys.argv[1:2] == ['query']:\n"
+        "    signal.alarm(15)\n"
+        "    sys.stderr.write('query warning\\n' * 32768 + 'query diagnostic\\n')\n"
+        "    sys.exit(1)\n"
+        f"os.execv({bcftools!r}, [{bcftools!r}, *sys.argv[1:]])\n",
+    )
+    monkeypatch.setenv("PATH", str(bindir) + os.pathsep + os.environ["PATH"])
+
+    result = _run(sample, bam, bootstrap=0)
+
+    if query_fails:
+        assert result.exit_code == 1
+        assert "query diagnostic" in str(result.error)
+    else:
+        assert result.exit_code == 0, result.error
+        assert result.metrics["ancestry_sites"] == 3000
+
+
+@needs_htslib
 def test_low_coverage_widens_the_intervals_without_bias(tmp_path, sample):
     deep = _run(sample, reads_bam(sample, tmp_path / "deep.bam", depth=10))
     shallow = _run(sample, reads_bam(sample, tmp_path / "shallow.bam", depth=2))
@@ -160,6 +200,7 @@ def test_partial_variants_only_vcf_is_refused(tmp_path, sample):
     assert result.exit_code == 1
     assert "lists only variants" in result.error.message
     assert not (tmp_path / "v.ancestry.tsv").exists()
+    assert not (tmp_path / "wgse" / "v.ancestry.tsv").exists()
 
 
 @needs_htslib
@@ -169,6 +210,7 @@ def test_too_few_sites_are_refused(tmp_path, sample):
     assert result.exit_code == 1
     assert "1,500" in result.error.message
     assert not (tmp_path / "few.ancestry.tsv").exists()
+    assert not (tmp_path / "wgse" / "few.ancestry.tsv").exists()
 
 
 @needs_htslib

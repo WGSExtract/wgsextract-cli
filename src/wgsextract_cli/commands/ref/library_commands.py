@@ -83,7 +83,7 @@ from wgsextract_cli.core.results import (
     manifest_path_for,
     record_changed_files,
 )
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, get_resource_defaults
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, get_resource_threads
 
 from .core_commands import (
     cmd_library_list,
@@ -201,7 +201,7 @@ def run_imputation(params: RefImputationParams) -> None:
     verify_dependencies(["bcftools", "tabix", "GLIMPSE2_chunk",
                          "GLIMPSE2_split_reference", "GLIMPSE2_phase"])  # fmt: skip
     imputation_panel.check_disk(chroms, reflib)
-    threads, _memory = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     for chrom in chroms:
         path = imputation_panel.install_chromosome(
             chrom, reflib, int(threads), cancel=cancel_event()
@@ -490,7 +490,10 @@ def run_gnomad(params: RefGnomadParams) -> None:
     if params.release == "4.1":
         workers = int(params.threads) if params.threads else 6
         _run_downloader(
-            reflib, "gnomAD v4.1", lambda lib: build_gnomad_af(lib, workers), "build"
+            reflib,
+            "gnomAD v4.1",
+            lambda lib: build_gnomad_af(lib, workers, cancel_event=cancel_event()),
+            "build",
         )
     else:
         _run_downloader(reflib, "gnomAD", download_gnomad)
@@ -553,7 +556,7 @@ def run_bootstrap(params: RefBootstrapParams) -> None:
 
     logging.info("Starting reference library bootstrap...")
     before = file_snapshot(reflib)
-    if not download_bootstrap(reflib):
+    if not download_bootstrap(reflib, cancel_event=cancel_event()):
         raise WGSExtractError("Reference library bootstrap failed.")
     # GRCh38 microarray targets and AADR exports lift with this chain. The
     # AADR 2M panel itself is not part of the bootstrap: its server is slow,

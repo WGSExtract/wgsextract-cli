@@ -56,6 +56,22 @@ def test_unplaced_export_markers_are_not_genotyping_targets(tmp_path):
     assert markers[("chr20", 12345)] == "rs78"
 
 
+def test_issue_1329_target_keeps_corrections_scoped_to_their_template(
+    tmp_path: Path,
+) -> None:
+    templates = _templates(tmp_path)
+    body = templates / "raw_file_templates/body"
+    (body / "23andMe_V4_1.txt").write_text("rs397507452\tMT\t7444\n")
+    (body / "23andMe_V4_2.txt").write_text("# No additional markers.\n")
+    (body / "Ancestry_V2_2021.txt").write_text(
+        "rs397507452\t26\t7444\nrsLater\tchrM\t7443\n"
+    )
+
+    assert mt.collect_template_markers(
+        [str(templates)], formats=["23andMe_V4", "Ancestry_V2_2021"]
+    ) == {("chrM", 7443): "rs397507452", ("chrM", 7444): "rs397507452"}
+
+
 def test_placeholder_ids_yield_to_real_ids_or_get_their_own(tmp_path):
     templates = _templates(tmp_path)
     body = templates / "raw_file_templates/body"

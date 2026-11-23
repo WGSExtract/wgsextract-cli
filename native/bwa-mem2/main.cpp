@@ -1,5 +1,8 @@
 #include "main.h"
 #include "metal_backend.h"
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+#include "watchdog_test.h"
+#endif
 
 #include <string>
 
@@ -81,6 +84,7 @@ int main(int argc, char **argv) {
         || strcmp(argv[command_index], "--gpu-inject-rescue-failure") == 0
         || strcmp(argv[command_index], "--gpu-inject-interruptions") == 0
         || strcmp(argv[command_index], "--gpu-inject-hang") == 0
+        || strcmp(argv[command_index], "--gpu-inject-watchdog-start-failure") == 0
         || strcmp(argv[command_index], "--gpu-policy") == 0
         || strcmp(argv[command_index], "--gpu-8bit") == 0
         || strcmp(argv[command_index], "--gpu-pipeline") == 0
@@ -100,12 +104,15 @@ int main(int argc, char **argv) {
             || strcmp(argv[command_index], "--gpu-inject-rescue-failure") == 0
             || strcmp(argv[command_index], "--gpu-seed-verify") == 0
             || strcmp(argv[command_index], "--gpu-inject-seed-failure") == 0
+            || strcmp(argv[command_index], "--gpu-inject-watchdog-start-failure") == 0
             || strcmp(argv[command_index], "--cpu-upstream") == 0) {
             if (strcmp(argv[command_index], "--cpu-upstream") == 0) wgse_set_upstream_cpu(true);
             else if (strcmp(argv[command_index], "--gpu-rescue-verify") == 0) wgse_verify_gpu_rescue();
             else if (strcmp(argv[command_index], "--gpu-inject-rescue-failure") == 0)
                 wgse_inject_rescue_failure();
             else if (strcmp(argv[command_index], "--gpu-seed-verify") == 0) wgse_verify_gpu_seeds();
+            else if (strcmp(argv[command_index], "--gpu-inject-watchdog-start-failure") == 0)
+                wgse::metal::inject_watchdog_start_failure();
             else wgse_inject_seed_failure();
             ++command_index;
             continue;

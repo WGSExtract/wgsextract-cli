@@ -20,6 +20,7 @@ from wgsextract_cli.core.settings_schema import (  # noqa: E402
     DEV_SETTINGS,
     DEV_TABLE,
     MOVED_TO_DEV,
+    SERVER_SETTINGS,
     SETTINGS,
     SettingField,
 )
@@ -128,6 +129,13 @@ def render() -> str:
         *table(SETTINGS),
         "",
         f"Older names still read: {aliases}.",
+        "",
+        "## The [server] table",
+        "",
+        "Operator opt-ins for HTTP/JSON listening and viewer files. See "
+        "[server mode](server.md#remote-http-access) for exposure and TLS requirements.",
+        "",
+        *table(SERVER_SETTINGS),
         "",
         f"## The [{DEV_TABLE}] table",
         "",

@@ -30,7 +30,7 @@ from wgsextract_cli.core.temp_directory import (
 )
 from wgsextract_cli.core.utils import (
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     run_command,
 )
 
@@ -60,7 +60,7 @@ def run_fastp(params: FastpParams) -> None:
     verify_dependencies(["fastp"])
     log_dependency_info(["fastp"])
 
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     outdir = fspath(params.outdir) if params.outdir else str(absolute_path(r1).parent)
 
     logging.debug(f"Input file (R1): {str(absolute_path(r1))}")
@@ -152,7 +152,7 @@ def run_fastqc(params: FastqcParams) -> None:
     verify_dependencies(tools)
     log_dependency_info(tools)
 
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     outdir = (
         fspath(params.outdir)
         if params.outdir
@@ -375,7 +375,7 @@ def _multiqc_report(params: MultiqcParams) -> int:
                     f"{source}."
                 )
             if params.force:
-                move_file(staged, report)
+                move_file(staged, report, locked=True)
             else:
                 try:
                     link_new_file(staged, report)

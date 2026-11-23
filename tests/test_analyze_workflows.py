@@ -21,8 +21,8 @@ import psutil
 import pytest
 
 from tests.fake_tools import python_tool
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import bgzip_index, needs_tools, run_wgsextract, sam_to_bam
-from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.commands import _analyze_workflows as wf
 from wgsextract_cli.core.config import get_config_path
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
@@ -131,8 +131,9 @@ if name == state["die"]:
     os._exit(9)
 if name == "info":
     cache = outdir / (Path(opt["--input"]).name + ".wgse_info.json")
-    cache.write_text("{{not json" if state["broken_info"]
-                     else json.dumps({{"gender": state["gender"]}}))
+    if not state["leave_info_cache"]:
+        cache.write_text(json.dumps({{"gender": state["gender"]}}))
+    document["metrics"] = {{"sex": state["gender"]}}
 elif output and not (name in state["skip_existing"] and output.exists()):
     source = state["outputs"].get(name)
     if source:
@@ -174,7 +175,7 @@ class FakeSteps:
         self.die: str | None = None
         self.writer = False
         self.skip_existing: set[str] = set()
-        self.broken_info = False
+        self.leave_info_cache = False
         self.reference: Path | None = None
         self.outputs: dict[str, str] = {}
         if all(get_tool_path(t) for t in ("bgzip", "tabix", "bcftools")):
@@ -243,7 +244,7 @@ class FakeSteps:
         (self.home / "state.json").write_text(json.dumps({
             "gender": self.gender, "fail": sorted(self.fail), "die": self.die,
             "writer": self.writer, "skip_existing": sorted(self.skip_existing),
-            "broken_info": self.broken_info, "outputs": self.outputs,
+            "leave_info_cache": self.leave_info_cache, "outputs": self.outputs,
             "reference": str(self.reference) if self.reference else None,
         }))  # fmt: skip
         # Literal strings: TOML would read a Windows path's backslashes as escapes.
@@ -329,14 +330,6 @@ def test_female_genome_skips_y_lineage(
     fake.gender = "Female"
     run = fake.run("--input", bam, "--outdir", str(tmp_path / "o"), "--skip-calling")
     assert run.ran == ["info", "mt-haplogroup"]
-
-
-def test_unreadable_info_cache_still_runs_y_lineage(
-    fake: FakeSteps, bam: str, tmp_path: Path
-) -> None:
-    fake.broken_info = True
-    run = fake.run("--input", bam, "--outdir", str(tmp_path / "o"), "--skip-calling")
-    assert run.ran == ["info", "mt-haplogroup", "y-haplogroup"]
 
 
 def test_changing_the_y_tree_reruns_y_lineage_on_resume(

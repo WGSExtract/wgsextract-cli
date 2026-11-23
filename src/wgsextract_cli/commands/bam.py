@@ -28,6 +28,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.mimalloc import samtools_cram_executable
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import input_stem
@@ -144,6 +145,7 @@ def _setup(
         memory=getattr(params, "memory", None),
         region=params.region,
         stage="sort" if sort else "compression",
+        budget_memory=sort or isinstance(params, BamUnalignParams),
     )
     region = region_or_gene(params.region, params.gene, params.input, base.ref)
     return fspath(params.input), base, region
@@ -169,6 +171,7 @@ def run_identify(params: BamIdentifyParams) -> None:
 def run_sort(params: BamSortParams) -> None:
     input_path, base, region = _setup(params, sort=True)
     threads, memory, outdir, cram_opt, resolved_ref = base
+    assert memory is not None
     memory = sort_memory(threads, memory, input_bytes=regular_files_bytes([input_path]))
 
     fmt, ext = _alignment_format(input_path)
@@ -275,7 +278,12 @@ def run_unsort(params: BamUnsortParams) -> None:
     log_dependency_info(["samtools"])
     input_path = fspath(params.input)
     _, _, outdir, cram_opt, _ = base_args(
-        input_path, ref=params.ref, outdir=params.outdir, threads=None, memory=None
+        input_path,
+        ref=params.ref,
+        outdir=params.outdir,
+        threads=None,
+        memory=None,
+        budget_memory=False,
     )
 
     _, ext = _alignment_format(input_path)
@@ -316,6 +324,7 @@ def run_to_cram(params: BamToCramParams) -> None:
             output_dir=outdir,
             threads=threads,
             output_format="CRAM",
+            reference=resolved_ref,
             region=region,
         )
     )
@@ -325,11 +334,14 @@ def run_to_cram(params: BamToCramParams) -> None:
     logging.info(
         LOG_MESSAGES["converting_file"].format(input=input_path, output=out_file)
     )
+    encoder = samtools_cram_executable(
+        params.mimalloc, version=params.cram_version, reference=resolved_ref
+    )
     try:
         with cleanup_files(on_failure=[out_file]):
             run_command(
                 [
-                    "samtools",
+                    encoder,
                     "view",
                     "-Ch",
                     "--output-fmt-option",
@@ -386,6 +398,7 @@ def run_to_bam(params: BamToBamParams) -> None:
 def run_unalign(params: BamUnalignParams) -> None:
     input_path, base, region = _setup(params)
     threads, memory, outdir, cram_opt, resolved_ref = base
+    assert memory is not None
 
     _preflight_sort_space(
         input_path, outdir, "Name", "Name Sort", region, "ButtonUnalignBAM", threads

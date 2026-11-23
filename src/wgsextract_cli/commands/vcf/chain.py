@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 import subprocess
@@ -5,6 +6,7 @@ import sys
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams
+from wgsextract_cli.core.artifacts import lineage_args
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -12,7 +14,7 @@ from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
-from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.results import MANIFEST_SUFFIX, current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import calculate_bam_md5
 
@@ -48,6 +50,22 @@ def _step_output(ann: str, step_input: str, step_outdir: str) -> str:
     if ann == "vep":
         return vep_output_paths(step_input, step_outdir, "vcf")[1]
     return str(Path(step_outdir, _VCF_STEPS[ann][1]))
+
+
+def _forward_step_warnings(step: str, ann: str, step_outdir: str) -> None:
+    """Repeat what a step warned about its annotation data (``annotation_*``,
+    such as resource records it excluded): its log was captured and its folder
+    is removed. Findings about the sample stay with the step's own command."""
+    for manifest in sorted(Path(step_outdir).glob(f"*{MANIFEST_SUFFIX}")):
+        if manifest.name.endswith(".failed" + MANIFEST_SUFFIX):
+            continue  # an earlier, failed attempt's
+        for item in json.loads(manifest.read_text(encoding="utf-8"))["warnings"]:
+            if item["code"].startswith("annotation_"):
+                warn(
+                    item["code"],
+                    f"{step} '{ann}': {item['message']}",
+                    **item["details"],
+                )
 
 
 def dataset(ann: str, lib: ReferenceLibrary) -> str | None:
@@ -162,6 +180,7 @@ def run_chain_annotate(
             if reference:
                 cmd += ["--ref", str(reference)]
             cmd += _step_resource_args(ann, lib)
+            cmd += lineage_args(current_result().run, ann)
 
             try:
                 # Captured so chained runs stay readable; surfaced on failure.
@@ -179,6 +198,7 @@ def run_chain_annotate(
 
             current_input = step_out
             applied.append(ann)
+            _forward_step_warnings(step, ann, step_outdir)
             logging.info(f"{step} '{ann}' completed: {step_out}")
 
         if current_input == input_file:

@@ -37,6 +37,7 @@ from wgsextract_cli.core.alignment.samtools_commands import (
     get_sam_view_cmd as get_sam_view_cmd,
 )
 from wgsextract_cli.core.download_progress import CancelEvent, redact_urls
+from wgsextract_cli.core.errors import WGSExtractError as WGSExtractError
 from wgsextract_cli.core.paths import PathInput, command_is_path, expand_path
 from wgsextract_cli.core.process_registry import (
     cleanup_processes as cleanup_processes,
@@ -44,16 +45,24 @@ from wgsextract_cli.core.process_registry import (
 from wgsextract_cli.core.process_registry import (
     proc_registry,
     process_group_kwargs,
+    remember_process_group,
     terminate_trees,
+)
+from wgsextract_cli.core.process_registry import (
+    wait_with_cancel as wait_with_cancel,
 )
 from wgsextract_cli.core.progress import Heartbeat, Worker, process_cpu_seconds
 from wgsextract_cli.core.resource_policy import (
     get_resource_defaults as _get_resource_defaults,
 )
+from wgsextract_cli.core.resource_policy import (
+    get_resource_threads as get_resource_threads,
+)
 from wgsextract_cli.core.run_log import active_run_log, record_command
 from wgsextract_cli.core.runtime import (
     default_thread_tuning_profile as default_thread_tuning_profile,
 )
+from wgsextract_cli.core.windows_app_control import blocked_child, launch_error_message
 
 _process_group_kwargs = process_group_kwargs
 
@@ -89,10 +98,6 @@ def _child_stdout(stdout: ProcessStream) -> ProcessStream:
         return subprocess.DEVNULL
 
 
-class WGSExtractError(Exception):
-    """Base exception for wgsextract-cli errors (exit code 1)."""
-
-
 class UsageError(WGSExtractError):
     """The command was invoked wrongly, e.g. a required option is missing (exit code 2)."""
 
@@ -108,6 +113,8 @@ class ToolExecutionError(WGSExtractError, subprocess.CalledProcessError):
         output = self.stderr or ""
         if isinstance(output, bytes):
             output = output.decode(errors="replace")
+        if block := blocked_child(output):
+            return block
         tail = "\n".join(redact_urls(str(output)).strip().splitlines()[-8:])[-2000:]
         tool = Path(str(self.cmd[0])).name if self.cmd else "Tool"
         return f"{tool} failed (exit {self.returncode}): {tail or 'no error output'}"
@@ -384,10 +391,7 @@ def run_command(
             if fd is not None:
                 os.close(fd)
         _start_relays(relays, launched=False)
-        raise ToolLaunchError(
-            f"Could not start {Path(cmd_list[0]).name}: {error.strerror or error}. "
-            "Run 'wgsextract deps check' to validate installed tools."
-        ) from error
+        raise ToolLaunchError(launch_error_message(cmd_list[0], error)) from error
 
     relay_threads = _start_relays(relays, launched=True)
     if stderr_read is not None:
@@ -539,10 +543,8 @@ def popen(
         )
     except OSError as error:
         _start_relays(relays, launched=False)
-        raise ToolLaunchError(
-            f"Could not start {Path(cmd_list[0]).name}: {error.strerror or error}. "
-            "Run 'wgsextract deps check' to validate installed tools."
-        ) from error
+        raise ToolLaunchError(launch_error_message(cmd_list[0], error)) from error
+    remember_process_group(process)
     if isinstance(process, _RelayedPopen):
         process.relays = _start_relays(relays, launched=True)
     proc_registry.register_process(cmd_str, process)
@@ -555,24 +557,6 @@ def popen(
         target=_unregister_finished_process, daemon=True
     ).start()
     return process
-
-
-def wait_with_cancel(
-    process: subprocess.Popen[str] | subprocess.Popen[bytes],
-    cancel_event: CancelEvent | None = None,
-) -> bool:
-    """Waits for a process while checking for a cancel event."""
-    while process.poll() is None:
-        if cancel_event and cancel_event.is_set():
-            logging.info(f"Terminating process {process.pid} due to cancellation.")
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            return False
-        time.sleep(0.1)
-    return process.returncode == 0
 
 
 def _stderr_tail(stream: IO[bytes], max_lines: int = 20) -> str:
@@ -784,7 +768,9 @@ def run_pipeline(
                     logging.debug(f"{stage_name} stderr:\n{tail}")
                 continue
             detail = f"{stage_name} (exit {returncode})"
-            if tail:
+            if block := blocked_child(tail):
+                detail += f": {block}"
+            elif tail:
                 detail += f":\n{tail}"
             failures.append(detail)
         if failures:

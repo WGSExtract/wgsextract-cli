@@ -75,6 +75,9 @@ jobs:
     timeout-minutes: ${{ inputs.timeout-minutes }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: ${{ inputs.os == 'ubuntu' && github.event_name == 'pull_request' && 128 || 1 }}
+          persist-credentials: false
       - name: Verify native runner architecture
         if: inputs.os == 'linux-arm64'
         run: test "$(uname -m)" = aarch64
@@ -221,6 +224,7 @@ jobs:
           key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-${{ github.run_id }}
           restore-keys: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-
       - name: Run Tests
+        id: regular-pytest
         shell: bash
         env:
           EVENT: ${{ github.event_name }}
@@ -231,11 +235,16 @@ jobs:
           OS: ${{ inputs.os }}
           # Ubuntu x64 alone runs the reviewed OS-independent tests.
           SKIP_INDEPENDENT: ${{ inputs.os != 'ubuntu' || inputs.skip-generic }}
+        # -n logical overrides test-ci's -n auto: with psutil installed, auto
+        # counts physical cores, two of the four vCPUs on hosted x64 runners (#1305).
         run: |
-          args=(--ci-tier "$TIER" --ci-shard "$SHARD")
+          args=(-n logical --ci-tier "$TIER" --ci-shard "$SHARD")
           if [ "$SKIP_INDEPENDENT" = true ]; then args+=(--ci-skip-independent); fi
           if [ "$EVENT" != pull_request ] && [ "$EVENT" != merge_group ]; then
             args+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
+          fi
+          if [ "$OS" = ubuntu ] && [ "$EVENT" = schedule ]; then
+            args+=(--cov-context=test --cov-config=.github/coverage-impact.ini)
           fi
           cache=(--cache-job "os=$OS tier=$TIER shard=$SHARD skip-independent=$SKIP_INDEPENDENT")
           if [ "$EVENT" = pull_request ]; then
@@ -289,3 +298,54 @@ jobs:
             out/vep-rs-e2e.xml
             out/e2e-fake.xml
             out/pure-move-collection.log
+      - name: Export scheduled Linux test observations
+        id: impact-map
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.regular-pytest.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_observations
+          --coverage-file out/.coverage --junit out/pytest.xml
+          --output out/test-impact-map/linux.json.gz
+          --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Save main's Linux observation map
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.impact-map.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-impact-map/linux.json.gz
+          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Restore main's Linux observation map
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-impact-map/linux.json.gz
+          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ci-impact-v2-linux-x64-
+      - name: Compare shadow selection with regular Linux pytest
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        shell: bash
+        env:
+          TEST_SELECTION: ${{ inputs.tests }}
+          TEST_OUTCOME: ${{ steps.regular-pytest.outcome }}
+        run: |
+          pixi run -e dev --no-install python -m scripts.ci_impact_shadow \
+            --observations out/test-impact-map/linux.json.gz --junit out/pytest.xml \
+            --output out/test-selection-shadow.json --summary "$GITHUB_STEP_SUMMARY" \
+            --selection "$TEST_SELECTION" --outcome "$TEST_OUTCOME" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            || echo '### Linux test selection shadow unavailable (report generation failed)' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload advisory Linux selection and outcome receipt
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-selection-shadow
+          path: out/test-selection-shadow.json
+          if-no-files-found: ignore

@@ -289,7 +289,7 @@ def register(
         "needs",
         None,
         cmd_ref_needs,
-        "Report the reference genome or annotation data a command line needs that isn't installed, and how to install it.",
+        "Report the reference genome, annotation data or optional tools a command line needs that aren't installed, and how to install them.",
     )
     needs.add_argument(
         "--report-json",

@@ -27,6 +27,7 @@ _FASTQ_EXT_RE = re.compile(r"\.(?:fastq|fq)(?:\.gz)?$", re.IGNORECASE)
 # optionally followed by an Illumina segment number (sample_1, sample.2_001).
 _EXPLICIT_MATE_RE = re.compile(r"(?<![^._-])(?:r|read)([12])(?![^._-])", re.IGNORECASE)
 _TRAILING_MATE_RE = re.compile(r"(?<![^._-])([12])((?:[._-]\d{3})?)$")
+# Commands that take their default VCF from the genome instead of global config.
 VCF_FILE_COMMANDS = {
     "annotate",
     "filter",
@@ -57,7 +58,14 @@ def apply_genome_selection(args: Namespace, explicit_dests: set[str]) -> None:
         )
     _check_inside_library(root_dir, genome_dir, str(genome_id))
 
-    config = _load_or_create_genome_config(genome_dir)
+    single_vcf_override = (
+        getattr(args, "_one_vcf_input", False)
+        and getattr(args, "vcf_cmd", None) != "trio"
+        and bool({"input", "vcf_input"} & explicit_dests)
+    )
+    config = _load_or_create_genome_config(
+        genome_dir, discover_vcf=not single_vcf_override
+    )
     args.genome_dir = str(genome_dir)
     if "outdir" not in explicit_dests and hasattr(args, "outdir"):
         args.outdir = str(genome_dir)
@@ -72,7 +80,8 @@ def apply_genome_selection(args: Namespace, explicit_dests: set[str]) -> None:
             with contextlib.suppress(WGSExtractError):
                 args.input = str(_resolve_alignment(genome_dir, config))
     elif command == "vcf" or getattr(args, "qc_cmd", None) == "vcf":
-        _set_vcf_input(args, genome_dir, config, explicit_dests)
+        if not single_vcf_override:
+            _set_vcf_input(args, genome_dir, config, explicit_dests)
     elif command in {"align", "pet-align"} or getattr(args, "qc_cmd", None) == "fastp":
         _set_fastq_inputs(args, genome_dir, config, explicit_dests)
     else:
@@ -125,11 +134,13 @@ def _check_inside_library(root_dir: Path, genome_dir: Path, genome_id: str) -> N
         )
 
 
-def _load_or_create_genome_config(genome_dir: Path) -> dict[str, Any]:
+def _load_or_create_genome_config(
+    genome_dir: Path, *, discover_vcf: bool = True
+) -> dict[str, Any]:
     config_path = genome_dir / GENOME_CONFIG_NAME
     raw = _load_genome_config(config_path)
     existing = {key: value for key, value in raw.items() if isinstance(value, str)}
-    discovered = _discover_genome_files(genome_dir, existing)
+    discovered = _discover_genome_files(genome_dir, existing, discover_vcf=discover_vcf)
     additions = {
         key: value for key, value in discovered.items() if value and key not in raw
     }
@@ -152,9 +163,11 @@ def _load_genome_config(config_path: Path) -> dict[str, Any]:
         raise WGSExtractError(f"Failed to read {config_path}: {e}") from e
 
 
-def _discover_genome_files(genome_dir: Path, config: dict[str, Any]) -> dict[str, str]:
+def _discover_genome_files(
+    genome_dir: Path, config: dict[str, Any], *, discover_vcf: bool
+) -> dict[str, str]:
     alignments = _alignment_candidates(genome_dir, config)
-    vcfs = _find_files(genome_dir, VCF_SUFFIXES)
+    vcfs = _find_files(genome_dir, VCF_SUFFIXES) if discover_vcf else []
     fastq_sets = _find_fastq_sets(genome_dir)
     pacbio_reads = [
         path

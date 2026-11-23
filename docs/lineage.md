@@ -17,6 +17,26 @@ testing. `lineage mt-haplogroup --tree-links` adds the YFull mtDNA branch and
 FTDNA's public mtDNA tree (use its branch search); the corresponding Y command
 adds YFull/FTDNA links.
 
+### Mitochondrial reference coordinates
+
+Haplogrep classifies rCRS coordinates. CHM13v2.0's original chrM has the
+same 16,569-base length but is rotated by 576 bases and has three other
+differences. Length alone does not identify rCRS: the sequence dictionary's
+M5/MD5 tag, the matching reference FASTA, or VCF REF alleles identify it.
+Reference metadata requires a known full-sequence MD5, from the header or
+computed from the FASTA. A matching start anchor alone cannot rule out
+coordinate-shifting indels; unknown digests or unavailable sequence evidence
+leave mitochondrial identity unknown. Contig-name/length signatures identify
+the assembly but do not establish mitochondrial identity.
+
+For a CHM13 BAM or CRAM, supply its matching `--ref`. The command calls
+all mitochondrial sites and maps them to rCRS through the bundled, pinned
+microarray mitochondrial alignment before running Haplogrep. The result
+records this conversion in `details.mt_reference`. A CHM13 VCF must include
+reference-only calls (all-sites VCF or gVCF); a variants-only VCF is refused
+with instructions to use the alignment or call all sites. Simply rotating
+variant positions would lose sample alleles at reference-difference sites.
+
 ## Y haplogroups and STRs
 
 `lineage y-haplogroup` uses native code derived from
@@ -26,8 +46,15 @@ the user's directory is never deleted. Missing build tables require explicit
 `--download` consent for SHA-256-verified downloads from this repository's
 `yleaf-data-v4.1.6` release into the configured reference library. Cached tables
 work offline; see [network consent](privacy.md).
-CRAM and variant-only VCF inference require a matching `--ref`;
+CRAM decoding and gVCF block expansion require a matching `--ref`;
 use `--no-ref-inference` for targeted VCF panels. Align FASTQ first.
+Absent VCF markers are unknown unless confirmed callable by a reference block
+passing the caller's quality model and block-wide MIN_DP thresholds (bcftools
+reference blocks are depth-only; GQ-based callers also require GQ); all-sites REF calls are accepted
+at their recorded positions. Variant-only VCFs warn that results may be
+incomplete and suggest gVCF/all-sites input. `--assume-reference` explicitly
+opts into upstream Yleaf's unsafe missing-site reference assumption for parity
+checks; it may bias predictions toward the reference genome's Y lineage.
 
 Choose `--tree yfull|yfull_v10|ftdna|isogg`. Default `yfull` pins YFull YTree
 14.06.0 by SHA-256 and records the version. Register custom trees in
@@ -55,12 +82,49 @@ with 8% no-calls. See [sources, licences and conventions](../src/wgsextract_cli/
 
 `extract ydna-bam --poz` writes indexed `_Y_poz.bam` from the original
 WGS Extract CombBED/McDonald/Poznik union (~12 Mb), **not** all stable SNPs
-or a BigY/exome capture. Exact GRCh37/hg19 or GRCh38 Y lengths are required,
-with `chrY` or `Y`, including Y-only inputs. Original BED mitochondrial
-regions are excluded; boundary-overlapping reads remain whole.
-T2T, unknown and inconsistent assemblies are rejected, not lifted.
+or a BigY/exome capture. Exact GRCh37/hg19, GRCh38 or T2T-CHM13v2.0 Y lengths
+are required, with `chrY` or `Y`, including Y-only inputs. The T2T regions are
+the GRCh38 BED lifted with the UCSC `hg38ToHs1` chain (~11.6 Mb). Original BED
+mitochondrial regions are excluded; boundary-overlapping reads remain whole.
+Unknown and inconsistent assemblies are rejected.
 Bundled BED [provenance and licence](../src/wgsextract_cli/assets/reference/poz/NOTICE.txt) require
 no download. Without `--poz`, whole-Y extraction is unchanged.
+
+### Y-associated contigs (`--y-scope`)
+
+`extract ydna-bam`, `extract y-mt-extract` and `extract region --target y|ymt`
+read only the primary chrY (and chrM) by default: `--y-scope primary`.
+`--y-scope associated` adds the reference's Y-associated contigs, writing
+`_Y_associated.bam`, `_Y_MT_associated.bam` (and for `region`,
+`_Y_associated.vcf.gz`/`.fasta`). Of GRCh37, GRCh38 and T2T-CHM13v2.0 only
+GRCh38 assigns one: the 37,240 bp unlocalized scaffold `chrY_KI270740v1_random`,
+also named `KI270740.1`, `NT_187395.1` and `HSCHRY_RANDOM_CTG1` (NCBI assembly
+report GCA_000001405.15). The alignment header's contig is read only when its
+length, its `M5` (if recorded) and a GRCh38-length chrY all match; a
+same-named contig that differs, or a Y-like name no supported assembly assigns
+to Y, is listed and left out. On GRCh37 and T2T the associated scope reads
+chrY alone. A header without @SQ lines or a chrY fails; so does calling, or a
+CRAM, whose reference lacks the included contig or has no `.fai` or `.dict`
+to show it. Nothing is downloaded.
+
+Records are taken by position, as for chrY: secondary, supplementary and
+unmapped mates placed on a selected contig are kept, each record once, in
+header order with a BAM index; a mate mapped elsewhere and unplaced unmapped
+reads are not. The result's `details` list each considered contig with
+`included`, `reason` and, for BAMs, `mapped_records` and
+`placed_unmapped_records`; outputs record `y_scope` and `contigs`. `--poz`
+and `--ybrowse` take primary chrY only.
+
+**Differences from WGS Extract v4.** v44.2 always added
+`chrY_KI270740v1_random` to chr-named build-38 Y and Y+MT BAMs
+(`_chrY.bam`, `_chrYM.bam`), by name only, and never for `Y`/`KI270740.1`
+naming. `--y-scope associated` keeps those reads under any of the names above.
+On HG002 (GRCh38 no-alt, 35x) its Y and Y+MT BAMs hold exactly the records
+of v44.2's commands (7,372,465 and 9,938,023; primary chrY alone 7,368,299).
+v44.2 left its BAMs unindexed; these are indexed. It is opt-in so the default
+outputs keep their meaning. It restores retained reads; no change in
+haplogroup predictions was measured, and tools that read only chrY
+coordinates ignore the contig.
 
 `extract unmapped --fastq` adds `_unmapped_R1.fastq.gz`,
 `_unmapped_R2.fastq.gz`, `_unmapped_SE.fastq.gz` (unpaired) and
@@ -101,6 +165,11 @@ does redistribute positions with attribution and share-alike notice below.
 
 Calling never downloads or refreshes. It validates samtools/bcftools/bgzip/tabix,
 an indexed matching GRCh38 FASTA, and REF-allele agreement before calling.
+Sites where the FASTA's chrY is N, such as the PARs masked in hs38 and the
+GRCh38 no-alt analysis set, are skipped, not called; their count is in the
+VCF header (`##ybrowse_excluded_reference_N_sites`) and the
+`ybrowse_reference_n_sites_excluded` warning. Any other REF mismatch stops
+the run.
 `_Y_ybrowse.vcf.gz` has haploid genotypes at installed targets, aliases in ID
 and allele-matched HG/ISOGG annotations. Duplicate aliases combine only for
 the same REF/ALT. Multiallelic splitting never turns another ALT into reference;

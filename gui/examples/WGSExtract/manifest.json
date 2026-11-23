@@ -1,7 +1,7 @@
 {
   "id": "wgs-extract",
   // Keep this bundle version in sync with scripts/wgsextract-release-tag.txt so installer names match the bundled WGSExtract CLI release.
-  "version": "0.8.8",
+  "version": "0.8.9",
   // The settings file and the folders the user manages (outputs, libraries) grow large and belong to the user,
   // so they are kept in plain sight in {{usersWorkspace}}, apart from the app's hidden {{bundleWorkspace}}.
   "defaultUsersWorkspace": "~/wgs-extract",
@@ -107,6 +107,9 @@
     "arguments": [
       "--result-file",
       "{{resultDocumentPath}}"
+    ],
+    "cardArguments": [
+      "--card"
     ]
   },
   "jobServer": {
@@ -116,14 +119,19 @@
         "--parent-pid",
         "{{appPid}}",
         "serve",
+        "--listen",
+        "127.0.0.1",
+        "--port",
+        "0",
         "--ready-json",
         "--allow",
         "{{home}}"
       ]
     }
   },
-  // Before an action runs, `wgsextract ref needs` names the reference genome or annotation data its command line needs
-  // that isn't installed; the app then offers to install it (`wgsextract ref library --install <code>` and the like).
+  // Before an action runs, `wgsextract ref needs` names the reference genome, annotation data or optional tool its command
+  // line needs that isn't installed; the app then offers to install it (`wgsextract ref library --install <code>`,
+  // `wgsextract deps install <tool>` and the like).
   "prerequisites": {
     "command": {
       "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
@@ -139,7 +147,8 @@
     },
     "kindLabels": {
       "genome": "prerequisites.kinds.genome",
-      "annotation": "prerequisites.kinds.annotation"
+      "annotation": "prerequisites.kinds.annotation",
+      "tool": "prerequisites.kinds.tool"
     }
   },
   "pages": [
@@ -154,6 +163,7 @@
     "datasets.json",
     "library.json",
     "reference-genomes.json",
+    "tools.json",
     "settings.json"
   ]
 }

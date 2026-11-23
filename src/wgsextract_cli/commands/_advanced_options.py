@@ -53,6 +53,7 @@ ADVANCED_OPTIONS: dict[str, tuple[str, ...]] = {
         "--base-majority",
         "--min-score",
         "--no-ref-inference",
+        "--assume-reference",
     ),
     "lineage y-str": ("--min-reads", "--min-fraction", "--min-mapq"),
     "vep run": _VEP,

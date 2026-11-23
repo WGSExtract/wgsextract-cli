@@ -6,6 +6,9 @@ This file centralizes all messages to facilitate future localization.
 CLI_HELP = {
     "description": "WGS Extract Command-Line Interface (CLI)",
     "arg_debug": "Enable verbose debug logging.",
+    "arg_card": "Also write <name>.card.html beside the result manifest: a "
+    "self-contained page of the result, versions and input to view, print or "
+    "share (overrides result_card).",
     "arg_full_help": "Print help info for all subcommands.",
     "arg_vcf_input": "Input VCF file path.",
     "arg_mother": "The mother's VCF, or BAM/CRAM, for trio analysis.",
@@ -147,7 +150,10 @@ Available formats:
     "arg_se": "Single-End FASTQ file",
     "arg_long_read": "Use minimap2 for long-read alignment",
     "cmd_bam_mgmt": "BAM/CRAM management commands.",
-    "cmd_deps": "Manage system dependencies.",
+    "cmd_deps": "Check, list, install and remove the external tools.",
+    "cmd_deps-list": "List every mandatory and optional tool with its status, and whether 'deps install' or 'deps uninstall' can act on it.",
+    "cmd_deps-install": "Download and install the Pixi environment that provides an optional tool (e.g. gatk).",
+    "cmd_deps-uninstall": "Remove the Pixi environment that provides an optional tool, and the other tools in it.",
     "cmd_qc": "Quality control for raw reads, alignments and VCFs (fastp, FastQC, contamination, ancestry, VCF stats) and test data generation.",
     "cmd_qc-ancestry": "Admixture-style ancestry proportions (HGDP+1KG reference components) from a BAM/CRAM, VCF or microarray file.",
     "cmd_qc-contamination": "Estimate how much of a GRCh37/38 BAM/CRAM's DNA comes from another person (VerifyBamID2 FREEMIX). Optional: Linux and macOS, install with `pixi install -e verifybamid2`.",
@@ -284,7 +290,6 @@ LOG_MESSAGES = {
     "vep_verification_complete": "Verification complete.",
     "vep_calling_pre": "Input is BAM/CRAM. Performing variant calling first...",
     "vep_using_cache": "Using VEP cache at {path}",
-    "vep_no_cache_warn": "VEP cache not found at {path}. Attempting slow online mode.",
     "vep_preprocessing_chr": "Preprocessing VCF to add 'chr' prefix: {input} -> {output}",
     "vep_skipping_exists": "Skipping {input}, output already exists at {output}. Use --force to re-run.",
     "vep_batch_summary": "VEP Batch Summary:",

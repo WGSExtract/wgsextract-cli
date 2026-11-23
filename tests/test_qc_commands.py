@@ -156,6 +156,13 @@ def test_fastqc_requires_input():
         run_wgsextract("qc", "fastqc")
 
 
+def _visible(folder: Path) -> list[str]:
+    # Publication locks stay in the output folder, hidden.
+    return sorted(
+        p.name for p in folder.iterdir() if not p.name.startswith(".wgse_publish-")
+    )
+
+
 @needs_tools("fastqc", "multiqc")
 def test_multiqc_combines_mates_without_changing_fastqc_reports(tmp_path, monkeypatch):
     from hashlib import sha256
@@ -186,7 +193,7 @@ def test_multiqc_combines_mates_without_changing_fastqc_reports(tmp_path, monkey
     assert "sample_R1" in html and "sample_R2" in html
     assert "Inherited QC project" in html
     assert not unexpected.exists()
-    assert sorted(p.name for p in output.iterdir()) == ["multiqc_report.html"]
+    assert _visible(output) == ["multiqc_report.html"]
     assert before == {
         p.name: sha256(p.read_bytes()).hexdigest() for p in reports.iterdir()
     }
@@ -278,7 +285,7 @@ def test_multiqc_force_replaces_only_its_report_and_stays_offline(
     run_wgsextract("qc", "multiqc", "--input", str(tmp_path), "--force")
     assert report.read_text() == "new"
     assert unrelated.read_text() == "keep"
-    assert sorted(p.name for p in tmp_path.iterdir()) == ["keep.txt", report.name]
+    assert _visible(tmp_path) == ["keep.txt", report.name]
 
 
 def test_multiqc_failed_force_preserves_previous_report(tmp_path, multiqc_stub):
@@ -311,7 +318,7 @@ def test_multiqc_non_force_preserves_a_concurrently_created_report(
     with pytest.raises(WGSExtractError, match="already exists"):
         run_wgsextract("qc", "multiqc", "--input", str(tmp_path))
     assert report.read_text() == "another invocation"
-    assert sorted(p.name for p in tmp_path.iterdir()) == [report.name]
+    assert _visible(tmp_path) == [report.name]
 
 
 def test_multiqc_zero_exit_without_report_is_not_success(tmp_path, multiqc_stub):
@@ -381,6 +388,7 @@ def test_vcf_qc_failure_leaves_no_partial_report(tmp_path):
     with pytest.raises(WGSExtractError):
         run_wgsextract("qc", "vcf", "--input", str(bad))
     assert not (tmp_path / "bad.vcf.vcfstats.txt").exists()
+    assert not (tmp_path / "wgse" / "bad.vcf.vcfstats.txt").exists()
 
 
 @needs_tools("fastqc")

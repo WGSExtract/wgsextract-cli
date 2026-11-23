@@ -21,7 +21,7 @@ from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
 )
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
@@ -117,7 +117,7 @@ def open_alignment(
     if not (reference and Path(reference).is_file()):
         reference = None
 
-    threads, _memory = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     outdir = expand_path(params.outdir or absolute_path(path).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     aln = Alignment(

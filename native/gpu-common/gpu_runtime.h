@@ -45,9 +45,15 @@ inline std::atomic<bool> &gpu_hung() {
     return value;
 }
 
+inline std::string error_description(wgse_gpu_error error) {
+    // CUDA's hybrid runtime can return null when it cannot load the driver.
+    const char *text = WGSE_GPU(GetErrorString)(error);
+    return text ? std::string(text) : "GPU runtime error " + std::to_string(static_cast<int>(error));
+}
+
 inline void check(wgse_gpu_error error, const char *what) {
     if (error != WGSE_GPU_SUCCESS)
-        throw std::runtime_error(std::string("GPU ") + what + ": " + WGSE_GPU(GetErrorString)(error));
+        throw std::runtime_error(std::string("GPU ") + what + ": " + error_description(error));
 }
 
 struct DeviceMemory {

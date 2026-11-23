@@ -78,6 +78,13 @@ def _dataclass_hints(model: type) -> dict[str, object]:
     return hints
 
 
+def _dataclass_required(model: type) -> frozenset[str]:
+    # Writers emit even defaulted fields unless omission is explicit.
+    return frozenset(
+        item.name for item in fields(model) if not item.metadata.get("omit_none")
+    )
+
+
 def output_schema(
     document: object,
     *,
@@ -163,8 +170,7 @@ def output_schema(
             raise TypeError(f"Expected a TypedDict or dataclass class: {tp!r}")
         if is_dataclass(tp):
             hints = _dataclass_hints(tp)
-            # asdict emits defaulted and init=False fields, unlike a constructor.
-            required = frozenset(hints)
+            required = _dataclass_required(tp)
         else:
             hints = get_type_hints(tp, include_extras=True)
             required = cast(_TypedDictKeys, tp).__required_keys__

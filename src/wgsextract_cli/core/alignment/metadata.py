@@ -3,7 +3,11 @@ import subprocess
 from collections.abc import Sequence
 from os import PathLike, fspath
 
-from wgsextract_cli.core.builds import build_from_chr1_length, build_from_path
+from wgsextract_cli.core.builds import (
+    build_from_chr1_length,
+    build_from_path,
+    reference_header_name,
+)
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.ref_library.assets import (
@@ -20,10 +24,12 @@ def get_bam_header(
 ) -> str:
     """Retrieve header using samtools view -H."""
     from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.variant_files import is_vcf_path
 
     bam_path = fspath(bam_path)
     is_cram = bam_path.lower().endswith(".cram")
-    is_vcf = bam_path.lower().endswith((".vcf", ".vcf.gz", ".bgz", ".bcf"))
+    # Any .bgz here (sample.bgz, sample.gvcf.bgz) is a bgzipped VCF.
+    is_vcf = is_vcf_path(bam_path) or bam_path.lower().endswith(".bgz")
 
     if is_vcf:
         try:
@@ -107,9 +113,12 @@ def get_vcf_build(vcf_path: str) -> str | None:
         build = build_from_chr1_length(sequence_lengths(res.stdout))
         if build:
             return build
-        # Tool provenance lines contain command paths, not assembly evidence.
+        # Tool provenance lines contain command paths, not assembly evidence,
+        # and a ##reference path is evidence only by its file name.
         metadata = "\n".join(
-            line
+            reference_header_name(line.partition("=")[2])
+            if line.lower().startswith("##reference=")
+            else line
             for line in res.stdout.splitlines()
             if line.lower().startswith(("##reference=", "##assembly=", "##contig="))
         )

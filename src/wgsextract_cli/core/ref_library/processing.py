@@ -24,6 +24,7 @@ from wgsextract_cli.core.ref_library.assets import (
     read_fai_lengths,
     reference_dict_path,
     reference_genomes_dir,
+    sequence_signature,
     verify_sequence_signature,
 )
 from wgsextract_cli.core.ref_library.catalog import get_genome_status
@@ -118,10 +119,19 @@ def _remove_genome_files(base_path: str) -> None:
 
 
 def has_ref_ns(final_name: str, reflib_dir: str) -> bool:
-    """Checks if N-count files exist for a reference genome."""
-    if not reflib_dir:
+    """Whether a genome's N counts are known: in the release's or the library's
+    N-count table, or in N-count files beside it."""
+    from wgsextract_cli.core.ref_library.ncount_table import load_table
+
+    genomes_dir = reference_genomes_dir(reflib_dir) if reflib_dir else None
+    if any(
+        e.reference == final_name
+        for e in load_table([genomes_dir] if genomes_dir else [])
+    ):
+        return True
+    if not genomes_dir:
         return False
-    base_path = str(Path(reference_genomes_dir(reflib_dir), final_name))
+    base_path = str(Path(genomes_dir, final_name))
     return any(Path(path).exists() for path in n_count_paths(base_path))
 
 
@@ -230,7 +240,46 @@ def download_and_process_genome(
             # Do not advertise a rejected mirror as installed or trust it on retry.
             _remove_genome_files(final_path)
             return False
+    _record_n_counts(
+        final_path, genome_data["final"], target_dir, status_callback, cancel_event
+    )
     return True
+
+
+def _record_n_counts(
+    fasta: str,
+    name: str,
+    genomes_dir: str,
+    status_callback: Callable[[str], None] | None,
+    cancel_event: CancelEvent | None,
+) -> None:
+    """Measure a genome's N bases into its library's table, unless the release's
+    table or the library's already has them. A cancelled count records none,
+    so the next processing counts again."""
+    from wgsextract_cli.core.ref_library import ncount_table
+    from wgsextract_cli.core.ref_library.ncount import count_sequence_ns
+
+    signature = sequence_signature(read_fai_lengths(fasta))
+    if any(e.key == (name, signature) for e in ncount_table.load_table([genomes_dir])):
+        return
+    logging.info(f"Counting the N bases of {name}...")
+    if status_callback:
+        status_callback("Processing: Counting N bases...")
+    try:
+        counts = count_sequence_ns(
+            fasta, lambda: cancel_event is not None and cancel_event.is_set()
+        )
+    except (OSError, EOFError, ValueError) as e:
+        logging.warning(f"Could not count the N bases of {name}: {e}")
+        return
+    if counts is None:
+        return
+    entry = ncount_table.measured_entry(name, signature, counts)
+    try:
+        ncount_table.add_to_library(genomes_dir, entry)
+    except (OSError, WGSExtractError) as e:
+        # The genome is installed; only its N counts go unrecorded.
+        logging.warning(f"Could not record the N bases of {name}: {e}")
 
 
 def download_bootstrap(
@@ -263,6 +312,8 @@ def download_bootstrap(
         BOOTSTRAP_URL, dest_path, BOOTSTRAP_SHA256, progress_callback, cancel_event
     ):
         return False
+    if cancel_event and cancel_event.is_set():
+        return False
 
     logging.info(f"Extracting bootstrap to {reflib_dir}...")
     try:
@@ -290,6 +341,8 @@ def _download_bootstrap_archive(
 ) -> bool:
     logging.info(f"Downloading bootstrap from {url}...")
     for attempt in range(1, 4):
+        if cancel_event and cancel_event.is_set():
+            return False
         if download_file(
             url,
             dest_path,
@@ -298,7 +351,9 @@ def _download_bootstrap_archive(
             expected_sha256=sha256,
             resolve_release_digest=False,
         ):
-            return True
+            return cancel_event is None or not cancel_event.is_set()
+        if cancel_event and cancel_event.is_set():
+            return False
         if attempt < 3:
             logging.warning(
                 "Bootstrap download failed; retrying (%s/3)...", attempt + 1

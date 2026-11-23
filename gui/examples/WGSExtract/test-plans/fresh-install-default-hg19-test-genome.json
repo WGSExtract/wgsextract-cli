@@ -169,11 +169,14 @@
       "timeoutSeconds": 3600
     },
     {
-      "id": "deps-check",
-      "kind": "action",
-      "pageID": "settings",
-      "sectionID": "dependency-checks",
-      "actionID": "deps-check",
+      "id": "tools-list",
+      "kind": "dataSource",
+      "pageID": "tools",
+      "sectionID": "tool-management",
+      "controlID": "tools",
+      "requiredOutput": [
+        "\"id\": \"samtools\""
+      ],
       "timeoutSeconds": 300
     },
     {

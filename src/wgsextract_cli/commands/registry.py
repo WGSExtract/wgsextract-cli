@@ -130,7 +130,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier(
         "ref", SETUP, "Download and check reference genomes and annotation data."
     ),
-    CommandTier("deps", SETUP, "Check that the external tools are installed."),
+    CommandTier("deps", SETUP, "Check, install and remove the external tools."),
     CommandTier(
         "example-genome", SETUP, "Download public example genomes to practise on."
     ),

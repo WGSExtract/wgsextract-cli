@@ -708,9 +708,8 @@ class TestVEPSmoke:
 
     @pytest.mark.skipif(VEP_MISSING, reason="VEP not available")
     def test_vep_basics(self):
-        # Offline against an installed cache: without one the CLI falls back
-        # to Ensembl's public database, which takes tens of minutes and fails
-        # whenever that server is slow.
+        # Annotation requires an installed local cache; it never falls back
+        # to Ensembl's public database.
         cache = vep_cache_dir(self.real_ref)
         if not (cache / "homo_sapiens").is_dir():
             pytest.skip(f"no VEP cache at {cache}; pass --real-ref <library>")

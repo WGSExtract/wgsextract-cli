@@ -7,7 +7,7 @@ import logging
 import os
 import threading
 from collections.abc import Callable, Collection, Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol, TypeVar
 
@@ -136,6 +136,7 @@ READ_ONLY_COMMANDS = frozenset(
         "ref library-list",
         "example-genome list",
         "deps check",
+        "deps list",
     }
 )
 
@@ -298,12 +299,21 @@ def execute(
     stopped. config.toml is loaded on the first call unless the host already
     loaded or selected one (see ``use_config``).
     """
+    from wgsextract_cli.core.atomic_output import output_publication_scope
+
     read_only = _runs_concurrently(params)
-    with contextlib.nullcontext() if read_only else _LOCK:
-        result, error, created = _run(params, impl, progress, cancel, read_only)
+    with (
+        contextlib.nullcontext() if read_only else _LOCK,
+        output_publication_scope(),
+    ):
+        result, error, created, card = _run(
+            params, impl, progress, cancel, read_only, card=write_manifest
+        )
         if write_manifest:
+            from wgsextract_cli.core.result_card import publish
+
             try:
-                result.write_manifest()
+                publish(result, card)
             except OSError as e:
                 logging.warning(f"Could not write the result manifest: {e}")
         from wgsextract_cli.core.output_location import remove_if_empty
@@ -314,15 +324,35 @@ def execute(
     return result
 
 
+def _card_path(
+    params: Params, result: CommandResult, requested: bool | None
+) -> Path | None:
+    """Where the run's result card goes when the caller (``wgsextract serve
+    --card``) or config.toml asks for one, as the CLI does. ``params`` are the
+    ones the run used, with config defaults filled in."""
+    from wgsextract_cli.cli.dispatch import card_wanted
+    from wgsextract_cli.core.result_card import NO_CARD, card_path
+
+    if not card_wanted(params.COMMAND, requested):
+        return None
+    path = card_path(result, getattr(params, "outdir", None))
+    if path is None:
+        logging.info(NO_CARD)
+    return path
+
+
 def _run(
     params: P,
     impl: Callable[[P], None],
     progress: ProgressCallback | None,
     cancel: CancelToken | None,
     read_only: bool,
-) -> tuple[CommandResult, BaseException | None, Path | None]:
+    *,
+    card: bool = False,
+) -> tuple[CommandResult, BaseException | None, Path | None, Path | None]:
     """Run ``impl`` in a context of its own; the result, what failed it, and
-    the default output folder it created (to remove if the run left it empty)."""
+    the default output folder it created (to remove if the run left it empty)
+    and, with ``card``, where its result card goes."""
     from wgsextract_cli.core.atomic_output import atomic_output_mode
     from wgsextract_cli.core.config import (
         ensure_settings_loaded,
@@ -360,7 +390,7 @@ def _run(
         default_outdir = getattr(params, "outdir", None) is None and not settings.get(
             "output_directory"
         )
-        params = with_config_defaults(params)
+        params = _one_vcf_input(with_config_defaults(params))
         result.provenance.params = redact_params(params.to_dict())
         unregister = (
             cancel.on_cancel(lambda: proc_registry.cancel(scope)) if cancel else None
@@ -393,13 +423,45 @@ def _run(
                 unregister()
             proc_registry.accept_new(scope)
     result.finalize(probe_tools=True)
-    return result, error, created if default_outdir else None
+    card_path = None
+    if card:
+        # The caller's request; the config the run read (a read-only call's snapshot).
+        requested = execution_context.current().result_card
+        with execution_context.bound(config=config):
+            card_path = _card_path(params, result, requested)
+    return result, error, created if default_outdir else None, card_path
+
+
+def _one_vcf_input(params: P) -> P:
+    """Of ``input`` and ``vcf_input``, keep only the VCF an operation on one
+    VCF reads (``vcf_input`` wins; ``proband`` overrides both), as
+    ``resolve_vcf_input`` leaves the CLI's arguments, so the API records the
+    same inputs and params."""
+    if not params.VCF_INPUT_OVERRIDES_INPUT:
+        return params
+    unread: dict[str, None] = {"input": None}
+    if getattr(params, "proband", None) is not None:
+        unread["vcf_input"] = None
+    elif getattr(params, "vcf_input", None) is None:
+        return params
+    narrowed = replace(params, **unread)
+    # replace() drops which fields config.toml filled; keep them.
+    object.__setattr__(
+        narrowed,
+        "_config_default_fields",
+        params._config_default_fields - unread.keys(),
+    )
+    return narrowed
 
 
 def _prepare(params: Params, result: CommandResult) -> Path | None:
-    """What dispatch does before a command: record and check the input, make
+    """What dispatch does before a command: record and check the inputs, make
     the output folder."""
-    from wgsextract_cli.cli.dispatch import checks_alignment_input, reports_status
+    from wgsextract_cli.cli.dispatch import (
+        INPUT_ARGS,
+        checks_alignment_input,
+        reports_status,
+    )
 
     if reports_status(params):
         return None
@@ -408,10 +470,12 @@ def _prepare(params: Params, result: CommandResult) -> Path | None:
     if isinstance(input_path, str) and is_url(input_path):
         check_public(input_path)  # Before a secret in it is recorded.
         result.add_input(input_path, "input")
+    for name, role in INPUT_ARGS.items():
+        path = getattr(params, name, None)
+        if isinstance(path, Path) and path.expanduser().exists():
+            result.add_input(path.expanduser(), role)
     if isinstance(input_path, Path):
         input_path = input_path.expanduser()
-        if input_path.exists():
-            result.add_input(input_path, "input")
         if input_path.suffix.lower() in {".bam", ".cram"} and checks_alignment_input(
             params.COMMAND
         ):

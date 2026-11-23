@@ -9,6 +9,7 @@ command end to end.
 
 import gzip
 import hashlib
+import json
 import random
 import subprocess
 import sys
@@ -17,11 +18,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import bgzip_index, needs_htslib, sam_to_bam, write_fasta
 from tests.http_server import serving
-from tests.smoke_utils import state_directory_setting
 from wgsextract_cli import api
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.microarray import targets
 
 pytestmark = needs_htslib
@@ -198,6 +200,80 @@ def test_ref_outside_the_library_still_finds_the_library_liftover_chain(
     assert kit == {rsid: genotype for rsid, _, genotype in MARKERS}
 
 
+def test_1380_downloads_reverse_chain_with_an_existing_hg38_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = tmp_path / "reference"
+    _, sequence = _library(library)
+    fasta = write_fasta(library / "genomes" / "hs38.fa", {"chr1": sequence})
+    forward_chain = library / "hg19ToHg38.over.chain.gz"
+    _identity_chain(forward_chain)
+    body = forward_chain.read_bytes()
+    target = tmp_path / "targets.tab.gz"
+    with target.open("wb") as compressed:
+        subprocess.run(
+            [get_tool_path("bgzip"), "-c"],
+            input=(
+                "#CHROM\tPOS\tID\n"
+                + "".join(f"chr1\t{pos}\t{rsid}\n" for rsid, pos, _ in MARKERS)
+            ).encode(),
+            stdout=compressed,
+            check=True,
+        )
+    subprocess.run(
+        [get_tool_path("tabix"), "-s1", "-b2", "-e2", str(target)], check=True
+    )
+    vcf = tmp_path / "variants.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=5000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Read Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype Quality">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
+        "chr1\t1000\trs101\tA\tC\t.\tPASS\t.\tGT:DP:GQ\t0/1:40:99\n"
+    )
+    settings["reference_library"] = str(library)
+    params = api.MicroarrayParams(
+        input=Path(bgzip_index(vcf)),
+        ref=fasta,
+        ref_vcf_tab=target,
+        formats="23andme_v3",
+        outdir=tmp_path / "out",
+        threads=1,
+    )
+    chain_name = "hg38ToHg19.over.chain.gz"
+    installed = library / chain_name
+    with serving(data=None, files={chain_name: body}) as server:
+        monkeypatch.setitem(
+            targets._CHAINS_TO_GRCH37,
+            "GRCh38",
+            targets.ChainSource(
+                chain_name,
+                (server.url_for(chain_name),),
+                hashlib.sha256(body).hexdigest(),
+            ),
+        )
+        refused = api.microarray.generate(params, check=False)
+        assert refused.exit_code == 1
+        assert refused.error and chain_name in refused.error.message
+        assert "--download" in refused.error.message
+        assert not server.paths
+        assert not installed.exists()
+
+        permitted = api.microarray.generate(replace(params, download=True), check=False)
+        assert permitted.exit_code == 0, permitted.error
+        assert chain_name in server.get_paths
+        assert installed.read_bytes() == body
+
+        requests = len(server.paths)
+        cached = api.microarray.generate(params, check=False)
+        assert cached.exit_code == 0, cached.error
+        assert len(server.paths) == requests
+
+    kit = tmp_path / "out" / "variants_23andMe_V3.txt"
+    assert "rs101\t1\t1000\tAC" in kit.read_text().splitlines()
+
+
 def test_a_missing_liftover_chain_names_the_directories_searched(
     tmp_path: Path,
 ) -> None:
@@ -217,16 +293,18 @@ def test_a_missing_liftover_chain_names_the_directories_searched(
     result = subprocess.run(
         [sys.executable, "-m", "wgsextract_cli.main", "--config", str(config)]
         + ["microarray", "--formats", "23andme_v3", "--input", bam]
-        + ["--ref", str(fasta), "--outdir", str(tmp_path / "out")],
+        + ["--ref", str(fasta), "--outdir", str(tmp_path / "out"), "--json"],
         capture_output=True,
         text=True,
     )
 
-    assert result.returncode != 0
-    error = " ".join((result.stdout + result.stderr).split())
-    assert "hg38ToHg19.over.chain.gz" in error
-    assert str(tmp_path / "elsewhere") in error
-    assert str(library) in error
+    assert result.returncode == 1, result.stderr
+    error = json.loads(result.stdout)["error"]
+    assert error["kind"] == "failure"
+    message = error["message"].replace("\\", "/")
+    assert "hg38ToHg19.over.chain.gz" in message
+    assert (tmp_path / "elsewhere").as_posix() in message
+    assert library.as_posix() in message
 
 
 def test_files_beside_an_outside_fasta_come_before_the_library(

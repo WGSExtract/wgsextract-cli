@@ -207,15 +207,16 @@ otherwise on the CPU, with the same records either way. The manifest records
   outside Apple Silicon; on Apple Silicon, the per-stage plan below.
   An explicit positive count applies to every parallel stage, including
   staged alignment. No CPU affinity is set: macOS still decides where workers run.
-- `--memory` is the sort memory per thread. `auto` uses 25% of RAM (at least
-  2 GB) split across the threads, with at least 1 GiB per thread; for example
-  16 GiB and 12 threads gives 1 GiB each, 12 GiB in total. With bwa-mem2,
+- `--memory` is the sort memory per thread. `auto` divides 25% of effective
+  RAM across the threads and rounds down. For example, 16 GiB and 12 threads
+  gives 341 MiB per thread. With bwa-mem2,
   sorting is capped at 256 MiB per thread to leave room for its index.
   Native `wgse-bwa` can also lower the requested sort budget
   when fitting its GPU pipeline, or cap an over-budget CPU fallback at 256M
   per thread as described below.
-- `samtools sort` reserves all of its threads' memory when it starts, so every
-  sort gets at most half the RAM in total and no more than its input can fill
+- `samtools sort` reserves all of its threads' memory when it starts. The CLI
+  caps its buffers at half of effective RAM, including Linux cgroup v2 limits,
+  even with explicit `--memory`, and can lower them further for small inputs
   (see [resource_estimates.md](resource_estimates.md#samtools-sort-buffers)).
   The log says when this lowers `--memory`; the output is the same.
 - Before a native BWA run, the CLI prints a memory and disk preflight. More
@@ -333,6 +334,145 @@ contain this table. Only M1 and the 10-core M1 Pro are available for measurement
 | M6 (10-core) | 2S + 3P + 5E | 10 | 5 | Derived |
 | M6 (12-core) | 2S + 4P + 6E | 12 | 6 | Derived |
 
+### Experimental Apple Silicon NEON PairHMM
+
+`vcf gatk --pair-hmm-neon JAR` opts into the existing native ARM64 GKL
+PairHMM port, built for macOS. It is **not Parabricks**; `--gpu` keeps its
+existing meaning. GATK 4.6.2.0, JDK 17+, Apple Silicon and locally installed
+libomp are required. No dependency is installed or downloaded by calling.
+See [build, fallback and native validation instructions](../packaging/arm64/gkl/README.md#apple-silicon-pairhmm-experimental-issue-1117).
+Metal is not used. NEON removes PairHMM as the main bottleneck in ordinary
+slices, but the difficult-window measurements below still spend substantial
+time in PairHMM.
+
+**Opt-in, not a default.** It calls the same sites, alleles, GT and FILTER as
+the Java PairHMM across the five-window HG002 panel below, 9.1× faster. In
+difficult regions (pericentromere, high depth) a few reads near the
+informative cutoff are counted differently, so 9 of 306,024 gVCF reference
+blocks and 8 final records differ in AD/DP, QUAL or annotations (for example
+AD/DP `63,38`/101 vs `62,38`/100). GATK's own x86 GKL AVX PairHMM is not
+bit-identical to Java either; #1193 measures how far apart those two are.
+
+Queued measurement: M1 Pro (10 cores, 32 GiB), macOS 27.2.1, OpenJDK
+17.0.21, HG002 PCR-free 35×, hs38, `chr20:10000001-20000000` (10 Mb),
+four native threads and 4 GiB Java heap. JVM startup is included;
+Smith-Waterman stays Java.
+
+| Backend | Wall seconds | PairHMM timer seconds | Peak process RSS MiB |
+| :--- | ---: | ---: | ---: |
+| Java LOGLESS_CACHING | 396.37 | 238.374 | 658.8 |
+| NEON float (rejected) | 175.61 | 10.094 | 766.7 |
+| NEON double (selected) | 179.75 | 15.373 | 770.8 |
+
+Stock GATK rejects its bundled x86 dylibs and selects Java LOGLESS_CACHING.
+An initial 1 Mb slice showed PairHMM at 51.6% of wall; in this expanded
+region it is 60.1%. NEON double reduces HaplotypeCaller wall by **54.7%**
+and leaves PairHMM at 8.6% of wall, no longer dominant.
+
+All 1,631,572 gVCF records have identical sites, alleles, GT and FILTER;
+all 1,612,162 reference blocks match completely. One variant's non-reference
+PL annotations differ; the final genotyped VCF's 17,107 records match
+byte-for-byte apart from headers. Float was rejected because one block's DP was 50
+instead of Java's 49 at chr20:17778563-17778607. A separate 200 kb control
+reproduces that mismatch with float and matches every gVCF record with
+double. The CLI therefore always requests native double precision.
+
+32,000 synthetic likelihoods per precision/native-thread configuration
+(one and four threads) are within 0.00001 absolute log10 of Java; observed
+maximum errors are 0.00000425 (float) and 0.00000106 (double).
+JVM thread FP-state restoration passes for both thread counts.
+
+Full `vcf gatk --reference-evidence gvcf` timings on the initial 1 Mb slice
+(`--threads 4 --qc-min-depth 0`, JVM default heap) confirm the CLI gate:
+interleaved Java/NEON/NEON/Java runs took **45.29 / 25.00 / 25.61 / 45.38 s**.
+Mean wall falls from 45.34 to 25.31 s (**44.2%**). Every CLI gVCF body
+(25,534 records) and final VCF body (1,779 calls) matches exactly.
+
+These are **bounded-region prototype results**, not full chr20 or
+whole-genome performance/accuracy qualification. Do not extrapolate RSS
+from the slice or treat the sidecar as a qualified default.
+
+The 2026-11-19 whole-chr20 real-CLI qualification attempt did **not**
+complete: Java's progress meter reached chr20:29,840,219 after 283.6
+traversal minutes before cancellation. No final gVCF or genotyped VCF was
+published, and the NEON comparison was not started. This is an incomplete
+run, not a chr20 timing or parity result. The 10–20 Mb slice does not cover
+the slow pericentromeric traversal; its speedup is not a whole-chromosome
+runtime estimate.
+
+#### Five-window panel: identical calls, small read-count differences
+
+On 2026-11-20, five matched intervals totaling **12.551 Mb** replaced the
+infeasible whole-chr20 comparison. Each Java/NEON run used the real CLI:
+`vcf gatk --threads 4 --reference-evidence gvcf --qc-min-depth 0`, default
+JVM heap, the same shared HG002 BAM/hs38, and no scattering. This differs
+from the direct 10 Mb HC microbenchmark's explicit 4 GiB heap; those results
+are not combined. The sidecar and scientific options were unchanged.
+
+| Window, 1-based inclusive | Selection evidence |
+| :--- | :--- |
+| chr20:1,000,001–4,000,000 | Ordinary p-arm control: mean depth 38.15×, only 819 bases at ≥100×. |
+| chr20:17,000,001–20,000,000 | Low complexity: 48-base homopolymer, 72-base GAAA tandem tract at 17,347,788; includes the prior float block-DP regression and double non-reference PL site. |
+| chr20:26,000,001–29,050,000 | Pericentromere: mean 56.71×, maximum 3,432×; 441,098 bases at ≥100×. Prior whole-chr20 Java traversal took roughly 31 minutes through this vicinity. |
+| chr20:29,060,001–29,061,000 | Narrow slow-region sentinel: the previous unpartitioned progress meter advanced 980 bases near here in 12.8 minutes. Mean depth 81.81×. |
+| chr20:31,000,001–34,500,000 | Proximal q-arm high-depth stress: mean 53.91×, maximum 23,756×; 25,326 bases at ≥500×; 60-base homopolymer. |
+
+Depth and repeat evidence comes from the existing BAM and hs38, not downloaded
+stratification tracks. High depth is a duplication-like stress proxy, not proof
+of membership in an annotated segmental duplication. The pericentromeric and
+q-arm windows contain 90,575 and 102,506 reference N bases, respectively.
+Distal q-arm sequence is not sampled. Interval clipping changes assembly
+context: the 1 kb sentinel is much cheaper than the unpartitioned traversal
+and does not reproduce that traversal's full pathological workload.
+
+All values below are **Java → NEON double**. Wall/CPU include CLI startup,
+HaplotypeCaller, GenotypeGVCFs and output; RSS is the largest process,
+not simultaneous aggregate memory. PairHMM share uses its logged compute
+timer divided by complete CLI wall time.
+
+| Window | Wall s | CPU s | Peak RSS MiB | PairHMM s | PairHMM share | Exact parity |
+| :--- | ---: | ---: | ---: | ---: | ---: | :--- |
+| Ordinary p-arm | 168.43 → 68.98 | 197.17 → 114.16 | 627.0 → 815.5 | 107.479 → 6.458 | 63.8% → 9.4% | Pass |
+| Repeat control | 155.67 → 67.90 | 183.17 → 109.94 | 640.2 → 921.6 | 93.092 → 5.841 | 59.8% → 8.6% | Pass |
+| Pericentromere | 1,771.92 → 217.25 | 1,805.22 → 500.79 | 727.5 → 845.1 | 1,644.638 → 87.643 | 92.8% → 40.3% | Differs |
+| Slow sentinel | 8.67 → 6.30 | 14.12 → 11.62 | 529.1 → 490.9 | 2.440 → 0.145 | 28.1% → 2.3% | Pass |
+| High-depth q-arm | 4,527.37 → 365.53 | 4,551.16 → 1,073.74 | 1,883.9 → 1,509.2 | 4,397.515 → 234.098 | 97.1% → 64.0% | Differs |
+| **Totals / maximum RSS** | **6,632.06 → 725.96** | **6,750.84 → 1,810.25** | **1,883.9 → 1,509.2** | **6,245.165 → 334.185** | **94.2% → 46.0%** | Differs |
+
+The observed panel speedup is **9.14× (89.1% less wall time)**. Each backend/window
+ran once, sequential Java then NEON, with warm caches on a shared desktop;
+the exclusive bench queue excludes other queued heavy jobs, not all desktop
+activity. All ten turns finished within the independently enforced 80-minute
+deadline (largest: 75.46 minutes). A forced process-group timeout smoke
+terminated both a TERM-resistant parent and its child without leaks.
+
+Ordered sites, alleles, GT and FILTER match across **340,743 gVCF records**
+and **28,065 final VCF records**. Of **306,024 reference blocks**, **nine
+do not match completely**: six in the pericentromeric window, three in the
+q-arm window. **Eight final VCF records** differ in more than the allowed
+PL-level exception. At chr20:28,830,216, for example, sample AD/DP changes
+from `63,38`/101 to `62,38`/100; the next block's DP changes 112→111.
+At chr20:31,068,903, block DP changes 924→920, and the nearby final variants
+also change depth and other annotations. These differences are why the
+option stays opt-in rather than a default.
+The ordinary and repeat windows have only three already-characterized
+variant-gVCF `<NON_REF>` PL differences; their final VCF bodies are identical.
+
+Independent real-CLI **20 kb controls reproduce the failures**. At
+chr20:28,820,001–28,840,000, all twelve differing gVCF rows (six blocks)
+and six final-VCF mismatch pairs reproduce exactly, taking
+214.14→26.08 s Java→NEON. At chr20:31,060,001–31,080,000, two blocks and
+both nearby final variants still differ beyond PL alone, taking
+3,006.57→208.72 s. The q-arm control's absolute annotations change with
+clipped assembly context, but its depth/allele-depth discrepancies recur
+at the same sites. Control timings are excluded from the panel totals.
+
+Double precision fixes the earlier ordinary-slice float regression, but is
+**insufficient for exact difficult-region parity**. Native likelihood/vector
+tolerance tests and passing software certification do not establish this
+scientific gate. Do not infer whole-chromosome/WGS equivalence, extend this
+speedup to other chips, or conclude PairHMM can never remain a bottleneck.
+
 ### Around the aligner
 
 Short reads stream from the aligner through samblaster into `samtools sort`
@@ -434,6 +574,65 @@ NVIDIA runtime. Before call_variants, each GPU must have 7.3 GiB free;
 `--no-gpu-memory-check` warns and runs anyway. This was measured at batch
 1024; another batch warns that the check may not fit. Download/unpacked
 sizes are ~10/17.5 GB.
+
+## Experimental native CUDA PairHMM for GATK
+
+`vcf gatk --pair-hmm-cuda JAR` opts into a locally built native PairHMM
+sidecar, **not Parabricks**. `vcf gatk --gpu` keeps its existing Parabricks
+meaning. This prototype is pinned to Linux x86-64, GATK 4.6.2.0 and
+GKL 0.8.11; see [build and validation instructions](../native/pairhmm/README.md).
+The CLI validates local dependencies but installs or downloads nothing.
+
+An AVX-capable CPU supplies the original GKL fallback. Kernels target
+Turing/SM 7.5 and newer; only the RTX 3090 has been tested. There is no
+16 GiB device minimum: native preflight checks actual buffers plus a
+256 MiB reserve, falling back to GKL when the GPU/driver is unavailable,
+incompatible or short of memory. Long reads and explicit double-precision
+requests also stay on the CPU.
+
+**Measured calling and genotyping:** Ryzen 5 5600X, RTX 3090, driver
+615.78.08, CUDA 13.4. Each HaplotypeCaller used one JVM-visible CPU, one
+native thread, a 4 GiB Java heap and GQ bands 10/20/30/60. These were
+standalone GATK runs at fixed ploidy 2, not measurements of the CLI's
+ploidy-partitioned workflow.
+
+| Input | PairHMM | HaplotypeCaller wall | GenotypeGVCFs wall | Caller peak sampled RSS |
+| :--- | :--- | ---: | ---: | ---: |
+| HG002 chr20 | Java | 10,785.5 s | 26.3 s | 728 MiB |
+| HG002 chr20 | GKL AVX OpenMP | 2,458.9 s | 32.7 s | 812 MiB |
+| HG002 chr20 | CUDA sidecar | 1,525.6 s | 39.4 s | 1,066 MiB |
+| HG00096 full mapped reference | GKL AVX OpenMP | 17.984 h | 788.18 s | 1,808 MiB |
+| HG00096 full mapped reference | CUDA sidecar | 12.605 h | 628.07 s | 2,060 MiB |
+
+On [HG002 PCR-free 35× chr20, GRCh38 no-alt](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7040349983),
+GKL and CUDA matched every decoded gVCF and final VCF record, including
+reference blocks. Java and GKL matched all 134,083 final site/allele/GT/FILTER
+tuples, but differed in annotations and PL; their raw gVCFs also differed in
+two GTs and in reference-block segmentation and fields. These are not just
+rounding differences.
+
+On [public HG00096 with hs38DH](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7071143485),
+GKL and CUDA matched all **78,187,031 gVCF records** and **5,031,943
+genotyped VCF records**, with gVCF coverage of all **3,217,346,917 bp**
+across **3,366 reference sequences**. Parity means identical decoded
+records, not identical headers or compressed files. CUDA computed
+1,515,388,466 read/haplotype pairs with 338 MiB sampled peak GPU process
+memory. Each backend produced about 1.55 GiB of compressed calls and
+indexes; decoded bodies and evidence brought the retained total to
+18.85 GiB for both runs. An 8 GiB RAM lease and 64 GiB disk reservation
+per run were sufficient for these inputs, not general requirements.
+
+The full run used mapped intervals and a separate mapped-only CRAI to work
+around HTSJDK's rejection of this input's unmapped index entries. The
+original CRAM and CRAI were untouched. Sampled mapped-read preservation
+does not prove exhaustive no-read-loss. No full Java run was performed.
+These comparisons establish neither accuracy against a truth set nor
+sex-chromosome ploidy accuracy. The timings are single sequential
+shared-host measurements, not a controlled speedup: in particular, only
+the full CUDA run had an exclusive GPU lease with guaranteed CPU admission.
+See the [reproduction settings](../native/pairhmm/README.md#reproduce-the-calling-comparison)
+and the [32 Mb sizing run](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7043274181)
+for context.
 
 ## NVIDIA GPUs without Parabricks (`wgse-bwa --cuda`)
 
@@ -751,6 +950,51 @@ and high-depth scaling (gVCF included). It refuses unavailable MPS or a
 missing patched package; no automatic installation or fallback. Package
 publication/Pixi pinning and whole-genome qualification are pending; see
 [docs/ont.md](ont.md#clair3-optional).
+
+### Native Windows CRAM encoding with mimalloc
+
+[The Windows allocator measurements, #1123](https://github.com/WGSExtract/wgsextract-cli/issues/1123)
+qualified only standalone samtools CRAM **3.1** encoding with a local reference.
+`bam to-cram --cram-version 3.1` selects the installed
+`samtools-mimalloc.exe` beside samtools when `mimalloc = "auto"` (default).
+`--mimalloc off` retains the system build. A startup probe requires matching
+samtools/HTS versions and actual allocator activation; absent or broken
+variants fall back without downloads. The manifest records `samtools_allocator`.
+CRAM 3.0 remains the compatibility default and is not promoted on unmeasured
+results. Sort, markdup, other conversions, minimap2 and macOS/Linux samtools
+retain their existing allocators.
+
+Azure Central US D8ds_v7, Xeon 6973P-C (8 logical CPUs / 4 cores), Windows 11
+Pro 25H2, 32 GiB RAM and local NVMe; samtools/htslib 1.24, minimap2 2.31,
+static mimalloc 3.6.1. Only final linking differs between each allocator pair;
+UCRT itself is not patched. Four AB/BA pairs on public 5M HG002 Illumina pairs
+mapped to hs38, plus 45,622 chr20-derived ONT reads / 912 Mb against full hs38:
+
+| Stage | System / mimalloc median wall s | Change | Median peak RSS MiB system / mimalloc |
+|---|---:|---:|---:|
+| sort | 15.93 / 15.97 | +0.30% | 2018.2 / 2044.8 |
+| markdup | 10.49 / 10.27 | −2.15% | 29.4 / 41.6 |
+| BAM→CRAM 3.1 | 17.72 / 16.53 | −6.70% | 846.5 / 1212.5 |
+| minimap2 map-ont | 152.75 / 151.99 | −0.50% | 11280.6 / 12065.4 |
+
+CRAM alone passed the 5% slice gate. Three AB/BA/AB full-genome pairs then
+encoded the public HG002 NovaSeq PCR-free 30x BAM, **723,327,664 records**, on
+the same VM model with the same executables and hs38. At samtools `-@ 7`,
+median encoding wall time fell from **2168.14 to 443.45 s (79.55% less)**,
+CPU time from 4898.47 to 3193.73 s, and median peak RSS rose from 2425.9 to
+2903.7 MiB. All six exact ordered decoded-record hashes matched:
+`4a71e114f4c505ac9903263a4225eb0757d5a28dc93b3701fb6f3477163e9661`.
+The largest CRAM was 14.90 GiB. Hashing and downloads are outside encoding
+timings; these are not whole-pipeline or CRAM 3.0 speed claims. Native working-set
+high-water counters were polled at 25 ms. Defender remained enabled throughout.
+Reference pages can remain resident, so Windows CRAM preflight includes a
+full-reference cache allowance rather than extrapolating the slice's memory,
+including regional runs whose headers may fill missing M5 tags from other contigs.
+
+On the M1 Pro, all four workloads missed the same slice gate (−2.30% at best);
+no macOS allocator change followed. Native Windows sort/markdup/minimap2
+missed it too. These workloads and public subsets do not establish universal
+allocator gains or long-read whole-genome mapping performance.
 
 ## Other GPUs
 

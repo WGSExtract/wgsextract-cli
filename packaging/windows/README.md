@@ -15,7 +15,7 @@ WGS Extract's own builds of them instead, made from these recipes:
 | samblaster | samblaster |
 | gkl (GATK environment only) | JNI DLLs and a resource-only sidecar jar |
 
-Each is a native Windows executable built with MSYS2's UCRT64 GCC and linked
+These default packages use native Windows executables built with MSYS2's UCRT64 GCC and linked
 statically, so it needs only Windows' own DLLs: no MSYS2, Cygwin or WSL on the
 user's PC, and no Linux VM between the tools and the files. Each is a conda
 package (`Library\bin\*.exe`) that `pixi.toml` pins by URL and SHA-256.
@@ -102,15 +102,54 @@ inside `_strdup`, retain their original free/realloc/size-query path. No UCRT
 DLL is patched and no allocator DLL is installed or injected. The build tests
 concurrent ownership transfers, real CRAM codecs and single/multisample and
 empty-input variant calls against an otherwise identical UCRT build.
-The CLI's `--mimalloc` setting still controls only Apple Silicon injection.
+samtools additionally ships `samtools-mimalloc.exe`, using the same guarded
+static bridge. Its system `samtools.exe` remains unchanged. The build compares
+exact decoded CRAM 3.1 records and verifies allocator activation in only the
+candidate. `bam to-cram --cram-version 3.1` with a local reference selects the
+matching validated variant under `mimalloc = "auto"`; `--mimalloc off` uses the
+system build. The CLI never installs or downloads a variant at runtime.
+Missing, broken or version-mismatched variants retain the system allocator.
+The manifest records `samtools_allocator`. Other samtools workloads and the
+compatibility-default CRAM 3.0 are unchanged; only standalone CRAM 3.1 encoding
+passed the [Windows measurement gate](https://github.com/WGSExtract/wgsextract-cli/issues/1123)
+and whole-genome confirmation. Apple Silicon bcftools injection is unchanged.
 
-**Release status:** the shared extension kernel, buffered SAM reader and static
-allocator recipe changes require a fresh Windows-tools release and updated
-Pixi pins. They are not in the currently pinned `windows-tools-8` assets.
+**Release status:** `windows-tools-9` contains the shared extension kernel,
+buffered SAM reader and bcftools allocator. The separately pinned
+`windows-tools-10` samtools package adds the qualified CRAM allocator variant;
+other package pins remain unchanged.
 See [the Windows performance track](https://github.com/WGSExtract/wgsextract-cli/issues/673)
 for the matched-machine benchmarks and record hashes.
 
 ## Building
+
+### Optional wgse-bwa
+
+`wgse-bwa` is a separate recipe and has not yet been published.
+It uses the MSVC ABI: clang-cl compiles BWA's GNU-style C
+extensions, nvcc uses Visual Studio 2022 `cl.exe` for its host code, and
+lld-link links the executable. It does not use MSYS2. CUDA 13.5 and the
+static CUDA runtime are build-time conda-forge packages, installed in the
+isolated build environment rather than system-wide on the runner. The
+Windows build includes native SM 120 code for desktop Blackwell, retains
+Turing through Hopper machine code, and ships compute 90 PTX for other
+newer GPUs. The Linux recipe continues to use CUDA 12.9 and its existing targets.
+
+Install Git for Windows (for Bash during tests) and Visual Studio 2022
+Build Tools with the x64 C++ tools and Windows SDK, then build from the root:
+
+```powershell
+pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id `
+    --recipe packaging/windows/recipes/wgse-bwa --channel conda-forge `
+    --output-dir out/conda --target-platform win-64
+```
+
+The build runs a CPU alignment smoke with CUDA hidden, then packages the
+release executable and checks its capabilities. Neither installation nor
+CPU alignment requires an NVIDIA driver. The CLI uses the executable only
+if present and usable; [Windows alignment](../../docs/windows.md#optional-wgse-bwa-with-nvidia-cuda)
+documents how to select a local build. Add a win-64 URL/SHA-256 pin only
+after a release contains the actual package.
 
 ### GATK kernels
 
@@ -161,7 +200,7 @@ selected URL/SHA-256 entries by hand, then run `pixi lock`, preserving all
 other pins. `windows-tools-5` contains only htslib, samtools and bcftools;
 the other five tools remain pinned to their prior releases.
 
-To build on a Windows PC, install [MSYS2](https://www.msys2.org) and the
+To build the MSYS2 recipes on a Windows PC, install [MSYS2](https://www.msys2.org) and the
 packages in [msys2-packages.txt](msys2-packages.txt) (from an MSYS2 shell:
 `grep -v '^#' msys2-packages.txt | xargs pacman -S --needed`), then from the
 repository root:
@@ -169,12 +208,15 @@ repository root:
 ```powershell
 $env:MSYS2_ROOT = "C:\msys64"   # where MSYS2 is
 $env:PATH = "$env:MSYS2_ROOT\ucrt64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
+$recipes = Get-ChildItem packaging/windows/recipes -Directory |
+    Where-Object { $_.Name -ne 'wgse-bwa' } |
+    ForEach-Object { '--recipe'; $_.FullName }
 pixi exec --spec rattler-build==0.77.0 rattler-build build `
-    --recipe-dir packaging/windows/recipes --output-dir out/conda --target-platform win-64
+    @recipes --output-dir out/conda --target-platform win-64
 ```
 
-A recipe is `recipe.yaml` (source URL and SHA-256, patches, tests) plus
-`build.sh`, which sources [recipes/env.sh](recipes/env.sh) for the shared
-flags. To change a patch, unpack the source into a git repository, apply the
-patch, edit, and regenerate it with `git diff` (some upstream files are CRLF;
-`.gitattributes` keeps patches byte-exact).
+An MSYS2 recipe is `recipe.yaml` (source URL and SHA-256, patches, tests)
+plus `build.sh`, which sources [recipes/env.sh](recipes/env.sh) for the shared
+flags. `wgse-bwa` instead uses `build.cmd`. To change a patch, unpack the source
+into a git repository, apply the patch, edit, and regenerate it with `git diff`
+(some upstream files are CRLF; `.gitattributes` keeps patches byte-exact).

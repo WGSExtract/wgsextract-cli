@@ -22,6 +22,7 @@ import psutil
 import pytest
 
 from tests.fake_tools import python_tool, require_bare_name_fakes
+from tests.home_isolation import isolate_home
 from tests.htslib_helpers import (
     bgzip_index,
     needs_htslib,
@@ -29,7 +30,6 @@ from tests.htslib_helpers import (
     sam_to_bam,
     write_fasta,
 )
-from tests.smoke_utils import isolate_home
 from wgsextract_cli.api import CancelToken, Result
 from wgsextract_cli.api.benchmark import BenchmarkParams, benchmark
 from wgsextract_cli.commands import benchmark as benchmark_entry

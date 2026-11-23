@@ -15,7 +15,12 @@ import pytest as pytest
 
 from scripts import validate_github_actions as policy
 from scripts.check_remote_resources import live_test_targets as live_test_targets
+from scripts.ci_cancel_stale_queue import main as cancel_stale_main
 from scripts.ci_changes import routes as routes
+from scripts.ci_codeql_scope import LANGUAGES as LANGUAGES
+from scripts.ci_github import GitHub as GitHub
+from scripts.ci_optional_tools import main as optional_main
+from scripts.ci_optional_tools import require_executed as require_executed
 
 
 @pytest.mark.skipif(
@@ -94,6 +99,84 @@ def test_1046_changed_resource_paths_retain_live_pr_behavior_checks(
 
 
 WORKFLOWS = Path(__file__).resolve().parents[1] / ".github" / "workflows"
+
+
+@pytest.mark.parametrize("result", ["skipped", "failure", "error", "empty"])
+def test_1199_optional_ci_rejects_skipped_or_empty_results(
+    tmp_path: Path, result: str
+) -> None:
+    report = tmp_path / "result.xml"
+    report.write_text(
+        "<testsuites><testsuite>"
+        + (
+            f'<testcase name="contamination"><{result}/></testcase>'
+            if result != "empty"
+            else ""
+        )
+        + "</testsuite></testsuites>"
+    )
+    with pytest.raises(ValueError, match="Optional-tool tests"):
+        require_executed(report)
+    report.write_text(
+        '<testsuites><testsuite><testcase name="contamination"/></testsuite></testsuites>'
+    )
+    require_executed(report)
+
+
+def test_1199_optional_ci_is_cached_linux_only_and_required() -> None:
+    source = (WORKFLOWS / "optional_tools.yml").read_text()
+    assert "runs-on: ubuntu-latest" in source
+    assert "scope: optional-tools" in source and 'writer: "true"' in source
+    assert (
+        "environments: dev verifybamid2 freebayes longtr modkit expansionhunter"
+        in source
+    )
+    assert "scripts/ci_optional_tools.py" in source
+    pr = (WORKFLOWS / "pr_ci.yml").read_text()
+    assert "needs.changes.outputs.optional_tests != '[]'" in pr
+    for name in ("ready-gate", "required"):
+        job = pr.split(f"\n  {name}:\n", 1)[1]
+        needs = re.search(r"^\s+needs: \[(.*)\]$", job, re.M)
+        assert needs is not None and "optional-tools" in needs[1]
+    ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
+    optional = ubuntu.split("\n  optional-tools:\n", 1)[1].split("\n  imputation:", 1)[
+        0
+    ]
+    assert "github.event_name != 'pull_request'" in optional
+    assert "platform-certified" not in optional
+    assert "optional-tools-only:" in ubuntu
+    assert (
+        "default: false"
+        in ubuntu.split("optional-tools-only:", 1)[1].split("permissions:", 1)[0]
+    )
+    for job_name in ("lint", "test-ubuntu", "imputation", "ont-hg002"):
+        job = ubuntu.split(f"\n  {job_name}:\n", 1)[1]
+        condition = re.search(r"^\s+if: (.*)$", job, re.M)
+        assert condition is not None
+        assert "!inputs.optional-tools-only" in top_level_conjuncts(condition[1])
+    for workflow in ("macos_ci.yml", "windows_ci.yml", "linux_arm64.yml"):
+        assert "optional_tools.yml" not in (WORKFLOWS / workflow).read_text()
+
+
+def test_1199_missing_optional_tool_fails_before_pytest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Tool availability is the OS boundary; missing binaries must not become
+    # successful pytest invocations whose integration fixture was skipped.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "wgsextract_cli.core.dependencies.get_tool_path", lambda tool: None
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["optional-tools", "--selection", '["tests/test_contamination.py"]'],
+    )
+    with pytest.raises(
+        ValueError, match="Required optional CI tool missing: verifybamid2"
+    ):
+        optional_main()
+    assert not list((tmp_path / "out/optional-tools").glob("*.xml"))
 
 
 def top_level_conjuncts(expression: str) -> list[str]:
@@ -592,3 +675,118 @@ def triggered_workflows(
             continue
         selected.add(workflow.name)
     return selected
+
+
+QUEUE = "gh-readonly-queue/main/pr-"
+
+
+class QueueServer(GitHub):
+    """Merge-queue API boundary: run status changes are the observable result."""
+
+    def __init__(self, refs: list[str], runs: dict[int, str]) -> None:
+        super().__init__("WGSExtract/wgsextract-cli")
+        self.refs = refs
+        self.runs = {
+            run: {"branch": branch, "status": "in_progress"}
+            for run, branch in runs.items()
+        }
+        self.fail: str | None = None
+
+    def request(self, method: str, path: str, data: object = None) -> object:
+        path = path.removeprefix(f"repos/{self.repository}/")
+        if self.fail and path.startswith(self.fail):
+            raise RuntimeError("HTTP 502")
+        if path.startswith("git/matching-refs/heads/gh-readonly-queue/main"):
+            return [{"ref": f"refs/heads/{ref}"} for ref in self.refs]
+        if path.startswith("actions/workflows/pr_ci.yml/runs"):
+            status = re.search(r"status=(\w+)", path)
+            assert status is not None and "event=merge_group" in path
+            return {
+                "workflow_runs": [
+                    {"id": run, "head_branch": item["branch"]}
+                    for run, item in self.runs.items()
+                    if item["status"] == status[1]
+                ]
+            }
+        cancel = re.fullmatch(r"actions/runs/(\d+)/cancel", path)
+        assert cancel is not None and method == "POST"
+        self.runs[int(cancel[1])]["status"] = "cancelled"
+        return None
+
+    def run_cleanup(self, own: str) -> int:
+        return cancel_stale_main(
+            [
+                "--repository",
+                self.repository,
+                "--workflow",
+                "pr_ci.yml",
+                "--base",
+                "refs/heads/main",
+                "--run-id",
+                "1",
+                "--ref",
+                f"refs/heads/{own}",
+            ],
+            self,
+        )
+
+    def status(self) -> dict[int, str]:
+        return {run: item["status"] for run, item in self.runs.items()}
+
+
+def test_1373_only_runs_of_deleted_queue_refs_are_cancelled() -> None:
+    live, stale = f"{QUEUE}2-b", f"{QUEUE}1-a"
+    # Run 1 is this run; run 4 is not a queue run.
+    server = QueueServer(
+        [f"{QUEUE}3-c", live], {1: f"{QUEUE}3-c", 2: live, 3: stale, 4: "main"}
+    )
+    assert server.run_cleanup(f"{QUEUE}3-c") == 0
+    assert server.status() == {
+        1: "in_progress",
+        2: "in_progress",
+        3: "cancelled",
+        4: "in_progress",
+    }
+
+
+@pytest.mark.parametrize(
+    ("refs", "fail"),
+    [
+        ([], None),  # this run's own ref is missing: the snapshot is not trusted
+        ([f"{QUEUE}3-c"] + [f"{QUEUE}{n}" for n in range(99)], None),  # truncated?
+        ([f"{QUEUE}3-c"], "git/"),
+        ([f"{QUEUE}3-c"], "actions/workflows/"),
+    ],
+)
+def test_1373_untrusted_or_failed_lookups_cancel_nothing_and_never_fail(
+    refs: list[str], fail: str | None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    server = QueueServer(refs, {1: f"{QUEUE}3-c", 3: f"{QUEUE}1-a"})
+    server.fail = fail
+    assert server.run_cleanup(f"{QUEUE}3-c") == 0
+    assert server.status()[3] == "in_progress"
+    assert "::warning::" in capsys.readouterr().out
+
+
+def test_1373_failed_cancel_is_a_warning_not_a_failed_merge_group(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    server = QueueServer([f"{QUEUE}3-c"], {1: f"{QUEUE}3-c", 3: f"{QUEUE}1-a"})
+    server.fail = "actions/runs/"
+    assert server.run_cleanup(f"{QUEUE}3-c") == 0
+    assert "::warning::Could not cancel stale run 3" in capsys.readouterr().out
+
+
+def test_1373_queue_cleanup_has_write_access_alone_and_cannot_gate_required() -> None:
+    source = (WORKFLOWS / "pr_ci.yml").read_text()
+    jobs = re.split(r"\n  (?=[a-z][\w-]*:\n)", source.split("\njobs:\n", 1)[1])
+    writers = [job.split(":", 1)[0] for job in jobs if "actions: write" in job]
+    assert writers == ["cancel-stale-queue"]
+    cleanup = next(job for job in jobs if job.startswith("cancel-stale-queue:"))
+    assert "if: github.event_name == 'merge_group'" in cleanup
+    assert "continue-on-error: true" in cleanup
+    # contract: the actions: write token never runs queued (unmerged) PR code.
+    assert "ref: ${{ github.event.merge_group.base_sha }}" in cleanup
+    for job in jobs:
+        needs = re.search(r"^    needs: (.+)$", job, re.M)
+        assert needs is None or "cancel-stale-queue" not in needs[1]

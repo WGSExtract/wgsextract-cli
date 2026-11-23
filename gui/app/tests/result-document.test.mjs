@@ -11,7 +11,7 @@ globalThis.localStorage = { getItem: () => null, setItem() {} };
 globalThis.window = { innerHeight: 900 };
 
 const { runBundleTest } = await import("../dist/web/src/server/bundle-test-runner.js");
-const { parseResultDocument, resultNotice } = await import("../dist/shared/result-document.js");
+const { commandWithResultArguments, parseResultDocument, preferredOutput, resultCardOutput, resultNotice } = await import("../dist/shared/result-document.js");
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
 const { renderResultNotice, renderResultSummary } = await import("../dist/web/src/client/result-view.js");
 
@@ -28,9 +28,10 @@ import type { ResultError, ResultFile } from "${modulePath("result-document.js")
 type OptionalKeys<T> = { [Key in keyof T]-?: {} extends Pick<T, Key> ? Key : never }[keyof T];
 type RequireNone<T extends never> = T;
 // Reject even one optional key, including nullable/defaulted wire fields.
-type FileFieldsRequired = RequireNone<OptionalKeys<ResultFileRecord>>;
+// Like an error's code, a file's artifact is written only for BAM/CRAM/VCF/BCF files (#1182).
+type FileFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultFileRecord>, "artifact">>;
 type WarningFieldsRequired = RequireNone<OptionalKeys<ResultWarningRecord>>;
-type ErrorFieldsRequired = RequireNone<OptionalKeys<ResultErrorRecord>>;
+type ErrorFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultErrorRecord>, "code">>;
 type ResultFieldsRequired = RequireNone<OptionalKeys<ResultDocumentRecord>>;
 type ProvenanceFieldsRequired = RequireNone<OptionalKeys<ResultProvenanceRecord>>;
 type ReferenceFieldsRequired = RequireNone<OptionalKeys<ResultReferenceRecord>>;
@@ -218,6 +219,7 @@ test("the result summary lists outputs to open, warnings and metrics; the notice
   assert.match(summary, /data-result-reveal="\/out\/sample\.manifest\.json"/);
   // A listed output that no longer exists can't be opened.
   assert.doesNotMatch(summary, /data-result-open="\/out\/gone\.bai"/);
+  assert.doesNotMatch(summary, /data-result-card/);
 
   assert.match(renderResultNotice({ kind: "missing_dependency", message: "Run: pixi install -e gpu" }), /data-result-open-setup[\s\S]*Open Setup/);
   assert.doesNotMatch(renderResultNotice({ kind: "usage", message: "Choose --ref." }), /data-result-open-setup/);
@@ -247,4 +249,45 @@ test("#1090: genomic results open in the built-in viewer at their own locus, nev
   }
   state.manifest.id = "git-helper";
   assert.doesNotMatch(renderResultSummary(document), /data-result-viewer/);
+});
+
+test("a run's result card gets a View Card button and is the document's card output", () => {
+  Object.assign(state, createInitialState(), { labels: {} });
+  const document = parseResultDocument({
+    schema: "wgsextract.result/1",
+    status: "ok",
+    outputs: [
+      { path: "/out/sample_info.card.html", role: "result_card", kind: "html", size_bytes: 5000 },
+      { path: "/out/sample.tsv", role: "table" },
+    ],
+  }, "wgsextract.result/1");
+
+  const summary = renderResultSummary(document);
+
+  assert.match(summary, /data-result-card="\/out\/sample_info\.card\.html"[^>]*>View Card</);
+  assert.equal((summary.match(/data-result-card=/g) ?? []).length, 1);
+  assert.equal(resultCardOutput(document)?.path, "/out/sample_info.card.html");
+  const gone = parseResultDocument({ schema: "wgsextract.result/1", status: "ok", outputs: [{ path: "/out/x.card.html", role: "result_card", exists: false }] }, "wgsextract.result/1");
+  assert.equal(resultCardOutput(gone), undefined);
+});
+
+test("an analysis action's report is the first role in its openOutput the run wrote; cards are asked for only by resultCard", () => {
+  const document = parseResultDocument({
+    schema: "wgsextract.result/1",
+    status: "ok",
+    outputs: [
+      { path: "/out/r1_fastqc.html", role: "fastqc_report_html" },
+      { path: "/out/r2_fastqc.html", role: "fastqc_report_html" },
+      { path: "/out/old_multiqc.html", role: "multiqc_report", exists: false },
+    ],
+  }, "wgsextract.result/1");
+  assert.equal(preferredOutput(document, ["multiqc_report", "fastqc_report_html"])?.path, "/out/r1_fastqc.html");
+  document.outputs.push({ ...document.outputs[0], path: "/out/multiqc.html", role: "multiqc_report", exists: true });
+  assert.equal(preferredOutput(document, ["multiqc_report", "fastqc_report_html"])?.path, "/out/multiqc.html");
+  assert.equal(preferredOutput(document, undefined), undefined);
+
+  const spec = { format: "wgsextract.result/1", executables: ["tool"], arguments: ["--result-file", "{{resultDocumentPath}}"], cardArguments: ["--card"] };
+  const command = { executable: "tool", arguments: ["info"] };
+  assert.deepEqual(commandWithResultArguments(command, spec, "/tmp/r.json").optionalArguments, [["--result-file", "/tmp/r.json"]]);
+  assert.deepEqual(commandWithResultArguments(command, spec, "/tmp/r.json", true).optionalArguments, [["--result-file", "/tmp/r.json", "--card"]]);
 });

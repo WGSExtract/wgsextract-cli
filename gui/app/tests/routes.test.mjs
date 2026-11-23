@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, request as httpRequest } from "node:http";
+import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -143,6 +144,14 @@ function rawRequest(port, route, { method = "POST", headers = {}, body = "" } = 
     request.on("error", reject);
     request.end(body);
   });
+}
+
+function within(promise, ms, what) {
+  let timer;
+  const timeout = new Promise((_resolve, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what} did not settle within ${ms} ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
 async function readNDJSON(response) {
@@ -354,6 +363,37 @@ test("a declared result document is read from stdout, and only its files can be 
   assert.deepEqual(calls.runProcess.slice(1).map((call) => call.args), [[output]]);
 });
 
+test("only result cards listed in a result document can be shown, as text for a sandboxed frame", async (t) => {
+  const { baseURL, context, tempRoot } = await withTestServer(t);
+  context.manifest.resultDocument = { format: "wgsextract.result/1", executables: ["tool"], arguments: ["--json"], cardArguments: ["--card"] };
+  context.manifest.pages[0].sections[0].actions[0].resultCard = true;
+  const card = path.join(tempRoot, "sample_info.card.html");
+  const table = path.join(tempRoot, "sample.tsv");
+  const stray = path.join(tempRoot, "other.card.html");
+  await writeFile(card, "<!doctype html><title>info</title><pre>Avg Read Length</pre>");
+  await writeFile(table, "a\tb");
+  await writeFile(stray, "<p>not from a run</p>");
+  const document = {
+    schema: "wgsextract.result/1",
+    status: "ok",
+    outputs: [{ path: table, role: "table" }, { path: card, role: "result_card", kind: "html" }],
+  };
+  context.runProcess = async (executable) => ({ exitCode: 0, stdout: executable === "tool" ? JSON.stringify(document) : "", stderr: "" });
+
+  const events = await readNDJSON(await apiFetch(baseURL, "/api/run/stream", {
+    body: { action: { pageID: "main", sectionID: "run", actionID: "run" }, context: runContext },
+  }));
+  const shown = await apiFetch(baseURL, "/api/result/card", { body: { path: card } });
+  const notCard = await apiFetch(baseURL, "/api/result/card", { body: { path: table } });
+  const unlisted = await apiFetch(baseURL, "/api/result/card", { body: { path: stray } });
+
+  assert.match(events[0].command, /tool HG001 --json --card$/);
+  assert.equal(shown.status, 200);
+  assert.deepEqual(await shown.json(), { path: card, name: "sample_info.card.html", html: "<!doctype html><title>info</title><pre>Avg Read Length</pre>" });
+  assert.equal(notCard.status, 403);
+  assert.equal(unlisted.status, 403);
+});
+
 test("PR #530 review: a bug report reads the last action run in the app, not the CLI's last run", async (t) => {
   const { baseURL, context } = await withTestServer(t);
   context.manifest.resultDocument = { format: "wgsextract.result/1", executables: ["tool"], arguments: ["--json"] };
@@ -562,6 +602,52 @@ test("disconnecting a setup stream cancels the running step and frees the worksp
   assert.equal(concurrent.at(-1).type, "complete");
   assert.match(concurrent.at(-1).result.error, /already running/);
   assert.equal(runs.length, 2);
+});
+
+test("#1234: a client that stops reading and disconnects mid-move releases the workspace lock", async (t) => {
+  let blocked;
+  const moveBlocked = new Promise((resolve) => {
+    blocked = resolve;
+  });
+  let settled;
+  const moveSettled = new Promise((resolve) => {
+    settled = resolve;
+  });
+  const progress = { type: "progress", text: "x".repeat(256 * 1024) };
+  const { baseURL, port } = await withTestServer(t, {
+    async moveWorkspace(_target, emit, signal) {
+      try {
+        while (!signal.aborted) {
+          const written = emit(progress);
+          const waiting = await Promise.race([written.then(() => false), new Promise((resolve) => setTimeout(resolve, 50, true))]);
+          if (waiting) blocked();
+          await written;
+        }
+      }
+      finally {
+        settled();
+      }
+    },
+  });
+
+  const body = JSON.stringify({ folder: "/elsewhere" });
+  const client = connect(port, "127.0.0.1", () => {
+    client.write(`POST /api/workspace-location/move HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nx-gfc-token: ${apiToken}\r\n`
+      + `content-type: application/json\r\ncontent-length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+    client.pause();
+  });
+  client.on("error", () => {});
+  try {
+    await within(moveBlocked, 5000, "backpressure");
+  }
+  finally {
+    client.destroy();
+  }
+
+  await within(moveSettled, 5000, "the move");
+  const after = await apiFetch(baseURL, "/api/setup/stream", { body: { locale: "en" } });
+  assert.equal(after.status, 200);
+  assert.equal((await readNDJSON(after)).at(-1).type, "complete");
 });
 
 test("bundles load only from folders picked in the native dialog", async (t) => {

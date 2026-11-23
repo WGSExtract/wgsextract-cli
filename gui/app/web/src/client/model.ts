@@ -85,6 +85,7 @@ export function tagStyle(status: unknown): string {
         case "incomplete":
             return "warning";
         case "missing":
+        case "unavailable":
             return "secondary";
         default:
             return "primary";

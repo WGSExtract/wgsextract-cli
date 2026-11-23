@@ -1,7 +1,11 @@
 import ast
 import functools
+import itertools
 import os
+import shutil
 import signal
+import sys
+import tempfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -9,7 +13,9 @@ from typing import Any
 import pytest
 
 from tests.fake_tools import FakePixi
-from tests.smoke_utils import isolate_home, state_directory_setting
+from tests.home_isolation import isolate_home, state_directory_setting
+from tests.macos_openmp import sweep_unwritten_openmp_registrations
+from tests.path_budget import utf16_len
 from wgsextract_cli.core import config as config_module
 from wgsextract_cli.core.config import get_config_path, reload_settings, settings
 from wgsextract_cli.core.dependencies import clear_tool_caches
@@ -151,8 +157,11 @@ _CHECKOUT_STATE = repo_root() / "state"
 _CHECKOUT_STATE_EXISTED = _CHECKOUT_STATE.exists()
 
 
-def pytest_sessionstart() -> None:
+@pytest.hookimpl(tryfirst=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
     """Initialize real/session test defaults explicitly, not during config import."""
+    if sys.platform == "darwin" and not hasattr(session.config, "workerinput"):
+        sweep_unwritten_openmp_registrations(Path("/private/tmp"))
     reload_settings()
 
 
@@ -202,6 +211,24 @@ def _isolate_session_config(
     settings.update(saved)
 
 
+_HOMES = pytest.StashKey[tuple[Path, "itertools.count[int]"]]()
+
+
+def _new_home(config: pytest.Config, factory: pytest.TempPathFactory) -> Path:
+    """A fresh, empty home directory. All homes share one parent and are
+    numbered here: tmp_path_factory.mktemp lists the whole base temporary
+    directory on each call, so a home apiece from it slowed every later test
+    as they piled up (#1218). Names keep a "home" prefix: issue reports
+    redact the home folder's name as the user name, and a bare number would
+    redact numbers in report text."""
+    if _HOMES not in config.stash:
+        config.stash[_HOMES] = (factory.mktemp("homes"), itertools.count())
+    parent, numbers = config.stash[_HOMES]
+    home = parent / f"home{next(numbers)}"
+    home.mkdir()
+    return home
+
+
 @pytest.fixture(autouse=True)
 def _isolate_user_config(
     request: pytest.FixtureRequest,
@@ -225,7 +252,7 @@ def _isolate_user_config(
             for line in real.splitlines()
             if not line.lstrip().startswith("state_directory")
         )
-    _isolate(monkeypatch, tmp_path_factory.mktemp("home"), real)
+    _isolate(monkeypatch, _new_home(request.config, tmp_path_factory), real)
     try:
         yield
     finally:
@@ -240,7 +267,9 @@ def _no_segmented_size_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     segmented path call it directly."""
     from wgsextract_cli.core.ref_library import segmented
 
-    monkeypatch.setattr(segmented, "ranged_size", lambda url: None)
+    monkeypatch.setattr(
+        segmented, "ranged_revision", lambda url, cancel_event=None: None
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -265,6 +294,29 @@ def _restore_signal_handlers() -> Iterator[None]:
     yield
     for sig, handler in saved.items():
         signal.signal(sig, handler)
+
+
+@pytest.fixture
+def short_tmp_path() -> Iterator[Path]:
+    """A temporary folder with a short absolute path, for paths built up to a
+    fixed length (Windows' 175-UTF-16-unit library budget): pytest's
+    ``tmp_path`` can be longer than that alone, as under a worktree's
+    certification basetemp. Uses the system temp folder, else ``/tmp`` when
+    that is too deep; fails, rather than skips, if neither is short."""
+    for parent in [None, *(["/tmp"] if os.name == "posix" else [])]:
+        try:
+            path = Path(tempfile.mkdtemp(prefix="wgse-", dir=parent))
+        except OSError:
+            continue
+        if utf16_len(str(path.absolute())) <= 120:
+            yield path
+            shutil.rmtree(path, ignore_errors=True)
+            return
+        shutil.rmtree(path, ignore_errors=True)
+    pytest.fail(
+        f"{tempfile.gettempdir()} is too long to build 175-character paths "
+        "under; point TMPDIR (TEMP on Windows) at a shorter folder."
+    )
 
 
 @pytest.fixture

@@ -8,7 +8,7 @@ from urllib.parse import unquote
 
 import pytest
 
-from tests.htslib_helpers import needs_htslib, write_fasta
+from tests.htslib_helpers import bgzip_index, needs_htslib, write_fasta
 from wgsextract_cli.api.vcf import VcfCaddParams, VcfClinvarParams, cadd, clinvar
 from wgsextract_cli.core import personal_report, variant_table
 from wgsextract_cli.core.utils import WGSExtractError
@@ -123,6 +123,23 @@ def test_836_equivalent_indels_recover_identical_report_findings(
     assert (sample.read_bytes(), resource.read_bytes()) == originals
 
 
+def test_issue_1243_upper_case_compressed_vcfs_are_annotated(tmp_path):
+    # KIT.VCF.GZ and an upper-case resource were read as plain text and failed.
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": SEQ})
+    plain = vcf(
+        tmp_path / "kit.vcf", ["3 sample AA A 99 PASS . GT:DP:GQ:AD 0/1:30:99:15,15"]
+    )
+    sample = Path(bgzip_index(plain, tmp_path / "KIT.VCF.GZ"))
+    plain = vcf(
+        tmp_path / "clinvar.vcf",
+        ["5 VCVdel AA A . PASS CLNSIG=Pathogenic;CLNDN=MAP;GENEINFO=MUTYH:4595 GT 0/1"],
+        resource=True,
+    )
+    resource = Path(bgzip_index(plain, tmp_path / "CLINVAR.VCF.BGZ"))
+    (found,) = records(annotate(tmp_path / "out", sample, resource, ref))
+    assert found[:5] == ["1", "2", "sample", "CA", "C"]
+
+
 @pytest.mark.parametrize(
     ("second_gt", "second_ps", "expected"),
     [
@@ -228,10 +245,15 @@ def test_841_review_stars_and_conflicts_survive_table_and_report(tmp_path):
 @pytest.mark.parametrize("bad", ["ref", "build"])
 def test_836_incompatible_reference_fails_without_a_partial_annotation(tmp_path, bad):
     ref = write_fasta(tmp_path / "ref.fa", {"1": SEQ})
-    sample = vcf(tmp_path / "sample.vcf", ["11 . C A 99 PASS . GT 0/1"])
+    # The FASTA has C at 11: a sample REF of G means the sample's build differs.
+    # (A resource's stale REF row is dropped instead; see issue #1325.)
+    sample = vcf(
+        tmp_path / "sample.vcf",
+        [f"11 . {'G' if bad == 'ref' else 'C'} A 99 PASS . GT 0/1"],
+    )
     resource = vcf(
         tmp_path / "clinvar.vcf",
-        ["11 . G A . PASS CLNSIG=Pathogenic;CLNDN=MAP GT 0/1"],
+        ["11 . C A . PASS CLNSIG=Pathogenic;CLNDN=MAP GT 0/1"],
         resource=True,
     )
     if bad == "build":

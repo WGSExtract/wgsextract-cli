@@ -17,71 +17,119 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import csv
 import logging
-import math
 import re
 import signal
 import subprocess
 from collections import Counter, deque
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import IO, Any
 
 from wgsextract_cli.core import clinical_evidence
 from wgsextract_cli.core.atomic_output import atomic_output
-from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.results import Scalar, current_result, warn
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
+from wgsextract_cli.core.utils import WGSExtractError, popen
 from wgsextract_cli.core.variant_confidence_header import detect_caller as detect_caller
 from wgsextract_cli.core.variant_confidence_header import (
     mapping_quality_kind as mapping_quality_kind,
 )
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
-SCHEME = "wgsextract.confidence/1"
-GUIDE = "docs/variant-confidence.md"
-HIGH, MODERATE, LOW = "high", "moderate", "low"
-LABELS = (HIGH, MODERATE, LOW)
-CONF_TAG, REASONS_TAG = "WGSE_CONF", "WGSE_CONF_REASONS"
-# Findings listed in the result manifest; the TSV always has all of them.
-MAX_MANIFEST_FINDINGS = 1000
-DISCLAIMER = (
-    "Confidence labels describe the technical support for each call in this "
-    "sequencing run, not whether a variant causes disease. Treat any finding as "
-    "a research result: confirm it with an accredited clinical laboratory "
-    "(e.g. a CLIA/CAP-certified test on a new sample) before acting on it."
+from ._confidence_reporting import (
+    DISCLAIMER as DISCLAIMER,
+)
+from ._confidence_reporting import (
+    GUIDE as GUIDE,
+)
+from ._confidence_reporting import (
+    MAX_MANIFEST_FINDINGS as MAX_MANIFEST_FINDINGS,
+)
+from ._confidence_reporting import (
+    SCHEME as SCHEME,
+)
+from ._confidence_reporting import (
+    TABLE_COLUMNS as TABLE_COLUMNS,
+)
+from ._confidence_reporting import (
+    ConfidenceSummary as ConfidenceSummary,
+)
+from ._confidence_reporting import (
+    Finding as Finding,
+)
+from ._confidence_reporting import (
+    write_table as write_table,
+)
+from ._confidence_rules import (
+    HET_HIGH_FRACTION as HET_HIGH_FRACTION,
+)
+from ._confidence_rules import (
+    HET_LOW_FRACTION as HET_LOW_FRACTION,
+)
+from ._confidence_rules import (
+    HIGH as HIGH,
+)
+from ._confidence_rules import (
+    HOM_HIGH_FRACTION as HOM_HIGH_FRACTION,
+)
+from ._confidence_rules import (
+    HOM_LOW_FRACTION as HOM_LOW_FRACTION,
+)
+from ._confidence_rules import (
+    LABELS as LABELS,
+)
+from ._confidence_rules import (
+    LOW as LOW,
+)
+from ._confidence_rules import (
+    MAX_FS as MAX_FS,
+)
+from ._confidence_rules import (
+    MAX_SOR as MAX_SOR,
+)
+from ._confidence_rules import (
+    MIN_MAPPING_QUALITY as MIN_MAPPING_QUALITY,
+)
+from ._confidence_rules import (
+    MIN_QD as MIN_QD,
+)
+from ._confidence_rules import (
+    MODERATE as MODERATE,
+)
+from ._confidence_rules import (
+    SPLIT_TAG as SPLIT_TAG,
+)
+from ._confidence_rules import (
+    SYMBOLIC_REFERENCE_ALTS as SYMBOLIC_REFERENCE_ALTS,
+)
+from ._confidence_rules import (
+    CallConfidence as CallConfidence,
+)
+from ._confidence_rules import (
+    Thresholds as Thresholds,
+)
+from ._confidence_rules import (
+    _confidence_policy,
+    _number,
+    _numbers,
+)
+from ._confidence_rules import (
+    classify as classify,
+)
+from ._confidence_rules import (
+    strand_odds_ratio as strand_odds_ratio,
+)
+from ._confidence_rules import (
+    thresholds_from as thresholds_from,
 )
 
-# Fixed rule constants (docs/variant-confidence.md explains each).
-HET_LOW_FRACTION = (0.2, 0.8)  # het alt fraction outside: low
-HET_HIGH_FRACTION = (
-    0.3,
-    0.7,
-)  # het alt fraction outside (but inside the above): moderate
-HOM_LOW_FRACTION = 0.8  # hom/hemizygous alt fraction below: low
-HOM_HIGH_FRACTION = 0.9  # ... below (but at least the above): moderate
-# INFO/MQ below: low. RMS MQ (the VCF spec's MQ; GATK, DRAGEN) uses GATK's
-# hard filter. A mean MQ (bcftools "Average mapping quality") sits well below
-# the RMS of the same reads, so it uses MAPQ 20, a 1% chance of misplacement.
-MIN_MAPPING_QUALITY = {"rms": 40.0, "mean": 20.0}
-# INFO/QD below: low (GATK hard filter). Only GATK's QUAL is on the scale it
-# assumes: DRAGEN's recalibrated QUAL puts half its good calls under QD 2.
-MIN_QD = 2.0
-MAX_FS = {"snv": 60.0, "indel": 200.0}  # INFO/FS above: low (GATK hard filter)
-MAX_SOR = {"snv": 3.0, "indel": 10.0}  # SOR above: low (GATK hard filter)
-SYMBOLIC_REFERENCE_ALTS = {"<*>", "<NON_REF>", "<X>"}
+CONF_TAG, REASONS_TAG = "WGSE_CONF", "WGSE_CONF_REASONS"
 # Imputed rarer than this in the panel is never listed as a finding: imputation
 # can't see a rare allele the reads don't show (#621).
 RARE_IMPUTED_AF = 0.01
-# INFO tag marking one ALT split from a multiallelic record (bcftools norm -m
-# --old-rec-tag, vt decompose). Its PL is trimmed to REF/this ALT, dropping a
-# called 1/2, and site-level DP4/SB still count every ALT's reads.
-SPLIT_TAG = "OLD_MULTIALLELIC"
 
 LOW_REASONS = {
     "unsupported_somatic": "Mutect2 somatic calls are not assessable by the "
@@ -116,35 +164,6 @@ MODERATE_REASONS = {
 REASONS = {**LOW_REASONS, **MODERATE_REASONS}
 
 
-@dataclass(frozen=True)
-class Thresholds:
-    min_depth: float
-    high_depth: float
-    min_gq: float
-    high_gq: float
-
-    def __post_init__(self) -> None:
-        if self.high_depth < self.min_depth or self.high_gq < self.min_gq:
-            raise UsageError(
-                "Confidence thresholds need LOW <= HIGH (depth "
-                f"{self.min_depth:g}/{self.high_depth:g}, genotype quality "
-                f"{self.min_gq:g}/{self.high_gq:g})."
-            )
-
-
-def thresholds_from(args: object | None = None) -> Thresholds:
-    """Thresholds from config.toml, overridden by --confidence-depth/-gq."""
-    depth = getattr(args, "confidence_depth", None)
-    gq = getattr(args, "confidence_gq", None)
-    configured = typed_settings()
-    return Thresholds(
-        min_depth=depth[0] if depth else configured.confidence_min_depth,
-        high_depth=depth[1] if depth else configured.confidence_high_depth,
-        min_gq=gq[0] if gq else configured.confidence_min_gq,
-        high_gq=gq[1] if gq else configured.confidence_high_gq,
-    )
-
-
 def _non_negative(text: str) -> float:
     try:
         value = float(text)
@@ -167,279 +186,6 @@ GQ_HELP = (
 )
 
 
-def _confidence_policy(caller: str) -> str:
-    return "unsupported_somatic" if caller == "mutect2" else "germline"
-
-
-def _number(value: str | None) -> float | None:
-    if value is None or value in {"", "."}:
-        return None
-    try:
-        number = float(value)
-    except ValueError:
-        return None
-    return number if math.isfinite(number) else None
-
-
-def _numbers(value: str | None) -> list[float | None]:
-    if value is None or value in {"", "."}:
-        return []
-    return [_number(part) for part in value.split(",")]
-
-
-def strand_odds_ratio(ref_fwd: float, ref_rev: float, alt_fwd: float, alt_rev: float) -> float:  # fmt: skip
-    """GATK's StrandOddsRatio from forward/reverse ref and alt counts."""
-    rf, rr, af, ar = ref_fwd + 1, ref_rev + 1, alt_fwd + 1, alt_rev + 1
-    ratio = (rf * ar) / (rr * af)
-    return (
-        math.log(ratio + 1 / ratio)
-        + math.log(min(rf, rr) / max(rf, rr))
-        - math.log(min(af, ar) / max(af, ar))
-    )
-
-
-def _genotype_quality(fmt: Mapping[str, str], split: bool) -> float | None:
-    gq = _number(fmt.get("GQ"))
-    if gq is not None or split:
-        return gq
-    likelihoods = sorted(v for v in _numbers(fmt.get("PL")) if v is not None)
-    if len(likelihoods) >= 2:
-        return min(likelihoods[1] - likelihoods[0], 99.0)
-    return None
-
-
-def _depth(
-    fmt: Mapping[str, str], info: Mapping[str, str], split: bool
-) -> float | None:
-    depth = _number(fmt.get("DP"))
-    if depth is not None:
-        return depth
-    # A split record's AD keeps only REF and its own ALT.
-    counts = [] if split else [v for v in _numbers(fmt.get("AD")) if v is not None]
-    if counts:
-        return math.fsum(counts)
-    # INFO/DP is the site's depth over every sample: only one sample is judged.
-    return _number(info.get("DP"))
-
-
-def _alt_fraction(
-    alt: int, n_alts: int, fmt: Mapping[str, str], info: Mapping[str, str], split: bool
-) -> float | None:
-    counts = _numbers(fmt.get("AD"))
-    alt_count = counts[alt] if len(counts) > alt else None
-    format_depth = _number(fmt.get("DP"))
-    # A split record's AD keeps only REF and this ALT: only FORMAT/DP still
-    # counts the reads of the ALTs split off.
-    if alt_count is not None and (format_depth is not None or not split):
-        total = max(math.fsum(v or 0.0 for v in counts), format_depth or 0)
-        return alt_count / total if total else None
-    for key in ("VAF", "AF"):  # DeepVariant VAF, Clair3 AF: per ALT
-        fractions = _numbers(fmt.get(key))
-        if len(fractions) >= alt and fractions[alt - 1] is not None:
-            return fractions[alt - 1]
-    dp4 = [v or 0.0 for v in _numbers(info.get("DP4"))]
-    if n_alts == 1 and not split and len(dp4) == 4 and math.fsum(dp4):
-        return (dp4[2] + dp4[3]) / math.fsum(dp4)
-    return None
-
-
-def _strand_counts(
-    fmt: Mapping[str, str], info: Mapping[str, str], n_alts: int, split: bool
-) -> list[float] | None:
-    for counts in (_numbers(fmt.get("SB")), _numbers(info.get("DP4"))):
-        if (
-            n_alts == 1
-            and not split
-            and len(counts) == 4
-            and all(v is not None for v in counts)
-        ):
-            return [v or 0.0 for v in counts]
-    return None
-
-
-@dataclass
-class CallConfidence:
-    label: str
-    reasons: list[str]
-    zygosity: str
-    depth: float | None
-    genotype_quality: float | None
-    alt_fraction: float | None
-
-
-def classify(
-    *,
-    alt: int,
-    alleles: Sequence[str],
-    ref: str,
-    alt_allele: str,
-    filters: str,
-    info: Mapping[str, str],
-    fmt: Mapping[str, str],
-    n_alts: int,
-    thresholds: Thresholds,
-    mq_kind: str = "rms",
-    caller: str = "unknown",
-    samples: int = 1,
-    contaminated: bool = False,
-    reference: bool = False,
-    ploidy: int | None = None,
-) -> CallConfidence | None:
-    """The confidence of ALT number ``alt`` (1-based), or None when the sample
-    doesn't carry it."""
-    copies = sum(allele == ("0" if reference else str(alt)) for allele in alleles)
-    no_call = reference and (not alleles or any(a != "0" for a in alleles))
-    if not copies and not no_call:
-        return None
-    zygosity = (
-        "haploid"
-        if (ploidy if ploidy is not None else len(alleles)) == 1
-        else ("hom" if copies == len(alleles) else "het")
-    )
-    kind = "snv" if len(ref) == len(alt_allele) == 1 else "indel"
-    low: list[str] = []
-    moderate: list[str] = []
-    if no_call:
-        low.append("no_call")
-
-    if filters not in {"PASS", "."}:
-        low.append("filtered")
-    if caller == "mutect2":
-        # Preserve descriptive counts, but never interpret somatic GT/GQ/VAF
-        # against germline genotype expectations or hard-filter thresholds.
-        split = SPLIT_TAG in info
-        counts_info = info if samples == 1 else {}
-        return CallConfidence(
-            LOW,
-            [*low, "unsupported_somatic"],
-            "unassessed",
-            _depth(fmt, counts_info, split),
-            _number(fmt.get("GQ")),
-            _alt_fraction(alt, n_alts, fmt, counts_info, split),
-        )
-    if IMPUTED_TAG in info:
-        # No reads behind it to judge: its own probability is in FORMAT/GP.
-        return CallConfidence(LOW, [*low, "imputed"], zygosity, None, None, None)
-
-    split = SPLIT_TAG in info
-    # INFO/DP and DP4 pool every sample's reads: they are this call's evidence
-    # only in a single-sample VCF.
-    counts_info = info if samples == 1 else {}
-    scale = 0.5 if zygosity == "haploid" else 1.0
-    depth = _depth(fmt, counts_info, split)
-    minimum_depth = _number(fmt.get("MIN_DP")) if reference else None
-    if minimum_depth is not None:
-        depth = minimum_depth if depth is None else min(depth, minimum_depth)
-    if depth is None:
-        moderate.append("depth_unknown")
-    elif depth < thresholds.min_depth * scale:
-        low.append("low_depth")
-    elif depth < thresholds.high_depth * scale:
-        moderate.append("moderate_depth")
-
-    gq = _genotype_quality(fmt, split)
-    if gq is None:
-        moderate.append("gq_unknown")
-    elif gq < thresholds.min_gq:
-        low.append("low_gq")
-    elif gq < thresholds.high_gq:
-        moderate.append("moderate_gq")
-    if reference and (depth is None or gq is None):
-        low.append("reference_metrics_unknown")
-
-    fraction = _alt_fraction(alt, n_alts, fmt, counts_info, split)
-    if reference:
-        fraction = None
-    elif fraction is None:
-        moderate.append("allele_balance_unknown")
-    elif zygosity == "het":
-        if not HET_LOW_FRACTION[0] <= fraction <= HET_LOW_FRACTION[1]:
-            low.append("allele_imbalance")
-        elif not HET_HIGH_FRACTION[0] <= fraction <= HET_HIGH_FRACTION[1]:
-            moderate.append("skewed_allele_balance")
-    elif fraction < HOM_LOW_FRACTION:
-        low.append("allele_imbalance")
-    elif fraction < HOM_HIGH_FRACTION:
-        moderate.append("skewed_allele_balance")
-
-    if depth is None and gq is None and fraction is None:
-        low.append("no_call_metrics")
-
-    mq = _number(info.get("MQ"))
-    if mq is not None and mq < MIN_MAPPING_QUALITY[mq_kind]:
-        low.append("low_mapq")
-
-    fs, sor = _number(info.get("FS")), _number(info.get("SOR"))
-    if sor is None and fs is None:
-        counts = _strand_counts(fmt, counts_info, n_alts, split)
-        sor = strand_odds_ratio(*counts) if counts else None
-    if (fs is not None and fs > MAX_FS[kind]) or (
-        sor is not None and sor > MAX_SOR[kind]
-    ):
-        low.append("strand_bias")
-
-    qd = _number(info.get("QD")) if caller == "gatk" and not reference else None
-    if qd is not None and qd < MIN_QD:
-        low.append("low_qd")
-
-    if contaminated:
-        moderate.append("sample_contaminated")
-
-    label = LOW if low else MODERATE if moderate else HIGH
-    return CallConfidence(label, low + moderate, zygosity, depth, gq, fraction)
-
-
-@dataclass
-class Finding:
-    chrom: str
-    pos: int
-    ref: str
-    alt: str
-    genotype: str
-    confidence: CallConfidence
-    annotations: dict[str, str] = field(default_factory=dict)
-    # FORMAT/PS: calls phased (``|``) in one phase set are on known copies.
-    phase_set: str = ""
-
-    def row(self, columns: Sequence[str]) -> dict[str, str]:
-        c = self.confidence
-        return {
-            "chrom": self.chrom,
-            "pos": str(self.pos),
-            "ref": self.ref,
-            "alt": self.alt,
-            "genotype": self.genotype,
-            "zygosity": c.zygosity,
-            "confidence": c.label,
-            "reasons": "|".join(c.reasons),
-            "depth": _format(c.depth),
-            "genotype_quality": _format(c.genotype_quality),
-            "alt_fraction": _format(c.alt_fraction, 3),
-            "phase_set": self.phase_set,
-            **{column: self.annotations.get(column, "") for column in columns},
-        }
-
-    def manifest(self) -> dict[str, Any]:
-        c = self.confidence
-        return {
-            "chrom": self.chrom,
-            "pos": self.pos,
-            "ref": self.ref,
-            "alt": self.alt,
-            "genotype": self.genotype,
-            "zygosity": c.zygosity,
-            "confidence": c.label,
-            "reasons": list(c.reasons),
-            "depth": c.depth,
-            "genotype_quality": c.genotype_quality,
-            "alt_fraction": None
-            if c.alt_fraction is None
-            else round(c.alt_fraction, 4),
-            **({"phase_set": self.phase_set} if self.phase_set else {}),
-            **{k: v for k, v in self.annotations.items() if v},
-        }
-
-
 def rare_imputed(info: Mapping[str, str], alt: int) -> bool:
     """An imputed ALT whose reference-panel frequency is rare or unknown."""
     if IMPUTED_TAG not in info:
@@ -460,73 +206,24 @@ def rare_imputed(info: Mapping[str, str], alt: int) -> bool:
     return True
 
 
-def _format(value: float | None, digits: int = 0) -> str:
-    if value is None:
-        return ""
-    return f"{value:.{digits}f}" if digits else f"{value:g}"
-
-
-@dataclass
-class ConfidenceSummary:
-    caller: str
-    thresholds: Thresholds
-    sample: str | None = None
-    contamination: float | None = None
-    records: int = 0
-    counts: Counter[str] = field(default_factory=Counter)
-    reasons: Counter[str] = field(default_factory=Counter)
-    not_carried: int = 0
-    rare_imputed: int = 0
-    findings: list[Finding] = field(default_factory=list)
-    # The gVCF's states at the sites checked (add_reference_evidence).
-    reference_evidence: dict[str, Any] | None = None
-
-    @property
-    def carried(self) -> int:
-        return sum(self.counts[label] for label in LABELS)
-
-    def metrics(self, prefix: str = "confidence") -> dict[str, Scalar]:
-        return {
-            **{f"{prefix}_{label}": self.counts[label] for label in LABELS},
-            f"{prefix}_not_carried": self.not_carried,
-        }
-
-    def details(self, output: str | None, role: str) -> dict[str, Any]:
-        listed = self.findings[:MAX_MANIFEST_FINDINGS]
-        return {
-            "scheme": SCHEME,
-            "role": role,
-            "output": None if output is None else str(Path(output).absolute()),
-            "sample": self.sample,
-            "caller": self.caller,
-            "policy": _confidence_policy(self.caller),
-            "thresholds": asdict(self.thresholds),
-            "contamination": self.contamination,
-            "counts": {label: self.counts[label] for label in LABELS},
-            "not_carried": self.not_carried,
-            "rare_imputed_not_listed": self.rare_imputed,
-            "reasons": dict(sorted(self.reasons.items())),
-            "findings": [finding.manifest() for finding in listed],
-            "findings_truncated": len(self.findings) > len(listed),
-            **(
-                {"reference_evidence": self.reference_evidence}
-                if self.reference_evidence
-                else {}
-            ),
-            "disclaimer": DISCLAIMER,
-            "guide": GUIDE,
-        }
-
-
 def _header_lines(
-    thresholds: Thresholds, caller: str, contamination: float | None = None
+    thresholds: Thresholds,
+    caller: str,
+    contamination: float | None,
+    *,
+    include_reference: bool,
 ) -> list[str]:
     t = thresholds
     freemix = "" if contamination is None else f",Contamination={contamination:g}"
+    reference_note = (
+        "; for a reference call, its confidence is repeated for each ALT"
+        if include_reference
+        else ""
+    )
     return [
         f'##INFO=<ID={CONF_TAG},Number=A,Type=String,Description="wgsextract '
         f"confidence in the sample's call of this ALT: high, moderate or low "
-        f'({GUIDE}); . when the sample does not carry it">',
+        f'({GUIDE}); . when the sample does not carry it{reference_note}">',
         f'##INFO=<ID={REASONS_TAG},Number=A,Type=String,Description="Reason codes '
         f'behind {CONF_TAG}, joined by | ({GUIDE})">',
         f"##wgsextract_confidence=<Scheme={SCHEME},Caller={caller},"
@@ -623,7 +320,9 @@ def label_records(
                     sample=columns[9],
                 )
             yield from header
-            yield from _header_lines(thresholds, caller, contamination)
+            yield from _header_lines(
+                thresholds, caller, contamination, include_reference=include_reference
+            )
             yield line
             continue
         if summary is None:
@@ -648,7 +347,7 @@ def label_records(
             )
             or all(a in SYMBOLIC_REFERENCE_ALTS or a == "." for a in alts)
         )
-        for index, alt_allele in enumerate(alts, start=1):
+        for index, alt_allele in enumerate(alts[:1] if reference_record else alts, 1):
             result = (
                 None
                 if alt_allele in SYMBOLIC_REFERENCE_ALTS and not reference_record
@@ -681,8 +380,6 @@ def label_records(
                     ),
                 )
             )
-            if reference_record and index > 1:
-                continue
             if result is not None and reference_record:
                 support_reasons = info.get("PGX_REASONS", "").split("|")
                 result.reasons.extend(
@@ -747,6 +444,10 @@ def label_records(
                 )
         fields[7] = _strip_own_info(fields[7])
         if any(label != "." for label in labels):
+            if reference_record:
+                # Count one reference call, but emit both INFO tags per ALT.
+                labels *= len(alts)
+                reasons *= len(alts)
             tags = f"{CONF_TAG}={','.join(labels)};{REASONS_TAG}={','.join(reasons)}"
             fields[7] = tags if fields[7] == "." else f"{fields[7]};{tags}"
         yield "\t".join(fields)
@@ -904,41 +605,6 @@ def _write(
         if sink is not None:
             sink.write(item + "\n")
     raise WGSExtractError("Labelling produced no summary.")
-
-
-TABLE_COLUMNS = (
-    "chrom", "pos", "ref", "alt", "genotype", "zygosity", "confidence",
-    "reasons", "depth", "genotype_quality", "alt_fraction", "phase_set",
-)  # fmt: skip
-
-
-def write_table(
-    path: PathInput,
-    summary: ConfidenceSummary,
-    columns: Sequence[str] = (),
-    title: str = "Variant calls",
-) -> None:
-    """A TSV of every labelled finding, headed by '#' comment lines that state
-    the scheme, thresholds and the disclaimer."""
-    t = summary.thresholds
-    with atomic_output(path, retire_indexes=False) as staged:
-        with open(staged, "w", newline="", encoding="utf-8") as handle:
-            handle.write(
-                f"# {title}: wgsextract confidence labels ({SCHEME}; {GUIDE})\n"
-                f"# Caller: {summary.caller}; sample: {summary.sample or '.'}; "
-                f"depth low<{t.min_depth:g} high>={t.high_depth:g}; GQ "
-                f"low<{t.min_gq:g} high>={t.high_gq:g}\n"
-                f"# {DISCLAIMER}\n"
-            )
-            writer = csv.DictWriter(
-                handle,
-                fieldnames=[*TABLE_COLUMNS, *columns],
-                delimiter="\t",
-                lineterminator="\n",
-            )
-            writer.writeheader()
-            for finding in summary.findings:
-                writer.writerow(finding.row(columns))
 
 
 def _counts_text(summary: ConfidenceSummary) -> str:

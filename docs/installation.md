@@ -16,6 +16,11 @@ GitHub release, not `main`. It creates `wgsextract-cli/` in the current
 directory (or beside a downloaded `install.sh`) with the app in `app/`,
 Pixi files in `.pixi/`, and the `wgsextract` launcher and `uninstall.sh`.
 On macOS it checks for Xcode Command Line Tools first.
+When upgrading, the installer restores the previous app if Pixi setup or
+verification fails. A successful upgrade rebuilds the default environment.
+If the Pixi environment location stays the same, optional environments are kept.
+The installer refuses to move existing local optional environments to a
+detached location because their installed files can contain absolute paths.
 
 Linux ARM64 phase 1 supports default alignment/CRAM/calling/export, VEP,
 native Yleaf-derived Y-DNA analysis and Haplogrep 3. GATK fails before
@@ -32,7 +37,9 @@ curl -fsSL https://raw.githubusercontent.com/WGSExtract/wgsextract-cli/main/inst
 On Windows, clone or download the repository and run `install_windows.bat`
 from PowerShell. It installs Pixi if missing, then the CLI and WGS Extract's
 native builds of samtools, bcftools, BWA, bwa-mem2, minimap2, fastp and
-samblaster into Pixi. No WSL or MSYS2 is needed. See [Windows](windows.md).
+samblaster into Pixi. The standalone installer checks the downloaded source
+archive in a private staging directory before copying it into the install
+directory. No WSL or MSYS2 is needed. See [Windows](windows.md).
 
 ## Installer options
 
@@ -48,7 +55,7 @@ running `install.sh`:
 | `WGSEXTRACT_BIN_DIR` | `$WGSEXTRACT_INSTALL_DIR` | CLI launcher directory |
 | `WGSEXTRACT_PIXI_HOME` | `$WGSEXTRACT_INSTALL_DIR/.pixi` when Pixi is missing | Install SHA-256-verified pinned Pixi here; an existing Pixi on `PATH` or in `~/.pixi` is reused |
 | `WGSEXTRACT_PIXI_CACHE_DIR` | `$WGSEXTRACT_INSTALL_DIR/.pixi/cache` | Pixi package cache |
-| `WGSEXTRACT_PIXI_ENV_DIR` | `$WGSEXTRACT_INSTALL_DIR/app/.pixi/envs` | Pixi environments, kept across updates |
+| `WGSEXTRACT_PIXI_ENV_DIR` | `$WGSEXTRACT_INSTALL_DIR/app/.pixi/envs` | Pixi environment location |
 | `WGSEXTRACT_NO_OPEN` | unset | `1` skips opening Finder on macOS |
 
 Leave `WGSEXTRACT_BIN_DIR`, `WGSEXTRACT_PIXI_HOME`,
@@ -72,6 +79,26 @@ Guides write plain `wgsextract`; substitute your launcher.
 [Optional environments](developer_setup.md#pixi-environments) require explicit
 setup; the CLI never installs tools during a feature run.
 
+### macOS: OpenMP `Error #15` with “unknown library”
+
+An interrupted process can leave an unwritten LLVM OpenMP registration in
+`/private/tmp`. If macOS reuses that PID, OpenMP may report a duplicate runtime
+even when the new process loaded only one. The locked WGS Extract and PharmCAT
+environments use Accelerate for bcftools on macOS to avoid this startup path.
+Other environments can still load OpenMP, including STRkit, phasing, SMN,
+Somalier, FreeBayes, LongTR, bwa-mem3, Clair3, Cyrius and VEP. This can also
+affect GATK when it loads Homebrew's `libomp`.
+
+If the error persists, quit affected tools and inspect the entries with
+`ls -l /private/tmp/__KMP_REGISTERED_LIB_*`. For an individual entry, confirm
+it belongs to your account, is a regular file (not a symlink), and is empty or
+entirely zero-filled (`hexdump -C` shows its contents). Use `ps -p PID` with
+the numeric suffix and leave the file alone if that PID is active or if you
+are unsure. If the PID is absent, recheck immediately before deleting only
+that exact file with `rm /private/tmp/__KMP_REGISTERED_LIB_PID` (replace `PID`
+with the actual suffix). Never use `sudo` or a wildcard for removal. The CLI
+does not sweep the system temporary directory during normal use.
+
 ## Uninstall
 
 ```bash
@@ -92,10 +119,16 @@ nothing else was added.
 Custom `WGSEXTRACT_BIN_DIR`, `WGSEXTRACT_PIXI_CACHE_DIR` and
 `WGSEXTRACT_PIXI_ENV_DIR` locations are recorded at install time.
 `--bin-dir`, `--pixi-cache-dir` and `--pixi-env-dir` override those records.
-**Recorded cache and environment directories outside the installation are
-also deleted by default.** Use `--keep-pixi-cache` and `--keep-pixi-envs`
-to preserve those external directories; these flags do not preserve files
-inside the installation being removed.
+Other Pixi projects may share those directories, so outside the installation
+the uninstaller deletes only this installation's environment folder from the
+environment directory (and the directory itself if the installer created it
+and it is now empty), and deletes the cache directory only if the installer
+created it and it holds no Pixi environments. Before asking to
+continue, it lists exactly what it will delete, including config files and
+Pixi when `--remove-config` and `--remove-pixi` are given.
+Use `--keep-pixi-cache` and `--keep-pixi-envs` to keep this installation's
+external cache and environments; these flags do not preserve files inside the
+installation being removed.
 Windows has its [own uninstaller](windows.md).
 
 On every platform, `--remove-config` includes the owned default users

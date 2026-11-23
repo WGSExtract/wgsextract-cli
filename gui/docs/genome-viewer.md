@@ -163,10 +163,10 @@ remote server's default-off viewer endpoint and allowed roots as described in
 operator-provided certificate or a trusted encrypted tunnel. The app validates
 HTTPS certificates and refuses redirects; it never installs or configures TLS.
 
-The remote host must support the server's race-safe directory-handle file
-access (Linux and macOS). The Windows CLI rejects viewer reads with
-`viewer_unavailable` rather than using an unsafe path fallback. The Windows
-desktop can still view files served by a supported remote host.
+The remote CLI server can serve viewer files on Linux, macOS and Windows. On
+Windows, use direct paths on local drives. The server does not accept UNC
+paths or mapped network drives, and it will not follow symlinks, junctions or
+other reparse points.
 
 1. In a private editor, create a `config.toml` containing the server's URL and
    current bearer token:
@@ -203,9 +203,11 @@ revocable grants for only the selected files. The viewer uses opaque same-origin
 URLs and a file-only grant token; it never receives the general server token.
 Streaming uses backpressure and rejects unexpected lengths/ranges. Whole-file,
 suffix and open-ended reads have a 32 MiB fallback limit; closed ranges can
-stream larger bins. Byte offsets reveal genomic access patterns to the selected
-server. The backend forwards neither cookies nor Set-Cookie and follows no
-redirects. The server, not the app's local library settings, guards remote paths.
+stream larger bins. A `HEAD` without a `Range` reports the full size of a file
+of any size; ranged `HEAD`s follow the same limits as ranged reads. Byte
+offsets reveal genomic access patterns to the selected server. The backend
+forwards neither cookies nor Set-Cookie and follows no redirects. The server,
+not the app's local library settings, guards remote paths.
 
 Leaving the viewer revokes its file grants. **Forget server and revoke access**
 also removes the saved backend credentials and aborts active proxy transfers.
@@ -270,11 +272,12 @@ library root. Traversal and escaping symlinks are refused, each read rechecks
 the roots, and replaced or modified files require reopening. A single byte
 range returns `206`; malformed, multiple or out-of-bounds reads return `416`.
 Full, suffix and open-ended requests are limited to 32 MiB for indexes and
-metadata. Explicit `bytes=start-end` ranges may exceed this limit: high-depth
-mitochondrial BAI bins can span more than 32 MiB even for a small locus. The
-server streams these ranges with backpressure and a 64 KiB read buffer;
-it does not buffer the entire response. The browser still needs memory to
-decode the indexed region. Closing the pane revokes its grants;
+metadata; an un-ranged `HEAD` returns `200` with the full `Content-Length` for
+any size, since it sends no body. Explicit `bytes=start-end` ranges may exceed
+this limit: high-depth mitochondrial BAI bins can span more than 32 MiB even
+for a small locus. The server streams these ranges with backpressure and a
+64 KiB read buffer; it does not buffer the entire response. The browser still
+needs memory to decode the indexed region. Closing the pane revokes its grants;
 unused grants expire after an hour. No sample paths, loci, tokens or byte-read
 logs are sent to any external service.
 

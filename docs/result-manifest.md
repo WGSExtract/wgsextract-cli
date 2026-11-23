@@ -54,6 +54,36 @@ parser still treats external/compact documents as unvalidated input.
   command's human-readable output and also read its result, such as the
   desktop app. It is not listed in `--help`. Like `--json`, it writes nothing
   when argparse rejects the arguments.
+- **`--card`.** This global option (or `result_card = true` in config.toml;
+  `--no-card` overrides it) also writes `<name>.card.html` beside the
+  manifest: `sample_MT.vcf.card.html` beside `sample_MT.vcf.manifest.json`.
+  The card is a page to view, print to PDF or share. It shows the command,
+  its status, what the command printed, metrics, warnings and output files,
+  with the WGS Extract and tool versions, the input files with their size and
+  an abbreviated fingerprint, the reference and when the run happened. Files
+  and URLs appear by name only. In the printed text, messages and metrics,
+  URLs, the run's files, its path options as given (missing or relative too)
+  and any other path that exists on the computer are cut to their names, and
+  the home folder to `~`, so sharing a card doesn't reveal your folders;
+  the manifest beside it keeps the full paths. The page is self-contained: no
+  scripts, nothing loaded from a network. A report-only command that reads
+  a sample, such as `info`, which otherwise writes no manifest, writes both
+  into its output folder (with no `--outdir`, where outputs go by default:
+  `output_directory` or `wgse/` beside the input), named after its input and
+  command (`sample.bam_info.card.html` and `sample.bam_info.manifest.json`); one
+  that reads no sample, such as `ref status`, writes no card. The card is
+  listed in the manifest's `outputs` with role `result_card`. A failed run's
+  card shows the error. Help and settings commands (`help`, `config`, `deps`,
+  `sample`, `serve`, `report-issue`) write no card, and neither does a
+  `--status` run or a run whose card would replace its `--log-file`. `wgsextract serve --card`
+  gives every job it runs a card, inside the folders the server may use; a
+  job started with `?card=1` (or `card=0`) gets one (or not) whatever the
+  server's default; otherwise jobs follow `result_card`. A read-only MCP
+  session writes none. The card and manifest are written together under a lock, so
+  concurrent runs on one sample can't pair one run's card with another's
+  manifest; a successful run removes an earlier failed attempt's card with
+  its manifest. Internal steps (`analyze`, `benchmark`) write no cards. The desktop app asks for cards only for its analysis
+  actions and shows each one when the run ends.
 
 ## Document
 
@@ -61,12 +91,13 @@ parser still treats external/compact documents as unvalidated input.
 | --- | --- |
 | `schema` | Always `"wgsextract.result/1"`. |
 | `command` | The subcommand path, e.g. `"vcf snp"` or `"lineage y-haplogroup"`. |
-| `status`, `exit_code`, `error` | `ok`, `failed` or `cancelled`; the process exit code; and `null` or `{kind, message}`, where `kind` is one of `failure`, `usage`, `missing_dependency` or `cancelled`. |
+| `status`, `exit_code`, `error` | `ok`, `failed` or `cancelled`; the process exit code; and `null` or `{kind, message}`, where `kind` is one of `failure`, `usage`, `missing_dependency` or `cancelled`. Some errors include a stable message `code`. |
 | `inputs`, `outputs` | File records: `path` (absolute), `kind` (`bam`, `cram`, `vcf`, `fasta`, `fastq`, `tsv`, `json`, `directory`, ...), `role` (what the file is to this command, e.g. `input`, `snps`, `mt_bam`, `haplogroup_report`), `exists`, `size_bytes`, `mtime` (UTC ISO 8601), `fingerprint`, `index` (the `.bai`/`.crai`/`.csi`/`.tbi`/`.fai` beside it, if any) and per-file `metrics`. |
 | `metrics` | Flat headline numbers and labels, e.g. `variants`, `haplogroup`, `sex`, `avg_depth`. |
 | `warnings` | Structured warnings: `code`, `message` and scalar `details`. |
 | `details` | The command-specific structured result, or `null`. |
 | `manifest` | Absolute path of the manifest file this run wrote, or `null` (including when writing it failed). |
+| `run` | This run's place in its workflow: `id`, `root`, `parent`, `step` and `children`. See [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
 | `provenance` | `version` (package), `argv` and `params` (the command line and the parsed options as the command used them, after `--genome` selection; values of options whose names contain token, secret, password, credential or api key are redacted, and URLs there, and in error and warning messages, lose their user name, password, query string and fragment), `tools` (versions of the external tools the command ran), `reference` (`path`, `build`, `fingerprint`), `platform`, `python`, `started`, `finished` and `elapsed_s`. |
 
 Tool versions are probed only when a document is emitted, and only for tools the
@@ -101,6 +132,65 @@ A fingerprint identifies a file cheaply ("is this the same BAM as last time?").
 It is not an integrity check: an edit outside the sampled blocks that keeps the
 size goes unnoticed. Use `wgsextract sign` for full-file digests.
 
+### Run lineage and artifacts (pilot)
+
+The pilot of [#1182](https://github.com/WGSExtract/wgsextract-cli/issues/1182)
+links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
+`analyze comprehensive --vcf-inputs`, without a separate lineage file.
+
+- **`run`.** Every document has a run record. `id` is a random 32-character
+  identifier of this run. `root` is the first run of its workflow (this
+  run's `id` when nothing started it). `parent` and `step` name the run
+  that started this one as a step, or are `null`. `analyze` starts its
+  steps' commands as steps of itself, and `vcf chain-annotate` does the same
+  for its annotators. A workflow lists its steps in `children`: `step`, the
+  `run` and `command` that did the step's work, `status` (`ok`, `failed`,
+  `cancelled`, or `reused` when the step journal skipped it), and the
+  journal's `reason`. A reused step names the run that did its work in the
+  earlier run, and so do the artifacts of the files it wrote. A step done inside the workflow's own process names the
+  workflow's run. A step whose command failed is listed with its `run`,
+  whose own failed manifest names this run as its `parent`.
+- **`artifact`.** A BAM, CRAM, VCF or BCF in `inputs` or `outputs` has an
+  `artifact` record. Other files have none.
+
+  | Field | Meaning |
+  | --- | --- |
+  | `origin` | `this_run`: written by this run or one of its steps. `recorded`: written by an earlier run, named in `producer`: a manifest in the input's folder lists it with the same fingerprint (its own `<file>.manifest.json` first; a command writes one manifest for all its outputs), or a reused step's earlier run wrote the output. `external`: nothing is known about its history. |
+  | `lifecycle` | `final` (a deliverable), `intermediate`, `cache` or `temp`; `null` when unknown. |
+  | `retained` | `false` when the run deleted the file on purpose. |
+  | `digest_kind` | `full` when the `fingerprint` read the whole file (3 MiB or less), else `sampled`. |
+  | `assembly` | `hg19`, `hg38` or `t2t`, from the chr1 length in the header; `null` when it isn't recognised. |
+  | `reference` | Fingerprint of the FASTA the file was made with, for this run's outputs and for recorded inputs. |
+  | `samples` | The BAM's `@RG SM` names, or the VCF's sample columns. |
+  | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index (`.crai`) isn't read: only its presence is checked. `mismatched`: another sequence dictionary, blocks that aren't the file's, or an unreadable index. Every index a reader may pick is checked (htslib picks a `.csi` before a `.bai` or `.tbi`), and the first unusable one is reported. |
+  | `producer` | `run`, `root`, `command` and `step` of the run that wrote it. |
+  | `sources` | The files it was made from: `path`, `role`, `fingerprint`, `producer` (run), `lifecycle` and `retained`. |
+
+  The facts come from the file itself: its header (read without running a
+  tool; a CRAM's header isn't read, so its assembly and samples are
+  unknown), its index and its fingerprint. A producer is taken from the
+  manifest beside the file only while that manifest still lists the same
+  fingerprint. A copied, edited or third-party file is `external`, and
+  nothing about its history is assumed. An output's `sources` are the
+  run's BAM/CRAM/VCF/BCF inputs, unless the command names them. `vcf call
+  --merge` names the reads and its per-type VCFs, which it deletes after
+  merging. They stay in `sources` with `lifecycle: temp` and `retained:
+  false`, and they are not listed in `outputs`. `analyze`'s findings name
+  only the VCF they were found in.
+- **Consumers refuse unusable inputs before they run.** The error's
+  `code` names the problem, and the run exits 1:
+
+  | Code | Raised by | Problem |
+  | --- | --- | --- |
+  | `assembly_mismatch` | BAM/CRAM variant callers (`vcf snp`, `vcf indel`, `vcf call`, ...), `analyze comprehensive` | The input is on another genome build than the reference or the other inputs. |
+  | `reference_mismatch` | the same | Same build, but the contig names, lengths or MD5s differ from the reference. |
+  | `index_stale`, `index_mismatch` | the same | The BAM/CRAM index is `stale` or `mismatched`. A `mismatched` VCF index is refused too. A missing or older VCF index is rebuilt, as before. |
+  | `index_missing` | BAM/CRAM variant callers with `--region` | The region is read through the index. Calling the whole file still streams an unindexed BAM. |
+  | `sample_mismatch` | `analyze comprehensive --input BAM --vcf-inputs VCF` | A VCF that wgsextract called from a BAM or CRAM (`recorded`, with the reads among its `sources`) names none of the reads' samples. For any other VCF, whose sample may only be named differently (an `external` VCF, or one filtered or annotated from it), this is a warning with the same code, and the run continues. Recorded producers are read only from manifests a server job may read. |
+
+  Nothing in this pilot reaches the network or installs anything. Other
+  commands record artifacts but don't check them yet.
+
 ### Warning codes
 
 | Code | Raised by | Meaning |
@@ -134,6 +224,8 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `unconfirmed_clinical_findings` | `vcf clinvar`, `analyze` | The sample carries ClinVar pathogenic/likely pathogenic calls (`count`): a technical screen to confirm with an accredited laboratory, not a diagnosis. |
 | `confidence_first_sample_only` | confidence labelling | A multi-sample VCF was judged by its first sample (`sample`). |
 | `sample_female` | Y extraction | Female sample; Y outputs will be empty or noise. |
+| `ybrowse_reference_n_sites_excluded` | `extract ydna-vcf --ybrowse` | The reference chrY is N at some yBrowse sites (the PARs in hs38 and the GRCh38 no-alt analysis set), so they were not called (`sites`, `contig`). The `ybrowse_excluded_reference_n_sites` metric and the VCF header's `##ybrowse_excluded_reference_N_sites` give the count. |
+| `sex_check_skipped` | Y extraction | The female-sample check couldn't run to completion (for example, the alignment lacks supported GRCh37/38 contigs or the CRAM reference couldn't be read). Declare the sex with `sample set --sex`, or pass `--ref` if a CRAM reference is missing. |
 | `build_unknown`, `build_unsupported` | microarray, Y haplogroup | The reference build is unknown or unsupported by the tool. |
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |
@@ -159,6 +251,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `step_failed` | `benchmark` | A benchmark step failed (`step`, `log`). |
 | `cache_path_too_long` | `microarray` on Windows | The reference library path (`path`, `length`) is too deep for its derived caches to fit the 260-character `MAX_PATH`, so the run is uncached; keep the library path at most `limit` characters. |
 | `unsigned` | `sign verify` | The checksum manifest has no signature; only hashes were checked. |
+| `sample_mismatch` | `analyze comprehensive` | A VCF not called from reads by wgsextract names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
 | `ystr_unverified_convention` | `lineage y-str` | Markers use a repeat-count convention the panel has not verified. |
 
 New codes may be added in any release. Consumers should treat unknown codes
@@ -215,6 +308,12 @@ backward compatible and keeps `wgsextract.result/1`. Removing or renaming a fiel
 or changing its meaning or type, requires `wgsextract.result/2` and a new schema
 file. Check `schema` before reading a document.
 
+The envelope fields are **stable**; `details`, `metrics` values and
+`provenance.params` are **experimental**, because they follow each command and
+its unvalidated scientific calls. [Output contracts](output-contracts.md)
+lists every tier and how each change is checked against the previous
+release's pinned baseline.
+
 ## Compatibility
 
 `info chip --json` and `ref status --json` existed before the manifest. Their
@@ -263,6 +362,12 @@ Other commands' metrics:
   `bam merge` adds `merged_inputs`, `read_groups` and, for indexed inputs,
   the combined `autosomal_depth` (each run's in `details.runs`); `bam unalign`
   its `read_groups`.
+- Y extractions (`extract ydna-bam`, `extract y-mt-extract`, `extract region
+  --target y|ymt`) record each output's `y_scope` and its comma-separated
+  `contigs`; `details` holds `y_scope` and `contigs`, one row per considered
+  contig (`name`, `length`, `role`, `included`, `reason`, and for a BAM its
+  `mapped_records` and `placed_unmapped_records`). See
+  [Y-associated contigs](lineage.md#y-associated-contigs---y-scope).
 - `qc fastp` records read counts before and after filtering, the Q30 rate and
   duplication rate; `qc fastqc` the module pass/warn/fail counts and total
   sequences (`r2_`-prefixed for `--r2`); `qc vcf` the `bcftools stats` totals (records, SNPs, indels,

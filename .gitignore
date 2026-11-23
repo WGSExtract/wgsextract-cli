@@ -8,6 +8,8 @@ local_bin/
 runtime/
 reference_bootstrap/
 reference/
+# ...but not the package's own reference assets (catalog, N counts, BEDs).
+!src/wgsextract_cli/assets/reference/
 genomes/
 mygenomes/
 datasets/
@@ -37,6 +39,7 @@ datasets/
 !tests/fixtures/pharmcat_hg002/*
 !tests/fixtures/acmg/*
 !tests/fixtures/pgs/*
+!tests/fixtures/ftdna_vcf/*
 !tests/fixtures/viewer_tracks/*
 !packaging/fastvep/fixtures/*
 

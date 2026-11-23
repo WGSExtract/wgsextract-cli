@@ -1,5 +1,21 @@
 # CLI resource preflight and reusable estimates
 
+For measured Apple Silicon GATK PairHMM slice timings, see
+[NEON prototype evidence](hardware.md#experimental-apple-silicon-neon-pairhmm).
+These are not full-chromosome or whole-genome measurements and do not
+change the caller's resource-budget formulas.
+The incomplete full-chr20 Java trial reached only chr20:29,840,219 after
+283.6 traversal minutes before cancellation; it supplies neither a completed
+runtime nor peak-RSS estimate. Do not size a full-chromosome run by multiplying
+the 10–20 Mb slice time: slow pericentromeric regions are absent from that slice.
+The replacement 12.551 Mb panel measured **6,632.06 s Java → 725.96 s
+NEON double**, with maximum process RSS **1,883.9 → 1,509.2 MiB**.
+Its **9.14× observed speedup is not scientifically qualified**: nine reference
+blocks and eight final-VCF annotation rows fail the strict parity gate.
+PairHMM still consumes 40.3% and 64.0% of NEON CLI wall in its two difficult
+windows. See the linked per-window evidence and limitations; neither these
+maxima nor the aggregate speedup size an unpartitioned full genome.
+
 ## Pipeline benchmarks
 
 `wgsextract benchmark --help` lists datasets and profiles. Start with
@@ -24,12 +40,15 @@ are advisory. Choose a reproducible dataset/profile before comparing hosts.
 
 `vcf impute` prints estimated memory and runtime before starting. HG002 chr20
 measurements at four threads: GLIMPSE2 phase/ligate 431–464 s and 2.2–3.1 GB
-peak RSS; Beagle 60 s and 3.4 GB. The memory preflight reserves a conservative
-4 GiB for GLIMPSE2 and 8 GiB for Beagle. Sequential chromosomes/chunks keep
-memory bounded; runtime scales with selected reference bases and thread count.
-The extrapolated whole-autosome GLIMPSE2 time is about 5.5 h at four threads,
-or 2.8 h at eight, excluding one-time panel preparation. These are not measured
-whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
+peak RSS; Beagle 60 s and 3.4 GB, with 8 GiB reserved. GLIMPSE2's threads
+don't speed up one sample, so `vcf impute` runs `--threads` GLIMPSE2 chunks at
+once, one thread each, within 80% of the available memory (or `--memory` per
+chunk), estimating each chunk's peak from its binary reference; the preflight
+reports the peak of the largest chunks that run together. The extrapolated
+whole-autosome GLIMPSE2 time is about 5.6 h one chunk at a time and about 1 h
+with eight at once, excluding one-time panel preparation. These are not
+measured whole-genome runtimes. See [imputation](imputation.md#resources) for
+the chr20 timings, accuracy and limits.
 
 ## Lossless output profile measurements
 
@@ -238,9 +257,11 @@ SSD swap traffic must not be conflated
 ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
 The read-only `estimate_resources` API does not change settings itself:
 callers supply their resolved backend allowance and sort memory.
-`--prefer-native-gpu` / config `prefer_native_gpu = true` applies only after
-normal GPU sort step-down fails, replacing CPU fallback at the risk of heavy
-swap. Explicit `--memory` is retained; default/config memory is capped at
+On macOS and Linux, `--prefer-native-gpu` / config `prefer_native_gpu = true`
+can replace a RAM-budget CPU fallback after normal GPU sort step-down fails,
+at the risk of heavy swap. [Windows CUDA](windows.md#optional-wgse-bwa-with-nvidia-cuda)
+does not use this override. Explicit `--memory` is retained on an override;
+default/config memory is capped at
 256M, subject to general sort limits. The manifest's
 `native_aligner_backend_reason`, `native_aligner_memory_estimate_bytes`,
 `native_aligner_memory_budget_bytes`, `native_aligner_sort_memory_requested`
@@ -259,6 +280,10 @@ raw plus compressed marked parts, then parts plus final output. Owned generated
 FASTQs retire after alignment unless kept; the raw checkpoint retires only after
 all marked parts are durable. Existing resumable checkpoints and owned-read
 retirement are credited, never user-provided read files.
+Recovery checks only the selected aligner's index files. Large sidecars use
+sampled content and file metadata rather than a full read. If streamed
+extraction left out single-end reads, recovery reports the saved count even
+after extraction scratch files are gone.
 The HG00235x calibration budgets108/115 bytes per short input read for raw/marked
 BAM checkpoints and2 GiB rolling scratch; longer reads scale those allowances. Preflight also
 includes the guard's safety reserve once per guarded filesystem, the extraction
@@ -346,19 +371,24 @@ within 3% of the same peak RSS.
 `samtools sort -@ N -m M` mallocs all N × M bytes when it starts, and the kernel
 refuses an allocation larger than RAM plus swap however few reads arrive: the
 sort fails with `couldn't allocate memory for bam_mem` and the aligner then dies
-of a broken pipe (#781). `--memory`, including `auto`'s floor of 1 GiB per
-thread, can ask for more. So `align`, `realign`, `pet`, `bam sort` and
-`bam to-ubam` give each sort the smallest of:
+of a broken pipe (#781). An explicit `--memory` can ask for more. Automatic
+memory budgets start at 25% of effective RAM (host RAM capped by the Linux
+cgroup v2 limit), divided across threads and rounded down. `align`, `realign`,
+`pet`, `bam sort` and `bam to-ubam` give each sort the smallest of:
 
 - `--memory` per thread;
 - what its read files can fill: 96 bytes of records per byte of input (the
   bound minimap2's estimate uses below), split across the threads, when every
   input is a local file;
-- half of this computer's RAM, split across the threads,
+- half of effective RAM, split across the threads, leaving room for the rest
+  of the pipeline.
 
-and logs when that lowers `--memory`. The input bound never goes below 16M per
-thread, but half the RAM is a hard limit, down to samtools' minimum of 1M. Records and their order are unchanged: a sort that
-fits its input sorts in memory, and a sort that spills merges its spills stably.
+The CLI logs when that lowers `--memory`. The input bound never goes below 16M per
+thread, but the RAM cap can lower that further. If the budget cannot provide
+samtools' minimum of 1 MiB per thread, lower `--threads`. Records and their
+order are unchanged: a sort that fits its input sorts in memory, and a sort
+that spills merges its spills stably. FASTQ collation uses the total budget
+to size its buckets and does not have samtools sort's per-thread minimum.
 Alignment memory checks count the sort's reservation (threads × `-m`) at
 least, as well as what its reads fill. `realign`'s checks before extracting
 FASTQs use the requested `--memory`, so they never ask for less than its
@@ -933,6 +963,15 @@ and sampled temporary-plus-output disk below 8.6 MiB. These are small-input
 observations, not whole-genome bounds or grounds for reducing the conservative
 1-GiB-per-worker allowance. Neither caller reached the 5% median speedup
 gate; Linux retains the system allocator.
+
+The [native CUDA PairHMM measurement](hardware.md#experimental-native-cuda-pairhmm-for-gatk)
+does not change GATK's budgets. On public HG00096 across all mapped
+reference intervals, the one-thread CUDA caller with a 4 GiB heap sampled
+about 2.01 GiB peak RSS and 338 MiB peak GPU process memory. An 8 GiB
+RAM lease and 64 GiB disk reservation covered the run, with about 1.55 GiB
+of compressed calls and indexes. These are observations for one sample and
+host, not minimum requirements, hard limits, or a reason to reduce the
+estimator's allowance.
 
 ### Native DeepVariant
 

@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
+from wgsextract_cli.core.y_contigs import Y_SCOPES
 
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
@@ -24,6 +26,17 @@ _GENE_DOC = (
     "A gene name (e.g. BRCA1) to extract, looked up in the reference library's "
     "gene map (hg19/hg38 only); the region wins when both are set."
 )
+
+
+def _y_scope_param() -> Any:
+    return param(
+        "primary",
+        help="Y contigs to read: primary (chrY only) or associated (also the "
+        "reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 "
+        "chrY_KI270740v1_random). Written as <input>_..._associated.",
+        choices=Y_SCOPES,
+        metavar="SCOPE",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -81,17 +94,25 @@ class BamSubsetParams(_ExtractParams):
 
 @dataclass(frozen=True, kw_only=True)
 class YdnaBamParams(_ExtractParams):
-    """The chrY reads as ``<input>_Y.bam`` (``<input>_Y_poz.bam`` with ``poz``).
-    Warns when the sample appears female, whose chrY reads are mismapped."""
+    """The chrY reads as ``<input>_Y.bam`` (``<input>_Y_poz.bam`` with ``poz``,
+    ``<input>_Y_associated.bam`` with ``y_scope="associated"``, which also reads
+    the reference's Y-associated contigs). Warns when the sample appears female,
+    whose chrY reads are mismapped."""
 
     COMMAND = "extract ydna-bam"
 
     poz: bool = param(
         False,
         help="Restrict Y reads to the bundled CombBED/McDonald/Poznik union "
-        "(GRCh37/38 only).",
+        "(GRCh37, GRCh38 or T2T).",
         action="store_true",
     )
+    y_scope: str = _y_scope_param()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.poz and self.y_scope != "primary":
+            raise UsageError("--poz selects chrY regions; it takes no --y-scope.")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -111,9 +132,13 @@ class YdnaVcfParams(_ExtractParams):
 
 @dataclass(frozen=True, kw_only=True)
 class YMtExtractParams(_ExtractParams):
-    """The chrY and chrM reads in one ``<input>_Y_MT.bam``."""
+    """The chrY and chrM reads in one ``<input>_Y_MT.bam``, or with
+    ``y_scope="associated"`` those and the reference's Y-associated contigs'
+    in ``<input>_Y_MT_associated.bam``."""
 
     COMMAND = "extract y-mt-extract"
+
+    y_scope: str = _y_scope_param()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -167,6 +192,9 @@ class ExtractRegionParams(_ExtractParams):
     The BAM is ``<input>_mtDNA.bam``, ``<input>_Y.bam`` (``<input>_Y_poz.bam``
     with ``poz``), ``<input>_Y_MT.bam`` or ``<input>_autosomes_X.bam``; the VCF
     and FASTA are ``<input>_<MT|Y|Y_MT|autosomes_X>.vcf.gz`` and ``.fasta``.
+    With ``y_scope="associated"`` the y and ymt targets also cover the
+    reference's Y-associated contigs, named ``<input>_Y_associated.*`` and
+    ``<input>_Y_MT_associated.*``.
     chrM and chrY are called haploid with bcftools, indels included; autosomes
     and X are SNPs called contig by contig with the sex-aware ploidy of
     ``vcf snp``. The FASTA is the region's reference with those calls applied,
@@ -192,9 +220,10 @@ class ExtractRegionParams(_ExtractParams):
         False,
         help="With --target y and the bam format: restrict the BAM's Y reads to the "
         "bundled "
-        "CombBED/McDonald/Poznik union (GRCh37/38 only).",
+        "CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T).",
         action="store_true",
     )
+    y_scope: str = _y_scope_param()
     ybrowse: bool = param(
         False,
         help="With --target y and the vcf format: call installed, allele-annotated "
@@ -215,6 +244,12 @@ class ExtractRegionParams(_ExtractParams):
             )
         if self.poz and not (self.target == "y" and self.bam):
             raise UsageError("--poz applies only to --target y with the bam format.")
+        if self.y_scope != "primary" and self.target not in ("y", "ymt"):
+            raise UsageError("--y-scope applies only to --target y or ymt.")
+        if self.poz and self.y_scope != "primary":
+            raise UsageError("--poz selects chrY regions; it takes no --y-scope.")
+        if self.ybrowse and self.y_scope != "primary":
+            raise UsageError("--ybrowse calls chrY targets; it takes no --y-scope.")
         if self.ybrowse and not (self.target == "y" and self.vcf):
             raise UsageError(
                 "--ybrowse applies only to --target y with the vcf format."

@@ -14,8 +14,9 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, reference_for_vcf, run_wgsextract
-from tests.smoke_utils import run_cli, state_directory_setting
+from tests.smoke_utils import run_cli
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -536,7 +537,7 @@ CLINVAR_SOURCE = (
 def test_clinvar_download_recompresses_and_indexes_each_build(tmp_path):
     from wgsextract_cli.core import annotation_resources as ar
 
-    def plain_gzip(url, dest, *_args):
+    def plain_gzip(url, dest, *_args, **_kwargs):
         if url == ar.CLINVAR_URLS["hg19"]:
             return False  # this build's download fails
         Path(dest).write_bytes(gzip.compress(CLINVAR_SOURCE.encode()))
@@ -560,7 +561,7 @@ def test_resource_download_stops_when_cancelled(tmp_path):
 
     cancel = threading.Event()
 
-    def cancel_after_first(_url, dest, *_args):
+    def cancel_after_first(_url, dest, *_args, **_kwargs):
         Path(dest).write_bytes(gzip.compress(CLINVAR_SOURCE.encode()))
         cancel.set()
         return True

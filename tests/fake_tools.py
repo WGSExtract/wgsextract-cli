@@ -2,7 +2,6 @@
 
 import json
 import shutil
-import sys
 from pathlib import Path
 
 from tests.fake_tool_launchers import only_tools as only_tools
@@ -65,7 +64,11 @@ marker = os.path.join(prefix, "conda-meta", "pixi")
 if sub in ("install", "list", "run") and "--no-install" not in flags:
     os.makedirs(os.path.dirname(marker), exist_ok=True)
     open(marker, "w").write("{{}}")
-if sub == "list":
+if sub == "clean":
+    # pixi removes the environment; here its install marker is enough.
+    if os.path.isfile(marker):
+        os.remove(marker)
+elif sub == "list":
     # pixi sizes the app's editable source as "./" from the current directory,
     # walking all of it; past the limit, stand in for that taking too long.
     limit = state["list_walk_limit"]
@@ -115,7 +118,8 @@ class FakePixi:
     """A pixi stand-in for one workspace, with environments under ``root/envs``.
 
     Like pixi, ``run``, ``list`` and ``install`` install a missing environment
-    (marked by ``conda-meta/pixi``) unless given ``--no-install``, and
+    (marked by ``conda-meta/pixi``) unless given ``--no-install``, ``clean``
+    removes it, and
     ``run --no-install`` of a missing one runs the host's programs. Without
     ``--manifest-path`` it finds the workspace in the current directory or a
     parent. It knows only the workspace at ``manifest``; ``None`` is any.
@@ -140,12 +144,11 @@ class FakePixi:
         self._save()
         self.host_bin = root / "host-bin"
         self.host_bin.mkdir()
-        self.exe = python_tool(bindir or root / "pixi-bin", "pixi", "")
-        source = _FAKE_PIXI.format(state=str(self._state))
-        if sys.platform == "win32":
-            (self.exe.parent / "pixi.py").write_text(source)
-        else:
-            self.exe.write_text(f"#!{sys.executable}\n{source}")
+        self.exe = python_tool(
+            bindir or root / "pixi-bin",
+            "pixi",
+            _FAKE_PIXI.format(state=str(self._state)),
+        )
 
     def _save(self) -> None:
         self._state.write_text(json.dumps(self._data))
@@ -1122,7 +1125,7 @@ class FakeDeepVariant:
 
 
 _FAKE_DOCKER = r"""
-import json, os, re, shlex, signal, subprocess, sys, time
+import csv, json, os, re, shlex, signal, subprocess, sys, time
 
 
 def state():
@@ -1181,11 +1184,11 @@ elif args[0] == "events":
     print("oom", flush=True)
     time.sleep(60)
 elif args[0] == "run":
-    opts, i = {"-e": [], "-v": []}, 1
+    opts, i = {"-e": [], "-v": [], "--mount": []}, 1
     while args[i].startswith("-"):
         if args[i] == "--rm" or args[i].startswith("--pull="):
             opts[args[i].split("=")[0]], i = args[i], i + 1
-        elif args[i] in ("-e", "-v"):
+        elif args[i] in ("-e", "-v", "--mount"):
             opts[args[i]].append(args[i + 1])
             i += 2
         else:
@@ -1193,6 +1196,11 @@ elif args[0] == "run":
     image, command = args[i], args[i + 1:]
     env = dict(e.split("=", 1) for e in opts["-e"])
     mounts = [v.split(":")[0] for v in opts["-v"]]
+    for mount in opts["--mount"]:
+        fields = dict(field.split("=", 1) for field in next(csv.reader([mount], strict=True)))
+        if fields["type"] != "bind" or fields["source"] != fields["target"]:
+            sys.exit("fake docker: expected a bind mount at the same host and container path")
+        mounts.append(fields["target"])
     name = opts.get("--name", "anonymous")
     log({"cmd": "run", "image": image, "name": name, "label": opts.get("--label"),
          "entrypoint": opts.get("--entrypoint"), "pull": opts.get("--pull"),
