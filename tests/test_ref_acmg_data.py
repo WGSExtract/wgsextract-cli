@@ -26,7 +26,7 @@ from tests.http_server import RangeServer, serving
 from wgsextract_cli import api
 from wgsextract_cli.api.ref import RefAcmgDataParams, RefStatusParams
 from wgsextract_cli.api.vcf import VcfAcmgParams
-from wgsextract_cli.core import acmg_data
+from wgsextract_cli.core import _acmg_data_plan, acmg_data
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import UsageError, run_command
 
@@ -145,7 +145,7 @@ def publishers(tmp_path, monkeypatch):
             "GNOMAD_URL": "gnomad/{chrom}.vcf.bgz",
             "SPLICEAI_URL": "spliceai.vcf.gz",
         }.items():
-            monkeypatch.setattr(acmg_data, name, server.url_for(path))
+            monkeypatch.setattr(_acmg_data_plan, name, server.url_for(path))
         yield server
 
 
@@ -310,7 +310,7 @@ def test_too_little_free_space_is_refused_before_any_download(
     publishers, library, monkeypatch
 ):
     monkeypatch.setattr(
-        acmg_data.shutil,
+        shutil,
         "disk_usage",
         lambda path: SimpleNamespace(total=1, used=0, free=1),
     )
@@ -505,7 +505,7 @@ def test_the_library_drive_is_checked_when_the_databases_go_elsewhere(
         free = 1 if Path(path).is_relative_to(lib) else 10**15
         return SimpleNamespace(total=real(path).total, used=0, free=free)
 
-    monkeypatch.setattr(acmg_data.shutil, "disk_usage", usage)
+    monkeypatch.setattr(shutil, "disk_usage", usage)
 
     with pytest.raises(
         api.CommandFailed, match=rf"needs about .* free for {re.escape(str(lib))}"
@@ -746,9 +746,11 @@ def test_per_run_refuses_when_the_publisher_has_no_data(
     lib, _ = library
     api.ref.acmg_data(_params(library, site_data="per-run", spliceai_file=None))
     publishers.statuses[missing] = 404
+    publishers.paths.clear()
     result = _acmg_run(lib, _input(tmp_path), tmp_path / "out", site_data="per-run")
     assert result.exit_code == 1
     assert result.error is not None and named in result.error.message
+    assert missing in publishers.paths
     assert not (tmp_path / "out" / "acmg_annotated.vcf.gz").exists()
 
 

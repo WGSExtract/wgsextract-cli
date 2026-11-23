@@ -15,7 +15,9 @@ import pytest as pytest
 
 from scripts import validate_github_actions as policy
 from scripts.check_remote_resources import live_test_targets as live_test_targets
+from scripts.ci_cancel_stale_queue import main as cancel_stale_main
 from scripts.ci_changes import routes as routes
+from scripts.ci_github import GitHub as GitHub
 from scripts.ci_optional_tools import main as optional_main
 from scripts.ci_optional_tools import require_executed as require_executed
 
@@ -672,3 +674,118 @@ def triggered_workflows(
             continue
         selected.add(workflow.name)
     return selected
+
+
+QUEUE = "gh-readonly-queue/main/pr-"
+
+
+class QueueServer(GitHub):
+    """Merge-queue API boundary: run status changes are the observable result."""
+
+    def __init__(self, refs: list[str], runs: dict[int, str]) -> None:
+        super().__init__("WGSExtract/wgsextract-cli")
+        self.refs = refs
+        self.runs = {
+            run: {"branch": branch, "status": "in_progress"}
+            for run, branch in runs.items()
+        }
+        self.fail: str | None = None
+
+    def request(self, method: str, path: str, data: object = None) -> object:
+        path = path.removeprefix(f"repos/{self.repository}/")
+        if self.fail and path.startswith(self.fail):
+            raise RuntimeError("HTTP 502")
+        if path.startswith("git/matching-refs/heads/gh-readonly-queue/main"):
+            return [{"ref": f"refs/heads/{ref}"} for ref in self.refs]
+        if path.startswith("actions/workflows/pr_ci.yml/runs"):
+            status = re.search(r"status=(\w+)", path)
+            assert status is not None and "event=merge_group" in path
+            return {
+                "workflow_runs": [
+                    {"id": run, "head_branch": item["branch"]}
+                    for run, item in self.runs.items()
+                    if item["status"] == status[1]
+                ]
+            }
+        cancel = re.fullmatch(r"actions/runs/(\d+)/cancel", path)
+        assert cancel is not None and method == "POST"
+        self.runs[int(cancel[1])]["status"] = "cancelled"
+        return None
+
+    def run_cleanup(self, own: str) -> int:
+        return cancel_stale_main(
+            [
+                "--repository",
+                self.repository,
+                "--workflow",
+                "pr_ci.yml",
+                "--base",
+                "refs/heads/main",
+                "--run-id",
+                "1",
+                "--ref",
+                f"refs/heads/{own}",
+            ],
+            self,
+        )
+
+    def status(self) -> dict[int, str]:
+        return {run: item["status"] for run, item in self.runs.items()}
+
+
+def test_1373_only_runs_of_deleted_queue_refs_are_cancelled() -> None:
+    live, stale = f"{QUEUE}2-b", f"{QUEUE}1-a"
+    # Run 1 is this run; run 4 is not a queue run.
+    server = QueueServer(
+        [f"{QUEUE}3-c", live], {1: f"{QUEUE}3-c", 2: live, 3: stale, 4: "main"}
+    )
+    assert server.run_cleanup(f"{QUEUE}3-c") == 0
+    assert server.status() == {
+        1: "in_progress",
+        2: "in_progress",
+        3: "cancelled",
+        4: "in_progress",
+    }
+
+
+@pytest.mark.parametrize(
+    ("refs", "fail"),
+    [
+        ([], None),  # this run's own ref is missing: the snapshot is not trusted
+        ([f"{QUEUE}3-c"] + [f"{QUEUE}{n}" for n in range(99)], None),  # truncated?
+        ([f"{QUEUE}3-c"], "git/"),
+        ([f"{QUEUE}3-c"], "actions/workflows/"),
+    ],
+)
+def test_1373_untrusted_or_failed_lookups_cancel_nothing_and_never_fail(
+    refs: list[str], fail: str | None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    server = QueueServer(refs, {1: f"{QUEUE}3-c", 3: f"{QUEUE}1-a"})
+    server.fail = fail
+    assert server.run_cleanup(f"{QUEUE}3-c") == 0
+    assert server.status()[3] == "in_progress"
+    assert "::warning::" in capsys.readouterr().out
+
+
+def test_1373_failed_cancel_is_a_warning_not_a_failed_merge_group(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    server = QueueServer([f"{QUEUE}3-c"], {1: f"{QUEUE}3-c", 3: f"{QUEUE}1-a"})
+    server.fail = "actions/runs/"
+    assert server.run_cleanup(f"{QUEUE}3-c") == 0
+    assert "::warning::Could not cancel stale run 3" in capsys.readouterr().out
+
+
+def test_1373_queue_cleanup_has_write_access_alone_and_cannot_gate_required() -> None:
+    source = (WORKFLOWS / "pr_ci.yml").read_text()
+    jobs = re.split(r"\n  (?=[a-z][\w-]*:\n)", source.split("\njobs:\n", 1)[1])
+    writers = [job.split(":", 1)[0] for job in jobs if "actions: write" in job]
+    assert writers == ["cancel-stale-queue"]
+    cleanup = next(job for job in jobs if job.startswith("cancel-stale-queue:"))
+    assert "if: github.event_name == 'merge_group'" in cleanup
+    assert "continue-on-error: true" in cleanup
+    # contract: the actions: write token never runs queued (unmerged) PR code.
+    assert "ref: ${{ github.event.merge_group.base_sha }}" in cleanup
+    for job in jobs:
+        needs = re.search(r"^    needs: (.+)$", job, re.M)
+        assert needs is None or "cancel-stale-queue" not in needs[1]

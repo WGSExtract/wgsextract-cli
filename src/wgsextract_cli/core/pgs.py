@@ -46,15 +46,22 @@ DISCLAIMER = (
 )
 # The PGS Catalog's licence for a score whose authors set no terms of their own.
 CATALOG_DEFAULT_LICENSE = "PGS obtained from the Catalog should be cited appropriately"
-# IDs and trait labels only: scoring files are never redistributed. `bmi`'s
-# PGS000027 carries its authors' terms (academic research use; commercial use
-# needs the Broad Institute's permission), which `score pgs` warns of.
+# An authors' licence that is CC BY 4.0 alone, however it is spelled, only
+# asks for attribution (the citation `score pgs` reports), so it restricts no
+# use. Licences with NC, ND or SA terms, or any further text, don't match.
+ATTRIBUTION_LICENSE = re.compile(
+    r"(creative commons attribution 4\.0( international)?( license)?"
+    r"( \(cc[ -]by[ -]4\.0\))?|cc[ -]by[ -]4\.0( international)?)"
+)
+# IDs and trait labels only: scoring files are never redistributed. `bmi` is
+# PGS005198 (Smit et al. 2025, CC BY 4.0), not PGS000027, which only academic
+# research may use (#1165).
 CURATED = {
     "cad": "PGS000018",
     "breast-cancer": "PGS000004",
     "height": "PGS000297",
     "t2d": "PGS000020",
-    "bmi": "PGS000027",
+    "bmi": "PGS005198",
     "stroke": "PGS000038",
     "triglycerides": "PGS000063",
     "ldl-cholesterol": "PGS000065",
@@ -65,9 +72,14 @@ CURATED = {
 
 
 def author_license(license: str | None) -> bool:
-    """Whether a Catalog score's licence is its authors' own terms rather than
-    the Catalog's default."""
-    return bool(license) and not str(license).startswith(CATALOG_DEFAULT_LICENSE)
+    """Whether a Catalog score's licence is its authors' own terms, other than
+    attribution, rather than the Catalog's default."""
+    text = " ".join(str(license or "").split())
+    return (
+        bool(text)
+        and not text.startswith(CATALOG_DEFAULT_LICENSE)
+        and not ATTRIBUTION_LICENSE.fullmatch(text.casefold().rstrip("."))
+    )
 
 
 def text_file(path: Path) -> TextIO:

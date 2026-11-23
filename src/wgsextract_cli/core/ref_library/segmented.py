@@ -29,6 +29,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from wgsextract_cli.core.cancellable_http import cancellable_http
 from wgsextract_cli.core.download_progress import (
     CancelEvent,
     DownloadCancelled,
@@ -223,13 +224,20 @@ class Revision:
         return False
 
 
-def ranged_revision(url: str) -> Revision | None:
+def ranged_revision(
+    url: str, cancel_event: CancelEvent | None = None
+) -> Revision | None:
     """The file's size and version, if its server says it takes byte ranges."""
     try:
         request = Request(url, method="HEAD", headers={"User-Agent": user_agent(url)})
-        with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+        response_cm = (
+            cancellable_http(request, TIMEOUT_SECONDS, cancel_event)
+            if cancel_event is not None
+            else urlopen(request, timeout=TIMEOUT_SECONDS)
+        )
+        with response_cm as response:
             headers = response.headers
-    except (OSError, HTTPException):
+    except (DownloadCancelled, OSError, HTTPException):
         return None
     length = headers.get("Content-Length") or ""
     if headers.get("Accept-Ranges", "").lower() != "bytes" or not length.isdigit():
@@ -335,6 +343,8 @@ def download_segmented(
     def fetch(start: int) -> None:
         end = min(start + SEGMENT_SIZE, size)
         for attempt in range(1, ATTEMPTS + 1):
+            if stop.is_set() or (cancel_event and cancel_event.is_set()):
+                return
             pos = start + received[str(start)]
             if pos >= end:
                 return
@@ -348,7 +358,12 @@ def download_segmented(
                         "If-Range": remote.validator,
                     },
                 )
-                with urlopen(request, timeout=TIMEOUT_SECONDS) as response:
+                response_cm = (
+                    cancellable_http(request, TIMEOUT_SECONDS, cancel_event)
+                    if cancel_event is not None
+                    else urlopen(request, timeout=TIMEOUT_SECONDS)
+                )
+                with response_cm as response:
                     if remote.conflicts(Revision.from_headers(response.headers)):
                         raise RemoteChanged(location)
                     if response.getcode() != 206:
@@ -374,6 +389,8 @@ def download_segmented(
                                 received[str(start)] = pos - start
                 return
             except (HTTPException, OSError, ValueError) as e:
+                if cancel_event and cancel_event.is_set():
+                    return
                 if isinstance(e, HTTPError):
                     e.close()
                     detail = f"HTTP {e.code}"

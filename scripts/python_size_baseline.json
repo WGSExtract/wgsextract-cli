@@ -31,7 +31,7 @@
     "tests/test_lineage_haplogroups.py": 1356,
     "tests/test_logic.py": 1125,
     "tests/test_microarray_simulation.py": 993,
-    "tests/test_pgs.py": 1160,
+    "tests/test_pgs.py": 1103,
     "tests/test_pharmcat.py": 882,
     "tests/test_ref_commands.py": 1250,
     "tests/test_resource_estimates.py": 986,

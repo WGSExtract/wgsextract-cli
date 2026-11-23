@@ -819,6 +819,7 @@ def test_phylop_download_without_pybigwig_downloads_nothing(tmp_path):
 
 @needs_bcftools
 def test_1289_gnomad_v4_build_and_annotation_keep_group_max_and_homozygotes(tmp_path):
+    from tests.http_server import serving
     from wgsextract_cli.core import gnomad_af
 
     info = (
@@ -827,30 +828,30 @@ def test_1289_gnomad_v4_build_and_annotation_keep_group_max_and_homozygotes(tmp_
         '##INFO=<ID=AF_grpmax_joint,Number=A,Type=Float,Description="popmax">\n'
         '##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="homozygotes">\n'
     )
-    src = tmp_path / "src"
-    src.mkdir()
     _write_vcf(
-        src / "chr1.vcf.bgz",
+        tmp_path / "chr1.vcf.bgz",
         "{c}\t100\t.\tC\tT\t.\tPASS\tAF_joint=0.125;AF_grpmax_joint=0.375;nhomalt_joint=0\n"
         "{c}\t100\t.\tC\tG\t.\tPASS\tAF_joint=0.5;AF_grpmax_joint=0.625;nhomalt_joint=3\n"
         "{c}\t200\t.\tG\tA\t.\tAC0\tAF_joint=0.1\n"  # filtered by gnomAD
         "{c}\t300\t.\tTA\tT\t.\tPASS\tAF_joint=0\n",  # never seen
         header=info,
     )
-    _write_vcf(src / "chr2.vcf.bgz", "{c}\t50\t.\tA\tG\t.\tPASS\tAF_joint=0.01\n",
+    _write_vcf(tmp_path / "chr2.vcf.bgz", "{c}\t50\t.\tA\tG\t.\tPASS\tAF_joint=0.01\n",
                contig="chr2", header=info)  # fmt: skip
-    (src / "chr3.vcf.bgz").write_bytes(b"not a VCF")
+    _write_vcf(tmp_path / "chr3.vcf.bgz", "", contig="chr3", header=info)
     reflib = tmp_path / "lib"
-    url = src.as_uri() + "/{contig}.vcf.bgz"
+    files = {path.name: path.read_bytes() for path in tmp_path.glob("*.vcf.bgz")}
     with (
-        patch.object(gnomad_af, "GNOMAD_V4_URL", url),
+        serving(files=files) as server,
+        patch.object(gnomad_af, "GNOMAD_V4_URL", server.url_for("{contig}.vcf.bgz")),
         patch.object(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1", "chr2", "chr3"]),
     ):
-        # A corrupt contig fails the build without losing the finished contigs.
+        # HEAD succeeds; the chr3 download fails after the other parts finish.
+        server.drop_paths.add("chr3.vcf.bgz")
         assert not gnomad_af.build_gnomad_af(str(reflib), workers=2, attempts=1)
-        _write_vcf(src / "chr3.vcf.bgz", "", contig="chr3", header=info)
-        (src / "chr1.vcf.bgz").write_bytes(b"must use the completed contig")
+        server.get_paths.clear()
         assert gnomad_af.build_gnomad_af(str(reflib), workers=2)
+        assert server.get_paths == ["chr3.vcf.bgz"]
 
     table = reflib / "downloads" / "gnomad_hg38.tsv.gz"
     with gzip.open(table, "rt") as f:
