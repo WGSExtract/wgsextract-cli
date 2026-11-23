@@ -152,6 +152,7 @@
   };
 
   var READS_PER_GB = 876231560 / 118;
+  var CHAIN_STEPS = ["clinvar", "revel", "phylop", "cadd", "gerp", "gnomad", "spliceai", "alphamissense", "pharmgkb", "vep"];
   var REF_GB = { hs38: 0.9, hs37d5: 0.9, T2Tv20: 0.9, hs38d1: 1.0, hs38DH: 1.0, hg38: 0.9, hg19: 0.9, hs37: 0.9 };
 
   function describe(op) {
@@ -287,7 +288,19 @@
       var tableFormat = p.table_format || "tsv";
       return output(stem + "_variants." + tableFormat, 0.4, tableFormat).concat(p.no_sqlite ? [] : output(stem + "_variants.sqlite", 0.4, "sqlite"));
     }
-    var names = { filter: "filtered", annotate: "annotated", "chain-annotate": "chain_annotated", acmg: "acmg_annotated",
+    if (op === "vcf/chain-annotate") {
+      var sizeHint = p.region || p.bed ? 0.1 : 1;
+      var chain = [
+        { path: dir + "/chain_annotated.vcf.gz", gb: size * 1.3 * sizeHint, kind: "vcf", role: "annotated_vcf" },
+        { path: dir + "/chain_annotated.vcf.gz.tbi", gb: 0.001 * sizeHint, kind: "tbi", role: "index" },
+      ];
+      var format = p.table_format || "tsv";
+      if (p.to_table) chain.push(
+        { path: dir + "/chain_annotated_variants." + format, gb: 0.4 * sizeHint, kind: format, role: "variant_table" },
+        { path: dir + "/chain_annotated_variants.sqlite", gb: 0.4 * sizeHint, kind: "sqlite", role: "variant_database" });
+      return chain;
+    }
+    var names = { filter: "filtered", annotate: "annotated", acmg: "acmg_annotated",
       gerp: "gerp_annotated", phylop: "phylop_annotated", pharmgkb: "pharmgkb_annotated", "sv-freq": "sv_freq_annotated" };
     var name = names[op.replace(/^vcf\//, "")];
     if (name) {
@@ -350,6 +363,17 @@
     });
   }
 
+  function chainAnnotations(p) {
+    if (p.region && p.bed) M.fail(400, "usage", "--region and --bed cannot be used together.");
+    if (p.table_format && !p.to_table) M.fail(400, "usage", "--table-format requires --to-table.");
+    var defaults = root.WGSMSchema.ops["vcf/chain-annotate"].fields.annotations.default;
+    var names = (p.annotations === undefined ? defaults : p.annotations).toLowerCase().split(",").map(function (name) { return name.trim(); }).filter(Boolean);
+    if (!names.length || names.some(function (name) { return CHAIN_STEPS.indexOf(name) < 0; })) {
+      M.fail(400, "usage", "Choose valid annotation steps: " + CHAIN_STEPS.join(", ") + ".");
+    }
+    return names;
+  }
+
   /* The job's plan, from defaults and the request's "_mock" hint.
    * work: CPU jobs in simulated ms, downloads in bytes. */
   M.plan = function (op, params, config, machine) {
@@ -377,7 +401,18 @@
       }
       return o2;
     });
-    var steps = normSteps(hint.steps || (has(STEPS, op) && STEPS[op]) || [[net ? "Download" : "Run", 1]]);
+    var annotations = op === "vcf/chain-annotate" ? chainAnnotations(p) : null;
+    var chain = annotations && annotations.slice();
+    if (chain && (p.region || p.bed)) {
+      // The demo assumes a FASTA and bigWig phyloP, so neither phyloP, GERP nor VEP needs whole-contig context.
+      var lastContext = chain.reduce(function (last, ann, i) {
+        return ["phylop", "gerp", "vep"].indexOf(ann) < 0 ? i : last;
+      }, -1);
+      if (lastContext >= 0) chain.splice(lastContext + 1, 0, "trim");
+      chain.unshift("select");
+    }
+    if (chain && p.to_table) chain.push("Export table");
+    var steps = normSteps(hint.steps || chain || (has(STEPS, op) && STEPS[op]) || [[net ? "Download" : "Run", 1]]);
     var total;
     if (net) {
       var gb = hint.gb || outputs.reduce(function (a, out) {
@@ -419,7 +454,7 @@
       }).concat((p.inputs || []).map(function (path) {
         return { path: path, kind: /\.cram$/i.test(path) ? "cram" : "bam", role: "inputs" };
       })),
-      metrics: hint.metrics || {},
+      metrics: hint.metrics || (annotations ? { annotations_applied: annotations.join(","), annotations_skipped: 0 } : {}),
     };
   };
 

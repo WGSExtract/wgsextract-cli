@@ -18,6 +18,14 @@
     var parts = ["wgsextract"].concat(job.op.split("/"));
     Object.keys(job.params).forEach(function (k) {
       var v = job.params[k];
+      if (k === "prefer_native_gpu" && v === false) {
+        parts.push("--no-prefer-native-gpu");
+        return;
+      }
+      if (k === "force_steps" && Array.isArray(v)) {
+        v.forEach(function (step) { parts.push("--force-step", step); });
+        return;
+      }
       if (k === "_mock" || v === false || v === null || v === undefined) return;
       parts.push("--" + k.replace(/_/g, "-"));
       if (v !== true) parts.push(Array.isArray(v) ? v.join(",") : String(v));
@@ -221,7 +229,9 @@
       run: { id: runID, root: runID, parent: null, step: null, children: [] },
       metrics: p.metrics,
       warnings: [],
-      details: job.op === "deps/list" && ok ? { tools: dependencyRows(mock) } : null,
+      details: job.op === "deps/list" && ok ? { tools: dependencyRows(mock) } :
+        job.op === "vcf/chain-annotate" && (job.params.region || job.params.bed) ?
+          { scope: { region: job.params.region || null, bed: job.params.bed || null } } : null,
       manifest: stem && (ok || card) && !job.params.dry_run ? stem + ".manifest.json" : null,
     };
     if (full) {

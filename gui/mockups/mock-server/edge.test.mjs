@@ -91,6 +91,40 @@ test("an opted-in analysis publishes a result card that the desktop route can re
   assert.equal(request("POST", "/api/result/card", { path: "/demo/other.card.html" }).status, 403);
 });
 
+test("targeted annotation chain accepts threads and publishes the optional table (#1414)", () => {
+  const { request } = setup();
+  request("POST", "/v1/mock/scenario", { name: "empty-jobs" });
+  const params = { vcf_input: "/demo/helen.vcf.gz", annotations: "clinvar,vep", threads: 4, region: "chr22:1000-2000,chr22:3000-4000" };
+  assert.equal(request("POST", "/v1/ops/vcf/chain-annotate", { ...params, bed: "/demo/panel.bed" }).body.error.code, "usage");
+  assert.equal(request("POST", "/v1/ops/vcf/chain-annotate", { ...params, table_format: "parquet" }).body.error.code, "usage");
+  const { body: job, status } = request("POST", "/v1/ops/vcf/chain-annotate", { ...params, to_table: true, table_format: "parquet" });
+  assert.equal(status, 202);
+  assert.deepEqual(job.ui.steps.map(step => step.name), ["select", "clinvar", "trim", "vep", "Export table"]);
+  request("POST", "/v1/clock", { advance_s: 7200 });
+  const result = request("GET", `/v1/jobs/${job.id}?full=1`).body;
+  assert.equal(result.params.threads, 4);
+  assert.equal(result.params.region, params.region);
+  assert.deepEqual(result.result.details.scope, { region: params.region, bed: null });
+  assert.equal(result.result.metrics.annotations_applied, "clinvar,vep");
+  assert.deepEqual(result.result.outputs.map(out => out.path.split("/").pop()), [
+    "chain_annotated.vcf.gz", "chain_annotated.vcf.gz.tbi", "chain_annotated_variants.parquet", "chain_annotated_variants.sqlite",
+  ]);
+});
+
+for (const restart of [false, true]) {
+  test(`annotation retry ${restart ? "honors Start over" : "reuses completed steps"} (#1414)`, () => {
+    const { request } = setup();
+    request("POST", "/v1/mock/scenario", { name: "empty-jobs" });
+    const { body: job } = request("POST", "/v1/ops/vcf/chain-annotate", {
+      vcf_input: "/demo/helen.vcf.gz", annotations: "clinvar,vep", restart, _mock: { fail: { at: 0.75 } },
+    });
+    request("POST", "/v1/clock", { advance_s: 7200 });
+    assert.equal(request("GET", `/v1/jobs/${job.id}`).body.status, "failed");
+    const retry = request("POST", `/v1/jobs/${job.id}/rerun`).body;
+    assert.equal(retry.ui.steps[0].state, restart ? "running" : "skipped");
+  });
+}
+
 test("shared CLI output setting still applies when Basic sends no outdir", () => {
   const { request } = setup();
   request("POST", "/v1/mock/scenario", { name: "empty-jobs" });

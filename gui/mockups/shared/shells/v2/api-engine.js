@@ -256,10 +256,11 @@
       var job = make(src.op, params, { created: t, card: src.card });
       if (mock.preflight) mock.preflight(job);
       job.rerunOf = src.id;
-      if (job.plan.mode === "cpu" && src.stopWork) {
+      if (job.plan.mode === "cpu" && src.stopWork && !(job.op === "vcf/chain-annotate" && params.restart)) {
         var sum = 0;
         var open = true;
         job.plan.steps.forEach(function (s) {
+          if (job.op === "vcf/chain-annotate" && (params.force_steps || []).indexOf(s.name) >= 0) open = false;
           if (open && sum + s.work <= src.stopWork) sum += s.work;
           else open = false;
         });

@@ -103,14 +103,14 @@
       two.records = "bwa-mem2’s";
       return two;
     }
-    var onGpu = native && (mac || M.nvidia && (!M.windowsBwa || c.v.prefer_native_gpu));
+    var onGpu = native && (mac || M.nvidia && (!M.windowsBwa || c.v.windows_gpu !== "cpu"));
     var bwa = onGpu
       ? cost("wgse-bwa on " + gpu, M.windowsBwa ? null : mac ? 0.28 : 0.19, 6.75 + (c.v.dense_suffix_array ? 0.8 : 0), false)
       : cost(native ? "wgse-bwa on the CPU" : "bwa on the CPU", 0.7, 6 + (native && c.v.dense_suffix_array ? 0.8 : 0), false);
     if (bwa.rate !== null && native && c.v.dense_suffix_array) bwa.rate *= 0.923;
     if (onGpu && M.windowsBwa) {
       bwa.aligner += " if preflight passes";
-      bwa.timeText = "varies · CUDA isn’t always faster";
+      bwa.timeText = "varies with GPU and available memory";
     }
     bwa.records = "bwa’s exact";
     bwa.dense = native;
@@ -176,15 +176,16 @@
         return c.M.native || c.M.windowsBwa;
       },
     }),
-    f.param("prefer_native_gpu", "Prefer native GPU", function (c) {
-      return c.M.windowsBwa
-        ? "Opt in to CUDA instead of native CPU alignment. Needs optional wgse-bwa, a supported NVIDIA driver, sufficient RAM and Windows commit (RAM plus page file). No Docker or CUDA Toolkit."
-        : "Prefer the native GPU path instead of falling back to CPU when memory is tight.";
-    }, {
+    f.param("prefer_native_gpu", "Prefer native GPU", "Prefer the native GPU path instead of falling back to CPU when memory is tight.", {
       when: function (c) {
-        return (c.M.native || c.M.windowsBwa) && (c.M.metal || c.M.nvidia);
+        return c.M.native && (c.M.metal || c.M.nvidia);
       },
     }),
+    f.select("windows_gpu", "Windows BWA device",
+      "Auto follows config.toml (CUDA when available by default). Prefer CUDA overrides prefer_native_gpu = false for this run, but still requires enough RAM and Windows commit (RAM plus page file).",
+      [["auto", "Auto (follow settings)"], ["cpu", "Force CPU"], ["cuda", "Prefer CUDA"]], "auto", {
+        ui: true, when: function (c) { return c.M.windowsBwa && c.M.nvidia; },
+      }),
     f.param("gpu", "NVIDIA Parabricks", "BWA-MEM, sorting and duplicate marking on the GPU, in Docker", {
       disabled: function (c) {
         if (c.M.parabricks) return null;
@@ -200,11 +201,21 @@
     }),
   ];
 
+  function alignRequest(c, base, op, extra) {
+    var request = base(op, extra);
+    if (c.M.windowsBwa) {
+      delete request.params.prefer_native_gpu;
+      if (c.M.nvidia && c.v.windows_gpu !== "auto") request.params.prefer_native_gpu = c.v.windows_gpu === "cuda";
+    }
+    return request;
+  }
+
   function alignerNotes(c, p) {
     var notes = [];
-    if (c.M.windowsBwa && c.v.prefer_native_gpu) notes.push({ tone: "info", icon: "info", id: "windows-cuda",
-      title: "Windows CUDA is optional",
-      text: "Used only when the selected BWA path can run a validated wgse-bwa build and the NVIDIA driver, RAM and commit checks pass. Otherwise it uses the CPU. It is not automatically selected or necessarily faster." });
+    if (c.M.windowsBwa && c.M.nvidia) notes.push({ tone: "info", icon: "info", id: "windows-cuda",
+      title: "CUDA is automatic with the optional native BWA build",
+      text: "The optional wgse-bwa.exe is not bundled. When found and BWA is selected, CUDA uses a supported NVIDIA driver without Docker or a CUDA Toolkit. Preflight can reduce sort memory and falls back to CPU if RAM or commit cannot be confirmed to fit. On an RTX 5080, a 5-million-read-pair test ran about 2.2× faster with identical decoded BAM records.",
+      action: c.flag("windows-wgse-bwa") ? null : { label: "See optional tools", href: "install.html" } });
     if (p.blocked) notes.push({ tone: "warn", icon: "triangle-alert", id: "aligner", title: "Not on this computer", text: p.blocked + " Choose Auto, bwa or bwa-mem2." });
     if (p.needsIndex) {
       notes.push({ tone: "warn", icon: "download", id: "index", title: "bwa-mem2’s index for " + refLabel(c.v.ref) + " isn’t installed",
@@ -254,7 +265,7 @@
       f.param("restart", "Start over", "Ignore steps an earlier run finished"),
     ]),
     requests: function (c, base) {
-      return [base("realign", { ref: c.m.fasta(c.v.ref) })];
+      return [alignRequest(c, base, "realign", { ref: c.m.fasta(c.v.ref) })];
     },
     run: function (c) {
       var p = plan(c);
@@ -293,7 +304,7 @@
     more: ALIGNER_MORE,
     requests: function (c, base) {
       var M = c.m;
-      return [base("align", { r1: M.realPath(M.path(c.file, c.file.r1)), r2: M.realPath(M.path(c.file, c.file.r2)), ref: M.fasta(c.v.ref), outdir: M.realPath(c.M.genomesPath + "/") })];
+      return [alignRequest(c, base, "align", { r1: M.realPath(M.path(c.file, c.file.r1)), r2: M.realPath(M.path(c.file, c.file.r2)), ref: M.fasta(c.v.ref), outdir: M.realPath(c.M.genomesPath + "/") })];
     },
     run: function (c) {
       var p = plan(c);

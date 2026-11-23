@@ -38,14 +38,31 @@
   T.define({
     slug: "annotation-chain", label: "Annotation chain", ops: ["vcf/chain-annotate"], group: "Annotate", lesson: HEALTH,
     desc: "Runs a sequence of annotations on one VCF, carrying each step’s added columns into the next.",
-    learn: "Builds one combined VCF without feeding each tool’s output into the next by hand. By default the chain runs ClinVar, REVEL, phyloP, gnomAD and VEP.\n\nA step missing its tool or local data is skipped with a warning; a step that starts and fails stops the chain. Check the warnings, applied-step list and run lineage. Reference data stays local, with no silent downloads.",
+    learn: "Builds one combined VCF without passing each tool’s output to the next by hand. By default the chain runs ClinVar, REVEL, phyloP, gnomAD and VEP. Narrow it to one or more regions, or supply a BED panel. Some steps read the full relevant contigs so that variants at the interval edges aren’t missed; the final VCF is trimmed to the requested intervals.\n\nA missing tool or dataset skips its step with a warning; if every step is skipped, or a step starts and fails, the chain stops. Rerun with the same output folder to reuse completed steps, even with a different thread count. Reference data stays local, with no silent downloads.",
     accepts: ["vcf"], file: "helen", button: "Run chain",
     fields: [f.param("annotations", "Steps, in order", "Comma-separated annotation names", { width: 420 }),
-      f.param("keep_intermediates", "Keep each intermediate VCF", "Useful to see what each step added; needs more space")],
+      f.region("Empty: whole VCF, unless a BED panel is supplied"),
+      f.param("bed", "BED panel", "Local 0-based BED or BED.gz file; use this or Region, not both", { width: 420 }),
+      f.param("to_table", "Also export a variant table", "Writes a TSV or Parquet table and a SQLite database"),
+      f.select("table_format", "Table format", "Parquet requires pyarrow", [["", "TSV (default)"], ["parquet", "Parquet"]], "",
+        { when: function (c) { return c.v.to_table; } })],
+    more: [
+      f.param("threads", "CPU threads", "Empty: use config.toml’s CPU threads setting or pick a count automatically", { width: 90 }),
+      f.param("keep_intermediates", "Keep intermediate VCFs after success", "A failed chain keeps completed steps so it can resume"),
+      f.param("restart", "Start over", "Ignore all completed steps"),
+      f.param("force_steps", "Redo selected steps", "Comma-separated names, such as clinvar. Dependent steps run again too.", { width: 300 }),
+    ],
+    requests: function (c, base) {
+      var request = base("vcf/chain-annotate");
+      if (!c.v.to_table) delete request.params.table_format;
+      return [request];
+    },
     run: function (c) {
-      return { timeText: "minutes to hours", memGB: 8,
-        blocked: c.v.annotations.trim() ? null : "Choose at least one annotation step.",
-        makes: "Makes chain_annotated.vcf.gz; inspect warnings for skipped steps." };
+      return { timeText: c.v.region || c.v.bed ? "depends on the targeted contigs and steps" : "minutes to hours",
+        blocked: c.v.region && c.v.bed ? "Use either Region or a BED panel, not both." :
+          c.v.annotations.trim() ? null : "Choose at least one annotation step.",
+        makes: "Makes chain_annotated.vcf.gz" + (c.v.to_table ? ", a " + (c.v.table_format || "tsv").toUpperCase() + " table and a SQLite database" : "") +
+          "; inspect warnings for skipped steps." };
     },
   });
 
