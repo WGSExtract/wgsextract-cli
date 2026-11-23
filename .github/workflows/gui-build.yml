@@ -21,6 +21,10 @@ on:
         required: false
         type: string
         default: '["tauri-linux", "tauri-macos-arm64", "tauri-macos-x64", "tauri-windows"]'
+    outputs:
+      targets:
+        description: The requested build targets, for validating the complete set of updater artifacts.
+        value: ${{ jobs.tauri.outputs.targets }}
 
 permissions:
   contents: read
@@ -30,6 +34,9 @@ jobs:
     name: Tauri (${{ matrix.artifact_name }})
     runs-on: ${{ fromJSON('{"tauri-linux":"ubuntu-24.04","tauri-macos-arm64":"macos-latest","tauri-macos-x64":"macos-15-intel","tauri-windows":"windows-latest"}')[matrix.artifact_name] }}
     timeout-minutes: 90
+    outputs:
+      # Every matrix job exports the same list, not just its own target.
+      targets: ${{ inputs.targets }}
     strategy:
       fail-fast: false
       matrix:

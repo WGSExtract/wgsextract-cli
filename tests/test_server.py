@@ -451,7 +451,13 @@ _EXAMPLE_PATHS = [
 
 _TYPING_PATHS = [
     (op, item)
-    for op in ("typing/cyp2d6", "typing/hla", "typing/smn", "typing/str")
+    for op in (
+        "typing/cyp2d6",
+        "typing/hla",
+        "typing/smn",
+        "typing/str",
+        "typing/target-cnv",
+    )
     for item in find(op).fields()
     if item.spec.path or item.spec.may_name_file
 ]

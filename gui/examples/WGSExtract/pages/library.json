@@ -729,6 +729,7 @@
             "arguments": [
               "ref",
               "gnomad",
+              "--download",
               "--ref",
               "{{ref_path}}"
             ],

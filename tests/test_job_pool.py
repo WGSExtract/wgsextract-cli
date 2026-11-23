@@ -1,6 +1,8 @@
 """core.job_pool: chunks of work side by side within a CPU and memory
 budget, as `vcf impute` runs GLIMPSE2's chunks (#1118)."""
 
+import queue
+import subprocess
 import sys
 import threading
 import time
@@ -10,7 +12,7 @@ import pytest
 from wgsextract_cli import api
 from wgsextract_cli.core import execution_context
 from wgsextract_cli.core.job_pool import Job, run_jobs
-from wgsextract_cli.core.utils import run_command
+from wgsextract_cli.core.utils import popen, run_command
 
 
 class _Tracker:
@@ -128,3 +130,103 @@ def test_1118_cancelling_starts_no_more_jobs():
         run_jobs(jobs, workers=1)
 
     assert ran == []
+
+
+def test_1415_cancelling_during_submission_leaves_the_next_worker_idle():
+    token = api.CancelToken()
+    considering_next = threading.Event()
+    cancelled = threading.Event()
+    second_started = threading.Event()
+
+    def cancel() -> None:
+        assert considering_next.wait(timeout=5)
+        token.cancel()
+        cancelled.set()
+
+    class NextJobMemory(int):
+        def __radd__(self, used: int) -> int:
+            if not considering_next.is_set():
+                # Cancel while the scheduler decides whether the next job fits.
+                considering_next.set()
+                assert cancelled.wait(timeout=5)
+            else:
+                # If submitted anyway, let it start before shutdown can hide it.
+                assert second_started.wait(timeout=5)
+            return used + int(self)
+
+    jobs = [
+        Job("cancels", cancel, 1),
+        Job("next", second_started.set, NextJobMemory(1)),
+    ]
+
+    with execution_context.bound(cancel=token), pytest.raises(api.Cancelled):
+        run_jobs(jobs, workers=2, memory=2)
+
+    assert not second_started.is_set()
+
+
+def test_1415_cancelling_while_waiting_stops_only_its_running_tool():
+    token = api.CancelToken()
+    started: queue.Queue[subprocess.Popen[bytes]] = queue.Queue()
+    command = [sys.executable, "-c", "import sys; sys.stdin.buffer.read()"]
+
+    def run_tool() -> None:
+        with popen(command, stdin=subprocess.PIPE) as process:
+            started.put(process)
+            try:
+                process.wait(timeout=15)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+
+    with (
+        popen(command, stdin=subprocess.PIPE) as unrelated,
+        execution_context.bound(cancel=token),
+        execution_context.ContextThreadPoolExecutor(max_workers=1) as caller,
+    ):
+        result = caller.submit(run_jobs, [Job("tool", run_tool)], workers=2)
+        process = started.get(timeout=5)
+        try:
+            assert process.poll() is None
+            token.cancel()
+            with pytest.raises(api.Cancelled):
+                result.result(timeout=5)
+            assert process.poll() not in (None, 0)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
+        assert unrelated.poll() is None
+        unrelated.communicate(timeout=5)
+        assert unrelated.returncode == 0
+
+
+def test_1415_cancelling_as_last_job_finishes_still_stops_its_tool():
+    token = api.CancelToken()
+    tools: list[subprocess.Popen[bytes]] = []
+
+    class FinishingMemory(int):
+        def __rsub__(self, used: int) -> int:
+            # Cancel after the last job is done but before the pool returns.
+            token.cancel()
+            return used - int(self)
+
+    def start_tool() -> None:
+        tools.append(
+            popen(
+                [sys.executable, "-c", "import sys; sys.stdin.buffer.read()"],
+                stdin=subprocess.PIPE,
+            )
+        )
+
+    try:
+        with execution_context.bound(cancel=token), pytest.raises(api.Cancelled):
+            run_jobs([Job("tool", start_tool, memory=FinishingMemory(1))], workers=1)
+
+        (tool,) = tools
+        assert tool.wait(timeout=5) != 0
+    finally:
+        for tool in tools:
+            if tool.stdin is not None:
+                tool.stdin.close()
+            tool.wait(timeout=5)

@@ -124,11 +124,7 @@ def _depth(
 def _alt_fraction(
     alt: int, n_alts: int, fmt: Mapping[str, str], info: Mapping[str, str], split: bool
 ) -> float | None:
-    """The fraction of the sample's reads carrying ALT number ``alt`` (1-based):
-    FORMAT/AD over the larger of its sum and FORMAT/DP, else the caller's
-    per-ALT FORMAT/VAF (DeepVariant) or FORMAT/AF (Clair3, Mutect2), else a
-    biallelic record's INFO/DP4 (pass ``info`` only for a single-sample VCF).
-    None when nothing measures it."""
+    """Return ALT's read fraction from FORMAT/AD, caller VAF/AF, or INFO/DP4."""
     counts = _numbers(fmt.get("AD"))
     alt_count = counts[alt] if len(counts) > alt else None
     format_depth = _number(fmt.get("DP"))
@@ -138,8 +134,9 @@ def _alt_fraction(
         known = [v for v in counts if v is not None]
         # AD of no informative read measures nothing, and without FORMAT/DP a
         # missing count would shrink the denominator: use the fallbacks.
-        if math.fsum(known) and (format_depth is not None or len(known) == len(counts)):
-            return alt_count / max(math.fsum(known), format_depth or 0)
+        total = math.fsum(known)
+        if total > 0 and (format_depth is not None or len(known) == len(counts)):
+            return alt_count / max(total, format_depth or 0)
     for key in ("VAF", "AF"):  # DeepVariant VAF, Clair3 AF: per ALT
         fractions = _numbers(fmt.get(key))
         if len(fractions) >= alt and fractions[alt - 1] is not None:

@@ -132,6 +132,9 @@
         },
         "carrier_screening": {
           "$ref": "#/$defs/section"
+        },
+        "repeat_expansions": {
+          "$ref": "#/$defs/section"
         }
       },
       "required": [
@@ -223,6 +226,7 @@
             "lineage",
             "pharmacogenomics",
             "carrier_screening",
+            "repeat_expansions",
             "clinvar",
             "acmg_research",
             "structural_variants"

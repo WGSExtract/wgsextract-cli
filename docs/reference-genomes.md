@@ -69,6 +69,13 @@ shipped table with `scripts/gen_reference_ncounts.py`.
 
 Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
 T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.
+The same download also keeps UCSC refGene's RefSeq transcripts (primary
+contigs only) as `downloads/transcripts_<build>.bed.gz`, a BGZF BED12 with a
+tabix index whose name column is `SYMBOL|ACCESSION` and whose thick part is the
+CDS. The genome viewer shows them as the **RefSeq transcripts** track, and
+[`info gene`](variants.md#one-gene) reads a gene's exons from them; a library
+whose gene maps came from an older version gets them by running `ref gene-map`
+again.
 
 ### Offline cytobands
 

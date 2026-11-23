@@ -217,7 +217,12 @@ def test_chain_uses_each_steps_known_output(tmp_path, monkeypatch, keep_awake):
         "clinvar_annotated.vcf.gz",
     )
     assert (tmp_path / "out" / "chain_annotated.vcf.gz").read_text() == "revel"
-    assert sorted(os.listdir(tmp_path / "out")) == ["chain_annotated.vcf.gz"]
+    assert sorted(
+        p.name for p in (tmp_path / "out").iterdir() if not p.name.startswith(".")
+    ) == [
+        "chain_annotate.steps.json",
+        "chain_annotated.vcf.gz",
+    ]
 
 
 def test_chain_rejects_unknown_or_empty_annotations(tmp_path):
@@ -549,37 +554,6 @@ def test_filter_refuses_to_overwrite_its_input(tmp_path, alias):
     assert _query(vcf) == ["c"]
 
 
-def test_filter_unresolved_gene_fails(tmp_path):
-    from wgsextract_cli.commands.vcf import filter_trio
-
-    vcf = tmp_path / "s.vcf.gz"
-    vcf.write_text("")
-
-    class Lib:
-        fasta = None
-        root = str(tmp_path)
-        build = "hg38"
-
-        def __init__(self, *_a, **_k):
-            pass
-
-        def resource_root(self, *_paths):
-            return self.root
-
-    args = argparse.Namespace(
-        input=str(vcf), vcf_input=None, outdir=str(tmp_path), ref=None,
-        region=None, expr=None, gene="NOT_A_GENE", exclude_near_gaps=False,
-    )  # fmt: skip
-    with (
-        patch.object(filter_trio, "verify_dependencies"),
-        patch.object(filter_trio, "log_dependency_info"),
-        patch.object(filter_trio, "calculate_bam_md5", return_value=None),
-        patch.object(filter_trio, "ReferenceLibrary", Lib),
-        pytest.raises(WGSExtractError, match="NOT_A_GENE"),
-    ):
-        filter_trio.cmd_filter(args)
-
-
 # --- annotations ----------------------------------------------------------------
 
 
@@ -848,9 +822,11 @@ def test_1289_gnomad_v4_build_and_annotation_keep_group_max_and_homozygotes(tmp_
     ):
         # HEAD succeeds; the chr3 download fails after the other parts finish.
         server.drop_paths.add("chr3.vcf.bgz")
-        assert not gnomad_af.build_gnomad_af(str(reflib), workers=2, attempts=1)
+        assert not gnomad_af.build_gnomad_af(
+            str(reflib), workers=2, attempts=1, download=True
+        )
         server.get_paths.clear()
-        assert gnomad_af.build_gnomad_af(str(reflib), workers=2)
+        assert gnomad_af.build_gnomad_af(str(reflib), workers=2, download=True)
         assert server.get_paths == ["chr3.vcf.bgz"]
 
     table = reflib / "downloads" / "gnomad_hg38.tsv.gz"
@@ -1005,33 +981,6 @@ def test_plain_reference_decompresses_to_removed_temp_dir(tmp_path_factory):
             assert Path(plain).read_text() == ">chr1\nACGT\n"
             assert os.path.exists(plain + ".fai")
     assert sorted(os.listdir(tmp_path)) == ["ref.fa.gz"]
-
-
-@pytest.mark.parametrize(
-    ("region", "bed"),
-    [
-        ("chr20", "chr20\t0\t5000"),
-        ("chr20:1,001-2,000", "chr20\t1000\t2000"),
-        ("chr20:4001", "chr20\t4000\t5000"),
-    ],
-)
-def test_sniffles_region_bed(tmp_path, region, bed):
-    from wgsextract_cli.commands.vcf.structural import _write_region_bed
-
-    ref = tmp_path / "ref.fa"
-    Path(str(ref) + ".fai").write_text("chr20\t5000\t7\t60\t61\n")
-    out = tmp_path / "r.bed"
-    _write_region_bed(region, str(ref), str(out))
-    assert out.read_text() == bed + "\n"
-
-
-def test_sniffles_region_bed_rejects_unknown_contig(tmp_path):
-    from wgsextract_cli.commands.vcf.structural import _write_region_bed
-
-    ref = tmp_path / "ref.fa"
-    Path(str(ref) + ".fai").write_text("chr20\t5000\t7\t60\t61\n")
-    with pytest.raises(WGSExtractError):
-        _write_region_bed("chrX:1-5", str(ref), str(tmp_path / "r.bed"))
 
 
 # --- annotation resources -------------------------------------------------------

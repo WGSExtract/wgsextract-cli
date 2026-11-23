@@ -5,8 +5,8 @@ name: GUI distribution
 # - Run by hand (Actions > GUI distribution > Run workflow, or
 #   `gh workflow run gui-distribution.yml --ref BRANCH`): builds the installers
 #   as artifacts, to try a change before releasing it.
-# - Called by release.yml with a vX.Y.Z tag: builds that version, signed when
-#   the signing secrets are set, and adds the installers and the updater feed
+# - Called by release.yml with a vX.Y.Z tag: builds that version, requires
+#   updater signatures, and adds the installers and the updater feed
 #   (latest.json) to the paired vX.Y.Z release. See docs/releasing.md.
 # - Run by hand with a tag: retries that for an existing release.
 # - On pull requests that change packaging: builds the installers unsigned, so
@@ -94,10 +94,11 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}
     steps:
-      - name: Checkout
+      - name: Checkout publishing tools
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref || inputs.tag }}
+          # Use this workflow's validator even when rebuilding an older tag.
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
 
       - name: Download distribution artifacts
@@ -106,13 +107,16 @@ jobs:
           path: release-artifacts
 
       - name: Generate updater feeds
+        env:
+          EXPECTED_TARGETS: ${{ needs.tauri.outputs.targets }}
         run: |
           python3 gui/tools/packaging/generate_update_feeds.py \
             --repo "$GITHUB_REPOSITORY" \
             --tag "$RELEASE_TAG" \
             --version "${RELEASE_TAG#v}" \
+            --expected-targets "$EXPECTED_TARGETS" \
             --artifacts-root release-artifacts \
-            --output-dir release-artifacts/update-feeds
+            --output-dir updater-feed
 
       - name: Stage release assets
         run: |
@@ -121,13 +125,14 @@ jobs:
           find release-artifacts -type f -print0 | while IFS= read -r -d '' file; do
             name="$(basename "$file")"
             case "$name" in
-              latest.json|*.sig|*.app.tar.gz|*.dmg|*.AppImage|*.deb|*.rpm|*.pkg.tar.zst|*-setup.exe|*-quick-uninstall.ps1)
+              *.sig|*.app.tar.gz|*.dmg|*.AppImage|*.deb|*.rpm|*.pkg.tar.zst|*-setup.exe|*-quick-uninstall.ps1)
                 asset_name="${name// /.}"
                 cp "$file" "release-assets/$asset_name"
                 ;;
             esac
           done
           test -n "$(find release-assets -type f -print -quit)"
+          cp updater-feed/latest.json release-assets/
           find release-assets -type f -print | sort
 
       # release.yml has already created the release (published, or a draft

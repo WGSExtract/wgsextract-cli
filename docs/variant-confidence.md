@@ -168,8 +168,13 @@ reason makes it `moderate`; otherwise it is `high`.
 | Mapping quality (INFO/MQ) | below 40 for an RMS MQ (GATK, DRAGEN); below 20 for a mean MQ (bcftools) | | `low_mapq` |
 | Strand bias (INFO/FS or SOR; else SOR from FORMAT/SB or INFO/DP4) | FS above 60 or SOR above 3 (indels: 200 and 10) | | `strand_bias` |
 | Quality by depth (INFO/QD, GATK calls only) | below 2 | | `low_qd` |
-| A measure missing from the VCF | no depth, GQ or allele counts at all (`no_call_metrics`) | any one missing (an AD of no informative read, or one missing a count without FORMAT/DP, leaves allele balance to the caller's VAF or AF) | `depth_unknown`, `gq_unknown`, `allele_balance_unknown` |
+| A measure missing from the VCF | no depth, GQ or allele counts at all (`no_call_metrics`) | any one missing | `depth_unknown`, `gq_unknown`, `allele_balance_unknown` |
 | Sample contamination ([`qc contamination`](contamination.md) FREEMIX) | | at or above `qc_max_contamination` (3%) | `sample_contaminated` |
+
+Zero-sum `FORMAT/AD`, or AD with a missing count and no `FORMAT/DP`, does not
+measure allele balance. The confidence label falls back to the caller's
+`FORMAT/VAF` or `FORMAT/AF`, then to `INFO/DP4` for an unsplit, biallelic
+single-sample call. Without those, it reports `allele_balance_unknown`.
 
 An imputed genotype (`INFO/IMP`, from [`vcf impute`](imputation.md)) has no
 reads behind it to judge, so it is always `low`, reason `imputed` (with
