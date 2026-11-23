@@ -17,8 +17,12 @@ $runtime = Join-Path $env:LOCALAPPDATA ("wgsextract-gui-dev\cli-dev\" + (Split-P
 $app = Join-Path $runtime "app"
 $bin = Join-Path $runtime "bin"
 New-Item -ItemType Directory -Force $bin | Out-Null
-$existing = Get-Item -LiteralPath $app -ErrorAction SilentlyContinue
+$existing = Get-Item -LiteralPath $app -Force -ErrorAction SilentlyContinue
+if ($existing -and $existing.LinkType -ne "Junction") {
+    throw "$app exists and is not a junction; remove it and rerun."
+}
 if ($existing -and [string]$existing.Target -ne $repo) {
+    # Removes only the junction, never the checkout it points to.
     $existing.Delete()
     $existing = $null
 }

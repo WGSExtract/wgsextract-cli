@@ -174,7 +174,8 @@ on fresh Windows clients where the default policy is Restricted.
 
 To work on the GUI and the CLI together, serve the WGSExtract bundle with its CLI
 running from this checkout (after `pixi install` at the repository root), so a
-browser refresh picks up edits to both:
+browser refresh picks up edits to both. Run these from `gui/`, like the
+commands above:
 
 ```sh
 sh scripts/dev-checkout-cli.sh            # Linux/macOS
