@@ -257,6 +257,15 @@ def _vcf(tmp_path: Path) -> str:
     return str(vcf)
 
 
+def test_1419_gnomad_install_suggestion_explicitly_enables_download(
+    tmp_path, library, capsys
+):
+    missing = _needs(capsys, library, "vcf", "gnomad", "--vcf-input", _vcf(tmp_path))
+
+    assert [resource["id"] for resource in missing] == ["gnomad"]
+    assert "--download" in missing[0]["installArguments"]
+
+
 def test_annotation_reads_the_vcf_the_command_would(tmp_path, library, capsys):
     vcf = _vcf(tmp_path)
 

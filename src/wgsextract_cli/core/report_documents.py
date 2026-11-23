@@ -115,6 +115,7 @@ ReportFindingSection = Literal[
     "lineage",
     "pharmacogenomics",
     "carrier_screening",
+    "repeat_expansions",
     "clinvar",
     "mitochondrial",
     "acmg_research",
@@ -609,6 +610,7 @@ class ReportSectionsDocument(
             description="mtDNA heteroplasmy evidence (lineage mt-haplogroup --contamination) at reviewed disease and MT-RNR1 aminoglycoside-risk variants."
         ),
     ]
+    repeat_expansions: ReportSectionDocument
 
 
 class ReportSampleDocument(TypedDict):

@@ -9,6 +9,15 @@ page says which hardware speeds it up and by how much. Each figure is labelled:
 
 For memory and disk planning, see [resource estimates](resource_estimates.md).
 
+## Genotype imputation
+
+GLIMPSE2 in the optional `imputation` environment runs natively on Apple
+Silicon and Linux ARM64 using NEON. On the M1 Pro, native phasing of a typical
+HG002 chr20 chunk took 14.6 s versus 28 s under Rosetta in the
+[#1118 speed study](https://github.com/WGSExtract/wgsextract-cli/issues/1118).
+For installation, thread sizing and chr20 results, see
+[imputation](imputation.md).
+
 ## CPU aligners
 
 ### Input and output safety

@@ -30,6 +30,7 @@ export interface ReportSectionsDocument {
     ancestry?: ReportAncestryDocument;
     carrier_screening?: ReportSectionDocument;
     mitochondrial?: ReportMitochondrialDocument;
+    repeat_expansions?: ReportSectionDocument;
 }
 
 export interface ReportOverviewDocument {
@@ -46,7 +47,7 @@ export interface ReportOverviewDocument {
 }
 
 export interface ReportFindingDocument {
-    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "clinvar" | "mitochondrial" | "acmg_research" | "structural_variants";
+    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "repeat_expansions" | "clinvar" | "mitochondrial" | "acmg_research" | "structural_variants";
     label: string;
     value: string;
     detail: string | null;

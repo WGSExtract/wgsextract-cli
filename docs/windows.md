@@ -47,6 +47,83 @@ the optional `samblaster`. If Windows blocks BWA-MEM2's CPU-specific executable,
 you can explicitly select `--aligner bwa` if BWA is allowed. BWA can produce
 different alignment records from BWA-MEM2.
 
+## Work folders and Microsoft Defender
+
+On Windows 11, if your security policy allows it, prefer a trusted **Dev
+Drive** with Defender performance mode for WGS Extract's working files. Point
+`--tmp-dir` and `--outdir` at dedicated folders on that drive. Create the
+temp folder before running the command. Keep real-time protection on. Check
+**Windows Security → Virus & threat protection → Manage settings → See
+volumes** to confirm that performance mode is on for the drive. An ordinary
+ReFS volume is not necessarily a Dev Drive.
+
+Microsoft's [Dev Drive setup guide](https://learn.microsoft.com/en-us/windows/dev-drive/)
+says that Dev Drive “builds on ReFS technology to employ targeted file system
+optimizations”. The [Defender performance mode guide](https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint-antivirus-performance-mode)
+explains that it works by “deferring security scans until after the open file
+operation has completed”. Files are still scanned, but malware may be
+detected later than with synchronous scanning. Performance mode does not
+change Defender scanning on your NTFS system drive.
+
+If you cannot use a Dev Drive, leave NTFS scanning on by default. An
+administrator can make a [folder exclusion](https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-antivirus-exclusions-configure)
+if measurement shows a worthwhile benefit and policy permits it. **A folder
+exclusion skips Defender Antivirus scans**, so malware there may go
+undetected. If you use this option, limit it to one dedicated scratch folder,
+use only trusted inputs there, and remove the exclusion as soon as the job
+finishes. Never exclude a whole drive, Downloads, a shared folder or the
+tool installation. WGS Extract never changes Defender settings.
+
+### One Windows benchmark
+
+In November 2026 we ran WGS Extract 0.8.9 on native Windows 11
+(build 26300.9974, Ryzen 9 9900X3D, 62 GiB RAM) with a 12-core,
+24 GiB job limit. We tested three setups:
+
+- **A:** NTFS, standard real-time scanning.
+- **B:** The same NTFS folder, with a temporary folder exclusion.
+- **C:** A trusted ReFS Dev Drive in a VHDX on the same SSD, with Defender
+  performance mode.
+
+We ran A/B/C and then C/B/A. Each run copied 9.65 GB from common sources
+on C: and D: to the test volume, a separate timing. With inputs, work
+files and outputs on that volume, we aligned 5 million HG002 pairs
+against hs38 using the default CPU BWA, called SNPs in the first 5 Mb of
+chr20 from a separate small BAM, and annotated the chr20 GIAB truth VCF
+against offline ClinVar.
+Every run started with fresh copies and outputs. We repeated the ClinVar
+timings with an empty normalization cache on the test volume for every
+run. We did not flush the Windows file cache.
+
+Values are medians (min–max) over two repeats. Peak working set is the
+sampled total for the command's process tree.
+
+| Workload | Setup | Wall time (s) | MsMpEng CPU (s) | Peak working set (GiB) |
+| --- | --- | ---: | ---: | ---: |
+| Copy inputs | A | 2.95 (2.92–2.98) | 1.99 (1.48–2.50) | 0.027 (0.027–0.027) |
+| Copy inputs | B | 2.83 (2.57–3.10) | 3.05 (0.09–6.00) | 0.027 (0.027–0.027) |
+| Copy inputs | C | 3.54 (2.96–4.12) | 2.46 (1.44–3.48) | 0.027 (0.027–0.027) |
+| Align | A | 262.25 (256.50–267.99) | 244.33 (178.50–310.16) | 10.045 (10.041–10.049) |
+| Align | B | 255.23 (252.23–258.23) | 258.35 (244.67–272.03) | 10.043 (10.038–10.049) |
+| Align | C | 261.00 (259.20–262.81) | 252.49 (143.30–361.69) | 10.052 (10.045–10.058) |
+| SNP calling | A | 1.73 (1.66–1.79) | 1.50 (0.38–2.63) | 0.157 (0.157–0.157) |
+| SNP calling | B | 1.76 (1.65–1.88) | 1.52 (1.13–1.91) | 0.158 (0.157–0.158) |
+| SNP calling | C | 1.79 (1.77–1.80) | 1.86 (0.80–2.92) | 0.158 (0.158–0.159) |
+| ClinVar | A | 152.74 (150.84–154.64) | 98.99 (92.03–105.95) | 0.726 (0.726–0.726) |
+| ClinVar | B | 149.58 (144.00–155.16) | 99.39 (60.14–138.64) | 0.726 (0.726–0.727) |
+| ClinVar | C | 169.10 (167.68–170.53) | 229.80 (160.75–298.84) | 0.726 (0.726–0.726) |
+
+`MsMpEng` CPU time is for the whole host, not just this job, and
+asynchronous scans can continue after a timed command finishes. Before
+each timed command, the shared host's total CPU use ranged from 4.5%
+to 43.1%. With the NTFS exclusion, median alignment and ClinVar times
+were about 3% and 2% lower, respectively, but both sets of ranges
+overlap; SNP calling was about the same. The Dev Drive was about 11%
+slower for ClinVar in this test. That comparison also changes the
+filesystem and adds a virtual disk layer, so it cannot isolate Defender
+overhead. These short runs are not a reason to turn off scanning or a
+prediction for whole-genome jobs.
+
 ## Qualifying a whole genome on your own PC
 
 The [30x qualification script](../scripts/qualify_30x.ps1) runs public GIAB
@@ -263,34 +340,46 @@ needed for reads, sorting and Windows. The CLI checks the reference's memory
 estimate before choosing it. `--aligner bwa` selects the lower-memory option;
 `--aligner bwa-mem2` selects bwa-mem2 explicitly.
 
-### Optional wgse-bwa with NVIDIA CUDA
+### wgse-bwa and optional NVIDIA CUDA
 
-On Windows x86-64, when BWA is selected, `align` and `realign` can use a
-validated `wgse-bwa.exe` from `PATH` or an explicit path in `config.toml`:
+The default Pixi environment on Windows x86-64 includes `wgse-bwa` from
+[`windows-tools-12`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/windows-tools-12).
+When BWA is selected, `align` and `realign` use the validated `wgse-bwa.exe`
+from the environment. No manual PATH or configuration changes are needed.
+Run `pixi run wgsextract deps check --tool wgse-bwa` to see the installed path.
+To use a different build, set an explicit path in `config.toml`:
 
 ```toml
 wgse_bwa_path = 'C:\tools\wgse-bwa.exe'
 ```
 
-The [Windows recipe](../packaging/windows/README.md#optional-wgse-bwa)
-builds this executable. It is not yet pinned in the default Pixi environment;
-the CLI does not install it. An explicit path takes precedence over `PATH`;
-if it is unusable, the CLI warns and continues with stock BWA. Stock BWA is
-also used when no native build is found or with `--native-aligners off`.
+An explicit path takes precedence over `PATH`. If it is unusable, the CLI
+warns and continues with stock BWA. Stock BWA is also used when no native
+build is found or with `--native-aligners off`.
 
-The CLI uses `wgse-bwa` on the CPU by default, even with an NVIDIA GPU. On a
-Ryzen 9 9900X3D and RTX 5080, `wgsextract align` on 5 million HG002 pairs
-took 928 s on CUDA and 483 s on the CPU, with identical decoded BAM records.
-Direct `wgse-bwa mem` was faster on CUDA with a smaller batch size, but
-the CLI keeps its fixed batch size because changing it can alter alignments.
+On Windows x86-64, `align` and `realign` use CUDA automatically when
+`wgse-bwa` reports CUDA available and the alignment fits.
+CUDA needs a supported NVIDIA GPU and driver, not Docker, WSL or a CUDA
+Toolkit installation. It is distinct from the Linux-only `--gpu` Parabricks
+option. Windows can charge CUDA allocations to system commit (RAM plus
+page file) even when physical RAM is available. Preflight can reduce
+sort memory to fit both budgets; it uses the CPU if either check fails
+or available commit cannot be measured.
 
-To try CUDA, pass `--prefer-native-gpu` to `align` or `realign`, or set
-`prefer_native_gpu = true` in `config.toml`. CUDA needs a supported NVIDIA
-GPU and driver, not Docker, WSL or a CUDA Toolkit installation. It is distinct
-from the Linux-only `--gpu` Parabricks option. Windows can charge
-CUDA allocations to system commit even when physical RAM is available:
-the preflight checks remaining commit (RAM plus page file) separately from
-RAM. `--prefer-native-gpu` does not override either check on Windows.
+Pass `--no-prefer-native-gpu` to force CPU, or set `prefer_native_gpu = false`
+in `config.toml` for future runs. `--prefer-native-gpu` overrides that setting
+for one run, but never bypasses either Windows memory check.
+
+With `windows-tools-12` and Segment Heap enabled, `wgsextract align` on
+5 million HG002 read pairs took 100 s with automatic CUDA versus 189 s with
+forced CPU (Ryzen 9 9900X3D, RTX 5080, 16 threads). Both runs produced
+identical decoded BAM records: 99.73% mapped and 97.85% properly paired.
+
+On the same host, `wgsextract realign` on a local HG002 BAM subset
+(19.47 million input records, below full-genome 30× coverage) took 154 s
+with automatic CUDA and 344 s with forced CPU. Both runs used
+`windows-tools-12`, 16 threads, and fresh output directories. Both produced
+identical decoded BAM records: 99.81% mapped and 99.12% properly paired.
 
 ## Upgrading from a WSL or MSYS2 setup
 

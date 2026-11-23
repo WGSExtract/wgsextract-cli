@@ -30,7 +30,9 @@ from wgsextract_cli.server.operations import (
 )
 
 
-@pytest.mark.parametrize("op", ["vcf/freebayes", "vcf/clair3", "vcf/gatk"])
+@pytest.mark.parametrize(
+    "op", ["vcf/freebayes", "vcf/clair3", "vcf/gatk", "vcf/sv", "vcf/cnv", "vcf/call"]
+)
 @pytest.mark.parametrize("filename", ["outside.bed", "outside with spaces, commas.bed"])
 def test_caller_region_beds_cannot_escape_serve_allow(tmp_path, op, filename):
     allowed = tmp_path / "allowed"
@@ -141,6 +143,13 @@ def test_path_guard_reads_a_windows_interval_as_a_region(region):
     guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
     body = {"input": r"C:\data\a.bam", "outdir": r"C:\data"}
     guard.check(params_from_json(find("vcf/deepvariant"), {**body, "region": region}))
+
+
+@pytest.mark.parametrize("op", ["vcf/sv", "vcf/cnv", "vcf/call"])
+def test_1250_windows_path_guard_accepts_structural_region_lists(op):
+    guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
+    body = {"input": r"C:\data\a.bam", "outdir": r"C:\data"}
+    guard.check(params_from_json(find(op), {**body, "region": "1:1-1,000, X:-300"}))
 
 
 @pytest.mark.parametrize(

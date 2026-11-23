@@ -3,7 +3,10 @@ from __future__ import annotations
 import argparse
 
 from wgsextract_cli.api._cli import add_arguments
-from wgsextract_cli.api.methylation import MethylationPileupParams
+from wgsextract_cli.api.methylation import (
+    MethylationPileupParams,
+    MethylationRegionsParams,
+)
 from wgsextract_cli.cli._lazy import command_handler
 from wgsextract_cli.core.messages import CLI_HELP
 
@@ -21,5 +24,16 @@ def register(
     pileup.set_defaults(
         func=command_handler(
             "wgsextract_cli.commands.methylation", "run_pileup", MethylationPileupParams
+        )
+    )
+    regions = subs.add_parser(
+        "regions", parents=[base_parser], help=CLI_HELP["cmd_methylation-regions"]
+    )
+    add_arguments(regions, MethylationRegionsParams)
+    regions.set_defaults(
+        func=command_handler(
+            "wgsextract_cli.commands.methylation_regions",
+            "run_regions",
+            MethylationRegionsParams,
         )
     )

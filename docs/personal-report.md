@@ -67,6 +67,7 @@ so it needs no samtools or other analysis tools, even for a BAM or CRAM `--input
 | Ancestry proportions | `qc ancestry` | the K=7 and K=12 reference proportions with their 95% intervals and the reference populations that carry each component most, worded as reference proportions, not ethnicities ([ancestry.md](ancestry.md)) |
 | Pharmacogenomics | `vcf pharmcat`, `typing cyp2d6` (Cyrius), `typing hla` (T1K) | one per PharmCAT gene (diplotype and phenotype); the CYP2D6 diplotype; the HLA-A and HLA-B alleles |
 | Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
+| Repeat Expansions | `typing str` (ExpansionHunter, LongTR or STRkit) | Flagged and unconfirmed repeat sizes, counts of flagged, unconfirmed and normal calls, and caller and coverage caveats |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
 | Mitochondrial DNA: heteroplasmy at reviewed variants | `lineage mt-haplogroup --contamination` on a BAM or CRAM (mutserve) | each reviewed mtDNA variant (ClinVar expert-panel pathogenic SNVs, CPIC's MT-RNR1 aminoglycoside-risk alleles) found homoplasmic, heteroplasmic or with weak evidence, with its level; every reviewed variant's state in `sites`. See [below](#mitochondrial-dna-heteroplasmy-at-reviewed-variants) |
 | Automated ACMG classes (research only) | `vcf acmg`, only when it ran | the carried P/LP calls in a gene of the gene list, from fastVEP's automated classes; counts of the carried alleles' classes. See [below](#automated-acmg-classes-research-only) |
@@ -75,6 +76,13 @@ so it needs no samtools or other analysis tools, even for a BAM or CRAM `--input
 
 Warnings the source runs recorded (low coverage, high no-call rates, ...) are
 shown with their section.
+
+Repeat Expansions uses the latest successful `typing str` result for this
+sample. It does not run a repeat caller or read the alignment. A targeted
+`--loci` run only describes the selected loci; counts say nothing about the
+rest of the catalog. A locus can be both unconfirmed and flagged when clipped
+reads also suggest an expansion. Older manifests may report a flagged finding
+but lack its structured sizes, coverage or the normal count.
 
 PharmCAT alternatives stay together as one **ambiguous** gene finding, rather
 than multiple ordinary genotypes. The JSON finding's `pgx` object records

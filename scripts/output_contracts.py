@@ -192,7 +192,7 @@ def compare_roles(
         action = (
             "Restore it or follow the breaking-change procedure in docs/output-contracts.md."
             if tier == "stable"
-            else f"Announce it: name `{key}` in docs/release-notes/unreleased.md."
+            else ACTIONS["experimental"].format(key=key)
         )
         if after is None:
             yield Finding(
