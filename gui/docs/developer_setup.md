@@ -171,6 +171,22 @@ powershell -ExecutionPolicy Bypass -File .\make.ps1 test
 `dev` runs the TypeScript watcher and reloadable server on all three platforms.
 Use Ctrl-C to stop both. The process-scoped execution-policy bypass is required
 on fresh Windows clients where the default policy is Restricted.
+
+To work on the GUI and the CLI together, serve the WGSExtract bundle with its CLI
+running from this checkout (after `pixi install` at the repository root), so a
+browser refresh picks up edits to both:
+
+```sh
+sh scripts/dev-checkout-cli.sh            # Linux/macOS
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\dev-checkout-cli.ps1
+```
+
+It uses your normal users workspace and settings. The repository's
+`.claude/launch.json` starts either script in the Claude desktop app's browser
+pane (`wgsextract-gui-dev` on Windows, `wgsextract-gui-dev-posix` elsewhere).
 For a fork, push to your fork and open a PR against `WGSExtract/wgsextract-cli`.
 The repository's pre-commit hooks (installed by the root's developer setup,
 `docs/developer_setup.md`) scan staged changes for secrets and run `make lint`
