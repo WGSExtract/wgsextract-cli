@@ -171,6 +171,25 @@ def test_config_bootstrap_survives_a_closed_stdin(monkeypatch, capsys, tmp_path)
     assert not (tmp_path / "cfg").exists()
 
 
+def test_1230_config_bootstrap_keeps_a_config_saved_while_it_prompted(
+    monkeypatch, capsys, tmp_path
+):
+    # Issue #1230: the app may save config.toml while the prompt waits.
+    path = tmp_path / "config.toml"
+
+    def answer(prompt):
+        path.write_text('reference_library = "/ref"\n')
+        return "y"
+
+    monkeypatch.setattr("builtins.input", answer)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+
+    parser.bootstrap_default_config(path)
+
+    assert path.read_text() == 'reference_library = "/ref"\n'
+    assert "created meanwhile" in capsys.readouterr().out
+
+
 def test_every_default_config_entry_is_a_setting_once_uncommented():
     """The bootstrapped file is all comments; uncommenting an example line must
     set a real setting, not a key the loader silently ignores."""
