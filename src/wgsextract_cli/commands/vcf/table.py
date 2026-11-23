@@ -292,7 +292,6 @@ def run_table(params: VcfTableParams) -> None:
                 sample_index=0 if sample else None,
                 carried_only=not params.all_alleles,
                 pharmcat=pharmcat,
-                source_samples=len(samples),
             ),
             out_table,
             params.table_format,

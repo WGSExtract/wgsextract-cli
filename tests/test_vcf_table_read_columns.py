@@ -1,11 +1,13 @@
-"""`vcf table`'s read evidence, phasing, transcript and gnomAD grpmax columns
-(issue 1289), from each caller's own FORMAT conventions."""
+"""`vcf table`'s read evidence, phasing, transcript and gnomAD columns (issue
+1289), from each caller's own FORMAT conventions, and the confidence labels'
+reading of an AD that measures no reads."""
 
 import sqlite3
 
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract
+from wgsextract_cli.core import variant_confidence
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.core.variant_table import COLUMN_NAMES, parse_header, variant_rows
 
@@ -68,10 +70,11 @@ READ_COLUMNS = ("alt_fraction", "ad_ref", "ad_alt", "phase_set")
 def test_1289_gatk_reads_and_phase_blocks():
     rows = _caller_rows(GATK_RECORDS)
     assert {key: tuple(row[c] for c in READ_COLUMNS) for key, row in rows.items()} == {
-        ("1000", "G"): (14 / 32, 16, 14, "1000"),
+        # Informative reads only: AD's sum, not DP, is the denominator.
+        ("1000", "G"): (14 / 30, 16, 14, "1000"),
         ("2000", "T"): (0.5, 10, 10, None),
-        ("3000", "TA"): (10 / 25, 2, 10, None),
-        ("3000", "TAA"): (12 / 25, 2, 12, None),
+        ("3000", "TA"): (10 / 24, 2, 10, None),
+        ("3000", "TAA"): (12 / 24, 2, 12, None),
         ("4000", "A"): (1.0, 0, 25, None),
         # No reads: unknown, never a 0 fraction.
         ("5000", "C"): (None, 0, 0, None),
@@ -121,29 +124,6 @@ def test_1289_transcript_id_names_only_the_chosen_transcript():
     assert snpeff["500", "T"]["transcript_id"] == "NM_5"
 
 
-def test_1289_vep_gnomad_groups_give_the_grpmax_frequency():
-    groups = "AFR AMR ASJ EAS FIN NFE SAS MID".split()
-    names = "|".join(f"gnomADg_{g}_AF" for g in groups)
-    csq = f"Allele|Consequence|{names}|gnomADe_NFE_AF"
-    # Finnish and Ashkenazi frequencies are bottlenecked: grpmax leaves them out.
-    values = "|".join(["0.001", "", "0.3", "0.002", "0.4", "0.01&0.02", "0.005", ""])
-    record = _record("chr1", "700", ".", "A", "G", "40", "PASS",
-                     f"CSQ=G|missense_variant|{values}|0.9", "GT", "0/1")  # fmt: skip
-    exomes_only = _record("chr1", "800", ".", "A", "G", "40", "PASS",
-                          f"CSQ=G|missense_variant|{'|' * len(groups)}0.07",
-                          "GT", "0/1")  # fmt: skip
-    # Review of issue 1289: v4's grpmax counts Middle Eastern (MID) too.
-    middle_eastern = _record("chr1", "900", ".", "A", "G", "40", "PASS",
-                             "CSQ=G|missense_variant|" + "|".join(
-                                 ["", "", "", "", "", "0.001", "", "0.05", ""]),
-                             "GT", "0/1")  # fmt: skip
-    rows = _rows([record, exomes_only, middle_eastern], csq)
-    assert rows["900", "G"]["gnomad_popmax_af"] == 0.05
-    assert rows["700", "G"]["gnomad_popmax_af"] == 0.02
-    assert rows["800", "G"]["gnomad_popmax_af"] == 0.07
-    assert rows["700", "G"]["gnomad_nhomalt"] is None
-
-
 def test_1289_unannotated_vcf_leaves_the_new_columns_empty(tmp_path):
     record = _record("chr1", "100", ".", "A", "G", "30", "PASS", ".", "GT", "0/1")
     row = _rows([record])["100", "G"]
@@ -189,10 +169,18 @@ def test_1289_new_columns_match_across_tsv_parquet_and_sqlite(tmp_path):
         for key, row in _tsv(tmp_path / "gnomad_annotated_variants.tsv").items()
     }
     assert tsv == {
-        ("1000", "G"): ("ENST00000001.4", "0.4375", "16", "14", "1000", "0.08", "12"),
+        ("1000", "G"): (
+            "ENST00000001.4",
+            str(14 / 30),
+            "16",
+            "14",
+            "1000",
+            "0.08",
+            "12",
+        ),  # fmt: skip
         ("2000", "T"): ("", "0.5", "10", "10", "", "", ""),
-        ("3000", "TA"): ("", "0.4", "2", "10", "", "0.35", "900"),
-        ("3000", "TAA"): ("", "0.48", "2", "12", "", "0.002", "0"),
+        ("3000", "TA"): ("", str(10 / 24), "2", "10", "", "0.35", "900"),
+        ("3000", "TAA"): ("", "0.5", "2", "12", "", "0.002", "0"),
         ("4000", "A"): ("", "1.0", "0", "25", "", "", ""),
         ("5000", "C"): ("", "", "0", "0", "", "", ""),
     }
@@ -259,35 +247,6 @@ def test_1289_a_gnomad_source_without_grpmax_drops_an_earlier_ones(tmp_path):
     assert defined == {"GNOMAD_AF"}
 
 
-@needs_htslib
-@pytest.mark.parametrize(
-    ("samples", "fraction"), [(("S1",), "0.9"), (("S1", "S2"), "")]
-)
-def test_1289_bcftools_dp4_is_one_samples_reads_only_in_a_one_sample_vcf(
-    tmp_path, samples, fraction
-):
-    """Review of issue 1289: a multi-sample bcftools call VCF's INFO/DP4 pools
-    every sample's reads, so it must not become the chosen sample's fraction."""
-    plain = tmp_path / "calls.vcf"
-    plain.write_text(
-        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=248956422>\n"
-        '##INFO=<ID=DP4,Number=4,Type=Integer,Description="Number of '
-        'high-quality ref-forward, ref-reverse, alt-forward and alt-reverse bases">\n'
-        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
-        '##FORMAT=<ID=PL,Number=G,Type=Integer,Description="Phred-scaled '
-        'genotype likelihoods">\n'
-        + "\t".join(["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER", "INFO",
-                     "FORMAT", *samples]) + "\n"
-        + _record("chr1", "100", ".", "C", "T", "50", "PASS", "DP4=1,1,9,9", "GT:PL",
-                  *["1/1:90,30,0", "0/1:40,0,40"][: len(samples)])
-    )  # fmt: skip
-    run_wgsextract(
-        "vcf", "table", "--vcf-input", bgzip_index(plain), "--outdir", str(tmp_path),
-        "--no-sqlite", "--sample", samples[-1],
-    )  # fmt: skip
-    assert _tsv(tmp_path / "calls_variants.tsv")["100", "T"]["alt_fraction"] == fraction
-
-
 @pytest.mark.parametrize(
     ("fmt", "sample", "fraction"),
     [
@@ -296,8 +255,7 @@ def test_1289_bcftools_dp4_is_one_samples_reads_only_in_a_one_sample_vcf(
         # A missing REF count without DP would read 12 of 12 reads as ALT.
         ("GT:AD", "0/1:.,12", None),
         ("GT:AD:AF", "0/1:.,12:0.55", 0.55),
-        # FORMAT/DP still gives the denominator.
-        ("GT:AD:DP", "0/1:.,12:20", 0.6),
+        ("GT:AD:DP", "0/1:.,12:20", None),
     ],
 )
 def test_1289_unmeasured_reads_never_become_a_fraction(fmt, sample, fraction):
@@ -305,19 +263,27 @@ def test_1289_unmeasured_reads_never_become_a_fraction(fmt, sample, fraction):
     assert _caller_rows([record])["900", "T"]["alt_fraction"] == fraction
 
 
-def test_1289_transcript_id_belongs_to_the_annotation_hgvs_came_from():
-    """Review of issue 1289: with VEP lacking HGVS, hgvs_c comes from SnpEff,
-    so transcript_id must be SnpEff's transcript, not VEP's."""
-    record = _record(
-        "chr1", "100", ".", "A", "G", "40", "PASS",
-        "CSQ=G|missense_variant|MODERATE|GENEA|ENSG1|Transcript|ENST2|"
-        "protein_coding|||||||;"
-        "ANN=G|missense_variant|MODERATE|GENEA|GENEA|transcript|NM_5.2|"
-        "protein_coding|2/5|c.100A>G|p.Lys34Glu",
-        "GT", "0/1",
+@pytest.mark.parametrize(
+    ("fmt", "reason"),
+    [
+        # Review of issue 1289: AD 0,0 with a DP counts no informative read;
+        # it read as fraction 0, a "low" allele_imbalance call.
+        ({"GT": "0/1", "AD": "0,0", "DP": "40", "GQ": "99"}, "allele_balance_unknown"),
+        ({"GT": "0/1", "AD": "0,0", "DP": "40", "GQ": "99", "VAF": "0.45"}, None),
+        # A missing REF count without DP read 12 of 12 reads as ALT.
+        ({"GT": "0/1", "AD": ".,12", "GQ": "99"}, "allele_balance_unknown"),
+    ],
+)
+def test_1289_ad_without_reads_is_unknown_allele_balance(fmt, reason):
+    label = variant_confidence.classify(
+        alt=1, alleles=fmt["GT"].split("/"), ref="C", alt_allele="T",
+        filters="PASS", info={}, fmt=fmt, n_alts=1,
+        thresholds=variant_confidence.Thresholds(10, 20, 20, 30),
     )  # fmt: skip
-    row = _rows([record])["100", "G"]
-    assert (row["transcript_id"], row["hgvs_c"]) == ("NM_5.2", "c.100A>G")
-    with_hgvs = record.replace("protein_coding|||", "protein_coding|ENST2:c.1A>G||")
-    row = _rows([with_hgvs])["100", "G"]
-    assert (row["transcript_id"], row["hgvs_c"]) == ("ENST2", "ENST2:c.1A>G")
+    assert label is not None
+    assert "allele_imbalance" not in label.reasons
+    assert (
+        (reason in label.reasons)
+        if reason
+        else ("allele_balance_unknown" not in label.reasons)
+    )

@@ -1,0 +1,50 @@
+# A synthetic research panel for tests (#1287): its groups and allele names
+# mean nothing; the genes are real only so that they resolve.
+schema = "wgsextract.panel/1"
+id = "synthetic-test-panel"
+name = "Synthetic test panel"
+version = "1.0.0"
+build = "GRCh38"
+
+[source]
+citation = "Synthetic test fixture"
+
+[defaults]
+max_af = 0.003
+max_popmax_af = 0.01
+pass_only = true
+min_confidence = "moderate"
+
+[[defaults.qualify]]
+impacts = ["HIGH"]
+
+[[defaults.qualify]]
+consequences = ["missense_variant"]
+min_revel = 0.5
+
+[[groups]]
+id = "group_a"
+name = "Group A"
+genes = ["OTC", "cps1", "CYPIID6", "HGNC:613", "MALAT1", "NOT_A_GENE", "UBC6"]
+recessive = ["CPS1"]
+
+[groups.overrides]
+max_af = 0.001
+
+[[groups.overrides.qualify]]
+min_spliceai = 0.2
+
+[[sites]]
+id = "site_1"
+locus = "GRCh38:chr1:11796321:G>A"
+rsid = "rs1801133"
+
+[[haplotypes]]
+id = "hap_1"
+gene = "CYP2C19"
+sites = ["GRCh38:chr10:94781859:G", "GRCh38:chr10:94842866:A"]
+alleles = { a = ["G", "A"], b = ["A", "A"], c = ["G", "G"] }
+
+[calibration]
+null_sets = 500
+seed = 7

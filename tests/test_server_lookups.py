@@ -386,3 +386,34 @@ def test_mcp_offers_lookups_without_allow_jobs(work, variant_tables):
     result = mcp.call("report_section", path=str(work.parent))
     assert result["structuredContent"]["error"]["code"] == "path_not_allowed"
     assert mcp.close() == 0
+
+
+def test_1289_variant_quality_and_gnomad_columns_are_queryable(
+    tmp_path, work, variant_tables
+):
+    expected = {
+        "phase_set": "350",
+        "alt_fraction": 0.3,
+        "transcript_id": "ENST4",
+        "gnomad_popmax_af": 0.125,
+        "gnomad_nhomalt": 0,
+    }
+    path = str(variant_tables["tsv"])
+    with _serve(tmp_path, [work]) as http:
+        query = urllib.parse.urlencode(
+            {"path": path, "rsid": "rs4", "columns": ",".join(expected)}
+        )
+        status, answer = http.request("GET", f"/variants?{query}")
+        assert status == 200, answer
+        assert answer["rows"] == [expected]
+    mcp = Mcp("--allow", str(work))
+    try:
+        result = mcp.call(
+            "query_variants",
+            path=str(variant_tables["sqlite"]),
+            rsid="rs4",
+            columns=list(expected),
+        )
+        assert result["structuredContent"]["rows"] == [expected]
+    finally:
+        assert mcp.close() == 0

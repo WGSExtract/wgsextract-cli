@@ -117,9 +117,6 @@ from ._confidence_rules import (
     _numbers,
 )
 from ._confidence_rules import (
-    alt_fraction as alt_fraction,
-)
-from ._confidence_rules import (
     classify as classify,
 )
 from ._confidence_rules import (

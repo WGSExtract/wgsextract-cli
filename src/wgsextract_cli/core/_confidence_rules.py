@@ -121,14 +121,14 @@ def _depth(
     return _number(info.get("DP"))
 
 
-def alt_fraction(
+def _alt_fraction(
     alt: int, n_alts: int, fmt: Mapping[str, str], info: Mapping[str, str], split: bool
 ) -> float | None:
     """The fraction of the sample's reads carrying ALT number ``alt`` (1-based):
     FORMAT/AD over the larger of its sum and FORMAT/DP, else the caller's
     per-ALT FORMAT/VAF (DeepVariant) or FORMAT/AF (Clair3, Mutect2), else a
     biallelic record's INFO/DP4 (pass ``info`` only for a single-sample VCF).
-    None when nothing measures it, or AD counts no informative read."""
+    None when nothing measures it."""
     counts = _numbers(fmt.get("AD"))
     alt_count = counts[alt] if len(counts) > alt else None
     format_depth = _number(fmt.get("DP"))
@@ -136,10 +136,9 @@ def alt_fraction(
     # counts the reads of the ALTs split off.
     if alt_count is not None and (format_depth is not None or not split):
         known = [v for v in counts if v is not None]
-        if not math.fsum(known):
-            return None  # no informative read: AD measures nothing
-        # Without FORMAT/DP, a missing AD count would shrink the denominator.
-        if format_depth is not None or len(known) == len(counts):
+        # AD of no informative read measures nothing, and without FORMAT/DP a
+        # missing count would shrink the denominator: use the fallbacks.
+        if math.fsum(known) and (format_depth is not None or len(known) == len(counts)):
             return alt_count / max(math.fsum(known), format_depth or 0)
     for key in ("VAF", "AF"):  # DeepVariant VAF, Clair3 AF: per ALT
         fractions = _numbers(fmt.get(key))
@@ -223,7 +222,7 @@ def classify(
             "unassessed",
             _depth(fmt, counts_info, split),
             _number(fmt.get("GQ")),
-            alt_fraction(alt, n_alts, fmt, counts_info, split),
+            _alt_fraction(alt, n_alts, fmt, counts_info, split),
         )
     if IMPUTED_TAG in info:
         # No reads behind it to judge: its own probability is in FORMAT/GP.
@@ -255,7 +254,7 @@ def classify(
     if reference and (depth is None or gq is None):
         low.append("reference_metrics_unknown")
 
-    fraction = alt_fraction(alt, n_alts, fmt, counts_info, split)
+    fraction = _alt_fraction(alt, n_alts, fmt, counts_info, split)
     if reference:
         fraction = None
     elif fraction is None:

@@ -53,11 +53,17 @@ above works.
 | `pharmcat_diplotype`, `pharmcat_phenotype` | text | PharmCAT's call for the row's gene, with `--pharmcat-json <stem>.phenotype.json` from `vcf pharmcat`. |
 | `sv_af`, `sv_freq` | real, text | A structural variant's population frequency and its class (`common`, `low`, `rare` or `novel`), from [`vcf sv-freq`](sv-frequency.md). |
 | `acmg_class`, `acmg_criteria`, `acmg_transcript` | text | **Research use only; not a diagnosis.** fastVEP's automated ACMG/AMP class (`P`, `LP`, `VUS`, `LB`, `B`), the criteria it found met (`&`-separated) and the transcript it classified on, from [`vcf acmg`](acmg.md). Empty when the VCF has no classes. |
-| `transcript_id` | text | The ID of the transcript `hgvs_c` describes (else `hgvs_p`, else `consequence`): VEP's `Feature`, or SnpEff's `Feature_ID` when that value came from SnpEff because VEP's annotation lacked it. Empty when the chosen annotation is a regulatory or intergenic feature. |
-| `phase_set` | text | The phase block (FORMAT/PS) of a phased genotype (`0\|1`). Calls with the same `phase_set` on one chromosome are phased to each other; see [Read evidence and phasing](#read-evidence-and-phasing). |
-| `alt_fraction`, `ad_ref`, `ad_alt` | real, integer, integer | The fraction of the sample's reads carrying this ALT (0-1), and the REF and ALT read counts from FORMAT/AD. |
-| `gnomad_popmax_af`, `gnomad_nhomalt` | real, integer | gnomAD's highest frequency of this ALT among non-bottlenecked genetic ancestry groups (grpmax, called popmax before v4), and the number of homozygous-ALT individuals in gnomAD. From `vcf gnomad` with a gnomAD VCF that has `AF_grpmax` (or `AF_popmax`) and `nhomalt`; `gnomad_popmax_af` else from VEP's per-group gnomAD frequencies. |
 | `imputed`, `genotype_probability` | integer, real | `1` when the genotype was imputed from a reference panel (`INFO/IMP`, from [`vcf impute`](imputation.md)), else `0`; and the largest FORMAT/GP when its values are probabilities in [0, 1]. Unrecognised/phred-scaled scores leave the probability empty. Imputed rows below `vcf impute`'s thresholds have `filter` `ImpLowConf`. |
+| `phase_set` | text | The sample's `FORMAT/PS` for a phased genotype, otherwise empty. Compare phase sets only within the same sample and chromosome. Use `genotype` together with `phase_set` to see which alleles are on the same haplotype. |
+| `alt_fraction` | real | This ALT's depth divided by the sum of `FORMAT/AD` across REF and all ALTs in the record. If depths are incomplete or sum to zero, falls back to the allele's `FORMAT/VAF`, then `FORMAT/AF`, if present and in [0, 1]. `INFO/AF` is not a read fraction. |
+| `transcript_id` | text | The transcript associated with `consequence`: VEP `Feature` or SnpEff `Feature_ID`. Empty for non-transcript effects. |
+| `gnomad_popmax_af` | real | Maximum allele frequency across gnomAD genetic ancestry groups for this ALT (`GNOMAD_POPMAX_AF` from `vcf gnomad`, a native gnomAD `AF_grpmax_joint`/`AF_grpmax`/`AF_popmax` field, or a gnomAD-specific group-maximum field in VEP `CSQ`). VEP `MAX_AF` combines databases and is not a fallback. |
+| `gnomad_nhomalt` | integer | Count of homozygotes for this ALT in gnomAD (`GNOMAD_NHOMALT` from `vcf gnomad`, native `nhomalt_joint`/`nhomalt`, or a gnomAD homozygote count in VEP `CSQ`). A known count of zero is distinct from a missing count. |
+| `ad_ref`, `ad_alt` | integer, integer | The sample's `FORMAT/AD` read counts for REF and this ALT, behind `alt_fraction`. Empty when AD is missing or has a missing count; `0` only when AD says no read supports the allele (`alt_fraction` is then empty if no read supports any allele). A record split from a multi-allelic one keeps REF and its own ALT. |
+
+When a WGSE annotation splits a multi-allelic record, it saves the original
+AD total so the read fraction stays the same. A known split without a
+complete original total can only use `FORMAT/VAF` or `FORMAT/AF`.
 
 The TSV has a header row and leaves missing values empty. The SQLite database
 has the table `variants` with these columns, `columns` (each column's type and
@@ -65,6 +71,16 @@ meaning, for an agent to read first) and `metadata` (wgsextract version,
 source VCF and its SHA-256, sample, reference build, region, annotations found,
 row count and command line). It is indexed on `gene`, `rsid` and
 `(chrom, pos)`.
+
+[`/v1/variants` and MCP `query_variants`](server.md) can return these
+columns from any of the table formats. They omit fields that are missing.
+
+Newly built `ref gnomad --release 4.1` tables retain the joint dataset's
+`AF_grpmax_joint` and `nhomalt_joint`. `vcf gnomad` carries them into its
+annotated VCF and, with `--max-af`, its confidence table. Older five-column
+gnomAD tables still supply `gnomad_af`, but do not have the two additional
+statistics. To rebuild an installed table, move it and its index aside before
+running `ref gnomad --release 4.1` again (this streams about 900 GB).
 
 A table of a [`vcf acmg`](acmg.md) VCF keeps the research-only disclaimer
 where its readers look: the `acmg_*` column descriptions, the metadata key
@@ -84,29 +100,6 @@ table keeps one per allele, as VEP's `--pick` would: the one VEP flagged
 `PICK`, else the MANE Select transcript, then the canonical one, then a
 protein-coding one, then the most severe consequence. SnpEff lists the most
 severe effect first, and the table takes that one.
-
-## Read evidence and phasing
-
-- **`alt_fraction`** is the sample's FORMAT/AD count for this ALT over the
-  larger of the sum of AD and FORMAT/DP. That's the same fraction behind the
-  `allele_imbalance` confidence reasons and the [personal report](personal-report.md).
-  Without AD it is the caller's own per-ALT FORMAT/VAF (DeepVariant), else
-  FORMAT/AF (Clair3, Mutect2), else a single-sample biallelic record's
-  INFO/DP4 (bcftools). A record that `bcftools norm -m-` split from a
-  multi-allelic one keeps only REF and its own ALT in AD, so its fraction
-  needs FORMAT/DP. At a multi-allelic site each ALT's fraction counts every
-  allele's reads, and a haploid call is read the same way as a diploid one.
-- **Missing is empty, never 0.** A site with no informative read (AD `0,0`,
-  whatever its DP) has `ad_ref` and `ad_alt` of 0 but an empty
-  `alt_fraction`. Without FORMAT/DP, an AD with a missing count (`.,12`)
-  falls back to the caller's VAF or AF rather than undercount the reads. A
-  VCF without read counts (a genotype-only or imputed VCF) leaves all three
-  empty.
-- **`phase_set`** comes from FORMAT/PS only when the genotype is phased
-  (`|`), as WhatsHap (`vcf phase`), GATK HaplotypeCaller's physical phasing and
-  Clair3 write it. An unphased `0/1` has an empty `phase_set` even if the VCF
-  gives it a PS. Statistically phased genotypes without PS (SHAPEIT, Beagle,
-  GLIMPSE) leave it empty too; their `genotype` still shows the `|`.
 
 ## Example queries
 
