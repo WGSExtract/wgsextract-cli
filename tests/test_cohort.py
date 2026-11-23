@@ -60,6 +60,7 @@ def cohort(tmp_path):
             "chr1\t10\tsecret-id\tA\tC,G\t.\tPASS\t.\tGT:DP:GQ\t1|2:20:60\n"
             "chr1\t20\t.\tAA\tCA,A\t.\tPASS\t.\tGT:DP:GQ\t0/1:20:60\n"
             "chr1\t30\t.\tA\tG\t.\tLowQual\t.\tGT:DP:GQ\t0/1:20:50\n"
+            "chr1\t30\t.\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t0/1:20:50\n"
             "chr1\t40\t.\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t1/.:20:60\n",
             "chr1\t1\t.\tA\t<NON_REF>\t.\tPASS\tEND=9\tGT:MIN_DP:GQ\t0/0:15:50\n"
             "chr1\t16\t.\tA\t<NON_REF>\t.\tPASS\tEND=19\tGT:MIN_DP:GQ\t0/0:15:50\n",
@@ -304,7 +305,11 @@ def test_1288_cohort_refuses_unverifiable_bindings(cohort, tmp_path, problem, ex
         path = tmp_path / rows[0]["variants"]["path"]
         raw = path.read_text(encoding="utf-8")
         if problem == "conflict":
-            raw += raw.splitlines()[-1].replace("1/.:", "1/1:") + "\n"
+            raw = (
+                raw.replace("1/.:", "0/1:")
+                + raw.splitlines()[-1].replace("1/.:", "1/1:")
+                + "\n"
+            )
         elif problem == "ref":
             raw = raw.replace("\tA\tC,G", "\tT\tC,G")
         elif problem == "caller":

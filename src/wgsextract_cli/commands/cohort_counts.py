@@ -160,8 +160,11 @@ class EvidenceCursor:
 
 
 def _genotype(records: list[Record], pos: int) -> tuple[str, ...] | None:
-    calls = [record.calls.get(pos) for record in records]
-    genotypes = {call.genotype for call in calls if call is not None}
+    calls = [
+        call.genotype if (call := record.calls.get(pos)) is not None else None
+        for record in records
+    ]
+    genotypes = {gt for gt in calls if gt is not None}
     if len(genotypes) > 1:
         raise UsageError("Conflicting normalized genotype calls for a participant.")
     return next(iter(genotypes), None) if None not in calls else None
