@@ -46,6 +46,7 @@ export interface ArtifactRecord {
     index: ArtifactIndex | null;
     producer: Producer | null;
     sources: (SourceEdge)[];
+    called_from: (SourceEdge)[];
 }
 
 export interface ArtifactIndex {

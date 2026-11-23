@@ -19,6 +19,7 @@ from wgsextract_cli.core import reference_evidence, variant_confidence
 from wgsextract_cli.core.artifacts import (
     Producer,
     artifact_from_dict,
+    ended_as,
     lineage_args,
     producer_from_dict,
     unrecorded_output,
@@ -215,13 +216,14 @@ def run_step(
             if not handle.metrics.get("result_runs"):
                 # Done in this process: this run did the step's work.
                 handle.metrics["result_runs"] = [result.run.this_run(result.command)]
-    except BaseException:
+    except BaseException as error:
         if handle is not None:
             # A step that failed before starting a command failed in this run.
             handle.metrics.setdefault(
                 "result_runs", [result.run.this_run(result.command)]
             )
-            result.run.record_step(step.name, handle.metrics, decision.reason, "failed")
+            outcome = ended_as(error)
+            result.run.record_step(step.name, handle.metrics, decision.reason, outcome)
         raise
     assert handle is not None
     result.run.record_step(step.name, handle.metrics, decision.reason, "ok")

@@ -354,6 +354,13 @@
           "items": {
             "$ref": "#/$defs/source_edge"
           }
+        },
+        "called_from": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_edge"
+          },
+          "description": "For a VCF or BCF: the reads wgsextract called it from, directly or through filters and annotations that kept their samples, so its samples are those reads' @RG SM; empty when unknown."
         }
       },
       "required": [
@@ -366,7 +373,8 @@
         "samples",
         "index",
         "producer",
-        "sources"
+        "sources",
+        "called_from"
       ],
       "additionalProperties": false
     },

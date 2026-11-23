@@ -205,7 +205,11 @@ def set_config_path(path: str | os.PathLike[str] | None) -> None:
 
 
 def config_args(*, keep_awake: bool | None = None) -> list[str]:
-    """Forward the config file and sleep override without changing default argv."""
+    """What a wgsextract subprocess inherits: the config file, the sleep
+    override, the temporary folder and the folders it may read (a server
+    job's), without changing default argv."""
+    from wgsextract_cli.core import read_scope
+
     selected = _state().path
     args = ["--config", str(selected)] if selected else []
     if keep_awake or (keep_awake is False and settings.get("keep_awake", False)):
@@ -218,7 +222,7 @@ def config_args(*, keep_awake: bool | None = None) -> list[str]:
     temporary = configured_temp_directory()
     if temporary:
         args += ["--tmp-dir", temporary]
-    return args
+    return args + read_scope.child_args()
 
 
 def legacy_config_paths() -> list[Path]:

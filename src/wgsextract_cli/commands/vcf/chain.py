@@ -4,9 +4,10 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams
-from wgsextract_cli.core.artifacts import lineage_args
+from wgsextract_cli.core.artifacts import ended_as, lineage_args
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -66,6 +67,28 @@ def _forward_step_warnings(step: str, ann: str, step_outdir: str) -> None:
                     f"{step} '{ann}': {item['message']}",
                     **item["details"],
                 )
+
+
+def _record_step_run(
+    ann: str,
+    result_file: Path,
+    reason: str,
+    outcome: Literal["ok", "failed", "cancelled"],
+) -> None:
+    """List an annotator's run among this run's children: its manifest is
+    removed with the intermediates."""
+    try:
+        document = json.loads(result_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        document = None
+    result_file.unlink(missing_ok=True)
+    current_result().run.add_child(
+        ann,
+        document,
+        command=" ".join(_step_command(ann)),
+        reason=reason,
+        outcome=outcome,
+    )
 
 
 def dataset(ann: str, lib: ReferenceLibrary) -> str | None:
@@ -181,14 +204,21 @@ def run_chain_annotate(
                 cmd += ["--ref", str(reference)]
             cmd += _step_resource_args(ann, lib)
             cmd += lineage_args(current_result().run, ann)
+            result_file = Path(step_outdir, "step.result.json")
+            cmd += ["--result-file", str(result_file)]
+            reason = f"annotation {i + 1} of {len(annotations)}"
 
             try:
                 # Captured so chained runs stay readable; surfaced on failure.
                 res = run_command(cmd, capture_output=True)
-            except subprocess.CalledProcessError as e:
+            except BaseException as e:
+                _record_step_run(ann, result_file, reason, ended_as(e))
+                if not isinstance(e, subprocess.CalledProcessError):
+                    raise
                 for line in (e.stderr or "").strip().splitlines():
                     logging.error(f"  [{ann} ERROR] {line}")
                 raise WGSExtractError(f"{step} Annotation step '{ann}' failed.") from e
+            _record_step_run(ann, result_file, reason, "ok")
 
             step_out = _step_output(ann, current_input, step_outdir)
             if not Path(step_out).exists():

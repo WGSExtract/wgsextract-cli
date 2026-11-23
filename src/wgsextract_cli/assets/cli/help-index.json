@@ -21,6 +21,7 @@
 {"flags":["--parent-run"],"dest":"_parent_run","type":"string","help":"==SUPPRESS=="},
 {"flags":["--root-run"],"dest":"_root_run","type":"string","help":"==SUPPRESS=="},
 {"flags":["--run-step"],"dest":"_run_step","type":"string","help":"==SUPPRESS=="},
+{"flags":["--read-scope"],"dest":"_read_scope","type":"string","help":"==SUPPRESS=="},
 {"flags":["--parent-pid"],"dest":"parent_pid","type":"integer","help":"Parent Process ID to monitor."}
 ],
 "commands":[

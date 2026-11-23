@@ -647,6 +647,9 @@ def add_shared_arguments(
     add("--parent-run", dest="_parent_run", metavar="ID", help=argparse.SUPPRESS)
     add("--root-run", dest="_root_run", metavar="ID", help=argparse.SUPPRESS)
     add("--run-step", dest="_run_step", metavar="STEP", help=argparse.SUPPRESS)
+    # The folders a server job's subprocess may read recorded paths in, as a
+    # JSON list (see core.read_scope).
+    add("--read-scope", dest="_read_scope", metavar="JSON", help=argparse.SUPPRESS)
     add(
         "--parent-pid",
         type=int,

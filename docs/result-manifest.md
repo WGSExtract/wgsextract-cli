@@ -149,7 +149,11 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   journal's `reason`. A reused step names the run that did its work in the
   earlier run, and so do the artifacts of the files it wrote. A step done inside the workflow's own process names the
   workflow's run. A step whose command failed is listed with its `run`,
-  whose own failed manifest names this run as its `parent`.
+  whose own failed manifest names this run as its `parent`. A step
+  interrupted by cancelling the run is `cancelled`, like the run.
+  `vcf chain-annotate` lists each annotator it ran (`step` is the
+  annotation, such as `clinvar`), since their manifests are removed with
+  the intermediates.
 - **`artifact`.** A BAM, CRAM, VCF or BCF in `inputs` or `outputs` has an
   `artifact` record. Other files have none.
 
@@ -165,12 +169,14 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index (`.crai`) isn't read: only its presence is checked. `mismatched`: another sequence dictionary, blocks that aren't the file's, or an unreadable index. Every index a reader may pick is checked (htslib picks a `.csi` before a `.bai` or `.tbi`), and the first unusable one is reported. |
   | `producer` | `run`, `root`, `command` and `step` of the run that wrote it. |
   | `sources` | The files it was made from: `path`, `role`, `fingerprint`, `producer` (run), `lifecycle` and `retained`. |
+  | `called_from` | For a VCF or BCF: the reads (as `sources` entries) wgsextract called it from, directly or through filters and annotations that kept its samples, so its sample columns are those reads' `@RG SM`. Empty when nothing vouches for that: an external VCF, or one whose samples were renamed. |
 
   The facts come from the file itself: its header (read without running a
   tool; a CRAM's header isn't read, so its assembly and samples are
   unknown), its index and its fingerprint. A producer is taken from the
   manifest beside the file only while that manifest still lists the same
-  fingerprint. A copied, edited or third-party file is `external`, and
+  fingerprint. A server job reads only manifests and indexes in the folders
+  it may use, and so do the steps it starts. A copied, edited or third-party file is `external`, and
   nothing about its history is assumed. An output's `sources` are the
   run's BAM/CRAM/VCF/BCF inputs, unless the command names them. `vcf call
   --merge` names the reads and its per-type VCFs, which it deletes after
@@ -186,7 +192,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   | `reference_mismatch` | the same | Same build, but the contig names, lengths or MD5s differ from the reference. |
   | `index_stale`, `index_mismatch` | the same | The BAM/CRAM index is `stale` or `mismatched`. A `mismatched` VCF index is refused too. A missing or older VCF index is rebuilt, as before. |
   | `index_missing` | BAM/CRAM variant callers with `--region` | The region is read through the index. Calling the whole file still streams an unindexed BAM. |
-  | `sample_mismatch` | `analyze comprehensive --input BAM --vcf-inputs VCF` | A VCF that wgsextract called from a BAM or CRAM (`recorded`, with the reads among its `sources`) names none of the reads' samples. For any other VCF, whose sample may only be named differently (an `external` VCF, or one filtered or annotated from it), this is a warning with the same code, and the run continues. Recorded producers are read only from manifests a server job may read. |
+  | `sample_mismatch` | `analyze comprehensive --input BAM --vcf-inputs VCF` | A VCF that wgsextract called from a BAM or CRAM, or filtered or annotated from such calls (`recorded`, with a `called_from`), names none of the reads' samples. For any other VCF, whose sample may only be named differently (an `external` VCF, or one filtered or annotated from it), this is a warning with the same code, and the run continues. Recorded producers are read only from manifests a server job may read. |
 
   Nothing in this pilot reaches the network or installs anything. Other
   commands record artifacts but don't check them yet.
@@ -250,7 +256,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `step_failed` | `benchmark` | A benchmark step failed (`step`, `log`). |
 | `cache_path_too_long` | `microarray` on Windows | The reference library path (`path`, `length`) is too deep for its derived caches to fit the 260-character `MAX_PATH`, so the run is uncached; keep the library path at most `limit` characters. |
 | `unsigned` | `sign verify` | The checksum manifest has no signature; only hashes were checked. |
-| `sample_mismatch` | `analyze comprehensive` | A VCF not called from reads by wgsextract names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
+| `sample_mismatch` | `analyze comprehensive` | A VCF without a `called_from` names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
 | `ystr_unverified_convention` | `lineage y-str` | Markers use a repeat-count convention the panel has not verified. |
 
 New codes may be added in any release. Consumers should treat unknown codes
