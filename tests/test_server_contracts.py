@@ -242,16 +242,19 @@ def test_1289_variant_pages_return_read_phase_and_gnomad_columns(
     select the new columns, typed, and leave out empty ones."""
     table = tmp_path / "sample_variants.tsv"
     table.write_text(
-        "chrom\tpos\talt_fraction\tad_alt\tphase_set\ttranscript_id\t"
+        "chrom\tpos\talt_fraction\tad_ref\tad_alt\tphase_set\ttranscript_id\t"
         "gnomad_popmax_af\tgnomad_nhomalt\n"
-        "chr1\t100\t0.4375\t14\t100\tENST1.4\t0.08\t12\n"
-        "chr1\t200\t\t\t\t\t\t\n",
+        "chr1\t100\t0.4375\t16\t14\t100\tENST1.4\t0.08\t12\n"
+        "chr1\t200\t\t\t\t\t\t\t\n",
         encoding="utf-8",
     )
-    columns = "pos,alt_fraction,ad_alt,phase_set,transcript_id,gnomad_popmax_af"
+    columns = (
+        "pos,alt_fraction,ad_ref,ad_alt,phase_set,transcript_id,"
+        "gnomad_popmax_af,gnomad_nhomalt"
+    )
     with _serve(tmp_path, [tmp_path]) as client:
         status, body = client.request(
-            "GET", f"/variants?path={table}&columns={columns},gnomad_nhomalt"
+            "GET", f"/variants?path={table}&columns={columns}"
         )
     assert status == 200
     validate(body, "VariantPage")
@@ -259,6 +262,7 @@ def test_1289_variant_pages_return_read_phase_and_gnomad_columns(
         {
             "pos": 100,
             "alt_fraction": 0.4375,
+            "ad_ref": 16,
             "ad_alt": 14,
             "phase_set": "100",
             "transcript_id": "ENST1.4",
@@ -267,3 +271,4 @@ def test_1289_variant_pages_return_read_phase_and_gnomad_columns(
         },
         {"pos": 200},
     ]
+    assert isinstance(body["rows"][0]["ad_ref"], int)

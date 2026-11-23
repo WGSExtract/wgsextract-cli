@@ -245,6 +245,17 @@ def test_1289_a_gnomad_source_without_grpmax_drops_an_earlier_ones(tmp_path):
     defined = {tag for tag in ("GNOMAD_AF", "GNOMAD_POPMAX_AF", "GNOMAD_NHOMALT")
                if f"##INFO=<ID={tag}," in header}  # fmt: skip
     assert defined == {"GNOMAD_AF"}
+    info = run_command(
+        ["bcftools", "query", "-f", "%INFO\n", str(second / "gnomad_annotated.vcf.gz")],
+        capture_output=True,
+    ).stdout
+    keys = {
+        field.partition("=")[0]
+        for line in info.splitlines()
+        for field in line.split(";")
+    }
+    assert "GNOMAD_AF" in keys
+    assert keys.isdisjoint({"GNOMAD_POPMAX_AF", "GNOMAD_NHOMALT"})
 
 
 @pytest.mark.parametrize(
