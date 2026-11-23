@@ -42,7 +42,7 @@ LENGTH = 12000
 
 @pytest.fixture
 def sample(tmp_path):
-    """hg38-named chr20, chrX and chrY (no reads on chrY), and a chrM no
+    """GRCh38 chr20, chrX and chrY (no reads on chrY), and a chrM no
     caller is asked about; a het SNP at chr20:1000, a hom-alt SNP at
     chrX:9,999 (the last haploid base) and a het SNP at chrX:10,000."""
     rng = random.Random(863)
@@ -51,7 +51,7 @@ def sample(tmp_path):
         for chrom in ("chr20", "chrX", "chrY")
     }
     sequences["chrM"] = "".join(rng.choice("ACGT") for _ in range(500))
-    ref = write_fasta(tmp_path / "hg38.fa", sequences)
+    ref = write_fasta(tmp_path / "hg38.fa", sequences, assembly="GRCh38")
     rows = ["@HD\tVN:1.6\tSO:coordinate", "@RG\tID:r\tSM:sample\tPL:ONT"]
     rows += [f"@SQ\tSN:{chrom}\tLN:{len(seq)}" for chrom, seq in sequences.items()]
     alt = {
@@ -288,6 +288,7 @@ def test_clair3_gvcf_blocks_are_cut_on_a_gzip_reference_1009(sample, request):
     ref = folder / "hg38.fa.gz"
     with open(sample.ref, "rb") as plain, gzip.open(ref, "wb") as packed:
         packed.write(plain.read())
+    (folder / "hg38.dict").write_bytes(sample.ref.with_suffix(".dict").read_bytes())
     request.getfixturevalue("fake_clair3").pad_blocks(300)
     sample.ref = ref
 

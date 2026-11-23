@@ -34,8 +34,10 @@ def bgzip_index(plain_vcf: str | Path, out: str | Path | None = None) -> str:
     return out
 
 
-def write_fasta(path: Path, seqs: Mapping[str, str]) -> Path:
-    """Write a FASTA, one line per sequence, and faidx it."""
+def write_fasta(
+    path: Path, seqs: Mapping[str, str], *, assembly: str | None = None
+) -> Path:
+    """Write and index a FASTA, optionally declaring its assembly in a .dict."""
     content = "".join(f">{name}\n{seq}\n" for name, seq in seqs.items()).encode()
     samtools = get_tool_path("samtools")
     assert samtools is not None
@@ -43,16 +45,28 @@ def write_fasta(path: Path, seqs: Mapping[str, str]) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
         run_command([samtools, "faidx", str(path)])
-        return path
+    else:
 
-    def build(root: Path) -> None:
-        fasta = root / "ref.fa"
-        fasta.write_bytes(content)
-        run_command([samtools, "faidx", str(fasta)])
+        def build(root: Path) -> None:
+            fasta = root / "ref.fa"
+            fasta.write_bytes(content)
+            run_command([samtools, "faidx", str(fasta)])
 
-    root = prepared_files(content, samtools, ("ref.fa", "ref.fa.fai"), build)
-    copy_prepared(root / "ref.fa", path)
-    copy_prepared(root / "ref.fa.fai", Path(str(path) + ".fai"))
+        root = prepared_files(content, samtools, ("ref.fa", "ref.fa.fai"), build)
+        copy_prepared(root / "ref.fa", path)
+        copy_prepared(root / "ref.fa.fai", Path(str(path) + ".fai"))
+    if assembly:
+        run_command(
+            [
+                samtools,
+                "dict",
+                "-a",
+                assembly,
+                "-o",
+                str(path.with_suffix(".dict")),
+                str(path),
+            ]
+        )
     return path
 
 

@@ -142,6 +142,7 @@ def probe_inputs(tmp_path, alignment):
     return manifest, SimpleNamespace(
         fasta=str(ref),
         build="hg19",
+        confirmed_build="hg19",
         root=None,
         ref_vcf_tab=None,
         ploidy_file=None,

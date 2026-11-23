@@ -21,6 +21,8 @@ class _PloidySource(Protocol):
     @property
     def build(self) -> str | None: ...
     @property
+    def confirmed_build(self) -> str | None: ...
+    @property
     def ploidy_file(self) -> str | None: ...
 
 
@@ -30,11 +32,12 @@ def ploidy_args(
     lib: _PloidySource,
     *,
     options: str | None = "--ploidy or --ploidy-file",
+    assembly_option: bool = False,
 ) -> list[str]:
     """bcftools call's ploidy options, the one policy every caller shares:
     the explicit choice, else the reference library's ploidy file, else
-    bcftools' GRCh37/GRCh38 preset. T2T (whose PARs aren't GRCh38's) and
-    unrecognised builds get no guess: they are refused, naming ``options``
+    bcftools' GRCh37/GRCh38 preset for a confirmed build. T2T (whose PARs
+    aren't GRCh38's) and unconfirmed builds get no guess, naming ``options``
     (the command's own ploidy flags, or None when it has none) and the
     library file that would serve them."""
     if not ploidy and not ploidy_file:
@@ -47,15 +50,27 @@ def ploidy_args(
     if ploidy:
         return ["--ploidy", ploidy]
     # bcftools' predefined GRCh37/GRCh38 ploidy covers both X and chrX naming.
-    if preset := ploidy_preset(lib.build):
+    build = lib.confirmed_build
+    if preset := ploidy_preset(build):
         return ["--ploidy", preset]
-    library_file = f"ploidy_{lib.build}.txt" if lib.build else "ploidy.txt"
+    library_file = f"ploidy_{build}.txt" if build else "ploidy.txt"
     fix = f"Pass {options}, or add" if options else "Add"
+    reason = (
+        "the build is not confirmed by the input header or reference; "
+        "names and contig counts are not enough. "
+        if not build
+        else "bcftools' presets fit only GRCh37 and GRCh38, whose "
+        "sex-chromosome PARs differ from other builds'. "
+    )
+    assembly = (
+        " If you know the input is GRCh37 or GRCh38, pass --assembly."
+        if not build and assembly_option
+        else ""
+    )
     raise WGSExtractError(
         "Ploidy could not be chosen for this reference (reference build: "
-        f"{lib.build or 'unknown'}): bcftools' presets fit only GRCh37 and "
-        "GRCh38, whose sex-chromosome PARs differ from other builds'. "
-        f"{fix} {library_file} to the reference library."
+        f"{build or lib.build or 'unknown'}): {reason}"
+        f"{fix} {library_file} to the reference library.{assembly}"
     )
 
 

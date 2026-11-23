@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import NamedTuple
 
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.alignment.metadata import get_bam_header, get_vcf_build
+from wgsextract_cli.core.alignment.metadata import (
+    get_bam_header,
+    vcf_metadata_build_hint,
+)
 from wgsextract_cli.core.builds import (
     HG37_BUILD_ALIASES,
     HG38_BUILD_ALIASES,
@@ -22,16 +25,17 @@ from wgsextract_cli.core.paths import PathInput, expand_path
 from wgsextract_cli.core.ref_library.assets import (
     build_hint,
     fasta_build,
+    fasta_index_build,
     find_fasta_by_signature,
     find_reference_fasta,
     find_reference_target_tab,
     is_fasta_path,
     library_of_genomes_dir,
-    read_fai_lengths,
     reference_dict_path,
     reference_genomes_dir,
     resolve_input_reference_fasta,
     resolve_input_target_tab,
+    sequence_signature,
 )
 from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS
 from wgsextract_cli.core.ref_library.models import identify_reference, sequence_lengths
@@ -141,9 +145,10 @@ class ReferenceLibrary:
         self.spliceai_vcf: str | None = None
         self.alphamissense_vcf: str | None = None
         self.pharmgkb_vcf: str | None = None
-        self.ploidy_file: str | None = None
         self.vep_cache: str | None = None
         self.build: str | None = None
+        self._confirmed_input_build: str | None = None
+        self._assembly_build: str | None = None
 
         if not self.root:
             return
@@ -166,8 +171,6 @@ class ReferenceLibrary:
         if not signature_match:
             self._reresolve_fasta_for_build(explicit_fasta)
 
-        # Ploidy files and the VEP cache depend on the build, not on a FASTA.
-        self.resolve_build_support_files()
         self._resolve_vep_cache(settings.get("vep_cache_directory"))
 
         if not self.fasta:
@@ -231,9 +234,7 @@ class ReferenceLibrary:
         if not guessed or not target:
             return
         # The FASTA's own chr1 length, else its name (human_g1k_v37 names no build).
-        path_build = canonical_build(
-            build_from_chr1_length(read_fai_lengths(guessed))
-        ) or build_from_path(Path(guessed).name)
+        path_build = fasta_index_build(guessed) or build_from_path(Path(guessed).name)
         if not path_build or path_build == target:
             return
 
@@ -267,39 +268,33 @@ class ReferenceLibrary:
     def _detect_build(
         self, header_target: str | None, root_path: str | None
     ) -> str | None:
-        build = self._build_from_signature()
-        method = "header contig MD5 signature"
-        sample = header_target if header_target == self.input_path else None
-        if not build and sample:
-            fact = sample_workspace.known("build", sample)
-            if fact is not None:
-                return str(fact.value)
-        if not build and header_target:
-            from wgsextract_cli.core.variant_files import is_vcf_path
+        from wgsextract_cli.core.variant_files import is_vcf_path
 
-            if is_vcf_path(header_target):
-                build = get_vcf_build(header_target)
-                method = "VCF header contigs"
-                if build:
-                    logging.debug(
-                        f"ReferenceLibrary: Identified build as {build} from VCF header"
-                    )
-            if not build:
-                build = self._build_from_header(header_target)
-                method = "alignment header contigs"
-        if sample and canonical_build(build):
-            sample_workspace.record(
-                "build",
-                sample,
-                canonical_build(build),
-                method=method,
-                confidence="high",
-            )
-        if not build and self.fasta:
-            build = fasta_build(self.fasta)
-        assert self.root is not None
+        sample = header_target if header_target == self.input_path else None
+        fact = sample_workspace.known("build", sample) if sample else None
+        build = None
+        is_vcf = bool(header_target and is_vcf_path(header_target))
+        if fact is not None:
+            build = canonical_build(str(fact.value))
+            if fact.confidence == "high":
+                self._confirmed_input_build = build
+        elif header_target:
+            build, method, confidence = self._build_from_header(header_target, is_vcf)
+            if confidence == "high":
+                self._confirmed_input_build = build
+            if sample and build:
+                sample_workspace.record(
+                    "build", sample, build, method=method, confidence=confidence
+                )
+        # An input VCF's reference declaration is useful when selecting an
+        # annotation FASTA, but cannot confirm a ploidy preset.
+        if is_vcf and build:
+            return build
         return (
-            build
+            self.confirmed_build
+            or self._build_from_signature()
+            or build
+            or (fasta_build(self.fasta) if self.fasta else None)
             or build_hint(self.resource_roots[0], self.input_path, root_path)
             or None
         )
@@ -317,7 +312,9 @@ class ReferenceLibrary:
         return build
 
     @staticmethod
-    def _build_from_header(header_target: str) -> str | None:
+    def _build_from_header(
+        header_target: str, is_vcf: bool
+    ) -> tuple[str | None, str, sample_workspace.Confidence]:
         try:
             header = get_bam_header(header_target)
         except (
@@ -328,26 +325,47 @@ class ReferenceLibrary:
             TypeError,
         ) as e:
             logging.debug(f"ReferenceLibrary: Error reading header: {e}")
-            return None
-        if not header:
-            logging.debug(f"ReferenceLibrary: No header retrieved from {header_target}")
-            return None
-
-        model = identify_reference(header)
-        build = canonical_build(model.name) if model else None
-        logging.debug(
-            f"ReferenceLibrary: Identified build as {build} from the header"
-            + (f" ({model.evidence})" if model else "")
+            header = ""
+        lengths = sequence_lengths(header)
+        if is_vcf:
+            if build := build_from_chr1_length(lengths):
+                return build, "VCF header contig lengths", "high"
+            return vcf_metadata_build_hint(header), "VCF metadata", "low"
+        model = (
+            identify_reference(header, sequence_signature(lengths)) if lengths else None
         )
-        return build
+        if model:
+            confidence: sample_workspace.Confidence = (
+                "low" if model.evidence == "contig count" else "high"
+            )
+            return (
+                canonical_build(model.name),
+                f"alignment {model.evidence}",
+                confidence,
+            )
+        return None, "alignment header contigs", "low"
 
     # --- Companion resources ----------------------------------------------
 
-    def resolve_build_support_files(self) -> None:
-        """Find the ploidy file for ``build``, or the build-agnostic
-        ``ploidy.txt``; call again after changing ``build``."""
-        names = [f"ploidy_{self.build}.txt"] if self.build else []
-        self.ploidy_file = self._first_existing_file(
+    def set_assembly(self, build: str) -> None:
+        """Use an explicit assembly after checking it against the input."""
+        self._assembly_build = self.build = build
+
+    @property
+    def confirmed_build(self) -> str | None:
+        """Build safe for coordinate-dependent defaults, without name or count guesses."""
+        return (
+            self._assembly_build
+            or self._confirmed_input_build
+            or (fasta_index_build(self.fasta) if self.fasta else None)
+        )
+
+    @property
+    def ploidy_file(self) -> str | None:
+        """Find the confirmed build's ploidy file, or build-agnostic ploidy.txt."""
+        build = self.confirmed_build
+        names = [f"ploidy_{build}.txt"] if build else []
+        return self._first_existing_file(
             self._resource_dirs("", *DOWNLOAD_DIRS, "microarray"),
             [*names, "ploidy.txt"],
         )

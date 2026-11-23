@@ -97,8 +97,8 @@ class VcfSnpParams(_SmallVariantParams):
 
     Ploidy comes from ``ploidy`` or ``ploidy_file``, else the reference
     library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table for
-    the build of the input, or of a FASTA outside any library (its chr1
-    length, ``.dict`` assembly, header description or file name).
+    a build confirmed by the input or reference sequence dictionary.
+    A file or folder name alone does not select a ploidy table.
     """
 
     COMMAND = "vcf snp"

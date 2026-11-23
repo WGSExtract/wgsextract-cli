@@ -102,7 +102,9 @@ def test_1244_assembly_contradicting_the_alignment_is_refused(
     assert fake_vep() == []
 
 
-def test_1244_contig_count_alone_does_not_refuse_an_assembly(tmp_path, fake_vep):
+def test_1346_cached_contig_count_does_not_choose_ploidy_or_override_assembly(
+    tmp_path, fake_vep
+):
     """Copilot review of #1333 (vep run wrong-build ploidy): an 86-contig
     header without chr1, which only its contig count calls hg19, refused
     `--assembly GRCh38` despite a matching FASTA and an explicit ploidy."""
@@ -110,19 +112,112 @@ def test_1244_contig_count_alone_does_not_refuse_an_assembly(tmp_path, fake_vep)
     _vep_rs_caches(tmp_path, "GRCh38")
     fasta, bam = _read_less_bam(tmp_path, {f"c{i}": 1000 for i in range(1, 87)})
 
-    api.vep.run(
-        VepRunParams(
-            input=Path(bam),
-            ref=Path(fasta),
-            engine="vep-rs",
-            vep_cache=tmp_path,
-            vep_assembly="GRCh38",
-            ploidy="2",
-        )
+    params = VepRunParams(
+        input=Path(bam), ref=Path(fasta), engine="vep-rs", vep_cache=tmp_path
     )
+    for _ in range(2):  # The second run reads the weak build from the workspace.
+        result = api.vep.run(params, check=False)
+        [failure] = [w for w in result.warnings if w.code == "input_failed"]
+        assert "not confirmed" in failure.message and "--assembly" in failure.message
+
+    api.vep.run(replace(params, vep_assembly="GRCh38", ploidy="2"))
 
     assert len(fake_vep()) == 1
     assert (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
+
+
+def test_1346_vep_refuses_a_filename_only_preset_until_assembly_is_given(
+    tmp_path, fake_vep
+):
+    fake_vep.install(tool="vep-rs")
+    _vep_rs_caches(tmp_path, "GRCh38")
+    fasta, bam = _bam_with_snps(tmp_path)
+    named_ref = Path(fasta).with_name("hg38.fa")
+    Path(fasta).rename(named_ref)
+    params = VepRunParams(
+        input=Path(bam), ref=named_ref, engine="vep-rs", vep_cache=tmp_path
+    )
+
+    result = api.vep.run(params, check=False)
+
+    [failure] = [w for w in result.warnings if w.code == "input_failed"]
+    assert result.status == "failed"
+    assert "not confirmed" in failure.message
+    assert "--assembly" in failure.message and "--ploidy-file" in failure.message
+    assert not (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
+
+    api.vep.run(replace(params, vep_assembly="GRCh38"))
+    assert [row[1] for row in vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")] == [
+        "101", "301",
+    ]  # fmt: skip
+
+
+@pytest.mark.parametrize("assembly", ["GRCh38", "T2T-CHM13v2.0", None])
+def test_1435_vep_refuses_t2t_reference_for_grch38_bam(tmp_path, fake_vep, assembly):
+    fake_vep.install(tool="vep-rs")
+    _vep_rs_caches(tmp_path, "GRCh38", "T2T-CHM13v2.0")
+    fasta, _ = _read_less_bam(tmp_path, _T2T)
+    bam = sam_to_bam(["@SQ\tSN:chr1\tLN:248956422"], tmp_path / "grch38.bam")
+
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(bam), ref=Path(fasta), engine="vep-rs", vep_cache=tmp_path,
+            vep_assembly=assembly, ploidy="2",
+        ),
+        check=False,
+    )  # fmt: skip
+
+    [failure] = [w for w in result.warnings if w.code == "input_failed"]
+    assert result.status == "failed"
+    assert "alignment header is hg38" in failure.message
+    assert "--ref is t2t" in failure.message
+    if assembly:
+        assert f"--assembly is {assembly}" in failure.message
+    assert fake_vep() == []
+
+
+def test_1346_stale_header_md5_does_not_choose_ploidy_over_contig_lengths(
+    tmp_path, fake_vep
+):
+    fake_vep.install(tool="vep-rs")
+    _vep_rs_caches(tmp_path, "GRCh38", "T2T-CHM13v2.0")
+    fasta, _ = _read_less_bam(tmp_path, _T2T)
+    bam = sam_to_bam(
+        [f"@SQ\tSN:{name}\tLN:{length}" for name, length in _T2T.items()]
+        + ["@CO\tMD5:bd894134bddba260df88a90123a2ee9c"],
+        tmp_path / "t2t-with-grch38-tag.bam",
+    )
+
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(bam), ref=Path(fasta), engine="vep-rs", vep_cache=tmp_path
+        ),
+        check=False,
+    )
+
+    [failure] = [w for w in result.warnings if w.code == "input_failed"]
+    assert (
+        "reference build: t2t" in failure.message and "--ploidy-file" in failure.message
+    )
+    assert fake_vep() == []
+
+
+@pytest.mark.parametrize("override", ["--assembly GRCh37", "-FAS=foreign.fa"])
+def test_1435_raw_vep_arguments_cannot_replace_validated_inputs(
+    tmp_path, fake_vep, override
+):
+    fasta, bam = _bam_with_snps(tmp_path)
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(bam), ref=Path(fasta), engine="ensembl", vep_cache=tmp_path,
+            vep_assembly="GRCh38", ploidy="2", vep_args=override,
+        ),
+        check=False,
+    )  # fmt: skip
+
+    assert result.status == "failed"
+    assert "--vep-args" in str(result.error) and "--assembly" in str(result.error)
+    assert fake_vep() == []
 
 
 @pytest.mark.parametrize(

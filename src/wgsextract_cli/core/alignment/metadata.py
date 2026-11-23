@@ -110,22 +110,25 @@ def get_vcf_build(vcf_path: str) -> str | None:
         res = run_command([bcftools, "view", "-h", vcf_path], capture_output=True)
         # The ##contig lengths identify the assembly whatever the file names
         # it (chm13, human_g1k_v37, ...); the text search is the fallback.
-        build = build_from_chr1_length(sequence_lengths(res.stdout))
-        if build:
-            return build
-        # Tool provenance lines contain command paths, not assembly evidence,
-        # and a ##reference path is evidence only by its file name.
-        metadata = "\n".join(
-            reference_header_name(line.partition("=")[2])
-            if line.lower().startswith("##reference=")
-            else line
-            for line in res.stdout.splitlines()
-            if line.lower().startswith(("##reference=", "##assembly=", "##contig="))
+        return build_from_chr1_length(sequence_lengths(res.stdout)) or (
+            vcf_metadata_build_hint(res.stdout)
         )
-        return build_from_path(metadata)
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError):
         logging.debug("Unable to infer VCF build from header.", exc_info=True)
     return None
+
+
+def vcf_metadata_build_hint(header: str) -> str | None:
+    """A build named by VCF metadata, not established by contig lengths."""
+    # Tool provenance lines contain command paths, not assembly evidence.
+    metadata = "\n".join(
+        reference_header_name(line.partition("=")[2])
+        if line.lower().startswith("##reference=")
+        else line
+        for line in header.splitlines()
+        if line.lower().startswith(("##reference=", "##assembly=", "##contig="))
+    )
+    return build_from_path(metadata)
 
 
 def cram_encoded_with(fasta: PathInput, cram: PathInput) -> bool:

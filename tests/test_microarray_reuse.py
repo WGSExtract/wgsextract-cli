@@ -344,7 +344,9 @@ def test_issue_853_reused_hg38_outputs_keep_the_liftover_counts(
             ).encode()
         )
     )
-    fasta = write_fasta(library / "genomes" / "hs38.fa", {"chr1": seq})
+    fasta = write_fasta(
+        library / "genomes" / "hs38.fa", {"chr1": seq}, assembly="GRCh38"
+    )
     bam = _sample_bam(tmp_path, seq)
     config = tmp_path / "config.toml"
     config.write_text(

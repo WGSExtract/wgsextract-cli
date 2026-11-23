@@ -38,7 +38,9 @@ def sex_par(tmp_path, request):
         chrom: "".join(rng.choice("ACGT") for _ in range(boundary + 2000))
         for chrom in ("chr20", "chrX")
     }
-    ref = write_fasta(tmp_path / f"{request.param}.fa", sequences)
+    ref = write_fasta(
+        tmp_path / f"{request.param}.fa", sequences, assembly=request.param
+    )
     rows = ["@HD\tVN:1.6\tSO:coordinate", "@RG\tID:r\tSM:sample\tPL:ONT"]
     rows += [f"@SQ\tSN:{chrom}\tLN:{len(seq)}" for chrom, seq in sequences.items()]
     for chrom, positions in (("chr20", [1000]), ("chrX", [boundary, boundary + 1])):
