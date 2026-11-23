@@ -133,7 +133,8 @@ def _y_contig(fasta: Path) -> str | None:
 
 
 def is_grch37(fasta: Path) -> bool:
-    """Whether ``fasta`` is indexed with GRCh37's chrY (and chr1) lengths."""
+    """Whether ``fasta`` is indexed with GRCh37's chrY length, and chr1's when it
+    has chr1 (a Y-only GRCh37 FASTA qualifies)."""
     return _y_contig(fasta) is not None
 
 
