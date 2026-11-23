@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 from jsonschema import Draft202012Validator
 
-from tests.htslib_helpers import needs_htslib, snp_sample
+from tests.htslib_helpers import needs_htslib, sam_to_bam, snp_sample
 from tests.smoke_utils import run_cli
 from tests.test_artifact_lineage import (
     _bam,
@@ -402,3 +402,52 @@ def test_1379_a_neighbouring_manifest_is_trusted_only_when_well_formed(
     assert "sample_mismatch" in {w["code"] for w in result["warnings"]}
     vcf = next(r for r in result["inputs"] if r["role"] == "vcf_input")["artifact"]
     assert vcf["origin"] == origin and vcf["called_from"] == []
+
+
+@needs_htslib
+def test_1379_a_workflows_filtered_calls_keep_their_steps_reads(
+    tmp_path: Path,
+) -> None:
+    # Review of #1427: analyze's significant variants are filtered from the
+    # VCF its calling step wrote (this run's, retained); they keep its reads.
+    from wgsextract_cli.core.artifacts import artifact_from_dict
+    from wgsextract_cli.core.results import CommandResult
+
+    result = CommandResult(command="analyze comprehensive")
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    lineage = ["--parent-run", result.run.id, "--root-run", result.run.id]
+    assert _call_snps(sample, calls, *lineage, "--run-step", "call")[0] == 0
+    step = _output(_manifest(calls / "snps.vcf.manifest.json"), "snps")
+    vcf = calls / "snps.vcf.gz"
+    significant = tmp_path / "significant.vcf.gz"
+    run_command(["bcftools", "view", "-Oz", "-o", str(significant), str(vcf)])
+    # As analyze carries a step's output (record_step_result).
+    result.add_output(vcf, "snps", artifact=artifact_from_dict(step["artifact"]))
+    result.add_output(significant, "significant_variants", sources=[vcf])
+    result.finalize(probe_tools=False)
+    document = json.loads(result.to_json())
+    assert _output(document, "snps")["artifact"]["origin"] == "this_run"
+    called = _output(document, "significant_variants")["artifact"]["called_from"]
+    assert [Path(r["path"]).name for r in called] == ["s.bam"]
+
+
+@needs_htslib
+def test_1379_calls_from_reads_without_a_sample_name_vouch_for_nothing(
+    tmp_path: Path,
+) -> None:
+    # Review of #1427: bcftools names an SM-less BAM's sample after the file,
+    # which says nothing about whose reads they are.
+    from wgsextract_cli.core.results import CommandResult
+
+    sample = snp_sample(tmp_path / "in")
+    calls = tmp_path / "calls"
+    assert _call_snps(sample, calls)[0] == 0
+    lines = ["@HD\tVN:1.6\tSO:coordinate", "@SQ\tSN:chr1\tLN:3000"]
+    bam = sam_to_bam(lines, tmp_path / "nosm.bam")
+    result = CommandResult(command="vcf snp")
+    result.add_input(bam, "input")
+    result.add_output(calls / "snps.vcf.gz", "snps")
+    result.finalize(probe_tools=False)
+    document = json.loads(result.to_json())
+    assert _output(document, "snps")["artifact"]["called_from"] == []

@@ -436,8 +436,8 @@ def _called_from(
     """The reads a VCF/BCF output's calls come from, when its sample columns
     are theirs: the reads its VCF sources were called from when it keeps
     their samples (a filtered or annotated copy), and its BAM/CRAM sources
-    when it names only their @RG SM (for reads whose SM isn't known, such
-    as a CRAM's, when no other VCF went into it). None when a VCF source
+    when it names only their @RG SM (for a CRAM, whose header isn't read,
+    when no other VCF went into it). None when a VCF source
     without that ancestry names its samples too: an external VCF phased
     with the reads (``vcf phase``) or annotated from recorded calls."""
     if record.kind not in ("vcf", "bcf") or not samples:
@@ -445,6 +445,7 @@ def _called_from(
     named = set(samples)
     reads: list[tuple[SourceEdge, ArtifactRecord]] = []
     others: list[ArtifactRecord] = []  # VCFs that may have named its samples
+    unknown = False  # reads whose SM isn't known
     for source in sources:
         origin = by_path.get(source.path)
         artifact = origin.artifact if origin else None
@@ -452,8 +453,9 @@ def _called_from(
             continue
         if origin.kind in ("bam", "cram"):
             reads.append((source, artifact))
-        # This run's own temporary calls (vcf call --merge's parts) name nothing.
-        elif artifact.origin != "this_run":
+            unknown |= origin.kind == "cram" and not artifact.samples
+        # Calls this run deleted (vcf call --merge's parts) name nothing.
+        elif artifact.retained:
             others.append(artifact)
     # Any VCF naming its samples may have supplied them, so each must vouch
     # (an external VCF annotated from recorded calls naming the same sample
@@ -463,7 +465,6 @@ def _called_from(
         return []
     found = {(e.path, e.fingerprint): e for a in naming for e in a.called_from}
     sms = {sm for _, artifact in reads for sm in artifact.samples}
-    unknown = any(not artifact.samples for _, artifact in reads)
     if named <= sms or (unknown and not others):
         for source, _ in reads:
             found.setdefault((source.path, source.fingerprint), source)
