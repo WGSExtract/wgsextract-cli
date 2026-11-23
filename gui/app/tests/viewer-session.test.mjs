@@ -224,6 +224,27 @@ test("#1148: installed cytobands reach the viewer with reference aliases and zer
     }
 });
 
+test("#1166: installed transcript and exon models reach the viewer as a revocable indexed track", async (t) => {
+    const f = await geneFixture(t);
+    const missing = await (await f.open()).json();
+    assert.deepEqual(missing.files.transcripts, { notices: [{
+        code: "transcriptsMissing", fileName: "transcripts_hg38.bed.gz",
+        command: `wgsextract ref gene-map --ref ${shellQuote(path.dirname(f.fasta))}`,
+    }] }, "Missing models name the explicit download; the viewer fetches nothing.");
+    const source = path.resolve("../../tests/fixtures/viewer_transcripts/transcripts_hg38.bed.gz");
+    await copyFile(source, path.join(path.dirname(f.table), "transcripts_hg38.bed.gz"));
+    await copyFile(`${source}.tbi`, path.join(path.dirname(f.table), "transcripts_hg38.bed.gz.tbi"));
+    const session = await (await f.open()).json();
+    const { transcripts } = session.files;
+    assert.deepEqual(transcripts.notices, []);
+    const data = await fetch(`${f.base}${transcripts.url}`, { headers: { ...transcripts.headers, range: "bytes=0-1" } });
+    assert.equal(data.status, 206);
+    assert.deepEqual(Buffer.from(await data.arrayBuffer()), Buffer.from([31, 139]));
+    assert.equal((await fetch(`${f.base}${transcripts.indexURL}`, { headers: transcripts.headers })).status, 200);
+    await writeFile(`${f.fasta}.fai`, "chrZ\t248956422\t6\t4\t5\n");
+    assert.equal((await (await f.open()).json()).files.transcripts.notices[0].code, "transcriptsBuildUnsupported");
+});
+
 test("#1153: cytoband repair names the selected library with shell-safe quoting", async (t) => {
     const f = await geneFixture(t);
     const referenceRoot = path.join(f.root, "a library with 'quotes' and $characters");

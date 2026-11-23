@@ -187,6 +187,32 @@ accepts one region only, not a list or BED file. The same limits apply to
 `vcf call --types sv` or `--types cnv`. If SNPs or indels are also requested,
 use text regions: the small-variant stage does not accept a BED file.
 
+## One gene
+
+`info gene --gene SYMBOL` puts one gene's local evidence together, offline: its
+span from the bundled NCBI RefSeq annotations (aliases resolve, as in
+`panel bed`), its RefSeq transcripts and exons when `ref gene-map` installed
+them, the sample's carried variants in it from `--vcf-input` (the same columns
+as `vcf table`: consequence, ClinVar, gnomAD frequency, research-only ACMG
+class) and `samtools depth` over each exon of `--input` (BAM or CRAM) against
+`--min-depth` (default: config `confidence_min_depth`). Each variant is tagged
+with the filters it passes: `rare_damaging` (gnomAD AF below 1%, or absent from
+an annotated gnomAD, with HIGH or MODERATE impact), `clinvar_plp` and
+`acmg_plp`. `--export all|rare-damaging|clinvar-plp|acmg-plp` writes those rows
+as `<vcf stem>_<GENE>_<filter>_variants.tsv` with the table's provenance header.
+
+```sh
+wgsextract info gene --gene BRCA1 --input sample.cram --vcf-input sample_annotated.vcf.gz
+```
+
+`--json` puts the `wgsextract.gene/1` document in `details`: `gene`,
+`transcripts`, `variants` (rows, the annotations present and the header lines
+each came from), `coverage` (gene, 100 bins and each distinct exon, with
+`below` when any base is under the threshold) and `notices`. A notice names
+what is missing and the command that makes it (`ref gene-map`, `vep run`,
+`vcf clinvar`, `vcf gnomad`, `vcf acmg`, `vcf call`); nothing is downloaded.
+The desktop app's [gene page](../gui/docs/gene-page.md) shows this document.
+
 ## Annotation resources
 
 Gene filtering (`--gene`) requires rebuilt/current `ref gene-map` maps,

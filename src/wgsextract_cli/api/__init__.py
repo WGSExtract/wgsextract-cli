@@ -133,7 +133,13 @@ from .genotyping import (
     TypingSmnParams,
     TypingStrParams,
 )
-from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
+from .info import (
+    CalculateCoverageParams,
+    ChipParams,
+    CoverageSampleParams,
+    InfoGeneParams,
+    InfoParams,
+)
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
 from .methylation import MethylationPileupParams
 from .microarray import MicroarrayParams
@@ -256,6 +262,7 @@ __all__ = [
     "FastpParams",
     "FastqcParams",
     "FileRecord",
+    "InfoGeneParams",
     "InfoParams",
     "IssueReport",
     "MethylationPileupParams",
