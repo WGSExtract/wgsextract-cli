@@ -58,7 +58,6 @@ from ._vep_engines import (
     vep_engine,
 )
 from ._vep_resources import preprocess_vcf_chr_prefix
-from .vcf.basic import ploidy_args
 from .vcf.call_cleanup import indel_cleanup_pipeline
 
 GENOMIC_SUFFIXES = (".vcf", ".vcf.gz", ".bcf", ".bam", ".cram")
