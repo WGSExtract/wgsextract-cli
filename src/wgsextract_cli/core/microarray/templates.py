@@ -218,8 +218,21 @@ def _body_rows(
                 yield parts[0], parts[1], parts[2]
 
 
+def _delta_base_path(
+    delta_path: str | Path, base_name: str, base_info: TemplateFormat
+) -> Path:
+    """Resolve a delta template's base beside the delta first, else in the CLI's
+    packaged templates."""
+    local_root = Path(delta_path).parent.parent
+    (local,) = _template_body_paths(str(local_root), base_name, base_info)
+    if Path(local).exists():
+        return Path(local)
+    (packaged,) = _template_body_paths(str(_PACKAGED_TEMPLATES), base_name, base_info)
+    return Path(packaged)
+
+
 def delta_bases(path: str | Path) -> list[Path]:
-    """The shipped bodies a delta body is decoded from, nearest first, so a
+    """The base bodies a delta body is decoded from, nearest first, so a
     change to any of them makes what was built from it stale."""
     bases: list[Path] = []
     current = str(path)
@@ -232,8 +245,9 @@ def delta_bases(path: str | Path) -> list[Path]:
         info = get_template_format(header[-1]) if header[0] == "#base" else None
         if len(header) != 2 or info is None or info["parts"] != 1:
             break
-        (current,) = _template_body_paths(str(_PACKAGED_TEMPLATES), header[1], info)
-        bases.append(Path(current))
+        base_path = _delta_base_path(current, header[1], info)
+        current = str(base_path)
+        bases.append(base_path)
     return bases
 
 
@@ -243,12 +257,10 @@ def _delta_rows(path: str, depth: int) -> Iterator[tuple[str, str, str]]:
         base_info = get_template_format(header[-1]) if len(header) == 2 else None
         if header[0] != "#base" or base_info is None or base_info["parts"] != 1:
             raise WGSExtractError(f"Template delta {path} names no shipped base.")
-        (base_path,) = _template_body_paths(
-            str(_PACKAGED_TEMPLATES), header[1], base_info
-        )
-        if not Path(base_path).exists():
+        base_path = _delta_base_path(path, header[1], base_info)
+        if not base_path.exists():
             raise WGSExtractError(f"Template delta {path}: base {header[1]} missing.")
-        base = _body_rows(header[1], base_path, depth + 1)
+        base = _body_rows(header[1], str(base_path), depth + 1)
         for line in f:
             op, arg = line[0], line[1:].rstrip("\n")
             if op == "+":
