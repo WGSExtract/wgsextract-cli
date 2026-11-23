@@ -123,9 +123,11 @@ for the matched-machine benchmarks and record hashes.
 
 ## Building
 
-### Optional wgse-bwa
+### wgse-bwa (Windows x86-64)
 
-`wgse-bwa` is a separate recipe and has not yet been published.
+`wgse-bwa` is built from a separate recipe. The default win-64 Pixi environment
+pins `wgse-bwa` from `windows-tools-12`, which enables Segment Heap on Windows,
+without changing the other tool pins.
 It uses the MSVC ABI: clang-cl compiles BWA's GNU-style C
 extensions, nvcc uses Visual Studio 2022 `cl.exe` for its host code, and
 lld-link links the executable. It does not use MSYS2. CUDA 13.5 and the
@@ -144,12 +146,13 @@ pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id `
     --output-dir out/conda --target-platform win-64
 ```
 
-The build runs a CPU alignment smoke with CUDA hidden, then packages the
-release executable and checks its capabilities. Neither installation nor
-CPU alignment requires an NVIDIA driver. The CLI uses the executable only
-if present and usable; [Windows alignment](../../docs/windows.md#optional-wgse-bwa-with-nvidia-cuda)
-documents how to select a local build. Add a win-64 URL/SHA-256 pin only
-after a release contains the actual package.
+The build tests CPU alignment with CUDA disabled, then packages the release
+executable and checks its capabilities. The package installs and runs on the
+CPU without an NVIDIA driver. Only the optional CUDA backend requires a
+supported NVIDIA GPU and driver; no CUDA Toolkit installation is needed.
+[Windows alignment](../../docs/windows.md#wgse-bwa-and-optional-nvidia-cuda)
+documents automatic CUDA selection, how to force CPU, and how to override
+the packaged build.
 
 ### GATK kernels
 

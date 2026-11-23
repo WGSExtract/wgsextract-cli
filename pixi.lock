@@ -1214,6 +1214,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/xz-5.8.3-hb6c8415_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/xz-tools-5.8.3-hfd05255_1.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-10/samtools-1.24-wgse_4.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-12/wgse-bwa-0.14.1-win64_wgse_0.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bcftools-1.24-wgse_4.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-0.7.19-wgse_3.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-mem2-2.3-wgse_2.conda
@@ -2177,6 +2178,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/yaml-0.2.5-h6a83c73_3.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_7.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-10/samtools-1.24-wgse_4.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-12/wgse-bwa-0.14.1-win64_wgse_0.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bcftools-1.24-wgse_4.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-0.7.19-wgse_3.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-mem2-2.3-wgse_2.conda
@@ -3909,6 +3911,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/xz-5.8.3-hb6c8415_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/xz-tools-5.8.3-hfd05255_1.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-10/samtools-1.24-wgse_4.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-12/wgse-bwa-0.14.1-win64_wgse_0.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bcftools-1.24-wgse_4.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-0.7.19-wgse_3.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-mem2-2.3-wgse_2.conda
@@ -4924,6 +4927,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/xz-5.8.3-hb6c8415_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/xz-tools-5.8.3-hfd05255_1.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-10/samtools-1.24-wgse_4.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-12/wgse-bwa-0.14.1-win64_wgse_0.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bcftools-1.24-wgse_4.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-0.7.19-wgse_3.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-mem2-2.3-wgse_2.conda
@@ -5402,6 +5406,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/xz-5.8.3-hb6c8415_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/xz-tools-5.8.3-hfd05255_1.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-10/samtools-1.24-wgse_4.conda
+      - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-12/wgse-bwa-0.14.1-win64_wgse_0.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bcftools-1.24-wgse_4.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-0.7.19-wgse_3.conda
       - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bwa-mem2-2.3-wgse_2.conda
@@ -35034,6 +35039,12 @@ packages:
   sha256: 91d89b823a9f91359d2e7f10897b482f502bce9699dae5a11792a55bfc7ae851
   license: MIT
   timestamp: 1795214403708
+- conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-12/wgse-bwa-0.14.1-win64_wgse_0.conda
+  subdir: win-64
+  sha256: 3ea3b80a46b2fc6c59539a9a07604709c2de9d465889fb287871e22a12b9fde0
+  channel: null
+  license: GPL-3.0-or-later AND Zlib
+  timestamp: 1795434391225
 - conda: https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/bcftools-1.24-wgse_4.conda
   subdir: win-64
   sha256: 5b462dffdec0d1f38fd6c07010b74554f1e6b484e3cbc8987a5488cfcc80b799
