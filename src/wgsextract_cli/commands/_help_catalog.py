@@ -723,6 +723,11 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "status in the result's metrics.",
         "wgsextract typing smn --input sample.cram",
     ),
+    "typing target-cnv": _h(
+        "<stem>.target-cnv.tsv: copy-number class, confidence and callability per BED interval.",
+        "wgsextract typing target-cnv -i sample.bam --bed targets.bed --ref hg38.fa.gz",
+        "wgsextract typing target-cnv -i sample.cram --bed targets.bed --ref hg38.fa.gz --download",
+    ),
     "typing hla": _h(
         "<stem>.t1k_genotype.tsv (and T1K's other files) and <stem>.hla.pharmcat.tsv.",
         "wgsextract typing hla --input sample.cram",
