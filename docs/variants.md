@@ -250,3 +250,43 @@ index FASTA with `--hla-index PATH`. STR typing compares with
 [STRchive](https://strchive.org) ranges; give `--sex` or infer from depth.
 For ONT/PacBio use LongTR (`longtr`) or `--caller strkit` (`strkit`).
 See [repeat expansions](ont.md#repeat-expansions).
+### Target copy-number screening
+
+Use `typing target-cnv` to estimate germline copy number over named intervals
+in an indexed short-read WGS BAM or CRAM. Supply a matching indexed FASTA
+and a BED (zero-based start, exclusive end; optional target name in column 4).
+For gene spans, generate a BED for the same build with `panel bed`.
+
+```sh
+wgsextract typing target-cnv -i sample.cram --ref hs38.fa.gz --bed targets.bed
+```
+
+The `<stem>.target-cnv.tsv` report includes mean read depth, GC fraction,
+the GC-matched baseline depth, and a copy-number class (`0`, `1`, `2`, or
+`3+`). The estimate is twice the target-to-autosomal depth ratio. The
+baseline uses roughly 220 distributed 1 kb windows; reads and bases below
+quality 20, duplicates, secondary and supplementary alignments are
+excluded, and overlapping mates are counted once. BED targets cannot
+contribute their own depth to the baseline. A GC bin is five percentage
+points wide and needs at least five usable windows. The command refuses
+sparse baseline coverage or median depth below 10×; a target gets `no_call`
+if its GC bin lacks support or its autosome has no covered baseline window.
+Confidence depends on how far the estimate is from a class boundary relative to baseline depth
+variation; it is not a validated probability.
+
+The bundled GIAB v3.5 masks run offline on GRCh37, GRCh38, and
+T2T-CHM13v2.0. They round difficult intervals outward to 1 kb. Add
+`--download` to use the original mask boundaries; this fetches only
+two public BEDs for the assembly into the reference library, never
+sending any target or sample data. Any overlap with the selected mask
+returns `specialist_caller_required` instead of a generic CN call, with
+`typing smn` or `typing cyp2d6` suggested on GRCh37/38 when applicable.
+For instance, a target spanning the full GSTM1, UGT2B17, or RHD locus
+can be masked even when its depth alone appears to match a known CN.
+
+The existing sex check supplies the expected CN for non-PAR X and Y
+targets. Unknown sex and pseudoautosomal targets are not called; a
+non-PAR Y target in a sample inferred or declared female is
+`not_applicable`, not a deletion. This is a screen, not a diagnosis.
+It does not find breakpoints, resolve paralogs, or distinguish
+alleles or mosaic states. It is not intended for panels or exomes.

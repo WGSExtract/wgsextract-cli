@@ -324,6 +324,8 @@ def test_path_guard_covers_every_typing_path(op, field, value):
     # (an HLA index or STR catalog included) must be inside an allowed folder.
     guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
     allowed = {"input": r"C:\data\a.bam", "outdir": r"C:\data"}
+    if op == "typing/target-cnv":
+        allowed["bed"] = r"C:\data\targets.bed"
     guard.check(params_from_json(find(op), allowed))
     with pytest.raises(RequestError) as refused:
         guard.check(params_from_json(find(op), {**allowed, field: value}))
@@ -332,9 +334,10 @@ def test_path_guard_covers_every_typing_path(op, field, value):
 
 def test_typing_paths_cover_every_file():
     assert {(op, item.name) for op, item in _TYPING_PATHS} == {
-        *((f"typing/{name}", f) for name in ("cyp2d6", "hla", "smn", "str")
+        *((f"typing/{name}", f) for name in ("cyp2d6", "hla", "smn", "str", "target-cnv")
           for f in ("input", "ref", "outdir")),
         ("typing/hla", "hla_index"), ("typing/str", "catalog"),
+        ("typing/target-cnv", "bed"),
     }  # fmt: skip
 
 

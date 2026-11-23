@@ -132,6 +132,7 @@ from .genotyping import (
     TypingHlaParams,
     TypingSmnParams,
     TypingStrParams,
+    TypingTargetCnvParams,
 )
 from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
@@ -324,6 +325,7 @@ __all__ = [
     "TypingSmnParams",
     "TypingHlaParams",
     "TypingStrParams",
+    "TypingTargetCnvParams",
     "UsageError",
     "VcfAcmgParams",
     "VcfAlphamissenseParams",
