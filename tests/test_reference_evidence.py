@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import (
     bgzip_index,
     needs_htslib,
@@ -14,7 +15,6 @@ from tests.htslib_helpers import (
     sam_to_bam,
     write_fasta,
 )
-from tests.smoke_utils import state_directory_setting
 from tests.test_pharmcat import FAKE_PIPELINE
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import pharmcat

@@ -68,7 +68,8 @@ def test_bootstrap_skips_aadr_and_its_install_and_delete_toggle(
 ):
     reflib = tmp_path / "reference"
 
-    def bootstrap(path: str) -> bool:  # the archive's download is tested elsewhere
+    def bootstrap(path: str, *, cancel_event=None) -> bool:
+        # The archive's download is tested elsewhere.
         _touch(Path(path, ".bootstrap-0.2.0"))
         return True
 
