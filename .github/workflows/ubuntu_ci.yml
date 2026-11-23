@@ -77,12 +77,15 @@ jobs:
         run: pixi run -e lint -x python scripts/test_smells.py --base HEAD^1 --github
   test-ubuntu:
     needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.platform-certified && inputs.tests != '[]' }}
+    # The daily full pytest run seeds shadow observations and must not reuse
+    # a green push. The nightly guard still controls lint and optional lanes.
+    if: ${{ !cancelled() && (github.event_name == 'schedule' || needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.platform-certified && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: ubuntu
       runner: ubuntu-latest
-      timeout-minutes: 48
+      # Per-test contexts use the slower C tracer only on the daily run.
+      timeout-minutes: ${{ github.event_name == 'schedule' && 80 || 48 }}
       environments: default dev vep-rs fastvep
       reference: true
       tests: ${{ inputs.tests || 'all' }}
