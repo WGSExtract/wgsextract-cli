@@ -37,6 +37,7 @@ from wgsextract_cli.core.variant_files import (
     match_chromosome_name,
     vcf_index_chromosomes,
 )
+from wgsextract_cli.core.variant_sample import indexed_vcf_copy
 
 if TYPE_CHECKING:
     from pyliftover import LiftOver
@@ -50,24 +51,7 @@ def prepare_indel_vcf(source: str, outdir: str) -> str:
     """Keep preparation local, including when a source is on read-only storage."""
     if vcf_index_chromosomes(source):
         return source
-    workdir = tempfile.mkdtemp(prefix="IndelInput_", dir=outdir)
-    prepared = str(Path(workdir, "input.vcf.gz"))
-    run_command(
-        [
-            "bcftools",
-            "sort",
-            "-m",
-            "128M",
-            "-T",
-            str(Path(workdir, "sort")),
-            "-Oz",
-            "-o",
-            prepared,
-            source,
-        ]
-    )
-    run_command(["bcftools", "index", "-t", prepared])
-    return prepared
+    return indexed_vcf_copy(source, tempfile.mkdtemp(prefix="IndelInput_", dir=outdir))
 
 
 def indel_manifest_bindings(params: MicroarrayParams) -> dict[str, str]:

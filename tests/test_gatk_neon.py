@@ -5,12 +5,15 @@ import os
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from tests.fake_tools import python_tool, require_bare_name_fakes
+from tests.fake_tool_launchers import expose_tool_fakes
+from tests.fake_tools import python_tool
 from tests.htslib_helpers import require_runnable, sam_to_bam, vcf_calls, write_fasta
 from wgsextract_cli.api.vcf import VcfGatkParams
+from wgsextract_cli.core import native_pairhmm, native_support
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.native_pairhmm import neon_pairhmm_command
 from wgsextract_cli.core.utils import UsageError, run_command
@@ -19,10 +22,11 @@ from wgsextract_cli.main import main
 
 @pytest.fixture
 def apple_silicon(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("wgsextract_cli.core.native_pairhmm.sys.platform", "darwin")
-    monkeypatch.setattr(
-        "wgsextract_cli.core.native_pairhmm.platform.machine", lambda: "arm64"
-    )
+    host = SimpleNamespace(platform="darwin")
+    arch = SimpleNamespace(machine=lambda: "arm64")
+    for module in (native_pairhmm, native_support):
+        monkeypatch.setattr(module, "sys", host)
+        monkeypatch.setattr(module, "platform", arch)
 
 
 def sidecar(tmp_path: Path, *, complete: bool = True, **metadata: object) -> Path:
@@ -105,9 +109,9 @@ def test_1117_moved_build_dependencies_ask_for_rebuild(
 def test_1117_neon_cannot_run_on_an_intel_mac(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("wgsextract_cli.core.native_pairhmm.sys.platform", "darwin")
+    monkeypatch.setattr(native_pairhmm, "sys", SimpleNamespace(platform="darwin"))
     monkeypatch.setattr(
-        "wgsextract_cli.core.native_pairhmm.platform.machine", lambda: "x86_64"
+        native_pairhmm, "platform", SimpleNamespace(machine=lambda: "x86_64")
     )
     with pytest.raises(UsageError, match="requires macOS Apple Silicon"):
         neon_pairhmm_command(tmp_path / "neon.jar", "4.6.2.0")
@@ -128,11 +132,10 @@ def test_1117_opt_in_cannot_silently_choose_another_likelihood_engine(
 
 @pytest.fixture
 def neon_input(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
-    require_bare_name_fakes()
     require_runnable("samtools", "bcftools", "tabix")
     bindir = tmp_path / "bin"
     python_tool(bindir, "gatk", "print('The Genome Analysis Toolkit v4.6.2.0')")
-    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    expose_tool_fakes(monkeypatch, bindir, "gatk")
     clear_tool_caches()
     ref = write_fasta(tmp_path / "ref.fa", {"chr1": "A" * 200})
     run_command(["samtools", "faidx", str(ref)])

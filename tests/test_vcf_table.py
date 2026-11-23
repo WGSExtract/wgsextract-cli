@@ -1,3 +1,4 @@
+import contextlib
 import csv
 import json
 import sqlite3
@@ -5,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract
+from tests.htslib_helpers import (
+    bgzip_index,
+    needs_htslib,
+    reference_for_vcf,
+    run_wgsextract,
+)
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.core.variant_table import (
@@ -487,6 +493,151 @@ def test_vcf_table_parquet_holds_the_tsv_rows(annotated_vcf, tmp_path, monkeypat
     assert metadata[b"input"] == str(Path(annotated_vcf).absolute()).encode()
     assert b"sorted_by" in metadata
     assert len(metadata[b"source_sha256"]) == 64
+
+
+@needs_htslib
+def test_1289_phased_alleles_and_picked_transcripts_round_trip(tmp_path):
+    pq = pytest.importorskip("pyarrow.parquet")
+    csq_fields = CSQ + "|gnomADg_AF_grpmax|gnomADg_nhomalt|MAX_AF"
+
+    def csq(**values):
+        return "|".join(values.get(field, "") for field in csq_fields.split("|"))
+
+    csq_g = csq(
+        Allele="G", Consequence="intron_variant", Feature="ENST1", CANONICAL="YES",
+        gnomADg_AF_grpmax="0.5", gnomADg_nhomalt="500",
+    )  # fmt: skip
+    csq_mane = csq(
+        Allele="G", Consequence="missense_variant", Feature="ENST2", MANE_SELECT="NM_2",
+        gnomADg_AF_grpmax="0.375", gnomADg_nhomalt="32",
+    )  # fmt: skip
+    csq_t = csq(
+        Allele="T", Consequence="stop_gained", Feature="ENST3",
+        gnomADg_AF_grpmax="0.25", gnomADg_nhomalt="12",
+    )  # fmt: skip
+    csq_reg = csq(
+        Allele="T", Consequence="regulatory_region_variant", Feature="ENSR1",
+        Feature_type="RegulatoryFeature", MAX_AF="0.9",
+    )  # fmt: skip
+    header = HEADER.replace(CSQ, csq_fields).replace(
+        "##FORMAT=<ID=GT,",
+        '##INFO=<ID=GNOMAD_POPMAX_AF,Type=Float,Description="Group max AF",Number=A>\n'
+        '##INFO=<ID=GNOMAD_NHOMALT,Type=Integer,Number=A,Description="Homozygotes">\n'
+        '##INFO=<ID=AF,Number=A,Type=Float,Description="Cohort AF">\n'
+        '##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase set">\n'
+        '##FORMAT=<ID=VAF,Number=A,Type=Float,Description="Variant fraction">\n'
+        '##FORMAT=<ID=AF,Type=Float,Description="Fraction, including REF",Number=R>\n'
+        "##FORMAT=<ID=GT,",
+    )
+    sample = tmp_path / "sample.vcf"
+    sample.write_text(
+        header + "chr1\t100\t.\tA\tG,T\t.\tPASS\t"
+        "GNOMAD_POPMAX_AF=0.125,.;GNOMAD_NHOMALT=0,.;"
+        f"CSQ={csq_g},{csq_mane},{csq_t}\tGT:AD:PS:VAF\t1|2:10,2,8:100:0.4,0.4\n"
+        "chr1\t200\t.\tC\tG,T\t.\tPASS\t"
+        "AF=0.99,0.99;ANN=G|stop_gained|HIGH|GENEA||transcript|NM_4"
+        "\tGT:AD:PS:VAF:AF\t1/2:.,2,8:100:0.25,.:0.125,0.375,0.5\n"
+        "chr1\t300\t.\tA\tT\t.\tPASS\t"
+        f"CSQ={csq_reg}\tGT:AD:PS:AF\t0|1:10,0:.:0.5,0.5\n"
+        "chr1\t400\t.\tA\tT\t.\tPASS\tAF=0.25\tGT:AD\t0/1:0,0\n",
+        newline="\n",
+    )
+    args = ("vcf", "table", "--vcf-input", bgzip_index(sample))
+    for fmt in ("tsv", "parquet"):
+        run_wgsextract(*args, "--outdir", str(tmp_path / fmt), "--format", fmt)
+    columns = "pos alt phase_set alt_fraction transcript_id gnomad_popmax_af gnomad_nhomalt".split()
+    expected = [
+        (100, "G", "100", 0.1, "ENST2", 0.125, 0),
+        (100, "T", "100", 0.4, "ENST3", 0.25, 12),
+        (200, "G", None, 0.25, "NM_4", None, None),
+        (200, "T", None, 0.5, None, None, None),
+        (300, "T", None, 0.0, None, None, None),
+        (400, "T", None, None, None, None, None),
+    ]
+    with contextlib.closing(
+        sqlite3.connect(tmp_path / "tsv" / "sample_variants.sqlite")
+    ) as db:
+        assert (
+            db.execute(f"SELECT {', '.join(columns)} FROM variants").fetchall()
+            == expected
+        )
+    parquet = pq.read_table(
+        tmp_path / "parquet" / "sample_variants.parquet", columns=columns
+    )
+    assert [tuple(row.values()) for row in parquet.to_pylist()] == expected
+    with (tmp_path / "tsv" / "sample_variants.tsv").open(newline="") as f:
+        assert [
+            tuple(row[column] for column in columns)
+            for row in csv.DictReader(f, delimiter="\t")
+        ] == [tuple("" if v is None else str(v) for v in row) for row in expected]
+
+
+@needs_htslib
+@pytest.mark.parametrize("with_reference", [False, True])
+def test_1289_split_annotation_preserves_original_allele_fraction(
+    tmp_path, with_reference
+):
+    plain = tmp_path / "sample.vcf"
+    header = HEADER.replace("248956422", "1000").replace(
+        "##FORMAT=<ID=GT,",
+        '##FORMAT=<ID=VAF,Number=A,Type=Float,Description="Variant fraction">\n'
+        "##FORMAT=<ID=GT,",
+    )
+    plain.write_text(
+        header
+        + "chr1\t100\t.\tC\tG,T\t.\tPASS\t.\tGT:AD:VAF\t1|2:10,2,8:.,.\n"
+        + "chr1\t200\t.\tC\tG,T\t.\tPASS\t.\tGT:AD:VAF\t1|2:10,2,.:0.05,0.4\n",
+        newline="\n",
+    )
+    sample = bgzip_index(plain)
+    resource = tmp_path / "gnomad.tsv"
+    resource.write_text("chr1\t100\tC\tG\t0.05\n", newline="\n")
+    outdir = tmp_path / "out"
+    ref_args = ()
+    if with_reference:
+        reference = reference_for_vcf(tmp_path / "ref.fa.gz", sample)
+        ref_args = ("--ref", str(reference))
+    run_wgsextract(
+        "vcf", "gnomad", "--vcf-input", sample, "--gnomad-file", str(resource),
+        "--outdir", str(outdir), *ref_args,
+    )  # fmt: skip
+    run_wgsextract(
+        "vcf", "table", "--vcf-input", str(outdir / "gnomad_annotated.vcf.gz"),
+        "--outdir", str(outdir),
+    )  # fmt: skip
+    rows = _tsv(outdir / "gnomad_annotated_variants.tsv")
+    assert {key: row["alt_fraction"] for key, row in rows.items()} == {
+        ("100", "G"): "0.1",
+        ("100", "T"): "0.4",
+        ("200", "G"): "0.05",
+        ("200", "T"): "0.4",
+    }
+
+
+@needs_htslib
+def test_1289_missing_fields_in_unannotated_vcf_stay_empty(tmp_path):
+    plain = tmp_path / "unannotated.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=100>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\n"
+        "chr1\t50\t.\tA\tG\t.\tPASS\t.\tGT\t0/1\n",
+        newline="\n",
+    )
+    result = CommandResult("vcf table")
+    with collecting(result):
+        run_wgsextract(
+            "vcf", "table", "--vcf-input", str(plain), "--outdir", str(tmp_path)
+        )
+    row = _tsv(tmp_path / "unannotated_variants.tsv")["50", "G"]
+    assert not any(
+        row[column]
+        for column in (
+            "phase_set", "alt_fraction", "transcript_id", "gnomad_popmax_af", "gnomad_nhomalt",
+        )
+    )  # fmt: skip
+    assert {warning.code for warning in result.warnings} <= {"nothing_annotated"}
 
 
 def test_imputed_genotypes_are_marked_with_their_probability():
