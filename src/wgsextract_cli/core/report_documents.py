@@ -194,6 +194,7 @@ ReportFindingSection = Literal[
     "lineage",
     "pharmacogenomics",
     "carrier_screening",
+    "repeat_expansions",
     "clinvar",
     "acmg_research",
     "structural_variants",
@@ -587,6 +588,7 @@ class ReportSectionsDocument(
             description="CPIC guidance for the medications in --pgx-context, gated on the pharmacogenomic calls' evidence; not a prescription. Present only with --pgx-context."
         ),
     ]
+    repeat_expansions: ReportSectionDocument
 
 
 class ReportSampleDocument(TypedDict):

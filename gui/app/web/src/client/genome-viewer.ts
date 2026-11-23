@@ -11,7 +11,8 @@ import { bindRemoteViewer, remoteViewerForm } from "./genome-viewer-remote-form.
 
 interface IgvBrowser {
     genome: { cytobandSource?: ReturnType<typeof viewerCytobandSource> };
-    loadTrack(track: LocalTrack<File | string> | { name: string; type: "annotation"; features: ViewerGene[]; searchable: false }): Promise<IgvLocalTrack | undefined>;
+    loadTrack(track: LocalTrack<File | string> | { name: string; type: "annotation"; features: ViewerGene[]; searchable: false }
+        | { name: string; type: "annotation"; format: "bed"; url: string; indexURL: string; indexed: true; headers?: Record<string, string>; displayMode: "EXPANDED"; searchable: false }): Promise<IgvLocalTrack | undefined>;
     on(event: "trackclick", handler: typeof localPopupHTML): void;
     search(locus: string): Promise<boolean>;
     zoomIn(): void;
@@ -224,7 +225,8 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         trackProblem = undefined;
         geneLookup = viewerGeneLookup(files.genes?.features ?? []);
         const geneStatus = required<HTMLElement>("[data-gene-status]");
-        geneStatus.textContent = (files.genes?.notices ?? []).map((notice) => text(notice.code).replace("%{file}", notice.fileName)).join(" ");
+        geneStatus.textContent = [...(files.genes?.notices ?? []).map((notice) => ({ ...notice, command: "" })), ...files.transcripts?.notices ?? []]
+            .map((notice) => text(notice.code).replace("%{file}", notice.fileName).replace("%{command}", notice.command)).join(" ");
         geneStatus.hidden = !geneStatus.textContent;
         const cytobandStatus = required<HTMLElement>("[data-cytoband-status]");
         cytobandStatus.textContent = (files.cytobands?.notices ?? []).map((notice) => text(notice.code)
@@ -254,6 +256,15 @@ async function openTracks(files: LocalViewerFiles<File | string>, locus: string,
         if (files.genes?.features.length) {
             const loaded = await browser.loadTrack({ name: text("geneTrack"), type: "annotation", features: files.genes.features, searchable: false });
             if (!loaded) throw new Error("Gene spans could not be loaded.");
+            disablePopupLookups(loaded);
+        }
+        const transcripts = files.transcripts;
+        if (typeof transcripts?.url === "string" && typeof transcripts.indexURL === "string") {
+            const loaded = await browser.loadTrack({
+                name: text("transcriptTrack"), type: "annotation", format: "bed", url: transcripts.url, indexURL: transcripts.indexURL,
+                indexed: true, ...(transcripts.headers ? { headers: transcripts.headers } : {}), displayMode: "EXPANDED", searchable: false,
+            });
+            if (!loaded) throw new Error("Transcript models could not be loaded.");
             disablePopupLookups(loaded);
         }
         for (const track of files.tracks) {

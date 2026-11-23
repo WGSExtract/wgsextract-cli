@@ -136,6 +136,9 @@
         "medication_review": {
           "$ref": "#/$defs/reportMedicationReview",
           "description": "CPIC guidance for the medications in --pgx-context, gated on the pharmacogenomic calls' evidence; not a prescription. Present only with --pgx-context."
+        },
+        "repeat_expansions": {
+          "$ref": "#/$defs/section"
         }
       },
       "required": [
@@ -227,6 +230,7 @@
             "lineage",
             "pharmacogenomics",
             "carrier_screening",
+            "repeat_expansions",
             "clinvar",
             "acmg_research",
             "structural_variants",

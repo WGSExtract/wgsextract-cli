@@ -81,6 +81,7 @@ SECTIONS = {
     "ancestry": "Ancestry proportions",
     "pharmacogenomics": "Pharmacogenomics",
     "carrier_screening": "Carrier screening by copy number",
+    "repeat_expansions": "Repeat Expansions",
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
     "acmg_research": "Automated ACMG classes in {gene_list} genes (research only)",
     "structural_variants": "Rare structural variants",
@@ -140,9 +141,11 @@ class Source:
                         return path
         return None
 
-    def files(self, kind: str) -> list[Path]:
+    def files(self, kind: str, *, exclude_role: str | None = None) -> list[Path]:
         return [
-            self.locate(str(r["path"])) for r in self.records(kind) if r.get("path")
+            self.locate(str(r["path"]))
+            for r in self.records(kind)
+            if r.get("path") and (exclude_role is None or r.get("role") != exclude_role)
         ]
 
     def locate(self, recorded: str) -> Path:
@@ -217,7 +220,8 @@ def collect_sources(folder: Path, extra: Iterable[Path] = ()) -> list[Source]:
             for key, source in candidates.items()
             if any(
                 _inside(p, folder) or _key(p) in produced
-                for p in source.files("inputs")
+                # The catalog selects what to size, not whose sample it is.
+                for p in source.files("inputs", exclude_role="repeat_catalog")
             )
         ]
         if not kept:

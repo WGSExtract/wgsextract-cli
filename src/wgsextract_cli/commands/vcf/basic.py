@@ -36,6 +36,7 @@ from wgsextract_cli.core.mimalloc import bcftools_environment
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.region_selection import Intervals
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
@@ -141,6 +142,7 @@ class CallerSetup:
     ref: str
     lib: ReferenceLibrary
     platform: str | None
+    intervals: Intervals | None = None
 
 
 def caller_setup(
@@ -152,6 +154,7 @@ def caller_setup(
     region: str | None,
     qc_min_depth: float | None,
     allow_reference_subset: bool = False,
+    resolve_regions: Callable[[str, str, str], Intervals] | None = None,
 ) -> CallerSetup:
     """Resolve threads, output folder and reference FASTA for a BAM/CRAM caller,
     and warn about alignment problems and low depth."""
@@ -204,15 +207,21 @@ def caller_setup(
         )
     current_result().set_reference(resolved_ref, lib.build)
     warn_about_alignment(input_file, resolved_ref)
+    intervals = (
+        resolve_regions(input_file, resolved_ref, region)
+        if resolve_regions is not None and region is not None
+        else None
+    )
     warn_low_depth(
         input_file,
-        region_targets(region),
+        region_targets(region, intervals=intervals),
         outdir=outdir,
         ref=resolved_ref,
         min_depth=qc_min_depth,
         region=region,
+        intervals=intervals,
     )
-    return CallerSetup(thread_count, outdir, resolved_ref, lib, platform)
+    return CallerSetup(thread_count, outdir, resolved_ref, lib, platform, intervals)
 
 
 class CallerParams(Protocol):
@@ -233,7 +242,10 @@ class CallerParams(Protocol):
 
 
 def setup_caller(
-    params: CallerParams, *, allow_reference_subset: bool = False
+    params: CallerParams,
+    *,
+    allow_reference_subset: bool = False,
+    resolve_regions: Callable[[str, str, str], Intervals] | None = None,
 ) -> CallerSetup:
     """``caller_setup`` for a BAM/CRAM caller's Params."""
     return caller_setup(
@@ -244,6 +256,7 @@ def setup_caller(
         region=params.region,
         qc_min_depth=params.qc_min_depth,
         allow_reference_subset=allow_reference_subset,
+        resolve_regions=resolve_regions,
     )
 
 

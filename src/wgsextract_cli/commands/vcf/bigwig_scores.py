@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.bigwig_resources import _pybigwig, open_bigwig
+from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 from wgsextract_cli.core.variant_files import (
@@ -73,6 +74,8 @@ def _score_rows(vcf: str, bw: Any, label: str) -> Iterator[str]:
         for chrom in vcf_index_chromosomes(vcf)
     }
     if not any(to_bw.values()):
+        if not to_bw and vcf_record_count(vcf) == 0:
+            return
         raise WGSExtractError(
             f"None of the VCF's contigs are in the {label} scores; check its genome build."
         )
