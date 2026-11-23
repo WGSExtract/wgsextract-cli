@@ -17,6 +17,7 @@ from wgsextract_cli.api._shared import (
     restart_param,
     threads_param,
 )
+from wgsextract_cli.core.paths import absolute_path, append_suffix
 from wgsextract_cli.core.utils import UsageError
 
 from .shared import (
@@ -392,6 +393,33 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
             raise UsageError("--alignment and --absent-to-ref cannot be used together.")
         if self.alignment_reference is not None and self.alignment is None:
             raise UsageError("--alignment-reference requires --alignment.")
+        if self.alignment is not None and "##idx##" in str(self.alignment):
+            raise UsageError(
+                "--alignment requires a BAM/CRAM path without an inline index."
+            )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core.alignment.samtools_commands import (
+            alignment_index_candidates,
+        )
+        from wgsextract_cli.core.ref_library.assets import reference_dict_path
+
+        yield from super().implied_paths()
+        if self.alignment is not None:
+            path = self.alignment
+            if ".." in path.parts:
+                path = absolute_path(path)
+                yield "alignment", path
+            for index in alignment_index_candidates(path):
+                yield "alignment_index", index
+        if self.alignment_reference is not None:
+            path = self.alignment_reference
+            if ".." in path.parts:
+                path = absolute_path(path)
+                yield "alignment_reference", path
+            for suffix in (".fai", ".gzi"):
+                yield "alignment_reference_index", append_suffix(path, suffix)
+            yield "alignment_reference_dictionary", Path(reference_dict_path(path))
 
 
 @dataclass(frozen=True, kw_only=True)

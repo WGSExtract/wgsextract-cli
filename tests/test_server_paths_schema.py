@@ -1,6 +1,7 @@
 """Focused server_paths schema regressions."""
 
 import typing
+from pathlib import Path
 
 import pytest
 
@@ -470,6 +471,41 @@ def test_1293_methylation_regions_server_cannot_download_or_follow_an_external_i
         pytest.skip("creating symlinks is not permitted")
     with pytest.raises(RequestError) as refused:
         PathGuard([str(data)]).check(params_from_json(op, body))
+    assert refused.value.code == "path_not_allowed"
+
+
+@pytest.mark.parametrize(
+    ("name", "role"),
+    [
+        ("reads.bam.bai", "alignment_index"),
+        ("reads.csi", "alignment_index"),
+        ("ref.fa.gz.fai", "alignment_reference_index"),
+        ("ref.fa.gz.gzi", "alignment_reference_index"),
+        ("ref.dict", "alignment_reference_dictionary"),
+    ],
+)
+def test_1477_server_rejects_external_pharmcat_alignment_sidecars(
+    tmp_path: Path, name: str, role: str
+) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside"
+    outside.touch()
+    try:
+        (allowed / name).symlink_to(outside)
+    except OSError:
+        pytest.skip("can't create symlinks here")
+    op = find("vcf/pharmcat")
+    params = params_from_json(
+        op,
+        {
+            "vcf_input": str(allowed / "sample.vcf"),
+            "alignment": str(allowed / "reads.bam"),
+            "alignment_reference": str(allowed / "ref.fa.gz"),
+        },
+    )
+    with pytest.raises(RequestError, match=role) as refused:
+        PathGuard([str(allowed)]).check(params)
     assert refused.value.code == "path_not_allowed"
 
 

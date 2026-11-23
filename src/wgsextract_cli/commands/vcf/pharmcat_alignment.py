@@ -31,6 +31,7 @@ Locus = tuple[str, int]
 @dataclass(frozen=True)
 class AlignmentPileup:
     path: str
+    index: str
     reference: str
     lengths: Mapping[str, int]
     read_groups: tuple[str, ...]
@@ -42,7 +43,8 @@ class AlignmentPileup:
         path = str(absolute_path(alignment))
         if not Path(path).is_file() or not path.lower().endswith((".bam", ".cram")):
             raise UsageError(f"--alignment requires a local BAM or CRAM file: {path}")
-        if alignment_index(path) is None:
+        index = alignment_index(path)
+        if index is None:
             raise WGSExtractError(
                 f"Alignment index missing for {path}. Run `samtools index` first."
             )
@@ -94,7 +96,7 @@ class AlignmentPileup:
         )
         if samples and not read_groups:
             raise WGSExtractError("The BAM/CRAM sample has no named read groups.")
-        return cls(path, fasta, lengths, read_groups)
+        return cls(path, index, fasta, lengths, read_groups)
 
     def collect(
         self,
@@ -202,7 +204,8 @@ class AlignmentPileup:
         reads = str(work / "alignment_reads.bam")
         run_command(
             ["samtools", "view", "-b", "-M", "-L", str(regions), "-T", self.reference,
-             "-e", "mapq < 255 && max(qual) < 255", *groups, "-o", reads, self.path]
+             "-e", "mapq < 255 && max(qual) < 255", *groups,
+             "-o", reads, "-X", self.path, self.index]
         )  # fmt: skip
         return reads
 
