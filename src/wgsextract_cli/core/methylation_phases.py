@@ -87,7 +87,7 @@ class PhaseEvidence:
         self, region: Region, blocks: Mapping[str, IntervalLookup] | None
     ) -> tuple[str, int | None]:
         if region.start is None or region.end is None:
-            return "no_region", None
+            return "no_transcript", None
         index = blocks.get(region.chrom) if blocks is not None else None
         overlaps = list(index.overlapping(region.start, region.end)) if index else []
         if self.mixed_ps or len(overlaps) > 1:

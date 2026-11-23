@@ -303,11 +303,11 @@ def plain_reference(
     if not (ref.lower().endswith(".gz") if compressed is None else compressed):
         yield ref
         return
-    sibling = ref[:-3]
+    sibling = ref[:-3] if compressed is None else None
     # A server job may read only its allowed folders; the sibling or its
     # index can be a link elsewhere.
     if (
-        compressed is None
+        sibling is not None
         and Path(sibling).is_file()
         and all(read_scope.may_follow(p) for p in (sibling, f"{sibling}.fai"))
     ):
@@ -322,7 +322,7 @@ def plain_reference(
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(outdir), prefix=".wgse_ref_"
     ) as tmp:
-        target = str(Path(tmp, "reference.fa" if compressed else Path(sibling).name))
+        target = str(Path(tmp, Path(sibling).name if sibling else "reference.fa"))
         logging.info(f"Decompressing reference for this tool to {target}...")
         try:
             with gzip.open(ref, "rb") as src, open(target, "wb") as dst:

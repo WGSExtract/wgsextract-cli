@@ -179,8 +179,8 @@ def haplotype_rows(
     for index, region in enumerate(regions):
         expected, unavailable = region_context(region, available, anchors)
         phase_status, phase_set = (
-            ("contig_absent", None)
-            if unavailable == "contig_absent"
+            (unavailable, None)
+            if unavailable is not None
             else evidence.get(index, empty_phase).classify(region, blocks)
         )
         for code in codes:

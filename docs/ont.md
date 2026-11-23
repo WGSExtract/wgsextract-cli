@@ -701,8 +701,8 @@ partition has no percentage, not 0%.
   `--phase-blocks` from the **same phasing run** to additionally require
   the entire region to fit within one matching block (`single_block`).
   `cross_block`, `missing_ps`, `phase_set_mismatch`, `outside_block`,
-  `no_phased_reads`, `no_region`, and `contig_absent` leave the difference blank. The phase
-  check conservatively includes reads overlapping the one-base right pad
+  `no_phased_reads`, `no_transcript`, and `contig_absent` leave the difference
+  blank. The phase check conservatively includes reads overlapping the one-base right pad
   used to capture reverse-strand CpG calls.
 - HP labels are local to the phase set. They do not identify maternal or
   paternal copies, and the result does not call imprinting.

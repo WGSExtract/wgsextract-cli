@@ -132,6 +132,7 @@ def test_1293_haplotypes_use_common_cpgs_and_keep_unphased_counts(
 
 @needs_samtools
 @needs_modkit
+@pytest.mark.skipif(not shutil.which("bgzip"), reason="needs bgzip")
 def test_1293_cram_parquet_preserves_absent_haplotype_and_block_bounds(
     tmp_path, island_params
 ):
@@ -152,6 +153,10 @@ def test_1293_cram_parquet_preserves_absent_haplotype_and_block_bounds(
         check=True,
     )
     subprocess.run(["samtools", "index", str(cram)], check=True)
+    compressed_ref = tmp_path / "reference.bgzf"
+    with compressed_ref.open("wb") as handle:
+        subprocess.run(["bgzip", "-c", str(params.ref)], stdout=handle, check=True)
+    subprocess.run(["samtools", "faidx", str(compressed_ref)], check=True)
     blocks = tmp_path / "phased.blocks.tsv"
     blocks.write_text(
         "contig\tphase_set\tfirst\tlast\tspan_bp\tvariants\n"
@@ -160,7 +165,13 @@ def test_1293_cram_parquet_preserves_absent_haplotype_and_block_bounds(
         newline="\n",
     )
     result = methylation.regions(
-        replace(params, input=cram, phase_blocks=blocks, table_format="parquet")
+        replace(
+            params,
+            input=cram,
+            ref=compressed_ref,
+            phase_blocks=blocks,
+            table_format="parquet",
+        )
     )
     [output] = result.outputs
     with pq.ParquetFile(output.path) as table:
