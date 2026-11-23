@@ -54,7 +54,16 @@ above works.
 | `sv_af`, `sv_freq` | real, text | A structural variant's population frequency and its class (`common`, `low`, `rare` or `novel`), from [`vcf sv-freq`](sv-frequency.md). |
 | `acmg_class`, `acmg_criteria`, `acmg_transcript` | text | **Research use only; not a diagnosis.** fastVEP's automated ACMG/AMP class (`P`, `LP`, `VUS`, `LB`, `B`), the criteria it found met (`&`-separated) and the transcript it classified on, from [`vcf acmg`](acmg.md). Empty when the VCF has no classes. |
 | `imputed`, `genotype_probability` | integer, real | `1` when the genotype was imputed from a reference panel (`INFO/IMP`, from [`vcf impute`](imputation.md)), else `0`; and the largest FORMAT/GP when its values are probabilities in [0, 1]. Unrecognised/phred-scaled scores leave the probability empty. Imputed rows below `vcf impute`'s thresholds have `filter` `ImpLowConf`. |
+| `phase_set` | text | The sample's `FORMAT/PS` for a phased genotype, otherwise empty. Compare phase sets only within the same sample and chromosome. Use `genotype` together with `phase_set` to see which alleles are on the same haplotype. |
+| `alt_fraction` | real | This ALT's depth divided by the sum of `FORMAT/AD` across REF and all ALTs in the record. If depths are incomplete or sum to zero, falls back to the allele's `FORMAT/VAF`, then `FORMAT/AF`, if present and in [0, 1]. `INFO/AF` is not a read fraction. |
+| `transcript_id` | text | The transcript associated with `consequence`: VEP `Feature` or SnpEff `Feature_ID`. Empty for non-transcript effects. |
+| `gnomad_popmax_af` | real | Maximum allele frequency across gnomAD genetic ancestry groups for this ALT (`GNOMAD_POPMAX_AF` from `vcf gnomad`, a native gnomAD `AF_grpmax_joint`/`AF_grpmax`/`AF_popmax` field, or a gnomAD-specific group-maximum field in VEP `CSQ`). VEP `MAX_AF` combines databases and is not a fallback. |
+| `gnomad_nhomalt` | integer | Count of homozygotes for this ALT in gnomAD (`GNOMAD_NHOMALT` from `vcf gnomad`, native `nhomalt_joint`/`nhomalt`, or a gnomAD homozygote count in VEP `CSQ`). A known count of zero is distinct from a missing count. |
 | `kg_af`, `max_af` | real | VEP's 1000 Genomes phase 3 frequency of this ALT over all populations (`AF`), and its `MAX_AF`: the highest frequency in any population VEP's cache has, gnomAD and 1000 Genomes with Ensembl VEP's cache but 1000 Genomes only with a vep-rs cache from `vep download`. Where VEP lists several co-located known variants, the highest value. |
+
+When a WGSE annotation splits a multi-allelic record, it saves the original
+AD total so the read fraction stays the same. A known split without a
+complete original total can only use `FORMAT/VAF` or `FORMAT/AF`.
 
 The TSV has a header row and leaves missing values empty. The SQLite database
 has the table `variants` with these columns, `columns` (each column's type and
@@ -62,6 +71,16 @@ meaning, for an agent to read first) and `metadata` (wgsextract version,
 source VCF and its SHA-256, sample, reference build, region, annotations found,
 `population_af_sources`, row count and command line). It is indexed on `gene`,
 `rsid` and `(chrom, pos)`.
+
+[`/v1/variants` and MCP `query_variants`](server.md) can return these
+columns from any of the table formats. They omit fields that are missing.
+
+Newly built `ref gnomad --release 4.1` tables retain the joint dataset's
+`AF_grpmax_joint` and `nhomalt_joint`. `vcf gnomad` carries them into its
+annotated VCF and, with `--max-af`, its confidence table. Older five-column
+gnomAD tables still supply `gnomad_af`, but do not have the two additional
+statistics. To rebuild an installed table, move it and its index aside before
+running `ref gnomad --release 4.1` again (this streams about 900 GB).
 
 A table of a [`vcf acmg`](acmg.md) VCF keeps the research-only disclaimer
 where its readers look: the `acmg_*` column descriptions, the metadata key
@@ -131,12 +150,12 @@ SELECT gene, rsid, clinvar_significance, confidence, confidence_reasons
 FROM variants
 WHERE clinvar_significance IS NOT NULL AND confidence IN ('low', 'moderate');
 
--- Rare protein-changing variants (absent from gnomAD or below 0.1%); an
--- empty gnomad_af means rare only if population_af_sources includes gnomad
+-- Protein-changing variants with a measured gnomAD frequency below 0.1%
+-- and no known VEP population frequency at or above 0.1%
 SELECT gene, hgvs_p, consequence, gnomad_af, max_af, zygosity
 FROM variants
 WHERE impact IN ('HIGH', 'MODERATE')
-  AND (gnomad_af IS NULL OR gnomad_af < 0.001)
+  AND gnomad_af < 0.001
   AND (max_af IS NULL OR max_af < 0.001)
   AND filter = 'PASS';
 

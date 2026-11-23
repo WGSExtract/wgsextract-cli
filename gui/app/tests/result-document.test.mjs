@@ -28,7 +28,8 @@ import type { ResultError, ResultFile } from "${modulePath("result-document.js")
 type OptionalKeys<T> = { [Key in keyof T]-?: {} extends Pick<T, Key> ? Key : never }[keyof T];
 type RequireNone<T extends never> = T;
 // Reject even one optional key, including nullable/defaulted wire fields.
-type FileFieldsRequired = RequireNone<OptionalKeys<ResultFileRecord>>;
+// Like an error's code, a file's artifact is written only for BAM/CRAM/VCF/BCF files (#1182).
+type FileFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultFileRecord>, "artifact">>;
 type WarningFieldsRequired = RequireNone<OptionalKeys<ResultWarningRecord>>;
 type ErrorFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultErrorRecord>, "code">>;
 type ResultFieldsRequired = RequireNone<OptionalKeys<ResultDocumentRecord>>;
@@ -248,6 +249,80 @@ test("#1090: genomic results open in the built-in viewer at their own locus, nev
   }
   state.manifest.id = "git-helper";
   assert.doesNotMatch(renderResultSummary(document), /data-result-viewer/);
+});
+
+test("#1161: report findings and mtDNA haplogroup variants open the viewer per row, or say why they cannot", async (t) => {
+  Object.assign(state, createInitialState(), {
+    manifest: { id: "wgs-extract" },
+    labels: { viewerStrings: {
+      showInViewer: "Show in viewer", rowNoLocus: "No single position.", rowNoTrack: "No sample file.",
+      rowTrackChecking: "Checking %{file}…", rowOutsideLibrary: "%{file} is outside My Genomes.",
+    } },
+  });
+  const checked = [];
+  const statuses = { "/genomes/HG002.cram": { ok: true }, "/elsewhere/HG003.bam": { problem: "rowOutsideLibrary", fileName: "HG003.bam" } };
+  const realFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = realFetch; });
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, "/api/viewer/check");
+    const { paths } = JSON.parse(init.body);
+    checked.push(...paths);
+    return new Response(JSON.stringify({ tracks: Object.fromEntries(paths.map((file) => [file, statuses[file]])) }));
+  };
+  const result = (input, details) => parseResultDocument({
+    schema: "wgsextract.result/1", status: "ok", details,
+    inputs: [{ path: "/genomes/HG002_cyp2d6.manifest.json", role: "manifest" }, ...(input ? [{ path: input, role: "input", kind: "cram" }] : [])],
+  }, "wgsextract.result/1");
+  const report = {
+    schema: "wgsextract.report/1",
+    sections: {
+      lineage: { title: "Lineage", findings: [{ label: "mtDNA haplogroup", value: "H1a", variant: null }] },
+      structural_variants: { title: "Structural variants", findings: [
+        { label: "DEL chr2:100-10000", value: "rare", evidence: { region: "chr2:100-10000" }, variant: { chrom: "chr2", pos: 100, ref: null, alt: "<DEL>" } },
+      ] },
+      clinvar: { title: "ClinVar", build: "hg38", findings: [
+        { label: "BRCA2", value: "Pathogenic", variant: { chrom: "chr13", pos: 32357672, ref: "C", alt: "T" } },
+        { label: "<b>MUTYH</b>", value: "Likely pathogenic", variant: { chrom: "chr1", pos: 45334841, ref: "GCA", alt: "G" } },
+      ] },
+    },
+  };
+  const settled = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+  const findings = result("/genomes/HG002.cram", report);
+  assert.match(renderResultSummary(findings), /Checking HG002\.cram…/);
+  assert.doesNotMatch(renderResultSummary(findings), /data-viewer-locus="chr13/, "No row opens before its file is checked.");
+  await settled();
+  const summary = renderResultSummary(findings);
+  assert.match(summary, /data-result-viewer="\/genomes\/HG002\.cram" data-viewer-locus="chr13:32357672-32357672" data-viewer-build="hg38"/,
+    "A ClinVar row carries its evidence VCF's build, so the viewer refuses a BAM on another build.");
+  assert.match(summary, /data-viewer-locus="chr2:100-10000">/, "A structural deletion opens across its whole interval, with no build to hold it to.");
+  assert.match(summary, /data-viewer-locus="chr1:45334841-45334843"/, "A deletion spans every reference base it replaces.");
+  assert.match(summary, /&lt;b&gt;MUTYH&lt;\/b&gt;/);
+  assert.match(summary, /<td>H1a<\/td><td><\/td><td><button[^>]*disabled title="No single position\."[^>]*>Show in viewer<\/button><span[^>]*>No single position\./);
+  assert.deepEqual(checked, ["/genomes/HG002.cram"], "Re-renders reuse the check.");
+
+  const outside = result("/elsewhere/HG003.bam", report);
+  renderResultSummary(outside);
+  await settled();
+  assert.match(renderResultSummary(outside), /HG003\.bam is outside My Genomes\./);
+  assert.doesNotMatch(renderResultSummary(outside), /data-viewer-locus="chr13/);
+
+  const noTrack = renderResultSummary(result("", report));
+  assert.match(noTrack, /No sample file\./);
+  assert.doesNotMatch(noTrack, /data-result-viewer=/);
+  assert.equal(checked.length, 2, "A result without a sample file asks nothing of the server.");
+
+  const haplogroup = result("/genomes/HG002.cram", { haplogrep: { Haplogroup: "H1a", Found_Polys: "73G 315.1C 8281-8289d A2706G? junk" } });
+  renderResultSummary(haplogroup);
+  await settled();
+  const variants = renderResultSummary(haplogroup);
+  for (const locus of ["rCRS:73-73", "rCRS:315-315", "rCRS:8281-8289", "rCRS:2706-2706"]) {
+    assert.match(variants, new RegExp(`data-viewer-locus="${locus}"`));
+  }
+  assert.match(variants, /<td>junk<\/td><td><\/td><td><button[^>]*disabled/);
+
+  state.manifest.id = "git-helper";
+  assert.doesNotMatch(renderResultSummary(findings), /Show in viewer/);
 });
 
 test("a run's result card gets a View Card button and is the document's card output", () => {

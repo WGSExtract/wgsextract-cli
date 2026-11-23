@@ -243,7 +243,6 @@ def test_capture_staging_counts_the_selected_slices_not_the_genome_fraction(
 @pytest.mark.parametrize(
     "index_data",
     [
-        None,
         b"",
         b"malformed\n",
         b"0 1 20 100 0 50\nbad trailing row\n",
@@ -254,10 +253,8 @@ def test_capture_staging_counts_the_selected_slices_not_the_genome_fraction(
 )
 def test_an_unreadable_crai_bounds_staging_by_the_whole_input(dv, big_cram, index_data):
     """Each of these CRAIs would say 50 bytes (so 64 MiB) were selected."""
-    index = Path(f"{big_cram.path}.crai")
-    index.unlink()
-    if index_data is not None:
-        index.write_bytes(index_data)
+    # A missing CRAI is refused before staging (index_missing, #1182).
+    Path(f"{big_cram.path}.crai").write_bytes(index_data)
     big_cram.volumes.free[dv.out] = 1.5
     with pytest.raises(WGSExtractError, match=r"~2\.00 GiB"):
         call(dv, "-r", "chr1:10", "--no-preflight", reads=big_cram.path)

@@ -13,7 +13,9 @@ from scripts.ci_github import TRUSTED, GitHub
 from scripts.ci_policy import safe
 
 LEDGER = "<!-- ci-flake-ledger:"
-CI_BUG_MARKER = re.compile(r"<!-- ci-(?:flaky:[0-9a-f]{64}|red-main:[0-9]+) -->")
+CI_BUG_MARKER = re.compile(
+    r"<!-- ci-(?:flaky:[0-9a-f]{64}|red-main:[0-9]+|selector-miss:[0-9a-f]{64}) -->"
+)
 CI_BOT = "github-actions[bot]"
 
 
