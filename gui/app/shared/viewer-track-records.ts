@@ -33,7 +33,8 @@ export type ViewerTrackConfig<Source> = (Omit<LocalTrack<Source>, "format"> & {
 
 /** igv calls this decoder only on the indexed blocks it reads, including after panning. */
 export function validatedBedGraphTrack<Source>(track: LocalTrack<Source>, report: (error: ViewerFileError) => void): ViewerTrackConfig<Source> {
-    if (track.format === "rsid-tab") {
+    if (track.format === "rsid-tab" || track.format === "pharmgkb-tsv") {
+        const isPharmgkb = track.format === "pharmgkb-tsv";
         return {
             ...track,
             format: "bed",
@@ -44,7 +45,9 @@ export function validatedBedGraphTrack<Source>(track: LocalTrack<Source>, report
                 if (columns.length < 3 || contig.startsWith("#") || !/^\d+$/.test(rawPos)) return undefined;
                 const pos = Number(rawPos);
                 if (!Number.isSafeInteger(pos) || pos < 1) return undefined;
-                const name = (columns[2] ?? "").trim();
+                const name = isPharmgkb
+                    ? ((columns[4] ?? "").trim() || `${(columns[2] ?? "").trim()}>${(columns[3] ?? "").trim()}`)
+                    : (columns[2] ?? "").trim();
                 return { chr: contig, start: pos - 1, end: pos, name };
             },
         };

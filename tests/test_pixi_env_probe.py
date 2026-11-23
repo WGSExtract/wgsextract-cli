@@ -500,6 +500,7 @@ def test_windows_gatk_rejects_incomplete_older_sidecar(tmp_path, monkeypatch, mi
     assert _windows_gatk(tmp_path, monkeypatch, prefix) is None
 
 
+@posix_pixi
 def test_default_env_probe_does_not_leak_system_path_multiqc(
     tmp_path, monkeypatch, fake_pixi
 ):

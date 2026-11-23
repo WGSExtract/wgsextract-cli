@@ -9,7 +9,7 @@ import { validateReferenceAnnotation } from "./viewer-track-metadata.js";
 interface AnnotationSpec {
     name: string;
     type: "annotation" | "variant" | "wig";
-    format: "rsid-tab" | "vcf" | "bigwig";
+    format: "rsid-tab" | "pharmgkb-tsv" | "vcf" | "bigwig";
     pattern: (tokens: string) => RegExp;
 }
 
@@ -23,6 +23,7 @@ const annotationSpecs: AnnotationSpec[] = [
     { name: "dbSNP", type: "variant", format: "vcf", pattern: (t) => new RegExp(`^dbsnp.*(?:${t}).*\\.vcf\\.(?:gz|bgz)$`, "i") },
     { name: "rsIDs", type: "annotation", format: "rsid-tab", pattern: (t) => new RegExp(`^all_snps_(?:${t})_ref\\.tab\\.gz$`, "i") },
     { name: "ClinVar", type: "variant", format: "vcf", pattern: (t) => new RegExp(`^clinvar.*(?:${t}).*\\.vcf\\.(?:gz|bgz)$`, "i") },
+    { name: "PharmGKB", type: "annotation", format: "pharmgkb-tsv", pattern: (t) => new RegExp(`^pharmgkb.*(?:${t}).*\\.tsv\\.gz$`, "i") },
     { name: "PharmGKB", type: "variant", format: "vcf", pattern: (t) => new RegExp(`^pharmgkb.*(?:${t}).*\\.vcf\\.(?:gz|bgz)$`, "i") },
     { name: "gnomAD", type: "variant", format: "vcf", pattern: (t) => new RegExp(`^gnomad.*(?:${t}).*\\.vcf\\.(?:bgz|gz)$`, "i") },
     { name: "PhyloP", type: "wig", format: "bigwig", pattern: (t) => new RegExp(`^phylop.*(?:${t}).*\\.(?:bw|bigwig)$`, "i") },
@@ -74,8 +75,10 @@ export async function installedViewerAnnotations(fasta: string, referenceRoot: s
     ];
     const dirEntries = await Promise.all(searchDirs.map(async (dir) => ({ dir, names: await listDirectoryNames(dir) })));
     const tracks: LocalTrack<string>[] = [];
+    const seenNames = new Set<string>();
 
     for (const spec of annotationSpecs) {
+        if (seenNames.has(spec.name)) continue;
         const regex = spec.pattern(tokens);
         let found: LocalTrack<string> | undefined;
         for (const { dir, names } of dirEntries) {
@@ -106,7 +109,10 @@ export async function installedViewerAnnotations(fasta: string, referenceRoot: s
             }
             if (found) break;
         }
-        if (found) tracks.push(found);
+        if (found) {
+            seenNames.add(spec.name);
+            tracks.push(found);
+        }
     }
     return tracks;
 }

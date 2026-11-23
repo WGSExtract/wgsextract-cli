@@ -50,7 +50,7 @@ export async function validateViewerTrack(file: string, format: "bed" | "bedgrap
 }
 
 /** Bounded validation for auto-discovered reference library annotations (allowing chr/no-chr aliases). */
-export async function validateReferenceAnnotation(file: string, format: "vcf" | "rsid-tab" | "bigwig", index: string | undefined, reference: Map<string, number>): Promise<boolean> {
+export async function validateReferenceAnnotation(file: string, format: "vcf" | "rsid-tab" | "pharmgkb-tsv" | "bigwig", index: string | undefined, reference: Map<string, number>): Promise<boolean> {
     const handle = await open(file, "r");
     try {
         const size = (await handle.stat()).size;

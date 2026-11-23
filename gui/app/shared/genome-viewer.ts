@@ -25,7 +25,7 @@ export class ViewerFileError extends Error {
 export interface LocalTrack<Source = File> {
     name: string;
     type: "alignment" | "variant" | "annotation" | "wig";
-    format: "bam" | "cram" | "vcf" | "bed" | "bedgraph" | "bigwig" | "rsid-tab";
+    format: "bam" | "cram" | "vcf" | "bed" | "bedgraph" | "bigwig" | "rsid-tab" | "pharmgkb-tsv";
     url: Source;
     indexURL?: Source;
     headers?: Record<string, string>;

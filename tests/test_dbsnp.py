@@ -131,3 +131,28 @@ def test_dbsnp_md5_mismatch_rejects_corrupt_download(
             api.ref.dbsnp(RefDbsnpParams(ref=reflib, build="hg38"))
         assert not (reflib / "downloads" / "dbsnp_common_hg38.vcf.gz").exists()
         assert not (reflib / "downloads" / "dbsnp_common_hg38.rsid.sqlite").exists()
+
+
+def test_dbsnp_delete_refuses_active_installer_lock(tmp_path: Path) -> None:
+    from wgsextract_cli.core.file_lock import build_lock
+    from wgsextract_cli.core.utils import WGSExtractError
+
+    reflib = tmp_path / "reference"
+    downloads = reflib / "downloads"
+    downloads.mkdir(parents=True)
+    vcf = downloads / "dbsnp_common_hg38.vcf.gz"
+    vcf.write_bytes(b"placeholder")
+    sqlite_db = downloads / "dbsnp_common_hg38.rsid.sqlite"
+    sqlite_db.write_bytes(b"placeholder")
+
+    with build_lock(f"{vcf}.lock"):
+        with pytest.raises(WGSExtractError, match="Another run is installing"):
+            run_wgsextract(
+                "ref", "dbsnp", "--delete", "--build", "hg38", "--ref", str(reflib)
+            )
+        assert vcf.exists()
+        assert sqlite_db.exists()
+
+    run_wgsextract("ref", "dbsnp", "--delete", "--build", "hg38", "--ref", str(reflib))
+    assert not vcf.exists()
+    assert not sqlite_db.exists()

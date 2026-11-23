@@ -294,11 +294,13 @@ def test_multiqc_legacy_v1_15_omits_unsupported_flags_and_disables_version_check
 ):
     """Older system MultiQC (v1.15) lacks --no-version-check and --no-ai;
     omit unsupported flags and still disable version checks via --cl-config."""
-    from wgsextract_cli.commands.qc import commands
+    import sys
 
-    legacy_multiqc = tmp_path / "legacy-multiqc"
+    from wgsextract_cli.commands.qc import commands
+    from wgsextract_cli.core.pixi_tools import _join_command
+
+    legacy_multiqc = tmp_path / "legacy_multiqc.py"
     legacy_multiqc.write_text(
-        "#!/usr/bin/env python3\n"
         "import pathlib, sys\n"
         "if '--help' in sys.argv:\n"
         "    print('Usage: multiqc [OPTIONS]\\n--no-megaqc-upload\\n--cl-config')\n"
@@ -312,17 +314,17 @@ def test_multiqc_legacy_v1_15_omits_unsupported_flags_and_disables_version_check
         "(outdir / name).write_text('legacy-report', encoding='utf-8')\n",
         encoding="utf-8",
     )
-    legacy_multiqc.chmod(0o755)
+    launcher = _join_command([sys.executable, str(legacy_multiqc)])
     commands._supported_multiqc_flags.cache_clear()
     monkeypatch.setattr(commands, "verify_dependencies", lambda _tools: None)
     monkeypatch.setattr(commands, "log_dependency_info", lambda _tools: None)
-    monkeypatch.setattr(commands, "get_tool_path", lambda _tool: str(legacy_multiqc))
+    monkeypatch.setattr(commands, "get_tool_path", lambda _tool: launcher)
     seen: list[list[str]] = []
     real_run = commands.run_command
 
     def intercept(cmd, **kwargs):
         seen.append(list(cmd))
-        return real_run([str(legacy_multiqc), *cmd[1:]], **kwargs)
+        return real_run(cmd, **kwargs)
 
     monkeypatch.setattr(commands, "run_command", intercept)
     out = tmp_path / "out"

@@ -483,7 +483,12 @@ def run_dbsnp(params: RefDbsnpParams) -> None:
     builds = (params.build,) if params.build else ("hg38", "hg19")
     label = f"dbSNP common rsIDs ({', '.join(builds)})"
     if params.delete:
-        _delete(label, library_removal.dbsnp_paths(reflib, builds))
+        removed = library_removal.remove_dbsnp(reflib, builds)
+        current_result().add_metrics(deleted=len(removed))
+        if removed:
+            human_output(f"Deleted {label} ({len(removed)} item(s)).")
+        else:
+            human_output(f"No {label} installed to delete.")
         return
     if not Path(reflib).is_dir():
         logging.info("Creating a new reference library at %s.", reflib)

@@ -1,5 +1,4 @@
 import re
-import shlex
 import shutil
 import subprocess
 from functools import lru_cache
@@ -9,6 +8,7 @@ from wgsextract_cli.core import runtime
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import (
     _host_pixi_tool_command,
+    _join_command,
     is_pixi_tool_command,
     is_pixi_tool_path,
     locked_packages,
@@ -24,6 +24,7 @@ from wgsextract_cli.core.tool_catalog import (
     optional_dependency_tools,
     required_dependency_tools,
 )
+from wgsextract_cli.core.tool_commands import _tool_command_parts
 
 __all__ = [
     "MANDATORY_TOOLS",
@@ -187,7 +188,7 @@ def _resolve_tool_path(tool: str) -> str | None:
             else None
         )
         if jar and java:
-            return f"{shlex.quote(java)} -jar {shlex.quote(jar)}"
+            return _join_command([*_tool_command_parts(java), "-jar", jar])
         return None
     if tool == "granite":
         from wgsextract_cli.core.config import settings

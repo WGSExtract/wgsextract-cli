@@ -619,6 +619,26 @@ test("#1148: reference library annotations never follow escaping symlinks", asyn
     assert.deepEqual(session.files.tracks.map((track) => track.name), ["sample.bam"]);
 });
 
+test("viewer auto-discovers ref pharmgkb TSV.gz and decodes its PHARMGKB annotations", async (t) => {
+    const f = await geneFixture(t, "chr1", 248956422);
+    const downloads = path.dirname(f.table);
+    const tsv = path.join(downloads, "pharmgkb_hg38.tsv.gz");
+    await writeFile(tsv, minimalBgzf("##source=ClinPGx\n#CHROM\tPOS\tREF\tALT\tPHARMGKB\nchr1\t1000\tA\tG\t1A:warfarin\n"));
+    await writeFile(`${tsv}.tbi`, minimalTabix(["chr1"], "rsid-tab"));
+    const session = await (await f.open()).json();
+    const pharmgkb = session.files.tracks.find((track) => track.name === "PharmGKB");
+    assert.ok(pharmgkb, "PharmGKB TSV track discovered");
+    assert.equal(pharmgkb.format, "pharmgkb-tsv");
+    const decoded = validatedBedGraphTrack(pharmgkb, () => {});
+    assert.deepEqual(decoded.decode(["chr1", "1000", "A", "G", "1A:warfarin"]), {
+        chr: "chr1",
+        start: 999,
+        end: 1000,
+        name: "1A:warfarin",
+    });
+    assert.equal(decoded.decode(["#CHROM", "POS", "REF", "ALT", "PHARMGKB"]), undefined);
+});
+
 function minimalBgzf(text) {
     const gz = gzipSync(Buffer.from(text, "utf8"));
     // Insert a valid BGZF BC subfield (6 bytes) into the gzip header and update FLG=FEXTRA.
