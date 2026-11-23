@@ -168,7 +168,7 @@ def grch37_fasta(library: Path, fasta: Path | None) -> Path:
 
 def _y_sequence(fasta: Path, contig: str, work: Path) -> str:
     extracted = work / "Y.fa"
-    run_command(["samtools", "faidx", str(fasta), contig, "-o", str(extracted)])
+    run_command(["samtools", "faidx", "-o", str(extracted), str(fasta), contig])
     with extracted.open(encoding="ascii") as stream:
         stream.readline()
         sequence = "".join(line.strip() for line in stream).upper()
