@@ -112,7 +112,9 @@ def _require_pacbio_reads(aln: Alignment, header: str, work: Path) -> None:
     # Header declarations alone don't identify records with missing or unknown RG.
     groups = work / "pacbio-read-groups.txt"
     groups.write_text(
-        "".join(f"{rg['ID']}\n" for rg in read_groups(header)), encoding="utf-8"
+        "".join(f"{rg['ID']}\n" for rg in read_groups(header)),
+        encoding="utf-8",
+        newline="\n",
     )
     counts = work / "read-group-counts.json"
     run_command(
@@ -341,7 +343,9 @@ def _publish(prefix: Path, raw_dir: Path, document: ParaphaseDocument) -> None:
         stage = Path(work)
         summary = stage / "calls.json"
         summary.write_text(
-            json.dumps(document, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+            json.dumps(document, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
+            newline="\n",
         )
         table = stage / "calls.tsv"
         write_table(
