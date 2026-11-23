@@ -30,6 +30,7 @@ import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
 import { openLibraryViewer, viewerLibraries } from "./viewer-session.js";
 import { RemoteViewerConnection } from "./remote-viewer-connection.js";
 import { RemoteViewer } from "./remote-viewer.js";
+import { openGenePage } from "./gene-page.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
 
@@ -175,6 +176,19 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 json(response, await remoteViewer.open(requiredString(body, "requestID"), requiredString(body, "id"),
                     requiredString(body, "path"), requiredString(body, "index"), requiredString(body, "reference"),
                     requiredString(body, "locus"), body.confirmed === true, controller.signal));
+            } finally {
+                response.off("close", close);
+            }
+        },
+        "/api/gene/open": async (request, response) => {
+            const body = await readBody(request, context);
+            const controller = new AbortController();
+            const close = () => {
+                if (!response.writableFinished) controller.abort();
+            };
+            response.once("close", close);
+            try {
+                json(response, await openGenePage(body, context, resultPaths, controller.signal));
             } finally {
                 response.off("close", close);
             }

@@ -14,6 +14,7 @@ import { guardedViewerPath, type ViewerFiles } from "./viewer-files.js";
 import { supplementalViewerTracks } from "./viewer-tracks.js";
 import { installedViewerGenes } from "./viewer-genes.js";
 import { installedViewerCytobands } from "./viewer-cytobands.js";
+import { installedViewerTranscripts } from "./viewer-transcripts.js";
 
 /** Persistent library settings, never request-provided roots or a whole home directory. */
 export async function viewerLibraries(context: RequestHandlerContext) {
@@ -106,6 +107,7 @@ export async function openLibraryViewer(input: string, locus: string, context: R
     await guardedViewerPath(fai, library.roots);
     const genes = await installedViewerGenes(fasta, library.referenceRoot);
     const cytobands = await installedViewerCytobands(fasta, library.referenceRoot);
+    const transcripts = await installedViewerTranscripts(fasta, library.referenceRoot);
     let supplemental;
     try {
         supplemental = await supplementalViewerTracks(trackPaths, fasta, library.genomeRoots, context.bundleRoot);
@@ -114,6 +116,7 @@ export async function openLibraryViewer(input: string, locus: string, context: R
         throw error;
     }
     const grant = await files.grant([input, index, fasta, fai, ...(gzi ? [gzi] : []),
+        ...(transcripts.url && transcripts.indexURL ? [transcripts.url, transcripts.indexURL] : []),
         ...supplemental.flatMap((track) => [track.url, ...(track.indexURL ? [track.indexURL] : [])])], library.roots, library.key);
     const url = (file: string) => {
         const value = grant.urls.get(file);
@@ -128,6 +131,9 @@ export async function openLibraryViewer(input: string, locus: string, context: R
         files: {
             genes,
             cytobands,
+            transcripts: transcripts.url && transcripts.indexURL
+                ? { url: url(transcripts.url), indexURL: url(transcripts.indexURL), headers: grant.headers, notices: [] }
+                : { notices: transcripts.notices },
             reference: {
                 id: "local", name: path.basename(fasta), fastaURL: url(fasta), indexURL: url(fai),
                 ...(gzi ? { compressedIndexURL: url(gzi) } : {}), headers: grant.headers, wholeGenomeView: false,

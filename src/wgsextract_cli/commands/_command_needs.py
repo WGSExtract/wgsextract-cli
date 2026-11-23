@@ -78,6 +78,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "info": _n(SECONDS, *_SAM, optional="bcftools"),
     "info calculate-coverage": _n(MINUTES, *_SAM, optional="bcftools"),
     "info coverage-sample": _n(MINUTES, *_SAM, optional="bcftools"),
+    "info gene": _n(SECONDS, *_SAM, optional="bcftools tabix", scale=" for a gene"),
     "info chip": _n(SECONDS, scale=" for a raw-data file"),
     "sample show": _n(INSTANT),
     "sample set": _n(INSTANT),
@@ -208,7 +209,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     ),  # fmt: skip
     "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
     "ref microarray-targets": _n(MINUTES),
-    "ref gene-map": _n(DOWNLOAD, optional="curl"),
+    "ref gene-map": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref cytobands": _n(DOWNLOAD, optional="curl"),
     "ref clinvar": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref revel": _n(DOWNLOAD, optional="bgzip curl tabix"),

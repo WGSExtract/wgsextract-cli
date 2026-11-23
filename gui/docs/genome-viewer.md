@@ -69,7 +69,13 @@ In **Position or RefSeq gene symbol**, enter an exact symbol such as `BRCA1`
 and choose **Go**. Symbol matching ignores case. Each table loads once per open,
 within an 8 MiB/100,000-row limit, and search uses an in-memory lookup.
 Typing and searching do not scan files or contact public services.
-The track shows each gene's combined span, without exon or transcript models.
+The track shows each gene's combined span. The same `ref gene-map` download
+also installs RefSeq transcript and exon models, `downloads/transcripts_hg19.bed.gz`
+or `transcripts_hg38.bed.gz` with their tabix indexes; the viewer shows them as
+the **RefSeq transcripts** track, read in indexed slices like any other file.
+Libraries whose gene maps predate them show a notice naming
+`wgsextract ref gene-map --ref LIBRARY`. The [gene page](gene-page.md) opens
+the viewer at a gene with both tracks.
 
 The reference's chromosome 1 length must identify hg19 or hg38 unambiguously.
 Gene-map coordinates are 1-based inclusive; the viewer converts them for drawing.

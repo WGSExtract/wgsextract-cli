@@ -5,6 +5,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## Unreleased
 
+### Added
+- A **Gene page** in the WGSExtract sidebar: enter a gene symbol to see its RefSeq transcripts and exons, your variants in it (consequence, ClinVar, gnomAD, research-only ACMG; filters for rare and damaging, ClinVar P/LP and ACMG P/LP; **Export TSV**) and read depth over each exon against a callable threshold, all from `wgsextract info gene` on this computer. Missing data names the command that provides it; **Open in genome viewer** shows the gene with the new **RefSeq transcripts** track ([gene-page.md](gene-page.md), [#1166, offline gene page](https://github.com/WGSExtract/wgsextract-cli/issues/1166)).
+
 ### Fixed
 - The genome viewer's file endpoints answer a `HEAD` without a `Range` with `200` and the file's full size for files over 32 MiB too, instead of `416`; whole-file `GET`s keep their 32 MiB limit ([#1227](https://github.com/WGSExtract/wgsextract-cli/issues/1227)).
 - Moving the users workspace or a library folder keeps the symbolic links in it working, on the same disk or to another one. A link to a file inside the moved folder now points at that file's new place (a relative link stays relative), instead of at the old folder; a link to something outside the folder still points there, and is moved as a link, never copied in. Windows folder links fall back to junctions when symbolic links aren't allowed ([#1239, links broken by a move](https://github.com/WGSExtract/wgsextract-cli/issues/1239)).
