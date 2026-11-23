@@ -7,6 +7,7 @@ from pathlib import Path
 
 from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from wgsextract_cli.core.ref_library.mitochondrial import RCRS_ORIGIN
 from wgsextract_cli.core.utils import run_command
 
 SCRIPT = (
@@ -15,9 +16,9 @@ SCRIPT = (
 )
 
 
-def resolve_viewer(source: Path, config: Path) -> dict[str, str]:
+def resolve_viewer(source: Path, config: Path, *flags: str) -> dict[str, str]:
     result = subprocess.run(
-        [sys.executable, str(SCRIPT), str(source), str(config)],
+        [sys.executable, str(SCRIPT), str(source), str(config), *flags],
         check=True,
         capture_output=True,
         text=True,
@@ -86,3 +87,39 @@ def test_1090_viewer_matches_bam_cram_vcf_with_cli_library(tmp_path: Path) -> No
     fasta.unlink()
     wrong.unlink()
     assert resolve_viewer(bam, config) == {"problem": "referenceMissing"}
+
+
+@needs_tools("samtools")
+def test_1161_haplogroup_rows_learn_the_mitochondrion_by_sequence(
+    tmp_path: Path,
+) -> None:
+    """#1161: rCRS-numbered rows open only on an rCRS chrM. CHM13v2.0's is as
+    long, so the resolver reads its sequence when the app asks."""
+    rcrs = RCRS_ORIGIN + "ACGT" * 100
+    rotated = rcrs[100:] + rcrs[:100]
+    config = tmp_path / "config.toml"
+    origins = []
+    for name, chr_m in [("rcrs", rcrs), ("rotated", rotated)]:
+        library = tmp_path / name
+        library.mkdir()
+        write_fasta(library / "ref.fa", {"chrT": "ACGT" * 100, "chrM": chr_m})
+        config.write_text(
+            state_directory_setting(tmp_path)
+            + f"reference_library = {json.dumps(str(library))}\n",
+            encoding="utf-8",
+        )
+        bam = Path(
+            sam_to_bam(
+                [
+                    "@HD\tVN:1.6\tSO:coordinate",
+                    "@SQ\tSN:chrT\tLN:400",
+                    f"@SQ\tSN:chrM\tLN:{len(chr_m)}",
+                    "one\t0\tchrT\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
+                ],
+                tmp_path / f"{name}.bam",
+            )
+        )
+        assert "mitoOrigin" not in resolve_viewer(bam, config)
+        origins.append(resolve_viewer(bam, config, "--mito-origin")["mitoOrigin"])
+    assert origins[0] == "rCRS"
+    assert origins[1] != "rCRS"

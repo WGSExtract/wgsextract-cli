@@ -172,7 +172,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier(
         "panel",
         ADVANCED,
-        "Gene lists to BED targets for Nanopore adaptive sampling.",
+        "Gene lists to BED targets; research panel file checks.",
     ),
     CommandTier(
         "pet-align", ADVANCED, "Align and call variants for a cat or dog genome."

@@ -32,6 +32,8 @@ async function fixture(t) {
     await writeFile(`${input}.bai`, "index");
     await writeFile(fasta, ">chr1\nACGT\n");
     await writeFile(`${fasta}.fai`, "chr1\t4\t6\t4\t5\n");
+    // What the resolver's sequence check says the mitochondrion is, when asked (#1161).
+    const resolver = { mitoOrigin: "rCRS", mitoAsked: 0 };
     const config = path.join(root, "selected.toml");
     await writeFile(config, `mygenomes_library = ${JSON.stringify(library)}\nreference_library = ${JSON.stringify(reference)}\n`);
     await writeFile(path.join(users, "config.toml"), `mygenomes_library = ${JSON.stringify(path.join(root, "wrong-library"))}\n`);
@@ -48,11 +50,13 @@ async function fixture(t) {
         maxBodyBytes: 1048576,
         // The resolver subprocess is a tool boundary. Its result depends on the settings
         // it actually receives, not on a pre-recorded invocation.
-        async runProcess(_script, [file, settings]) {
+        async runProcess(_script, [file, settings, ...flags]) {
             assert.equal(await readFile(file, "utf8"), "reads");
             const values = parseConfigToml(await readFile(settings, "utf8"));
+            const mito = flags.includes("--mito-origin");
+            resolver.mitoAsked += mito ? 1 : 0;
             const result = values.reference_library
-                ? { fasta: path.join(values.reference_library, "reference.fa"), locus: "chr1:1-4" }
+                ? { fasta: path.join(values.reference_library, "reference.fa"), locus: "chr1:1-4", ...(mito ? { mitoOrigin: resolver.mitoOrigin } : {}) }
                 : { problem: "referenceMissing" };
             return { exitCode: 0, stdout: JSON.stringify(result), stderr: "" };
         },
@@ -68,7 +72,7 @@ async function fixture(t) {
         method: "POST", headers: { "x-gfc-token": "viewer-test", "content-type": "application/json" },
         body: JSON.stringify({ path: file, locus, tracks }),
     });
-    return { root, users, config, library, input, fasta, base, open };
+    return { root, users, config, library, input, fasta, base, open, resolver };
 }
 
 test("#1090: opening and revoking viewer sessions require the app credential, not a byte grant", async (t) => {
@@ -126,6 +130,61 @@ test("#1112: invalid viewer positions return actionable invalidLocus, not a serv
     }
     const response = await f.open(f.input, "chr1:1-4");
     assert.equal((await response.json()).locus, "chr1:1-4");
+});
+
+test("#1161: result-row loci open in the matched reference's contig spelling, and rCRS only on an rCRS chrM", async (t) => {
+    const f = await fixture(t);
+    await writeFile(`${f.fasta}.fai`, "1\t1000\t6\t60\t61\nMT\t16569\t1100\t60\t61\n");
+    const opened = async (locus) => (await (await f.open(f.input, locus)).json());
+    assert.equal((await opened("chr1:200-300")).locus, "1:200-300");
+    assert.equal((await opened("chrM:73-73")).locus, "MT:73-73");
+    assert.equal((await opened("rCRS:263-263")).locus, "MT:263-263");
+    assert.equal((await opened("chr1:990-1200")).locus, "1:990-1000", "A span past the contig end is clipped, not refused.");
+    assert.deepEqual(await opened("chr1:1001-1001"), { problem: "locusNotFound" });
+    assert.deepEqual(await opened("chr2:1-10"), { problem: "locusNotFound" });
+    assert.equal(f.resolver.mitoAsked, 1, "Only rCRS rows ask the resolver to read the mitochondrion.");
+    // Aliases never convert coordinates: a finding on another build is refused, not shown elsewhere.
+    const onBuild = async (build) => (await fetch(`${f.base}/api/viewer/open`, {
+        method: "POST", headers: { "x-gfc-token": "viewer-test", "content-type": "application/json" },
+        body: JSON.stringify({ path: f.input, locus: "chr1:200-300", build }),
+    }));
+    assert.deepEqual(await (await onBuild("hg38")).json(), { problem: "buildMismatch" }, "A reference of unknown build can't confirm hg38.");
+    assert.equal((await onBuild("T2T")).status, 400);
+    // CHM13v2.0's chrM is as long as the rCRS but numbered from elsewhere round the circle.
+    f.resolver.mitoOrigin = "CHM13v2.0's chrM";
+    assert.deepEqual(await opened("rCRS:263-263"), { problem: "mitoNotRcrs" });
+    // hg19's Yoruba chrM can start like the rCRS but is 16,571 bp and numbered differently.
+    f.resolver.mitoOrigin = "rCRS";
+    await writeFile(`${f.fasta}.fai`, "chr1\t1000\t6\t60\t61\nchrM\t16571\t1100\t60\t61\n");
+    assert.deepEqual(await opened("rCRS:263-263"), { problem: "mitoNotRcrs" });
+    assert.equal((await opened("MT:263-263")).locus, "chrM:263-263", "Positions from the sample's own calls keep its chrM numbering.");
+    await writeFile(`${f.fasta}.fai`, "chr1\t249250621\t6\t60\t61\n");
+    assert.deepEqual(await (await onBuild("hg38")).json(), { problem: "buildMismatch" }, "An hg38 finding never opens on hg19.");
+    assert.equal((await (await onBuild("hg19")).json()).locus, "chr1:200-300");
+});
+
+test("#1161: result-row checks report each sample file's viewer problem without granting bytes", async (t) => {
+    const f = await fixture(t);
+    const outside = path.join(f.root, "outside.bam");
+    await writeFile(outside, "reads");
+    const unindexed = path.join(f.library, "unindexed.cram");
+    await writeFile(unindexed, "reads");
+    const missing = path.join(f.library, "gone.bam");
+    const check = (paths, headers = { "x-gfc-token": "viewer-test" }) => fetch(`${f.base}/api/viewer/check`, {
+        method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ paths }),
+    });
+    const response = await check([f.input, "{{usersWorkspace}}/mygenomes/sample.bam", outside, unindexed, missing, `${f.library}/../outside.bam`]);
+    assert.equal(response.status, 200);
+    assert.deepEqual((await response.json()).tracks, {
+        [f.input]: { ok: true },
+        "{{usersWorkspace}}/mygenomes/sample.bam": { ok: true },
+        [outside]: { problem: "rowOutsideLibrary", fileName: "outside.bam" },
+        [unindexed]: { problem: "rowIndexMissing", fileName: "unindexed.cram" },
+        [missing]: { problem: "rowTrackMissing", fileName: "gone.bam" },
+        [`${f.library}/../outside.bam`]: { problem: "rowOutsideLibrary", fileName: "outside.bam" },
+    });
+    assert.equal((await check([f.input], {})).status, 401);
+    assert.equal((await check(Array(17).fill(f.input))).status, 400);
 });
 
 async function geneFixture(t, contig = "chr1", length = 248956422) {
