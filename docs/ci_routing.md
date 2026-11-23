@@ -27,6 +27,12 @@ and on every mirror download, not by downloading ~1 TB each night.
 See [download mirrors and source rights](resource-mirrors.md) for the audit,
 restricted-resource policy and manual publication/activation procedure.
 
+The `changes` job also runs `scripts/output_contracts.py check --base <base>`
+with the full history it already fetched: about a second, no extra runner.
+It compares the merged tree's output schemas with the previous release's
+pinned contract baseline as it is on the base, so a PR cannot edit a baseline
+to hide a removed stable field ([output contracts](output-contracts.md)).
+
 Drafts run **no validation runner jobs**, including documentation and secret checks.
 The API-only collaborator Copilot-review requester is the deliberate exception:
 it can request a draft review on `opened`, skips the readiness request when
@@ -476,6 +482,15 @@ Extra generated-genome, imputation, ONT and Windows vep-rs checks run only
 when their test files are affected. Main pushes and nightly/manual runs
 retain full-suite coverage; merge-queue Ubuntu and code-selected Windows run the full suite minus files
 the test cache already saw pass on main.
+
+The selector gives tests the transitive dependencies of their `conftest.py`
+files. Keep shared home/config isolation in `tests/home_isolation.py` without
+application or CLI subprocess imports. Tests that launch the CLI still reach its
+entry point through the literal subprocess target in `tests/smoke_utils.py`.
+The selector builds its own policy names from the app package prefix: they name
+modules the selector recognizes, not modules the selector executes. Real
+dependencies shared by fixtures still count: core configuration can still
+reach the CLI through the public API.
 
 Local callers can use
 `pixi run python scripts/ci_changes.py --base origin/main --head HEAD --print-tests`.
@@ -974,3 +989,37 @@ Smoke contexts change from `smoke (OS, package)` / `smoke (OS, benchmark)` to
 `required` and `Ready PR area checks` names and dependencies are unchanged.
 Failure observation, red-main matching and flake-ledger retries use the same
 normalized PR/main job names; historical shard failures remain historical data.
+
+### Reading the Linux shadow report
+
+On ready PRs that run regular Ubuntu x64 pytest on a hosted runner, the
+`test-selection-shadow` artifact records four advisory selections: decisive,
+tight, symbol and widely-called helpers. The job summary shows the current
+selection, per-candidate files and timing estimates, and omitted observed
+failures. The artifact contains the full file sets, rule reasons, exact tested
+merge tree and parents, and the regular pytest receipt. Separate generic,
+smoke, and installer jobs are outside this comparison. A certified or
+path-skipped Linux job produces no hosted comparison; missing evidence does
+not count as a pass.
+For eager import changes, the symbol and helper arms also record a separate
+non-gating package import probe and keep observed callers of changed bindings.
+
+Scheduled Ubuntu runs execute the full regular suite even when the same
+main commit passed earlier that day. They write a versioned Python
+coverage-context map and per-file test timings. PRs can restore that read-only
+map. An absent map, incompatible lock or unreachable source SHA is reported
+explicitly. Test-minute estimates sum recorded pytest durations; they omit
+unmeasured files and are not wall-clock predictions. Python tracing does not
+measure external tools or every file reader, so an unmatched input is a
+measurement gap to investigate, not permission to change CI selection.
+
+Every candidate includes the newline source scanner for changed package Python,
+and the tool-contract scanner for command or CLI Python changes. The historical
+oracle's narrower writer-only rule added 19 file-runs and recovered six
+complete misses; the broader source rule trades a few more short runs for
+coverage of writers that are moved or indirect. Shared-base failures, such as
+the tabix failure from the step-resume PR and the unrelated PowerShell
+qualification failure from GUI/installer preflight, do not justify adding
+edges from those PR changes. Both belong to the nightly backstop. A newly
+observed omission in a PR report must be triaged for origin, retries and
+incomplete runs before it counts as a miss.

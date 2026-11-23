@@ -15,8 +15,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_htslib
-from tests.smoke_utils import state_directory_setting
 from tests.test_microarray_library import MARKERS, _library, _sample_bam
 from wgsextract_cli.core.dependencies import get_tool_path
 
