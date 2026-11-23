@@ -76,7 +76,7 @@
 {"path":"ref clinvar","tier":"setup","summary":"Download official ClinVar VCF for hg19 and hg38.","key_flags":[]},
 {"path":"ref revel","tier":"setup","summary":"Download REVEL pathogenicity scores for hg19 and hg38.","key_flags":[]},
 {"path":"ref phylop","tier":"setup","summary":"Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).","key_flags":["--build"]},
-{"path":"ref gnomad","tier":"setup","summary":"Download gnomAD population allele frequencies.","key_flags":["--release"]},
+{"path":"ref gnomad","tier":"setup","summary":"Download gnomAD population allele frequencies.","key_flags":["--release","--download"]},
 {"path":"ref spliceai","tier":"setup","summary":"Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual hg19 download.","key_flags":["--delete"]},
 {"path":"ref alphamissense","tier":"setup","summary":"Download AlphaMissense scores for hg19 and hg38.","key_flags":["--delete"]},
 {"path":"ref pharmgkb","tier":"setup","summary":"Download PharmGKB annotations.","key_flags":["--delete"]},
