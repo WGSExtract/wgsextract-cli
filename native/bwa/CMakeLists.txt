@@ -147,14 +147,6 @@ target_compile_options(wgse-bwa PRIVATE ${wgse_strict_warnings})
 target_link_libraries(wgse-bwa PRIVATE wgse_bwa_core)
 
 if(BUILD_TESTING)
-    if(WIN32)
-        # Native CTest cannot execute a shell script directly. Prefer Git Bash
-        # to Windows' own bash.exe (a WSL launcher).
-        find_package(Git REQUIRED)
-        get_filename_component(git_bin "${GIT_EXECUTABLE}" DIRECTORY)
-        find_program(WGSE_TEST_SHELL NAMES bash HINTS "${git_bin}/../bin" "${git_bin}"
-            REQUIRED NO_DEFAULT_PATH)
-    endif()
     # Exercise the shipped parser too: benchmark flags must not hide public options.
     add_executable(wgse-bwa-release-cli ${cli_sources})
     target_compile_definitions(wgse-bwa-release-cli PRIVATE WGSE_VERSION="${WGSE_BWA_VERSION}")
