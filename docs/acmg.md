@@ -277,3 +277,47 @@ records) gets no P/LP call; 0.7% of its genic alleles are classified on
 fastVEP's own transcript. A chromosome 22 run takes about a minute on two
 cores, most of it loading the whole-genome GFF3 and FASTA, and peaks at about
 7 GB of memory.
+
+### Effect of the gnomAD region flags on HG002 chr22
+
+The gnomAD v4 release pipeline [looks up both flags at the variant locus][gnomad-flags].
+The joint sites VCF omits them, so `ref acmg-data` restores the flags using
+those same two masks. It does not change gnomAD's FILTER or discard any records.
+The flags are optional inputs to fastVEP 0.5.0. When present, its default
+[`gnomad_region_flags_block_frequency`][fastvep-setting] setting makes
+[`data_blocker`][fastvep-gate] withhold BA1, BS1, BS2 and PM2_Supporting when
+either flag is set on a matched gnomAD allele, even if it passed gnomAD QC.
+
+[ClinGen SVI's BA1 recommendation][clingen-ba1] specifies frequency, allele
+count and exceptions; it does not prescribe a blanket region veto.
+[gnomAD flags these sites rather than filtering them][gnomad-policy], and
+its [interpretation guide][gnomad-guide] advises using population evidence
+cautiously in these regions. The automatic veto is fastVEP's conservative
+implementation of that caution. A flag is not proof that an individual call
+or frequency is wrong.
+
+On the same GIAB HG002 v4.2.1 chr22 input (50,284 records), 8,669 classified
+alleles moved from B to VUS (17.0% of 50,861 classified alleles). Every move
+lost the population evidence shown below. No move lost BP4 or other
+non-population evidence. Two gained BP3; it fired three times overall.
+
+| gnomAD mask | BA1 only lost | BA1 + BS2 lost | BS1 + BS2 lost | B → VUS |
+|---|---:|---:|---:|---:|
+| Low complexity only | 282 | 4,909 | 32 | 5,223 |
+| Segmental duplication only | 27 | 3,274 | 12 | 3,313 |
+| Both | 1 | 131 | 1 | 133 |
+| Total | 310 | 8,314 | 45 | 8,669 |
+
+Across all classified alleles, B went from 47,376 to 38,604, LB from 475 to
+557, and VUS from 3,010 to 11,700; P and LP stayed at zero. In a seeded
+random sample of 20 B→VUS alleles, none had a two-star or higher ClinVar
+benign/likely benign classification, and none had any exact allele match in
+ClinVar (2026-11-15 GRCh38, after splitting and left-normalizing both files).
+This sample does not validate the accuracy of the change.
+
+[gnomad-flags]: https://github.com/broadinstitute/gnomad_qc/blob/ff3a6a4c10323803210b2e1e766fc28a33418df8/gnomad_qc/v4/create_release/create_release_sites_ht.py#L520-L536
+[fastvep-setting]: https://github.com/Huang-lab/fastVEP/blob/v0.5.0/crates/fastvep-classification/src/config.rs#L321-L333
+[fastvep-gate]: https://github.com/Huang-lab/fastVEP/blob/v0.5.0/crates/fastvep-classification/src/criteria/frequency_gate.rs#L245-L290
+[clingen-ba1]: https://pmc.ncbi.nlm.nih.gov/articles/PMC6188666/
+[gnomad-policy]: https://discuss.gnomad.broadinstitute.org/t/reference-bias-in-variant-calling/579/2
+[gnomad-guide]: https://pmc.ncbi.nlm.nih.gov/articles/PMC9160216/
