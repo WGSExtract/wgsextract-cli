@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import childProcess from "node:child_process";
+import { syncBuiltinESMExports } from "node:module";
 import test from "node:test";
 
 const { createProcessManager } = await import("../dist/web/src/server/process-runner.js");
@@ -167,6 +169,53 @@ test("terminateAllProcesses kills SIGTERM-ignoring trees", posixOnly, async () =
   assert.notEqual(result.exitCode, 0);
   assert.ok(await waitFor(() => !processExists(sleepPID)));
 });
+
+for (const childExits of [false, true]) {
+  const outcome = childExits ? "stays failed after the child exits" : "can be retried while the child is alive";
+  test(`#1459: a stalled Windows tree kill ${outcome}`, {
+    skip: process.platform !== "win32" ? "Windows taskkill" : false,
+  }, async (t) => {
+    const manager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
+    const collector = firstLineCollector();
+    const run = manager.runProcess(process.execPath, ["-e", "console.log(process.pid); setInterval(() => {}, 1000);"], {
+      env: process.env,
+      onStdout: collector.onStdout,
+    });
+    const pid = Number(await collector.line);
+    const spawn = childProcess.spawn;
+    let helperExit;
+    const replaceTaskkill = t.mock.method(childProcess, "spawn", (program, args, options) => {
+      if (program !== "taskkill.exe" || helperExit) return spawn(program, args, options);
+      const helper = spawn(process.execPath, ["-e", "setTimeout(() => {}, 7000);"], options);
+      helperExit = new Promise((resolve) => helper.once("exit", resolve));
+      return helper;
+    });
+    syncBuiltinESMExports();
+    t.after(async () => {
+      replaceTaskkill.mock.restore();
+      syncBuiltinESMExports();
+      if (processExists(pid)) await manager.terminateAllProcesses();
+    });
+
+    const timedOut = /waiting for process .* to terminate/;
+    const stopped = assert.rejects(manager.terminateAllProcesses(), timedOut);
+    if (childExits) {
+      process.kill(pid);
+      await run;
+    }
+    await stopped;
+    assert.equal(await helperExit, null, "the stalled helper was killed, not allowed to exit normally");
+
+    if (childExits) {
+      await assert.rejects(manager.terminateAllProcesses(), timedOut);
+    } else {
+      assert.ok(processExists(pid), "the timed-out stop did not kill the original process");
+      await manager.terminateAllProcesses();
+      assert.notEqual((await run).exitCode, 0);
+      assert.ok(!processExists(pid), "retry stopped the original process");
+    }
+  });
+}
 
 test("process manager resolves when the direct child exits even if a descendant holds the pipes", posixOnly, async () => {
   const manager = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536, terminationGraceMs: 300 });

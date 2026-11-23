@@ -12,9 +12,9 @@ const groupPollIntervalMs = 50;
  * SIGTERM, then SIGKILL once `graceMs` passes without the group exiting.
  * Windows has no process groups; `taskkill /T /F` walks the tree instead.
  */
-export async function terminateProcessTree(pid: number, graceMs: number): Promise<void> {
+export async function terminateProcessTree(pid: number, graceMs: number, signal: AbortSignal): Promise<void> {
     if (platform() === "win32") {
-        await taskkillTree(pid);
+        await taskkillTree(pid, signal);
         return;
     }
     signalGroup(pid, "SIGTERM");
@@ -23,7 +23,7 @@ export async function terminateProcessTree(pid: number, graceMs: number): Promis
         if (!groupAlive(pid)) {
             return;
         }
-        await delay(groupPollIntervalMs);
+        await delay(groupPollIntervalMs, undefined, { signal });
     }
     signalGroup(pid, "SIGKILL");
 }
@@ -58,11 +58,13 @@ function groupAlive(pid: number): boolean {
     }
 }
 
-function taskkillTree(pid: number): Promise<void> {
+function taskkillTree(pid: number, signal: AbortSignal): Promise<void> {
     return new Promise((resolve) => {
-        const killer = spawn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true });
+        const killer = spawn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore", windowsHide: true, signal });
         killer.once("error", (error) => {
-            console.warn(`Could not run taskkill for ${pid}: ${errorMessage(error)}`);
+            if (!signal.aborted) {
+                console.warn(`Could not run taskkill for ${pid}: ${errorMessage(error)}`);
+            }
             resolve();
         });
         killer.once("exit", () => resolve());

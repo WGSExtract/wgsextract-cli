@@ -437,6 +437,8 @@ export interface ProcessRunOptions {
     maxErrorBytes?: number;
     onStdout?: (text: string) => void | Promise<void>;
     onStderr?: (text: string) => void | Promise<void>;
+    /** Called after requested termination, once tree shutdown and child exit are observed. */
+    onTerminated?: () => void;
 }
 
 export type ProcessResult = {
