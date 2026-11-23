@@ -51,7 +51,8 @@ def _native_aligners_param() -> Any:
         "See native/README.md for platform support and setup.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
         "aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; "
-        "wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH "
+        "wgse-bwa-mem3 on Linux x86-64; wgse-minimap2 on Linux and Windows x86-64) "
+        "when installed on PATH "
         "(or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 "
         "Bioconda's bwa-mem3 in place of bwa or bwa-mem2; "
         "off never does.",

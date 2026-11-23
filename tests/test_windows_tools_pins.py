@@ -74,7 +74,7 @@ def test_pharmcat_windows_pins_follow_bcftools_and_htslib(tmp_path, monkeypatch)
             "browser_download_url": f"https://example.invalid/{name}",
             "digest": "sha256:" + "3" * 64,
         }
-        for name in ("bcftools", "htslib", "samtools")
+        for name in ("bcftools", "htslib", "samtools", "wgse-minimap2")
     ]
     monkeypatch.setattr(module, "MANIFEST", manifest)
     monkeypatch.setattr(module, "release_assets", lambda _: assets)
@@ -88,3 +88,6 @@ def test_pharmcat_windows_pins_follow_bcftools_and_htslib(tmp_path, monkeypatch)
     assert "example.invalid/bcftools" in pharmcat
     assert "example.invalid/htslib" in pharmcat
     assert "samtools" not in pharmcat
+    # #1121: a full Windows Tools release includes the optional CUDA aligner
+    # without requiring it in the default or supplemental environments.
+    assert "wgse-minimap2" not in manifest.read_text()
