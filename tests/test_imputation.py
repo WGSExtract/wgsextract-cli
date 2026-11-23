@@ -10,7 +10,9 @@ pinned downloads; GLIMPSE2, Beagle and bcftools run for real.
 """
 
 import csv
+import errno
 import gzip
+import hashlib
 import json
 import os
 import platform
@@ -28,14 +30,25 @@ from wgsextract_cli.commands.vcf.imputation import beagle_command
 from wgsextract_cli.core import dependencies, imputation_panel
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.pixi_tools import pixi_env_prefix
 from wgsextract_cli.core.tool_catalog import (
     imputation_host_supported,
     platform_unavailable_tools,
 )
-from wgsextract_cli.core.utils import UsageError, WGSExtractError
+from wgsextract_cli.core.utils import (
+    MissingDependencyError,
+    UsageError,
+    WGSExtractError,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "imputation_hg002"
+# #1398: exact VCF records captured from the Bioconda x86-64 packages. The
+# Linux and macOS C++ standard libraries have different RNG distributions.
+X86_GLIMPSE_RECORDS = {
+    "darwin": "556db233f800f0fa9907304df36754d830f89328087324e76d43c4b42316d6e5",
+    "linux": "8b4fe53fabffa956e81453665837ff57bac740092a2a357038c7cb898e5f89db",
+}
 
 
 def _query(vcf: Path, fmt: str, *args: str) -> list[list[str]]:
@@ -174,6 +187,14 @@ def test_glimpse2_imputes_1x_reads_and_labels_them(reflib, tmp_path, caplog):
     assert "##FILTER=<ID=ImpLowConf" in header
     rows = _query(output, "%INFO/IMP\t%FILTER\n")
     assert rows and all(imp == "1" for imp, _f in rows)
+    if expected := X86_GLIMPSE_RECORDS.get(sys.platform):
+        # Omit run dates, command paths and the build banner in the header.
+        records = hashlib.sha256()
+        with gzip.open(output, "rb") as stream:
+            for line in stream:
+                if not line.startswith(b"#"):
+                    records.update(line)
+        assert records.hexdigest() == expected
     metrics = result.metrics
     assert metrics["imputed_sites"] == len(rows)
     assert "Preflight impute" in caplog.text
@@ -370,19 +391,11 @@ def test_impute_without_an_installed_panel_says_how_to_install_it(tmp_path):
         )
 
 
-@pytest.mark.parametrize(
-    ("system", "machine"),
-    [("win32", "ARM64"), ("darwin", "arm64"), ("linux", "aarch64"), ("linux", "arm64")],
-)
 @pytest.mark.parametrize("operation", ["impute", "install"])
-def test_732_unsupported_platform_reports_gate_before_tools(
-    tmp_path, monkeypatch, system, machine, operation
-):
-    monkeypatch.setattr(sys, "platform", system)
-    monkeypatch.setattr(platform, "machine", lambda: machine)
-    with pytest.raises(
-        api.CommandFailed, match="x86-64 Linux, Windows and Intel macOS"
-    ):
+def test_732_windows_arm64_remains_unsupported(tmp_path, monkeypatch, operation):
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(platform, "machine", lambda: "ARM64")
+    with pytest.raises(api.CommandFailed, match="Windows ARM64"):
         if operation == "install":
             api.ref.imputation(
                 api.RefImputationParams(ref=tmp_path, chromosomes="chr20")
@@ -396,12 +409,16 @@ def test_732_unsupported_platform_reports_gate_before_tools(
     assert "GLIMPSE2_phase" in platform_unavailable_tools()
 
 
+@pytest.mark.parametrize(
+    ("system", "machine"),
+    [("win32", "AMD64"), ("darwin", "arm64"), ("linux", "aarch64"), ("linux", "arm64")],
+)
 @pytest.mark.parametrize("operation", ["impute", "install"])
-def test_621_windows_missing_tools_fail_validation_not_platform_gate(
-    tmp_path, monkeypatch, operation
+def test_1398_supported_platforms_validate_missing_tools(
+    tmp_path, monkeypatch, operation, system, machine
 ):
-    monkeypatch.setattr(sys, "platform", "win32")
-    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(sys, "platform", system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
     # Tool discovery is the OS boundary; no external tools are installed here.
     monkeypatch.setattr(shutil, "which", lambda command: None)
     monkeypatch.setattr(dependencies, "get_tool_path", lambda tool: None)
@@ -419,9 +436,38 @@ def test_621_windows_missing_tools_fail_validation_not_platform_gate(
             )
 
 
-@pytest.mark.parametrize("system", ["win32", "linux"])
-def test_621_beagle_diagnoses_missing_jar_java_and_unpinned_jar(
-    tmp_path, monkeypatch, system
+def test_1398_apple_silicon_reports_intel_glimpse_without_rosetta(
+    monkeypatch, tmp_path
+):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    binary = tmp_path / "GLIMPSE2_ligate"
+    binary.touch(mode=0o755)
+    monkeypatch.setenv("PATH", str(tmp_path))
+
+    def cannot_launch(*args, **kwargs):
+        raise OSError(getattr(errno, "EBADARCH", 86), "Bad CPU type in executable")
+
+    monkeypatch.setattr(subprocess, "run", cannot_launch)
+    try:
+        with pytest.raises(MissingDependencyError, match="incompatible CPU") as error:
+            verify_dependencies(["GLIMPSE2_ligate"])
+        assert "Rosetta" in str(error.value)
+        assert "pixi install --locked -e imputation" in str(error.value)
+    finally:
+        dependencies.clear_tool_caches()
+
+
+@pytest.mark.parametrize(
+    ("system", "java_path"),
+    [
+        ("win32", "Library/bin/java.exe"),
+        ("linux", "bin/java"),
+        ("darwin", "lib/jvm/bin/java"),
+    ],
+)
+def test_1398_beagle_validates_all_packaged_java_layouts(
+    tmp_path, monkeypatch, system, java_path
 ):
     monkeypatch.setattr(sys, "platform", system)
     with pytest.raises(WGSExtractError, match="Beagle jar missing") as error:
@@ -430,11 +476,7 @@ def test_621_beagle_diagnoses_missing_jar_java_and_unpinned_jar(
     jar = tmp_path / "share" / "beagle-5.5" / "beagle.jar"
     jar.parent.mkdir(parents=True)
     jar.write_bytes(b"not the pinned jar")
-    java = (
-        tmp_path / "Library" / "bin" / "java.exe"
-        if system == "win32"
-        else tmp_path / "bin" / "java"
-    )
+    java = tmp_path / java_path
     with pytest.raises(WGSExtractError, match="Java executable missing") as error:
         beagle_command(tmp_path)
     assert str(java) in str(error.value)

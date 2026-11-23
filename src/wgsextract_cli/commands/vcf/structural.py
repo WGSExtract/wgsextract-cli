@@ -3,6 +3,7 @@ import io
 import logging
 import subprocess
 import tempfile
+import zlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -25,7 +26,17 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.pixi_tools import pixi_install_command
-from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
+from wgsextract_cli.core.ref_library.resolver import (
+    ReferenceLibrary,
+    header_contig_lengths,
+)
+from wgsextract_cli.core.region_selection import (
+    Intervals,
+    alignment_intervals,
+    comma_region_items,
+    is_bed_selection,
+    write_bed_intervals,
+)
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.ultima import read_groups
@@ -51,10 +62,10 @@ def _cram_args(input_path: str, ref: str) -> list[str]:
 
 @contextmanager
 def _region_input_bam(
-    input_file: str, region: str | None, outdir: str, ref: str, failure_label: str
+    input_file: str, region: Intervals | None, outdir: str, ref: str, failure_label: str
 ) -> Iterator[str]:
     """Yield input_file, or a temporary indexed BAM of region removed on exit."""
-    if not region:
+    if region is None:
         yield input_file
         return
 
@@ -62,10 +73,12 @@ def _region_input_bam(
         dir=scratch_parent(outdir), prefix=".wgse_region_"
     ) as tmp:
         temp_bam = str(Path(tmp, "region.bam"))
-        logging.info(f"Extracting region {region} to temporary BAM...")
+        logging.info("Extracting selected regions to temporary BAM...")
         try:
             _extract_region_bam_with_reference_header(input_file, region, ref, temp_bam)
             run_command(["samtools", "index", temp_bam], capture_output=True)
+        except UsageError:
+            raise
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             raise WGSExtractError(
                 f"{failure_label} region extraction failed: {e}"
@@ -89,10 +102,58 @@ def _reference_contigs(ref: str) -> list[tuple[str, int]]:
     return contigs
 
 
-def _reference_sq_lines(ref: str) -> list[str]:
-    return [
-        f"@SQ\tSN:{name}\tLN:{length}\n" for name, length in _reference_contigs(ref)
-    ]
+def _validated_intervals(
+    region: str, reference: dict[str, int], alignment: dict[str, int]
+) -> Intervals:
+    try:
+        return alignment_intervals(region, reference, alignment)
+    except (EOFError, ValueError, OSError, zlib.error) as error:
+        raise UsageError(f"Invalid region (--region): {error}") from error
+
+
+def _calling_intervals(input_file: str, ref: str, region: str) -> Intervals:
+    return _validated_intervals(
+        region,
+        dict(_reference_contigs(ref)),
+        header_contig_lengths(get_bam_header(input_file, ref)),
+    )
+
+
+def validate_pbsv_region(region: str | None) -> None:
+    if region is None:
+        return
+    if region.lower().endswith((".bedpe", ".bedpe.gz")):
+        raise UsageError("BEDPE is not supported; use a single text region with pbsv.")
+    try:
+        if not is_bed_selection(region) and len(comma_region_items(region)) == 1:
+            return
+    except ValueError as error:
+        raise UsageError(f"Invalid region (--region): {error}") from error
+    raise UsageError(
+        "pbsv supports one region only; use --caller sniffles for lists or BED."
+    )
+
+
+def mixed_call_region(input_file: str, ref: str | None, region: str) -> str:
+    """Validate a structural selection before small-variant output is written."""
+    if is_bed_selection(region):
+        raise UsageError(
+            "SNP/indel calling does not accept a BED --region; use text regions."
+        )
+    resolved = ReferenceLibrary(
+        ref, calculate_bam_md5(input_file, None), input_path=input_file
+    ).fasta
+    if not resolved or not Path(resolved).is_file():
+        raise WGSExtractError(
+            LOG_MESSAGES["ref_required_for"].format(task="variant calling")
+        )
+    intervals = _calling_intervals(input_file, resolved, region)
+    # bcftools treats every comma as a region separator, including digit grouping.
+    return ",".join(
+        f"{chrom}:{start + 1}-{end}"
+        for chrom, ranges in intervals.items()
+        for start, end in ranges
+    )
 
 
 def _write_reference_header(
@@ -117,7 +178,7 @@ def _stderr_tail(stream: IO[bytes], max_lines: int = 20) -> str:
 
 
 def _extract_region_bam_with_reference_header(
-    input_file: str, region: str, ref: str, temp_bam: str
+    input_file: str, intervals: Intervals, ref: str, temp_bam: str
 ) -> None:
     """
     Write region of input_file as BAM whose @SQ lines are exactly the reference's contigs.
@@ -131,17 +192,31 @@ def _extract_region_bam_with_reference_header(
         ["samtools", "view", "-H", "--no-PG", *cram_args, input_file],
         capture_output=True,
     ).stdout
+    reference = dict(_reference_contigs(ref))
+    alignment = header_contig_lengths(header)
+    bed = Path(temp_bam).with_suffix(".bed")
+    write_bed_intervals(bed, intervals)
+    # The iterator emits reads in input-header order. Rewriting @SQ can change it.
+    needs_sort = [c for c in reference if c in intervals] != [
+        c for c in alignment if c in intervals
+    ]
+    extracted = str(bed.with_suffix(".unsorted.bam")) if needs_sort else temp_bam
     non_sq = [
         line + "\n"
         for line in header.splitlines()
         if line and not line.startswith("@SQ")
     ]
     new_header = io.StringIO()
-    _write_reference_header(new_header, non_sq, _reference_sq_lines(ref))
+    _write_reference_header(
+        new_header, non_sq, [f"@SQ\tSN:{c}\tLN:{n}\n" for c, n in reference.items()]
+    )
 
-    with tempfile.TemporaryFile() as source_err, tempfile.TemporaryFile() as sink_err:
+    with (
+        tempfile.TemporaryFile(dir=bed.parent) as source_err,
+        tempfile.TemporaryFile(dir=bed.parent) as sink_err,
+    ):
         sink = popen(
-            ["samtools", "view", "-b", "-o", temp_bam, "-"],
+            ["samtools", "view", "-b", "-o", extracted, "-"],
             stdin=subprocess.PIPE,
             stderr=sink_err,
         )
@@ -153,7 +228,16 @@ def _extract_region_bam_with_reference_header(
                 sink.stdin.flush()
                 # Records only (no -h): they follow our header in the same pipe.
                 source = popen(
-                    ["samtools", "view", *cram_args, "--", input_file, region],
+                    [
+                        "samtools",
+                        "view",
+                        "-M",
+                        "-L",
+                        str(bed),
+                        *cram_args,
+                        "--",
+                        input_file,
+                    ],
                     stdout=sink.stdin,
                     stderr=source_err,
                 )
@@ -172,10 +256,25 @@ def _extract_region_bam_with_reference_header(
             raise WGSExtractError(
                 f"samtools view failed (exit {source_rc}): {_stderr_tail(source_err)}"
             )
+        if diagnostics := _stderr_tail(source_err):
+            logging.warning("samtools view: %s", diagnostics)
         if sink_rc != 0:
             raise WGSExtractError(
                 f"samtools BAM write failed (exit {sink_rc}): {_stderr_tail(sink_err)}"
             )
+    if needs_sort:
+        run_command(
+            [
+                "samtools",
+                "sort",
+                "-T",
+                str(bed.with_suffix(".sort")),
+                "-o",
+                temp_bam,
+                extracted,
+            ],
+            capture_output=True,
+        )
 
 
 def _write_indexed_vcf_from_bcf(out_bcf: str, out_vcf: str) -> None:
@@ -195,7 +294,9 @@ def _record_calls(out_vcf: str, role: str, ref: str, region: str | None) -> None
 def run_cnv(params: VcfCnvParams) -> None:
     """``vcf cnv``: delly cnv into ``cnv.vcf.gz``."""
     verify_dependencies(["delly", "bcftools", "tabix", "samtools"])
-    setup = setup_caller(params, allow_reference_subset=True)
+    setup = setup_caller(
+        params, allow_reference_subset=True, resolve_regions=_calling_intervals
+    )
     outdir, ref = setup.outdir, setup.ref
 
     out_bcf = str(Path(outdir, "cnv.bcf"))
@@ -210,7 +311,7 @@ def run_cnv(params: VcfCnvParams) -> None:
     ploidy_args = ["-y", str(params.ploidy)] if params.ploidy is not None else []
 
     with _region_input_bam(
-        str(params.input), params.region, outdir, ref, "CNV"
+        str(params.input), setup.intervals, outdir, ref, "CNV"
     ) as input_file:
         try:
             run_command(
@@ -233,6 +334,7 @@ def _tandem_repeats(params: VcfSvParams) -> str | None:
 
 def run_sv_pbsv(params: VcfSvParams) -> None:
     """``vcf sv`` with pbsv into ``pbsv.vcf.gz``."""
+    validate_pbsv_region(params.region)
     verify_dependencies(["pbsv", "bcftools", "tabix", "samtools"])
     log_dependency_info(["pbsv", "bcftools", "tabix", "samtools"])
     setup = setup_caller(params)
@@ -256,6 +358,11 @@ def run_sv_pbsv(params: VcfSvParams) -> None:
         raw_vcf = str(Path(work, "pbsv.vcf"))
         discover_cmd = ["pbsv", "discover"]
         if region:
+            _validated_intervals(
+                region,
+                dict(_reference_contigs(pbsv_ref)),
+                header_contig_lengths(get_bam_header(str(params.input), ref)),
+            )
             discover_cmd.extend(["--region", region])
         if tandem_repeats:
             discover_cmd.extend(["--tandem-repeats", tandem_repeats])
@@ -287,29 +394,11 @@ def run_sv_pbsv(params: VcfSvParams) -> None:
     _record_calls(out_vcf, "structural_variants", ref, region)
 
 
-def _write_region_bed(region: str, ref: str, bed_path: str) -> None:
-    """Convert a samtools-style region (chr, chr:start, chr:start-end) to BED."""
-    chrom, _, span = region.partition(":")
-    lengths = dict(_reference_contigs(ref))
-    if chrom not in lengths:
-        raise WGSExtractError(f"Region contig {chrom!r} is not in reference {ref}")
-    start_text, _, end_text = span.replace(",", "").partition("-")
-    try:
-        start = int(start_text) if start_text else 1
-        end = int(end_text) if end_text else lengths[chrom]
-    except ValueError as e:
-        raise UsageError(f"Invalid region: {region}") from e
-    if start < 1 or end < start:
-        raise UsageError(f"Invalid region: {region}")
-    with open(bed_path, "w", newline="\n") as f:
-        f.write(f"{chrom}\t{start - 1}\t{end}\n")
-
-
 def run_sv_sniffles(params: VcfSvParams) -> None:
     """``vcf sv`` with Sniffles into ``sniffles.vcf.gz``."""
     verify_dependencies(["sniffles", "bcftools", "tabix", "samtools"])
     log_dependency_info(["sniffles", "bcftools", "tabix", "samtools"])
-    setup = setup_caller(params)
+    setup = setup_caller(params, resolve_regions=_calling_intervals)
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
 
     out_vcf = str(Path(outdir, "sniffles.vcf.gz"))
@@ -336,10 +425,10 @@ def run_sv_sniffles(params: VcfSvParams) -> None:
         samples = {g["SM"] for g in read_groups(header) if g.get("SM")}
         if len(samples) == 1:
             cmd += ["--sample-id", samples.pop()]
-        if region:
-            bed_path = str(Path(work, "region.bed"))
-            _write_region_bed(region, ref, bed_path)
-            cmd.extend(["--regions", bed_path])
+        if setup.intervals is not None:
+            bed_path = Path(work, "region.bed")
+            write_bed_intervals(bed_path, setup.intervals)
+            cmd.extend(["--regions", str(bed_path)])
         try:
             run_command(cmd)
         except subprocess.CalledProcessError as e:
@@ -464,7 +553,9 @@ def run_sv(params: VcfSvParams) -> None:
         return
 
     verify_dependencies(["delly", "bcftools", "tabix", "samtools"])
-    setup = setup_caller(params, allow_reference_subset=True)
+    setup = setup_caller(
+        params, allow_reference_subset=True, resolve_regions=_calling_intervals
+    )
     threads, outdir, ref = setup.threads, setup.outdir, setup.ref
 
     out_bcf = str(Path(outdir, "sv.bcf"))
@@ -472,7 +563,7 @@ def run_sv(params: VcfSvParams) -> None:
     logging.info(LOG_MESSAGES["vcf_calling_sv"].format(caller="delly", output=out_vcf))
 
     with _region_input_bam(
-        str(params.input), params.region, outdir, ref, "SV"
+        str(params.input), setup.intervals, outdir, ref, "SV"
     ) as input_file:
         try:
             # Delly 2 short-read SV discovery; note `-h` is its thread count.

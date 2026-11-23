@@ -57,10 +57,11 @@ compares them with the newest pinned baseline, from the reader's side:
 | Stable field or role demoted to another tier | error | — |
 | Field added, or a value narrowed | compatible | compatible |
 
-Internal documents are not compared. An experimental notice passes only when
-the unreleased release notes (or those of a release after the baseline) name
-it (`` `wgsextract.report/1:guide` ``, or `` `role:aadr` `` for a role), so
-users of experimental outputs hear about each change; an older release's
+Internal documents are not compared. Announce an experimental change in its
+[release-note fragment](release-notes/unreleased/README.md),
+`docs/release-notes/unreleased/<number>-<slug>.md`. Name the changed output
+there (`` `wgsextract.report/1:guide` ``, or `` `role:aadr` `` for a role).
+Notes from a release after the baseline also count; an older release's
 mention does not announce a new change. The check also rejects registry
 entries for paths that no longer exist, a stable role without producers, an
 internal document without declared consumers, and an unvalidated scientific

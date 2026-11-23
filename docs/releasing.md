@@ -117,7 +117,8 @@ if the tagged commit has one.
   `APPLE_TEAM_ID`), the updater signing key (`TAURI_SIGNING_PRIVATE_KEY`,
   optional `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) and the
   `TAURI_UPDATER_PUBKEY` variable. A release's macOS build fails without the
-  Apple secrets, and without the updater key the release has no `latest.json`.
+  Apple secrets. App publishing fails before uploading assets if any expected
+  platform lacks a uniquely matched updater artifact with a nonempty signature.
   See [gui/docs/distribution.md](../gui/docs/distribution.md).
 - **Trying a change first.** *Run workflow* on *GUI distribution* (or
   `gh workflow run gui-distribution.yml --ref BRANCH`) builds unsigned

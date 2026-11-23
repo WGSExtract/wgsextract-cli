@@ -4,7 +4,8 @@ import type { BundleManifest, Labels, LooseRecord, RunProcess } from "../../../s
 import { evaluatePrecheck, evaluateSetupInstallSizePrecheck, fileStateValues, runDataSource } from "./action-runner.js";
 import { serveBundleFavicon, serveBundleFile } from "./assets.js";
 import { loadLocaleOptions } from "./bundle-loader.js";
-import { loadConfig, saveBundleState, saveConfig } from "./config-store.js";
+import { saveBundleState } from "./bundle-state.js";
+import { loadConfig, saveConfig } from "./config-store.js";
 import { errorMessage, HttpError } from "./errors.js";
 import { contentType, json, notFound, readJSONBody, serveIndex, staticFile } from "./http.js";
 import { findConfigEditorControl, locationKey, resolveActionReference, resolveDataSource, type DynamicActions } from "./manifest-lookup.js";
@@ -26,11 +27,13 @@ import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
 import { usersWorkspaceFor, usersWorkspaceLocationInfo } from "./users-workspace.js";
 import type { WorkspaceMoveTarget } from "./workspace-move.js";
+import { LinkedMoveFolderError } from "./workspace-move-guard.js";
 import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
 import { checkLibraryTracks, openLibraryViewer, viewerLibraries } from "./viewer-session.js";
 import { isViewerBuild } from "../../../shared/viewer-rows.js";
 import { RemoteViewerConnection } from "./remote-viewer-connection.js";
 import { RemoteViewer } from "./remote-viewer.js";
+import { openGenePage } from "./gene-page.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
 
@@ -193,6 +196,21 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 response.off("close", close);
             }
         },
+        "/api/gene/open": async (request, response) => {
+            // It runs the CLI on local paths, so only this computer may ask, as with the viewer.
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            const controller = new AbortController();
+            const close = () => {
+                if (!response.writableFinished) controller.abort();
+            };
+            response.once("close", close);
+            try {
+                json(response, await openGenePage(body, context, resultPaths, controller.signal));
+            } finally {
+                response.off("close", close);
+            }
+        },
         "/api/datasource": jsonRoute(context, async (body) => {
             const location = parseManifestLocation(body.source);
             const payload = await runDataSource(resolveDataSource(context.manifest, location), commandContext(body, context), context.bundleRoot, context.runProcess);
@@ -303,7 +321,11 @@ export function createRequestHandler(context: RequestHandlerContext) {
                     }
                     await emit({ type: "complete" });
                 },
-                (error) => ({ type: "error", error }),
+                (error, cause) => ({
+                    type: "error",
+                    error,
+                    ...(cause instanceof LinkedMoveFolderError ? { linkedFolder: { link: cause.link, target: cause.target } } : {}),
+                }),
             );
         },
         "/api/config/load": jsonRoute(context, async (body) => {

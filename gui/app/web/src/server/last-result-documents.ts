@@ -3,7 +3,7 @@ import path from "node:path";
 import { readsLastResultDocument } from "../../../shared/last-result-documents.js";
 import type { ActionSpec, LastResultDocumentPaths } from "../../../shared/types.js";
 import type { ActionRunResult } from "./action-runner.js";
-import { writeFileAtomically } from "./config-store.js";
+import { writeFileAtomically } from "./atomic-file.js";
 import { errnoCode, errorMessage } from "./errors.js";
 
 // Hidden, so syncing the bundle into its workspace never replaces or removes it.
