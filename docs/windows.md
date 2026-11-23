@@ -263,7 +263,7 @@ needed for reads, sorting and Windows. The CLI checks the reference's memory
 estimate before choosing it. `--aligner bwa` selects the lower-memory option;
 `--aligner bwa-mem2` selects bwa-mem2 explicitly.
 
-### Optional wgse-bwa with NVIDIA CUDA
+### wgse-bwa and optional NVIDIA CUDA
 
 The default Pixi environment on Windows x86-64 includes `wgse-bwa` from
 [`windows-tools-11`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/windows-tools-11).

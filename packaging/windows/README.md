@@ -123,7 +123,7 @@ for the matched-machine benchmarks and record hashes.
 
 ## Building
 
-### Optional wgse-bwa
+### wgse-bwa (Windows x86-64)
 
 `wgse-bwa` is built from a separate recipe. The default win-64 Pixi environment
 pins the package from `windows-tools-11` without changing the other tool pins.
@@ -149,7 +149,7 @@ The build tests CPU alignment with CUDA disabled, then packages the release
 executable and checks its capabilities. The package installs and runs on the
 CPU without an NVIDIA driver. Only the optional CUDA backend requires a
 supported NVIDIA GPU and driver; no CUDA Toolkit installation is needed.
-[Windows alignment](../../docs/windows.md#optional-wgse-bwa-with-nvidia-cuda)
+[Windows alignment](../../docs/windows.md#wgse-bwa-and-optional-nvidia-cuda)
 documents how to opt in to CUDA or override the packaged build.
 
 ### GATK kernels

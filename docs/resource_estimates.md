@@ -259,7 +259,7 @@ The read-only `estimate_resources` API does not change settings itself:
 callers supply their resolved backend allowance and sort memory.
 On macOS and Linux, `--prefer-native-gpu` / config `prefer_native_gpu = true`
 can replace a RAM-budget CPU fallback after normal GPU sort step-down fails,
-at the risk of heavy swap. [Windows CUDA](windows.md#optional-wgse-bwa-with-nvidia-cuda)
+at the risk of heavy swap. [Windows CUDA](windows.md#wgse-bwa-and-optional-nvidia-cuda)
 does not use this override. Explicit `--memory` is retained on an override;
 default/config memory is capped at
 256M, subject to general sort limits. The manifest's
