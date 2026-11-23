@@ -32,6 +32,7 @@ CI_TESTS = (
     "tests/test_ci_impact_shadow.py",
     "tests/test_ci_impact_symbols.py",
     "tests/test_ci_impact_wide.py",
+    "tests/test_ci_impact_gate.py",
     "tests/test_ci_nightly.py",
     "tests/test_ci_auto_merge_watch.py",
     "tests/test_ci_release_latest.py",

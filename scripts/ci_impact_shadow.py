@@ -330,6 +330,25 @@ def compute(
     )
 
 
+def lane_tests(root: Path, head: str, *, skip_independent: bool) -> set[str]:
+    return set(
+        test_targets(
+            json.dumps(
+                sorted(
+                    path
+                    for path in tracked_python(root, head)
+                    if path.startswith("tests/")
+                    and Path(path).name.startswith("test_")
+                    and (
+                        not skip_independent or Path(path).name not in SINGLE_OS_MODULES
+                    )
+                )
+            )
+        )
+        or ()
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--observations", type=Path, required=True)
@@ -340,26 +359,14 @@ def main() -> None:
     parser.add_argument("--outcome", required=True)
     parser.add_argument("--run-id", type=int, required=True)
     parser.add_argument("--attempt", type=int, required=True)
+    parser.add_argument("--gate-decision", type=Path)
     args = parser.parse_args()
     root = Path.cwd().resolve()
     diff = impact_diff(root, "HEAD^1", "HEAD")
     source_head = subprocess.check_output(
         ["git", "rev-parse", "HEAD^2"], text=True
     ).strip()
-    tests = set(
-        test_targets(
-            json.dumps(
-                sorted(
-                    path
-                    for path in tracked_python(root, diff.head)
-                    if path.startswith("tests/")
-                    and Path(path).name.startswith("test_")
-                    and Path(path).name not in SINGLE_OS_MODULES
-                )
-            )
-        )
-        or ()
-    )
+    tests = lane_tests(root, diff.head, skip_independent=True)
     evidence, gap = observation_map(root, args.observations, diff.base)
     candidates, reasons, unmatched = compute(root, diff, tests, evidence)
     import_probe = (
@@ -369,6 +376,13 @@ def main() -> None:
     )
     actual_selection = test_targets(args.selection)
     requested = tests if actual_selection is None else tests & set(actual_selection)
+    gate_decision = (
+        json.loads(args.gate_decision.read_text(encoding="utf-8"))
+        if args.gate_decision is not None and args.gate_decision.is_file()
+        else {"mode": "legacy", "selection": sorted(requested)}
+    )
+    enforced = gate_decision["selection"]
+    effective = tests if enforced == "all" else tests & set(enforced)
     actual: dict[str, Any] = {}
     unmapped = 0
     receipt = "No regular pytest receipt (not run, cache-only, or interrupted)."
@@ -399,6 +413,11 @@ def main() -> None:
         "observation_gap": gap,
         "unmatched_inputs": unmatched,
         "actual_selected": sorted(requested),
+        "effective_selected": sorted(effective),
+        "gate_mode": gate_decision["mode"],
+        "tested_git_tree": subprocess.check_output(
+            ["git", "rev-parse", "HEAD^{tree}"], text=True
+        ).strip(),
         "actual_estimated_test_minutes": baseline_minutes,
         "actual_timed_files": len(baseline_timed),
         "actual_results": actual,
@@ -412,6 +431,7 @@ def main() -> None:
     summary = [
         "### Linux x64 test selection shadow (advisory)",
         f"Actual selector: {len(requested)} files before cache; {len(completed)} files with pass/fail observations.",
+        f"Enforced selector: {gate_decision['mode']} ({len(effective)} files before cache).",
         receipt,
         gap or f"Observation map: `{evidence['manifest']['source_sha']}`.",
         f"Advisory symbol/helper package-import smoke: {import_probe}.",
@@ -456,6 +476,7 @@ def main() -> None:
         and completed
         and args.outcome in {"success", "failure"}
         and unmapped == 0
+        and gate_decision["mode"] != "symbol"
     )
     summary.extend(
         (
