@@ -97,6 +97,7 @@ parser still treats external/compact documents as unvalidated input.
 | `warnings` | Structured warnings: `code`, `message` and scalar `details`. |
 | `details` | The command-specific structured result, or `null`. |
 | `manifest` | Absolute path of the manifest file this run wrote, or `null` (including when writing it failed). |
+| `run` | This run's place in its workflow: `id`, `root`, `parent`, `step` and `children`. See [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
 | `provenance` | `version` (package), `argv` and `params` (the command line and the parsed options as the command used them, after `--genome` selection; values of options whose names contain token, secret, password, credential or api key are redacted, and URLs there, and in error and warning messages, lose their user name, password, query string and fragment), `tools` (versions of the external tools the command ran), `reference` (`path`, `build`, `fingerprint`), `platform`, `python`, `started`, `finished` and `elapsed_s`. |
 
 Tool versions are probed only when a document is emitted, and only for tools the
@@ -130,6 +131,65 @@ them; fingerprint collection itself still never consumes stream input.
 A fingerprint identifies a file cheaply ("is this the same BAM as last time?").
 It is not an integrity check: an edit outside the sampled blocks that keeps the
 size goes unnoticed. Use `wgsextract sign` for full-file digests.
+
+### Run lineage and artifacts (pilot)
+
+The pilot of [#1182](https://github.com/WGSExtract/wgsextract-cli/issues/1182)
+links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
+`analyze comprehensive --vcf-inputs`, without a separate lineage file.
+
+- **`run`.** Every document has a run record. `id` is a random 32-character
+  identifier of this run. `root` is the first run of its workflow (this
+  run's `id` when nothing started it). `parent` and `step` name the run
+  that started this one as a step, or are `null`. `analyze` starts its
+  steps' commands as steps of itself, and `vcf chain-annotate` does the same
+  for its annotators. A workflow lists its steps in `children`: `step`, the
+  `run` and `command` that did the step's work, `status` (`ok`, `failed`,
+  `cancelled`, or `reused` when the step journal skipped it), and the
+  journal's `reason`. A reused step names the run that did its work in the
+  earlier run, and so do the artifacts of the files it wrote. A step done inside the workflow's own process names the
+  workflow's run. A step whose command failed is listed with its `run`,
+  whose own failed manifest names this run as its `parent`.
+- **`artifact`.** A BAM, CRAM, VCF or BCF in `inputs` or `outputs` has an
+  `artifact` record. Other files have none.
+
+  | Field | Meaning |
+  | --- | --- |
+  | `origin` | `this_run`: written by this run or one of its steps. `recorded`: written by an earlier run, named in `producer`: a manifest in the input's folder lists it with the same fingerprint (its own `<file>.manifest.json` first; a command writes one manifest for all its outputs), or a reused step's earlier run wrote the output. `external`: nothing is known about its history. |
+  | `lifecycle` | `final` (a deliverable), `intermediate`, `cache` or `temp`; `null` when unknown. |
+  | `retained` | `false` when the run deleted the file on purpose. |
+  | `digest_kind` | `full` when the `fingerprint` read the whole file (3 MiB or less), else `sampled`. |
+  | `assembly` | `hg19`, `hg38` or `t2t`, from the chr1 length in the header; `null` when it isn't recognised. |
+  | `reference` | Fingerprint of the FASTA the file was made with, for this run's outputs and for recorded inputs. |
+  | `samples` | The BAM's `@RG SM` names, or the VCF's sample columns. |
+  | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index (`.crai`) isn't read: only its presence is checked. `mismatched`: another sequence dictionary, blocks that aren't the file's, or an unreadable index. Every index a reader may pick is checked (htslib picks a `.csi` before a `.bai` or `.tbi`), and the first unusable one is reported. |
+  | `producer` | `run`, `root`, `command` and `step` of the run that wrote it. |
+  | `sources` | The files it was made from: `path`, `role`, `fingerprint`, `producer` (run), `lifecycle` and `retained`. |
+
+  The facts come from the file itself: its header (read without running a
+  tool; a CRAM's header isn't read, so its assembly and samples are
+  unknown), its index and its fingerprint. A producer is taken from the
+  manifest beside the file only while that manifest still lists the same
+  fingerprint. A copied, edited or third-party file is `external`, and
+  nothing about its history is assumed. An output's `sources` are the
+  run's BAM/CRAM/VCF/BCF inputs, unless the command names them. `vcf call
+  --merge` names the reads and its per-type VCFs, which it deletes after
+  merging. They stay in `sources` with `lifecycle: temp` and `retained:
+  false`, and they are not listed in `outputs`. `analyze`'s findings name
+  only the VCF they were found in.
+- **Consumers refuse unusable inputs before they run.** The error's
+  `code` names the problem, and the run exits 1:
+
+  | Code | Raised by | Problem |
+  | --- | --- | --- |
+  | `assembly_mismatch` | BAM/CRAM variant callers (`vcf snp`, `vcf indel`, `vcf call`, ...), `analyze comprehensive` | The input is on another genome build than the reference or the other inputs. |
+  | `reference_mismatch` | the same | Same build, but the contig names, lengths or MD5s differ from the reference. |
+  | `index_stale`, `index_mismatch` | the same | The BAM/CRAM index is `stale` or `mismatched`. A `mismatched` VCF index is refused too. A missing or older VCF index is rebuilt, as before. |
+  | `index_missing` | BAM/CRAM variant callers with `--region` | The region is read through the index. Calling the whole file still streams an unindexed BAM. |
+  | `sample_mismatch` | `analyze comprehensive --input BAM --vcf-inputs VCF` | A VCF that wgsextract called from a BAM or CRAM (`recorded`, with the reads among its `sources`) names none of the reads' samples. For any other VCF, whose sample may only be named differently (an `external` VCF, or one filtered or annotated from it), this is a warning with the same code, and the run continues. Recorded producers are read only from manifests a server job may read. |
+
+  Nothing in this pilot reaches the network or installs anything. Other
+  commands record artifacts but don't check them yet.
 
 ### Warning codes
 
@@ -169,6 +229,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `build_unknown`, `build_unsupported` | microarray, Y haplogroup | The reference build is unknown or unsupported by the tool. |
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |
+| `panel_contigs_not_in_vcf` | `vcf filter` and `vcf table` panel selection | Panel intervals on contigs absent from the VCF were omitted. |
 | `gvcf_reference_missing`, `inconclusive_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; missing, partial or unassessed parental genotypes prevent inheritance classification. Inconclusive candidates are written separately (`count`, `mode`) and included in the personal report's overview warnings. |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |
@@ -191,6 +252,7 @@ size goes unnoticed. Use `wgsextract sign` for full-file digests.
 | `step_failed` | `benchmark` | A benchmark step failed (`step`, `log`). |
 | `cache_path_too_long` | `microarray` on Windows | The reference library path (`path`, `length`) is too deep for its derived caches to fit the 260-character `MAX_PATH`, so the run is uncached; keep the library path at most `limit` characters. |
 | `unsigned` | `sign verify` | The checksum manifest has no signature; only hashes were checked. |
+| `sample_mismatch` | `analyze comprehensive` | A VCF not called from reads by wgsextract names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
 | `ystr_unverified_convention` | `lineage y-str` | Markers use a repeat-count convention the panel has not verified. |
 
 New codes may be added in any release. Consumers should treat unknown codes
@@ -301,6 +363,12 @@ Other commands' metrics:
   `bam merge` adds `merged_inputs`, `read_groups` and, for indexed inputs,
   the combined `autosomal_depth` (each run's in `details.runs`); `bam unalign`
   its `read_groups`.
+- Y extractions (`extract ydna-bam`, `extract y-mt-extract`, `extract region
+  --target y|ymt`) record each output's `y_scope` and its comma-separated
+  `contigs`; `details` holds `y_scope` and `contigs`, one row per considered
+  contig (`name`, `length`, `role`, `included`, `reason`, and for a BAM its
+  `mapped_records` and `placed_unmapped_records`). See
+  [Y-associated contigs](lineage.md#y-associated-contigs---y-scope).
 - `qc fastp` records read counts before and after filtering, the Q30 rate and
   duplication rate; `qc fastqc` the module pass/warn/fail counts and total
   sequences (`r2_`-prefixed for `--r2`); `qc vcf` the `bcftools stats` totals (records, SNPs, indels,

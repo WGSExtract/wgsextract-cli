@@ -14,9 +14,10 @@ from wgsextract_cli.core.utils import run_command
 
 pytestmark = needs_tools("bcftools", "bgzip", "tabix")
 
+AF_INFO = '##INFO=<ID=AF_joint,Number=A,Type=Float,Description="f">\n'
 JOINT_INFO = (
     '##FILTER=<ID=AC0,Description="a">\n'
-    '##INFO=<ID=AF_joint,Number=A,Type=Float,Description="f">\n'
+    f"{AF_INFO}"
     '##INFO=<ID=AF_grpmax_joint,Number=A,Type=Float,Description="m">\n'
     '##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="h">\n'
 )
@@ -28,6 +29,7 @@ def _vcf(path: Path, contig: str, body: str, info: str = "") -> Path:
         f"##contig=<ID={contig},length=1000>\n{info}"
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" + body.replace("{c}", contig),
         encoding="utf-8",
+        newline="\n",
     )
     return Path(bgzip_index(path))
 
@@ -54,7 +56,7 @@ def test_1419_gnomad_v4_rebuild_keeps_allele_specific_annotations(
         tmp_path / "chr2.vcf",
         "chr2",
         "{c}\t50\t.\tA\tG\t.\tPASS\tAF_joint=0.01\n",
-        JOINT_INFO,
+        AF_INFO,
     )
     _vcf(tmp_path / "chr3.vcf", "chr3", "", JOINT_INFO)
     files = {path.name: path.read_bytes() for path in tmp_path.glob("chr*.vcf.gz")}
@@ -100,6 +102,11 @@ def test_1419_gnomad_v4_rebuild_keeps_allele_specific_annotations(
         old_parts.mkdir()
         (old_parts / "chr1.tsv.gz").write_bytes(
             gzip.compress(b"chr1\t101\tC\tT\t0.1\n")
+        )
+        unsplit_parts = downloads / ".gnomad_hg38_parts_v2"
+        unsplit_parts.mkdir()
+        (unsplit_parts / "chr1.tsv.gz").write_bytes(
+            gzip.compress(b"chr1\t100\tC\tT,G,A\t0.25,0.5,0\t0.4,0.75,0\t0,3,0\n")
         )
 
         with pytest.raises(api.CommandFailed, match="needs rebuilding.*--download"):

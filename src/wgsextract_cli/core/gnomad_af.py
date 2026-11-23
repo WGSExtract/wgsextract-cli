@@ -43,7 +43,7 @@ from wgsextract_cli.core.utils import (
 
 # gnomAD v4.1 joint (exomes + genomes) sites are GRCh38-only and ~900 GB of
 # per-chromosome VCFs with ~660 INFO fields, so `ref gnomad --release 4.1`
-# streams them into a compact frequency and homozygote table.
+# streams them into a compact frequency and homozygote table instead of storing them.
 GNOMAD_V4_URL = (
     "https://storage.googleapis.com/gcp-public-data--gnomad/release/4.1/vcf/joint/"
     "gnomad.joint.v4.1.sites.{contig}.vcf.bgz"
@@ -51,7 +51,7 @@ GNOMAD_V4_URL = (
 GNOMAD_V4_CONTIGS = [f"chr{c}" for c in (*range(1, 23), "X", "Y")]
 GNOMAD_AF_TABLE = "gnomad_hg38.tsv.gz"
 GNOMAD_V4_REBUILD = "wgsextract ref gnomad --release 4.1 --download"
-_TABLE_SCHEMA = 2
+_TABLE_SCHEMA = 3
 _JOINT_HEADER = "## gnomAD v4.1 joint exomes+genomes,"
 _GNOMAD_V4_FIELDS = ("AF_joint", "AF_grpmax_joint", "nhomalt_joint")
 _GNOMAD_V4_COLUMNS = ("#CHROM", "POS", "REF", "ALT", "AF", *_GNOMAD_V4_FIELDS[1:])
@@ -60,6 +60,7 @@ _GNOMAD_V4_COLUMNS = ("#CHROM", "POS", "REF", "ALT", "AF", *_GNOMAD_V4_FIELDS[1:
 _GNOMAD_V4_QUERY = (
     "-i",
     'FILTER="PASS" && AF_joint>0',
+    "-u",  # optional annotations may not be defined in the source VCF
     "-f",
     "%CHROM\t%POS\t%REF\t%ALT\t"
     + "\t".join(f"%INFO/{f}" for f in _GNOMAD_V4_FIELDS)
@@ -308,7 +309,7 @@ def build_gnomad_af(
             f"To stream the public VCFs, run: {GNOMAD_V4_REBUILD}"
         )
     verify_dependencies(["bcftools", "bgzip", "tabix"])
-    # Five-column parts from older builds can't be mixed with this schema.
+    # Older parts may have only five columns or have unsplit alleles.
     parts_dir = str(download_path(reflib_dir, f".gnomad_hg38_parts_v{_TABLE_SCHEMA}"))
     if not Path(dest).exists():
         dest = str(Path(parts_dir).parent / GNOMAD_AF_TABLE)

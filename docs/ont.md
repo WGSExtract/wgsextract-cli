@@ -608,6 +608,65 @@ Platform detection, tagged CPU alignment/realignment, x86-64 DeepVariant
 ONT_R104 calling, optional Clair3 calling (Linux and Apple Silicon), Sniffles SV calling,
 optional modkit CpG methylation and optional read-backed phasing are supported.
 
+### Promoter and CpG island summaries
+
+Use `methylation regions` on a coordinate-sorted, strand-combined CpG
+bedMethyl from `methylation pileup`, or on a precomputed modkit-style
+bedMethyl with valid-call and modified-call counts. It also reads the typed
+`.bedmethyl.parquet` from pileup. You don't need modkit to summarize these
+files; the command works natively on Windows with `samtools`. Supply the
+indexed plain or BGZF FASTA used for the pileup and declare its assembly
+(`hg38` or `t2t`, the CHM13v2.0/hs1 build).
+
+```bash
+wgsextract methylation regions -i sample.cpg.bedmethyl.gz --ref hg38.fa \
+  --build hg38 --preset promoters --outdir reports
+wgsextract methylation regions -i sample.cpg.bedmethyl.gz --ref hg38.fa \
+  --build hg38 --preset cpg-islands --outdir reports --download
+```
+
+- `promoters` uses primary-chromosome
+  [NCBI RefSeq RS_2025_08](https://www.ncbi.nlm.nih.gov/refseq/MANE/) annotations
+  for GRCh38.p14 and CHM13v2.0. It takes one transcript per gene locus: MANE
+  Select, then RefSeq Select, then the longest exonic transcript; ties within
+  a priority are resolved by accession (GFF feature ID for unaccessioned
+  transcripts, after accessioned ties). The window is 2,000 bases upstream and
+  500 transcribed-side bases from the 5′ boundary, clipped to each chromosome.
+  The half-open windows are `[t−2000,t+500)` on `+` and `[t−500,t+2000)` on
+  `−`; override the sizes with `--upstream` and `--downstream`.
+- `cpg-islands` uses the **masked** UCSC `cpgIslandExt` track on assembled
+  chromosomes ([hg38 SQL table](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cpgIslandExt.txt.gz),
+  [hs1 BigBed](https://hgdownload.soe.ucsc.edu/gbdb/hs1/bbi/cpgIslandExt.bb);
+  [UCSC data terms](https://genome.ucsc.edu/license/)). Both tracks are pinned
+  by SHA-256. The hs1 intervals and promoter starts are bundled. For hg38
+  islands, the first run needs explicit `--download`; subsequent runs verify and
+  reuse the cached table in the reference library's `methylation/` directory.
+  The request sends only the public table name to UCSC, never sample data.
+- BED positions are zero-based and half-open. A CpG belongs to a region when
+  its reference C is inside, even when its G is outside. Overlapping regions
+  each receive the CpG. Primary aliases (`21`, `chr21`, assembly accessions)
+  are matched only via the build's assembly report and matching FASTA lengths.
+  Plain bedMethyl has no reliable assembly header: you are responsible for
+  giving the same build and FASTA. The command checks the available assembly
+  metadata and the CpG context of calls that hit the selected regions.
+- A CpG qualifies with at least five valid calls (`--min-valid-calls`), and
+  a region needs at least three qualifying CpGs (`--min-cpgs`). The table gives
+  expected, observed and qualifying CpGs, the fraction that qualify, median
+  qualifying depth, valid and modified call counts, and three percentages
+  from qualifying sites: `pooled_percent` weights by call
+  count; `mean_percent` and `median_percent` give each CpG equal weight.
+  `no_transcript`, `contig_absent`, `no_reference_cpgs`, `no_valid_calls` and
+  `insufficient_coverage` leave percentages empty (null in Parquet), not zero.
+  `--5hmc` is an explicit declaration that the source model called 5hmC and
+  reports separate `m` and `h` rows. A missing code is marked
+  `modification_not_tabulated` when the file contains the other requested code.
+  Do not add valid depths across codes or use `--combine-mods` pileups.
+
+The output is `<input stem>.<build>.<preset>.methylation.tsv`, or `.parquet`
+with `--format parquet`. The result manifest records the reference,
+annotation version and checksums, and the promoter and coverage rules.
+These are pooled, descriptive summaries, not haplotype or imprinting calls.
+
 ## Phasing
 
 `vcf phase` phases a sample's heterozygous calls with its own reads and writes

@@ -6,16 +6,32 @@ Targeted assays and atypical dosage should remain Unknown.
 
 from wgsextract_cli.core.utils import run_command
 
+# Half-open non-PAR intervals, keyed by the exact primary contig lengths.
+_NONPAR = {
+    (155270560, 59373566): ((2699520, 154931043), (2649520, 59034049)),
+    (156040895, 57227415): ((2781479, 155701382), (2781479, 56887902)),
+    (154259566, 62460029): ((2394410, 153925834), (2458320, 62122809)),
+}
+_YQ12_START = {59373566: 28819361, 57227415: 26673214}
+
+
+def nonpar_bounds(chrom: str, length: int) -> tuple[int, int] | None:
+    """The zero-based, half-open interval between this contig's PARs."""
+    if chrom in {"X", "Y"}:
+        side = int(chrom == "Y")
+        for lengths, intervals in _NONPAR.items():
+            if lengths[side] == length:
+                return intervals[side]
+    return None
+
 
 def nonpar_interval(chrom: str, length: int) -> tuple[int, int] | None:
-    """Non-PAR sampling interval, excluding the assembly's Yq12 N block."""
-    intervals = {
-        ("X", 155270560): (2699521, 154931043),
-        ("Y", 59373566): (2649521, 28819361),
-        ("X", 156040895): (2781480, 155701382),
-        ("Y", 57227415): (2781480, 26673214),
-    }
-    return intervals.get((chrom, length))
+    """One-based sampling interval, excluding the assembly's Yq12 N block."""
+    bounds = nonpar_bounds(chrom, length)
+    if bounds is None:
+        return None
+    start, end = bounds
+    return start + 1, _YQ12_START.get(length, end) if chrom == "Y" else end
 
 
 def coverage_windows(start: int, end: int) -> list[tuple[int, int]]:
@@ -34,18 +50,14 @@ def sampled_depth(
     """Mean depth and breadth in distributed windows, excluding low-quality,
     duplicate, secondary and supplementary alignments.
 
-    Only GRCh37/38 sex chromosomes are supported. Unknown assemblies cannot
+    Only GRCh37/38 and CHM13v2.0 sex chromosomes are supported. Unknown assemblies cannot
     supply trustworthy PAR boundaries and return no evidence.
     """
-    if any(
-        chrom not in contigs or nonpar_interval(chrom, contigs[chrom][1]) is None
-        for chrom in ("X", "Y")
+    if (
+        "X" not in contigs
+        or "Y" not in contigs
+        or (contigs["X"][1], contigs["Y"][1]) not in _NONPAR
     ):
-        return {}
-    if (contigs["X"][1], contigs["Y"][1]) not in {
-        (155270560, 59373566),
-        (156040895, 57227415),
-    }:
         return {}
     evidence: dict[str, tuple[float, float]] = {}
     for chrom in ("7", "19", "X", "Y"):

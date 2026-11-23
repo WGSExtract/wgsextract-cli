@@ -59,6 +59,8 @@ export type LabelTextKey =
     | "workspaceLocationCancelTitle"
     | "workspaceLocationFolderMoveConfirm"
     | "workspaceLocationSettingOnlyTitle"
+    | "workspaceLocationLinkedFolderFormat"
+    | "workspaceLocationLinkTargetUnavailable"
     | "terminalCopyTextLabel"
     | "terminalCopiedTextLabel"
     | "terminalCancelButtonTitle"
@@ -147,6 +149,8 @@ export type LabelTextKey =
 export interface Labels extends Partial<Record<LabelTextKey, string>> {
     viewerTitle?: string;
     viewerStrings?: StringMap;
+    geneTitle?: string;
+    geneStrings?: StringMap;
     libraryStatusLabels?: StringMap;
     libraryTagLabels?: StringMap;
     [key: string]: unknown;
