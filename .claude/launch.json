@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "wgsextract-gui-dev",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "gui/scripts/dev-checkout-cli.ps1", "-Port", "8787"],
+      "port": 8787
+    },
+    {
+      "name": "wgsextract-gui-dev-posix",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["gui/scripts/dev-checkout-cli.sh", "8787"],
+      "port": 8787
+    }
+  ]
+}
