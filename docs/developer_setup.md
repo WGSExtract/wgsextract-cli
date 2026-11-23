@@ -465,8 +465,10 @@ process visibility is insufficient. Use `git worktree lock` before starting
 work in a checkout that might be eligible for cleanup.
 Do not start work in an eligible checkout during cleanup. Symlinks are checked
 in this repository and its registered worktrees, including the primary
-checkout's Git hooks (even with a custom `core.hooksPath`). Lock a worktree
-if other projects depend on its files. Nothing manages your reference library.
+checkout's Git hooks. Cleanup checks custom `core.hooksPath` directories and
+literal paths in config-defined hook commands. Lock a worktree if a hook
+computes paths dynamically or other projects depend on its files.
+Nothing manages your reference library.
 Samples and other unknown files block removal. With `--trim-caches --apply`, the same
 PR and activity checks allow trimming verified generated Pixi, Ruff, mypy and
 pytest caches in retained worktrees. Unrecognized cache contents, unlocked

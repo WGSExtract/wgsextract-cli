@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import socket
 import stat
 import struct
@@ -106,7 +107,7 @@ class Worktree:
         return Path(self.path)
 
 
-def run(root: Path, *args: str) -> str:
+def run(root: Path, *args: str, allow_no_matches: bool = False) -> str:
     env = os.environ.copy()
     if args[0] == "git":
         env = {k: v for k, v in env.items() if not k.startswith("GIT_")}
@@ -114,7 +115,13 @@ def run(root: Path, *args: str) -> str:
     result = subprocess.run(
         args, cwd=root, env=env, capture_output=True, timeout=120, check=False
     )
-    if result.returncode:
+    if (
+        allow_no_matches
+        and result.returncode == 1
+        and not (result.stdout or result.stderr)
+    ):
+        return ""
+    if result.returncode or (allow_no_matches and result.stderr):
         raise CleanupError(
             f"{args[0]} {args[1]} failed ({result.returncode}): "
             f"{os.fsdecode(result.stderr).strip()}"
@@ -122,8 +129,15 @@ def run(root: Path, *args: str) -> str:
     return os.fsdecode(result.stdout)
 
 
-def git(root: Path, *args: str) -> str:
-    return run(root, "git", "-c", "core.fsmonitor=false", *args)
+def git(root: Path, *args: str, allow_no_matches: bool = False) -> str:
+    return run(
+        root,
+        "git",
+        "-c",
+        "core.fsmonitor=false",
+        *args,
+        allow_no_matches=allow_no_matches,
+    )
 
 
 def worktrees(root: Path) -> list[Worktree]:
@@ -200,6 +214,36 @@ def link_blocks(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path
     raise AssertionError("unreachable dependency scan retry")
 
 
+def configured_hook_paths(root: Path) -> set[Path]:
+    records = git(
+        root,
+        "config",
+        "--null",
+        "--get-regexp",
+        r"^hook\..*\.command$",
+        allow_no_matches=True,
+    ).split("\0")
+    if records.pop():
+        raise CleanupError("Incomplete Git hook configuration")
+    paths = set()
+    for record in records:
+        _, separator, command = record.partition("\n")
+        if not separator:
+            raise CleanupError("Git hook configuration has no command value")
+        # Shell punctuation can delimit adjacent command words without whitespace.
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        try:
+            for word in lexer:
+                for token in (word, word.partition("=")[2]):
+                    if token:
+                        paths.add(Path(token).expanduser())
+        except ValueError as error:
+            raise CleanupError("Cannot tokenize configured Git hook command") from error
+    return paths
+
+
 def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]:
     # The primary walk includes registered worktrees under the repository.
     locations = {root}
@@ -239,7 +283,10 @@ def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]
     # Git runs ordinary hooks in the checkout and receive hooks in $GIT_DIR.
     # Ask Git for the effective path without resolving away configured aliases.
     hook_dirs = set()
+    configured_paths = configured_hook_paths(root)
     for cwd in (root, common):
+        for target in configured_paths:
+            check_target(root, cwd / target)
         reported = git(cwd, "rev-parse", "--git-path", "hooks").removesuffix("\n")
         if not reported:
             raise CleanupError("Git did not report its hooks path")

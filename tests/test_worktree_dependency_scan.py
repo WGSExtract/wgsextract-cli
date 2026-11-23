@@ -1,6 +1,7 @@
 """Exercise cleanup while another checkout's generated directories change (#1393)."""
 
 import os
+import shlex
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -32,13 +33,25 @@ pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process g
 
 @pytest.mark.parametrize(
     "location",
-    ["default", "linked-default", "custom-absolute", "custom-relative", "receive"],
+    [
+        "default",
+        "linked-default",
+        "custom-absolute",
+        "custom-relative",
+        "receive",
+        "config",
+    ],
 )
 def test_1393_preserves_primary_git_hooks_using_a_stale_worktree(
     repo: Path, github: Callable[..., None], location: str
 ) -> None:
+    if location == "config":
+        version = git(repo, "version").split()[2].split(".")
+        if tuple(map(int, version[:2])) < (2, 56):
+            pytest.skip("config-defined hooks require Git 2.56")
     path = topic(repo)
-    target = path / "hooks" / ("pre-receive" if location == "receive" else "pre-commit")
+    hook = "pre-receive" if location == "receive" else "pre-commit"
+    target = path / "hooks" / ("lint script" if location == "config" else hook)
     write(target, "#!/bin/sh\nexit 0\n")
     target.chmod(0o755)
     git(path, "add", "hooks")
@@ -58,15 +71,23 @@ def test_1393_preserves_primary_git_hooks_using_a_stale_worktree(
             cwd = repo / ".git"
         hooks = target.parent
         git(repo, "config", "core.hooksPath", os.path.relpath(hooks, cwd))
-    if hooks != target.parent:
-        (hooks / target.name).symlink_to(target)
-    git(cwd, "hook", "run", target.name)
+    if location == "config":
+        git(
+            repo,
+            "config",
+            "hook.lint.command",
+            shlex.join(["sh", str(target.relative_to(repo))]),
+        )
+        git(repo, "config", "hook.lint.event", hook)
+    elif hooks != target.parent:
+        (hooks / hook).symlink_to(target)
+    git(cwd, "hook", "run", hook)
     github([pull(path)])
 
     run = cleanup(repo, "--apply", "--github")
     assert run.returncode == 0, run.stderr
     assert result(repo, path)["reason"] == "symlink-dependency"
-    git(cwd, "hook", "run", target.name)
+    git(cwd, "hook", "run", hook)
 
 
 @pytest.mark.parametrize(
