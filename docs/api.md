@@ -89,6 +89,7 @@ An operation failed; `result` holds the error, warnings and partial outputs.
 ## `api.info`
 
 `info`: what a BAM/CRAM is (build, sequencer, sex, depth) and its coverage;
+`info gene`: one gene's transcripts, variants and coverage;
 `info chip`: which microarray chip a raw-data file came from.
 
 ### `api.info.info(InfoParams)`
@@ -113,6 +114,33 @@ BAM/CRAM. Metrics are cached next to the outputs as
 | `detailed` | `bool` | `False` | `--detailed` | Perform full index and body sample analysis (detailed mode) |
 | `table_format` | `str \| None` | `None` | `--format` | Also save the per-chromosome table and the QC stats as <input>_chromosomes and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed. None saves no table. One of: `tsv`, `parquet` |
 | `cache` | `bool` | `True` | `--cache` | Save the metrics as ``<input>.wgse_info.json`` for later runs; an existing cache is read either way. |
+
+### `api.info.gene(InfoGeneParams)`
+
+CLI: `wgsextract info gene`.
+
+Summarise one gene from local data.
+
+`details` is the `wgsextract.gene/1` document: `gene` (span),
+`transcripts`, `variants` (rows with the page `filters` they pass),
+`coverage` (gene, bins and exons against `threshold`) and
+`notices` naming the command that provides what is missing.
+
+`InfoGeneParams`: One gene from local data: its span and transcripts, the sample's
+variants in it with their annotations, and read depth over its exons.
+`details` holds the `wgsextract.gene/1` document; nothing is fetched.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `gene` | `str` | required | `--gene` | Gene symbol or alias (RefSeq, e.g. BRCA1), from the bundled NCBI RefSeq annotations. |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | BAM or CRAM whose read depth over the gene's exons to report. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The sample's VCF (annotated with vep run, vcf clinvar, vcf gnomad and vcf acmg for those columns) whose variants in the gene to list. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `build` | `str \| None` | `None` | `--build` | Build of the gene annotations when no input gives one (default: hg38). One of: `hg38`, `hg19`, `t2t` |
+| `sample` | `str \| None` | `None` | `--sample` | VCF sample whose genotypes to use (default: the first). |
+| `min_depth` | `float \| None` | `None` | `--min-depth` | Depth an exon base needs to count as callable (default: config confidence_min_depth). |
+| `export` | `str \| None` | `None` | `--export` | Also write the gene's variant rows, all or one page filter's, as <vcf stem>_<gene>_<filter>_variants.tsv. One of: `all`, `rare-damaging`, `clinvar-plp`, `acmg-plp` |
 
 ### `api.info.calculate_coverage(CalculateCoverageParams)`
 

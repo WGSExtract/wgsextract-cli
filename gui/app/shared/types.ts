@@ -149,6 +149,8 @@ export type LabelTextKey =
 export interface Labels extends Partial<Record<LabelTextKey, string>> {
     viewerTitle?: string;
     viewerStrings?: StringMap;
+    geneTitle?: string;
+    geneStrings?: StringMap;
     libraryStatusLabels?: StringMap;
     libraryTagLabels?: StringMap;
     [key: string]: unknown;
