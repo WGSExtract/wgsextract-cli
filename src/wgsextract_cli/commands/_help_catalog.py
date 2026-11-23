@@ -264,15 +264,15 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     ),
     "vcf filter": _h(
         "filtered.vcf.gz (+ .tbi).",
+        f"wgsextract vcf filter {_VCF_IN} --genes BRCA1,BRCA2 --bed targets.bed",
         f"wgsextract vcf filter {_VCF_IN} --expr 'QUAL>30'",
-        f"wgsextract vcf filter {_VCF_IN} --gene BRCA1",
     ),
     "vcf table": _h(
         "<input stem>_variants.tsv (or .parquet with --format parquet) and "
         "<input stem>_variants.sqlite: one row per variant allele, with its "
         "annotations.",
-        f"wgsextract vcf table {_VCF_IN}",
-        "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --region chr22",
+        f"wgsextract vcf table {_VCF_IN} --bed targets.bed",
+        f"wgsextract vcf table {_VCF_IN} --preset acmg-sf --region chr17",
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --format parquet",
     ),
     "vcf clinvar": _h(

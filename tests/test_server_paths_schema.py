@@ -155,10 +155,35 @@ def test_vcf_paths_cover_every_resource():
     assert {"clinvar_file", "cadd_indel_file", "am_file", "mother", "father",
             "proband", "mask", "pharmcat_json", "outside_call",
             "ann_vcf"} <= guarded  # fmt: skip
+    assert {
+        (op, field)
+        for op in ("vcf/filter", "vcf/table")
+        for field in ("bed", "gene_file")
+    } <= {(op, item.name) for op, item in _VCF_PATHS}
     # PR #452 review: <ref>/pharmcat is the pipeline's default folder.
     for field in ("pharmcat_dir", "ref"):
         with pytest.raises(RequestError, match="can't be set by a server request"):
             params_from_json(find("vcf/pharmcat"), {field: r"C:\data\pc"})
+
+
+def test_1290_gene_panel_checks_reference_index_path(tmp_path):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    ref = allowed / "ref.fa"
+    ref.touch()
+    outside = tmp_path / "outside.fai"
+    outside.touch()
+    try:
+        (allowed / "ref.fa.fai").symlink_to(outside)
+    except OSError:
+        pytest.skip("can't create symlinks here")
+    params = params_from_json(
+        find("vcf/table"),
+        {"vcf_input": str(allowed / "sample.vcf"), "ref": str(ref), "genes": ["BRCA1"]},
+    )
+    with pytest.raises(RequestError, match="ref_index") as refused:
+        PathGuard([str(allowed)]).check(params)
+    assert refused.value.code == "path_not_allowed"
 
 
 @pytest.mark.parametrize(

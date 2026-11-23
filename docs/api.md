@@ -1014,7 +1014,7 @@ CLI: `wgsextract vcf filter`.
 
 Filter; output role `filtered_vcf`, with the record count in its metrics.
 
-`VcfFilterParams`: Keep the calls in a region or gene, matching an expression, into
+`VcfFilterParams`: Keep the calls in a region or panel, matching an expression, into
 `filtered.vcf.gz`.
 
 | Field | Type | Default | CLI | Description |
@@ -1023,10 +1023,15 @@ Filter; output role `filtered_vcf`, with the record count in its metrics.
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `gene` | `str \| None` | `None` | `--gene` | Keep a gene by symbol (repeatable). |
+| `genes` | `tuple[str, ...]` | `[]` | `--genes` | Comma-separated gene symbols (repeatable). |
+| `gene_file` | `Path \| None` | `None` | `--gene-file` | File of gene symbols (whitespace or comma-separated; # starts a comment). |
+| `presets` | `tuple[str, ...]` | `[]` | `--preset` | Gene panel preset (repeatable): pharmacogenes, hla, autoimmune, acmg-sf, cardiac. One of: `pharmacogenes`, `hla`, `autoimmune`, `acmg-sf`, `cardiac` |
+| `bed` | `Path \| None` | `None` | `--bed` | BED or BED.gz panel, unioned with the selected gene spans. |
+| `pad_kb` | `float` | `0.0` | `--pad-kb` | Padding on each side of a gene span, in kb (default: 0). |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region(s); when a panel is given, restrict its union to these regions. |
 | `expr` | `str \| None` | `None` | `--expr` | bcftools filter expression (e.g. 'QUAL>30') |
-| `gene` | `str \| None` | `None` | `--gene` | Filter by Gene Name (e.g. BRCA1, KCNQ2) |
 | `exclude_near_gaps` | `bool` | `False` | `--exclude-near-gaps` | Exclude variants in or near genomic gaps (requires Count Ns output) |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
 
 ### `api.vcf.table(VcfTableParams)`
 
@@ -1043,7 +1048,14 @@ Write the table (role `variant_table`) and database (`variant_database`);
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Only export this region (e.g. chr22). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `gene` | `str \| None` | `None` | `--gene` | Keep a gene by symbol (repeatable). |
+| `genes` | `tuple[str, ...]` | `[]` | `--genes` | Comma-separated gene symbols (repeatable). |
+| `gene_file` | `Path \| None` | `None` | `--gene-file` | File of gene symbols (whitespace or comma-separated; # starts a comment). |
+| `presets` | `tuple[str, ...]` | `[]` | `--preset` | Gene panel preset (repeatable): pharmacogenes, hla, autoimmune, acmg-sf, cardiac. One of: `pharmacogenes`, `hla`, `autoimmune`, `acmg-sf`, `cardiac` |
+| `bed` | `Path \| None` | `None` | `--bed` | BED or BED.gz panel, unioned with the selected gene spans. |
+| `pad_kb` | `float` | `0.0` | `--pad-kb` | Padding on each side of a gene span, in kb (default: 0). |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region(s); when a panel is given, restrict its union to these regions. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample whose genotypes to use (default: the first). |
 | `all_alleles` | `bool` | `False` | `--all-alleles` | Also export ALT alleles the sample doesn't carry (0/0 calls, no-calls, the other ALT of a 0/1 multi-allelic site). |
 | `pharmcat_json` | `Path \| None` | `None` | `--pharmcat-json` | PharmCAT's <stem>.phenotype.json (from 'vcf pharmcat'), to add its diplotype and phenotype to rows in those genes. |

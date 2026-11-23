@@ -7,7 +7,6 @@ from pathlib import Path
 from wgsextract_cli.api.vcf import VcfFilterParams, VcfTrioParams
 from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
-from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -15,7 +14,6 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS
 from wgsextract_cli.core.reference_assets import n_count_paths, read_fai_lengths
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
@@ -38,6 +36,7 @@ from wgsextract_cli.core.variant_files import (
 
 from .._extract_helpers import cleanup_files
 from .basic import record_variants, require_vcf_input, vcf_input_handler
+from .panel_slice import indexed_vcf, resolve_panel_slice
 from .trio_alignments import (
     CLUSTER_DISTANCE,
     DEFAULT_MIN_DEPTH,
@@ -97,32 +96,11 @@ def run_filter(params: VcfFilterParams) -> None:
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
     out_vcf = str(Path(outdir, "filtered.vcf.gz"))
 
-    # Resolve reference if needed for gap filtering or gene resolution
-    md5_sig = calculate_bam_md5(input_file, None)
-    lib = ReferenceLibrary(params.ref, md5_sig, input_path=input_file)
-    logging.debug(f"Resolved reference: {lib.fasta}")
-
-    # Gene-based region resolution
-    region = params.region
-    if params.gene:
-        from wgsextract_cli.core.gene_map import gene_coords
-
-        maps = [
-            str(Path(d, f"genes_{canonical_build(lib.build or 'hg38')}.tsv"))
-            for d in (*DOWNLOAD_DIRS, "microarray")
-        ]
-        resolved_region = gene_coords(
-            lib.resource_root(*maps) or str(absolute_path(input_file).parent),
-            params.gene,
-            lib.build or "hg38",
-        )
-        logging.info(f"Resolved gene {params.gene} to {resolved_region}")
-        region = resolved_region
-
-    region_args = ["-r", region] if region else []
+    scope = resolve_panel_slice(params, input_file)
     expr_args = ["-i", params.expr] if params.expr else []
-
-    input_vcf = ensure_vcf_prepared(input_file)
+    input_vcf = input_file
+    if scope is None or scope.intervals:
+        input_vcf = (scope.prepared if scope else None) or indexed_vcf(input_file)
     if Path(out_vcf).exists() and any(
         Path(p).exists() and os.path.samefile(out_vcf, p)
         for p in (input_file, input_vcf)
@@ -135,8 +113,17 @@ def run_filter(params: VcfFilterParams) -> None:
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(outdir), prefix=".wgse_filter_"
     ) as work:
+        region_args = (
+            scope.args(input_vcf, work)
+            if scope is not None
+            else ["-r", params.region]
+            if params.region
+            else []
+        )
         exclude_args = []
         if params.exclude_near_gaps:
+            md5_sig = calculate_bam_md5(input_file, None)
+            lib = ReferenceLibrary(params.ref, md5_sig, input_path=input_file)
             gaps_bed = str(Path(work, "gaps.bed"))
             if not lib.fasta:
                 warn(
