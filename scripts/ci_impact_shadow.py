@@ -13,7 +13,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from scripts.ci_impact_diff import ImpactDiff, git_blob, impact_diff
 from scripts.ci_impact_import_smoke import smoke_package
@@ -44,6 +44,19 @@ from scripts.ci_test_tiers import SINGLE_OS_MODULES
 SOURCE = "src/wgsextract_cli/"
 VARIANTS = ("decisive", "tight", "symbol", "widely_called")
 LOCKS = {"pixi.toml", "pixi.lock", "pyproject.toml"}
+
+
+class GateDecision(TypedDict):
+    mode: str
+    selection: Literal["all"] | list[str]
+
+
+def parse_selection(value: object) -> Literal["all"] | list[str]:
+    if value == "all":
+        return "all"
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return value
+    raise ValueError("selection must be 'all' or a JSON array of test paths")
 
 
 def observation_map(
@@ -376,13 +389,23 @@ def main() -> None:
     )
     actual_selection = test_targets(args.selection)
     requested = tests if actual_selection is None else tests & set(actual_selection)
-    gate_decision = (
-        json.loads(args.gate_decision.read_text(encoding="utf-8"))
-        if args.gate_decision is not None and args.gate_decision.is_file()
-        else {"mode": "legacy", "selection": sorted(requested)}
-    )
+    gate_decision: GateDecision = {"mode": "legacy", "selection": sorted(requested)}
+    if args.gate_decision is not None and args.gate_decision.is_file():
+        try:
+            decision = json.loads(args.gate_decision.read_text(encoding="utf-8"))
+            if not isinstance(decision, dict) or not isinstance(
+                decision.get("mode"), str
+            ):
+                raise ValueError("missing gate decision mode")
+            gate_decision = {
+                "mode": decision["mode"],
+                "selection": parse_selection(decision.get("selection")),
+            }
+        except (OSError, ValueError):
+            gate_decision["mode"] = "unknown-invalid-decision"
     enforced = gate_decision["selection"]
     effective = tests if enforced == "all" else tests & set(enforced)
+    invalid_decision = gate_decision["mode"] == "unknown-invalid-decision"
     actual: dict[str, Any] = {}
     unmapped = 0
     receipt = "No regular pytest receipt (not run, cache-only, or interrupted)."
@@ -431,7 +454,11 @@ def main() -> None:
     summary = [
         "### Linux x64 test selection shadow (advisory)",
         f"Actual selector: {len(requested)} files before cache; {len(completed)} files with pass/fail observations.",
-        f"Enforced selector: {gate_decision['mode']} ({len(effective)} files before cache).",
+        (
+            "Enforced selector unknown: invalid gate receipt; showing legacy selection."
+            if invalid_decision
+            else f"Enforced selector: {gate_decision['mode']} ({len(effective)} files before cache)."
+        ),
         receipt,
         gap or f"Observation map: `{evidence['manifest']['source_sha']}`.",
         f"Advisory symbol/helper package-import smoke: {import_probe}.",
@@ -477,6 +504,7 @@ def main() -> None:
         and args.outcome in {"success", "failure"}
         and unmapped == 0
         and gate_decision["mode"] != "symbol"
+        and not invalid_decision
     )
     summary.extend(
         (

@@ -133,7 +133,11 @@ def replay(
     worktree = workspace / "tree"
     junit = workspace / "replay.xml"
     junit.unlink(missing_ok=True)
-    git(root, "worktree", "add", "--detach", str(worktree), sha)
+    try:
+        git(root, "worktree", "add", "--detach", str(worktree), sha)
+    except subprocess.CalledProcessError:
+        print(f"{test}: could not check out {sha} for replay")
+        return "unknown"
     try:
         if not (worktree / test).is_file() or any(
             (worktree / name).read_bytes() != (root / name).read_bytes()
@@ -191,7 +195,10 @@ def replay(
     except (ET.ParseError, OSError, ValueError):
         return "unknown"
     finally:
-        git(root, "worktree", "remove", "--force", str(worktree))
+        try:
+            git(root, "worktree", "remove", "--force", str(worktree))
+        except subprocess.CalledProcessError:
+            print(f"{test}: could not remove replay worktree for {sha}")
 
 
 def receipt_from_run(gh: GitHub, run: int) -> dict[str, Any]:

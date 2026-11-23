@@ -5,6 +5,7 @@ import hashlib
 import json
 import platform
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from scripts.ci_impact_backstop import (
 )
 from scripts.ci_impact_gate import plan
 from scripts.ci_impact_observations import SCHEMA
+from scripts.ci_impact_shadow import GateDecision
 
 
 @pytest.mark.parametrize(
@@ -99,7 +101,7 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
 
     def run_gate(
         *, event: str = "pull_request", disabled: bool = False
-    ) -> dict[str, str | list[str]]:
+    ) -> GateDecision:
         return plan(
             tmp_path,
             event=event,
@@ -176,6 +178,36 @@ def test_backstop_requires_reproduction_after_a_clean_boundary() -> None:
     assert first_bad(["one", "two", "three"], lambda _: next(outcomes))[0] is None
 
 
+def test_symbol_gate_reports_bad_legacy_selection_without_a_traceback(
+    tmp_path: Path,
+) -> None:
+    output = tmp_path / "decision.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "scripts.ci_impact_gate",
+            "--legacy",
+            "tests/test_writer.py",
+            "--event",
+            "pull_request",
+            "--base",
+            "HEAD",
+            "--observations",
+            str(tmp_path / "map.json.gz"),
+            "--output",
+            str(output),
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert "--legacy" in result.stderr and "JSON array" in result.stderr
+    assert "Traceback" not in result.stderr
+    assert not output.exists()
+
+
 def test_backstop_replays_only_the_failed_parameter_and_collection_module(
     tmp_path: Path,
 ) -> None:
@@ -229,6 +261,12 @@ def test_replay_reuses_tools_and_runs_historical_source(tmp_path: Path) -> None:
     )
     assert tool.read_text() == "ready"
     assert not (workspace / "tree").exists()
+    collision = workspace / "tree"
+    collision.mkdir()
+    sentinel = collision / "existing.txt"
+    sentinel.write_text("keep")
+    assert replay(tmp_path, workspace, sha, test, f"{test}::test_tool", "") == "unknown"
+    assert sentinel.read_text() == "keep"
 
 
 def test_backstop_requires_a_real_omission_on_identical_pr_tree() -> None:
