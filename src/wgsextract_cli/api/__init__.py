@@ -144,7 +144,6 @@ from .info import (
 )
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
 from .lookup import LookupParams
-from .methylation import MethylationPileupParams
 from .methylation import MethylationPileupParams, MethylationRegionsParams
 from .microarray import MicroarrayParams
 from .panel import PanelBedParams, PanelCheckParams
