@@ -40741,7 +40741,7 @@
    }
   },
   "typing str": {
-   "help": "usage: wgsextract typing str [-h] [--caller {expansionhunter,longtr,strkit}] [--catalog FILE]\n                             [--sex {male,female}]\n\noptions:\n  -h, --help            show this help message and exit\n  --caller {expansionhunter,longtr,strkit}\n                        Repeat caller (default: longtr for Nanopore and PacBio reads,\n                        expansionhunter for others). strkit suits Nanopore R9 reads and very long\n                        alleles.\n  --catalog FILE        Repeat catalog in the caller's format: an ExpansionHunter variant catalog\n                        (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped\n                        catalog for the input's build, or its repeats bundled for LongTR and\n                        STRkit.\n  --sex {male,female}   Sample sex (the number of chrX alleles). Default: inferred from chrX/chrY\n                        coverage.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing str --input sample.cram\n\noutputs (in the output directory unless noted):\n  <stem>.str.tsv, a flagged-repeat summary, and the caller's calls:\n  ExpansionHunter's <stem>.str.vcf/.json, LongTR's <stem>.str.vcf.gz or\n  STRkit's <stem>.str.vcf and <stem>.str.strkit.json.\n\nneeds:\n  samtools; depending on options and inputs, also: ExpansionHunter, LongTR,\n  strkit, bcftools; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract typing str [-h] [--caller {expansionhunter,longtr,strkit}] [--catalog FILE]\n                             [--loci ID[,ID...]] [--format {tsv,parquet}] [--sex {male,female}]\n\noptions:\n  -h, --help            show this help message and exit\n  --caller {expansionhunter,longtr,strkit}\n                        Repeat caller (default: longtr for Nanopore and PacBio reads,\n                        expansionhunter for others). strkit suits Nanopore R9 reads and very long\n                        alleles.\n  --catalog FILE        Repeat catalog in the caller's format: an ExpansionHunter variant catalog\n                        (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped\n                        catalog for the input's build, or its repeats bundled for LongTR and\n                        STRkit.\n  --loci ID[,ID...]     Only size these comma-separated, case-sensitive catalog locus IDs\n                        (example: HTT,FMR1,AR). Targeted files get a separate prefix. Default: the\n                        entire catalog.\n  --format {tsv,parquet}\n                        Repeat summary table format: tsv or parquet (needs pyarrow). Default: tsv.\n  --sex {male,female}   Sample sex (the number of chrX alleles). Default: inferred from chrX/chrY\n                        coverage.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract typing str --input sample.cram\n  wgsextract typing str --input sample.cram --loci HTT,FMR1 --format parquet\n\noutputs (in the output directory unless noted):\n  <stem>.str.tsv (or .str.parquet), per-locus repeat calls in the result JSON,\n  and the caller's calls: ExpansionHunter's <stem>.str.vcf/.json, LongTR's\n  <stem>.str.vcf.gz or STRkit's <stem>.str.vcf and <stem>.str.strkit.json.\n  Targeted runs append a locus digest to the .str prefix.\n\nneeds:\n  samtools; depending on options and inputs, also: ExpansionHunter, LongTR,\n  strkit, bcftools; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -41123,6 +41123,41 @@
       ],
       "required": false,
       "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "loci",
+      "exclusive_group": null,
+      "help": "Only size these comma-separated, case-sensitive catalog locus IDs (example: HTT,FMR1,AR). Targeted files get a separate prefix. Default: the entire catalog.",
+      "metavar": "ID[,ID...]",
+      "nargs": null,
+      "option_strings": [
+       "--loci"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "tsv",
+       "parquet"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "tsv",
+      "dest": "table_format",
+      "exclusive_group": null,
+      "help": "Repeat summary table format: tsv or parquet (needs pyarrow). Default: tsv.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--format"
+      ],
+      "required": false,
+      "type": "table_format_type.<locals>.table_format"
      },
      {
       "choices": [
@@ -60648,6 +60683,7 @@
    "input": "x.bam",
    "json": false,
    "keep_awake": false,
+   "loci": null,
    "log_dir": null,
    "log_file": null,
    "memory": null,
@@ -60656,6 +60692,7 @@
    "quiet": false,
    "ref": null,
    "sex": "male",
+   "table_format": "tsv",
    "threads": null,
    "tmp_dir": null,
    "typing_cmd": "str"
