@@ -101,14 +101,12 @@ def _native_gpu_plan_key(
     preference = native_gpu_preference(job.prefer_native_gpu)
     tool = align_cmd.short_read_tool(job)
     if on_windows_x64():
-        # Fingerprint policy, not transient preflight results. Streaming may
-        # reserve extra RAM; only the actual alignment should plan for it.
+        # Use the same CUDA availability signal as alignment. Leave RAM and
+        # commit estimates, including any streaming reserve, to execution.
         if preference is False or job.gpu or tool != "bwa":
             return False
         native = find_native_aligner("bwa", job.native_aligners, probe=True)
-        return native is not None and (
-            native.cuda_hardware_supported or native.cuda_available
-        )
+        return native is not None and native.cuda_available
     if (
         preference is not True
         or job.gpu

@@ -106,7 +106,7 @@ sys.exit(subprocess.call([{real!r}, *args]))
         ("commit-steps-past-ram", "cuda", "windows_commit_budget_low_sort"),
     ],
 )
-def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
+def test_issue1403_windows_automatic_cuda_requires_memory_preflight(
     tmp_path, monkeypatch, ram, caplog, mode, backend, reason
 ):
     """#1403: automatic Windows CUDA still requires the RAM and commit checks."""
@@ -189,12 +189,17 @@ def test_issue1119_windows_optional_native_bwa_and_commit_fallback(
 
 @needs_tools("bwa", "samtools")
 @pytest.mark.parametrize(
-    ("streaming", "cuda"),
-    [(False, True), (True, True), (False, False)],
-    ids=["fastq", "bam", "cpu-only"],
+    ("streaming", "cuda", "hardware_supported"),
+    [
+        (False, True, True),
+        (True, True, True),
+        (False, False, False),
+        (False, False, True),
+    ],
+    ids=["fastq", "bam", "cpu-only", "cuda-unavailable"],
 )
 def test_issue1403_realign_respects_windows_cuda_policy_on_resume(
-    tmp_path, monkeypatch, ram, streaming, cuda
+    tmp_path, monkeypatch, ram, streaming, cuda, hardware_supported
 ):
     monkeypatch.setattr(
         native_aligners,
@@ -202,9 +207,9 @@ def test_issue1403_realign_respects_windows_cuda_policy_on_resume(
         Namespace(system=lambda: "Windows", machine=lambda: "AMD64"),
     )
     monkeypatch.setattr(short_reads, "windows_available_commit", lambda: 32 * GIB)
-    candidate = _windows_bwa_candidate(
-        tmp_path, _cuda_capabilities("bwa", cuda_available=cuda)
-    )
+    capabilities = json.loads(_cuda_capabilities("bwa", cuda_available=cuda))
+    capabilities["cuda_hardware_supported"] = hardware_supported
+    candidate = _windows_bwa_candidate(tmp_path, json.dumps(capabilities))
     monkeypatch.setitem(settings, "wgse_bwa_path", str(candidate))
     monkeypatch.delitem(settings, "prefer_native_gpu", raising=False)
     ram(64 * GIB)
@@ -219,11 +224,14 @@ def test_issue1403_realign_respects_windows_cuda_policy_on_resume(
     (bam,) = out.glob("*_aligned.bam")
     assert first.metrics["native_aligner_backend"] == "cpu"
     control = _samtools("view", str(bam))
-    written = bam.stat().st_mtime_ns
 
     automatic = _run_realign(source, reads.ref, out, **options)
     assert automatic.metrics["native_aligner_backend"] == ("cuda" if cuda else "cpu")
-    assert (bam.stat().st_mtime_ns != written) == cuda
+    assert automatic.details is not None
+    (align_step,) = [
+        step for step in automatic.details["steps"] if step["step"] == "align"
+    ]
+    assert align_step["action"] == ("run" if cuda else "skip")
     assert _samtools("view", str(bam)) == control
     forced_cpu = _run_realign(
         source, reads.ref, out, prefer_native_gpu=False, **options
