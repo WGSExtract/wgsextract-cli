@@ -177,6 +177,7 @@ def test_linux_wgse_minimap2_keeps_its_gpu_when_busy_at_the_first_probe(
 )
 def test_issue1121_windows_long_reads_select_cuda_or_fall_back(
     tmp_path,
+    request,
     monkeypatch,
     ram,
     installed,
@@ -193,13 +194,11 @@ def test_issue1121_windows_long_reads_select_cuda_or_fall_back(
     monkeypatch.setattr(windows_arm64, "windows_native_machine", lambda: None)
     monkeypatch.setattr(backends, "windows_available_commit", lambda: commit_gib * GIB)
     ram(64 * GIB)
+    bindir = only_tools(request, "minimap2", "samtools", copy_on_windows=True)
     minimap2 = shutil.which("minimap2")
-    if not minimap2 or not shutil.which("samtools"):
-        pytest.skip("requires minimap2 and samtools")
     reads = _short_reads(tmp_path)
     if installed:
         # Stand in for a CUDA-capable executable, but map with real minimap2.
-        bindir = tmp_path / "cuda-bin"
         capability_file = tmp_path / "capabilities.json"
         capability_file.write_text(_minimap2_cuda("0.4.1", cuda_available))
         python_tool(
