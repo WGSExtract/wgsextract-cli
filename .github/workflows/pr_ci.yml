@@ -23,7 +23,7 @@ jobs:
     name: changes
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
       contents: read
       statuses: read
@@ -104,6 +104,45 @@ jobs:
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Prepare selector activation canary
+        id: selector-setup
+        if: github.event_name == 'pull_request' && contains(fromJSON(steps.diff.outputs.python_files), 'scripts/ci_impact_gate.py')
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+          writer: "false"
+      - name: Restore the Linux observation map for the activation canary
+        if: steps.selector-setup.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-impact-map/linux.json.gz
+          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ci-impact-v2-linux-x64-
+      - name: Verify fresh Linux selector evidence on this change
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.selector-setup.outcome != 'skipped' && steps.selector-setup.outcome != '' }}
+        continue-on-error: true
+        env:
+          TEST_SELECTION: ${{ steps.diff.outputs.tests }}
+          SYMBOL_DISABLED: ${{ vars.CI_DISABLE_SYMBOL_SELECTION }}
+        run: |
+          set -o pipefail
+          flags=()
+          if [ "$SYMBOL_DISABLED" = true ]; then flags+=(--disabled); fi
+          if ! timeout 60 pixi run -e dev --no-install python -m scripts.ci_impact_gate \
+            --verify-wiring --event pull_request --base HEAD^1 --legacy "$TEST_SELECTION" \
+            --observations out/test-impact-map/linux.json.gz \
+            --output out/test-selection-canary.json "${flags[@]}" | tee -a "$GITHUB_STEP_SUMMARY"; then
+            echo '::warning::Linux selector verification unavailable; the current selection remains in force when the gate cannot validate its inputs.'
+            exit 1
+          fi
+      - name: Compare output contracts with the base's pinned baselines
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
+        run: python3 scripts/output_contracts.py check --base "$BASE"
       # Stdlib-only and instant, so fragment-only PRs need no extra runner.
       # A release's queue commit must not leave late fragments unassembled.
       # PR runs check out the merge commit, whose first parent is the base it
@@ -316,7 +355,7 @@ jobs:
         env:
           CI_TESTS: ${{ needs.changes.outputs.ci_tests }}
         run: |
-          python -m pip install --quiet -e . pytest pytest-xdist jsonschema
+          python -m pip install --quiet -e . pytest pytest-xdist jsonschema coverage
           mkdir -p out
           python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", *json.loads(os.environ["CI_TESTS"]), "--basetemp=out/ci-policy"], check=True)'
   smoke:

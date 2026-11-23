@@ -45,7 +45,11 @@ from wgsextract_cli.core.process_registry import (
 from wgsextract_cli.core.process_registry import (
     proc_registry,
     process_group_kwargs,
+    remember_process_group,
     terminate_trees,
+)
+from wgsextract_cli.core.process_registry import (
+    wait_with_cancel as wait_with_cancel,
 )
 from wgsextract_cli.core.progress import Heartbeat, Worker, process_cpu_seconds
 from wgsextract_cli.core.resource_policy import (
@@ -540,6 +544,7 @@ def popen(
     except OSError as error:
         _start_relays(relays, launched=False)
         raise ToolLaunchError(launch_error_message(cmd_list[0], error)) from error
+    remember_process_group(process)
     if isinstance(process, _RelayedPopen):
         process.relays = _start_relays(relays, launched=True)
     proc_registry.register_process(cmd_str, process)
@@ -552,24 +557,6 @@ def popen(
         target=_unregister_finished_process, daemon=True
     ).start()
     return process
-
-
-def wait_with_cancel(
-    process: subprocess.Popen[str] | subprocess.Popen[bytes],
-    cancel_event: CancelEvent | None = None,
-) -> bool:
-    """Waits for a process while checking for a cancel event."""
-    while process.poll() is None:
-        if cancel_event and cancel_event.is_set():
-            logging.info(f"Terminating process {process.pid} due to cancellation.")
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            return False
-        time.sleep(0.1)
-    return process.returncode == 0
 
 
 def _stderr_tail(stream: IO[bytes], max_lines: int = 20) -> str:

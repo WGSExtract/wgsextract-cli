@@ -167,7 +167,7 @@ class ReferenceLibrary:
             self._reresolve_fasta_for_build(explicit_fasta)
 
         # Ploidy files and the VEP cache depend on the build, not on a FASTA.
-        self._resolve_build_support_files()
+        self.resolve_build_support_files()
         self._resolve_vep_cache(settings.get("vep_cache_directory"))
 
         if not self.fasta:
@@ -275,7 +275,9 @@ class ReferenceLibrary:
             if fact is not None:
                 return str(fact.value)
         if not build and header_target:
-            if header_target.lower().endswith((".vcf", ".vcf.gz", ".bcf")):
+            from wgsextract_cli.core.variant_files import is_vcf_path
+
+            if is_vcf_path(header_target):
                 build = get_vcf_build(header_target)
                 method = "VCF header contigs"
                 if build:
@@ -341,12 +343,13 @@ class ReferenceLibrary:
 
     # --- Companion resources ----------------------------------------------
 
-    def _resolve_build_support_files(self) -> None:
-        if not self.build:
-            return
+    def resolve_build_support_files(self) -> None:
+        """Find the ploidy file for ``build``, or the build-agnostic
+        ``ploidy.txt``; call again after changing ``build``."""
+        names = [f"ploidy_{self.build}.txt"] if self.build else []
         self.ploidy_file = self._first_existing_file(
             self._resource_dirs("", *DOWNLOAD_DIRS, "microarray"),
-            [f"ploidy_{self.build}.txt", "ploidy.txt"],
+            [*names, "ploidy.txt"],
         )
 
     def _resolve_vep_cache(self, configured_vep_cache: object) -> None:
