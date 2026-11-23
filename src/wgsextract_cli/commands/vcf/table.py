@@ -232,8 +232,10 @@ def run_table(params: VcfTableParams) -> None:
     Path(outdir).mkdir(parents=True, exist_ok=True)
     source = input_vcf
     scope = resolve_panel_slice(params, source)
-    if (scope is not None and scope.intervals) or (scope is None and params.region):
-        input_vcf = (scope.prepared if scope else None) or indexed_vcf(input_vcf)
+    if scope is not None:
+        input_vcf = scope.prepared
+    elif params.region:
+        input_vcf = indexed_vcf(input_vcf)
     samples, sample = _select_sample(input_vcf, params.sample)
     pharmcat = _pharmcat_calls(
         os.fspath(params.pharmcat_json) if params.pharmcat_json else None
@@ -253,7 +255,7 @@ def run_table(params: VcfTableParams) -> None:
     with ExitStack() as stack:
         if scope is not None:
             work = stack.enter_context(scratch_directory(outdir, ".wgse_table_panel_"))
-            command += scope.args(input_vcf, work)
+            command += scope.args(work)
         elif params.region:
             command += ["-r", params.region]
         stream = _VcfStream([*command, input_vcf])

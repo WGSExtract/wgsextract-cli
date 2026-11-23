@@ -11,7 +11,13 @@ from pathlib import Path
 import pytest
 
 from tests.home_isolation import state_directory_setting
-from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract, write_fasta
+from tests.htslib_helpers import (
+    bgzip_index,
+    needs_htslib,
+    reference_for_vcf,
+    run_wgsextract,
+    write_fasta,
+)
 from wgsextract_cli import api
 from wgsextract_cli.core.results import manifest_path_for
 from wgsextract_cli.core.utils import UsageError, run_command
@@ -183,7 +189,7 @@ def test_1290_does_not_guess_build_from_vcf_filename(tmp_path):
 def test_1290_uses_assembly_metadata_and_pads_gene_not_bed(tmp_path):
     vcf = tmp_path / "sample_hg19.vcf"
     header = (
-        "##fileformat=VCFv4.2\n##assembly=GRCh38\n##contig=<ID=chr17>\n"
+        '##fileformat=VCFv4.2\n##contig=<ID=chr17,assembly="GRCh38.p14">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
     )
     vcf.write_text(
@@ -205,14 +211,14 @@ def test_1290_uses_assembly_metadata_and_pads_gene_not_bed(tmp_path):
     assert _ids(tmp_path / "filtered.vcf.gz") == ["one_base_padding", "deletion"]
 
 
-@pytest.mark.parametrize("declare_contig", [True, False])
+@pytest.mark.parametrize("declared", ["chr17", "chr1", None])
 def test_1290_unrelated_default_reference_does_not_clip_lengthless_vcf(
-    tmp_path, declare_contig
+    tmp_path, declared
 ):
     vcf = tmp_path / "input.vcf"
-    header = "##fileformat=VCFv4.2\n##assembly=GRCh38\n"
-    if declare_contig:
-        header += "##contig=<ID=chr17>\n"
+    header = "##fileformat=VCFv4.2\n##assembly=GRCh38.p14\n"
+    if declared:
+        header += f"##contig=<ID={declared}>\n"
     vcf.write_text(
         header
         + "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
@@ -232,4 +238,21 @@ def test_1290_unrelated_default_reference_does_not_clip_lengthless_vcf(
             "--outdir", str(tmp_path), "--gene", "BRCA1",
         ]
     )  # fmt: skip
+    assert _ids(tmp_path / "filtered.vcf.gz") == ["brca1"]
+
+
+def test_1290_build_resolution_can_use_an_indexed_reference_in_a_library(tmp_path):
+    vcf = tmp_path / "in_chr17.vcf"
+    template = (
+        "##fileformat=VCFv4.2\n##contig=<ID=chr17{length}>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr17\t43044500\tbrca1\tA\tC\t50\tPASS\t.\n"
+    )
+    vcf.write_text(template.format(length=",length=83257441"), encoding="utf-8")
+    library = tmp_path / "reference"
+    reference_for_vcf(library / "genomes" / "custom.fa.gz", vcf)
+    vcf.write_text(template.format(length=""), encoding="utf-8")
+    api.vcf.filter(
+        api.VcfFilterParams(vcf_input=vcf, outdir=tmp_path, gene="BRCA1", ref=library)
+    )
     assert _ids(tmp_path / "filtered.vcf.gz") == ["brca1"]

@@ -98,9 +98,7 @@ def run_filter(params: VcfFilterParams) -> None:
 
     scope = resolve_panel_slice(params, input_file)
     expr_args = ["-i", params.expr] if params.expr else []
-    input_vcf = input_file
-    if scope is None or scope.intervals:
-        input_vcf = (scope.prepared if scope else None) or indexed_vcf(input_file)
+    input_vcf = scope.prepared if scope else indexed_vcf(input_file)
     if Path(out_vcf).exists() and any(
         Path(p).exists() and os.path.samefile(out_vcf, p)
         for p in (input_file, input_vcf)
@@ -114,7 +112,7 @@ def run_filter(params: VcfFilterParams) -> None:
         dir=scratch_parent(outdir), prefix=".wgse_filter_"
     ) as work:
         region_args = (
-            scope.args(input_vcf, work)
+            scope.args(work)
             if scope is not None
             else ["-r", params.region]
             if params.region

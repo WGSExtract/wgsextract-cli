@@ -49,8 +49,10 @@ file accepts names separated by spaces, commas or newlines; `#` starts a
 comment. Symbols and unique aliases resolve offline against the bundled RefSeq
 gene spans. An unknown name or ambiguous alias is an error. The VCF header or
 the `.fai` of a matching `--ref` FASTA must identify GRCh37, GRCh38 or
-CHM13v2.0; the VCF filename does not identify its build. `--pad-kb` pads each
-whole gene span on both sides (default: no padding).
+CHM13v2.0. If `--ref` is a local library and the header doesn't identify a
+build, its indexed FASTAs must point to a single build. Filenames alone
+don't identify an assembly. `--pad-kb` pads each whole gene span on both
+sides (default: no padding).
 
 The commands take the **union** of the gene spans and the zero-based,
 half-open `--bed` intervals (plain or gzipped), then **intersect** it with

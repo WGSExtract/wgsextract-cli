@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import re
 from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,7 +13,11 @@ from wgsextract_cli.api.vcf import VcfFilterParams, VcfTableParams
 from wgsextract_cli.core import panel, read_scope
 from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
 from wgsextract_cli.core.paths import append_suffix
-from wgsextract_cli.core.ref_library.assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import (
+    read_fai_lengths,
+    reference_fasta_candidates,
+    reference_genomes_dir,
+)
 from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.region_selection import (
     Intervals,
@@ -31,26 +36,25 @@ from wgsextract_cli.core.variant_files import (
 )
 
 _UNKNOWN_LENGTH = 2**31 - 1
+_PATCH_RELEASE = re.compile(r"(GRCh3[78])\.p[0-9]+", re.IGNORECASE)
+_CONTIG_ASSEMBLY = re.compile(r',assembly=("[^"]*"|[^,>]+)')
 
 
 @dataclass(frozen=True)
 class PanelSlice:
     intervals: Intervals
     build: str | None
-    prepared: str | None
+    prepared: str
 
-    def args(self, vcf: str, work: str) -> list[str]:
+    def args(self, work: str) -> list[str]:
         if not self.intervals:
             return ["--header-only"]
         regions = Path(work, "panel-regions.tsv")
-        # bcftools emits contigs in regions-file order. Tabix uses the VCF's
-        # record order, which can differ from the header's declaration order.
-        order = dict.fromkeys([*vcf_index_chromosomes(vcf), *self.intervals])
         regions.write_text(
             "".join(
                 f"{chrom}\t{start + 1}\t{end}\n"
-                for chrom in order
-                for start, end in self.intervals.get(chrom, ())
+                for chrom, spans in self.intervals.items()
+                for start, end in spans
             ),
             encoding="utf-8",
             newline="\n",
@@ -86,27 +90,61 @@ def _length_build(lengths: dict[str, int]) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def _declared_build(value: str) -> str | None:
+    value = value.strip().strip('"<>')
+    patch = _PATCH_RELEASE.fullmatch(value)
+    return canonical_build(patch[1] if patch else value)
+
+
+def _fasta_builds(ref: Path | None) -> set[str]:
+    if ref is None or not read_scope.may_follow(ref):
+        return set()
+    candidates = (
+        [str(ref)]
+        if ref.is_file()
+        else [
+            fasta
+            for directory in (ref, Path(reference_genomes_dir(ref)))
+            if read_scope.may_follow(directory)
+            for fasta in reference_fasta_candidates(directory)
+        ]
+    )
+    return {
+        build
+        for fasta in candidates
+        if read_scope.may_follow(fasta)
+        and read_scope.may_follow(append_suffix(fasta, ".fai"))
+        if (build := _length_build(read_fai_lengths(fasta)))
+    }
+
+
 def _gene_annotations(
+    params: VcfFilterParams | VcfTableParams,
     header: str,
     vcf_lengths: dict[str, int],
-    ref_lengths: dict[str, int],
-    *,
-    explicit_ref: bool,
 ) -> panel.Annotations:
+    ref = params.ref.expanduser() if params.ref else None
     evidence = {
         build
         for line in header.splitlines()
         if line.startswith(("##assembly=", "##reference="))
-        if (build := canonical_build(line.partition("=")[2].strip().strip('"<>')))
+        if (build := _declared_build(line.partition("=")[2]))
+    }
+    evidence |= {
+        build
+        for line in header.splitlines()
+        if line.startswith("##contig=<")
+        if (match := _CONTIG_ASSEMBLY.search(line))
+        if (build := _declared_build(match[1]))
     }
     if build := _length_build(vcf_lengths):
         evidence.add(build)
-    if explicit_ref or not evidence:
-        if build := _length_build(ref_lengths):
-            evidence.add(build)
+    if not evidence or (params.explicitly_set("ref") and ref and ref.is_file()):
+        evidence.update(_fasta_builds(ref))
     if len(evidence) > 1:
         raise UsageError(
-            f"Conflicting assembly evidence: {', '.join(sorted(evidence))}."
+            f"Conflicting assembly evidence: {', '.join(sorted(evidence))}. "
+            "Provide a matching indexed FASTA with --ref."
         )
     if not evidence:
         raise UsageError(
@@ -208,18 +246,7 @@ def resolve_panel_slice(
     rows: list[tuple[str, int, int]] = []
     bundled_lengths: dict[str, int] = {}
     if params.has_gene_panel:
-        ref = params.ref.expanduser() if params.ref else None
-        ref_lengths = (
-            read_fai_lengths(ref)
-            if ref
-            and read_scope.may_follow(ref)
-            and ref.is_file()
-            and read_scope.may_follow(append_suffix(ref, ".fai"))
-            else {}
-        )
-        notes = _gene_annotations(
-            header, vcf_lengths, ref_lengths, explicit_ref=params.explicitly_set("ref")
-        )
+        notes = _gene_annotations(params, header, vcf_lengths)
         build, source = notes.build, notes.source
         bundled_lengths = dict(notes.contigs)
         loci = _panel_loci(params, notes)
@@ -233,15 +260,15 @@ def resolve_panel_slice(
         bed_rows, bed_sha256 = _bed_rows(params.bed.expanduser())
         rows.extend(bed_rows)
 
-    prepared = None
-    if not declared:
-        prepared = indexed_vcf(vcf)
-        declared = vcf_index_chromosomes(prepared)
+    prepared = indexed_vcf(vcf)
+    # Indexed contigs carry records and set their order; the header can name
+    # additional contigs, or omit some that are present in the index.
+    contigs = dict.fromkeys([*vcf_index_chromosomes(prepared), *declared])
     lengths = {
         name: vcf_lengths.get(name)
         or bundled_lengths.get(match_chromosome_name(name, bundled_lengths) or "")
         or _UNKNOWN_LENGTH
-        for name in declared
+        for name in contigs
     }
     names = {
         chrom: chrom if chrom in lengths else match_chromosome_name(chrom, lengths)
@@ -259,7 +286,9 @@ def resolve_panel_slice(
             end := min(end, lengths[name])
         ):
             unmerged.setdefault(name, []).append((start, end))
-    intervals = {chrom: merge_ranges(spans) for chrom, spans in unmerged.items()}
+    intervals = {
+        chrom: merge_ranges(unmerged[chrom]) for chrom in contigs if chrom in unmerged
+    }
     if params.region:
         intervals = _intersect(intervals, _region_ranges(params.region, lengths))
 
