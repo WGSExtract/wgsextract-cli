@@ -177,8 +177,9 @@ COLUMNS: tuple[Column, ...] = (
     Column(
         "transcript_id",
         TEXT,
-        "ID of the chosen transcript that consequence, impact and HGVS describe "
-        "(VEP Feature, else SnpEff Feature_ID).",
+        "ID of the transcript hgvs_c describes (else hgvs_p, else consequence): "
+        "VEP's Feature or SnpEff's Feature_ID, from the annotation that value "
+        "came from.",
     ),
     Column(
         "phase_set",
@@ -199,7 +200,7 @@ COLUMNS: tuple[Column, ...] = (
         REAL,
         "gnomAD's highest frequency of this ALT among non-bottlenecked genetic "
         "ancestry groups (grpmax/popmax; INFO/GNOMAD_POPMAX_AF, else VEP's "
-        "AFR/AMR/EAS/NFE/SAS frequencies).",
+        "AFR/AMR/EAS/MID/NFE/SAS frequencies).",
     ),
     Column(
         "gnomad_nhomalt",
@@ -246,10 +247,10 @@ _UNRANKED = len(_SEVERITY)
 _VEP_GNOMAD_AF = ("gnomADg_AF", "gnomADe_AF", "gnomAD_AF")
 # gnomAD's grpmax (popmax before v4) is the highest frequency among the
 # genetic ancestry groups that aren't founder or bottlenecked populations:
-# African, admixed American, East Asian, non-Finnish European and South Asian.
-# VEP reports those groups' frequencies; genomes first, then exomes, like
-# gnomad_af.
-_GNOMAD_GRPMAX_GROUPS = ("AFR", "AMR", "EAS", "NFE", "SAS")
+# African, admixed American, East Asian, Middle Eastern (from v4), non-Finnish
+# European and South Asian. VEP reports those groups' frequencies; genomes
+# first, then exomes, like gnomad_af.
+_GNOMAD_GRPMAX_GROUPS = ("AFR", "AMR", "EAS", "MID", "NFE", "SAS")
 _VEP_GNOMAD_GRPMAX = tuple(
     tuple(f"{source}_{group}_AF" for group in _GNOMAD_GRPMAX_GROUPS)
     for source in ("gnomADg", "gnomADe", "gnomAD")
@@ -379,7 +380,15 @@ def _sample_reads(
 def _transcript_id(
     csq: Mapping[str, str] | None, ann: Mapping[str, str] | None
 ) -> str | None:
-    """The chosen annotation's transcript, never a regulatory feature's ID."""
+    """The transcript of the annotation hgvs_c came from (else hgvs_p's, else
+    the consequence's), so the ID never pairs with another annotation's HGVS;
+    never a regulatory feature's ID."""
+    for source, ann_key in (("HGVSc", "HGVS.c"), ("HGVSp", "HGVS.p")):
+        if _value((csq or {}).get(source)):
+            break
+        if _value((ann or {}).get(ann_key)):
+            csq = None
+            break
     if csq is not None:
         if csq.get("Feature_type", "Transcript") != "Transcript":
             return None

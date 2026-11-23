@@ -122,17 +122,23 @@ def test_1289_transcript_id_names_only_the_chosen_transcript():
 
 
 def test_1289_vep_gnomad_groups_give_the_grpmax_frequency():
-    groups = "AFR AMR ASJ EAS FIN NFE SAS".split()
+    groups = "AFR AMR ASJ EAS FIN NFE SAS MID".split()
     names = "|".join(f"gnomADg_{g}_AF" for g in groups)
     csq = f"Allele|Consequence|{names}|gnomADe_NFE_AF"
     # Finnish and Ashkenazi frequencies are bottlenecked: grpmax leaves them out.
-    values = "|".join(["0.001", "", "0.3", "0.002", "0.4", "0.01&0.02", "0.005"])
+    values = "|".join(["0.001", "", "0.3", "0.002", "0.4", "0.01&0.02", "0.005", ""])
     record = _record("chr1", "700", ".", "A", "G", "40", "PASS",
                      f"CSQ=G|missense_variant|{values}|0.9", "GT", "0/1")  # fmt: skip
     exomes_only = _record("chr1", "800", ".", "A", "G", "40", "PASS",
                           f"CSQ=G|missense_variant|{'|' * len(groups)}0.07",
                           "GT", "0/1")  # fmt: skip
-    rows = _rows([record, exomes_only], csq)
+    # Review of issue 1289: v4's grpmax counts Middle Eastern (MID) too.
+    middle_eastern = _record("chr1", "900", ".", "A", "G", "40", "PASS",
+                             "CSQ=G|missense_variant|" + "|".join(
+                                 ["", "", "", "", "", "0.001", "", "0.05", ""]),
+                             "GT", "0/1")  # fmt: skip
+    rows = _rows([record, exomes_only, middle_eastern], csq)
+    assert rows["900", "G"]["gnomad_popmax_af"] == 0.05
     assert rows["700", "G"]["gnomad_popmax_af"] == 0.02
     assert rows["800", "G"]["gnomad_popmax_af"] == 0.07
     assert rows["700", "G"]["gnomad_nhomalt"] is None
@@ -297,3 +303,21 @@ def test_1289_bcftools_dp4_is_one_samples_reads_only_in_a_one_sample_vcf(
 def test_1289_unmeasured_reads_never_become_a_fraction(fmt, sample, fraction):
     record = _record("chr1", "900", ".", "C", "T", "30", "PASS", ".", fmt, sample)
     assert _caller_rows([record])["900", "T"]["alt_fraction"] == fraction
+
+
+def test_1289_transcript_id_belongs_to_the_annotation_hgvs_came_from():
+    """Review of issue 1289: with VEP lacking HGVS, hgvs_c comes from SnpEff,
+    so transcript_id must be SnpEff's transcript, not VEP's."""
+    record = _record(
+        "chr1", "100", ".", "A", "G", "40", "PASS",
+        "CSQ=G|missense_variant|MODERATE|GENEA|ENSG1|Transcript|ENST2|"
+        "protein_coding|||||||;"
+        "ANN=G|missense_variant|MODERATE|GENEA|GENEA|transcript|NM_5.2|"
+        "protein_coding|2/5|c.100A>G|p.Lys34Glu",
+        "GT", "0/1",
+    )  # fmt: skip
+    row = _rows([record])["100", "G"]
+    assert (row["transcript_id"], row["hgvs_c"]) == ("NM_5.2", "c.100A>G")
+    with_hgvs = record.replace("protein_coding|||", "protein_coding|ENST2:c.1A>G||")
+    row = _rows([with_hgvs])["100", "G"]
+    assert (row["transcript_id"], row["hgvs_c"]) == ("ENST2", "ENST2:c.1A>G")
