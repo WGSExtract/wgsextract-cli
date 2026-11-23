@@ -126,7 +126,8 @@ for the matched-machine benchmarks and record hashes.
 ### wgse-bwa (Windows x86-64)
 
 `wgse-bwa` is built from a separate recipe. The default win-64 Pixi environment
-pins the package from `windows-tools-11` without changing the other tool pins.
+pins `wgse-bwa` from `windows-tools-12`, which enables Segment Heap on Windows,
+without changing the other tool pins.
 It uses the MSVC ABI: clang-cl compiles BWA's GNU-style C
 extensions, nvcc uses Visual Studio 2022 `cl.exe` for its host code, and
 lld-link links the executable. It does not use MSYS2. CUDA 13.5 and the

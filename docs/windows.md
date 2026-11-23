@@ -266,7 +266,7 @@ estimate before choosing it. `--aligner bwa` selects the lower-memory option;
 ### wgse-bwa and optional NVIDIA CUDA
 
 The default Pixi environment on Windows x86-64 includes `wgse-bwa` from
-[`windows-tools-11`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/windows-tools-11).
+[`windows-tools-12`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/windows-tools-12).
 When BWA is selected, `align` and `realign` use the validated `wgse-bwa.exe`
 from the environment. No manual PATH or configuration changes are needed.
 Run `pixi run wgsextract deps check --tool wgse-bwa` to see the installed path.
@@ -293,11 +293,16 @@ Pass `--no-prefer-native-gpu` to force CPU, or set `prefer_native_gpu = false`
 in `config.toml` for future runs. `--prefer-native-gpu` overrides that setting
 for one run, but never bypasses either Windows memory check.
 
-With Segment Heap enabled, `wgsextract align` on 5 million HG002 pairs
-took about 91 s on CUDA versus 207 s on the CPU (Ryzen 9 9900X3D and
-RTX 5080), with identical decoded BAM records and the same batch size.
-The pinned `windows-tools-11` binary predates the Segment Heap change, so
-these timings do not apply to that build.
+With `windows-tools-12` and Segment Heap enabled, `wgsextract align` on
+5 million HG002 read pairs took 100 s with automatic CUDA versus 189 s with
+forced CPU (Ryzen 9 9900X3D, RTX 5080, 16 threads). Both runs produced
+identical decoded BAM records: 99.73% mapped and 97.85% properly paired.
+
+On the same host, `wgsextract realign` on a local HG002 BAM subset
+(19.47 million input records, below full-genome 30× coverage) took 159 s
+with automatic CUDA, compared with 33 min 49 s in the earlier CPU run
+with `windows-tools-11`. Both outputs had 99.81% mapped and 99.12% properly
+paired. The comparison includes both the package upgrade and the backend change.
 
 ## Upgrading from a WSL or MSYS2 setup
 
