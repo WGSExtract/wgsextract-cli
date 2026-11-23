@@ -132,6 +132,7 @@ from .genotyping import (
     TypingHlaParams,
     TypingSmnParams,
     TypingStrParams,
+    TypingTargetCnvParams,
 )
 from .info import (
     CalculateCoverageParams,
@@ -334,6 +335,7 @@ __all__ = [
     "TypingSmnParams",
     "TypingHlaParams",
     "TypingStrParams",
+    "TypingTargetCnvParams",
     "UsageError",
     "VcfAcmgParams",
     "VcfAlphamissenseParams",
