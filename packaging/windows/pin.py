@@ -6,7 +6,7 @@
 
 Rewrites the default Windows-tools block, the GATK Windows-tools block (GKL) and
 the PharmCAT Windows-tools block (bcftools and htslib) with each .conda asset's
-URL and GitHub's SHA-256 digest. Optional wgse-minimap2 is not pinned.
+URL and GitHub's SHA-256 digest.
 A GKL-only release leaves the others untouched.
 """
 
@@ -28,7 +28,7 @@ PHARMCAT_BLOCK = re.compile(
     r"(# pharmcat-windows-tools-begin[^\n]*\n).*?(# pharmcat-windows-tools-end)", re.S
 )
 PHARMCAT_TOOLS = ("bcftools-", "htslib-")
-DEFAULT_PIN_EXCLUDES = ("gkl-", "wgse-minimap2-")
+DEFAULT_PIN_EXCLUDES = ("gkl-",)
 # <name>-<version>-<build>.conda; names may contain dashes (bwa-mem2).
 ASSET = re.compile(r"^(?P<name>.+)-(?P<version>[^-]+)-(?P<build>[^-]+)\.conda$")
 
