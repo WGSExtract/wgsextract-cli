@@ -87,7 +87,6 @@ class ImportGraph:
         parse: Callable[[Path], ast.Module] | None = None,
     ) -> None:
         self.root = root
-        self.working_tree = files is None
         self.files = self.checkout_files(root) if files is None else files
         self.edges: dict[str, set[str]] = {}
         self.import_edges: dict[str, set[str]] = {}
@@ -111,6 +110,8 @@ class ImportGraph:
     @staticmethod
     def checkout_files(root: Path) -> dict[str, Path]:
         files = {}
+        if (conftest := root / "conftest.py").is_file():
+            files["conftest"] = conftest
         for base in (root / "src", root):
             directories = (
                 ("wgsextract_cli",) if base.name == "src" else ("tests", "scripts")
@@ -333,8 +334,7 @@ class ImportGraph:
                 break
             conftest = parent / "conftest.py"
             name = ".".join(conftest.relative_to(self.root).with_suffix("").parts)
-            present = conftest.is_file() if self.working_tree else name in self.files
-            if present:
+            if name in self.files:
                 dependencies.update(self.reaches(name, imports_only=imports_only))
         self.fixture_cache[key] = dependencies
         return dependencies

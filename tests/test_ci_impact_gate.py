@@ -240,11 +240,11 @@ def test_1482_symbol_gate_resolves_importable_drift_but_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, drift: str, mode: str
 ) -> None:
     # Run 45252205057 tested e69ea2587 (PR #1470) against 64c2c6924,
-    # with a 7f81a036c nightly map. Model its CI-only PR and the intervening
-    # native-aligner, generated OpenAPI and test helper changes independently.
+    # with a 7f81a036c map exported by nightly run 45233258080. Model its PR
+    # and the intervening native-aligner, OpenAPI and test helper changes.
     def git(*args: str) -> str:
         return subprocess.check_output(
-            ["git", "-c", "core.hooksPath=/dev/null", *args], cwd=tmp_path, text=True
+            ["git", "-c", "core.hooksPath=", *args], cwd=tmp_path, text=True
         ).strip()
 
     def write(path: str, text: str) -> None:
