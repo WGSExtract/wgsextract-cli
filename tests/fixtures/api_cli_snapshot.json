@@ -1,7 +1,7 @@
 {
  "commands": {
   "align": {
-   "help": "usage: wgsextract align [-h] [--r1 R1] [--r2 R2]\n                        [--platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}]\n                        [--aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}] [--fast]\n                        [--prefer-native-gpu | --no-prefer-native-gpu]\n                        [--dense-suffix-array | --no-dense-suffix-array] [--sample SAMPLE]\n                        [--format {BAM,CRAM}] [--output-profile {default,archive,calling}]\n                        [--input-ref INPUT_REF] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --r1 R1               Read 1 FASTQ file\n  --r2 R2               Read 2 FASTQ file (optional)\n  --platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}\n                        Sequencing platform; selects platform-specific alignment tooling (default:\n                        detected from read groups or read names, else illumina).\n  --aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}\n                        Aligner to use. Auto uses bwa-mem2 for short reads when the reference has\n                        its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio\n                        when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple\n                        Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment)\n                        writes bwa's exact records faster, from bwa-mem2's index.\n  --fast                Align short reads with bwa-mem3's --fast speed preset (implies --aligner\n                        bwa-mem3), about twice as fast. Its alignments differ from BWA's\n                        (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast).\n                        Without it bwa-mem3 writes BWA's exact records.\n  --prefer-native-gpu, --no-prefer-native-gpu\n                        Prefer native GPU alignment. See docs/configuration.md for platform and\n                        memory limits.\n  --dense-suffix-array, --no-dense-suffix-array\n                        Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array\n                        file, built by `ref dense-sa`: the same alignments, faster, holding the\n                        file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise\n                        (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such\n                        wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it.\n                        Default: config dense_suffix_array, else off.\n  --sample SAMPLE       Sample name for the read group (default: the reads' file name).\n  --format {BAM,CRAM}   Output format (default: BAM)\n  --output-profile {default,archive,calling}\n                        Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK\n                        >=4.7); calling selects CRAM 3.0. Default: config output_profile, else\n                        default. See docs/ont.md.\n  --input-ref INPUT_REF\n                        Reference FASTA a CRAM --r1 was encoded with (default: --ref when its\n                        sequence names, lengths and MD5s match the CRAM).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n5 advanced options not shown; 'wgsextract align --help-all' lists them.\n\nexamples:\n  wgsextract align --r1 sample_R1.fastq.gz --r2 sample_R2.fastq.gz --ref hs38.fa\n  wgsextract align --r1 hifi_reads.fastq.gz --preset map-hifi --ref hs38.fa\n\noutputs (in the output directory unless noted):\n  <reads stem>_aligned.bam or .cram (+ index).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bwa, bwa-mem2,\n  bwa-mem3, curl, gatk, minimap2, pbmm2, sambamba, samblaster; hours on a 30x\n  genome.\n",
+   "help": "usage: wgsextract align [-h] [--r1 R1] [--r2 R2]\n                        [--platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}]\n                        [--aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}] [--fast]\n                        [--prefer-native-gpu | --no-prefer-native-gpu]\n                        [--dense-suffix-array | --no-dense-suffix-array] [--sample SAMPLE]\n                        [--format {BAM,CRAM}] [--output-profile {default,archive,calling}]\n                        [--input-ref INPUT_REF] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --r1 R1               Read 1 FASTQ file\n  --r2 R2               Read 2 FASTQ file (optional)\n  --platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}\n                        Sequencing platform; selects platform-specific alignment tooling (default:\n                        detected from read groups or read names, else illumina).\n  --aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}\n                        Aligner to use. Auto uses bwa-mem2 for short reads when the reference has\n                        its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio\n                        when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple\n                        Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment)\n                        writes bwa's exact records faster, from bwa-mem2's index.\n  --fast                Align short reads with bwa-mem3's --fast speed preset (implies --aligner\n                        bwa-mem3), about twice as fast. Its alignments differ from BWA's\n                        (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast).\n                        Without it bwa-mem3 writes BWA's exact records.\n  --prefer-native-gpu, --no-prefer-native-gpu\n                        Prefer native GPU alignment. Windows CUDA is automatic when it fits; --no-\n                        prefer-native-gpu forces CPU there.\n  --dense-suffix-array, --no-dense-suffix-array\n                        Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array\n                        file, built by `ref dense-sa`: the same alignments, faster, holding the\n                        file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise\n                        (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such\n                        wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it.\n                        Default: config dense_suffix_array, else off.\n  --sample SAMPLE       Sample name for the read group (default: the reads' file name).\n  --format {BAM,CRAM}   Output format (default: BAM)\n  --output-profile {default,archive,calling}\n                        Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK\n                        >=4.7); calling selects CRAM 3.0. Default: config output_profile, else\n                        default. See docs/ont.md.\n  --input-ref INPUT_REF\n                        Reference FASTA a CRAM --r1 was encoded with (default: --ref when its\n                        sequence names, lengths and MD5s match the CRAM).\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n5 advanced options not shown; 'wgsextract align --help-all' lists them.\n\nexamples:\n  wgsextract align --r1 sample_R1.fastq.gz --r2 sample_R2.fastq.gz --ref hs38.fa\n  wgsextract align --r1 hifi_reads.fastq.gz --preset map-hifi --ref hs38.fa\n\noutputs (in the output directory unless noted):\n  <reads stem>_aligned.bam or .cram (+ index).\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bwa, bwa-mem2,\n  bwa-mem3, curl, gatk, minimap2, pbmm2, sambamba, samblaster; hours on a 30x\n  genome.\n",
    "parser": {
     "actions": [
      {
@@ -493,7 +493,7 @@
       "default": null,
       "dest": "prefer_native_gpu",
       "exclusive_group": null,
-      "help": "Prefer native GPU alignment. See docs/configuration.md for platform and memory limits.",
+      "help": "Prefer native GPU alignment. Windows CUDA is automatic when it fits; --no-prefer-native-gpu forces CPU there.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -17538,7 +17538,7 @@
    }
   },
   "methylation": {
-   "help": "usage: wgsextract methylation [-h] <command> ...\n\npositional arguments:\n  <command>\n    pileup    Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and\n              summary. Optional: Linux and macOS, install with `pixi install -e modkit`.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract methylation [-h] <command> ...\n\npositional arguments:\n  <command>\n    pileup    Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and\n              summary. Optional: Linux and macOS, install with `pixi install -e modkit`.\n    regions   Summarize CpG bedMethyl over gene promoters or CpG islands.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -17560,12 +17560,17 @@
      },
      {
       "choices": [
-       "pileup"
+       "pileup",
+       "regions"
       ],
       "help": [
        [
         "pileup",
         "Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and summary. Optional: Linux and macOS, install with `pixi install -e modkit`."
+       ],
+       [
+        "regions",
+        "Summarize CpG bedMethyl over gene promoters or CpG islands."
        ]
       ],
       "required": true,
@@ -18384,6 +18389,533 @@
     "description": null,
     "formatter_class": "HelpFormatter",
     "prog": "wgsextract methylation pileup"
+   }
+  },
+  "methylation regions": {
+   "help": "usage: wgsextract methylation regions [-h] --build {hg38,t2t} --preset {promoters,cpg-islands}\n                                      [--upstream UPSTREAM] [--downstream DOWNSTREAM]\n                                      [--min-valid-calls MIN_VALID_CALLS] [--min-cpgs MIN_CPGS]\n                                      [--5hmc] [--download] [--format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {hg38,t2t}    Assembly of both bedMethyl and FASTA.\n  --preset {promoters,cpg-islands}\n                        RefSeq promoters or UCSC masked CpG islands.\n  --upstream UPSTREAM   Promoter bases upstream of the TSS (default: 2000).\n  --downstream DOWNSTREAM\n                        Promoter bases on the transcribed side (default: 500).\n  --min-valid-calls MIN_VALID_CALLS\n                        Minimum valid calls per CpG (default: 5).\n  --min-cpgs MIN_CPGS   Minimum qualifying CpGs per region (default: 3).\n  --5hmc                Also report 5hmC: declares the input was generated with a 5hmC-capable\n                        model.\n  --download            Fetch the missing pinned hg38 CpG island table from UCSC. No sample data\n                        is sent.\n  --format {tsv,parquet}\n                        Output table: tsv (default) or parquet (needs pyarrow).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa --build hg38 --preset promoters\n\noutputs (in the output directory unless noted):\n  <input stem>.<build>.<preset>.methylation.tsv (or .parquet) and its run\n  manifest.\n\nneeds:\n  samtools; depending on options and inputs, also: curl; minutes on a 30x\n  genome.\n",
+   "parser": {
+    "actions": [
+     {
+      "choices": null,
+      "class": "_HelpAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help",
+      "exclusive_group": null,
+      "help": "show this help message and exit",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "input",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--input",
+       "-i"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "outdir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--outdir",
+       "-o"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "genome",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--genome"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "ref",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--ref"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "threads",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "N|auto",
+      "nargs": null,
+      "option_strings": [
+       "--threads",
+       "-t"
+      ],
+      "required": false,
+      "type": "_thread_count_arg"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "memory",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--memory",
+       "-m"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "tmp_dir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "DIRECTORY",
+      "nargs": null,
+      "option_strings": [
+       "--tmp-dir"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "json",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "quiet",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--quiet"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "debug",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--debug"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "log_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--log-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "keep_awake",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--keep-awake",
+       "--no-keep-awake"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "atomic_output",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--atomic-output",
+       "--no-atomic-output"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "config_path",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--config"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_result_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "parent_pid",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--parent-pid"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": [
+       "hg38",
+       "t2t"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "build",
+      "exclusive_group": null,
+      "help": "Assembly of both bedMethyl and FASTA.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--build"
+      ],
+      "required": true,
+      "type": null
+     },
+     {
+      "choices": [
+       "promoters",
+       "cpg-islands"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "preset",
+      "exclusive_group": null,
+      "help": "RefSeq promoters or UCSC masked CpG islands.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--preset"
+      ],
+      "required": true,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 2000,
+      "dest": "upstream",
+      "exclusive_group": null,
+      "help": "Promoter bases upstream of the TSS (default: 2000).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--upstream"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 500,
+      "dest": "downstream",
+      "exclusive_group": null,
+      "help": "Promoter bases on the transcribed side (default: 500).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--downstream"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 5,
+      "dest": "min_valid_calls",
+      "exclusive_group": null,
+      "help": "Minimum valid calls per CpG (default: 5).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--min-valid-calls"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 3,
+      "dest": "min_cpgs",
+      "exclusive_group": null,
+      "help": "Minimum qualifying CpGs per region (default: 3).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--min-cpgs"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "hydroxymethyl",
+      "exclusive_group": null,
+      "help": "Also report 5hmC: declares the input was generated with a 5hmC-capable model.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--5hmc"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "download",
+      "exclusive_group": null,
+      "help": "Fetch the missing pinned hg38 CpG island table from UCSC. No sample data is sent.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--download"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "tsv",
+       "parquet"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "tsv",
+      "dest": "table_format",
+      "exclusive_group": null,
+      "help": "Output table: tsv (default) or parquet (needs pyarrow).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--format"
+      ],
+      "required": false,
+      "type": "table_format_type.<locals>.table_format"
+     },
+     {
+      "choices": null,
+      "class": "_HelpAllAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help_all",
+      "exclusive_group": null,
+      "help": "Show this help with the advanced options too, and exit.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--help-all"
+      ],
+      "required": false,
+      "type": null
+     }
+    ],
+    "defaults": {
+     "_command": "methylation regions",
+     "func": "run_regions"
+    },
+    "description": null,
+    "formatter_class": "HelpFormatter",
+    "prog": "wgsextract methylation regions"
    }
   },
   "microarray": {
@@ -24306,7 +24838,7 @@
    }
   },
   "realign": {
-   "help": "usage: wgsextract realign [-h] [--r1 R1] [--r2 R2]\n                          [--aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}] [--fast]\n                          [--prefer-native-gpu | --no-prefer-native-gpu]\n                          [--dense-suffix-array | --no-dense-suffix-array]\n                          [--platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}]\n                          [--sample SAMPLE] [--format {BAM,CRAM}]\n                          [--output-profile {default,archive,calling}] [--chunk-size CHUNK_SIZE]\n                          [--force] [--force-step STEP] [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --r1 R1               Read 1 FASTQ file\n  --r2 R2               Read 2 FASTQ file (optional)\n  --aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}\n                        Aligner to use (matches the 'align' command).\n  --fast                Align short reads with bwa-mem3's --fast speed preset (implies --aligner\n                        bwa-mem3), about twice as fast. Its alignments differ from BWA's\n                        (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast).\n                        Without it bwa-mem3 writes BWA's exact records.\n  --prefer-native-gpu, --no-prefer-native-gpu\n                        Prefer native GPU alignment. See docs/configuration.md for platform and\n                        memory limits.\n  --dense-suffix-array, --no-dense-suffix-array\n                        Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array\n                        file, built by `ref dense-sa`: the same alignments, faster, holding the\n                        file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise\n                        (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such\n                        wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it.\n                        Default: config dense_suffix_array, else off.\n  --platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}\n                        Sequencing platform (default: detected from read groups or read names,\n                        else illumina).\n  --sample SAMPLE       Sample name to embed in read-group metadata.\n  --format {BAM,CRAM}   Output format (default: BAM)\n  --output-profile {default,archive,calling}\n                        Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK\n                        >=4.7); calling selects CRAM 3.0. Default: config output_profile, else\n                        default. See docs/ont.md.\n  --chunk-size CHUNK_SIZE\n                        ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes unfinished\n                        chunks and bounds temporary files. Requires sorted, indexed input; ignored\n                        with --keep-fastq.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        extract, align, index.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n9 advanced options not shown; 'wgsextract realign --help-all' lists them.\n\nexamples:\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa --dry-run\n\noutputs (in the output directory unless noted):\n  <input stem>_aligned.bam or .cram (+ index); with --keep-fastq, also <input\n  stem>_R1/_R2.fastq.gz (single-end ONT/PacBio: <input stem>.fastq.gz).\n  Completed steps are recorded in <output>.steps.json, so a rerun resumes\n  after a crash.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, bwa, bwa-\n  mem2, bwa-mem3, curl, gatk, minimap2, pbmm2, sambamba, samblaster; hours on\n  a 30x genome.\n",
+   "help": "usage: wgsextract realign [-h] [--r1 R1] [--r2 R2]\n                          [--aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}] [--fast]\n                          [--prefer-native-gpu | --no-prefer-native-gpu]\n                          [--dense-suffix-array | --no-dense-suffix-array]\n                          [--platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}]\n                          [--sample SAMPLE] [--format {BAM,CRAM}]\n                          [--output-profile {default,archive,calling}] [--chunk-size CHUNK_SIZE]\n                          [--force] [--force-step STEP] [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --r1 R1               Read 1 FASTQ file\n  --r2 R2               Read 2 FASTQ file (optional)\n  --aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}\n                        Aligner to use (matches the 'align' command).\n  --fast                Align short reads with bwa-mem3's --fast speed preset (implies --aligner\n                        bwa-mem3), about twice as fast. Its alignments differ from BWA's\n                        (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast).\n                        Without it bwa-mem3 writes BWA's exact records.\n  --prefer-native-gpu, --no-prefer-native-gpu\n                        Prefer native GPU alignment. Windows CUDA is automatic when it fits; --no-\n                        prefer-native-gpu forces CPU there.\n  --dense-suffix-array, --no-dense-suffix-array\n                        Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array\n                        file, built by `ref dense-sa`: the same alignments, faster, holding the\n                        file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise\n                        (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such\n                        wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it.\n                        Default: config dense_suffix_array, else off.\n  --platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}\n                        Sequencing platform (default: detected from read groups or read names,\n                        else illumina).\n  --sample SAMPLE       Sample name to embed in read-group metadata.\n  --format {BAM,CRAM}   Output format (default: BAM)\n  --output-profile {default,archive,calling}\n                        Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK\n                        >=4.7); calling selects CRAM 3.0. Default: config output_profile, else\n                        default. See docs/ont.md.\n  --chunk-size CHUNK_SIZE\n                        ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes unfinished\n                        chunks and bounds temporary files. Requires sorted, indexed input; ignored\n                        with --keep-fastq.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        extract, align, index.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n9 advanced options not shown; 'wgsextract realign --help-all' lists them.\n\nexamples:\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa --dry-run\n\noutputs (in the output directory unless noted):\n  <input stem>_aligned.bam or .cram (+ index); with --keep-fastq, also <input\n  stem>_R1/_R2.fastq.gz (single-end ONT/PacBio: <input stem>.fastq.gz).\n  Completed steps are recorded in <output>.steps.json, so a rerun resumes\n  after a crash.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, bwa, bwa-\n  mem2, bwa-mem3, curl, gatk, minimap2, pbmm2, sambamba, samblaster; hours on\n  a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -24750,7 +25282,7 @@
       "default": null,
       "dest": "prefer_native_gpu",
       "exclusive_group": null,
-      "help": "Prefer native GPU alignment. See docs/configuration.md for platform and memory limits.",
+      "help": "Prefer native GPU alignment. Windows CUDA is automatic when it fits; --no-prefer-native-gpu forces CPU there.",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -58212,6 +58744,45 @@
    "table_format": "tsv",
    "threads": null,
    "tmp_dir": null
+  },
+  "methylation regions -i x.bedmethyl.gz --ref r.fa --build hg38 --preset cpg-islands --download --format parquet": {
+   "_command": "methylation regions",
+   "_explicit_dests": [
+    "build",
+    "download",
+    "input",
+    "preset",
+    "ref",
+    "table_format"
+   ],
+   "atomic_output": false,
+   "build": "hg38",
+   "command": "methylation",
+   "debug": false,
+   "download": true,
+   "downstream": 500,
+   "full_help": false,
+   "func": "run_regions",
+   "genome": null,
+   "hydroxymethyl": false,
+   "input": "x.bedmethyl.gz",
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "methylation_cmd": "regions",
+   "min_cpgs": 3,
+   "min_valid_calls": 5,
+   "outdir": null,
+   "parent_pid": null,
+   "preset": "cpg-islands",
+   "quiet": false,
+   "ref": "r.fa",
+   "table_format": "parquet",
+   "threads": null,
+   "tmp_dir": null,
+   "upstream": 2000
   },
   "microarray -i x.bam": {
    "_command": "microarray",

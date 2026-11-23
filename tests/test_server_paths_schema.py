@@ -448,6 +448,31 @@ def test_methylation_paths_cover_every_file():
     assert {item.name for item in _METHYLATION_PATHS} == {"input", "ref", "outdir"}
 
 
+def test_1293_methylation_regions_server_cannot_download_or_follow_an_external_index(
+    tmp_path,
+):
+    data = tmp_path / "data"
+    data.mkdir()
+    ref = data / "reference.fa"
+    op = find("methylation/regions")
+    body = {
+        "input": str(data / "sample.bedmethyl"),
+        "ref": str(ref),
+        "build": "t2t",
+        "preset": "promoters",
+    }
+    with pytest.raises(RequestError) as refused:
+        params_from_json(op, {**body, "download": True})
+    assert refused.value.code == "usage"
+    try:
+        (data / "reference.fa.fai").symlink_to(tmp_path / "outside.fai")
+    except OSError:
+        pytest.skip("creating symlinks is not permitted")
+    with pytest.raises(RequestError) as refused:
+        PathGuard([str(data)]).check(params_from_json(op, body))
+    assert refused.value.code == "path_not_allowed"
+
+
 @pytest.mark.parametrize(("op", "field"), _EVERY_PATH, ids=map("-".join, _EVERY_PATH))
 def test_every_path_of_every_operation_must_be_inside_an_allowed_folder(op, field):
     # #351 phase 2: the typed API brought 88 operations to the server with no

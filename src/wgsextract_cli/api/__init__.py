@@ -142,7 +142,7 @@ from .info import (
     InfoParams,
 )
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
-from .methylation import MethylationPileupParams
+from .methylation import MethylationPileupParams, MethylationRegionsParams
 from .microarray import MicroarrayParams
 from .panel import PanelBedParams, PanelCheckParams
 from .pet import PetAlignParams
@@ -268,6 +268,7 @@ __all__ = [
     "InfoParams",
     "IssueReport",
     "MethylationPileupParams",
+    "MethylationRegionsParams",
     "MicroarrayParams",
     "MissingDependencyError",
     "MitoFastaParams",

@@ -898,7 +898,7 @@ workspace.
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner to use. Auto uses bwa-mem2 for short reads when the reference has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, from bwa-mem2's index. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
 | `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
-| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU alignment, subject to platform and memory limits. See the configuration guide. |
+| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Windows CUDA is automatic within RAM and commit limits; false forces CPU. Elsewhere, true can override RAM limits. See the configuration guide. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
 | `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
@@ -938,7 +938,7 @@ settings and tools are unchanged.
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2 or pbmm2, chosen as for align. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
 | `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
-| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU alignment, subject to platform and memory limits. See the configuration guide. |
+| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Windows CUDA is automatic within RAM and commit limits; false forces CPU. Elsewhere, true can override RAM limits. See the configuration guide. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
 | `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
@@ -1910,6 +1910,29 @@ methylation_combine_strands, else CpG, 5mC only and strands combined.
 | `hydroxymethyl` | `bool \| None` | `None` | `--5hmc` | Also report 5-hydroxymethylcytosine (Nanopore 5mCG_5hmCG models). Overrides methylation_5hmc in config.toml (default: 5mC only). |
 | `combine_strands` | `bool \| None` | `None` | `--combine-strands` | Sum both strands of each CpG into one row on its C. True with context 'all' is an error; the config default quietly gives way. |
 | `table_format` | `str` | `'tsv'` | `--format` | Summary table format: tsv, or parquet (needs pyarrow), which also writes the sites as <stem>.<context>.bedmethyl.parquet (default: tsv) One of: `tsv`, `parquet` |
+
+### `api.methylation.regions(MethylationRegionsParams)`
+
+CLI: `wgsextract methylation regions`.
+
+Summarize methylation over the selected build-matched regions.
+
+`MethylationRegionsParams`: Summarize strand-combined CpG calls over RefSeq promoters or UCSC islands.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Coordinate-sorted, strand-combined CpG bedMethyl. |
+| `ref` | `Path` | required | `--ref` | The indexed, local FASTA used for the bedMethyl coordinates. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `build` | `str` | required | `--build` | Assembly of both bedMethyl and FASTA. One of: `hg38`, `t2t` |
+| `preset` | `str` | required | `--preset` | RefSeq promoters or UCSC masked CpG islands. One of: `promoters`, `cpg-islands` |
+| `upstream` | `int` | `2000` | `--upstream` | Promoter bases upstream of the TSS (default: 2000). |
+| `downstream` | `int` | `500` | `--downstream` | Promoter bases on the transcribed side (default: 500). |
+| `min_valid_calls` | `int` | `5` | `--min-valid-calls` | Minimum valid calls per CpG (default: 5). |
+| `min_cpgs` | `int` | `3` | `--min-cpgs` | Minimum qualifying CpGs per region (default: 3). |
+| `hydroxymethyl` | `bool` | `False` | `--5hmc` | Also report 5hmC: declares the input was generated with a 5hmC-capable model. |
+| `download` | `bool` | `False` | `--download` | Fetch the missing pinned hg38 CpG island table from UCSC. No sample data is sent. |
+| `table_format` | `str` | `'tsv'` | `--format` | Output table: tsv (default) or parquet (needs pyarrow). One of: `tsv`, `parquet` |
 
 ## `api.microarray`
 
