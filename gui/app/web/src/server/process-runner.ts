@@ -24,13 +24,15 @@ export interface ProcessManager {
 
 const defaultTerminationGraceMs = 3000;
 const defaultExitDrainMs = 200;
+// Leave time after escalation to observe the child exit, within the desktop close budget.
+const terminationExitMs = 1000;
 
 export function createProcessManager(options: ProcessManagerOptions): ProcessManager {
     const terminationGraceMs = options.terminationGraceMs ?? defaultTerminationGraceMs;
     const exitDrainMs = options.exitDrainMs ?? defaultExitDrainMs;
-    // Processes stay tracked until their stdio closes, so descendants that outlive the
-    // direct child are still terminated on shutdown.
-    const active = new Map<number, () => Promise<void>>();
+    // Keep tracking children while descendants hold their pipes or a requested tree stop
+    // remains unconfirmed.
+    const active = new Set<() => Promise<void>>();
 
     const runProcess: RunProcess = async (executable, args, runOptions) => {
         const baseCommand = await platformCommand(executable, args);
@@ -62,17 +64,51 @@ export function createProcessManager(options: ProcessManagerOptions): ProcessMan
             const stdout = new CapturedStream(runOptions.maxOutputBytes ?? options.maxOutputBytes, runOptions.onStdout);
             const stderr = new CapturedStream(runOptions.maxErrorBytes ?? options.maxErrorBytes, runOptions.onStderr);
             let termination: Promise<void> | undefined;
+            let terminationState: "pending" | "confirmed" | "failed" | undefined;
             let stopReason: "cancelled" | "timeout" | undefined;
             let exit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
+            let closed = false;
             let finished = false;
             let drainTimer: NodeJS.Timeout | undefined;
+            const exited = new Promise<void>((done) => child.once("exit", () => done()));
 
             const terminate = () => {
-                termination ??= pid == null ? Promise.resolve() : terminateProcessTree(pid, terminationGraceMs);
+                if (pid == null) return Promise.resolve();
+                // Once the child has exited, its PID may have been reused. Keep a failed
+                // tree stop visible to later callers rather than retrying against that PID.
+                if (!termination || (terminationState === "failed" && !exit)) {
+                    terminationState = "pending";
+                    termination = terminateAndWait(pid).then(() => {
+                        terminationState = "confirmed";
+                        if (closed) active.delete(terminate);
+                    }, (error: unknown) => {
+                        terminationState = "failed";
+                        throw error;
+                    });
+                }
                 return termination;
             };
+            async function terminateAndWait(pid: number) {
+                const controller = new AbortController();
+                let timer: NodeJS.Timeout | undefined;
+                try {
+                    await Promise.race([
+                        Promise.all([terminateProcessTree(pid, terminationGraceMs, controller.signal), exited]),
+                        new Promise<never>((_, rejectDeadline) => {
+                            timer = setTimeout(() => {
+                                rejectDeadline(new Error(`Timed out waiting for process ${pid} to terminate.`));
+                                controller.abort();
+                            }, Math.max(defaultTerminationGraceMs, terminationGraceMs) + terminationExitMs);
+                        }),
+                    ]);
+                    runOptions.onTerminated?.();
+                }
+                finally {
+                    clearTimeout(timer);
+                }
+            }
             if (pid != null) {
-                active.set(pid, terminate);
+                active.add(terminate);
             }
             const finish = (error?: Error) => {
                 if (finished) {
@@ -109,7 +145,7 @@ export function createProcessManager(options: ProcessManagerOptions): ProcessMan
             // so callers never start follow-up work while it is still running.
             const stop = (reason: "cancelled" | "timeout") => {
                 stopReason ??= reason;
-                void terminate();
+                void terminate().catch((error: unknown) => console.warn(errorMessage(error)));
                 if (exit) {
                     finish();
                 }
@@ -130,8 +166,9 @@ export function createProcessManager(options: ProcessManagerOptions): ProcessMan
                 drainTimer = setTimeout(() => finish(), exitDrainMs);
             });
             child.once("close", () => {
-                if (pid != null && active.get(pid) === terminate) {
-                    active.delete(pid);
+                closed = true;
+                if (!termination || terminationState === "confirmed") {
+                    active.delete(terminate);
                 }
                 finish();
             });
@@ -146,7 +183,10 @@ export function createProcessManager(options: ProcessManagerOptions): ProcessMan
     }
 
     async function terminateAllProcesses() {
-        await Promise.all([...active.values()].map((terminate) => terminate()));
+        const results = await Promise.allSettled([...active.values()].map((terminate) => terminate()));
+        for (const result of results) {
+            if (result.status === "rejected") throw result.reason;
+        }
     }
 
     return { runProcess, terminateAllProcesses };

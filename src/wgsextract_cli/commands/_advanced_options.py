@@ -74,4 +74,10 @@ ADVANCED_OPTIONS: dict[str, tuple[str, ...]] = {
     ),
     "example-genome download": ("--aspera-key", "--target-root"),
     "report-issue": ("--log-lines", "--max-url-length"),
+    "qc roh": (
+        "--imprinted-regions",
+        "--min-gq",
+        "--flag-terminal-mb",
+        "--flag-interstitial-mb",
+    ),
 }

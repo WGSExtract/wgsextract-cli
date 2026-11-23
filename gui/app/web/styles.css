@@ -1732,6 +1732,42 @@ tbody tr + tr {
   margin: 0;
 }
 
+.result-viewer-rows {
+  max-block-size: 24rem;
+  overflow: auto;
+}
+
+.result-viewer-rows table {
+  border-collapse: collapse;
+  inline-size: 100%;
+}
+
+.result-viewer-rows th,
+.result-viewer-rows td {
+  padding: 2px 8px 2px 0;
+  text-align: start;
+  vertical-align: middle;
+}
+
+.result-viewer-rows thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--terminal-bg);
+}
+
+.result-viewer-row-reason,
+.result-viewer-rows-note {
+  color: var(--muted);
+}
+
+.result-viewer-row-reason {
+  margin-inline-start: 6px;
+}
+
+.result-viewer-rows-note {
+  margin: 2px 0 4px;
+}
+
 .result-summary details pre {
   padding: 6px 0;
 }
@@ -2190,4 +2226,160 @@ tbody tr + tr {
 .workspace-location-confirm .input-button-row {
   display: flex;
   flex-wrap: wrap;
+}
+
+/* Gene page (#1166): covers #app like the genome viewer. */
+.gene-page-shell {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  overflow: auto;
+  background: var(--background);
+}
+
+.gene-page {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-5) 32px;
+}
+
+.gene-form {
+  display: grid;
+  grid-template-columns: minmax(10rem, max-content) minmax(0, 40rem);
+  gap: var(--space-1) var(--space-3);
+  align-items: center;
+}
+
+.gene-form .field-help {
+  grid-column: 2;
+  margin: 0 0 6px;
+  color: var(--muted);
+}
+
+.gene-form > div {
+  grid-column: 2;
+}
+
+.gene-page section {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.gene-page h2,
+.gene-page h3 {
+  margin: 0;
+}
+
+.gene-notices ul,
+.gene-provenance ul {
+  margin: 0;
+  padding-inline-start: 1.2em;
+}
+
+.gene-notices code,
+.gene-provenance code {
+  overflow-wrap: anywhere;
+}
+
+.gene-diagram {
+  width: 100%;
+  height: 48px;
+}
+
+.gene-axis {
+  stroke: var(--muted);
+  stroke-width: 2;
+}
+
+.gene-exon.callable,
+.gene-legend .callable::before {
+  fill: var(--success);
+  background: var(--success);
+}
+
+.gene-exon.below,
+.gene-legend .below::before {
+  fill: var(--danger);
+  background: var(--danger);
+}
+
+.gene-exon.unknown,
+.gene-legend .unknown::before {
+  fill: var(--muted);
+  background: var(--muted);
+}
+
+.gene-variant-tick,
+.gene-legend .tick::before {
+  stroke: var(--text);
+  stroke-width: 2;
+  background: var(--text);
+}
+
+.gene-variant-tick.flagged {
+  stroke: var(--warning);
+}
+
+.gene-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  color: var(--muted);
+}
+
+.gene-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-inline-end: var(--space-1);
+  border-radius: 2px;
+}
+
+.gene-source,
+.gene-research-note {
+  margin: 0;
+  color: var(--muted);
+}
+
+.gene-variant-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+.gene-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.gene-table th,
+.gene-table td {
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--separator);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.gene-table tr.below td:last-child,
+.gene-table tr.flagged td:first-child {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.gene-page .table-scroll {
+  overflow-x: auto;
+}
+
+.gene-page section > button,
+.gene-page select {
+  justify-self: start;
+  width: auto;
+  max-width: 100%;
 }

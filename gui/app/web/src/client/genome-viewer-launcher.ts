@@ -1,16 +1,21 @@
 import type { Labels } from "../../../shared/types.js";
 import type { LibraryViewerResult } from "./genome-viewer-library.js";
 import { api } from "./api.js";
+import { isViewerBuild } from "../../../shared/viewer-rows.js";
 import type { RemoteViewerResult } from "./genome-viewer-remote.js";
 
 let pane: HTMLElement | undefined;
 
-/** A sibling of #app survives command-output renders without unloading either document or its streams. */
-export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLElement, inputPath = "", locus = "") {
+/**
+ * A sibling of #app survives command-output renders without unloading either document or its streams.
+ * `host` is the page the viewer covers and returns to: #app, or the gene page.
+ */
+export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLElement, inputPath = "", locus = "", options: { build?: string; host?: HTMLElement; backLabel?: string } = {}) {
+    const { build = "", host, backLabel } = options;
     if (pane) {
         return;
     }
-    const app = document.querySelector<HTMLElement>("#app");
+    const app = host ?? document.querySelector<HTMLElement>("#app");
     if (!app) {
         return;
     }
@@ -21,7 +26,7 @@ export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLEle
     const back = document.createElement("button");
     back.type = "button";
     back.className = "genome-viewer-close";
-    back.textContent = labels.viewerStrings?.back ?? "";
+    back.textContent = backLabel ?? labels.viewerStrings?.back ?? "";
     const frame = document.createElement("iframe");
     frame.title = labels.viewerTitle ?? "";
     frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
@@ -68,6 +73,7 @@ export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLEle
                 strings: labels.viewerStrings ?? {},
                 inputPath,
                 locus,
+                build,
             }, location.origin);
         }
         if (event.origin === location.origin && event.source === frame.contentWindow && event.data?.type === "genomeViewerRemoteRequest"
@@ -97,7 +103,10 @@ export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLEle
             && typeof event.data.requestID === "string" && typeof event.data.path === "string" && typeof event.data.locus === "string") {
             const generation = ++selection;
             cancelPending();
-            void api<LibraryViewerResult>("/api/viewer/open", { body: { path: event.data.path, locus: event.data.locus, tracks: event.data.tracks ?? [] } })
+            void api<LibraryViewerResult>("/api/viewer/open", { body: {
+                path: event.data.path, locus: event.data.locus, tracks: event.data.tracks ?? [],
+                ...(isViewerBuild(event.data.build) ? { build: event.data.build } : {}),
+            } })
                 .catch((): LibraryViewerResult => ({ problem: "libraryUnavailable" }))
                 .then((result) => {
                     if ("id" in result) {
@@ -141,6 +150,9 @@ export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLEle
 function openerSelector(opener: HTMLElement): string {
     if (opener.dataset.resultViewer != null) {
         return `[data-result-viewer="${CSS.escape(opener.dataset.resultViewer)}"][data-viewer-locus="${CSS.escape(opener.dataset.viewerLocus ?? "")}"]`;
+    }
+    if (opener.dataset.geneViewer != null) {
+        return "[data-gene-viewer]";
     }
     if (opener.dataset.viewReads != null) {
         return `[data-view-reads="${CSS.escape(opener.dataset.viewReads)}"]`;

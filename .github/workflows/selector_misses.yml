@@ -1,0 +1,39 @@
+name: Publish daily Linux selector misses
+
+on:
+  workflow_run:
+    workflows: ["CI Ubuntu"]
+    branches: [main]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  publish:
+    if: github.event.workflow_run.event == 'schedule' && github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download confirmed omission receipts
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-selector-misses
+          path: out/selector-misses
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Open or refresh confirmed selector miss issues
+        if: hashFiles('out/selector-misses/report.json') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_RUN: ${{ github.event.workflow_run.id }}
+        run: >-
+          python3 -m scripts.ci_impact_backstop --repository "$GITHUB_REPOSITORY"
+          --run "$NIGHTLY_RUN" --report out/selector-misses/report.json

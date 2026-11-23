@@ -168,9 +168,8 @@ current main SHA in this repository. A different SHA, a failed/cancelled run,
 a PR/nightly success, missing evidence or an API error retains full coverage.
 Failure or timeout of the guard runner itself also runs coverage; a skip
 requires both a successful guard and its explicit `skip=true` output.
-Manual dispatch always runs. Green exact-HEAD evidence reduces ten nightly
-runner jobs (four OS tests, Ubuntu lint/two supplemental jobs and three smoke
-jobs) to five small Ubuntu guard jobs, with no scientific work repeated.
+Manual dispatch always runs. Regular Ubuntu pytest also always runs on
+schedule: its daily full-suite backstop must not reuse a green main push.
 The `required` queue summary now directly depends on Windows as well as Ubuntu;
 it cannot pass while code-selected Windows failed or was cancelled.
 Queue Windows selection uses changed code/runtime-input paths, independently
@@ -371,8 +370,7 @@ Sparse selected PRs save less.
 ### Decisive test selection rollout
 
 [#1339 (decisive test selection)](https://github.com/WGSExtract/wgsextract-cli/issues/1339)
-changes the selection policy in stages. This policy change does not change
-which tests CI runs today.
+changes the selection policy in stages.
 
 1. Collect a versioned dependency map on trusted Linux x64 main/nightly runs.
    Record the source SHA, run and attempt, platform, interpreter, lockfile,
@@ -382,11 +380,11 @@ which tests CI runs today.
    map provenance, selected and omitted test files, rule reasons, and
    unmatched inputs. The report does not control test or job selection,
    cache reuse, certification, or the `required` result.
-3. Enable the selector only for regular Linux x64 pytest after reviewing
-   roughly 20 comparable ready PRs over at least a few days, with no confirmed
-   misses or untriaged discrepancies. Check outcomes for omitted tests
-   against the existing runs and report savings net of map collection and
-   reporting. Cancelled or incomplete runs do not count as evidence; a
+3. Enable symbol selection only for regular Linux x64 pytest after stage 2
+   lands and the gate passes draft review, local checks and certification.
+   The [owner approved enabling it without a 20-PR wait](https://github.com/WGSExtract/wgsextract-cli/issues/1339#issuecomment-7088656005).
+   The gate verifies its map on its own PR and retains current selection if
+   the map is missing, stale, incompatible or the analysis fails. A
    passing shadow report cannot show that a test absent from both selections
    passed. Keep the existing selector for other platforms.
 
@@ -412,13 +410,12 @@ new selector, give it a declared consumer or contract test, or record a
 reviewed reason why it has no runtime effect. Unknown inputs do not
 implicitly select every test under the decisive policy.
 
-Before narrowing main pushes, put the backstop in place: one full regular
-suite run per day on latest `main`, without reusing a prior push's pass as
-its result. Feed verified passing results into the existing test-result
+The daily backstop runs the full regular Ubuntu suite on latest `main`
+without reusing a prior push's pass. It refreshes the existing test-result
 cache ([#915 (passed-test cache)](https://github.com/WGSExtract/wgsextract-cli/issues/915)).
-Main pushes then use the merge queue's selection and cache rules instead
-of repeating the full suite on each commit. Keep test-selection receipts
-for the tested trees. If nightly fails, rerun only the failing tests on
+Main pushes can avoid repeating that exact SHA's queue passes, but not the
+files the queue skipped. Keep test-selection receipts for the tested trees.
+If nightly fails, rerun only the failing tests on
 first-parent main trees since the last comparable full pass to locate the
 first reproducibly bad commit. Do not infer a miss from timing or from a
 single failure: distinguish omissions from flakes, runner failures and
@@ -479,9 +476,11 @@ one lightweight smoke job; changing shared `os_tests.yml` exercises all four
 OS smoke jobs. Mixed product/CI changes union their coverage. Declared docs
 freshness modules join a product selection before the docs lane is suppressed.
 Extra generated-genome, imputation, ONT and Windows vep-rs checks run only
-when their test files are affected. Main pushes and nightly/manual runs
-retain full-suite coverage; merge-queue Ubuntu and code-selected Windows run the full suite minus files
-the test cache already saw pass on main.
+when their test files are affected. Merge-queue Ubuntu and code-selected
+Windows run the full suite minus files the test cache already saw pass on main.
+The queue plus main together run the full suite at every main SHA: a main
+push runs only the files its merge group left to it (see "Main pushes after
+the merge queue" below). Nightly and manual runs retain full-suite coverage.
 
 The selector gives tests the transitive dependencies of their `conftest.py`
 files. Keep shared home/config isolation in `tests/home_isolation.py` without
@@ -553,7 +552,7 @@ passed. A test file's hash covers:
   helpers, unknown paths);
 - how tests run: `os_tests.yml`, the four OS callers, `setup-pixi`, the
   runner, tier and cache scripts;
-- the job (OS, tier, shard, OS-independent skip), Python version, platform
+- the test file's identity, the job (OS, tier, shard, OS-independent skip), Python version, platform
   and runner image (`ImageOS`, `ImageVersion`). Coverage flags are excluded.
 
 Equal hashes therefore mean the two trees differ only in files the selector
@@ -567,9 +566,10 @@ Each `os_tests.yml` matrix job keeps one manifest of passed hashes:
 
 | Event | Reads | Records after a passing run |
 |---|---|---|
-| Main push, nightly, manual dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
+| Main push (Ubuntu, Windows) | the files its merge group executed at this exact SHA, if one passed `required` | `test-pass-v1-<os>-<label>-main-<run>` |
+| Main push (macOS, ARM64), nightly, manual dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
 | Ready PR push or `ready_for_review` | latest `-main-` and this PR's latest `-pr-` manifest | `test-pass-v1-<os>-<label>-pr-<run>` |
-| Merge group | latest `-main-` manifest | nothing |
+| Merge group | latest `-main-` manifest | the files it executed (not its cache skips), as artifact `test-pass-queue-<os>-<label>` |
 | Other refs | nothing (runs uncached) | nothing |
 
 A lookup is exact set membership, so a stale, corrupt, evicted or missing
@@ -586,12 +586,15 @@ runs can write main's scope. A PR therefore cannot poison what main or other
 PRs read; at most it can skip its own tests, which its own workflow edits could
 do anyway. Merge groups read only main's manifest (owner decision,
 2026-11-15): a skipped file's every tracked input matches a tree that passed
-on main. Main pushes always run the full suite; nightly either does too or
-reuses that workflow's successful main push at the exact same SHA, so an undeclared
-input the hash misses fails the next main run instead of going unnoticed.
+on main. The queue plus the matching main push cover the full regular test
+scope for that SHA: main still runs files the queue skipped as cached, so an
+undeclared input the hash misses can fail the very next main run. The daily
+Ubuntu backstop does not reuse even successful exact-SHA push evidence.
 
 Each test job's summary lists the cache-skipped files, where they passed
-(`main` or `pr`) and their hashes. To estimate savings, run
+(`main`, `pr` or `merge-group-<run>`) and their hashes. Each job's
+`tests-<os>-<label>` artifact also holds `test-scope.json`: the files selected
+for that job and, for each cache skip, where it passed. To estimate savings, run
 `pixi run python scripts/ci_cache_replay.py --limit 60 --junit <main pytest.xml...>`;
 it replays consecutive ready runs of merged PRs.
 
@@ -599,6 +602,39 @@ There is no existing general Markdown link/anchor checker. Pages source checks
 also run both site builders and the app's site-source validator, without
 deployment permissions. The secret scan remains on **all ready PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
+
+### Main pushes after the merge queue
+
+The queue lands the exact commit its merge group tested, so a main push usually
+has the same SHA as a merge-group run that already passed. On 2026-11-21, 37 of
+38 main SHAs did, and their CI Ubuntu and Windows runs took about 2,180
+runner-minutes a day (#1373, merge-queue starvation). Main therefore doesn't
+rerun what the queue just ran:
+
+- A merge group's Ubuntu and Windows test jobs use their passing pytest JUnit
+  report to record the dependency hashes of files they **executed** without
+  failures or skips. Cache skips and uncollected files aren't reported as
+  passes. The jobs upload `test-pass-queue-<os>-<label>` (seven days).
+- On a push to main, `scripts/ci_merge_group_passes.py` looks for a `pr_ci.yml`
+  `merge_group` run in this repository whose head SHA is the pushed SHA, whose
+  branch is under `gh-readonly-queue/main/` and whose latest `required` job
+  succeeded. It downloads that run's manifest for the same OS and label.
+- Regular main pytest starts from the full selection, not the PR symbol
+  selection. It reads only the exact-SHA queue manifest, never main's previous
+  passes. A file is skipped only if its exact dependency hash, which includes
+  the runner image, passed in that group. Main therefore runs the files the
+  queue skipped as cached, plus any without verified matching evidence. It
+  updates main's manifest as before; cache skips carry the identical hash the
+  queue passed.
+
+If no passing merge group matches, or anything is uncertain (an API error, a
+missing, expired or unreadable artifact), the manifest is not written and main
+runs the full suite. The lookup fails open to more coverage, never less.
+macOS and ARM64 don't run in the queue, so their main pushes keep the full
+suite. Nightly, manual dispatch and other jobs in these workflows (lint,
+imputation, ONT, optional tools, the e2e and Windows end-to-end steps) are
+unchanged. Main's non-gating line coverage report covers only the files main
+ran.
 
 ### Main-push prose filters
 
@@ -687,6 +723,26 @@ suppress retries of the older run; they cannot hide a failure or prevent
 reporting recovery. A delayed older result never replaces a newer completed
 verdict, and closing an old red-main issue does not certify the pending SHA.
 
+### CodeQL language scoping on pull requests (#1373)
+
+A ready PR analyzes only the CodeQL languages whose files it changes
+(`scripts/ci_codeql_scope.py`): Python for `.py`/`.pyi`, JavaScript/TypeScript
+for the extractor's file types (including JSON, YAML, HTML and XML), Rust for
+`.rs`, `Cargo.toml`/`Cargo.lock` or any file in a crate directory, and Actions
+for `action.yml`. Changes under `.github/` or to the scope script analyze every
+language. Main pushes and the nightly schedule always analyze every language.
+
+GitHub's CodeQL check turns `neutral` ("N configurations not found") and
+compares no alerts when a PR lacks a category the base branch has, so new
+alerts would pass unseen. An unchanged language therefore does not skip its
+matrix leg: it re-uploads the base branch's latest analysis for the same
+category and job, then confirms (by SARIF ID and commit) that the PR has
+that configuration. If the base analysis cannot be found, downloaded or
+uploaded, the leg analyzes afresh; an accepted upload that cannot be confirmed
+fails the leg, because GitHub rejects a second upload for the same category in
+one run. CodeQL is not part of `required`; the landing validator still rejects
+a failing CodeQL app check.
+
 ### CLI test time and tiers
 
 Each OS runs one all-tier pytest job with `-n logical --dist loadgroup`: one
@@ -708,10 +764,11 @@ diagnosis:
   ONT and Windows vep-rs checks retain their environments when affected.
 
 Both tiers run together within the affected files on CLI-routed PRs; an empty selection
-passes without testing unrelated files. Non-prose main pushes and nightly runs
-retain full coverage (or exact-SHA green-main nightly evidence);
-merge-queue Ubuntu and code-selected Windows skip only cache hits from main. ARM64 runs its selection in one
-job. No slow suite is demoted to nightly-only coverage.
+passes without testing unrelated files. Non-prose main pushes and their
+matching merge groups together retain full coverage. Merge-queue Ubuntu and
+code-selected Windows skip only cache hits from main. Daily Ubuntu regular
+pytest is uncached; other nightly jobs retain their exact-SHA guard. ARM64
+runs its selection in one job. No slow suite is demoted to nightly-only coverage.
 Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
 modules whose import closure includes command/tool behavior remain cross-platform.
 Ordinary local pytest still collects everything; the opt-in `--ci-tier` and
@@ -819,8 +876,9 @@ to succeed, so enabling auto-merge cannot bypass a failing selected OS job.
 Routing/selection skips and valid self-certifications remain accepted by that
 gate. The area gate does not depend on `required`, avoiding a dependency cycle.
 Merge groups skip the area gate and retain the same smaller required set;
-main pushes run selected workflows in full and nightly runs cover all paths
-unless the identical workflow already passed that exact main SHA.
+main pushes run selected workflows in full (Ubuntu and Windows tests minus the
+files their merge group verified at that SHA). Nightly runs cover all paths;
+except for regular Ubuntu pytest, they may reuse an exact-SHA main push pass.
 A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
@@ -1023,3 +1081,33 @@ qualification failure from GUI/installer preflight, do not justify adding
 edges from those PR changes. Both belong to the nightly backstop. A newly
 observed omission in a PR report must be triaged for origin, retries and
 incomplete runs before it counts as a miss.
+
+#### Linux symbol gate and daily failure replay
+
+The symbol gate changes the regular Ubuntu PR pytest input, not the jobs,
+certificates, other OS lanes, or merged-tree checks. The repository Actions
+variable `CI_DISABLE_SYMBOL_SELECTION=true` restores legacy Linux selection
+for newly started runs; rerun a job to apply it to an in-flight PR. A missing,
+stale (over 48 hours), incompatible or unavailable map retains the existing
+input and emits a warning. With a usable ancestor map, the gate adds tests
+introduced or changed since recording and observed users of intervening
+source changes; changed test helper inputs retain the existing selection.
+The gate's own PR runs the same planner against
+its synthetic merge tree even if regular hosted pytest was certified. All
+four advisory reports remain available and distinguish legacy-selected,
+enforced and actually observed files.
+
+Ubuntu pushes use the exact-SHA merge-group complement instead of symbol
+selection. A scheduled Ubuntu run never skips from either result cache and
+refreshes main's cache after a full regular run. Where the suite provides
+pytest node IDs, the failure replay
+reruns only those cases, otherwise a collection error replays its one test
+module. It checks first-parent trees in order since the last verified
+passing daily run, requires a clean baseline and repeats the first matching
+failure signature.
+It will not automatically attribute skipped cases, a dependency-lock
+change, unobserved trees or an unrelated shared-base failure. To open a
+`ci-automation` miss, the first bad commit must map to a PR whose passing run
+records an enforced symbol omission on the identical Git tree; the legacy
+selection must have included the test. Logs explain unverified outcomes and
+the stable case marker deduplicates a confirmed miss across nights.

@@ -24,6 +24,7 @@ from wgsextract_cli.core.utils import UsageError
 from ._network import DownloadParams
 from ._params import Params, param
 from ._ref_library import _InLibrary, _library_named
+from ._ref_ybrowse import RefYbrowseParams as RefYbrowseParams
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import optional_input_param, ref_param, threads_param
 
@@ -155,39 +156,6 @@ class RefGnomadSvParams(_InLibrary, Params):
         choices=("hg38", "hg19"),
     )
     delete: bool = _delete_param("gnomAD SV tables")
-    ref: Path | None = ref_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefYbrowseParams(_InLibrary, Params):
-    """Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
-    library, or delete the installed snapshots; ``grch37`` lifts it to GRCh37."""
-
-    COMMAND = "ref ybrowse"
-
-    delete: bool = _delete_param("yBrowse snapshots")
-    snapshot: Path | None = param(
-        None,
-        help="Use a local GRCh38 VCF(.gz), verifying its header instead of the "
-        "upstream pin.",
-        path="file",
-        cli_type=Path,
-    )
-    grch37: bool = param(
-        False,
-        help="Lift the installed GRCh38 sites to GRCh37 with Ensembl's chain, "
-        "checked against the GRCh37 FASTA --ref names or the library's.",
-        action="store_true",
-    )
-    chain: Path | None = param(
-        None, help="With --grch37, lift with this chain.", path="file", cli_type=Path
-    )
-    download: bool = param(
-        False,
-        help="With --grch37, download Ensembl's pinned chain (730 KB) if missing.",
-        action="store_true",
-        writes=True,
-    )
     ref: Path | None = ref_param()
 
 
@@ -585,8 +553,8 @@ class RefPhylopParams(_Resource):
 
 @dataclass(frozen=True, kw_only=True)
 class RefGnomadParams(_Resource):
-    """Download gnomAD allele frequencies: the 2.1.1 exome sites VCFs, or
-    build the 4.1 frequency table."""
+    """Check or download the gnomAD 2.1.1 exome sites VCFs or the gnomAD 4.1
+    frequency and homozygote-count table."""
 
     COMMAND = "ref gnomad"
 
@@ -594,12 +562,19 @@ class RefGnomadParams(_Resource):
         "2.1.1",
         help=(
             "2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). "
-            "4.1: native hg38 exomes+genomes, streamed (~900 GB, hours) into an "
-            "allele-frequency-only table of ~5 GB; --threads sets parallel streams."
+            "4.1: native hg38 exomes+genomes, with allele frequency, maximum "
+            "ancestry-group frequency and homozygote counts; --threads sets parallel streams."
         ),
         choices=GNOMAD_RELEASES,
     )
     threads: int | None = threads_param()
+    download: bool = param(
+        False,
+        help="Allow fetching the public sites VCFs for the selected release "
+        "(4.1 streams ~900 GB, hours, to build or rebuild the table).",
+        action="store_true",
+        writes=True,
+    )
 
 
 @dataclass(frozen=True, kw_only=True)

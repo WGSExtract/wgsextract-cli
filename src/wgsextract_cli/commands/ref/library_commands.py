@@ -36,6 +36,7 @@ from wgsextract_cli.core import (
 )
 from wgsextract_cli.core.aadr_resources import install_aadr_2m
 from wgsextract_cli.core.annotation_resources import (
+    GNOMAD_URLS,
     build_gnomad_af,
     download_alphamissense,
     download_cadd,
@@ -66,6 +67,7 @@ from wgsextract_cli.core.ref_library.catalog import (
     get_available_genomes,
     get_genome_status,
 )
+from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.reference_assets import (
     reference_genomes_dir,
     reference_library_of,
@@ -99,7 +101,10 @@ _MENU_DOWNLOADS: dict[str, tuple[str, Callable[[str], bool]]] = {
     "K": ("PharmGKB", download_pharmgkb),
     "D": ("CADD hg38 (~88 GB)", download_cadd),
     "E": ("GERP hg38 (~9.6 GB)", download_gerp),
-    "F": ("gnomAD v4.1 frequencies hg38 (streams ~900 GB)", build_gnomad_af),
+    "F": (
+        "gnomAD v4.1 frequencies hg38 (streams ~900 GB)",
+        lambda reflib: build_gnomad_af(reflib, download=True),
+    ),
 }
 
 
@@ -518,11 +523,25 @@ def run_gnomad(params: RefGnomadParams) -> None:
         _run_downloader(
             reflib,
             "gnomAD v4.1",
-            lambda lib: build_gnomad_af(lib, workers, cancel_event=cancel_event()),
+            lambda lib: build_gnomad_af(
+                lib, workers, cancel_event=cancel_event(), download=params.download
+            ),
             "build",
         )
-    else:
+    elif params.download:
+        verify_dependencies(["tabix"])
         _run_downloader(reflib, "gnomAD", download_gnomad)
+    else:
+        paths = [download_path(reflib, f"gnomad_{b}.vcf.bgz") for b in GNOMAD_URLS]
+        missing = [
+            str(p) for p in paths if not (p.is_file() and Path(f"{p}.tbi").is_file())
+        ]
+        if missing:
+            raise WGSExtractError(
+                f"gnomAD v2.1.1 VCF or index missing: {', '.join(missing)}. "
+                "To install the public VCFs, run: wgsextract ref gnomad --download"
+            )
+        logging.info("gnomAD v2.1.1 is already installed.")
 
 
 def _delete_resource(reflib: str, key: str, resource_name: str) -> None:
