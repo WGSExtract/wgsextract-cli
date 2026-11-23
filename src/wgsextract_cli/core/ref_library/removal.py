@@ -98,28 +98,20 @@ def remove_dbsnp(reflib: str, builds: Iterable[str] = ("hg38", "hg19")) -> list[
         for directory in directories
         for build in build_list
     ]
-    guards = [Path(f"{lock}.guard") for lock in locks]
-    ours = [guard for guard in guards if not guard.exists()]
-    deleted = False
-    try:
-        with contextlib.ExitStack() as stack:
-            for lock in locks:
-                stack.enter_context(exclusive_lock(lock, timeout=10))
-                if held(str(lock)):
-                    raise WGSExtractError(
-                        f"Another run is installing {lock.name.removesuffix('.lock')} "
-                        f"({lock}); delete dbSNP once it has finished."
-                    )
-            found = [
-                p
-                for p in dbsnp_paths(reflib, build_list)
-                if p.exists() or p.is_symlink()
-            ]
-            removed = remove([*found, *locks])
-            deleted = True
-    finally:
-        for guard in guards if deleted else ours:
-            guard.unlink(missing_ok=True)
+    with contextlib.ExitStack() as stack:
+        for lock in locks:
+            stack.enter_context(exclusive_lock(lock, timeout=10))
+            if held(str(lock)):
+                raise WGSExtractError(
+                    f"Another run is installing {lock.name.removesuffix('.lock')} "
+                    f"({lock}); delete dbSNP once it has finished."
+                )
+        found = [
+            p
+            for p in dbsnp_paths(reflib, build_list)
+            if p.exists() or p.is_symlink()
+        ]
+        removed = remove([*found, *locks])
     return [path for path in removed if path not in locks]
 
 
