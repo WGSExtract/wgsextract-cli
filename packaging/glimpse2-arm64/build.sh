@@ -4,9 +4,6 @@ set -euo pipefail
 # Replace upstream's x86 switches and git autodetection with the pinned tag
 # metadata. SIMDe translates the explicit AVX2/FMA intrinsics to ARM NEON.
 flags="$CXXFLAGS -O3 -Wno-ignored-attributes -DSIMDE_ENABLE_NATIVE_ALIASES"
-if [[ "$target_platform" == linux-aarch64 ]]; then
-    flags="$flags -g"
-fi
 flags="$flags -D__COMMIT_ID__=\\\"88915f7\\\" -D__COMMIT_DATE__=\\\"2023-04-24\\\""
 mkdir -p "$PREFIX/bin"
 for tool in chunk concordance ligate phase split_reference; do

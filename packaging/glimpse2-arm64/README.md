@@ -6,6 +6,8 @@ upstream [v2.0.1](https://github.com/odelaneau/GLIMPSE/tree/v2.0.1) source
 `linux-aarch64`. The recipe verifies the source archive's SHA-256 and packages
 both upstream MIT licenses. Clang 21 and SIMDe 0.8.2 lower the phase program's
 AVX2/FMA intrinsics to ARM NEON without changing its HMM or RNG.
+The phasing code stores its negative variant-type sentinels in `signed char`
+explicitly; plain `char` is unsigned on Linux AArch64.
 
 The [Native GLIMPSE2](../../.github/workflows/glimpse2.yml) workflow checks
 the executables and runs the real HG002 chr20 fixture on both architectures
