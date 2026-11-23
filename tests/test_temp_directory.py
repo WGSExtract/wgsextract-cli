@@ -17,6 +17,8 @@ import pytest
 from tests.disk_volumes import GIB, Volumes
 from tests.fat_volume import exfat_volume as exfat_volume
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from wgsextract_cli.core.alignment import samtools_commands
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.temp_directory import (
     configured_temp_directory,
     run_temporary_directory,
@@ -317,31 +319,58 @@ def test_long_read_cram_realign_budgets_its_spills_and_cram_output(
 
 @needs_tools("samtools")
 @pytest.mark.parametrize("failure", [False, True], ids=["ok", "failed"])
-# sambamba sorts BAM where it is installed; samtools sorts CRAM.
 @pytest.mark.parametrize("suffix", [".bam", ".cram"])
 def test_tmp_dir_overrides_the_configured_one_for_one_run(
-    tmp_path, capsys, paired_bam, folders, failure, suffix
-):
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    paired_bam: Callable[[], tuple[str, str]],
+    folders: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    failure: bool,
+    suffix: str,
+) -> None:
+    # #1449: use samtools on every platform for its spill count diagnostic,
+    # which persists in the run log even when final output creation fails.
+    monkeypatch.setattr(
+        samtools_commands,
+        "get_tool_path",
+        lambda tool: None if tool == "sambamba" else get_tool_path(tool),
+    )
     ref, source = paired_bam()
     if suffix == ".cram":
         source = str(Path(source).with_suffix(".cram"))
         run_command(["samtools", "view", "-C", "-T", ref, "-o", source,
                      source[: -len(suffix)] + ".bam"])  # fmt: skip
     output, chosen = folders
+    sorted_file = output / f"sample_sorted{suffix}"
     gone = json.dumps(str(tmp_path / "gone"))
     config = tmp_path / "config.toml"
     config.write_text(f"temp_directory = {gone}\n")
     if failure:
         # The sort spills, then can't write its output.
-        (output / f"sample_sorted{suffix}").mkdir()
+        sorted_file.mkdir()
     argv = ["bam", "sort", "--input", source, "--ref", ref, "--outdir", str(output),
             "--memory", "1M", "--threads", "1", "--config", str(config)]  # fmt: skip
     assert "gone" in _failure(_wgsextract(capsys, *argv))
-    with _files_seen_under(chosen) as seen:
-        result = _wgsextract(capsys, *argv, "--tmp-dir", str(chosen))
-    assert _spills(seen[chosen]), "the sort did not spill to --tmp-dir"
-    assert result["status"] == ("failed" if failure else "ok")
-    assert (output / f"sample_sorted{suffix}").is_file() is not failure
+    log = tmp_path / "sort.log"
+    result = _wgsextract(
+        capsys, *argv, "--tmp-dir", str(chosen), "--log-file", str(log)
+    )
+    if failure:
+        assert sorted_file.name in _failure(result)
+        assert sorted_file.is_dir()
+    else:
+        assert result["status"] == "ok", result["error"]
+        assert sorted_file.is_file()
+    diagnostics = log.read_text(encoding="utf-8")
+    assert re.search(r"merging from [1-9]\d* files", diagnostics), diagnostics
+    provenance = json.loads(
+        log.with_suffix(".log.provenance.json").read_text(encoding="utf-8")
+    )
+    (sort_cmd,) = (cmd for cmd in provenance["commands"] if "sort" in cmd)
+    # contract: samtools uses -T as the spill directory/prefix for this run.
+    prefix = Path(sort_cmd[sort_cmd.index("-T") + 1])
+    assert prefix.resolve().is_relative_to(chosen.resolve())
     # The run's workspace is removed, also after a failure, and the override
     # is not saved.
     assert list(chosen.iterdir()) == []
