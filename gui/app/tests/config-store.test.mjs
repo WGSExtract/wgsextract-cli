@@ -1,14 +1,22 @@
 import assert from "node:assert/strict";
-import { chmod, cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { chmod, cp, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseFlatToml } from "../dist/shared/rendering.js";
 
-const { bootstrapConfigFiles, loadBundleState, loadConfig, saveBundleState, saveConfig, takeBundleStateWarning, writeFileAtomically } = await import("../dist/web/src/server/config-store.js");
+const { writeFileAtomically } = await import("../dist/web/src/server/atomic-file.js");
+const { loadBundleState, saveBundleState, takeBundleStateWarning } = await import("../dist/web/src/server/bundle-state.js");
+const { bootstrapConfigFiles } = await import("../dist/web/src/server/config-bootstrap.js");
+const { loadConfig, saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
+const { withSettingsFileLock } = await import("../dist/web/src/server/settings-lock.js");
+
+function lockRecord(pid) {
+  return JSON.stringify({ pid, host: hostname(), token: "test" });
+}
 
 async function tempDirectory(t) {
   const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-config-store-"));
@@ -174,6 +182,161 @@ test("1087 saving visible Basic settings preserves omitted advanced settings and
   assert.equal(saved.reference_library, "/new");
   assert.deepEqual(saved.server_allowed_paths, ["/shared"]);
   assert.equal(saved.dev.real_genome_tests_enabled, true);
+});
+
+function textSettingsControl(keys) {
+  return {
+    id: "settings", kind: "configEditor",
+    configFile: { path: "{{bundleWorkspace}}/config.toml", format: "toml" },
+    settings: keys.map((key) => ({ id: key, key, kind: "text" })),
+  };
+}
+
+test("#1230 overlapping saves, through the file and an alias of it, keep every change", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const alias = path.join(bundleRoot, "alias");
+  await symlink(bundleRoot, alias, "junction");
+  const file = path.join(bundleRoot, "config.toml");
+  await writeFile(file, 'cli_only = "keep"\n');
+  const control = textSettingsControl(["first", "second", "third"]);
+
+  await Promise.all([
+    saveConfig(control, undefined, { first: "1" }, bundleRoot),
+    saveConfig(control, undefined, { second: "2" }, bundleRoot),
+    saveConfig(control, path.join(alias, "config.toml"), { third: "3" }, bundleRoot),
+  ]);
+
+  assert.deepEqual({ ...parseSavedToml(await readFile(file, "utf8")) }, { cli_only: "keep", first: "1", second: "2", third: "3" });
+  assert.ok((await lstat(alias)).isSymbolicLink());
+  assert.deepEqual((await readdir(bundleRoot)).sort(), ["alias", "config.toml"]);
+});
+
+test("#1230 a settings file symlinked to a file not yet created is saved where the link points, as the CLI saves it", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  if (process.platform === "win32") {
+    t.skip("file symlinks need Developer Mode on Windows");
+    return;
+  }
+  await mkdir(path.join(bundleRoot, "real"));
+  const link = path.join(bundleRoot, "config.toml");
+  await symlink(path.join(bundleRoot, "real", "config.toml"), link);
+
+  await saveConfig(textSettingsControl(["first"]), undefined, { first: "1" }, bundleRoot);
+
+  assert.ok((await lstat(link)).isSymbolicLink());
+  assert.deepEqual({ ...parseSavedToml(await readFile(path.join(bundleRoot, "real", "config.toml"), "utf8")) }, { first: "1" });
+});
+
+test("#1230 a settings file linked through a linked folder and .. to a file not yet created is saved where the CLI saves it", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  if (process.platform === "win32") {
+    t.skip("file symlinks need Developer Mode on Windows");
+    return;
+  }
+  await mkdir(path.join(bundleRoot, "real", "sub"), { recursive: true });
+  await symlink(path.join(bundleRoot, "real", "sub"), path.join(bundleRoot, "alias"));
+  await symlink(`alias${path.sep}..${path.sep}saved.toml`, path.join(bundleRoot, "config.toml"));
+
+  await saveConfig(textSettingsControl(["first"]), undefined, { first: "1" }, bundleRoot);
+
+  assert.deepEqual({ ...parseSavedToml(await readFile(path.join(bundleRoot, "real", "saved.toml"), "utf8")) }, { first: "1" });
+  await assert.rejects(stat(path.join(bundleRoot, "saved.toml")), { code: "ENOENT" });
+});
+
+test("#1230 saving through a linked folder and .. follows the CLI's platform path semantics", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const real = path.join(bundleRoot, "real");
+  const link = path.join(bundleRoot, "link");
+  await mkdir(path.join(real, "sub"), { recursive: true });
+  await symlink(path.join(real, "sub"), link, "junction");
+  const control = textSettingsControl(["first"]);
+
+  await saveConfig(control, `${link}${path.sep}..${path.sep}config.toml`, { first: "1" }, bundleRoot);
+
+  // Python's Windows realpath normalizes `..` before following links. On POSIX the link is followed first.
+  const [expected, unexpected] = process.platform === "win32" ? [bundleRoot, real] : [real, bundleRoot];
+  assert.deepEqual({ ...parseSavedToml(await readFile(path.join(expected, "config.toml"), "utf8")) }, { first: "1" });
+  await assert.rejects(stat(path.join(unexpected, "config.toml")), { code: "ENOENT" });
+});
+
+test("#1230 a slow save keeps its lock however long it takes", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const file = path.join(bundleRoot, "config.toml");
+  await writeFile(file, 'first = "1"\n');
+  const lock = path.join(bundleRoot, ".config.toml.lock");
+  const saver = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30_000)"], { stdio: "ignore" });
+  t.after(() => saver.kill());
+  await writeFile(lock, lockRecord(saver.pid));
+  const hourAgo = new Date(Date.now() - 3_600_000);
+  await utimes(lock, hourAgo, hourAgo);
+
+  await assert.rejects(withSettingsFileLock(file, () => writeFile(file, "overtaken\n"), 200), /Timed out waiting/);
+  assert.equal(await readFile(file, "utf8"), 'first = "1"\n');
+});
+
+test("#1230 saves from separate app processes keep every change", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const moduleURL = new URL("../dist/web/src/server/config-store.js", import.meta.url).href;
+  const saver = (prefix) => new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ["--input-type=module", "-e", `
+      const { saveConfig } = await import(${JSON.stringify(moduleURL)});
+      for (let index = 0; index < 25; index++) {
+        const key = ${JSON.stringify(prefix)} + index;
+        const control = { id: "settings", kind: "configEditor", configFile: { path: "{{bundleWorkspace}}/config.toml" }, settings: [{ id: key, key, kind: "text" }] };
+        await saveConfig(control, undefined, { [key]: "saved" }, ${JSON.stringify(bundleRoot)});
+      }
+    `], { stdio: ["ignore", "ignore", "pipe"] });
+    let stderr = "";
+    child.stderr.on("data", (chunk) => { stderr += chunk; });
+    child.on("error", reject);
+    child.on("exit", (code) => code === 0 ? resolve() : reject(new Error(stderr)));
+  });
+
+  await Promise.all([saver("a"), saver("b"), saver("c")]);
+
+  const saved = parseSavedToml(await readFile(path.join(bundleRoot, "config.toml"), "utf8"));
+  assert.equal(Object.keys(saved).length, 75);
+});
+
+test("#1230 a lock left by a save that crashed does not block saving", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const exited = spawnSync(process.execPath, ["-e", "process.stdout.write(String(process.pid))"], { encoding: "utf8" });
+  const lock = path.join(bundleRoot, ".config.toml.lock");
+  await writeFile(lock, lockRecord(Number(exited.stdout)));
+
+  await saveConfig(textSettingsControl(["first"]), undefined, { first: "1" }, bundleRoot);
+
+  assert.deepEqual({ ...parseSavedToml(await readFile(path.join(bundleRoot, "config.toml"), "utf8")) }, { first: "1" });
+  await assert.rejects(stat(lock), { code: "ENOENT" });
+});
+
+for (const [left, write] of [
+  ["by this app, when removing it failed", (lock) => writeFile(lock, lockRecord(process.pid))],
+  ["empty, by a save that crashed before writing its owner", async (lock) => {
+    await writeFile(lock, "");
+    const minuteAgo = new Date(Date.now() - 60_000);
+    await utimes(lock, minuteAgo, minuteAgo);
+  }],
+]) {
+  test(`#1230 a lock left ${left} does not block saving`, async (t) => {
+    const bundleRoot = await tempDirectory(t);
+    const lock = path.join(bundleRoot, ".config.toml.lock");
+    await write(lock);
+
+    await withSettingsFileLock(path.join(bundleRoot, "config.toml"), (target) => writeFile(target, "saved\n"), 2_000);
+
+    assert.equal(await readFile(path.join(bundleRoot, "config.toml"), "utf8"), "saved\n");
+    await assert.rejects(stat(lock), { code: "ENOENT" });
+  });
+}
+
+test("#1230 a lock still being written is not taken from the save making it", async (t) => {
+  const bundleRoot = await tempDirectory(t);
+  const file = path.join(bundleRoot, "config.toml");
+  await writeFile(path.join(bundleRoot, ".config.toml.lock"), "");
+
+  await assert.rejects(withSettingsFileLock(file, () => writeFile(file, "overtaken\n"), 200), /Timed out waiting/);
+  await assert.rejects(stat(file), { code: "ENOENT" });
 });
 
 test("typed setting defaults preserve numbers and booleans when bootstrap merges missing keys", async (t) => {

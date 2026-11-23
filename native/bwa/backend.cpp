@@ -32,6 +32,19 @@ extern "C" void kt_for(int n_threads, void (*func)(void *, long, int), void *dat
 namespace {
 using namespace wgse::gpu;
 
+// Whole pages that free() releases, page-aligned so that Metal can use them in
+// place. Windows has no aligned allocation that free() accepts, and CUDA, its
+// only GPU, copies them, so there they are only whole pages.
+void *page_alloc(size_t page, size_t bytes) {
+#ifdef _WIN32
+    (void)page;
+    return malloc(bytes);
+#else
+    void *memory = nullptr;
+    return posix_memalign(&memory, page, bytes) == 0 ? memory : nullptr;
+#endif
+}
+
 // Prepared batches whose pairs are not all mapped yet; bounds memory for large -K.
 constexpr size_t max_outstanding_batches = 3;
 
@@ -1426,7 +1439,7 @@ extern "C" void *wgse_metal_calloc(size_t count, size_t size) {
     const size_t page = static_cast<size_t>(getpagesize());
     void *memory = nullptr;
     if ((size && count > (SIZE_MAX - page) / size)
-        || posix_memalign(&memory, page, (count * size + page - 1) / page * page) != 0) {
+        || !(memory = page_alloc(page, (count * size + page - 1) / page * page))) {
         fprintf(stderr, "[wgse-bwa] failed to allocate %zu bytes for the index\n", count * size);
         exit(EXIT_FAILURE);
     }
@@ -1925,8 +1938,8 @@ std::string index_prefix(const char *hint) {
 uint32_t *page_storage(size_t bytes, size_t &capacity) {
     const size_t page = static_cast<size_t>(getpagesize());
     capacity = (std::max<size_t>(bytes, 1) + page - 1) / page * page;
-    void *memory = nullptr;
-    if (posix_memalign(&memory, page, capacity) != 0) return nullptr;
+    void *memory = page_alloc(page, capacity);
+    if (!memory) return nullptr;
     memset(static_cast<uint8_t *>(memory) + bytes, 0, capacity - bytes);
     return static_cast<uint32_t *>(memory);
 }

@@ -367,13 +367,26 @@ Requires existing noninteractive `ssh randy-mini`, curl, and agent-coord at
 Every five minutes it probes tailnet `/api/health`.
 On failure it runs `hosting/recover.py`, which restores all three launchd
 registrations and kickstarts an existing server without forcing the nightly
-backup to run. It then checks health again. Only then does it announce `restarted OK`,
-or report `still down` / `ssh unreachable` and exit nonzero. SSH failure
-does not suppress the alert. For a safe unreachable-host drill:
+backup to run. It then checks health again and exits nonzero if the server
+is still down, even when it has already alerted on that outage.
+The watchdog alerts through agent-coord on the first outage, a change in the
+failure reason or a recovery, including a successful restart. It sends a
+reminder every four hours while the same outage continues;
+`--reminder-interval` overrides that interval in seconds.
+The watchdog remembers the last status in
+`${XDG_STATE_HOME:-$HOME/.local/state}/mockup-server/watchdog.state`;
+use `--state-file` to give a different host or drill its own state.
+For testing reminders, `--now` overrides the clock with Unix seconds.
+Checks sharing a state file do not overlap. With util-linux `flock`, the OS releases the
+lock when the check exits. On hosts without `flock`, if forced termination
+leaves a sibling `.lockdir` directory, remove it only after confirming no
+check is running.
+For a safe unreachable-host drill:
 
 ```sh
 ~/.local/lib/mockup-server/watchdog.sh --host mockup-watchdog-unreachable.invalid \
-  --url http://127.0.0.1:1/api/health --retry-delay 0
+  --url http://127.0.0.1:1/api/health --retry-delay 0 \
+  --state-file ~/.local/state/mockup-server/watchdog-drill.state
 ```
 
 This reports failure for the bogus host without touching randy-mini.

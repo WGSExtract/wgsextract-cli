@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "description": "Imprinted regions whose uniparental disomy (UPD) causes a recognised imprinting disorder. Curated for WGS Extract from the cited reviews: the gene and condition names are facts, not copied text. Each region spans its anchor genes in the bundled NCBI RefSeq gene table of the build (assets/panel/genes_<build>.tsv.gz, public domain), so its coordinates always match the sample's build.",
+  "sources": {
+    "eggermann2015": "Eggermann T, Perez de Nanclares G, Maher ER, et al. Imprinting disorders: a group of congenital disorders with overlapping patterns of molecular changes affecting imprinted loci. Clin Epigenetics. 2015;7:123. doi:10.1186/s13148-015-0143-8",
+    "delgaudio2020": "Del Gaudio D, Shinawi M, Astbury C, Tayeh MK, Deak KL, Raca G. Diagnostic testing for uniparental disomy: a points to consider statement from the American College of Medical Genetics and Genomics (ACMG). Genet Med. 2020;22(7):1133-1141. doi:10.1038/s41436-020-0782-9",
+    "mulchandani2016": "Mulchandani S, Bhoj EJ, Luo M, et al. Maternal uniparental disomy of chromosome 20: a novel imprinting disorder of growth failure. Genet Med. 2016;18(4):309-315. doi:10.1038/gim.2015.103"
+  },
+  "regions": [
+    {
+      "id": "6q24-PLAGL1",
+      "band": "6q24.2",
+      "genes": ["PLAGL1", "HYMAI"],
+      "conditions": [
+        {"name": "6q24-related transient neonatal diabetes mellitus", "upd": "paternal UPD(6)"}
+      ],
+      "sources": ["eggermann2015"]
+    },
+    {
+      "id": "7p12-GRB10",
+      "band": "7p12.1",
+      "genes": ["GRB10"],
+      "conditions": [
+        {"name": "Silver-Russell syndrome", "upd": "maternal UPD(7)"}
+      ],
+      "sources": ["eggermann2015"]
+    },
+    {
+      "id": "7q32-MEST",
+      "band": "7q32.2",
+      "genes": ["MEST"],
+      "conditions": [
+        {"name": "Silver-Russell syndrome", "upd": "maternal UPD(7)"}
+      ],
+      "sources": ["eggermann2015"]
+    },
+    {
+      "id": "11p15-H19-KCNQ1OT1",
+      "band": "11p15.5",
+      "genes": ["H19", "IGF2", "KCNQ1OT1", "CDKN1C"],
+      "conditions": [
+        {"name": "Beckwith-Wiedemann syndrome", "upd": "paternal UPD(11p15)"},
+        {"name": "Silver-Russell syndrome", "upd": "maternal UPD(11p15)"}
+      ],
+      "sources": ["eggermann2015"]
+    },
+    {
+      "id": "14q32-DLK1-MEG3",
+      "band": "14q32.2",
+      "genes": ["DLK1", "MEG3", "RTL1", "MEG8"],
+      "conditions": [
+        {"name": "Temple syndrome", "upd": "maternal UPD(14)"},
+        {"name": "Kagami-Ogata syndrome", "upd": "paternal UPD(14)"}
+      ],
+      "sources": ["eggermann2015"]
+    },
+    {
+      "id": "15q11-q13-SNRPN-UBE3A",
+      "band": "15q11.2-q13",
+      "genes": ["MKRN3", "MAGEL2", "NDN", "SNRPN", "UBE3A"],
+      "conditions": [
+        {"name": "Prader-Willi syndrome", "upd": "maternal UPD(15)"},
+        {"name": "Angelman syndrome", "upd": "paternal UPD(15)"}
+      ],
+      "sources": ["eggermann2015", "delgaudio2020"]
+    },
+    {
+      "id": "20q13-GNAS",
+      "band": "20q13.32",
+      "genes": ["GNAS"],
+      "conditions": [
+        {"name": "Pseudohypoparathyroidism type 1B", "upd": "paternal UPD(20q)"},
+        {"name": "Growth restriction of maternal UPD(20) (Mulchandani-Bhoj-Conlin syndrome)", "upd": "maternal UPD(20)"}
+      ],
+      "sources": ["eggermann2015", "mulchandani2016"]
+    }
+  ]
+}

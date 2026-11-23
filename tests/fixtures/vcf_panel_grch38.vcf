@@ -1,0 +1,16 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr17,length=83257441>
+##contig=<ID=chr13,length=114364328>
+##contig=<ID=chr1,length=248956422>
+##INFO=<ID=CLNSIG,Number=.,Type=String,Description="ClinVar significance">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	TEST
+chr1	99	before_bed	A	T	50	PASS	.	GT	0/1
+chr1	100	bed	A	T	50	PASS	CLNSIG=Benign	GT	0/1
+chr1	101	after_bed	A	T	50	PASS	.	GT	0/1
+chr13	32316000	brca2	A	T	50	PASS	.	GT	0/1
+chr17	7669000	tp53	A	T	50	PASS	.	GT	0/1
+chr17	43044294	before_brca1	A	T	50	PASS	.	GT	0/1
+chr17	43044500	brca1	A	T	50	PASS	CLNSIG=Benign	GT	0/1
+chr17	43044501	lowqual_brca1	A	T	5	PASS	.	GT	0/1
+chr17	58693000	rad51c	A	T	50	PASS	.	GT	0/1

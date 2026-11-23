@@ -14,6 +14,7 @@ from wgsextract_cli.api._shared import (
     threads_param,
 )
 from wgsextract_cli.core.settings_schema import REFERENCE_EVIDENCE_MODES
+from wgsextract_cli.core.utils import UsageError
 
 _Public = TypeVar("_Public")
 
@@ -87,6 +88,26 @@ def _deepvariant_items(params: Any, text: str) -> list[str]:
 @_public
 def _region_param(help: str = "Chromosomal region") -> Any:
     return param(None, help=help, flags=("-r", "--region"))
+
+
+def _structural_region_items(_params: Any, text: str) -> list[str]:
+    from wgsextract_cli.core.region_selection import (
+        comma_region_items,
+        is_bed_selection,
+    )
+
+    if "/" in text or "\\" in text or is_bed_selection(text):
+        return [text]
+    try:
+        return comma_region_items(text)
+    except ValueError as error:
+        raise UsageError(f"Invalid region (--region): {error}") from error
+
+
+def _structural_region_param(help: str) -> Any:
+    return param(
+        None, help=help, flags=("-r", "--region"), splits=_structural_region_items
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
