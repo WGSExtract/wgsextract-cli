@@ -99,8 +99,10 @@ def _hg38_sample(tmp_path) -> tuple[str, str]:
     return str(reference), sam_to_bam(lines, tmp_path / "sample.bam")
 
 
-def _vcf(path: Path, length: int | None, body: list[str]) -> str:
-    contig = f"##contig=<ID=chrY,length={length}>\n" if length else ""
+def _vcf(
+    path: Path, length: int | None, body: list[str], *, chrom: str = "chrY"
+) -> str:
+    contig = f"##contig=<ID={chrom},length={length}>\n" if length else ""
     path.write_text(
         "##fileformat=VCFv4.2\n" + contig + '##FILTER=<ID=LowQual,Description="q">\n'
         "##FORMAT=<ID=GT,Number=1,Type=String,"
@@ -192,19 +194,25 @@ def test_grch38_needs_the_installed_ybrowse_snapshot(tmp_path, monkeypatch):
         _private(input=Path(vcf), outdir=tmp_path / "out")
 
 
-def test_t2t_vcf_uses_yfull_markers_and_says_ybrowse_is_absent(tmp_path, library):
+@pytest.mark.parametrize("chrom", ["chrY", "NC_060948.1"])
+def test_t2t_vcf_uses_yfull_markers_and_says_ybrowse_is_absent(
+    tmp_path, library, chrom
+):
     vcf = _vcf(
         tmp_path / "kit.vcf",
         T2T_Y,
         [
-            f"chrY\t{NOVEL}\t.\tA\tT\t60\tPASS\t.\tGT:AD\t1/1:1,24",
-            f"chrY\t{YFULL_KNOWN}\t.\tA\tG\t60\tPASS\t.\tGT:AD\t1:0,25",
-            f"chrY\t{LOW_AF}\t.\tA\tT\t60\tPASS\t.\tGT:AD\t0/1:12,12",
-            f"chrY\t{FEW_READS}\t.\tA\tC\t60\tLowQual\t.\tGT:AD\t1:0,25",
+            f"{chrom}\t{NOVEL}\t.\tA\tT\t60\tPASS\t.\tGT:AD\t1/1:1,24",
+            f"{chrom}\t{YFULL_KNOWN}\t.\tA\tG\t60\tPASS\t.\tGT:AD\t1:0,25",
+            f"{chrom}\t{LOW_AF}\t.\tA\tT\t60\tPASS\t.\tGT:AD\t0/1:12,12",
+            f"{chrom}\t{FEW_READS}\t.\tA\tC\t60\tLowQual\t.\tGT:AD\t1:0,25",
         ],
+        chrom=chrom,
     )
     result = _private(input=Path(vcf), outdir=tmp_path / "out")
-    assert [c["pos"] for c in result.details["candidates"]] == [NOVEL]
+    assert [(c["chrom"], c["pos"]) for c in result.details["candidates"]] == [
+        (chrom, NOVEL)
+    ]
     counts = result.details["counts"]
     assert (counts["known"], counts["failed_af"], counts["failed_filter"]) == (1, 1, 1)
     assert result.details["build"] == "t2t"
@@ -213,6 +221,19 @@ def test_t2t_vcf_uses_yfull_markers_and_says_ybrowse_is_absent(tmp_path, library
     ]
     assert result.details["filters"]["min_mapq"] is None
     assert "known_markers_partial" in {w.code for w in result.warnings}
+
+
+def test_headerless_vcf_with_two_y_contigs_is_ambiguous(tmp_path, library):
+    vcf = _vcf(
+        tmp_path / "kit.vcf",
+        None,
+        [
+            f"{chrom}\t{NOVEL}\t.\tA\tT\t60\tPASS\t.\tGT:AD\t1:0,20"
+            for chrom in ("chrY", "Y")
+        ],
+    )
+    with pytest.raises(CommandFailed, match="exactly one primary Y contig"):
+        _private(input=Path(vcf), outdir=tmp_path / "out", build="t2t")
 
 
 def test_many_candidates_raise_the_qc_warning(tmp_path, library):

@@ -141,15 +141,7 @@ from .info import (
     InfoGeneParams,
     InfoParams,
 )
-from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
-from .lineage import (
-    MtHaplogroupParams,
-    YHaplogroupParams,
-    YPrivateParams,
-    YStrParams,
-)
-from .methylation import MethylationPileupParams
-from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
+from .lineage import MtHaplogroupParams, YHaplogroupParams, YPrivateParams, YStrParams
 from .methylation import MethylationPileupParams, MethylationRegionsParams
 from .microarray import MicroarrayParams
 from .panel import PanelBedParams, PanelCheckParams

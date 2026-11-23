@@ -100,6 +100,8 @@ wgsextract lineage y-private --input sample.vcf.gz --build t2t
   only (`known_markers_partial` warning). A call at a known site with other
   alleles is still a candidate, noted `known site, other allele`.
   GRCh37/hg19 and other Y assemblies are refused: realign first.
+  The input must name one primary Y contig. With a contig length in the header,
+  this can be `chrY`, `Y`, or the primary Y's RefSeq/GenBank accession.
 - **Callable mask:** calls are made, or read from a VCF, only inside the
   bundled Poz regions (the CombBED/McDonald/Poznik union, ~11.65 Mb on GRCh38,
   ~11.6 Mb on T2T). It leaves out both PARs and the Yq12 heterochromatin, and

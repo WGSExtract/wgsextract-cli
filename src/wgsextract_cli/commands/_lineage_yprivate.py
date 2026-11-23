@@ -34,6 +34,7 @@ from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import calculate_bam_md5, verify_paths_exist
+from wgsextract_cli.core.y_contigs import primary_y
 
 from ._extract_poz import poz_intervals, y_build
 
@@ -83,26 +84,29 @@ class _Call:
         return self.alt_reads / self.depth
 
 
-def _y_contig(contigs: dict[str, int], names: list[str]) -> str:
-    found = [name for name in ("chrY", "Y") if name in contigs or name in names]
-    if len(found) != 1:
+def _y_contig(names: list[str], *, vcf: str | None = None) -> str:
+    found = primary_y(names)
+    if found is None and vcf is not None:
+        names = _vcf_y_names(vcf)
+        found = primary_y(names)
+    if found is None or primary_y([name for name in names if name != found]):
         raise WGSExtractError(
-            "The input has no single chrY/Y contig, so there are no Y calls."
+            "The input must name exactly one primary Y contig "
+            "(chrY, Y or its RefSeq/GenBank accession)."
         )
-    return found[0]
+    return found
 
 
 def _vcf_header(path: str) -> str:
     return run_command(["bcftools", "view", "-h", path], capture_output=True).stdout
 
 
-def _vcf_y_name(path: str) -> list[str]:
+def _vcf_y_names(path: str) -> list[str]:
     """chrY or Y, from the records of a VCF whose header lists no contigs."""
-    first = run_command(
+    return run_command(
         ["bcftools", "query", "-t", "chrY,Y", "-f", "%CHROM\n", path],
         capture_output=True,
-    ).stdout.split("\n", 1)[0]
-    return [first] if first else []
+    ).stdout.splitlines()
 
 
 def _resolve_build(contigs: dict[str, int], chr_y: str, override: str | None) -> str:
@@ -429,8 +433,7 @@ def run_y_private(params: YPrivateParams) -> None:
                 "fraction filters can't be applied."
             )
         contigs = sequence_lengths(header_text)
-        names = [] if {"chrY", "Y"} & set(contigs) else _vcf_y_name(input_file)
-        chr_y = _y_contig(contigs, names)
+        chr_y = _y_contig(list(contigs), vcf=input_file)
     else:
         bam_header = get_bam_header(input_file)
         read_groups = set(
@@ -442,7 +445,7 @@ def run_y_private(params: YPrivateParams) -> None:
                 f"read groups name {len(read_groups)} ({', '.join(sorted(read_groups))})."
             )
         contigs = sequence_lengths(bam_header)
-        chr_y = _y_contig(contigs, [])
+        chr_y = _y_contig(list(contigs))
     build = _resolve_build(contigs, chr_y, params.build)
 
     library = _marker_library(params.ref, build)
