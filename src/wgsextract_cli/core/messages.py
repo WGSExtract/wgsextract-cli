@@ -101,7 +101,7 @@ CLI_HELP = {
     "cmd_typing-cyp2d6": "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius's license allows noncommercial use only, and no distribution or modification.",
     "cmd_typing-hla": "Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.",
     "cmd_typing-str": "Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72, ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those outside STRchive's normal range.",
-    "cmd_typing-target-cnv": "Screen BED targets for GC-normalized copy number from short-read WGS. Use a matching indexed FASTA; difficult regions require specialist callers.",
+    "cmd_typing-target-cnv": "Screen BED targets for GC-normalized copy number from short-read WGS. Uses a matching indexed FASTA; masked targets are withheld except clear calls at curated deletion loci.",
     "cmd_methylation": "Methylation (5mC/5hmC) from the base-modification (MM/ML) tags of Nanopore and PacBio HiFi reads.",
     "cmd_qc-relate": "Sex, relatedness and 1000 Genomes superpopulation of BAM/CRAM/VCF files with somalier; flags sample swaps. Optional: Linux and macOS, install with `pixi install -e somalier`.",
     "cmd_methylation-pileup": "Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and summary. Optional: Linux and macOS, install with `pixi install -e modkit`.",

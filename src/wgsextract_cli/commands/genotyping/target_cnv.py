@@ -5,6 +5,7 @@ import tempfile
 from collections import defaultdict
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 from statistics import median
 from typing import NamedTuple
@@ -36,15 +37,25 @@ MIN_BASELINE_BREADTH = 0.8
 MIN_BASELINE_WINDOWS = 20
 MIN_GC_BIN_WINDOWS = 5
 DEPTH_OPTIONS = ("-Q", "20", "-q", "20", "-s", "-G", "SUPPLEMENTARY")
-SPECIALISTS = {"SMN1": "typing smn", "SMN2": "typing smn", "CYP2D6": "typing cyp2d6"}
+SPECIALISTS = {
+    "SMN1": "typing smn",
+    "SMN2": "typing smn",
+    "CYP2D6": "typing cyp2d6",
+    "RHD": "RHtyper (external)",
+}
+# Recurrent whole-gene deletions: GSTM1/GSTT1 (PMID 31650384),
+# UGT2B17 (PMID 18760392), RHD (PMID 32915977), and the shared
+# LCE3B/LCE3C deletion (PMIDs 21509048, 21711330). These sources describe
+# the loci, not the accuracy of this depth screen.
+CURATED_DELETIONS = ("GSTM1", "GSTT1", "UGT2B17", "RHD", "LCE3B", "LCE3C")
 TABLE = (
     Column("name", "TEXT", "BED name, or the interval if unnamed."),
     Column("contig", "TEXT"),
     Column("start", "INTEGER", "0-based BED start."),
     Column("end", "INTEGER", "Exclusive BED end."),
     Column("state", "TEXT"),
-    Column("reason", "TEXT", "Why no copy number was reported."),
-    Column("specialist", "TEXT", "An available typing command for the locus."),
+    Column("reason", "TEXT", "Why a call was withheld or reported despite the mask."),
+    Column("specialist", "TEXT", "An available specialist caller for the locus."),
     Column(
         "expected_copy_number", "INTEGER", "Normal copy number for the locus and sex."
     ),
@@ -168,6 +179,30 @@ def _copy_call(depth: float, baseline: GcBaseline) -> tuple[str, str, float]:
     return "3+" if number == 3 else str(number), confidence, estimate
 
 
+@cache
+def _curated_regions(build: str) -> frozenset[Region]:
+    loci = load_annotations(build).loci
+    # Match the whole annotated primary locus, not user-supplied names,
+    # partial genes, padding or paralogous regions on an alternate contig.
+    return frozenset(
+        (contig_key(locus.chrom), locus.start, locus.end)
+        for gene in CURATED_DELETIONS
+        if len(records := loci.get(gene, ())) == 1
+        for locus in records
+        if contig_key(locus.chrom) in PRIMARY
+    )
+
+
+def _curated_copy_number(ratio: float) -> str | None:
+    if ratio <= 0.15:
+        return "0"
+    if 0.35 <= ratio <= 0.65:
+        return "1"
+    if 0.85 <= ratio <= 1.25:
+        return "2"
+    return None
+
+
 def _expected(t: BedTarget, aln: Alignment, sex: str) -> tuple[int | None, str]:
     chrom = contig_key(t.chrom)
     if chrom not in PRIMARY:
@@ -228,19 +263,31 @@ def _row(
     coords = (t.name, *_region(t))
     expected, reason = _expected(t, aln, sex)
     gc = fractions.get(_region(t))
-    if mask.overlaps(contig_key(t.chrom), t.start, t.end):
+    chrom = contig_key(t.chrom)
+    matched = bins.get(_gc_bin(gc)) if gc is not None else None
+    if chrom not in {"X", "Y"} and t.chrom not in covered_autosomes:
+        reason = reason or "chromosome_baseline_uncovered"
+    if mask.overlaps(chrom, t.start, t.end):
+        specialist = _specialist(t, aln.build)
+        if (
+            expected == 2 and not reason and matched is not None
+            and (chrom, t.start, t.end) in _curated_regions(aln.build)
+        ):  # fmt: skip
+            ratio = t.mean / matched.depth
+            if (number := _curated_copy_number(ratio)) is not None:
+                return TargetCall(
+                    *coords, "called", "masked_region_curated_call", specialist,
+                    expected, number, "medium", t.mean, gc, matched.depth, 2 * ratio,
+                )  # fmt: skip
         return TargetCall(
             *coords, "specialist_caller_required", "segdup_or_low_mappability",
-            _specialist(t, aln.build), expected, None, None, t.mean, gc, None, None,
+            specialist, expected, None, None, t.mean, gc, None, None,
         )  # fmt: skip
     if expected == 0:
         return TargetCall(
             *coords, "not_applicable", "chrY_in_female", None, expected, None, None,
             t.mean, gc, None, None,
         )  # fmt: skip
-    matched = bins.get(_gc_bin(gc)) if gc is not None else None
-    if contig_key(t.chrom) not in {"X", "Y"} and t.chrom not in covered_autosomes:
-        reason = reason or "chromosome_baseline_uncovered"
     if reason or matched is None:
         reason = reason or (
             "ambiguous_reference_bases" if gc is None else "no_gc_baseline"
@@ -310,6 +357,9 @@ def run_target_cnv(params: TypingTargetCnvParams) -> None:
         target_cnv_mask="giab_v3.5_exact" if params.download else "giab_v3.5_bundled",
         target_cnv_baseline_depth=round(diploid, 3),
         target_cnv_called=called,
+        target_cnv_curated_called=sum(
+            row.reason == "masked_region_curated_call" for row in rows
+        ),
         target_cnv_specialist_required=specialist,
         target_cnv_unresolved=len(rows) - called - specialist,
     )

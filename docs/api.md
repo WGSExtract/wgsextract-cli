@@ -2582,8 +2582,8 @@ Screen BED targets for short-read copy number (see `TypingTargetCnvParams`).
 
 `TypingTargetCnvParams`: Estimate copy-number classes (0, 1, 2, 3+) with heuristic confidence
 from GC-matched autosomal depth in short-read whole-genome sequencing.
-Targets overlapping a segmental duplication or low-mappability mask
-require a specialist. This is a screen, not a diagnosis.
+Masked targets require a specialist, except whole curated deletion loci
+with clear depth evidence. This is a screen, not a diagnosis.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
