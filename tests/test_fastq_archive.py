@@ -3,6 +3,7 @@
 import gzip
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -186,3 +187,31 @@ def test_fastq_archive_1432_refuses_missing_newline_between_blocks(tmp_path):
     assert result.error and result.error.code == "fastq_restore_failed"
     assert "line ending" in result.error.message
     assert not restored.exists()
+
+
+def test_fastq_archive_1432_restores_two_bit_streams_with_sparse_literals(tmp_path):
+    reads, archive, restored = (
+        tmp_path / name for name in ("r.fq", "r.wgfq", "restored.fq")
+    )
+    bases = b"ACGT" * 15 + b"r" + b"TGCA" * 34 + b"N"
+    quality = b"F:,#" * 31 + b"~" + b"#:F," * 18 + b"!"
+    original = b"@packed\n" + bases + b"\n+packed\n" + quality
+    reads.write_bytes(original)
+    api.fastq.archive(api.FastqArchiveParams(r1=reads, output=archive))
+    api.fastq.restore(api.FastqRestoreParams(input=archive, output=restored))
+    assert restored.read_bytes() == original
+
+
+def test_fastq_archive_1432_expands_home_paths_in_the_python_api(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))
+    original = b"@home\nA\n+\n!\n"
+    (tmp_path / "r.fq").write_bytes(original)
+    api.fastq.archive(
+        api.FastqArchiveParams(r1=Path("~/r.fq"), output=Path("~/r.wgfq"))
+    )
+    result = api.fastq.restore(
+        api.FastqRestoreParams(input=Path("~/r.wgfq"), output=Path("~/restored.fq"))
+    )
+    assert (tmp_path / "restored.fq").read_bytes() == original
+    assert Path(result.outputs[0].path) == tmp_path / "restored.fq"

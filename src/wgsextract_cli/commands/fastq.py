@@ -117,37 +117,45 @@ def _stage_outputs(paths: tuple[Path, ...]) -> Iterator[tuple[FastqWriter, ...]]
 
 
 def run_archive(params: FastqArchiveParams) -> None:
-    sources = (params.r1, params.r2) if params.r2 else (params.r1,)
+    sources = (
+        (params.r1.expanduser(), params.r2.expanduser())
+        if params.r2
+        else (params.r1.expanduser(),)
+    )
+    output = params.output.expanduser()
     _validate_sources(sources)
-    _validate_manifest(sources, (params.output,))
+    _validate_manifest(sources, (output,))
     result = current_result()
     for index, path in enumerate(sources, 1):
         result.add_input(path, f"fastq_r{index}")
     codec = StreamCodec()
     try:
-        with _stage_outputs((params.output,)) as (archive,):
+        with _stage_outputs((output,)) as (archive,):
             write_archive(sources, archive, codec, checkpoint=checkpoint)
     except (OSError, EOFError, FastqArchiveError, zlib.error) as error:
         raise CodedError("fastq_archive_failed", str(error)) from error
-    result.add_output(params.output, "fastq_archive")
+    result.add_output(output, "fastq_archive")
 
 
 def run_restore(params: FastqRestoreParams) -> None:
-    _validate_sources((params.input,))
+    source = params.input.expanduser()
+    _validate_sources((source,))
     outputs = (
-        (params.output, params.output_r2) if params.output_r2 else (params.output,)
+        (params.output.expanduser(), params.output_r2.expanduser())
+        if params.output_r2
+        else (params.output.expanduser(),)
     )
-    _validate_manifest((params.input,), outputs)
+    _validate_manifest((source,), outputs)
     if any(path.suffix.lower() in {".gz", ".bgz", ".bgzf"} for path in outputs):
         raise CodedError(
             "fastq_invalid_output",
             "Restore writes plain FASTQ; choose an uncompressed output name.",
         )
     result = current_result()
-    result.add_input(params.input, "fastq_archive")
+    result.add_input(source, "fastq_archive")
     codec = StreamCodec()
     try:
-        with params.input.open("rb") as archive, _stage_outputs(outputs) as staged:
+        with source.open("rb") as archive, _stage_outputs(outputs) as staged:
             restore_archive(archive, staged, codec, checkpoint=checkpoint)
     except (OSError, FastqArchiveError, zlib.error) as error:
         raise CodedError("fastq_restore_failed", str(error)) from error
