@@ -3,6 +3,7 @@
  * hash table type. Each bucket's hash table is filled in upstream's order, so the
  * tables, and everything mapped with them, are identical to upstream's. */
 #include <errno.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <string.h>
 
@@ -446,8 +447,8 @@ static void wgse_mm_idx_stat(const mm_idx_t *mi)
 	wgse_occ_scan(&d, mi, 0);
 	for (i = 0; i < 1U << mi->b; ++i) n += d.n[i], n1 += d.n1[i], sum += d.sum[i];
 	wgse_occ_free(&d, mi);
-	fprintf(stderr, "[M::%s::%.3f*%.2f] distinct minimizers: %ld (%.2f%% are singletons); average occurrences: %.3lf; average spacing: %.3lf; total length: %ld\n",
-			"mm_idx_stat", realtime() - mm_realtime0, cputime() / (realtime() - mm_realtime0), (long)n, 100.0*n1/n, (double)sum / n, (double)len / sum, (long)len);
+	fprintf(stderr, "[M::%s::%.3f*%.2f] distinct minimizers: %" PRId64 " (%.2f%% are singletons); average occurrences: %.3lf; average spacing: %.3lf; total length: %" PRIu64 "\n",
+			"mm_idx_stat", realtime() - mm_realtime0, cputime() / (realtime() - mm_realtime0), n, 100.0*n1/n, (double)sum / n, (double)len / sum, len);
 }
 
 /* Prefetches for mm_seed_collect_all(): the bucket's hash table header, then the slot
