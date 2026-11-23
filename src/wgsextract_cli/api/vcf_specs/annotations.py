@@ -358,8 +358,21 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
     absent_to_ref: bool = param(
         False,
         help="Treat positions absent from the VCF as reference. Only for a "
-        "whole-genome VCF that lists variants only (not a gVCF).",
+        "whole-genome variants-only VCF. Incompatible with --alignment.",
         action="store_true",
+    )
+    alignment: Path | None = param(
+        None,
+        help="Indexed BAM/CRAM of the same sample, for reference evidence at absent "
+        "PharmCAT sites. Overrides any companion gVCF.",
+        path="file",
+        metavar="BAM/CRAM",
+    )
+    alignment_reference: Path | None = param(
+        None,
+        help="Indexed GRCh38 FASTA used to align --alignment (default: PharmCAT's FASTA).",
+        path="file",
+        metavar="FASTA",
     )
     outside_call: tuple[Path, ...] | None = param(
         None,
@@ -375,6 +388,10 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
     def __post_init__(self) -> None:
         super().__post_init__()
         check_confidence(self)
+        if self.alignment is not None and self.absent_to_ref:
+            raise UsageError("--alignment and --absent-to-ref cannot be used together.")
+        if self.alignment_reference is not None and self.alignment is None:
+            raise UsageError("--alignment-reference requires --alignment.")
 
 
 @dataclass(frozen=True, kw_only=True)

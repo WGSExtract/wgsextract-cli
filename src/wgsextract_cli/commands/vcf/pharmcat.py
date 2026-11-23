@@ -28,23 +28,19 @@ from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfPharmcatParams
 from wgsextract_cli.core import reference_evidence, runtime, variant_confidence
-from wgsextract_cli.core.builds import (
-    build_from_chr1_length,
-    build_from_reference_header,
-)
+from wgsextract_cli.core.alignment.metadata import get_vcf_build
+from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.pharmcat_resources import REFERENCE_FASTA as REFERENCE_FASTA
 from wgsextract_cli.core.pharmcat_resources import ensure_reference
 from wgsextract_cli.core.pixi_tools import pixi_env_tool
-from wgsextract_cli.core.reference_resolver import (
-    ReferenceLibrary,
-    header_contig_lengths,
-)
+from wgsextract_cli.core.reference_evidence_records import bcftools_gvcf_header
+from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.tool_commands import _tool_command_parts
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import (
     chromosome_rename_mapping,
     ensure_vcf_indexed,
@@ -54,7 +50,8 @@ from wgsextract_cli.core.variant_files import (
 )
 
 from .basic import require_vcf_input, vcf_input_handler
-from .pharmcat_evidence import expand
+from .pharmcat_alignment import MAX_PILEUP_DEPTH, MIN_BASE_QUALITY, AlignmentPileup
+from .pharmcat_evidence import EvidenceReport, expand
 
 RELEASES_URL = "https://github.com/PharmGKB/PharmCAT/releases"
 PIPELINE_FILES = ("pharmcat_pipeline", "pharmcat.jar", "pharmcat_regions.bed")
@@ -99,11 +96,11 @@ def prepare_input(
     work: str,
     params: VcfPharmcatParams | None = None,
     gvcf: str | None = None,
+    *,
+    alignment: AlignmentPileup | None = None,
+    evidence_report: EvidenceReport | None = None,
 ) -> str:
-    """input_vcf cut to PharmCAT's regions, in its contig names, with gVCF
-    blocks expanded to positions and only GT kept. ``gvcf``, the gVCF the
-    caller of a variant-only input_vcf published beside it, decides the
-    definitions input_vcf doesn't list (pharmcat_evidence.expand)."""
+    """Subset and rename the input, expand reference evidence, and keep only GT."""
     regions = str(Path(directory, "pharmcat_regions.bed"))
     with open(regions) as f:
         bed_lines = [line.split("\t") for line in f if line.strip()]
@@ -147,6 +144,8 @@ def prepare_input(
         [(f[0], int(f[1]), int(f[2])) for f in bed_lines],
         variant_confidence.thresholds_from(params),
         gvcf,
+        alignment=alignment,
+        report=evidence_report,
     )
     # GATK/DRAGEN gVCFs keep ##GVCFBlock lines after expansion, and PharmCAT's
     # pipeline refuses any VCF that has them as a gVCF.
@@ -294,20 +293,6 @@ def summarize(phenotype_json: str) -> list[GeneCall]:
     return rows
 
 
-def _vcf_build(vcf: str) -> str | None:
-    try:
-        header = run_command(["bcftools", "view", "-h", vcf], capture_output=True)
-    except (OSError, subprocess.SubprocessError):
-        return None
-    by_length = build_from_chr1_length(header_contig_lengths(header.stdout))
-    if by_length:
-        return by_length
-    for line in header.stdout.splitlines():
-        if line.startswith("##reference="):
-            return build_from_reference_header(line.partition("=")[2])
-    return None
-
-
 def _depth_only_gvcf(vcf: str) -> bool:
     """Whether ``vcf`` is a WGS Extract gVCF whose reference blocks carry
     depth but no genotype quality (bcftools'), which the direct-input path,
@@ -337,17 +322,47 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
     lib = ReferenceLibrary(params.ref, None, input_path=input_vcf)
     # The library knows the build only when there is one; the VCF's contigs
     # tell it either way.
-    build = lib.build or _vcf_build(input_vcf)
+    build = get_vcf_build(input_vcf) or lib.build
     if build and "38" not in build:
         raise WGSExtractError(f"PharmCAT needs a GRCh38 VCF; {input_vcf} is {build}.")
     directory = pharmcat_directory(params, lib)
     python = _python(directory)
-    gvcf = reference_evidence.companion(input_vcf)
+    if params.alignment is not None:
+        header = run_command(
+            ["bcftools", "view", "-h", input_vcf], capture_output=True
+        ).stdout
+        if reference_evidence.header_declares_gvcf(header) or bcftools_gvcf_header(
+            header
+        ):
+            raise UsageError("--alignment needs a variants-only VCF, not a gVCF.")
+    gvcf = reference_evidence.companion(input_vcf) if params.alignment is None else None
+    evidence_source = "companion_gvcf" if gvcf is not None else None
     if gvcf is not None:
         current_result().add_input(gvcf, reference_evidence.ROLE)
         logging.info(f"Reference evidence for absent PharmCAT sites: {gvcf}")
     input_vcf = ensure_vcf_prepared(input_vcf)  # bgzipped and indexed
     reference = ensure_reference(directory)
+    alignment = None
+    thresholds = {"min_depth": variant_confidence.thresholds_from(params).min_depth}
+    if params.alignment is not None:
+        fasta = (
+            str(absolute_path(params.alignment_reference))
+            if params.alignment_reference is not None
+            else reference
+        )
+        alignment = AlignmentPileup.checked(
+            params.alignment, fasta, input_vcf, reference
+        )
+        current_result().add_input(alignment.path, "alignment")
+        current_result().add_input(alignment.reference, "alignment_reference")
+        evidence_source = "alignment"
+        thresholds.update(
+            min_mapping_quality=reference_evidence.BCFTOOLS_MIN_MAPPING_QUALITY,
+            min_base_quality=MIN_BASE_QUALITY,
+            max_pileup_depth=MAX_PILEUP_DEPTH,
+            max_non_reference_reads=0,
+        )
+        logging.info(f"Reference evidence for absent PharmCAT sites: {alignment.path}")
     stem = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(input_vcf).name, flags=re.I)
 
     with tempfile.TemporaryDirectory(
@@ -355,14 +370,21 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
     ) as work:
         logging.info("Preparing the VCF for PharmCAT (its gene regions only)...")
         calls = input_vcf
-        if gvcf is None and _depth_only_gvcf(input_vcf):
+        if alignment is None and gvcf is None and _depth_only_gvcf(input_vcf):
             # vcf call --reference-evidence gvcf writes SNPs and indels only
             # as this gVCF: read its variants as the calls, and its depth-only
             # blocks as their reference evidence, as for a companion gVCF.
             logging.info(f"{input_vcf} is a depth-only gVCF: using its blocks as "
                          "the reference evidence for absent PharmCAT sites.")  # fmt: skip
             gvcf, calls = input_vcf, _variant_records(input_vcf, work)
-        prepared = prepare_input(calls, directory, reference, work, params, gvcf)
+            evidence_source = "input_gvcf"
+        evidence_report = (
+            EvidenceReport(evidence_source, thresholds) if evidence_source else None
+        )
+        prepared = prepare_input(
+            calls, directory, reference, work, params, gvcf,
+            alignment=alignment, evidence_report=evidence_report,
+        )  # fmt: skip
         confidence = label_pgx_calls(calls, work, params)
         run_out = Path(work, "outputs")
         run_out.mkdir()
@@ -426,9 +448,26 @@ def run_pharmcat(params: VcfPharmcatParams) -> None:
         table=table,
     )  # fmt: skip
     result = current_result()
-    result.set_details(
-        {**(result.details or {}), "pharmcat_genes": [asdict(row) for row in rows]}
-    )
+    details = {
+        **(result.details or {}),
+        "pharmcat_genes": [asdict(row) for row in rows],
+    }
+    if evidence_report is not None:
+        summary = evidence_report.summary()
+        evidence_path = Path(outdir, f"{stem}.reference-evidence.json")
+        with atomic_output(evidence_path) as staged:
+            Path(staged).write_text(
+                json.dumps(
+                    {**summary, "missing_positions": evidence_report.missing_positions},
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+        result.add_output(evidence_path, "pharmcat_reference_evidence")
+        details["pharmcat_reference_evidence"] = summary
+    result.set_details(details)
     for status in ("resolved", "ambiguous", "no_call"):
         current_result().metrics[f"pharmcat_genes_{status}"] = sum(
             row.status == status for row in rows

@@ -1448,7 +1448,9 @@ no sample data is sent to its public reference publisher.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `pharmcat_dir` | `Path \| None` | `None` (config `pharmcat_directory`) | `--pharmcat-dir` | Extracted PharmCAT pipeline release (default: <reference library>/pharmcat). |
-| `absent_to_ref` | `bool` | `False` | `--absent-to-ref` | Treat positions absent from the VCF as reference. Only for a whole-genome VCF that lists variants only (not a gVCF). |
+| `absent_to_ref` | `bool` | `False` | `--absent-to-ref` | Treat positions absent from the VCF as reference. Only for a whole-genome variants-only VCF. Incompatible with --alignment. |
+| `alignment` | `Path \| None` | `None` | `--alignment` | Indexed BAM/CRAM of the same sample, for reference evidence at absent PharmCAT sites. Overrides any companion gVCF. |
+| `alignment_reference` | `Path \| None` | `None` | `--alignment-reference` | Indexed GRCh38 FASTA used to align --alignment (default: PharmCAT's FASTA). |
 | `outside_call` | `tuple[Path, ...] \| None` | `None` | `--outside-call` | PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6` or `typing hla`. Repeatable; one call per gene. |
 | `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 | `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |

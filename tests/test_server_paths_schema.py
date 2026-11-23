@@ -474,12 +474,16 @@ def test_1293_methylation_regions_server_cannot_download_or_follow_an_external_i
 
 
 @pytest.mark.parametrize(("op", "field"), _EVERY_PATH, ids=map("-".join, _EVERY_PATH))
-def test_every_path_of_every_operation_must_be_inside_an_allowed_folder(op, field):
+def test_every_path_of_every_operation_must_be_inside_an_allowed_folder(
+    op: str, field: str
+) -> None:
     # #351 phase 2: the typed API brought 88 operations to the server with no
     # server code each. Whatever an operation is, a file it names outside the
     # allowed folders is refused before it runs.
     guard = PathGuard([_DATA], allow_destructive=True, pathmod=_RecordingFlavour())
     body = {**_base_request(op), **_COMPANIONS.get((op, field), {})}
+    if (op, field) == ("vcf/pharmcat", "alignment_reference"):
+        body["alignment"] = _DATA + r"\sample.bam"
     guard.check(params_from_json(find(op), body))
     item = next(f for f in find(op).fields() if f.name == field)
     outside = {**body, field: _path_value(item, r"E:\elsewhere\x.vcf.gz")}

@@ -253,6 +253,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `parabricks_memory` | `--gpu` commands with `--no-gpu-memory-check` | The GPU or host memory is below what the tool needs (`tool`); the run continues and may fail. |
 | `no_variants`, `no_reads`, `nothing_annotated` | variant calling, alignment, extraction, annotation | An output is empty. |
 | `low_confidence_findings` | `vcf clinvar`, `vcf gnomad --max-af`, `vcf pharmcat`, `analyze` | Some reported calls are low confidence (`count`, `total`, `output`, top `reasons`); see [variant-confidence.md](variant-confidence.md). |
+| `alignment_sample_unverified` | `vcf pharmcat --alignment` | The BAM/CRAM has no read-group sample names to compare with the VCF. Confirm the files are from the same sample. |
 | `unconfirmed_clinical_findings` | `vcf clinvar`, `analyze` | The sample carries ClinVar pathogenic/likely pathogenic calls (`count`): a technical screen to confirm with an accredited laboratory, not a diagnosis. |
 | `confidence_first_sample_only` | confidence labelling | A multi-sample VCF was judged by its first sample (`sample`). |
 | `sample_female` | Y extraction | Female sample; Y outputs will be empty or noise. |
@@ -391,6 +392,10 @@ With `--reference-evidence gvcf` the gVCF is an output with role
 
 Other commands' metrics:
 
+- `vcf pharmcat` records the source, callability thresholds, and counts of
+  absent definitions filled or left missing in
+  `details.pharmcat_reference_evidence`. The `pharmcat_reference_evidence`
+  output also lists the definitions it couldn't fill.
 - `bam` subcommands that write a BAM/CRAM record its `records` as `align` does
   (an unsorted or unaligned BAM has no index to count from, so it has none);
   `bam merge` adds `merged_inputs`, `read_groups` and, for indexed inputs,
