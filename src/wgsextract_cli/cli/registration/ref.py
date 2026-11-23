@@ -322,7 +322,8 @@ def register(
         "acmg-data",
         RefAcmgDataParams,
         cmd_acmg_data,
-        "Download vcf acmg's 8 sources and the GFF3, check them and build fastVEP's databases.",
+        "Prepare fastVEP's ACMG databases, region tracks and Ensembl GFF3; "
+        "fetch public sources only with --download.",
     )
     add(
         "microarray-targets",
