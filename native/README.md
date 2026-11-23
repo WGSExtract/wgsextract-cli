@@ -11,6 +11,8 @@ default Windows x86-64 Pixi environment includes it. When BWA is selected, the
 CLI uses CUDA automatically if `wgse-bwa` reports it available and the run fits
 Windows RAM and commit limits. Use `--no-prefer-native-gpu` or set
 `prefer_native_gpu = false` in `config.toml` to force CPU.
+The optional Windows x86-64 `wgse-minimap2` recipe provides the same choice
+for [long reads](../docs/windows.md#wgse-minimap2-for-long-reads).
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
@@ -1305,9 +1307,10 @@ fills on an NVIDIA GPU as `--metal` does on a Mac, with the same exact-input
 matching. `--backend auto` uses the GPU when it can, and otherwise aligns on
 the CPU.
 
-- **Shared engine:** `ksw_host.cpp` is the engine both GPU builds share. It
-  runs reads as fibers on each `-t` thread (an x86-64 ELF context switch
-  alongside the arm64 one), queues their fills and dispatches the batches.
+- **Shared engine:** `ksw_host.cpp` is the engine both GPU backends share. It
+  runs reads as fibers on each `-t` thread (Win32 fibers on Windows, context
+  switches on x86-64 ELF and Apple arm64), queues their fills and dispatches
+  the batches.
   `ksw_engine.h` is the device interface: Metal (`metal_ksw.mm`) and CUDA
   (`ksw_cuda.cu`).
 - **Kernel:** `ksw_fill.cuh` is the Metal kernel ported to CUDA, one warp per
@@ -1359,7 +1362,7 @@ whichever GPU backend the build and machine have. CI's runners have no NVIDIA GP
 `.github/workflows/linux_aligners.yml` compiles the CUDA backends (`cuda-build`)
 but can't run their tests.
 
-On Windows x86-64, `wgse-bwa` alone builds with
+On Windows x86-64, `wgse-bwa` and `wgse-minimap2` build with
 `clang-cl` from a Visual Studio x64 developer prompt, the static C runtime and
 `-DWGSE_CUDA=ON` for the CUDA backend (nvcc with `cl.exe` as its host
 compiler). [windows/](windows/) supplies the POSIX functions MSVC lacks, with
@@ -1381,6 +1384,14 @@ compute 90 PTX for other newer GPUs. Use CUDA 13.5 as in the recipe, or set
 `CMAKE_CUDA_ARCHITECTURES` explicitly for a different toolkit.
 With `-DBUILD_TESTING=ON`, `ctest --test-dir out/native-win --output-on-failure`
 uses Git for Windows' Bash to run the shell-based tests; no WSL is used.
+For minimap2 instead of BWA, pass `-DWGSE_BWA=OFF -DWGSE_MINIMAP2=ON`,
+omit `FETCHCONTENT_SOURCE_DIR_BWA`, and optionally point
+`FETCHCONTENT_SOURCE_DIR_MINIMAP2` at a local copy of minimap2 2.31.
+The Windows CUDA package tests also exercise `--backend auto` with CUDA hidden
+and compare its CPU output to upstream. The Windows build does not enable
+Segment Heap: in an interleaved map-ont test on the RTX 5080, 13,714 HG002 ONT
+reads took 12.92/12.94 s with the classic heap and 12.94/12.91 s with a
+manifest-only Segment Heap change (six threads, chr20 index, SAM discarded).
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. The public `--dense-sa on|off` switch remains
