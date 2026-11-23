@@ -45,6 +45,8 @@
 "app.workspaceLocation.cancel.title" = "Abbrechen"  # i18n-source-hash:77dfd213
 "app.workspaceLocation.folderMove.confirm" = "Den Inhalt von %{from} nach %{path} verschieben? Laufende Aktionen werden beendet. „Nur Einstellung ändern“ lässt ihn, wo er ist."  # i18n-source-hash:34532e27
 "app.workspaceLocation.settingOnly.title" = "Nur Einstellung ändern"  # i18n-source-hash:95a44482
+"app.workspaceLocation.linkedFolder.format" = "Die Einstellungen können keinen Ordner über die Verknüpfung „%{link}“ (Ziel: „%{target}“) verschieben. Verschieben Sie den Zielordner selbst und aktualisieren Sie die Einstellung, oder wählen Sie einen Zielordner, der keine Verknüpfung ist."  # i18n-source-hash:39d79be4
+"app.workspaceLocation.linkTargetUnavailable" = "nicht verfügbar"  # i18n-source-hash:1d5ee313
 "app.colorTheme.label" = "Design"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "Systemstandard"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "Hell"  # i18n-source-hash:a36ef8ab

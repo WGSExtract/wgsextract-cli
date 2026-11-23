@@ -45,6 +45,8 @@
 "app.workspaceLocation.cancel.title" = "Cancelar"  # i18n-source-hash:77dfd213
 "app.workspaceLocation.folderMove.confirm" = "Mover o conteúdo de %{from} para %{path}? As ações em execução são interrompidas. \"Alterar só a configuração\" o deixa onde está."  # i18n-source-hash:34532e27
 "app.workspaceLocation.settingOnly.title" = "Alterar só a configuração"  # i18n-source-hash:95a44482
+"app.workspaceLocation.linkedFolder.format" = "As configurações não permitem mover uma pasta de ou para o link “%{link}” (destino do link: “%{target}”). Mova a pasta de destino do link manualmente e atualize a configuração, ou escolha um destino que não seja um link."  # i18n-source-hash:39d79be4
+"app.workspaceLocation.linkTargetUnavailable" = "indisponível"  # i18n-source-hash:1d5ee313
 "app.colorTheme.label" = "Tema"  # i18n-source-hash:a797e309
 "app.colorTheme.system" = "Sistema"  # i18n-source-hash:bc0792d8
 "app.colorTheme.light" = "Claro"  # i18n-source-hash:a36ef8ab
