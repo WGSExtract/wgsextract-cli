@@ -265,18 +265,20 @@ estimate before choosing it. `--aligner bwa` selects the lower-memory option;
 
 ### Optional wgse-bwa with NVIDIA CUDA
 
-On Windows x86-64, when BWA is selected, `align` and `realign` can use a
-validated `wgse-bwa.exe` from `PATH` or an explicit path in `config.toml`:
+The default Pixi environment on Windows x86-64 includes `wgse-bwa` from
+[`windows-tools-11`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/windows-tools-11).
+When BWA is selected, `align` and `realign` use the validated `wgse-bwa.exe`
+from the environment. No manual PATH or configuration changes are needed.
+Run `pixi run wgsextract deps check --tool wgse-bwa` to see the installed path.
+To use a different build, set an explicit path in `config.toml`:
 
 ```toml
 wgse_bwa_path = 'C:\tools\wgse-bwa.exe'
 ```
 
-The [Windows recipe](../packaging/windows/README.md#optional-wgse-bwa)
-builds this executable. It is not yet pinned in the default Pixi environment;
-the CLI does not install it. An explicit path takes precedence over `PATH`;
-if it is unusable, the CLI warns and continues with stock BWA. Stock BWA is
-also used when no native build is found or with `--native-aligners off`.
+An explicit path takes precedence over `PATH`. If it is unusable, the CLI
+warns and continues with stock BWA. Stock BWA is also used when no native
+build is found or with `--native-aligners off`.
 
 The CLI uses `wgse-bwa` on the CPU by default, even with an NVIDIA GPU. On a
 Ryzen 9 9900X3D and RTX 5080, `wgsextract align` on 5 million HG002 pairs

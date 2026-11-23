@@ -125,7 +125,8 @@ for the matched-machine benchmarks and record hashes.
 
 ### Optional wgse-bwa
 
-`wgse-bwa` is a separate recipe and has not yet been published.
+`wgse-bwa` is built from a separate recipe. The default win-64 Pixi environment
+pins the package from `windows-tools-11` without changing the other tool pins.
 It uses the MSVC ABI: clang-cl compiles BWA's GNU-style C
 extensions, nvcc uses Visual Studio 2022 `cl.exe` for its host code, and
 lld-link links the executable. It does not use MSYS2. CUDA 13.5 and the
@@ -146,10 +147,9 @@ pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id `
 
 The build runs a CPU alignment smoke with CUDA hidden, then packages the
 release executable and checks its capabilities. Neither installation nor
-CPU alignment requires an NVIDIA driver. The CLI uses the executable only
-if present and usable; [Windows alignment](../../docs/windows.md#optional-wgse-bwa-with-nvidia-cuda)
-documents how to select a local build. Add a win-64 URL/SHA-256 pin only
-after a release contains the actual package.
+CPU alignment requires an NVIDIA driver.
+[Windows alignment](../../docs/windows.md#optional-wgse-bwa-with-nvidia-cuda)
+documents how to opt in to CUDA or override the packaged build.
 
 ### GATK kernels
 

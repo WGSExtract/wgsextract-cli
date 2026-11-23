@@ -6,7 +6,8 @@ with an experimental NVIDIA GPU backend (see
 
 Native Windows uses [separate tool recipes](../packaging/windows/README.md).
 The stock `bwa` recipe reuses the exact CPU extension kernel here;
-the optional Windows x86-64 `wgse-bwa` recipe builds both CPU and CUDA backends.
+the Windows x86-64 `wgse-bwa` recipe builds both CPU and CUDA backends. The
+default Windows x86-64 Pixi environment includes it.
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
