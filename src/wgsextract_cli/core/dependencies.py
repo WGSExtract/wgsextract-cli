@@ -112,11 +112,14 @@ def find_discvrseq_jar(explicit: str | None = None) -> str | None:
     """Locate DISCVRseq.jar from explicit path, config discvrseq_jar, or jartools folders."""
     from wgsextract_cli.core.config import settings
 
-    for candidate in (explicit, settings.get("discvrseq_jar")):
-        if isinstance(candidate, str) and candidate.strip():
-            resolved = Path(expand_path(candidate.strip()))
-            if resolved.is_file():
-                return str(resolved)
+    if explicit and explicit.strip():
+        resolved = Path(expand_path(explicit.strip()))
+        return str(resolved) if resolved.is_file() else None
+    configured = settings.get("discvrseq_jar")
+    if isinstance(configured, str) and configured.strip():
+        resolved = Path(expand_path(configured.strip()))
+        if resolved.is_file():
+            return str(resolved)
     search_dirs: list[Path] = []
     for folder in (
         managed_jar_dir(),
