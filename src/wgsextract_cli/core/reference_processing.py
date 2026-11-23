@@ -84,6 +84,9 @@ from .ref_library.processing import (
     bootstrap_has_support_assets as bootstrap_has_support_assets,
 )
 from .ref_library.processing import (
+    bootstrap_is_current as bootstrap_is_current,
+)
+from .ref_library.processing import (
     download_and_process_genome as download_and_process_genome,
 )
 from .ref_library.processing import (

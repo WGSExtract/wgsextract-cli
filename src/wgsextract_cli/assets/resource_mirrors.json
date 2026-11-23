@@ -3503,7 +3503,7 @@
     },
     {
       "id": "bootstrap-current",
-      "upstream_url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-bootstrap-v0.2.0/wgsextract-reference-bootstrap-0.2.0.tar.gz",
+      "upstream_url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-bootstrap-v0.3.0/wgsextract-reference-bootstrap-0.3.0.tar.gz",
       "version": "existing reference-bootstrap release",
       "redistributable": false,
       "licence": "mixed source rights; existing release only",
@@ -3514,7 +3514,7 @@
       "size": null,
       "sha256": null,
       "parts": [],
-      "upstream_size_at_audit": 134537613
+      "upstream_size_at_audit": 188187330
     },
     {
       "id": "benchmark-mini",
