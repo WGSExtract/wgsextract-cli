@@ -142,7 +142,9 @@ def test_1284_fastvep_projections_give_each_alt_its_own_scores():
         "SpliceAI=T|GENE%20A|0.01|0.00|0.00|0.00|1|2|3|4,"
         "G|GENE%20A|0.50|.|0.02|0.00|1|2|3|4,G|GENEB|0.90|0.00|0.00|0.00|1|2|3|4",
         "FV_REVEL=T|0.1,G|0.95",
-        "FV_ALPHAMISSENSE=G|0.97|likely_pathogenic",
+        # Two entries for G (overlapping genes): the class agrees with the
+        # highest score.
+        "FV_ALPHAMISSENSE=G|0.12|likely_benign,G|0.97|likely_pathogenic",
         "FV_PHYLOP=T|2.5,G|2.5",
         "FV_GERP=T|4.1,G|4.1",
         "FV_DBNSFP=G|deleterious(0.010)|probably_damaging(0.980)",

@@ -25,7 +25,7 @@ of the row's gene, else the highest of any gene's.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from urllib.parse import unquote
 
@@ -289,12 +289,16 @@ def _csq_am_class(csq: Mapping[str, str] | None) -> str | None:
         return None
     if value := _text(csq.get(AM_CLASS)):
         return value
-    found = {
-        _AM_PRED[p]
-        for p in (csq.get("AlphaMissense_pred") or "").split("&")
-        if p in _AM_PRED
-    }
-    return next((c for c in _AM_RANK if c in found), None)
+    return _most_pathogenic(
+        _AM_PRED.get(p) for p in (csq.get("AlphaMissense_pred") or "").split("&")
+    )
+
+
+def _most_pathogenic(classes: Iterable[str | None]) -> str | None:
+    """The most pathogenic AlphaMissense class of several (one per entry or
+    transcript), to agree with the highest score; else an unknown class."""
+    found = [c for c in classes if c]
+    return next((c for c in _AM_RANK if c in found), found[0] if found else None)
 
 
 def _spliceai_max(entries: Entries, gene: str | None) -> float | None:
@@ -364,7 +368,9 @@ def allele_scores(
     revel, am_score, cadd_raw, cadd_phred, phylop, gerp = numeric
     am_class = _info_value(info, numbers, AM_CLASS, alt_index, variant_alts)
     if am_class is None:
-        am_class = _fv_text(info, pipe_entries, FV_AM, "CLASS")
+        am_class = _most_pathogenic(
+            _text(e.get("CLASS")) for e in pipe_entries(FV_AM) if FV_AM in info
+        )
     if am_class is None and fields.am_class:
         am_class = _csq_am_class(csq)
     spliceai = _spliceai_max(pipe_entries(SPLICEAI), gene) if SPLICEAI in info else None
