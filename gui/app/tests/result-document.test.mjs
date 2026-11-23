@@ -28,7 +28,8 @@ import type { ResultError, ResultFile } from "${modulePath("result-document.js")
 type OptionalKeys<T> = { [Key in keyof T]-?: {} extends Pick<T, Key> ? Key : never }[keyof T];
 type RequireNone<T extends never> = T;
 // Reject even one optional key, including nullable/defaulted wire fields.
-type FileFieldsRequired = RequireNone<OptionalKeys<ResultFileRecord>>;
+// Like an error's code, a file's artifact is written only for BAM/CRAM/VCF/BCF files (#1182).
+type FileFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultFileRecord>, "artifact">>;
 type WarningFieldsRequired = RequireNone<OptionalKeys<ResultWarningRecord>>;
 type ErrorFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultErrorRecord>, "code">>;
 type ResultFieldsRequired = RequireNone<OptionalKeys<ResultDocumentRecord>>;

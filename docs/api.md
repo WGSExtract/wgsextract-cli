@@ -2984,7 +2984,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline. If the cache is missing, vep_cache_missing tells you how to fetch it with vep download. |
-| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
+| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used, and a BAM or CRAM whose header or reference index shows another build is refused. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_cache_version` | `str` | `'116'` | `--vep-cache-version` | VEP cache version (default: 116) |
 | `vcf_type` | `str` | `'auto'` | `--vcf-type` | Variant type: 'sv' and 'cnv' add VEP's structural-variant options; 'auto' detects it from the input. One of: `auto`, `snp-indel`, `sv`, `cnv` |
 | `add_chr` | `bool` | `False` | `--add-chr` | Give VEP the input with a 'chr' prefix on chromosome names. |
@@ -2993,7 +2993,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `vep_args` | `str \| None` | `None` | `--vep-args` | Additional raw arguments to pass to VEP (e.g., '--everything --pick') |
 | `format` | `str` | `'vcf'` | `--format` | Output format (default: vcf) One of: `vcf`, `tab`, `json` |
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's); wins over ploidy. |
-| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the build's). |
+| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the GRCh37 or GRCh38 preset; other builds, such as T2T, need this or a ploidy file). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 
 ### `api.vep.download(VepDownloadParams)`

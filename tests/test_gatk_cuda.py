@@ -1,15 +1,17 @@
 """Local, offline dependency errors for #1131's opt-in CUDA PairHMM."""
 
 import json
-import os
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from tests.fake_tools import python_tool, require_bare_name_fakes
+from tests.fake_tool_launchers import expose_tool_fakes
+from tests.fake_tools import python_tool
 from tests.htslib_helpers import require_runnable, sam_to_bam, write_fasta
 from wgsextract_cli.api.vcf import VcfGatkParams
+from wgsextract_cli.core import native_pairhmm, native_support
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.native_pairhmm import cuda_pairhmm_java_options
 from wgsextract_cli.core.utils import UsageError
@@ -39,10 +41,11 @@ def sidecar(path: Path, *, complete: bool = True) -> Path:
 
 @pytest.fixture
 def linux_x86(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("wgsextract_cli.core.native_pairhmm.sys.platform", "linux")
-    monkeypatch.setattr(
-        "wgsextract_cli.core.native_pairhmm.platform.machine", lambda: "x86_64"
-    )
+    host = SimpleNamespace(platform="linux")
+    arch = SimpleNamespace(machine=lambda: "x86_64")
+    for module in (native_pairhmm, native_support):
+        monkeypatch.setattr(module, "sys", host)
+        monkeypatch.setattr(module, "platform", arch)
 
 
 @pytest.fixture
@@ -114,11 +117,12 @@ def test_1131_native_cuda_and_neon_cannot_be_selected_together() -> None:
         )
 
 
-@pytest.mark.usefixtures("linux_x86")
 def test_1131_flow_aware_ultima_rejects_cuda_without_running_caller(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path,
+    cuda_jar: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    require_bare_name_fakes()
     require_runnable("samtools")
     bindir = tmp_path / "bin"
     started = tmp_path / "caller-started"
@@ -133,7 +137,7 @@ def test_1131_flow_aware_ultima_rejects_cuda_without_running_caller(
         f"    Path({str(started)!r}).touch()\n"
         "    sys.exit(1)\n",
     )
-    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    expose_tool_fakes(monkeypatch, bindir, "gatk")
     clear_tool_caches()
     ref = write_fasta(tmp_path / "ref.fa", {"chr1": "A" * 200})
     bam = tmp_path / "ultima.bam"
@@ -160,7 +164,7 @@ def test_1131_flow_aware_ultima_rejects_cuda_without_running_caller(
                 "--outdir",
                 str(out),
                 "--pair-hmm-cuda",
-                str(sidecar(tmp_path / "cuda.jar")),
+                str(sidecar(cuda_jar)),
                 "--json",
             ]
         )
