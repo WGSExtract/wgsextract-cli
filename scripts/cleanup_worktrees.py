@@ -343,22 +343,38 @@ def check_pull_requests(root: Path, trees: list[Worktree]) -> None:
     )
     if not isinstance(response, list) or not response:
         raise CleanupError("Unexpected GitHub pull-request response")
-    login = response[0]["data"]["viewer"]["login"]
-    if not isinstance(login, str) or not re.fullmatch(r"[a-zA-Z0-9-]+", login):
-        raise CleanupError("Could not verify the authenticated GitHub account")
+    login = ""
     latest: dict[str, tuple[int, dict[str, object]]] = {}
     for index, page in enumerate(response):
-        repo = page["data"]["repository"]
+        if not isinstance(page, dict):
+            raise CleanupError("GitHub pull-request response has a malformed page")
+        if page.get("errors"):
+            raise CleanupError("GitHub GraphQL reported errors in pull-request history")
+        if not isinstance(data := page.get("data"), dict):
+            raise CleanupError("GitHub pull-request response has a malformed page")
+        viewer = data.get("viewer")
         if (
-            page.get("errors")
-            or repo["nameWithOwner"] != REPO
-            or page["data"]["viewer"]["login"] != login
+            not isinstance(viewer, dict)
+            or not isinstance(page_login := viewer.get("login"), str)
+            or not re.fullmatch(r"[a-zA-Z0-9-]+", page_login)
+        ):
+            raise CleanupError("Could not verify the authenticated GitHub account")
+        repo = data.get("repository")
+        if (
+            not isinstance(repo, dict)
+            or repo.get("nameWithOwner") != REPO
+            or (login and page_login != login)
         ):
             raise CleanupError("Could not verify GitHub repository and account")
-        pulls = repo["pullRequests"]
-        if pulls["pageInfo"]["hasNextPage"] is not (index + 1 < len(response)):
+        login = page_login
+        if (
+            not isinstance(pulls := repo.get("pullRequests"), dict)
+            or not isinstance(info := pulls.get("pageInfo"), dict)
+            or info.get("hasNextPage") is not (index + 1 < len(response))
+            or not isinstance(nodes := pulls.get("nodes"), list)
+        ):
             raise CleanupError("Incomplete GitHub pull-request history")
-        for pr in pulls["nodes"]:
+        for pr in nodes:
             head_repo = pr["headRepository"]
             if head_repo is None or head_repo["nameWithOwner"] != REPO:
                 continue
