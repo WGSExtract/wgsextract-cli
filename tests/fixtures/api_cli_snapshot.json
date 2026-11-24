@@ -8573,7 +8573,7 @@
    }
   },
   "deps": {
-   "help": "usage: wgsextract deps [-h] <command> ...\n\npositional arguments:\n  <command>\n    check      Verify that all required bioinformatics tools (samtools, bcftools, etc.) are\n               installed and accessible in your system path.\n    list       List every mandatory and optional tool with its status, and whether 'deps install'\n               or 'deps uninstall' can act on it.\n    install    Download and install the Pixi environment that provides an optional tool (e.g.\n               gatk).\n    uninstall  Remove the Pixi environment that provides an optional tool, and the other tools in\n               it.\n\noptions:\n  -h, --help   show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract deps [-h] <command> ...\n\npositional arguments:\n  <command>\n    check      Verify that all required bioinformatics tools (samtools, bcftools, etc.) are\n               installed and accessible in your system path.\n    list       List every mandatory and optional tool with its status, and whether 'deps install'\n               or 'deps uninstall' can act on it.\n    ready      Report whether a command line can run on this computer without the network: its\n               tools, images, GPUs, model weights, input, reference genome and indexes, checked\n               offline without installing or downloading anything.\n    install    Download and install the Pixi environment that provides an optional tool (e.g.\n               gatk).\n    uninstall  Remove the Pixi environment that provides an optional tool, and the other tools in\n               it.\n\noptions:\n  -h, --help   show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -8597,6 +8597,7 @@
       "choices": [
        "check",
        "list",
+       "ready",
        "install",
        "uninstall"
       ],
@@ -8608,6 +8609,10 @@
        [
         "list",
         "List every mandatory and optional tool with its status, and whether 'deps install' or 'deps uninstall' can act on it."
+       ],
+       [
+        "ready",
+        "Report whether a command line can run on this computer without the network: its tools, images, GPUs, model weights, input, reference genome and indexes, checked offline without installing or downloading anything."
        ],
        [
         "install",
@@ -18920,7 +18925,7 @@
    }
   },
   "methylation": {
-   "help": "usage: wgsextract methylation [-h] <command> ...\n\npositional arguments:\n  <command>\n    pileup    Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and\n              summary. Optional: Linux and macOS, install with `pixi install -e modkit`.\n    regions   Summarize CpG bedMethyl over gene promoters or CpG islands.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract methylation [-h] <command> ...\n\npositional arguments:\n  <command>\n    pileup    Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and\n              summary. Optional: Linux and macOS, install with `pixi install -e modkit`.\n    regions   Summarize CpG calls over gene promoters or CpG islands.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -18952,7 +18957,7 @@
        ],
        [
         "regions",
-        "Summarize CpG bedMethyl over gene promoters or CpG islands."
+        "Summarize CpG calls over gene promoters or CpG islands."
        ]
       ],
       "required": true,
@@ -19774,7 +19779,7 @@
    }
   },
   "methylation regions": {
-   "help": "usage: wgsextract methylation regions [-h] --build {hg38,t2t} --preset {promoters,cpg-islands}\n                                      [--upstream UPSTREAM] [--downstream DOWNSTREAM]\n                                      [--min-valid-calls MIN_VALID_CALLS] [--min-cpgs MIN_CPGS]\n                                      [--5hmc] [--download] [--format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {hg38,t2t}    Assembly of both bedMethyl and FASTA.\n  --preset {promoters,cpg-islands}\n                        RefSeq promoters or UCSC masked CpG islands.\n  --upstream UPSTREAM   Promoter bases upstream of the TSS (default: 2000).\n  --downstream DOWNSTREAM\n                        Promoter bases on the transcribed side (default: 500).\n  --min-valid-calls MIN_VALID_CALLS\n                        Minimum valid calls per CpG (default: 5).\n  --min-cpgs MIN_CPGS   Minimum qualifying CpGs per region (default: 3).\n  --5hmc                Also report 5hmC: declares the input was generated with a 5hmC-capable\n                        model.\n  --download            Fetch the missing pinned hg38 CpG island table from UCSC. No sample data\n                        is sent.\n  --format {tsv,parquet}\n                        Output table: tsv (default) or parquet (needs pyarrow).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa --build hg38 --preset promoters\n\noutputs (in the output directory unless noted):\n  <input stem>.<build>.<preset>.methylation.tsv (or .parquet) and its run\n  manifest.\n\nneeds:\n  samtools; depending on options and inputs, also: curl; minutes on a 30x\n  genome.\n",
+   "help": "usage: wgsextract methylation regions [-h] --build {hg38,t2t} --preset {promoters,cpg-islands}\n                                      [--upstream UPSTREAM] [--downstream DOWNSTREAM]\n                                      [--min-valid-calls MIN_VALID_CALLS] [--min-cpgs MIN_CPGS]\n                                      [--partition-hp] [--phase-blocks PHASE_BLOCKS] [--5hmc]\n                                      [--download] [--format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {hg38,t2t}    Assembly of both input and FASTA.\n  --preset {promoters,cpg-islands}\n                        RefSeq promoters or UCSC masked CpG islands.\n  --upstream UPSTREAM   Promoter bases upstream of the TSS (default: 2000).\n  --downstream DOWNSTREAM\n                        Promoter bases on the transcribed side (default: 500).\n  --min-valid-calls MIN_VALID_CALLS\n                        Minimum valid calls per CpG (default: 5).\n  --min-cpgs MIN_CPGS   Minimum qualifying CpGs per region (default: 3).\n  --partition-hp        Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS).\n  --phase-blocks PHASE_BLOCKS\n                        Matching phased.blocks.tsv from vcf phase; require region containment in\n                        one block.\n  --5hmc                Also report 5hmC: declares the input was generated with a 5hmC-capable\n                        model.\n  --download            Fetch the missing pinned hg38 CpG island table from UCSC. No sample data\n                        is sent.\n  --format {tsv,parquet}\n                        Output table: tsv (default) or parquet (needs pyarrow).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa --build hg38 --preset promoters\n  wgsextract methylation regions -i haplotagged.bam --ref hg38.fa --build hg38 --preset promoters --partition-hp --phase-blocks phased.blocks.tsv\n\noutputs (in the output directory unless noted):\n  <input stem>.<build>.<preset>.methylation.tsv (or .parquet) and its run\n  manifest. With --partition-hp, writes .methylation.hp.tsv (or .parquet)\n  instead.\n\nneeds:\n  samtools; depending on options and inputs, also: modkit, curl; minutes on a\n  30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -20131,7 +20136,7 @@
       "default": null,
       "dest": "build",
       "exclusive_group": null,
-      "help": "Assembly of both bedMethyl and FASTA.",
+      "help": "Assembly of both input and FASTA.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -20222,6 +20227,38 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "partition_hp",
+      "exclusive_group": null,
+      "help": "Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS).",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--partition-hp"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "phase_blocks",
+      "exclusive_group": null,
+      "help": "Matching phased.blocks.tsv from vcf phase; require region containment in one block.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--phase-blocks"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -40585,7 +40622,7 @@
    }
   },
   "typing": {
-   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6      Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius,\n                and write a PharmCAT outside call. Cyrius's license allows noncommercial use only,\n                and no distribution or modification.\n    hla         Call HLA class I and II alleles with T1K from reads in the MHC, and write a\n                PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    smn         Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n                SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str         Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n                ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n                outside STRchive's normal range.\n    target-cnv  Screen BED targets for GC-normalized copy number from short-read WGS. Uses a\n                matching indexed FASTA; masked targets are withheld except clear calls at curated\n                deletion loci.\n\noptions:\n  -h, --help    show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6      Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius,\n                and write a PharmCAT outside call. Cyrius's license allows noncommercial use only,\n                and no distribution or modification.\n    hla         Call HLA class I and II alleles with T1K from reads in the MHC, and write a\n                PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    paraphase   Type paralogous loci and copy number with Paraphase from PacBio HiFi or\n                experimental, unvalidated ONT reads.\n    smn         Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n                SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str         Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n                ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n                outside STRchive's normal range.\n    target-cnv  Screen BED targets for GC-normalized copy number from short-read WGS. Uses a\n                matching indexed FASTA; masked targets are withheld except clear calls at curated\n                deletion loci.\n\noptions:\n  -h, --help    show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -40609,6 +40646,7 @@
       "choices": [
        "cyp2d6",
        "hla",
+       "paraphase",
        "smn",
        "str",
        "target-cnv"
@@ -40621,6 +40659,10 @@
        [
         "hla",
         "Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB."
+       ],
+       [
+        "paraphase",
+        "Type paralogous loci and copy number with Paraphase from PacBio HiFi or experimental, unvalidated ONT reads."
        ],
        [
         "smn",
@@ -60287,6 +60329,8 @@
    "min_valid_calls": 5,
    "outdir": null,
    "parent_pid": null,
+   "partition_hp": false,
+   "phase_blocks": null,
    "preset": "cpg-islands",
    "quiet": false,
    "ref": "r.fa",

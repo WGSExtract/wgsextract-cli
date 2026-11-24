@@ -58,7 +58,9 @@ class ParamSpec:
     (gene maps, an index); a server refuses that unless allowed.
     A ``positional`` field is a positional CLI argument named by ``metavar``;
     a tuple one takes one or more values, as does an option whose type is a
-    variable-length tuple (``tuple[Path, ...]``). ``group`` (title, description) puts
+    variable-length tuple (``tuple[Path, ...]``); a ``remainder`` one takes
+    every argument after it, options included (a command line to check,
+    after ``--``). ``group`` (title, description) puts
     the option in that section of the command's help. ``hidden_flags`` are
     old spellings of the option the CLI still accepts but its help leaves out,
     and ``former_names`` old names of the field a server request may still use.
@@ -86,6 +88,7 @@ class ParamSpec:
     expression: bool = False
     deletes: bool = False
     positional: bool = False
+    remainder: bool = False
     group: tuple[str, str | None] | None = None
     hidden_flags: tuple[str, ...] = ()
     url: bool = False
@@ -122,6 +125,7 @@ def param(
     expression: bool = False,
     deletes: bool = False,
     positional: bool = False,
+    remainder: bool = False,
     group: tuple[str, str | None] | None = None,
     hidden_flags: tuple[str, ...] = (),
     url: bool = False,
@@ -156,7 +160,8 @@ def param(
         minimum=minimum,
         expression=expression,
         deletes=deletes,
-        positional=positional,
+        positional=positional or remainder,
+        remainder=remainder,
         group=group,
         hidden_flags=hidden_flags,
         url=url,

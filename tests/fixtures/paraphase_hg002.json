@@ -1,0 +1,9 @@
+{
+  "smn1": {"smn1_cn": 2, "smn2_cn": 2, "smn_del78_cn": 0},
+  "pms2": {"total_cn": 4, "gene_cn": 2},
+  "strc": {"total_cn": null, "gene_cn": null},
+  "hba": {"total_cn": 4, "genotype": "aa/aa", "sv_called": {}},
+  "ikbkg": {"total_cn": 2, "gene_cn": 1, "sample_sex": "male"},
+  "rccx": {"total_cn": 4, "annotated_alleles": ["WT", "WT"], "phasing_success": true},
+  "CYP2D6": {"total_cn": 4, "gene_cn": null}
+}

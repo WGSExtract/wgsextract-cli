@@ -44,8 +44,12 @@ VCF_FILE_COMMANDS = {
 }
 
 
-def apply_genome_selection(args: Namespace, explicit_dests: set[str]) -> None:
-    """Resolve --genome to configured or discovered inputs and per-genome outputs."""
+def apply_genome_selection(
+    args: Namespace, explicit_dests: set[str], *, persist: bool = True
+) -> None:
+    """Resolve --genome to configured or discovered inputs and per-genome
+    outputs; with ``persist``, the files it discovers are saved in the
+    genome's configuration (not when only inspecting a command line)."""
     genome_id = getattr(args, "genome", None)
     if genome_id is None:
         return
@@ -64,7 +68,7 @@ def apply_genome_selection(args: Namespace, explicit_dests: set[str]) -> None:
         and bool({"input", "vcf_input"} & explicit_dests)
     )
     config = _load_or_create_genome_config(
-        genome_dir, discover_vcf=not single_vcf_override
+        genome_dir, discover_vcf=not single_vcf_override, persist=persist
     )
     args.genome_dir = str(genome_dir)
     if "outdir" not in explicit_dests and hasattr(args, "outdir"):
@@ -135,7 +139,7 @@ def _check_inside_library(root_dir: Path, genome_dir: Path, genome_id: str) -> N
 
 
 def _load_or_create_genome_config(
-    genome_dir: Path, *, discover_vcf: bool = True
+    genome_dir: Path, *, discover_vcf: bool = True, persist: bool = True
 ) -> dict[str, Any]:
     config_path = genome_dir / GENOME_CONFIG_NAME
     raw = _load_genome_config(config_path)
@@ -145,7 +149,7 @@ def _load_or_create_genome_config(
         key: value for key, value in discovered.items() if value and key not in raw
     }
 
-    if additions or not config_path.exists():
+    if persist and (additions or not config_path.exists()):
         try:
             write_genome_config(config_path, {**raw, **additions})
         except OSError as e:  # a read-only genome folder still works
