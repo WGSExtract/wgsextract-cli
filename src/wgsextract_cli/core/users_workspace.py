@@ -13,8 +13,6 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-from wgsextract_cli.core.atomic_output import atomic_write
-from wgsextract_cli.core.file_lock import shared_file_lock
 from wgsextract_cli.core.workspace_activity import (
     configured_desktop_data_dir,
     relocated_config_path,
@@ -91,6 +89,9 @@ def claim_users_workspace(folder: Path) -> None:
 def write_initial_config(config_path: Path, contents: str) -> bool:
     """Claim the default workspace before a CLI-first bootstrap populates it.
     False when the app or another command created the file first."""
+    from wgsextract_cli.core.atomic_output import atomic_write
+    from wgsextract_cli.core.file_lock import shared_file_lock
+
     config_path = relocated_config_path(config_path)
     if config_path.parent == users_workspace():
         claim_users_workspace(config_path.parent)
