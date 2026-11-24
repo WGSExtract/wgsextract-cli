@@ -248,7 +248,9 @@ def _delta_base(path: Path) -> str | None:
         return f.readline().rstrip("\n").split("\t")[-1]
 
 
-def _shipped_bases(root: Path, name: str) -> Iterable[tuple[str, list[Row]]]:
+def _shipped_bases(
+    root: Path, name: str, *, selected: str | None
+) -> Iterable[tuple[str, list[Row]]]:
     """Each shipped single-part template not built on name, with its rows."""
     paths = {
         path.name.split(".")[0]: path
@@ -256,6 +258,8 @@ def _shipped_bases(root: Path, name: str) -> Iterable[tuple[str, list[Row]]]:
         if (info := get_template_format(path.name.split(".")[0])) and info["parts"] == 1
     }
     for base, path in paths.items():
+        if selected is not None and base != selected:
+            continue
         chain: set[str] = set()
         link: str | None = base
         while link and link in paths and link not in chain:
@@ -298,20 +302,18 @@ def build_template(
 
     chosen: tuple[str, bytes] | None = None
     if delta_base:
-        candidates = [
-            (base_name, base_rows)
-            for base_name, base_rows in _shipped_bases(TEMPLATES, name)
-            if delta_base in ("auto", base_name)
-        ]
-        if not candidates:
-            raise ValueError(f"{delta_base} is not a shipped full template body")
+        candidates = _shipped_bases(
+            TEMPLATES, name, selected=None if delta_base == "auto" else delta_base
+        )
         for base_name, base_rows in candidates:
             ops = encode_delta(rows, base_rows)
             data = _gzip(f"#base\t{base_name}\n{chr(10).join(ops)}\n".encode())
             if chosen is None or len(data) < len(chosen[1]):
                 chosen = (base_name, data)
+        if chosen is None:
+            raise ValueError(f"{delta_base} is not a shipped full template body")
         # A delta must earn its indirection.
-        if chosen and len(chosen[1]) > 0.6 * len(full):
+        if len(chosen[1]) > 0.6 * len(full):
             chosen = None
 
     head_path.parent.mkdir(parents=True, exist_ok=True)

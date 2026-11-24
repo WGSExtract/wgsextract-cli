@@ -11,8 +11,9 @@ default Windows x86-64 Pixi environment includes it. When BWA is selected, the
 CLI uses CUDA automatically if `wgse-bwa` reports it available and the run fits
 Windows RAM and commit limits. Use `--no-prefer-native-gpu` or set
 `prefer_native_gpu = false` in `config.toml` to force CPU.
-The optional Windows x86-64 `wgse-minimap2` recipe provides the same choice
-for [long reads](../docs/windows.md#wgse-minimap2-for-long-reads).
+The Windows x86-64 `wgse-minimap2` recipe provides the same choice for
+[long reads](../docs/windows.md#wgse-minimap2-for-long-reads), and the default
+Windows x86-64 Pixi environment includes it too.
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`

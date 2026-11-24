@@ -9,7 +9,7 @@ from functools import cache
 from pathlib import Path
 
 
-def _module(path: str) -> str:
+def module_name(path: str) -> str:
     name = path.removeprefix("src/").removesuffix(".py")
     return name.removesuffix("/__init__").replace("/", ".")
 
@@ -17,7 +17,8 @@ def _module(path: str) -> str:
 @cache
 def tracked_python(root: Path, sha: str) -> dict[str, str]:
     entries = subprocess.check_output(
-        ["git", "ls-tree", "-rz", sha, "--", "src", "tests", "scripts"], cwd=root
+        ["git", "ls-tree", "-rz", sha, "--", "src", "tests", "scripts", "conftest.py"],
+        cwd=root,
     )
     result = {}
     for entry in entries.split(b"\0"):
@@ -83,7 +84,7 @@ def initialization_reads(source: bytes, bindings: set[str]) -> bool:
 
 
 @cache
-def _parse(root: Path, blob: str) -> ast.Module:
+def parse_python(root: Path, blob: str) -> ast.Module:
     return ast.parse(
         subprocess.check_output(["git", "cat-file", "blob", blob], cwd=root)
     )
@@ -104,11 +105,11 @@ class StaticUsers:
 
     def _add(self, path: str, blob: str) -> None:
         try:
-            tree = _parse(self.root, blob)
+            tree = parse_python(self.root, blob)
         except (SyntaxError, ValueError):
             self.unparsed.add(path)
             return
-        name = _module(path)
+        name = module_name(path)
         package = name if path.endswith("/__init__.py") else name.rpartition(".")[0]
         self.reads[path] = _reads(tree)
         self.calls[path] = defaultdict(set)
@@ -155,7 +156,7 @@ class StaticUsers:
             if state in visited:
                 continue
             visited.add(state)
-            module = _module(dependency)
+            module = module_name(dependency)
             for importer in self.importers.get(module, set()) | {dependency}:
                 if symbol not in self.reads.get(importer, ()):
                     continue
@@ -185,5 +186,5 @@ class StaticUsers:
             if current in tests:
                 result.add(current)
                 continue
-            pending.extend(self.importers.get(_module(current), ()))
+            pending.extend(self.importers.get(module_name(current), ()))
         return result
