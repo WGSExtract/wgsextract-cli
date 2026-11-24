@@ -1,0 +1,7 @@
+# HG00096 benchmark: rebased chr20 and non-PAR Y slices, plus complete MT.
+20 1 1000001 M 2
+20 1 1000001 F 2
+Y 1 500001 M 1
+Y 1 500001 F 0
+MT 1 16569 M 1
+MT 1 16569 F 1
