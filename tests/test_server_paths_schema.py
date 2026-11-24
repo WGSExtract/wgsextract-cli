@@ -1,16 +1,21 @@
 """Focused server_paths schema regressions."""
 
 import typing
+from pathlib import Path
 
 import pytest
 
+from tests.server_path_cases import (
+    _COMPANIONS,
+    _DATA,
+    _EVERY_PATH,
+    _base_request,
+    _path_value,
+)
 from tests.test_server import (
     _ALIGN_REQUESTS,
     _CALLER_OPS,
     _CALLER_PATHS,
-    _COMPANIONS,
-    _DATA,
-    _EVERY_PATH,
     _EXAMPLE_PATHS,
     _METHYLATION_PATHS,
     _PET_ANALYZE_PATHS,
@@ -22,8 +27,6 @@ from tests.test_server import (
     _TYPING_PATHS,
     _VCF_PATHS,
     _VEP_PATHS,
-    _base_request,
-    _path_value,
     _RecordingFlavour,
 )
 from tests.test_server import (
@@ -45,8 +48,16 @@ from wgsextract_cli.server.operations import (
     PathGuard,
     RequestError,
     find,
+    find_tool,
     params_from_json,
 )
+
+
+def test_cohort_1288_manifest_children_are_not_http_or_mcp_inputs():
+    with pytest.raises(RequestError) as refused:
+        find("cohort/summarize")
+    assert refused.value.code == "unknown_op"
+    assert find_tool("cohort_summarize") is None
 
 
 @pytest.mark.parametrize(
@@ -102,16 +113,17 @@ def test_path_guard_covers_every_vcf_path(op, field, value):
 def test_path_guard_covers_every_ref_path(op, field, value):
     # #346: the ref commands became server operations; each file or library
     # they read or write must be inside an allowed folder.
-    guard = PathGuard([r"C:\data"], allow_destructive=True, pathmod=_RecordingFlavour())
-    paths = [item.name for name, item in _REF_PATHS if name == op]
-    allowed = {name: rf"C:\data\{name}" for name in paths}
-    if op == "ref/library":
-        allowed["install"] = "hg38"
-    if op == "ref/library-delete":
-        allowed["genome"] = "hg38"
+    guard = PathGuard([_DATA], allow_destructive=True, pathmod=_RecordingFlavour())
+    item = next(f for f in find(op).fields() if f.name == field)
+    allowed = {
+        **_base_request(op),
+        **_COMPANIONS.get((op, field), {}),
+        field: _path_value(item, rf"{_DATA}\{field}"),
+    }
     guard.check(params_from_json(find(op), allowed))
+    bad = {**allowed, field: _path_value(item, value)}
     with pytest.raises(RequestError) as refused:
-        guard.check(params_from_json(find(op), {**allowed, field: value}))
+        guard.check(params_from_json(find(op), bad))
     assert refused.value.code in ("usage", "path_not_allowed")
 
 
@@ -473,13 +485,52 @@ def test_1293_methylation_regions_server_cannot_download_or_follow_an_external_i
     assert refused.value.code == "path_not_allowed"
 
 
+@pytest.mark.parametrize(
+    ("name", "role"),
+    [
+        ("reads.bam.bai", "alignment_index"),
+        ("reads.csi", "alignment_index"),
+        ("ref.fa.gz.fai", "alignment_reference_index"),
+        ("ref.fa.gz.gzi", "alignment_reference_index"),
+        ("ref.dict", "alignment_reference_dictionary"),
+    ],
+)
+def test_1477_server_rejects_external_pharmcat_alignment_sidecars(
+    tmp_path: Path, name: str, role: str
+) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside"
+    outside.touch()
+    try:
+        (allowed / name).symlink_to(outside)
+    except OSError:
+        pytest.skip("can't create symlinks here")
+    op = find("vcf/pharmcat")
+    params = params_from_json(
+        op,
+        {
+            "vcf_input": str(allowed / "sample.vcf"),
+            "alignment": str(allowed / "reads.bam"),
+            "alignment_reference": str(allowed / "ref.fa.gz"),
+        },
+    )
+    with pytest.raises(RequestError, match=role) as refused:
+        PathGuard([str(allowed)]).check(params)
+    assert refused.value.code == "path_not_allowed"
+
+
 @pytest.mark.parametrize(("op", "field"), _EVERY_PATH, ids=map("-".join, _EVERY_PATH))
-def test_every_path_of_every_operation_must_be_inside_an_allowed_folder(op, field):
+def test_every_path_of_every_operation_must_be_inside_an_allowed_folder(
+    op: str, field: str
+) -> None:
     # #351 phase 2: the typed API brought 88 operations to the server with no
     # server code each. Whatever an operation is, a file it names outside the
     # allowed folders is refused before it runs.
     guard = PathGuard([_DATA], allow_destructive=True, pathmod=_RecordingFlavour())
     body = {**_base_request(op), **_COMPANIONS.get((op, field), {})}
+    if (op, field) == ("vcf/pharmcat", "alignment_reference"):
+        body["alignment"] = _DATA + r"\sample.bam"
     guard.check(params_from_json(find(op), body))
     item = next(f for f in find(op).fields() if f.name == field)
     outside = {**body, field: _path_value(item, r"E:\elsewhere\x.vcf.gz")}

@@ -168,19 +168,20 @@ table is validation-only and is not shipped. Direct GRCh37↔CHM13 mappings rema
 authoritative when the GRCh38 route disagrees.
 
 The v2 map covers every CombinedKit v5 template (`CHM13_V2_FORMATS` in
-`core/microarray/targets.py`), including the letter-named variants, FTDNA's
-GRCh38 Y files (lifted with `hg38ToHg19`), tellmeGen, Genera, MTHFR Genetics,
-meuDNA and SelfDecode. Its union contains 2,986,594 sites (2,525,397 template
-sites plus the pinned AADR union); the sites v1 had keep identical projections.
-Its compact payload is 7,009,790 compressed / 17,274,231 decoded bytes.
+`core/microarray/targets.py`), including the merged 23andMe v4 (v4a–c) and
+FTDNA v2 (v2a–d) layouts, letter-named variants, FTDNA's GRCh38 Y files (lifted
+with `hg38ToHg19`), tellmeGen, Genera, MTHFR Genetics, meuDNA and SelfDecode.
+Its union contains 2,992,588 sites (2,531,391 template sites plus the pinned AADR
+union); the sites v1 had keep identical projections. Its compact payload is
+7,018,085 compressed / 17,302,476 decoded bytes.
 
 | Map | Sites | Compressed | Decoded |
 |---|---:|---:|---:|
 | v1 (pre-v5 templates) | 2,862,500 | 6,802,944 | 16,621,310 |
-| v2 (CombinedKit v5) | 2,986,594 | 7,009,790 | 17,274,231 |
+| v2 (CombinedKit v5) | 2,992,588 | 7,018,085 | 17,302,476 |
 
 Runtime limits are 7 MiB (7,340,032) compressed, 17 MiB (17,825,792) decoded
-and 3,000,000 rows, so v2 has about 13,400 rows of headroom: the next template
+and 3,000,000 rows, so v2 has about 7,400 rows of headroom: the next template
 that adds many new markers will need these budgets raised. Changing these
 measured budgets requires an explicit asset update, not a writable cache or an
 automatic download. A template added to `_FORMATS` after `CHM13_V2_FORMATS`

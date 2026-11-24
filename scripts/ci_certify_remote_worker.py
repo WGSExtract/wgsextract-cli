@@ -22,26 +22,26 @@ from scripts.ci_certify import (  # noqa: E402
     selection,
 )
 from scripts.ci_certify_inputs import validate_environments, validate_reference  # noqa: E402
-from scripts.ci_certify_remote import RESULT  # noqa: E402
+from scripts.ci_certify_ssh import RESULT  # noqa: E402
 from scripts.ci_select_tests import select_tests  # noqa: E402
 
 
-def verify_checkout(sha: str) -> str:
+def verify_checkout(sha: str, expected_platform: str) -> str:
     head = git("rev-parse", "HEAD")
     if head != sha or git("status", "--porcelain", "--untracked-files=all"):
         raise ValueError("Remote checkout is dirty or HEAD changed")
-    if host_platform() != "macos-arm64":
-        raise ValueError("Remote machine is not macos-arm64")
+    if host_platform() != expected_platform:
+        raise ValueError(f"Remote machine is not {expected_platform}")
     if shutil.disk_usage(Path.cwd()).free < 26 * 1024**3:
         raise ValueError("Remote disk reserve: keep at least 25 GiB free")
     return head
 
 
-def execute(sha: str, base: str, name: str, workers: int) -> None:
-    verify_checkout(sha)
+def execute(sha: str, base: str, name: str, platform: str, workers: int) -> None:
+    verify_checkout(sha, platform)
     paths = changed_paths(base, sha)
-    cli, targets = selection(paths, "macos-arm64")
-    environments = required_environments(name, "macos-arm64", cli, targets)
+    cli, targets = selection(paths, platform)
+    environments = required_environments(name, platform, cli, targets)
     setup = ["pixi", "run", "--no-install", "python", "scripts/ci_certify_setup.py"]
     for environment in environments:
         setup += ["-e", environment]
@@ -49,27 +49,38 @@ def execute(sha: str, base: str, name: str, workers: int) -> None:
         validate_environments(environments)
     except ValueError:
         subprocess.run(setup, check=True, stdin=subprocess.DEVNULL)
-    if name != "generic" and cli and targets:
+        validate_environments(environments)
+    if (
+        name != "generic"
+        and cli
+        and targets
+        and platform
+        in {
+            "linux-x64",
+            "macos-arm64",
+            "macos-x64",
+        }
+    ):
         try:
             validate_reference()
         except ValueError:
             subprocess.run(
                 [*setup, "--reference"], check=True, stdin=subprocess.DEVNULL
             )
-    verify_checkout(sha)
+    verify_checkout(sha, platform)
     commands = (
         generic_commands(paths, select_tests(paths))
         if name == "generic"
-        else platform_commands("macos-arm64", targets, not cli)
+        else platform_commands(platform, targets, not cli)
     )
     run_layer(name, commands, sha, workers, stream_output=True)
-    verify_checkout(sha)
+    verify_checkout(sha, platform)
 
 
 def main() -> int:
     import json
 
-    sha, base, name, worker_count = sys.argv[1:]
+    sha, base, name, platform, worker_count = sys.argv[1:]
     result = {
         "sha_before": "",
         "sha_after": "",
@@ -80,8 +91,10 @@ def main() -> int:
     }
     code = 2
     try:
-        result["sha_before"] = verify_checkout(sha)
-        execute(sha, base, name, int(worker_count))
+        if name not in {platform, "generic"}:
+            raise ValueError(f"Unsupported remote layer {name}")
+        result["sha_before"] = verify_checkout(sha, platform)
+        execute(sha, base, name, platform, int(worker_count))
         result["state"], code = "success", 0
     except CertificationTestFailure as error:
         print(error, flush=True)
@@ -90,7 +103,7 @@ def main() -> int:
         print(f"Remote certification refused: {error}", flush=True)
     finally:
         try:
-            result["sha_after"] = verify_checkout(sha)
+            result["sha_after"] = verify_checkout(sha, platform)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             print(error, flush=True)
             result["state"], code = "error", 2

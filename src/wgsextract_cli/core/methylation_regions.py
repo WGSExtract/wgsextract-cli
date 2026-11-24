@@ -134,7 +134,8 @@ def resolve_contigs(
     return aliases, reference
 
 
-def _spans(regions: Iterable[Region]) -> Iterator[tuple[int, int]]:
+def merged_spans(regions: Iterable[Region]) -> Iterator[tuple[int, int]]:
+    """Merge positions for I/O; callers group by chromosome first."""
     start, end = 0, 0
     bounds = sorted(
         (r.start, r.end)
@@ -173,7 +174,7 @@ def reference_cpgs(
             )
         length = lengths[name]
         chunk_size = 4 << 20
-        for start, end in _spans(group):
+        for start, end in merged_spans(group):
             for left in range(start, end, chunk_size):
                 right = min(left + chunk_size, end)
                 padded = min(right + 1, length)
@@ -266,17 +267,18 @@ class Counts:
         )
 
 
-def region_rows(
+def sites_in_regions(
     sites: Iterable[Site],
     regions: Sequence[Region],
     aliases: Mapping[str, Chromosome],
     lengths: Mapping[str, int],
     anchors: Mapping[str, Sequence[int]],
     codes: Sequence[str],
-    min_depth: int,
-    min_sites: int,
-) -> Iterator[tuple[Value, ...]]:
-    """Keep only per-region summaries, not a genome-sized table of sample calls."""
+    seen_codes: set[str],
+    *,
+    include_outside: bool = False,
+) -> Iterator[tuple[Site, list[tuple[int, int]]]]:
+    """Validate a sorted site stream and find all containing regions in one sweep."""
     by_chrom: dict[str, list[tuple[int, int, int]]] = {}
     for index, region in enumerate(regions):
         if region.start is not None and region.end is not None:
@@ -285,9 +287,7 @@ def region_rows(
             )
     for bounds in by_chrom.values():
         bounds.sort()
-    tallies: dict[tuple[int, str], Counts] = {}
     seen_contigs: set[str] = set()
-    seen_codes: set[str] = set()
     previous = ""
     last_position = -1
     site_codes: set[str] = set()
@@ -337,7 +337,11 @@ def region_rows(
             raise UsageError(f"Duplicate bedMethyl row for {site.code} at {location}.")
         site_codes.add(site.code)
         seen_codes.add(site.code)
-        if not bounds or site.code not in codes:
+        if site.code not in codes:
+            continue
+        if not bounds:
+            if include_outside:
+                yield site, []
             continue
         while next_region < len(bounds) and bounds[next_region][0] <= site.start:
             _, end, index = bounds[next_region]
@@ -345,43 +349,72 @@ def region_rows(
                 active.append((end, index))
             next_region += 1
         active = [(end, index) for end, index in active if end > site.start]
-        if not active:
-            continue
-        offset = bisect_left(cpgs, site.start)
-        if offset == len(cpgs) or cpgs[offset] != site.start:
-            raise UsageError(f"bedMethyl site {location} is not a CpG C in --ref.")
-        for _, index in active:
-            key = index, site.code
-            if key not in tallies:
-                tallies[key] = Counts()
-            tallies[key].add(site, min_depth)
+        if active:
+            offset = bisect_left(cpgs, site.start)
+            if offset == len(cpgs) or cpgs[offset] != site.start:
+                raise UsageError(f"bedMethyl site {location} is not a CpG C in --ref.")
+        if active or include_outside:
+            yield site, active
 
     if seen_codes and seen_codes.isdisjoint(codes):
         raise UsageError(
             f"bedMethyl has no rows for the requested modification(s) {', '.join(codes)}. "
             "Supply per-modification calls, not modkit --combine-mods output."
         )
+
+
+def region_context(
+    region: Region, available: set[str], anchors: Mapping[str, Sequence[int]]
+) -> tuple[int | None, str | None]:
+    if region.start is None or region.end is None:
+        return None, "no_transcript"
+    if region.chrom not in available:
+        return None, "contig_absent"
+    cpgs = anchors.get(region.chrom, ())
+    return bisect_left(cpgs, region.end) - bisect_left(cpgs, region.start), None
+
+
+def region_identity(region: Region, code: str) -> tuple[Value, ...]:
+    return (
+        region.name,
+        region.chrom,
+        region.start,
+        region.end,
+        region.gene_id,
+        region.transcript,
+        region.strand,
+        code,
+    )
+
+
+def region_rows(
+    sites: Iterable[Site],
+    regions: Sequence[Region],
+    aliases: Mapping[str, Chromosome],
+    lengths: Mapping[str, int],
+    anchors: Mapping[str, Sequence[int]],
+    codes: Sequence[str],
+    min_depth: int,
+    min_sites: int,
+) -> Iterator[tuple[Value, ...]]:
+    """Keep only per-region summaries, not a genome-sized table of sample calls."""
+    tallies: dict[tuple[int, str], Counts] = {}
+    seen_codes: set[str] = set()
+    for site, active in sites_in_regions(
+        sites, regions, aliases, lengths, anchors, codes, seen_codes
+    ):
+        for _, index in active:
+            key = index, site.code
+            if key not in tallies:
+                tallies[key] = Counts()
+            tallies[key].add(site, min_depth)
     available = {chrom.name for chrom in aliases.values()}
     empty = Counts()
     for index, region in enumerate(regions):
-        expected, reason = None, None
-        if region.start is None or region.end is None:
-            reason = "no_transcript"
-        elif region.chrom not in available:
-            reason = "contig_absent"
-        else:
-            cpgs = anchors.get(region.chrom, ())
-            expected = bisect_left(cpgs, region.end) - bisect_left(cpgs, region.start)
+        expected, reason = region_context(region, available, anchors)
         for code in codes:
             yield (
-                region.name,
-                region.chrom,
-                region.start,
-                region.end,
-                region.gene_id,
-                region.transcript,
-                region.strand,
-                code,
+                *region_identity(region, code),
                 *tallies.get((index, code), empty).values(
                     min_sites,
                     expected,

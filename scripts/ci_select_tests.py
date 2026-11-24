@@ -23,6 +23,7 @@ CI_TESTS = (
     "tests/test_ci_required.py",
     "tests/test_ci_selection.py",
     "tests/test_github_actions_policy.py",
+    "tests/test_ci_installlab_apt.py",
     "tests/test_ci_codeql_scope_policy.py",
     "tests/test_ci_main_dedupe_policy.py",
     "tests/test_workflow_readiness.py",
@@ -37,12 +38,23 @@ CI_TESTS = (
     "tests/test_ci_impact_symbols.py",
     "tests/test_ci_impact_wide.py",
     "tests/test_ci_impact_gate.py",
+    "tests/test_ci_impact_fetch.py",
     "tests/test_ci_nightly.py",
     "tests/test_ci_auto_merge_watch.py",
     "tests/test_ci_release_latest.py",
     "tests/test_ci_capacity.py",
+    "tests/test_ci_cache_prune.py",
 )
 SMOKE_TESTS = ("tests/test_microarray_vendor_formats.py", "tests/test_table_writer.py")
+REMOTE_CERTIFICATION_TEST = "tests/test_ci_certify_remote.py"
+REMOTE_CERTIFICATION_INPUTS = {
+    REMOTE_CERTIFICATION_TEST,
+    "scripts/ci_certify.py",
+    "scripts/ci_certify_hosts.py",
+    "scripts/ci_certify_remote.py",
+    "scripts/ci_certify_remote_worker.py",
+    "scripts/ci_certify_ssh.py",
+}
 OS_WORKFLOWS = {
     "ubuntu": ".github/workflows/ubuntu_ci.yml",
     "macos": ".github/workflows/macos_ci.yml",
@@ -482,14 +494,18 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
 def os_selection(
     paths: list[str], selection: list[str] | str, *, cli: bool
 ) -> dict[str, list[str] | str]:
-    return {
-        os: selection
-        if cli
-        else list(SMOKE_TESTS)
-        if workflow in paths or ".github/workflows/os_tests.yml" in paths
-        else []
-        for os, workflow in OS_WORKFLOWS.items()
-    }
+    if cli:
+        return dict.fromkeys(OS_WORKFLOWS, selection)
+    remote = bool(REMOTE_CERTIFICATION_INPUTS.intersection(paths))
+    result: dict[str, list[str] | str] = {}
+    for os, workflow in OS_WORKFLOWS.items():
+        smoke = workflow in paths or ".github/workflows/os_tests.yml" in paths
+        # The supervisor exercises native Windows jobs and POSIX process groups.
+        result[os] = [
+            *(SMOKE_TESTS if smoke else ()),
+            *([REMOTE_CERTIFICATION_TEST] if remote else []),
+        ]
+    return result
 
 
 def ci_test_targets(paths: list[str], *, repository: Path = ROOT) -> list[str]:

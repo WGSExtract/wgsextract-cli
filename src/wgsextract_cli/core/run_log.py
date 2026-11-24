@@ -144,7 +144,13 @@ class RunLog:
             else get_tool_version(tool)
             for tool in sorted(tools)
         }
-        reference: dict[str, object] = {"path": getattr(args, "ref", None)}
+        reference: dict[str, object] = {
+            "path": (
+                None
+                if getattr(args, "_private_provenance", False)
+                else getattr(args, "ref", None)
+            )
+        }
         if reference["path"]:
             path = Path(str(reference["path"])).expanduser()
             if path.is_file():
@@ -204,6 +210,8 @@ def _prune_log_dir(directory: Path) -> None:
 @contextmanager
 def run_logging(args: argparse.Namespace, argv: Sequence[str]) -> Iterator[None]:
     global _active
+    if getattr(args, "_private_provenance", False):
+        argv = str(args._command).split()
     path = getattr(args, "log_file", None)
     directory = getattr(args, "log_dir", None)
     # The app's pre-run check runs before every action: a log_dir log of it

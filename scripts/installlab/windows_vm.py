@@ -32,14 +32,11 @@ import time
 import zipfile
 from pathlib import Path
 
+import apt_cache
 from housekeeping import LAB, lab_key, mark_used
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
-# Installs Ubuntu packages with mirror fallback, time limits and a clear error
-# (exit 75) when no Ubuntu mirror answers. Containers run it as /apt-install.sh.
-APT_INSTALL = REPO / ".github" / "actions" / "apt-install" / "apt-install.sh"
-APT_MOUNT = ["-v", f"{APT_INSTALL}:/apt-install.sh:ro"]
 # The guest's architecture is the host's. Each architecture's images, downloads
 # and SSH key live in their own directory.
 X64_HOST = sys.platform.startswith("linux") and platform.machine().lower() in (
@@ -542,7 +539,7 @@ def give_back(path: str) -> str:
     return f"chown -R {os.getuid()}:{os.getgid()} {path}"
 
 
-def build_iso() -> None:
+def build_iso(*, use_apt_cache: bool) -> None:
     """Windows 11 install ISO from Windows Update files (UUP dump).
 
     Microsoft's own ISO download refuses scripted requests, so build the same
@@ -572,18 +569,21 @@ def build_iso() -> None:
     with zipfile.ZipFile(work / "pack.zip") as z:
         z.extractall(work)
     script = (
-        "set -e; bash /apt-install.sh aria2 cabextract wimtools chntpw genisoimage; "
-        "sed -i 's/\\r$//' uup_download_linux.sh; "
+        "set -e; sed -i 's/\\r$//' uup_download_linux.sh; "
         # Patch convert.sh after the script downloads it, right before it runs.
         "sed -i 's#^  ./files/convert.sh wim#  sed -i s,efisys.bin,efisys_noprompt.bin, "
         "./files/convert.sh\\n&#' uup_download_linux.sh; "
         f"bash uup_download_linux.sh; {give_back('/w')}"
     )
-    subprocess.run(
-        [docker(), "run", "--rm", *APT_MOUNT, "-v", f"{work}:/w", "-w", "/w", "ubuntu:24.04",
-         "sh", "-c", script],
-        check=True,
-    )  # fmt: skip
+    apt_cache.run_with_apt(
+        docker(),
+        ARCH,
+        ["-v", f"{work}:/w", "-w", "/w"],
+        ["sh", "-c", script],
+        "windows-iso",
+        apt_cache.WINDOWS_ISO_PACKAGES,
+        use_cache=use_apt_cache,
+    )
     built = next(p for p in work.iterdir() if p.suffix.lower() == ".iso")
     built.rename(ISO)
     (WIN_DIR / f"win11-{ARCH}.json").write_text(
@@ -632,7 +632,7 @@ def extract_from_iso(iso: Path, member: str, dest: Path) -> None:
         os.chmod(d, 0o755)
 
 
-def make_iso(media: Path, out: Path, label: str) -> None:
+def make_iso(media: Path, out: Path, label: str, *, use_apt_cache: bool) -> None:
     """A small ISO 9660 + Joliet image of a directory."""
     out.unlink(missing_ok=True)
     if sys.platform == "darwin":
@@ -643,19 +643,21 @@ def make_iso(media: Path, out: Path, label: str) -> None:
         )  # fmt: skip
         return
     script = (
-        "bash /apt-install.sh genisoimage && "
         f"genisoimage -quiet -J -r -V {label} -o /out/{out.name} /media && "
         f"{give_back('/out/' + out.name)}"
     )
-    subprocess.run(
-        [docker(), "run", "--rm", *APT_MOUNT, "-v", f"{media}:/media:ro",
-         "-v", f"{out.parent}:/out",
-         "ubuntu:24.04", "sh", "-c", script],
-        check=True,
-    )  # fmt: skip
+    apt_cache.run_with_apt(
+        docker(),
+        ARCH,
+        ["-v", f"{media}:/media:ro", "-v", f"{out.parent}:/out"],
+        ["sh", "-c", script],
+        "windows-media",
+        apt_cache.WINDOWS_MEDIA_PACKAGES,
+        use_cache=use_apt_cache,
+    )
 
 
-def build_unattend_iso(out: Path) -> None:
+def build_unattend_iso(out: Path, *, use_apt_cache: bool) -> None:
     """autounattend.xml, the first-logon script, the lab's public key and the
     guest's NetKVM driver, on a small ISO that Windows Setup scans."""
     media = out.parent / "unattend-media"
@@ -677,21 +679,21 @@ def build_unattend_iso(out: Path) -> None:
         media / "drivers" / "NetKVM",
     )
     os.chmod(media / "drivers", 0o755)
-    make_iso(media, out, "LABSETUP")
+    make_iso(media, out, "LABSETUP", use_apt_cache=use_apt_cache)
     shutil.rmtree(media)
 
 
-def prepare() -> None:
+def prepare(*, use_apt_cache: bool) -> None:
     """Build WIN_DIR/base.qcow2: stock Windows 11 Pro for the host's architecture plus
     OpenSSH and the lab users (see vm/windows/autounattend.xml)."""
     WIN_DIR.mkdir(parents=True, exist_ok=True)
     if not ISO.exists():
-        build_iso()
+        build_iso(use_apt_cache=use_apt_cache)
     fetch_virtio()
     for download in (ISO, VIRTIO_ISO):
         mark_used(lab_key(download))
     unattend = WIN_DIR / "unattend.iso"
-    build_unattend_iso(unattend)
+    build_unattend_iso(unattend, use_apt_cache=use_apt_cache)
     for path in (BASE, BASE_VARS):
         if path.exists():
             os.chmod(path, 0o644)

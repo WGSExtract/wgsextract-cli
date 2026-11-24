@@ -389,6 +389,16 @@ smncopynumbercaller = "==1.1.2"
 numpy = ">=2"
 pysam = ">=0.23"
 
+# Paraphase 3.3.1 is the last BSD-3-Clause-Clear release.
+[feature.paraphase]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.paraphase.dependencies]
+python = "3.11.*"
+paraphase = "==3.3.1"
+samtools = ">=1.24,<2"
+minimap2 = ">=2.31,<3"
+
 # granite-suite (`granite qcVCF`) for VCF quality control (`vcf granite-qc`).
 # Needs pysam and pytabix (Unix only; no native Windows builds).
 [feature.granite]
@@ -515,6 +525,7 @@ somalier = { features = ["standard-platforms", "somalier"], no-default-feature =
 fastvep = { features = ["standard-platforms", "fastvep"], no-default-feature = true }
 phasing = { features = ["standard-platforms", "phasing"], no-default-feature = true }
 smn = { features = ["standard-platforms", "smn"], no-default-feature = true }
+paraphase = { features = ["standard-platforms", "paraphase"], no-default-feature = true }
 imputation = { features = ["standard-platforms", "imputation"], no-default-feature = true }
 granite = { features = ["standard-platforms", "granite"], no-default-feature = true }
 

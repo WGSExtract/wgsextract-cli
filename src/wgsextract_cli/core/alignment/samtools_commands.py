@@ -11,12 +11,21 @@ from wgsextract_cli.core.errors import WGSExtractError
 from wgsextract_cli.core.paths import PathInput, append_suffix
 
 
+def alignment_index_candidates(path: PathInput) -> list[Path]:
+    """Local sidecar names for a BAM/CRAM index."""
+    file = Path(path)
+    suffixes = (".bai", ".csi", ".crai")
+    return [append_suffix(file, ext) for ext in suffixes] + [
+        file.with_suffix(ext) for ext in suffixes
+    ]
+
+
 def alignment_index(path: PathInput) -> str | None:
     """The index of a BAM/CRAM (x.bam.bai, x.bai, x.cram.crai, ...), if any."""
-    file = Path(path)
-    candidates = [append_suffix(file, ext) for ext in (".bai", ".csi", ".crai")]
-    candidates += [file.with_suffix(".bai"), file.with_suffix(".crai")]
-    return next((str(index) for index in candidates if index.exists()), None)
+    return next(
+        (str(index) for index in alignment_index_candidates(path) if index.exists()),
+        None,
+    )
 
 
 def written_index(path: PathInput) -> str:

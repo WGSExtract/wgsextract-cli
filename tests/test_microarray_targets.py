@@ -48,7 +48,7 @@ def test_markers_are_the_union_of_the_grch37_templates(tmp_path):
 
 def test_unplaced_export_markers_are_not_genotyping_targets(tmp_path):
     templates = _templates(tmp_path)
-    (templates / "raw_file_templates/body/Ancestry_V2_2021.txt").write_text(
+    (templates / "raw_file_templates/body/Ancestry_V2cd.txt").write_text(
         "rs77\t20\t0\nrs78\t20\t12345\n"
     )
     markers = mt.collect_template_markers([str(templates)])
@@ -61,14 +61,13 @@ def test_issue_1329_target_keeps_corrections_scoped_to_their_template(
 ) -> None:
     templates = _templates(tmp_path)
     body = templates / "raw_file_templates/body"
-    (body / "23andMe_V4_1.txt").write_text("rs397507452\tMT\t7444\n")
-    (body / "23andMe_V4_2.txt").write_text("# No additional markers.\n")
-    (body / "Ancestry_V2_2021.txt").write_text(
+    (body / "23andMe_V4.txt").write_text("rs397507452\tMT\t7444\n")
+    (body / "Ancestry_V2cd.txt").write_text(
         "rs397507452\t26\t7444\nrsLater\tchrM\t7443\n"
     )
 
     assert mt.collect_template_markers(
-        [str(templates)], formats=["23andMe_V4", "Ancestry_V2_2021"]
+        [str(templates)], formats=["23andMe_V4", "Ancestry_V2cd"]
     ) == {("chrM", 7443): "rs397507452", ("chrM", 7444): "rs397507452"}
 
 
@@ -180,10 +179,10 @@ def test_version2_target_adds_new_layouts_without_changing_existing_ids(
             mt, "_VERSION_LINE", "##wgsextract_microarray_target_version=2\n"
         )
         target = mt.build_genome_wide_target(str(tmp_path), "hg19", [str(templates)])
-    (templates / "raw_file_templates/body/MyHeritage_GSA_2025.csv").write_text(
+    (templates / "raw_file_templates/body/MyHeritage_V3.csv").write_text(
         "rs77\t4\t12345\n"
     )
-    (templates / "raw_file_templates/body/Ancestry_V2_2021.txt").write_text(
+    (templates / "raw_file_templates/body/Ancestry_V2cd.txt").write_text(
         "rs78\t26\t73\n"
     )
     mt.build_genome_wide_target(str(tmp_path), "hg19", [str(templates)])

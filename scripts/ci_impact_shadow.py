@@ -12,6 +12,7 @@ import platform
 import subprocess
 import xml.etree.ElementTree as ET
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal, TypedDict
 
@@ -57,6 +58,21 @@ def parse_selection(value: object) -> Literal["all"] | list[str]:
     if isinstance(value, list) and all(isinstance(item, str) for item in value):
         return value
     raise ValueError("selection must be 'all' or a JSON array of test paths")
+
+
+def fresh_observations(root: Path, manifest: dict[str, Any]) -> bool:
+    recorded = manifest.get("recorded_at")
+    try:
+        if recorded is None:
+            recorded = subprocess.check_output(
+                ["git", "show", "-s", "--format=%cI", manifest["source_sha"]],
+                cwd=root,
+                text=True,
+            ).strip()
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(recorded)
+    except (ValueError, TypeError, subprocess.CalledProcessError):
+        return False
+    return timedelta(minutes=-5) <= age <= timedelta(hours=48)
 
 
 def observation_map(

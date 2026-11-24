@@ -1,0 +1,41 @@
+name: Actions cache hygiene
+
+on:
+  schedule:
+    - cron: "31 10 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Delete superseded caches (unchecked previews the plan).
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: actions-cache-hygiene
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Require exact trusted main ref
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Report and prune superseded cache generations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
+        run: |
+          flags=()
+          if [ "$APPLY" = true ]; then flags+=(--apply); fi
+          python3 -m scripts.ci_cache_prune --repository "$GITHUB_REPOSITORY" \
+            --sha "$GITHUB_SHA" --summary "$GITHUB_STEP_SUMMARY" "${flags[@]}"

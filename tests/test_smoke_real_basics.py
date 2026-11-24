@@ -49,7 +49,6 @@ class TestExtractBasicsSmoke:
         self.outdir = str(tmp_path)
         self.fake_bam = os.path.join(FAKE_DIR, "fake.bam")
         self.fake_ref = os.path.join(FAKE_DIR, "fake_ref.fa")
-        self.fake_ref_scaled = os.path.join(FAKE_DIR, "fake_ref_hg38_scaled.fa")
 
     @pytest.mark.skipif(SAMTOOLS_MISSING, reason="samtools not found in PATH")
     def test_extract_mt_bam(self):

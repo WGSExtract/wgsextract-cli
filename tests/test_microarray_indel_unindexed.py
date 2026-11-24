@@ -54,13 +54,13 @@ def test_cli_prepares_unindexed_sources_without_changing_originals(
         "--region",
         "chr1:650-780",
         "--formats",
-        "23andme_v5_2025",
+        "23andme_v4",
         "--indel-manifest",
-        "23andme_v5_2025=" + manifest,
+        "23andme_v4=" + manifest,
         "--outdir",
         str(out),
     )
-    exported = next(out.glob("*23andMe_V5_2025.txt")).read_text()
+    exported = next(out.glob("*23andMe_V4.txt")).read_text()
     assert exported.rstrip().endswith("rsProbe\t1\t700\tDI")
     assert source.read_bytes() == original
     if kind != "vcf.gz":  # a bgzipped VCF is indexed beside itself

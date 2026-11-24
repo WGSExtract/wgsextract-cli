@@ -5,7 +5,7 @@ from pathlib import Path
 
 from wgsextract_cli.api.report import ReportParams
 from wgsextract_cli.cli.registration.report import register as register
-from wgsextract_cli.core import cpic_data, pgx_context
+from wgsextract_cli.core import cpic_data, pgx_context, resource_releases
 from wgsextract_cli.core import personal_report as pr
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.results import current_result, human_output
@@ -53,6 +53,8 @@ def run_report(params: ReportParams) -> None:
     result = current_result()
     for source in sources:
         result.add_input(source.manifest, "manifest")
+    for record in resource_releases.cited_resources(folder, report, sources):
+        result.add_resource(record)
     if (review := report["sections"].get("medication_review")) is not None:
         # The guidance depends on both: a changed medication list or CPIC
         # release gives a different review.
