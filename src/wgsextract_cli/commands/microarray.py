@@ -40,7 +40,10 @@ from wgsextract_cli.core.microarray.aadr import (
     validate_aadr_sample_id,
     write_aadr_outputs,
 )
-from wgsextract_cli.core.microarray.formats import resolve_format_key
+from wgsextract_cli.core.microarray.formats import (
+    COMBINED_V3_FORMAT,
+    resolve_format_key,
+)
 from wgsextract_cli.core.microarray.identity import identity_policy, load_rsid_map
 from wgsextract_cli.core.microarray.indels import (
     IndelCalls,
@@ -56,6 +59,7 @@ from wgsextract_cli.core.microarray.targets import (
     build_genome_wide_target,
     chain_to_grch37,
     fetch_requested_chains,
+    installed_lifted_chain,
     is_genome_wide_target,
     lifted_chain,
     output_chain_key,
@@ -180,6 +184,7 @@ def _convert_microarray_outputs(
 ) -> dict[str, GenotypeTally]:
     """Write the requested outputs (``formats``, default all of
     ``params.formats``); return each vendor file's autosomal tally."""
+    from wgsextract_cli.core.microarray.combined_v3 import convert_to_combined_v3
     from wgsextract_cli.core.microarray.templates import (
         convert_to_vendor_format,
         get_template_format,
@@ -279,19 +284,33 @@ def _convert_microarray_outputs(
         suffix = fmt_info["suffix"] if fmt_info else ".txt"
         output_file = str(Path(outdir, f"{base_name}_{real_fmt}{suffix}"))
         try:
-            lift_chain = (
-                lifted_chain(lib.root, fmt_info["build"], lib.resource_roots)
-                if fmt_info and fmt_info.get("build") and lib.root
-                else None
-            )
-            format_converter = (
-                functools.partial(converter, indel_calls=indel_calls[real_fmt])
-                if indel_calls is not None and real_fmt in indel_calls
-                else converter
-            )
-            tallies[real_fmt] = format_converter(
-                real_fmt, final_txt, output_file, template_search_roots, lift_chain
-            )
+            if real_fmt == COMBINED_V3_FORMAT:
+                hg18_chain = (
+                    lifted_chain(lib.root, "NCBI36", lib.resource_roots)
+                    if lib.root
+                    else installed_lifted_chain(None, "NCBI36", lib.resource_roots)
+                )
+                tallies[real_fmt] = convert_to_combined_v3(
+                    final_txt,
+                    output_file,
+                    template_search_roots,
+                    hg18_chain,
+                    identity=identity,
+                )
+            else:
+                lift_chain = (
+                    lifted_chain(lib.root, fmt_info["build"], lib.resource_roots)
+                    if fmt_info and fmt_info.get("build") and lib.root
+                    else None
+                )
+                format_converter = (
+                    functools.partial(converter, indel_calls=indel_calls[real_fmt])
+                    if indel_calls is not None and real_fmt in indel_calls
+                    else converter
+                )
+                tallies[real_fmt] = format_converter(
+                    real_fmt, final_txt, output_file, template_search_roots, lift_chain
+                )
         except (OSError, ValueError, WGSExtractError) as e:
             raise WGSExtractError(f"Failed to generate {real_fmt}: {e}") from e
         record_kit(output_file, real_fmt, tallies[real_fmt], liftover)
@@ -554,7 +573,14 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
                     _template_search_roots(ref_fasta, lib), key
                 )
             ]
-            if (fmt := get_template_format(key)) and (lifted := fmt.get("build")):
+            if key == COMBINED_V3_FORMAT:
+                chain = (
+                    lifted_chain(lib.root, "NCBI36", lib.resource_roots)
+                    if params.download is True and lib.root
+                    else installed_lifted_chain(lib.root, "NCBI36", lib.resource_roots)
+                )
+                units[key].extra[output_chain_key("NCBI36")] = resource_identity(chain)
+            elif (fmt := get_template_format(key)) and (lifted := fmt.get("build")):
                 chain = lifted_chain(lib.root, lifted, lib.resource_roots)
                 units[key].extra[output_chain_key(lifted)] = resource_identity(chain)
     for unit in units.values():

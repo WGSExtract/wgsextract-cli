@@ -62,6 +62,7 @@ from . import (
     analyze,
     bam,
     benchmark,
+    cohort,
     deps,
     examples,
     extract,
@@ -108,6 +109,7 @@ from .bam import (
     BamUnsortParams,
 )
 from .benchmark import BenchmarkParams
+from .cohort import CohortSummarizeParams as CohortSummarizeParams
 from .deps import (
     DepsCheckParams,
     DepsInstallParams,
@@ -141,7 +143,7 @@ from .info import (
     InfoGeneParams,
     InfoParams,
 )
-from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
+from .lineage import MtHaplogroupParams, YHaplogroupParams, YPrivateParams, YStrParams
 from .methylation import MethylationPileupParams, MethylationRegionsParams
 from .microarray import MicroarrayParams
 from .panel import PanelBedParams, PanelCheckParams
@@ -221,6 +223,7 @@ from .vcf import (
     VcfPharmgkbParams,
     VcfPhaseParams,
     VcfPhylopParams,
+    VcfPrepareParams,
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
@@ -254,6 +257,7 @@ __all__ = [
     "CancelToken",
     "Cancelled",
     "ChipParams",
+    "CohortSummarizeParams",
     "CommandFailed",
     "CoverageSampleParams",
     "CustomParams",
@@ -365,6 +369,7 @@ __all__ = [
     "VcfImputeParams",
     "VcfPhaseParams",
     "VcfPhylopParams",
+    "VcfPrepareParams",
     "VcfRevelParams",
     "VcfSnpParams",
     "VcfSpliceaiParams",
@@ -382,6 +387,7 @@ __all__ = [
     "WGSExtractError",
     "YHaplogroupParams",
     "YMtExtractParams",
+    "YPrivateParams",
     "YStrParams",
     "YdnaBamParams",
     "YdnaVcfParams",
@@ -389,6 +395,7 @@ __all__ = [
     "analyze",
     "bam",
     "benchmark",
+    "cohort",
     "deps",
     "examples",
     "extract",

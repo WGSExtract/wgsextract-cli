@@ -138,7 +138,7 @@ def probe_inputs(tmp_path, alignment):
     )
     root = tmp_path / "raw_file_templates"
     (root / "body").mkdir(parents=True)
-    (root / "body/23andMe_V5_2025.txt").write_text("rsProbe\t1\t700\n")
+    (root / "body/23andMe_V4.txt").write_text("rsProbe\t1\t700\n")
     return manifest, SimpleNamespace(
         fasta=str(ref),
         build="hg19",
@@ -177,7 +177,7 @@ def test_force_genotype_known_indel_alleles_with_real_native_caller(
     bam = sam_to_bam(lines, tmp_path / "sample.bam")
     args = microarray_params(input=bam, region="chr1:650-780", **policy)
     calls = call_manifest_indels(
-        {"23andMe_V5_2025": manifest},
+        {"23andMe_V4": manifest},
         [str(tmp_path)],
         params=args,
         lib=lib,
@@ -185,7 +185,7 @@ def test_force_genotype_known_indel_alleles_with_real_native_caller(
         ploidy_args=["--ploidy", "2"],
         threads="1",
     )
-    assert calls == {"23andMe_V5_2025": {("rsProbe", "1", "700"): expected}}
+    assert calls == {"23andMe_V4": {("rsProbe", "1", "700"): expected}}
     assert list(tmp_path.glob("Indels_*/normalized-probe-sites.vcf"))
 
 
@@ -221,7 +221,7 @@ def test_vcf_aliases_and_region_limits_never_call_absent_contigs(
     else:
         prepared = str(source)
     calls = call_manifest_indels(
-        {"23andMe_V5_2025": manifest},
+        {"23andMe_V4": manifest},
         [str(tmp_path)],
         params=microarray_params(input=prepared, region=region),
         lib=lib,
@@ -229,7 +229,7 @@ def test_vcf_aliases_and_region_limits_never_call_absent_contigs(
         ploidy_args=["--ploidy", "2"],
         threads="1",
     )
-    assert calls == {"23andMe_V5_2025": {("rsProbe", "1", "700"): expected}}
+    assert calls == {"23andMe_V4": {("rsProbe", "1", "700"): expected}}
 
 
 @needs_tools("bcftools", "samtools")
@@ -260,10 +260,10 @@ def test_sequence_free_known_indel_ids_are_explicitly_missing(
             ["rsUnknown", "[I/D]", "37", "1", "701", LEFT + "[I/D]" + RIGHT],
         ],
     )
-    with (tmp_path / "raw_file_templates/body/23andMe_V5_2025.txt").open("a") as stream:
+    with (tmp_path / "raw_file_templates/body/23andMe_V4.txt").open("a") as stream:
         stream.write("rsUnknown\t1\t701\n")
     calls = call_manifest_indels(
-        {"23andMe_V5_2025": manifest},
+        {"23andMe_V4": manifest},
         [str(tmp_path)],
         params=microarray_params(input=alignment["bam"], region="chr1:650-780"),
         lib=lib,
@@ -271,7 +271,7 @@ def test_sequence_free_known_indel_ids_are_explicitly_missing(
         ploidy_args=["--ploidy", "2"],
         threads="1",
     )
-    assert calls["23andMe_V5_2025"] == {
+    assert calls["23andMe_V4"] == {
         ("rsProbe", "1", "700"): "DI",
         ("rsUnknown", "1", "701"): "--",
     }
@@ -388,9 +388,9 @@ def test_haploid_indels_follow_each_verified_vendor_ploidy_style(
     )
     bodies = tmp_path / "raw_file_templates/body"
     bodies.mkdir(parents=True)
-    (bodies / "23andMe_V5_2025.txt").write_text(f"rsProbe\t{chrom}\t700\n")
-    (bodies / "Ancestry_V2_2024.txt").write_text(f"rsProbe\t{ancestry_chrom}\t700\n")
-    (bodies / "MyHeritage_GSA_2025.csv").write_text(f'"rsProbe","{chrom}","700",\n')
+    (bodies / "23andMe_V4.txt").write_text(f"rsProbe\t{chrom}\t700\n")
+    (bodies / "Ancestry_V2cd.txt").write_text(f"rsProbe\t{ancestry_chrom}\t700\n")
+    (bodies / "MyHeritage_V3.csv").write_text(f'"rsProbe","{chrom}","700",\n')
     source = tmp_path / "input.vcf"
     source.write_text(
         f"##fileformat=VCFv4.2\n##contig=<ID={reference_chrom},length=1000>\n"
@@ -401,9 +401,7 @@ def test_haploid_indels_follow_each_verified_vendor_ploidy_style(
         f"{reference_chrom}\t700\t.\tCGT\tC\t.\tPASS\t.\tGT:DP:GQ\t{gt}:30:60\n"
     )
     calls = call_manifest_indels(
-        dict.fromkeys(
-            ("23andMe_V5_2025", "Ancestry_V2_2024", "MyHeritage_GSA_2025"), manifest
-        ),
+        dict.fromkeys(("23andMe_V4", "Ancestry_V2cd", "MyHeritage_V3"), manifest),
         [str(tmp_path)],
         params=microarray_params(input=bgzip_index(source), region=reference_chrom),
         lib=SimpleNamespace(fasta=str(ref), build=build, root=None),
@@ -412,7 +410,7 @@ def test_haploid_indels_follow_each_verified_vendor_ploidy_style(
         threads="1",
     )
     assert calls == {
-        "23andMe_V5_2025": {("rsProbe", chrom, "700"): code},
-        "Ancestry_V2_2024": {("rsProbe", ancestry_chrom, "700"): code * 2},
-        "MyHeritage_GSA_2025": {("rsProbe", chrom, "700"): code * 2},
+        "23andMe_V4": {("rsProbe", chrom, "700"): code},
+        "Ancestry_V2cd": {("rsProbe", ancestry_chrom, "700"): code * 2},
+        "MyHeritage_V3": {("rsProbe", chrom, "700"): code * 2},
     }
