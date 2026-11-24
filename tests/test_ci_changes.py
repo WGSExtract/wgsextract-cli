@@ -26,8 +26,8 @@ from scripts.ci_select_tests import os_selection
 from scripts.ci_select_tests import select_tests as select_tests
 from scripts.ci_test_dependencies import DOCS_ONLY_SCRIPTS as DOCS_ONLY_SCRIPTS
 from scripts.ci_test_dependencies import DOCS_TEST_TARGETS as DOCS_TEST_TARGETS
-from scripts.ci_test_dependencies import GENERATED_DOCS as GENERATED_DOCS
 from scripts.ci_test_dependencies import docs_test_targets as docs_test_targets
+from scripts.ci_test_dependencies import generated_docs_path
 from scripts.ci_test_dependencies import test_inputs as referenced_inputs
 from scripts.pr_checks_ready import checks_ready as checks_ready
 from scripts.pr_checks_ready import latest_ready_run as latest_ready_run
@@ -335,9 +335,9 @@ def test_757_every_test_referenced_input_selects_pytest() -> None:
         )
         if not readers:
             continue
-        if path.endswith(".md") and path not in GENERATED_DOCS:
+        if path.endswith(".md") and not generated_docs_path(path):
             continue
-        if path in GENERATED_DOCS:
+        if generated_docs_path(path):
             assert docs_test_targets([path]), path
             continue
         selected = routes([path])
@@ -535,7 +535,11 @@ _REGEN_TESTS = ["tests/test_regen.py", "tests/test_text_newlines.py"]
             "scripts/build_mockup_previews.py",
             ["tests/test_build_mockup_previews.py"],
         ),
-        ("tests/fixtures/api_cli_snapshot.json", ["tests/test_api_cli_parity.py"]),
+        (
+            "tests/fixtures/cli_snapshot/microarray.json",
+            ["tests/test_api_cli_parity.py"],
+        ),
+        ("tests/fixtures/cli_snapshot/vcf/snp.json", ["tests/test_api_cli_parity.py"]),
     ],
 )
 def test_913_light_checks_run_only_for_their_own_inputs(

@@ -1,0 +1,622 @@
+{
+ "help": "usage: wgsextract vcf filter [-h] [--vcf-input VCF_INPUT] [--gene GENE] [--genes GENES]\n                             [--gene-file FILE] [--preset NAME] [--bed FILE] [--pad-kb PAD_KB]\n                             [-r REGION] [--expr EXPR] [--exclude-near-gaps]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Input VCF file path.\n  --gene GENE           Keep a gene by symbol (repeatable).\n  --genes GENES         Comma-separated gene symbols (repeatable).\n  --gene-file FILE      File of gene symbols (whitespace or comma-separated; # starts a comment).\n  --preset NAME         Gene panel preset (repeatable): pharmacogenes, hla, autoimmune, acmg-sf,\n                        cardiac\n  --bed FILE            BED or BED.gz panel, unioned with the selected gene spans.\n  --pad-kb PAD_KB       Padding on each side of a gene span, in kb (default: 0).\n  -r, --region REGION   Chromosomal region(s); when a panel is given, restrict its union to these\n                        regions.\n  --expr EXPR           bcftools filter expression (e.g. 'QUAL>30')\n  --exclude-near-gaps   Exclude variants in or near genomic gaps (requires Count Ns output)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf filter --vcf-input sample.vcf.gz --genes BRCA1,BRCA2 --bed targets.bed\n  wgsextract vcf filter --vcf-input sample.vcf.gz --expr 'QUAL>30'\n\noutputs (in the output directory unless noted):\n  filtered.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: bgzip, samtools;\n  minutes on a 30x genome.\n",
+ "namespaces": {
+  "vcf filter -i x.vcf.gz --exclude-near-gaps -r chr1": {
+   "_command": "vcf filter",
+   "_explicit_dests": [
+    "exclude_near_gaps",
+    "input",
+    "region"
+   ],
+   "_one_vcf_input": true,
+   "atomic_output": false,
+   "bed": null,
+   "command": "vcf",
+   "debug": false,
+   "exclude_near_gaps": true,
+   "expr": null,
+   "full_help": false,
+   "func": "cmd_filter",
+   "gene": null,
+   "gene_file": null,
+   "genes": [],
+   "genome": null,
+   "input": "x.vcf.gz",
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "pad_kb": 0.0,
+   "parent_pid": null,
+   "presets": [],
+   "quiet": false,
+   "ref": null,
+   "region": "chr1",
+   "threads": null,
+   "tmp_dir": null,
+   "vcf_cmd": "filter",
+   "vcf_input": null
+  },
+  "vcf filter -i x.vcf.gz --expr QUAL>30 --gene BRCA1": {
+   "_command": "vcf filter",
+   "_explicit_dests": [
+    "expr",
+    "gene",
+    "input"
+   ],
+   "_one_vcf_input": true,
+   "atomic_output": false,
+   "bed": null,
+   "command": "vcf",
+   "debug": false,
+   "exclude_near_gaps": false,
+   "expr": "QUAL>30",
+   "full_help": false,
+   "func": "cmd_filter",
+   "gene": [
+    "BRCA1"
+   ],
+   "gene_file": null,
+   "genes": [],
+   "genome": null,
+   "input": "x.vcf.gz",
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "pad_kb": 0.0,
+   "parent_pid": null,
+   "presets": [],
+   "quiet": false,
+   "ref": null,
+   "region": null,
+   "threads": null,
+   "tmp_dir": null,
+   "vcf_cmd": "filter",
+   "vcf_input": null
+  }
+ },
+ "parser": {
+  "actions": [
+   {
+    "choices": null,
+    "class": "_HelpAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help",
+    "exclusive_group": null,
+    "help": "show this help message and exit",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "-h",
+     "--help"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "input",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--input",
+     "-i"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "outdir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--outdir",
+     "-o"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "genome",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--genome"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "ref",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ref"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "threads",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "N|auto",
+    "nargs": null,
+    "option_strings": [
+     "--threads",
+     "-t"
+    ],
+    "required": false,
+    "type": "_thread_count_arg"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "memory",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--memory",
+     "-m"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "tmp_dir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "DIRECTORY",
+    "nargs": null,
+    "option_strings": [
+     "--tmp-dir"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "json",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--json"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "card",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--card",
+     "--no-card"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "quiet",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--quiet"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "debug",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--debug"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "log_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--log-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "keep_awake",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--keep-awake",
+     "--no-keep-awake"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "atomic_output",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--atomic-output",
+     "--no-atomic-output"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "config_path",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--config"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_result_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--result-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_parent_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--parent-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_root_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--root-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_run_step",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "STEP",
+    "nargs": null,
+    "option_strings": [
+     "--run-step"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "parent_pid",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--parent-pid"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "vcf_input",
+    "exclusive_group": null,
+    "help": "Input VCF file path.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--vcf-input"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_AppendAction",
+    "const": null,
+    "default": null,
+    "dest": "gene",
+    "exclusive_group": null,
+    "help": "Keep a gene by symbol (repeatable).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--gene"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_AppendAction",
+    "const": null,
+    "default": [],
+    "dest": "genes",
+    "exclusive_group": null,
+    "help": "Comma-separated gene symbols (repeatable).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--genes"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "gene_file",
+    "exclusive_group": null,
+    "help": "File of gene symbols (whitespace or comma-separated; # starts a comment).",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--gene-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "pharmacogenes",
+     "hla",
+     "autoimmune",
+     "acmg-sf",
+     "cardiac"
+    ],
+    "class": "_AppendAction",
+    "const": null,
+    "default": [],
+    "dest": "presets",
+    "exclusive_group": null,
+    "help": "Gene panel preset (repeatable): pharmacogenes, hla, autoimmune, acmg-sf, cardiac",
+    "metavar": "NAME",
+    "nargs": null,
+    "option_strings": [
+     "--preset"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "bed",
+    "exclusive_group": null,
+    "help": "BED or BED.gz panel, unioned with the selected gene spans.",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--bed"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 0.0,
+    "dest": "pad_kb",
+    "exclusive_group": null,
+    "help": "Padding on each side of a gene span, in kb (default: 0).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--pad-kb"
+    ],
+    "required": false,
+    "type": "float"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "region",
+    "exclusive_group": null,
+    "help": "Chromosomal region(s); when a panel is given, restrict its union to these regions.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "-r",
+     "--region"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "expr",
+    "exclusive_group": null,
+    "help": "bcftools filter expression (e.g. 'QUAL>30')",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--expr"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "exclude_near_gaps",
+    "exclusive_group": null,
+    "help": "Exclude variants in or near genomic gaps (requires Count Ns output)",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--exclude-near-gaps"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_HelpAllAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help_all",
+    "exclusive_group": null,
+    "help": "Show this help with the advanced options too, and exit.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--help-all"
+    ],
+    "required": false,
+    "type": null
+   }
+  ],
+  "defaults": {
+   "_command": "vcf filter",
+   "_one_vcf_input": true,
+   "func": "cmd_filter"
+  },
+  "description": null,
+  "formatter_class": "HelpFormatter",
+  "prog": "wgsextract vcf filter"
+ }
+}

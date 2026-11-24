@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+SNAPSHOT_DIR = "tests/fixtures/cli_snapshot"
 GENERATOR_SCRIPTS = (
     "tests/cli_snapshot.py",
     "scripts/gen_command_docs.py",
@@ -16,7 +17,6 @@ GENERATOR_SCRIPTS = (
     "scripts/gen_server_contracts.py",
 )
 GENERATED = (
-    "tests/fixtures/api_cli_snapshot.json",
     "src/wgsextract_cli/assets/cli/help-index.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
@@ -34,7 +34,12 @@ GENERATED = (
     "gui/app/shared/generated/result-records.ts",
     "gui/app/shared/generated/report-records.ts",
 )
-RETIRED_GENERATED = ("docs/api.md", "docs/commands.md", "docs/configuration.md")
+RETIRED_GENERATED = (
+    "tests/fixtures/api_cli_snapshot.json",
+    "docs/api.md",
+    "docs/commands.md",
+    "docs/configuration.md",
+)
 
 
 def main() -> None:
@@ -47,7 +52,13 @@ def main() -> None:
             ["git", "diff", "--name-only", "--diff-filter=U"], cwd=ROOT, text=True
         ).splitlines()
         retired = sorted(set(unresolved).intersection(RETIRED_GENERATED))
-        sources = set(unresolved) - set(GENERATED) - set(retired)
+        sources = {
+            path
+            for path in unresolved
+            if path not in GENERATED
+            and path not in retired
+            and not (path.startswith(f"{SNAPSHOT_DIR}/") and path.endswith(".json"))
+        }
         if sources:
             parser.error(
                 "resolve and stage source conflicts first: "
@@ -58,7 +69,18 @@ def main() -> None:
     if args.resolve:
         for path in retired:
             (ROOT / path).unlink(missing_ok=True)
-        subprocess.run(["git", "add", "--", *GENERATED, *retired], cwd=ROOT, check=True)
+        subprocess.run(
+            [
+                "git",
+                "add",
+                "--",
+                *GENERATED,
+                f":(glob){SNAPSHOT_DIR}/**/*.json",
+                *retired,
+            ],
+            cwd=ROOT,
+            check=True,
+        )
 
 
 if __name__ == "__main__":

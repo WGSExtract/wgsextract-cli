@@ -1,0 +1,507 @@
+{
+ "help": "usage: wgsextract pet-align [-h] [--r1 R1] [--r2 R2] --species {dog,cat} [--format {BAM,CRAM}]\n\noptions:\n  -h, --help           show this help message and exit\n  --r1 R1              Read 1 FASTQ file\n  --r2 R2              Read 2 FASTQ file (optional)\n  --species {dog,cat}  Species for analysis\n  --format {BAM,CRAM}  Output format\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract pet-align --r1 dog_R1.fastq.gz --r2 dog_R2.fastq.gz --species dog\n\noutputs (in the output directory unless noted):\n  <reads stem>_<species>.bam or .cram (+ index) and <reads\n  stem>_<species>.vcf.gz (+ .tbi).\n\nneeds:\n  bcftools, bwa, samtools; depending on options and inputs, also: bwa-mem2,\n  sambamba, samblaster; hours on a 30x genome.\n",
+ "namespaces": {
+  "pet-align --r1 a.fq --r2 b.fq --species cat --format CRAM --ref r.fa": {
+   "_command": "pet-align",
+   "_explicit_dests": [
+    "format",
+    "r1",
+    "r2",
+    "ref",
+    "species"
+   ],
+   "atomic_output": false,
+   "command": "pet-align",
+   "debug": false,
+   "format": "CRAM",
+   "full_help": false,
+   "func": "run_pet",
+   "genome": null,
+   "input": null,
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "parent_pid": null,
+   "quiet": false,
+   "r1": "a.fq",
+   "r2": "b.fq",
+   "ref": "r.fa",
+   "species": "cat",
+   "threads": null,
+   "tmp_dir": null
+  },
+  "pet-align --r1 a.fq --species dog": {
+   "_command": "pet-align",
+   "_explicit_dests": [
+    "r1",
+    "species"
+   ],
+   "atomic_output": false,
+   "command": "pet-align",
+   "debug": false,
+   "format": "BAM",
+   "full_help": false,
+   "func": "run_pet",
+   "genome": null,
+   "input": null,
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "parent_pid": null,
+   "quiet": false,
+   "r1": "a.fq",
+   "r2": null,
+   "ref": null,
+   "species": "dog",
+   "threads": null,
+   "tmp_dir": null
+  }
+ },
+ "parser": {
+  "actions": [
+   {
+    "choices": null,
+    "class": "_HelpAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help",
+    "exclusive_group": null,
+    "help": "show this help message and exit",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "-h",
+     "--help"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "input",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--input",
+     "-i"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "outdir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--outdir",
+     "-o"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "genome",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--genome"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "ref",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ref"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "threads",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "N|auto",
+    "nargs": null,
+    "option_strings": [
+     "--threads",
+     "-t"
+    ],
+    "required": false,
+    "type": "_thread_count_arg"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "memory",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--memory",
+     "-m"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "tmp_dir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "DIRECTORY",
+    "nargs": null,
+    "option_strings": [
+     "--tmp-dir"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "json",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--json"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "card",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--card",
+     "--no-card"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "quiet",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--quiet"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "debug",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--debug"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "log_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--log-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "keep_awake",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--keep-awake",
+     "--no-keep-awake"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "atomic_output",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--atomic-output",
+     "--no-atomic-output"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "config_path",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--config"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_result_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--result-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_parent_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--parent-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_root_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--root-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_run_step",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "STEP",
+    "nargs": null,
+    "option_strings": [
+     "--run-step"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "parent_pid",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--parent-pid"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "r1",
+    "exclusive_group": null,
+    "help": "Read 1 FASTQ file",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--r1"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "r2",
+    "exclusive_group": null,
+    "help": "Read 2 FASTQ file (optional)",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--r2"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "dog",
+     "cat"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "species",
+    "exclusive_group": null,
+    "help": "Species for analysis",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--species"
+    ],
+    "required": true,
+    "type": null
+   },
+   {
+    "choices": [
+     "BAM",
+     "CRAM"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": "BAM",
+    "dest": "format",
+    "exclusive_group": null,
+    "help": "Output format",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--format"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_HelpAllAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help_all",
+    "exclusive_group": null,
+    "help": "Show this help with the advanced options too, and exit.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--help-all"
+    ],
+    "required": false,
+    "type": null
+   }
+  ],
+  "defaults": {
+   "_command": "pet-align",
+   "func": "run_pet"
+  },
+  "description": null,
+  "formatter_class": "HelpFormatter",
+  "prog": "wgsextract pet-align"
+ }
+}
