@@ -69,6 +69,7 @@ CLI_HELP = {
     "cmd_phase": "Phase a sample's heterozygous calls with its reads (WhatsHap, or LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype. Optional; Linux and macOS, install with `pixi install -e phasing`.",
     "cmd_annotate": "Add external metadata (like population frequencies or disease risk) to your VCF file.",
     "cmd_filter": "Filter your results. Use this to focus on specific genes of interest or to remove low-quality 'noisy' variant calls.",
+    "cmd_vcf-prepare": "Repair a VCF from a sequencing service so other tools accept it: BGZF compression, sorting, contig names and header lines, and a fresh index; optionally split multiallelics and left-align indels. Reports every change.",
     "cmd_vcf-to-fasta": "Build your personal consensus genome: the reference FASTA with your variants applied (heterozygous SNVs as IUPAC codes by default), and N where a gVCF has no call.",
     "cmd_trio": "Analyze inheritance patterns. Compares a child's VCF with their parents to identify de novo (new) mutations or inherited conditions.",
     "cmd_analyze": "Comprehensive genomic analysis combining multiple tools into a single workflow.",
@@ -121,17 +122,19 @@ CLI_HELP = {
 Variants are named by letter (h600.org's Microarray File Formats); similar
 minor variants are merged into one file, e.g. ancestry_v2ab.
 Available formats:
-  Combined kit only (always written):
-    all (CombinedKit v5: every chip's markers in one 23andMe-style file, e.g.
-    for GEDmatch; writes no vendor files: list the vendor formats to get them)
+  Combined kits:
+    all, combined_v5 (CombinedKit v5: every chip's markers in one 23andMe-style
+    file, e.g. for GEDmatch; always written, writes no vendor files alone)
+    combined_v3 (CombinedKit v3: classic 14-template subset of CombinedKit v5,
+    written as <sample>_CombinedKit_v3.txt)
   23andMe:
     23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4 (v4a-c),
     23andme_v5, 23andme_v3+v5, 23andme_api
   AncestryDNA:
-    ancestry_v1, ancestry_v2ab (v2a and v2b merged; ancestry_v2 is v2a alone),
-    ancestry_v2cd (v2c and v2d merged), ancestry_v2e (2026: no Y or MT)
+    ancestry_v1, ancestry_v2ab (v2a and v2b merged; alias: ancestry_v2),
+    ancestry_v2cd (v2c and v2d merged), ancestry_v2e
   Family Tree DNA:
-    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3, ftdna_v4
+    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2 (v2a-d), ftdna_v3, ftdna_v4
     ftdna_v2y, ftdna_v3y, ftdna_v4y (the separate Y files, GRCh38 positions)
   Living DNA:
     ldna_v1, ldna_v2
@@ -140,9 +143,6 @@ Available formats:
   Other vendors:
     tellmegen, genera, mthfr (MTHFR Genetics), meudna_v1, meudna_v2,
     selfdecode, nucleus
-  Earlier IDs naming a date or size (ancestry_v2_2021, ancestry_v2_2024,
-  23andme_v5_2025, myheritage_gsa_2025, myheritage_gsa_2025_609424) are
-  accepted: they are exact sub-minor export layouts of v2d, v5 and v2.
   AADR v66.p1 (GRCh37 outputs, PLINK .bed/.bim/.fam AND EIGENSTRAT .geno/.snp/.ind):
     aadr_1240k, aadr_ho, aadr_1240k+ho (HO is a subset of 1240K in this release)
     aadr_2m (opt-in; first run 'ref aadr --install'; v66.p1 genetic distances

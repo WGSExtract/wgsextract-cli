@@ -448,15 +448,22 @@ def bootstrap_has_support_assets(reflib_dir: str) -> bool:
     return all((root / name).is_file() for name in _LEGACY_BOOTSTRAP_SENTINELS)
 
 
-# Top-level bootstrap files whose content legitimately updates between bootstrap
-# releases (e.g. v0.2.0 -> v0.3.0) and should replace the older copy on flatten.
+# Bootstrap files and subtrees whose content legitimately updates between
+# bootstrap releases (e.g. v0.2.0/v0.3.0 -> v0.4.0) and should replace the
+# older copy on flatten.
 _BOOTSTRAP_REPLACE_FILES = frozenset({"00README.txt"})
+_BOOTSTRAP_REPLACE_PREFIXES = ("microarray/raw_file_templates/",)
 
 
 def normalize_bootstrap_layout(reflib_dir: str) -> None:
     nested = str(Path(reflib_dir, "reference"))
     if Path(nested).is_dir():
-        _merge_directory(nested, reflib_dir, replace_files=_BOOTSTRAP_REPLACE_FILES)
+        _merge_directory(
+            nested,
+            reflib_dir,
+            replace_files=_BOOTSTRAP_REPLACE_FILES,
+            replace_prefixes=_BOOTSTRAP_REPLACE_PREFIXES,
+        )
         _remove_empty_directories(nested)
         if Path(nested).is_dir() and not os.listdir(nested):
             Path(nested).rmdir()
@@ -515,7 +522,12 @@ def _ploidy_content(alias: str) -> str:
 
 
 def _merge_directory(
-    src: str, dst: str, *, replace_files: frozenset[str] = frozenset()
+    src: str,
+    dst: str,
+    *,
+    replace_files: frozenset[str] = frozenset(),
+    replace_prefixes: tuple[str, ...] = (),
+    _rel: str = "",
 ) -> None:
     Path(dst).mkdir(parents=True, exist_ok=True)
     for name in os.listdir(src):
@@ -523,15 +535,31 @@ def _merge_directory(
         if name.startswith("._") or name == ".DS_Store":
             _remove_path(source)
             continue
+        rel_path = f"{_rel}/{name}" if _rel else name
         target = str(Path(dst, name))
         if Path(source).is_dir() and not Path(source).is_symlink():
-            _merge_directory(source, target)
+            if Path(target).is_symlink():
+                logging.warning(
+                    "Leaving bootstrap directory in place; target is a symlink: %s",
+                    target,
+                )
+                continue
+            _merge_directory(
+                source,
+                target,
+                replace_files=replace_files,
+                replace_prefixes=replace_prefixes,
+                _rel=rel_path,
+            )
             if not os.listdir(source):
                 Path(source).rmdir()
-        elif not Path(target).exists():
+        elif not Path(target).exists() and not Path(target).is_symlink():
             shutil.move(source, target)
         elif (
-            name in replace_files
+            (
+                rel_path in replace_files
+                or any(rel_path.startswith(prefix) for prefix in replace_prefixes)
+            )
             and Path(source).is_file()
             and not Path(source).is_symlink()
             and Path(target).is_file()
