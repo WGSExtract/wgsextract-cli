@@ -1042,9 +1042,19 @@ publish exact hit/miss and key in each job summary.
 
 Target steady state is roughly **6.6–7 GB**, leaving headroom for CodeQL-managed
 caches and lockfile rollover. This is a size plan, not an asserted measured
-post-deployment size. Old keys age out after seven days unused; no active caches
-are deleted by this PR. Monitor the API inventory after main seeds the new keys;
-old and new keys can temporarily coexist.
+post-deployment size. Old keys also age out after seven days unused.
+
+The **Actions cache hygiene** workflow runs daily on `main`. It removes a
+stale Pixi lock key only after the current lock has a cache for the same
+OS, architecture, Pixi version, scope, workspace path and cache archive version.
+It preserves equivalent checkout line endings. It keeps two recent
+CodeQL overlay bases for each configuration plus any for the exact main tip,
+and three passed-test cache generations for each suite on main and on each
+PR. Other PR-ref keys and unknown families remain untouched. Preview the plan
+in a manually dispatched `cache_hygiene.yml` run on `main`; set `apply` to delete.
+The summary records
+before and after repository cache bytes and the entries removed. Main moving
+during the cleanup stops further deletes.
 
 Only each OS matrix job seeds its CLI Pixi cache; other jobs restore that same
 set and install any missing optional environments without saving duplicate sets.
