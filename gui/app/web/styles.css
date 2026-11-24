@@ -49,6 +49,7 @@
 .genome-viewer-shell iframe {
   width: 100%;
   height: 100%;
+  min-height: 0;
   border: 0;
 }
 
@@ -981,6 +982,72 @@ input[type="checkbox"] {
   align-items: center;
 }
 
+.input-button-row-multi {
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+}
+
+.path-control-stack {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.multi-path-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8px;
+  display: grid;
+  gap: 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 0.84rem;
+}
+
+.multi-path-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.multi-path-index {
+  opacity: 0.65;
+  flex: 0 0 auto;
+}
+
+.multi-path-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.multi-path-badge {
+  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(88, 166, 255, 0.16);
+  color: #8cc4ff;
+  flex: 0 0 auto;
+}
+
+.multi-path-remove {
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 0.95rem;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+
+.multi-path-remove:hover {
+  opacity: 1;
+}
+
 [data-workspace-location-current] {
   font-size: 0.86rem;
   overflow-wrap: anywhere;
@@ -1361,6 +1428,17 @@ tbody tr + tr {
   white-space: pre-wrap;
   text-align: start;
   pointer-events: none;
+}
+
+.row-name-tooltip {
+  cursor: help;
+  text-decoration: underline dotted color-mix(in srgb, var(--muted) 65%, transparent);
+  text-underline-offset: 3px;
+}
+
+.row-name-tooltip:hover,
+.row-name-tooltip:focus-visible {
+  text-decoration-color: var(--accent);
 }
 
 .pill-row {
