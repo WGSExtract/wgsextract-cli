@@ -23,8 +23,8 @@ from typing import Any
 from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.network_policy import DownloadRequired
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.report_documents import ReportGeneListDocument
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 

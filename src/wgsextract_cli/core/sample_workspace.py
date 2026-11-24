@@ -442,7 +442,9 @@ class SampleWorkspace:
         if current is None or entry.get("fingerprint") != current:
             return None
         if name == "platform" and fact.get("statistics") is not None:
-            from wgsextract_cli.core.fastq_platform import fastq_evidence_fingerprint
+            from wgsextract_cli.core.alignment.fastq_platform import (
+                fastq_evidence_fingerprint,
+            )
 
             try:
                 evidence = fastq_evidence_fingerprint(str(absolute_path(file)))
@@ -623,7 +625,7 @@ class SampleWorkspace:
         if statistics is not None:
             new["statistics"] = statistics
             if name == "platform":
-                from wgsextract_cli.core.fastq_platform import (
+                from wgsextract_cli.core.alignment.fastq_platform import (
                     fastq_evidence_fingerprint,
                 )
 

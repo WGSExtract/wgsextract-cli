@@ -23,6 +23,10 @@ from wgsextract_cli.api.vcf import (
 from wgsextract_cli.core import read_scope, ultima
 from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.sequencing import (
+    input_platform,
+    warn_mixed_platforms,
+)
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
     get_tool_version,
@@ -42,7 +46,6 @@ from wgsextract_cli.core.resource_estimates import (
 )
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
-from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
