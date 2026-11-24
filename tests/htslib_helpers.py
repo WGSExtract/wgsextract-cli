@@ -41,32 +41,42 @@ def write_fasta(
     content = "".join(f">{name}\n{seq}\n" for name, seq in seqs.items()).encode()
     samtools = get_tool_path("samtools")
     assert samtools is not None
+
+    def write(fasta: Path) -> None:
+        fasta.write_bytes(content)
+        run_command([samtools, "faidx", str(fasta)])
+        if assembly:
+            run_command(
+                [
+                    samtools,
+                    "dict",
+                    "-a",
+                    assembly,
+                    "-o",
+                    str(fasta.with_suffix(".dict")),
+                    str(fasta),
+                ]
+            )
+
     if not cacheable_tool(samtools):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
-        run_command([samtools, "faidx", str(path)])
+        write(path)
     else:
 
         def build(root: Path) -> None:
-            fasta = root / "ref.fa"
-            fasta.write_bytes(content)
-            run_command([samtools, "faidx", str(fasta)])
+            write(root / "ref.fa")
 
-        root = prepared_files(content, samtools, ("ref.fa", "ref.fa.fai"), build)
+        names = (
+            ("ref.fa", "ref.fa.fai", "ref.dict")
+            if assembly
+            else ("ref.fa", "ref.fa.fai")
+        )
+        key = content + b"\0" + assembly.encode() if assembly else content
+        root = prepared_files(key, samtools, names, build)
         copy_prepared(root / "ref.fa", path)
         copy_prepared(root / "ref.fa.fai", Path(str(path) + ".fai"))
-    if assembly:
-        run_command(
-            [
-                samtools,
-                "dict",
-                "-a",
-                assembly,
-                "-o",
-                str(path.with_suffix(".dict")),
-                str(path),
-            ]
-        )
+        if assembly:
+            copy_prepared(root / "ref.dict", path.with_suffix(".dict"))
     return path
 
 

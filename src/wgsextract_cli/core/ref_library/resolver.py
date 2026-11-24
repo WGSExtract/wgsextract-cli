@@ -353,7 +353,7 @@ class ReferenceLibrary:
     # --- Companion resources ----------------------------------------------
 
     def set_assembly(self, build: str) -> None:
-        """Use an explicit assembly after checking it against the input."""
+        """Record an explicit assembly; calling code must validate it first."""
         self._assembly_build = self.build = build
 
     def set_validated_fasta_build(self, build: str | None) -> None:

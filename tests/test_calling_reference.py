@@ -128,6 +128,7 @@ def test_1346_snp_does_not_use_a_ploidy_table_from_the_reference_folder_name(tmp
 
     assert result.status == "failed"
     assert "not confirmed" in str(result.error)
+    assert "reference build: unknown" in str(result.error)
     assert "--ploidy-file" in str(result.error)
     assert not (output / "snps.vcf.gz").exists()
 

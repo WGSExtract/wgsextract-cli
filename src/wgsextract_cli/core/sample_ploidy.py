@@ -19,8 +19,6 @@ from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 class _PloidySource(Protocol):
     @property
-    def build(self) -> str | None: ...
-    @property
     def confirmed_build(self) -> str | None: ...
     @property
     def ploidy_file(self) -> str | None: ...
@@ -60,7 +58,7 @@ def ploidy_args(
         "names and contig counts are not enough. "
         if not build
         else "bcftools' presets fit only GRCh37 and GRCh38, whose "
-        "sex-chromosome PARs differ from other builds'. "
+        "sex-chromosome PARs differ from those of other builds. "
     )
     assembly = (
         " If you know the input is GRCh37 or GRCh38, pass --assembly."
@@ -69,7 +67,7 @@ def ploidy_args(
     )
     raise WGSExtractError(
         "Ploidy could not be chosen for this reference (reference build: "
-        f"{build or lib.build or 'unknown'}): {reason}"
+        f"{build or 'unknown'}): {reason}"
         f"{fix} {library_file} to the reference library.{assembly}"
     )
 
