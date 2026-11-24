@@ -211,7 +211,7 @@ def test_liftover_block_edges_strand_and_ambiguous_hits(tmp_path, monkeypatch):
     root = tmp_path / "reference"
     seqs = _genome(LIFT_MARKERS, ("chr1",))
     (root / "genomes").mkdir(parents=True)
-    fasta = str(write_fasta(root / "genomes" / "hg38.fa", seqs))
+    fasta = str(write_fasta(root / "genomes" / "hg38.fa", seqs, assembly="GRCh38"))
     chain = root / "hg38ToHg19.over.chain.gz"
     with gzip.open(chain, "wt") as handle:
         handle.write(CHAINS)
@@ -256,7 +256,7 @@ def test_calling_policy_depth_mapq_and_male_x(tmp_path, monkeypatch):
     root = tmp_path / "reference"
     seqs = _genome(CALL_MARKERS, ("chr1", "chrX", "chrY"))
     (root / "genomes").mkdir(parents=True)
-    fasta = str(write_fasta(root / "genomes" / "hg19.fa", seqs))
+    fasta = str(write_fasta(root / "genomes" / "hg19.fa", seqs, assembly="GRCh37"))
     _templates(root, CALL_MARKERS)
     targets = _targets(tmp_path / "targets_hg19.tab", CALL_MARKERS)
     header = [f"@SQ\tSN:{c}\tLN:{LENGTH}" for c in seqs] + ["@RG\tID:s\tSM:s"]
