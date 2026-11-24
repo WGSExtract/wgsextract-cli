@@ -12,13 +12,13 @@ from unittest.mock import patch
 
 import jsonschema
 import pytest
+import tomli_w
 
 from tests.htslib_helpers import needs_htslib, write_fasta
 from tests.sex_fixtures import distributed_alignment
 from wgsextract_cli import api
 from wgsextract_cli.commands.info import metrics
 from wgsextract_cli.core import genotype_qc, sample_workspace
-from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.sample_workspace import (
     WORKSPACE_FILE,
@@ -424,7 +424,7 @@ def test_an_override_in_a_shared_folder_is_for_that_file_alone(seqs, tmp_path):
     assert set(raw["override"]) == {"mom.bam"}
     jsonschema.validate(raw, sample_workspace.load_schema())
     raw["override"]["sex"] = "Female"
-    (tmp_path / WORKSPACE_FILE).write_text(sample_workspace.tomli_w.dumps(raw))
+    (tmp_path / WORKSPACE_FILE).write_text(tomli_w.dumps(raw))
     assert metrics.sample_sex(dad) == "Male"
 
     # Nor is mom's override, once her file is replaced by other reads.
@@ -460,14 +460,32 @@ def test_an_override_the_reads_contradict_is_warned_about(seqs, folder):
 
     # Once detected, the fact is read back, not detected again, but still
     # checked (in a later run).
-    later = CommandResult(command="vcf snp")
-    with (
-        patch.object(sample_workspace, "_checked", set()),
-        collecting(later),
-    ):
-        assert metrics.sample_sex(bam) == "Male"
-        assert input_platform(bam) == "ont"
-    assert {w.code for w in later.warnings} == {
+    later = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import json
+import sys
+from wgsextract_cli.commands.info.metrics import sample_sex
+from wgsextract_cli.core.alignment.sequencing import input_platform
+from wgsextract_cli.core.results import CommandResult, collecting
+
+result = CommandResult(command="vcf snp")
+with collecting(result):
+    sex = sample_sex(sys.argv[1])
+    platform = input_platform(sys.argv[1])
+print(json.dumps([sex, platform, [w.code for w in result.warnings]]))
+""",
+            bam,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    sex, platform, warnings = json.loads(later.stdout)
+    assert (sex, platform) == ("Male", "ont")
+    assert set(warnings) == {
         "sex_override_differs",
         "platform_override_differs",
     }
