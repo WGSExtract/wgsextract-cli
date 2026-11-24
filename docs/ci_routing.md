@@ -1043,16 +1043,40 @@ fragments remain, so none is left out of that release or announced twice.
 
 The Free plan runs at most 20 hosted jobs at once and GitHub gives queued
 jobs no priority, so a burst of ready PRs starves the merge queue (#1373).
-Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait`. It
-reads queued and in-progress runs and their jobs through `gh api` (read-only)
-and exits 0 when admission is fine. It exits 3 (hold) while any
-`merge_group` job is queued for a runner, or while more than `--max-ready`
-(default 4) ready-PR area matrices are in flight. `--wait` polls with
+Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait --pr N`.
+It reads PRs, workflow runs and jobs through `gh api` (read-only) and exits 0
+when admission is fine. The `priority` label, added to PRs from non-bot
+collaborators with write access other than `theontho`, lets the named PR skip
+the capacity gate. Other PRs exit 3 (hold) while a priority PR has active
+draft or ready CI or is in the merge queue, while any `merge_group` job
+is queued for a runner, or while more than `--max-ready` (default 4)
+ready-PR area matrices are in flight. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
 prints the counts. The check reserves nothing, so each supervisor admits one
 PR at a time and starts the next check only once the previous PR's ready run
 is visible; concurrent supervisors can overshoot `--max-ready` by at most one
 run each.
+
+#### Fast path for collaborators
+
+- **`priority`** is added to PRs from human collaborators with write,
+  maintain, or admin access, except the agent account (`theontho`). It is
+  added when you open, reopen, mark ready, or convert the PR to draft. You
+  can remove it until the next of those events; pushes do not restore it.
+  With it, you can ready your PR without waiting for agent capacity, and
+  agents yield while your draft or ready CI or merge queue entry is pending.
+- Add **`hands-off`** if you want to handle everything yourself, including
+  CI reruns. Add **`land-asap`** when you're done: owner-account agents may
+  rerun cancelled or lost-runner jobs and enqueue your ready PR at the front once
+  checks pass. `hands-off` takes precedence. Without `land-asap`, agents may
+  only move your existing queue entry after you enable auto-merge or enqueue
+  the PR yourself. Agents never push to, ready, or review-fix your PR.
+
+To skip the hosted macOS lane, usually the slowest, run `just certify-setup`
+and then `just certify` on your own Mac on the exact pushed PR head. See
+[Writer self-certification](#writer-self-certification) for setup and reference
+requirements. Batch review fixes into one push to avoid rerunning the full
+selected matrix after each fix.
 
 ## Cache plan
 
