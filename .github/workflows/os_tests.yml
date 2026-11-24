@@ -21,10 +21,8 @@ on:
         type: string
         required: true
       matrix:
-        description: Single all-tier job; the first/only entry seeds shared main caches.
+        description: Optional duration plan; the first job owns shared setup and cache seeding.
         type: string
-        default: >-
-          [{"tier": "all", "shard": "all", "label": "all"}]
       reference:
         description: Install the hs38 reference library the reference-backed tests read.
         type: boolean
@@ -81,7 +79,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.matrix) }}
+        include: ${{ fromJSON(inputs.matrix || '[{"label":"all"}]') }}
     runs-on: ${{ inputs.runner }}
     # Per-test contexts use the slower C tracer and need more time.
     timeout-minutes: ${{ inputs.main-backstop-candidate && 80 || inputs.timeout-minutes }}
@@ -100,14 +98,14 @@ jobs:
       - name: Verify native runner architecture
         if: inputs.os == 'linux-arm64'
         run: test "$(uname -m)" = aarch64
-      # The single all-tier entry is the main-branch cache writer.
+      # Only the lead entry writes shared setup caches.
       - name: Set up Pixi
         uses: ./.github/actions/setup-pixi
         with:
           environments: ${{ inputs.environments }}
           writer: ${{ strategy.job-index == 0 }}
       - name: Test installer
-        if: inputs.os != 'windows' && inputs.setup-checks
+        if: inputs.os != 'windows' && strategy.job-index == 0 && inputs.setup-checks
         run: scripts/test_install_sh.sh
       - name: Validate installer arguments
         if: inputs.os == 'windows' && strategy.job-index == 0 && inputs.setup-checks
@@ -125,7 +123,7 @@ jobs:
           pixi run --no-install wgsextract lineage y-haplogroup --help > /dev/null
           pixi run -e vep --no-install vep --help > /dev/null
       - name: Import moved modules and collect the full suite
-        if: github.event_name == 'pull_request' && inputs.move-modules != '[]'
+        if: github.event_name == 'pull_request' && strategy.job-index == 0 && inputs.move-modules != '[]'
         shell: bash
         env:
           MOVE_MODULES: ${{ inputs.move-modules }}
@@ -205,7 +203,7 @@ jobs:
       # This environment is deliberately not restored by setup-pixi above:
       # prove that a fresh install uses the published, SHA-256-pinned package.
       - name: Install pinned imputation tools from scratch
-        if: inputs.os == 'windows' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
+        if: inputs.os == 'windows' && strategy.job-index == 0 && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         shell: pwsh
         run: |
           if (Test-Path .pixi/envs/imputation) {
@@ -214,7 +212,7 @@ jobs:
           pixi install --locked -e imputation
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Impute HG002 with the pinned Windows tools (no skips)
-        if: inputs.os == 'windows' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
+        if: inputs.os == 'windows' && strategy.job-index == 0 && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force out | Out-Null
@@ -223,7 +221,7 @@ jobs:
           pixi run python -c "import sys, xml.etree.ElementTree as ET; s = ET.parse('out/imputation-e2e.xml').getroot().find('testsuite'); assert s is not None; n = int(s.get('tests', '0')); skipped = int(s.get('skipped', '0')); print(n, 'tests,', skipped, 'skipped'); sys.exit(n == 0 or skipped > 0)"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Impute HG002 with the pinned macOS or Linux ARM64 tools (no skips)
-        if: (inputs.os == 'macos' || inputs.os == 'linux-arm64') && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
+        if: (inputs.os == 'macos' || inputs.os == 'linux-arm64') && strategy.job-index == 0 && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py'))
         run: |
           mkdir -p out
           pixi install --locked -e imputation
@@ -241,8 +239,22 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: out/test-cache/main
-          key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-main-${{ github.run_id }}
-          restore-keys: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-main-
+          key: test-pass-v1-${{ inputs.os }}-${{ inputs.os == 'linux-arm64' && 'native' || 'all' }}-main-${{ github.run_id }}
+          restore-keys: test-pass-v1-${{ inputs.os }}-${{ inputs.os == 'linux-arm64' && 'native' || 'all' }}-main-
+      - name: Restore passing hashes from main's second shard
+        if: inputs.os != 'linux-arm64' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || matrix.label == 'shard-2')
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-cache/main-shard-2
+          key: test-pass-v1-${{ inputs.os }}-shard-2-main-${{ github.run_id }}
+          restore-keys: test-pass-v1-${{ inputs.os }}-shard-2-main-
+      - name: Restore passing hashes from main's third shard
+        if: (inputs.os == 'ubuntu' || inputs.os == 'windows') && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || matrix.label == 'shard-3')
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-cache/main-shard-3
+          key: test-pass-v1-${{ inputs.os }}-shard-3-main-${{ github.run_id }}
+          restore-keys: test-pass-v1-${{ inputs.os }}-shard-3-main-
       - name: Find the merge group that already tested this main SHA
         id: merge-group
         if: inputs.queue-dedupe && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -264,7 +276,7 @@ jobs:
           key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-${{ github.run_id }}
           restore-keys: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-
       - name: Restore main's Linux observation map
-        if: inputs.os == 'ubuntu' && github.event_name == 'pull_request'
+        if: inputs.os == 'ubuntu' && github.event_name == 'pull_request' && strategy.job-total == 1
         continue-on-error: true
         timeout-minutes: 2
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -280,8 +292,11 @@ jobs:
           REF: ${{ github.ref }}
           TRUSTED_FULL_MAIN: ${{ steps.backstop.outputs.trusted }}
           TEST_SELECTION: ${{ github.event_name == 'pull_request' && inputs.tests || 'all' }}
-          TIER: ${{ matrix.tier }}
-          SHARD: ${{ matrix.shard }}
+          SHARD_SELECTION: ${{ matrix.selection }}
+          SHARD_ESTIMATE: ${{ matrix.seconds }}
+          SHARD_GATE: ${{ matrix.gate }}
+          SHARD_LABEL: ${{ matrix.label }}
+          SHARD_COUNT: ${{ strategy.job-total }}
           OS: ${{ inputs.os }}
           QUEUE_DEDUPE: ${{ inputs.queue-dedupe }}
           MERGE_GROUP_RUN: ${{ steps.merge-group.outcome == 'success' && steps.merge-group.outputs.run || '' }}
@@ -291,7 +306,7 @@ jobs:
         # -n logical overrides test-ci's -n auto: with psutil installed, auto
         # counts physical cores, two of the four vCPUs on hosted x64 runners (#1305).
         run: |
-          args=(-n logical --ci-tier "$TIER" --ci-shard "$SHARD")
+          args=(-n logical)
           if [ "$SKIP_INDEPENDENT" = true ]; then args+=(--ci-skip-independent); fi
           if [ "$EVENT" != pull_request ] && [ "$EVENT" != merge_group ]; then
             args+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
@@ -299,18 +314,28 @@ jobs:
           if [ "$TRUSTED_FULL_MAIN" = true ]; then
             args+=(--cov-context=test --cov-config=.github/coverage-impact.ini)
           fi
-          cache=(--cache-job "os=$OS tier=$TIER shard=$SHARD skip-independent=$SKIP_INDEPENDENT")
+          # A module earns the same hash whichever duration bin it lands in.
+          cache=(--cache-job "os=$OS tier=all shard=all skip-independent=$SKIP_INDEPENDENT")
+          main_cache=(--cache-read main=out/test-cache/main/passed.json)
+          for index in 2 3; do
+            if [ -f "out/test-cache/main-shard-$index/passed.json" ]; then
+              main_cache+=(--cache-read "main-shard-$index=out/test-cache/main-shard-$index/passed.json")
+            fi
+          done
           if [ "$EVENT" = pull_request ]; then
-            cache+=(--cache-read main=out/test-cache/main/passed.json)
+            cache+=("${main_cache[@]}")
             cache+=(--cache-read pr=out/test-cache/pr/passed.json)
             cache+=(--cache-record out/test-cache/pr/passed.json --summary "$GITHUB_STEP_SUMMARY")
           elif [ "$EVENT" = merge_group ]; then
-            cache+=(--cache-read main=out/test-cache/main/passed.json --summary "$GITHUB_STEP_SUMMARY")
+            cache+=("${main_cache[@]}" --summary "$GITHUB_STEP_SUMMARY")
             if [ "$QUEUE_DEDUPE" = true ]; then
               cache+=(--record-executed out/test-cache/queue/passed.json out/pytest.xml)
             fi
           elif [ "$REF" = refs/heads/main ]; then
-            cache+=(--cache-record out/test-cache/main/passed.json)
+            case "$SHARD_LABEL" in
+              shard-*) cache+=(--cache-record "out/test-cache/main-$SHARD_LABEL/passed.json");;
+              *) cache+=(--cache-record out/test-cache/main/passed.json);;
+            esac
             # Never main's own manifest: only what the queue ran at this SHA.
             if [ "$EVENT" = push ] && [ -n "$MERGE_GROUP_RUN" ]; then
               cache+=(--cache-read "merge-group-$MERGE_GROUP_RUN=out/test-cache/merge-group/passed.json")
@@ -321,7 +346,16 @@ jobs:
           fi
           # Symbol selection still gates PRs. On main it could omit files the
           # queue skipped using older caches, so use only the exact-SHA complement.
-          if [ "$OS" = ubuntu ] && [ "$EVENT" = pull_request ]; then
+          if [ -n "$SHARD_SELECTION" ]; then
+            TEST_SELECTION="$SHARD_SELECTION"
+            if [ "$SHARD_GATE" = universal-full ]; then cache=(); fi
+            if [ -n "$SHARD_GATE" ] && [ "$SHARD_COUNT" = 1 ]; then
+              mkdir -p out
+              jq -n --arg mode "$SHARD_GATE" --arg selection "$TEST_SELECTION" \
+                '{mode:$mode, selection:($selection | if . == "all" then . else fromjson end)}' \
+                >out/test-selection-gate.json
+            fi
+          elif [ "$OS" = ubuntu ] && [ "$EVENT" = pull_request ]; then
             flags=()
             if [ "$SYMBOL_DISABLED" = true ]; then flags+=(--disabled); fi
             if timeout 90 pixi run -e dev --no-install python -m scripts.ci_impact_gate \
@@ -344,7 +378,24 @@ jobs:
             fi
           fi
           if [ "${#cache[@]}" -gt 0 ]; then cache+=(--scope out/test-scope.json); fi
-          pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" "${cache[@]}" -- "${args[@]}"
+          start=$SECONDS
+          status=0
+          pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION" "${cache[@]}" -- "${args[@]}" || status=$?
+          {
+            echo '### Pytest shard timing'
+            if [ -n "$SHARD_ESTIMATE" ]; then
+              echo "Estimated runner time before cache skips: ${SHARD_ESTIMATE}s."
+            else
+              echo 'No duration estimate available for this lane.'
+            fi
+            echo "Actual selection and pytest time: $((SECONDS - start))s."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ -n "$SHARD_SELECTION" ]; then
+            mkdir -p out
+            printf '%s\n' "$status" > out/shard-exit-status
+            printf '%s\n' "$SHARD_COUNT" > out/shard-count
+          fi
+          exit "$status"
       - name: Share the test files this merge group ran with the main push
         if: inputs.queue-dedupe && github.event_name == 'merge_group' && hashFiles('out/test-cache/queue/passed.json') != ''
         continue-on-error: true
@@ -357,10 +408,10 @@ jobs:
           # A rerun attempt replaces the earlier attempt's manifest.
           overwrite: true
       - name: Save test hashes that passed
-        if: hashFiles('out/test-cache/main.updated', 'out/test-cache/pr.updated') != ''
+        if: hashFiles('out/test-cache/main*.updated', 'out/test-cache/pr.updated') != ''
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: out/test-cache/${{ github.event_name == 'pull_request' && 'pr' || 'main' }}
+          path: out/test-cache/${{ github.event_name == 'pull_request' && 'pr' || (startsWith(matrix.label, 'shard-') && format('main-{0}', matrix.label)) || 'main' }}
           key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-${{ github.event_name == 'pull_request' && 'pr' || 'main' }}-${{ github.run_id }}-${{ github.run_attempt }}
       # The app's bundle commands must still parse with this CLI (#538); GUI CI
       # checks the bundle side, this catches a CLI flag dropped or renamed.
@@ -369,7 +420,7 @@ jobs:
         working-directory: gui
         run: pixi run python -m unittest discover -s tests/wgsextract
       - name: Annotate with vep-rs end to end (no skips)
-        if: inputs.os == 'windows' && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_vep_rs.py'))
+        if: inputs.os == 'windows' && strategy.job-index == 0 && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_vep_rs.py'))
         shell: pwsh
         run: |
           pixi run python -c "from wgsextract_cli.core.dependencies import get_tool_path as g; assert g('vep-rs') and g('vep-cache-builder'), 'vep-rs environment missing'"
@@ -381,13 +432,14 @@ jobs:
       # Each extract, call and annotate command run end to end on generated chrM
       # and whole-genome data; about 30 s, no downloads.
       - name: Run end-to-end tests on generated data
-        if: inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_e2e_')
+        if: strategy.job-index == 0 && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_e2e_'))
         run: pixi run test-e2e-fake --junitxml=out/e2e-fake.xml
       - name: Publish test timings and non-gating coverage
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tests-${{ inputs.os }}-${{ matrix.label }}
+          overwrite: true
           path: |
             out/coverage.xml
             out/pytest.xml
@@ -396,6 +448,8 @@ jobs:
             out/e2e-fake.xml
             out/pure-move-collection.log
             out/test-scope.json
+            out/shard-exit-status
+            out/shard-count
       - name: Export Linux test observations
         id: impact-map
         if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.regular-pytest.outcome == 'success' }}
@@ -415,7 +469,7 @@ jobs:
           path: out/test-impact-map/linux.json.gz
           key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Compare shadow selection with regular Linux pytest
-        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' && strategy.job-total == 1 }}
         continue-on-error: true
         timeout-minutes: 2
         shell: bash
@@ -431,12 +485,13 @@ jobs:
             --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
             || echo '### Linux test selection shadow unavailable (report generation failed)' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload advisory Linux selection and outcome receipt
-        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' }}
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' && strategy.job-total == 1 }}
         continue-on-error: true
         timeout-minutes: 2
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-selection-shadow
+          overwrite: true
           path: out/test-selection-shadow.json
           if-no-files-found: ignore
       - name: Attribute failed daily Linux tests
@@ -456,4 +511,50 @@ jobs:
         with:
           name: linux-selector-misses
           path: out/selector-misses/report.json
+          if-no-files-found: ignore
+
+  selection-shadow:
+    # This is the same advisory receipt as the single-job path, but only
+    # publish it after reading all of the sharded Linux pytest results.
+    needs: test
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && inputs.os == 'ubuntu' && github.event_name == 'pull_request' && fromJSON(inputs.matrix || '[]')[1].label == 'shard-2' && needs.test.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 128
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+          writer: "false"
+      - name: Restore main's Linux observation map
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-impact-map/linux.json.gz
+          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ci-impact-v2-linux-x64-
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: tests-ubuntu-*
+          path: out/shard-reports
+      - name: Publish one Linux selection receipt from every shard
+        env:
+          MATRIX: ${{ inputs.matrix }}
+          TEST_SELECTION: ${{ inputs.tests }}
+        run: |
+          python3 -m scripts.ci_shard_receipt --matrix "$MATRIX" --reports out/shard-reports --output out/shard-receipt
+          pixi run -e dev --no-install python -m scripts.ci_impact_shadow \
+            --observations out/test-impact-map/linux.json.gz --junit out/shard-receipt/pytest.xml \
+            --output out/test-selection-shadow.json --summary "$GITHUB_STEP_SUMMARY" \
+            --gate-decision out/shard-receipt/gate.json \
+            --selection "$TEST_SELECTION" --outcome "$(cat out/shard-receipt/outcome)" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-selection-shadow
+          overwrite: true
+          path: out/test-selection-shadow.json
           if-no-files-found: ignore

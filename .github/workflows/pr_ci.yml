@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: read
       contents: read
       statuses: read
       pull-requests: read
@@ -54,6 +55,9 @@ jobs:
       macos_smoke: ${{ steps.diff.outputs.macos_smoke }}
       windows_smoke: ${{ steps.diff.outputs.windows_smoke }}
       arm64_smoke: ${{ steps.diff.outputs.arm64_smoke }}
+      ubuntu_matrix: ${{ steps.linux-shards.outputs.ubuntu || (fromJSON(steps.shards.outputs.ubuntu || '[]')[1].label != 'shard-2' && steps.shards.outputs.ubuntu) || '' }}
+      macos_matrix: ${{ steps.shards.outputs.macos }}
+      windows_matrix: ${{ steps.shards.outputs.windows }}
       generic_tests: ${{ steps.diff.outputs.generic_tests }}
       # Certificates do not yet include move imports/full collection.
       linux_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_x64 || 'false' }}
@@ -104,6 +108,65 @@ jobs:
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Size the hosted pytest matrices
+        id: shards
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UBUNTU: ${{ steps.diff.outputs.ubuntu_smoke != 'true' && (steps.cert.outputs.linux_x64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.ubuntu_tests || '[]' }}
+          MACOS: ${{ steps.diff.outputs.macos_smoke != 'true' && (steps.cert.outputs.macos_arm64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.macos_tests || '[]' }}
+          WINDOWS: ${{ steps.diff.outputs.windows_smoke != 'true' && (steps.cert.outputs.windows_x64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.windows_tests || '[]' }}
+        run: |
+          if [ "$UBUNTU" != '[]' ]; then
+            timeout 45 python3 -m scripts.ci_test_shards --os ubuntu --selection "$UBUNTU" \
+              --save-timings out/shard-timings/ubuntu.json \
+              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name ubuntu --github-output "$GITHUB_OUTPUT" &
+          fi
+          if [ "$MACOS" != '[]' ]; then
+            timeout 45 python3 -m scripts.ci_test_shards --os macos --selection "$MACOS" \
+              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name macos --github-output "$GITHUB_OUTPUT" &
+          fi
+          if [ "$WINDOWS" != '[]' ]; then
+            timeout 45 python3 -m scripts.ci_test_shards --os windows --selection "$WINDOWS" \
+              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name windows --github-output "$GITHUB_OUTPUT" &
+          fi
+          wait
+      - name: Set up the locked Python for the Linux shard selector
+        id: shard-selector-setup
+        if: fromJSON(steps.shards.outputs.ubuntu || '[]')[1].label == 'shard-2'
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+          writer: "false"
+      - name: Restore Linux observations for the shard planner
+        if: steps.shard-selector-setup.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-impact-map/linux.json.gz
+          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ci-impact-v2-linux-x64-
+      - name: Finalize the Linux pytest plan from one selector decision
+        id: linux-shards
+        if: steps.shard-selector-setup.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          TEST_SELECTION: ${{ steps.diff.outputs.ubuntu_tests }}
+          SYMBOL_DISABLED: ${{ vars.CI_DISABLE_SYMBOL_SELECTION }}
+        run: |
+          flags=()
+          if [ "$SYMBOL_DISABLED" = true ]; then flags+=(--disable-symbol-selection); fi
+          timeout 90 pixi run -e dev --no-install python -m scripts.ci_test_shards \
+            --os ubuntu --selection "$TEST_SELECTION" \
+            --linux-observations out/test-impact-map/linux.json.gz "${flags[@]}" \
+            --skip-independent --timings out/shard-timings/ubuntu.json \
+            --output-name ubuntu --github-output "$GITHUB_OUTPUT"
       - name: Prepare selector activation canary
         id: selector-setup
         if: github.event_name == 'pull_request' && contains(fromJSON(steps.diff.outputs.python_files), 'scripts/ci_impact_gate.py')
@@ -298,6 +361,7 @@ jobs:
     uses: ./.github/workflows/ubuntu_ci.yml
     with:
       tests: ${{ needs.changes.outputs.ubuntu_tests }}
+      matrix: ${{ needs.changes.outputs.ubuntu_matrix }}
       smoke-only: ${{ needs.changes.outputs.ubuntu_smoke == 'true' }}
       platform-certified: ${{ needs.changes.outputs.linux_x64 == 'true' }}
       generic-certified: ${{ needs.changes.outputs.generic == 'true' }}
@@ -309,6 +373,7 @@ jobs:
     uses: ./.github/workflows/macos_ci.yml
     with:
       tests: ${{ needs.changes.outputs.macos_tests }}
+      matrix: ${{ needs.changes.outputs.macos_matrix }}
       smoke-only: ${{ needs.changes.outputs.macos_smoke == 'true' }}
       setup-checks: ${{ needs.changes.outputs.setup_checks == 'true' }}
       move-modules: ${{ needs.changes.outputs.move_modules }}
@@ -318,6 +383,7 @@ jobs:
     uses: ./.github/workflows/windows_ci.yml
     with:
       tests: ${{ needs.changes.outputs.windows_tests }}
+      matrix: ${{ needs.changes.outputs.windows_matrix }}
       smoke-only: ${{ needs.changes.outputs.windows_smoke == 'true' }}
       setup-checks: ${{ needs.changes.outputs.setup_checks == 'true' }}
       move-modules: ${{ needs.changes.outputs.move_modules }}

@@ -89,24 +89,19 @@ def test_1038_started_main_pushes_are_never_cancelled(workflow: Path) -> None:
     }, workflow.name
 
 
-def test_1038_shared_os_callers_run_all_tiers_without_shard_fanout() -> None:
+def test_1492_duration_matrix_leaves_queue_and_arm64_single_job() -> None:
     suite = (WORKFLOWS / "os_tests.yml").read_text()
-    default = suite.split("      matrix:\n", 1)[1].split("      reference:\n", 1)[0]
-    entries = json.loads(default.split("default: >-\n", 1)[1])
-    assert len(entries) == 1
-    assert entries[0]["tier"] == entries[0]["shard"] == "all"
-    for workflow in WORKFLOWS.glob("*.yml"):
-        source = workflow.read_text()
-        if "uses: ./.github/workflows/os_tests.yml" not in source:
-            continue
-        overrides = re.findall(r"^      matrix: '(.+)'$", source, re.MULTILINE)
-        for override in overrides:
-            entries = json.loads(override)
-            assert len(entries) == 1, workflow.name
-            assert entries[0]["tier"] == entries[0]["shard"] == "all"
+    fallback = re.search(r"fromJSON\(inputs\.matrix \|\| '(.+)'\)", suite)
+    assert fallback is not None
+    assert [entry["label"] for entry in json.loads(fallback[1])] == ["all"]
+    arm = (WORKFLOWS / "linux_arm64.yml").read_text()
+    matrix = re.search(r"^      matrix: '(.+)'$", arm, re.MULTILINE)
+    assert matrix is not None
+    assert [entry["label"] for entry in json.loads(matrix[1])] == ["native"]
+    plan = (WORKFLOWS / "pr_ci.yml").read_text().split("id: shards", 1)[1]
+    assert "if: github.event_name == 'pull_request'" in plan.split("env:", 1)[0]
     assert "writer: ${{ strategy.job-index == 0 }}" in suite
-    assert "--cache-record" in suite and "--cache-read" in suite
-    assert "matrix.tier == 'integration'" not in suite
+    assert 'cache-job "os=$OS tier=all shard=all ' in suite
 
 
 def test_1038_smoke_shares_setup_and_preserves_first_failure_evidence() -> None:
@@ -150,7 +145,10 @@ def test_nightly_reuses_green_main_except_for_linux_shadow_observations(
     assert f"workflow: {workflow}" in source
     jobs = re.split(r"^  ([\w-]+):\s*\n", source.split("\njobs:\n", 1)[1], flags=re.M)
     for name, body in zip(jobs[1::2], jobs[2::2], strict=True):
-        if name == "nightly" or (workflow == "ubuntu_ci.yml" and name == "test-ubuntu"):
+        if name == "nightly" or (
+            workflow == "ubuntu_ci.yml"
+            and name in {"test-ubuntu", "test-ubuntu-balanced"}
+        ):
             continue
         assert "needs: nightly" in body
         gate = re.search(r"\(([^()\n]*needs\.nightly\.result[^()\n]*)\)", body)
@@ -187,13 +185,15 @@ def test_1464_ubuntu_dispatch_reaches_the_full_backstop_through_reusable_calls()
     None
 ):
     guard = (WORKFLOWS / "nightly_guard.yml").read_text()
+    guard_condition = guard.split("  check:\n", 1)[1].split("runs-on:", 1)[0]
     assert (
-        "if: github.event_name == 'schedule' || inputs.main-backstop-candidate" in guard
+        "github.event_name == 'schedule' || inputs.main-backstop-candidate"
+        in guard_condition
     )
     ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
-    backstop = ubuntu.split("\n  test-ubuntu:\n", 1)[1].split("\n  optional-tools:", 1)[
-        0
-    ]
+    backstop = ubuntu.split("\n  test-ubuntu:\n", 1)[1].split(
+        "\n  test-ubuntu-balanced:", 1
+    )[0]
     # A slow, failed or skipped guard cannot prevent a trusted full pytest run.
     assert "needs.nightly" not in backstop and "needs: nightly" not in backstop
     assert "main-backstop-candidate: *main-backstop-candidate" in backstop
@@ -355,7 +355,7 @@ def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
         )
 
 
-@pytest.mark.parametrize("job_name", ["workflow-smoke", "test"])
+@pytest.mark.parametrize("job_name", ["workflow-smoke", "test", "selection-shadow"])
 def test_910_shared_os_suite_skips_drafts_before_expanding_the_runner_matrix(
     job_name: str,
 ) -> None:

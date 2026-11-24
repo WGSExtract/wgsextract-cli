@@ -1,7 +1,14 @@
+import io
+import json
 import os
+import zipfile
 from pathlib import Path
 
 import pytest
+
+from scripts.ci_impact_results import file_results
+from scripts.ci_shard_receipt import combine
+from scripts.ci_test_shards import Shard, artifact_durations, plan, suite_files
 
 pytest_plugins = ["pytester"]
 
@@ -109,12 +116,7 @@ def test_761_ci_tiers_preserve_every_test_including_new_modules(
 ) -> None:
     pytester.makeconftest(
         """
-from tests.conftest import pytest_collection_modifyitems
-
-def pytest_addoption(parser):
-    parser.addoption("--ci-tier", default="all")
-    parser.addoption("--ci-skip-independent", action="store_true")
-    parser.addoption("--ci-shard", default="all")
+from tests.conftest import pytest_addoption, pytest_collection_modifyitems
 """
     )
     pytester.makepyfile(
@@ -133,19 +135,14 @@ def pytest_addoption(parser):
     result.assert_outcomes(passed=passed, deselected=deselected)
 
 
-def test_761_core_shards_run_every_module_once_with_shared_fixtures(
+def test_1492_n_way_hash_fallback_runs_each_module_fixture_once(
     pytester: pytest.Pytester,
 ) -> None:
     pytester.makeconftest(
         """
 from pathlib import Path
 import pytest
-from tests.conftest import pytest_collection_modifyitems
-
-def pytest_addoption(parser):
-    parser.addoption("--ci-tier", default="core")
-    parser.addoption("--ci-skip-independent", action="store_true")
-    parser.addoption("--ci-shard", default="all")
+from tests.conftest import pytest_addoption, pytest_collection_modifyitems
 
 @pytest.fixture(scope="module", autouse=True)
 def prepared_module(request):
@@ -166,20 +163,185 @@ def test_second():
 """
     names = ("test_new_feature", "test_sample", "test_other_feature", "test_another")
     pytester.makepyfile(**dict.fromkeys(names, source))
-    for shard in ("0/2", "1/2"):
+    for shard in ("0/3", "1/3", "2/3"):
         result = pytester.runpytest_subprocess(
+            "--ci-tier",
+            "core",
             "--ci-shard",
             shard,
             "--basetemp",
             str(pytester.path / "out" / shard.replace("/", "-")),
         )
-        assert result.ret == 0
+        assert result.ret in {0, pytest.ExitCode.NO_TESTS_COLLECTED}
     assert sorted((pytester.path / "prepared.txt").read_text().splitlines()) == sorted(
         names
     )
     assert sorted((pytester.path / "ran.txt").read_text().splitlines()) == sorted(
         f"{name}::{case}" for name in names for case in ("first", "second")
     )
+
+
+def test_1492_balance_three_jobs_without_splitting_shared_fixtures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    test_dir = Path("tests")
+    test_dir.mkdir()
+    files = [f"tests/test_shard_example_{i}.py" for i in range(7)]
+    for path in files:
+        Path(path).touch()
+    for path in files[:2]:
+        Path(path).write_text(
+            "from tests.smoke_utils import ensure_fake_data\n", encoding="utf-8"
+        )
+    durations = dict(zip(files, [1500, 1000, 2400, 2200, 300, 200], strict=False))
+    selection = json.dumps(files)
+    shards = plan("ubuntu", selection, durations, skip_independent=False)
+    contents = [set(json.loads(shard["selection"])) for shard in shards]
+    assert len(shards) == 3
+    assert len(set.union(*contents)) == sum(map(len, contents)) == len(files)
+    assert any(set(files[:2]) <= group for group in contents)
+    times = [shard["seconds"] for shard in shards]
+    assert max(times) <= 1.2 * sum(times) / len(times)
+    assert shards == plan(
+        "ubuntu", json.dumps(files[::-1]), durations, skip_independent=False
+    )
+    for timing in (durations, {}):
+        assert (
+            len(plan("ubuntu", json.dumps(files[-2:]), timing, skip_independent=False))
+            == 1
+        )
+    one_file = json.dumps([files[0]])
+    [small] = plan("ubuntu", one_file, durations, skip_independent=False, gate="symbol")
+    assert json.loads(small["selection"]) == [files[0]]
+    assert small["gate"] == "symbol"
+
+
+def test_1492_partial_nightly_artifacts_do_not_seed_shard_estimates() -> None:
+    def report(module: str, duration: float) -> bytes:
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, "w") as archive:
+            archive.writestr("shard-count", "2")
+            archive.writestr(
+                "pytest.xml",
+                f'<testsuite><testcase classname="tests.{module}" name="test_case" '
+                f'time="{duration}"/></testsuite>',
+            )
+        return stream.getvalue()
+
+    evidence = {"all": report("test_first", 4), "shard-2": report("test_second", 9)}
+    files = {"tests/test_first.py", "tests/test_second.py"}
+    assert artifact_durations(evidence, files) == {
+        "tests/test_first.py": 4,
+        "tests/test_second.py": 9,
+    }
+    with pytest.raises(ValueError, match="incomplete timing run"):
+        artifact_durations({"all": evidence["all"]}, files)
+
+
+def test_1492_cross_module_xdist_group_stays_on_one_runner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("tests").mkdir()
+    files = [f"tests/test_worker_{index}.py" for index in range(4)]
+    for path in files:
+        Path(path).touch()
+    for path in files[:2]:
+        Path(path).write_text(
+            'import pytest\npytestmark = pytest.mark.xdist_group("fixture")\n',
+            encoding="utf-8",
+        )
+    durations = dict(zip(files, [1500, 1000, 1500, 1000], strict=True))
+    shards = plan("windows", json.dumps(files), durations, skip_independent=False)
+    assert len(shards) == 2
+    assert any(
+        set(files[:2]) <= set(json.loads(shard["selection"])) for shard in shards
+    )
+
+
+def test_1492_imputation_shard_owns_tool_setup_and_suffix_tests_are_collected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("tests").mkdir()
+    files = [
+        "tests/test_imputation.py",
+        "tests/workflow_test.py",
+        "tests/test_helpers.py",
+    ]
+    for path in files:
+        Path(path).touch()
+    shards = plan("macos", "all", dict.fromkeys(files, 3000), skip_independent=False)
+    assert set(suite_files()) == set(files)
+    assert len(shards) == 1  # Two bins cannot meet the imbalance limit.
+    shards = plan(
+        "macos",
+        "all",
+        {files[0]: 1000, files[1]: 4500, files[2]: 3500},
+        skip_independent=False,
+    )
+    assert len(shards) == 2
+    assert "tests/test_imputation.py" in json.loads(shards[0]["selection"])
+    assert any(
+        "tests/workflow_test.py" in json.loads(shard["selection"]) for shard in shards
+    )
+
+
+def test_1492_sharded_linux_shadow_keeps_nonlead_failures(tmp_path: Path) -> None:
+    reports = tmp_path / "reports"
+    output = tmp_path / "shadow"
+    for label, module, status in (
+        ("all", "test_first", 0),
+        ("shard-2", "test_second", 1),
+    ):
+        shard_dir = reports / f"tests-ubuntu-{label}"
+        shard_dir.mkdir(parents=True)
+        (shard_dir / "shard-exit-status").write_text(f"{status}\n", encoding="utf-8")
+        failure = '<failure message="regression"/>' if status else ""
+        (shard_dir / "pytest.xml").write_text(
+            f'<testsuites><testsuite><testcase classname="tests.{module}" '
+            f'name="test_case" time="1">{failure}</testcase></testsuite></testsuites>',
+            encoding="utf-8",
+        )
+    shards: list[Shard] = [
+        {
+            "label": "all",
+            "selection": '["tests/test_first.py"]',
+            "gate": "universal-full",
+            "seconds": 1,
+        },
+        {
+            "label": "shard-2",
+            "selection": '["tests/test_second.py"]',
+            "gate": "universal-full",
+            "seconds": 1,
+        },
+    ]
+    combine(shards, reports, output)
+    observed, unmapped = file_results(
+        output / "pytest.xml", {"tests/test_first.py", "tests/test_second.py"}
+    )
+    assert unmapped == 0
+    assert observed["tests/test_first.py"]["passed"] == 1
+    assert observed["tests/test_second.py"]["failed"] == 1
+    assert (output / "outcome").read_text().strip() == "failure"
+    decision = json.loads((output / "gate.json").read_text())
+    assert decision == {
+        "mode": "universal-full",
+        "selection": ["tests/test_first.py", "tests/test_second.py"],
+    }
+    rerun = reports / "tests-ubuntu-shard-2"
+    (rerun / "shard-exit-status").write_text("0\n", encoding="utf-8")
+    (rerun / "pytest.xml").write_text(
+        '<testsuite><testcase classname="tests.test_second" name="test_case" time="1"/></testsuite>',
+        encoding="utf-8",
+    )
+    combine(shards, reports, output)
+    observed, _ = file_results(output / "pytest.xml", set(observed))
+    assert observed["tests/test_first.py"]["passed"] == 1
+    assert observed["tests/test_second.py"]["passed"] == 1
+    assert (output / "outcome").read_text().strip() == "success"
 
 
 @pytest.mark.parametrize("required", [False, True])
