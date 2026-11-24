@@ -495,22 +495,23 @@ def test_913_prose_skips_python_tests_and_only_validates_site_sources(
         assert docs_test_targets(paths) == []
 
 
+# Generators that write references also run the regen and LF line-ending checks.
+_REGEN_TESTS = ["tests/test_regen.py", "tests/test_text_newlines.py"]
+
+
 @pytest.mark.parametrize(
     ("path", "targets"),
     [
         ("docs/api.md", ["tests/test_api.py::test_api_docs_are_up_to_date"]),
         ("docs/commands.md", ["tests/test_cli_help.py"]),
         ("site_src/cli.md", ["tests/test_cli_help.py"]),
-        ("scripts/regen.py", ["tests/test_regen.py"]),
+        ("scripts/regen.py", _REGEN_TESTS),
         ("scripts/bump_version.py", ["tests/test_bump_version.py"]),
         (
             "scripts/gen_api_docs.py",
-            ["tests/test_api.py::test_api_docs_are_up_to_date", "tests/test_regen.py"],
+            ["tests/test_api.py::test_api_docs_are_up_to_date", *_REGEN_TESTS],
         ),
-        (
-            "scripts/gen_command_docs.py",
-            ["tests/test_cli_help.py", "tests/test_regen.py"],
-        ),
+        ("scripts/gen_command_docs.py", ["tests/test_cli_help.py", *_REGEN_TESTS]),
         (
             "docs/configuration.md",
             ["tests/test_core_cli.py::test_configuration_docs_are_up_to_date"],
@@ -519,7 +520,7 @@ def test_913_prose_skips_python_tests_and_only_validates_site_sources(
             "scripts/gen_config_docs.py",
             [
                 "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
-                "tests/test_regen.py",
+                *_REGEN_TESTS,
             ],
         ),
         (

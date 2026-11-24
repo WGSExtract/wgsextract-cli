@@ -167,7 +167,7 @@ def main() -> None:
             print(f"{OUTPUT.relative_to(ROOT)} is stale; run 'just regen'.")
             raise SystemExit(1)
         return
-    OUTPUT.write_text(text, encoding="utf-8")
+    OUTPUT.write_text(text, encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
