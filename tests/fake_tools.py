@@ -1159,7 +1159,10 @@ elif args[:2] == ["image", "inspect"]:
     if "--format" in args:
         print(image["id"] if flag(args, "--format") == "{{.Id}}" else image["platform"])
     else:
-        print(json.dumps([{"Id": image["id"], "RepoDigests": image["digests"]}]))
+        system, _, machine = image["platform"].partition("/")
+        print(json.dumps([{"Id": image["id"], "RepoDigests": image["digests"],
+                           "Os": system, "Architecture": machine,
+                           "Config": {"Labels": image.get("labels") or None}}]))
 elif args[0] == "ps":
     if st["ps_error"]:
         sys.exit(st["ps_error"])
@@ -1300,11 +1303,14 @@ class FakeDocker:
         image_id: str = "sha256:1",
         platform: str = "linux/amd64",
         repo_digests: tuple[str, ...] = (),
+        labels: dict[str, str] | None = None,
     ) -> None:
-        """``image`` as Docker has it: its local ``image_id`` and the
-        ``repo_digests`` it was pulled by (none for a local build)."""
+        """``image`` as Docker has it: its local ``image_id``, the
+        ``repo_digests`` it was pulled by (none for a local build) and its
+        ``labels``."""
         self._state["images"][image] = {
-            "id": image_id, "platform": platform, "digests": list(repo_digests)
+            "id": image_id, "platform": platform, "digests": list(repo_digests),
+            "labels": dict(labels or {}),
         }  # fmt: skip
         self._save()
 
@@ -1492,6 +1498,9 @@ if any(a.startswith("--query-gpu=") for a in sys.argv):
         gpus = json.load(source)
     if isinstance(gpus, str):
         sys.exit(gpus)
+    if "--query-gpu=driver_version" in sys.argv:
+        print("\n".join("550.54.14" for _ in gpus))
+        sys.exit(0)
     for i, g in enumerate(gpus):
         if g is None:
             print(f"{i}, NVIDIA GB10, [N/A], [N/A]")

@@ -40,6 +40,7 @@ COMMAND_MODULES = tuple(
         "microarray",
         "lineage",
         "vcf",
+        "cohort",
         "repair",
         "qc",
         "ref",
@@ -148,6 +149,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier("help", SETUP, "List every command, or explain one: 'help vcf snp'."),
     CommandTier("bam", ADVANCED, "Sort, index, convert and merge BAM/CRAM files."),
     CommandTier("qc", ADVANCED, "Read and VCF quality reports; fake test data."),
+    CommandTier("cohort", ADVANCED, "Summarize variants across a local cohort."),
     CommandTier("repair", ADVANCED, "Fix FTDNA BAM/VCF formatting problems."),
     CommandTier(
         "analyze", ADVANCED, "Run several analyses in one go, for one or many genomes."

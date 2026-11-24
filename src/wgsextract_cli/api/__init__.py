@@ -62,6 +62,7 @@ from . import (
     analyze,
     bam,
     benchmark,
+    cohort,
     deps,
     examples,
     extract,
@@ -108,6 +109,7 @@ from .bam import (
     BamUnsortParams,
 )
 from .benchmark import BenchmarkParams
+from .cohort import CohortSummarizeParams as CohortSummarizeParams
 from .deps import (
     DepsCheckParams,
     DepsInstallParams,
@@ -130,6 +132,7 @@ from .extract import (
 from .genotyping import (
     TypingCyp2d6Params,
     TypingHlaParams,
+    TypingParaphaseParams,
     TypingSmnParams,
     TypingStrParams,
     TypingTargetCnvParams,
@@ -255,6 +258,7 @@ __all__ = [
     "CancelToken",
     "Cancelled",
     "ChipParams",
+    "CohortSummarizeParams",
     "CommandFailed",
     "CoverageSampleParams",
     "CustomParams",
@@ -341,6 +345,7 @@ __all__ = [
     "TypingCyp2d6Params",
     "TypingSmnParams",
     "TypingHlaParams",
+    "TypingParaphaseParams",
     "TypingStrParams",
     "TypingTargetCnvParams",
     "UsageError",
@@ -392,6 +397,7 @@ __all__ = [
     "analyze",
     "bam",
     "benchmark",
+    "cohort",
     "deps",
     "examples",
     "extract",

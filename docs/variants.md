@@ -4,6 +4,8 @@ Use the [command reference](commands.md) for all callers and options.
 [Confidence labels and caller accuracy](variant-confidence.md) describe what
 the results can establish; research findings require clinical confirmation.
 For long reads, also read [ONT/PacBio support](ont.md).
+To count variants across samples without treating missing calls as reference,
+see [local cohort summaries](cohort.md).
 
 ## bcftools calling and consensus
 
@@ -328,6 +330,57 @@ index FASTA with `--hla-index PATH`. STR typing compares with
 [STRchive](https://strchive.org) ranges; give `--sex` or infer from depth.
 For ONT/PacBio use LongTR (`longtr`) or `--caller strkit` (`strkit`).
 See [repeat expansions](ont.md#repeat-expansions).
+
+### Long-read paralog typing
+
+`typing paraphase` calls copy number and haplotypes for groups of highly
+similar genes, such as SMN1/SMN2, PMS2 and its pseudogene, and STRC. It
+needs an indexed whole-genome PacBio HiFi or ONT BAM/CRAM and the matching
+indexed FASTA without ALT contigs. A BAM's unused decoys don't need to be
+in the FASTA. Paraphase is intended for high-coverage HiFi WGS (roughly
+20–30× or more). Read-group `PL` tags must all name the same platform
+(`PACBIO` or `ONT`). ONT is **experimental and unvalidated**; the result
+warning, manifest and call files mark it accordingly.
+
+```sh
+pixi install --locked -e paraphase
+wgsextract typing paraphase -i sample.cram --ref hs38.fa.gz --genes SMN1,PMS2,STRC -t 4
+```
+
+The optional environment (Linux and macOS) pins Paraphase 3.3.1 under
+[BSD-3-Clause-Clear](https://github.com/PacificBiosciences/paraphase/blob/v3.3.1/LICENSE).
+The command never installs tools or fetches reference data. Omit `--genes`
+to run the engine's full catalog. Version 3.3.1 supports 162 loci on GRCh38,
+11 on GRCh37/hg19, and just `smn1` on T2T-CHM13. GRCh38 and CHM13 use
+`chr`-prefixed chromosome names; GRCh37 also supports unprefixed names.
+Use Paraphase's [locus names](https://github.com/PacificBiosciences/paraphase/blob/v3.3.1/docs/regions.md)
+with `--genes` (case-insensitive).
+
+To use your own compatible Paraphase 3.3.2–4.x executable, pass
+`--pacbio-licensed-executable PATH` locally. This opts in to the
+[PacBio Software License Agreement](https://github.com/PacificBiosciences/paraphase/blob/v4.1.0/LICENSE.md),
+which permits analysis only of data generated on a PacBio instrument. Every
+input read group must be `PL:PACBIO`; the licensed executable is never run
+on ONT, mixed-platform or incompletely tagged inputs. The opt-in scans the
+alignment to check that each read belongs to a declared PacBio read group.
+The command does not install this executable. The selected engine and
+licence are recorded.
+
+The normalized `<stem>.paraphase.tsv` and `<stem>.paraphase.json`
+give one row or object per locus, with `gene`, `total_cn`, `call_status`,
+`experimental` and `gene_fields` (a JSON object in both formats).
+`total_cn` is for the **whole paralog family**, not the main gene;
+`gene_fields.gene_cn` holds the main-gene count when available. `no_call`
+means an undetermined CN (null in JSON, blank in TSV), not zero. SMN uses
+separate `smn1_cn` and `smn2_cn` counts: both reported is `called`, just one
+is `partial`, and neither is `no_call`. Its upstream `total_cn` may remain
+null even when both gene counts are reported. `called` does not mean every
+gene-specific field or haplotype was resolved.
+
+The original JSON (`<stem>.paraphase.raw.json`), haplotagged BAM and index,
+and any per-locus VCFs (`<stem>.paraphase.raw.<locus>.vcf`) are retained.
+CYP2D6-family copy number is not a CYP2D6 star-allele call. These results
+are not a diagnosis.
 
 ### Target copy-number screening
 

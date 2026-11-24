@@ -133,6 +133,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf annotate": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf filter": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf table": _n(MINUTES, "bcftools", optional="bgzip tabix"),
+    "cohort summarize": _n(MINUTES, "bcftools"),
     "vcf clinvar": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf revel": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
@@ -227,6 +228,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref gerp": _n(DOWNLOAD, optional="curl"),
     "deps check": _n(SECONDS, scale=""),
     "deps list": _n(SECONDS, scale=""),
+    "deps ready": _n(SECONDS, scale=""),
     "deps install": _n(DOWNLOAD, optional="java java17"),
     "deps uninstall": _n(SECONDS, scale=""),
     "example-genome list": _n(INSTANT),
@@ -272,6 +274,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "analyze comprehensive": _n(HOURS, *_CALL),
     "analyze batch-gen": _n(INSTANT),
     "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),
+    "typing paraphase": _n(MINUTES, "samtools", optional="paraphase minimap2 bcftools"),
     "typing smn": _n(MINUTES, "smn_caller.py", "samtools", optional="bcftools"),
     "typing target-cnv": _n(SECONDS, "samtools", optional="bcftools curl"),
     "typing hla": _n(
