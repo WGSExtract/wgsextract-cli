@@ -149,6 +149,7 @@ def signature(failure: Failure) -> tuple[str, str, str]:
     prefix, separator, rest = job.partition(" / ")
     if separator and prefix in ROUTED_MAIN:
         job = rest
+    job = re.sub(r"^(test-(?:ubuntu|macos|windows) / )shard-[23]$", r"\g<1>all", job)
     error = next(
         (
             line

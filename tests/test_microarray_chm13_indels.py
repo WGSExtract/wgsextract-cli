@@ -279,7 +279,7 @@ def test_real_alignment_native_mapping_normalization_and_vendor_only_overlay(
     fasta = write_fasta(tmp_path / "native.fa", {chrom: sequence})
     root = tmp_path / "templates"
     (root / "raw_file_templates/body").mkdir(parents=True)
-    (root / "raw_file_templates/body/23andMe_V5_2025.txt").write_text(
+    (root / "raw_file_templates/body/23andMe_V4.txt").write_text(
         f"rsProbe\t{suffix}\t700\nrsAlias\t{suffix}\t700\n"
     )
     context = sequence[740:800] + "[GT/-]" + sequence[802:862]
@@ -338,7 +338,7 @@ def test_real_alignment_native_mapping_normalization_and_vendor_only_overlay(
     )
     out = tmp_path / "indels"
     result = call_chm13_indels(
-        {"23andMe_V5_2025": str(manifest)},
+        {"23andMe_V4": str(manifest)},
         [str(root)],
         params=microarray_params(input=bam, **policy),
         catalogue=catalogue,
@@ -350,7 +350,7 @@ def test_real_alignment_native_mapping_normalization_and_vendor_only_overlay(
         sex_args=sex_args,
         threads="1",
     )
-    assert result == {"23andMe_V5_2025": {("rsProbe", suffix, "700"): expected}}
+    assert result == {"23andMe_V4": {("rsProbe", suffix, "700"): expected}}
     summary = json.loads((out / "summary.json").read_text())
     assert summary["counts"]["verified_normalized_callable_probes"] == (
         0 if kind == "female_Y" else 1

@@ -156,7 +156,8 @@ ENTRIES: dict[str, CommandHelp] = {
         "--region chr22:19000000-20000000 --threads 4 --to-table",
     ),
     "vcf pharmcat": _h(
-        "<stem>.report.html and <stem>.phenotype.json from PharmCAT.",
+        "<stem>.report.html and <stem>.phenotype.json from PharmCAT. With supplemental "
+        "reference evidence, also <stem>.reference-evidence.json.",
         f"wgsextract vcf pharmcat {_VCF_IN}",
     ),
     "vcf trio": _h(
@@ -167,6 +168,11 @@ ENTRIES: dict[str, CommandHelp] = {
         "trio.manifest.json.",
         "wgsextract vcf trio --proband child.vcf.gz --mother mother.vcf.gz "
         "--father father.vcf.gz --mode denovo",
+    ),
+    "vcf prepare": _h(
+        "<input stem>_prepared.vcf.gz (+ .tbi, or .csi for contigs over 512 Mb).",
+        f"wgsextract vcf prepare {_VCF_IN}",
+        f"wgsextract vcf prepare {_VCF_IN} --ref hs38.fa --normalize",
     ),
     "vcf to-fasta": _h(
         "<input stem>_consensus.fa.gz (+ .fai); with --chain, a .chain file.",

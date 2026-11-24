@@ -13,6 +13,7 @@ from tests.htslib_helpers import (
     needs_htslib,
     run_wgsextract,
     sam_to_bam,
+    t2t_stand_in,
     write_fasta,
 )
 from wgsextract_cli.commands.vcf import filter_trio
@@ -313,6 +314,7 @@ class _Hg38Library:
     """The reference library of an hg38 FASTA without a ploidy file."""
 
     build = "hg38"
+    confirmed_build = "hg38"
     ploidy_file: str | None = None
 
     def __init__(self, ref, *_args, **_kwargs):
@@ -379,7 +381,7 @@ def test_trio_from_alignments_needs_a_sex_and_a_ploidy(tmp_path):
         "--ref", ref, "--region", "chr20", "--threads", "1", "--outdir", str(out),
     ]  # fmt: skip
     # The bare FASTA's build is unknown, so its chrX ploidy is too.
-    with pytest.raises(WGSExtractError, match="No ploidy for reference build"):
+    with pytest.raises(WGSExtractError, match="reference build: unknown"):
         run_wgsextract(*argv)
 
     ploidy_txt = tmp_path / "ploidy.txt"
@@ -413,6 +415,23 @@ def test_trio_from_alignments_needs_a_sex_and_a_ploidy(tmp_path):
     ):
         run_wgsextract(*argv, "--region", "chrX", "--proband-sex", "male")
     assert joint.call_args.args[1] == ["M", "F", "M"]
+
+
+@needs_htslib
+def test_1334_t2t_trio_is_refused_not_called_with_grch38_ploidy(tmp_path):
+    """#1334: a T2T trio must not borrow GRCh38's preset, whose PARs aren't
+    CHM13's; it is refused with the library ploidy file that would serve it."""
+    ref, (child, mother, father) = t2t_stand_in(tmp_path, "child", "mother", "father")
+    out = tmp_path / "out"
+
+    with pytest.raises(WGSExtractError, match="reference build: t2t") as refused:
+        run_wgsextract(
+            "vcf", "trio", "--proband", child, "--mother", mother,
+            "--father", father, "--ref", ref, "--outdir", str(out),
+        )  # fmt: skip
+
+    assert "ploidy_t2t.txt" in str(refused.value)
+    assert not list(out.glob("trio_*.vcf.gz"))
 
 
 @needs_htslib

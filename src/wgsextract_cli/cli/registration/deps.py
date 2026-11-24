@@ -8,6 +8,7 @@ from wgsextract_cli.api.deps import (
     DepsCheckParams,
     DepsInstallParams,
     DepsListParams,
+    DepsReadyParams,
     DepsUninstallParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
@@ -40,6 +41,11 @@ def register(
     add("list", "cmd_deps-list", DepsListParams).set_defaults(
         func=command_handler(
             "wgsextract_cli.commands._deps_status", "run_list", DepsListParams
+        )
+    )
+    add("ready", "cmd_deps-ready", DepsReadyParams).set_defaults(
+        func=command_handler(
+            "wgsextract_cli.commands._deps_status", "run_ready", DepsReadyParams
         )
     )
     add("install", "cmd_deps-install", DepsInstallParams).set_defaults(

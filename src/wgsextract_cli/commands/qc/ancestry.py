@@ -53,7 +53,7 @@ from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.microarray.revisions import decode_text, read_raw_bytes
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     input_stem,
 )
 from wgsextract_cli.core.reference_resolver import (

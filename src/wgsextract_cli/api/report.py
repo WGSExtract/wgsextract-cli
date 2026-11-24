@@ -3,9 +3,10 @@
 The report summarises what earlier runs left in the sample folder (their
 result manifests and the sample workspace): overview and QC, lineage,
 pharmacogenomics, ClinVar pathogenic calls in the ACMG SF genes (or another
-gene list) and the microarray export. It runs no analysis; its only network
+gene list), the microarray export and, with ``pgx_context``, CPIC guidance
+for the medications a person lists. It runs no analysis; its only network
 use, only with ``download`` permission, is fetching a missing built-in gene
-list into the reference library::
+list or the pinned CPIC database release into the reference library::
 
     res = api.report.build(api.ReportParams(workspace=Path("HG002")))
     report = res.details          # the wgsextract.report/1 document
@@ -27,11 +28,11 @@ from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
 
 from ._network import DownloadParams
-from ._params import param
+from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import optional_input_param, outdir_param
 
-__all__ = ["ReportParams", "build"]
+__all__ = ["ReportDeltaParams", "ReportParams", "build", "delta"]
 
 
 def _workspace_param() -> Any:
@@ -86,6 +87,15 @@ class ReportParams(DownloadParams):
         may_name_file=True,
     )
 
+    pgx_context: Path | None = param(
+        None,
+        help="Review these medications against CPIC guidance: a local TOML file "
+        "listing them (see docs/personal-report.md); it is never uploaded. The "
+        "pinned CPIC database release needs --download the first time.",
+        path="file",
+        metavar="FILE",
+    )
+
     def __post_init__(self) -> None:
         object.__setattr__(
             self, "results", tuple(Path(p) for p in self.results or () if p)
@@ -117,3 +127,44 @@ def build(
     from wgsextract_cli.commands.report import run_report
 
     return execute(params, run_report, progress=progress, cancel=cancel, check=check)
+
+
+@dataclass(frozen=True, kw_only=True)
+class ReportDeltaParams(Params):
+    """Compare two runs' result manifests semantically: findings added,
+    removed, reclassified or with changed review evidence, genotype,
+    confidence or ambiguity; sections that failed or didn't run; changed
+    resource releases and provenance. Timestamps and ordering are ignored.
+    ``details`` is the ``wgsextract.delta/1`` document."""
+
+    COMMAND = "report-delta"
+
+    before: Path = param(
+        help="The earlier run's result manifest, e.g. <sample>_personal_report.manifest.json.",
+        path="file",
+        metavar="MANIFEST",
+        required_message="--before MANIFEST required.",
+    )
+    after: Path = param(
+        help="The later run's result manifest, of the same command and sample.",
+        path="file",
+        metavar="MANIFEST",
+        required_message="--after MANIFEST required.",
+    )
+
+
+def delta(
+    params: ReportDeltaParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Compare two manifests. ``details`` is the ``wgsextract.delta/1``
+    document; incompatible runs (other command, sample or build) fail with
+    error codes ``delta_command_mismatch``, ``delta_sample_mismatch`` or
+    ``delta_build_mismatch``, and a document that isn't a result manifest
+    with ``unsupported_schema``. Reads only the two files."""
+    from wgsextract_cli.commands.report_delta import run_delta
+
+    return execute(params, run_delta, progress=progress, cancel=cancel, check=check)

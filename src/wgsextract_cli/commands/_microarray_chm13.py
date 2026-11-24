@@ -48,7 +48,10 @@ from wgsextract_cli.core.microarray.chm13_markers import (
     manifest_exclusions,
     vendor_no_calls,
 )
-from wgsextract_cli.core.microarray.formats import resolve_format_key
+from wgsextract_cli.core.microarray.formats import (
+    COMBINED_V3_FORMAT,
+    resolve_format_key,
+)
 from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
@@ -64,7 +67,7 @@ from wgsextract_cli.core.microarray.templates import (
     convert_to_vendor_format,
     get_template_format,
 )
-from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
+from wgsextract_cli.core.ref_library.assets import input_stem, resolve_reference_library
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
@@ -506,10 +509,29 @@ def run_chm13(
             continue
         info = get_template_format(real_format)
         suffix = info["suffix"] if info else ".txt"
+        kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
+        if real_format == COMBINED_V3_FORMAT:
+            from wgsextract_cli.core.microarray.combined_v3 import (
+                convert_to_combined_v3,
+            )
+
+            hg18_path = microarray_chm13_cache.installed_chains(roots).get("NCBI36")
+            hg18_chain = (
+                str(hg18_path) if hg18_path else lifted_chain(lib.root, "NCBI36", roots)
+            )
+            tallies[real_format] = convert_to_combined_v3(
+                str(combined),
+                kit,
+                roots,
+                hg18_chain,
+                identity=identity,
+                rejected_ids=rejected_ids,
+            )
+            record_kit(kit, real_format, tallies[real_format])
+            continue
         build = info.get("build") if info else None
         # Found in the library or fetched (with consent); else matched by ID.
         lift_chain = lifted_chain(lib.root, build, roots) if build else None
-        kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
         tallies[real_format] = convert_to_vendor_format(
             real_format,
             str(combined),

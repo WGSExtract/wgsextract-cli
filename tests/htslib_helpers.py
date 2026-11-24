@@ -34,25 +34,49 @@ def bgzip_index(plain_vcf: str | Path, out: str | Path | None = None) -> str:
     return out
 
 
-def write_fasta(path: Path, seqs: Mapping[str, str]) -> Path:
-    """Write a FASTA, one line per sequence, and faidx it."""
+def write_fasta(
+    path: Path, seqs: Mapping[str, str], *, assembly: str | None = None
+) -> Path:
+    """Write and index a FASTA, optionally declaring its assembly in a .dict."""
     content = "".join(f">{name}\n{seq}\n" for name, seq in seqs.items()).encode()
     samtools = get_tool_path("samtools")
     assert samtools is not None
-    if not cacheable_tool(samtools):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(content)
-        run_command([samtools, "faidx", str(path)])
-        return path
 
-    def build(root: Path) -> None:
-        fasta = root / "ref.fa"
+    def write(fasta: Path) -> None:
         fasta.write_bytes(content)
         run_command([samtools, "faidx", str(fasta)])
+        if assembly:
+            run_command(
+                [
+                    samtools,
+                    "dict",
+                    "-a",
+                    assembly,
+                    "-o",
+                    str(fasta.with_suffix(".dict")),
+                    str(fasta),
+                ]
+            )
 
-    root = prepared_files(content, samtools, ("ref.fa", "ref.fa.fai"), build)
-    copy_prepared(root / "ref.fa", path)
-    copy_prepared(root / "ref.fa.fai", Path(str(path) + ".fai"))
+    if not cacheable_tool(samtools):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write(path)
+    else:
+
+        def build(root: Path) -> None:
+            write(root / "ref.fa")
+
+        names = (
+            ("ref.fa", "ref.fa.fai", "ref.dict")
+            if assembly
+            else ("ref.fa", "ref.fa.fai")
+        )
+        key = content + b"\0" + assembly.encode() if assembly else content
+        root = prepared_files(key, samtools, names, build)
+        copy_prepared(root / "ref.fa", path)
+        copy_prepared(root / "ref.fa.fai", Path(str(path) + ".fai"))
+        if assembly:
+            copy_prepared(root / "ref.dict", path.with_suffix(".dict"))
     return path
 
 
@@ -110,6 +134,25 @@ def reference_for_vcf(path: Path, vcf: str | Path, *resources: str | Path) -> Pa
     return path
 
 
+T2T_CONTIGS = {"chr1": 248387328, "chrX": 154259566, "chrY": 62460029, "chrM": 16569}
+
+
+def t2t_stand_in(directory: Path, *names: str) -> tuple[str, list[str]]:
+    """A FASTA indexed with T2T-CHM13v2.0's lengths (its sequence is a
+    stand-in) and read-less BAMs whose headers list those contigs, one per
+    name: inputs a command recognises as T2T without a real genome."""
+    fasta = directory / "chm13_stand_in.fa"
+    fasta.write_text("".join(f">{name}\nA\n" for name in T2T_CONTIGS))
+    Path(f"{fasta}.fai").write_text(
+        "".join(f"{name}\t{length}\t0\t1\t2\n" for name, length in T2T_CONTIGS.items())
+    )
+    header = ["@HD\tVN:1.6\tSO:coordinate"] + [
+        f"@SQ\tSN:{name}\tLN:{length}" for name, length in T2T_CONTIGS.items()
+    ]
+    bams = [sam_to_bam(header, directory / f"{name}.bam") for name in names]
+    return str(fasta), bams
+
+
 def sam_to_bam(lines: Iterable[str], bam_path: Path) -> str:
     """Write SAM lines (header included) beside ``bam_path``, then sort and index."""
     sam = bam_path.with_suffix(".sam")
@@ -140,6 +183,8 @@ def snp_sample(
     snps: Iterable[int] = (1000, 1550),
     tags: str = "",
     contig: str = "chr1",
+    *,
+    assembly: str | None = None,
 ) -> Namespace:
     """A 3 kb ``contig`` (chr1) and a sample homozygous for SNPs at 1-based ``snps``, as a
     BAM and a CRAM with 20x single-end coverage over 500-2500 in the read group
@@ -151,7 +196,7 @@ def snp_sample(
     for pos in snps:
         sample[pos - 1] = {"A": "C", "C": "G", "G": "T", "T": "A"}[ref[pos - 1]]
         calls.append((contig, str(pos), ref[pos - 1], sample[pos - 1], "1/1"))
-    fasta = write_fasta(work / "ref.fa", {contig: ref})
+    fasta = write_fasta(work / "ref.fa", {contig: ref}, assembly=assembly)
     lines = ["@HD\tVN:1.6\tSO:unsorted", f"@SQ\tSN:{contig}\tLN:3000", read_group]
     for i, start in enumerate(range(500, 2400, 5)):
         lines.append(

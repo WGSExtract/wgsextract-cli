@@ -1,5 +1,6 @@
 """Sex-PAR regression: real fixture alignments, only expensive callers faked."""
 
+import gzip
 import platform
 import random
 import sys
@@ -13,6 +14,7 @@ from tests.htslib_helpers import (
     needs_htslib,
     run_wgsextract,
     sam_to_bam,
+    t2t_stand_in,
     vcf_calls,
     write_fasta,
 )
@@ -25,6 +27,8 @@ from tests.test_deepvariant import mac_native as mac_native
 from tests.test_gatk_scatter import gatk as gatk
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfClair3Params, VcfDeepvariantParams, VcfGatkParams
+from wgsextract_cli.core.constants import REFERENCE_MODELS
+from wgsextract_cli.core.ref_library.assets import sequence_signature
 
 pytestmark = needs_htslib
 
@@ -37,7 +41,9 @@ def sex_par(tmp_path, request):
         chrom: "".join(rng.choice("ACGT") for _ in range(boundary + 2000))
         for chrom in ("chr20", "chrX")
     }
-    ref = write_fasta(tmp_path / f"{request.param}.fa", sequences)
+    ref = write_fasta(
+        tmp_path / f"{request.param}.fa", sequences, assembly=request.param
+    )
     rows = ["@HD\tVN:1.6\tSO:coordinate", "@RG\tID:r\tSM:sample\tPL:ONT"]
     rows += [f"@SQ\tSN:{chrom}\tLN:{len(seq)}" for chrom, seq in sequences.items()]
     for chrom, positions in (("chr20", [1000]), ("chrX", [boundary, boundary + 1])):
@@ -62,6 +68,7 @@ def sex_par(tmp_path, request):
                 )
     bam = sam_to_bam(rows, tmp_path / "sample.bam")
     return SimpleNamespace(
+        build=request.param,
         ref=ref,
         bam=Path(bam),
         root=tmp_path,
@@ -69,6 +76,52 @@ def sex_par(tmp_path, request):
         sequences=sequences,
         rows=rows,
     )
+
+
+def test_1346_clair3_uses_the_validated_build_of_unindexed_gzip(
+    sex_par, linux_x86, fake_clair3, monkeypatch
+):
+    require_bare_name_fakes()
+    signature = sequence_signature(
+        {name: len(seq) for name, seq in sex_par.sequences.items()}
+    )
+    monkeypatch.setitem(
+        REFERENCE_MODELS, signature, [sex_par.build, "", "catalog.fa.gz"]
+    )
+    ref = sex_par.root / "unindexed.fa.gz"
+    ref.write_bytes(gzip.compress(sex_par.ref.read_bytes()))
+    write_fasta(
+        ref.with_suffix(""),
+        {name: "N" * len(seq) for name, seq in sex_par.sequences.items()},
+    )
+    bam = sam_to_bam(
+        [
+            row
+            for row in sex_par.rows
+            if not row.startswith(("@SQ\tSN:chr20", "chr20_"))
+        ],
+        sex_par.root / "subset.bam",
+    )
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
+    out = sex_par.root / "gzip-calls"
+
+    api.vcf.clair3(
+        VcfClair3Params(
+            input=Path(bam),
+            ref=ref,
+            outdir=out,
+            model=str(make_model(sex_par.root, "custom")),
+            region="chrX",
+            threads=1,
+        )
+    )
+
+    assert [
+        (row[1], row[-1].replace("|", "/")) for row in vcf_calls(out / "clair3.vcf.gz")
+    ] == [
+        (str(sex_par.boundary), "1"),
+        (str(sex_par.boundary + 1), "0/1"),
+    ]
 
 
 @pytest.mark.parametrize("sex", ["Male", "Female", "Unknown"])
@@ -279,3 +332,39 @@ def test_sex_par_850_dry_run_cannot_rewrite_an_interrupted_runs_policy(
     )
     assert planned.status == "ok"
     assert original.read_text() == content
+
+
+@pytest.mark.parametrize("caller", ["gatk", "clair3", "deepvariant"])
+def test_1334_t2t_chrx_is_refused_rather_than_given_grch38_pars(
+    tmp_path, caller, request
+):
+    """#1334: T2T's PARs aren't GRCh38's, so sex-aware calling of its chrX
+    has no preset to borrow; the refusal names the library file to add."""
+    require_bare_name_fakes()
+    ref, [bam] = t2t_stand_in(tmp_path, "sample")
+    common = {
+        "input": Path(bam),
+        "ref": Path(ref),
+        "outdir": tmp_path / "out",
+        "region": "chrX",
+        "threads": 1,
+    }
+    if caller == "gatk":
+        request.getfixturevalue("gatk")
+        result = api.vcf.gatk(VcfGatkParams(**common), check=False)
+    elif caller == "clair3":
+        request.getfixturevalue("linux_x86")
+        request.getfixturevalue("fake_clair3")
+        model = make_model(tmp_path, "custom")
+        result = api.vcf.clair3(
+            VcfClair3Params(**common, model=str(model)), check=False
+        )
+    else:
+        request.getfixturevalue("dv")
+        result = api.vcf.deepvariant(
+            VcfDeepvariantParams(**common, model_type="WGS"), check=False
+        )
+    assert result.status == "failed"
+    assert "reference build: t2t" in str(result.error)
+    assert "ploidy_t2t.txt" in str(result.error)
+    assert not (tmp_path / "out" / f"{caller}.vcf.gz").exists()

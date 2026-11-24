@@ -23,6 +23,7 @@ from wgsextract_cli.api.methylation import MethylationPileupParams
 from wgsextract_cli.cli.registration.methylation import register as register
 from wgsextract_cli.commands._extract_helpers import cleanup_files
 from wgsextract_cli.commands.vcf.basic import plain_reference
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.alignment.sequencing import (
     input_platform,
     warn_mixed_platforms,
@@ -39,7 +40,6 @@ from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.ref_library.assets import input_stem, read_fai_lengths
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.table_writer import (
     Column,
     TableWriter,
@@ -64,7 +64,7 @@ MODKIT = "modkit"
 CONTEXTS = ("cpg", "all")
 WINDOWS_UNSUPPORTED = (
     "modkit is not available on Windows (Bioconda and ONT build it for Linux "
-    "and macOS only). Run `methylation pileup` on Linux or macOS, for example "
+    "and macOS only). Run this methylation command on Linux or macOS, for example "
     "under WSL2."
 )
 # Long-read platforms whose basecallers write MM/ML tags.
@@ -158,6 +158,8 @@ def modkit_command(
     threads: str,
     intervals: list[tuple[str, int, int]] | None = None,
     bed: str | None = None,
+    *,
+    phased: bool = False,
 ) -> list[str]:
     """modkit pileup writing a BGZF bedMethyl. Its --region is 0-based, half-open."""
     io_threads = str(min(int(threads), 4))
@@ -183,6 +185,9 @@ def modkit_command(
         command.append("--cpg")
     if options.combine_strands:
         command.append("--combine-strands")
+    if phased:
+        # modkit 0.6.4 allocates three count matrices per worker in phased mode.
+        command.extend(("--phased", "--interval-size", "100000"))
     if intervals and len(intervals) == 1:
         contig, start, end = intervals[0]
         command += ["--region", f"{contig}:{start}-{end}"]
@@ -205,6 +210,18 @@ def _has_opposite_strand(mm: str) -> bool:
     return any(entry[1:2] == "-" for entry in mm[5:].split(";") if entry)
 
 
+def modification_tag_flags(tags: list[str]) -> tuple[bool, bool, bool]:
+    """Return MM/ML present, opposite-strand MM entries, and duplex status."""
+    names = {tag[:2] for tag in tags}
+    tagged = bool(names & {"MM", "Mm"} and names & {"ML", "Ml"})
+    return (
+        tagged,
+        tagged
+        and any(tag[:2] in ("MM", "Mm") and _has_opposite_strand(tag) for tag in tags),
+        tagged and "dx:i:1" in tags,
+    )
+
+
 def sample_modification_tags(
     alignment: str,
     ref: str | None,
@@ -222,16 +239,11 @@ def sample_modification_tags(
         try:
             for line in process.stdout:
                 tags = line.rstrip("\n").split("\t")[11:]
-                # The SAM spec's old Mm/Ml names are still written by some tools.
-                names = {tag[:2] for tag in tags}
+                has_tags, has_opposite, is_duplex = modification_tag_flags(tags)
                 reads += 1
-                if names & {"MM", "Mm"} and names & {"ML", "Ml"}:
-                    tagged += 1
-                    opposite += any(
-                        tag[:2] in ("MM", "Mm") and _has_opposite_strand(tag)
-                        for tag in tags
-                    )
-                    duplex += "dx:i:1" in tags
+                tagged += has_tags
+                opposite += has_opposite
+                duplex += is_duplex
                 if reads >= limit:
                     stopped = True
                     break

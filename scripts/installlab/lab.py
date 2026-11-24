@@ -56,11 +56,13 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[1]
 sys.path.insert(0, str(HERE))
 import app_contract  # noqa: E402
+import apt_cache  # noqa: E402
 import gui_oracle  # noqa: E402
 import housekeeping  # noqa: E402
 import macos_policy  # noqa: E402
 import windows_gui_vm  # noqa: E402
 import windows_vm  # noqa: E402
+from docker_machine import DockerMachine, Machine  # noqa: E402
 from gui_build import (  # noqa: E402
     build_gui_artifacts,
     build_linux_gui_package,
@@ -76,7 +78,6 @@ DATASET_URL = (
 DATASET_SHA256 = "ad0f8070dc5ca35c4a6de540493a81df082d160417f747ae68d9c098c110a9f6"
 MACOS_VANILLA = "ghcr.io/cirruslabs/macos-tahoe-vanilla:latest"
 MACOS_BASE = "wgse-lab-macos-base"
-LINUX_IMAGE = "ubuntu:24.04"
 SABOTAGES = {
     # name: checks that must fail when the sabotage is applied
     # The installer "succeeds" without doing anything, so step.install passes;
@@ -190,36 +191,6 @@ def http_server(directory: Path, host: str) -> Iterator[int]:
 
 
 # --- machines -------------------------------------------------------------------
-
-
-class Machine:
-    """A disposable machine: created clean, destroyed after the run."""
-
-    serve_host = "127.0.0.1"  # where the host's artifact server listens
-    guest_host = "127.0.0.1"  # how the guest reaches it
-    results_in_guest = ""
-    guest_scripts_in_guest = ""
-    # Packages beyond the documented prerequisites, e.g. what an earlier
-    # release required of the user it is being updated from.
-    prerequisites: tuple[str, ...] = ()
-
-    def __init__(self, name: str, results: Path, guest: Path) -> None:
-        self.name, self.results, self.guest = name, results, guest
-
-    def __enter__(self) -> Machine:
-        self.create()
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        if os.environ.get("LAB_KEEP"):
-            log(f"Keeping machine {self.name} (LAB_KEEP set)")
-            return
-        self.destroy()
-
-    def create(self) -> None: ...
-    def destroy(self) -> None: ...
-    def exec(self, env: dict[str, str], command: str) -> int:
-        raise NotImplementedError
 
 
 SSH_KEY = housekeeping.LAB / "ssh" / "id_ed25519"
@@ -373,115 +344,6 @@ class TartMachine(Machine):
         # A login shell, so the guest sees a normal user's environment.
         remote = f"/bin/zsh -l -c {shlex.quote(f'{assignments} {command}')}"
         return subprocess.run(["ssh", *SSH_OPTS, f"admin@{self.ip}", remote]).returncode
-
-
-class DockerMachine(Machine):
-    serve_host = "127.0.0.1"
-    guest_host = "host.docker.internal"
-    results_in_guest = "/results"
-    guest_scripts_in_guest = "/guest"
-
-    def __init__(self, name: str, results: Path, guest: Path) -> None:
-        super().__init__(name, results, guest)
-        self.docker = shutil.which("docker") or (
-            "/Applications/OrbStack.app/Contents/MacOS/xbin/docker"
-        )
-
-    def create(self) -> None:
-        housekeeping.mark_used(f"docker:{LINUX_IMAGE}")
-        if sys.platform.startswith("linux"):
-            # Docker Desktop and OrbStack forward host.docker.internal to the
-            # host's loopback; plain Linux Docker maps it to the bridge gateway,
-            # so serve there (reachable from containers, not from the network).
-            self.serve_host = subprocess.run(
-                [self.docker, "network", "inspect", "bridge", "--format",
-                 "{{(index .IPAM.Config 0).Gateway}}"],
-                capture_output=True, text=True, check=True,
-            ).stdout.strip()  # fmt: skip
-        run(
-            [
-                self.docker,
-                "run",
-                "-d",
-                "--name",
-                self.name,
-                "--platform",
-                "linux/amd64",
-                "--add-host",
-                "host.docker.internal:host-gateway",
-                "-v",
-                f"{self.results}:/results",
-                "-v",
-                f"{self.guest}:/guest:ro",
-                LINUX_IMAGE,
-                "sleep",
-                "infinity",
-            ],  # fmt: skip
-            stdout=subprocess.DEVNULL,
-        )
-        # The documented prerequisites a fresh Ubuntu user must install, with
-        # mirror fallback and a clear failure if no Ubuntu mirror answers.
-        with windows_vm.APT_INSTALL.open() as script:
-            apt = subprocess.run(
-                [self.docker, "exec", "-i", self.name, "bash", "-s", "--",
-                 "curl", "ca-certificates", *self.prerequisites],
-                stdin=script, capture_output=True, text=True,
-            )  # fmt: skip
-        if apt.returncode:
-            print(apt.stdout + apt.stderr, flush=True)
-            raise SystemExit(f"Installing the prerequisites failed ({apt.returncode}).")
-        # A normal (non-root) user account to install as.
-        run(
-            [
-                self.docker,
-                "exec",
-                self.name,
-                "sh",
-                "-c",
-                "useradd -m -s /bin/bash tester && chown tester /results"
-                + (
-                    # An Ubuntu desktop's first user, who may install packages.
-                    " && echo 'tester ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/tester"
-                    " && chmod 440 /etc/sudoers.d/tester"
-                    if "sudo" in self.prerequisites
-                    else ""
-                ),
-            ]  # fmt: skip
-        )
-
-    def destroy(self) -> None:
-        try:
-            if sys.platform.startswith("linux"):
-                # The container's users own what they wrote to /results; give
-                # it back to the host user (Docker Desktop and OrbStack map
-                # ownership), or the host can't write its verdict there.
-                chown = subprocess.run(
-                    [self.docker, "exec", self.name, "chown", "-R",
-                     f"{os.getuid()}:{os.getgid()}", "/results"],
-                    capture_output=True, text=True,
-                )  # fmt: skip
-                if chown.returncode:
-                    log(f"could not take back /results: {chown.stderr.strip()}")
-        finally:
-            subprocess.run([self.docker, "rm", "-f", self.name], capture_output=True)
-
-    def exec(self, env: dict[str, str], command: str) -> int:
-        flags = [f"--env={k}={v}" for k, v in env.items()]
-        return subprocess.run(
-            [
-                self.docker,
-                "exec",
-                "-u",
-                "tester",
-                "-w",
-                "/home/tester",
-                *flags,
-                self.name,
-                "bash",
-                "-lc",
-                command,
-            ]  # fmt: skip
-        ).returncode
 
 
 # What a GitHub macOS runner adds that a user's Mac doesn't have. The image's
@@ -733,6 +595,8 @@ def run_scenario(
     gui: argparse.Namespace | None = None,
     install_dir: str | None = None,
     update_from: str | None = None,
+    *,
+    use_apt_cache: bool = True,
 ) -> Path:
     stamp = time.strftime("%Y%m%d-%H%M%S")
     product = "gui" if gui else "cli"
@@ -753,7 +617,10 @@ def run_scenario(
     if gui and target == "linux":
         if mode != "control":
             meta["installer"] = build_linux_gui_package(
-                gui.gui_repo, gui.gui_installer, artifacts["serve"]
+                gui.gui_repo,
+                gui.gui_installer,
+                artifacts["serve"],
+                use_apt_cache=use_apt_cache,
             )
             meta["installer_sha256"] = sha256(
                 artifacts["serve"] / str(meta["installer"])
@@ -764,7 +631,10 @@ def run_scenario(
     elif gui and target.startswith("windows"):
         if mode != "control":
             installer, meta["signed"] = build_windows_gui_installer(
-                gui.gui_repo, gui.gui_installer, artifacts["serve"]
+                gui.gui_repo,
+                gui.gui_installer,
+                artifacts["serve"],
+                use_apt_cache=use_apt_cache,
             )
             meta["installer"] = installer
             meta["installer_sha256"] = sha256(artifacts["serve"] / installer)
@@ -806,13 +676,15 @@ def run_scenario(
         )
     )
     # The machine first: a VM's host-side bridge address only exists once it runs.
-    if isinstance(machine, DockerMachine) and update_from in RELEASES_NEEDING_GIT:
-        machine.prerequisites = ("git",)
-    if isinstance(machine, DockerMachine) and gui:
-        # An Ubuntu desktop: its user may use sudo, it has Python and fontconfig
-        # (whose setup makes /usr/local/share/fonts), and Xvfb stands in for its
-        # display.
-        machine.prerequisites = ("sudo", "python3", "fontconfig", "xvfb", "xauth")
+    if isinstance(machine, DockerMachine):
+        machine.use_apt_cache = use_apt_cache
+        if gui:
+            # A desktop user may use sudo; Xvfb stands in for their display.
+            machine.apt_profile = "linux-app"
+            machine.prerequisites = apt_cache.LINUX_APP_PACKAGES
+        elif update_from in RELEASES_NEEDING_GIT:
+            machine.apt_profile = "linux/legacy-update"
+            machine.prerequisites = apt_cache.LINUX_UPDATE_PACKAGES
     with machine:
         if gui and gui.test_sign:
             assert isinstance(machine, windows_gui_vm.QemuWindowsGuiMachine)
@@ -899,7 +771,7 @@ def cmd_prepare(args: argparse.Namespace) -> None:
     if args.repair_policy and args.target != "macos":
         raise SystemExit("--repair-policy is only supported for macos.")
     if args.target == "windows":
-        windows_vm.prepare()
+        windows_vm.prepare(use_apt_cache=not args.no_apt_cache)
         return
     if args.target == "windows-gui":
         windows_gui_vm.prepare_gui()
@@ -994,6 +866,7 @@ def cmd_run(args: argparse.Namespace) -> None:
         args if gui else None,
         install_dir=args.install_dir,
         update_from=args.update_from,
+        use_apt_cache=not args.no_apt_cache,
     )
     if args.no_judge:
         log(f"Evidence collected (judge it elsewhere): {results}")
@@ -1022,7 +895,9 @@ def judged_as_expected(results: Path, target: str) -> bool:
 def cmd_selftest(args: argparse.Namespace) -> None:
     missed = []
     for sabotage, expected in SABOTAGES.items():
-        results = run_scenario(args.target, "install", sabotage, None)
+        results = run_scenario(
+            args.target, "install", sabotage, None, use_apt_cache=not args.no_apt_cache
+        )
         judge(results, args.target)
         verdict = json.loads((results / "verdict.json").read_text())
         failed = {c["name"] for c in verdict["checks"] if not c["ok"]}
@@ -1280,8 +1155,18 @@ def main() -> None:
     # Stopping the lab (kill, Ctrl-C) still destroys its machines.
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    apt_options = argparse.ArgumentParser(add_help=False)
+    apt_options.add_argument(
+        "--no-apt-cache",
+        action="store_true",
+        help="Install container prerequisites from today's Ubuntu mirrors without a cache.",
+    )
     sub = parser.add_subparsers(required=True)
-    p = sub.add_parser("prepare", help="Build the clean base image for a target.")
+    p = sub.add_parser(
+        "prepare",
+        parents=[apt_options],
+        help="Build the clean base image for a target.",
+    )
     p.add_argument("target", choices=["macos", "windows", "windows-gui"])
     p.add_argument(
         "--repair-policy",
@@ -1289,7 +1174,11 @@ def main() -> None:
         help="Repair normal Gatekeeper policy in an existing macOS base, without rebuilding.",
     )
     p.set_defaults(func=cmd_prepare)
-    p = sub.add_parser("run", help="Run one scenario on a fresh machine and judge it.")
+    p = sub.add_parser(
+        "run",
+        parents=[apt_options],
+        help="Run one scenario on a fresh machine and judge it.",
+    )
     p.add_argument("target", choices=sorted(MACHINES))
     p.add_argument("--mode", choices=["install", "control"], default="install")
     p.add_argument("--sabotage", choices=sorted(SABOTAGES))
@@ -1333,7 +1222,11 @@ def main() -> None:
         help="Install this published release first, then update it to this tree.",
     )
     p.set_defaults(func=cmd_run)
-    p = sub.add_parser("selftest", help="Every sabotage must make the verdict FAIL.")
+    p = sub.add_parser(
+        "selftest",
+        parents=[apt_options],
+        help="Every sabotage must make the verdict FAIL.",
+    )
     p.add_argument("target", choices=sorted(MACHINES))
     p.set_defaults(func=cmd_selftest)
     p = sub.add_parser("mutate", help="Corrupted copies of a passing run must FAIL.")

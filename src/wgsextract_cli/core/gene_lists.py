@@ -20,10 +20,11 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.network_policy import DownloadRequired
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
-from wgsextract_cli.core.reference_assets import resolve_reference_library
 from wgsextract_cli.core.report_documents import ReportGeneListDocument
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
@@ -172,12 +173,15 @@ def load(spec: str | Path | None, library: Path | None = None) -> GeneList:
                 f"Cannot use the {meta['name']} gene list: {error}. Pass a TSV or "
                 "BED file with --gene-list."
             ) from error
+        resource_releases.record_gene_list(list_id, path, meta)
         return GeneList(
             list_id, meta["name"], genes, meta["version"], meta["citation"], meta["url"]
         )
     check(list_id)
     path = Path(list_id).expanduser().absolute()
-    return _load_file(str(path), path.stat().st_mtime_ns)
+    loaded = _load_file(str(path), path.stat().st_mtime_ns)
+    resource_releases.record_gene_list(list_id, path, None)
+    return loaded
 
 
 @cache

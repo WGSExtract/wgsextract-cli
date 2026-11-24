@@ -23,6 +23,11 @@ SUITES = {
         "test_real_modkit_gives_the_same_calls_from_cram_as_from_bam or "
         "test_cram_without_region_matches_bam_and_skips_empty_contigs",
     ),
+    "tests/test_methylation_regions.py": (
+        "modkit",
+        "haplotypes_use_common_cpgs or cram_parquet_preserves_absent_haplotype or "
+        "phase_ambiguity_withholds_delta or untagged_alignment_names_the_missing_hp_tags",
+    ),
     "tests/test_genotyping_commands.py": (
         "ExpansionHunter",
         "test_str_on_hg19_says_notch2nlc_is_unavailable",

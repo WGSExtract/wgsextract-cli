@@ -24,6 +24,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import psutil
 
@@ -275,21 +276,48 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _checked_weights(model_type: str) -> Path:
+def weights_evidence(model_type: str) -> dict[str, Any]:
+    """The configured weights for ``model_type``: each published file's
+    SHA-256 as found (None when missing) and as published, and ``verified``
+    (True: all match; False: one is missing or differs; None: the
+    deepvariant_weights setting is unset). Model-specific terms aren't
+    recorded with the published weights (``terms`` unknown)."""
+    from wgsextract_cli.core.readiness.model import terms
+
     configured = settings.get(WEIGHTS_SETTING)
-    if not configured:
+    folder = Path(str(configured)).expanduser() if configured else None
+    published = WEIGHTS_SHA256[model_type]
+    found = {
+        name: _sha256(folder / name) if folder and (folder / name).is_file() else None
+        for name in published
+    }
+    return {
+        "model_type": model_type,
+        "setting": WEIGHTS_SETTING,
+        "path": str(folder) if folder else None,
+        "sha256": found,
+        "published_sha256": dict(published),
+        "verified": None if folder is None else found == published,
+        "terms": terms(),
+    }
+
+
+def _checked_weights(model_type: str) -> Path:
+    evidence = weights_evidence(model_type)
+    configured = settings.get(WEIGHTS_SETTING)
+    if evidence["verified"] is None:
         raise WGSExtractError(
             f"{BINARY} is on PATH but {WEIGHTS_SETTING} isn't set. {INSTALL_HINT}"
         )
-    weights = Path(str(configured)).expanduser()
-    for name, expected in WEIGHTS_SHA256[model_type].items():
+    weights = Path(evidence["path"])
+    for name, expected in evidence["published_sha256"].items():
         path = weights / name
-        if not path.is_file():
+        found = evidence["sha256"][name]
+        if found is None:
             raise WGSExtractError(
                 f"DeepVariant weight file {path} is missing ({WEIGHTS_SETTING} "
                 f"= {configured}). {INSTALL_HINT}"
             )
-        found = _sha256(path)
         if found != expected:
             raise WGSExtractError(
                 f"DeepVariant weight file {path} isn't the published one "

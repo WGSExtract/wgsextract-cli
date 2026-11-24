@@ -14,7 +14,7 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import n_count_paths, read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import n_count_paths, read_fai_lengths
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
@@ -409,11 +409,7 @@ cmd_trio = vcf_input_handler(VcfTrioParams, run_trio)
 def _trio_from_alignments(
     params: VcfTrioParams, alignments: list[str], outdir: str, modes: list[str]
 ) -> None:
-    from wgsextract_cli.core.builds import (
-        is_hg37_build,
-        is_hg38_build,
-        ploidy_for_build,
-    )
+    from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_dependent_ploidy
     from wgsextract_cli.core.utils import get_resource_threads
 
     from ..info.metrics import sample_sex
@@ -451,19 +447,9 @@ def _trio_from_alignments(
         raise WGSExtractError(
             "Reference genome required to genotype the trio's alignments; pass --ref."
         )
-    if lib.ploidy_file:
-        ploidy_args = ["--ploidy-file", lib.ploidy_file]
-    elif lib.build and (is_hg37_build(lib.build) or is_hg38_build(lib.build)):
-        ploidy_args = ["--ploidy", ploidy_for_build(lib.build)]
-    else:
-        # T2T's sex-chromosome coordinates differ: guessed ploidy would be wrong.
-        raise WGSExtractError(
-            f"No ploidy for reference build {lib.build or 'unknown'}: add a ploidy "
-            "file to the reference library (see 'wgsextract ref bootstrap')."
-        )
-    from wgsextract_cli.core.sample_ploidy import sex_dependent_ploidy
+    ploidy = ploidy_args(None, None, lib, options=None)
 
-    sex_dependent = sex_dependent_ploidy(ploidy_args, contigs=set(called[0]))
+    sex_dependent = sex_dependent_ploidy(ploidy, contigs=set(called[0]))
     # An arbitrary sex code is harmless only when all called ploidies agree.
     proband_sex = params.proband_sex
     if not proband_sex and sex_dependent:
@@ -482,7 +468,7 @@ def _trio_from_alignments(
         alignments,
         [proband_sex, "F", "M"],
         lib.fasta,
-        ploidy_args,
+        ploidy,
         str(Path(outdir, "trio_joint.vcf.gz")),
         params.region,
         threads,

@@ -22,7 +22,11 @@ from .utils import (
     run_command,
     run_pipeline,
 )
-from .variant_files import ensure_vcf_indexed, vcf_header_chromosomes
+from .variant_files import (
+    ensure_vcf_indexed,
+    is_tabix_order_error,
+    vcf_header_chromosomes,
+)
 
 
 def has_sample_input_index(vcf: PathInput) -> bool:
@@ -118,10 +122,9 @@ def ensure_sample_vcf_indexed(vcf: Path) -> None:
         ensure_vcf_indexed(vcf)
     except WGSExtractError as exc:
         cause = exc.__cause__
-        if not isinstance(cause, subprocess.CalledProcessError) or not any(
-            text in (cause.stderr or "")
-            for text in ("Unsorted positions", "Chromosome blocks not continuous")
-        ):
+        if not isinstance(
+            cause, subprocess.CalledProcessError
+        ) or not is_tabix_order_error(cause.stderr):
             raise
         with scratch_directory(vcf.parent, "SampleSort_") as folder:
             ordered = _sort_sample_vcf(vcf, Path(folder))

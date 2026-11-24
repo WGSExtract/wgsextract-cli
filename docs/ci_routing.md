@@ -162,7 +162,9 @@ app-bundle check. `run-install-lab` remains an explicit full-platform override.
 
 The four full OS workflows and CLI smoke call `nightly_guard.yml`. Its small
 Ubuntu API check runs on a schedule or on a full manual Ubuntu run on `main`;
-PRs, pushes and other dispatches skip it without a runner. The check lets
+PRs, pushes and other dispatches skip that API check. A full macOS or Windows
+dispatch (or an opted-in balanced Ubuntu dispatch) uses the same runner only
+to plan shards. The check lets
 those workflows skip expensive jobs only if their own successful **push**
 run exists for the exact current main SHA in this repository. A different SHA,
 a failed/cancelled run, a PR/nightly success, missing evidence or an API error
@@ -170,7 +172,7 @@ retains full coverage.
 Failure or timeout of the guard runner itself also runs coverage; a skip
 requires both a successful guard and its explicit `skip=true` output.
 Regular Ubuntu pytest always runs on schedule or on a full manual Ubuntu
-run on `main`: the backstop must not reuse a green main push.
+run on `main`: the default observation backstop must not reuse a green main push.
 The `required` queue summary now directly depends on Windows as well as Ubuntu;
 it cannot pass while code-selected Windows failed or was cancelled.
 Queue Windows selection uses changed code/runtime-input paths, independently
@@ -241,7 +243,7 @@ just certify-setup -e default -e dev -e vep-rs --reference
 Repeated `-e` replaces the default environment list. `--reference` retains the
 bootstrap release archive after verifying its pinned SHA-256, safely extracts
 missing support files, fetches the pinned liftOver chain (with the same mirror
-fallback as CI), and invokes CI's normal hs38 catalog installer. It then
+fallback as CI), and prepares hs38 with the catalog installer. It then
 validates all reference bytes, including the catalog-pinned full genome.
 This can download several GiB; run under the resource coordinator on shared
 hosts. Existing conflicting bootstrap files are not overwritten: the refusal
@@ -319,53 +321,95 @@ test runner report containing failed tests produces `failure`. Landing still
 requires the passing hosted ready run; non-success local attestations never
 make that otherwise-passing run fail the landing gate.
 
-For macOS remotely, push the branch and run on lin-mid:
+#### Remote certification on owned hosts
 
-```sh
-just certify --remote randy-mini
+Register SSH aliases and their native platforms in a controller-side
+`config.toml` (keep the file outside the Git checkout, or ignore it locally):
+
+```toml
+[[certification.hosts]]
+alias = "seraph"
+platform = "windows-x64"
+
+[[certification.hosts]]
+alias = "minipc"
+platform = "windows-x64"
+
+[[certification.hosts]]
+alias = "mahyar-pro-14"
+platform = "macos-arm64"
 ```
 
+Push the branch, then run on the controller:
+
+```sh
+just certify --remote windows-x64 --remote-config /path/to/config.toml --platform-only
+just certify --remote macos-arm64 --remote-config /path/to/config.toml --platform-only
+```
+
+`--remote` accepts a registered alias or a platform. For a platform it tries
+hosts in listed order and skips hosts that fail the SSH, checkout, disk or
+native-platform probe, or whose controller lock is busy. It does not retry a
+failed or interrupted test on another host. `randy-mini` remains the built-in
+macOS ARM64 fallback; `just certify --remote randy-mini` still works. If
+`--remote-config` is omitted, the controller reads `config.toml` in its
+working directory if present.
+
 The controller enforces the same clean, pushed, same-repository open-PR and
-writer checks as local certification. It acquires `agent-coord lock randy-mini`
-for the entire remote operation and releases it even on refusal. A busy lock
-refuses without disturbing its owner; retry only after the owner releases it.
-Only the registered `randy-mini` SSH alias and public WGSExtract repository are
-supported. SSH agent/port/environment forwarding is disabled; neither `gh` nor
-a GitHub token is installed or sent to the Mac.
+writer checks as local certification. It holds an `agent-coord` lock named for
+the selected alias. All controllers sharing a coordinator must use the same
+alias for a machine. SSH requires a known host key and noninteractive
+authentication. SSH agent, port and environment forwarding are disabled.
+Workers need neither `gh` nor a GitHub token; configure the worker checkout
+for public HTTPS, without credential-bearing remotes or extra Git hooks.
 
-The remote bootstrap fetches the exact head and base SHAs over public HTTPS,
-then creates/reuses `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a
-detached worktree. Branch names never enter a remote shell command. Prepare
-that worktree's locked Pixi environments explicitly as above; missing tools
-refuse rather than being installed. The worker runs `certify-setup` if retained
-wheels or reference inputs need preparation, then uses the same macOS ARM64
-selection and generic commands as local certification. `--platform-only` skips
-the generic layer when it already ran locally; `--generic-only` runs only generic.
-This explicit remote input-setup phase may download pinned archives; the test
-phase still uses `--no-install`.
+Prepare an isolated clone at `~/src/wgsextract-cli` on each registered machine
+and ensure Git and locked-compatible Pixi are on the SSH user's PATH. POSIX
+workers need `python3`; Windows uses OpenSSH and PowerShell with Python from
+`pixi install --locked -e dev` in that clone. No administrator access is
+needed. Check the worker's resource coordinator before preparing inputs. If
+`agent-coord` is present on the worker, the test invocation uses its resource
+lease and a worker-side `wgsextract-certification` lock. On hosts without it,
+coordinate explicitly with anyone else using the machine.
 
-The Mac must start setup with 30 GiB disk free. A one-second watchdog stops the
-worker and its child process group below 26 GiB, leaving headroom for the
-required 25 GiB reserve. The controller sends five-second heartbeats; a lost
-connection or 30 seconds without a heartbeat cancels the entire remote process
-group, including setup and test children. SIGTERM follows the refusal/cleanup
-path. A fresh SSH connection requests cancellation and confirms termination
-before the controller releases the lock, including after transport failures.
+The bootstrap fetches the exact pushed head and base SHAs over public HTTPS
+and creates `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a detached
+worktree if absent. Branch names never enter the remote command. If the run
+refuses for missing environments, explicitly install the locked environments
+in **that worktree**, as in one-time preparation above, then retry. The worker
+runs `certify-setup` if retained wheels or reference inputs need preparation,
+then executes the same native platform or generic commands as local
+certification. Remote input setup may download pinned archives; the test phase
+uses `--no-install`.
+
+The worker's filesystem must start with 30 GiB free. A one-second watchdog
+stops the worker below 26 GiB to preserve the 25 GiB reserve. Loss of SSH or
+30 seconds without a five-second controller heartbeat cancels setup and
+tests using a Windows kill-on-close Job Object or the worker's and observed
+descendants' POSIX process groups. A fresh SSH connection confirms cleanup
+before the controller unlocks the alias, including after a transport failure
+or SIGTERM.
 If that confirmation fails the lock deliberately remains held: retry once SSH
 is reachable, or confirm the matching control ID has a `.done` marker under
 `~/src/wgsextract-cli/out/certify/remote-control/` before manually unlocking.
 An abruptly killed controller (SIGKILL/power loss) likewise leaves its lock for
 recovery; never break it while the remote supervisor may still be running.
-No sudo, reboot, reverse SSH, or access to
-`/Users/randy` is needed. The worker checks platform, clean tree and HEAD before
-and after execution. Logs stream to lin-mid under
-`out/certify/<sha>/remote-randy-mini/<layer>/run.log`; only lin-mid publishes
-`local-ci/macos-arm64` and (if requested) `local-ci/generic`, with the machine
-name and full streamed-log SHA-256. Missing/mismatched results, disk refusals,
-SSH failures and interruptions produce `error`; verified failed-test reports
-produce `failure`. Run Linux certification separately on lin-mid.
-Whole-suite baseline savings are about 22 Linux runner-minutes plus 1–3 generic
-minutes (package smoke remains), or about 33 additional minutes for macOS ARM64.
+The worker checks the native platform, clean tree and HEAD before and after
+execution. Logs stream to `out/certify/<sha>/remote-<alias>/<layer>/run.log`;
+only the controller publishes `local-ci/<platform>` and (if requested)
+`local-ci/generic`, with the alias and full log SHA-256. Missing or mismatched
+results produce no successful status. Tests that actually fail produce
+`failure`; refusals and interruptions during a run produce `error`.
+
+Windows x64, macOS ARM64 and Linux ARM64 statuses can replace their routed
+suite or workflow-only smoke, not a different platform or the package and
+real-data benchmark smoke. Edits to remote certification route its supervisor
+regressions to native OS smoke jobs even without a product-code change.
+Optional-tool integrations also stay hosted: an OS
+certificate does not prove that the five separate optional environments and
+their no-skips tests ran. Windows imputation selections still run their
+hosted fresh locked install. Install Lab and merged-tree import checks still run
+when routed.
 Sparse selected PRs save less.
 
 ### Decisive test selection rollout
@@ -461,8 +505,8 @@ Explicitly declared generated documentation inputs retain their freshness lane.
 The `changes` job publishes `tests` and per-OS selections as JSON test-file
 arrays or `all`. The four OS wrappers forward these inputs to the shared
 `os_tests.yml` workflow, which passes them through
-`scripts/ci_run_tests.py` to `pixi run test-ci`; existing tiers, stable module
-Ubuntu-only partitions apply **within** that set. Empty selections
+`scripts/ci_run_tests.py` to `pixi run test-ci`; the duration plan and the
+Ubuntu-only partition apply **within** that set. Empty selections
 skip jobs, and empty partitions exit successfully. Selections are
 validated and passed as argv, never evaluated as shell text. Explicit paths
 are filtered using the `test-ci` task's ignore rules so generated-genome and
@@ -751,13 +795,13 @@ a failing CodeQL app check.
 
 ### CLI test time and tiers
 
-Each OS runs one all-tier pytest job with `-n logical --dist loadgroup`: one
-worker per vCPU. `-n auto` counts physical cores when psutil is installed, so
+Each OS runs all tiers with `-n logical --dist loadgroup`: one worker per
+vCPU. `-n auto` counts physical cores when psutil is installed, so
 it ran two workers on the four-vCPU hosted Ubuntu and Windows runners (#1305,
 CI slowdown); macOS's three vCPUs and ARM64's four are physical either way.
-Pixi setup, installer validation and reference installation happen once per OS,
-not once per tier/shard. The tier definitions remain available for local
-diagnosis:
+Pixi and reference setup run on each allocated runner; installer validation
+and dedicated integration checks run once per OS. The tier definitions remain
+available for local diagnosis:
 
 - **Core:** every test not explicitly listed in `INTEGRATION_MODULES` in
   `scripts/ci_test_tiers.py`. New tests automatically join this tier.
@@ -777,16 +821,47 @@ pytest is uncached; other nightly jobs retain their exact-SHA guard. ARM64
 runs its selection in one job. No slow suite is demoted to nightly-only coverage.
 Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
 modules whose import closure includes command/tool behavior remain cross-platform.
-Ordinary local pytest still collects everything; the opt-in `--ci-tier` and
-`--ci-skip-independent` and `--ci-shard` flags implement these CI-only partitions.
+Ordinary local pytest still collects everything. `--ci-tier` and
+`--ci-skip-independent` narrow collection; `--ci-shard INDEX/COUNT` is the
+local stable-hash fallback.
 
-The former core-1/core-2/integration fan-out traded repeated setup for latency.
-Issue #1038 reverses that trade to reduce runner usage and macOS slot pressure.
-The first/only matrix entry still seeds shared main caches and runs one-off
-checks; ARM64 keeps its existing `native` label. The all-tier x64 label is `all`.
-The result-cache identity includes `tier=all shard=all`, so old shard entries
-are not reused incorrectly. New main runs seed all-tier `passed.json` entries;
-PR and merge-queue reads/records retain their existing trust and selection rules.
+Ready PRs can fan out regular Ubuntu x64, Windows and macOS pytest without
+adding a planning runner: the existing `changes` job reads the last usable
+full JUnit reports from successful scheduled runs of that OS workflow on this
+repository's `main`. The nightly guard can also size eligible full macOS and
+Windows nightlies and main-branch dispatches. To measure a full Ubuntu run
+without the daily observation instrumentation, dispatch with
+`gh workflow run ubuntu_ci.yml --ref main -f balanced-full-suite=true`.
+Merge groups, ordinary main
+pushes, ARM64 and the daily Ubuntu observation backstop remain single jobs:
+they retain exact-SHA replay/cache contracts or produce a single coverage
+context map. Missing or partial timing evidence never drops tests; it falls
+back to one job.
+
+The planner sums historical case times by module, assigns the longest groups
+first to the least loaded job, and uses a stable hash for unknown groups.
+Modules, the shared synthetic-data group and modules declaring xdist groups
+stay whole. The target estimated
+pytest times are 12 minutes (Ubuntu), 15 (Windows) and 22 (macOS); at most
+three jobs on Ubuntu/Windows and two on macOS, where only five hosted slots
+are available. It estimates each runner's pytest time by assigning whole
+fixture groups to workers, not by dividing a single long test across cores.
+It uses fewer jobs if the largest bin would exceed 1.2 times the mean, the
+split would not reduce wall time, or aggregate job time including repeated
+setup would rise by more than 5%. Small selections stay in one job. Shard summaries report estimated
+pytest time before cache skips and actual elapsed time for the test step.
+For a sharded Ubuntu PR, a single symbol-selector decision precedes the
+split, and one advisory receipt combines the shards' results. The Ubuntu PR
+planner reserves 75 seconds for that selector setup and receipt job when
+checking both wall time and the 5% aggregate budget. The manual Ubuntu run
+does not perform these PR-only steps or include that allowance.
+
+The lead job keeps the `all` label, seeds shared caches, and runs one-off
+checks; ARM64 retains `native`. The other jobs use `shard-2` and `shard-3`.
+Passed-test manifests keep `test-pass-v1-<os>-<label>` keys, but a module's
+hash does not depend on its duration bin. Sharded lanes consume passing hashes
+from all main labels when skipping cached work. Exact-SHA queue
+receipts, cache trust boundaries and required checks are unchanged.
 
 Timeouts use recent successful hosted job timings (November 16, 2026), rounded
 up from 1.4 times the larger combined main/PR duration. Combined shard time is
@@ -968,16 +1043,40 @@ fragments remain, so none is left out of that release or announced twice.
 
 The Free plan runs at most 20 hosted jobs at once and GitHub gives queued
 jobs no priority, so a burst of ready PRs starves the merge queue (#1373).
-Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait`. It
-reads queued and in-progress runs and their jobs through `gh api` (read-only)
-and exits 0 when admission is fine. It exits 3 (hold) while any
-`merge_group` job is queued for a runner, or while more than `--max-ready`
-(default 4) ready-PR area matrices are in flight. `--wait` polls with
+Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait --pr N`.
+It reads PRs, workflow runs and jobs through `gh api` (read-only) and exits 0
+when admission is fine. The `priority` label, added to PRs from non-bot
+collaborators with write access other than `theontho`, lets the named PR skip
+the capacity gate. Other PRs exit 3 (hold) while a priority PR has active
+draft or ready CI or is in the merge queue, while any `merge_group` job
+is queued for a runner, or while more than `--max-ready` (default 4)
+ready-PR area matrices are in flight. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
 prints the counts. The check reserves nothing, so each supervisor admits one
 PR at a time and starts the next check only once the previous PR's ready run
 is visible; concurrent supervisors can overshoot `--max-ready` by at most one
 run each.
+
+#### Fast path for collaborators
+
+- **`priority`** is added to PRs from human collaborators with write,
+  maintain, or admin access, except the agent account (`theontho`). It is
+  added when you open, reopen, mark ready, or convert the PR to draft. You
+  can remove it until the next of those events; pushes do not restore it.
+  With it, you can ready your PR without waiting for agent capacity, and
+  agents yield while your draft or ready CI or merge queue entry is pending.
+- Add **`hands-off`** if you want to handle everything yourself, including
+  CI reruns. Add **`land-asap`** when you're done: owner-account agents may
+  rerun cancelled or lost-runner jobs and enqueue your ready PR at the front once
+  checks pass. `hands-off` takes precedence. Without `land-asap`, agents may
+  only move your existing queue entry after you enable auto-merge or enqueue
+  the PR yourself. Agents never push to, ready, or review-fix your PR.
+
+To skip the hosted macOS lane, usually the slowest, run `just certify-setup`
+and then `just certify` on your own Mac on the exact pushed PR head. See
+[Writer self-certification](#writer-self-certification) for setup and reference
+requirements. Batch review fixes into one push to avoid rerunning the full
+selected matrix after each fix.
 
 ## Cache plan
 
@@ -992,7 +1091,7 @@ publish exact hit/miss and key in each job summary.
 | Pixi | Many overlapping default/dev/optional environment sets (~8 GB in the sampled inventory) | Four CLI OS/architecture sets (~5.4 GB) + Linux lint (~0.1 GB) |
 | npm | actions/setup-node could save PR-scoped duplicates | One download cache per OS/arch and package-lock hash (~0.1 GB total) |
 | Cargo | Registry downloads plus a second Windows Tauri cache including `target/` | Shared registry/git downloads per OS/arch and Cargo.lock hash (~0.1 GB); no target cache |
-| hs38 reference | Automatic writes on PRs | One main-owned verified public reference (~0.8 GB), read-only on PRs |
+| hs38 reference | One main-owned Actions cache (~0.8 GB), keyed to the genome catalog | Not cached; CI downloads the pinned FASTA and prebuilt indexes from GitHub Releases |
 | liftOver chain | A new run-id key on each download | One checksum key (<0.001 GB), main-only writes |
 | apt | PR cold misses could save duplicates | Main-only writes (~0.1–0.3 GB) |
 | PharmCAT reference | Up to two infrequently reused ~1 GB OS-specific entries | Not cached; leave space for the common tool environments |
@@ -1000,9 +1099,32 @@ publish exact hit/miss and key in each job summary.
 
 Target steady state is roughly **6.6–7 GB**, leaving headroom for CodeQL-managed
 caches and lockfile rollover. This is a size plan, not an asserted measured
-post-deployment size. Old keys age out after seven days unused; no active caches
-are deleted by this PR. Monitor the API inventory after main seeds the new keys;
-old and new keys can temporarily coexist.
+post-deployment size. Old keys also age out after seven days unused.
+
+The **Actions cache hygiene** workflow runs daily on `main`. It removes a
+stale Pixi lock key only after the current lock has a cache for the same
+OS, architecture, Pixi version, scope, workspace path and cache archive version.
+It preserves equivalent checkout line endings. It keeps two recent
+CodeQL overlay bases for each configuration plus any for the exact main tip,
+and three passed-test cache generations for each suite on main and on each
+PR. Other PR-ref keys and unknown families remain untouched. Preview the plan
+in a manually dispatched `cache_hygiene.yml` run on `main`; set `apply` to delete.
+The summary records
+before and after repository cache bytes and the entries removed. Main moving
+during the cleanup stops further deletes.
+
+The shared OS suite downloads `hs38.fa.gz` from `v0.1.0` and its samtools
+dictionary, `.fai` and `.gzi` from `ci-hs38-1`. It verifies both SHA-256 pins
+in `scripts/ci_hs38.sh` before installing the files beside the bootstrap's
+support data, then uses the indexes to read a region before running tests.
+Updates to the installer invalidate passed-test hashes. CI does not rebuild
+indexes or fall back to upstream mirrors.
+To refresh the indexes, dispatch **Mirror reference genomes** with `ci_hs38`
+enabled and a new `ci-hs38-N` release tag. The hosted job builds against the
+pinned FASTA and publishes just the index bundle. Update the tag and archive
+SHA-256 together; retain the old release for older CI revisions. Once this
+change lands and older runs have finished, obsolete `hs38-v1-*` Actions
+entries can be deleted without removing any other cache family.
 
 Only each OS matrix job seeds its CLI Pixi cache; other jobs restore that same
 set and install any missing optional environments without saving duplicate sets.
@@ -1040,9 +1162,8 @@ CI Ubuntu, CI macOS, CI Windows and CI Linux ARM64 keep their own triggers,
 concurrency groups and workflow names, but run the CLI suite through one
 reusable workflow, `os_tests.yml`. Its `os` input selects the installer checks,
 Windows imputation and vep-rs, and ARM64 checks; `reference: true` (Ubuntu and
-macOS) adds the hg19ToHg38 chain and hs38 reference library. Every caller uses one
-`tier: all, shard: all` matrix entry, the `--ci-tier`/`--ci-shard` defaults, so
-it collects both tiers. Jobs report as `test-ubuntu / all`
+macOS) adds the hg19ToHg38 chain and hs38 reference library. Each regular
+matrix collects both tiers. Its lead job reports as `test-ubuntu / all`
 on main and `ubuntu / test-ubuntu / all` in PR area checks (likewise macOS and
 Windows); ARM64's single job is
 `native-arm64 / native`. Each job uploads `tests-<os>-<label>`. The workflow has
@@ -1051,8 +1172,8 @@ other.
 Smoke contexts change from `smoke (OS, package)` / `smoke (OS, benchmark)` to
 `smoke (OS)` (prefixed `smoke / ` in PR area checks). The reusable caller IDs,
 `required` and `Ready PR area checks` names and dependencies are unchanged.
-Failure observation, red-main matching and flake-ledger retries use the same
-normalized PR/main job names; historical shard failures remain historical data.
+Failure observation, red-main matching and flake-ledger retries use normalized
+PR/main job names, including the shard label.
 
 ### Reading the Linux shadow report
 
@@ -1131,7 +1252,14 @@ selection. If the cron run is delayed or missing, run
 `gh workflow run ubuntu_ci.yml --ref main` (leave `optional-tools-only` off).
 Both triggers run the full regular suite without skipping from either result
 cache. A passing run refreshes main's test cache and exports the Linux
-observation map. Dispatches on other refs cannot publish that map.
+observation map as a seven-day workflow artifact, separate from the
+evictable Actions cache. Dispatches on other refs cannot publish that map.
+The Ubuntu jobs and activation canary use a read-only Actions token to find
+the latest compatible artifact from a successful scheduled or full manual
+Ubuntu run on main. The artifact digest, run and attempt, source ancestry,
+Pixi lock, Python version, and 48-hour freshness limit must all match.
+Absent or incompatible artifacts leave the legacy selection in force.
+The merge queue does not change its test selection based on this map.
 Where the suite provides pytest node IDs, the failure replay reruns only those
 cases; a collection error instead replays its one test module. It checks
 first-parent trees in order since the last verified passing scheduled or full

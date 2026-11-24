@@ -435,6 +435,27 @@ def test_cache_downloaded_into_reference_library_is_used(tmp_path, fake_vep):
     assert "--offline" in cmd
 
 
+def test_1346_vep_keeps_vcf_build_when_library_has_a_different_reference(
+    tmp_path, fake_vep
+):
+    library = tmp_path / "lib"
+    write_fasta(library / "GRCh38.fa", {"chr1": "A" * 100}, assembly="GRCh38")
+    ensembl_test_cache(library / "vep", "GRCh37")
+    vcf = tmp_path / "sample.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##reference=GRCh37\n##contig=<ID=1>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "1\t10\t.\tA\tG\t50\tPASS\t.\n"
+    )
+
+    _vep("-i", bgzip_index(vcf), "--ref", str(library))
+
+    [cmd] = fake_vep()
+    # contract: do not annotate a GRCh37 VCF in GRCh38 coordinates.
+    assert _value(cmd, "--assembly") == "GRCh37"
+    assert "--fasta" not in cmd
+
+
 # --- BAM/CRAM input: bcftools calls variants first ------------------------------
 
 _GENOME = "ACGTTGCAAGCTTCGATCGGATCCTAGCATGCAAGTCCGATAGCTAGCTTACGGATCAGTCAGGATC" * 8

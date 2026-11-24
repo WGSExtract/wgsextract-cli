@@ -19,8 +19,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import IO
 
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.table_writer import Column, Value, table_path, write_table
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen

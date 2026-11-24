@@ -12,13 +12,16 @@ from pathlib import Path
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.bam import BamToUbamParams
 from wgsextract_cli.core import ultima
+from wgsextract_cli.core.alignment.samtools_commands import (
+    regular_files_bytes,
+    sort_memory,
+)
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
 from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.samtools_commands import regular_files_bytes, sort_memory
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     UsageError,

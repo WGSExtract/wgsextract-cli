@@ -124,14 +124,27 @@ def _depth(
 def _alt_fraction(
     alt: int, n_alts: int, fmt: Mapping[str, str], info: Mapping[str, str], split: bool
 ) -> float | None:
+    """Return ALT's read fraction from FORMAT/AD when the ALT count is present,
+    the known AD counts sum to more than zero, and either FORMAT/DP is present
+    or the record is unsplit with all AD counts present. Divide the ALT count by
+    the larger of that sum and FORMAT/DP, or by the sum alone if DP is absent.
+
+    With unusable AD (including a zero sum or missing counts without DP), try
+    FORMAT/VAF then FORMAT/AF, then INFO/DP4 for an unsplit biallelic record.
+    Return None if no fraction is available.
+    """
     counts = _numbers(fmt.get("AD"))
     alt_count = counts[alt] if len(counts) > alt else None
     format_depth = _number(fmt.get("DP"))
     # A split record's AD keeps only REF and this ALT: only FORMAT/DP still
     # counts the reads of the ALTs split off.
     if alt_count is not None and (format_depth is not None or not split):
-        total = max(math.fsum(v or 0.0 for v in counts), format_depth or 0)
-        return alt_count / total if total else None
+        known = [v for v in counts if v is not None]
+        # AD of no informative read measures nothing, and without FORMAT/DP a
+        # missing count would shrink the denominator: use the fallbacks.
+        total = math.fsum(known)
+        if total > 0 and (format_depth is not None or len(known) == len(counts)):
+            return alt_count / max(total, format_depth or 0)
     for key in ("VAF", "AF"):  # DeepVariant VAF, Clair3 AF: per ALT
         fractions = _numbers(fmt.get(key))
         if len(fractions) >= alt and fractions[alt - 1] is not None:

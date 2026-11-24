@@ -1,5 +1,3 @@
-import ast
-import functools
 import itertools
 import os
 import shutil
@@ -12,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from scripts.ci_test_tiers import module_shard, shared_fake_data
 from tests.fake_tools import FakePixi
 from tests.home_isolation import isolate_home, state_directory_setting
 from tests.macos_openmp import sweep_unwritten_openmp_registrations
@@ -22,19 +21,15 @@ from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.runtime import repo_root, source_checkout_root
 
 
-@functools.cache
-def _uses_shared_fake_data(module_path: Path) -> bool:
-    """Whether a test module imports the shared synthetic-data generator."""
-    try:
-        tree = ast.parse(module_path.read_bytes(), str(module_path))
-    except (OSError, SyntaxError):
-        return False
-    return any(
-        isinstance(node, ast.ImportFrom)
-        and (node.module, node.level) in {("tests.smoke_utils", 0), ("smoke_utils", 1)}
-        and any(alias.name == "ensure_fake_data" for alias in node.names)
-        for node in tree.body
-    )
+def _parse_ci_shard(value: str) -> tuple[int, int] | None:
+    if value == "all":
+        return None
+    index, sep, count = value.partition("/")
+    if not sep or not index.isascii() or not count.isascii():
+        raise ValueError("expected an index/count shard or 'all'")
+    if not index.isdecimal() or not count.isdecimal() or int(index) >= int(count):
+        raise ValueError("expected 0 <= shard index < shard count")
+    return int(index), int(count)
 
 
 @pytest.hookimpl(optionalhook=True, tryfirst=True)
@@ -52,7 +47,7 @@ def pytest_xdist_make_scheduler(config: pytest.Config, log: Any) -> Any:
     class ModuleGroupScheduling(LoadScopeScheduling):  # type: ignore[misc]
         def _split_scope(self, nodeid: str) -> str:
             path = nodeid.split("::", 1)[0]
-            if _uses_shared_fake_data(config.rootpath / path):
+            if shared_fake_data(config.rootpath / path):
                 return "shared-smoke"
             return path
 
@@ -74,9 +69,9 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     )
     group.addoption(
         "--ci-shard",
-        choices=("all", "0/2", "1/2"),
-        default="all",
-        help="Split the core tier by stable module hash, retaining module fixtures.",
+        type=_parse_ci_shard,
+        default=None,
+        help="Fallback local partition index/count when no duration plan is supplied.",
     )
     group.addoption(
         "--ci-require-real-data",
@@ -134,20 +129,23 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_collection_modifyitems(
     config: pytest.Config, items: list[pytest.Item]
 ) -> None:
-    from scripts.ci_test_tiers import SINGLE_OS_MODULES, module_shard, test_tier
+    from scripts.ci_test_tiers import SINGLE_OS_MODULES, test_tier
 
     tier = config.getoption("--ci-tier")
     skip_independent = config.getoption("--ci-skip-independent")
     shard = config.getoption("--ci-shard")
-    if tier == "all" and not skip_independent and shard == "all":
+    if tier == "all" and not skip_independent and shard is None:
         return
-    selected, deselected = [], []
+    selected: list[pytest.Item] = []
+    deselected: list[pytest.Item] = []
     for item in items:
         keep = (tier == "all" or test_tier(str(item.path)) == tier) and not (
             skip_independent and item.path.name in SINGLE_OS_MODULES
         )
-        if shard != "all":
-            keep = keep and module_shard(str(item.path)) == int(shard[0])
+        if shard is not None and keep:
+            index, count = shard
+            group = "shared-smoke" if shared_fake_data(item.path) else str(item.path)
+            keep = module_shard(group, count) == index
         (selected if keep else deselected).append(item)
     items[:] = selected
     config.hook.pytest_deselected(items=deselected)

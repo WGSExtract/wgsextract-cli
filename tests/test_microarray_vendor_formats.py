@@ -188,15 +188,10 @@ def test_myheritage_v1_writes_ct_and_gt_reversed_and_v2_does_not(tmp_path):
     ]
 
 
-@pytest.mark.parametrize(
-    "format_name", ["MyHeritage_GSA_2025", "MyHeritage_GSA_2025_609424"]
-)
-def test_new_gsa_layouts_keep_myheritage_quoting_and_allele_order(
-    tmp_path, format_name
-):
+def test_myheritage_v3_keeps_myheritage_quoting_and_allele_order(tmp_path):
     out = _convert(
         tmp_path,
-        format_name,
+        "MyHeritage_V3",
         ".csv",
         "RSID,CHROMOSOME,POSITION,RESULT\r\n",
         "rs2\t1\t2000\nrs3\t1\t3000\nrsGone\t1\t9999\n",
@@ -209,10 +204,10 @@ def test_new_gsa_layouts_keep_myheritage_quoting_and_allele_order(
     )
 
 
-def test_ancestry_2021_layout_writes_its_numbered_sex_chromosomes(tmp_path):
+def test_ancestry_v2cd_layout_writes_its_numbered_sex_chromosomes(tmp_path):
     out = _convert(
         tmp_path,
-        "Ancestry_V2_2021",
+        "Ancestry_V2cd",
         ".txt",
         "rsid\tchromosome\tposition\tallele1\tallele2\n",
         "rsX\t23\t5000\nrsY\t24\t6000\nrsMT\t26\t7000\nrsGone\t1\t9999\n",
@@ -599,7 +594,7 @@ def test_vendor_xy_chromosome_is_the_x_par(tmp_path):
 
 def test_template_corrections_move_yoruba_mt_positions_to_the_rcrs(tmp_path):
     root = _templates(
-        tmp_path / "lib", "23andMe_V4.txt", "# h\n", "rs397507452\tMT\t7444\n", ""
+        tmp_path / "lib", "23andMe_V4.txt", "# h\n", "rs397507452\tMT\t7444\n"
     )
     kit = _kit(tmp_path / "kit.txt", [("i1", "MT", "7443", "AA")])
     out = tmp_path / "out.txt"
@@ -706,13 +701,13 @@ def test_a_delta_templates_bases_are_among_its_freshness_inputs():
     names = [
         path.name
         for path in template_resource_paths(
-            str(_PACKAGED_TEMPLATES.parent), "Ancestry_V2ab"
+            str(_PACKAGED_TEMPLATES.parent), "meuDNA_V2"
         )
     ]
-    assert "Ancestry_V2ab.txt.delta.gz" in names
-    # V2ab is stored against V2cd, itself against V2_2021.
-    assert "Ancestry_V2cd.txt.delta.gz" in names
-    assert "Ancestry_V2_2021.txt.gz" in names
+    assert "meuDNA_V2.csv.delta.gz" in names
+    # meuDNA_V2 is stored against Genera_V1, itself against MyHeritage_V3.
+    assert "Genera_V1.csv.delta.gz" in names
+    assert "MyHeritage_V3.csv.gz" in names
 
 
 def test_delta_template_resolves_base_in_reference_library_bootstrap(tmp_path):
@@ -723,20 +718,20 @@ def test_delta_template_resolves_base_in_reference_library_bootstrap(tmp_path):
     head = templates / "head"
     body.mkdir(parents=True)
     head.mkdir(parents=True)
-    (head / "Ancestry_V2cd.txt").write_text(
+    (head / "Ancestry_V2ab.txt").write_text(
         "rsid\tchromosome\tposition\tallele1\tallele2\n"
     )
-    with gzip.open(body / "Ancestry_V2_2021.txt.gz", "wt") as handle:
+    with gzip.open(body / "Ancestry_V2cd.txt.gz", "wt") as handle:
         handle.write("rsLocalBase\t1\t100\nrsSkipped\t1\t150\n")
-    with gzip.open(body / "Ancestry_V2cd.txt.delta.gz", "wt") as handle:
-        handle.write("#base\tAncestry_V2_2021\n=1\n+rsLocalDelta\t1\t200\n")
+    with gzip.open(body / "Ancestry_V2ab.txt.delta.gz", "wt") as handle:
+        handle.write("#base\tAncestry_V2cd\n=1\n+rsLocalDelta\t1\t200\n")
 
     out = tmp_path / "out.txt"
     kit = _kit(
         tmp_path / "kit.txt",
         [("rsLocalBase", "1", "100", "AG"), ("rsLocalDelta", "1", "200", "CT")],
     )
-    convert_to_vendor_format("Ancestry_V2cd", kit, str(out), str(tmp_path))
+    convert_to_vendor_format("Ancestry_V2ab", kit, str(out), str(tmp_path))
 
     lines = out.read_text().splitlines()
     assert lines == [
@@ -744,6 +739,6 @@ def test_delta_template_resolves_base_in_reference_library_bootstrap(tmp_path):
         "rsLocalBase\t1\t100\tA\tG",
         "rsLocalDelta\t1\t200\tC\tT",
     ]
-    assert body / "Ancestry_V2_2021.txt.gz" in template_resource_paths(
-        str(tmp_path), "Ancestry_V2cd"
+    assert body / "Ancestry_V2cd.txt.gz" in template_resource_paths(
+        str(tmp_path), "Ancestry_V2ab"
     )

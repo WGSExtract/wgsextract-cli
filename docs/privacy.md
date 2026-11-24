@@ -40,6 +40,31 @@ job authorization and download permission; merely starting the server grants
 neither to an analysis. Do not enable downloads globally on a machine that
 must remain offline.
 
+## Checking a run before going offline
+
+`wgsextract deps ready -- COMMAND ...` reports whether a command line can run
+here without the network, before a long run or before disconnecting. It checks
+each prerequisite with the check the command's own run makes: the platform,
+the tools it runs (with their versions, Conda packages and the licences their
+metadata record), Docker images in the local engine (identity, digests,
+labels), NVIDIA GPUs and driver, Clair3 models and wgse-deepvariant weights
+against their pinned SHA-256, and the input, reference genome, indexes and
+annotation data. Each item is `runnable`, `installed`, `unverified`,
+`unsupported`, `missing`, `stale` or `incompatible`; a missing one names the
+explicit setup or download step that provides it (`deps install`,
+`ref library --install`, `docker pull`, `ref verify`, `bam index`). The check
+installs, pulls and downloads nothing and makes no network request; a command
+that downloads, or a remote input, is reported as needing the network. It
+exits 3 when the run isn't ready. Model and weight terms show as `unknown`
+where nothing installed records them: installing, verifying or signing a
+component doesn't grant a right to redistribute it. The server doesn't offer
+the check, since its command line names paths on the host.
+
+```sh
+wgsextract deps ready -- vcf clair3 --input ont.bam --gpu
+wgsextract --json deps ready -- vcf deepvariant --input sample.cram
+```
+
 ## What goes where
 
 Public-data requests reveal your IP address, requested asset/model identifiers,
@@ -65,6 +90,8 @@ queries. The separate `vep download` command fetches public data only.
 | `lineage mt-haplogroup --download` | GitHub `genepi/phylotree-fu-rcrs`, `genepi/phylotree-rcrs-17`, `genebygene/mitotree` releases/CDN | Selected tree ID/version, not haplogroup or variants |
 | `lineage y-haplogroup --download` | GitHub WGSExtract releases/CDN; configured custom-tree host | Tree ID/version and selected reference build/table; custom-tree URL, not sample markers/calls |
 | `report --download` | GitHub WGSExtract releases/CDN | Selected public gene-list filename/version, not findings |
+| `report --pgx-context FILE --download` | `files.cpicpgx.org` | The pinned CPIC database release filename (`cpic_db_dump-v1.61.0.sql.gz`), not the medication list, findings or genotypes; the medication file is read locally only |
+| `ref recheck --online` | `ftp.ncbi.nlm.nih.gov` (ClinVar's weekly release listing for the recorded build) | A plain GET of the public listing URL; no sample name, paths, positions, genotypes or findings. Without `--online` (or with `--answers FILE`) nothing is contacted; see [recheck-and-delta.md](recheck-and-delta.md) |
 | `score pgs --download` | `www.pgscatalog.org`, `ftp.ebi.ac.uk`, GitHub WGSExtract releases/CDN | PGS ID, coordinate build, public scoring weights and calibration/ancestry asset names, not sample scores or genotypes |
 | `basecall --download` | Oxford Nanopore's Dorado model distribution | Model/modification names and POD5 chemistry metadata used to select a model. No signal/read files are uploaded. For offline use pass a local `--model` directory without `--modified-bases`. |
 | `methylation regions --download` | `hgdownload.soe.ucsc.edu` | Pinned public hg38 `cpgIslandExt` filename; no sample positions or calls. The flag is local-only, and the server can read an allowed, preinstalled table. |
@@ -115,6 +142,7 @@ behavior. Classification describes the baseline, before this change.
 | `lineage mt-haplogroup`, `lineage y-haplogroup`, custom remote Y trees | Yes when data absent | **Default-violation**: require `--download`; cache reuse remains local |
 | `analyze comprehensive` | Inherits first-use tree downloads from lineage steps | **Default-violation**: child commands now refuse missing data without consent; pre-provision it or explicitly opt in through config |
 | `report` with clinical findings and absent selected gene list | Yes | **Default-violation**: require `--download`, not silent partial placement |
+| `report --pgx-context` with the pinned CPIC release absent | Yes | Requires `--download`; the medication list never leaves the computer |
 | Dorado `basecall` model names/modifications | Yes | **Default-violation**: require `--download` or a local model directory |
 | Remote realignment input, remote sizes, benchmark real-data selection | Yes | Explicit **opt-in**; request data disclosed above |
 | `serve` HTTP/MCP, desktop local backend/path picker | Loopback only | Explicit local transport, no automatic remote call; stdio MCP opens no listener |

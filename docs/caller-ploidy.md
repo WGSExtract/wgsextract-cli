@@ -9,8 +9,11 @@ This remains true with installed M/F tables when their selected policies agree.
 Sex/mitochondrial aliases (including RefSeq X/Y and `M`/`chrMT`) resolve
 consistently for table lookups; the original FASTA names remain in caller inputs.
 
-The reference library's ploidy file wins; otherwise GRCh37/GRCh38 use the same
-bcftools build-specific table used by `vcf snp`. The table's coordinates are
+The reference library's ploidy file wins; otherwise a confirmed GRCh37 or
+GRCh38 build uses the same bcftools table as `vcf snp`. A file or folder name
+or contig count alone does not select a build-specific table. For a custom
+reference with no confirmed build, put its policy in the library's `ploidy.txt`.
+The table's coordinates are
 1-based inclusive, translated to half-open BED intervals at each boundary.
 Male X is haploid outside the table's PAR intervals and diploid inside; autosomes
 remain diploid. The bcftools contract makes male Y haploid (including its PAR

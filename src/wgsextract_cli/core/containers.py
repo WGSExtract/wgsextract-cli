@@ -18,6 +18,7 @@ import uuid
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.execution_context import context_thread, current
@@ -75,25 +76,32 @@ def image_record(image: str) -> dict[str, str]:
     """
     if "@" in image:
         return {"image": image}
-    docker_path = get_tool_path("docker")
-    if not docker_path:
-        return {"image": image}
-    inspected = run_command(
-        [docker_path, "image", "inspect", image], capture_output=True, check=False
-    )
-    try:
-        found = (
-            json.loads(inspected.stdout or "")[0] if inspected.returncode == 0 else {}
-        )
-    except (ValueError, IndexError, TypeError):
-        found = {}
-    image_id = found.get("Id") if isinstance(found, dict) else None
+    found = inspect_image(image) or {}
+    image_id = found.get("Id")
     if not image_id:
         return {"image": image}
     return {
         "image": _pull_reference(image, found.get("RepoDigests") or []),
         "image_id": image_id,
     }
+
+
+def inspect_image(image: str) -> dict[str, Any] | None:
+    """What the local engine knows of ``image`` (``docker image inspect``,
+    which never pulls), or None when Docker or the image isn't there."""
+    docker_path = get_tool_path("docker")
+    if not docker_path:
+        return None
+    inspected = run_command(
+        [docker_path, "image", "inspect", image], capture_output=True, check=False
+    )
+    try:
+        found = (
+            json.loads(inspected.stdout or "")[0] if inspected.returncode == 0 else None
+        )
+    except (ValueError, IndexError, TypeError):
+        return None
+    return found if isinstance(found, dict) else None
 
 
 def _pull_reference(image: str, repo_digests: list[str]) -> str:

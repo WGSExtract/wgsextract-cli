@@ -11,8 +11,65 @@ import subprocess
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Protocol
 
-from wgsextract_cli.core.utils import UsageError, run_command
+from wgsextract_cli.core.builds import ploidy_preset
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
+
+
+class _PloidySource(Protocol):
+    @property
+    def confirmed_build(self) -> str | None: ...
+    @property
+    def ploidy_file(self) -> str | None: ...
+
+
+def ploidy_args(
+    ploidy: str | None,
+    ploidy_file: str | None,
+    lib: _PloidySource,
+    *,
+    options: str | None = "--ploidy or --ploidy-file",
+    assembly_option: bool = False,
+) -> list[str]:
+    """bcftools call's ploidy options, the one policy every caller shares:
+    the explicit choice, else the reference library's ploidy file, else
+    bcftools' GRCh37/GRCh38 preset for a confirmed build. T2T (whose PARs
+    aren't GRCh38's) and unconfirmed builds get no guess, naming ``options``
+    (the command's own ploidy flags, or None when it has none) and the
+    library file that would serve them."""
+    if not ploidy and not ploidy_file:
+        ploidy_file = lib.ploidy_file
+    if ploidy_file:
+        from wgsextract_cli.core.variant_files import verify_paths_exist
+
+        verify_paths_exist({"--ploidy-file": ploidy_file})
+        return ["--ploidy-file", ploidy_file]
+    if ploidy:
+        return ["--ploidy", ploidy]
+    # bcftools' predefined GRCh37/GRCh38 ploidy covers both X and chrX naming.
+    build = lib.confirmed_build
+    if preset := ploidy_preset(build):
+        return ["--ploidy", preset]
+    library_file = f"ploidy_{build}.txt" if build else "ploidy.txt"
+    fix = f"Pass {options}, or add" if options else "Add"
+    reason = (
+        "the build is not confirmed by the input header or reference; "
+        "names and contig counts are not enough. "
+        if not build
+        else "bcftools' presets fit only GRCh37 and GRCh38, whose "
+        "sex-chromosome PARs differ from those of other builds. "
+    )
+    assembly = (
+        " If you know the input is GRCh37 or GRCh38, pass --assembly."
+        if not build and assembly_option
+        else ""
+    )
+    raise WGSExtractError(
+        "Ploidy could not be chosen for this reference (reference build: "
+        f"{build or 'unknown'}): {reason}"
+        f"{fix} {library_file} to the reference library.{assembly}"
+    )
 
 
 def alignment_samples(alignment: str) -> list[str]:

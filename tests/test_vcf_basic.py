@@ -27,6 +27,7 @@ from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import basic
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.sample_ploidy import ploidy_args
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 from wgsextract_cli.main import main
@@ -303,15 +304,14 @@ def test_caller_requires_a_reference(sample, tmp_path):
 
 
 def test_missing_ploidy_file_is_reported(tmp_path):
-    args = argparse.Namespace(ploidy=None, ploidy_file=str(tmp_path / "nope.txt"))
+    lib = argparse.Namespace(ploidy_file=None, build=None)
     with pytest.raises(WGSExtractError, match="--ploidy-file"):
-        basic._ploidy_args(args, argparse.Namespace(ploidy_file=None, build=None))  # type: ignore[arg-type]
+        ploidy_args(None, str(tmp_path / "nope.txt"), lib)  # type: ignore[arg-type]
 
 
 def test_explicit_ploidy_wins_over_the_librarys_file():
-    args = argparse.Namespace(ploidy="1", ploidy_file=None)
     lib = argparse.Namespace(ploidy_file="/lib/ploidy.txt", build="hg38")
-    assert basic._ploidy_args(args, lib) == ["--ploidy", "1"]  # type: ignore[arg-type]
+    assert ploidy_args("1", None, lib) == ["--ploidy", "1"]  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -455,6 +455,18 @@ def _index_test_query(vcf: str, position: int = 50000) -> str:
         ["bcftools", "query", "-r", f"chr1:{position}-{position}", "-f", "%ID\n", vcf],
         capture_output=True,
     ).stdout
+
+
+@needs_htslib
+def test_issue_1519_vcf_index_does_not_suggest_sorting_a_gzip_file(tmp_path):
+    vcf = tmp_path / "ordinary.vcf.gz"
+    _write_index_test_vcf(vcf, 100, 200)
+    vcf.write_bytes(gzip.compress(vcf.with_suffix("").read_bytes()))
+
+    with pytest.raises(WGSExtractError, match="not BGZF") as exc:
+        ensure_vcf_indexed(vcf)
+
+    assert "coordinate-sorted" not in str(exc.value)
 
 
 @needs_htslib

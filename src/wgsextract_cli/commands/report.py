@@ -5,6 +5,7 @@ from pathlib import Path
 
 from wgsextract_cli.api.report import ReportParams
 from wgsextract_cli.cli.registration.report import register as register
+from wgsextract_cli.core import cpic_data, pgx_context, resource_releases
 from wgsextract_cli.core import personal_report as pr
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.results import current_result, human_output
@@ -35,14 +36,37 @@ def run_report(params: ReportParams) -> None:
     extra = list(params.results)
     if outdir != folder:
         extra.append(outdir)
+    context = cpic = None
+    if params.pgx_context is not None:
+        context = pgx_context.load(params.pgx_context)
+        cpic = cpic_data.load()
     sources = pr.sample_sources(folder, params.input, extra)
     report = pr.build_report(
-        folder, input_file=params.input, sources=sources, gene_list=params.gene_list
+        folder,
+        input_file=params.input,
+        sources=sources,
+        gene_list=params.gene_list,
+        pgx_context=context,
+        cpic=cpic,
     )
 
     result = current_result()
     for source in sources:
         result.add_input(source.manifest, "manifest")
+    for record in resource_releases.cited_resources(folder, report, sources):
+        result.add_resource(record)
+    if (review := report["sections"].get("medication_review")) is not None:
+        # The guidance depends on both: a changed medication list or CPIC
+        # release gives a different review.
+        result.add_input(params.pgx_context, "pgx_context")
+        result.add_input(cpic_data.ensure(), "cpic_data")
+        result.add_metrics(
+            cpic_release=review["cpic"]["release"],
+            cpic_sha256=review["cpic"]["sha256"],
+            pgx_rules_version=review["rules"]["version"],
+            pgx_rules_sha256=review["rules"]["sha256"],
+            pgx_context_sha256=review["context"]["sha256"],
+        )
     stem = outdir / f"{report['sample']['name']}_personal_report"
     base = pr.link_base(folder, outdir)
     html_path = Path(f"{stem}.html")
