@@ -533,6 +533,8 @@ class TestMicroarraySmoke:
             self.ref_dir,
             "--outdir",
             self.outdir,
+            "--ref-vcf-tab",
+            os.path.join(self.ref_dir, "microarray", "All_SNPs_hg38_ref.tab.gz"),
             "--formats",
             "23andme_v5",
         ]
