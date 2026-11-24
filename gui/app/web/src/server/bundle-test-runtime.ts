@@ -1,4 +1,4 @@
-import { checkedOptionsForContext } from "../../../shared/rendering.js";
+import { checkedOptionsForContext, multiPathControlsFromManifest } from "../../../shared/rendering.js";
 import { setupStepsForPlatform } from "../../../shared/setup-platforms.js";
 import type { BundleManifest, Labels, StringMap, ValueMap } from "../../../shared/types.js";
 import { emptyBundleState } from "./bundle-state.js";
@@ -41,6 +41,7 @@ export async function makeRuntime(manifest: BundleManifest, workspaceRoot: strin
             rowValues: {},
             bundleRootPath: workspaceRoot,
             placeholderLabels: placeholderLabels(manifest),
+            multiPathControls: multiPathControlsFromManifest(manifest),
         }, workspaceRoot),
     };
 }

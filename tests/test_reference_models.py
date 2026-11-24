@@ -58,15 +58,19 @@ def test_hs38d1_variants_are_hg38_by_signature_and_contig_count(
 
 def test_1167_distributed_t2t_signature_does_not_identify_mitochondria():
     model = identify_reference("", "ed9f80c8e04c461cba35dd1b85a2e2e8")
-    assert model is not None and (model.name, model.mito) == ("T2Tv2.0", "")
+    assert model is not None and (model.name, model.tag, model.mito) == (
+        "T2Tv20",
+        "T2T CHM13",
+        "",
+    )
 
 
 @pytest.mark.parametrize(
-    ("lengths", "build"), [(HG19, "hg19"), (HG38, "hg38"), (T2T, "T2T")]
+    ("lengths", "build"), [(HG19, "GRCh37"), (HG38, "GRCh38"), (T2T, "T2T CHM13")]
 )
 @pytest.mark.parametrize("chr_prefix", [False, True])
 def test_unknown_25_contig_dictionary_is_identified_by_chr1(lengths, build, chr_prefix):
-    # 25 contigs fits hg19, hg38 and T2T alike, so the count must not decide.
+    # 25 contigs fits GRCh37, GRCh38 and T2T CHM13 alike, so the count must not decide.
     model = _identify(_header(lengths, chr_prefix, pad_to=25))
     assert model is not None
     assert (model.name, model.evidence) == (build, "chr1 length")
@@ -84,9 +88,9 @@ def test_contig_count_names_the_catalog_fasta_only_when_builds_agree():
     model = _identify(_header(HG38, chr_prefix=True, pad_to=455))
     assert model is not None and model.fasta == "hg38.fa.gz"
 
-    # 93 contigs is hg19's count, so it can't name a FASTA for an hg38 header.
+    # 93 contigs is GRCh37's count, so it can't name a FASTA for a GRCh38 header.
     model = _identify(_header(HG38, chr_prefix=True, pad_to=93))
-    assert model is not None and (model.name, model.fasta) == ("hg38", "")
+    assert model is not None and (model.name, model.fasta) == ("GRCh38", "")
 
 
 def test_contig_count_identifies_pets_despite_a_chr1():
@@ -105,7 +109,7 @@ def test_reference_fasta_is_the_last_resort():
     header = _header({"contig_a": 1000, "contig_b": 2000})
     assert _identify(header) is None
     model = _identify(header, reference_fasta="/refs/hg38/hg19.fa.gz")
-    assert model is not None and (model.name, model.evidence) == ("hg19", "reference")
+    assert model is not None and (model.name, model.evidence) == ("GRCh37", "reference")
     # A folder's name is not evidence about the file in it.
     assert _identify(header, reference_fasta="/refs/hg38/custom.fa") is None
 
@@ -116,7 +120,10 @@ def test_describe():
     header = _header(HG38, chr_prefix=True, pad_to=30)
     header = header.replace("SN:chrMT\tLN:16569", f"SN:chrMT\tLN:16569\tM5:{RCRS_MD5}")
     model = _identify(header)
-    assert model is not None and model.describe() == "hg38 (Chr), rCRS, 30 SNs"
+    assert model is not None and model.describe() == "GRCh38 (Chr), rCRS, 30 SNs"
+
+    exact = identify_reference(header, "c9ef5f042a951d511567dd4ea9bd126e")
+    assert exact is not None and exact.describe() == "hs38 [1K38h] (Chr), rCRS, 30 SNs"
 
 
 def _catalog() -> list[dict[str, str]]:
@@ -164,7 +171,7 @@ def test_vcf_contig_lines_are_read_when_there_are_no_sq_lines():
     )
     model = identify_reference(header)
     assert model is not None
-    assert (model.name, model.naming, model.mito) == ("T2T", "Chr", "")
+    assert (model.name, model.naming, model.mito) == ("T2T CHM13", "Chr", "")
 
 
 @needs_tools("samtools")
@@ -217,8 +224,9 @@ def test_info_reads_the_model_name_with_or_without_a_naming():
     human = _identify(_header(HG38, chr_prefix=True, pad_to=30))
     cat = _identify(_header({"chrA1": 239_367_248, "chrA2": 169_388_855}, pad_to=71))
     assert human is not None and cat is not None and cat.naming == ""
-    assert reference_model_name(human.describe()) == "hg38"
+    assert reference_model_name(human.describe()) == "GRCh38"
     assert reference_model_name(cat.describe()) == "Cat_Fca126"
+    assert reference_model_name("hs38 [1K38h] (Chr), rCRS, 195 SNs") == "hs38"
     assert reference_model_name("Unknown, 12 SNs") == "Unknown"
 
 

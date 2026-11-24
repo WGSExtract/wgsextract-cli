@@ -67,7 +67,7 @@ const exitCodeErrorKinds: Record<number, ResultNotice["kind"]> = { 2: "usage", 3
 /** The manifest's result document declaration when it covers this action's command. */
 export function resultDocumentSpecFor(manifest: Pick<BundleManifest, "resultDocument"> | null | undefined, action: ActionSpec): ResultDocumentSpec | undefined {
     const spec = manifest?.resultDocument;
-    return spec?.executables.includes(action.command?.executable) ? spec : undefined;
+    return action.command && spec?.executables.includes(action.command.executable) ? spec : undefined;
 }
 
 /** Whether the document is written to a file the app provides rather than to stdout. */
