@@ -13,6 +13,7 @@ from tests.htslib_helpers import (
     needs_htslib,
     run_wgsextract,
     sam_to_bam,
+    t2t_stand_in,
     vcf_calls,
     write_fasta,
 )
@@ -279,3 +280,39 @@ def test_sex_par_850_dry_run_cannot_rewrite_an_interrupted_runs_policy(
     )
     assert planned.status == "ok"
     assert original.read_text() == content
+
+
+@pytest.mark.parametrize("caller", ["gatk", "clair3", "deepvariant"])
+def test_1334_t2t_chrx_is_refused_rather_than_given_grch38_pars(
+    tmp_path, caller, request
+):
+    """#1334: T2T's PARs aren't GRCh38's, so sex-aware calling of its chrX
+    has no preset to borrow; the refusal names the library file to add."""
+    require_bare_name_fakes()
+    ref, [bam] = t2t_stand_in(tmp_path, "sample")
+    common = {
+        "input": Path(bam),
+        "ref": Path(ref),
+        "outdir": tmp_path / "out",
+        "region": "chrX",
+        "threads": 1,
+    }
+    if caller == "gatk":
+        request.getfixturevalue("gatk")
+        result = api.vcf.gatk(VcfGatkParams(**common), check=False)
+    elif caller == "clair3":
+        request.getfixturevalue("linux_x86")
+        request.getfixturevalue("fake_clair3")
+        model = make_model(tmp_path, "custom")
+        result = api.vcf.clair3(
+            VcfClair3Params(**common, model=str(model)), check=False
+        )
+    else:
+        request.getfixturevalue("dv")
+        result = api.vcf.deepvariant(
+            VcfDeepvariantParams(**common, model_type="WGS"), check=False
+        )
+    assert result.status == "failed"
+    assert "reference build: t2t" in str(result.error)
+    assert "ploidy_t2t.txt" in str(result.error)
+    assert not (tmp_path / "out" / f"{caller}.vcf.gz").exists()

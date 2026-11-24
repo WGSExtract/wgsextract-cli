@@ -1,10 +1,12 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type { BundleManifest, WorkspaceLocationInfo } from "../../../shared/types.js";
-import { errnoCode } from "./errors.js";
-import { appSettingsPath, bundleSetting, isManagedWorkspace, readAppSettings, withBundleSetting, workspaceRootIn, workspaceSentinelFileName, writeAppSettings } from "./workspace-location.js";
+import { errnoCode, HttpError } from "./errors.js";
+import { safePathComponent } from "./paths.js";
+import { appSettingsPath, bundleSetting, isManagedWorkspace, type MovedConfigPath, readAppSettings, withBundleSetting, withMovedConfigPaths, workspaceRootIn, workspaceSentinelFileName, writeAppSettings } from "./workspace-location.js";
 
 /**
  * {{usersWorkspace}}: one visible folder in the user's home (~/wgs-extract) for the bundle's settings file and the
@@ -25,16 +27,16 @@ const legacyDefaultsKey = "defaultWorkspaceRoots";
 const syncMetadataFileName = ".workspace-sync.json";
 const bundleStateFileName = "state.json";
 
-const usersWorkspaces = new Map<string, string>();
+const usersWorkspaces = new Map<string, { root: string; followsLocation: boolean }>();
 
 /** Records the users workspace of the bundle prepared in `bundleRoot`, for {{usersWorkspace}} in its paths. */
-export function registerUsersWorkspace(bundleRoot: string, usersRoot: string) {
-    usersWorkspaces.set(path.resolve(bundleRoot), path.resolve(usersRoot));
+export function registerUsersWorkspace(bundleRoot: string, usersRoot: string, followsLocation = false) {
+    usersWorkspaces.set(path.resolve(bundleRoot), { root: path.resolve(usersRoot), followsLocation });
 }
 
 /** The users workspace of the bundle in `bundleRoot`; without one, the bundle workspace stands in for it. */
 export function usersWorkspaceFor(bundleRoot: string): string {
-    return usersWorkspaces.get(path.resolve(bundleRoot)) ?? bundleRoot;
+    return usersWorkspaces.get(path.resolve(bundleRoot))?.root ?? bundleRoot;
 }
 
 /** A bundle may only suggest one visible folder directly in the user's home; it never picks an arbitrary path. */
@@ -77,6 +79,36 @@ export async function resolveUsersWorkspaceRoot(manifest: UsersManifest): Promis
 /** Records the folder the user moved the users workspace to, or clears it (null) to use the default. */
 export async function saveUsersWorkspace(manifest: UsersManifest, folder: string | null) {
     await writeAppSettings(withBundleSetting(await readAppSettings(), chosenKey, manifest, folder));
+}
+
+const revisionsKey = "workspaceMoveRevisions";
+
+function moveRevisions(settings: Record<string, unknown>): Record<string, unknown> {
+    const revisions = settings[revisionsKey];
+    return revisions != null && typeof revisions === "object" && !Array.isArray(revisions)
+        ? { ...revisions } : {};
+}
+
+export async function workspaceMoveRevision(manifest: UsersManifest) {
+    const revision = moveRevisions(await readAppSettings())[safePathComponent(manifest.id)];
+    return typeof revision === "string" ? revision : "0";
+}
+
+export async function recordWorkspaceMove(manifest: UsersManifest, folder?: string | null, movedConfigs: readonly MovedConfigPath[] = []) {
+    const settings = await readAppSettings();
+    const next = folder === undefined ? settings : withBundleSetting(settings, chosenKey, manifest, folder);
+    const revisions = { ...moveRevisions(settings), [safePathComponent(manifest.id)]: randomUUID() };
+    await writeAppSettings(withMovedConfigPaths({ ...next, [revisionsKey]: revisions }, movedConfigs));
+}
+
+/** A second app process must not start using paths cached before another moved the workspace. */
+export async function assertCurrentUsersWorkspace(manifest: UsersManifest, bundleRoot: string) {
+    const registered = usersWorkspaces.get(path.resolve(bundleRoot));
+    if (!registered?.followsLocation) return;
+    const location = await resolveUsersWorkspaceRoot(manifest);
+    if (location && path.relative(location, registered.root) !== "") {
+        throw new HttpError(409, "workspaceMoveStale");
+    }
 }
 
 export async function usersWorkspaceLocationInfo(manifest: UsersManifest, usersRoot: string): Promise<WorkspaceLocationInfo | undefined> {

@@ -12,12 +12,33 @@ _Y_BUILDS = {59_373_566: "hg19", 57_227_415: "hg38", 62_460_029: "t2t"}
 _BEDS = files("wgsextract_cli").joinpath("assets").joinpath("reference").joinpath("poz")
 
 
-@contextmanager
-def poz_bed(contigs: dict[str, int], chromosome: str, outdir: str) -> Iterator[str]:
-    """Select only exact supported Y assemblies, then adapt the contig name."""
+def y_build(contigs: dict[str, int], chromosome: str) -> str | None:
+    """hg19, hg38 or t2t from an exact chrY length that chr1 (if any) agrees with."""
     build = _Y_BUILDS.get(contigs.get(chromosome, 0))
     chr1_build = build_from_chr1_length(contigs)
     if not build or (chr1_build is not None and chr1_build != build):
+        return None
+    return build
+
+
+def poz_intervals(build: str) -> list[tuple[int, int]]:
+    """The bundled Poz regions of ``build``: zero-based, half-open."""
+    return [
+        (int(start), int(end))
+        for _, start, end in (
+            line.split("\t")
+            for line in _BEDS.joinpath(f"{build}.bed")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
+    ]
+
+
+@contextmanager
+def poz_bed(contigs: dict[str, int], chromosome: str, outdir: str) -> Iterator[str]:
+    """Select only exact supported Y assemblies, then adapt the contig name."""
+    build = y_build(contigs, chromosome)
+    if not build:
         raise WGSExtractError(
             "--poz supports only GRCh37/hg19, GRCh38 and T2T-CHM13v2.0 Y "
             "coordinates. Unknown or inconsistent Y assemblies need an "
@@ -27,14 +48,10 @@ def poz_bed(contigs: dict[str, int], chromosome: str, outdir: str) -> Iterator[s
         dir=scratch_parent(outdir), prefix=".poz_"
     ) as directory:
         path = Path(directory, "targets.bed")
-        rows = [
-            line.split("\t")
-            for line in _BEDS.joinpath(f"{build}.bed")
-            .read_text(encoding="utf-8")
-            .splitlines()
-        ]
         path.write_text(
-            "".join(f"{chromosome}\t{start}\t{end}\n" for _, start, end in rows),
+            "".join(
+                f"{chromosome}\t{start}\t{end}\n" for start, end in poz_intervals(build)
+            ),
             encoding="utf-8",
             newline="\n",
         )

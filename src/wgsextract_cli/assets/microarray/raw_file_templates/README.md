@@ -31,19 +31,23 @@ export's position).
 
 | Format ID (`--formats`) | Template | Variant, exports merged | Markers | Build | Stored as |
 |---|---|---|---:|---|---|
-| `ancestry_v2ab` | `Ancestry_V2ab` | v2a (2016) + v2b (2018) | 670,296 | GRCh37 | delta vs `Ancestry_V2cd` |
-| `ancestry_v2cd` | `Ancestry_V2cd` | v2d (2019) + v2c (2018) | 700,164 | GRCh37 | delta vs `Ancestry_V2_2021` |
-| `ancestry_v2e` | `Ancestry_V2e` | v2e (2026; no Y, MT or 200k+ markers) | 434,818 | GRCh37 | delta vs `Ancestry_V2cd` |
+| `23andme_v4` | `23andMe_V4` | v4c + v4b + v4a merged | 622,474 | GRCh37 | full |
+| *(internal v3)* | `23andMe_V4_v3` | classic v0.2.0 v4a (frozen for CombinedKit v3) | 601,885 | GRCh37 | delta vs `23andMe_V4` |
+| `ancestry_v2ab` (`ancestry_v2`) | `Ancestry_V2ab` | v2a (2016) + v2b (2018) | 670,296 | GRCh37 | delta vs `Ancestry_V2cd` |
+| `ancestry_v2cd` | `Ancestry_V2cd` | v2d (2019) + v2c (2018) | 700,164 | GRCh37 | full |
+| `ancestry_v2e` | `Ancestry_V2e` | v2e (2026) | 434,818 | GRCh37 | delta vs `Ancestry_V2cd` |
+| `ftdna_v2` | `FTDNA_V2` | v2d + v2c + v2b + v2a merged | 725,297 | GRCh37 | full |
+| *(internal v3)* | `FTDNA_V2_v3` | classic v0.2.0 v2d (frozen for CombinedKit v3) | 720,449 | GRCh37 | delta vs `FTDNA_V2` |
 | `ftdna_v4` | `FTDNA_V4` | v4 (2026) | 758,990 | GRCh37 | full |
 | `ftdna_v2y` | `FTDNA_V2Y` | v2y, the separate Y file | 15,408 | GRCh38 | full |
 | `ftdna_v3y` | `FTDNA_V3Y` | v3y, the separate Y file | 10,578 | GRCh38 | full |
 | `ftdna_v4y` | `FTDNA_V4Y` | v4y, the separate Y file | 20,000 | GRCh38 | full |
-| `myheritage_v3` | `MyHeritage_V3` | v3 male (2026) + female (2025) | 593,345 | GRCh37 | delta vs `MyHeritage_GSA_2025` |
+| `myheritage_v3` | `MyHeritage_V3` | v3 male (2026) + female (2025) | 593,345 | GRCh37 | full |
 | `tellmegen` | `TellMeGen_V1` | corporate male + male | 779,518 | GRCh37 | full |
-| `genera` | `Genera_V1` | template export | 639,813 | GRCh37 | delta vs `23andMe_V5_2025` |
+| `genera` | `Genera_V1` | template export | 639,813 | GRCh37 | delta vs `MyHeritage_V3` |
 | `mthfr` | `MTHFR_V1` | female template (no Y) | 640,418 | GRCh37 | full |
-| `meudna_v1` | `meuDNA_V1` | v1 (2021) | 632,150 | GRCh37 | delta vs `MyHeritage_GSA_2025_609424` |
-| `meudna_v2` | `meuDNA_V2` | v2 template (2022) | 654,017 | GRCh37 | delta vs `23andMe_V5_2025` |
+| `meudna_v1` | `meuDNA_V1` | v1 (2021) | 632,150 | GRCh37 | delta vs `MyHeritage_V3` |
+| `meudna_v2` | `meuDNA_V2` | v2 template (2022) | 654,017 | GRCh37 | delta vs `Genera_V1` |
 | `selfdecode` | `SelfDecode_V1` | 2023 | 686,763 | GRCh37 | full |
 
 - FTDNA's Y files are delivered on GRCh38 and are never merged with its
@@ -54,18 +58,19 @@ export's position).
 - The SelfDecode export's header declares GRCh38, but its positions are GRCh37
   (rs3131972 at 752,721, rs114525117 at 759,036); it was extracted with
   `--ignore-header-build`.
-- Sub-minor variants without their own template: 23andMe v4a-c (`23andme_v4`),
-  FTDNA v2a-d (`ftdna_v2`), LivingDNA v2's 660,634-marker female export (a
-  subset of `ldna_v2`), Ancestry's 2023-2025 677,436-marker layout
-  (`ancestry_v2_2024`, v2d less 428 markers). `info chip` still names a file's
-  letter variant.
+- `23andMe_V4_v3` and `FTDNA_V2_v3` (plus classic `Ancestry_V2` in the
+  bootstrap) are internal frozen v0.2.0 marker lists retained solely so
+  CombinedKit v3 stays frozen while `--formats 23andme_v4`, `ftdna_v2` and
+  `ancestry_v2` emit the merged v4a–c, v2a–d and v2ab layouts.
+- Sub-minor variants without their own template: LivingDNA v2's 660,634-marker
+  female export (a subset of `ldna_v2`), and minor date/size variants of 23andMe
+  v5, Ancestry v2 and MyHeritage v2. `info chip` still names a file's letter
+  variant.
 - Not added: 23andMe v2 and FTDNA v1 (NCBI36) already have templates, and
-  National Geographic Geno 2.0's files are NCBI36 with Y and MT given as SNP
-  names without positions; LivingDNA's Y and MT files list derived SNPs only,
+  National Geographic Geno 2.0's files lack positions (v2 has no position column;
+  v2+ has NCBI36 positions only for autosomal/X with Y and MT given as SNP
+  names without positions); LivingDNA's Y and MT files list derived SNPs only,
   so they are no template of what was tested.
-- `Ancestry_V2_2024` and `MyHeritage_GSA_2025_609424` are now stored as deltas
-  against `Ancestry_V2_2021` and `MyHeritage_GSA_2025`; their rows are
-  byte-identical to the previous full bodies.
 - Rebuild, e.g.: `python scripts/microarray_template_from_raw.py
   AncestryDNA_v2d.txt AncestryDNA_v2c.txt Ancestry_V2cd --delta-base auto
   --overwrite` (rebuild a template's dependants after it).
@@ -81,54 +86,12 @@ export's position).
   v1 and v2 files share one list, so `23andme_v1` is an alias.
 - Rebuild: `python scripts/microarray_template_from_raw.py <raw file> 23andMe_V2 --overwrite`.
 
-## 23andMe_V5_2025, Ancestry_V2_2024, Nucleus_V1
+## Nucleus_V1 (`--formats nucleus`)
 
-`--formats 23andme_v5_2025`, `ancestry_v2_2024`, `nucleus`: the chips as their
-vendors export them today, for services that check a file against current
-exports.
-
-- Source: private donated exports: a 23andMe
-  v5 export of January 2025 (643,161 markers), an AncestryDNA V2.0 export of
-  November 2024 (677,436 markers), and a Nucleus array export of 2025 (665,107
-  markers). Only marker IDs and positions are kept, no genotypes; each
-  vendor's exports for different people have identical marker lists.
-- 23andMe's head has the export's CRLF line endings, and its link to the
-  customer's account is replaced by the generic download page. Nucleus exports
-  have no header, so there is no head file.
-- Rebuild: `python scripts/microarray_template_from_raw.py <raw file> <NAME> --overwrite`.
-
-## Additional MyHeritage GSA and Ancestry layouts
-
-These are GRCh37 marker lists, not inferred manufacturer chip revisions.
-MyHeritage's headers identify GSA but do not declare a GSA sub-revision;
-the count-qualified ID distinguishes two genuine export layouts. Both layouts
-occur in 2025, so the year is not a guarantee of which layout a kit uses.
-
-| Format ID (`--formats`) | Vendor | Chip revision in source | Export year-month | Markers | Provenance |
-|---|---|---|---|---:|---|
-| `myheritage_gsa_2025` | MyHeritage | GSA; sub-revision not declared | 2025-04 | 609,346 | private donated export |
-| `myheritage_gsa_2025_609424` | MyHeritage | GSA; sub-revision not declared | 2025-03 | 609,424 | private donated export |
-| `ancestry_v2_2021` | AncestryDNA | V2.0 | 2021-04 | 677,864 | private donated export |
-
-The 2021 Ancestry layout is an additional historical option, not a replacement
-for `ancestry_v2_2024`. Available 2024–2025 Ancestry exports have the same
-677,436-marker list as that already-shipped template. No verified original
-FTDNA GSA export was available: the FTDNA files found in the inventory were
-reference-template bodies, not donated vendor exports. No new FTDNA revision
-is invented. Existing format IDs and marker lists remain selectable and unchanged.
-
-Marker drift against the reference-library v9 templates is reported as Jaccard
-distance: `100 × |new markers △ baseline markers| / |new markers ∪ baseline markers|`.
-Chromosome aliases are normalized for coordinate comparisons; all rows below
-use GRCh37. "Added" and "removed" count marker IDs relative to the baseline.
-
-| Export layout | Baseline | Added | Removed | ID drift | ID/chromosome/position drift |
-|---|---|---:|---:|---:|---:|
-| MyHeritage 609,346 | `MyHeritage_V2` | 1,247 | 2,029 | 0.5358% | 0.5365% |
-| MyHeritage 609,424 | `MyHeritage_V2` | 1,301 | 2,005 | 0.5407% | 0.5417% |
-| Ancestry 677,864 (2021) | `Ancestry_V2` | 148,905 | 139,983 | 35.3230% | 35.6465% |
-| Ancestry 677,864 (2021) | bundled `Ancestry_V2_2024` | 428 | 0 | 0.0631% | 0.0631% |
-| Ancestry 677,436 (2024–2025) | bundled `Ancestry_V2_2024` | 0 | 0 | 0% | 0% |
+- Source: private donated Nucleus array export of 2025 (665,107 markers). Only
+  marker IDs and positions are kept, no genotypes. Nucleus exports have no
+  header, so there is no head file.
+- Rebuild: `python scripts/microarray_template_from_raw.py <raw file> Nucleus_V1 --overwrite`.
 
 New headers use generic vendor boilerplate and the vendor's column-label format;
 no source comments, names, account links, kit/sample IDs or individual timestamps

@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "version": "2026.11.1",
+  "checked_against_cpic": "v1.61.0",
+  "note": "Context rules for report --pgx-context. Each effect quotes CPIC recommendation text (CC0 1.0); a rule applies only while the loaded CPIC release still carries the quote for the same drug, gene and phenotype.",
+  "rules": [
+    {
+      "id": "cpic-paroxetine-cyp2d6-autoinhibition",
+      "gene": "CYP2D6",
+      "drug": "paroxetine",
+      "effects": {
+        "Normal Metabolizer": {
+          "possible": ["Intermediate Metabolizer", "Poor Metabolizer"],
+          "quote": "Paroxetine-associated phenoconversion of normal metabolizers to intermediate or poor metabolizers due to CYP2D6 autoinhibition may occur and is dose-dependent and greater at steady state concentrations."
+        },
+        "Intermediate Metabolizer": {
+          "possible": ["Poor Metabolizer"],
+          "quote": "Paroxetine-associated phenoconversion of intermediate metabolizers to poor metabolizers due to CYP2D6 autoinhibition may occur and is dose-dependent and greater at steady state concentrations."
+        },
+        "Poor Metabolizer": {
+          "possible": [],
+          "quote": "The impact of paroxetine-associated autoinhibition of CYP2D6 is minimal in poor metabolizers."
+        },
+        "Ultrarapid Metabolizer": {
+          "possible": ["Normal Metabolizer", "Intermediate Metabolizer", "Poor Metabolizer"],
+          "unclear": true,
+          "quote": "The extent to which ultrarapid metabolizers phenoconvert to normal, intermediate, or poor metabolizers due to paroxetine autoinhibition of CYP2D6 is unclear."
+        }
+      }
+    }
+  ]
+}

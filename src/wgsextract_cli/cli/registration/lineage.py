@@ -3,7 +3,12 @@ from __future__ import annotations
 import argparse
 
 from wgsextract_cli.api._cli import add_arguments
-from wgsextract_cli.api.lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
+from wgsextract_cli.api.lineage import (
+    MtHaplogroupParams,
+    YHaplogroupParams,
+    YPrivateParams,
+    YStrParams,
+)
 from wgsextract_cli.cli._lazy import command_handler
 from wgsextract_cli.core.messages import CLI_HELP
 
@@ -40,6 +45,15 @@ def register(
         "--tree-links", action="store_true", help="Print YFull and FTDNA tree links."
     )
     add_ystr_parser(lin_subs, base_parser, CLI_HELP["cmd_lineage-y-str"])
+    private_parser = lin_subs.add_parser(
+        "y-private", parents=[base_parser], help=CLI_HELP["cmd_lineage-y-private"]
+    )
+    add_arguments(private_parser, YPrivateParams)
+    private_parser.set_defaults(
+        func=command_handler(
+            "wgsextract_cli.commands._lineage_yprivate", "cmd_y_private"
+        )
+    )
     mtdna_parser = lin_subs.add_parser(
         "mt-haplogroup",
         parents=[base_parser],

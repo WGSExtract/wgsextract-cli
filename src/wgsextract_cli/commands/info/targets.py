@@ -172,7 +172,7 @@ def _segments(
 def _count_depths(
     stream: Iterable[bytes], targets: Sequence[BedTarget]
 ) -> dict[str, dict[int, int]]:
-    """Fill each target's histogram from ``samtools depth -a`` rows (bases
+    """Fill each target's histogram from ``samtools depth`` rows (bases
     samtools leaves out count as depth 0); returns each contig's depth
     histogram over its targets, overlaps counted once."""
     segments = _segments(targets)
@@ -263,7 +263,9 @@ def target_depths(
         "".join(f"{c}\t{s}\t{e}\n" for c, s, e in merged), newline="\n"
     )
     ref = _cram_reference_opts(input_path, reference)
-    depth = ["samtools", "depth", "-a", "-b", str(scratch_bed), *depth_options]
+    # -a walks uncovered spans even outside the BED. The histogram fills in
+    # absent positions as zeroes without visiting them.
+    depth = ["samtools", "depth", "-b", str(scratch_bed), *depth_options]
     index = alignment_index(input_path)
     if index:
         commands = [
