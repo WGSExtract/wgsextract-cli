@@ -10,19 +10,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR_SCRIPTS = (
     "tests/cli_snapshot.py",
-    "scripts/gen_api_docs.py",
     "scripts/gen_command_docs.py",
-    "scripts/gen_config_docs.py",
     "scripts/gen_output_schemas.py",
     "scripts/gen_report_schema.py",
     "scripts/gen_server_contracts.py",
 )
 GENERATED = (
     "tests/fixtures/api_cli_snapshot.json",
-    "docs/api.md",
-    "docs/commands.md",
     "src/wgsextract_cli/assets/cli/help-index.json",
-    "docs/configuration.md",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json",
@@ -39,17 +34,20 @@ GENERATED = (
     "gui/app/shared/generated/result-records.ts",
     "gui/app/shared/generated/report-records.ts",
 )
+RETIRED_GENERATED = ("docs/api.md", "docs/commands.md", "docs/configuration.md")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--resolve", action="store_true")
     args = parser.parse_args()
+    retired: list[str] = []
     if args.resolve:
         unresolved = subprocess.check_output(
             ["git", "diff", "--name-only", "--diff-filter=U"], cwd=ROOT, text=True
         ).splitlines()
-        sources = set(unresolved) - set(GENERATED)
+        retired = sorted(set(unresolved).intersection(RETIRED_GENERATED))
+        sources = set(unresolved) - set(GENERATED) - set(retired)
         if sources:
             parser.error(
                 "resolve and stage source conflicts first: "
@@ -58,9 +56,9 @@ def main() -> None:
     for script in GENERATOR_SCRIPTS:
         subprocess.run([sys.executable, script], cwd=ROOT, check=True)
     if args.resolve:
-        subprocess.run(
-            ["git", "add", "--", *GENERATED, "site_src/cli.md"], cwd=ROOT, check=True
-        )
+        for path in retired:
+            (ROOT / path).unlink(missing_ok=True)
+        subprocess.run(["git", "add", "--", *GENERATED, *retired], cwd=ROOT, check=True)
 
 
 if __name__ == "__main__":

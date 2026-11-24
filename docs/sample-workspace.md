@@ -219,7 +219,7 @@ wgsextract sample show --input ~/genomes/HG002/HG002.cram --json
 `--input`'s folder is used. `sample show` lists the facts in effect for the
 input, the facts and overrides recorded for each file (and whether that file
 has changed since) and the results. `--json` prints the same data as the result's
-`details`. The [typed API](api.md) has the same operations: `api.sample.show`,
+`details`. The [typed API](https://wgsextract.github.io/wgsextract-cli/api.html) has the same operations: `api.sample.show`,
 `api.sample.set_overrides` and `api.sample.unset_overrides`.
 
 ## Overrides

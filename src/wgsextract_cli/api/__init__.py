@@ -43,7 +43,6 @@ Stability: the names exported here and the group modules (``api.extract``,
 semantic versioning from the 1.0 release; adding fields with defaults is not
 a breaking change.
 Modules whose names start with ``_`` are private and may change at any time.
-See docs/api.md.
 """
 
 from wgsextract_cli.core.results import (

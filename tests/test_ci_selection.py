@@ -356,9 +356,9 @@ def test_914_transitive_docs_reader_has_an_executable_lane() -> None:
 
 
 def test_914_mixed_product_and_generated_docs_cannot_skip_freshness() -> None:
-    selected = select_tests(["tests/test_table_writer.py", "docs/api.md"])
+    selected = select_tests(["tests/test_table_writer.py", "site_src/api.md"])
     assert "tests/test_table_writer.py" in selected
-    assert "tests/test_api.py" in selected
+    assert "tests/test_site_references.py" in selected
 
 
 def test_1132_config_guide_changes_run_generated_reference_freshness() -> None:
@@ -366,7 +366,7 @@ def test_1132_config_guide_changes_run_generated_reference_freshness() -> None:
     assert routes(paths)["docs"]
     assert not routes(paths)["cli"]
     assert docs_test_targets(paths) == [
-        "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
+        "tests/test_site_references.py",
         "tests/test_regen.py",
     ]
     assert "tests/test_core_cli.py" in select_tests(paths)

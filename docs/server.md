@@ -5,7 +5,7 @@ same computer: desktop apps, scripts and AI agents. It speaks either a small
 HTTP/JSON API or the [Model Context Protocol](https://modelcontextprotocol.io)
 (MCP), on stdio or over streamable HTTP.
 
-Both are generated from the [typed Python API](api.md): the same `*Params`
+Both are generated from the [typed Python API](https://wgsextract.github.io/wgsextract-cli/api.html): the same `*Params`
 fields, defaults, config.toml settings, result manifests and error kinds as
 the CLI. So an operation joins the server as soon as its command moves onto
 the API. Today they are `info`, `info calculate-coverage`,

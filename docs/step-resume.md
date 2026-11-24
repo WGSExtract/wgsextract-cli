@@ -225,7 +225,7 @@ realign plan (sample_hg19_aligned.bam.steps.json):
 The plan is also in the run's [result manifest](result-manifest.md) as
 `details.steps`, along with the metrics `steps_run` and `steps_skipped`.
 Library users see each decision as a `step` progress event (see the
-[API](api.md)).
+[API](https://wgsextract.github.io/wgsextract-cli/api.html)).
 
 ## One run at a time
 

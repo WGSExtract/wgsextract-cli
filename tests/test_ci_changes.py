@@ -40,7 +40,7 @@ from scripts.pr_checks_ready import latest_ready_run as latest_ready_run
             ["AGENTS.md", "native/README.md", ".github/copilot-instructions.md"],
             set(),
         ),
-        (["docs/api.md", "docs/commands.md"], {"docs"}),
+        (["site_src/api.md", "site_src/commands.md"], {"docs"}),
         (["native/bwa/bwa.c"], {"native"}),
         # Mockup changes also feed the cross-platform review-server regressions.
         (["gui/mockups/index.html", "site_src/index.md"], {"site", "cli"}),
@@ -502,26 +502,23 @@ _REGEN_TESTS = ["tests/test_regen.py", "tests/test_text_newlines.py"]
 @pytest.mark.parametrize(
     ("path", "targets"),
     [
-        ("docs/api.md", ["tests/test_api.py::test_api_docs_are_up_to_date"]),
-        ("docs/commands.md", ["tests/test_cli_help.py"]),
-        ("site_src/cli.md", ["tests/test_cli_help.py"]),
+        ("site_src/api.md", ["tests/test_site_references.py"]),
+        ("site_src/commands.md", ["tests/test_site_references.py"]),
+        ("site_src/cli.md", ["tests/test_site_references.py"]),
         ("scripts/regen.py", _REGEN_TESTS),
         ("scripts/bump_version.py", ["tests/test_bump_version.py"]),
         (
             "scripts/gen_api_docs.py",
-            ["tests/test_api.py::test_api_docs_are_up_to_date", *_REGEN_TESTS],
+            ["tests/test_site_references.py"],
         ),
         ("scripts/gen_command_docs.py", ["tests/test_cli_help.py", *_REGEN_TESTS]),
         (
-            "docs/configuration.md",
-            ["tests/test_core_cli.py::test_configuration_docs_are_up_to_date"],
+            "docs/data/configuration-guide.md",
+            ["tests/test_site_references.py"],
         ),
         (
             "scripts/gen_config_docs.py",
-            [
-                "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
-                *_REGEN_TESTS,
-            ],
+            ["tests/test_site_references.py"],
         ),
         (
             "scripts/ci_changes.py",
@@ -558,8 +555,8 @@ def test_913_light_checks_run_only_for_their_own_inputs(
     "paths",
     [
         ["src/wgsextract_cli/commands/info.py"],
-        ["src/wgsextract_cli/api/__init__.py", "docs/api.md"],
-        ["src/wgsextract_cli/cli/help.py", "docs/commands.md", "site_src/cli.md"],
+        ["src/wgsextract_cli/api/__init__.py", "site_src/api.md"],
+        ["src/wgsextract_cli/cli/help.py", "site_src/commands.md", "site_src/cli.md"],
     ],
 )
 def test_913_cli_lane_owns_freshness_without_duplicate_docs_pytest(

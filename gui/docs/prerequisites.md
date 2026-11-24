@@ -48,4 +48,4 @@ To install an item, the app runs the check again on the server and takes the arg
 
 If another bundle is loaded while a check or install is under way, the held-back action is dropped: it belongs to the old bundle.
 
-The WGSExtract bundle checks its `wgsextract` actions with [`wgsextract ref needs`](../../docs/commands.md). It reports the reference genome that a BAM or CRAM input was aligned to when the command decodes a CRAM's reads or calls variants, and the annotation data that the `vcf` annotation commands need.
+The WGSExtract bundle checks its `wgsextract` actions with [`wgsextract ref needs`](https://wgsextract.github.io/wgsextract-cli/commands.html). It reports the reference genome that a BAM or CRAM input was aligned to when the command decodes a CRAM's reads or calls variants, and the annotation data that the `vcf` annotation commands need.

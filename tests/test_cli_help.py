@@ -387,17 +387,6 @@ def test_first_sentence_keeps_abbreviations():
     assert cli_help.first_sentence(text) == "Download maps (e.g. GENCODE) for genes."
 
 
-def test_command_reference_doc_and_site_cards_are_current(root):
-    doc = (ROOT / "docs" / "commands.md").read_text(encoding="utf-8")
-    assert doc == cli_help.render_markdown(root), "run 'pixi run gen-command-docs'"
-    site = (ROOT / "site_src" / "cli.md").read_text(encoding="utf-8")
-    start = site.index(cli_help.SITE_BLOCK_START)
-    end = site.index(cli_help.SITE_BLOCK_END) + len(cli_help.SITE_BLOCK_END) + 1
-    assert site[start:end] == cli_help.render_site_commands(), (
-        "run 'pixi run gen-command-docs'"
-    )
-
-
 def test_journey_steps_and_deprecation_replacements_are_runnable_commands():
     # #352: the "start from what you have" paths and the deprecation notices
     # must name commands a user can actually run.

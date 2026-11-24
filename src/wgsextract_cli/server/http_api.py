@@ -779,7 +779,8 @@ def openapi_document(
         "info": {
             "title": "WGS Extract",
             "version": __version__,
-            "description": "The typed WGS Extract API (docs/api.md) over local "
+            "description": "The [typed WGS Extract API]"
+            "(https://wgsextract.github.io/wgsextract-cli/api.html) over local "
             "HTTP: operations run as jobs. See docs/server.md.",
         },
         "servers": [{"url": server_url}],

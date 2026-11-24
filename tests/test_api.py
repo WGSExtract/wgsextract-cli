@@ -886,14 +886,3 @@ def assert_valid(result: api.Result) -> None:
     document = json.loads(json.dumps(result.to_dict()))
     errors = sorted(VALIDATOR.iter_errors(document), key=lambda e: list(e.path))
     assert not errors, "\n".join(f"{list(e.path)}: {e.message}" for e in errors)
-
-
-def test_api_docs_are_up_to_date():
-    import subprocess
-    import sys
-
-    script = CLI_ROOT / "scripts" / "gen_api_docs.py"
-    completed = subprocess.run(
-        [sys.executable, str(script), "--check"], capture_output=True, text=True
-    )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
