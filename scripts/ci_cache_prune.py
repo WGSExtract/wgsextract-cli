@@ -96,7 +96,7 @@ def _is_current(gh: GitHub, sha: str) -> bool:
 def _inventory(gh: GitHub) -> list[CacheEntry]:
     entries: dict[int, CacheEntry] = {}
     total = None
-    for page in range(1, 21):
+    for page in range(1, 101):
         response = gh.api(
             "GET",
             f"actions/caches?sort=created_at&direction=asc&per_page=100&page={page}",
@@ -113,7 +113,9 @@ def _inventory(gh: GitHub) -> list[CacheEntry]:
                 ref=row["ref"],
                 version=row["version"],
                 bytes=int(row["size_in_bytes"]),
-                created=datetime.fromisoformat(row["created_at"]),
+                created=datetime.fromisoformat(
+                    row["created_at"].replace("Z", "+00:00")
+                ),
             )
             if item.id in entries:
                 raise ValueError("Cache inventory repeated an ID; refusing cleanup")

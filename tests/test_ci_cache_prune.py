@@ -107,7 +107,7 @@ class CacheServer(GitHub):
                         "key": row.key,
                         "ref": row.ref,
                         "size_in_bytes": row.bytes,
-                        "created_at": row.created.isoformat(),
+                        "created_at": row.created.isoformat().replace("+00:00", "Z"),
                         "version": row.version,
                     }
                     for row in self.entries
