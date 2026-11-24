@@ -302,20 +302,27 @@ test("WGSExtract exposes My Genomes and reference genome library controls in Typ
 
   const databaseTools = library.sections.find((section) => section.id === "databases-tools");
   assert.ok(databaseTools, "databases and tools section exists");
-  assert.equal(databaseTools.dataSource.path, "scripts/run-wgsextract.sh");
-  assert.deepEqual(databaseTools.dataSource.arguments, ["ref", "status", "--values"]);
-  assert.deepEqual(databaseTools.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--mygenomes-library", "{{mygenomes_library}}"]]);
-  assert.ok(databaseTools.actions.find((action) => action.id === "annotation-vcf-download"));
-  assert.ok(databaseTools.actions.find((action) => action.id === "spliceai-download"));
-  assert.ok(databaseTools.actions.find((action) => action.id === "alphamissense-download"));
-  assert.ok(databaseTools.actions.find((action) => action.id === "pharmgkb-download"));
+  const refDataTable = databaseTools.controls.find((control) => control.id === "reference_data");
+  assert.ok(refDataTable, "reference data table control exists");
+  assert.equal(refDataTable.kind, "libraryList");
+  assert.equal(refDataTable.dataSource.path, "scripts/run-wgsextract.sh");
+  assert.deepEqual(refDataTable.dataSource.arguments, ["--json", "ref", "status"]);
+  assert.deepEqual(refDataTable.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--mygenomes-library", "{{mygenomes_library}}"]]);
+  assert.deepEqual(refDataTable.dataSource.transform, { module: "transforms/reference-data.mjs", export: "items" });
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "annotation-vcf-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "dbsnp-hg38-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "dbsnp-hg19-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "spliceai-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "alphamissense-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "pharmgkb-download"));
   assert.equal(
     library.sections.some((section) => section.id === "test-dataset"),
     false,
   );
   const testDataset = datasets.sections.find((section) => section.id === "test-dataset");
-  assert.deepEqual(testDataset.dataSource, databaseTools.dataSource);
-  assert.ok(!databaseTools.actions.some((action) => action.id.startsWith("test-")));
+  assert.equal(testDataset.dataSource.path, "scripts/run-wgsextract.sh");
+  assert.deepEqual(testDataset.dataSource.arguments, ["ref", "status", "--values"]);
+  assert.ok(!refDataTable.rowActions.some((action) => action.id.startsWith("test-")));
   assert.ok(datasets.sections.find((section) => section.id === "example-datasets"), "Example Datasets are on Datasets");
   const downloadAction = testDataset.actions.find((action) => action.id === "test-dataset-download");
   assert.ok(downloadAction, "test genome download action exists");
@@ -475,6 +482,56 @@ test("WGSExtract exposes My Genomes and reference genome library controls in Typ
   assert.equal(repairVcfAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
   assert.deepEqual(repairVcfAction.command.arguments, ["repair", "ftdna-vcf", "--input", "{{vcf_path}}"]);
   assert.deepEqual(repairVcfAction.command.optionalArguments[0], ["--outdir", "{{out_dir}}"]);
+
+  const vcfInfo = bundle.manifest.pages
+    .find((page) => page.id === "vcf")
+    .sections.find((section) => section.id === "vcf-info-commands");
+  assert.ok(vcfInfo, "VCF page includes the Info Commands section");
+  assert.deepEqual(
+    vcfInfo.actions.map((action) => action.id),
+    ["vcf-basic-info", "vcf-qc", "view-vcf", "vcf-variantqc", "vcf-granite-qc"],
+  );
+  assert.deepEqual(vcfInfo.actions[0].command.arguments, ["vcf", "info", "--vcf-input", "{{vcf_path}}"]);
+  assert.deepEqual(vcfInfo.actions[1].command.arguments, ["qc", "vcf", "--vcf-input", "{{vcf_path}}"]);
+  assert.equal(vcfInfo.actions[2].viewerInput, "vcf_path");
+  assert.deepEqual(vcfInfo.actions[2].prerequisiteArguments, ["vcf", "to-fasta", "--vcf-input", "{{vcf_path}}"]);
+  assert.deepEqual(vcfInfo.actions[3].command.arguments, ["vcf", "variantqc", "--vcf-input", "{{vcf_path}}"]);
+  assert.deepEqual(vcfInfo.actions[3].openOutput, ["variantqc_report"]);
+  assert.equal(vcfInfo.actions[3].resultCard, undefined);
+  assert.deepEqual(vcfInfo.actions[4].command.arguments, ["vcf", "granite-qc", "--vcf-input", "{{vcf_path}}"]);
+
+  const vcfPage = bundle.manifest.pages.find((page) => page.id === "vcf");
+  const vcfPathControl = vcfPage.sections
+    .find((section) => section.id === "vcf-inputs")
+    .controls.find((control) => control.id === "vcf_path");
+  assert.equal(vcfPathControl.multiple, true, "VCF Input allows multi-file selection");
+
+  const multiVcfContext = commandContextFromState({
+    manifest: bundle.manifest,
+    fieldValues: { vcf_path: "/data/first.vcf.gz\n/data/second.vcf.gz\n/data/third.vcf.gz", body: "line1\nline2" },
+    checkedOptions: {},
+    configValues: {},
+    bundleRootPath: wgsExtractBundleRoot,
+  });
+  const basicCmd = displayCommand(vcfInfo.actions[0].command, multiVcfContext);
+  assert.match(basicCmd, /vcf info --vcf-input \/data\/first\.vcf\.gz$/);
+  const graniteCmd = displayCommand(vcfInfo.actions[4].command, multiVcfContext);
+  assert.match(graniteCmd, /vcf granite-qc --vcf-input \/data\/first\.vcf\.gz$/);
+  const variantqcCmd = displayCommand(vcfInfo.actions[3].command, multiVcfContext);
+  assert.match(
+    variantqcCmd,
+    /vcf variantqc --vcf-input \/data\/first\.vcf\.gz --extra-vcf \/data\/second\.vcf\.gz --extra-vcf \/data\/third\.vcf\.gz$/,
+  );
+  const singleVcfCmd = displayCommand(vcfInfo.actions[3].command, {
+    ...multiVcfContext,
+    fieldValues: { vcf_path: "/data/only.vcf.gz" },
+  });
+  assert.match(singleVcfCmd, /vcf variantqc --vcf-input \/data\/only\.vcf\.gz$/);
+  const multilineTextCmd = displayCommand(
+    { executable: "curl", arguments: ["--data", "{{body}}"] },
+    multiVcfContext,
+  );
+  assert.equal(multilineTextCmd, "curl --data 'line1\nline2'");
 });
 
 test("WGSExtract Microarray page exposes CombinedKit v5 and all #1107 consumer formats", async (t) => {

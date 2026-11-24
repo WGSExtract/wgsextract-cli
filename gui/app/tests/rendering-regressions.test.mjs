@@ -109,7 +109,10 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
       "microarray", "--input", "sample.bam", "--formats", "aadr_2m", "--ref", "ref.fa",
     ]);
     const library = wgsPages.find((item) => item.id === "library");
-    const libraryActions = library.sections.flatMap((section) => section.actions ?? []);
+    const libraryActions = library.sections.flatMap((section) => [
+      ...(section.actions ?? []),
+      ...(section.controls ?? []).flatMap((control) => control.rowActions ?? []),
+    ]);
     const aadrArgs = libraryActions
       .filter((action) => action.command.arguments.includes("aadr"))
       .map((action) => action.command.arguments.slice(0, 3));
@@ -201,8 +204,8 @@ test("WGSExtract Detailed Coverage adds the depth bins and, once run, only shows
   const { values } = await import("../../examples/WGSExtract/transforms/coverage-status.mjs");
   assert.deepEqual(values({ details: { current: true } }), { values: { coverage_done: "true" } });
   assert.deepEqual(values({ details: { current: false } }), { values: { coverage_done: "false" } });
-  assert.deepEqual(section.actions.slice(0, 5).map((action) => action.id), [
-    "basic-info", "detailed-info", "coverage-sample", "calculate-coverage", "calculate-coverage-shown",
+  assert.deepEqual(section.actions.slice(0, 6).map((action) => action.id), [
+    "basic-info", "detailed-info", "view-bam", "coverage-sample", "calculate-coverage", "calculate-coverage-shown",
   ]);
   const [run, shown] = ["calculate-coverage", "calculate-coverage-shown"].map((id) => section.actions.find((action) => action.id === id));
   for (const action of [run, shown]) {
@@ -220,6 +223,51 @@ test("WGSExtract Detailed Coverage adds the depth bins and, once run, only shows
   assert.deepEqual(visible("false"), ["calculate-coverage"]);
   assert.deepEqual(visible(""), ["calculate-coverage"]);
   assert.deepEqual(visible("true"), ["calculate-coverage-shown"]);
+});
+
+test("WGSExtract BAM Info Commands puts Viewer after Detailed Info in Basic mode and moves Coverage to a second row", async () => {
+  globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+  globalThis.window = { innerHeight: 900 };
+  const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+  const { renderSection } = await import("../dist/web/src/client/view.js");
+  const page = wgsPages.find((item) => item.id === "info-bam");
+  const section = page.sections.find((item) => item.id === "info-commands");
+  const viewer = section.actions.find((action) => action.id === "view-bam");
+
+  assert.equal(viewer.viewerInput, "bam_path");
+  assert.notEqual(viewer.advancedOnly, true);
+  assert.equal(viewer.row, undefined);
+  for (const id of ["coverage-sample", "calculate-coverage", "calculate-coverage-shown", "coverage-by-bed"]) {
+    assert.equal(section.actions.find((action) => action.id === id).row, 2, `${id} belongs on the second row`);
+  }
+
+  for (const uiMode of ["basic", "advanced"]) {
+    Object.assign(state, createInitialState(), {
+      manifest: { id: "wgs-extract", pages: wgsPages },
+      uiMode,
+      fieldValues: { bam_path: "/genomes/sample.bam" },
+      labels: { actionMissingInputsFormat: "Missing: %{inputs}", actionUnavailableTitle: "Unavailable" },
+    });
+    if (uiMode === "advanced") {
+      state.toggledSections.add("info-bam/info-commands");
+    }
+    const html = renderSection(section, page);
+    const rows = [...html.matchAll(/<div class="action-row">([\s\S]*?)<\/div>/g)].map(([, body]) =>
+      [...body.matchAll(/data-action-id="([^"]+)"/g)].map(([, id]) => id),
+    );
+    assert.deepEqual(rows[0], ["basic-info", "detailed-info", "view-bam"], `${uiMode} row 1`);
+    assert.deepEqual(
+      rows[1],
+      uiMode === "basic" ? ["calculate-coverage"] : ["coverage-sample", "calculate-coverage", "coverage-by-bed"],
+      `${uiMode} row 2`,
+    );
+    assert.match(html, /data-action-id="view-bam"\s+data-viewer-input="bam_path"/);
+    assert.doesNotMatch(html, /data-action-id="view-bam"[^>]*disabled/);
+  }
+
+  state.fieldValues = { bam_path: "" };
+  const disabledHtml = renderSection(section, page);
+  assert.match(disabledHtml, /data-action-id="view-bam"[^>]*disabled/);
 });
 
 test("WGSExtract Advanced CLI actions pass only the options that are set", () => {
@@ -241,23 +289,24 @@ test("WGSExtract Advanced CLI actions pass only the options that are set", () =>
 test("WGSExtract Library install buttons become confirmed deletes once installed", () => {
   const library = wgsPages.find((item) => item.id === "library");
   const datasets = wgsPages.find((item) => item.id === "datasets");
-  const actions = [
-    ...library.sections.find((section) => section.id === "databases-tools").actions,
-    ...datasets.sections.find((section) => section.id === "test-dataset").actions,
-  ];
-  const shownWhen = (action, value) => (action.visibleWhen ?? [])
-    .filter((rule) => rule.equals === value).map((rule) => rule.placeholder);
-  const installs = actions.filter((action) => /-(download|install)$/.test(action.id));
-  assert.ok(installs.length >= 8);
-  for (const install of installs) {
-    const [placeholder] = shownWhen(install, "false");
-    assert.ok(placeholder, `${install.id} hides once installed`);
-    const remove = actions.find((action) => shownWhen(action, "true").includes(placeholder)
-      && action.role === "destructive");
-    assert.ok(remove, `${install.id} has a delete for ${placeholder}`);
+  const refDataTable = library.sections.find((section) => section.id === "databases-tools")
+    .controls.find((control) => control.id === "reference_data");
+  const rowActions = refDataTable.rowActions;
+  const rowMatch = (action, placeholder) => (action.visibleWhen ?? []).find((rule) => rule.placeholder === placeholder)?.equals;
+  const deletableRows = ["gene-map", "dbsnp-hg38", "dbsnp-hg19", "annotation-vcf", "aadr-2m", "ybrowse", "vep", "spliceai", "alphamissense", "pharmgkb"];
+  for (const rowID of deletableRows) {
+    const install = rowActions.find((action) => rowMatch(action, "row.id") === rowID && rowMatch(action, "row.status") === "missing");
+    assert.ok(install, `${rowID} has an install/download row action`);
+    const remove = rowActions.find((action) => rowMatch(action, "row.id") === rowID && rowMatch(action, "row.status") === "installed" && action.role === "destructive");
+    assert.ok(remove, `${rowID} has a destructive delete row action once installed`);
     assert.ok(remove.confirm?.message, `${remove.id} asks first`);
-    assert.ok(remove.command.arguments.includes("--delete") || remove.command.arguments.includes("delete"),
-      `${remove.id} runs a delete`);
+    assert.ok(remove.command.arguments.includes("--delete") || remove.command.arguments.includes("delete"), `${remove.id} runs a delete`);
   }
+  // Required bootstrap has no delete button once installed.
+  assert.equal(rowActions.some((action) => rowMatch(action, "row.id") === "bootstrap" && action.role === "destructive"), false);
+  // Test dataset on Datasets page still toggles between install and confirmed delete.
+  const testActions = datasets.sections.find((section) => section.id === "test-dataset").actions;
+  const testDelete = testActions.find((action) => action.id === "test-dataset-delete");
+  assert.ok(testDelete?.confirm?.message && testDelete.role === "destructive");
   assert.ok(!JSON.stringify(wgsPages).includes("vep_cache_path"), "the VEP cache lives in the library");
 });

@@ -414,7 +414,7 @@ class GuiOracle(Oracle):
             self.output("info", "HG00096.hg19-mini.bam.wgse_info.json").read_text()
         )
         ok = (
-            info["ref_model_str"].startswith("hg19")
+            info["ref_model_str"].startswith(("GRCh37", "hg19"))
             and info["avg_read_len"] == 100.0
             and info["is_paired"]
         )

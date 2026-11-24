@@ -22,34 +22,6 @@
     {
       "id": "genome-management",
       "title": "sections.library.genome-management.title",
-      "actions": [
-        {
-          "id": "ref-lookup-sizes",
-          "title": "actions.reference-genomes.lookup-sizes.title",
-          "tooltip": "actions.reference-genomes.lookup-sizes.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "ref",
-              "library",
-              "--list",
-              "--remote-sizes"
-            ],
-            "optionalArguments": [
-              [
-                "--ref",
-                "{{ref_path}}"
-              ]
-            ]
-          },
-          "confirm": {
-            "title": "actions.reference-genomes.lookup-sizes.title",
-            "message": "actions.reference-genomes.lookup-sizes.tooltip",
-            "confirmButtonTitle": "actions.reference-genomes.lookup-sizes.title",
-            "cancelButtonTitle": "actions.library.genome-management.ref-delete.confirm.cancelButtonTitle"
-          }
-        }
-      ],
       "controls": [
         {
           "id": "reference_genomes",
@@ -85,8 +57,8 @@
               "title": "columns.library.genome-management.reference_genomes.code.title"
             },
             {
-              "id": "build",
-              "title": "columns.library.genome-management.reference_genomes.build.title"
+              "id": "tag",
+              "title": "columns.library.genome-management.reference_genomes.tag.title"
             },
             {
               "id": "source",
@@ -95,10 +67,6 @@
             {
               "id": "sn",
               "title": "columns.library.genome-management.reference_genomes.sn.title"
-            },
-            {
-              "id": "size",
-              "title": "columns.library.genome-management.reference_genomes.size.title"
             }
           ],
           "rowActions": [
@@ -280,9 +248,8 @@
             "status": "{{status}}",
             "values": {
               "name": "{{name}}",
-              "build": "{{build}}",
+              "tag": "{{tag}}",
               "source": "{{source}}",
-              "size": "{{size}}",
               "code": "{{code}}",
               "final": "{{final}}",
               "ref": "{{ref}}",
