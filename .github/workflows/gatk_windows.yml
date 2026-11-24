@@ -2,41 +2,13 @@ name: GATK native Windows smoke
 
 # The desktop app (gui/) has its own CI (gui-*.yml); app-only changes skip this.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    branches: [main]
-    paths:
-      - "packaging/windows/**"
-      - "src/wgsextract_cli/core/*gatk*.py"
-      - "src/wgsextract_cli/core/*gkl*.py"
-      - "src/wgsextract_cli/core/pixi_tools.py"
-      - "src/wgsextract_cli/core/dependency_checks.py"
-      - "src/wgsextract_cli/core/dependencies.py"
-      - "src/wgsextract_cli/commands/vcf/callers.py"
-      - "tests/test_gkl_windows.py"
-      - "pixi.toml"
-      - "pixi.lock"
-      - ".github/workflows/gatk_windows.yml"
-      - "!**/*.md"
-  push:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
-  schedule:
-    - cron: "53 6 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# Only pull requests share a group: a new push supersedes the PR's older run.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
   gatk-smoke:
-    if: ${{ github.event.pull_request.draft != true }}
     runs-on: windows-latest
     timeout-minutes: 20
     steps:

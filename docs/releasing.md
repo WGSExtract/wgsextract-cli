@@ -6,9 +6,8 @@ the whole sequence, with what to check at each step.
 
 ## 1. The release
 
-Merging the release PR is the whole CLI release: nobody has to push a tag or
-run `gh release`, so an agent session that can only open and merge PRs can do
-it.
+Merging the release PR starts the release. The workflow creates the tag and
+publishes only after preflight passes.
 
 1. **Bump the version** on a branch named `release-X.Y.Z`:
 
@@ -27,8 +26,8 @@ it.
    and the same script points the [app site](https://wgsextract.github.io/wgsextract-cli/app/)
    (`gui/site_src/index.md`, `docs.md` and `wgsextract.md`) at the new
    release's installers and rebuilds `gui/site/`. The site deploys when the
-   release PR merges, so its download links fail until the release's app
-   build (below) adds the installers. Those pages say what the release adds only through the
+   release PR merges, so its download links fail until preflight passes and
+   the release is public. Those pages say what the release adds only through the
    release notes link, so they need no other edit. The v6 row of
    [wgsextract.github.io](https://wgsextract.github.io/), which sends new
    users to the app site, moves to the release on its own within the hour
@@ -62,28 +61,45 @@ it.
 
 3. **Open a PR** titled `Release X.Y.Z` and merge it once CI is green.
 
-   On the merge, `release.yml` sees the new version, runs lint, type checks,
-   tests and the package smoke test on the merge commit, then creates the
-   `vX.Y.Z` tag and publishes the release as the latest with the notes file.
-   `install.sh` installs the latest published release. Its last job then calls
-   `gui-distribution.yml`, which builds the app at the tagged commit on Linux,
-   macOS (Apple Silicon and Intel) and Windows, signs and notarizes the macOS
-   app, and adds the installers and the updater feed (`latest.json`) to the
-   same release; installed apps update from the latest release's
-   `latest.json`. The app's version is the tag's. The native Windows
+   On the merge, `release.yml` runs lint, type checks, tests and the package
+   smoke test on the merge commit. It then creates the protected `vX.Y.Z` tag
+   to pin the exact candidate while main keeps moving.
+
+   Release dispatches the following workflows against that tag and checks
+   the returned run IDs and commit SHA. All must finish successfully:
+
+   - `linux_aligners.yml`, `macos_aligners.yml`, `linux_deepvariant.yml`,
+     `macos_deepvariant.yml`, and `macos_clair3.yml` (build/test only; no
+     native tool releases).
+   - `gui-tauri-installer.yml` (Windows install/uninstall lifecycle) and
+     `gui-distribution.yml` (signed installers and `latest.json` as artifacts).
+   - `pharmcat_e2e.yml`, `gkl_windows.yml`, `gatk_windows.yml`, and
+     `cli_smoke.yml` (package and real-data benchmark smoke).
+   - `install_lab.yml`, after GUI distribution succeeds. It receives the
+     distribution run ID and exercises those installers against the
+     candidate CLI from the tree, with Windows negative controls. The
+     publicly pinned CLI install is tested after publication (section 3).
+
+   These workflows also accept manual dispatches for targeted diagnosis.
+   They do not run on PRs, in the merge queue, or on a nightly/weekly timer.
+   The separate [nightly OS suites](ci_routing.md#setup-checks-on-prs-and-the-daily-backstop)
+   continue to report regressions on main.
+
+   Once preflight passes, Release creates the draft, uploads the validated
+   distribution's exact artifact, and publishes the installers and updater feed
+   together. `install.sh` installs the latest published
+   release; installed apps use its `latest.json`. The native Windows
    tools aren't part of it: `pixi.toml` pins their own packages (see
    [packaging/windows/README.md](../packaging/windows/README.md)).
 
-   Check the *Release* run on the merge commit. The tag isn't created until
-   the checks pass. If the run fails, fix the cause and retry from main with
-   *Run workflow* on the Release workflow (`gh workflow run release.yml`): it
-   picks up where it stopped, publishing from the existing tag if one was
-   already created. A release only becomes the latest if no newer version
-   is already published; if GitHub can't list the releases after a few
-   retries, the run fails without publishing rather than guess, so rerun it.
-   If only the app's build failed, rerun the failed jobs, or add
-   the app to the existing release with
-   `gh workflow run gui-distribution.yml -f tag=vX.Y.Z`.
+   Check the *Release* run on the merge commit and its linked preflight runs.
+   If a check fails or times out, the candidate stays unpublished. For a transient
+   failure, rerun the failed jobs on **Release** to start a new preflight, or
+   dispatch `release.yml` from `main` to retry the current version's existing
+   tag. If the tagged code is wrong, leave that tag unpublished; fix the
+   code and cut a fresh version. Do not move a release tag. A release only
+   becomes latest if no newer version is already published; if GitHub can't
+   confirm that, the run stops without publishing.
 
    The "Protect release tags" ruleset lets only admins, maintainers and
    deploy keys create `v*` tags, so the workflow pushes the tag with a deploy
@@ -93,12 +109,11 @@ it.
    (`gh secret set RELEASE_TAG_DEPLOY_KEY --env release-tag < key`), then
    delete the old deploy key.
 
-Without a notes file the release is left as a **draft** with generated notes.
-Edit and publish it on the release's GitHub page (**Edit**, then **Publish
-release**), or with
-`gh release edit vX.Y.Z --notes-file notes.md --draft=false --latest`.
-Pushing a `vX.Y.Z` tag by hand still works too, and also uses the notes file
-if the tagged commit has one.
+Without a notes file, even a green Release run leaves the draft with generated
+notes. **Wait for the entire Release run to pass** before editing and publishing
+it on GitHub. Don't mark an older version as latest. Do not push release tags
+by hand: old commits still have the workflow that published on tag pushes
+before preflight was introduced. Start or retry Release from `main`.
 
 4. **Pin the output-contract baseline** once the tag exists, in a follow-up
    PR: `git fetch origin tag vX.Y.Z`, then
