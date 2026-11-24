@@ -18,6 +18,7 @@ import pytest
 from tests.home_isolation import isolate_home
 from tests.smoke_utils import REPO_ROOT, ensure_fake_data, vep_cache_dir
 from wgsextract_cli.cli.platform_support import verify_platform_support
+from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.config import reload_settings, settings
 from wgsextract_cli.core.dependencies import (
     PIXI_TOOL_ENVS,
@@ -86,6 +87,10 @@ class E2EResult(TypedDict):
 def _prepare_fake_data() -> tuple[str, str]:
     ensure_fake_data(str(FAKE_DIR))
     ref = FAKE_DIR / "fake_ref.fa"
+    dictionary = run_command(
+        ["samtools", "dict", "-a", "GRCh38", str(ref)], capture_output=True
+    ).stdout
+    atomic_write(ref.with_suffix(".dict"), dictionary.encode())
     return str(ref), str(FAKE_DIR / "fake.bam")
 
 

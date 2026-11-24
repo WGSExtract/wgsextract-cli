@@ -288,6 +288,22 @@ def test_tier(path: str) -> str:
     return "integration" if Path(path).name in INTEGRATION_MODULES else "core"
 
 
-def module_shard(path: str) -> int:
+def module_shard(path: str, count: int) -> int:
     """Keep module fixtures together and make assignment stable across hosts."""
-    return hashlib.sha256(Path(path).name.encode()).digest()[0] % 2
+    digest = hashlib.sha256(Path(path).name.encode()).digest()
+    return int.from_bytes(digest[:8], "little") % count
+
+
+@cache
+def shared_fake_data(path: Path) -> bool:
+    """Whether a module uses the shared synthetic data (see xdist scheduler)."""
+    try:
+        tree = ast.parse(path.read_bytes(), str(path))
+    except (OSError, SyntaxError):
+        return False
+    return any(
+        isinstance(node, ast.ImportFrom)
+        and (node.module, node.level) in {("tests.smoke_utils", 0), ("smoke_utils", 1)}
+        and any(alias.name == "ensure_fake_data" for alias in node.names)
+        for node in tree.body
+    )

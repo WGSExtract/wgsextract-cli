@@ -60,6 +60,18 @@ def fake_data_dir(tmp_path_factory):
     # Identity hg38->hg19 chain so microarray (which requires liftover for hg38
     # input) can run end to end on the fake reference.
     run_command(["samtools", "faidx", ref_path], check=True)
+    run_command(
+        [
+            "samtools",
+            "dict",
+            "-a",
+            "GRCh38",
+            "-o",
+            ref_path.removesuffix(".fa") + ".dict",
+            ref_path,
+        ],
+        check=True,
+    )
     with (
         open(ref_path + ".fai") as fai,
         gzip.open(os.path.join(outdir, "hg38ToHg19.over.chain.gz"), "wt") as chain,

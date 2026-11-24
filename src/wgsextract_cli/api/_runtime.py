@@ -131,9 +131,12 @@ READ_ONLY_COMMANDS = frozenset(
     {
         "info",
         "info chip",
+        "lookup",
         "sample show",
         "ref status",
+        "ref recheck",
         "ref library-list",
+        "report-delta",
         "example-genome list",
         "deps check",
         "deps list",

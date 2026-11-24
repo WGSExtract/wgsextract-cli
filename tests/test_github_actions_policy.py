@@ -621,6 +621,24 @@ def triggered_workflows(
     return selected
 
 
+@pytest.mark.parametrize(
+    ("action", "relabels"),
+    [
+        ("opened", True),
+        ("reopened", True),
+        ("ready_for_review", True),
+        ("converted_to_draft", True),
+        ("synchronize", False),
+        ("unlabeled", False),
+    ],
+)
+def test_collaborator_priority_is_restored_only_on_pr_lifecycle_events(
+    action: str, relabels: bool
+) -> None:
+    workflows = triggered_workflows([], "pull_request_target", action=action)
+    assert ("priority_collaborator_prs.yml" in workflows) is relabels
+
+
 QUEUE = "gh-readonly-queue/main/pr-"
 
 

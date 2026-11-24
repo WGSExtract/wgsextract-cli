@@ -23,6 +23,7 @@ from wgsextract_cli.core.report_documents import (
     ReportMetricDocument,
     ReportMicroarrayDocument,
     ReportMissingDocument,
+    ReportMitochondrialDocument,
     ReportOverviewDocument,
     ReportSectionsDocument,
     ReportSourceDocument,
@@ -30,6 +31,8 @@ from wgsextract_cli.core.report_documents import (
     ReportWarningDocument,
     section_items,
 )
+
+from .callability_rendering import callability_html, callability_markdown
 
 RenderedSection = (
     ReportOverviewDocument
@@ -40,6 +43,7 @@ RenderedSection = (
     | ReportSvDocument
     | ReportMicroarrayDocument
     | ReportMedicationReviewDocument
+    | ReportMitochondrialDocument
 )
 
 NOT_DIAGNOSIS = "Technical result, not diagnosis."
@@ -143,45 +147,6 @@ def _finding_links(
     links: Sequence[ReportLinkDocument], link: Callable[[str, str | None], str]
 ) -> str:
     return " ".join(link(item["label"], item["url"]) for item in links)
-
-
-_CALLABILITY_HEADER = ("Gene", "Transcript", "Result", "Callability",
-                       "Coding exons callable", "Bases read", "Exons not callable")  # fmt: skip
-
-
-def _callability(
-    section: ReportCallabilityDocument,
-) -> tuple[list[str], list[tuple[list[str], str]]]:
-    """The section's notes, and per gene its table cells and result text."""
-    notes = [section["note"]]
-    if section.get("exon_model"):
-        t = section.get("thresholds", {})
-        depth, gq = t.get("min_depth"), t.get("min_gq")
-        read = "read means callable reference or a call"
-        if isinstance(depth, (int, float)) and isinstance(gq, (int, float)):
-            read += f", at depth {depth:g}+ (and GQ {gq:g}+ where the gVCF has GQ)"
-        notes.append(
-            f"Exon model: {section['exon_model']}. Assessed: {section.get('scope')}; "
-            f"{read}, outside known short-read limitations."
-        )
-    if classes := section.get("unassessed_variant_classes"):
-        notes.append("Not assessed even where callable: " + " ".join(classes.values()))
-    rows = [
-        (
-            [
-                g["gene"],
-                g["transcript"] or "",
-                g["result"].replace("_", " "),
-                g["state"].replace("_", " "),
-                f"{g['exons_callable']}/{g['coding_exons']}",
-                f"{g['readable_bases']:,}/{g['bases']:,}",
-                g["exons_not_callable"],
-            ],
-            g["result_text"],
-        )  # fmt: skip
-        for g in section.get("genes", [])
-    ]
-    return notes, rows
 
 
 def render_html(report: ReportDocument, base: str = ".") -> str:
@@ -298,23 +263,28 @@ def _html_section_body(
                 )
             out.append("</table>")
     elif name == "exon_callability":
-        section = sections["exon_callability"]
-        notes, rows = _callability(section)
-        out.extend(f'<p class="muted">{_h(line)}</p>' for line in notes)
-        for label, key in (
-            ("Every exon", "all_exons"),
-            ("Reference evidence", "evidence"),
-        ):
-            if file := section.get(key):
-                out.append(f'<p class="muted">{label}: {_link(file, _href(str(file), base))}</p>')  # fmt: skip
-        if rows:
-            out.append("<table><tr>" + "".join(f"<th>{c}</th>" for c in _CALLABILITY_HEADER) + "</tr>")  # fmt: skip
-            for cells, text in rows:
-                cells[2] = (
-                    f'<b>{_h(cells[2])}</b><br><span class="muted">{_h(text)}</span>'
-                )
-                out.append("<tr>" + "".join(f"<td>{c if i == 2 else _h(c)}</td>" for i, c in enumerate(cells)) + "</tr>")  # fmt: skip
-            out.append("</table>")
+        out.extend(
+            callability_html(
+                sections["exon_callability"], _h, lambda f: _link(f, _href(f, base))
+            )
+        )
+    elif name == "mitochondrial" and sections["mitochondrial"].get("sites"):
+        section = sections["mitochondrial"]
+        out.append(f'<p class="disclaimer"><b>{_h(section.get("advisory"))}</b></p>')
+        files = _mito_files(section)
+        out.extend(f'<p class="muted">{_h(line)}</p>' for line in _mito_notes(section))
+        if files:
+            out.append(
+                '<p class="muted">Evidence: '
+                + ", ".join(_link(f, _href(f, base)) for f in files)
+                + "</p>"
+            )
+        head, rows = _mito_table(section)
+        out.append("<table><tr>" + "".join(f"<th>{_h(c)}</th>" for c in head) + "</tr>")
+        out.extend(
+            "<tr>" + "".join(f"<td>{_h(c)}</td>" for c in row) + "</tr>" for row in rows
+        )
+        out.append("</table>")
     elif name == "acmg_research":
         section = sections["acmg_research"]
         out.extend(f'<p class="muted">{_h(line)}</p>' for line in _acmg_notes(section))
@@ -372,6 +342,93 @@ def _html_section_body(
             )
         out.append("</table>")
     return out
+
+
+def _mito_files(section: ReportMitochondrialDocument) -> list[str]:
+    technical = section.get("technical")
+    if not technical:
+        return []
+    return [f for f in (technical["calls"], technical["site_evidence"]) if f]
+
+
+def _mito_notes(section: ReportMitochondrialDocument) -> list[str]:
+    """How the mtDNA was called, the thresholds, and the reviewed-variant
+    table's sources."""
+    notes = []
+    if technical := section.get("technical"):
+        share = technical["min_depth_fraction"]
+        caller = f"{technical['caller']} {technical['version'] or ''}".strip()
+        notes.append(
+            f"Called by {caller} ({technical['settings']}) against "
+            f"{technical['mt_reference'] or 'an unconfirmed mtDNA reference'}"
+            + (
+                f" (contig {technical['contig']}, MD5 {technical['reference_md5']})"
+                if technical["reference_md5"]
+                else ""
+            )
+            + (
+                f"; {share:.1%} of positions have 100 or more reads"
+                if share is not None
+                else ""
+            )
+            + (
+                f"; haplocheck contamination: {technical['contamination']}"
+                if technical["contamination"]
+                else ""
+            )
+            + "."
+        )
+    if t := section.get("thresholds"):
+        notes.append(
+            f"Homoplasmic from {t['homoplasmic']:.0%}; heteroplasmic from "
+            f"{t['supported_heteroplasmy']:.0%} (gnomAD's reporting floor; "
+            "misaligned nuclear mtDNA copies can inflate low-level calls). "
+            f"Lower calls remain weak evidence, as do uncalled signals from "
+            f"{t['weak_evidence']:.0%} of reads on a strand. Not detected "
+            f"needs {t['min_depth']} or more reads without the ALT."
+        )
+    if r := section.get("resource"):
+        notes.append(
+            f"Reviewed variants: {r['name']}; ClinVar release {r['clinvar_release']} "
+            f"(MD5 {r['clinvar_md5']}; {r['clinvar_selection']}); "
+            f"{r['cpic_citation']}. {r['heteroplasmy_basis']}"
+        )
+    return notes
+
+
+def _mito_table(
+    section: ReportMitochondrialDocument,
+) -> tuple[list[str], list[list[str]]]:
+    head = ["Group", "Variant", "State", "Level", "Reads (fwd/rev)",
+            "Confidence", "ClinVar", "CPIC"]  # fmt: skip
+    rows = []
+    for site in section.get("sites", []):
+        level = site["level"]
+        reasons = f" ({', '.join(site['reasons'])})" if site["reasons"] else ""
+        reads = (
+            f"{site['depth']} ({site['depth_fwd']}/{site['depth_rev']})"
+            if site["depth_fwd"] is not None
+            else str(site["depth"] if site["depth"] is not None else "")
+        )
+        stars = site["clinvar_stars"]
+        rows.append(
+            [
+                site["group"],
+                f"{site['gene']} {site['hgvs']}",
+                site["state"].replace("_", " "),
+                f"{level:.1%}" if level is not None else "",
+                reads,
+                site["confidence"].replace("_", " ") + reasons,
+                f"{site['clinvar_classification']} (VCV {site['clinvar_id']}, "
+                f"{site['clinvar_review_status']}"
+                + (f", {stars} stars" if stars is not None else "")
+                + ")",
+                f"{site['cpic_phenotype']} ({site['cpic_evidence']} evidence)"
+                if site["cpic_phenotype"]
+                else "",
+            ]
+        )
+    return head, rows
 
 
 def _review_notes(section: ReportMedicationReviewDocument) -> list[str]:
@@ -630,24 +687,24 @@ def render_markdown(report: ReportDocument, base: str = ".") -> str:
                         + " |"
                     )
         if name == "exon_callability":
-            section = sections["exon_callability"]
-            notes, rows = _callability(section)
-            for line in notes:
-                out += ["", f"_{_md(line)}_"]
-            out.append("")
-            for label, key in (
-                ("Every exon", "all_exons"),
-                ("Reference evidence", "evidence"),
-            ):
-                if file := section.get(key):
-                    out.append(f"{label}: {_md_link(file, _href(str(file), base))}")
-            if rows:
-                out += ["", "| " + " | ".join(_CALLABILITY_HEADER) + " |",
-                        "|" + "---|" * len(_CALLABILITY_HEADER)]  # fmt: skip
-                for cells, text in rows:
-                    cells = [_md(c) for c in cells]
-                    cells[2] = f"**{cells[2]}**: {_md(text)}"
-                    out.append("| " + " | ".join(cells) + " |")
+            out.extend(
+                callability_markdown(
+                    sections["exon_callability"],
+                    _md,
+                    lambda f: _md_link(f, _href(f, base)),
+                )
+            )
+        if name == "mitochondrial" and sections["mitochondrial"].get("sites"):
+            section = sections["mitochondrial"]
+            out += ["", f"> **{_md(section.get('advisory'))}**", ""]
+            out += [_md(line) for line in _mito_notes(section)]
+            if files := _mito_files(section):
+                out.append(
+                    "Evidence: " + ", ".join(_md_link(f, _href(f, base)) for f in files)
+                )
+            head, rows = _mito_table(section)
+            out += ["", "| " + " | ".join(head) + " |", "|---" * len(head) + "|"]
+            out += ["| " + " | ".join(_md(c) for c in row) + " |" for row in rows]
         if name == "acmg_research":
             section = sections["acmg_research"]
             out += ["", *(_md(line) for line in _acmg_notes(section))]

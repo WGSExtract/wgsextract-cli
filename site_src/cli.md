@@ -140,6 +140,8 @@ Pick the line that matches your file and run its commands in order. Each command
 - `pet-align`: Align and call variants for a cat or dog genome.
 - `sign`: Checksum and sign output files; verify them.
 - `score`: Research-only polygenic scores from local genotypes.
+- `lookup`: Genotype and evidence at an rsID, locus or gene.
+- `report-delta`: What changed between two reports: findings, releases.
 - `benchmark`: Time the main workflows on test data.
 - `serve`: Local HTTP/JSON and MCP server for apps and AI agents.
 
@@ -231,6 +233,11 @@ GATK (Python 3.10, Java 17) and FreeBayes live in their own environments. Instal
 ::: card
 ### cyrius, t1k, and expansionhunter
 Gene and repeat typing: `typing cyp2d6` (Cyrius), `typing hla` (T1K), and `typing str` (ExpansionHunter). Linux x86_64 and macOS, where packaged; not qualified on Linux ARM64. Install once with `pixi install --locked -e <environment>`; Cyrius's PolyForm Strict license allows noncommercial use only, and no distribution or modification; WGS Extract doesn't bundle it.
+:::
+
+::: card
+### paraphase
+`typing paraphase` calls copy number and haplotypes at paralogous loci from PacBio HiFi reads. ONT is experimental and unvalidated. Install pinned BSD-licensed Paraphase 3.3.1 on Linux or macOS with `pixi install --locked -e paraphase`.
 :::
 
 ::: card

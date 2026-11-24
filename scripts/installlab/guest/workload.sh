@@ -55,7 +55,7 @@ step snp         "$WGSE" vcf snp --input "$BAM" --ref "$REF" --region 20 --ploid
 step sample_sex  "$WGSE" sample set --input "$BAM" --sex Male
 # This 5x sample deliberately uses the product's confidence defaults. Weak
 # evidence is no-called; the reason table explains that to the user and oracle.
-step microarray  "$WGSE" microarray --input "$BAM" --ref "$REF" --ref-vcf-tab "$TARGETS" --formats 23andme_v5 --call-reasons --outdir "$OUT/microarray"
+step microarray  "$WGSE" microarray --input "$BAM" --ref "$REF" --ref-vcf-tab "$TARGETS" --ploidy-file "$(dirname "$0")/hg19-mini.ploidy.txt" --formats 23andme_v5 --call-reasons --outdir "$OUT/microarray"
 step align       "$WGSE" align --r1 "$R1" --r2 "$R2" --ref "$REF" --outdir "$OUT/align"
 # The scenario explicitly installed this optional environment before the workload.
 step gatk        "$WGSE" vcf gatk --input "$BAM" --ref "$REF" --region 20:1-200000 --outdir "$OUT/gatk"

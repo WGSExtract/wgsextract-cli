@@ -256,7 +256,9 @@ files inside the folders it allows. Without one, the command works as before.
   reference genotype only where every base of it is `callable_reference`
   with one ploidy; otherwise it is passed as a no-call (so `--absent-to-ref`
   can't make it reference) with the state as its `PGX_STATE`. See
-  [variant-confidence.md](variant-confidence.md).
+  [variant-confidence.md](variant-confidence.md). An explicit BAM/CRAM
+  can replace this evidence for a variants-only input; see
+  [Pharmacogenomics and repeat typing](variants.md#pharmacogenomics-and-repeat-typing).
 - `vcf clinvar`, `vcf gnomad --max-af` and `analyze` add the gVCF's state at
   the sites they checked to their confidence details
   (`details.confidence[].reference_evidence`): at the calls they labelled

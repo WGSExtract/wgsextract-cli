@@ -26,6 +26,9 @@ on:
       app_release:
         type: string
         default: ""
+      no_apt_cache:
+        type: boolean
+        default: false
   push:
     branches: [ main ]
     paths:
@@ -64,6 +67,10 @@ on:
           A WGS Extract app release tag to test instead of the latest release
           (app_release_watch.yml sets it)
         required: false
+      no_apt_cache:
+        description: Test container prerequisites against today's Ubuntu mirrors without the apt cache
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -92,22 +99,43 @@ jobs:
       # container never sees this environment.
       - name: Set up Pixi
         uses: ./.github/actions/setup-pixi
+      - name: Date the container apt cache
+        if: ${{ !inputs.no_apt_cache }}
+        id: apt-week
+        # Cache entries are immutable; roll the key so main can publish newer lists and packages.
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore container apt cache
+        id: apt-restore
+        if: ${{ !inputs.no_apt_cache }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/installlab-apt/ubuntu-24.04-amd64/linux
+          key: installlab-apt-v1-linux-ubuntu-24.04-amd64-${{ hashFiles('scripts/installlab/apt_cache.py', '.github/actions/apt-install/apt-install.sh') }}-${{ steps.apt-week.outputs.week }}
+          restore-keys: |
+            installlab-apt-v1-linux-ubuntu-24.04-amd64-${{ hashFiles('scripts/installlab/apt_cache.py', '.github/actions/apt-install/apt-install.sh') }}-
+            installlab-apt-v1-linux-ubuntu-24.04-amd64-
       - name: Install, use, update and uninstall in a fresh Ubuntu container
-        run: python3 scripts/installlab/lab.py run linux --out out/installlab/ci-linux
+        run: python3 scripts/installlab/lab.py run linux ${{ inputs.no_apt_cache && '--no-apt-cache' || '' }} --out out/installlab/ci-linux
       - name: Every corruption of the evidence must fail the oracle
         if: success()
         run: python3 scripts/installlab/lab.py mutate out/installlab/ci-linux/results
       # Paths with spaces broke tools before (Haplogrep's wrapper), and users
       # update existing installs rather than installing fresh.
       - name: Install into a folder whose path has a space
-        run: python3 scripts/installlab/lab.py run linux --install-dir "WGS Extract" --out out/installlab/ci-linux-spaced
+        run: python3 scripts/installlab/lab.py run linux ${{ inputs.no_apt_cache && '--no-apt-cache' || '' }} --install-dir "WGS Extract" --out out/installlab/ci-linux-spaced
       - name: Update the latest published release to this tree
         run: |
           latest=$(curl -fsIL --retry 5 --retry-all-errors --connect-timeout 20 -o /dev/null -w '%{url_effective}' https://github.com/WGSExtract/wgsextract-cli/releases/latest)
-          python3 scripts/installlab/lab.py run linux --update-from "${latest##*/}" --out out/installlab/ci-linux-update
+          python3 scripts/installlab/lab.py run linux ${{ inputs.no_apt_cache && '--no-apt-cache' || '' }} --update-from "${latest##*/}" --out out/installlab/ci-linux-update
+      - name: Save container apt cache
+        if: ${{ !inputs.no_apt_cache && github.ref == 'refs/heads/main' && steps.apt-restore.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/installlab-apt/ubuntu-24.04-amd64/linux
+          key: ${{ steps.apt-restore.outputs.cache-primary-key }}
       - name: Every sabotaged install must fail
         if: env.EXTENDED_SCENARIOS == 'true'
-        run: python3 scripts/installlab/lab.py selftest linux
+        run: python3 scripts/installlab/lab.py selftest linux ${{ inputs.no_apt_cache && '--no-apt-cache' || '' }}
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -246,6 +274,20 @@ jobs:
             gh release download "$APP_RELEASE" -R "$GUI_REPO" -p '*_amd64.deb' -D out/app
           fi
           ls -l out/app
+      - name: Date the container apt cache
+        if: ${{ !inputs.no_apt_cache }}
+        id: apt-week
+        run: echo "week=$(date -u +%G-W%V)" >> "$GITHUB_OUTPUT"
+      - name: Restore container apt cache
+        id: apt-restore
+        if: ${{ !inputs.no_apt_cache }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/installlab-apt/ubuntu-24.04-amd64/linux-app
+          key: installlab-apt-v1-linux-app-ubuntu-24.04-amd64-${{ hashFiles('scripts/installlab/apt_cache.py', '.github/actions/apt-install/apt-install.sh') }}-${{ steps.apt-week.outputs.week }}
+          restore-keys: |
+            installlab-apt-v1-linux-app-ubuntu-24.04-amd64-${{ hashFiles('scripts/installlab/apt_cache.py', '.github/actions/apt-install/apt-install.sh') }}-
+            installlab-apt-v1-linux-app-ubuntu-24.04-amd64-
       # A fresh ubuntu:24.04 desktop user (Xvfb display): apt install, the app's
       # own setup, its actions, its own Uninstall, apt remove.
       - name: Install, use and uninstall the app in a fresh Ubuntu container
@@ -256,7 +298,13 @@ jobs:
           contract=()
           if [ "$CLI" = tree ]; then args+=(--cli-from-tree); fi
           if [ "$CLI" = pinned ]; then contract+=(--app-contract out/app-contract); fi
-          python3 scripts/installlab/lab.py "${contract[@]}" run linux --gui-installer out/app/*_amd64.deb "${args[@]}" --out out/installlab/ci-linux-app
+          python3 scripts/installlab/lab.py "${contract[@]}" run linux ${{ inputs.no_apt_cache && '--no-apt-cache' || '' }} --gui-installer out/app/*_amd64.deb "${args[@]}" --out out/installlab/ci-linux-app
+      - name: Save container apt cache
+        if: ${{ !inputs.no_apt_cache && matrix.cli == 'tree' && github.ref == 'refs/heads/main' && steps.apt-restore.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/installlab-apt/ubuntu-24.04-amd64/linux-app
+          key: ${{ steps.apt-restore.outputs.cache-primary-key }}
       - name: Every corruption of the evidence must fail the oracle
         env:
           CLI: ${{ matrix.cli }}

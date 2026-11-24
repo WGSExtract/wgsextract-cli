@@ -5,6 +5,12 @@ from typing import Annotated, Literal, TypedDict, cast
 
 from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument
 from wgsextract_cli.core.output_schema import Constraints
+from wgsextract_cli.core.report_mitochondrial_documents import (
+    ReportMitoResourceDocument,
+    ReportMitoSiteDocument,
+    ReportMitoTechnicalDocument,
+    ReportMitoThresholdsDocument,
+)
 
 
 class ReportAttemptDocument(TypedDict):
@@ -196,6 +202,7 @@ ReportFindingSection = Literal[
     "carrier_screening",
     "repeat_expansions",
     "clinvar",
+    "mitochondrial",
     "acmg_research",
     "structural_variants",
     "medication_review",
@@ -578,6 +585,32 @@ class ReportCallabilityDocument(ReportSectionDocument, ReportCallabilityFields):
     pass
 
 
+class ReportMitochondrialFields(TypedDict, total=False):
+    advisory: Annotated[
+        str,
+        Constraints(
+            description="Educational note for clinician review, shown at the top of the section; not a prescribing instruction."
+        ),
+    ]
+    technical: ReportMitoTechnicalDocument
+    thresholds: ReportMitoThresholdsDocument
+    resource: ReportMitoResourceDocument
+    sites: Annotated[
+        list[ReportMitoSiteDocument],
+        Constraints(
+            description="Every reviewed variant, with what the reads show there; not_detected and not_assessed are distinct."
+        ),
+    ]
+    counts: Annotated[
+        dict[str, NonnegativeCount],
+        Constraints(description="Reviewed variants by state."),
+    ]
+
+
+class ReportMitochondrialDocument(ReportSectionDocument, ReportMitochondrialFields):
+    pass
+
+
 class ReportMicroarrayFileDocument(TypedDict):
     file: str | None
     role: str
@@ -673,6 +706,12 @@ class ReportSectionsDocument(
         ReportMedicationReviewDocument,
         Constraints(
             description="CPIC guidance for the medications in --pgx-context, gated on the pharmacogenomic calls' evidence; not a prescription. Present only with --pgx-context."
+        ),
+    ]
+    mitochondrial: Annotated[
+        ReportMitochondrialDocument,
+        Constraints(
+            description="mtDNA heteroplasmy evidence (lineage mt-haplogroup --contamination) at reviewed disease and MT-RNR1 aminoglycoside-risk variants."
         ),
     ]
     repeat_expansions: ReportSectionDocument

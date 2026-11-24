@@ -399,6 +399,9 @@ def test_rare_variant_output_is_labelled(tmp_path):
     out = tmp_path / "out"
     document = _run(tmp_path, "vcf", "gnomad", "--vcf-input", sample, "--gnomad-file",
                     gnomad, "--max-af", "0.01", "--outdir", str(out))  # fmt: skip
+    # The download hint is not part of the dataset identity (PR #1363).
+    resources = {resource["id"]: resource for resource in document["resources"]}
+    assert Path(resources["gnomad"]["path"]) == Path(gnomad)
     # 100 is rare in gnomAD and 200 absent from it; 300 is common.
     assert _labels(out / "gnomad_af_lt_0.01.vcf.gz") == [
         "100:high:.",

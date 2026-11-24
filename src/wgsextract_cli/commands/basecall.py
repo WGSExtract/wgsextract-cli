@@ -18,12 +18,12 @@ from pathlib import Path
 from wgsextract_cli.api.align import DORADO_MODELS, BasecallParams
 from wgsextract_cli.cli.registration.basecall import register as register
 from wgsextract_cli.commands._extract_helpers import cleanup_files
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.dev_download_cache import wgsextract_cache_root
 from wgsextract_cli.core.results import current_result, human_output, warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.tool_catalog import INSTALL_HINTS
 from wgsextract_cli.core.utils import (

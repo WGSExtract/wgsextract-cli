@@ -46,6 +46,7 @@ from typing import IO
 
 from wgsextract_cli.core.alignment.cram_counts import open_crai
 from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
     context_thread,
@@ -54,7 +55,6 @@ from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.resource_estimates import bcftools_batches as _batches
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 

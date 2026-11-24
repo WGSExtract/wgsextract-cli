@@ -36,6 +36,7 @@ import urllib.request
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypedDict
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src" / "wgsextract_cli" / "assets" / "report"
@@ -48,7 +49,15 @@ GIAB = (
 # limitation intervals cover it.
 MAX_FLANK = 50
 
-SOURCES: dict[str, dict[str, object]] = {
+
+class _Source(TypedDict):
+    annotation: str
+    gff: tuple[str, str]
+    tag: str
+    limitations: dict[str, tuple[str, str]]
+
+
+SOURCES: dict[str, _Source] = {
     "hg38": {
         "annotation": "NCBI RefSeq annotation GCF_000001405.40-RS_2025_08 (GRCh38.p14)",
         "gff": (
@@ -206,7 +215,7 @@ def intervals(
 def rows(
     found: dict[str, Transcript], limits: dict[str, dict[str, list[Interval]]]
 ) -> list[tuple[object, ...]]:
-    out = []
+    out: list[tuple[object, ...]] = []
     for t in sorted(found.values(), key=lambda t: t.gene):
         for number, (start, end) in sorted(t.exons.items()):
             coding = [
@@ -253,8 +262,8 @@ def main() -> None:
     lists = json.loads((OUT / "gene_lists.json").read_text(encoding="utf-8"))
     symbols = {g for meta in lists["lists"].values() for g in meta["genes"]}
     for build, src in SOURCES.items():
-        url, sha = src["gff"]  # type: ignore[misc]
-        tag = str(src["tag"])
+        url, sha = src["gff"]
+        tag = src["tag"]
         found, lengths = transcripts(fetch(url, sha, args.cache), symbols, tag)
         windows = [
             (t.chrom, s - MAX_FLANK, e + MAX_FLANK)
@@ -263,7 +272,7 @@ def main() -> None:
         ]
         limits = {
             kind: intervals(fetch(u, h, args.cache), windows)
-            for kind, (u, h) in src["limitations"].items()  # type: ignore[attr-defined]
+            for kind, (u, h) in src["limitations"].items()
         }
         table = [(*r[:2], tag, *r[3:]) for r in rows(found, limits)]
         notes = [
@@ -273,10 +282,7 @@ def main() -> None:
             "limitations: GIAB genome stratifications v3.6 low_mappability "
             "(lowmappabilityall) and segmental_duplication (segdups) intervals "
             f"within {MAX_FLANK} bp of the exon; NIST data, freely reusable.",
-            *(
-                f"Source: {u} (sha256 {h})."
-                for u, h in src["limitations"].values()  # type: ignore[attr-defined]
-            ),
+            *(f"Source: {u} (sha256 {h})." for u, h in src["limitations"].values()),
             "Coordinates are 1-based, inclusive; cds_start/cds_end are empty for an "
             "untranslated exon. Built by scripts/build_report_exons.py.",
         ]

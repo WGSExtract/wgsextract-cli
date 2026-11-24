@@ -10,6 +10,7 @@ import shutil
 import sys
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -504,7 +505,9 @@ def _genes(folder: Path) -> Path:
     return path
 
 
-def _report(folder: Path, outdir: Path, *select: str) -> tuple[int, str, dict]:
+def _report(
+    folder: Path, outdir: Path, *select: str
+) -> tuple[int, str, dict[str, Any]]:
     out = io.StringIO()
     code = 0
     # Later options win: ``select`` may give another --gene-list.
@@ -758,4 +761,7 @@ def test_1177_a_grch37_gvcf_is_assessed_with_the_hg19_model(tmp_path: Path) -> N
     assert document["exon_model"]["transcripts"] == "RefSeq Select"
     assert "1" in document["reference"]["contigs_checked"]
     # No record covers an exon: every coding exon was assessed and unread.
-    assert result.details["counts"]["not_readable"] == 84
+    assert result.details is not None
+    counts = result.details["counts"]
+    assert isinstance(counts, dict)
+    assert counts["not_readable"] == 84

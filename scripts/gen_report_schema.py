@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from wgsextract_cli.core import report_documents as report  # noqa: E402
+from wgsextract_cli.core import report_mitochondrial_documents as mito  # noqa: E402
 from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument  # noqa: E402
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
 
@@ -43,6 +44,15 @@ def report_schema() -> dict[str, object]:
         ),
         report.ReportSvDocument: Shape("reportSv"),
         report.ReportSvThresholdsDocument: Shape("reportSvThresholds"),
+        report.ReportMitochondrialDocument: Shape("reportMitochondrial"),
+        mito.ReportMitoSiteDocument: Shape("reportMitoSite", additional=False),
+        mito.ReportMitoTechnicalDocument: Shape(
+            "reportMitoTechnical", additional=False
+        ),
+        mito.ReportMitoThresholdsDocument: Shape(
+            "reportMitoThresholds", additional=False
+        ),
+        mito.ReportMitoResourceDocument: Shape("reportMitoResource", additional=False),
         report.ReportMicroarrayDocument: Shape("reportMicroarray"),
         report.ReportMicroarrayFileDocument: Shape("reportMicroarrayFile"),
         report.ReportAttemptDocument: Shape("reportAttempt", additional=False),
