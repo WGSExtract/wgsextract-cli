@@ -87,6 +87,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         MINUTES, "bcftools", "bgzip", "samtools", "tabix", optional="curl"
     ),
     "lineage y-haplogroup": _n(MINUTES, "bcftools", "samtools"),
+    "lineage y-private": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "lineage y-str": _n(MINUTES, *_SAM, optional="bcftools"),
     "lineage mt-haplogroup": _n(
         MINUTES,

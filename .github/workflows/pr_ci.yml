@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: read
       contents: read
       statuses: read
       pull-requests: read
@@ -115,15 +116,16 @@ jobs:
         with:
           environments: dev
           writer: "false"
-      - name: Restore the Linux observation map for the activation canary
+      - name: Fetch the Linux observation artifact for the activation canary
         if: steps.selector-setup.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 1
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: out/test-impact-map/linux.json.gz
-          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ci-impact-v2-linux-x64-
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_fetch
+          --repository "$GITHUB_REPOSITORY" --base HEAD^1
+          --output out/test-impact-map/linux.json.gz
       - name: Verify fresh Linux selector evidence on this change
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.selector-setup.outcome != 'skipped' && steps.selector-setup.outcome != '' }}
         continue-on-error: true
