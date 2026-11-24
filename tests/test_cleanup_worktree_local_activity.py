@@ -9,11 +9,13 @@ from pathlib import Path
 
 import pytest
 
-from scripts import cleanup_worktrees, worktree_activity_inspector
 from tests.test_cleanup_worktrees import cleanup, handle_requests, result, topic
 from tests.test_cleanup_worktrees import inspector as inspector
 from tests.test_cleanup_worktrees import proc as proc
 from tests.test_cleanup_worktrees import repo as repo
+
+if sys.platform == "linux":
+    from scripts import cleanup_worktrees, worktree_activity_inspector
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
 
