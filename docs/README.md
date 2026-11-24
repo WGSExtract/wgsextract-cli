@@ -52,6 +52,8 @@ Start with the [README quick start](../README.md#quick-start), the
 | [ACMG](acmg.md) | Use research-only classification with fastVEP |
 | [Research panels](panel.md) | Write and check a research panel file of genes, filters, sites and haplotypes |
 | [Personal report](personal-report.md) | Read findings with links to evidence, not diagnoses |
+| [Lookup](lookup.md) | Check a genotype, its evidence and report findings at an rsID, locus or gene |
+| [Recheck and delta](recheck-and-delta.md) | Check for newer ClinVar releases; see what changed between reports |
 | [Contamination](contamination.md) | Screen for another person's DNA |
 | [Relatedness](relate.md) | Check sex, relatedness and continental ancestry |
 | [Ancestry](ancestry.md) | Estimate HGDP+1KG component proportions |

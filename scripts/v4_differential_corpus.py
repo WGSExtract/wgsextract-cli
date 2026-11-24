@@ -127,6 +127,7 @@ def synthetic(outdir: Path) -> int:
     corpus = load_corpus()
     nodes = sorted({c["evidence"] for c in corpus["cases"] if c["evidence"]})
     nodes += sorted({f["evidence"] for f in corpus["completed_fixes"]} - set(nodes))
+    outdir.mkdir(parents=True, exist_ok=True)
     work = outdir / "synthetic"
     if work.exists():
         shutil.rmtree(work)

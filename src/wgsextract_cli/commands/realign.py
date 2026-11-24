@@ -91,14 +91,14 @@ from wgsextract_cli.core.native_aligners import (
     native_gpu_preference as native_gpu_preference,
 )
 from wgsextract_cli.core.paths import absolute_path as absolute_path
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     find_fasta_by_signature as find_fasta_by_signature,
 )
-from wgsextract_cli.core.reference_assets import input_stem as input_stem
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import input_stem as input_stem
+from wgsextract_cli.core.ref_library.assets import (
     reference_genomes_dir as reference_genomes_dir,
 )
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     resolve_reference_library as resolve_reference_library,
 )
 from wgsextract_cli.core.remote_input import check_url as check_url

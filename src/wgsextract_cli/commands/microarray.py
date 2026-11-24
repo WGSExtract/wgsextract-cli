@@ -70,7 +70,7 @@ from wgsextract_cli.core.microarray.templates import (
     get_template_format,
 )
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
+from wgsextract_cli.core.ref_library.assets import input_stem, resolve_reference_library
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import FileRecord, current_result
 from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args

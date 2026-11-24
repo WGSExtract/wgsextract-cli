@@ -7,12 +7,14 @@ from pathlib import Path as Path
 
 import pytest as pytest
 
+from tests.server_path_cases import _COMPANIONS as _COMPANIONS
+from tests.server_path_cases import _DATA as _DATA
+from tests.server_path_cases import _EVERY_PATH as _EVERY_PATH
+from tests.server_path_cases import _base_request as _base_request
+from tests.server_path_cases import _path_value as _path_value
 from tests.test_server import _ALIGN_REQUESTS as _ALIGN_REQUESTS
 from tests.test_server import _CALLER_OPS as _CALLER_OPS
 from tests.test_server import _CALLER_PATHS as _CALLER_PATHS
-from tests.test_server import _COMPANIONS as _COMPANIONS
-from tests.test_server import _DATA as _DATA
-from tests.test_server import _EVERY_PATH as _EVERY_PATH
 from tests.test_server import _EXAMPLE_PATHS as _EXAMPLE_PATHS
 from tests.test_server import _IN as _IN
 from tests.test_server import _METHYLATION_PATHS as _METHYLATION_PATHS
@@ -26,8 +28,6 @@ from tests.test_server import _SIGN_REQUESTS as _SIGN_REQUESTS
 from tests.test_server import _TYPING_PATHS as _TYPING_PATHS
 from tests.test_server import _VCF_PATHS as _VCF_PATHS
 from tests.test_server import _VEP_PATHS as _VEP_PATHS
-from tests.test_server import _base_request as _base_request
-from tests.test_server import _path_value as _path_value
 from tests.test_server import _RecordingFlavour as _RecordingFlavour
 from tests.test_server import _serve as _serve
 from tests.test_server import client as client

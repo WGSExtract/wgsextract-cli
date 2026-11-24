@@ -148,7 +148,8 @@ FACTS: dict[str, FactSpec] = {
         ),
         # 2: a VCF's ##reference path counts only by its file name.
         # 3: .vcf.bgz and upper-case VCF names are read as VCFs (#1243).
-        FactSpec("build", "Reference build the file is aligned to.", version=3),
+        # 4: metadata and contig counts are hints, not confirmed builds (#1346).
+        FactSpec("build", "Reference build the file is aligned to.", version=4),
         FactSpec(
             "somalier_sex",
             "Male or Female, from chrX heterozygosity and chrY depth (qc relate).",
@@ -442,7 +443,9 @@ class SampleWorkspace:
         if current is None or entry.get("fingerprint") != current:
             return None
         if name == "platform" and fact.get("statistics") is not None:
-            from wgsextract_cli.core.fastq_platform import fastq_evidence_fingerprint
+            from wgsextract_cli.core.alignment.fastq_platform import (
+                fastq_evidence_fingerprint,
+            )
 
             try:
                 evidence = fastq_evidence_fingerprint(str(absolute_path(file)))
@@ -623,7 +626,7 @@ class SampleWorkspace:
         if statistics is not None:
             new["statistics"] = statistics
             if name == "platform":
-                from wgsextract_cli.core.fastq_platform import (
+                from wgsextract_cli.core.alignment.fastq_platform import (
                     fastq_evidence_fingerprint,
                 )
 

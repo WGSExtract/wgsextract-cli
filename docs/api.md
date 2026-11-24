@@ -18,11 +18,13 @@ res.outputs, res.metrics, res.warnings
 Operations raise `CommandFailed` (carrying the failed `Result`) unless
 called with `check=False`. They accept a `progress` callback and a
 `CancelToken`. Operations that write files or run long run one at a time
-per process; quick read-only ones (`info`, `info chip`, `sample show`,
-`ref status`, `ref library-list`, `example-genome list`, `deps check`)
+per process; quick read-only ones (`info`, `info chip`, `lookup`, `sample show`,
+`ref status`, `ref recheck`, `ref library-list`, `report-delta`,
+`example-genome list`, `deps check`)
 may run on several threads at once, each call with its own result, progress,
 cancellation and settings, unless asked to save files (`info` with
-`detailed` or `table_format`, `ref library-list` with `remote_sizes`),
+`detailed` or `table_format`, `ref library-list` with `remote_sizes`,
+`ref recheck` with `online`),
 which makes them one at a time too. They write the same
 output files and manifests as the CLI but print nothing to stdout: the
 human-readable report the CLI would print is in `Result.text` instead, and
@@ -41,7 +43,7 @@ from its Params fields, so the API and `--help` cannot drift.
 Stability: the names exported here and the group modules (`api.extract`,
 `api.info`, `api.bam`, `api.qc`, `api.align`, `api.vcf`,
 `api.lineage`, `api.methylation`, `api.microarray`, `api.panel`, `api.ref`,
-`api.repair`, `api.genotyping`, `api.report`, `api.sample`,
+`api.repair`, `api.genotyping`, `api.report`, `api.lookup`, `api.sample`,
 `api.support`, `api.pet`, `api.analyze`, `api.sign`, `api.deps`,
 `api.examples`, `api.vep`, `api.benchmark`, `api.score`) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
@@ -1020,8 +1022,8 @@ Call SNPs; the `snps` output carries the record count in its metrics.
 
 Ploidy comes from `ploidy` or `ploidy_file`, else the reference
 library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table for
-the build of the input, or of a FASTA outside any library (its chr1
-length, `.dict` assembly, header description or file name).
+a build confirmed by the input or reference sequence dictionary.
+A file or folder name alone does not select a ploidy table.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1473,7 +1475,9 @@ no sample data is sent to its public reference publisher.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `pharmcat_dir` | `Path \| None` | `None` (config `pharmcat_directory`) | `--pharmcat-dir` | Extracted PharmCAT pipeline release (default: <reference library>/pharmcat). |
-| `absent_to_ref` | `bool` | `False` | `--absent-to-ref` | Treat positions absent from the VCF as reference. Only for a whole-genome VCF that lists variants only (not a gVCF). |
+| `absent_to_ref` | `bool` | `False` | `--absent-to-ref` | Treat positions absent from the VCF as reference. Only for a whole-genome variants-only VCF. Incompatible with --alignment. |
+| `alignment` | `Path \| None` | `None` | `--alignment` | Indexed BAM/CRAM of the same sample, for reference evidence at absent PharmCAT sites. Overrides any companion gVCF. |
+| `alignment_reference` | `Path \| None` | `None` | `--alignment-reference` | Indexed GRCh38 FASTA used to align --alignment (default: PharmCAT's FASTA). |
 | `outside_call` | `tuple[Path, ...] \| None` | `None` | `--outside-call` | PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6` or `typing hla`. Repeatable; one call per gene. |
 | `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 | `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
@@ -1901,7 +1905,9 @@ CHM13v2.0's chrM was mapped onto the rCRS, `mt_reference`.
 called first; needs the reference) or a VCF, into
 `haplogrep_results.txt`; a missing tree needs `download` permission.
 With `contamination`, haplocheck also looks for a mixture of
-two haplogroups (`haplocheck_contamination.txt`). Haplogrep reads
+two haplogroups (`haplocheck_contamination.txt`); on a BAM/CRAM, mutserve's
+calls and per-position read table are kept for `report`
+(`details.heteroplasmy`, docs/lineage.md). Haplogrep reads
 rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
 three more differences) is called at every site and mapped onto the rCRS
 through the bundled alignment (`details.mt_reference`); a VCF on it needs
@@ -1917,7 +1923,7 @@ confirm as the rCRS is warned of (`mt_reference_unconfirmed`).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `tree` | `str \| None` | `None` (config `haplogrep_tree`) | `--tree` | Haplogrep 3 tree (default: config haplogrep_tree, else phylotree-fu-rcrs, PhyloTree 17 Forensic Update). phylotree-rcrs is PhyloTree 17; mitotree-rcrs is FamilyTreeDNA Mitotree (non-commercial use only). One of: `phylotree-fu-rcrs`, `phylotree-rcrs`, `mitotree-rcrs` |
-| `contamination` | `bool` | `False` | `--contamination` | Also check for mtDNA contamination with haplocheck. VCF input needs heteroplasmy levels (FORMAT/AF). |
+| `contamination` | `bool` | `False` | `--contamination` | Also check for mtDNA contamination with haplocheck; a BAM/CRAM also keeps mutserve's heteroplasmy calls for `report`. VCF input needs heteroplasmy levels (FORMAT/AF). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `haplogrep_path` | `str \| None` | `None` (config `haplogrep_executable`) | `--haplogrep-path` | Path to the Haplogrep 3 executable or JAR (optional if in PATH) |
 | `haplocheck_path` | `str \| None` | `None` (config `haplocheck_executable`) | `--haplocheck-path` | Path to the haplocheck executable or JAR (optional if in PATH) |
@@ -2048,19 +2054,22 @@ CLI: `wgsextract methylation regions`.
 
 Summarize methylation over the selected build-matched regions.
 
-`MethylationRegionsParams`: Summarize strand-combined CpG calls over RefSeq promoters or UCSC islands.
+`MethylationRegionsParams`: Summarize pooled or haplotype-split CpG calls over RefSeq promoters or UCSC islands.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
-| `input` | `Path` | required | `--input`, `-i` | Coordinate-sorted, strand-combined CpG bedMethyl. |
-| `ref` | `Path` | required | `--ref` | The indexed, local FASTA used for the bedMethyl coordinates. |
+| `input` | `Path` | required | `--input`, `-i` | Sorted, strand-combined CpG bedMethyl, or indexed HP-tagged BAM/CRAM with --partition-hp. |
+| `ref` | `Path` | required | `--ref` | The indexed, local FASTA used to align the reads or make the bedMethyl. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
-| `build` | `str` | required | `--build` | Assembly of both bedMethyl and FASTA. One of: `hg38`, `t2t` |
+| `build` | `str` | required | `--build` | Assembly of both input and FASTA. One of: `hg38`, `t2t` |
 | `preset` | `str` | required | `--preset` | RefSeq promoters or UCSC masked CpG islands. One of: `promoters`, `cpg-islands` |
 | `upstream` | `int` | `2000` | `--upstream` | Promoter bases upstream of the TSS (default: 2000). |
 | `downstream` | `int` | `500` | `--downstream` | Promoter bases on the transcribed side (default: 500). |
 | `min_valid_calls` | `int` | `5` | `--min-valid-calls` | Minimum valid calls per CpG (default: 5). |
 | `min_cpgs` | `int` | `3` | `--min-cpgs` | Minimum qualifying CpGs per region (default: 3). |
+| `partition_hp` | `bool` | `False` | `--partition-hp` | Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS). |
+| `phase_blocks` | `Path \| None` | `None` | `--phase-blocks` | Matching phased.blocks.tsv from vcf phase; require region containment in one block. |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `hydroxymethyl` | `bool` | `False` | `--5hmc` | Also report 5hmC: declares the input was generated with a 5hmC-capable model. |
 | `download` | `bool` | `False` | `--download` | Fetch the missing pinned hg38 CpG island table from UCSC. No sample data is sent. |
 | `table_format` | `str` | `'tsv'` | `--format` | Output table: tsv (default) or parquet (needs pyarrow). One of: `tsv`, `parquet` |
@@ -2401,6 +2410,25 @@ HG00096) in the My Genomes library. Reports whether it is installed;
 | `mygenomes_library` | `Path \| None` | `None` | `--mygenomes-library` | My Genomes library folder for the test genome (default: config mygenomes_library, else mygenomes/ in the users workspace). |
 | `install` | `bool` | `False` | `--install` | Download the test genome (84 MB, SHA-256 checked) and unpack it. |
 | `delete` | `bool` | `False` | `--delete` | Delete the test genome and its download. |
+
+### `api.ref.recheck(RefRecheckParams)`
+
+CLI: `wgsextract ref recheck`.
+
+`details`: wgsextract.recheck/1. Only `online=True` uses the network.
+
+`RefRecheckParams`: Compare the resource releases that result manifests recorded (ClinVar,
+gene lists, ...) with the newest ones: from an answers file, or only with
+`online` from NCBI's public ClinVar release listing. Nothing is
+downloaded and no analysis is rerun; `details` is the
+`wgsextract.recheck/1` document.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `manifests` | `tuple[Path, ...]` | required | `MANIFEST` | Result manifests (.manifest.json) whose recorded releases to check; a report's manifest covers the runs it shows. |
+| `answers` | `Path \| None` | `None` | `--answers` | Newest releases as a wgsextract.release_answers/1 JSON file (offline; e.g. saved by an earlier --online --save-answers run). |
+| `online` | `bool` | `False` | `--online` | Ask the public release listing (ClinVar: ftp.ncbi.nlm.nih.gov) for the newest releases. Sends a plain request for the listing: no sample data, paths or positions. Off unless given. |
+| `save_answers` | `Path \| None` | `None` | `--save-answers` | With --online, also save the answers it got to FILE, to repeat the check offline with --answers. |
 
 ### `api.ref.cytobands(RefCytobandsParams)`
 
@@ -2773,6 +2801,9 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
 * `target_cnv`: screen short-read WGS for copy number over BED intervals
   (`.target-cnv.tsv`). Uses an indexed matching FASTA, with an offline
   baseline and callability mask for GRCh37, GRCh38 and T2T-CHM13v2.0.
+* `paraphase`: copy number and haplotypes for long-read paralog loci
+  (`.paraphase.tsv`/`.json` and raw files), using the opt-in `paraphase`
+  environment. PacBio HiFi or experimental, unvalidated ONT.
 * `hla`: HLA class I and II alleles with T1K (`.t1k_genotype.tsv`,
   `.t1k_allele.tsv`/`.vcf`), from the optional `t1k` environment.
 * `repeats` (`typing str`): disease repeat expansions (`.str.tsv` or
@@ -2855,6 +2886,25 @@ with clear depth evidence. This is a screen, not a diagnosis.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `bed` | `Path` | required | `--bed` | Target intervals in a BED (0-based, end-exclusive; optional name in column 4). |
 | `download` | `bool` | `False` | `--download` | Use exact GIAB v3.5 masks, downloading missing public BEDs from NCBI into the reference library. No sample data is sent. |
+
+### `api.genotyping.paraphase(TypingParaphaseParams)`
+
+CLI: `wgsextract typing paraphase`.
+
+Type long-read paralogs (see `TypingParaphaseParams`).
+
+`TypingParaphaseParams`: Type paralogous loci from an indexed long-read BAM or CRAM, with
+the matching indexed FASTA. Reports locus copy number, gene-specific
+calls and explicit no-calls. ONT is experimental and unvalidated.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed PacBio HiFi or ONT whole-genome BAM or CRAM. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `genes` | `str \| None` | `None` | `--genes` | Comma-separated Paraphase locus names, e.g. SMN1,PMS2,STRC. Default: all loci supported by the engine for this reference build. |
+| `pacbio_licensed_executable` | `Path \| None` | `None` | `--pacbio-licensed-executable` | Opt in to a local Paraphase >=3.3.2 executable under the PacBio Software License Agreement. Every read group must be PL:PACBIO. Default: Paraphase 3.3.1 (BSD-3-Clause-Clear) from its Pixi environment. |
 
 ### `api.genotyping.hla(TypingHlaParams)`
 
@@ -2949,6 +2999,71 @@ plus a findings table, from the result manifests in its folder.
 | `table_format` | `str` | `'tsv'` | `--format` | Format of the findings table, <sample>_personal_report_findings.tsv or .parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
 | `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; missing lists need --download), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
 | `pgx_context` | `Path \| None` | `None` | `--pgx-context` | Review these medications against CPIC guidance: a local TOML file listing them (see docs/personal-report.md); it is never uploaded. The pinned CPIC database release needs --download the first time. |
+
+### `api.report.delta(ReportDeltaParams)`
+
+CLI: `wgsextract report-delta`.
+
+Compare two manifests. `details` is the `wgsextract.delta/1`
+document; incompatible runs (other command, sample or build) fail with
+error codes `delta_command_mismatch`, `delta_sample_mismatch` or
+`delta_build_mismatch`, and a document that isn't a result manifest
+with `unsupported_schema`. Reads only the two files.
+
+`ReportDeltaParams`: Compare two runs' result manifests semantically: findings added,
+removed, reclassified or with changed review evidence, genotype,
+confidence or ambiguity; sections that failed or didn't run; changed
+resource releases and provenance. Timestamps and ordering are ignored.
+`details` is the `wgsextract.delta/1` document.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `before` | `Path` | required | `--before` | The earlier run's result manifest, e.g. <sample>_personal_report.manifest.json. |
+| `after` | `Path` | required | `--after` | The later run's result manifest, of the same command and sample. |
+
+## `api.lookup`
+
+`lookup`: one sample's genotype, evidence state and existing results at
+an rsID, a build-qualified locus or a gene.
+
+Reads only local files: the input VCF (variants-only or gVCF), its reference
+evidence and the sample's personal report. Writes nothing:
+
+```python
+res = api.lookup.lookup(api.LookupParams(input=Path("s.vcf.gz"), rsid="rs429358"))
+res.details["site"]["status"]   # confident_call, confident_reference, ...
+```
+
+See docs/lookup.md.
+
+### `api.lookup.lookup(LookupParams)`
+
+CLI: `wgsextract lookup`.
+
+`details` is the `wgsextract.lookup/1` document: `resolution`
+(and its `candidates` when the identifier is ambiguous), `site` or
+`region` (genotype, `status` and evidence state, calls),
+`interpretation` (report findings, section states) and `resources`.
+
+`LookupParams`: Look up one sample's genotype and evidence state at an rsID, a
+build-qualified locus or a gene, with what its personal report says
+there. Local files only; writes nothing.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | The sample's VCF/BCF: variants-only or a gVCF. Its gVCF (from --gvcf, or its run's manifest) tells confident reference from not assessed. |
+| `rsid` | `str \| None` | `None` | `--rsid` | dbSNP rsID, e.g. rs429358 (merged IDs follow dbSNP build 157). |
+| `gene` | `str \| None` | `None` | `--gene` | Gene symbol or alias (NCBI RefSeq), e.g. APOE: its calls and evidence, paged by --limit. |
+| `locus` | `str \| None` | `None` | `--locus` | BUILD:CHROM:POS[-END][:REF>ALT], e.g. GRCh38:chr19:44908684:T>C; with --rsid or --gene, chooses one of several placements. |
+| `sample` | `str \| None` | `None` | `--sample` | Sample of a multi-sample VCF (required for one). |
+| `gvcf` | `Path \| None` | `None` | `--gvcf` | The sample's gVCF, if not the input or recorded by its run. |
+| `report` | `Path \| None` | `None` | `--report` | Personal report JSON (or its folder) to join (default: the one in the input's folder). |
+| `build` | `str \| None` | `None` | `--build` | The input's build when its header doesn't show it. One of: `GRCh37`, `GRCh38`, `CHM13v2.0` |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `limit` | `int` | `50` | `--limit` | Calls per page of a gene or region (1-1000; default 50). |
+| `cursor` | `str \| None` | `None` | `--cursor` | next_cursor of the previous page. |
+| `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
+| `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 
 ## `api.sample`
 
@@ -3106,6 +3221,20 @@ Pixi `environment` and the `environment_tools` it provides,
 `can_install` and `can_uninstall`, and a `note` (how to install it
 yourself, or why it can't be had). It doesn't fail on a missing tool.
 
+`ready` reports whether a command line (`command_line`, as its argv
+after `wgsextract`) can run on this computer without the network: each
+prerequisite its run checks (platform, tools, Docker images and GPUs, model
+weights and their SHA-256, the input, reference genome and indexes, and
+annotation data), with a `status` (runnable, installed, unverified,
+unsupported, missing, stale or incompatible), its evidence (version, path,
+Conda package and the licence its metadata records, image identity and
+labels, digests; terms are "unknown" where nothing local records them) and
+the explicit step that provides it. `details["status"]` is "ready",
+"ready_unverified" or "not_ready"; not ready fails with exit code 3 (error
+kind `missing_dependency`), with the details still set. It installs,
+pulls and downloads nothing. The server doesn't offer it: the command line
+names host paths its folder checks can't vet.
+
 `install` downloads and installs the Pixi environment that provides an
 optional tool (`pixi install --locked -e <env>`); `uninstall` removes it
 (`pixi clean -e <env>`), and with it the other tools in that environment.
@@ -3134,6 +3263,18 @@ List every tool and its status (see `DepsListParams`).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+
+### `api.deps.ready(DepsReadyParams)`
+
+CLI: `wgsextract deps ready`.
+
+Report a command line's offline readiness (see `DepsReadyParams`).
+
+`DepsReadyParams`: Report whether a command line can run here without the network.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `command_line` | `tuple[str, ...]` | required | `-- COMMAND ...` | The command line to check: its arguments after ``wgsextract``. |
 
 ### `api.deps.install(DepsInstallParams)`
 
@@ -3262,16 +3403,16 @@ Annotate variants with VEP (see `VepRunParams`).
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline. If the cache is missing, vep_cache_missing tells you how to fetch it with vep download. |
-| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used, and a BAM or CRAM whose header or reference index shows another build is refused. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
+| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against. For BAM or CRAM input, the alignment header, FASTA and explicit assembly must agree where known. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_cache_version` | `str` | `'116'` | `--vep-cache-version` | VEP cache version (default: 116) |
 | `vcf_type` | `str` | `'auto'` | `--vcf-type` | Variant type: 'sv' and 'cnv' add VEP's structural-variant options; 'auto' detects it from the input. One of: `auto`, `snp-indel`, `sv`, `cnv` |
 | `add_chr` | `bool` | `False` | `--add-chr` | Give VEP the input with a 'chr' prefix on chromosome names. |
 | `force` | `bool` | `False` | `--force` | Force re-run even if output exists |
 | `preset` | `str` | `'everything'` | `--preset` | What VEP annotates: 'everything' (default), or 'fast' (about twice as fast: consequences, genes, MANE transcripts, SIFT and PolyPhen; no population frequencies, for which use 'vcf gnomad', and no HGVS) One of: `everything`, `fast` |
-| `vep_args` | `str \| None` | `None` | `--vep-args` | Additional raw arguments to pass to VEP (e.g., '--everything --pick') |
+| `vep_args` | `str \| None` | `None` | `--vep-args` | Additional raw arguments to pass to VEP. For BAM or CRAM, choose the assembly and FASTA with --assembly and --ref instead. |
 | `format` | `str` | `'vcf'` | `--format` | Output format (default: vcf) One of: `vcf`, `tab`, `json` |
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's); wins over ploidy. |
-| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the GRCh37 or GRCh38 preset; other builds, such as T2T, need this or a ploidy file). |
+| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the preset for a confirmed GRCh37 or GRCh38 build). Unknown builds and T2T need this or a ploidy file. |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 
 ### `api.vep.download(VepDownloadParams)`

@@ -20,7 +20,7 @@ from wgsextract_cli.core.containers import (
     docker_info,
 )
 from wgsextract_cli.core.genotype_qc import contigs_with_reads
-from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.resource_estimates import (
     GENOME_BASES,
     GIB,

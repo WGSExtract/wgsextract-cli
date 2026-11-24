@@ -115,6 +115,11 @@ sex through `sample set` before running the analyses. This rebased mini genome
 has no informative chrX assay, so coverage-based inference correctly returns
 Unknown; the lab must not bypass the product's unknown-sex ploidy safeguard.
 
+Its truncated, rebased contigs also cannot confirm the full hg19 assembly.
+The CLI workload passes the fixture's ploidy explicitly for microarray; the
+current-tree app workload puts the same file in its test reference library
+for SNP and microarray calling. The file uses mini-genome coordinates.
+
 The mini genome has **5x coverage**, below microarray's default DP ≥10/GQ ≥20
 evidence gates. The scenario keeps those real-user defaults and requests
 `--call-reasons`; it does not disable filtering to make the fixture pass.
@@ -125,11 +130,6 @@ no-calls, and their reason table must agree. At least 1,500 truth sites must be
 represented and some callable sites must remain; an all-no-call kit cannot
 pass. At least 95% of the **callable** genotypes must match 1000 Genomes. No-calls
 at weak sites are expected, not genotype disagreements.
-
-The mini genome has no chrX reads, so its sex reads as Unknown and microarray
-refuses sex-dependent ploidy. HG00096 is male, so the workload declares it with
-`sample set --sex Male` first, as the refusal tells a user to, and the app's
-plan does the same with its Sample overrides action.
 
 ## The macOS app
 
@@ -463,9 +463,21 @@ breaks.
 The `linux` jobs' container installs its prerequisites (`curl`,
 `ca-certificates` and, for the app, `sudo`, Xvfb and the rest) with
 `.github/actions/apt-install/apt-install.sh`: official Ubuntu mirrors in turn,
-bounded time, and an `Upstream package mirror unreachable` failure if none
-answers, rather than apt's misleading "Unable to locate package curl". The
-container's apt then uses the same mirrors for the app's own `.deb`.
+with bounded time. The lab bind-mounts an apt cache under
+`out/installlab-apt/`, split by Ubuntu image, architecture and package set.
+It can install prerequisites from cached lists and packages after verifying
+them against Ubuntu's signed archive metadata. It saves the cache after
+prerequisite setup; the installer under test cannot write to the saved copy.
+If neither the mirrors nor the cache can supply the prerequisites, the lab
+reports `Upstream package mirror unreachable`.
+The app's own `.deb` install still uses the normal guest apt and can need the
+network for other dependencies.
+
+The hosted Linux jobs restore that cache and refresh it weekly from `main`;
+PR jobs never save it. Local GUI builds and Windows VM media preparation also
+use a host cache for their container prerequisites. To test today's mirrors
+without reading or writing that cache, add `--no-apt-cache` to `lab.py run`,
+`prepare` or `selftest`, or set `no_apt_cache=true` on a manual Install Lab run.
 
 To try an app fix before releasing it, run the *GUI distribution* workflow
 (`gui-distribution.yml`) on its branch, then this workflow on the **same commit**:

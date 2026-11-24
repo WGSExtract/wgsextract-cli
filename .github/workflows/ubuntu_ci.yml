@@ -12,6 +12,8 @@ on:
       tests:
         type: string
         default: all
+      matrix:
+        type: string
       smoke-only:
         type: boolean
         default: false
@@ -35,6 +37,10 @@ on:
         description: Run only the cheap optional-tool integrations (branch validation).
         type: boolean
         default: false
+      balanced-full-suite:
+        description: Run full pytest with duration shards on main, without producing the daily observation map.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -49,7 +55,8 @@ jobs:
     uses: ./.github/workflows/nightly_guard.yml
     with:
       workflow: ubuntu_ci.yml
-      main-backstop-candidate: &main-backstop-candidate ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.optional-tools-only)) }}
+      main-backstop-candidate: &main-backstop-candidate ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.optional-tools-only && !inputs.balanced-full-suite)) }}
+      shard-os: ${{ inputs.balanced-full-suite && !inputs.optional-tools-only && 'ubuntu' || '' }}
   lint:
     needs: nightly
     if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.smoke-only && !inputs.generic-certified }}
@@ -80,7 +87,7 @@ jobs:
   test-ubuntu:
     # The daily full pytest run seeds shadow observations and must not reuse
     # a green push or depend on the guard runner. The guard controls other jobs.
-    if: ${{ !cancelled() && !inputs.optional-tools-only && !inputs.platform-certified && inputs.tests != '[]' }}
+    if: ${{ !cancelled() && !inputs.optional-tools-only && !inputs.balanced-full-suite && !inputs.platform-certified && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: ubuntu
@@ -90,6 +97,7 @@ jobs:
       environments: default dev vep-rs fastvep
       reference: true
       tests: ${{ inputs.tests || 'all' }}
+      matrix: ${{ inputs.matrix }}
       smoke-only: ${{ inputs.smoke-only == true }}
       skip-generic: ${{ github.event_name == 'pull_request' }}
       setup-checks: ${{ github.event_name != 'pull_request' || inputs.setup-checks }}
@@ -97,9 +105,21 @@ jobs:
       # The merge queue runs this suite, so main skips what it already ran (#1373).
       queue-dedupe: true
 
+  test-ubuntu-balanced:
+    needs: nightly
+    if: ${{ !cancelled() && github.event_name == 'workflow_dispatch' && inputs.balanced-full-suite && !inputs.optional-tools-only }}
+    uses: ./.github/workflows/os_tests.yml
+    with:
+      os: ubuntu
+      runner: ubuntu-latest
+      timeout-minutes: 48
+      environments: default dev vep-rs fastvep
+      reference: true
+      matrix: ${{ needs.nightly.outputs.matrix }}
+
   optional-tools:
     needs: nightly
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_contamination.py') || contains(inputs.tests, 'tests/test_vcf_callers.py') || contains(inputs.tests, 'tests/test_typing_str_long_reads.py') || contains(inputs.tests, 'tests/test_methylation.py') || contains(inputs.tests, 'tests/test_genotyping_commands.py')) }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_contamination.py') || contains(inputs.tests, 'tests/test_vcf_callers.py') || contains(inputs.tests, 'tests/test_typing_str_long_reads.py') || contains(inputs.tests, 'tests/test_methylation.py') || contains(inputs.tests, 'tests/test_methylation_regions.py') || contains(inputs.tests, 'tests/test_genotyping_commands.py')) }}
     uses: ./.github/workflows/optional_tools.yml
     with:
       tests: ${{ inputs.tests || 'all' }}

@@ -223,6 +223,18 @@ COLUMNS: tuple[Column, ...] = (
         "has (gnomAD and 1000 Genomes in Ensembl VEP's cache; 1000 Genomes only "
         "in a vep-rs cache from `vep download`).",
     ),
+    Column(
+        "ad_ref",
+        INTEGER,
+        "The sample's reads supporting REF (FORMAT/AD); empty when AD is "
+        "missing or incomplete.",
+    ),
+    Column(
+        "ad_alt",
+        INTEGER,
+        "The sample's reads supporting this ALT (FORMAT/AD); empty when AD is "
+        "missing or incomplete.",
+    ),
     *scores.SCORE_COLUMNS,
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
@@ -702,6 +714,9 @@ def variant_rows(
                 ),
                 _csq_frequency(csq, "AF"),
                 _csq_frequency(csq, "MAX_AF"),
+                # A record split from a multi-ALT one keeps REF and its own ALT.
+                ad[0] if len(ad) == n_alts + 1 else None,
+                ad[alt_index] if len(ad) == n_alts + 1 else None,
                 *(
                     scores.allele_scores(
                         csq_scores,

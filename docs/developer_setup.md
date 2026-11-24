@@ -119,7 +119,10 @@ keeping pytest scratch under `out/`.
 
 PR/main CI is bounded and cancels superseded runs. A separate lint-only
 environment runs Ruff, workflows and strict mypy without reference downloads;
-genomic jobs cache public hs38. Action updates retain full commit SHAs and
+genomic jobs cache public hs38. A CI policy test keeps the mypy exemption
+baseline for `wgsextract_cli.core` empty: don't add overrides that match it
+or relax the global strict configuration in `pyproject.toml`.
+Action updates retain full commit SHAs and
 version comments from allow-listed sources, not a duplicate validator SHA
 table. See [CI routing](ci_routing.md).
 
@@ -240,7 +243,9 @@ unvalidated loaded data to those types.
 Keep these committed: readers,
 release archives and freshness tests need them without running Python.
 
-The setup scripts configure the `merge=generated` driver in `.gitattributes`.
+The generators run by `scripts/regen.py` write LF on every platform, and
+`.gitattributes` keeps their fully generated files at LF on checkout. The setup
+scripts configure the `merge=generated` driver assigned to those files.
 For an existing checkout, configure it once:
 
 ```bash

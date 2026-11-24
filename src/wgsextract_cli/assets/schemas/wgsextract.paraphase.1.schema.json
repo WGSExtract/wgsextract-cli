@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wgsextract:schema:paraphase:1",
+  "title": "wgsextract.paraphase/1",
+  "description": "Normalized copy number and haplotype calls from typing paraphase.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "wgsextract.paraphase/1"
+    },
+    "genome": {
+      "enum": [
+        "19",
+        "37",
+        "38",
+        "chm13"
+      ]
+    },
+    "platform": {
+      "enum": [
+        "pacbio",
+        "ont"
+      ]
+    },
+    "experimental": {
+      "type": "boolean"
+    },
+    "engine_version": {
+      "type": "string"
+    },
+    "engine_license": {
+      "enum": [
+        "BSD-3-Clause-Clear",
+        "PacBio Software License Agreement"
+      ]
+    },
+    "loci": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/locus"
+      }
+    }
+  },
+  "required": [
+    "schema",
+    "genome",
+    "platform",
+    "experimental",
+    "engine_version",
+    "engine_license",
+    "loci"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "locus": {
+      "type": "object",
+      "properties": {
+        "gene": {
+          "type": "string"
+        },
+        "total_cn": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "call_status": {
+          "enum": [
+            "called",
+            "partial",
+            "no_call"
+          ]
+        },
+        "experimental": {
+          "type": "boolean"
+        },
+        "gene_fields": {
+          "type": "object",
+          "additionalProperties": {}
+        }
+      },
+      "required": [
+        "gene",
+        "total_cn",
+        "call_status",
+        "experimental",
+        "gene_fields"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

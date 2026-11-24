@@ -277,3 +277,42 @@ def test_1284_variant_pages_return_in_silico_score_columns(tmp_path: Path) -> No
         assert result["structuredContent"]["rows"] == expected
     finally:
         assert mcp.close() == 0
+
+
+def test_1289_variant_pages_return_read_phase_and_gnomad_columns(
+    tmp_path: Path,
+) -> None:
+    """Issue 1289: /v1/variants (and MCP query_variants, which shares it) can
+    select the new columns, typed, and leave out empty ones."""
+    table = tmp_path / "sample_variants.tsv"
+    table.write_text(
+        "chrom\tpos\talt_fraction\tad_ref\tad_alt\tphase_set\ttranscript_id\t"
+        "gnomad_popmax_af\tgnomad_nhomalt\n"
+        "chr1\t100\t0.4375\t16\t14\t100\tENST1.4\t0.08\t12\n"
+        "chr1\t200\t\t\t\t\t\t\t\n",
+        encoding="utf-8",
+    )
+    columns = (
+        "pos,alt_fraction,ad_ref,ad_alt,phase_set,transcript_id,"
+        "gnomad_popmax_af,gnomad_nhomalt"
+    )
+    with _serve(tmp_path, [tmp_path]) as client:
+        status, body = client.request(
+            "GET", f"/variants?path={table}&columns={columns}"
+        )
+    assert status == 200
+    validate(body, "VariantPage")
+    assert body["rows"] == [
+        {
+            "pos": 100,
+            "alt_fraction": 0.4375,
+            "ad_ref": 16,
+            "ad_alt": 14,
+            "phase_set": "100",
+            "transcript_id": "ENST1.4",
+            "gnomad_popmax_af": 0.08,
+            "gnomad_nhomalt": 12,
+        },
+        {"pos": 200},
+    ]
+    assert isinstance(body["rows"][0]["ad_ref"], int)

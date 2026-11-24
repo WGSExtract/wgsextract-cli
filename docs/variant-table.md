@@ -94,6 +94,7 @@ of the BED file as supplied.
 | `gnomad_popmax_af` | real | Maximum allele frequency across gnomAD genetic ancestry groups for this ALT (`GNOMAD_POPMAX_AF` from `vcf gnomad`, a native gnomAD `AF_grpmax_joint`/`AF_grpmax`/`AF_popmax` field, or a gnomAD-specific group-maximum field in VEP `CSQ`). VEP `MAX_AF` combines databases and is not a fallback. |
 | `gnomad_nhomalt` | integer | Count of homozygotes for this ALT in gnomAD (`GNOMAD_NHOMALT` from `vcf gnomad`, native `nhomalt_joint`/`nhomalt`, or a gnomAD homozygote count in VEP `CSQ`). A known count of zero is distinct from a missing count. |
 | `kg_af`, `max_af` | real | VEP's 1000 Genomes phase 3 frequency of this ALT over all populations (`AF`), and its `MAX_AF`: the highest frequency in any population VEP's cache has, gnomAD and 1000 Genomes with Ensembl VEP's cache but 1000 Genomes only with a vep-rs cache from `vep download`. Where VEP lists several co-located known variants, the highest value. |
+| `ad_ref`, `ad_alt` | integer, integer | The sample's `FORMAT/AD` read counts for REF and this ALT. Empty when AD is missing or incomplete; an explicit count of zero stays `0`. A record split from a multi-allelic one keeps REF and its own ALT. |
 | `revel`, `alphamissense_score`, `alphamissense_class` | real, real, text | REVEL and AlphaMissense missense pathogenicity (0–1) and AlphaMissense's class (`likely_benign`, `ambiguous`, `likely_pathogenic`); see [In-silico scores](#in-silico-scores). |
 | `cadd_raw`, `cadd_phred` | real, real | CADD's raw and PHRED-scaled deleteriousness scores. |
 | `spliceai_max` | real | The highest of the ALT's four SpliceAI delta scores (`DS_AG`, `DS_AL`, `DS_DG`, `DS_DL`, 0–1), for the row's gene when scored. |
@@ -241,6 +242,29 @@ WHERE consequence LIKE '%missense_variant%'
 -- Variants SpliceAI predicts to change splicing
 SELECT gene, hgvs_c, spliceai_max, consequence
 FROM variants WHERE spliceai_max >= 0.5 ORDER BY spliceai_max DESC;
+
+-- Variants rare overall but common in some ancestry group, or seen
+-- homozygous in gnomAD's (largely healthy) individuals
+SELECT gene, hgvs_p, gnomad_af, gnomad_popmax_af, gnomad_nhomalt
+FROM variants
+WHERE gnomad_af < 0.001 AND (gnomad_popmax_af >= 0.01 OR gnomad_nhomalt > 0);
+
+-- Two phased heterozygous hits in one gene on the same haplotype (cis) or
+-- on opposite ones (trans), within one phase block. Only 0|1 and 1|0: a
+-- multi-allelic site's rows (1|2) all keep the site's genotype.
+SELECT a.gene, a.hgvs_p, a.genotype, b.hgvs_p, b.genotype,
+       CASE WHEN a.genotype = b.genotype THEN 'cis' ELSE 'trans' END AS phase
+FROM variants a JOIN variants b
+  ON a.gene = b.gene AND a.chrom = b.chrom AND a.phase_set = b.phase_set
+     AND a.pos < b.pos
+WHERE a.genotype IN ('0|1', '1|0') AND b.genotype IN ('0|1', '1|0')
+  AND a.impact IN ('HIGH', 'MODERATE') AND b.impact IN ('HIGH', 'MODERATE');
+
+-- Heterozygous calls with skewed allele balance (possible mosaicism,
+-- clonal haematopoiesis or an artifact)
+SELECT chrom, pos, gene, genotype, ad_ref, ad_alt, alt_fraction
+FROM variants
+WHERE zygosity = 'het' AND alt_fraction < 0.25 AND ad_alt >= 3;
 
 -- Homozygous loss-of-function candidates
 SELECT gene, hgvs_c, hgvs_p, consequence
