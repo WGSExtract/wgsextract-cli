@@ -181,27 +181,13 @@ jobs:
         with:
           path: reference/hg19ToHg38.over.chain.gz
           key: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}
-      - name: Cache public hs38 reference
+      - name: Install pinned hs38 release assets
         if: inputs.reference
-        id: reference-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: reference/genomes
-          key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
-      - name: Install Reference Genome
-        if: inputs.reference
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: pixi run python -m wgsextract_cli.main ref library --install hs38 --ref reference
-      # Only Ubuntu seeds the multi-gigabyte reference cache.
-      - name: Seed the shared hs38 reference on main
-        if: >-
-          inputs.reference && inputs.os == 'ubuntu' && github.ref == 'refs/heads/main' &&
-          strategy.job-index == 0 && steps.reference-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: reference/genomes
-          key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
+        shell: bash
+        run: |
+          bash scripts/ci_hs38.sh install
+          # Exercise both indexes against the installed FASTA before pytest can reuse passes.
+          pixi run --no-install samtools faidx reference/genomes/hs38.fa.gz chr22:20000001-20000040 > /dev/null
       # This environment is deliberately not restored by setup-pixi above:
       # prove that a fresh install uses the published, SHA-256-pinned package.
       - name: Install pinned imputation tools from scratch

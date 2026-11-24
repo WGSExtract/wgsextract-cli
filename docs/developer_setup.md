@@ -240,7 +240,9 @@ unvalidated loaded data to those types.
 Keep these committed: readers,
 release archives and freshness tests need them without running Python.
 
-The setup scripts configure the `merge=generated` driver in `.gitattributes`.
+The generators run by `scripts/regen.py` write LF on every platform, and
+`.gitattributes` keeps their fully generated files at LF on checkout. The setup
+scripts configure the `merge=generated` driver assigned to those files.
 For an existing checkout, configure it once:
 
 ```bash
