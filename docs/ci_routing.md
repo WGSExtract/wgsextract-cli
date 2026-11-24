@@ -1048,9 +1048,9 @@ It reads PRs, workflow runs and jobs through `gh api` (read-only) and exits 0
 when admission is fine. The `priority` label, added to PRs from non-bot
 collaborators with write access other than `theontho`, lets the named PR skip
 the capacity gate. Other PRs exit 3 (hold) while a priority PR has active
-ready CI or is in the merge queue, while any `merge_group` job is queued for
-a runner, or while more than `--max-ready` (default 4) ready-PR area matrices
-are in flight. `--wait` polls with
+draft or ready area CI or is in the merge queue, while any `merge_group` job
+is queued for a runner, or while more than `--max-ready` (default 4)
+ready-PR area matrices are in flight. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
 prints the counts. The check reserves nothing, so each supervisor admits one
 PR at a time and starts the next check only once the previous PR's ready run
@@ -1059,10 +1059,12 @@ run each.
 
 #### Fast path for collaborators
 
-- **`priority`** is added when a human collaborator with write, maintain, or
-  admin access opens or reopens a PR, except for the agent account (`theontho`).
-  You can remove it. With it, you can ready your PR without waiting for agent
-  capacity; agents yield while your ready CI or merge queue entry is pending.
+- **`priority`** is added to PRs from human collaborators with write,
+  maintain, or admin access, except the agent account (`theontho`). It is
+  added when you open, reopen, mark ready, or convert the PR to draft. You
+  can remove it until the next of those events; pushes do not restore it.
+  With it, you can ready your PR without waiting for agent capacity, and
+  agents yield while your draft or ready CI or merge queue entry is pending.
 - Add **`hands-off`** if you want to handle everything yourself, including
   CI reruns. Add **`land-asap`** when you're done: owner-account agents may
   rerun cancelled or lost-runner jobs and enqueue your ready PR at the front once

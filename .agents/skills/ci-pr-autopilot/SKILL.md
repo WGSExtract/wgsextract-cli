@@ -77,7 +77,7 @@ Certify macOS (and Windows where a host exists) on the exact head before
 ready. Immediately before `gh pr ready`, run `python scripts/ci_capacity.py
 --wait --pr N` in a background watcher and proceed only on exit 0.
 Priority PRs skip this gate; other PRs yield to priority PRs with active
-ready CI or a merge queue entry, in addition to the usual capacity limits.
+draft or ready CI or a merge queue entry, in addition to the usual capacity limits.
 Admit one PR at a time per supervisor: start the next check only after the
 previously admitted PR's ready area run is visible.
 
