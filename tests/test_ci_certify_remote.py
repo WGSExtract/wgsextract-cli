@@ -76,6 +76,7 @@ def transport(
     terminated: bool = False,
     cancel_interrupted: bool = False,
     sends_environment: bool = False,
+    transport_does_not_start: bool = False,
 ) -> tuple[list[dict[str, str]], list[str]]:
     popen = subprocess.Popen
     statuses: list[dict[str, str]] = []
@@ -95,6 +96,8 @@ def transport(
                     **kwargs,
                 )
             alias = command[-2]
+            if transport_does_not_start and kwargs.get("encoding"):
+                raise OSError("SSH did not start")
             if terminated and kwargs.get("encoding"):
                 os.kill(os.getpid(), signal.SIGTERM)
             if cancel_interrupted and "stderr" not in kwargs:
@@ -310,6 +313,27 @@ def test_1495_refuses_ssh_setenv_without_publishing(
     with pytest.raises(ValueError, match="forwards environment data"):
         certify(remote_pr)
     assert not statuses and not locks
+
+
+def test_1495_ssh_startup_failure_releases_unused_host(
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    statuses, locks = transport(
+        monkeypatch, remote_pr, transport_does_not_start=True, cleanup_refused=True
+    )
+    with pytest.raises(OSError, match="SSH did not start"):
+        certify(remote_pr)
+    assert statuses[-1]["state"] == "error"
+    assert locks == ["lock", "unlock"]
+
+
+def test_1495_invalid_registration_points_to_config_file(
+    remote_pr: dict[str, Any], tmp_path: Path
+) -> None:
+    config = tmp_path / "host-registry.toml"
+    config.write_text("[[certification.hosts]\n")
+    with pytest.raises(ValueError, match="host-registry.toml"):
+        certify(remote_pr, config=config)
 
 
 @pytest.mark.parametrize(

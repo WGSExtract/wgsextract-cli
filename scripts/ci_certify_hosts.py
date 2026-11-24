@@ -27,8 +27,13 @@ DEFAULT_HOST = RemoteHost("randy-mini", "macos-arm64")
 def hosts_for(target: str, config: Path) -> list[RemoteHost]:
     hosts: list[RemoteHost] = [DEFAULT_HOST]
     if config.exists():
-        with config.open("rb") as stream:
-            data = tomllib.load(stream)
+        try:
+            with config.open("rb") as stream:
+                data = tomllib.load(stream)
+        except (OSError, tomllib.TOMLDecodeError) as error:
+            raise ValueError(
+                f"Cannot read certification configuration {config}: {error}"
+            ) from error
         section = data.get("certification", {})
         entries = section.get("hosts", []) if isinstance(section, dict) else None
         if not isinstance(entries, list):

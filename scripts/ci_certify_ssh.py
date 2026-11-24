@@ -362,6 +362,7 @@ def stream_remote(host: RemoteHost, script: str, log: Path) -> tuple[int, str]:
     stop = threading.Event()
     result = ""
     process: subprocess.Popen[str] | None = None
+    request_attempted = False
     try:
         with log.open("w", encoding="utf-8") as stream:
             stream.write(f"{host.alias} control:{run_id}\n")
@@ -377,6 +378,8 @@ def stream_remote(host: RemoteHost, script: str, log: Path) -> tuple[int, str]:
                 errors="replace",
             )
             assert process.stdin is not None and process.stdout is not None
+            # A failed write or flush may still have delivered the full request.
+            request_attempted = True
             process.stdin.write(
                 program_line(SUPERVISOR)
                 + json.dumps({"id": run_id, "script": script})
@@ -418,15 +421,16 @@ def stream_remote(host: RemoteHost, script: str, log: Path) -> tuple[int, str]:
         # the supervisor's process-group cleanup acknowledgement. Never unlock
         # merely because the original SSH connection disappeared.
         try:
-            acknowledgement = subprocess.check_output(
-                ssh_command(host),
-                env=ssh_environment(),
-                input=program_line(CANCEL) + run_id + "\n",
-                text=True,
-                timeout=60,
-            )
-            if acknowledgement.strip() != "stopped":
-                raise ValueError("Missing remote cancellation acknowledgement")
+            if request_attempted:
+                acknowledgement = subprocess.check_output(
+                    ssh_command(host),
+                    env=ssh_environment(),
+                    input=program_line(CANCEL) + run_id + "\n",
+                    text=True,
+                    timeout=60,
+                )
+                if acknowledgement.strip() != "stopped":
+                    raise ValueError("Missing remote cancellation acknowledgement")
         except BaseException as error:
             raise RemoteStillRunning(
                 f"Remote stop unconfirmed; {host.alias} lock retained. "
