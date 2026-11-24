@@ -1,5 +1,6 @@
 """Sex-PAR regression: real fixture alignments, only expensive callers faked."""
 
+import gzip
 import platform
 import random
 import sys
@@ -26,6 +27,8 @@ from tests.test_deepvariant import mac_native as mac_native
 from tests.test_gatk_scatter import gatk as gatk
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfClair3Params, VcfDeepvariantParams, VcfGatkParams
+from wgsextract_cli.core.constants import REFERENCE_MODELS
+from wgsextract_cli.core.ref_library.assets import sequence_signature
 
 pytestmark = needs_htslib
 
@@ -65,6 +68,7 @@ def sex_par(tmp_path, request):
                 )
     bam = sam_to_bam(rows, tmp_path / "sample.bam")
     return SimpleNamespace(
+        build=request.param,
         ref=ref,
         bam=Path(bam),
         root=tmp_path,
@@ -72,6 +76,52 @@ def sex_par(tmp_path, request):
         sequences=sequences,
         rows=rows,
     )
+
+
+def test_1346_clair3_uses_the_validated_build_of_unindexed_gzip(
+    sex_par, linux_x86, fake_clair3, monkeypatch
+):
+    require_bare_name_fakes()
+    signature = sequence_signature(
+        {name: len(seq) for name, seq in sex_par.sequences.items()}
+    )
+    monkeypatch.setitem(
+        REFERENCE_MODELS, signature, [sex_par.build, "", "catalog.fa.gz"]
+    )
+    ref = sex_par.root / "unindexed.fa.gz"
+    ref.write_bytes(gzip.compress(sex_par.ref.read_bytes()))
+    write_fasta(
+        ref.with_suffix(""),
+        {name: "N" * len(seq) for name, seq in sex_par.sequences.items()},
+    )
+    bam = sam_to_bam(
+        [
+            row
+            for row in sex_par.rows
+            if not row.startswith(("@SQ\tSN:chr20", "chr20_"))
+        ],
+        sex_par.root / "subset.bam",
+    )
+    run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
+    out = sex_par.root / "gzip-calls"
+
+    api.vcf.clair3(
+        VcfClair3Params(
+            input=Path(bam),
+            ref=ref,
+            outdir=out,
+            model=str(make_model(sex_par.root, "custom")),
+            region="chrX",
+            threads=1,
+        )
+    )
+
+    assert [
+        (row[1], row[-1].replace("|", "/")) for row in vcf_calls(out / "clair3.vcf.gz")
+    ] == [
+        (str(sex_par.boundary), "1"),
+        (str(sex_par.boundary + 1), "0/1"),
+    ]
 
 
 @pytest.mark.parametrize("sex", ["Male", "Female", "Unknown"])

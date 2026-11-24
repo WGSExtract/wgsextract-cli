@@ -185,9 +185,10 @@ def caller_setup(
 
     # A region is read through the index; whole-file calling streams the reads.
     require_consumable([("input", input_file)], need_index=["input"] * bool(region))
-    validate_calling_reference(
+    reference_build = validate_calling_reference(
         input_file, resolved_ref, allow_reference_subset=allow_reference_subset
     )
+    lib.set_validated_fasta_build(reference_build)
     platform = input_platform(input_file, resolved_ref)
     warn_mixed_platforms(
         input_file,
@@ -260,13 +261,15 @@ def setup_caller(
 
 
 @contextmanager
-def plain_reference(ref: str, outdir: str) -> Iterator[str]:
+def plain_reference(
+    ref: str, outdir: str, *, reuse_sibling: bool = True
+) -> Iterator[str]:
     """
     Yield an uncompressed, faidx-indexed FASTA for tools that cannot read .fa.gz.
 
-    Uses the uncompressed sibling (ref.fa next to ref.fa.gz) when present, indexing
-    it if needed; otherwise decompresses into a temporary directory under outdir
-    that is removed on exit.
+    Unless reuse_sibling is false, uses the uncompressed sibling when present,
+    indexing it if needed. Otherwise decompresses into a temporary directory
+    under outdir that is removed on exit.
     """
     if not ref.lower().endswith(".gz"):
         yield ref
@@ -274,8 +277,10 @@ def plain_reference(ref: str, outdir: str) -> Iterator[str]:
     sibling = ref[:-3]
     # A server job may read only its allowed folders; the sibling or its
     # index can be a link elsewhere.
-    if Path(sibling).is_file() and all(
-        read_scope.may_follow(p) for p in (sibling, f"{sibling}.fai")
+    if (
+        reuse_sibling
+        and Path(sibling).is_file()
+        and all(read_scope.may_follow(p) for p in (sibling, f"{sibling}.fai"))
     ):
         if not Path(sibling + ".fai").is_file():
             try:

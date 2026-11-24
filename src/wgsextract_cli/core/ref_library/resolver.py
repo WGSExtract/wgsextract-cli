@@ -148,6 +148,7 @@ class ReferenceLibrary:
         self.vep_cache: str | None = None
         self.build: str | None = None
         self._confirmed_input_build: str | None = None
+        self._validated_fasta_build: str | None = None
         self._assembly_build: str | None = None
 
         if not self.root:
@@ -355,12 +356,19 @@ class ReferenceLibrary:
         """Use an explicit assembly after checking it against the input."""
         self._assembly_build = self.build = build
 
+    def set_validated_fasta_build(self, build: str | None) -> None:
+        """Retain the calling reference's evidence, even without on-disk indexes."""
+        self._validated_fasta_build = build
+        if build and not (self._assembly_build or self._confirmed_input_build):
+            self.build = build
+
     @property
     def confirmed_build(self) -> str | None:
         """Build safe for coordinate-dependent defaults, without name or count guesses."""
         return (
             self._assembly_build
             or self._confirmed_input_build
+            or self._validated_fasta_build
             or (fasta_index_build(self.fasta) if self.fasta else None)
         )
 

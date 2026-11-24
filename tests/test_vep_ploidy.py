@@ -232,29 +232,46 @@ def test_1435_raw_vep_arguments_cannot_replace_validated_inputs(
     assert fake_vep() == []
 
 
+@pytest.mark.parametrize("case", ["mismatch", "missing_cache", "matching_cache"])
 def test_1435_vep_detects_an_unindexed_gzip_reference_by_signature(
-    tmp_path, fake_vep, monkeypatch
+    tmp_path, fake_vep, monkeypatch, case
 ):
     from wgsextract_cli.core.constants import REFERENCE_MODELS
 
+    source, bam = _bam_with_snps(tmp_path)
+    original = Path(source).read_bytes()
     fasta = tmp_path / "reference.fa.gz"
-    fasta.write_bytes(gzip.compress(b">NC_000001.11\nAAAA\n>NC_000002.12\nCCCC\n"))
-    signature = sequence_signature({"NC_000001.11": 4, "NC_000002.12": 4})
+    fasta.write_bytes(gzip.compress(original + b">chr2\nCCCC\n"))
+    signature = sequence_signature({"chr1": len(original.splitlines()[1]), "chr2": 4})
     monkeypatch.setitem(REFERENCE_MODELS, signature, ["hg38", "", "catalog.fa.gz"])
-    bam = sam_to_bam(["@SQ\tSN:NC_000002.12\tLN:4"], tmp_path / "subset.bam")
+    fake_vep.install(tool="vep-rs")
+    _vep_rs_caches(tmp_path, "GRCh38" if case == "matching_cache" else "GRCh37")
 
     result = api.vep.run(
         VepRunParams(
-            input=Path(bam), ref=fasta, engine="ensembl", vep_cache=tmp_path,
-            vep_assembly="GRCh37", ploidy="2",
+            input=Path(bam), ref=fasta, engine="vep-rs", vep_cache=tmp_path,
+            vep_assembly="GRCh37" if case == "mismatch" else None,
         ),
         check=False,
     )  # fmt: skip
 
-    [failure] = [w for w in result.warnings if w.code == "input_failed"]
-    assert (
-        "--ref is hg38" in failure.message and "--assembly is GRCh37" in failure.message
-    )
+    if case == "matching_cache":
+        assert result.status == "ok", result.error
+        assert [row[1] for row in vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")] == [
+            "101", "301",
+        ]  # fmt: skip
+        [args] = fake_vep()
+        # contract: annotation must use the assembly confirmed before calling.
+        assert args[args.index("--assembly") + 1] == "GRCh38"
+        return
+    assert result.status == "failed"
+    if case == "mismatch":
+        [failure] = [w for w in result.warnings if w.code == "input_failed"]
+        assert "--ref is hg38" in failure.message
+        assert "--assembly is GRCh37" in failure.message
+    else:
+        assert "Missing or incomplete" in str(result.error)
+        assert "116_GRCh38" in str(result.error)
     assert fake_vep() == []
 
 

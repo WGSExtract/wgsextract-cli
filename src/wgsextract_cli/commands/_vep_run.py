@@ -6,6 +6,7 @@ import shlex
 import subprocess
 import tempfile
 import time
+from contextlib import ExitStack
 from dataclasses import replace
 from datetime import timedelta
 from pathlib import Path
@@ -17,6 +18,7 @@ from wgsextract_cli.cli.hints import quote
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.atomic_output import atomic_output
+from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.builds import build_from_path, canonical_build
 from wgsextract_cli.core.calling_reference import validate_calling_reference
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -202,6 +204,7 @@ def _build_vep_command(
     *,
     assembly: str | None,
     cache_dir: Path | None = None,
+    calling_fasta: str | None = None,
 ) -> list[str]:
     engine = vep_engine(params.engine)
     # One element: run_command splits wrapper commands itself and keeps a path
@@ -214,8 +217,8 @@ def _build_vep_command(
     if assembly:
         vep_cmd += ["--assembly", assembly]
 
-    if lib.fasta:
-        vep_cmd += ["--fasta", lib.fasta]
+    if fasta := calling_fasta or lib.fasta:
+        vep_cmd += ["--fasta", fasta]
 
     raw_args = shlex.split(params.vep_args) if params.vep_args else []
     cache_dir = cache_dir or _vep_cache_dir(params, lib, engine)
@@ -411,12 +414,13 @@ def _run_vep_on_input(
                         task="variant calling from BAM/CRAM"
                     )
                 )
-            validate_calling_reference(
+            reference_build = validate_calling_reference(
                 current_input,
                 lib.fasta,
                 check_assembly=True,
                 assembly=params.vep_assembly,
             )
+            lib.set_validated_fasta_build(reference_build)
         _apply_forced_assembly(lib, params.vep_assembly, alignment=is_bam)
         # Before the slower checks, so a build without a ploidy policy (T2T,
         # unknown) is refused as `vcf snp` refuses it, not called as another's.
@@ -441,18 +445,29 @@ def _run_vep_on_input(
         if not is_bam:
             ensure_vcf_indexed(current_input)
 
-        with tempfile.TemporaryDirectory(
-            dir=scratch_parent(outdir), prefix=".wgse_vep_"
-        ) as work:
+        with (
+            tempfile.TemporaryDirectory(
+                dir=scratch_parent(outdir), prefix=".wgse_vep_"
+            ) as work,
+            ExitStack() as stack,
+        ):
             vep_input_vcf = current_input
+            calling_fasta = None
             if not is_bam:
                 vep_input_vcf = _prepare_vcf_input(params, current_input, work, threads)
             if is_bam:
                 assert lib.fasta is not None
+                calling_fasta = lib.fasta
+                if calling_fasta.lower().endswith(".gz") and not is_bgzf(calling_fasta):
+                    from wgsextract_cli.commands.vcf.basic import plain_reference
+
+                    calling_fasta = stack.enter_context(
+                        plain_reference(calling_fasta, work, reuse_sibling=False)
+                    )
                 logging.info(LOG_MESSAGES["vep_calling_pre"])
                 vep_input_vcf = str(Path(work, "variants.vcf.gz"))
                 _call_variants_for_vep(
-                    params, current_input, lib.fasta, ploidy, threads, vep_input_vcf
+                    params, current_input, calling_fasta, ploidy, threads, vep_input_vcf
                 )
             if params.add_chr:
                 chr_vcf = str(Path(work, "with_chr.vcf"))
@@ -476,6 +491,7 @@ def _run_vep_on_input(
                 threads,
                 assembly=assembly,
                 cache_dir=cache_dir,
+                calling_fasta=calling_fasta,
             )
             if params.format == "vcf":
                 # bgzipped as it's written: a genome's uncompressed VEP VCF is
