@@ -40590,7 +40590,7 @@
    }
   },
   "typing": {
-   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6      Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius,\n                and write a PharmCAT outside call. Cyrius's license allows noncommercial use only,\n                and no distribution or modification.\n    hla         Call HLA class I and II alleles with T1K from reads in the MHC, and write a\n                PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    smn         Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n                SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str         Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n                ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n                outside STRchive's normal range.\n    target-cnv  Screen BED targets for GC-normalized copy number from short-read WGS. Uses a\n                matching indexed FASTA; masked targets are withheld except clear calls at curated\n                deletion loci.\n\noptions:\n  -h, --help    show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6      Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius,\n                and write a PharmCAT outside call. Cyrius's license allows noncommercial use only,\n                and no distribution or modification.\n    hla         Call HLA class I and II alleles with T1K from reads in the MHC, and write a\n                PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    paraphase   Type paralogous loci and copy number with Paraphase from PacBio HiFi or\n                experimental, unvalidated ONT reads.\n    smn         Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n                SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str         Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n                ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n                outside STRchive's normal range.\n    target-cnv  Screen BED targets for GC-normalized copy number from short-read WGS. Uses a\n                matching indexed FASTA; masked targets are withheld except clear calls at curated\n                deletion loci.\n\noptions:\n  -h, --help    show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -40614,6 +40614,7 @@
       "choices": [
        "cyp2d6",
        "hla",
+       "paraphase",
        "smn",
        "str",
        "target-cnv"
@@ -40626,6 +40627,10 @@
        [
         "hla",
         "Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB."
+       ],
+       [
+        "paraphase",
+        "Type paralogous loci and copy number with Paraphase from PacBio HiFi or experimental, unvalidated ONT reads."
        ],
        [
         "smn",

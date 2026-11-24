@@ -21,6 +21,7 @@ GENERATED = (
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.roh.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.paraphase.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
