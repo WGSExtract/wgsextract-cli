@@ -18,7 +18,7 @@ import json
 import os
 import sys
 from pathlib import Path, PurePath
-from typing import Any
+from typing import Any, cast
 
 GOLDEN = Path(__file__).parent / "fixtures" / "api_cli_snapshot.json"
 
@@ -652,7 +652,9 @@ def describe(parser: argparse.ArgumentParser) -> dict[str, Any]:
     return {
         "prog": parser.prog,
         "description": parser.description,
-        "formatter_class": parser.formatter_class.__name__,
+        "formatter_class": cast(
+            "type[argparse.HelpFormatter]", parser.formatter_class
+        ).__name__,
         "defaults": {k: _plain(v) for k, v in sorted(parser._defaults.items())},
         "actions": actions,
     }
@@ -708,7 +710,7 @@ def _snapshot() -> dict[str, Any]:
 
 def normalise_funcs(document: dict[str, Any]) -> dict[str, Any]:
     """Drop the handler names: migrated commands route through new adapters."""
-    copied = json.loads(json.dumps(document))
+    copied: dict[str, Any] = json.loads(json.dumps(document))
     for ns in copied["namespaces"].values():
         ns.pop("func", None)
     for command in copied["commands"].values():

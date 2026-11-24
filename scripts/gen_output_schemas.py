@@ -14,7 +14,9 @@ from wgsextract_cli.core import paraphase_document, roh_document  # noqa: E402
 from wgsextract_cli.core.methylation_haplotypes import HP_TABLE, PARTITIONS  # noqa: E402
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
 from wgsextract_cli.core.panel_spec import panel_schema  # noqa: E402
+from wgsextract_cli.core.release_recheck import recheck_schema  # noqa: E402
 from wgsextract_cli.core.result_schema import result_schema  # noqa: E402
+from wgsextract_cli.core.run_delta import delta_schema  # noqa: E402
 from wgsextract_cli.core.sample_document import (  # noqa: E402
     SAMPLE_SHAPES,
     SCHEMA_DESCRIPTION,
@@ -40,16 +42,12 @@ STEP_OUTPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schem
 RESULT_OUTPUT = (
     ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json"
 )
-ROH_OUTPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.roh.1.schema.json"
-HP_OUTPUT = (
-    ROOT
-    / "src/wgsextract_cli/assets/schemas/wgsextract.methylation-regions-hp.1.schema.json"
-)
-PARAPHASE_OUTPUT = (
-    ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.paraphase.1.schema.json"
-)
+SCHEMAS = ROOT / "src/wgsextract_cli/assets/schemas"
+ROH_OUTPUT = SCHEMAS / "wgsextract.roh.1.schema.json"
+HP_OUTPUT = SCHEMAS / "wgsextract.methylation-regions-hp.1.schema.json"
+PARAPHASE_OUTPUT = SCHEMAS / "wgsextract.paraphase.1.schema.json"
 # An input format, not an output: the research panel files `panel check` reads.
-PANEL_INPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json"
+PANEL_INPUT = SCHEMAS / "wgsextract.panel.1.schema.json"
 
 
 def roh_schema() -> dict[str, object]:
@@ -150,6 +148,8 @@ def documents() -> dict[Path, dict[str, object]]:
         STEP_OUTPUT: steps,
         RESULT_OUTPUT: result_schema(),
         ROH_OUTPUT: roh_schema(),
+        SCHEMAS / "wgsextract.recheck.1.schema.json": recheck_schema(),
+        SCHEMAS / "wgsextract.delta.1.schema.json": delta_schema(),
         HP_OUTPUT: haplotype_region_schema(),
         PARAPHASE_OUTPUT: output_schema(
             paraphase_document.ParaphaseDocument,
