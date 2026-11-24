@@ -350,16 +350,25 @@ def test_1357_structural_variant_end_is_not_reference_evidence(tmp_path: Path) -
 
 
 @needs_htslib
-@pytest.mark.parametrize("missing", ["cds_start", "cds_end"])
-def test_1357_half_populated_cds_does_not_hide_unread_exon(
-    sample: Path, tmp_path: Path, missing: str
+@pytest.mark.parametrize(
+    "bounds,message",
+    [
+        (("", "2700"), "cds_start and cds_end"),
+        (("2601", ""), "cds_start and cds_end"),
+        (("2700", "2601"), "exon and CDS bounds"),
+        (("2500", "2700"), "exon and CDS bounds"),
+    ],
+)
+def test_1357_invalid_cds_bounds_do_not_hide_unread_exon(
+    sample: Path, tmp_path: Path, bounds: tuple[str, str], message: str
 ) -> None:
-    model = _model(tmp_path / "halfbounds.tsv")
+    model = _model(tmp_path / "invalid-bounds.tsv")
     lines = model.read_text().splitlines()
     for i, line in enumerate(lines):
         if line.startswith("GENEA\t") and "\t3\t4\t" in line:
             row = line.split("\t")
-            row[ec.MODEL_COLUMNS.index(missing)] = ""
+            row[ec.MODEL_COLUMNS.index("cds_start")] = bounds[0]
+            row[ec.MODEL_COLUMNS.index("cds_end")] = bounds[1]
             lines[i] = "\t".join(row)
     model.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     result = api.vcf.callability(
@@ -370,12 +379,14 @@ def test_1357_half_populated_cds_does_not_hide_unread_exon(
         check=False,
     )  # fmt: skip
     assert result.exit_code != 0
-    assert "cds_start and cds_end" in _error(result)
+    assert message in _error(result)
 
 
 @needs_htslib
-@pytest.mark.parametrize("dp,gq", [(1, 50), (30, 1)])
-def test_1357_low_quality_alt_is_not_readable(tmp_path: Path, dp: int, gq: int) -> None:
+@pytest.mark.parametrize("gt,dp,gq", [("0/1", 1, 50), ("0/1", 30, 1), ("1/2", 30, 50)])
+def test_1357_unresolved_or_low_quality_alt_is_not_readable(
+    tmp_path: Path, gt: str, dp: int, gq: int
+) -> None:
     gvcf = tmp_path / "low_alt.g.vcf"
     text = _GQ_GVCF.replace(
         "##GVCFBlock",
@@ -383,7 +394,7 @@ def test_1357_low_quality_alt_is_not_readable(tmp_path: Path, dp: int, gq: int) 
     ).replace(
         "END=1000\tGT:GQ:MIN_DP\t0/0:50:30",
         "END=499\tGT:GQ:MIN_DP\t0/0:50:30\n"
-        f"chr7\t500\t.\tA\tT,<NON_REF>\t50\tPASS\t.\tGT:GQ:DP\t0/1:{gq}:{dp}\n"
+        f"chr7\t500\t.\tA\tT,<NON_REF>\t50\tPASS\t.\tGT:GQ:DP\t{gt}:{gq}:{dp}\n"
         "chr7\t501\t.\tA\t<NON_REF>\t.\t.\tEND=1000\tGT:GQ:MIN_DP\t0/0:50:30",
     )
     gvcf.write_text(text, encoding="utf-8", newline="\n")

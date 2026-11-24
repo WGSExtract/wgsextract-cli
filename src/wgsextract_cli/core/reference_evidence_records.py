@@ -145,13 +145,8 @@ def record_state(
     alleles = re.split(r"[/|]", values.get("GT", "."))
     alts = fields[4].split(",")
     carried = [a for a in alleles if a.isdigit() and a != "0" and int(a) <= len(alts)]
-    variants = [
-        alts[int(a) - 1]
-        for a in carried
-        if alts[int(a) - 1] not in SYMBOLIC_REFERENCE_ALTS
-    ]
     scale = 0.5 if (ploidy if ploidy is not None else len(alleles)) == 1 else 1.0
-    if variants:
+    if any(alts[int(a) - 1] not in SYMBOLIC_REFERENCE_ALTS for a in carried):
         if not check_variant_quality:
             return State.VARIANT
         depth, gq = _int(values.get("DP")), _float(values.get("GQ"))
@@ -162,8 +157,8 @@ def record_state(
             or (model == GQ and (gq is None or gq < thresholds.min_gq))
             or any(a not in carried and a != "0" for a in alleles)
             or any(
-                re.fullmatch(r"[ACGTN]+", alt, re.IGNORECASE) is None
-                for alt in variants
+                re.fullmatch(r"[ACGTN]+", alts[int(a) - 1], re.IGNORECASE) is None
+                for a in carried
             )
         ):
             return State.LOW_QUALITY_VARIANT

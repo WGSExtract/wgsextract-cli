@@ -81,9 +81,9 @@ the gVCF's [evidence state](reference-evidence.md#evidence-states) with the
 `confidence_*` thresholds (`--confidence-depth`, `--confidence-gq`). A base is
 **read** when it is `callable_reference` or inside a small-variant call that
 passes the depth threshold and, when the evidence model supports it, the
-genotype-quality threshold. A carried call that fails these checks is
-`low_quality_variant`, not readable. Bases in known short-read limitations
-are not counted as read.
+genotype-quality threshold, with all carried alleles resolved to sequence.
+A carried call that fails these checks is `low_quality_variant`, not readable.
+Bases in known short-read limitations are not counted as read.
 
 | Exon status | Meaning |
 | --- | --- |
@@ -163,9 +163,10 @@ metrics `genes_<state>` and `exons_<status>`, and the warnings
 A TSV (optionally gzipped) with `#contig<TAB>name<TAB>length` lines for every
 contig it uses, other `#` lines as its source notes, and the columns `gene`,
 `transcript`, `tag`, `strand`, `exon`, `exons`, `chrom`, `start`, `end`,
-`cds_start`, `cds_end` (1-based, inclusive; both CDS columns empty for an
-untranslated exon) and `limitations` (`kind:start-end` items separated by
-`;`, may be empty). Each gene's rows must be one transcript's exons, numbered
+`cds_start`, `cds_end` (1-based, inclusive, in order and within the exon;
+both CDS columns empty for an untranslated exon) and `limitations`
+(`kind:start-end` items separated by `;`, may be empty).
+Each gene's rows must be one transcript's exons, numbered
 1 to its `exons` count, each once; a model missing an exon is refused.
 
 ## Measured on HG002
