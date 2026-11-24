@@ -385,3 +385,136 @@ def test_deleting_imputation_panels_needs_no_glimpse2(host, fake_pixi, capsys):
 
     assert deleting == []
     assert "GLIMPSE2_chunk" in [item["name"] for item in installing]
+
+
+def test_discvrseq_install_and_uninstall_managed_jar(
+    host, fake_pixi, tmp_path, monkeypatch, capsys
+):
+    """discvrseq installs as a managed JAR into jar_directory, ref needs offers
+    both java17 and discvrseq for Install and Continue, and discvrseq uninstalls cleanly."""
+    from pathlib import Path
+
+    from wgsextract_cli.core.optional_tools import MANAGED_JAR_TOOLS
+
+    fake_pixi.env("java17", locked=("openjdk",), installed=False)
+    jar_dir = tmp_path / "jartools"
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(f'jar_directory = "{jar_dir.as_posix()}"\n', encoding="utf-8")
+    python_tool(
+        host,
+        "java",
+        "import sys; print('Version: 1.3.92' if '-jar' in sys.argv else 'openjdk version \"25.0.2\"')",
+    )
+    clear_tool_caches()
+
+    # Before install: both java17 and discvrseq are missing and installable, and
+    # ref needs asks for BOTH for `vcf variantqc`.
+    _, before = _json(capsys, "--config", str(cfg), "deps", "list")
+    row = _row(before, "discvrseq")
+    assert (
+        row["status"] == "missing" and row["can_install"] and not row["can_uninstall"]
+    )
+    assert row["environment"] == "jartools"
+    java17_row = _row(before, "java17")
+    assert java17_row["status"] == "missing" and java17_row["can_install"]
+
+    missing = _needs(
+        capsys, "--config", str(cfg), "vcf", "variantqc", "--vcf-input", "x.vcf.gz"
+    )
+    by_name = {item["name"]: item for item in missing}
+    assert by_name["java17"]["installArguments"][-3:] == ["deps", "install", "java17"]
+    assert by_name["discvrseq"]["installArguments"][-3:] == [
+        "deps",
+        "install",
+        "discvrseq",
+    ]
+
+    # Mock only the network download boundary to place the JAR file.
+    def fake_download(url, dest, **_kwargs):
+        assert url == MANAGED_JAR_TOOLS["discvrseq"].url
+        Path(dest).write_bytes(b"PK\x03\x04fake-discvrseq-jar")
+        return True
+
+    monkeypatch.setattr(
+        "wgsextract_cli.core.ref_library.downloads.download_file", fake_download
+    )
+
+    code, installed = _json(
+        capsys, "--config", str(cfg), "deps", "install", "discvrseq"
+    )
+    assert code == 0
+    jar_path = Path(installed["details"]["jar_path"])
+    assert jar_path.is_file() and jar_path.parent == jar_dir
+    clear_tool_caches()
+
+    # After install: installed, version probed, uninstallable, and ref needs satisfied.
+    _, after = _json(capsys, "--config", str(cfg), "deps", "list")
+    row = _row(after, "discvrseq")
+    assert (
+        row["status"] == "installed" and row["can_uninstall"] and not row["can_install"]
+    )
+    assert row["version"] == "Version: 1.3.92"
+    assert not any(
+        item["name"] == "discvrseq"
+        for item in _needs(
+            capsys, "--config", str(cfg), "vcf", "variantqc", "--vcf-input", "x.vcf.gz"
+        )
+    )
+
+    # Uninstall removes only the managed JAR.
+    code, removed = _json(
+        capsys, "--config", str(cfg), "deps", "uninstall", "discvrseq"
+    )
+    assert code == 0 and not jar_path.exists()
+    assert removed["details"]["jar_path"] == str(jar_path)
+    clear_tool_caches()
+    assert (
+        _row(_json(capsys, "--config", str(cfg), "deps", "list")[1], "discvrseq")[
+            "status"
+        ]
+        == "missing"
+    )
+
+
+def test_user_configured_discvrseq_jar_is_not_uninstallable(host, tmp_path, capsys):
+    """A user-supplied discvrseq_jar outside managed_jar_dir() is never removed."""
+    managed = tmp_path / "managed"
+    custom = tmp_path / "custom" / "DISCVRSeq.jar"
+    custom.parent.mkdir()
+    custom.write_bytes(b"PK\x03\x04custom")
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        f'jar_directory = "{managed.as_posix()}"\n'
+        f'discvrseq_jar = "{custom.as_posix()}"\n',
+        encoding="utf-8",
+    )
+    python_tool(
+        host,
+        "java",
+        "import sys; print('Version: 1.3.92' if '-jar' in sys.argv else 'openjdk 25')",
+    )
+    clear_tool_caches()
+
+    _, document = _json(capsys, "--config", str(cfg), "deps", "list")
+    row = _row(document, "discvrseq")
+    assert row["status"] == "installed"
+    assert not row["can_install"] and not row["can_uninstall"]
+
+    code, _ = _json(capsys, "--config", str(cfg), "deps", "uninstall", "discvrseq")
+    assert code == 1 and custom.is_file()
+
+
+def test_needs_offers_granite_install_for_vcf_granite_qc(host, fake_pixi, capsys):
+    """`vcf granite-qc` reports granite as a missing installable tool on Unix."""
+    if "granite" in platform_unavailable_tools():
+        pytest.skip("granite isn't built for this platform")
+    fake_pixi.env("granite", locked=("granite_suite",), installed=False)
+
+    _, before = _json(capsys, "deps", "list")
+    row = _row(before, "granite")
+    assert row["status"] == "missing" and row["can_install"]
+    assert row["environment"] == "granite"
+
+    (item,) = _needs(capsys, "vcf", "granite-qc", "--vcf-input", "x.vcf.gz")
+    assert item["name"] == "granite"
+    assert item["installArguments"] == ["deps", "install", "granite"]

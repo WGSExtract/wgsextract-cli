@@ -95,6 +95,9 @@ export async function runActionTestStep(
 }
 
 async function dryRunActionCommand(action: ActionSpec, context: CommandContext, workspaceRoot: string, resultSpec: ResultDocumentSpec | undefined) {
+    if (!action.command) {
+        throw new Error(`Action has no command: ${action.id ?? ""}`);
+    }
     const rendered = renderedCommand(commandWithResultArguments(action.command, resultSpec, "<result document>", action.resultCard === true), await contextWithFileState(context, workspaceRoot));
     const executable = isPlatformScriptReference(rendered.executable, workspaceRoot)
         ? await resolvePlatformScriptPath(rendered.executable, workspaceRoot)
