@@ -26,8 +26,8 @@ from scripts.ci_select_tests import os_selection
 from scripts.ci_select_tests import select_tests as select_tests
 from scripts.ci_test_dependencies import DOCS_ONLY_SCRIPTS as DOCS_ONLY_SCRIPTS
 from scripts.ci_test_dependencies import DOCS_TEST_TARGETS as DOCS_TEST_TARGETS
+from scripts.ci_test_dependencies import GENERATED_DOCS
 from scripts.ci_test_dependencies import docs_test_targets as docs_test_targets
-from scripts.ci_test_dependencies import generated_docs_path
 from scripts.ci_test_dependencies import test_inputs as referenced_inputs
 from scripts.pr_checks_ready import checks_ready as checks_ready
 from scripts.pr_checks_ready import latest_ready_run as latest_ready_run
@@ -47,28 +47,24 @@ from scripts.pr_checks_ready import latest_ready_run as latest_ready_run
         (["gui/scripts/site_layout.py"], {"site", "cli"}),
         (["gui/app/shared/config.ts"], set()),
         (["src/wgsextract_cli/commands/info.py"], {"cli"}),
-        (["pixi.lock"], {"cli", "install"}),
-        (["scripts/installlab/lab.py"], {"cli", "install"}),
+        (["pixi.lock"], {"cli"}),
+        (["scripts/installlab/lab.py"], {"cli"}),
         ([".github/actions/download-cache/action.yml"], {"docs"}),
-        (["install.sh"], {"cli", "install"}),
-        (["uninstall.sh"], {"cli", "install"}),
-        (["uninstall_windows.bat"], {"cli", "install"}),
-        (["scripts/bootstrap_windows_prereqs.ps1"], {"cli", "install"}),
-        (["src/wgsextract_cli/main.py"], {"cli", "install"}),
-        (["gui/app/web/packagers/tauri/Cargo.lock"], {"install"}),
+        (["install.sh"], {"cli"}),
+        (["uninstall.sh"], {"cli"}),
+        (["uninstall_windows.bat"], {"cli"}),
+        (["scripts/bootstrap_windows_prereqs.ps1"], {"cli"}),
+        (["src/wgsextract_cli/main.py"], {"cli"}),
+        (["gui/app/web/packagers/tauri/Cargo.lock"], set()),
         (
             ["native/bwa/bwa.c", "src/wgsextract_cli/main.py"],
-            {"native", "cli", "install"},
+            {"native", "cli"},
         ),
         (["unknown/new-config"], {"cli"}),
     ],
 )
 def test_757_routes_isolated_and_mixed_prs(paths: list[str], enabled: set[str]) -> None:
     assert {key for key, value in routes(paths).items() if value} == enabled
-
-
-def test_757_label_forces_install_lab_on_a_docs_pr() -> None:
-    assert routes(["README.md"], force_install_lab=True)["install"]
 
 
 def test_1495_remote_supervisor_change_runs_native_smoke_not_product_suite() -> None:
@@ -80,7 +76,7 @@ def test_1495_remote_supervisor_change_runs_native_smoke_not_product_suite() -> 
         assert lanes[platform] == ["tests/test_ci_certify_remote.py"]
 
 
-def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() -> None:
+def test_release_only_lanes_are_not_exported_by_the_pr_router() -> None:
     script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
     output = subprocess.check_output(
         [
@@ -90,7 +86,6 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
             "HEAD",
             "--head",
             "HEAD",
-            "--force-install-lab",
         ],
         text=True,
     )
@@ -101,12 +96,11 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
         "site_validation": "false",
         "native": "false",
         "site": "false",
-        "install": "true",
         "fast": "false",
         "draft_cli": "false",
         "python_files": "[]",
         "routed": "true",
-        "setup_checks": "true",
+        "setup_checks": "false",
         "move_modules": "[]",
         "optional_tests": "[]",
         "tests": "[]",
@@ -220,18 +214,14 @@ def test_1199_queue_full_os_suite_keeps_optional_tools_diff_routed(
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="workflow steps run in Linux bash"
 )
-@pytest.mark.parametrize("live_label", ["true", "false", "api-error"])
-def test_954_routing_reads_live_install_label_and_fails_closed(
-    tmp_path: Path, live_label: str
+def test_release_only_install_lab_no_longer_needs_a_live_label_lookup(
+    tmp_path: Path,
 ) -> None:
     root = Path(__file__).resolve().parents[1]
     command = workflow_shell("Route the complete PR diff")
     # GitHub's API is the network boundary; git diff and routing run for real.
     gh = tmp_path / "gh"
-    gh.write_text(
-        "#!/bin/sh\n"
-        + ("exit 1\n" if live_label == "api-error" else f"echo {live_label}\n")
-    )
+    gh.write_text("#!/bin/sh\nexit 1\n")
     gh.chmod(0o755)
     output = tmp_path / "output"
     environment = {
@@ -254,14 +244,10 @@ def test_954_routing_reads_live_install_label_and_fails_closed(
         text=True,
         check=False,
     )
-    if live_label == "api-error":
-        assert result.returncode != 0
-        assert not output.exists()
-    else:
-        assert result.returncode == 0, result.stderr
-        selected = dict(line.split("=", 1) for line in output.read_text().splitlines())
-        assert selected["install"] == live_label
-        assert selected["routed"] == "true"
+    assert result.returncode == 0, result.stderr
+    selected = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert "install" not in selected
+    assert selected["routed"] == "true"
 
 
 @pytest.mark.parametrize(
@@ -273,16 +259,9 @@ def test_763_drafts_defer_heavy_checks_until_ready(paths: list[str]) -> None:
     draft = routes(paths, draft=True)
     assert draft["docs"] == (bool(docs_test_targets(paths)) or site_validation(paths))
     assert draft["draft_cli"] == ready["cli"]
-    assert draft["fast"] == any(
-        ready[area] for area in ("cli", "native", "site", "install")
-    )
-    assert not any(draft[key] for key in ("cli", "native", "site", "install"))
+    assert draft["fast"] == any(ready[area] for area in ("cli", "native", "site"))
+    assert not any(draft[key] for key in ("cli", "native", "site"))
     assert not ready["fast"]
-
-
-def test_763_install_override_cannot_start_heavy_checks_on_a_draft() -> None:
-    assert not routes(["install.sh"], draft=True, force_install_lab=True)["install"]
-    assert not any(routes([], draft=True, force_install_lab=True).values())
 
 
 @pytest.mark.parametrize(
@@ -335,9 +314,9 @@ def test_757_every_test_referenced_input_selects_pytest() -> None:
         )
         if not readers:
             continue
-        if path.endswith(".md") and not generated_docs_path(path):
+        if path.endswith(".md") and path not in GENERATED_DOCS:
             continue
-        if generated_docs_path(path):
+        if path in GENERATED_DOCS:
             assert docs_test_targets([path]), path
             continue
         selected = routes([path])
@@ -487,9 +466,7 @@ def test_913_prose_skips_python_tests_and_only_validates_site_sources(
 ) -> None:
     for draft in (False, True):
         selected = routes(paths, draft=draft)
-        assert not any(
-            selected[area] for area in ("cli", "native", "site", "install", "fast")
-        )
+        assert not any(selected[area] for area in ("cli", "native", "site", "fast"))
         assert selected["docs"] == validate
         assert site_validation(paths) == validate
         assert docs_test_targets(paths) == []
@@ -538,11 +515,6 @@ _REGEN_TESTS = ["tests/test_regen.py", "tests/test_text_newlines.py"]
             "scripts/build_mockup_previews.py",
             ["tests/test_build_mockup_previews.py"],
         ),
-        (
-            "tests/fixtures/cli_snapshot/microarray.json",
-            ["tests/test_api_cli_parity.py"],
-        ),
-        ("tests/fixtures/cli_snapshot/vcf/snp.json", ["tests/test_api_cli_parity.py"]),
     ],
 )
 def test_913_light_checks_run_only_for_their_own_inputs(

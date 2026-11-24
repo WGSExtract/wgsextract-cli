@@ -415,21 +415,20 @@ and judged (and mutated) by a separate Linux job.
 
 ## In CI
 
-`.github/workflows/install_lab.yml` runs on every push to `main` and nightly.
-On PRs, `pr_ci.yml` calls it only for installer, packaging, Pixi, CLI entry-point
-or shipped app-bundle changes; the `run-install-lab` label forces it.
+`.github/workflows/install_lab.yml` runs on manual dispatch and at release
+preflight. It does not run on push, on PRs or on a nightly schedule.
 See [CI routing and cache budget](ci_routing.md) for the routes and coverage.
 Within an hour of a new app release,
-`app_release_watch.yml` also starts the nightly run's full matrix on `main` for
+`app_release_watch.yml` also dispatches the full matrix on `main` for
 that release (`-f app_release=<tag>`; the run is named after it):
 
 | Job | Machine | What runs |
 | --- | --- | --- |
-| `linux` | a fresh `ubuntu:24.04` container on `ubuntu-latest` | the CLI; again into a folder with a space; an update from the latest release; nightly, `selftest` |
+| `linux` | a fresh `ubuntu:24.04` container on `ubuntu-latest` | the CLI; again into a folder with a space; an update from the latest release; `selftest` |
 | `linux-app` | the same | the app's `.deb`: the latest release, or built from the tree (see below) |
-| `macos` | a new account on `macos-latest` | the CLI; nightly, `selftest` |
+| `macos` | a new account on `macos-latest` | the CLI; `selftest` |
 | `macos-app` | the runner's signed-in account | the app's DMG, chosen the same way |
-| `windows` | a new standard user on `windows-latest` | the CLI; nightly, each sabotage on its own runner |
+| `windows` | a new standard user on `windows-latest` | the CLI; each sabotage on its own runner |
 | `windows-app` | a new standard user's desktop on `windows-latest` | the app's installer, chosen the same way |
 | `windows-judge` | `ubuntu-latest` | judges every Windows job's evidence |
 
@@ -443,8 +442,10 @@ builds the app unsigned from this commit for Linux, macOS arm64 and Windows
 (about 14–24 extra runner minutes), and the tree jobs test that build. The judge
 still requires the platform's signature check to refuse it. A plan step the app
 lacks fails as "the test plan expects action X, which this app version doesn't
-have". Nightly `pinned` jobs also test the release with the CLI release it pins,
-exactly as on a user's machine. They check out the same immutable release
+have". The `pinned` jobs test the published app with the CLI release it pins,
+exactly as on a user's machine. Preflight instead takes the candidate's
+distribution run ID and runs only the `tree` app jobs, since the pinned
+release isn't public yet. The pinned jobs check out the same immutable release
 revision used to select the installer and use its Install Lab plan and app
 step/report expectations, not the current tree's action names or workspace
 tokens. The judge and mutation checks use that trusted checkout too, never a

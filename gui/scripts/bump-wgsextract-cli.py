@@ -5,8 +5,7 @@ Usage: scripts/bump-wgsextract-cli.py v0.4.4
 
 Updates the release tag setup installs, the bundle version that names the
 installers, the tests and docs that pin them, and the app site's download
-links and current-release text (then rebuilds site/), and adds a CHANGELOG
-entry.
+links and current-release text (then rebuilds site/).
 """
 
 from __future__ import annotations
@@ -34,8 +33,6 @@ PINNED = [
     "site_src/wgsextract.md",
 ]
 BUILD_SITE = ROOT / "scripts/build_site.py"
-CHANGELOG = ROOT / "docs/CHANGELOG.md"
-RELEASES = "https://github.com/WGSExtract/wgsextract-cli/releases/tag"
 
 
 def main(argv: list[str]) -> int:
@@ -69,11 +66,6 @@ def main(argv: list[str]) -> int:
             print(f"{name} doesn't mention {old}; update it by hand.", file=sys.stderr)
             return 1
         changes[path] = text
-    changes[CHANGELOG] = with_changelog_entry(
-        CHANGELOG.read_text(),
-        f"- Bump the bundled WGSExtract CLI installer target to `{new_tag}` "
-        f"([release notes]({RELEASES}/{new_tag})).",
-    )
     changes[TAG_FILE] = new_tag + "\n"
     for path, text in changes.items():
         path.write_text(text)
@@ -87,24 +79,6 @@ def main(argv: list[str]) -> int:
         return 1
     print(f"Bundle now uses wgsextract-cli {new_tag} (was {old_tag}).")
     return 0
-
-
-def with_changelog_entry(text: str, entry: str) -> str:
-    """Add entry first under ## Unreleased / ### Changed, making either if missing
-    (a release moves Unreleased's sections under its own dated heading)."""
-    heading = "## Unreleased\n"
-    if heading not in text:
-        first = text.find("\n## ")
-        at = first + 1 if first >= 0 else len(text)
-        text = text[:at] + heading + "\n" + text[at:]
-    start = text.index(heading) + len(heading)
-    end = text.find("\n## ", start)
-    end = end + 1 if end >= 0 else len(text)
-    changed = text.find("### Changed\n", start, end)
-    if changed >= 0:
-        at = changed + len("### Changed\n")
-        return text[:at] + entry + "\n" + text[at:]
-    return text[:start] + "\n### Changed\n" + entry + "\n" + text[start:]
 
 
 if __name__ == "__main__":

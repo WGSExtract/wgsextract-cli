@@ -5,93 +5,41 @@ name: GUI distribution
 # - Run by hand (Actions > GUI distribution > Run workflow, or
 #   `gh workflow run gui-distribution.yml --ref BRANCH`): builds the installers
 #   as artifacts, to try a change before releasing it.
-# - Called by release.yml with a vX.Y.Z tag: builds that version, requires
-#   updater signatures, and adds the installers and the updater feed
-#   (latest.json) to the paired vX.Y.Z release. See docs/releasing.md.
-# - Run by hand with a tag: retries that for an existing release.
-# - On pull requests that change packaging: builds the installers unsigned, so
-#   a packaging break shows up before a release needs it.
+# - Dispatched by Release: build signed installers and the feed as artifacts.
+#   Only Release can upload the preflight assets to its draft.
+# - Run by hand with a tag: rebuild assets for an already public release.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    branches: [ main ]
-    paths:
-      - ".github/workflows/gui-build.yml"
-      - ".github/workflows/gui-distribution.yml"
-      - ".github/actions/apt-install/**"
-      - ".github/actions/download-cache/**"
-      - ".github/actions/setup-gui/**"
-      - "gui/app/web/packagers/**"
-      - "gui/app/scripts/**"
-      - "gui/app/package.json"
-      - "gui/app/package-lock.json"
-      - "gui/tools/packaging/**"
-      - "gui/tools/tasks.py"
-      - "!**/*.md"
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/gui-build.yml"
-      - ".github/workflows/gui-distribution.yml"
-      - ".github/actions/apt-install/**"
-      - ".github/actions/download-cache/**"
-      - ".github/actions/setup-gui/**"
-      - "gui/app/web/packagers/**"
-      - "gui/app/scripts/**"
-      - "gui/app/package.json"
-      - "gui/app/package-lock.json"
-      - "gui/tools/packaging/**"
-      - "gui/tools/tasks.py"
-      - "!**/*.md"
-  schedule:
-    - cron: "31 6 * * *"
   workflow_dispatch:
     inputs:
       tag:
         description: >-
-          An existing vX.Y.Z release to build the app from and add it to
+          An existing vX.Y.Z tag to build the signed app for
           (empty: only build artifacts from the chosen branch)
         required: false
         type: string
-  workflow_call:
-    inputs:
-      tag:
-        description: The vX.Y.Z release to build and publish the app for.
-        required: true
-        type: string
-      ref:
-        description: The commit the tag points at.
-        required: true
-        type: string
+      candidate:
+        description: Prepare release assets without uploading them to the draft.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
-# Called releases inherit the caller's event/workflow: give them a unique group,
-# and never cancel a tagged build. Nightly/manual runs are independent too.
-concurrency:
-  group: gui-distribution-${{ github.event_name }}-${{ inputs.tag == '' && (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  cancel-in-progress: ${{ inputs.tag == '' && github.event_name == 'pull_request' }}
-
 jobs:
   tauri:
-    if: ${{ github.event.pull_request.draft != true }}
     uses: ./.github/workflows/gui-build.yml
     with:
-      ref: ${{ inputs.ref || inputs.tag || github.sha }}
+      ref: ${{ inputs.tag != '' && format('refs/tags/{0}', inputs.tag) || github.sha }}
       tag: ${{ inputs.tag }}
     secrets: inherit
 
-  publish:
-    name: Add the app to the release
+  assets:
+    name: Prepare signed release assets
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write
     needs: tauri
-    if: github.event.pull_request.draft != true && inputs.tag != ''
+    if: inputs.tag != ''
     env:
-      GH_TOKEN: ${{ github.token }}
       RELEASE_TAG: ${{ inputs.tag }}
     steps:
       - name: Checkout publishing tools
@@ -135,7 +83,33 @@ jobs:
           cp updater-feed/latest.json release-assets/
           find release-assets -type f -print | sort
 
-      # release.yml has already created the release (published, or a draft
-      # when it had no notes file); the app's assets join the CLI's there.
+      - name: Store the release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: gui-release-assets
+          path: release-assets/
+          if-no-files-found: error
+
+  publish:
+    name: Repair an already public release
+    needs: assets
+    if: inputs.tag != '' && !inputs.candidate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: gui-release-assets
+          path: release-assets
       - name: Upload the app to the release
-        run: gh release upload "$RELEASE_TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+        run: |
+          if [ "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" != false ]; then
+            echo "::error::Only Release preflight may supply assets for a draft."
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber

@@ -1,0 +1,3 @@
+## Added
+
+- A **Gene page** in the WGSExtract sidebar: enter a gene symbol to see its RefSeq transcripts and exons, your variants in it (consequence, ClinVar, gnomAD, research-only ACMG; filters for rare and damaging, ClinVar P/LP and ACMG P/LP; **Export TSV**) and read depth over each exon against a callable threshold, all from `wgsextract info gene` on this computer. Missing data names the command that provides it; **Open in genome viewer** shows the gene with the new **RefSeq transcripts** track ([gene-page.md](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/gene-page.md), [#1166, offline gene page](https://github.com/WGSExtract/wgsextract-cli/issues/1166)).
