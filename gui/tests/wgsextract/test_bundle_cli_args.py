@@ -24,6 +24,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import venv
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -360,7 +361,9 @@ class BundleSandbox:
             "report_gene_list": "acmg-sf-3.3",
             "sign_identity": "user@example.org",
             "lastResultDocumentPath": str(self.bundle / ".last-results" / "last.json"),
-            "lastFailedResultDocumentPath": str(self.bundle / ".last-results" / "last-failed.json"),
+            "lastFailedResultDocumentPath": str(
+                self.bundle / ".last-results" / "last-failed.json"
+            ),
         }
 
     def _control_values(self) -> dict[str, str]:
@@ -514,7 +517,8 @@ def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
                         for argument in group
                     ]
                     yield (
-                        f"{label}:{action['id']}" + (f" without {left_out}" if left_out else ""),
+                        f"{label}:{action['id']}"
+                        + (f" without {left_out}" if left_out else ""),
                         script_name(command["executable"]),
                         arguments,
                     )
@@ -544,6 +548,80 @@ class BundleCommandTests(unittest.TestCase):
 
     def test_bundle_commands_render_and_reach_wgsextract(self) -> None:
         self.assertGreater(len(self.cli_invocations()), 40)
+
+    def test_1506_installed_cli_runs_without_pixi(self) -> None:
+        sandbox = self.sandbox
+        runtime = sandbox.app_data / "runtime" / "wgsextract-cli"
+        app = runtime / "app"
+        prefix = app / ".pixi" / "envs" / "default"
+        venv.EnvBuilder(symlinks=True).create(prefix)
+        python = prefix / "bin" / "python"
+        scripts = sandbox.bundle / "scripts"
+        pixi = runtime / ".pixi" / "bin" / "pixi"
+        fallback_pixi = pixi.read_bytes()
+        hook = {
+            "environment_variables": {
+                "CONDA_PREFIX": str(prefix),
+                "PATH": f"{prefix / 'bin'}:/does-not-exist",
+            }
+        }
+        # Windows PowerShell can prefix the piped JSON with a UTF-8 BOM.
+        hook_text = shlex.quote("\ufeff" + json.dumps(hook))
+        pixi.write_text(f"#!/bin/sh\nprintf '%s' {hook_text}\n", encoding="utf-8")
+        subprocess.run(
+            [
+                "/bin/sh",
+                str(scripts / "posix" / "run-wgsextract-env.sh"),
+                "--cache-activation",
+            ],
+            env={
+                "PATH": "/usr/bin:/bin",
+                "HOME": str(sandbox.root),
+                "WGSEXTRACT_GUI_APP_DATA": str(sandbox.app_data),
+            },
+            cwd=app,
+            check=True,
+        )
+        cache = app / ".pixi" / "wgsextract-activation.json"
+        activation = cache.read_bytes()
+        cache.write_text("{ broken cache")
+        # A stale cache is an optimization failure, not a command failure.
+        pixi.write_bytes(fallback_pixi)
+        sandbox.run_cli_script("run-wgsextract.sh", ["--version"])
+        cache.write_bytes(activation)
+        pixi.unlink()
+        (app / "wgsextract_cli" / "main.py").write_text(
+            "import os, shutil, sys\n"
+            "def main():\n"
+            "    print(shutil.which('python'))\n"
+            "    print(os.environ['CONDA_PREFIX'])\n"
+            "    print(sys.argv[-1])\n"
+            "    raise SystemExit(9)\n"
+        )
+        result = subprocess.run(
+            [
+                "/bin/sh",
+                str(scripts / "posix" / "run-wgsextract.sh"),
+                "argument with spaces",
+            ],
+            env={
+                "PATH": "/usr/bin:/bin",
+                "HOME": str(sandbox.root),
+                "WGSEXTRACT_GUI_APP_DATA": str(sandbox.app_data),
+                "WGSEXTRACT_GUI_BUNDLE_WORKSPACE": str(sandbox.bundle),
+                "WGSEXTRACT_APP_DIR": str(app.relative_to(sandbox.root)),
+                "PYTHONPATH": str(app),
+            },
+            cwd=sandbox.root,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertEqual(
+            result.stdout.splitlines(),
+            [str(python), str(prefix), "argument with spaces"],
+        )
 
     def test_bundle_commands_parse_with_current_cli(self) -> None:
         python = find_cli_python()

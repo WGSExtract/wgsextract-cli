@@ -286,6 +286,31 @@ try {
     $runScript = Join-Path $scriptDir "run-wgsextract.ps1"
     Write-Utf8File -LiteralPath $shimPath -Value "@echo off`r`npowershell.exe -NoProfile -ExecutionPolicy Bypass -File ""$runScript"" %*`r`n"
 
+    Push-Location $appDir
+    $previousConsoleEncoding = [Console]::OutputEncoding
+    try {
+        # Capture before activation. In an already activated shell, Pixi's
+        # hook omits values it didn't need to change.
+        $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+        [Console]::OutputEncoding = $OutputEncoding
+        $activationPath = Join-Path $appDir ".pixi\wgsextract-activation.json"
+        Remove-Item -LiteralPath $activationPath -ErrorAction SilentlyContinue
+        $activation = & $pixi shell-hook --json --frozen | Out-String
+        if ($LASTEXITCODE -ne 0) { throw "Pixi activation failed" }
+        $prefix = ($activation | ConvertFrom-Json).environment_variables.CONDA_PREFIX
+        if (-not $prefix) { throw "Pixi did not activate a Python environment" }
+        $python = Join-Path $prefix "python.exe"
+        $activation | & $python -X utf8 (Join-Path $scriptDir "..\installed_cli.py") capture $activationPath
+        if ($LASTEXITCODE -ne 0) {
+            throw "Could not save activation"
+        }
+    } catch {
+        Write-Warning "Could not cache CLI activation; commands will continue to run through Pixi. $_"
+    } finally {
+        [Console]::OutputEncoding = $previousConsoleEncoding
+        Pop-Location
+    }
+
     $manifestItems = New-Object System.Collections.Generic.List[object]
     if (-not $pixiPreInstalled) {
         $pixiBinDir = Split-Path -Parent $pixi
