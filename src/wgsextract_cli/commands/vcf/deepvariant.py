@@ -159,6 +159,7 @@ from .deepvariant_pipeline.stages import (
 from .deepvariant_pipeline.stages import (
     WORK_DIRECTORY as WORK_DIRECTORY,
 )
+from .deepvariant_pipeline.stages import _calling_region
 from .deepvariant_pipeline.stages import (
     _checkpoint_files as _checkpoint_files,
 )
@@ -600,17 +601,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
     called_region = region
     if native and any(i.ploidy != 2 for i in ploidy):
         native.require_haploid()
-    if not any(i.ploidy for i in ploidy):
-        raise WGSExtractError("The sex/ploidy policy excludes every requested base.")
-    if any(i.ploidy == 0 for i in ploidy):
-        region = " ".join(
-            f"{i.chrom}:{i.start + 1}-{i.end}" for i in ploidy if i.ploidy
-        )
-        if len(region.encode()) > 500_000:
-            raise WGSExtractError(
-                "Ploidy exclusions require too many calling intervals; "
-                "select a smaller --region."
-            )
+    region, region_directory = _calling_region(region, ploidy, work, bool(native))
     haploid = sorted({i.chrom for i in ploidy if i.ploidy == 1})
     par = None
     policy = ploidy
@@ -644,6 +635,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
         cram_reference=(input_file, ref)
         if native and cram_version(input_file)
         else None,
+        working_directory=region_directory,
         gpu_check=(
             (
                 lambda: _check_gpu_free(
@@ -688,7 +680,7 @@ def run_deepvariant(params: VcfDeepvariantParams) -> None:
             dv_args = _docker_args(
                 model_type, ref, reads, str(work / Path(out_vcf).name), shards, work,
                 region, checkpoint, batch_size, postprocess, int(threads),
-                str(work / GVCF_NAME) if gvcf else None,
+                str(work / GVCF_NAME) if gvcf else None, region_directory,
             )  # fmt: skip
         if haploid:
             dv_args += ["--haploid_contigs", ",".join(haploid)]
