@@ -2,7 +2,8 @@ import { open, type FileHandle } from "node:fs/promises";
 import { gunzipSync } from "node:zlib";
 import { ViewerFileError } from "../../../shared/genome-viewer.js";
 import { validateTrackRecord } from "../../../shared/viewer-track-records.js";
-import { tabixContigs } from "./viewer-tabix-metadata.js";
+import { viewerContigAliases } from "./viewer-reference-metadata.js";
+import { tabixContigs, type TabixPreset } from "./viewer-tabix-metadata.js";
 
 const limit = 32 * 1024 * 1024;
 
@@ -29,7 +30,7 @@ export async function validateViewerTrack(file: string, format: "bed" | "bedgrap
         const size = (await handle.stat()).size;
         const reader = new MetadataReader(handle, size);
         if (format === "bigwig") {
-            await validateBigWig(reader, reference);
+            await validateBigWig(reader, reference, false);
         } else if (index) {
             await validateBgzf(reader);
             const indexed = await tabixContigs(index, size);
@@ -43,6 +44,28 @@ export async function validateViewerTrack(file: string, format: "bed" | "bedgrap
     } catch (error) {
         if (error instanceof ViewerFileError) throw error;
         throw new ViewerFileError("trackInvalid");
+    } finally {
+        await handle.close();
+    }
+}
+
+/** Bounded validation for auto-discovered reference library annotations (allowing chr/no-chr aliases). */
+export async function validateReferenceAnnotation(file: string, format: "vcf" | "rsid-tab" | "pharmgkb-tsv" | "bigwig", index: string | undefined, reference: Map<string, number>): Promise<boolean> {
+    const handle = await open(file, "r");
+    try {
+        const size = (await handle.stat()).size;
+        const reader = new MetadataReader(handle, size);
+        if (format === "bigwig") {
+            await validateBigWig(reader, reference, true);
+            return true;
+        }
+        if (!index) return false;
+        await validateBgzf(reader);
+        const preset: TabixPreset = format === "vcf" ? "vcf" : "rsid-tab";
+        const indexed = await tabixContigs(index, size, preset);
+        return indexed.some((name) => viewerContigAliases(name).some((alias) => reference.has(alias)));
+    } catch {
+        return false;
     } finally {
         await handle.close();
     }
@@ -80,7 +103,7 @@ async function validateBgzf(reader: MetadataReader) {
     throw new ViewerFileError("trackCompression");
 }
 
-async function validateBigWig(reader: MetadataReader, reference: Map<string, number>) {
+async function validateBigWig(reader: MetadataReader, reference: Map<string, number>, allowAliases: boolean) {
     const header = await reader.read(0, 64);
     const little = header.readUInt32LE(0) === 0x888ffc26;
     const uint32 = (buffer: Buffer, offset: number) => little ? buffer.readUInt32LE(offset) : buffer.readUInt32BE(offset);
@@ -114,6 +137,7 @@ async function validateBigWig(reader: MetadataReader, reference: Map<string, num
     const pending = [treeOffset + 32];
     const visited = new Set<number>();
     let count = 0;
+    let matchedCount = 0;
     while (pending.length) {
         const offset = pending.pop();
         if (offset === undefined || visited.has(offset) || visited.size > 100_000) throw new Error("Invalid chromosome tree nodes.");
@@ -126,11 +150,21 @@ async function validateBigWig(reader: MetadataReader, reference: Map<string, num
                 pending.push(uint64(entries, start + keySize));
             } else {
                 const name = entries.toString("utf8", start, start + keySize).replace(/\0.*$/, "");
-                checkContigs([name], reference);
-                if (uint32(entries, start + keySize + 4) !== reference.get(name)) throw new ViewerFileError("trackContigs");
+                const length = uint32(entries, start + keySize + 4);
+                if (allowAliases) {
+                    const matches = viewerContigAliases(name).filter((alias) => reference.has(alias));
+                    const matched = matches.length === 1 ? matches[0] : undefined;
+                    if (matched) {
+                        if (reference.get(matched) !== length) throw new ViewerFileError("trackContigs");
+                        matchedCount++;
+                    }
+                } else {
+                    checkContigs([name], reference);
+                    if (length !== reference.get(name)) throw new ViewerFileError("trackContigs");
+                }
                 count++;
             }
         }
     }
-    if (!count || count !== uint64(tree, 16)) throw new Error("Incomplete chromosome tree.");
+    if (!count || count !== uint64(tree, 16) || (allowAliases && !matchedCount)) throw new Error("Incomplete chromosome tree.");
 }

@@ -7,26 +7,21 @@ from pathlib import Path
 
 from ._params import Params, param
 from ._ref_library import _InLibrary
+from ._ref_resources import _delete_param
 from ._shared import ref_param
 
 
 @dataclass(frozen=True, kw_only=True)
 class RefYbrowseParams(_InLibrary, Params):
-    """Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
+    """Install a verified, sites-only GRCh38 yBrowse snapshot into the
     library, or delete the installed snapshots; ``grch37`` lifts it to GRCh37."""
 
     COMMAND = "ref ybrowse"
 
-    delete: bool = param(
-        False,
-        help="Delete the installed yBrowse snapshots",
-        action="store_true",
-        deletes=True,
-    )
+    delete: bool = _delete_param("yBrowse snapshots")
     snapshot: Path | None = param(
         None,
-        help="Use a local GRCh38 VCF(.gz), verifying its header instead of the "
-        "upstream pin.",
+        help="Use a local GRCh38 VCF(.gz) instead of downloading from ybrowse.org.",
         path="file",
         cli_type=Path,
     )

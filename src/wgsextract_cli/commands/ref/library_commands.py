@@ -12,6 +12,7 @@ from wgsextract_cli.api.ref import (
     RefBootstrapParams,
     RefCaddParams,
     RefClinvarParams,
+    RefDbsnpParams,
     RefGeneMapParams,
     RefGerpParams,
     RefGnomadParams,
@@ -30,6 +31,7 @@ from wgsextract_cli.api.ref import (
 )
 from wgsextract_cli.core import (
     ancestry_reference,
+    dbsnp,
     gnomad_sv,
     read_scope,
     somalier_resources,
@@ -94,15 +96,15 @@ from .core_commands import (
 _MENU_DOWNLOADS: dict[str, tuple[str, Callable[[str], bool]]] = {
     "C": ("ClinVar", download_clinvar),
     "R": ("REVEL", download_revel),
-    "P": ("PhyloP hg38 (~9.9 GB)", download_phylop),
+    "P": ("PhyloP GRCh38 (~9.9 GB)", download_phylop),
     "N": ("gnomAD", download_gnomad),
     "S": ("SpliceAI", download_spliceai),
     "A": ("AlphaMissense", download_alphamissense),
     "K": ("PharmGKB", download_pharmgkb),
-    "D": ("CADD hg38 (~88 GB)", download_cadd),
-    "E": ("GERP hg38 (~9.6 GB)", download_gerp),
+    "D": ("CADD GRCh38 (~88 GB)", download_cadd),
+    "E": ("GERP GRCh38 (~9.6 GB)", download_gerp),
     "F": (
-        "gnomAD v4.1 frequencies hg38 (streams ~900 GB)",
+        "gnomAD v4.1 frequencies GRCh38 (streams ~900 GB)",
         lambda reflib: build_gnomad_af(reflib, download=True),
     ),
 }
@@ -373,9 +375,9 @@ def cmd_library(args: argparse.Namespace) -> None:
     print("=" * 80)
     print("Select an option:")
     print(" 0) Exit")
-    print(" G) Gene Map (hg19/hg38)")
+    print(" G) Gene Map (GRCh37/GRCh38)")
     for key, (name, _) in _MENU_DOWNLOADS.items():
-        suffix = "" if key == "K" or "hg38" in name else " (hg19/hg38)"
+        suffix = "" if key == "K" or "GRCh38" in name else " (GRCh37/GRCh38)"
         print(f" {key}) {name}{suffix}")
 
     for i, g in enumerate(genomes, 1):
@@ -500,6 +502,25 @@ def _run_downloader(
 
 def run_clinvar(params: RefClinvarParams) -> None:
     _run_downloader(_library(params.ref), "ClinVar", download_clinvar)
+
+
+def run_dbsnp(params: RefDbsnpParams) -> None:
+    reflib = _library(params.ref)
+    builds = (params.build,) if params.build else ("hg38", "hg19")
+    label = f"dbSNP common rsIDs ({', '.join(builds)})"
+    if params.delete:
+        removed = library_removal.remove_dbsnp(reflib, builds)
+        current_result().add_metrics(deleted=len(removed))
+        if removed:
+            human_output(f"Deleted {label} ({len(removed)} item(s)).")
+        else:
+            human_output(f"No {label} installed to delete.")
+        return
+    if not Path(reflib).is_dir():
+        logging.info("Creating a new reference library at %s.", reflib)
+    for path in dbsnp.install_dbsnp(reflib, builds, cancel_event=cancel_event()):
+        current_result().add_output(path, "reference_resource")
+    logging.info("Installed %s.", label)
 
 
 def run_revel(params: RefRevelParams) -> None:
@@ -646,6 +667,7 @@ cmd_bootstrap = cli_handler(RefBootstrapParams, run_bootstrap)
 cmd_microarray_targets = cli_handler(RefMicroarrayTargetsParams, run_microarray_targets)
 RESOURCE_COMMANDS: tuple[tuple[type[_Resource], Callable[..., None]], ...] = (
     (RefClinvarParams, run_clinvar),
+    (RefDbsnpParams, run_dbsnp),
     (RefRevelParams, run_revel),
     (RefPhylopParams, run_phylop),
     (RefGnomadParams, run_gnomad),

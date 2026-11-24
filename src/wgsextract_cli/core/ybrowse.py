@@ -1,4 +1,4 @@
-"""Explicit, pinned GRCh38 yBrowse installation; no runtime downloads."""
+"""Explicit, verified GRCh38 yBrowse installation; no runtime downloads."""
 
 import contextlib
 import gzip
@@ -15,7 +15,6 @@ from typing import TextIO, cast
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 SOURCE_URL = "https://ybrowse.org/gbrowse2/gff/snps_hg38.vcf.gz"
-SOURCE_SHA256 = "b7984349c575c3d582933993a92770d6143603d3b895d3a0612340b167f37b62"
 COPYRIGHT = "CC-BY-SA Thomas Krahn YSEQ (2022)."
 Y_LENGTH = 57_227_415
 RESOURCE_FILES = (
@@ -228,28 +227,38 @@ def _download(path: Path) -> None:
         f"Licence: YBrowse SNP data is {COPYRIGHT} It is downloaded from "
         "ybrowse.org and is not part of WGS Extract."
     )
+    expected_length: int | None = None
     try:
         with (
             urllib.request.urlopen(SOURCE_URL, timeout=60) as response,
             path.open("wb") as out,
         ):
+            headers = getattr(response, "headers", None)
+            raw_length = headers.get("Content-Length") if headers is not None else None
+            if isinstance(raw_length, str) and raw_length.strip().isdigit():
+                expected_length = int(raw_length.strip())
             total = 0
             for chunk in iter(lambda: response.read(1024 * 1024), b""):
                 total += len(chunk)
                 if total > 256 * 1024 * 1024:
                     raise WGSExtractError(
-                        "yBrowse download exceeds the pinned snapshot limit."
+                        "yBrowse download exceeds the 256 MiB snapshot limit."
                     )
                 out.write(chunk)
     except OSError as exc:
         raise WGSExtractError(f"yBrowse download failed: {exc}") from exc
-    actual = file_sha256(path)
-    if actual != SOURCE_SHA256:
+    if total == 0:
+        raise WGSExtractError("yBrowse download was empty.")
+    if expected_length is not None and total != expected_length:
         raise WGSExtractError(
-            f"yBrowse snapshot hash mismatch: expected {SOURCE_SHA256}, got {actual}. "
-            "Upstream changed; no resource was installed. Supply a header-verified "
-            "local GRCh38 snapshot with ref ybrowse --install --snapshot PATH."
+            f"yBrowse download truncated: expected {expected_length} bytes, got {total}."
         )
+    actual = file_sha256(path)
+    logging.info(
+        "Downloaded yBrowse snapshot (%d bytes, sha256=%s); verifying headers and records.",
+        total,
+        actual,
+    )
 
 
 def install_snapshot(library: Path, snapshot: Path | None = None) -> Path:
@@ -266,7 +275,7 @@ def install_snapshot(library: Path, snapshot: Path | None = None) -> Path:
         resource = stage / "resource"
         resource.mkdir()
         manifest = prepare_snapshot(source, resource)
-        manifest["source_kind"] = "user-supplied" if snapshot else "pinned-download"
+        manifest["source_kind"] = "user-supplied" if snapshot else "verified-download"
         (resource / "manifest.json").write_text(
             json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n"
         )

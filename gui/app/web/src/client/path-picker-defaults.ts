@@ -1,4 +1,4 @@
-import { commandContextFromState, interpolate } from "../../../shared/rendering.js";
+import { commandContextFromState, firstPathValue, interpolate } from "../../../shared/rendering.js";
 import type { WebUIState } from "../../../shared/types.js";
 
 /** A control, config setting, or ad-hoc request (the bundle picker) that asks for a path. */
@@ -8,11 +8,12 @@ export interface PathPickerSpec {
     label?: string;
     tooltip?: string;
     defaultDirectory?: unknown;
+    multiple?: boolean;
     [key: string]: unknown;
 }
 
 export function pathPickerDefaultPath(spec: PathPickerSpec | undefined, currentValue: unknown, state: WebUIState) {
-    const currentPath = String(currentValue ?? "").trim();
+    const currentPath = firstPathValue(currentValue);
     if (currentPath) {
         return currentPath;
     }
