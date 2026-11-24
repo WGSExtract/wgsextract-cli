@@ -37,12 +37,14 @@ def hosts_for(target: str, config: Path) -> list[RemoteHost]:
         section = data.get("certification", {})
         entries = section.get("hosts", []) if isinstance(section, dict) else None
         if not isinstance(entries, list):
-            raise ValueError("config.toml: expected [[certification.hosts]] entries")
+            raise ValueError(f"{config}: expected [[certification.hosts]] entries")
         aliases: set[str] = set()
         hosts = []
         for entry in entries:
             if not isinstance(entry, dict) or set(entry) != {"alias", "platform"}:
-                raise ValueError("Each certification host needs alias and platform")
+                raise ValueError(
+                    f"{config}: each certification host needs alias and platform"
+                )
             alias, platform = entry["alias"], entry["platform"]
             if (
                 not isinstance(alias, str)
@@ -52,7 +54,7 @@ def hosts_for(target: str, config: Path) -> list[RemoteHost]:
                 or platform not in PLATFORMS
             ):
                 raise ValueError(
-                    "Invalid or duplicate certification SSH alias/platform"
+                    f"{config}: invalid or duplicate certification SSH alias/platform"
                 )
             hosts.append(RemoteHost(alias, platform))
             aliases.add(alias)

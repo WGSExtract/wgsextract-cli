@@ -8,6 +8,7 @@ import json
 import re
 import signal
 import subprocess
+import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -28,6 +29,7 @@ from scripts.ci_certify_ssh import (
 )
 
 REPOSITORY = "WGSExtract/wgsextract-cli"
+LOCK_CREATION_FLAGS: int = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
 
 
 class CertificationInterrupted(ValueError):
@@ -141,25 +143,53 @@ def remote_layer(
 def available_host(hosts: list[RemoteHost]) -> Iterator[RemoteHost]:
     refused = []
     for host in hosts:
+        locked = False
         try:
-            probe_remote(host)
-            subprocess.run(
-                ["agent-coord", "lock", host.alias, "--reason", "remote certification"],
-                check=True,
-            )
-        except CertificationInterrupted:
-            raise
-        except (OSError, ValueError, subprocess.SubprocessError) as error:
-            refused.append(f"{host.alias}: {error}")
-            continue
-        unlock = True
-        try:
+            try:
+                probe_remote(host)
+                interrupted: list[int] = []
+
+                def defer(
+                    signum: int, frame: Any, pending: list[int] = interrupted
+                ) -> None:
+                    pending.append(signum)
+
+                # Learn whether the coordinator granted the lock before acting
+                # on a signal delivered while the command was in flight.
+                previous = signal.signal(signal.SIGTERM, defer)
+                previous_int = signal.signal(signal.SIGINT, defer)
+                try:
+                    subprocess.run(
+                        [
+                            "agent-coord",
+                            "lock",
+                            host.alias,
+                            "--reason",
+                            "remote certification",
+                        ],
+                        check=True,
+                        start_new_session=sys.platform != "win32",
+                        creationflags=LOCK_CREATION_FLAGS,
+                    )
+                    locked = True
+                finally:
+                    signal.signal(signal.SIGINT, previous_int)
+                    signal.signal(signal.SIGTERM, previous)
+                    if interrupted:
+                        raise CertificationInterrupted(
+                            f"Certification interrupted by signal {interrupted[0]}"
+                        )
+            except CertificationInterrupted:
+                raise
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                refused.append(f"{host.alias}: {error}")
+                continue
             yield host
         except RemoteStillRunning:
-            unlock = False
+            locked = False
             raise
         finally:
-            if unlock:
+            if locked:
                 subprocess.run(["agent-coord", "unlock", host.alias], check=True)
         return
     raise ValueError("No available certification host:\n" + "\n".join(refused))

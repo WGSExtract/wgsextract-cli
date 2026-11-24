@@ -75,8 +75,9 @@ def transport(
     cleanup_refused: bool = False,
     terminated: bool = False,
     cancel_interrupted: bool = False,
-    sends_environment: bool = False,
+    forwarded_environment: str = "",
     transport_does_not_start: bool = False,
+    lock_interrupted: bool = False,
 ) -> tuple[list[dict[str, str]], list[str]]:
     popen = subprocess.Popen
     statuses: list[dict[str, str]] = []
@@ -87,11 +88,8 @@ def transport(
         exit_code = 0
         if command[0] == "ssh":
             if "-G" in command:
-                options = (
-                    "setenv GITHUB_TOKEN=dummy-value\n" if sends_environment else ""
-                )
                 return popen(
-                    [sys.executable, "-c", f"print({options!r}, end='')"],
+                    [sys.executable, "-c", f"print({forwarded_environment!r}, end='')"],
                     *args,
                     **kwargs,
                 )
@@ -148,6 +146,8 @@ def transport(
         elif command[0] == "agent-coord":
             locks.append(command[1])
             exit_code = 1 if command[1] == "lock" and lock_refused else 0
+            if command[1] == "lock" and lock_interrupted:
+                signal.raise_signal(signal.SIGTERM)
         else:
             return popen(command, *args, **kwargs)
         # A real pipe/process preserves streaming, EOF and exit-code behavior.
@@ -306,10 +306,15 @@ def test_1495_rejects_unregistered_ssh_options(
     assert not statuses and not locks
 
 
-def test_1495_refuses_ssh_setenv_without_publishing(
-    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "forwarding", ["setenv GITHUB_TOKEN=dummy-value\n", "sendenv unused PATH\n"]
+)
+def test_1495_refuses_ssh_environment_forwarding_without_publishing(
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch, forwarding: str
 ) -> None:
-    statuses, locks = transport(monkeypatch, remote_pr, sends_environment=True)
+    statuses, locks = transport(
+        monkeypatch, remote_pr, forwarded_environment=forwarding
+    )
     with pytest.raises(ValueError, match="forwards environment data"):
         certify(remote_pr)
     assert not statuses and not locks
@@ -334,6 +339,16 @@ def test_1495_invalid_registration_points_to_config_file(
     config.write_text("[[certification.hosts]\n")
     with pytest.raises(ValueError, match="host-registry.toml"):
         certify(remote_pr, config=config)
+
+
+def test_1495_interrupt_during_lock_grant_releases_unused_host(
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    statuses, locks = transport(monkeypatch, remote_pr, lock_interrupted=True)
+    with pytest.raises(ValueError, match="interrupted by signal"):
+        certify(remote_pr)
+    assert not statuses
+    assert locks == ["lock", "unlock"]
 
 
 @pytest.mark.parametrize(

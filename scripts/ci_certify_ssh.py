@@ -332,7 +332,11 @@ def probe_remote(host: RemoteHost) -> None:
         name, _, value = line.partition(" ")
         if name == "setenv" or (
             name == "sendenv"
-            and any(fnmatch.fnmatchcase(key, value) for key in environment)
+            and any(
+                fnmatch.fnmatchcase(key, pattern)
+                for pattern in value.split()
+                for key in environment
+            )
         ):
             raise ValueError(
                 f"{host.alias} SSH configuration forwards environment data"
