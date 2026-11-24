@@ -27,7 +27,7 @@ from wgsextract_cli.core.containers import (
     host_path,
     run_container,
 )
-from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.reference_evidence import POLICY_HEADER_KEY, Provenance
 from wgsextract_cli.core.resource_estimates import (
     PostprocessPlan,

@@ -28,8 +28,8 @@ parser still treats external/compact documents as unvalidated input.
   `<vcf>_<sample>_microarray.manifest.json`, with a `sample` metric, for a
   sample chosen from a multi-sample VCF). `vcf trio` always writes
   `trio.manifest.json`, whichever modes ran.
-  Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`)
-  and deletions (`ref library --delete`, `vep delete`, `--delete` options)
+  Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`,
+  `report-delta`, and `ref recheck` without `--save-answers`) and deletions (`ref library --delete`, `vep delete`, `--delete` options)
   write no file, except `info --format`, whose manifest is named after the first table
   (`<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
@@ -95,6 +95,7 @@ parser still treats external/compact documents as unvalidated input.
 | `inputs`, `outputs` | File records: `path` (absolute), `kind` (`bam`, `cram`, `vcf`, `fasta`, `fastq`, `tsv`, `json`, `directory`, ...), `role` (what the file is to this command, e.g. `input`, `snps`, `mt_bam`, `haplogroup_report`), `exists`, `size_bytes`, `mtime` (UTC ISO 8601), `fingerprint`, `index` (the `.bai`/`.crai`/`.csi`/`.tbi`/`.fai` beside it, if any) and per-file `metrics`. |
 | `metrics` | Flat headline numbers and labels, e.g. `variants`, `haplogroup`, `sex`, `avg_depth`. |
 | `warnings` | Structured warnings: `code`, `message` and scalar `details`. |
+| `resources` | The public data resources the run used (ClinVar, a gene list, ...): `id`, `name`, `role`, `build`, the exact `release` (or `null` when the resource doesn't say) and `release_basis`, `path`, `fingerprint`, and the source's `source_url`, `licence`, `licence_url` and `attribution`. See [recheck-and-delta.md](recheck-and-delta.md). |
 | `details` | The command-specific structured result, or `null`. |
 | `manifest` | Absolute path of the manifest file this run wrote, or `null` (including when writing it failed). |
 | `run` | This run's place in its workflow: `id`, `root`, `parent`, `step` and `children`. See [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
@@ -253,6 +254,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `parabricks_memory` | `--gpu` commands with `--no-gpu-memory-check` | The GPU or host memory is below what the tool needs (`tool`); the run continues and may fail. |
 | `no_variants`, `no_reads`, `nothing_annotated` | variant calling, alignment, extraction, annotation | An output is empty. |
 | `low_confidence_findings` | `vcf clinvar`, `vcf gnomad --max-af`, `vcf pharmcat`, `analyze` | Some reported calls are low confidence (`count`, `total`, `output`, top `reasons`); see [variant-confidence.md](variant-confidence.md). |
+| `alignment_sample_unverified` | `vcf pharmcat --alignment` | The BAM/CRAM has no read-group sample names to compare with the VCF. Confirm the files are from the same sample. |
 | `unconfirmed_clinical_findings` | `vcf clinvar`, `analyze` | The sample carries ClinVar pathogenic/likely pathogenic calls (`count`): a technical screen to confirm with an accredited laboratory, not a diagnosis. |
 | `confidence_first_sample_only` | confidence labelling | A multi-sample VCF was judged by its first sample (`sample`). |
 | `sample_female` | Y extraction | Female sample; Y outputs will be empty or noise. |
@@ -395,6 +397,10 @@ With `--reference-evidence gvcf` the gVCF is an output with role
 
 Other commands' metrics:
 
+- `vcf pharmcat` records the source, callability thresholds, and counts of
+  absent definitions filled or left missing in
+  `details.pharmcat_reference_evidence`. The `pharmcat_reference_evidence`
+  output also lists the definitions it couldn't fill.
 - `bam` subcommands that write a BAM/CRAM record its `records` as `align` does
   (an unsorted or unaligned BAM has no index to count from, so it has none);
   `bam merge` adds `merged_inputs`, `read_groups` and, for indexed inputs,

@@ -33,6 +33,7 @@ from ._ref_genomes import RefStatusParams as RefStatusParams
 from ._ref_genomes import RefTestGenomeParams as RefTestGenomeParams
 from ._ref_genomes import RefVerifyParams as RefVerifyParams
 from ._ref_library import _InLibrary, _library_named
+from ._ref_recheck import RefRecheckParams as RefRecheckParams
 from ._ref_resources import (
     BUILDS as BUILDS,
 )
@@ -490,6 +491,19 @@ def test_genome(
     return execute(
         params, run_test_genome, progress=progress, cancel=cancel, check=check
     )
+
+
+def recheck(
+    params: RefRecheckParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """``details``: wgsextract.recheck/1. Only ``online=True`` uses the network."""
+    from wgsextract_cli.commands.ref.recheck import run_recheck
+
+    return execute(params, run_recheck, progress=progress, cancel=cancel, check=check)
 
 
 def cytobands(

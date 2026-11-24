@@ -65,16 +65,16 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 # (curl, optionally) that `ref bootstrap` and `ref aadr` make.
 from wgsextract_cli.core.microarray.targets import hg19_to_hg38_chain
 from wgsextract_cli.core.ref_library import removal as library_removal
+from wgsextract_cli.core.ref_library.assets import (
+    reference_genomes_dir,
+    reference_library_of,
+    resolve_reference_library,
+)
 from wgsextract_cli.core.ref_library.catalog import (
     get_available_genomes,
     get_genome_status,
 )
 from wgsextract_cli.core.ref_library.layout import download_path
-from wgsextract_cli.core.reference_assets import (
-    reference_genomes_dir,
-    reference_library_of,
-    resolve_reference_library,
-)
 from wgsextract_cli.core.reference_processing import (
     download_and_process_genome,
     download_gnomad,

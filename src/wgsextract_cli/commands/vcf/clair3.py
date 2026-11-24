@@ -18,6 +18,7 @@ from wgsextract_cli.core.alignment.cram_staging import (
     staging_bytes,
 )
 from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
@@ -55,7 +56,6 @@ from wgsextract_cli.core.resource_estimates import (
     report_resources,
 )
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
     READS_INDEXES,
     REFERENCE_INDEXES,
@@ -584,7 +584,7 @@ def _run_clair3(
     out_vcf = str(Path(outdir, "clair3.vcf.gz"))
     logging.info(LOG_MESSAGES["vcf_calling_clair3"].format(output=out_vcf))
     with (
-        plain_reference(ref, outdir) as use_ref,
+        plain_reference(ref, outdir, reuse_sibling=False) as use_ref,
         scratch_directory(outdir, ".wgse_clair3_") as work,
     ):
         bed, intervals = None, None

@@ -42,7 +42,7 @@ def _y_scope_param() -> Any:
 
 def _ybrowse_paths(enabled: bool) -> Iterator[tuple[str, Path]]:
     if enabled:
-        from wgsextract_cli.core.reference_assets import resolve_reference_library
+        from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 
         yield "ybrowse", Path(resolve_reference_library()) / "ybrowse"
 

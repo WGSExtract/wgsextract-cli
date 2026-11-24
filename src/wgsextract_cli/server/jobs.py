@@ -31,7 +31,7 @@ from typing import Any, Literal
 
 from wgsextract_cli.api._params import with_config_defaults
 from wgsextract_cli.core.file_lock import exclusive_lock
-from wgsextract_cli.core.reference_assets import reference_genomes_dir
+from wgsextract_cli.core.ref_library.assets import reference_genomes_dir
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.workspace_activity import WorkspaceLease, hold_workspace
 

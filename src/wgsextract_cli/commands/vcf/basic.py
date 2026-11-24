@@ -23,6 +23,10 @@ from wgsextract_cli.api.vcf import (
 from wgsextract_cli.core import read_scope, ultima
 from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.sequencing import (
+    input_platform,
+    warn_mixed_platforms,
+)
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
     get_tool_version,
@@ -42,7 +46,6 @@ from wgsextract_cli.core.resource_estimates import (
 )
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
-from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -185,9 +188,10 @@ def caller_setup(
 
     # A region is read through the index; whole-file calling streams the reads.
     require_consumable([("input", input_file)], need_index=["input"] * bool(region))
-    validate_calling_reference(
+    reference_build = validate_calling_reference(
         input_file, resolved_ref, allow_reference_subset=allow_reference_subset
     )
+    lib.set_validated_fasta_build(reference_build)
     platform = input_platform(input_file, resolved_ref)
     warn_mixed_platforms(
         input_file,
@@ -261,20 +265,23 @@ def setup_caller(
 
 @contextmanager
 def plain_reference(
-    ref: str, outdir: str, *, compressed: bool | None = None
+    ref: str,
+    outdir: str,
+    *,
+    compressed: bool | None = None,
+    reuse_sibling: bool = True,
 ) -> Iterator[str]:
     """
     Yield an uncompressed, faidx-indexed FASTA for tools that cannot read .fa.gz.
 
-    Uses the uncompressed sibling (ref.fa next to ref.fa.gz) when present, indexing
-    it if needed; otherwise decompresses into a temporary directory under outdir
-    that is removed on exit. When compression was verified by the caller,
-    use that exact FASTA instead of trusting an unverified sibling.
+    The uncompressed sibling can be reused only when compression was inferred
+    from the suffix and the caller has opted into reuse. Otherwise decompress
+    the exact FASTA into a temporary directory under outdir, removed on exit.
     """
     if not (ref.lower().endswith(".gz") if compressed is None else compressed):
         yield ref
         return
-    sibling = ref[:-3] if compressed is None else None
+    sibling = ref[:-3] if compressed is None and reuse_sibling else None
     # A server job may read only its allowed folders; the sibling or its
     # index can be a link elsewhere.
     if (

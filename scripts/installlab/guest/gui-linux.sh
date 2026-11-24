@@ -104,6 +104,9 @@ EOF
 }
 
 app_actions() {
+    if [ -n "${LAB_CLI_ARCHIVE_URL:-}" ]; then
+        install_mini_genome_ploidy "$USERS_WORKSPACE" "$HERE" || return 1
+    fi
     if [ ! -e "$USERS_WORKSPACE/.bundle-workspace" ] && [ -e "$APP_DATA/BundleWorkspaces/wgs-extract/.bundle-workspace" ]; then
         WORKSPACE="$APP_DATA/BundleWorkspaces/wgs-extract"
         USERS_ARGS="--users-workspace"

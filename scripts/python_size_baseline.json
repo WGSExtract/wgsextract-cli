@@ -14,7 +14,6 @@
     "src/wgsextract_cli/core/acmg_data.py": 1533,
     "src/wgsextract_cli/core/chunked_alignment.py": 835,
     "src/wgsextract_cli/core/resource_estimates.py": 1705,
-    "src/wgsextract_cli/core/results.py": 900,
     "src/wgsextract_cli/core/sample_workspace.py": 1123,
     "src/wgsextract_cli/core/steps.py": 874,
     "src/wgsextract_cli/core/utils.py": 809,
@@ -35,7 +34,6 @@
     "tests/test_ref_commands.py": 1250,
     "tests/test_resource_estimates.py": 986,
     "tests/test_result_manifest.py": 1029,
-    "tests/test_server.py": 968,
     "tests/test_smoke_real_full.py": 830,
     "tests/test_vcf_annotations.py": 981,
     "tests/test_vcf_commands.py": 1362

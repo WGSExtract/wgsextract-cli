@@ -311,6 +311,38 @@ First-use installs share a directory lock. Interrupted or cancelled transfers
 keep their download resume state for the next `--download` run;
 incomplete FASTA indexes are detected and repaired with the same consent.
 
+For a variants-only VCF delivered with its reads, add an indexed, coordinate-sorted
+BAM/CRAM from the **same sample**:
+
+```sh
+wgsextract vcf pharmcat --vcf-input sample.vcf.gz --alignment sample.cram \
+  --alignment-reference GRCh38.fa.gz
+```
+
+`--alignment-reference` takes the local, indexed FASTA used for the alignment.
+It defaults to PharmCAT's FASTA; supply the original FASTA for CRAM if it differs.
+The BAM/CRAM and its FASTA must use the same contig names. The VCF may use
+standard aliases such as `1` for `chr1`, but the builds must agree. A different
+read-group sample name is an error. When read groups name the sample, only
+reads from its named groups count. If there is no sample name, the command warns.
+
+An explicit `--alignment` replaces any automatically discovered companion gVCF;
+it cannot be combined with `--absent-to-ref`. Only definitions with no overlapping
+VCF record are eligible, so explicit no-calls and existing variants are not
+overwritten. A local `bcftools mpileup` checks only those definitions' reference
+bases, using mapping and base quality ≥20 and excluding reads with unavailable
+quality scores. Every base must meet the lower `--confidence-depth` threshold
+with only reference support. Read-level evidence of an insertion or deletion
+also prevents a reference call. Uncovered sites, insufficient depth,
+non-reference evidence, and sites with at least 10,000 reads before base-quality
+and overlapping-mate filters stay missing.
+This supplies diploid reference evidence, not new alternate genotypes or GQ.
+
+When using an alignment, a companion gVCF, or a WGS Extract depth-only gVCF
+as supplemental evidence, see `<stem>.reference-evidence.json` for the
+source, thresholds, counts and missing definitions (1-based PharmCAT coordinates).
+The result manifest includes the same summary without the missing list.
+
 `typing smn` uses archived SMNCopyNumberCaller 1.1.2 (last Apache-2.0 release)
 for SMN1/SMN2 copy number. One SMN1 copy indicates a carrier, none SMA;
 two can be a “2+0” silent carrier, with associated g.27134T>G reported.

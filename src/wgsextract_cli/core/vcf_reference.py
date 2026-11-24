@@ -493,7 +493,7 @@ def identify_vcf_reference(
 
     # Layer 3a: REF-allele fingerprinting against installed reference FASTAs.
     if ref_lib_dir is None:
-        from wgsextract_cli.core.reference_assets import resolve_reference_library
+        from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 
         ref_lib_dir = resolve_reference_library(None)
     candidates = _candidate_fastas(ref_lib_dir, reference_fasta)

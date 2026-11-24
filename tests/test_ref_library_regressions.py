@@ -9,6 +9,7 @@ from urllib.error import HTTPError
 
 import pytest
 
+from tests.htslib_helpers import needs_tools, sam_to_bam
 from wgsextract_cli import api
 from wgsextract_cli.commands.ref import core_commands
 from wgsextract_cli.core import genome_library
@@ -177,18 +178,16 @@ def _header(contigs):
     return "".join(f"@SQ\tSN:{name}\tLN:{length}\n" for name, length in contigs)
 
 
-def test_header_build_detection_uses_chr1_length(monkeypatch):
+@needs_tools("samtools")
+def test_header_build_detection_uses_chr1_length(tmp_path):
     t2t = [("chr1", 248387328)] + [(f"chr{i}", 1000) for i in range(2, 26)]
     hg19_wgse = [("chr1", 249250621)] + [(f"chr{i}", 1000) for i in range(2, 26)]
     dog = [(f"NC_0492{i:02d}.1", 1000) for i in range(40)]
-    headers = {"t2t.bam": t2t, "hg19.bam": hg19_wgse, "dog.bam": dog}
-    monkeypatch.setattr(
-        reference_resolver, "get_bam_header", lambda path: _header(headers[path])
-    )
-
-    assert ReferenceLibrary._build_from_header("t2t.bam") == "t2t"
-    assert ReferenceLibrary._build_from_header("hg19.bam") == "hg19"
-    assert ReferenceLibrary._build_from_header("dog.bam") is None
+    for i, (contigs, expected) in enumerate(
+        ((t2t, "t2t"), (hg19_wgse, "hg19"), (dog, None))
+    ):
+        bam = sam_to_bam(_header(contigs).splitlines(), tmp_path / f"s{i}.bam")
+        assert ReferenceLibrary(tmp_path, input_path=bam).build == expected
 
 
 def _write_fasta_with_fai(path: Path, contigs):
