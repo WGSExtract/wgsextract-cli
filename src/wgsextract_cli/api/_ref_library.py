@@ -9,7 +9,7 @@ from ._params import Params, with_config_defaults
 
 def _library_named(ref: Path) -> Path:
     """The library named by a directory or a FASTA inside its genomes folder."""
-    from wgsextract_cli.core.reference_assets import reference_library_of
+    from wgsextract_cli.core.ref_library.assets import reference_library_of
 
     # Lexically, without absolutising, so a Windows request is checked as such.
     ref = Path(os.path.normpath(ref.expanduser()))
@@ -24,7 +24,7 @@ class _InLibrary:
 
     def library(self) -> Path:
         """The library folder the operation installs into or reads."""
-        from wgsextract_cli.core.reference_assets import (
+        from wgsextract_cli.core.ref_library.assets import (
             reference_library_of,
             resolve_reference_library,
         )
@@ -37,7 +37,7 @@ class _InLibrary:
             yield "ref", _library_named(self.ref)
 
     def write_folders(self) -> Iterator[Path]:
-        from wgsextract_cli.core.reference_assets import reference_genomes_dir
+        from wgsextract_cli.core.ref_library.assets import reference_genomes_dir
 
         library = self.library()
         yield from (library, Path(reference_genomes_dir(library)))

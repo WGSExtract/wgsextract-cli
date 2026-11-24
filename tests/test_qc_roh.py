@@ -387,6 +387,36 @@ def test_issue_1174_mismatched_builds_and_missing_resources_are_refused(tmp_path
     assert not (tmp_path / "out" / "sample.roh.tsv").exists()
 
 
+@pytest.mark.parametrize(
+    ("sites", "code", "diagnostic"),
+    [
+        ([(20, 200_000), (20, 100_000)], "roh_af_unsorted", "Unsorted positions"),
+        (
+            [(20, 100_000), (21, 100_000), (20, 200_000)],
+            "roh_af_unsorted",
+            "Chromosome blocks not continuous",
+        ),
+        (
+            [(20, 100_000), (20, 600_000_000)],
+            "roh_af_index_failed",
+            "cannot be stored in a tbi index",
+        ),
+    ],
+    ids=["descending", "split-contig", "outside-tbi-range"],
+)
+def test_issue_1519_roh_distinguishes_tabix_failures(tmp_path, sites, code, diagnostic):
+    vcf = _sample(tmp_path, [], last=200_000)
+    table = tmp_path / "af.tab"
+    table.write_text("".join(f"{chrom}\t{pos}\tA,G\t0.4\n" for chrom, pos in sites))
+
+    result = _roh(tmp_path, vcf, str(table), af_build="hg38")
+
+    assert result.error is not None
+    assert result.error.code == code
+    assert diagnostic in result.error.message
+    assert ("sort it first" in result.error.message) == (code == "roh_af_unsorted")
+
+
 def test_issue_1174_prepared_frequencies_reused_until_the_release_changes(
     tmp_path, monkeypatch
 ):
