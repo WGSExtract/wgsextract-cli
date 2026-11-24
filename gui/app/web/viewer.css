@@ -1,11 +1,47 @@
+html,
+body {
+  height: auto;
+  min-height: 100%;
+  min-width: 0;
+  overflow-y: auto;
+}
+
 .genome-viewer {
   max-width: 1800px;
   margin: 0 auto;
   padding: var(--space-5);
 }
 
+:root[data-viewer-embedded] .genome-viewer {
+  padding-block: var(--space-3) var(--space-5);
+}
+
+:root[data-viewer-embedded] .genome-viewer h1 {
+  margin-block: var(--space-1) var(--space-1);
+}
+
 :root[data-viewer-embedded] .genome-viewer-back {
   display: none;
+}
+
+:root[data-viewer-direct] .viewer-files,
+:root[data-viewer-direct] .viewer-remote,
+:root[data-viewer-direct] .viewer-privacy {
+  display: none;
+}
+
+:root[data-viewer-direct] [data-viewer-status],
+:root[data-viewer-direct] [data-gene-status],
+:root[data-viewer-direct] [data-rsid-status],
+:root[data-viewer-direct] [data-cytoband-status] {
+  margin-block: var(--space-1);
+  font-size: 0.875rem;
+}
+
+:root[data-viewer-direct] [data-gene-status],
+:root[data-viewer-direct] [data-rsid-status],
+:root[data-viewer-direct] [data-cytoband-status] {
+  color: var(--muted);
 }
 
 .genome-viewer p {
@@ -92,12 +128,19 @@
   display: flex;
   flex-wrap: wrap;
   align-items: end;
-  gap: var(--space-3);
-  margin-block: var(--space-4);
+  gap: var(--space-2) var(--space-3);
+  margin-block: var(--space-3);
 }
 
 .viewer-navigation input {
   min-width: 240px;
+}
+
+.viewer-navigation-help {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
 }
 
 .viewer-zoom {
@@ -110,7 +153,9 @@
   color: #222;
   background: #fff;
   min-height: 120px;
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: visible;
+  margin-block-end: var(--space-5);
 }
 
 .genome-viewer footer {

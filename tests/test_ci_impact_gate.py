@@ -11,15 +11,86 @@ from pathlib import Path
 
 import pytest
 
+from scripts.ci_github import GitHub
 from scripts.ci_impact_backstop import (
     failing_targets,
     first_bad,
+    green_nightly,
     replay,
     verified_omission,
 )
 from scripts.ci_impact_gate import plan
 from scripts.ci_impact_observations import SCHEMA
 from scripts.ci_impact_shadow import GateDecision
+
+
+@pytest.mark.parametrize("full_dispatch", [False, True])
+def test_1464_replay_uses_only_comparable_full_main_passes(
+    tmp_path: Path, full_dispatch: bool
+) -> None:
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            [
+                "git",
+                "-c",
+                "core.hooksPath=",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.test",
+                *args,
+            ],
+            cwd=tmp_path,
+            text=True,
+        ).strip()
+
+    git("init", "-qb", "main")
+    for label in ("scheduled", "manual", "failed"):
+        git("commit", "--allow-empty", "-qm", label)
+    head, manual, scheduled = git("rev-list", "HEAD").splitlines()
+    git("checkout", "-qb", "not-main", scheduled)
+    git("commit", "--allow-empty", "-qm", "untrusted")
+    off_main = git("rev-parse", "HEAD")
+
+    class RunServer(GitHub):
+        def request(self, method: str, path: str, data: object = None) -> object:
+            if "event=schedule&branch=main" in path:
+                return {
+                    "workflow_runs": [
+                        {"id": 10, "head_sha": scheduled, "event": "schedule"}
+                    ]
+                }
+            if "event=workflow_dispatch&branch=main" in path:
+                return {
+                    "workflow_runs": [
+                        {"id": 30, "head_sha": off_main, "event": "workflow_dispatch"},
+                        {"id": 20, "head_sha": manual, "event": "workflow_dispatch"},
+                    ]
+                }
+            if path.endswith("/jobs?filter=latest&per_page=100&page=1"):
+                return {
+                    "jobs": [
+                        {
+                            "name": "test-ubuntu / all",
+                            "steps": [
+                                {"name": "Run Tests", "conclusion": "success"},
+                                {
+                                    "name": "Export Linux test observations",
+                                    "conclusion": "success"
+                                    if full_dispatch or "/30/" in path
+                                    else "skipped",
+                                },
+                            ],
+                        }
+                    ]
+                }
+            raise AssertionError(path)
+
+    assert green_nightly(RunServer("owner/repo"), tmp_path, 40, head) == (
+        manual if full_dispatch else scheduled
+    )
 
 
 @pytest.mark.parametrize(

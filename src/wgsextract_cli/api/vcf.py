@@ -101,10 +101,13 @@ from .vcf_specs.annotations import VcfSvFreqParams as VcfSvFreqParams
 from .vcf_specs.files import HAPLOTYPES as HAPLOTYPES
 from .vcf_specs.files import VcfAnnotateParams as VcfAnnotateParams
 from .vcf_specs.files import VcfFilterParams as VcfFilterParams
+from .vcf_specs.files import VcfGraniteQcParams as VcfGraniteQcParams
+from .vcf_specs.files import VcfInfoParams as VcfInfoParams
 from .vcf_specs.files import VcfPrepareParams as VcfPrepareParams
 from .vcf_specs.files import VcfTableParams as VcfTableParams
 from .vcf_specs.files import VcfToFastaParams as VcfToFastaParams
 from .vcf_specs.files import VcfTrioParams as VcfTrioParams
+from .vcf_specs.files import VcfVariantQcParams as VcfVariantQcParams
 from .vcf_specs.shared import _OVERRIDE_HELP as _OVERRIDE_HELP
 from .vcf_specs.shared import _AnnotatorParams as _AnnotatorParams
 from .vcf_specs.shared import _comma_items as _comma_items
@@ -404,8 +407,11 @@ __all__ = [
     "VcfRevelParams",
     "VcfSnpParams",
     "VcfSpliceaiParams",
+    "VcfGraniteQcParams",
+    "VcfInfoParams",
     "VcfTableParams",
     "VcfToFastaParams",
+    "VcfVariantQcParams",
     "VcfTrioParams",
     "acmg",
     "alphamissense",
@@ -416,7 +422,9 @@ __all__ = [
     "filter",
     "gerp",
     "gnomad",
+    "granite_qc",
     "indel",
+    "info",
     "pharmcat",
     "pharmgkb",
     "phylop",
@@ -427,6 +435,7 @@ __all__ = [
     "table",
     "to_fasta",
     "trio",
+    "variantqc",
 ]
 
 
@@ -570,3 +579,44 @@ def impute(
     from wgsextract_cli.commands.vcf.imputation import run_impute
 
     return execute(params, run_impute, progress=progress, cancel=cancel, check=check)
+
+
+def info(
+    params: VcfInfoParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Inspect a VCF/gVCF/BCF header, reference model/build, samples, and variant counts."""
+    from wgsextract_cli.commands.vcf.info import run_vcf_info
+
+    return execute(params, run_vcf_info, progress=progress, cancel=cancel, check=check)
+
+
+def variantqc(
+    params: VcfVariantQcParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Run DISCVRSeq VariantQC; output role ``variantqc_report``."""
+    from wgsextract_cli.commands.vcf.qc_tools import run_variantqc
+
+    return execute(params, run_variantqc, progress=progress, cancel=cancel, check=check)
+
+
+def granite_qc(
+    params: VcfGraniteQcParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Run granite qcVCF; output role ``granite_qc_json``."""
+    from wgsextract_cli.commands.vcf.qc_tools import run_granite_qc
+
+    return execute(
+        params, run_granite_qc, progress=progress, cancel=cancel, check=check
+    )

@@ -1,4 +1,4 @@
-"""scripts/build_reference_bootstrap.py drops the YBrowse data (#509)."""
+"""scripts/build_reference_bootstrap.py drops YBrowse (#509) and adds CombinedKit v5 templates (#1107)."""
 
 import hashlib
 import io
@@ -12,7 +12,16 @@ SCRIPT = ROOT / "scripts" / "build_reference_bootstrap.py"
 README = (
     "Liftover chains:\n-- hg19-chm13v2.chain\n\n"
     "Y Chromosome SNPs file (yBrowse.org):\n-- snps_hg38.vcf.gz (synthetic)\n\n"
-    "Exome BED:\n-- exome.bed\n"
+    "Exome BED:\n-- exome.bed\n\n"
+    "Microarray/:\n-- Microarray RAW file templates\n"
+).replace("\n", "\r\n")
+README_V020 = (
+    "Liftover chains:\n-- hg19-chm13v2.chain\n\n"
+    "Y Chromosome SNPs file (yBrowse.org):\n"
+    "-- Not included since reference bootstrap v0.2.0: YBrowse data is\n"
+    "   CC-BY-SA and is not redistributed with WGS Extract.\n\n"
+    "Exome BED:\n-- exome.bed\n\n"
+    "Microarray/:\n-- Microarray RAW file templates\n"
 ).replace("\n", "\r\n")
 MEMBERS = {
     "reference/00README.txt": README.encode(),
@@ -25,22 +34,39 @@ MEMBERS = {
 }
 
 
-def _source(path: Path) -> str:
+def _source(path: Path, members: dict[str, bytes] | None = None) -> str:
     with tarfile.open(path, "w:gz") as tar:
-        for name, data in MEMBERS.items():
+        for name, data in (members or MEMBERS).items():
             info = tarfile.TarInfo(name)
             info.size, info.mtime = len(data), 1_600_000_000
             tar.addfile(info, io.BytesIO(data))
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _build(source: Path, sha: str, output: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(SCRIPT), "--source", str(source)]
-        + ["--source-sha256", sha, "--version", "9.9.9", "--output", str(output)],
-        capture_output=True,
-        text=True,
-    )
+def _build(
+    source: Path,
+    sha: str,
+    output: Path,
+    *,
+    templates: Path | None = None,
+) -> subprocess.CompletedProcess:
+    cmd = [
+        sys.executable,
+        str(SCRIPT),
+        "--source",
+        str(source),
+        "--source-sha256",
+        sha,
+        "--version",
+        "9.9.9",
+        "--output",
+        str(output),
+    ]
+    if templates is None:
+        cmd.append("--no-templates")
+    else:
+        cmd.extend(["--templates", str(templates)])
+    return subprocess.run(cmd, capture_output=True, text=True)
 
 
 def test_bootstrap_build_drops_ybrowse_files_and_is_reproducible(tmp_path):
@@ -67,6 +93,78 @@ def test_bootstrap_build_drops_ybrowse_files_and_is_reproducible(tmp_path):
     assert "Not included since reference bootstrap v9.9.9" in readme
     assert readme.startswith("Liftover chains:\r\n") and "\r\nExome BED:\r\n" in readme
     assert "\n" not in readme.replace("\r\n", "")
+
+
+def test_bootstrap_build_adds_combinedkit_v5_templates_reproducibly(tmp_path):
+    source = tmp_path / "v020.tar.gz"
+    sha = _source(
+        source,
+        {
+            "reference/00README.txt": README_V020.encode(),
+            "reference/microarray/raw_file_templates/body/23andMe_V3.txt": b"v3-body\n",
+            "reference/microarray/raw_file_templates/head/23andMe_V3.txt": b"v3-head\n",
+        },
+    )
+    templates = tmp_path / "templates"
+    (templates / "body").mkdir(parents=True)
+    (templates / "head").mkdir(parents=True)
+    (templates / "body" / "MyHeritage_V3.csv.delta.gz").write_bytes(b"mh-v3-delta")
+    (templates / "head" / "MyHeritage_V3.csv").write_bytes(b"mh-v3-head\n")
+    (templates / "corrections.tsv").write_bytes(b"# corrections\n")
+    (templates / "README.md").write_bytes(b"# templates\n")
+    (templates / ".DS_Store").write_bytes(b"ignored")
+
+    assert _build(source, sha, tmp_path / "a", templates=templates).returncode == 0
+    assert _build(source, sha, tmp_path / "b", templates=templates).returncode == 0
+    name = "wgsextract-reference-bootstrap-9.9.9.tar.gz"
+    built = (tmp_path / "a" / name).read_bytes()
+    assert built == (tmp_path / "b" / name).read_bytes()
+
+    with tarfile.open(tmp_path / "a" / name) as tar:
+        assert tar.getnames() == [
+            "reference/00README.txt",
+            "reference/microarray/raw_file_templates/README.md",
+            "reference/microarray/raw_file_templates/body/23andMe_V3.txt",
+            "reference/microarray/raw_file_templates/body/MyHeritage_V3.csv.delta.gz",
+            "reference/microarray/raw_file_templates/corrections.tsv",
+            "reference/microarray/raw_file_templates/head/23andMe_V3.txt",
+            "reference/microarray/raw_file_templates/head/MyHeritage_V3.csv",
+        ]
+        # Existing CombinedKit v3 template stays byte-identical.
+        assert (
+            tar.extractfile(
+                "reference/microarray/raw_file_templates/body/23andMe_V3.txt"
+            ).read()  # type: ignore[union-attr]
+            == b"v3-body\n"
+        )
+        assert (
+            tar.extractfile(
+                "reference/microarray/raw_file_templates/body/MyHeritage_V3.csv.delta.gz"
+            ).read()  # type: ignore[union-attr]
+            == b"mh-v3-delta"
+        )
+        readme = tar.extractfile("reference/00README.txt").read().decode()  # type: ignore[union-attr]
+    assert "Not included since reference bootstrap v0.2.0" in readme
+    assert "Since reference bootstrap v9.9.9" in readme
+    assert "CombinedKit v5" in readme
+    assert "\n" not in readme.replace("\r\n", "")
+
+
+def test_bootstrap_build_refuses_template_collision(tmp_path):
+    source = tmp_path / "v020.tar.gz"
+    sha = _source(
+        source,
+        {
+            "reference/00README.txt": README_V020.encode(),
+            "reference/microarray/raw_file_templates/head/23andMe_V3.txt": b"existing\n",
+        },
+    )
+    templates = tmp_path / "templates"
+    (templates / "head").mkdir(parents=True)
+    (templates / "head" / "23andMe_V3.txt").write_bytes(b"duplicate\n")
+    result = _build(source, sha, tmp_path / "out", templates=templates)
+    assert result.returncode != 0
+    assert "collides with existing member" in result.stderr
 
 
 def test_bootstrap_build_refuses_an_unpinned_source(tmp_path):

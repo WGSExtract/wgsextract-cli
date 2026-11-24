@@ -589,6 +589,12 @@ def calculate_bam_md5(
         if sn and ln:
             bamsq_header[sn] = ln
 
+    if not bamsq_header:
+        from wgsextract_cli.core.ref_library.models import sequence_lengths
+
+        for name, length in sequence_lengths(header).items():
+            bamsq_header[name.upper()] = str(length)
+
     pseudo_header = ""
     for key in sorted(bamsq_header.keys()):
         pseudo_header += f"SN:{key}\tLN:{bamsq_header[key]}\n"
