@@ -2,6 +2,7 @@ import json
 import math
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -568,8 +569,9 @@ def test_minimap2_preset_follows_platform_and_marks_only_short_reads(
     )
 
     (minimap2,) = [line for line in _programs(bam) if "\tID:minimap2\t" in line]
-    # contract: the preset sets minimap2's scoring for the platform's errors
-    assert f"CL:minimap2 -ax {preset} " in minimap2
+    # contract: the preset sets minimap2's scoring for the platform's errors.
+    # #1121: a packaged wgse-minimap2 (Windows) adds --backend auto on CUDA hosts.
+    assert re.search(rf"CL:minimap2 (--backend auto )?-ax {preset} ", minimap2)
     flagged = int(_samtools("view", "-c", "-f", "0x400", bam))
     assert (flagged > 0) == (preset == "sr")
 

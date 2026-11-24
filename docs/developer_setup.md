@@ -180,8 +180,8 @@ When you add or rename a command:
 
 - Give a new top-level command a tier (core, setup or advanced) and a short
   summary in `COMMAND_TIERS` in `src/wgsextract_cli/commands/registry.py`.
-- Give every runnable command an example and an outputs line in
-  `src/wgsextract_cli/commands/_help_catalog.py`.
+- Give every runnable command an example and an outputs line in its command
+  group's module under `src/wgsextract_cli/commands/_help_catalog/`.
 - Register its parser in `src/wgsextract_cli/cli/registration/`, keeping
   execution imports inside handlers. `cli/_lazy.py` defers loading command
   implementations until execution; help must not import scientific libraries.
