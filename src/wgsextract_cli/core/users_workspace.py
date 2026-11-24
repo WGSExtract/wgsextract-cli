@@ -15,6 +15,11 @@ from platformdirs import user_data_dir
 
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.file_lock import shared_file_lock
+from wgsextract_cli.core.workspace_activity import (
+    configured_desktop_data_dir,
+    relocated_config_path,
+    workspace_use,
+)
 
 FOLDER_NAME = "wgs-extract"
 # Marks the folder as one this program made, so the desktop app adopts it
@@ -29,8 +34,15 @@ LEGACY_MYGENOMES_FOLDER = "datasets"
 
 def users_workspace() -> Path:
     """Follow the desktop's location record, including pre-split moves."""
-    for app in ("WGSExtract-gui", "dev.guiforcli.web.embed.wgsextract"):
-        record = Path(user_data_dir(app, appauthor=False)) / "settings.json"
+    app_dirs = [
+        Path(user_data_dir(app, appauthor=False))
+        for app in ("WGSExtract-gui", "dev.guiforcli.web.embed.wgsextract")
+    ]
+    override = configured_desktop_data_dir()
+    if override is not None:
+        app_dirs.insert(0, override)
+    for app_dir in dict.fromkeys(app_dirs):
+        record = app_dir / "settings.json"
         try:
             settings = json.loads(record.read_text(encoding="utf-8"))
             for key in (
@@ -75,9 +87,11 @@ def claim_users_workspace(folder: Path) -> None:
         logging.debug(f"Could not mark {folder} as the users workspace: {e}")
 
 
+@workspace_use()
 def write_initial_config(config_path: Path, contents: str) -> bool:
     """Claim the default workspace before a CLI-first bootstrap populates it.
     False when the app or another command created the file first."""
+    config_path = relocated_config_path(config_path)
     if config_path.parent == users_workspace():
         claim_users_workspace(config_path.parent)
     with shared_file_lock(config_path) as target:

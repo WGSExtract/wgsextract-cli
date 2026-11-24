@@ -101,6 +101,8 @@ if sys.argv[1:3] != ["-m", "wgsextract_cli.main"]:
 home = Path({home!r})
 state = json.loads((home / "state.json").read_text())
 argv = sys.argv[3:]  # after `-m wgsextract_cli.main`
+if argv[0].startswith("--workspace-lease="):
+    argv.pop(0)
 with open(home / "calls.jsonl", "a") as log:
     log.write(json.dumps(argv) + "\\n")
 # The real parser: a step must accept every option it is given.

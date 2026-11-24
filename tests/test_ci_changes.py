@@ -22,6 +22,7 @@ from scripts.ci_codeql_scope import languages as codeql_languages
 from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
 from scripts.ci_select_tests import ci_test_targets as ci_test_targets
+from scripts.ci_select_tests import os_selection
 from scripts.ci_select_tests import select_tests as select_tests
 from scripts.ci_test_dependencies import DOCS_ONLY_SCRIPTS as DOCS_ONLY_SCRIPTS
 from scripts.ci_test_dependencies import DOCS_TEST_TARGETS as DOCS_TEST_TARGETS
@@ -68,6 +69,15 @@ def test_757_routes_isolated_and_mixed_prs(paths: list[str], enabled: set[str]) 
 
 def test_757_label_forces_install_lab_on_a_docs_pr() -> None:
     assert routes(["README.md"], force_install_lab=True)["install"]
+
+
+def test_1495_remote_supervisor_change_runs_native_smoke_not_product_suite() -> None:
+    paths = ["scripts/ci_certify_ssh.py"]
+    cli = routes(paths)["cli"]
+    assert not cli
+    lanes = os_selection(paths, select_tests(paths), cli=cli)
+    for platform in ("windows", "macos", "ubuntu", "arm64"):
+        assert lanes[platform] == ["tests/test_ci_certify_remote.py"]
 
 
 def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() -> None:

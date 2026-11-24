@@ -26,7 +26,15 @@ on:
 permissions: {}
 
 concurrency:
-  group: ci-failure-observer-${{ github.event_name == 'schedule' && 'weekly' || 'observations' }}
+  # Quarantine reconciliation shares the observer lock. Other PR events have
+  # no work and must not wait in the bounded observer queue (#1488).
+  group: >-
+    ci-failure-observer-${{
+    github.event_name == 'schedule' && 'weekly' ||
+    (github.event_name == 'workflow_run' ||
+    (github.event_name == 'pull_request_target' &&
+    contains(github.event.pull_request.labels.*.name, 'ci-red-main'))) && 'observations' ||
+    github.run_id }}
   queue: max
   cancel-in-progress: false
 
