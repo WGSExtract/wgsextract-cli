@@ -275,17 +275,18 @@ def test_1531_help_recovers_without_writing_package(
         "PYTHONPATH": str(source),
     }
     discovery = [sys.executable, "-m", "wgsextract_cli.main", "help", "--all", "--json"]
-    cache_root = subprocess.check_output(
+    cache_name = subprocess.check_output(
         [
             sys.executable,
             "-c",
-            "from platformdirs import user_cache_dir; "
-            "print(user_cache_dir('wgsextract'))",
+            "from wgsextract_cli.cli.help_index import cache_path, registry_key; "
+            "print(cache_path(registry_key()))",
         ],
         env=env,
         text=True,
     ).strip()
-    cache_path = Path(cache_root) / "cli" / "help-index.json"
+    cache_path = Path(cache_name)
+    assert cache_path.is_relative_to(tmp_path)
     if old_cache == "incomplete":
         subprocess.check_output(discovery, env=env, cwd=tmp_path)
         record = json.loads(cache_path.read_bytes())
@@ -309,7 +310,8 @@ def test_1531_help_recovers_without_writing_package(
             stream.write('\nCLI_HELP["arg_input"] = "Updated input help"\n')
         updated = subprocess.check_output(discovery, env=env, cwd=tmp_path)
         assert b"Updated input help" in updated
-        assert cache_path.read_bytes() != original
+        assert cache_path.read_bytes() == original
+        assert len(list(cache_path.parent.parent.glob("*/help-index.json"))) == 2
 
 
 def test_full_json_dump_is_opt_in_and_keeps_command_details(capsys, entries):

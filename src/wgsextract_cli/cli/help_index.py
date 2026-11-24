@@ -12,6 +12,7 @@ from typing import Any
 from platformdirs import user_cache_dir
 
 from wgsextract_cli import __version__
+from wgsextract_cli.core.paths import windows_local_app_dir
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_INDEX = Path("assets/cli/help-index.json")
@@ -105,6 +106,17 @@ def read_index(path: Path, key: str) -> dict[str, Any] | None:
     return document
 
 
+def cache_path(key: str) -> Path:
+    root = PACKAGE_ROOT.parent.parent
+    if (root / "tmp" / ".managed-help-cache").is_file():
+        cache_root = root / "tmp" / "cache"
+    elif (windows_dir := windows_local_app_dir("wgsextract", "wgsextract")) is not None:
+        cache_root = windows_dir / "Cache"
+    else:
+        cache_root = Path(user_cache_dir("wgsextract"))
+    return cache_root / "cli" / key / "help-index.json"
+
+
 def load_index() -> dict[str, Any]:
     try:
         bundled_key = (PACKAGE_ROOT / PACKAGE_KEY).read_text(encoding="ascii").strip()
@@ -119,14 +131,7 @@ def load_index() -> dict[str, Any]:
         if bundled is not None:
             return bundled
     key = registry_key()
-    # The installer marks a cache directory it can remove on uninstall.
-    managed_install = (root / "tmp" / ".managed-help-cache").is_file()
-    cache_root = (
-        root / "tmp" / "cache"
-        if managed_install
-        else Path(user_cache_dir("wgsextract"))
-    )
-    destination = cache_root / "cli" / "help-index.json"
+    destination = cache_path(key)
     cached = read_index(destination, key)
     if cached is not None:
         return cached
