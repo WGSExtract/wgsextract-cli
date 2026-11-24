@@ -16,6 +16,7 @@ from wgsextract_cli.api.ref import (
     RefClinvarParams,
     RefCountNsParams,
     RefCytobandsParams,
+    RefDbsnpParams,
     RefDenseSaParams,
     RefDownloadParams,
     RefGeneMapParams,
@@ -102,6 +103,14 @@ RESOURCE_COMMANDS = (
         ),
     ),
     (
+        RefDbsnpParams,
+        command_handler(
+            "wgsextract_cli.commands.ref.library_commands",
+            "run_dbsnp",
+            RefDbsnpParams,
+        ),
+    ),
+    (
         RefRevelParams,
         command_handler(
             "wgsextract_cli.commands.ref.library_commands", "run_revel", RefRevelParams
@@ -177,6 +186,7 @@ def _install_or_delete(func: Handler) -> Handler:
 
 _RESOURCE_HELP = {
     "clinvar": "Download official ClinVar VCF for hg19 and hg38.",
+    "dbsnp": "Download NCBI dbSNP b151 common human rsIDs (~37M SNPs, VCF + offline rsID search index) for hg38 and hg19, or delete them.",
     "revel": "Download REVEL pathogenicity scores for hg19 and hg38.",
     "phylop": "Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).",
     "gnomad": "Download gnomAD population allele frequencies.",
@@ -224,7 +234,7 @@ def register(
         "ybrowse",
         RefYbrowseParams,
         cmd_ybrowse,
-        "Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.",
+        "Explicitly install a verified, sites-only GRCh38 yBrowse snapshot.",
     )
     add(
         "somalier",

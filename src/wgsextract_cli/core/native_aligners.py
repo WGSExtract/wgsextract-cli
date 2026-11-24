@@ -5,10 +5,12 @@ wgse-bwa-mem3 (bwa-mem3) writes bwa's or bwa-mem2's exact records with
 all of them are built, and all but wgse-minimap2 can also run on the Metal GPU;
 on Linux, wgse-bwa is, and on x86-64 wgse-bwa-mem3 and wgse-minimap2 too, all of
 which can also run on an NVIDIA GPU (CUDA) there. On Windows x86-64, wgse-bwa
-supports CPU and CUDA. Builds are used when installed; they are never installed here.
+and wgse-minimap2 support CPU and CUDA. Builds are used when installed;
+they are never installed here.
 
-Each tool is asked once per process what it can do (``capabilities --json``),
-and anything unexpected falls back to the upstream aligner.
+Tools are asked what they can do (``capabilities --json``), and anything
+unexpected falls back to the upstream aligner. Capabilities are cached except
+for Windows minimap2, whose CUDA selection depends on current free VRAM.
 """
 
 from __future__ import annotations
@@ -91,8 +93,8 @@ class NativeAligner:
     engine_version: str
     metal_available: bool
     cuda_available: bool = False
-    # A usable NVIDIA GPU, busy or not: capabilities are asked once per process,
-    # and cuda_available also depends on the GPU's free memory at that moment.
+    # A usable NVIDIA GPU, busy or not: cuda_available also depends on the
+    # GPU's free memory at the moment of the capabilities probe.
     cuda_hardware_supported: bool = False
 
     @property
@@ -369,8 +371,8 @@ def platform_binaries() -> dict[str, str]:
     aligner each replaces."""
     if apple_silicon():
         return BINARIES
-    if on_windows_x64() and _build_path(BINARIES["bwa"]):
-        return {"bwa": BINARIES["bwa"]}
+    if on_windows_x64():
+        return {tool: BINARIES[tool] for tool in ("bwa", "minimap2")}
     if platform.system() != "Linux":
         return {}
     machine = platform.machine().lower()
@@ -396,6 +398,10 @@ def _probe(path: str, mtime_ns: int, size: int) -> dict[str, object] | str:
     a hung build costs one timeout per process and a replaced one is asked
     again."""
     del mtime_ns, size
+    return _read_capabilities(path)
+
+
+def _read_capabilities(path: str) -> dict[str, object] | str:
     try:
         completed = subprocess.run(
             [path, "capabilities", "--json"],
@@ -421,16 +427,20 @@ def _probe(path: str, mtime_ns: int, size: int) -> dict[str, object] | str:
     return document
 
 
-def _capabilities(path: str) -> dict[str, object]:
-    stat = Path(path).stat()
-    probed = _probe(path, stat.st_mtime_ns, stat.st_size)
+def _capabilities(path: str, *, live: bool) -> dict[str, object]:
+    if live:
+        probed = _read_capabilities(path)
+    else:
+        stat = Path(path).stat()
+        probed = _probe(path, stat.st_mtime_ns, stat.st_size)
     if isinstance(probed, str):
         raise NativeAlignerUnusable(probed)
     return probed
 
 
 def _check(tool: str, binary: str, path: str) -> NativeAligner:
-    document = _capabilities(path)
+    windows = on_windows_x64()
+    document = _capabilities(path, live=windows and tool == "minimap2")
     schema = document.get("schema_version")
     if schema != CAPABILITIES_SCHEMA:
         raise NativeAlignerUnusable(
@@ -453,7 +463,7 @@ def _check(tool: str, binary: str, path: str) -> NativeAligner:
     return NativeAligner(
         tool=tool,
         binary=binary,
-        command=path if on_windows_x64() else binary,
+        command=path if windows else binary,
         path=path,
         version=str(version),
         engine_version=str(document.get("engine_version") or ""),

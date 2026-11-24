@@ -39,7 +39,7 @@ async function checkPrerequisites(
     runProcess: RunProcess,
 ): Promise<MissingPrerequisite[]> {
     const spec = manifest.prerequisites;
-    if (!spec || !action.command) {
+    if (!spec || (!action.command && !action.prerequisiteArguments)) {
         return [];
     }
     const resolvedContext = await contextWithFileState(context, bundleRoot);
@@ -104,6 +104,9 @@ export async function installPrerequisite(
 function checkedCommandLine(executables: Record<string, string[]>, action: ActionSpec, context: CommandContext): string[] | null {
     if (action.prerequisiteArguments) {
         return renderedCommand({ executable: "", arguments: action.prerequisiteArguments }, context).arguments ?? [];
+    }
+    if (!action.command) {
+        return null;
     }
     const rendered = renderedCommand(action.command, context);
     const prefix = Object.entries(executables).find(([executable]) => interpolate(executable, context) === rendered.executable)?.[1];

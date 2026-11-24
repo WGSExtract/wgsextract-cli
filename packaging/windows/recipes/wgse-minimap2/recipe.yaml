@@ -1,0 +1,60 @@
+context:
+  # native/minimap2/CMakeLists.txt's WGSE_MINIMAP2_VERSION.
+  version: "0.4.1"
+
+package:
+  name: wgse-minimap2
+  version: ${{ version }}
+
+source:
+  - path: ../../../../native
+    target_directory: native
+  - path: ../../../../LICENSE
+  - path: ../../compat
+    target_directory: packaging/windows/compat
+  - url: https://github.com/lh3/minimap2/archive/refs/tags/v2.31.tar.gz
+    sha256: bff334a0e4512644e2f3e29944aeec408f49450f4f74dc39fe89e5273869255b
+    target_directory: minimap2
+  - url: https://zlib.net/fossils/zlib-1.3.1.tar.gz
+    sha256: 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
+    target_directory: zlib
+
+build:
+  number: 0
+  string: win64_wgse_${{ build_number }}
+  skip:
+    - not win64
+  script:
+    - call "%RECIPE_DIR%\build.cmd"
+
+requirements:
+  build:
+    - vs_win-64 2022.*
+    - clang ==22.1.8
+    - lld ==23.1.6
+    - cmake 4.5.*
+    - ninja 1.13.*
+    - cuda-nvcc ==13.5.37
+    - cuda-cudart-static ==13.5.37
+  ignore_run_exports:
+    from_package:
+      - vs_win-64
+      - cuda-nvcc
+    by_name:
+      - cuda-version
+      - cuda-cudart
+
+tests:
+  - script:
+      - wgse-minimap2 --version
+      - 'wgse-minimap2 capabilities --json | findstr /R /C:"cpu_available[^:]*:true"'
+
+about:
+  homepage: https://github.com/WGSExtract/wgsextract-cli/tree/main/native
+  license: GPL-3.0-or-later AND MIT AND Zlib
+  license_file:
+    - LICENSE
+    - minimap2/LICENSE.txt
+    - build/minimap2/generated/KSORT-LICENSE
+    - zlib/LICENSE
+  summary: minimap2 2.31 with exact CPU and CUDA gap fills, built natively for Windows x86-64.

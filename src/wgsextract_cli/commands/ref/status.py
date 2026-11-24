@@ -13,11 +13,13 @@ from wgsextract_cli.core import (
     acmg_data,
     ancestry_reference,
     bwa_mem2,
+    dbsnp,
     gnomad_sv,
     sample_workspace,
     somalier_resources,
 )
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
+from wgsextract_cli.core.builds import display_build
 from wgsextract_cli.core.config import mygenomes_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.mini_genome import status as test_genome_status
@@ -136,6 +138,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         "geneMap": {
             "installed": are_gene_maps_installed(reflib),
         },
+        "dbsnp": dbsnp.dbsnp_status(reflib),
         "annotationVcf": {
             "installed": bool(annotation_file),
             "file": annotation_file,
@@ -168,6 +171,11 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
 def ref_status_values(status: dict[str, Any]) -> dict[str, str]:
     return {
         "library.geneMapInstalled": _json_bool(status["geneMap"]["installed"]),
+        "library.dbsnpInstalled": _json_bool(
+            any(entry["installed"] for entry in status["dbsnp"].values())
+        ),
+        "library.dbsnpHg19Installed": _json_bool(status["dbsnp"]["hg19"]["installed"]),
+        "library.dbsnpHg38Installed": _json_bool(status["dbsnp"]["hg38"]["installed"]),
         "library.isBootstrapped": _json_bool(status["bootstrap"]["installed"]),
         "library.annotationVcfInstalled": _json_bool(
             status["annotationVcf"]["installed"]
@@ -216,16 +224,28 @@ def print_ref_status(status: dict[str, Any]) -> None:
         )
     human_output(f"Bootstrap assets: {_status_label(status['bootstrap']['installed'])}")
     human_output(f"Gene maps: {_status_label(status['geneMap']['installed'])}")
+    dbsnp_builds = [
+        display_build(b) or b
+        for b, entry in status["dbsnp"].items()
+        if entry["installed"]
+    ]
+    human_output(f"dbSNP common rsIDs: {', '.join(dbsnp_builds) or 'not installed'}")
     human_output(f"AADR 2M panel: {_path_status(status['aadr'])}")
     human_output(f"somalier sites/1KG: {_path_status(status['somalier'])}")
     human_output(f"Ancestry reference: {_path_status(status['ancestry'])}")
-    sv_tables = [k for k, v in status["gnomadSv"].items() if v]
+    sv_tables = [
+        f"{k.rsplit('_', 1)[0]} ({display_build(k.rsplit('_', 1)[1]) or k.rsplit('_', 1)[1]})"
+        if "_" in k
+        else k
+        for k, v in status["gnomadSv"].items()
+        if v
+    ]
     human_output(f"gnomAD SV tables: {', '.join(sv_tables) or 'not installed'}")
     human_output(f"yBrowse GRCh38: {_path_status(status['ybrowse'])}")
     human_output(f"Microarray targets: {_path_status(status['annotationVcf'])}")
     human_output(f"Test genome: {status['testGenome']['status']}")
     human_output()
-    human_output(f"{'Annotation data':<16}{'hg19':<14}hg38")
+    human_output(f"{'Annotation data':<16}{'GRCh37':<14}GRCh38")
     labels = {key: label for key, label, _exts, _builds in ANNOTATION_DATA}
     for key, builds in status["annotations"].items():
         cells = [
