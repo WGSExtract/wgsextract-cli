@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import needs_tools, snp_sample
+from tests.htslib_helpers import needs_tools, snp_sample, write_fasta
 from wgsextract_cli.api import deps
 from wgsextract_cli.main import main
 
@@ -74,6 +74,45 @@ def test_1183_a_samtools_bcftools_call_is_ready_offline(offline, sample, capsys)
     assert reference["evidence"]["chosen"] is True
     assert item(details, "index", "ref.fa.fai")["status"] == "runnable"
     assert item(details, "index", "s.bam.bai")["status"] == "runnable"
+
+
+@needs_tools("samtools", "bcftools", "bgzip", "tabix")
+def test_1183_reports_the_vcf_reference_found_by_ref_needs(offline, tmp_path, capsys):
+    library = tmp_path / "references"
+    vcf = tmp_path / "sample.vcf"
+    header = (
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t2\t.\tA\tG\t.\tPASS\t.\n"
+    )
+    command = ("vcf", "to-fasta", "--vcf-input", str(vcf), "--ref", str(library))
+
+    def write_vcf(length: int) -> None:
+        vcf.write_text(
+            header.replace("#CHROM", f"##contig=<ID=chr1,length={length}>\n#CHROM"),
+            encoding="utf-8",
+            newline="\n",
+        )
+
+    write_vcf(248956422)
+    code, details = ready(capsys, *command)
+    assert code == 3
+    missing = item(details, "reference")
+    assert missing["status"] == "missing"
+    assert missing["fix_arguments"] == [
+        "ref",
+        "library",
+        "--install",
+        "hg38",
+        "--ref",
+        str(library),
+    ]
+
+    fasta = write_fasta(library / "genomes" / "test.fa", {"chr1": "AAAA"})
+    write_vcf(4)
+    code, details = ready(capsys, *command)
+    assert code == 0
+    assert item(details, "reference")["path"] == str(fasta)
 
 
 @needs_tools("samtools", "bcftools", "tabix")

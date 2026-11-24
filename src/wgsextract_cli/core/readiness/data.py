@@ -22,6 +22,7 @@ from wgsextract_cli.core.paths import append_suffix, expand_path
 from wgsextract_cli.core.ref_library.assets import fasta_build, read_fai_lengths
 from wgsextract_cli.core.ref_library.needs import (
     HEADER_ONLY_COMMANDS,
+    VCF_GENOME_COMMANDS,
     AnnotationNeed,
     GenomeNeed,
     annotation_need,
@@ -233,7 +234,8 @@ def _index_item(
 
 
 def reference_items(need: GenomeNeed, command: str) -> list[Item]:
-    """The reference genome a BAM/CRAM is read with, and its indexes."""
+    """The reference genome and its indexes for a BAM/CRAM or VCF."""
+    vcf = command in VCF_GENOME_COMMANDS
     if need.missing:
         mismatched = bool(need.fasta and Path(need.fasta).is_file())
         return [
@@ -247,8 +249,13 @@ def reference_items(need: GenomeNeed, command: str) -> list[Item]:
                 fix_arguments=need.missing.install_arguments,
                 fix_text=None
                 if need.missing.install_arguments
-                else "No catalog genome matches the input: give the FASTA it was "
-                "aligned to with --ref.",
+                else (
+                    "No catalog genome matches the input: give its matching "
+                    "FASTA with --ref."
+                    if vcf
+                    else "No catalog genome matches the input: give the FASTA it was "
+                    "aligned to with --ref."
+                ),
             )
         ]
     fasta = need.fasta
@@ -275,7 +282,13 @@ def reference_items(need: GenomeNeed, command: str) -> list[Item]:
     )
     ordinary_gzip = _ordinary_gzip(fasta)
     has_fai = bool(read_fai_lengths(fasta))
-    if need.reason == "variant calling" and (has_fai or ordinary_gzip):
+    if vcf:
+        if need.chosen:
+            item.status = UNVERIFIED
+            item.detail = "the FASTA was supplied explicitly; its fit was not checked"
+        else:
+            item.detail = "the library reference matches the VCF's metadata"
+    elif need.reason == "variant calling" and (has_fai or ordinary_gzip):
         # The callers' own check (setup_caller), which also compares the M5
         # checksums both dictionaries record. It writes only a missing .fai.
         try:

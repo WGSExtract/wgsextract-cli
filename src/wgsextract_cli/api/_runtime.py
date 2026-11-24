@@ -231,6 +231,7 @@ def _allows_downloads(params: Params) -> bool:
             "ref test-genome",
             "ref gene-map",
             "ref clinvar",
+            "ref dbsnp",
             "ref revel",
             "ref phylop",
             "ref gnomad",
@@ -242,6 +243,7 @@ def _allows_downloads(params: Params) -> bool:
             "ref acmg-data",
             "ref bootstrap",
             "ref microarray-targets",
+            "deps install",
             "vep download",
             "example-genome download",
         }
