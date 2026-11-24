@@ -177,17 +177,22 @@ def test_priority_pr_bypasses_runner_and_matrix_pressure(capsys: Any) -> None:
 
 
 @pytest.mark.parametrize(
-    ("status", "job_statuses"),
-    [("pending", []), ("queued", []), ("in_progress", ["in_progress"])],
+    ("status", "job_statuses", "expected"),
+    [
+        ("pending", [], ci_capacity.OK),
+        ("queued", [], ci_capacity.OK),
+        ("in_progress", ["in_progress"], ci_capacity.OK),
+        ("in_progress", ["in_progress", "queued"], ci_capacity.HOLD),
+    ],
 )
-def test_agent_yields_to_priority_ready_run_below_capacity(
-    status: str, job_statuses: list[str], capsys: Any
+def test_priority_ready_run_only_blocks_when_a_job_waits_for_a_runner(
+    status: str, job_statuses: list[str], expected: int, capsys: Any
 ) -> None:
     fake = FakeActions(
         snapshot((area(1), status, jobs(*job_statuses)), pulls=(priority_pr(1),))
     )
     code, report, _ = invoke(fake, "--pr", "2", capsys=capsys)
-    assert code == ci_capacity.HOLD
+    assert code == expected
     assert report["priority_ci"] == [1]
     assert report["merge_group_queued"] == 0
 
@@ -203,9 +208,13 @@ def test_agent_yields_to_priority_fork_run_without_pr_metadata(capsys: Any) -> N
         "head_branch": pull["headRefName"],
     }
     fake = FakeActions(
-        snapshot((run_without_pr, "queued", []), pulls=(pull,)),
+        snapshot((run_without_pr, "queued", jobs("queued")), pulls=(pull,)),
         snapshot(
-            ({**run_without_pr, "head_repository": {"full_name": REPO}}, "queued", []),
+            (
+                {**run_without_pr, "head_repository": {"full_name": REPO}},
+                "queued",
+                jobs("queued"),
+            ),
             pulls=(pull,),
         ),
     )
@@ -215,10 +224,15 @@ def test_agent_yields_to_priority_fork_run_without_pr_metadata(capsys: Any) -> N
     assert "priority PR(s) #1" in err
 
 
-def test_agent_yields_to_priority_merge_entry_even_without_ci(capsys: Any) -> None:
-    fake = FakeActions(snapshot(pulls=(priority_pr(1, queued=True),)))
+def test_agent_can_backfill_while_priority_merge_group_is_running(capsys: Any) -> None:
+    fake = FakeActions(
+        snapshot(
+            (run(1, "merge_group"), "in_progress", jobs("in_progress")),
+            pulls=(priority_pr(1, queued=True),),
+        )
+    )
     code, report, _ = invoke(fake, "--pr", "2", capsys=capsys)
-    assert code == ci_capacity.HOLD
+    assert code == ci_capacity.OK
     assert report["priority_queued"] == [1]
 
 
@@ -239,7 +253,7 @@ def test_collaborator_action_labels_do_not_change_capacity_admission(
 ) -> None:
     fake = FakeActions(
         snapshot(
-            (area(1), "pending", []),
+            (area(1), "queued", jobs("queued")),
             (area(2), "queued", jobs("queued")),
             pulls=(
                 priority_pr(1, labels=("priority", companion_label)),
@@ -256,13 +270,12 @@ def test_collaborator_action_labels_do_not_change_capacity_admission(
     assert report["priority_ci"] == [1]
 
 
-@pytest.mark.parametrize("status", ["pending", "queued", "in_progress"])
 def test_agent_yields_to_priority_draft_ci_without_counting_a_ready_matrix(
-    status: str, capsys: Any
+    capsys: Any,
 ) -> None:
     fake = FakeActions(
         snapshot(
-            (area(1, "draft"), status, jobs(status) if status == "in_progress" else []),
+            (area(1, "draft"), "queued", jobs("queued")),
             (area(2, "draft"), "queued", jobs("queued")),
             pulls=(priority_pr(1, draft=True),),
         )

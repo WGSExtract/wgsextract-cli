@@ -4,10 +4,9 @@
 Read-only: inspects this repository's pull requests, workflow runs and jobs
 through `gh api`. Exit 0 means a PR may be marked ready; exit 3 means hold.
 Pass --pr for a priority PR to bypass the gate (hands-off and land-asap
-labels do not change capacity admission). Otherwise hold while a
-priority PR has an active PR workflow run or is in the merge queue, while any
-merge_group job waits for a runner, or while more than --max-ready ready-PR
-area matrices are in flight.
+labels do not change capacity admission). Otherwise hold while a priority PR
+job or any merge_group job waits for a runner, or while more than
+--max-ready ready-PR area matrices are in flight.
 """
 
 from __future__ import annotations
@@ -91,16 +90,14 @@ class Capacity:
     priority_bypass: int | None = None
     priority_ci: list[int] = field(default_factory=list)
     priority_queued: list[int] = field(default_factory=list)
+    priority_waiting: list[int] = field(default_factory=list)
 
     @property
     def reasons(self) -> list[str]:
         reasons = []
-        if self.priority_ci:
-            numbers = ", ".join(f"#{number}" for number in self.priority_ci)
-            reasons.append(f"priority PR(s) {numbers} with active CI")
-        if self.priority_queued:
-            numbers = ", ".join(f"#{number}" for number in self.priority_queued)
-            reasons.append(f"priority PR(s) {numbers} in the merge queue")
+        if self.priority_waiting:
+            numbers = ", ".join(f"#{number}" for number in self.priority_waiting)
+            reasons.append(f"priority PR(s) {numbers} with jobs waiting for a runner")
         if self.merge_group_queued:
             reasons.append(
                 f"{self.merge_group_queued} merge_group job(s) waiting for a runner"
@@ -182,6 +179,7 @@ def measure(
         number for number, pull in priority.items() if pull["mergeQueueEntry"]
     )
     priority_ci: set[int] = set()
+    priority_waiting: set[int] = set()
     checked = now()
     waiting: Counter[str] = Counter()
     runs = {
@@ -216,12 +214,16 @@ def measure(
             capacity.merge_group_in_progress += running
         if run.get("event") == "pull_request" and not is_ghost(run, jobs, checked):
             numbers = run_pr_numbers(run, priority)
-            priority_ci.update(numbers & priority.keys())
+            priority_numbers = numbers & priority.keys()
+            priority_ci.update(priority_numbers)
+            if queued:
+                priority_waiting.update(priority_numbers)
             if is_ready_matrix(run) and (queued or running or not jobs):
                 capacity.ready_matrices.append(
                     {"run": run_id, "prs": sorted(numbers), "url": run.get("html_url")}
                 )
     capacity.priority_ci = sorted(priority_ci)
+    capacity.priority_waiting = sorted(priority_waiting)
     capacity.waiting_for_runner = dict(sorted(waiting.items()))
     return capacity
 

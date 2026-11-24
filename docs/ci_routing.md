@@ -947,9 +947,8 @@ Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait --pr N`.
 It reads PRs, workflow runs and jobs through `gh api` (read-only) and exits 0
 when admission is fine. The `priority` label, added to PRs from non-bot
 collaborators with write access other than `theontho`, lets the named PR skip
-the capacity gate. Other PRs exit 3 (hold) while a priority PR has active
-draft or ready CI or is in the merge queue, while any `merge_group` job
-is queued for a runner, or while more than `--max-ready` (default 4)
+the capacity gate. Other PRs exit 3 (hold) while a priority PR job or any
+`merge_group` job is queued for a runner, or while more than `--max-ready` (default 4)
 ready-PR area matrices are in flight. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
 prints the counts. The check reserves nothing, so each supervisor admits one
@@ -964,7 +963,8 @@ run each.
   added when you open, reopen, mark ready, or convert the PR to draft. You
   can remove it until the next of those events; pushes do not restore it.
   With it, you can ready your PR without waiting for agent capacity, and
-  agents yield while your draft or ready CI or merge queue entry is pending.
+  agents yield when your CI or any merge-group job is waiting for a runner.
+  Other PRs can use spare capacity and join the normal merge queue behind yours.
 - Add **`hands-off`** if you want to handle everything yourself, including
   CI reruns. Add **`land-asap`** when you're done: owner-account agents may
   rerun cancelled or lost-runner jobs and enqueue your ready PR at the front once
