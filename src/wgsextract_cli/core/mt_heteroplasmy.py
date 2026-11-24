@@ -35,6 +35,7 @@ import gzip
 import json
 import math
 import statistics
+import zlib
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from functools import cache
@@ -165,10 +166,15 @@ def _levels(alts: int, called: list[int], af: str) -> dict[int, float | None]:
 def read_calls(path: Path) -> dict[int, list[Call]]:
     """mutserve's VCF calls by position."""
     calls: dict[int, list[Call]] = {}
+    has_header = False
     with _opener(path)(path, "rt", encoding="utf-8") as stream:
         for number, line in enumerate(stream):
+            if line.startswith("#CHROM\t"):
+                has_header = len(line.rstrip().split("\t")) >= 10
             if line.startswith("#") or not line.strip():
                 continue
+            if not has_header:
+                raise ValueError("mutserve's VCF lacks the sample header")
             fields = line.rstrip("\n").split("\t")
             values = dict(zip(fields[8].split(":"), fields[9].split(":"), strict=False))
             alts = fields[4].split(",")
@@ -193,6 +199,8 @@ def read_calls(path: Path) -> dict[int, list[Call]]:
                         record=number,
                     )
                 )
+    if not has_header:
+        raise ValueError("mutserve's VCF lacks the sample header")
     return calls
 
 
@@ -397,5 +405,5 @@ def load_evidence(calls: Path | None, raw: Path | None) -> Evidence | None:
         return None
     try:
         return Evidence(calls=read_calls(calls), reads=read_reads(raw))
-    except (OSError, ValueError, KeyError, IndexError, EOFError, csv.Error):
+    except (OSError, ValueError, KeyError, IndexError, EOFError, csv.Error, zlib.error):
         return None

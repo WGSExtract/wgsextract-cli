@@ -455,3 +455,24 @@ def test_1175_missing_evidence_is_reported_not_read_as_negative(tmp_path):
     assert "mt_evidence_missing" in {w["code"] for w in section["warnings"]}
     assert section["counts"]["not_detected"] == 0
     assert {s["reasons"][0] for s in section["sites"]} == {"mt_evidence_missing"}
+
+
+@pytest.mark.parametrize("evidence", ["empty_vcf", "corrupt_gzip"])
+def test_1175_invalid_calls_file_never_produces_a_supported_negative(
+    tmp_path, evidence
+):
+    _mutserve_run(tmp_path, raw=(_raw_row(1555, "A", 500, 500, "G", 0.0),))
+    calls = tmp_path / "mutserve_heteroplasmies.vcf.gz"
+    if evidence == "empty_vcf":
+        calls.write_bytes(gzip.compress(b""))
+    else:
+        valid = bytearray(
+            gzip.compress(b"#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n")
+        )
+        # Set the first DEFLATE block's type to the reserved value 3.
+        valid[10] |= 0b110
+        calls.write_bytes(valid)
+    report = pr.build_report(tmp_path)
+    section = report["sections"]["mitochondrial"]
+    assert "mt_evidence_missing" in {warning["code"] for warning in section["warnings"]}
+    assert _sites(report)["m.1555A>G"]["state"] == "not_assessed"
