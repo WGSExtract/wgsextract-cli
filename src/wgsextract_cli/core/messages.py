@@ -87,6 +87,7 @@ CLI_HELP = {
     "cmd_microarray": "Simulate a consumer microarray (like 23andMe or AncestryDNA) from your WGS data.",
     "cmd_pet-align": "Align raw FASTQ reads against a cat or dog reference genome and call variants to produce a VCF file.",
     "cmd_lineage-y-haplogroup": "Predict paternal haplogroups with native Yleaf-derived analysis (BAM/CRAM/VCF).",
+    "cmd_lineage-y-private": "List candidate private (novel) Y SNPs: calls absent from the installed YBrowse/YFull marker sets, in callable regions, passing strict filters.",
     "cmd_lineage-y-str": "Count Y-STR repeats (FamilyTreeDNA Y-12 to Y-111, PowerPlex Y23, Yfiler Plus) from a BAM/CRAM for genealogy matching.",
     "cmd_lineage-mt-haplogroup": "Predict your maternal haplogroup using Haplogrep 3, optionally checking mtDNA contamination with haplocheck. Requires a BAM, CRAM or VCF with mitochondrial data.",
     "cmd_fastqc": "The industry-standard quality check for raw reads. Produces a visual report of base quality, GC content, and adapter contamination.",
