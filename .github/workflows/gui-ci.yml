@@ -1,13 +1,17 @@
 name: GUI CI
 
 # Lint and test the WGS Extract desktop app in gui/. It only runs when the app
-# (or its workflows) change; CLI-only changes skip it. CI Ubuntu, which lints
-# every workflow, skips app-only changes, so this lints the app's workflows.
+# (or its build inputs) change. CI Ubuntu, which lints every workflow,
+# skips app-only changes, so this lints the app's workflows.
 on:
   push:
     branches: [ main ]
     paths:
       - "gui/**"
+      - "scripts/gen_server_openapi.py"
+      - "src/wgsextract_cli/server/http_api.py"
+      - "src/wgsextract_cli/server/transport*.py"
+      - "src/wgsextract_cli/core/output_schema.py"
       - ".github/workflows/gui-*.yml"
       - ".github/actions/**"
       - "!gui/mockups/**"
@@ -20,6 +24,10 @@ on:
     branches: [ main ]
     paths:
       - "gui/**"
+      - "scripts/gen_server_openapi.py"
+      - "src/wgsextract_cli/server/http_api.py"
+      - "src/wgsextract_cli/server/transport*.py"
+      - "src/wgsextract_cli/core/output_schema.py"
       - ".github/workflows/gui-*.yml"
       - ".github/actions/**"
       - "!gui/mockups/**"
@@ -130,7 +138,7 @@ jobs:
         uses: ./.github/actions/setup-gui
         with:
           npm-install: ci-ignore-scripts
-          cli-python: ${{ runner.os != 'Windows' }}
+          cli-python: "true"
 
       - name: Run tests
         env:

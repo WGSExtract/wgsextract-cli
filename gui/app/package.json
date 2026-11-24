@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-viewer-assets.mjs",
+    "build": "node scripts/build-server-contracts.mjs && tsc -p tsconfig.json && node scripts/build-viewer-assets.mjs",
     "check": "npm run build",
     "test": "npm run build && node scripts/run-node-tests.mjs",
     "tauri": "cd web/packagers/tauri && tauri",

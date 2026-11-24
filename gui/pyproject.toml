@@ -3,7 +3,9 @@ name = "wgsextract-gui-dev-tools"
 version = "0.1.0"
 description = "Python development tooling for WGS Extract GUI"
 requires-python = ">=3.11"
-dependencies = []
+# The OpenAPI generator uses the checkout's Python sources, not an installed
+# CLI, and imports the same dependencies as the root Hatch build hook.
+dependencies = ["platformdirs", "pyliftover", "tomli-w"]
 
 [dependency-groups]
 dev = []

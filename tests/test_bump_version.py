@@ -1,15 +1,13 @@
 """scripts/bump_version.py changes every version, the app's CLI pin too, or none."""
 
 import importlib.util
-import json
 import shutil
 from pathlib import Path
 
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "bump_version.py"
-OPENAPI = "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
-FILES = ["pyproject.toml", "pixi.toml", "src/wgsextract_cli/__init__.py", OPENAPI]
+FILES = ["pyproject.toml", "pixi.toml", "src/wgsextract_cli/__init__.py"]
 SITE = ["site_src/index.md", "site_src/install.md"]
 GUI_TAG = "gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt"
 GUI_FILES = [
@@ -45,19 +43,10 @@ def bump(tmp_path, monkeypatch):
     return module
 
 
-def test_989_bumps_release_versions_and_openapi(bump, tmp_path):
-    before = (tmp_path / OPENAPI).read_text(encoding="utf-8").splitlines()
-    original = json.loads("\n".join(before))
+def test_1537_bumps_release_versions_without_an_openapi_checkout_file(bump, tmp_path):
     assert bump.main(["bump", "9.8.7"]) == 0
-    # Issue #1416: only the info line changes; one entry per line keeps merging.
-    after = (tmp_path / OPENAPI).read_text(encoding="utf-8").splitlines()
-    assert [
-        line[:7] for line, old in zip(after, before, strict=True) if line != old
-    ] == ['"info":']
     for name in FILES:
         assert '"9.8.7"' in (tmp_path / name).read_text()
-    original["info"]["version"] = "9.8.7"
-    assert json.loads((tmp_path / OPENAPI).read_text(encoding="utf-8")) == original
     # Issue #510: the app ships in the same release, so it bundles this CLI.
     assert (tmp_path / GUI_TAG).read_text() == "v9.8.7\n"
     # The CLI site names it as the current release; past releases stay.
