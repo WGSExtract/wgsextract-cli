@@ -1,7 +1,10 @@
 """Tests for keeping CombinedKit v3 alongside CombinedKit v5."""
 
 import gzip
+from collections.abc import Collection
 from pathlib import Path
+
+import pytest
 
 from wgsextract_cli.core.microarray.combined_v3 import convert_to_combined_v3
 from wgsextract_cli.core.microarray.formats import (
@@ -13,6 +16,7 @@ from wgsextract_cli.core.microarray.formats import (
 from wgsextract_cli.core.microarray.identity import MicroarrayIdentity, load_rsid_map
 from wgsextract_cli.core.microarray.targets import installed_lifted_chain
 from wgsextract_cli.core.microarray.templates import template_resource_paths
+from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 _HG18_CHAIN = "chain 1000 chr3 2000000 + 999000 1000000 chr3 2000000 + 1000000 1001000 1\n1000\n\n"
 
@@ -21,7 +25,7 @@ def _install_classic_v3_templates(
     root: Path,
     body_overrides: dict[str, str] | None = None,
     *,
-    skip: set[str] = frozenset(),
+    skip: Collection[str] = (),
 ) -> str:
     """Install minimal valid stubs for all 14 classic CombinedKit v3 templates
     plus a synthetic hg18ToHg19 chain; return the chain path."""
@@ -134,13 +138,10 @@ def test_combined_v3_resolve_rsids_and_offline_chain_lookup(tmp_path):
 
 
 def test_format_aliases_and_removed_or_internal_formats_in_v04_templates():
-    import pytest
-
     from wgsextract_cli.core.microarray.templates import (
         _PACKAGED_TEMPLATES,
         template_rows,
     )
-    from wgsextract_cli.core.utils import UsageError
 
     assert resolve_format_key("ancestry_v2") == "Ancestry_V2ab"
     assert resolve_format_key("Ancestry_V2") == "Ancestry_V2ab"
@@ -192,9 +193,6 @@ def test_format_aliases_and_removed_or_internal_formats_in_v04_templates():
 def test_stale_v03_delta_falls_through_to_packaged_templates(tmp_path):
     """An un-upgraded v0.3.0 library whose delta references a dropped base
     falls back cleanly to the CLI's packaged template instead of crashing."""
-    import gzip
-
-    from wgsextract_cli.core.microarray.formats import get_template_format
     from wgsextract_cli.core.microarray.templates import (
         _PACKAGED_TEMPLATES,
         _resolve_templates_for_format,
@@ -217,10 +215,6 @@ def test_stale_v03_delta_falls_through_to_packaged_templates(tmp_path):
 def test_combined_v3_requires_hg18_chain_when_affy_template_present(tmp_path):
     """PR #1490 review: never silently drop FTDNA_V1_Affy markers from CombinedKit v3
     when the Affy template is installed without hg18ToHg19.over.chain.gz."""
-    import pytest
-
-    from wgsextract_cli.core.utils import WGSExtractError
-
     _install_classic_v3_templates(
         tmp_path,
         {"23andMe_V3": "rs1\t1\t100\n", "FTDNA_V1_Affy": '"rs2","1","200"\n'},
@@ -238,10 +232,6 @@ def test_combined_v3_requires_hg18_chain_when_affy_template_present(tmp_path):
 def test_combined_v3_rejects_incomplete_template_installation(tmp_path):
     """PR #1490 review: fail loudly instead of publishing a partial CombinedKit v3
     when any classic template is missing from the installation."""
-    import pytest
-
-    from wgsextract_cli.core.utils import WGSExtractError
-
     chain = _install_classic_v3_templates(
         tmp_path,
         {"23andMe_V3": "rs1\t1\t100\n"},
