@@ -7,6 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
+from collections import Counter
 from collections.abc import Callable, Iterator, Sequence
 from contextvars import ContextVar
 from pathlib import Path
@@ -14,9 +16,18 @@ from typing import Any, TypedDict
 
 from wgsextract_cli.commands.lineage import alignment_mito_problem
 from wgsextract_cli.core import reference_evidence, variant_confidence
+from wgsextract_cli.core.artifacts import (
+    Producer,
+    artifact_from_dict,
+    lineage_args,
+    producer_from_dict,
+    unrecorded_output,
+)
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.haplogrep_trees import configured_tree_spec
+from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.result_card import CARD_ROLE
 from wgsextract_cli.core.results import Scalar, current_result, human_output, warn
 from wgsextract_cli.core.steps import Decision, Step, StepJournal, StepRun
 from wgsextract_cli.core.temp_directory import (
@@ -31,6 +42,7 @@ from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
     ensure_vcf_indexed,
 )
+from wgsextract_cli.core.workspace_activity import forward_workspace_admission
 
 
 def _safe_console_text(value: object) -> str:
@@ -67,6 +79,7 @@ class AnalyzeJob:
     dry_run: bool = False
     debug: bool = False
     keep_awake: bool | None = None
+    input_from_config: bool = False
     # A batch's sample: the configured batch file and VCFs don't apply.
     batch_sample: bool = False
 
@@ -106,11 +119,18 @@ def _captured(handle: StepRun) -> Iterator[None]:
         _RUNNING.reset(token)
     for record in result.outputs:
         if record.path not in before and Path(record.path).exists():
+            artifact = result.lineage.carried.get(record.path)
+            run = result.run
             handle.add_output(
                 record.path,
                 role=record.role,
                 result_kind=record.kind,
                 result_metrics=record.metrics,
+                result_artifact=dataclasses.asdict(artifact) if artifact else None,
+                # Written in this process: this run is its producer.
+                result_producer=dataclasses.asdict(
+                    Producer(run.id, run.root, result.command, run.step)
+                ),
             )
     handle.metrics["result_metrics"] = {
         name: value for name, value in result.metrics.items()
@@ -134,11 +154,18 @@ def _replay(journal: StepJournal, decision: Decision) -> None:
     result = current_result()
     for item in decision.outputs:
         if item.get("role"):
+            path = journal.resolve(item["path"])
+            artifact = artifact_from_dict(item.get("result_artifact"))
+            producer = producer_from_dict(item.get("result_producer"))
+            if artifact is None and producer is None:
+                artifact = unrecorded_output(path, item["role"])
             result.add_output(
-                journal.resolve(item["path"]),
+                path,
                 item["role"],
                 kind=item.get("result_kind"),
                 metrics=_scalars(item.get("result_metrics")),
+                artifact=artifact,
+                producer=producer,
             )
     result.add_metrics(**_scalars(decision.metrics.get("result_metrics")))
     confidence = decision.metrics.get("result_confidence")
@@ -171,17 +198,34 @@ def run_step(
     can't reuse what an earlier attempt left there (kept when the same
     attempt is resumed).
     """
+    result = current_result()
     decision = journal.decide(step, after=after)
     if not decision.run:
         _replay(journal, decision)
+        result.run.record_step(step.name, decision.metrics, decision.reason, "reused")
         return decision, decision.metrics
     if journal.dry_run:
         return decision, decision.metrics
     if not decision.partial:
         for folder in clean:
             shutil.rmtree(folder, ignore_errors=True)
-    with journal.running(decision) as handle, _captured(handle):
-        action(handle)
+    handle: StepRun | None = None
+    try:
+        with journal.running(decision) as handle, _captured(handle):
+            action(handle)
+            if not handle.metrics.get("result_runs"):
+                # Done in this process: this run did the step's work.
+                handle.metrics["result_runs"] = [result.run.this_run(result.command)]
+    except BaseException:
+        if handle is not None:
+            # A step that failed before starting a command failed in this run.
+            handle.metrics.setdefault(
+                "result_runs", [result.run.this_run(result.command)]
+            )
+            result.run.record_step(step.name, handle.metrics, decision.reason, "failed")
+        raise
+    assert handle is not None
+    result.run.record_step(step.name, handle.metrics, decision.reason, "ok")
     return decision, handle.metrics
 
 
@@ -210,6 +254,15 @@ def detect_vcf_type(vcf_path: str) -> str:
     if tokens & _SV_NAME_TOKENS:
         return "sv"
     return "snp-indel"
+
+
+def _vcf_output_tag(vcf_path: str, v_type: str) -> str:
+    stem = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(vcf_path).name, flags=re.I)
+    return f"{v_type}_{stem}"
+
+
+def _filename_key(name: str) -> str:
+    return unicodedata.normalize("NFC", name.casefold())
 
 
 # bcftools `~` uses POSIX basic regex: "|" and "()" are literals, so match each
@@ -356,8 +409,8 @@ def run_discovery_filter(
     return count
 
 
-def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> None:
-    """Helper to run a wgsextract subcommand."""
+def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> dict[str, Scalar]:
+    """Run a wgsextract subcommand and return its reported metrics."""
     cmd = [
         sys.executable,
         "-m",
@@ -393,16 +446,21 @@ def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> None:
     if "--outdir" in cmd_args:
         outdir = Path(cmd_args[cmd_args.index("--outdir") + 1])
         outdir.mkdir(parents=True, exist_ok=True)
+    metrics: dict[str, Scalar] = {}
     with _stage_dir(outdir) as stage:
         result_file = Path(stage, "result.json")
         cmd.extend(["--result-file", str(result_file)])
+        running = _RUNNING.get()
+        step = running.decision.step.name if running else None
+        cmd += lineage_args(current_result().run, step)
         try:
-            run_command(cmd)
+            run_command(forward_workspace_admission(cmd))
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             record_step_result(result_file)
             logging.warning(f"Subcommand failed: {' '.join(cmd)}. Error: {e}")
             raise WGSExtractError("Subcommand failed: " + " ".join(cmd)) from e
-        record_step_result(result_file)
+        metrics = record_step_result(result_file)
+    return metrics
 
 
 @contextlib.contextmanager
@@ -437,9 +495,10 @@ def _scalars(values: object) -> dict[str, Scalar]:
     }
 
 
-def record_step_result(document: Path) -> None:
+def record_step_result(document: Path) -> dict[str, Scalar]:
     """Carry a step's result document into this run's: its manifest, its
-    outputs with their metrics and its warnings with their details."""
+    outputs with their metrics and its warnings with their details. Return
+    the step's top-level metrics separately."""
     try:
         step = json.loads(document.read_text(encoding="utf-8"))
         command = str(step["command"])
@@ -451,7 +510,7 @@ def record_step_result(document: Path) -> None:
         if isinstance(reference, dict) and reference.get("path"):
             inputs.append({"role": "reference", "path": reference["path"]})
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        return
+        return {}
     if running := _RUNNING.get():
         declared = {
             str(Path(p).absolute()) for p in running.decision.step.inputs.values() if p
@@ -461,21 +520,41 @@ def record_step_result(document: Path) -> None:
             if path and str(Path(path).absolute()) not in declared:
                 running.add_input(f"{item.get('role') or 'input'}:{path}", path)
     result = current_result()
+    child = step.get("run")
+    child = child if isinstance(child, dict) else {}
+    if running:
+        runs = running.metrics.setdefault("result_runs", [])
+        assert isinstance(runs, list)
+        runs.append(
+            {
+                "run": child.get("id"),
+                "command": command,
+                "status": step.get("status") or "ok",
+            }
+        )
     if step.get("manifest"):
         result.add_output(step["manifest"], "step_manifest", kind="json")
     for output in outputs:
-        if isinstance(output, dict) and output.get("path") and output.get("role"):
+        # A step's card describes that step; the analyze run gets its own.
+        if (
+            isinstance(output, dict)
+            and output.get("path")
+            and output.get("role")
+            and output.get("role") != CARD_ROLE
+        ):
             result.add_output(
                 output["path"],
                 output["role"],
                 kind=output.get("kind"),
                 metrics=_scalars(output.get("metrics")),
+                artifact=artifact_from_dict(output.get("artifact")),
             )
     for item in warnings:
         if isinstance(item, dict) and item.get("code"):
             # The step already logged it; record it without logging it twice.
             details = {**_scalars(item.get("details")), "step": command}
             result.warn(str(item["code"]), str(item.get("message", "")), **details)
+    return _scalars(step.get("metrics"))
 
 
 def run_vcf_workflow(
@@ -485,11 +564,12 @@ def run_vcf_workflow(
     outdir: str,
     journal: StepJournal,
     after: Sequence[Decision] = (),
+    *,
+    output_tag: str | None = None,
 ) -> AnalyzeResult | None:
     """Annotates and filters a single VCF file based on its type, as the
     steps annotate and discovery. ``after``: the step that made the VCF."""
-    # The name without its VCF suffix: NA12878.snp and NA12878.indel stay apart.
-    base_name = re.sub(r"\.(vcf(\.b?gz)?|bcf)$", "", Path(vcf_path).name, flags=re.I)
+    tag = output_tag or _vcf_output_tag(vcf_path, v_type)
     _print(f"\nSub-Stage: Processing {v_type.upper()} ({Path(vcf_path).name})")
 
     # Define targeted annotations per type
@@ -523,7 +603,7 @@ def run_vcf_workflow(
         return None
     anns = ",".join(available)
 
-    work_dir = Path(outdir, f"work_{v_type}_{base_name}")
+    work_dir = Path(outdir, f"work_{tag}")
     actual_ann_vcf = str(work_dir / "chain_annotated.vcf.gz")
     command = ["vcf", "chain-annotate", "--input", vcf_path,
                "--outdir", str(work_dir), "--annotations", anns]  # fmt: skip
@@ -540,7 +620,6 @@ def run_vcf_workflow(
     for ann in available:
         if path := dataset(ann, lib):
             inputs[f"dataset:{ann}"] = path
-    tag = f"{v_type}_{base_name}"
     annotate_step = Step(
         f"annotate:{tag}",
         inputs=inputs,
@@ -554,7 +633,7 @@ def run_vcf_workflow(
         journal, annotate_step, annotate, after=after, clean=[work_dir]
     )
 
-    discovery_vcf = str(Path(outdir, f"significant_{v_type}_{base_name}.vcf.gz"))
+    discovery_vcf = str(Path(outdir, f"significant_{tag}.vcf.gz"))
     thresholds = variant_confidence.thresholds_from(job)
     discovery_inputs = {"annotated": actual_ann_vcf}
     # A gVCF published (or replaced) since redoes the step's evidence counts.
@@ -597,6 +676,13 @@ def run_vcf_workflow(
                 handle.add_output(discovery_vcf + index)
 
     _, metrics = run_step(journal, discovery_step, discover, after=[annotated])
+    current_result().add_output(
+        discovery_vcf,
+        "significant_variants",
+        metrics={"source_vcf": str(absolute_path(vcf_path))},
+        # Made from these calls alone, not from the analysis' reads.
+        sources=[vcf_path],
+    )
     count = int(metrics.get("variants") or 0)
     return {"type": v_type, "input": vcf_path, "output": discovery_vcf, "count": count}
 
@@ -607,9 +693,12 @@ def generate_summary_report(results: Sequence[AnalyzeResult], outdir: str) -> No
     _print("GENOMIC ANALYSIS SUMMARY REPORT")
     _print("=" * 60)
 
+    basenames = Counter(_filename_key(Path(res["input"]).name) for res in results)
     total_sig = 0
     for res in results:
-        _print(f"[{res['type'].upper()}] {Path(res['input']).name}")
+        basename = Path(res["input"]).name
+        source = res["input"] if basenames[_filename_key(basename)] > 1 else basename
+        _print(f"[{res['type'].upper()}] {source}")
         _print(f"  Significant variants: {res['count']}")
         _print(f"  Results file: {res['output']}")
         total_sig += res["count"]
@@ -617,18 +706,6 @@ def generate_summary_report(results: Sequence[AnalyzeResult], outdir: str) -> No
 
     _print(f"\nTOTAL SIGNIFICANT VARIANTS FOUND: {total_sig}")
     _print("=" * 60 + "\n")
-
-
-def _cached_gender(cache_file: str) -> str:
-    try:
-        with open(cache_file) as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return "Unknown"
-    except (OSError, json.JSONDecodeError) as e:
-        logging.debug("Failed to read cached info metrics from %s: %s", cache_file, e)
-        return "Unknown"
-    return str(data.get("gender", "Unknown")) if isinstance(data, dict) else "Unknown"
 
 
 def run_bam_chain(
@@ -650,16 +727,16 @@ def run_bam_chain(
 
     # 1. Info (detailed: shows the table and detects the sex)
     info = ["info", "--detailed", "--input", input_file, "--outdir", outdir]
-    cache_file = str(Path(outdir, f"{Path(input_file).name}.wgse_info.json"))
 
     def run_info(handle: StepRun) -> None:
-        run_cli_subcommand(info, job)
         # 2. The detected sex drives the lineage steps.
-        handle.metrics["gender"] = _cached_gender(cache_file)
+        handle.metrics["gender"] = run_cli_subcommand(info, job).get("sex", "Unknown")
 
     _, metrics = run_step(
         journal,
-        subcommand_step("info", info, outputs=[cache_file], tools=["samtools"]),
+        subcommand_step(
+            "info", info, params={"sex_from_result": True}, tools=["samtools"]
+        ),
         run_info,
     )
     gender = str(metrics.get("gender") or "Unknown")

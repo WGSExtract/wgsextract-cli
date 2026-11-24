@@ -61,6 +61,8 @@ class YleafTree:
     root: Path | None = None
     """The folder marker table identifiers are relative to (None: file names)."""
     ancient_files: dict[str, Path] = field(default_factory=dict)
+    polarity_file: Path | None = None
+    """Separately licensed corrections for an exact upstream marker table."""
     terms: str = ""
     """Where the licence was checked, and what the source's terms say."""
 
@@ -141,9 +143,10 @@ def shared_qc_rules(profile: str, library: Path | None = None) -> QcRules:
 def module_root(tree_id: str, module: str, library: Path | None = None) -> Path:
     """Where a built-in tree's data ``module`` lives in the reference library."""
     meta = tree_metadata(tree_id)
-    folder = str(meta["modules"][module]["folder"])
+    spec = meta["modules"][module]
+    key = spec["sha256"] if module == "polarity" else meta["version"]
     base = Path(library or resolve_reference_library())
-    return base / "yleaf" / "modules" / folder / str(meta["version"])
+    return base / "yleaf" / "modules" / str(spec["folder"]) / str(key)
 
 
 def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Path:
@@ -154,8 +157,12 @@ def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Pat
     """
     meta = tree_metadata(tree_id)
     spec: dict[str, Any] = meta["modules"][module]
-    version = str(meta["version"])
     root = module_root(tree_id, module, library)
+    label = (
+        spec["folder"]
+        if module == "polarity"
+        else f"{spec['folder']} {meta['version']}"
+    )
     files: dict[str, Any] = spec["files"]
     if verified(root, files):
         return root
@@ -163,11 +170,11 @@ def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Pat
 
     require_download(f"{tree_id} {module} data")
     root.parent.mkdir(parents=True, exist_ok=True)
-    with build_lock(str(root.parent / f"{version}.lock")):
+    with build_lock(str(root.parent / f"{root.name}.lock")):
         if verified(root, files):
             return root
         logging.info(spec["notice"])
-        archive = root.parent / f"{spec['folder']}-{version}.tar.gz"
+        archive = root.parent / f"{spec['folder']}-{root.name}.tar.gz"
         try:
             if not download_file(
                 spec["url"],
@@ -176,7 +183,7 @@ def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Pat
                 resolve_release_digest=False,
             ):
                 raise WGSExtractError(
-                    f"Cannot download the verified {spec['folder']} {version} data "
+                    f"Cannot download the verified {label} data "
                     "module. If offline, connect once to populate the reference "
                     "library."
                 )
@@ -192,7 +199,7 @@ def ensure_module(tree_id: str, module: str, library: Path | None = None) -> Pat
                 shutil.rmtree(staging, ignore_errors=True)
         except (OSError, tarfile.TarError) as error:
             raise WGSExtractError(
-                f"Unable to prepare the {spec['folder']} {version} data module: {error}"
+                f"Unable to prepare the {label} data module: {error}"
             ) from error
         finally:
             archive.unlink(missing_ok=True)
@@ -249,4 +256,9 @@ def ensure_tree(
         qc=qc_rules(meta["qc"], data),
         origin="data-module" if modular else "yleaf-data",
         root=root,
+        polarity_file=(
+            ensure_module(tree_id, "polarity", library) / "polarity.json"
+            if panel and "polarity" in meta.get("modules", {})
+            else None
+        ),
     )

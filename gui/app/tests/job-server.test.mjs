@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { once } from "node:events";
+import { createServer } from "node:http";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,14 +11,16 @@ import test from "node:test";
 const { createProcessManager } = await import("../dist/web/src/server/process-runner.js");
 const { createJobServer } = await import("../dist/web/src/server/job-server.js");
 const { runActionPreferringServer } = await import("../dist/web/src/server/job-server-action.js");
+const { startJob } = await import("../dist/web/src/server/job-server-client.js");
 
 // A job server speaking the protocol in docs/job-server.md. `slow` runs until cancelled;
 // `quick` finishes at once and logs the parameters it received, `noisy` the same with a 2 MiB log;
 // anything else is refused. With --parent-pid PID it writes its own PID to server.pid and
 // exits when PID does; with --refuse it prints an error line instead of starting.
 const fakeServer = String.raw`
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
-import { writeFileSync } from "node:fs";
+import { appendFileSync, writeFileSync } from "node:fs";
 const parentPid = process.argv.includes("--parent-pid") ? Number(process.argv[process.argv.indexOf("--parent-pid") + 1]) : undefined;
 if (process.argv.includes("--refuse")) {
   console.log(JSON.stringify({ error: { message: "Another server is using the state folder" } }));
@@ -28,7 +32,7 @@ if (parentPid !== undefined) {
   writeFileSync("server.pid", String(process.pid));
   setInterval(watch, 100);
 }
-const token = "secret-" + process.pid;
+const token = randomUUID();
 const jobs = new Map();
 const watchers = new Map();
 function send(job, type, data) {
@@ -54,22 +58,35 @@ const server = createServer(async (request, response) => {
   const [, kind, ...rest] = new URL(request.url, "http://x").pathname.replace(/^\/v1/, "").split("/");
   if (request.method === "POST" && kind === "ops") {
     const operation = rest.join("/");
-    if (!["slow", "quick", "noisy"].includes(operation)) {
-      response.writeHead(400, { "content-type": "application/json" });
+    if (!["slow", "quick", "noisy", "malformed", "missing", "lost", "gateway-error", "unconfirmed", "cancel-recovered"].includes(operation)) {
+      response.writeHead(403, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: { code: "path_not_allowed", message: "not allowed" } }));
       return;
     }
-    const job = { id: "job" + (jobs.size + 1), status: "running", events: [], log: "params " + body + "\n" };
+    const query = new URL(request.url, "http://x").search;
+    const id = request.headers["x-wgse-job-id"] ?? "job_" + (jobs.size + 1);
+    const job = { id, status: "running", events: [], log: "params " + body + (query ? " query " + query : "") + "\n" };
     jobs.set(job.id, job);
-    response.writeHead(202, { "content-type": "application/json" }).end(JSON.stringify(job));
+    appendFileSync("executions", "server\n");
+    if (operation === "lost" || operation === "unconfirmed") request.socket.destroy();
+    else if (operation === "gateway-error") response.writeHead(502).end();
+    else {
+      const replies = { malformed: "{", missing: "{}", "cancel-recovered": "{" };
+      response.writeHead(202, { "content-type": "application/json" }).end(replies[operation] ?? JSON.stringify(job));
+    }
+    if (operation === "unconfirmed") job.hideFromLookup = true;
     send(job, "status", { status: "running" });
     send(job, "progress", { stage: "reading", message: "chr1", fraction: 0.5 });
     if (operation === "noisy") job.log = "x".repeat(2 * 1024 * 1024) + "\nlast line\n";
-    if (operation !== "slow") setTimeout(() => finish(job, "succeeded", 0), 50);
+    if (operation !== "slow" && operation !== "cancel-recovered") setTimeout(() => finish(job, "succeeded", 0), 50);
+    return;
+  }
+  if (kind === "jobs" && rest.length === 0) {
+    response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ jobs: [...jobs.values()] }));
     return;
   }
   const job = jobs.get(rest[0]);
-  if (kind !== "jobs" || !job) {
+  if (kind !== "jobs" || !job || job.hideFromLookup) {
     response.writeHead(404).end();
   } else if (request.method === "DELETE") {
     response.writeHead(202).end();
@@ -89,7 +106,7 @@ const server = createServer(async (request, response) => {
 });
 server.listen(0, "127.0.0.1", () => {
   console.log("starting up");
-  console.log(JSON.stringify({ url: "http://127.0.0.1:" + server.address().port + "/v1/", token }));
+  console.log(JSON.stringify({ url: "http://127.0.0.1:" + server.address().port + "/v1/", token, client_job_ids: !process.argv.includes("--server-ids") }));
 });
 `;
 
@@ -107,19 +124,63 @@ async function withBundle(t) {
   return { bundleRoot, manager, startServer };
 }
 
+test("#1173: a locally launched server cannot publish an external job destination", async (t) => {
+  const bundle = await withBundle(t);
+  await writeFile(path.join(bundle.bundleRoot, "server.mjs"),
+    'console.log(JSON.stringify({url:"https://genomes.example/v1",token:"synthetic-token"}));');
+  assert.equal(await bundle.startServer().address(), undefined);
+});
+
+test("#1173: job credentials and sample parameters never reach a non-loopback URL", async (t) => {
+  t.mock.method(globalThis, "fetch", () => { throw new Error("unexpected network request"); });
+  for (const url of ["https://genomes.example/v1", "http://localhost:8080/v1", "http://0.0.0.0:8080/v1"]) {
+    const result = await startJob({ url, token: "synthetic-token" }, randomUUID(), "quick", { input: "/private/sample.bam" });
+    assert.equal(result.kind, "rejected");
+    assert.match(result.reason, /loopback/);
+  }
+});
+
+test("#1173: redirects cannot forward a local job's sample parameters to another service", async (t) => {
+  let unwantedRequests = 0;
+  const sink = createServer((_request, response) => {
+    unwantedRequests++;
+    response.end();
+  });
+  await new Promise((resolve) => sink.listen(0, "127.0.0.1", resolve));
+  const redirect = createServer((_request, response) => response.writeHead(307, {
+    location: `http://127.0.0.1:${sink.address().port}/unapproved`,
+  }).end());
+  await new Promise((resolve) => redirect.listen(0, "127.0.0.1", resolve));
+  t.after(async () => {
+    for (const server of [redirect, sink]) {
+      server.closeAllConnections();
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
+  const result = await startJob(
+    { url: `http://127.0.0.1:${redirect.address().port}/v1`, token: "synthetic-token" },
+    randomUUID(), "quick", { input: "/private/sample.bam" },
+  );
+  assert.equal(result.kind, "indeterminate");
+  assert.equal(unwantedRequests, 0);
+});
+
 function action(operation, parameters = {}) {
   return {
     id: "coverage",
     title: "Coverage",
-    command: { executable: process.execPath, arguments: ["-e", "console.log('ran the command')"] },
+    command: { executable: process.execPath, arguments: ["-e", "require('node:fs').appendFileSync('executions', 'direct\\n'); console.log('ran the command')"] },
     serverOperation: { operation, parameters },
   };
 }
 
-async function run(bundle, spec, jobServer, signal, resultSpec) {
+async function run(bundle, spec, jobServer, signal, resultSpec, onEvent) {
   const events = [];
   const context = { fieldValues: { bam: "/data/sample.bam", ref: "" } };
-  const result = await runActionPreferringServer(spec, context, signal, bundle.bundleRoot, bundle.manager.runProcess, jobServer, (event) => events.push(event), resultSpec);
+  const result = await runActionPreferringServer(spec, context, signal, bundle.bundleRoot, bundle.manager.runProcess, jobServer, (event) => {
+    events.push(event);
+    onEvent?.(event);
+  }, resultSpec);
   return { result, events, output: events.filter((event) => event.type === "output").map((event) => event.text).join("") };
 }
 
@@ -128,13 +189,23 @@ test("an action with a serverOperation runs as a job, with its progress in the o
   const { result, events, output } = await run(bundle, action("quick", { input: "{{bam}}", ref: "{{ref}}", bins: true }), bundle.startServer());
 
   assert.equal(result.exitCode, 0);
-  assert.equal(events[0].type, "start");
+  assert.ok(events.some((event) => event.type === "start"));
   assert.equal(events.at(-1).type, "complete");
   assert.match(output, /\[progress\] reading: chr1 \(50%\)/);
   assert.match(output, /\[job\] succeeded/);
   // An empty placeholder leaves its parameter out; non-string values are sent as written.
   assert.match(output, /params \{"input":"\/data\/sample\.bam","bins":true\}/);
   assert.doesNotMatch(output, /ran the command/);
+});
+
+test("an action with resultCard asks the job server for the job's card; others don't", async (t) => {
+  const bundle = await withBundle(t);
+  const jobServer = bundle.startServer();
+  const plain = await run(bundle, action("quick", { input: "{{bam}}" }), jobServer);
+  const carded = await run(bundle, { ...action("quick", { input: "{{bam}}" }), resultCard: true }, jobServer);
+
+  assert.doesNotMatch(plain.output, /query/);
+  assert.match(carded.output, /params \{"input":"\/data\/sample\.bam"\} query \?card=1/);
 });
 
 test("a job's result document is read from its record, which wgsextract serve sends without its schema", async (t) => {
@@ -163,17 +234,66 @@ test("a job's result keeps the end of a large log, and streams all of it", async
   assert.match(result.stdout, /last line\n$/);
 });
 
+for (const fault of ["malformed", "missing", "lost", "gateway-error", "unconfirmed"]) {
+  test(`#1235: an accepted job runs once when the submission reply is ${fault}`, async (t) => {
+    const bundle = await withBundle(t);
+    const running = run(bundle, action(fault), bundle.startServer());
+    if (fault === "unconfirmed") {
+      await assert.rejects(running, (error) => typeof error.jobID === "string" && error.message.includes(error.jobID));
+    } else {
+      const { result, output } = await running;
+      assert.equal(result.exitCode, 0);
+      assert.match(output, /\[job\] succeeded/);
+    }
+    assert.equal(await readFile(path.join(bundle.bundleRoot, "executions"), "utf8"), "server\n");
+  });
+}
+
+test("#1235: a successful submission with a server-assigned ID still follows the job", async (t) => {
+  const bundle = await withBundle(t);
+  const { result, output } = await run(bundle, action("quick"), bundle.startServer(["{{bundleRoot}}/server.mjs", "--server-ids"]));
+  assert.equal(result.exitCode, 0);
+  assert.match(output, /\[job\] succeeded/);
+  assert.equal(await readFile(path.join(bundle.bundleRoot, "executions"), "utf8"), "server\n");
+});
+
+test("#1235: an older server's lost reply does not report a fictitious recovery ID or rerun the command", async (t) => {
+  const bundle = await withBundle(t);
+  const jobServer = bundle.startServer(["{{bundleRoot}}/server.mjs", "--server-ids"]);
+  await assert.rejects(run(bundle, action("lost"), jobServer), (error) => error.jobID === null);
+  assert.equal(await readFile(path.join(bundle.bundleRoot, "executions"), "utf8"), "server\n");
+});
+
 test("cancelling a server action cancels its job", async (t) => {
   const bundle = await withBundle(t);
   const jobServer = bundle.startServer();
   const controller = new AbortController();
-  const running = run(bundle, action("slow"), jobServer, controller.signal);
-  setTimeout(() => controller.abort(), 300);
+  const running = run(bundle, action("slow"), jobServer, controller.signal, undefined, (event) => {
+    if (event.type === "start") controller.abort();
+  });
 
   await assert.rejects(running, /Process cancelled\./);
   const address = await jobServer.address();
-  const job = await (await fetch(`${address.url}/jobs/job1`, { headers: { authorization: `Bearer ${address.token}` } })).json();
-  assert.equal(job.status, "cancelled");
+  const { jobs } = await (await fetch(`${address.url}/jobs`, { headers: { authorization: `Bearer ${address.token}` } })).json();
+  assert.deepEqual(jobs.map((job) => job.status), ["cancelled"]);
+});
+
+test("#1235: a recovered job is cancelled even when the action stream has already closed", async (t) => {
+  const bundle = await withBundle(t);
+  const jobServer = bundle.startServer();
+  const controller = new AbortController();
+  const fetchJob = globalThis.fetch;
+  t.mock.method(globalThis, "fetch", async (url, options) => {
+    const response = await fetchJob(url, options);
+    if (options?.method === "POST") controller.abort();
+    return response;
+  });
+  await assert.rejects(run(bundle, action("cancel-recovered"), jobServer, controller.signal, undefined, (event) => {
+    assert.notEqual(event.type, "start");
+  }), /Process cancelled/);
+  const address = await jobServer.address();
+  const { jobs } = await (await fetchJob(`${address.url}/jobs`, { headers: { authorization: `Bearer ${address.token}` } })).json();
+  assert.deepEqual(jobs.map((job) => job.status), ["cancelled"]);
 });
 
 test("an action runs its command when the job server refuses the job", async (t) => {
@@ -238,14 +358,18 @@ function isAlive(pid) {
   }
 }
 
-test("a job server stopped with the other processes starts again on next use", async (t) => {
+test("#1459: the next job succeeds on a new server immediately after terminate-all", async (t) => {
   const bundle = await withBundle(t);
   const jobServer = bundle.startServer();
   const first = await jobServer.address();
+  assert.ok(first);
   await bundle.manager.terminateAllProcesses();
 
-  const { result, output } = await run(bundle, action("quick"), jobServer);
+  const { result, events, output } = await run(bundle, action("quick"), jobServer);
   assert.equal(result.exitCode, 0);
   assert.match(output, /\[job\] succeeded/);
-  assert.notEqual((await jobServer.address()).url, first.url);
+  assert.equal(events.filter((event) => event.type === "submission-pending").length, 1, "no retry against a stale address");
+  const replacement = await jobServer.address();
+  assert.ok(replacement);
+  assert.notEqual(replacement.token, first.token);
 });

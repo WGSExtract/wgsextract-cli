@@ -26,6 +26,7 @@ from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.contamination import warn_if_contaminated
 from wgsextract_cli.core.microarray.templates import GenotypeTally, is_autosome
 from wgsextract_cli.core.paths import PathInput
+from wgsextract_cli.core.region_selection import Intervals
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -88,9 +89,13 @@ def region_parts(region: str) -> list[str]:
     return [p for p in _REGION_SEPARATOR.split(region.strip()) if p]
 
 
-def region_targets(region: str | None) -> set[str]:
-    """The targets a `-r` region (contig[:start-end][,...]) covers; autosomes
+def region_targets(
+    region: str | None, *, intervals: Intervals | None = None
+) -> set[str]:
+    """QC targets from validated intervals or a textual region; autosomes
     for a whole-genome run."""
+    if intervals is not None:
+        return {target for contig in intervals if (target := contig_target(contig))}
     if not region:
         return {AUTOSOMES}
     contigs = (part.rpartition(":")[0] or part for part in region_parts(region))
@@ -116,16 +121,20 @@ def _aggregate(
     }
 
 
-def _cached_depths(alignment: str, outdir: str | None) -> dict[str, float] | None:
+def _cached_depths(
+    alignment: str, outdir: str | None, n_basis: str
+) -> dict[str, float] | None:
     from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION, cached_info
 
     info = cached_info(alignment, outdir, "chrom_table_csv")
     # The table hides chrY for a Female, so one from an older infer_sex is
-    # stale, as is one from before long reads' depth was measured.
+    # stale, as is one from before long reads' depth was measured, or one
+    # whose depth left out other N counts.
     if (
         not info
         or not isinstance(bases := info.get("contig_bases"), dict)
         or info.get("sex_inference_version") != SEX_INFERENCE_VERSION
+        or info.get("n_lengths_digest") != n_basis
     ):
         return None
     try:
@@ -144,7 +153,7 @@ def _cached_depths(alignment: str, outdir: str | None) -> dict[str, float] | Non
 
 
 def _counted_depths(
-    alignment: str, outdir: str | None, ref: str | None
+    alignment: str, outdir: str | None, ref: str | None, n_lengths: dict[str, int]
 ) -> tuple[dict[str, float], str] | None:
     """Depths from CRAM container base totals or BAM index read counts, with
     `info`'s N adjustment."""
@@ -152,7 +161,6 @@ def _counted_depths(
         LONG_READ_MIN_LEN,
         IdxStat,
         generate_chrom_table,
-        load_n_counts,
         parse_idxstats,
     )
     from wgsextract_cli.commands.info.render import sampled_mapped_bases
@@ -242,7 +250,7 @@ def _counted_depths(
         avg_len,
         "Unknown",
         build_from_chr1_length(lengths) or "",
-        n_counts=load_n_counts(ref),
+        n_counts=n_lengths,
         mapped_bases=measured,
     )
     rows = ((row[1], row[2], row[3], row[8]) for row in table)
@@ -279,19 +287,43 @@ def target_depths(
     cheaply known. Missing targets are unknown; duplicates are counted, as in
     `info`. Only a map of every target is recorded and reused: a partial one
     (e.g. from a CRAM without its index) is estimated again next time."""
+    from wgsextract_cli.commands.info.ncounts import (
+        alignment_n_lengths,
+        n_lengths_digest,
+    )
+
     fact = sample_workspace.known("target_depths", alignment)
     value = fact.value if fact is not None else None
-    if fact is not None and isinstance(value, dict) and set(TARGETS) <= value.keys():
-        origin = "your override" if fact.source == "override" else fact.method
+    override = fact is not None and fact.source == "override"
+    n_lengths: dict[str, int] | None = None
+    problem: tuple[str, str] | None = None
+    try:
+        n_lengths, problem = alignment_n_lengths(alignment, ref)
+    except (OSError, WGSExtractError) as e:
+        logging.debug(f"Could not read the N counts for {alignment}: {e}")
+        if not override:
+            return None
+    n_basis = n_lengths_digest(n_lengths) if n_lengths is not None else None
+    # A detected depth stands only for the N counts it left out; without the
+    # reference's N counts, its source says the depth includes the N gaps.
+    tag = f" [N {n_basis[:12]}]" if n_basis else " [N unknown]"
+    gaps = "; N gaps included, the reference's N counts unknown" if problem else ""
+    if (
+        fact is not None
+        and isinstance(value, dict)
+        and set(TARGETS) <= value.keys()
+        and (override or (fact.method or "").endswith(tag))
+    ):
+        origin = "your override" if override else (fact.method or "").removesuffix(tag)
         return {k: float(v) for k, v in value.items()}, (
-            f"{sample_workspace.WORKSPACE_FILE} ({origin})"
+            f"{sample_workspace.WORKSPACE_FILE} ({origin}{'' if override else gaps})"
         )
     try:
-        found = _cached_depths(alignment, outdir)
+        found = _cached_depths(alignment, outdir, n_basis or "")
         if found is not None:
             depths, source = found, "cached `info --detailed` metrics"
         else:
-            counted = _counted_depths(alignment, outdir, ref)
+            counted = _counted_depths(alignment, outdir, ref, n_lengths or {})
             if counted is None:
                 return None
             depths, source = counted
@@ -303,10 +335,10 @@ def target_depths(
             "target_depths",
             alignment,
             {k: round(v, 3) for k, v in depths.items()},
-            method=source,
+            method=source + tag,
             confidence="high",
         )
-    return depths, source
+    return depths, source + gaps
 
 
 def _format_depth(depth: float) -> str:
@@ -320,6 +352,7 @@ def _depths_to_judge(
     ref: str | None,
     min_depth: float | None,
     region: str | None,
+    intervals: Intervals | None,
 ) -> tuple[dict[str, float], str, bool | None] | None:
     """Depths over `region`; else the whole-input estimate, with any target it
     finds low measured again over the bases its reads cover. Also whether the
@@ -327,14 +360,18 @@ def _depths_to_judge(
     found = target_depths(alignment, outdir, ref)
     depths, source = (dict(found[0]), found[1]) if found else ({}, "")
     male = _is_male(depths) if CHR_X in depths and CHR_Y in depths else None
-    if region:
-        judged, where = targets, f"in {region}"
+    if region or intervals is not None:
+        judged, where = targets, f"in {region}" if region else "in selected intervals"
     else:
         judged = [t for t, *_ in low_depth_targets(depths, targets, min_depth)]
         where = "with reads"
     try:
         measured = (
-            covered_depths(alignment, judged, region=region, ref=ref) if judged else {}
+            covered_depths(
+                alignment, judged, region=region, ref=ref, selection=intervals
+            )
+            if judged
+            else {}
         )
     except (OSError, ValueError, WGSExtractError) as e:
         logging.debug(f"Could not measure the depth of {alignment}: {e}")
@@ -450,10 +487,12 @@ def covered_depths(
     *,
     region: str | None = None,
     ref: str | None = None,
+    selection: Intervals | None = None,
 ) -> dict[str, float]:
-    """Mean depth per target: over `region`, or else over the bases its reads
-    cover on the contigs holding them, which is what calling sees in a slice,
-    an `extract` output or a panel (#430).
+    """Mean depth per target over validated `selection` or textual `region`.
+    With neither, measure the bases its reads cover on the contigs holding
+    them, which is what calling sees in a slice, an `extract` output or a
+    panel (#430).
 
     About 200 evenly spaced 1 kb windows are read, spaced widely enough that
     few long reads are decoded twice. Without a region, only bases with reads
@@ -466,7 +505,14 @@ def covered_depths(
     wanted = set(targets)
     if alignment.lower().endswith(".cram") and not (ref and Path(ref).is_file()):
         return {}
-    if region:
+    regional = bool(region) or selection is not None
+    if selection is not None:
+        intervals = [
+            (contig, start + 1, end)
+            for contig, ranges in selection.items()
+            for start, end in ranges
+        ]
+    elif region:
         lengths = sequence_lengths(get_bam_header(alignment, ref))
         intervals = _region_intervals(region, lengths)
     else:
@@ -476,7 +522,7 @@ def covered_depths(
         return {}
     windows = [(c, s + 1, e) for c, s, e in _sample_windows(intervals, COVERED_WINDOWS)]
     rows = _bedcov(alignment, windows, ref)
-    if not region:
+    if not regional:
         found = {contig_target(c) for (c, *_), _d, covered in rows if covered}
         rows += _bedcov(
             alignment, [i for i in intervals if contig_target(i[0]) not in found], ref
@@ -487,7 +533,7 @@ def covered_depths(
         target = contig_target(contig)
         if target in wanted:
             depth[target] += summed
-            span[target] += end - start + 1 if region else covered
+            span[target] += end - start + 1 if regional else covered
     return {t: depth[t] / span[t] if span[t] else 0.0 for t in wanted}
 
 
@@ -499,18 +545,21 @@ def warn_low_depth(
     ref: str | None = None,
     min_depth: float | None = None,
     region: str | None = None,
+    intervals: Intervals | None = None,
 ) -> dict[str, float] | None:
     """Warn about each of `targets` that low_depth_targets finds too shallow:
-    over `region` when given, else over the whole input, re-checked over the
-    bases its reads cover before warning. Also warn when `qc contamination`
-    recorded the sample as contaminated."""
+    over validated `intervals` or textual `region` when given, else over the
+    whole input, re-checked over the bases its reads cover before warning.
+    Also warn when `qc contamination` recorded the sample as contaminated."""
     targets = [t for t in TARGETS if t in set(targets)]
     if not targets or not alignment.lower().endswith((".bam", ".cram")):
         return None
     warn_if_contaminated(alignment)
     if not any(_depth_thresholds(min_depth)):
         return None
-    found = _depths_to_judge(alignment, targets, outdir, ref, min_depth, region)
+    found = _depths_to_judge(
+        alignment, targets, outdir, ref, min_depth, region, intervals
+    )
     if found is None or not any(t in found[0] for t in targets):
         logging.info(
             f"Mean depth of {Path(alignment).name} isn't known without reading it; "

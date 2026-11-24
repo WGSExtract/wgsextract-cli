@@ -5,18 +5,24 @@ The input is `vep run --engine vep-rs` output for that gene
 `fastvep sa-build` from tiny source files in tests/fixtures/acmg. Skipped
 without fastVEP (`pixi install -e fastvep`), except the opt-in refusal."""
 
+import gc
 import gzip
 import json
+import os
 import shutil
+import stat
+import warnings
 from pathlib import Path
 
 import pytest
 
+from tests.fake_tool_launchers import python_tool
 from tests.htslib_helpers import bgzip_index, needs_htslib, needs_tools
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfAcmgParams
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.main import main
 
@@ -77,7 +83,7 @@ def _inputs(tmp_path: Path, vcf_text: str | None = None) -> dict[str, Path]:
     for name in ("genome.fa", "genes.gff3"):
         shutil.copy(GENE / name, tmp_path / name)
     plain = tmp_path / "in_vep.vcf"
-    plain.write_text(vcf_text or (FIXTURES / "in_vep.vcf").read_text())
+    plain.write_text(vcf_text or (FIXTURES / "in_vep.vcf").read_text(), newline="\n")
     return {
         "input": Path(bgzip_index(plain)),
         "ref": tmp_path / "genome.fa",
@@ -112,9 +118,34 @@ def _acmg(vcf: Path) -> dict[int, dict[str, str]]:
 
 @needs_fastvep
 def test_acmg_classes_go_into_the_vep_rs_vcf_with_the_disclaimer(tmp_path):
-    result = api.vcf.acmg(_params(tmp_path, _sa_dir(tmp_path), **_inputs(tmp_path)))
-
+    inputs = _inputs(tmp_path)
     vcf = tmp_path / "out" / "acmg_annotated.vcf.gz"
+    vcf.parent.mkdir()
+    shutil.copy2(inputs["input"], vcf)
+    vcf.chmod(0o600)
+    old_index = vcf.with_suffix(".csi")
+    run_command(["tabix", "-C", "-p", "vcf", str(vcf)])
+    Path(f"{vcf}.csi").rename(old_index)
+
+    result = api.vcf.acmg(_params(tmp_path, _sa_dir(tmp_path), **inputs))
+
+    # #1215: the old alternate index must not shadow the new VCF's index.
+    assert not old_index.exists()
+    if os.name != "nt":
+        assert stat.S_IMODE(Path(f"{vcf}.tbi").stat().st_mode) & 0o077 == 0
+    indexed_records = run_command(
+        [
+            "bcftools",
+            "query",
+            "-r",
+            "1:1017-1017",
+            "-f",
+            "%INFO/ACMG_CLASS\n",
+            str(vcf),
+        ],
+        capture_output=True,
+    )
+    assert indexed_records.stdout.strip() == "LP"
     acmg = _acmg(vcf)
     # TINY1 Gln3Ter in a constrained, ClinGen-definitive gene, absent from gnomAD.
     assert acmg[1017]["ACMG_CLASS"] == "LP"
@@ -145,6 +176,53 @@ def test_acmg_classes_go_into_the_vep_rs_vcf_with_the_disclaimer(tmp_path):
 
 
 @needs_fastvep
+@pytest.mark.parametrize("previous_output", [False, True])
+def test_1215_acmg_index_failure_does_not_publish_vcf(
+    tmp_path, monkeypatch, previous_output
+):
+    inputs = _inputs(tmp_path)
+    params = _params(tmp_path, _sa_dir(tmp_path), **inputs)
+    vcf = tmp_path / "out" / "acmg_annotated.vcf.gz"
+    index = Path(f"{vcf}.tbi")
+    if previous_output:
+        vcf.parent.mkdir()
+        shutil.copy2(inputs["input"], vcf)
+        shutil.copy2(Path(f"{inputs['input']}.tbi"), index)
+        previous = (vcf.read_bytes(), index.read_bytes())
+
+    tabix = get_tool_path("tabix")
+    assert tabix is not None
+    real_tabix = _tool_command_parts(tabix)
+    fake = python_tool(
+        tmp_path / "bin",
+        "tabix",
+        f"""import subprocess
+import sys
+if "-p" in sys.argv[1:]:
+    sys.exit("simulated indexing failure")
+sys.exit(subprocess.call([*{real_tabix!r}, *sys.argv[1:]]))
+""",
+    )
+    with monkeypatch.context() as env:
+        env.setenv("PATH", str(fake.parent), prepend=os.pathsep)
+        clear_tool_caches()
+        try:
+            result = api.vcf.acmg(params, check=False)
+        finally:
+            clear_tool_caches()
+
+    assert result.exit_code == 1
+    assert result.error is not None
+    assert "simulated indexing failure" in result.error.message
+    if previous_output:
+        assert (vcf.read_bytes(), index.read_bytes()) == previous
+    else:
+        assert not vcf.exists()
+        assert not index.exists()
+    assert not Path(f"{vcf}.csi").exists()
+
+
+@needs_fastvep
 def test_acmg_falls_back_to_fastveps_transcript_and_counts_it(tmp_path):
     # vep-rs picked a transcript fastVEP's GFF3 doesn't have.
     text = (FIXTURES / "in_vep.vcf").read_text()
@@ -159,6 +237,28 @@ def test_acmg_falls_back_to_fastveps_transcript_and_counts_it(tmp_path):
     assert acmg[1017]["ACMG_TRANSCRIPT"] == "ENST00000000001"
     summary = json.loads((tmp_path / "out" / "acmg_summary.json").read_text())
     assert summary["transcript_choice"]["other_transcript"] >= 3
+
+
+@needs_fastvep
+def test_issue_629_packaged_fastvep_classifies_through_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    inputs = _inputs(tmp_path)
+    sa = _sa_dir(tmp_path)
+    outdir = tmp_path / "cli-out"
+    main(
+        ["vcf", "acmg", "--vcf-input", str(inputs["input"]),
+         "--research-acmg", "--ref", str(inputs["ref"]),
+         "--gff3", str(inputs["gff3"]), "--sa-dir", str(sa),
+         "--outdir", str(outdir), "--threads", "2", "--json"]
+    )  # fmt: skip
+    manifest = json.loads(capsys.readouterr().out)
+    assert manifest["exit_code"] == 0
+    assert "acmg_research_only" in {warning["code"] for warning in manifest["warnings"]}
+    annotated = outdir / "acmg_annotated.vcf.gz"
+    assert _acmg(annotated)[1017]["ACMG_CLASS"] == "LP"
+    assert _acmg(annotated)[1150]["ACMG_CLASS"] == "B"
+    assert Path(str(annotated) + ".tbi").is_file()
 
 
 def test_acmg_refuses_without_the_research_opt_in(tmp_path, capsys):
@@ -207,7 +307,13 @@ def test_acmg_reports_fastveps_own_error_when_it_cannot_start(tmp_path):
     # Review of #629: a GFF3 fastVEP can't read was reported as "no ACMG column".
     inputs = _inputs(tmp_path)
     inputs["gff3"].write_text("##gff-version 3\nthis is not gff\n")
-    result = api.vcf.acmg(_params(tmp_path, _sa_dir(tmp_path), **inputs), check=False)
+    params = _params(tmp_path, _sa_dir(tmp_path), **inputs)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        result = api.vcf.acmg(params, check=False)
+        gc.collect()
+    # #1473: stopping before setup completes must still close both stderr pipes.
+    assert not [w.message for w in caught if issubclass(w.category, ResourceWarning)]
     assert result.error is not None
     assert "fastVEP failed before reading the input" in result.error.message
 

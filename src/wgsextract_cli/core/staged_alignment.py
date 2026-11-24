@@ -18,6 +18,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core.alignment.fastq import (
+    discarded_read_count,
+    warn_discarded_reads,
+)
 from wgsextract_cli.core.alignment.profiles import (
     OUTPUT_PROFILES,
     output_profile_options,
@@ -25,8 +29,11 @@ from wgsextract_cli.core.alignment.profiles import (
 from wgsextract_cli.core.alignment.samtools_commands import indexed_output, parse_memory
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.execution_context import context_thread
+from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.results import current_result, fingerprint, warn
+from wgsextract_cli.core.step_identity import file_identity
 from wgsextract_cli.core.temp_directory import configured_temp_directory
+from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 
 GIB = 1024**3
@@ -67,6 +74,23 @@ def _identity(path: Path) -> dict[str, Any]:
     if value is None:
         raise WGSExtractError(f"Cannot fingerprint staged input {path}")
     return {"bytes": path.stat().st_size, "fingerprint": value}
+
+
+def _index_identity(path: Path) -> dict[str, Any]:
+    identity = file_identity(path)
+    if identity["fingerprint"] is None:
+        raise WGSExtractError(f"Cannot fingerprint staged index {path}")
+    if identity["digest"]["strength"] == "full":
+        return {"bytes": identity["size"], "fingerprint": identity["fingerprint"]}
+    info = path.stat()
+    # Large sidecars are checked without a full read. On POSIX, ctime also
+    # detects edits that preserve mtime; on Windows it is creation time.
+    return {
+        **identity,
+        "device": info.st_dev,
+        "inode": info.st_ino,
+        "ctime_ns": info.st_ctime_ns,
+    }
 
 
 def _digest(path: Path) -> str:
@@ -138,18 +162,25 @@ def _contract(
     normalized = []
     for command in commands:
         args: list[Any] = []
+        stage = tuple(command[:2])
         for index, argument in enumerate(command):
             value = str(argument)
-            if (
-                index
-                and str(command[index - 1]) == "-T"
-                and "collate" in map(str, command)
+            preceding = command[index - 1] if index else None
+            path = None
+            if not index:
+                executable = shutil.which(expand_path(value))
+                path = Path(executable) if executable else None
+            elif (stage, preceding) in (
+                (("samtools", "collate"), "-T"),
+                (("samtools", "fastq"), "-0"),
             ):
-                args.append("<collation-scratch>")
-                continue
-            path = Path(shutil.which(value) or value) if index == 0 else Path(value)
+                value = "<extraction-scratch>"
+            elif isinstance(argument, Path):
+                path = Path(expand_path(argument))
             # Recreated temporary FASTQs have new paths but the same content.
-            args.append(_identity(path) if path.is_file() else value)
+            args.append(
+                _identity(path) if path is not None and path.is_file() else value
+            )
         normalized.append(args)
     return {"commands": normalized, "memory": memory, "chunk_records": chunks}
 
@@ -201,6 +232,7 @@ def run_staged_alignment(
     memory: str,
     fmt: str,
     ref: str,
+    index_suffixes: Sequence[str],
     threads: str = "1",
     compression_threads: str | None = None,
     retire_fastqs: Sequence[str] = (),
@@ -208,8 +240,10 @@ def run_staged_alignment(
     expected_reads: int | None = None,
     chunk_records: int | None = None,
     output_profile: str = "default",
+    dense_sa: Path | None = None,
+    discarded_fastq: Path | None = None,
 ) -> Path:
-    """Keep validated stages on failure; caller removes work only after output checks."""
+    """Keep validated stages on failure. Use Path operands for command input files."""
     workspace = workspace_path(out_path)
     if workspace.is_symlink():
         raise WGSExtractError("Staged workspace must not be a symbolic link")
@@ -235,11 +269,13 @@ def run_staged_alignment(
     contract["threads"] = threads
     compression_threads = compression_threads or threads
     contract["compression_threads"] = compression_threads
-    contract["indexes"] = [
-        _identity(Path(ref + suffix))
-        for suffix in (".bwt", ".sa", ".pac", ".alt")
-        if Path(ref + suffix).is_file()
-    ]
+    contract["streamed_fastq"] = discarded_fastq is not None
+    indexes = [Path(ref + suffix) for suffix in index_suffixes]
+    if dense_sa is not None:
+        indexes.append(dense_sa)
+    contract["indexes"] = {
+        str(path): _index_identity(path) for path in indexes if path.is_file()
+    }
     state = workspace / "alignment.json"
     raw = workspace / "unsorted.bam"
     manifest_path = workspace / "parts.json"
@@ -275,6 +311,7 @@ def run_staged_alignment(
             complete = bool(manifest and manifest.get("complete"))
             if complete and previous is None:
                 raise WGSExtractError("Staged checkpoint has no alignment contract")
+            discarded = previous["discarded_reads"] if previous else 0
             if not complete:
                 if previous:
                     if _identity(raw) != previous["output"]:
@@ -304,9 +341,18 @@ def run_staged_alignment(
                         expected_reads=expected_reads,
                     )
                     run_command([samtools, "quickcheck", "-v", partial])
+                    discarded = discarded_read_count(discarded_fastq)
                     _sync_file(partial)
                     partial.replace(raw)
-                    _save(state, {"contract": contract, "output": _identity(raw)})
+                    _save(
+                        state,
+                        {
+                            "contract": contract,
+                            "output": _identity(raw),
+                            "discarded_reads": discarded,
+                        },
+                    )
+            warn_discarded_reads(discarded)
             for path in retire_fastqs:
                 Path(path).unlink(missing_ok=True)
             if not complete:
@@ -382,6 +428,7 @@ def run_staged_alignment(
 
 
 def _mark(options: argparse.Namespace) -> None:
+    samtools = _tool_command_parts(options.samtools)
     workspace: Path = options.workspace
     parts_dir = workspace / "parts"
     if parts_dir.is_symlink():
@@ -406,7 +453,7 @@ def _mark(options: argparse.Namespace) -> None:
         writer.stdin.close()
         if writer.wait():
             raise WGSExtractError("Staged chunk sorter failed")
-        subprocess.run([options.samtools, "quickcheck", "-v", path], check=True)
+        subprocess.run([*samtools, "quickcheck", "-v", path], check=True)
         _sync_file(path)
         _sync_directory(parts_dir)
         manifest["parts"].append(
@@ -435,7 +482,7 @@ def _mark(options: argparse.Namespace) -> None:
                 path = parts_dir / f"{len(manifest['parts']):06d}.bam"
                 writer = subprocess.Popen(
                     [
-                        options.samtools,
+                        *samtools,
                         "sort",
                         "-@",
                         options.threads,
@@ -472,6 +519,7 @@ def _mark(options: argparse.Namespace) -> None:
 
 
 def _merge(options: argparse.Namespace) -> None:
+    samtools = _tool_command_parts(options.samtools)
     workspace: Path = options.workspace
     manifest_path = workspace / "parts.json"
     manifest = json.loads(manifest_path.read_text())
@@ -496,7 +544,7 @@ def _merge(options: argparse.Namespace) -> None:
             )
             subprocess.run(
                 [
-                    options.samtools,
+                    *samtools,
                     "merge",
                     "-c",
                     "-p",
@@ -533,7 +581,7 @@ def _merge(options: argparse.Namespace) -> None:
     )
     merger = subprocess.Popen(
         [
-            options.samtools,
+            *samtools,
             "merge",
             "-c",
             "-p",
@@ -562,7 +610,7 @@ def _merge(options: argparse.Namespace) -> None:
     )
     encoder = subprocess.Popen(
         [
-            options.samtools,
+            *samtools,
             "view",
             "--no-PG",
             "-@",

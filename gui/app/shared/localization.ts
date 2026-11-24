@@ -1,4 +1,5 @@
 import type { ActionSpec, BundleManifest, BundlePage, ConfigSetting, ControlOption, ControlSpec, PageSection, RowTagSpec, StringMap } from "./types.js";
+import { linkedMoveFolderFormat, linkedMoveTargetUnavailable } from "./workspace-move-message.js";
 
 export function parseTomlStrings(text: string): StringMap {
     const values: StringMap = {};
@@ -134,6 +135,8 @@ export function localizationLabels(table: StringMap = {}) {
         layoutDirection: layoutDirection(table["language.layoutDirection"]),
         viewerTitle: table["viewer.title"] ?? "Genome viewer",
         viewerStrings: Object.fromEntries(Object.entries(table).filter(([key]) => key.startsWith("viewer.")).map(([key, value]) => [key.slice("viewer.".length), value])),
+        geneTitle: table["gene.title"] ?? "Gene page",
+        geneStrings: Object.fromEntries(Object.entries(table).filter(([key]) => key.startsWith("gene.")).map(([key, value]) => [key.slice("gene.".length), value])),
         terminalMainTabTitle: table["app.terminal.mainTab.title"] ?? "Jobs",
         jobsEmptyLabel: table["app.jobs.empty"] ?? "No jobs have run in this session yet.",
         jobsColumnJobLabel: table["app.jobs.column.job"] ?? "Job",
@@ -168,6 +171,13 @@ export function localizationLabels(table: StringMap = {}) {
         workspaceLocationFolderMoveConfirm: table["app.workspaceLocation.folderMove.confirm"] ??
             "Move what is in %{from} to %{path}? Running actions are stopped. Change Setting Only leaves it where it is.",
         workspaceLocationSettingOnlyTitle: table["app.workspaceLocation.settingOnly.title"] ?? "Change Setting Only",
+        workspaceMoveBusy: table["app.workspaceLocation.error.busy"] ?? "The workspace is in use. Finish running commands, saves or other moves, then try again.",
+        workspaceMoveInProgress: table["app.workspaceLocation.error.inProgress"] ?? "The workspace is being moved. Try again when the move has finished.",
+        workspaceMoveSettingsLocked: table["app.workspaceLocation.error.settingsLocked"] ?? "The settings file is locked. Finish saving settings, then try the move again.",
+        workspaceMoveStale: table["app.workspaceLocation.error.stale"] ?? "Another window moved the workspace. Reopen the app before using it.",
+        workspaceMoveProtectedFolder: table["app.workspaceLocation.error.protectedFolder"] ?? "This folder contains app data and cannot be moved.",
+        workspaceLocationLinkedFolderFormat: table["app.workspaceLocation.linkedFolder.format"] ?? linkedMoveFolderFormat,
+        workspaceLocationLinkTargetUnavailable: table["app.workspaceLocation.linkTargetUnavailable"] ?? linkedMoveTargetUnavailable,
         terminalCopyTextLabel: table["app.terminal.copyText.label"] ?? "Copy terminal text",
         terminalCopiedTextLabel: table["app.terminal.copiedText.label"] ?? "Copied!",
         setupTitle: table["app.setup.status.title"] ?? "Setup",
@@ -219,6 +229,7 @@ export function localizationLabels(table: StringMap = {}) {
         terminalNonzeroExitSummary: table["app.terminal.nonzeroExit.summary"] ??
             "The command exited with a non-zero status. Check the command output for details.",
         terminalProcessErrorTitle: table["app.terminal.processError.title"] ?? "Command failed",
+        terminalJobSubmissionUnknown: table["app.terminal.jobSubmissionUnknown"] ?? "The server may still be running this job. Check its status before trying again.",
         terminalProcessErrorSummary: table["app.terminal.processError.summary"] ?? "The command could not complete.",
         configLoadedFormat: table["app.config.loaded.format"] ?? "Loaded settings from %{path}",
         configLoadErrorFormat: table["app.config.loadError.format"] ?? "Could not load %{label}: %{error}",
@@ -244,25 +255,32 @@ export function localizationLabels(table: StringMap = {}) {
         resultUsageTitle: table["app.result.usage.title"] ?? "Check the selected options",
         resultMissingDependencyTitle: table["app.result.missingDependency.title"] ?? "A required tool is not installed",
         resultOpenSetupTitle: table["app.result.openSetup.title"] ?? "Open Setup",
-        prerequisitesTitle: table["app.prerequisites.title"] ?? "Required data is missing",
-        prerequisitesMessage: table["app.prerequisites.message"] ?? "This command needs data that isn't installed yet:",
+        resultCardTitle: table["app.result.card.title"] ?? "Result card",
+        resultCardSourceFormat: table["app.result.card.sourceFormat"] ?? "Shown from %{file}",
+        resultCardViewTitle: table["app.result.card.view.title"] ?? "View Card",
+        resultCardCloseTitle: table["app.result.card.close.title"] ?? "Close",
+        prerequisitesTitle: table["app.prerequisites.title"] ?? "Something this command needs is missing",
+        prerequisitesMessage: table["app.prerequisites.message"] ?? "This command needs data or tools that aren't installed yet:",
         prerequisitesStillMissingMessage: table["app.prerequisites.stillMissing"] ??
-            "It still isn't installed. Install it, or download it yourself and click Continue again.",
+            "It still isn't installed. Install it, or install it yourself and click Continue again.",
         prerequisitesManualNote: table["app.prerequisites.manualNote"] ??
-            "To download it yourself, install it from the library pages, then click Continue.",
+            "To install it yourself, use the library or Tools pages, then click Continue.",
         prerequisitesInstallButtonTitle: table["app.prerequisites.install"] ?? "Install and Continue",
         prerequisitesContinueButtonTitle: table["app.prerequisites.continue"] ?? "Continue",
         prerequisitesCancelButtonTitle: table["app.prerequisites.cancel"] ?? "Cancel",
-        prerequisitesCheckingTitle: table["app.prerequisites.checking"] ?? "Checking for required data…",
+        prerequisitesCheckingTitle: table["app.prerequisites.checking"] ?? "Checking for required data and tools…",
         prerequisitesInstallTitleFormat: table["app.prerequisites.installTitleFormat"] ?? "Install %{name}",
         libraryStatusLabels: {
             installed: table["library.status.installed"] ?? "installed",
             unindexed: table["library.status.unindexed"] ?? "unindexed",
             incomplete: table["library.status.incomplete"] ?? "incomplete",
             missing: table["library.status.missing"] ?? "missing",
+            unavailable: table["library.status.unavailable"] ?? "not available",
         },
         libraryTagLabels: {
             recommended: table["library.tags.recommended"] ?? "Recommended",
+            mandatory: table["library.tags.mandatory"] ?? "Mandatory",
+            optional: table["library.tags.optional"] ?? "Optional",
         },
     };
 }
@@ -315,7 +333,7 @@ function localizeRow<Row extends { tags?: RowTagSpec[] | undefined }>(row: Row, 
     };
 }
 function localizeAction(action: ActionSpec, table: StringMap): ActionSpec {
-    const localizedAction = localizeFields(action, table, ["title", "tooltip", "disabledTooltip"]);
+    const localizedAction = localizeFields(action, table, ["title", "advancedTitle", "tooltip", "disabledTooltip"]);
     if (action.confirm) {
         localizedAction.confirm = localizeFields(action.confirm, table, ["title", "message", "confirmButtonTitle", "cancelButtonTitle", "requiredText", "prompt"]);
     }

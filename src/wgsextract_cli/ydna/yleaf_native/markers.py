@@ -51,6 +51,7 @@ class Call:
     genotype: str | None = None
     filter: str | None = None
     gq: float | None = None
+    assumed_reference: bool = False
 
 
 @dataclass(frozen=True)
@@ -201,12 +202,12 @@ def match_markers(
         description = call.description
         if description:
             state = "NA"
-        elif call.reads == 0:
+        elif call.reads == 0 and not call.assumed_reference:
             state = "NA"
             description = "Position with zero reads"
         elif state == "NA":
             description = "Discordant genotype"
-        elif call.reads < min_reads:
+        elif call.reads < min_reads and not call.assumed_reference:
             description = "Below read threshold"
         elif not math.isfinite(call.percentage) or call.percentage < majority:
             description = "Below base majority"

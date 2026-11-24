@@ -14,9 +14,23 @@ import {
 export function validateAction(action: ActionSpec, basePath: string): void {
     requireNonEmpty(action.id, `${basePath}.id`);
     requireNonEmpty(action.title, `${basePath}.title`);
+    if (action.advancedTitle != null) {
+        requireNonEmpty(action.advancedTitle, `${basePath}.advancedTitle`);
+    }
     validateTextIcon(action.textIcon, `${basePath}.textIcon`);
-    if (typeof action.command?.executable !== "string" || !action.command.executable.trim()) {
-        throw new BundleValidationError(`Action '${action.id}' must define a command executable.`);
+    const hasCommand = typeof action.command?.executable === "string" && action.command.executable.trim().length > 0;
+    const hasViewerInput = typeof action.viewerInput === "string" && action.viewerInput.trim().length > 0;
+    if (action.viewerInput != null && !hasViewerInput) {
+        throw new BundleValidationError(`Invalid ${basePath}.viewerInput: expected a non-empty control id.`);
+    }
+    if (hasCommand && hasViewerInput) {
+        throw new BundleValidationError(`Action '${action.id}' cannot define both command and viewerInput.`);
+    }
+    if (!hasCommand && !hasViewerInput) {
+        throw new BundleValidationError(`Action '${action.id}' must define a command executable or viewerInput.`);
+    }
+    if (action.row != null && (typeof action.row !== "number" || !Number.isInteger(action.row) || action.row < 1)) {
+        throw new BundleValidationError(`Invalid ${basePath}.row: expected a positive integer.`);
     }
     validateConditions(action.visibleWhen, `${basePath}.visibleWhen`);
     validateConditions(action.disabledWhen, `${basePath}.disabledWhen`);
@@ -30,6 +44,13 @@ export function validateAction(action: ActionSpec, basePath: string): void {
     }
     if (action.primaryInput != null) {
         requireNonEmpty(action.primaryInput, `${basePath}.primaryInput`);
+    }
+    if (action.resultCard != null && typeof action.resultCard !== "boolean") {
+        throw new BundleValidationError(`Invalid ${basePath}.resultCard: expected true or false.`);
+    }
+    const openOutput: unknown = action.openOutput;
+    if (openOutput != null && !(Array.isArray(openOutput) && openOutput.length > 0 && openOutput.every((role) => typeof role === "string" && role.trim()))) {
+        throw new BundleValidationError(`Invalid ${basePath}.openOutput: expected a non-empty array of output roles.`);
     }
 }
 

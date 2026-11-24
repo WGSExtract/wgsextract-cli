@@ -1,8 +1,8 @@
 import { allControls, configEditorControls } from "./rendering-controls.js";
 import { lastResultDocumentPlaceholders } from "./last-result-documents.js";
-import { currentSetupPlatform } from "./setup-platforms.js";
+import { currentSetupPlatform, setupStepsForPlatform } from "./setup-platforms.js";
 import { basicModeHiddenInputs, controlDefaultValue, normalizeUIMode } from "./ui-mode.js";
-import type { BundleManifest, CommandContext, Labels, LastResultDocumentPaths, LooseRecord, StateValue, StringMap, ValueMap } from "./types.js";
+import type { BundleManifest, CommandContext, Labels, LastResultDocumentPaths, LooseRecord, SetupRun, StateValue, StringMap, ValueMap } from "./types.js";
 
 type CheckedOptionsInput = Record<string, Set<string> | string[] | string | null | undefined>;
 type StateLike = {
@@ -15,16 +15,19 @@ type StateLike = {
     homePath?: string;
     lastResultDocumentPaths?: LastResultDocumentPaths;
     uiMode?: unknown;
+    setupRun?: SetupRun | null;
 } & LooseRecord;
 
 export function commandContextFromState(state: StateLike, rowValues: ValueMap = {}, sectionValues: ValueMap = {}): CommandContext {
     const { fieldValues, checkedOptions, configValues } = valuesForUIMode(state);
     const context: CommandContext = {
+        setupReady: !setupStepsForPlatform(state.manifest?.setup?.steps ?? []).length || state.setupRun?.status === "ok" || state.setupRun?.status === "warning",
         fieldValues: { ...fieldValues, ...sectionValues },
         checkedOptions,
         configValues: { ...configValues, ...fieldValues, ...sectionValues },
         rowValues,
         placeholderLabels: placeholderLabelsFromManifest(state.manifest),
+        multiPathControls: multiPathControlsFromManifest(state.manifest),
     };
     if (state.bundleRootPath != null) {
         context.bundleRootPath = state.bundleRootPath;
@@ -101,7 +104,65 @@ function placeholderLabelsFromManifest(manifest: BundleManifest | null | undefin
     return labels;
 }
 
+export function multiPathControlsFromManifest(manifest: BundleManifest | null | undefined): string[] {
+    const ids = new Set<string>();
+    for (const control of allControls(manifest ?? {})) {
+        if (control.kind === "path" && control.multiple === true) {
+            ids.add(control.id);
+        }
+    }
+    return [...ids];
+}
+
+function isMultiPathControl(context: CommandContext, placeholder: string): boolean {
+    return Array.isArray(context.multiPathControls) && context.multiPathControls.includes(placeholder);
+}
+
+export function splitPathList(value: unknown): string[] {
+    if (Array.isArray(value)) {
+        return value.map((item) => String(item ?? "").trim()).filter(Boolean);
+    }
+    return String(value ?? "")
+        .split(/\r?\n/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+}
+
+export function firstPathValue(value: unknown): string {
+    return splitPathList(value)[0] ?? "";
+}
+
+export function contextPathList(context: CommandContext, placeholder: string): string[] | undefined {
+    if (placeholder.endsWith(".all")) {
+        const base = placeholder.slice(0, -4);
+        const raw = rawContextValue(context, base);
+        return splitPathList(raw);
+    }
+    if (placeholder.endsWith(".extra")) {
+        const base = placeholder.slice(0, -6);
+        const raw = rawContextValue(context, base);
+        return splitPathList(raw).slice(1);
+    }
+    return undefined;
+}
+
+function rawContextValue(context: CommandContext, placeholder: string): StateValue {
+    if (placeholder.startsWith("row.")) {
+        return context.rowValues?.[placeholder.slice(4)];
+    }
+    if (placeholder.startsWith("config.")) {
+        return context.configValues?.[placeholder.slice(7)];
+    }
+    return (context.rowValues?.[placeholder] ??
+        context.checkedOptions?.[placeholder] ??
+        context.fieldValues?.[placeholder] ??
+        context.configValues?.[placeholder]);
+}
+
 export function contextValue(context: CommandContext, placeholder: string): StateValue {
+    if (placeholder === "setupReady") {
+        return context.setupReady ? "true" : "false";
+    }
     if (placeholder === "bundleRoot" || placeholder === "bundleWorkspace") {
         return context.bundleRootPath;
     }
@@ -126,14 +187,19 @@ export function contextValue(context: CommandContext, placeholder: string): Stat
     if (placeholder.startsWith("config.")) {
         return context.configValues?.[placeholder.slice(7)];
     }
+    const pathList = contextPathList(context, placeholder);
+    if (pathList !== undefined) {
+        return pathList.join("\n");
+    }
     const computed = computedFileStateValue(context, placeholder);
     if (computed != null) {
         return computed;
     }
-    return (context.rowValues?.[placeholder] ??
-        context.checkedOptions?.[placeholder] ??
-        context.fieldValues?.[placeholder] ??
-        context.configValues?.[placeholder]);
+    const value = rawContextValue(context, placeholder);
+    if (typeof value === "string" && value.includes("\n") && isMultiPathControl(context, placeholder)) {
+        return firstPathValue(value);
+    }
+    return value;
 }
 
 export function checkedOptionsForContext(checkedOptions: CheckedOptionsInput): StringMap {
@@ -166,7 +232,7 @@ function computedFileStateValue(context: CommandContext, placeholder: string): S
     }
     const fieldID = placeholder.slice(0, separator);
     const property = placeholder.slice(separator + 1);
-    const rawPath = context.fieldValues?.[fieldID] ?? context.configValues?.[fieldID];
+    const rawPath = firstPathValue(context.fieldValues?.[fieldID] ?? context.configValues?.[fieldID]);
     const serverComputed = context.fileStateValues?.[placeholder];
     if (serverComputed != null) {
         return serverComputed;

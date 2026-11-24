@@ -1,5 +1,14 @@
 # VEP engines
 
+## Assembly and download mirror
+
+`vep run --assembly GRCh37` and deprecated `--vep-assembly GRCh37`
+select the same build. Conflict warnings use canonical `--assembly` for
+either spelling. `vep download --assembly` selects the cache build;
+`--mirror uk` (default) or `--mirror ebi` chooses its download mirror.
+
+## Choosing an engine
+
 `wgsextract vep run` annotates with one of two engines:
 
 | | `vep-rs` (default) | `ensembl` |
@@ -45,7 +54,11 @@ no vep-rs cache, and Ensembl VEP and its cache are installed, `vep run`
 keeps using Ensembl VEP. It warns `vep_engine_fallback` with the switch:
 `wgsextract vep download` builds vep-rs's cache, and `--engine ensembl` or
 `vep_engine = "ensembl"` keeps Ensembl VEP and silences the warning. A run
-that names `--engine vep-rs` without its cache fails and names the download.
+without the selected engine's local cache fails with `vep_cache_missing`, as
+does an Ensembl cache missing its metadata or chromosome directories.
+Download the matching release and assembly with `wgsextract vep download`
+(`--engine ensembl` for Ensembl VEP), then rerun annotation. Neither engine
+falls back to the online Ensembl database.
 
 ## Speed, memory and disk
 
@@ -174,13 +187,15 @@ Agreement per (variant, transcript) pair, where Ensembl VEP has a value:
   `MAX_AF` differs: Ensembl publishes no gnomAD VCF to build them from. Use
   `vcf gnomad`. `PUBMED` is empty too.
 - **Regulatory features** are not annotated.
-- **Not supported:** `--custom` sources and Ensembl's database (there is no
-  `--database` fallback when the cache is missing). `vep run` refuses these
-  with vep-rs rather than ignoring them; use `--engine ensembl`.
+- **Not supported:** `--custom` sources. `vep run` refuses these with vep-rs
+  rather than ignoring them; use `--engine ensembl` for local custom sources.
 - Records Ensembl VEP skips (an SV class it has no term for, such as `<CPX>`,
   or one larger than `--max_sv_size`) stay in vep-rs's output without `CSQ`;
   Ensembl VEP leaves them out.
 
-`vep run` warns `vep_cache_gaps` when the cache it uses lacks known variants
-or predictions. The full comparison, including fastVEP, vareffect and bcftools
-csq, is in [#602](https://github.com/WGSExtract/wgsextract-cli/issues/602).
+`vep run` warns `vep_cache_gaps` when the cache it uses lacks known variants,
+gnomAD frequencies or predictions, and `vcf table` warns `gnomad_af_missing`
+when its `gnomad_af` column would be empty for want of them; VEP's 1000
+Genomes `AF` and `MAX_AF` go to the table's `kg_af` and `max_af` instead. The
+full comparison, including fastVEP, vareffect and bcftools csq, is in
+[#602](https://github.com/WGSExtract/wgsextract-cli/issues/602).

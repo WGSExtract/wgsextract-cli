@@ -14,6 +14,7 @@ or a hard limit.
 import logging
 import math
 import re
+import sys
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any, NamedTuple
@@ -128,6 +129,34 @@ def available_memory() -> int:
     available = max(0, int(psutil.virtual_memory().available))
     capped = _cgroup_available_memory()
     return min(available, capped) if capped is not None else available
+
+
+def windows_available_commit() -> int | None:
+    """Bytes Windows can still commit (RAM + page file), not free page-file bytes."""
+    if sys.platform != "win32":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    class MemoryStatus(ctypes.Structure):
+        _fields_ = [
+            ("length", wintypes.DWORD),
+            ("memory_load", wintypes.DWORD),
+            ("total_physical", ctypes.c_uint64),
+            ("available_physical", ctypes.c_uint64),
+            ("commit_limit", ctypes.c_uint64),
+            ("available_commit", ctypes.c_uint64),
+            ("total_virtual", ctypes.c_uint64),
+            ("available_virtual", ctypes.c_uint64),
+            ("reserved", ctypes.c_uint64),
+        ]
+
+    status = MemoryStatus()
+    status.length = ctypes.sizeof(status)
+    query = ctypes.WinDLL("kernel32").GlobalMemoryStatusEx
+    query.argtypes = [ctypes.POINTER(MemoryStatus)]
+    query.restype = wintypes.BOOL
+    return int(status.available_commit) if query(ctypes.byref(status)) else None
 
 
 def total_memory() -> int:

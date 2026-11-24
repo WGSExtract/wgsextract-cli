@@ -1,4 +1,7 @@
 #include "runtime.h"
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+#include "watchdog_test.h"
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -7,6 +10,7 @@
 #include <cstdlib>
 #include <limits>
 #include <memory>
+#include <system_error>
 #include <thread>
 #include <unistd.h>
 #include <unordered_map>
@@ -15,6 +19,9 @@ namespace wgse::metal {
 
 namespace {
 std::atomic<size_t> aborted{0}, first_commits{0}, injected_every{0};
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+std::atomic<bool> watchdog_start_failure{false};
+#endif
 constexpr long gpu_slots = 2;
 dispatch_semaphore_t gpu_slot() {
     static dispatch_semaphore_t slot = dispatch_semaphore_create(gpu_slots);
@@ -50,21 +57,27 @@ struct InFlight {
 // exits when none are, and for good once it gives up.
 class Watchdog {
 public:
-    // Registers entry; false (without registering) once the GPU is given up.
+    // Registers entry only if the watchdog can monitor it.
     bool track(const std::shared_ptr<InFlight> &entry) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (!hang_.empty()) return false;
-        entry->committed = uptime_ns();
-        in_flight_[(__bridge void *)entry->command] = entry; // the entry retains the command
+        if (!disabled_reason_.empty()) return false;
         if (!watching_) {
             try {
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+                if (watchdog_start_failure)
+                    throw std::system_error(std::make_error_code(std::errc::resource_unavailable_try_again));
+#endif
                 std::thread(&Watchdog::watch, this).detach();
                 watching_ = true;
                 ++threads_started_;
-            } catch (const std::system_error &) {
-                // Without the watchdog commands are unbounded, as before.
+            } catch (const std::system_error &error) {
+                disabled_reason_ = std::string("GPU watchdog: could not start the Metal watchdog thread: ")
+                    + error.what();
+                return false;
             }
         }
+        entry->committed = uptime_ns();
+        in_flight_[(__bridge void *)entry->command] = entry; // the entry retains the command
         return true;
     }
 
@@ -89,7 +102,7 @@ public:
 
     std::string hang() {
         std::lock_guard<std::mutex> lock(mutex_);
-        return hang_;
+        return disabled_reason_;
     }
 
     double limit() {
@@ -132,7 +145,7 @@ public:
 private:
     std::mutex mutex_;
     std::unordered_map<void *, std::shared_ptr<InFlight>> in_flight_;
-    std::string hang_, injected_label_;
+    std::string disabled_reason_, injected_label_;
     bool injected_ = false, watching_ = false, any_completed_ = false;
     double floor_ = 60, first_floor_ = 180, slowest_ = 0, poll_ = 1;
     size_t unsettled_ = 0, threads_started_ = 0;
@@ -168,10 +181,10 @@ private:
                         "the GPU is not used for the rest of the run",
                         entry->command.label.length ? entry->command.label.UTF8String
                                                     : "unlabelled", limit);
-                    hang_ = reason;
+                    disabled_reason_ = reason;
                     break;
                 }
-                if (hang_.empty()) continue;
+                if (disabled_reason_.empty()) continue;
                 // Commands queued behind a hung one cannot finish either.
                 for (auto &[key, entry] : in_flight_) {
                     if (!entry->abandoned) {
@@ -193,6 +206,12 @@ Watchdog &watchdog() {
     return *value;
 }
 } // namespace
+
+#ifdef WGSE_METAL_BENCHMARK_TOOLS
+void inject_watchdog_start_failure() {
+    watchdog_start_failure = true;
+}
+#endif
 
 void Runtime::commit(id<MTLCommandBuffer> command, void (^done)(id<MTLCommandBuffer>),
     NSArray *keep) {

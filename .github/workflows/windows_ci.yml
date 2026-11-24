@@ -1,7 +1,8 @@
 name: CI Windows
 
 # Native Windows uses the same published Pixi tools as users.
-# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
+# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix
+# (main pushes run the files their merge group left to them, #1373).
 on:
   push:
     branches: [ main ]
@@ -46,8 +47,10 @@ jobs:
       os: windows
       runner: windows-latest
       timeout-minutes: 54
-      environments: default dev gatk vep-rs
+      environments: default dev gatk vep-rs fastvep
       tests: ${{ inputs.tests || 'all' }}
       smoke-only: ${{ inputs.smoke-only == true }}
       setup-checks: ${{ github.event_name != 'pull_request' || inputs.setup-checks }}
       move-modules: ${{ inputs.move-modules || '[]' }}
+      # The merge queue runs this suite, so main skips what it already ran (#1373).
+      queue-dedupe: true

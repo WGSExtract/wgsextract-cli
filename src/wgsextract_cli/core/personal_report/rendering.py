@@ -18,9 +18,11 @@ from wgsextract_cli.core.report_documents import (
     ReportFactDocument,
     ReportFindingDocument,
     ReportLinkDocument,
+    ReportMedicationReviewDocument,
     ReportMetricDocument,
     ReportMicroarrayDocument,
     ReportMissingDocument,
+    ReportMitochondrialDocument,
     ReportOverviewDocument,
     ReportSectionsDocument,
     ReportSourceDocument,
@@ -36,6 +38,8 @@ RenderedSection = (
     | ReportAncestryDocument
     | ReportSvDocument
     | ReportMicroarrayDocument
+    | ReportMedicationReviewDocument
+    | ReportMitochondrialDocument
 )
 
 NOT_DIAGNOSIS = "Technical result, not diagnosis."
@@ -254,6 +258,23 @@ def _html_section_body(
                     + "</td></tr>"
                 )
             out.append("</table>")
+    elif name == "mitochondrial" and sections["mitochondrial"].get("sites"):
+        section = sections["mitochondrial"]
+        out.append(f'<p class="disclaimer"><b>{_h(section.get("advisory"))}</b></p>')
+        files = _mito_files(section)
+        out.extend(f'<p class="muted">{_h(line)}</p>' for line in _mito_notes(section))
+        if files:
+            out.append(
+                '<p class="muted">Evidence: '
+                + ", ".join(_link(f, _href(f, base)) for f in files)
+                + "</p>"
+            )
+        head, rows = _mito_table(section)
+        out.append("<table><tr>" + "".join(f"<th>{_h(c)}</th>" for c in head) + "</tr>")
+        out.extend(
+            "<tr>" + "".join(f"<td>{_h(c)}</td>" for c in row) + "</tr>" for row in rows
+        )
+        out.append("</table>")
     elif name == "acmg_research":
         section = sections["acmg_research"]
         out.extend(f'<p class="muted">{_h(line)}</p>' for line in _acmg_notes(section))
@@ -262,6 +283,11 @@ def _html_section_body(
                 f'<p class="muted">Every classified allele: '
                 f"{_link(section['all_calls'], _href(section['all_calls'], base))}</p>"
             )
+    elif name == "medication_review":
+        section = sections["medication_review"]
+        out.extend(
+            f'<p class="muted">{_h(line)}</p>' for line in _review_notes(section)
+        )
     elif name == "ancestry" and sections["ancestry"]["components"]:
         section = sections["ancestry"]
         out.append(f'<p class="muted">{_h(section["note"])}</p>')
@@ -306,6 +332,109 @@ def _html_section_body(
             )
         out.append("</table>")
     return out
+
+
+def _mito_files(section: ReportMitochondrialDocument) -> list[str]:
+    technical = section.get("technical")
+    if not technical:
+        return []
+    return [f for f in (technical["calls"], technical["site_evidence"]) if f]
+
+
+def _mito_notes(section: ReportMitochondrialDocument) -> list[str]:
+    """How the mtDNA was called, the thresholds, and the reviewed-variant
+    table's sources."""
+    notes = []
+    if technical := section.get("technical"):
+        share = technical["min_depth_fraction"]
+        caller = f"{technical['caller']} {technical['version'] or ''}".strip()
+        notes.append(
+            f"Called by {caller} ({technical['settings']}) against "
+            f"{technical['mt_reference'] or 'an unconfirmed mtDNA reference'}"
+            + (
+                f" (contig {technical['contig']}, MD5 {technical['reference_md5']})"
+                if technical["reference_md5"]
+                else ""
+            )
+            + (
+                f"; {share:.1%} of positions have 100 or more reads"
+                if share is not None
+                else ""
+            )
+            + (
+                f"; haplocheck contamination: {technical['contamination']}"
+                if technical["contamination"]
+                else ""
+            )
+            + "."
+        )
+    if t := section.get("thresholds"):
+        notes.append(
+            f"Homoplasmic from {t['homoplasmic']:.0%}; heteroplasmic from "
+            f"{t['supported_heteroplasmy']:.0%} (gnomAD's reporting floor; "
+            "misaligned nuclear mtDNA copies can inflate low-level calls). "
+            f"Lower calls remain weak evidence, as do uncalled signals from "
+            f"{t['weak_evidence']:.0%} of reads on a strand. Not detected "
+            f"needs {t['min_depth']} or more reads without the ALT."
+        )
+    if r := section.get("resource"):
+        notes.append(
+            f"Reviewed variants: {r['name']}; ClinVar release {r['clinvar_release']} "
+            f"(MD5 {r['clinvar_md5']}; {r['clinvar_selection']}); "
+            f"{r['cpic_citation']}. {r['heteroplasmy_basis']}"
+        )
+    return notes
+
+
+def _mito_table(
+    section: ReportMitochondrialDocument,
+) -> tuple[list[str], list[list[str]]]:
+    head = ["Group", "Variant", "State", "Level", "Reads (fwd/rev)",
+            "Confidence", "ClinVar", "CPIC"]  # fmt: skip
+    rows = []
+    for site in section.get("sites", []):
+        level = site["level"]
+        reasons = f" ({', '.join(site['reasons'])})" if site["reasons"] else ""
+        reads = (
+            f"{site['depth']} ({site['depth_fwd']}/{site['depth_rev']})"
+            if site["depth_fwd"] is not None
+            else str(site["depth"] if site["depth"] is not None else "")
+        )
+        stars = site["clinvar_stars"]
+        rows.append(
+            [
+                site["group"],
+                f"{site['gene']} {site['hgvs']}",
+                site["state"].replace("_", " "),
+                f"{level:.1%}" if level is not None else "",
+                reads,
+                site["confidence"].replace("_", " ") + reasons,
+                f"{site['clinvar_classification']} (VCV {site['clinvar_id']}, "
+                f"{site['clinvar_review_status']}"
+                + (f", {stars} stars" if stars is not None else "")
+                + ")",
+                f"{site['cpic_phenotype']} ({site['cpic_evidence']} evidence)"
+                if site["cpic_phenotype"]
+                else "",
+            ]
+        )
+    return head, rows
+
+
+def _review_notes(section: ReportMedicationReviewDocument) -> list[str]:
+    """The medications reviewed and the CPIC release and rules behind it."""
+    cpic, rules = section["cpic"], section["rules"]
+    medications = ", ".join(
+        m["name"] + (f" ({m['population']})" if m["population"] else "")
+        for m in section["context"]["medications"]
+    )
+    return [
+        f"Medications listed: {medications}.",
+        f"Source: CPIC® database {cpic['release']} ({cpic['published']}, "
+        f"{cpic['license']}); {cpic['attribution']}",
+        f"Medication-effect rules {rules['version']}, checked against CPIC "
+        f"{rules['checked_against_cpic']}.",
+    ]
 
 
 def _acmg_notes(section: ReportAcmgDocument) -> list[str]:
@@ -547,6 +676,17 @@ def render_markdown(report: ReportDocument, base: str = ".") -> str:
                         )
                         + " |"
                     )
+        if name == "mitochondrial" and sections["mitochondrial"].get("sites"):
+            section = sections["mitochondrial"]
+            out += ["", f"> **{_md(section.get('advisory'))}**", ""]
+            out += [_md(line) for line in _mito_notes(section)]
+            if files := _mito_files(section):
+                out.append(
+                    "Evidence: " + ", ".join(_md_link(f, _href(f, base)) for f in files)
+                )
+            head, rows = _mito_table(section)
+            out += ["", "| " + " | ".join(head) + " |", "|---" * len(head) + "|"]
+            out += ["| " + " | ".join(_md(c) for c in row) + " |" for row in rows]
         if name == "acmg_research":
             section = sections["acmg_research"]
             out += ["", *(_md(line) for line in _acmg_notes(section))]
@@ -555,6 +695,9 @@ def render_markdown(report: ReportDocument, base: str = ".") -> str:
                 out.append(
                     f"Every classified allele: {_md_link(section['all_calls'], href)}"
                 )
+        if name == "medication_review":
+            section = sections["medication_review"]
+            out += ["", *(_md(line) for line in _review_notes(section))]
         if name == "ancestry" and sections["ancestry"]["components"]:
             section = sections["ancestry"]
             out += ["", f"_{_md(section['note'])}_"]

@@ -14,13 +14,14 @@ packaging/windows-arm64/recipes/*/patches/*.patch -whitespace
 src/wgsextract_cli/assets/microarray/raw_file_templates/head/* -text whitespace=cr-at-eol
 
 # The CHM13 manifest and payloads are verified byte-for-byte at runtime.
-src/wgsextract_cli/assets/microarray/chm13/v1/* -text
+src/wgsextract_cli/assets/microarray/chm13/v2/* -text
 
 # Audited terms are pinned by sources.json and copied verbatim to release assets.
 src/wgsextract_cli/assets/resource_terms/** -text
 
 # Patches for upstream sources keep their exact bytes (some upstream files are CRLF).
 packaging/windows/recipes/**/*.patch -text -whitespace
+native/clair3/patches/*.patch -text -whitespace
 
 # Bundled catalogs are pinned by SHA-256 (provenance.json).
 src/wgsextract_cli/commands/genotyping/str_catalog/* text eol=lf
@@ -34,6 +35,7 @@ src/wgsextract_cli/assets/cli/help-index.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json merge=generated
+src/wgsextract_cli/assets/schemas/wgsextract.methylation-regions-hp.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json merge=generated

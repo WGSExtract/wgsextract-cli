@@ -16,7 +16,7 @@ import pytest
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.commands.genotyping import common, hla, repeats
-from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION
+from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION, input_signature
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.personal_report import build_report
 from wgsextract_cli.core.pixi_tools import _join_command, pixi_env_prefix
@@ -489,7 +489,7 @@ def _index_args(tmp_path):
     library.mkdir(exist_ok=True)
     settings["reference_library"] = str(library)
     params = api.TypingHlaParams(input=tmp_path / "s.bam")
-    return params, library / "ref" / "t1k_hla"
+    return params, library / "downloads" / "t1k_hla"
 
 
 def test_hla_index_is_built_once_in_the_reference_library(tmp_path, monkeypatch):
@@ -542,7 +542,7 @@ def test_1052_hla_missing_index_requires_download_then_reuses_it_offline(
     # T1K is the download boundary; the existing fake builds its tiny local index.
     accepted = api.genotyping.hla(replace(params, download=True))
     assert accepted.exit_code == 0
-    assert (library / "ref/t1k_hla/hla_dna_seq.fa").is_file()
+    assert (library / "downloads/t1k_hla/hla_dna_seq.fa").is_file()
     assert api.genotyping.hla(params).exit_code == 0
 
 
@@ -1013,7 +1013,7 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
         line.split("\t") for line in (out / "NA12878.str.tsv").read_text().splitlines()
     ]
     assert rows[0][:2] == ["locus", "disease"]
-    table = {row[0]: row[1:] for row in rows[1:]}
+    table = {row[0]: row[1:11] for row in rows[1:] if "_" not in row[0]}
     assert table == {
         "ATXN8OS": ["SCA8", "AD", "CTG", "15/22", "15-15/22-22", "50", "71",
                     "normal", "31.0", "-"],
@@ -1024,6 +1024,7 @@ def test_str_sizes_repeats_and_flags_those_outside_the_normal_range(
                  "15.7", "-"],
         "HTT": ["Huntington disease", "AD", "CAG", "19/42", "19-19/39-45", "26",
                 "36", "pathogenic", "34.2", "-"],
+        "RFC1": ["CANVAS", "AR", "AAAAG", "-", "-", "-", "400", "no call", "3.0", "-"],
     }  # fmt: skip
     assert "2 of 4 disease repeats are in the normal range." in caplog.text
     assert (
@@ -1280,13 +1281,12 @@ def test_issue_856_str_refuses_unknown_sex_from_sparse_capture(tmp_path, eh, x, 
 
 def test_str_prefers_info_cached_sex_and_an_explicit_sex(tmp_path, eh):
     path = bam(tmp_path / "s.bam", _sex_reads(10, 0))
-    st = Path(path).stat()  # the cache must be from this very file
     (tmp_path / "s.bam.wgse_info.json").write_text(
         json.dumps({
             "md5_signature": calculate_bam_md5(path, None), "gender": "Male",
             "sex_call": ["Male", "non-PAR screening", "medium"],
             "sex_inference_version": SEX_INFERENCE_VERSION,
-            "input_signature": {"size": st.st_size, "mtime_ns": st.st_mtime_ns},
+            "input_signature": input_signature(path),
         })
     )  # fmt: skip
     args = ["typing", "str", "-i", path, "--ref", str(eh.ref), "--catalog",

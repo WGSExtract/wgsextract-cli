@@ -5,8 +5,12 @@ import argparse
 import gzip
 import json
 import logging
+import os
 import random
 import shlex
+import stat
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -23,7 +27,10 @@ from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import basic
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.sample_ploidy import ploidy_args
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
+from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+from wgsextract_cli.main import main
 
 # A het SNP (A>G) at 500 and a het 2 bp deletion (CGT>C) at 700, each carried by
 # half of 24 reads; the deletion's flanks differ, so it can't be left-shifted.
@@ -297,15 +304,14 @@ def test_caller_requires_a_reference(sample, tmp_path):
 
 
 def test_missing_ploidy_file_is_reported(tmp_path):
-    args = argparse.Namespace(ploidy=None, ploidy_file=str(tmp_path / "nope.txt"))
+    lib = argparse.Namespace(ploidy_file=None, build=None)
     with pytest.raises(WGSExtractError, match="--ploidy-file"):
-        basic._ploidy_args(args, argparse.Namespace(ploidy_file=None, build=None))  # type: ignore[arg-type]
+        ploidy_args(None, str(tmp_path / "nope.txt"), lib)  # type: ignore[arg-type]
 
 
 def test_explicit_ploidy_wins_over_the_librarys_file():
-    args = argparse.Namespace(ploidy="1", ploidy_file=None)
     lib = argparse.Namespace(ploidy_file="/lib/ploidy.txt", build="hg38")
-    assert basic._ploidy_args(args, lib) == ["--ploidy", "1"]  # type: ignore[arg-type]
+    assert ploidy_args("1", None, lib) == ["--ploidy", "1"]  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(
@@ -416,3 +422,257 @@ def test_annotate_without_an_annotation_file_fails(tmp_path):
 def test_annotate_requires_input():
     with pytest.raises(WGSExtractError, match="--input is required"):
         run_wgsextract("vcf", "annotate", "--ann-vcf", "ann.vcf.gz")
+
+
+def _write_index_test_vcf(vcf: Path, *positions: int, length: int = 100000) -> None:
+    plain = vcf.with_suffix("")
+    plain.write_text(
+        f"##fileformat=VCFv4.2\n##contig=<ID=chr1,length={length}>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        + "".join(f"chr1\t{pos}\trs{pos}\tA\tG\t50\tPASS\t.\n" for pos in positions),
+        encoding="utf-8",
+    )
+    with vcf.open("wb") as output:
+        run_command(["bgzip", "-c", plain], stdout=output)
+
+
+@pytest.fixture
+def rewritten_vcf(tmp_path):
+    folder = tmp_path / "input"
+    folder.mkdir()
+    vcf = folder / "sample.vcf.gz"
+    _write_index_test_vcf(vcf, 100)
+    run_command(["tabix", "-p", "vcf", vcf])
+    run_command(["tabix", "-C", "-p", "vcf", vcf])
+    _write_index_test_vcf(vcf, 50000)
+    for ext in ("tbi", "csi"):
+        os.utime(f"{vcf}.{ext}", (1_000_000, 1_000_000))
+    return vcf
+
+
+def _index_test_query(vcf: str, position: int = 50000) -> str:
+    return run_command(
+        ["bcftools", "query", "-r", f"chr1:{position}-{position}", "-f", "%ID\n", vcf],
+        capture_output=True,
+    ).stdout
+
+
+@needs_htslib
+@pytest.mark.parametrize("stale", ["csi", "tbi", "both", "short-name-csi"])
+def test_1231_refreshes_coexisting_indexes_after_vcf_rewrite(rewritten_vcf, stale):
+    vcf = rewritten_vcf
+    if stale != "both":
+        options = ["-C"] if stale == "tbi" else []
+        run_command(["tabix", "-f", *options, "-p", "vcf", vcf])
+
+    csi = Path(f"{vcf}.csi")
+    if stale == "short-name-csi":
+        csi = csi.rename(vcf.with_suffix(".csi"))
+    stale_index = f"{vcf}.tbi" if stale == "tbi" else str(csi)
+    assert _index_test_query(f"{vcf}##idx##{stale_index}") == ""
+    ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(vcf)) == "rs50000\n"
+    for index in (f"{vcf}.tbi", csi):
+        assert _index_test_query(f"{vcf}##idx##{index}") == "rs50000\n"
+
+
+@needs_htslib
+@pytest.mark.parametrize("existing", [False, True], ids=["missing", "stale"])
+def test_1231_uses_csi_when_rewritten_positions_exceed_tbi(rewritten_vcf, existing):
+    vcf = rewritten_vcf
+    if not existing:
+        for ext in ("tbi", "csi"):
+            Path(f"{vcf}.{ext}").unlink()
+    _write_index_test_vcf(vcf, 600_000_000, length=700_000_000)
+    ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(vcf), 600_000_000) == "rs600000000\n"
+    assert not Path(f"{vcf}.tbi").exists()
+
+
+@needs_htslib
+@pytest.mark.skipif(os.name == "nt", reason="Uses a POSIX tool wrapper")
+def test_1231_index_refresh_fails_when_source_changes_mid_build(
+    rewritten_vcf, tmp_path, monkeypatch
+):
+    vcf = rewritten_vcf
+    ann = _vcf(tmp_path / "ann.vcf", ["chr1\t100\trs1\tA\tG\t.\t.\t."])
+    replacement = tmp_path / "replacement.vcf.gz"
+    _write_index_test_vcf(replacement, 50000, 60000)
+    tabix = get_tool_path("tabix")
+    assert tabix is not None
+    wrapper = tmp_path / "tabix"
+    # Run real tabix, then replace the input after the first index build.
+    wrapper.write_text(
+        "#!/bin/sh\n"
+        f'{shlex.quote(tabix)} "$@" || exit $?\n'
+        'case "$*" in\n'
+        f'  *"-p vcf"*) [ ! -f {shlex.quote(str(replacement))} ] || '
+        f"mv {shlex.quote(str(replacement))} {shlex.quote(str(vcf))} ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    wrapper.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path), prepend=os.pathsep)
+
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "wgsextract_cli.main", "vcf", "annotate",
+            "--input", str(vcf), "--ann-vcf", ann, "--outdir", str(tmp_path),
+        ], capture_output=True, text=True, check=False,
+    )  # fmt: skip
+    assert result.returncode == 1
+    assert "changed while indexing" in result.stderr
+    assert not (tmp_path / "annotated.vcf.gz").exists()
+    assert _index_test_query(str(vcf), 60000) == ""
+
+
+@needs_htslib
+def test_1231_retries_after_a_backdated_rewrite_during_publication(
+    rewritten_vcf, tmp_path, monkeypatch
+):
+    vcf = rewritten_vcf
+    replacement = tmp_path / "replacement.vcf.gz"
+    _write_index_test_vcf(replacement, 90000)
+    os.utime(replacement, (900_000, 900_000))
+    replace = Path.replace
+
+    def swap_after_publish(path, target):
+        result = replace(path, target)
+        if Path(target) == Path(f"{vcf}.csi"):
+            replace(replacement, vcf)
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", swap_after_publish)
+        with pytest.raises(WGSExtractError, match="changed while indexing"):
+            ensure_vcf_indexed(vcf)
+
+    ensure_vcf_indexed(vcf)
+    assert _index_test_query(str(vcf), 90000) == "rs90000\n"
+
+
+@needs_htslib
+def test_1231_refresh_does_not_overwrite_a_siblings_short_index(rewritten_vcf):
+    vcf = rewritten_vcf
+    Path(f"{vcf}.csi").unlink()
+    sibling = vcf.with_suffix(".bgz")
+    _write_index_test_vcf(sibling, 90000)
+    run_command(["tabix", "-C", "-p", "vcf", sibling])
+    Path(f"{sibling}.csi").rename(sibling.with_suffix(".csi"))
+
+    with pytest.raises(WGSExtractError, match="share the index name"):
+        ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(sibling), 90000) == "rs90000\n"
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("name", "other"), [("KIT.VCF.GZ", "KIT.VCF.BGZ"), ("KIT.VCF.BGZ", "KIT.VCF.GZ")]
+)
+def test_issue_1243_upper_case_siblings_sharing_a_short_index_are_refused(
+    tmp_path, name, other
+):
+    # A sibling was looked up in lower case only, so on case-sensitive disks
+    # KIT.VCF.GZ overwrote KIT.VCF.BGZ's short index.
+    vcf, sibling = tmp_path / name, tmp_path / other
+    _write_index_test_vcf(vcf, 50000)
+    _write_index_test_vcf(sibling, 90000)
+    run_command(["tabix", "-C", "-p", "vcf", sibling])
+    Path(f"{sibling}.csi").rename(tmp_path / "KIT.VCF.csi")
+
+    with pytest.raises(WGSExtractError, match="share the index name"):
+        ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(sibling), 90000) == "rs90000\n"
+
+
+@needs_htslib
+def test_issue_1243_upper_case_vcf_refreshes_its_own_short_index(tmp_path):
+    # Its own short index isn't a sibling's, whatever case the disk folds.
+    vcf = tmp_path / "KIT.VCF.BGZ"
+    _write_index_test_vcf(vcf, 100)
+    run_command(["tabix", "-C", "-p", "vcf", vcf])
+    short = Path(f"{vcf}.csi").rename(tmp_path / "KIT.VCF.csi")
+    _write_index_test_vcf(vcf, 50000)
+    os.utime(short, (1_000_000, 1_000_000))
+
+    ensure_vcf_indexed(vcf)
+
+    assert _index_test_query(str(vcf)) == "rs50000\n"
+
+
+@needs_htslib
+@pytest.mark.skipif(os.name == "nt", reason="POSIX file permissions")
+def test_1231_refresh_preserves_restrictive_index_permissions(rewritten_vcf):
+    vcf = rewritten_vcf
+    csi = Path(f"{vcf}.csi")
+    csi.chmod(0o600)
+    previous = os.umask(0o022)
+    try:
+        ensure_vcf_indexed(vcf)
+    finally:
+        os.umask(previous)
+
+    assert _index_test_query(str(vcf)) == "rs50000\n"
+    assert stat.S_IMODE(csi.stat().st_mode) == 0o600
+
+
+@needs_htslib
+def test_1231_refresh_preserves_compressed_annotation_table_support(tmp_path):
+    sample = _vcf(tmp_path / "sample.vcf", ["chr1\t100\t.\tA\tG\t50\tPASS\t."])
+    table = tmp_path / "annotation.tab"
+    table.write_text(
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\trs123\tA\tG\t.\t.\t.\n",
+        encoding="utf-8",
+    )
+    compressed = tmp_path / "annotation.tab.gz"
+    with compressed.open("wb") as output:
+        run_command(["bgzip", "-c", table], stdout=output)
+
+    run_wgsextract(
+        "vcf", "annotate", "--input", sample, "--ann-vcf", str(compressed),
+        "--cols", "CHROM,POS,ID,REF,ALT", "--outdir", str(tmp_path),
+    )  # fmt: skip
+
+    assert _index_test_query(str(tmp_path / "annotated.vcf.gz"), 100) == "rs123\n"
+
+
+@needs_htslib
+@pytest.mark.parametrize("problem", ["unsorted", "read-only"])
+def test_1231_failed_refresh_stops_annotation(rewritten_vcf, tmp_path, capsys, problem):
+    vcf = rewritten_vcf
+    assert _index_test_query(str(vcf)) == ""
+    ann = _vcf(tmp_path / "ann.vcf", ["chr1\t100\trs1\tA\tG\t.\t.\t."])
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    if problem == "unsorted":
+        _write_index_test_vcf(vcf, 50000, 100)
+    elif os.name == "nt":
+        pytest.skip("Windows chmod doesn't restrict directory writes")
+
+    old_indexes = {p: p.read_bytes() for p in vcf.parent.glob("*.vcf.gz.*")}
+    try:
+        if problem == "read-only":
+            vcf.parent.chmod(0o555)
+            if os.access(vcf.parent, os.W_OK):
+                pytest.skip("This account can write to the read-only fixture")
+        with pytest.raises(SystemExit) as failure:
+            main(
+                ["vcf", "annotate", "--input", str(vcf), "--ann-vcf", ann,
+                 "--outdir", str(outdir)]
+            )  # fmt: skip
+        assert failure.value.code == 1
+        error = capsys.readouterr().err
+        assert vcf.name in error
+        assert (
+            "coordinate-sorted" if problem == "unsorted" else "writable directory"
+        ) in error
+        assert not (outdir / "annotated.vcf.gz").exists()
+        assert all(path.read_bytes() == data for path, data in old_indexes.items())
+    finally:
+        if problem == "read-only":
+            vcf.parent.chmod(0o755)

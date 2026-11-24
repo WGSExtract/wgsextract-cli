@@ -1,7 +1,9 @@
-import type { ResultDocument, ResultFile, ResultNotice, ResultScalar } from "../../../shared/result-document.js";
+import { resultCardRole, type ResultDocument, type ResultFile, type ResultNotice, type ResultScalar } from "../../../shared/result-document.js";
 import type { ActionReference, CommandContext } from "../../../shared/types.js";
 import { displayWorkspacePath } from "../../../shared/workspace-paths.js";
+import { isViewerTrack, viewerResultLocus } from "../../../shared/viewer-result.js";
 import { workspaceRoots } from "./model.js";
+import { renderViewerRowTables } from "./result-viewer-rows.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { state } from "./state.js";
 
@@ -31,9 +33,10 @@ export function renderResultSummary(document: ResultDocument | undefined): strin
         <dl class="result-metrics">
           ${metrics.map(([key, value]) => `<dt>${escapeHTML(key)}</dt><dd>${escapeHTML(formatScalar(value))}</dd>`).join("")}
         </dl>` : ""}
+      ${renderViewerRowTables(document)}
       ${document.outputs.length ? `
         <h4>${escapeHTML(labels.resultOutputsTitle ?? "Output files")}</h4>
-        <ul class="result-outputs">${document.outputs.map(renderOutput).join("")}</ul>` : ""}
+        <ul class="result-outputs">${document.outputs.map((output) => renderOutput(output, document)).join("")}</ul>` : ""}
       ${document.manifestPath ? `
         <p class="result-manifest">${escapeHTML(labels.resultManifestLabel ?? "Result manifest")}: <span class="result-path" title="${escapeAttribute(document.manifestPath)}">${escapeHTML(displayWorkspacePath(document.manifestPath, workspaceRoots()))}</span> ${pathButtons(document.manifestPath)}</p>` : ""}
       <details class="result-document">
@@ -62,14 +65,22 @@ export function renderResultNotice(notice: ResultNotice | undefined): string {
     </span>`;
 }
 
-function renderOutput(output: ResultFile): string {
+function renderOutput(output: ResultFile, document: ResultDocument): string {
     const size = output.sizeBytes == null ? "" : ` <span class="result-size">${escapeHTML(formatBytes(output.sizeBytes))}</span>`;
+    const viewer = state.manifest?.id === "wgs-extract" && output.exists && isViewerTrack(output.path)
+        ? `<button type="button" class="action-button secondary compact" data-result-viewer="${escapeAttribute(output.path)}" data-viewer-locus="${escapeAttribute(viewerResultLocus(document, output))}">${escapeHTML(state.labels.viewerStrings?.showInViewer ?? "")}</button>`
+        : "";
     return `
       <li>
         <span class="result-role">${escapeHTML(output.role || output.kind)}</span>
         <span class="result-path" title="${escapeAttribute(output.path)}">${escapeHTML(displayWorkspacePath(output.path, workspaceRoots()))}</span>${size}
-        ${output.exists ? pathButtons(output.path) : ""}
+        ${output.exists ? `${output.role === resultCardRole ? cardButton(output.path) : ""}${pathButtons(output.path)}` : ""}
+        ${viewer}
       </li>`;
+}
+
+function cardButton(filePath: string): string {
+    return `<button type="button" class="action-button secondary compact" data-result-card="${escapeAttribute(filePath)}">${escapeHTML(state.labels.resultCardViewTitle ?? "View Card")}</button>`;
 }
 
 function pathButtons(filePath: string): string {

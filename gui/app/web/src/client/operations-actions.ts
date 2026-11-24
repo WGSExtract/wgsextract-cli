@@ -1,12 +1,14 @@
-import { contextValue, displayCommand, placeholdersIn } from "../../../shared/rendering.js";
+import { contextValue, displayCommand, firstPathValue, placeholdersIn } from "../../../shared/rendering.js";
 import { controlWithID, errorMessage } from "./model.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
-import { apiStream } from "./api.js";
-import { appendTerminal, appendTerminalOutput, runningActionControllers, terminalExitStatus, terminalProcessErrorStatus } from "./terminal.js";
+import { api, apiStream } from "./api.js";
+import { appendTerminal, appendTerminalOutput, jobSubmissionUnknownMessage, runningActionControllers, terminalExitStatus, terminalProcessErrorStatus } from "./terminal.js";
 import { findTerminalEntry } from "./terminal-output.js";
-import { resultNotice, type ResultDocument } from "../../../shared/result-document.js";
+import { preferredOutput, resultCardOutput, resultNotice, type ResultDocument } from "../../../shared/result-document.js";
+import { openResultCard } from "./result-card-dialog.js";
 import { actionNoticeKey } from "./result-view.js";
+import { openGenomeViewer } from "./genome-viewer-launcher.js";
 import { prerequisitesInstalled } from "./operations-prerequisites.js";
 import type { ActionReference, ActionSpec, CommandContext, CommandSpec, LastResultDocumentPaths, TerminalEntry, ValueMap } from "../../../shared/types.js";
 
@@ -17,23 +19,47 @@ interface NoticeRun {
 const latestNoticeRuns = new Map<string, NoticeRun>();
 
 type ActionStreamEvent =
+    | { type: "submission-pending"; jobID: string | null }
     | { type: "start"; command: string }
     | { type: "output"; text?: string }
     | { type: "complete"; result: { exitCode: number; command: string; stderr?: string; resultDocument?: ResultDocument | null; lastResultDocumentPaths?: LastResultDocumentPaths } }
+    | { type: "submission-unknown"; jobID: string | null }
     | { type: "error"; error?: string };
 
-export async function runAction(action: ActionSpec, context: CommandContext, reference: ActionReference, options: { prerequisitesChecked?: boolean } = {}) {
+export async function runAction(
+    action: ActionSpec,
+    context: CommandContext,
+    reference: ActionReference,
+    options: { prerequisitesChecked?: boolean; opener?: HTMLElement | null } = {},
+) {
     if (action.confirm) {
         state.pendingConfirmation = { action, reference, context, input: "" };
         scheduleRender();
         return;
     }
-    if (!action.command) {
+    if (!action.command && !action.viewerInput) {
         throw new Error("Missing action command.");
     }
     // Without a check the tab opens at once, as it always has.
     const checked = options.prerequisitesChecked || !state.manifest?.prerequisites;
     if (!checked && !(await prerequisitesInstalled(action, context, reference))) {
+        return;
+    }
+    if (action.viewerInput) {
+        const key = action.viewerInput;
+        const fieldEl = typeof document !== "undefined" && typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? document.querySelector<HTMLInputElement>(`[data-field-id="${CSS.escape(key)}"]`)
+            : null;
+        const value = firstPathValue(contextValue(context, key) ?? state.fieldValues[key] ?? fieldEl?.value ?? "");
+        const escapedId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? CSS.escape(String(action.id ?? ""))
+            : String(action.id ?? "");
+        const opener = options.opener
+            ?? (typeof document !== "undefined" ? document.querySelector<HTMLElement>(`[data-action-id="${escapedId}"]`) : null)
+            ?? (typeof document !== "undefined" ? document.querySelector<HTMLElement>("[data-genome-viewer-open]") : null);
+        if (opener) {
+            openGenomeViewer(state.localizationCode, state.labels, opener, value);
+        }
         return;
     }
     // Only the latest run of an action (or row action) may set its notice; an older run can finish later.
@@ -48,13 +74,13 @@ export async function runAction(action: ActionSpec, context: CommandContext, ref
  * Resolves to its exit code, or null when it couldn't run or was cancelled.
  */
 export async function streamCommand(action: ActionSpec, context: CommandContext, endpoint: string, body: unknown, noticeRun: NoticeRun | null = null): Promise<number | null> {
-    const command = displayCommand(action.command, context);
+    const command = action.command ? displayCommand(action.command, context) : "";
     const runningID = appendTerminal(
         "command",
         action.title,
         actionTerminalBody(action.title, context, action),
         command,
-        { ...primaryFileDetail(action, context) });
+        { ...primaryFileDetail(action, context), ...(action.serverOperation ? { pendingJobID: null } : {}) });
     const controller = new AbortController();
     runningActionControllers.set(runningID, controller);
     scheduleRender();
@@ -82,6 +108,10 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
             return null;
         }
         const failedCommand = existing.command || command;
+        const message = existing.pendingJobID !== undefined
+            ? jobSubmissionUnknownMessage(existing.pendingJobID)
+            : errorMessage(error);
+        delete existing.pendingJobID;
         // Updated in place: the Jobs list holds this same entry.
         Object.assign(existing, {
             kind: "error",
@@ -89,9 +119,9 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
             command: failedCommand,
             body: [
                 existing.body || actionExecutionLine(action.title, context, action),
-                errorMessage(error),
+                message,
             ].join("\n"),
-            status: terminalProcessErrorStatus(failedCommand, errorMessage(error)),
+            status: terminalProcessErrorStatus(failedCommand, message),
         });
         return null;
     }
@@ -108,7 +138,11 @@ function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context:
         return;
     }
     switch (event.type) {
+        case "submission-pending":
+            tab.pendingJobID = event.jobID;
+            return;
         case "start":
+            delete tab.pendingJobID;
             tab.command = event.command;
             tab.body = [
                 `$ ${event.command}`,
@@ -133,16 +167,39 @@ function applyActionEvent(event: ActionStreamEvent, action: ActionSpec, context:
             tab.body = [tab.body, `exit ${result.exitCode}`].filter(Boolean).join("\n");
             if (result.resultDocument !== undefined) {
                 applyResultDocument(tab, result.resultDocument, result.exitCode, result.stderr ?? "", noticeRun);
+                showResult(action, result.resultDocument);
             }
             if (result.lastResultDocumentPaths) {
                 state.lastResultDocumentPaths = result.lastResultDocumentPaths;
             }
             break;
         }
+        case "submission-unknown":
+            delete tab.pendingJobID;
+            throw new Error(jobSubmissionUnknownMessage(event.jobID));
         case "error":
+            delete tab.pendingJobID;
             throw new Error(event.error ?? "Action failed.");
     }
     scheduleRender();
+}
+
+/**
+ * What an analysis action shows when its run ends, even while the terminal is collapsed: its result card
+ * (`resultCard`) in the app, or a report the tool wrote (`openOutput`) in the system's default app.
+ */
+function showResult(action: ActionSpec, document: ResultDocument | null) {
+    const card = action.resultCard ? resultCardOutput(document) : undefined;
+    if (card) {
+        void openResultCard(card.path, state.labels);
+    }
+    const report = preferredOutput(document, action.openOutput);
+    if (report) {
+        void api<void>("/api/result/open", { method: "POST", body: { path: report.path, reveal: false } }).catch((error: unknown) => {
+            appendTerminal("error", state.labels.terminalProcessErrorTitle, errorMessage(error));
+            scheduleRender();
+        });
+    }
 }
 
 function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null, exitCode: number, stderr: string, noticeRun: NoticeRun | null) {
@@ -162,7 +219,9 @@ function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null
 function primaryFileDetail(action: ActionSpec, context: CommandContext): { primaryFile?: string } {
     const candidates = action.primaryInput
         ? [action.primaryInput]
-        : actionCommandPlaceholders(action.command).map(inputValueKey).filter(isFilePathControl);
+        : action.command
+            ? actionCommandPlaceholders(action.command).map(inputValueKey).filter(isFilePathControl)
+            : [];
     for (const key of candidates) {
         const value = String(contextValue(context, key) ?? "").trim();
         if (value) {

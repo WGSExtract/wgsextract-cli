@@ -12,14 +12,17 @@ from platformdirs import user_config_dir
 
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.execution_context import ConfigState, bound, current
+from wgsextract_cli.core.file_lock import shared_file_lock
 from wgsextract_cli.core.paths import expand_path, windows_local_app_dir
 from wgsextract_cli.core.settings_schema import (
     DEV_SETTINGS,
     DEV_TABLE,
     MOVED_TO_DEV,
+    SERVER_SETTINGS,
     SETTINGS,
     DevSettings,
     InvalidSetting,
+    ServerSettings,
     Settings,
     check_values,
 )
@@ -30,6 +33,7 @@ from wgsextract_cli.core.users_workspace import (
     users_workspace,
 )
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.workspace_activity import relocated_config_path, workspace_use
 
 # For Python < 3.11, use tomli
 if sys.version_info >= (3, 11):
@@ -108,6 +112,15 @@ def _validate_config_types(
     *,
     allow_invalid_threads: bool = False,
 ) -> None:
+    server = config.get("server", {})
+    if not isinstance(server, Mapping):
+        raise WGSExtractError(f"Invalid [server] table in {config_path}.")
+    try:
+        list(check_values(server, SERVER_SETTINGS))
+    except InvalidSetting as error:
+        raise WGSExtractError(
+            f"Invalid setting 'server.{error.key}' in {config_path}: {error}"
+        ) from None
     for key, new_key in MOVED_TO_DEV.items():
         if key in config:
             raise WGSExtractError(
@@ -184,7 +197,7 @@ def _state() -> ConfigState:
 
 
 def _resolve(path: str | os.PathLike[str] | None) -> Path | None:
-    return Path(path).expanduser().resolve() if path else None
+    return relocated_config_path(Path(path).expanduser().resolve()) if path else None
 
 
 def set_config_path(path: str | os.PathLike[str] | None) -> None:
@@ -199,6 +212,9 @@ def config_args(*, keep_awake: bool | None = None) -> list[str]:
     args = ["--config", str(selected)] if selected else []
     if keep_awake or (keep_awake is False and settings.get("keep_awake", False)):
         args.append("--keep-awake" if keep_awake else "--no-keep-awake")
+    # An internal step's card would describe the step; its caller writes its own.
+    if settings.get("result_card", False):
+        args.append("--no-card")
     from wgsextract_cli.core.temp_directory import configured_temp_directory
 
     temporary = configured_temp_directory()
@@ -236,6 +252,15 @@ def read_toml(path: Path) -> dict[str, Any]:
     return tomllib.loads(path.read_bytes().decode("utf-8-sig"))
 
 
+def _read_settings_file(path: Path) -> dict[str, Any]:
+    try:
+        return read_toml(path)
+    except tomllib.TOMLDecodeError as e:
+        raise WGSExtractError(f"Invalid TOML in {path}: {e}") from e
+    except UnicodeDecodeError as e:
+        raise WGSExtractError(f"Invalid UTF-8 in {path} at byte {e.start + 1}") from e
+
+
 def load_config() -> dict[str, Any]:
     """
     Load configuration from the standard config file.
@@ -259,8 +284,8 @@ def load_config() -> dict[str, Any]:
         )
     if config_path.exists():
         try:
-            config = read_toml(config_path)
-        except (OSError, tomllib.TOMLDecodeError) as e:
+            config = _read_settings_file(config_path)
+        except OSError as e:
             logging.warning(f"Ignoring unreadable config {config_path}: {e}")
 
     for legacy_key in LEGACY_SETTINGS & config.keys():
@@ -276,11 +301,18 @@ def load_config() -> dict[str, Any]:
         - SETTINGS.keys()
         - CONFIG_ALIASES.keys()
         - MOVED_TO_DEV.keys()
-        - {DEV_TABLE},
+        - {DEV_TABLE, "server"},
         [*SETTINGS, *CONFIG_ALIASES],
         str(config_path),
     )
     dev = config.get(DEV_TABLE)
+    server = config.get("server")
+    if isinstance(server, dict):
+        _warn_unknown(
+            server.keys() - SERVER_SETTINGS.keys(),
+            SERVER_SETTINGS,
+            f"the [server] table of {config_path}",
+        )
     if isinstance(dev, dict):
         _warn_unknown(
             dev.keys() - DEV_SETTINGS.keys(),
@@ -406,6 +438,18 @@ def settings_from(values: Mapping[str, object]) -> Settings:
     return Settings(
         **cast(dict[str, Any], given),
         dev=DevSettings(**cast(dict[str, Any], dev_values)),
+        server=ServerSettings(
+            **cast(
+                dict[str, Any],
+                {
+                    name: value
+                    for _, name, value in check_values(
+                        cast(Mapping[str, object], values.get("server", {})),
+                        SERVER_SETTINGS,
+                    )
+                },
+            )
+        ),
     )
 
 
@@ -418,58 +462,50 @@ def settings_suspended() -> Iterator[None]:
         yield
 
 
-def _update_dev_table(config: dict[str, Any], updates: object) -> None:
-    """Merge ``updates`` into config's [dev] table the way save_config merges
+def _update_table(
+    config: dict[str, Any], updates: object, table_name: str, paths: frozenset[str]
+) -> None:
+    """Merge ``updates`` into a settings table the way save_config merges
     top-level settings: None or "" clears a key, and None clears the table."""
     if updates is None:
-        config.pop(DEV_TABLE, None)
+        config.pop(table_name, None)
         return
     if not isinstance(updates, Mapping):
-        config[DEV_TABLE] = updates  # rejected by _validate_config_types
+        config[table_name] = updates  # rejected by _validate_config_types
         return
-    current = config.get(DEV_TABLE)
+    current = config.get(table_name)
     dev = dict(current) if isinstance(current, Mapping) else {}
     for key, value in updates.items():
         if value is None or value == "":
             dev.pop(key, None)
-        elif key in DEV_PATH_SETTINGS:
+        elif key in paths:
             dev[key] = _normalize_path_setting(value)
         else:
             dev[key] = value
     if dev:
-        config[DEV_TABLE] = dev
+        config[table_name] = dev
     else:
-        config.pop(DEV_TABLE, None)
+        config.pop(table_name, None)
 
 
-def save_config(updates: dict[str, Any]) -> None:
-    """Save configuration updates to the config.toml file."""
-    import tomli_w
-
-    config_path = get_config_path()
-
-    current_config = {}
-    if config_path.exists():
-        # Refuse to overwrite a config we cannot parse; that would drop the
-        # user's other settings.
-        try:
-            current_config = read_toml(config_path)
-        except tomllib.TOMLDecodeError as e:
-            raise WGSExtractError(
-                f"Cannot update {config_path}: it is not valid TOML ({e})."
-            ) from e
-
+def _apply_config_updates(config: dict[str, Any], updates: dict[str, Any]) -> None:
+    """Merge save_config's ``updates`` into the settings read from config.toml."""
     for legacy_key in LEGACY_SETTINGS:
-        current_config.pop(legacy_key, None)
+        config.pop(legacy_key, None)
     for key, value in updates.items():
-        if key == DEV_TABLE:
-            _update_dev_table(current_config, value)
+        if key in (DEV_TABLE, "server"):
+            _update_table(
+                config,
+                value,
+                key,
+                DEV_PATH_SETTINGS if key == DEV_TABLE else frozenset(),
+            )
             continue
         if key in MOVED_TO_DEV:
             if value is None or value == "":
-                current_config.pop(key, None)
+                config.pop(key, None)
             else:
-                current_config[key] = value  # rejected below, naming its [dev] key
+                config[key] = value  # rejected below, naming its [dev] key
             continue
         if key not in SETTINGS:
             continue
@@ -477,18 +513,42 @@ def save_config(updates: dict[str, Any]) -> None:
         # would resurrect a cleared value or shadow nothing but confuse users.
         for alias, canonical in CONFIG_ALIASES.items():
             if canonical == key:
-                current_config.pop(alias, None)
+                config.pop(alias, None)
         if value is None or value == "":
-            current_config.pop(key, None)
+            config.pop(key, None)
         else:
-            current_config[key] = _normalize_path_setting(value)
+            config[key] = _normalize_path_setting(value)
 
-    _validate_config_types(current_config, config_path)
+
+@workspace_use()
+def save_config(updates: dict[str, Any]) -> None:
+    """Save configuration updates to the config.toml file."""
+    import tomli_w
+
+    with _load_lock:
+        state = _state()
+        selected = state.path
+        config_path = get_config_path()
+    config_path = relocated_config_path(config_path)
     if config_path == users_workspace() / "config.toml":
         claim_users_workspace(config_path.parent)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(config_path, tomli_w.dumps(current_config).encode("utf-8"))
-    reload_settings()
+    # The app and other commands save this file too: merge into what is there
+    # now. Take the workspace lease before the file lock so the target cannot
+    # move between resolution and publication.
+    with shared_file_lock(config_path) as target:
+        current_config = {}
+        if target.exists():
+            # Refuse to overwrite a config we cannot parse; that would drop the
+            # user's other settings.
+            current_config = _read_settings_file(target)
+
+        _apply_config_updates(current_config, updates)
+        _validate_config_types(current_config, config_path)
+        atomic_write(target, tomli_w.dumps(current_config).encode("utf-8"))
+    with _load_lock:
+        if selected is not None and state.path == selected:
+            state.path = config_path
+        reload_settings()
 
 
 @overload

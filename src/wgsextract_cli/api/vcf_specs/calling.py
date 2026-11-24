@@ -28,6 +28,7 @@ from .shared import (
     _deepvariant_items,
     _public,
     _region_param,
+    _structural_region_param,
     reference_evidence_param,
 )
 
@@ -147,6 +148,9 @@ class VcfCnvParams(_CallerParams):
 
     COMMAND = "vcf cnv"
 
+    region: str | None = _structural_region_param(
+        "One region, a comma-separated list, or a BED file."
+    )
     map: str | None = param(
         None,
         help="Deprecated and ignored: Delly 2 no longer uses mappability maps.",
@@ -168,6 +172,10 @@ class VcfSvParams(_CallerParams):
 
     COMMAND = "vcf sv"
 
+    region: str | None = _structural_region_param(
+        "Delly/Sniffles: one region, a comma-separated list, or BED; "
+        "pbsv: one region only.",
+    )
     caller: str | None = param(
         None,
         help="SV caller to use (default: sniffles for ONT or --long-read, "
@@ -248,6 +256,10 @@ class VcfCallParams(_CallerParams):
 
     COMMAND = "vcf call"
 
+    region: str | None = _structural_region_param(
+        "One region, a comma-separated list, or BED (Delly/Sniffles without "
+        "SNP/indel calling); pbsv: one region only.",
+    )
     types: str = param(
         "snp,indel",
         help="Comma-separated variant types to call: snp and indel (bcftools), "
@@ -345,8 +357,25 @@ class VcfGatkParams(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README).",
+        help="Call on an NVIDIA GPU with Parabricks (Linux, Docker; see "
+        "docs/hardware.md#nvidia-gpus-parabricks).",
         action="store_true",
+    )
+    pair_hmm_cuda: Path | None = param(
+        None,
+        local_only=True,
+        help="Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK "
+        "4.6.2.0, with GKL CPU fallback. Opt-in; not Parabricks. "
+        "See native/pairhmm/README.md. Not with --gpu or --scatter.",
+        path="file",
+    )
+    pair_hmm_neon: Path | None = param(
+        None,
+        local_only=True,
+        help="Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for GATK "
+        "4.6.2.0, with Java fallback. Opt-in; not Parabricks. "
+        "See packaging/arm64/gkl/README.md. Not with --gpu or --scatter.",
+        path="file",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
     qc_min_depth: float | None = depth_param()
@@ -354,6 +383,19 @@ class VcfGatkParams(_CallerParams):
         "gatk.g.vcf.gz",
         "little time; the VCF is then genotyped from it; not with --gpu or --scatter",
     )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.pair_hmm_cuda is not None and self.pair_hmm_neon is not None:
+            raise UsageError("--pair-hmm-cuda cannot be combined with --pair-hmm-neon.")
+        if self.pair_hmm_cuda is not None and (self.gpu or self.scatter):
+            raise UsageError(
+                "--pair-hmm-cuda cannot be combined with --gpu or --scatter."
+            )
+        if self.pair_hmm_neon is not None and (self.gpu or self.scatter):
+            raise UsageError(
+                "--pair-hmm-neon cannot be combined with --gpu or --scatter."
+            )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -411,7 +453,8 @@ class VcfDeepvariantParams(_CallerParams):
     gpu: bool = param(
         False,
         help="NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, "
-        "else Parabricks; Ultima: Google's GPU image (README).",
+        "else Parabricks; Ultima: Google's GPU image "
+        "(docs/hardware.md#nvidia-gpus-parabricks).",
         action="store_true",
     )
     no_gpu_memory_check: bool = no_gpu_memory_check_param()
@@ -448,14 +491,14 @@ class VcfClair3Params(_CallerParams):
     )
     gpu: bool = param(
         False,
-        help="Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, "
-        "Docker; see docs/ont.md).",
+        help="Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU "
+        "in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md).",
         action="store_true",
     )
     no_preflight: bool = no_preflight_param()
     qc_min_depth: float | None = depth_param()
     reference_evidence: str | None = reference_evidence_param(
-        "clair3.g.vcf.gz", "~2.4x the time on a CPU, ~4.3x on a GPU"
+        "clair3.g.vcf.gz", "~2.4x the time on a CPU, ~4.3x on CUDA; MPS varies"
     )
 
 

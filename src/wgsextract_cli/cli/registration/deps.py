@@ -3,7 +3,14 @@ from __future__ import annotations
 import argparse
 
 from wgsextract_cli.api._cli import add_arguments
-from wgsextract_cli.api.deps import DepsCheckParams
+from wgsextract_cli.api._params import Params
+from wgsextract_cli.api.deps import (
+    DepsCheckParams,
+    DepsInstallParams,
+    DepsListParams,
+    DepsReadyParams,
+    DepsUninstallParams,
+)
 from wgsextract_cli.cli._lazy import command_handler
 from wgsextract_cli.core.messages import CLI_HELP
 
@@ -14,15 +21,42 @@ def register(
 ) -> None:
     deps_parser = subparsers.add_parser("deps", help=CLI_HELP["cmd_deps"])
     deps_subparsers = deps_parser.add_subparsers(dest="subcommand", required=True)
-    check_parser = deps_subparsers.add_parser(
-        "check", parents=[base_parser], help=CLI_HELP["cmd_check-deps"]
-    )
-    add_arguments(check_parser, DepsCheckParams)
-    check_parser.set_defaults(
+
+    def add(name: str, help_key: str, params: type[Params]) -> argparse.ArgumentParser:
+        parser = deps_subparsers.add_parser(
+            name, parents=[base_parser], help=CLI_HELP[help_key]
+        )
+        add_arguments(parser, params)
+        return parser
+
+    # Literal module and function names: CI's test selection reads them.
+    add("check", "cmd_check-deps", DepsCheckParams).set_defaults(
         func=command_handler(
             "wgsextract_cli.commands._deps_status",
             "run",
             DepsCheckParams,
             debug="debug",
+        )
+    )
+    add("list", "cmd_deps-list", DepsListParams).set_defaults(
+        func=command_handler(
+            "wgsextract_cli.commands._deps_status", "run_list", DepsListParams
+        )
+    )
+    add("ready", "cmd_deps-ready", DepsReadyParams).set_defaults(
+        func=command_handler(
+            "wgsextract_cli.commands._deps_status", "run_ready", DepsReadyParams
+        )
+    )
+    add("install", "cmd_deps-install", DepsInstallParams).set_defaults(
+        func=command_handler(
+            "wgsextract_cli.commands._deps_status", "run_install", DepsInstallParams
+        )
+    )
+    add("uninstall", "cmd_deps-uninstall", DepsUninstallParams).set_defaults(
+        func=command_handler(
+            "wgsextract_cli.commands._deps_status",
+            "run_uninstall",
+            DepsUninstallParams,
         )
     )

@@ -1,5 +1,5 @@
 import { configEditorControls, initialCheckedOptions, initialConfigValues, initialFieldValues } from "../../../shared/rendering.js";
-import { api } from "./api.js";
+import { api, setWorkspaceMoveRevision } from "./api.js";
 import { clamp, escapeAttribute, escapeHTML } from "./dom.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { errorMessage, renderIcon } from "./model.js";
@@ -29,12 +29,15 @@ const app: HTMLElement = (() => {
 let bindEventsModulePromise: Promise<typeof import("./events.js")> | null = null;
 let renderSerial = 0;
 let autoRunSetupTriggered = false;
+// Declared before the top-level await below: bootstrap() reaches installDevReload().
+let devReloadInstalled = false;
 setRender(render);
 window.addEventListener("resize", () => revealPathInputEnds(app));
 await bootstrap();
 async function bootstrap(locale?: string) {
     try {
         const bundle = await api<ManifestResponse>(`/api/manifest${locale ? `?locale=${encodeURIComponent(locale)}` : ""}`);
+        setWorkspaceMoveRevision(bundle.workspaceMoveRevision);
         state.manifest = bundle.manifest;
         state.iconMap = bundle.iconMap ?? {};
         state.labels = bundle.labels;
@@ -248,7 +251,6 @@ function renderError(error: unknown) {
     app.dataset.state = "error";
     app.innerHTML = `<main class="loading-screen"><h1>${escapeHTML(state.labels.loadWebUITitle ?? "Could not load Web UI")}</h1><p class="inline-error">${escapeHTML(message)}</p></main>`;
 }
-let devReloadInstalled = false;
 function installDevReload() {
     if (devReloadInstalled || typeof EventSource === "undefined") {
         return;

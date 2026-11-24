@@ -232,6 +232,38 @@ def test_unreadable_variant_tables_are_refused_not_failed(
         assert "pyarrow" in answer["error"]["message"]
 
 
+def test_1209_corrupt_parquet_returns_a_client_error(client, work):
+    pytest.importorskip("pyarrow.parquet")
+    parquet = work / "broken_variants.parquet"
+    parquet.write_bytes(b"not a parquet file")
+    query = urllib.parse.urlencode({"path": str(parquet)})
+    status, answer = client.request("GET", f"/variants?{query}")
+    assert (status, answer["error"]["code"]) == (400, "usage")
+
+
+def test_1209_parquet_reads_requested_and_filter_columns_only(client, work):
+    pa = pytest.importorskip("pyarrow")
+    pq = pytest.importorskip("pyarrow.parquet")
+    parquet = work / "sample_variants.parquet"
+    # This timestamp is valid in Arrow but outside Python datetime's range.
+    pq.write_table(
+        pa.table(
+            {
+                "chrom": ["chr1", "chr2"],
+                "pos": [42, 84],
+                "not_requested": pa.array([10**13, 10**13], type=pa.timestamp("s")),
+            }
+        ),
+        parquet,
+    )
+    query = urllib.parse.urlencode(
+        {"path": str(parquet), "columns": "pos,gene", "region": "chr1:42"}
+    )
+    status, answer = client.request("GET", f"/variants?{query}")
+    assert status == 200
+    assert answer["rows"] == [{"pos": 42}]
+
+
 def test_report_lookup_reads_a_samples_newest_report(tmp_path, work):
     from tests.htslib_helpers import run_wgsextract
 
@@ -354,3 +386,34 @@ def test_mcp_offers_lookups_without_allow_jobs(work, variant_tables):
     result = mcp.call("report_section", path=str(work.parent))
     assert result["structuredContent"]["error"]["code"] == "path_not_allowed"
     assert mcp.close() == 0
+
+
+def test_1289_variant_quality_and_gnomad_columns_are_queryable(
+    tmp_path, work, variant_tables
+):
+    expected = {
+        "phase_set": "350",
+        "alt_fraction": 0.3,
+        "transcript_id": "ENST4",
+        "gnomad_popmax_af": 0.125,
+        "gnomad_nhomalt": 0,
+    }
+    path = str(variant_tables["tsv"])
+    with _serve(tmp_path, [work]) as http:
+        query = urllib.parse.urlencode(
+            {"path": path, "rsid": "rs4", "columns": ",".join(expected)}
+        )
+        status, answer = http.request("GET", f"/variants?{query}")
+        assert status == 200, answer
+        assert answer["rows"] == [expected]
+    mcp = Mcp("--allow", str(work))
+    try:
+        result = mcp.call(
+            "query_variants",
+            path=str(variant_tables["sqlite"]),
+            rsid="rs4",
+            columns=list(expected),
+        )
+        assert result["structuredContent"]["rows"] == [expected]
+    finally:
+        assert mcp.close() == 0

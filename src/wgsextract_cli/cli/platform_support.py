@@ -16,7 +16,6 @@ _WINDOWS_VCF_TOOLS = {
     "cnv": "delly",
     "freebayes": "FreeBayes",
     "deepvariant": "DeepVariant",
-    "acmg": "fastVEP",
 }
 _WINDOWS_TYPING_TOOLS = {
     "cyp2d6": "Cyrius",
@@ -97,7 +96,7 @@ def verify_platform_support(args: argparse.Namespace) -> None:
         )
 
         require_somalier_platform()
-    if command == "methylation":
+    if command == "methylation" and getattr(args, "methylation_cmd", None) == "pileup":
         from wgsextract_cli.commands.methylation import (
             require_supported_platform as require_modkit_platform,
         )

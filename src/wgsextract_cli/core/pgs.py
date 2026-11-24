@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any, TextIO
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen, run_command
 from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS, Thresholds
 
 if TYPE_CHECKING:
@@ -46,15 +46,22 @@ DISCLAIMER = (
 )
 # The PGS Catalog's licence for a score whose authors set no terms of their own.
 CATALOG_DEFAULT_LICENSE = "PGS obtained from the Catalog should be cited appropriately"
-# IDs and trait labels only: scoring files are never redistributed. `bmi`'s
-# PGS000027 carries its authors' terms (academic research use; commercial use
-# needs the Broad Institute's permission), which `score pgs` warns of.
+# An authors' licence that is CC BY 4.0 alone, however it is spelled, only
+# asks for attribution (the citation `score pgs` reports), so it restricts no
+# use. Licences with NC, ND or SA terms, or any further text, don't match.
+ATTRIBUTION_LICENSE = re.compile(
+    r"(creative commons attribution 4\.0( international)?( license)?"
+    r"( \(cc[ -]by[ -]4\.0\))?|cc[ -]by[ -]4\.0( international)?)"
+)
+# IDs and trait labels only: scoring files are never redistributed. `bmi` is
+# PGS005198 (Smit et al. 2025, CC BY 4.0), not PGS000027, which only academic
+# research may use (#1165).
 CURATED = {
     "cad": "PGS000018",
     "breast-cancer": "PGS000004",
     "height": "PGS000297",
     "t2d": "PGS000020",
-    "bmi": "PGS000027",
+    "bmi": "PGS005198",
     "stroke": "PGS000038",
     "triglycerides": "PGS000063",
     "ldl-cholesterol": "PGS000065",
@@ -65,9 +72,14 @@ CURATED = {
 
 
 def author_license(license: str | None) -> bool:
-    """Whether a Catalog score's licence is its authors' own terms rather than
-    the Catalog's default."""
-    return bool(license) and not str(license).startswith(CATALOG_DEFAULT_LICENSE)
+    """Whether a Catalog score's licence is its authors' own terms, other than
+    attribution, rather than the Catalog's default."""
+    text = " ".join(str(license or "").split())
+    return (
+        bool(text)
+        and not text.startswith(CATALOG_DEFAULT_LICENSE)
+        and not ATTRIBUTION_LICENSE.fullmatch(text.casefold().rstrip("."))
+    )
 
 
 def text_file(path: Path) -> TextIO:
@@ -509,11 +521,8 @@ class Genotypes:
         )
         # Build incrementally, avoiding an external index sort in OS temp.
         self.db.execute("CREATE INDEX locus ON calls(chrom,pos)")
-        names = subprocess.run(
-            ["bcftools", "query", "-l", str(vcf)],
-            capture_output=True,
-            text=True,
-            errors="replace",
+        names = run_command(
+            ["bcftools", "query", "-l", str(vcf)], capture_output=True, check=False
         )
         if names.returncode:
             raise WGSExtractError(f"Cannot read VCF: {names.stderr[-500:]}")
@@ -525,13 +534,15 @@ class Genotypes:
                 "VCF must contain one sample, or select one with --sample."
             )
         self.sample = sample or samples[0]
-        header = subprocess.run(
-            ["bcftools", "view", "-h", str(vcf)],
-            capture_output=True,
-            text=True,
-            check=True,
-            errors="replace",
-        ).stdout
+        read = run_command(
+            ["bcftools", "view", "-h", str(vcf)], capture_output=True, check=False
+        )
+        if read.returncode:
+            raise WGSExtractError(
+                f"Cannot read the VCF header (bcftools view exit {read.returncode}): "
+                f"{read.stderr[-500:]}"
+            )
+        header = read.stdout
         expected = "248956422" if build == "GRCh38" else "249250621"
         chr1 = re.search(r"##contig=<ID=(?:chr)?1,length=(\d+)", header)
         if chr1 and chr1[1] in {"248956422", "249250621"} and chr1[1] != expected:
@@ -539,10 +550,7 @@ class Genotypes:
         self.has_blocks = False
         # A gVCF of only single-base reference records (ALT ".") is known by
         # its header: WGS Extract's reference-evidence line or GATK's bands.
-        self.is_gvcf = any(
-            line.startswith((f"##{evidence.HEADER_KEY}=", "##GVCFBlock"))
-            for line in header.splitlines()
-        )
+        self.is_gvcf = evidence.header_declares_gvcf(header)
         command = [
             "bcftools",
             "query",

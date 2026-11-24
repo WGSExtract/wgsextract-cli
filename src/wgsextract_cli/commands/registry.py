@@ -40,6 +40,7 @@ COMMAND_MODULES = tuple(
         "microarray",
         "lineage",
         "vcf",
+        "cohort",
         "repair",
         "qc",
         "ref",
@@ -130,7 +131,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier(
         "ref", SETUP, "Download and check reference genomes and annotation data."
     ),
-    CommandTier("deps", SETUP, "Check that the external tools are installed."),
+    CommandTier("deps", SETUP, "Check, install and remove the external tools."),
     CommandTier(
         "example-genome", SETUP, "Download public example genomes to practise on."
     ),
@@ -148,6 +149,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier("help", SETUP, "List every command, or explain one: 'help vcf snp'."),
     CommandTier("bam", ADVANCED, "Sort, index, convert and merge BAM/CRAM files."),
     CommandTier("qc", ADVANCED, "Read and VCF quality reports; fake test data."),
+    CommandTier("cohort", ADVANCED, "Summarize variants across a local cohort."),
     CommandTier("repair", ADVANCED, "Fix FTDNA BAM/VCF formatting problems."),
     CommandTier(
         "analyze", ADVANCED, "Run several analyses in one go, for one or many genomes."
@@ -170,7 +172,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier(
         "panel",
         ADVANCED,
-        "Gene lists to BED targets for Nanopore adaptive sampling.",
+        "Gene lists to BED targets; research panel file checks.",
     ),
     CommandTier(
         "pet-align", ADVANCED, "Align and call variants for a cat or dog genome."
@@ -190,6 +192,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
 ADVANCED_SUBCOMMANDS = frozenset(
     {
         "extract bam-subset",
+        "lineage y-private",
         "vcf freebayes",
         "vcf gatk",
         "vcf deepvariant",
@@ -287,6 +290,7 @@ JOURNEYS: tuple[Journey, ...] = (
     Journey(
         "A VCF (from a provider or another pipeline)",
         (
+            ("vcf prepare", "fix its compression, sorting, contig names and index"),
             ("vcf clinvar", "add ClinVar clinical significance"),
             ("vcf filter", "keep a gene, region or quality range"),
             ("vep run", "predict each variant's effect on genes"),

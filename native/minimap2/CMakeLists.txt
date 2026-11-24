@@ -6,6 +6,23 @@ FetchContent_Declare(minimap2
     URL_HASH SHA256=bff334a0e4512644e2f3e29944aeec408f49450f4f74dc39fe89e5273869255b
     SOURCE_SUBDIR unused)
 FetchContent_MakeAvailable(minimap2)
+set(upstream_index "${minimap2_SOURCE_DIR}/index.c")
+if(WIN32)
+    set(windows_compat "${CMAKE_CURRENT_SOURCE_DIR}/../../packaging/windows/compat")
+    add_library(wgse_minimap2_platform OBJECT ../windows/msvc_compat.c "${windows_compat}/wgse_compat.c")
+    target_include_directories(wgse_minimap2_platform PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}/../windows/include" "${windows_compat}/include")
+    target_compile_definitions(wgse_minimap2_platform
+        PUBLIC WIN32 NOMINMAX _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE
+        PRIVATE WGSE_UPSTREAM_GETTIMEOFDAY)
+    target_compile_options(wgse_minimap2_platform
+        PUBLIC $<$<COMPILE_LANGUAGE:C>:/FIintrin.h>
+        PRIVATE /FIunistd.h)
+    target_link_libraries(wgse_minimap2_platform PUBLIC psapi)
+    set(wgse_minimap2_warnings /W4 /WX)
+else()
+    set(wgse_minimap2_warnings -Wall -Wextra -Werror)
+endif()
 if(APPLE)
     # Also declared by bwa-mem2; the first declaration wins, so keep them identical.
     FetchContent_Declare(neon
@@ -16,7 +33,7 @@ if(APPLE)
 endif()
 
 # Bump when the wgse-minimap2 package changes; it is versioned separately from minimap2.
-set(WGSE_MINIMAP2_VERSION 0.4.0)
+set(WGSE_MINIMAP2_VERSION 0.4.1)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}/intrinsics")
 foreach(header emmintrin.h smmintrin.h)
@@ -45,7 +62,13 @@ file(WRITE "${generated}/main.c" "${main_source}")
 # Output-identical speedups (see wgse_index.inc and wgse_ksort.h).
 # index.c: load .mmi hash tables in parallel and compute mid_occ and the index
 # statistics in parallel, with the same results.
-file(READ "${minimap2_SOURCE_DIR}/index.c" index_source)
+file(READ "${upstream_index}" index_source)
+if(WIN32)
+    # Like the stock Windows minimap2 package: the CRT's long is only 32 bits.
+    minimap2_seam(index_source "ftell(r->fp.idx)" "_ftelli64(r->fp.idx)")
+    set(upstream_index "${generated}/index-windows.c")
+    file(WRITE "${upstream_index}" "${index_source}")
+endif()
 minimap2_seam(index_source "int32_t mm_idx_cal_max_occ(const mm_idx_t *mi, float f)\n{"
     "static int32_t wgse_mm_idx_cal_max_occ(const mm_idx_t *mi, float f);
 int32_t mm_idx_cal_max_occ(const mm_idx_t *mi, float f)
@@ -173,10 +196,13 @@ function(minimap2_ksw2_library name mode)
             add_library(${name}_${isa} OBJECT ${kernels})
             target_compile_definitions(${name}_${isa} PRIVATE KSW_CPU_DISPATCH HAVE_KALLOC)
             if(isa STREQUAL "sse41")
-                target_compile_options(${name}_${isa} PRIVATE -msse4.1)
+                target_compile_options(${name}_${isa} PRIVATE
+                    $<IF:$<PLATFORM_ID:Windows>,/clang:-msse4.1,-msse4.1>)
             else()
                 target_compile_definitions(${name}_${isa} PRIVATE KSW_SSE2_ONLY)
-                target_compile_options(${name}_${isa} PRIVATE -msse2 -mno-sse4.1)
+                target_compile_options(${name}_${isa} PRIVATE
+                    $<IF:$<PLATFORM_ID:Windows>,/clang:-msse2,-msse2>
+                    $<IF:$<PLATFORM_ID:Windows>,/clang:-mno-sse4.1,-mno-sse4.1>)
             endif()
             target_include_directories(${name}_${isa} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
             target_compile_options(${name}_${isa} PRIVATE -UNDEBUG -Wno-unused-function)
@@ -185,6 +211,9 @@ function(minimap2_ksw2_library name mode)
         add_library(${name} OBJECT "${minimap2_SOURCE_DIR}/ksw2_dispatch.c")
         target_compile_definitions(${name} PRIVATE KSW_CPU_DISPATCH)
         target_include_directories(${name} SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
+        if(WIN32)
+            target_compile_options(${name} PRIVATE /FIintrin.h)
+        endif()
         set(${name}_objects $<TARGET_OBJECTS:${name}> ${objects} PARENT_SCOPE)
         return()
     endif()
@@ -221,7 +250,11 @@ if(WGSE_CUDA)
         "${CMAKE_CURRENT_SOURCE_DIR}/../gpu-common")
     target_include_directories(wgse_minimap2_cuda SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
     target_compile_options(wgse_minimap2_cuda PRIVATE
-        $<$<COMPILE_LANGUAGE:CUDA>:--Werror=all-warnings -Xcompiler=-Wall,-Wextra>)
+        $<$<COMPILE_LANGUAGE:CUDA>:--Werror=all-warnings
+        $<IF:$<PLATFORM_ID:Windows>,-Xcompiler=/Zc:lambda,-Xcompiler=-Wall$<COMMA>-Wextra>>)
+    if(WIN32)
+        target_compile_definitions(wgse_minimap2_cuda PRIVATE NOMINMAX)
+    endif()
     target_link_libraries(wgse_minimap2_cuda PUBLIC CUDA::cudart_static)
 endif()
 
@@ -233,14 +266,20 @@ function(minimap2_target_settings target)
     endif()
     target_compile_definitions(${target} PRIVATE HAVE_KALLOC _FILE_OFFSET_BITS=64)
     # Upstream asserts stay on, as in its own and Bioconda's builds.
-    target_compile_options(${target} PRIVATE -UNDEBUG -fsigned-char
+    target_compile_options(${target} PRIVATE -UNDEBUG
+        $<IF:$<PLATFORM_ID:Windows>,/clang:-fsigned-char,-fsigned-char>
         -Wno-unused-function -Wno-unused-but-set-variable -Wno-unused-variable)
-    target_link_libraries(${target} PUBLIC ZLIB::ZLIB Threads::Threads m)
+    target_link_libraries(${target} PUBLIC ZLIB::ZLIB Threads::Threads)
+    if(WIN32)
+        target_link_libraries(${target} PUBLIC wgse_minimap2_platform)
+    else()
+        target_link_libraries(${target} PUBLIC m)
+    endif()
 endfunction()
 
 function(wgse_minimap2_executable name core)
     # The gap-fill offload (ksw_gpu.h): ksw_host.cpp's engine on Metal (macOS) or CUDA
-    # (Linux with -DWGSE_CUDA=ON), else every fill on the CPU.
+    # (Linux and Windows with -DWGSE_CUDA=ON), else every fill on the CPU.
     if(APPLE)
         set(gpu_sources ksw_host.cpp metal_ksw.mm)
     elseif(WGSE_CUDA)
@@ -248,11 +287,14 @@ function(wgse_minimap2_executable name core)
     else()
         set(gpu_sources ksw_gpu_none.cpp)
     endif()
-    add_library(${core} STATIC ${minimap2_sources} ${gpu_sources}
+    if(WIN32)
+        set(platform_sources windows_sort_scratch.cpp)
+    endif()
+    add_library(${core} STATIC ${minimap2_sources} ${gpu_sources} ${platform_sources}
         ${wgse_minimap2_ksw2_objects})
     minimap2_target_settings(${core})
     target_include_directories(${core} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
-    set_source_files_properties(${gpu_sources} PROPERTIES COMPILE_OPTIONS "-Wall;-Wextra;-Werror")
+    set_source_files_properties(${gpu_sources} PROPERTIES COMPILE_OPTIONS "${wgse_minimap2_warnings}")
     if(WGSE_CUDA)
         target_link_libraries(${core} PRIVATE wgse_minimap2_cuda)
     endif()
@@ -270,8 +312,12 @@ function(wgse_minimap2_executable name core)
         # Hidden tuning and failure-injection flags for tests and benchmarks only.
         target_compile_definitions(${name} PRIVATE WGSE_METAL_BENCHMARK_TOOLS=1)
     endif()
-    target_compile_options(${name} PRIVATE -Wall -Wextra -Werror)
+    target_compile_options(${name} PRIVATE ${wgse_minimap2_warnings})
     target_link_libraries(${name} PRIVATE ${core})
+    if(WIN32)
+        # Include the binary I/O constructor, even though no mapper symbol calls it.
+        target_link_libraries(${name} PRIVATE wgse_minimap2_platform)
+    endif()
     if(APPLE)
         # The Objective-C++ autorelease pool around minimap2's main.
         set_source_files_properties(main.cpp PROPERTIES LANGUAGE OBJCXX)
@@ -286,14 +332,14 @@ if(BUILD_TESTING)
     add_test(NAME minimap2_capabilities COMMAND wgse-minimap2 capabilities --json)
     set_tests_properties(minimap2_capabilities PROPERTIES
         PASS_REGULAR_EXPRESSION "\"engine\":\"minimap2\".*\"metal_hardware_supported\":")
-    add_test(NAME minimap2_smoke COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke.sh"
+    add_test(NAME minimap2_smoke COMMAND ${WGSE_TEST_SHELL} "${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke.sh"
         $<TARGET_FILE:wgse-minimap2> "${CMAKE_CURRENT_BINARY_DIR}/smoke")
     # Index construction splits sequences into blocks and segments of megabases, longer
     # than the test genomes: build a copy with tiny ones and require identical indexes.
     wgse_minimap2_executable(wgse-minimap2-segments wgse_minimap2_core_segments)
     target_compile_definitions(wgse_minimap2_core_segments PRIVATE
         WGSE_PACK_BLOCK=64 WGSE_SKETCH_SEGMENT=20000)
-    add_test(NAME minimap2_segments COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/segments.sh"
+    add_test(NAME minimap2_segments COMMAND ${WGSE_TEST_SHELL} "${CMAKE_CURRENT_SOURCE_DIR}/tests/segments.sh"
         $<TARGET_FILE:wgse-minimap2> $<TARGET_FILE:wgse-minimap2-segments>
         "${CMAKE_CURRENT_BINARY_DIR}/segments")
     if(WGSE_MINIMAP2_KSW2 STREQUAL "neon")
@@ -317,7 +363,7 @@ if(BUILD_TESTING)
         add_executable(minimap2-ksw-gpu-fuzz tests/ksw_gpu_fuzz.cpp)
         target_include_directories(minimap2-ksw-gpu-fuzz PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
         target_compile_definitions(minimap2-ksw-gpu-fuzz PRIVATE HAVE_KALLOC)
-        target_compile_options(minimap2-ksw-gpu-fuzz PRIVATE -Wall -Wextra -Werror)
+        target_compile_options(minimap2-ksw-gpu-fuzz PRIVATE ${wgse_minimap2_warnings})
         target_link_libraries(minimap2-ksw-gpu-fuzz PRIVATE wgse_minimap2_core)
         add_test(NAME minimap2_ksw_gpu_fuzz COMMAND minimap2-ksw-gpu-fuzz 60 1)
         set_tests_properties(minimap2_ksw_gpu_fuzz PROPERTIES SKIP_RETURN_CODE 77)
@@ -328,6 +374,9 @@ if(BUILD_TESTING)
     target_include_directories(minimap2-sort128-fuzz SYSTEM PRIVATE "${minimap2_SOURCE_DIR}")
     target_compile_options(minimap2-sort128-fuzz PRIVATE -UNDEBUG -Wno-unused-function)
     target_link_libraries(minimap2-sort128-fuzz PRIVATE Threads::Threads)
+    if(WIN32)
+        target_sources(minimap2-sort128-fuzz PRIVATE windows_sort_scratch.cpp)
+    endif()
     add_test(NAME minimap2_sort128_fuzz COMMAND minimap2-sort128-fuzz 3000 1)
     # Unmodified upstream sources, to check that the seams and the NEON ksw_extd2 change
     # no index or alignment.
@@ -337,14 +386,21 @@ if(BUILD_TESTING)
         minimap2_ksw2_library(minimap2_upstream_ksw2 ${WGSE_MINIMAP2_KSW2})
     endif()
     add_executable(minimap2-upstream
-        ${minimap2_common_sources} "${minimap2_SOURCE_DIR}/main.c" "${minimap2_SOURCE_DIR}/index.c"
+        ${minimap2_common_sources} "${minimap2_SOURCE_DIR}/main.c" "${upstream_index}"
         "${minimap2_SOURCE_DIR}/misc.c" "${minimap2_SOURCE_DIR}/seed.c"
         "${minimap2_SOURCE_DIR}/sketch.c" "${minimap2_SOURCE_DIR}/align.c"
         "${minimap2_SOURCE_DIR}/map.c" ${minimap2_upstream_ksw2_objects})
     minimap2_target_settings(minimap2-upstream)
-    add_test(NAME minimap2_upstream_parity COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
+    add_test(NAME minimap2_upstream_parity COMMAND ${WGSE_TEST_SHELL} "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh"
         $<TARGET_FILE:wgse-minimap2> $<TARGET_FILE:minimap2-upstream>
         "${CMAKE_CURRENT_BINARY_DIR}/upstream")
+    if(WGSE_CUDA)
+        add_test(NAME minimap2_cuda_cpu_fallback COMMAND ${WGSE_TEST_SHELL}
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/upstream.sh" $<TARGET_FILE:wgse-minimap2>
+            $<TARGET_FILE:minimap2-upstream> "${CMAKE_CURRENT_BINARY_DIR}/cuda-cpu-fallback"
+            cuda-cpu-fallback)
+        set_tests_properties(minimap2_cuda_cpu_fallback PROPERTIES ENVIRONMENT "CUDA_VISIBLE_DEVICES=-1")
+    endif()
 endif()
 
 install(TARGETS wgse-minimap2 RUNTIME DESTINATION bin)

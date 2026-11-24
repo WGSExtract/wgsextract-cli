@@ -1,10 +1,7 @@
-name: GLIMPSE2 Windows
+name: Native GLIMPSE2
 
-# Builds GLIMPSE2 (packaging/glimpse2) natively for Windows, which Bioconda
-# doesn't, on every change to it, and publishes the package to a release when
-# asked: Actions > GLIMPSE2 Windows > Run workflow, with a new tag such as
-# glimpse2-2. Then pin pixi.toml's imputation feature to the asset's URL and
-# SHA-256. Linux and Intel macOS use Bioconda's glimpse-bio.
+# Builds GLIMPSE2 for the targets Bioconda doesn't ship. Dispatch with a new
+# glimpse2-N (Windows) or glimpse2-arm64-N tag to publish the tested packages.
 
 on:
   pull_request:
@@ -12,11 +9,14 @@ on:
     branches: [ main ]
     paths:
       - packaging/glimpse2/**
+      - packaging/glimpse2-arm64/**
       - packaging/windows/**
       - tests/fixtures/imputation_hg002/**
       - tests/test_imputation.py
       - .github/workflows/glimpse2.yml
       - .github/actions/setup-pixi/**
+      - .github/actions/compiler-cache/**
+      - .github/actions/apt-install/**
       - "!**/*.md"
   workflow_dispatch:
     inputs:
@@ -24,6 +24,11 @@ on:
         description: New release tag to publish the package under (empty builds only).
         required: false
         default: ""
+      target:
+        description: Platforms to build and optionally publish.
+        type: choice
+        options: [win-64, arm64]
+        default: win-64
 
 permissions:
   contents: read
@@ -34,7 +39,7 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ github.event.pull_request.draft != true }}
+    if: ${{ github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || inputs.target == 'win-64') }}
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -111,7 +116,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'win-64' && inputs.release_tag != ''
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -131,3 +136,71 @@ jobs:
           extra-assets: msys2-packages-used.txt
           description: |
             GLIMPSE2 (odelaneau/GLIMPSE, MIT) built natively for Windows, as a conda package that Pixi installs.
+
+  build-arm64:
+    if: ${{ github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || inputs.target == 'arm64') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { platform: osx-arm64, runner: macos-latest }
+          - { platform: linux-aarch64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Pixi
+        uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+      - name: Build and test the ARM64 package
+        env:
+          TARGET: ${{ matrix.platform }}
+        run: |
+          pixi exec --spec rattler-build==0.77.0 -- rattler-build build \
+            --no-build-id -c conda-forge -c bioconda \
+            --recipe-dir packaging/glimpse2-arm64 --target-platform "$TARGET" \
+            --output-dir out/conda
+      - name: Smoke test the candidate package on HG002
+        env:
+          TARGET: ${{ matrix.platform }}
+        run: |
+          pixi init --platform "$TARGET" --channel conda-forge --channel bioconda out/candidate
+          pixi add --manifest-path out/candidate/pixi.toml "$PWD"/out/conda/"$TARGET"/glimpse-bio-*.conda
+          bin="$PWD/out/candidate/.pixi/envs/default/bin"
+          case "$TARGET" in
+            osx-arm64) test "$(lipo -archs "$bin/GLIMPSE2_phase")" = arm64 ;;
+            linux-aarch64) file "$bin/GLIMPSE2_phase" | grep -q 'ARM aarch64' ;;
+          esac
+          pixi run --locked -e dev env PATH="$bin:$PWD/.pixi/envs/dev/bin:$PATH" \
+            python -m pytest -q -o addopts="" --basetemp=out/glimpse-arm64 \
+            --junitxml=out/glimpse-arm64.xml tests/test_imputation.py -k imputes_1x_reads
+          pixi run --locked -e dev python -c "import xml.etree.ElementTree as ET; s = ET.parse('out/glimpse-arm64.xml').find('testsuite'); assert s is not None and s.get('tests') == '1' and s.get('skipped') == '0'"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: glimpse2-${{ matrix.platform }}
+          path: out/conda/${{ matrix.platform }}/glimpse-bio-*.conda
+          if-no-files-found: error
+
+  publish-arm64:
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'arm64' && inputs.release_tag != ''
+    needs: build-arm64
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/publish-native-release
+        with:
+          tag: ${{ inputs.release_tag }}
+          tag-prefix: glimpse2-arm64-
+          title: GLIMPSE2 for ARM64 ${{ inputs.release_tag }}
+          source: packaging/glimpse2-arm64
+          artifacts: glimpse2-*
+          sha256sums: "true"
+          description: |
+            GLIMPSE2 v2.0.1 (odelaneau/GLIMPSE, MIT) for macOS and Linux ARM64.
+            Built with Clang and SIMDe NEON.

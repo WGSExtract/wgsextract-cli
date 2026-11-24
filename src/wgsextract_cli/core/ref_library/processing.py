@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import filecmp
 import logging
 import os
@@ -23,12 +24,18 @@ from wgsextract_cli.core.ref_library.assets import (
     read_fai_lengths,
     reference_dict_path,
     reference_genomes_dir,
+    sequence_signature,
     verify_sequence_signature,
 )
 from wgsextract_cli.core.ref_library.catalog import get_genome_status
 from wgsextract_cli.core.ref_library.downloads import (
     download_file,
     verify_download_sha256,
+)
+from wgsextract_cli.core.ref_library.layout import (
+    LEGACY_DOWNLOADS_DIR,
+    download_path,
+    downloads_dir,
 )
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -72,7 +79,7 @@ def download_gnomad(
     progress_callback: ProgressCallback | None = None,
 ) -> bool:
     """Downloads and indexes gnomAD sites VCFs for hg19 and hg38."""
-    target_dir = str(Path(reflib_dir, "ref"))
+    target_dir = str(downloads_dir(reflib_dir))
     Path(target_dir).mkdir(parents=True, exist_ok=True)
 
     success = True
@@ -80,7 +87,7 @@ def download_gnomad(
         if cancel_event and cancel_event.is_set():
             return False
 
-        dest_path = str(Path(target_dir, f"gnomad_{build}.vcf.bgz"))
+        dest_path = str(download_path(reflib_dir, f"gnomad_{build}.vcf.bgz"))
         logging.info(f"Downloading gnomAD {build} from Google Storage...")
 
         if not download_file(url, dest_path, progress_callback, cancel_event):
@@ -112,10 +119,19 @@ def _remove_genome_files(base_path: str) -> None:
 
 
 def has_ref_ns(final_name: str, reflib_dir: str) -> bool:
-    """Checks if N-count files exist for a reference genome."""
-    if not reflib_dir:
+    """Whether a genome's N counts are known: in the release's or the library's
+    N-count table, or in N-count files beside it."""
+    from wgsextract_cli.core.ref_library.ncount_table import load_table
+
+    genomes_dir = reference_genomes_dir(reflib_dir) if reflib_dir else None
+    if any(
+        e.reference == final_name
+        for e in load_table([genomes_dir] if genomes_dir else [])
+    ):
+        return True
+    if not genomes_dir:
         return False
-    base_path = str(Path(reference_genomes_dir(reflib_dir), final_name))
+    base_path = str(Path(genomes_dir, final_name))
     return any(Path(path).exists() for path in n_count_paths(base_path))
 
 
@@ -224,7 +240,46 @@ def download_and_process_genome(
             # Do not advertise a rejected mirror as installed or trust it on retry.
             _remove_genome_files(final_path)
             return False
+    _record_n_counts(
+        final_path, genome_data["final"], target_dir, status_callback, cancel_event
+    )
     return True
+
+
+def _record_n_counts(
+    fasta: str,
+    name: str,
+    genomes_dir: str,
+    status_callback: Callable[[str], None] | None,
+    cancel_event: CancelEvent | None,
+) -> None:
+    """Measure a genome's N bases into its library's table, unless the release's
+    table or the library's already has them. A cancelled count records none,
+    so the next processing counts again."""
+    from wgsextract_cli.core.ref_library import ncount_table
+    from wgsextract_cli.core.ref_library.ncount import count_sequence_ns
+
+    signature = sequence_signature(read_fai_lengths(fasta))
+    if any(e.key == (name, signature) for e in ncount_table.load_table([genomes_dir])):
+        return
+    logging.info(f"Counting the N bases of {name}...")
+    if status_callback:
+        status_callback("Processing: Counting N bases...")
+    try:
+        counts = count_sequence_ns(
+            fasta, lambda: cancel_event is not None and cancel_event.is_set()
+        )
+    except (OSError, EOFError, ValueError) as e:
+        logging.warning(f"Could not count the N bases of {name}: {e}")
+        return
+    if counts is None:
+        return
+    entry = ncount_table.measured_entry(name, signature, counts)
+    try:
+        ncount_table.add_to_library(genomes_dir, entry)
+    except (OSError, WGSExtractError) as e:
+        # The genome is installed; only its N counts go unrecorded.
+        logging.warning(f"Could not record the N bases of {name}: {e}")
 
 
 def download_bootstrap(
@@ -244,7 +299,7 @@ def download_bootstrap(
         Path(reflib_dir).mkdir(parents=True, exist_ok=True)
 
     normalize_bootstrap_layout(reflib_dir)
-    if bootstrap_has_support_assets(reflib_dir):
+    if bootstrap_is_current(reflib_dir):
         logging.info("Reference bootstrap assets are already installed.")
         return install_bootstrap_support_files(reflib_dir)
 
@@ -256,6 +311,8 @@ def download_bootstrap(
     if not reuse and not _download_bootstrap_archive(
         BOOTSTRAP_URL, dest_path, BOOTSTRAP_SHA256, progress_callback, cancel_event
     ):
+        return False
+    if cancel_event and cancel_event.is_set():
         return False
 
     logging.info(f"Extracting bootstrap to {reflib_dir}...")
@@ -284,6 +341,8 @@ def _download_bootstrap_archive(
 ) -> bool:
     logging.info(f"Downloading bootstrap from {url}...")
     for attempt in range(1, 4):
+        if cancel_event and cancel_event.is_set():
+            return False
         if download_file(
             url,
             dest_path,
@@ -292,7 +351,9 @@ def _download_bootstrap_archive(
             expected_sha256=sha256,
             resolve_release_digest=False,
         ):
-            return True
+            return cancel_event is None or not cancel_event.is_set()
+        if cancel_event and cancel_event.is_set():
+            return False
         if attempt < 3:
             logging.warning(
                 "Bootstrap download failed; retrying (%s/3)...", attempt + 1
@@ -358,34 +419,60 @@ _LEGACY_BOOTSTRAP_SENTINELS = (
 )
 
 
-def bootstrap_has_support_assets(reflib_dir: str) -> bool:
-    """Whether the bootstrap is completely installed in ``reflib_dir``."""
+def _bootstrap_has_leftover_archive(root: Path) -> bool:
+    """Whether an interrupted bootstrap download/extraction left an archive behind."""
     from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME
 
-    root = Path(reflib_dir)
-    if not root.is_dir():
-        return False
-    # The archive (or partial download) download_bootstrap leaves in the
-    # library means a run was interrupted before extraction finished.
     archive = root / BOOTSTRAP_FILENAME
     leftovers = ("", ".partial", ".partial.segments", ".partial.source")
-    if any(Path(f"{archive}{suffix}").exists() for suffix in leftovers):
+    return any(Path(f"{archive}{suffix}").exists() for suffix in leftovers)
+
+
+def bootstrap_is_current(reflib_dir: str) -> bool:
+    """Whether the current ``BOOTSTRAP_VERSION`` is completely installed."""
+    from wgsextract_cli.core.constants import BOOTSTRAP_VERSION
+
+    root = Path(reflib_dir)
+    if not root.is_dir() or _bootstrap_has_leftover_archive(root):
+        return False
+    return (root / (BOOTSTRAP_MARKER_PREFIX + BOOTSTRAP_VERSION)).is_file()
+
+
+def bootstrap_has_support_assets(reflib_dir: str) -> bool:
+    """Whether any complete bootstrap release is installed in ``reflib_dir``."""
+    root = Path(reflib_dir)
+    if not root.is_dir() or _bootstrap_has_leftover_archive(root):
         return False
     if any(root.glob(BOOTSTRAP_MARKER_PREFIX + "*")):
         return True
     return all((root / name).is_file() for name in _LEGACY_BOOTSTRAP_SENTINELS)
 
 
+# Bootstrap files and subtrees whose content legitimately updates between
+# bootstrap releases (e.g. v0.2.0/v0.3.0 -> v0.4.0) and should replace the
+# older copy on flatten.
+_BOOTSTRAP_REPLACE_FILES = frozenset({"00README.txt"})
+_BOOTSTRAP_REPLACE_PREFIXES = ("microarray/raw_file_templates/",)
+
+
 def normalize_bootstrap_layout(reflib_dir: str) -> None:
     nested = str(Path(reflib_dir, "reference"))
-    if not Path(nested).is_dir():
-        _remove_macos_metadata(reflib_dir)
-        return
-    _merge_directory(nested, reflib_dir)
-    _remove_empty_directories(nested)
-    if Path(nested).is_dir() and not os.listdir(nested):
-        Path(nested).rmdir()
+    if Path(nested).is_dir():
+        _merge_directory(
+            nested,
+            reflib_dir,
+            replace_files=_BOOTSTRAP_REPLACE_FILES,
+            replace_prefixes=_BOOTSTRAP_REPLACE_PREFIXES,
+        )
+        _remove_empty_directories(nested)
+        if Path(nested).is_dir() and not os.listdir(nested):
+            Path(nested).rmdir()
     _remove_macos_metadata(reflib_dir)
+    # The archive still carries an empty ref/; downloads now go in downloads/.
+    legacy = Path(reflib_dir, LEGACY_DOWNLOADS_DIR)
+    if legacy.is_dir() and not legacy.is_symlink() and not os.listdir(legacy):
+        with contextlib.suppress(OSError):  # something was just written there
+            legacy.rmdir()
 
 
 def install_bootstrap_support_files(reflib_dir: str) -> bool:
@@ -434,20 +521,51 @@ def _ploidy_content(alias: str) -> str:
     return _PLOIDY_TEMPLATES[alias]
 
 
-def _merge_directory(src: str, dst: str) -> None:
+def _merge_directory(
+    src: str,
+    dst: str,
+    *,
+    replace_files: frozenset[str] = frozenset(),
+    replace_prefixes: tuple[str, ...] = (),
+    _rel: str = "",
+) -> None:
     Path(dst).mkdir(parents=True, exist_ok=True)
     for name in os.listdir(src):
         source = str(Path(src, name))
         if name.startswith("._") or name == ".DS_Store":
             _remove_path(source)
             continue
+        rel_path = f"{_rel}/{name}" if _rel else name
         target = str(Path(dst, name))
         if Path(source).is_dir() and not Path(source).is_symlink():
-            _merge_directory(source, target)
+            if Path(target).is_symlink():
+                logging.warning(
+                    "Leaving bootstrap directory in place; target is a symlink: %s",
+                    target,
+                )
+                continue
+            _merge_directory(
+                source,
+                target,
+                replace_files=replace_files,
+                replace_prefixes=replace_prefixes,
+                _rel=rel_path,
+            )
             if not os.listdir(source):
                 Path(source).rmdir()
-        elif not Path(target).exists():
+        elif not Path(target).exists() and not Path(target).is_symlink():
             shutil.move(source, target)
+        elif (
+            (
+                rel_path in replace_files
+                or any(rel_path.startswith(prefix) for prefix in replace_prefixes)
+            )
+            and Path(source).is_file()
+            and not Path(source).is_symlink()
+            and Path(target).is_file()
+            and not Path(target).is_symlink()
+        ):
+            Path(source).replace(target)
         elif (
             Path(source).is_file()
             and Path(target).is_file()

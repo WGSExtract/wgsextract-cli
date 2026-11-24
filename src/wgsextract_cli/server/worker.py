@@ -1,7 +1,7 @@
 """A job's worker process: runs one operation through the typed API.
 
-Reads ``{"op", "params", "config", "debug", "allowed"}`` as one JSON line on
-stdin, then
+Reads ``{"op", "params", "config", "debug", "allowed", "card", "workspace_lease"}``
+as one JSON line on stdin, then
 writes ``{"event": "progress", ...}`` lines and a final ``{"event":
 "result", "result": <manifest>}`` to stdout. A ``cancel`` line on stdin, or
 stdin closing (the server went away), cancels the operation.
@@ -17,6 +17,7 @@ from contextlib import nullcontext
 from typing import Any, TextIO
 
 from wgsextract_cli import api
+from wgsextract_cli.core.workspace_activity import workspace_use
 
 
 def _watch(stdin: TextIO, token: api.CancelToken) -> None:
@@ -41,15 +42,20 @@ def _private_pipes() -> tuple[TextIO, TextIO]:
 
 
 def main() -> int:
+    control_in, out = _private_pipes()
+    request = json.loads(control_in.readline())
+    with workspace_use(request.get("workspace_lease")):
+        return _run(request, control_in, out)
+
+
+def _run(request: dict[str, Any], control_in: TextIO, out: TextIO) -> int:
     from wgsextract_cli.cli.bootstrap import configure_logging
-    from wgsextract_cli.core import read_scope
+    from wgsextract_cli.core import execution_context, read_scope
     from wgsextract_cli.core.config import settings
     from wgsextract_cli.core.keep_awake import keep_awake
 
     from .operations import PathGuard, find, params_from_json
 
-    control_in, out = _private_pipes()
-    request = json.loads(control_in.readline())
     configure_logging(debug=bool(request.get("debug")))
     lock = threading.Lock()
 
@@ -79,7 +85,11 @@ def main() -> int:
         if allowed is None
         else read_scope.limited_to(PathGuard(allowed).allows)
     )
-    with scope, keep_awake(bool(settings.get("keep_awake"))):
+    with (
+        scope,
+        keep_awake(bool(settings.get("keep_awake"))),
+        execution_context.bound(result_card=request.get("card")),
+    ):
         result = op.run(params, progress=progress, cancel=token, check=False)
     emit({"event": "result", "result": result.to_dict()})
     return 0

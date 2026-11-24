@@ -1,24 +1,29 @@
+import hashlib
 import json
 import logging
 import os
 import sys
 from argparse import Namespace
+from contextlib import closing
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract, write_fasta
+from tests.http_server import RangeServer
+from tests.test_pharmcat_resources import reference_archive
 from wgsextract_cli import api
 from wgsextract_cli.commands.vcf import pharmcat
 from wgsextract_cli.commands.vcf.pharmcat import (
-    REFERENCE_FASTA,
     merge_outside_calls,
     pharmcat_directory,
     prepare_input,
     summarize,
 )
+from wgsextract_cli.core import pharmcat_resources as resources
 from wgsextract_cli.core import runtime
+from wgsextract_cli.core.pharmcat_resources import REFERENCE_FASTA
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
@@ -76,7 +81,7 @@ def test_summary_lists_called_genes_and_preserves_unknown(tmp_path):
         "Ultrarapid Metabolizer",
     )
     assert unknown.status == "no_call"
-    assert unknown.alternatives == [{"diplotype": "Unknown/Unknown", "phenotype": "-"}]
+    assert unknown.alternatives == [{"diplotype": "Unknown/Unknown", "phenotype": "-", "lookup_keys": []}]  # fmt: skip
 
 
 def test_843_haploid_pharmcat_summary_keeps_a_known_g6pd_call(tmp_path):
@@ -149,9 +154,9 @@ if (here / "exit").exists():
 (out / f"{bf}.report.html").write_text("<html></html>")
 if (here / "omit-phenotypes").exists():
     sys.exit(0)
-genes = {"CYP2C19": {
-    "recommendationDiplotypes": [{"allele1": {"name": "*1"}, "allele2": {
-        "name": "*17"}, "phenotypes": ["Rapid Metabolizer"]}]}}
+genes = {"CYP2C19": {"callSource": "MATCHER", "recommendationDiplotypes": [{
+    "allele1": {"name": "*1"}, "allele2": {"name": "*17"},
+    "phenotypes": ["Rapid Metabolizer"], "lookupKey": ["Rapid Metabolizer"]}]}}
 if outside.exists():
     for line in outside.read_text().splitlines():
         gene, genotype = line.split("\\t")[:2]
@@ -781,22 +786,16 @@ def test_pharmcat_without_its_environment_says_how_to_install_it(tmp_path, monke
 
 @needs_htslib
 def test_1052_pharmcat_reference_requires_consent_and_cached_runs_stay_offline(
-    tmp_path, pharmcat_env
+    tmp_path, pharmcat_env, monkeypatch
 ):
     release = _release(tmp_path / "pharmcat")
-    backup = release / "reference-cache"
-    backup.mkdir()
-    for suffix in ("", ".fai", ".gzi"):
-        source = release / f"{REFERENCE_FASTA}{suffix}"
-        if source.exists():
-            source.replace(backup / source.name)
-    downloader = release / "pcat" / "__init__.py"
-    downloader.parent.mkdir()
-    downloader.write_text(
-        "from pathlib import Path\nimport shutil\n"
-        "def download_reference_fasta_and_index(d):\n"
-        "    for source in (Path(d) / 'reference-cache').iterdir():\n"
-        "        shutil.copyfile(source, Path(d) / source.name)\n"
+    archive = reference_archive(
+        {name: (release / name).read_bytes() for name in resources.REFERENCE_FILES}
+    )
+    for name in resources.REFERENCE_FILES:
+        (release / name).unlink()
+    monkeypatch.setattr(
+        resources, "REFERENCE_SHA256", hashlib.sha256(archive).hexdigest()
     )
     sample = Path(_vcf(tmp_path / "sample.vcf.gz", SNPS))
     params = api.VcfPharmcatParams(
@@ -808,10 +807,11 @@ def test_1052_pharmcat_reference_requires_consent_and_cached_runs_stay_offline(
     assert "--download" in refused.error.message
     assert not (release / REFERENCE_FASTA).exists()
 
-    permitted = api.vcf.pharmcat(replace(params, download=True), check=False)
+    with closing(RangeServer(archive)) as server:
+        monkeypatch.setattr(resources, "REFERENCE_URL", server.url)
+        permitted = api.vcf.pharmcat(replace(params, download=True), check=False)
     assert permitted.exit_code == 0, permitted.error
     assert (tmp_path / "out" / "sample.phenotype.json").is_file()
-    downloader.write_text("raise RuntimeError('cached run invoked the downloader')\n")
     cached = api.vcf.pharmcat(replace(params, outdir=tmp_path / "cached"), check=False)
     assert cached.exit_code == 0, cached.error
     assert (tmp_path / "cached" / "sample.phenotype.json").is_file()

@@ -48,12 +48,27 @@ def test_markers_are_the_union_of_the_grch37_templates(tmp_path):
 
 def test_unplaced_export_markers_are_not_genotyping_targets(tmp_path):
     templates = _templates(tmp_path)
-    (templates / "raw_file_templates/body/Ancestry_V2_2021.txt").write_text(
+    (templates / "raw_file_templates/body/Ancestry_V2cd.txt").write_text(
         "rs77\t20\t0\nrs78\t20\t12345\n"
     )
     markers = mt.collect_template_markers([str(templates)])
     assert ("chr20", 0) not in markers
     assert markers[("chr20", 12345)] == "rs78"
+
+
+def test_issue_1329_target_keeps_corrections_scoped_to_their_template(
+    tmp_path: Path,
+) -> None:
+    templates = _templates(tmp_path)
+    body = templates / "raw_file_templates/body"
+    (body / "23andMe_V4.txt").write_text("rs397507452\tMT\t7444\n")
+    (body / "Ancestry_V2cd.txt").write_text(
+        "rs397507452\t26\t7444\nrsLater\tchrM\t7443\n"
+    )
+
+    assert mt.collect_template_markers(
+        [str(templates)], formats=["23andMe_V4", "Ancestry_V2cd"]
+    ) == {("chrM", 7443): "rs397507452", ("chrM", 7444): "rs397507452"}
 
 
 def test_placeholder_ids_yield_to_real_ids_or_get_their_own(tmp_path):
@@ -164,10 +179,10 @@ def test_version2_target_adds_new_layouts_without_changing_existing_ids(
             mt, "_VERSION_LINE", "##wgsextract_microarray_target_version=2\n"
         )
         target = mt.build_genome_wide_target(str(tmp_path), "hg19", [str(templates)])
-    (templates / "raw_file_templates/body/MyHeritage_GSA_2025.csv").write_text(
+    (templates / "raw_file_templates/body/MyHeritage_V3.csv").write_text(
         "rs77\t4\t12345\n"
     )
-    (templates / "raw_file_templates/body/Ancestry_V2_2021.txt").write_text(
+    (templates / "raw_file_templates/body/Ancestry_V2cd.txt").write_text(
         "rs78\t26\t73\n"
     )
     mt.build_genome_wide_target(str(tmp_path), "hg19", [str(templates)])
@@ -503,6 +518,32 @@ def test_no_chain_is_installed_when_no_source_has_the_pinned_checksum(
     assert sorted(p.name for p in tmp_path.iterdir()) == [name + ".lock.guard"]
 
 
+def test_the_pinned_chain_wins_over_an_earlier_same_named_copy(tmp_path, chain_servers):
+    # A FASTA folder searched first holds a different hg19ToHg38; the library's
+    # pinned copy is the one that places the markers.
+    primary, _mirror, data = chain_servers
+    name = mt.HG19_TO_HG38_CHAIN.name
+    fasta_dir, library = tmp_path / "fasta", tmp_path / "library"
+    fasta_dir.mkdir()
+    library.mkdir()
+    (fasta_dir / name).write_bytes(gzip.compress(b"another release"))
+    (library / name).write_bytes(data)
+    assert mt.hg19_to_hg38_chain(str(library), [str(fasta_dir)]) == str(library / name)
+    assert primary.requests == []
+
+
+def test_an_unpinned_chain_is_still_used_but_named_when_nothing_matches(
+    tmp_path, chain_servers, caplog
+):
+    primary, _mirror, _data = chain_servers
+    name = mt.HG19_TO_HG38_CHAIN.name
+    (tmp_path / name).write_bytes(gzip.compress(b"another release"))
+    with caplog.at_level("WARNING"):
+        assert mt.hg19_to_hg38_chain(str(tmp_path)) == str(tmp_path / name)
+    assert f"{tmp_path / name} is not UCSC's pinned {name}" in caplog.text
+    assert primary.requests == []
+
+
 def _cut_off_with_a_partial(server, data: bytes) -> None:
     """Every GET and every resume is cut off half-way, leaving a partial."""
     server.drops = 1
@@ -546,7 +587,7 @@ def test_each_source_keeps_its_own_resumable_partial(tmp_path, chain_servers):
     }
 
 
-@pytest.mark.parametrize("sub", ["", "ref", "microarray"])
+@pytest.mark.parametrize("sub", ["", "downloads", "ref", "microarray"])
 def test_requested_chain_is_found_in_library_subdirectories(tmp_path, monkeypatch, sub):
     chain = tmp_path / sub / "hg38ToHg19.over.chain.gz"
     chain.parent.mkdir(parents=True, exist_ok=True)

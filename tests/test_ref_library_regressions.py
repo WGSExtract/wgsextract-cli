@@ -1,6 +1,7 @@
 import gzip
 import hashlib
 import io
+import json
 import tarfile
 from email.message import Message
 from pathlib import Path
@@ -119,7 +120,7 @@ def test_genome_config_rewrite_keeps_unknown_keys(tmp_path):
 
 
 def test_gene_map_refuses_t2t_instead_of_using_hg19(tmp_path):
-    ref_dir = tmp_path / "ref"
+    ref_dir = tmp_path / "downloads"
     ref_dir.mkdir()
     (ref_dir / "genes_hg19.tsv").write_text(
         "symbol\tchrom\tstart\tend\nBRCA1\tchr17\t41196312\t41277500\n"
@@ -136,8 +137,8 @@ def test_gene_map_refuses_t2t_instead_of_using_hg19(tmp_path):
 def test_gene_coords_says_why_a_gene_cant_be_found(tmp_path):
     with pytest.raises(WGSExtractError, match="ref gene-map"):
         gene_coords(str(tmp_path), "BRCA1", "hg38")
-    (tmp_path / "ref").mkdir()
-    (tmp_path / "ref" / "genes_hg38.tsv").write_text(
+    (tmp_path / "downloads").mkdir()
+    (tmp_path / "downloads" / "genes_hg38.tsv").write_text(
         "symbol\tchrom\tstart\tend\nBRCA1\tchr17\t43044295\t43125483\n"
     )
     assert gene_coords(str(tmp_path), "brca1", "hg38") == "chr17:43044295-43125483"
@@ -160,7 +161,7 @@ def test_gene_ranges_never_merge_across_contigs():
 
 
 def test_gene_map_ignores_stale_merged_alt_rows(tmp_path):
-    ref_dir = tmp_path / "ref"
+    ref_dir = tmp_path / "downloads"
     ref_dir.mkdir()
     (ref_dir / "genes_hg38.tsv").write_text(
         "symbol\tchrom\tstart\tend\n"
@@ -205,7 +206,7 @@ def test_annotation_data_resolves_in_a_library_without_a_genome(tmp_path):
         "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=248956422>\n"
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
     )
-    ref = tmp_path / "lib" / "ref"
+    ref = tmp_path / "lib" / "downloads"
     ref.mkdir(parents=True)
     for name in ("spliceai_hg38.vcf.gz", "clinvar_hg38.vcf.gz"):
         (ref / name).write_bytes(b"")
@@ -270,16 +271,26 @@ def test_reference_library_dict_for_fna_gz_is_not_the_fasta(tmp_path):
     )
 
 
+_ETAG = '"v1"'
+
+
 class _FakeResponse(io.BytesIO):
-    def __init__(self, data: bytes, code: int = 200):
+    """A reply naming its version by ETag; a 206 carries Content-Range."""
+
+    def __init__(self, data: bytes, code: int = 200, content_range: str = ""):
         super().__init__(data)
         self.code = code
+        self.headers = Message()
+        self.headers["Content-Length"] = str(len(data))
+        self.headers["ETag"] = _ETAG
+        if content_range:
+            self.headers["Content-Range"] = content_range
 
     def getcode(self):
         return self.code
 
     def info(self):
-        return {"Content-Length": str(len(self.getvalue()))}
+        return self.headers
 
 
 def _http_416(content_range: str) -> HTTPError:
@@ -288,6 +299,14 @@ def _http_416(content_range: str) -> HTTPError:
     return HTTPError(
         "https://example.org/f", 416, "Range Not Satisfiable", headers, None
     )
+
+
+def _record_partial_version(dest: Path, size: int) -> None:
+    """The record of https://example.org/f at _ETAG, size bytes long, that a
+    download leaves beside its partial."""
+    record = {"url_sha256": hashlib.sha256(b"https://example.org/f").hexdigest()}
+    record |= {"size": size, "etag": _ETAG, "last_modified": ""}
+    Path(f"{dest}.partial.source").write_text(json.dumps(record))
 
 
 def _no_curl_download(monkeypatch):
@@ -303,11 +322,7 @@ def test_download_treats_416_for_complete_partial_as_done(tmp_path, monkeypatch)
     _no_curl_download(monkeypatch)
     dest = tmp_path / "file.bin"
     (tmp_path / "file.bin.partial").write_bytes(b"complete")
-    Path(f"{dest}.partial.source").write_text(
-        hashlib.sha256(b"https://example.org/f").hexdigest() + "\n",
-        encoding="ascii",
-        newline="\n",
-    )
+    _record_partial_version(dest, 8)
     requests = []
 
     def fake_urlopen(request, timeout):
@@ -326,11 +341,7 @@ def test_download_restarts_when_partial_does_not_fit_remote(tmp_path, monkeypatc
     _no_curl_download(monkeypatch)
     dest = tmp_path / "file.bin"
     (tmp_path / "file.bin.partial").write_bytes(b"0123456789")
-    Path(f"{dest}.partial.source").write_text(
-        hashlib.sha256(b"https://example.org/f").hexdigest() + "\n",
-        encoding="ascii",
-        newline="\n",
-    )
+    _record_partial_version(dest, 10)
     calls = []
 
     def fake_urlopen(request, timeout):
@@ -352,10 +363,7 @@ class _ShortResponse(_FakeResponse):
 
     def __init__(self, data: bytes, length: int, code: int = 200):
         super().__init__(data, code)
-        self.length = length
-
-    def info(self):
-        return {"Content-Length": str(self.length)}
+        self.headers.replace_header("Content-Length", str(length))
 
 
 def test_download_416_without_size_asks_the_server_for_it(tmp_path, monkeypatch):
@@ -364,18 +372,14 @@ def test_download_416_without_size_asks_the_server_for_it(tmp_path, monkeypatch)
     _no_curl_download(monkeypatch)
     dest = tmp_path / "file.bin"
     (tmp_path / "file.bin.partial").write_bytes(b"complete")
-    Path(f"{dest}.partial.source").write_text(
-        hashlib.sha256(b"https://example.org/f").hexdigest() + "\n",
-        encoding="ascii",
-        newline="\n",
-    )
+    _record_partial_version(dest, 8)
     methods = []
 
     def fake_urlopen(request, timeout):
         methods.append(request.get_method())
         if request.get_method() == "HEAD":
             head = _FakeResponse(b"")
-            head.headers = {"Content-Length": "8"}
+            head.headers.replace_header("Content-Length", "8")
             return head
         raise _http_416("")
 
@@ -395,7 +399,7 @@ def test_download_resumes_a_cut_off_transfer(tmp_path, monkeypatch):
     def fake_urlopen(request, timeout):
         ranges.append(request.headers.get("Range"))
         if request.headers.get("Range") == "bytes=4-":
-            return _FakeResponse(b"lete", code=206)
+            return _FakeResponse(b"lete", code=206, content_range="bytes 4-7/8")
         return _ShortResponse(b"comp", length=8)
 
     monkeypatch.setattr(downloads, "urlopen", fake_urlopen)

@@ -1,0 +1,40 @@
+--- a/scripts/clair3_c_impl_pipeline.py
++++ b/scripts/clair3_c_impl_pipeline.py
+@@ -66,1 +66,1 @@
+-def ensure_merge_output(output_folder):
++def ensure_merge_output(output_folder, args):
+@@ -74,1 +74,5 @@
++    if args.device == "mps" and (args.haploid_precise or args.haploid_sensitive or args.gvcf):
++        from scripts.wgse_finalize import finalize_pileup
++        finalize_pileup(args, output_folder)
++        return
+     merge_output = output_folder / "merge_output.vcf.gz"
+@@ -356,1 +360,1 @@
+-        ensure_merge_output(output_folder)
++        ensure_merge_output(output_folder, args)
+@@ -479,1 +483,1 @@
+-        ensure_merge_output(output_folder)
++        ensure_merge_output(output_folder, args)
+@@ -568,1 +572,1 @@
+-        ensure_merge_output(output_folder)
++        ensure_merge_output(output_folder, args)
+--- a/scripts/clair3_pipeline.py
++++ b/scripts/clair3_pipeline.py
+@@ -65,1 +65,1 @@
+-def ensure_merge_output(output_folder):
++def ensure_merge_output(output_folder, args):
+@@ -73,1 +73,5 @@
++    if args.device == "mps" and (args.haploid_precise or args.haploid_sensitive or args.gvcf):
++        from scripts.wgse_finalize import finalize_pileup
++        finalize_pileup(args, output_folder)
++        return
+     merge_output = output_folder / "merge_output.vcf.gz"
+@@ -306,1 +310,1 @@
+-        ensure_merge_output(output_folder)
++        ensure_merge_output(output_folder, args)
+@@ -454,1 +458,1 @@
+-        ensure_merge_output(output_folder)
++        ensure_merge_output(output_folder, args)
+@@ -506,1 +510,1 @@
+-        ensure_merge_output(output_folder)
++        ensure_merge_output(output_folder, args)

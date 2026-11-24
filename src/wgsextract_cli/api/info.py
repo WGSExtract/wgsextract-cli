@@ -1,4 +1,5 @@
 """``info``: what a BAM/CRAM is (build, sequencer, sex, depth) and its coverage;
+``info gene``: one gene's transcripts, variants and coverage;
 ``info chip``: which microarray chip a raw-data file came from."""
 
 from __future__ import annotations
@@ -76,14 +77,15 @@ class CalculateCoverageParams(Params):
     )
     bins: bool = param(
         False,
-        help="Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one "
-        "streaming pass.",
+        help="Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth of the "
+        "non-N bases in one streaming pass.",
         action="store_true",
     )
     with_bins: bool = param(
         False,
-        help="After the coverage table, also report the --bins depth breadth; "
-        "an up-to-date whole-file bins report is shown again instead of rescanned.",
+        help="Also measure the --bins depth breadth and show its table in place "
+        "of the coverage table, which info --detailed then shows; up-to-date "
+        "whole-file reports are shown again instead of rescanned.",
         action="store_true",
     )
     by: Path | None = param(
@@ -147,6 +149,69 @@ class CoverageSampleParams(Params):
     table_format: str | None = table_format_param(_TABLES)
 
 
+GENE_EXPORTS = ("all", "rare-damaging", "clinvar-plp", "acmg-plp")
+
+
+@dataclass(frozen=True, kw_only=True)
+class InfoGeneParams(Params):
+    """One gene from local data: its span and transcripts, the sample's
+    variants in it with their annotations, and read depth over its exons.
+    ``details`` holds the ``wgsextract.gene/1`` document; nothing is fetched.
+    """
+
+    COMMAND = "info gene"
+
+    gene: str = param(
+        help="Gene symbol or alias (RefSeq, e.g. BRCA1), from the bundled "
+        "NCBI RefSeq annotations.",
+        flags=("--gene",),
+        metavar="SYMBOL",
+        required_message="--gene is required.",
+    )
+    input: Path | None = optional_input_param(
+        "BAM or CRAM whose read depth over the gene's exons to report."
+    )
+    vcf_input: Path | None = param(
+        None,
+        help="The sample's VCF (annotated with vep run, vcf clinvar, vcf gnomad "
+        "and vcf acmg for those columns) whose variants in the gene to list.",
+        flags=("--vcf-input",),
+        path="file",
+    )
+    ref: Path | None = ref_param(local_only=True)
+    outdir: Path | None = outdir_param()
+    build: str | None = param(
+        None,
+        help="Build of the gene annotations when no input gives one (default: hg38).",
+        choices=("hg38", "hg19", "t2t"),
+    )
+    sample: str | None = param(
+        None, help="VCF sample whose genotypes to use (default: the first)."
+    )
+    min_depth: float | None = param(
+        None,
+        help="Depth an exon base needs to count as callable (default: config "
+        "confidence_min_depth).",
+        flags=("--min-depth",),
+        metavar="N",
+        minimum=0,
+    )
+    export: str | None = param(
+        None,
+        help="Also write the gene's variant rows, all or one page filter's, "
+        "as <vcf stem>_<gene>_<filter>_variants.tsv.",
+        choices=GENE_EXPORTS,
+        writes=True,
+    )
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.export and self.vcf_input is None:
+            from wgsextract_cli.core.utils import UsageError
+
+            raise UsageError("--export needs --vcf-input.")
+
+
 @dataclass(frozen=True, kw_only=True)
 class ChipParams(Params):
     """Identify the vendor, chip and revision of a consumer microarray
@@ -190,6 +255,25 @@ def info(
     from wgsextract_cli.commands.info.runner import run_info
 
     return execute(params, run_info, progress=progress, cancel=cancel, check=check)
+
+
+def gene(
+    params: InfoGeneParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Summarise one gene from local data.
+
+    ``details`` is the ``wgsextract.gene/1`` document: ``gene`` (span),
+    ``transcripts``, ``variants`` (rows with the page ``filters`` they pass),
+    ``coverage`` (gene, bins and exons against ``threshold``) and
+    ``notices`` naming the command that provides what is missing.
+    """
+    from wgsextract_cli.commands.info.gene import run_gene
+
+    return execute(params, run_gene, progress=progress, cancel=cancel, check=check)
 
 
 def calculate_coverage(

@@ -1,4 +1,7 @@
 #include "ksw_gpu.h"
+#if defined(__APPLE__) && defined(WGSE_METAL_BENCHMARK_TOOLS)
+#include "watchdog_test.h"
+#endif
 
 #include <cstdio>
 #include <cstdlib>
@@ -20,6 +23,8 @@ constexpr const char *engine_version = "2.31-r1302";
 
 #ifdef __APPLE__
 constexpr const char *platform = "Apple Silicon", *gpu_name = "Metal", *gpu_option = "--metal";
+#elif defined(_WIN32)
+constexpr const char *platform = "Windows", *gpu_name = "CUDA", *gpu_option = "--cuda";
 #else
 constexpr const char *platform = "Linux", *gpu_name = "CUDA", *gpu_option = "--cuda";
 #endif
@@ -79,6 +84,11 @@ int parse_backend_options(int &argc, char **&argv, Backend &backend) {
             }
             index += 2;
 #ifdef WGSE_METAL_BENCHMARK_TOOLS
+#ifdef __APPLE__
+        } else if (strcmp(argv[index], "--gpu-inject-watchdog-start-failure") == 0) {
+            wgse::metal::inject_watchdog_start_failure();
+            ++index;
+#endif
         } else if (strcmp(argv[index], "--gpu-fibers") == 0) {
             if (!count_option(argc, argv, index, fibers)) return 2;
         } else if (strcmp(argv[index], "--gpu-batch") == 0) {

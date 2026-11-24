@@ -13,6 +13,7 @@ from pathlib import Path
 from wgsextract_cli.core import runtime
 from wgsextract_cli.core.paths import absolute_path, expand_path, java_local_path
 from wgsextract_cli.core.tool_catalog import (
+    ENV_ONLY_TOOLS,
     JAVA_JAR,
     PIXI_ENVS_WITHOUT_PYTHON,
     PIXI_TOOL_ENVS,
@@ -159,10 +160,26 @@ def _locked_package_available(pixi_cmd: str, env: str, tool: str) -> bool:
     directory, walking it: from a checkout's root, with its .pixi, that takes
     seconds. Given the manifest, it runs from an empty directory instead.
     """
+    packages = _locked_packages(pixi_cmd, env)
+    return packages is not None and PIXI_TOOL_PACKAGES.get(tool, tool) in packages
+
+
+# Each environment's locked packages for this platform, by Pixi, manifest and
+# environment: `deps list` asks for many tools, and the lockfile doesn't change
+# while the CLI runs. clear_tool_caches empties it.
+locked_packages: dict[tuple[str, ...], frozenset[str]] = {}
+
+
+def _locked_packages(pixi_cmd: str, env: str) -> frozenset[str] | None:
+    """The package names the lockfile gives this platform's `env`, or None
+    when Pixi can't say."""
     manifest = _pixi_manifest_args()
     if manifest and os.path.dirname(pixi_cmd):
         # A relative path (from PIXI_EXE or PATH) must still resolve from there.
         pixi_cmd = os.path.abspath(pixi_cmd)
+    key = (pixi_cmd, *manifest, env)
+    if key in locked_packages:
+        return locked_packages[key]
     command = [
         pixi_cmd,
         "list",
@@ -179,11 +196,16 @@ def _locked_package_available(pixi_cmd: str, env: str, tool: str) -> bool:
                 result = _pixi_query(command, cwd=empty)
         else:
             result = _pixi_query(command)
-        packages = json.loads(result.stdout) if result.returncode == 0 else []
+        entries = json.loads(result.stdout) if result.returncode == 0 else None
     except (OSError, subprocess.SubprocessError, ValueError):
-        return False
-    package = PIXI_TOOL_PACKAGES.get(tool, tool)
-    return any(entry.get("name") == package for entry in packages)
+        return None
+    if not isinstance(entries, list):
+        return None
+    names = frozenset(
+        str(entry.get("name")) for entry in entries if isinstance(entry, dict)
+    )
+    locked_packages[key] = names
+    return names
 
 
 def _join_command(command: list[str]) -> str:
@@ -220,7 +242,43 @@ def pixi_install_command(tool: str) -> str | None:
     )
 
 
-def _probe_environment(prefix: str, tool_names: list[str], windows: bool) -> str | None:
+def pixi_environment_argv(action: str, env: str) -> list[str] | None:
+    """``pixi install --locked`` (action "install") or ``pixi clean`` (action
+    "clean") for this installation's environment ``env``, or None without a
+    Pixi or without this installation's own manifest: Pixi would otherwise
+    find a workspace from the current directory, and act on another
+    project's environments."""
+    pixi_cmd = _resolve_pixi_command()
+    manifest = _pixi_manifest_args()
+    if not pixi_cmd or not manifest:
+        return None
+    options = ["--locked"] if action == "install" else []
+    return [pixi_cmd, action, *options, *manifest, "-e", env]
+
+
+def can_manage_environments() -> bool:
+    """Whether ``deps install`` / ``deps uninstall`` can run here: a Pixi and
+    this installation's own manifest (see ``pixi_environment_argv``)."""
+    return bool(_resolve_pixi_command() and _pixi_manifest_args())
+
+
+def locked_for_platform(tool: str) -> bool | None:
+    """Whether the lockfile gives this platform the package providing
+    ``tool`` in its Pixi environment; None when that can't be told (no Pixi,
+    no environment, or Pixi failed to answer)."""
+    env = PIXI_TOOL_ENVS.get(tool)
+    pixi_cmd = _resolve_pixi_command()
+    if env is None or not pixi_cmd:
+        return None
+    packages = _locked_packages(pixi_cmd, env)
+    if packages is None:
+        return None
+    return PIXI_TOOL_PACKAGES.get(tool, tool) in packages
+
+
+def _probe_environment(
+    prefix: str, tool_names: list[str], windows: bool, allow_path: bool = False
+) -> str | None:
     """How to run a tool from the Pixi environment at prefix, as "kind:value"
     (direct-name, gatk, jar or script), or None.
 
@@ -228,6 +286,7 @@ def _probe_environment(prefix: str, tool_names: list[str], windows: bool) -> str
     sent to that environment's Python, so it imports what it needs itself.
     """
     import json
+    import os
     import shutil
     import zipfile
     from pathlib import Path
@@ -278,9 +337,59 @@ def _probe_environment(prefix: str, tool_names: list[str], windows: bool) -> str
             jar = root / "bin" / (tool + ".jar")
             if jar.exists():
                 return "jar:" + str(jar.resolve())
+        if tool == "java":
+            for candidate in (
+                root / "Library" / "bin" / "java.exe",
+                root / "Library" / "lib" / "jvm" / "bin" / "java.exe",
+                root / "lib" / "jvm" / "bin" / "java",
+                root / "bin" / "java",
+            ):
+                if candidate.is_file():
+                    return "binary:" + str(candidate.resolve())
+
+    env_dirs = (
+        [
+            root,
+            root / "Library" / "mingw-w64" / "bin",
+            root / "Library" / "usr" / "bin",
+            root / "Library" / "bin",
+            root / "Scripts",
+            root / "bin",
+        ]
+        if windows
+        else [root / "bin"]
+    )
+    env_path = os.pathsep.join(str(d) for d in env_dirs if d.is_dir())
+
+    def _which_in(name: str, search_path: str) -> str | None:
+        if not search_path:
+            return None
+        try:
+            return shutil.which(name, path=search_path)
+        except TypeError:
+            exts = (
+                [""]
+                + [
+                    e
+                    for e in os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(
+                        os.pathsep
+                    )
+                    if e
+                ]
+                if windows
+                else [""]
+            )
+            for folder in search_path.split(os.pathsep):
+                for ext in exts:
+                    candidate = Path(folder) / (name + ext)
+                    if candidate.is_file() and (
+                        windows or os.access(candidate, os.X_OK)
+                    ):
+                        return str(candidate)
+            return None
 
     for tool in tool_names:
-        if shutil.which(tool):
+        if _which_in(tool, env_path) or (allow_path and shutil.which(tool)):
             return "direct-name:" + tool
 
     for tool in tool_names:
@@ -320,7 +429,7 @@ def _probe_environment_with_pixi(
         + "\nimport os, sys\n"
         + "env = os.environ.get('CONDA_PREFIX', sys.prefix)\n"
         + "found = os.path.isfile(os.path.join(env, 'conda-meta', 'pixi')) and "
-        + "_probe_environment(sys.prefix, sys.argv[1:], os.name == 'nt')\n"
+        + "_probe_environment(env, sys.argv[1:], os.name == 'nt')\n"
         + "print(found or '')\n"
         + "raise SystemExit(0 if found else 1)\n"
     )
@@ -361,9 +470,12 @@ def _host_pixi_tool_command(tool: str) -> str | None:
     current = os.environ.get("PIXI_ENVIRONMENT_NAME")
     found = (
         _probe_environment(
-            sys.prefix, list(executable_names), runtime.is_windows_host()
+            sys.prefix,
+            list(executable_names),
+            runtime.is_windows_host(),
+            allow_path=(current == env),
         )
-        if current and (current == env or executable_names != ("python",))
+        if current and (current == env or tool not in ENV_ONLY_TOOLS)
         else None
     )
     in_env = bool(found) or current == env
@@ -383,7 +495,30 @@ def _host_pixi_tool_command(tool: str) -> str | None:
     def command(args: list[str]) -> str:
         if not in_env:
             return _pixi_run_command(pixi_cmd, env, args)
-        program = sys.executable if args[0] == "python" else shutil.which(args[0])
+        if args[0] == "python":
+            program: str | None = sys.executable
+        else:
+            env_bin = os.pathsep.join(
+                str(d)
+                for d in (
+                    (
+                        Path(sys.prefix),
+                        Path(sys.prefix, "Library", "mingw-w64", "bin"),
+                        Path(sys.prefix, "Library", "usr", "bin"),
+                        Path(sys.prefix, "Library", "bin"),
+                        Path(sys.prefix, "Scripts"),
+                        Path(sys.prefix, "bin"),
+                    )
+                    if runtime.is_windows_host()
+                    else (Path(sys.prefix, "bin"),)
+                )
+                if d.is_dir()
+            )
+            try:
+                program = shutil.which(args[0], path=env_bin) if env_bin else None
+            except TypeError:
+                program = None
+            program = program or shutil.which(args[0])
         return _join_command([program or args[0], *args[1:]])
 
     if not found:
@@ -395,6 +530,8 @@ def _host_pixi_tool_command(tool: str) -> str | None:
 
     if kind == "direct-name":
         return command([value])
+    if kind == "binary":
+        return _join_command([value])
     if kind == "gatk":
         return command(json.loads(value))
     if kind == "jar":

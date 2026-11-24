@@ -78,6 +78,7 @@ Pick the line that matches your file and run its commands in order. Each command
 
 ::: card
 ### A VCF (from a provider or another pipeline)
+- `vcf prepare`: fix its compression, sorting, contig names and index
 - `vcf clinvar`: add ClinVar clinical significance
 - `vcf filter`: keep a gene, region or quality range
 - `vep run`: predict each variant's effect on genes
@@ -117,7 +118,7 @@ Pick the line that matches your file and run its commands in order. Each command
 ::: card
 ### Setup
 - `ref`: Download and check reference genomes and annotation data.
-- `deps`: Check that the external tools are installed.
+- `deps`: Check, install and remove the external tools.
 - `example-genome`: Download public example genomes to practise on.
 - `sample`: Show recorded sample facts; correct sex or platform.
 - `config`: Show the settings in use and the config.toml path.
@@ -129,19 +130,20 @@ Pick the line that matches your file and run its commands in order. Each command
 ### Advanced
 - `bam`: Sort, index, convert and merge BAM/CRAM files.
 - `qc`: Read and VCF quality reports; fake test data.
+- `cohort`: Summarize variants across a local cohort.
 - `repair`: Fix FTDNA BAM/VCF formatting problems.
 - `analyze`: Run several analyses in one go, for one or many genomes.
 - `typing`: CYP2D6, SMN1/2, HLA and repeat expansions (30x WGS).
 - `methylation`: 5mC/5hmC methylation from Nanopore and PacBio reads.
 - `basecall`: Nanopore POD5 signal to reads with Dorado (optional).
-- `panel`: Gene lists to BED targets for Nanopore adaptive sampling.
+- `panel`: Gene lists to BED targets; research panel file checks.
 - `pet-align`: Align and call variants for a cat or dog genome.
 - `sign`: Checksum and sign output files; verify them.
 - `score`: Research-only polygenic scores from local genotypes.
 - `benchmark`: Time the main workflows on test data.
 - `serve`: Local HTTP/JSON and MCP server for apps and AI agents.
 
-Advanced subcommands of core groups: `extract bam-subset`, `vcf acmg`, `vcf alphamissense`, `vcf cadd`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf impute`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
+Advanced subcommands of core groups: `extract bam-subset`, `lineage y-private`, `vcf acmg`, `vcf alphamissense`, `vcf cadd`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf impute`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
 :::
 
 :::
@@ -229,6 +231,11 @@ GATK (Python 3.10, Java 17) and FreeBayes live in their own environments. Instal
 ::: card
 ### cyrius, t1k, and expansionhunter
 Gene and repeat typing: `typing cyp2d6` (Cyrius), `typing hla` (T1K), and `typing str` (ExpansionHunter). Linux x86_64 and macOS, where packaged; not qualified on Linux ARM64. Install once with `pixi install --locked -e <environment>`; Cyrius's PolyForm Strict license allows noncommercial use only, and no distribution or modification; WGS Extract doesn't bundle it.
+:::
+
+::: card
+### paraphase
+`typing paraphase` calls copy number and haplotypes at paralogous loci from PacBio HiFi reads. ONT is experimental and unvalidated. Install pinned BSD-licensed Paraphase 3.3.1 on Linux or macOS with `pixi install --locked -e paraphase`.
 :::
 
 ::: card

@@ -7,6 +7,7 @@ import os as os
 import subprocess as subprocess
 import sys as sys
 from pathlib import Path as Path
+from pathlib import PurePosixPath as PurePosixPath
 from typing import Any as Any
 
 import pytest as pytest
@@ -15,7 +16,13 @@ from scripts import pr_checks_ready as pr_checks_ready
 from scripts.ci_changes import routes as routes
 from scripts.ci_changes import setup_checks as setup_checks
 from scripts.ci_changes import site_validation as site_validation
+from scripts.ci_codeql_scope import EXTENSIONS as EXTENSIONS
+from scripts.ci_codeql_scope import LANGUAGES as LANGUAGES
+from scripts.ci_codeql_scope import languages as codeql_languages
+from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
+from scripts.ci_select_tests import ci_test_targets as ci_test_targets
+from scripts.ci_select_tests import os_selection
 from scripts.ci_select_tests import select_tests as select_tests
 from scripts.ci_test_dependencies import DOCS_ONLY_SCRIPTS as DOCS_ONLY_SCRIPTS
 from scripts.ci_test_dependencies import DOCS_TEST_TARGETS as DOCS_TEST_TARGETS
@@ -64,6 +71,15 @@ def test_757_label_forces_install_lab_on_a_docs_pr() -> None:
     assert routes(["README.md"], force_install_lab=True)["install"]
 
 
+def test_1495_remote_supervisor_change_runs_native_smoke_not_product_suite() -> None:
+    paths = ["scripts/ci_certify_ssh.py"]
+    cli = routes(paths)["cli"]
+    assert not cli
+    lanes = os_selection(paths, select_tests(paths), cli=cli)
+    for platform in ("windows", "macos", "ubuntu", "arm64"):
+        assert lanes[platform] == ["tests/test_ci_certify_remote.py"]
+
+
 def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() -> None:
     script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
     output = subprocess.check_output(
@@ -92,6 +108,7 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
         "routed": "true",
         "setup_checks": "true",
         "move_modules": "[]",
+        "optional_tests": "[]",
         "tests": "[]",
         "ci": "false",
         "ci_tests": "[]",
@@ -105,6 +122,99 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
         "windows_smoke": "false",
         "arm64_smoke": "false",
     }
+
+
+@pytest.mark.parametrize(
+    ("changed", "expected"),
+    [
+        ("src/wgsextract_cli/core/contamination.py", "tests/test_contamination.py"),
+        (
+            "src/wgsextract_cli/commands/qc/contamination.py",
+            "tests/test_contamination.py",
+        ),
+        ("tests/test_contamination.py", "tests/test_contamination.py"),
+        ("src/wgsextract_cli/commands/vcf/callers.py", "tests/test_vcf_callers.py"),
+        ("tests/test_methylation.py", "tests/test_methylation.py"),
+        (
+            "src/wgsextract_cli/commands/methylation_hp.py",
+            "tests/test_methylation_regions.py",
+        ),
+    ],
+)
+def test_1199_optional_tools_follow_affected_test_imports(
+    changed: str, expected: str
+) -> None:
+    selected = select_tests([changed])
+    assert expected in selected
+    assert expected in routed_suites([changed], selected)
+
+
+def test_1199_optional_lane_does_not_allocate_for_unrelated_changes() -> None:
+    paths = ["tests/test_bwa_mem2.py"]
+    assert routed_suites(paths, select_tests(paths)) == []
+    assert routed_suites(["README.md"], []) == []
+    assert "tests/test_contamination.py" in routed_suites(
+        ["scripts/ci_optional_tools.py"], []
+    )
+
+
+@pytest.mark.parametrize(
+    "changed", [".github/workflows/pr_ci.yml", "scripts/ci_changes.py"]
+)
+def test_1199_optional_caller_and_router_changes_exercise_integrations(
+    changed: str,
+) -> None:
+    assert "tests/test_contamination.py" in routed_suites(
+        [changed], select_tests([changed])
+    )
+
+
+@pytest.mark.parametrize(
+    ("changed", "contamination"),
+    [
+        ("README.md", False),
+        ("gui/app/shared/config.ts", False),
+        ("src/wgsextract_cli/core/contamination.py", True),
+    ],
+)
+def test_1199_queue_full_os_suite_keeps_optional_tools_diff_routed(
+    tmp_path: Path, changed: str, contamination: bool
+) -> None:
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-C", str(tmp_path), *args], text=True
+        ).strip()
+
+    git("init", "--quiet")
+    git("config", "user.name", "CI routing test")
+    git("config", "user.email", "ci@example.invalid")
+    git("commit", "--quiet", "--allow-empty", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    path = tmp_path / changed
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("changed\n")
+    git("add", changed)
+    git("commit", "--quiet", "-m", "change")
+    script = Path(__file__).resolve().parents[1] / "scripts/ci_changes.py"
+    output = subprocess.check_output(
+        [
+            sys.executable,
+            str(script),
+            "--base",
+            base,
+            "--head",
+            "HEAD",
+            "--full-suite",
+        ],
+        cwd=tmp_path,
+        text=True,
+    )
+    selected = dict(line.split("=", 1) for line in output.splitlines())
+    assert selected["ubuntu_tests"] == "all"
+    optional = json.loads(selected["optional_tests"])
+    assert ("tests/test_contamination.py" in optional) is contamination
+    if not contamination:
+        assert optional == []
 
 
 @pytest.mark.skipif(
@@ -268,6 +378,43 @@ def test_757_new_test_imports_and_reads_are_discovered_without_a_path_allowlist(
     ):
         assert path in inputs
         assert routes([path], repository=tmp_path)["cli"], path
+
+
+def test_1326_drive_like_literals_never_stat_outside_the_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "gui").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests/test_reader.py").write_text(
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "ERROR = 'E: Failed to fetch http://mirror/pool'\n"
+        "LOG = Path(ERROR)\n"
+        "DRIVE = ROOT / 'E:' / 'pool'\n"
+        "DATA = 'gui/future.json'\n"
+    )
+    root = tmp_path.resolve()
+    drive_like = root / "E: Failed to fetch http:"
+    stat = os.stat
+
+    def repository_stat(
+        path: str | os.PathLike[str], *args: Any, **kwargs: Any
+    ) -> os.stat_result:
+        # Off Windows this prefix stays in the repository, so flag the probe
+        # itself; is_dir() can't swallow an AssertionError.
+        if Path(path) == drive_like:
+            raise AssertionError(f"statted drive-like text: {path}")
+        # An unready Windows drive raises WinError 1005 instead of "missing".
+        if not Path(path).is_relative_to(root):
+            raise OSError(1005, "unrecognized volume", path)
+        return stat(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "stat", repository_stat)
+        inputs = referenced_inputs(tmp_path)
+    assert "gui/future.json" in inputs
+    if sys.platform == "win32":  # elsewhere "E:" is an ordinary in-repo name
+        assert not any(path.startswith("E:") for path in inputs)
 
 
 def test_757_deleted_directory_inputs_still_run_their_readers(tmp_path: Path) -> None:
@@ -537,3 +684,107 @@ def test_802_router_exception_cannot_be_hidden_by_the_summary_pipeline(
 )
 def test_1045_setup_heavy_checks_follow_their_inputs(path: str, selected: bool) -> None:
     assert setup_checks([path]) is selected
+
+
+def test_1229_release_helper_edits_run_only_the_ci_policy_lane() -> None:
+    paths = [
+        "scripts/ci_release_latest.py",
+        "tests/test_ci_release_latest.py",
+        ".github/workflows/release.yml",
+    ]
+    for changed in [*([path] for path in paths), paths]:
+        assert not routes(changed)["cli"], changed
+        assert "tests/test_ci_release_latest.py" in ci_test_targets(changed), changed
+
+
+def test_1373_main_push_dedupe_edits_run_the_cache_regressions() -> None:
+    for path in ("scripts/ci_merge_group_passes.py", "scripts/ci_run_tests.py"):
+        assert not routes([path])["cli"], path
+        assert "tests/test_ci_test_cache.py" in ci_test_targets([path]), path
+    workflow = [".github/workflows/os_tests.yml"]
+    assert "tests/test_github_actions_policy.py" in ci_test_targets(workflow)
+
+
+CODEQL_SCOPE = Path(__file__).resolve().parents[1] / "scripts/ci_codeql_scope.py"
+
+
+def codeql_scope(repo: Path, *args: str) -> list[str]:
+    result = subprocess.run(
+        [sys.executable, str(CODEQL_SCOPE), *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    key, _, value = result.stdout.strip().partition("=")
+    assert key == "analyze"
+    languages: list[str] = json.loads(value)
+    return languages
+
+
+@pytest.mark.parametrize(
+    ("changed", "expected"),
+    [
+        ({"src/pkg/mod.py": "x = 2\n"}, ["python"]),
+        ({"docs/guide.md": "changed\n"}, []),
+        ({"tests/fixtures/data.json": "{}\n"}, ["javascript-typescript"]),
+        ({"crate/src/main.rs": "fn main() {}\n"}, ["rust"]),
+        # Non-Rust crate inputs (configs, icons) may change what Rust embeds.
+        ({"crate/tauri.conf.json": "{}\n"}, ["javascript-typescript", "rust"]),
+        ({"crate/icons/icon.png": "png\n"}, ["rust"]),
+        (
+            {"tools/check/action.yml": "runs: {}\n"},
+            ["javascript-typescript", "actions"],
+        ),
+        (
+            {".github/codeql/config.txt": "x\n"},
+            ["python", "javascript-typescript", "rust", "actions"],
+        ),
+    ],
+)
+def test_1373_codeql_pr_analyzes_only_the_languages_it_touches(
+    tmp_path: Path, changed: dict[str, str], expected: list[str]
+) -> None:
+    def commit(files: dict[str, str]) -> str:
+        for name, text in files.items():
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / name).write_text(text)
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-qm",
+                "c",
+            ],
+            cwd=tmp_path,
+            check=True,
+        )
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True
+        ).strip()
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    base = commit({"src/pkg/mod.py": "x = 1\n", "crate/Cargo.toml": "[package]\n"})
+    head = commit(changed)
+    assert codeql_scope(tmp_path, "--base", base, "--head", head) == expected
+    # Pushes and the nightly schedule keep every language.
+    assert codeql_scope(tmp_path, "--all") == [
+        "python",
+        "javascript-typescript",
+        "rust",
+        "actions",
+    ]
+
+
+def test_1373_root_level_crate_treats_every_file_as_rust_input() -> None:
+    assert set(LANGUAGES) == set(EXTENSIONS)
+    root = {PurePosixPath(".")}
+    assert codeql_languages(["assets/logo.png"], root) == ["rust"]
+    assert codeql_languages(["assets/logo.png"], {PurePosixPath("crate")}) == []

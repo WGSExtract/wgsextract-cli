@@ -18,6 +18,7 @@ from wgsextract_cli.core.alignment.memory import (
     available_memory,
     check_mapping_memory,
     estimate_mapping_memory,
+    windows_available_commit,
 )
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.alignment.profiles import (
@@ -35,6 +36,8 @@ from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_aligners import (
     AlignerCommand,
     find_native_aligner,
+    native_gpu_preference,
+    on_windows_x64,
 )
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.paths import java_local_path
@@ -205,7 +208,7 @@ def _sort_and_mark_ultima(
             stages[-1],
             out_path,
             threads=setup.threads,
-            memory=setup.memory,
+            memory=setup.sort_budget,
             fmt=fmt,
             ref=setup.ref,
             duplicates="markdup",
@@ -218,7 +221,7 @@ def _sort_and_mark_ultima(
     sorted_bam = str(Path(tmp, "sorted.bam"))
     metrics = str(Path(setup.outdir, f"{setup.stem}_duplicate_metrics.txt"))
     sort = get_sam_sort_cmd(
-        sorted_bam, setup.threads, setup.memory, sam_input=True, temp_dir=tmp
+        sorted_bam, setup.threads, setup.sort_budget, sam_input=True, temp_dir=tmp
     )
     partial = [out_path, out_path + ".bai", out_path + ".crai"]
     with cleanup_files(on_failure=partial, preserve_outputs=atomic_outputs_enabled()):
@@ -281,13 +284,16 @@ def _minimap2_command(
     read_length: float | None,
     input_bytes: int | None,
 ) -> AlignerCommand:
-    """minimap2, or wgse-minimap2 in its place (find_native_aligner). Long
-    reads' gap fills run on its NVIDIA GPU (--backend auto, from wgse-minimap2
-    0.4.0 on Linux) unless the GPU's extra RAM alone would make the pipeline
-    exceed the RAM available; sr keeps them on the CPU."""
+    """Use native CUDA gap fills for long reads when the backend fits."""
     native = find_native_aligner("minimap2", job.native_aligners)
     aligner = AlignerCommand("minimap2", native)
     if native is None or not native.minimap2_gpu or preset == "sr":
+        return aligner
+    windows = on_windows_x64()
+    if windows and (
+        not native.cuda_available
+        or native_gpu_preference(job.prefer_native_gpu) is False
+    ):
         return aligner
     gpu = AlignerCommand("minimap2", native, gpu=True)
     gpu_bytes = aligner_gpu_bytes(gpu, ref, reads)
@@ -313,7 +319,23 @@ def _minimap2_command(
     # Long reads' estimates add headroom to the GPU's RAM too: compare both.
     with_gpu, cpu_only = needed(gpu_bytes), needed(0)
     available = available_memory()
-    if with_gpu > available >= cpu_only:
+    commit = windows_available_commit() if windows else None
+    if windows and commit is None:
+        logging.info(
+            "Running %s on the CPU: available Windows commit could not be measured.",
+            native.binary,
+        )
+        return aligner
+    if commit is not None and with_gpu > commit:
+        logging.info(
+            "Running %s on the CPU: CUDA needs %.1f GiB of host memory, "
+            "more than the %.1f GiB of Windows commit available.",
+            native.binary,
+            with_gpu / 1024**3,
+            commit / 1024**3,
+        )
+        return aligner
+    if with_gpu > available and (windows or available >= cpu_only):
         logging.info(
             f"Running {native.binary} on the CPU: its GPU backend needs "
             f"{gpu_bytes / 1024**3:.1f} GiB more RAM, and the alignment would "
@@ -355,7 +377,7 @@ def align_minimap2(job: AlignJob) -> None:
         setup.ref,
         preset,
         threads=setup.threads,
-        memory=setup.memory,
+        memory=setup.sort_budget,
         samblaster=duplicates == "samblaster",
         reads=read_count,
         read_length=read_length,
@@ -376,7 +398,7 @@ def align_minimap2(job: AlignJob) -> None:
                 reference=setup.ref,
                 threads=setup.threads,
                 alignment_threads=setup.alignment_threads,
-                memory=setup.memory,
+                memory=setup.sort_budget,
                 aligner="minimap2",
                 preset=preset,
                 samblaster=duplicates == "samblaster",
@@ -392,7 +414,7 @@ def align_minimap2(job: AlignJob) -> None:
         "minimap2",
         threads=setup.threads,
         alignment_threads=setup.alignment_threads,
-        memory=setup.memory,
+        memory=setup.sort_budget,
         samblaster=duplicates == "samblaster",
         reads=read_count,
         platform=job.platform,
@@ -441,7 +463,7 @@ def align_minimap2(job: AlignJob) -> None:
                 format=job.format,
                 output_profile=job.output_profile or "default",
                 threads=setup.threads,
-                memory=setup.memory,
+                memory=setup.sort_budget,
                 mapper=align_cmd,
                 compression_threads=setup.compression_threads,
                 # Building the index uses no GPU.
@@ -469,7 +491,7 @@ def align_minimap2(job: AlignJob) -> None:
             align_cmd + ([job.r2] if job.r2 else []),
             out_bam,
             threads=setup.threads,
-            memory=setup.memory,
+            memory=setup.sort_budget,
             fmt=job.format,
             output_profile=job.output_profile or "default",
             ref=setup.ref,

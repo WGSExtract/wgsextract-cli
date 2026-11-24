@@ -3,9 +3,12 @@ vep-cache-builder on a one-gene genome (tests/fixtures/vep_rs), skipped when
 they aren't installed (`pixi install -e vep-rs`)."""
 
 import argparse
+import csv
 import gzip
+import json
 import shutil
 import sys
+from os import utime
 from pathlib import Path
 
 import pytest
@@ -15,6 +18,7 @@ from tests.http_server import serving
 from wgsextract_cli import api
 from wgsextract_cli.api import VepRunParams
 from wgsextract_cli.api.vep import VepDownloadParams, VepVerifyParams
+from wgsextract_cli.commands._vep_rs_cache import _VARIATION_TABLES, _expected_sums
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -34,7 +38,50 @@ _VCF = (
 )
 
 
-def _build_cache(cache_root: Path) -> Path:
+# Ensembl's variation VCFs for the fixture gene's two sites: the germline
+# file names them, the 1000 Genomes file gives their population frequencies.
+_ENSEMBL_VCF_HEADER = "".join(
+    f'##INFO=<ID={population},Number=A,Type=Float,Description="{population}">\n'
+    for population in ("AFR", "AMR", "EAS", "EUR", "SAS")
+)
+_VARIATION_VCFS = {
+    "homo_sapiens-chr1.vcf": "1\t1014\trs100\tA\tG\t.\t.\tTSA=SNV\n"
+    "1\t1150\trs200\tT\tA\t.\t.\tTSA=SNV\n",
+    "1000GENOMES-phase_3.vcf": "1\t1014\trs100\tA\tG\t.\t.\t"
+    "AFR=0.01;AMR=0.02;EAS=0;EUR=0.3;SAS=0.05\n"
+    "1\t1150\trs200\tT\tA\t.\t.\tAFR=0.5;AMR=0.4;EAS=0.6;EUR=0.45;SAS=0.5\n",
+}
+
+
+def _variation_inputs(folder: Path) -> list[str]:
+    """vep-cache-builder's arguments for the fixture's known variants, read
+    from local files as `vep download` hands them over: no network."""
+    from wgsextract_cli.core.utils import run_command
+
+    vcfs, dumps = folder / "vcfs", folder / "dumps"
+    vcfs.mkdir(parents=True)
+    dumps.mkdir()
+    for name, records in _VARIATION_VCFS.items():
+        plain = vcfs / name
+        plain.write_text(
+            "##fileformat=VCFv4.1\n##contig=<ID=1,length=3000>\n"
+            '##INFO=<ID=TSA,Number=1,Type=String,Description="TSA">\n'
+            + _ENSEMBL_VCF_HEADER
+            + "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+            + records
+        )
+        run_command([get_tool_path("bgzip") or "bgzip", "-f", str(plain)])
+        run_command([get_tool_path("bcftools") or "bcftools", "index", f"{plain}.gz"])
+    for table in _VARIATION_TABLES:
+        (dumps / f"{table}.txt.gz").write_bytes(gzip.compress(b""))
+    return [
+        "--include-variations",
+        "--variation-vcf-dir", str(vcfs),
+        "--variation-dumps", str(dumps),
+    ]  # fmt: skip
+
+
+def _build_cache(cache_root: Path, *, variations: bool = False) -> Path:
     """A vep-rs cache of the fixture gene, as vep-cache-builder makes it."""
     from wgsextract_cli.core.utils import run_command
 
@@ -43,6 +90,7 @@ def _build_cache(cache_root: Path) -> Path:
     genome = cache_root.parent / "genome.fa"
     shutil.copy(FIXTURES / "genome.fa", genome)
     run_command(["samtools", "faidx", str(genome)])
+    extra = _variation_inputs(cache_root.parent / "ensembl") if variations else []
     run_command(
         [
             get_tool_path("vep-cache-builder") or "vep-cache-builder",
@@ -51,6 +99,7 @@ def _build_cache(cache_root: Path) -> Path:
             "--fasta", str(FIXTURES / "protein.fa"),
             "--genome-fasta", str(genome),
             "--output-dir", str(version_dir),
+            *extra,
         ],
         capture_output=True,
     )  # fmt: skip
@@ -116,6 +165,37 @@ def test_vep_rs_annotates_and_feeds_the_variant_table(tmp_path, vep_rs_cache):
     rows = next(o.path for o in table.outputs if o.path.endswith(".tsv"))
     text = Path(rows).read_text()
     assert "TINY1" in text and "missense_variant" in text
+
+
+@needs_vep_rs
+def test_1354_vep_rs_frequencies_are_1000_genomes_never_gnomad(tmp_path):
+    cache = _build_cache(tmp_path / "cache", variations=True)
+    out = tmp_path / "out"
+
+    result = api.vep.run(
+        VepRunParams(
+            input=Path(_input(tmp_path)),
+            engine="vep-rs",
+            vep_cache=cache.parents[2],
+            ref=tmp_path / "genome.fa",
+            outdir=out,
+        )
+    )
+
+    annotated = str(out / "in_vep.vcf.gz")
+    csq = _csq(annotated)
+    assert (csq[1014]["AF"], csq[1014]["MAX_AF"]) == ("0.0755", "0.3")
+    assert csq[1014]["gnomADg_AF"] == csq[1014]["gnomADe_AF"] == ""
+    gaps = next(w for w in result.warnings if w.code == "vep_cache_gaps")
+    assert "gnomAD frequencies" in gaps.message and "vcf gnomad" in gaps.message
+
+    table = api.vcf.table(api.VcfTableParams(input=Path(annotated), outdir=out))
+    tsv = next(o.path for o in table.outputs if o.path.endswith(".tsv"))
+    with open(tsv, newline="") as f:
+        rows = {r["pos"]: r for r in csv.DictReader(f, delimiter="\t")}
+    assert (rows["1014"]["gnomad_af"], rows["1014"]["kg_af"]) == ("", "0.0755")
+    assert (rows["1150"]["kg_af"], rows["1150"]["max_af"]) == ("0.4964", "0.6")
+    assert "gnomad_af_missing" in {w.code for w in table.warnings}
 
 
 @needs_vep_rs
@@ -339,6 +419,24 @@ def test_download_fails_when_ensembl_checksums_are_unreadable(tmp_path, monkeypa
     assert not (tmp_path / "c" / "vep-rs" / "homo_sapiens").exists()
 
 
+def test_1210_checksum_listing_retries_transient_server_error():
+    with serving(None, {"CHECKSUMS": b"42 1 file.gz\n"}) as srv:
+        srv.get_errors["CHECKSUMS"] = [503]
+
+        assert _expected_sums(srv.url_for("CHECKSUMS"), {}) == {"file.gz": (42, 1)}
+
+
+@pytest.mark.parametrize(("status", "requests"), [(404, 1), (429, 3)])
+def test_1210_checksum_listing_does_not_retry_indefinitely(status, requests):
+    with serving() as srv:
+        srv.statuses["CHECKSUMS"] = status
+
+        with pytest.raises(WGSExtractError, match=f"HTTP {status}"):
+            _expected_sums(srv.url_for("CHECKSUMS"), {})
+
+    assert len(srv.get_paths) == requests
+
+
 def test_delete_removes_an_unfinished_vep_rs_download(tmp_path):
     work = tmp_path / "vep-rs" / ".download-homo_sapiens-116_GRCh38"
     (work / "core_dumps").mkdir(parents=True)
@@ -367,6 +465,42 @@ def test_chain_annotate_runs_vep_with_the_configured_vep_rs(
     monkeypatch.setitem(settings, "vep_engine", "ensembl")
     if get_tool_path("vep") is None:
         assert "vep is not installed" in chain.skip_reason("vep", lib)  # type: ignore[arg-type]
+
+
+@needs_vep_rs
+def test_1291_chain_journals_and_reruns_when_its_vep_cache_changes(
+    tmp_path: Path, vep_rs_cache: Path
+) -> None:
+    from tests.smoke_utils import run_cli, state_directory_setting
+
+    config = tmp_path / "config.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + f"vep_cache_directory = {json.dumps(str(vep_rs_cache.parents[2]))}\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "out"
+    args = [
+        "--json", "--config", str(config), "--ref", str(tmp_path / "genome.fa"),
+        "vcf", "chain-annotate", "--input", _input(tmp_path), "--outdir", str(out),
+        "--annotations", "vep", "--region", "1:1014", "--keep-intermediates",
+        "--threads", "1",
+    ]  # fmt: skip
+    for expected in ("run", "skip", "run"):
+        if expected == "run" and out.is_dir():
+            info = vep_rs_cache / "info.json"
+            saved = info.stat()
+            utime(info, ns=(saved.st_atime_ns, saved.st_mtime_ns - 1_000_000_000))
+        code, stdout, stderr = run_cli(args)
+        assert code == 0, (stdout, stderr)
+        steps = json.loads(stdout)["details"]["steps"]
+        assert (
+            next(row["action"] for row in steps if row["step"] == "vep:1") == expected
+        )
+        final = str(out / "chain_annotated.vcf.gz")
+        assert {pos: row["Consequence"] for pos, row in _csq(final).items()} == {
+            1014: "missense_variant"
+        }
 
 
 @needs_vep_rs

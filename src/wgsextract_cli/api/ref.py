@@ -23,11 +23,53 @@ from wgsextract_cli.core.utils import UsageError
 
 from ._network import DownloadParams
 from ._params import Params, param
+from ._ref_library import _InLibrary, _library_named
+from ._ref_resources import (
+    BUILDS as BUILDS,
+)
+from ._ref_resources import (
+    GNOMAD_RELEASES as GNOMAD_RELEASES,
+)
+from ._ref_resources import (
+    RefAlphamissenseParams as RefAlphamissenseParams,
+)
+from ._ref_resources import (
+    RefCaddParams as RefCaddParams,
+)
+from ._ref_resources import (
+    RefClinvarParams as RefClinvarParams,
+)
+from ._ref_resources import (
+    RefDbsnpParams as RefDbsnpParams,
+)
+from ._ref_resources import (
+    RefGerpParams as RefGerpParams,
+)
+from ._ref_resources import (
+    RefGnomadParams as RefGnomadParams,
+)
+from ._ref_resources import (
+    RefPharmgkbParams as RefPharmgkbParams,
+)
+from ._ref_resources import (
+    RefPhylopParams as RefPhylopParams,
+)
+from ._ref_resources import (
+    RefRevelParams as RefRevelParams,
+)
+from ._ref_resources import (
+    RefSpliceaiParams as RefSpliceaiParams,
+)
+from ._ref_resources import (
+    _build_param,
+    _delete_param,
+)
+from ._ref_resources import (
+    _Resource as _Resource,
+)
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import optional_input_param, ref_param, threads_param
 
-BUILDS = ("hg38", "hg19")
-GNOMAD_RELEASES = ("2.1.1", "4.1")
 ALIGNER_INDEXES = ("bwa", "bwa-mem2")
 
 
@@ -40,57 +82,6 @@ def _fasta_param() -> Any:
         shared=True,
         config_key="reference_fasta",
     )
-
-
-def _build_param(help: str) -> Any:
-    return param("hg38", help=help, choices=BUILDS)
-
-
-def _delete_param(what: str) -> Any:
-    return param(
-        False,
-        help=f"Delete the installed {what}",
-        action="store_true",
-        deletes=True,
-    )
-
-
-def _library_named(ref: Path) -> Path:
-    """The library ``ref`` names, ``~`` expanded and ``..`` collapsed as the
-    command does: the one above a FASTA's ``genomes`` folder, else ``ref``
-    itself."""
-    from wgsextract_cli.core.reference_assets import reference_library_of
-
-    # Lexically, without absolutising, so a Windows request is checked as such.
-    ref = Path(os.path.normpath(ref.expanduser()))
-    return Path(reference_library_of(ref)) if ref.is_file() else ref
-
-
-class _InLibrary:
-    """An operation on the library ``ref`` names, or the one above a FASTA's
-    ``genomes`` folder."""
-
-    ref: Path | None
-
-    def library(self) -> Path:
-        """The library folder the operation installs into or reads."""
-        from wgsextract_cli.core.reference_assets import (
-            reference_library_of,
-            resolve_reference_library,
-        )
-
-        ref = reference_library_of(self.ref) if self.ref else None
-        return Path(resolve_reference_library(ref))
-
-    def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        if self.ref is not None:
-            yield "ref", _library_named(self.ref)
-
-    def write_folders(self) -> Iterator[Path]:
-        from wgsextract_cli.core.reference_assets import reference_genomes_dir
-
-        library = self.library()
-        yield from (library, Path(reference_genomes_dir(library)))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -197,7 +188,7 @@ class RefGnomadSvParams(_InLibrary, Params):
 
 @dataclass(frozen=True, kw_only=True)
 class RefYbrowseParams(_InLibrary, Params):
-    """Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
+    """Install a verified, sites-only GRCh38 yBrowse snapshot into the
     library, or delete the installed snapshots."""
 
     COMMAND = "ref ybrowse"
@@ -206,8 +197,7 @@ class RefYbrowseParams(_InLibrary, Params):
 
     snapshot: Path | None = param(
         None,
-        help="Use a local GRCh38 VCF(.gz), verifying its header instead of the "
-        "upstream pin.",
+        help="Use a local GRCh38 VCF(.gz) instead of downloading from ybrowse.org.",
         path="file",
         cli_type=Path,
     )
@@ -407,7 +397,7 @@ class RefLibraryListParams(_ConfiguredLibrary):
 class RefLibraryDeleteParams(_ConfiguredLibrary):
     """Delete a catalog genome from the library's genomes folder: its FASTA,
     a partial download, its indexes and sequence dictionary. Its N counts,
-    which the library bootstrap ships, stay."""
+    which never change, stay."""
 
     # As ref library-list: the CLI deletes with 'ref library --delete'.
     COMMAND = "ref library-delete"
@@ -537,6 +527,31 @@ class RefTestGenomeParams(Params):
 
 
 @dataclass(frozen=True, kw_only=True)
+class RefCytobandsParams(_InLibrary, Params):
+    """Validate installed UCSC cytobands; fetch a missing table only with
+    ``--download``. Installs primary-chromosome hg19/hg38 ideograms for the
+    offline viewer; no sample data is sent."""
+
+    COMMAND = "ref cytobands"
+
+    build: str = _build_param("Cytoband assembly (default: hg38).")
+    download: bool = param(
+        False,
+        help="Download missing UCSC cytoBand data from hgdownload.soe.ucsc.edu; "
+        "only the public assembly URL is requested, never sample data.",
+        action="store_true",
+        writes=True,
+    )
+    ref: Path | None = param(
+        None,
+        doc="Reference library folder (default: config reference_library); an explicit FASTA resolves its library.",
+        flags=("--ref",),
+        path="file_or_directory",
+        shared=True,
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
 class RefGeneMapParams(_InLibrary, Params):
     """Download the hg19 and hg38 gene maps into the library, or delete them."""
 
@@ -549,103 +564,6 @@ class RefGeneMapParams(_InLibrary, Params):
         deletes=True,
     )
     ref: Path | None = ref_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class _Resource(_InLibrary, Params):
-    """Annotation data downloaded into the library's ``ref`` folder."""
-
-    ref: Path | None = ref_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefClinvarParams(_Resource):
-    """Download the official ClinVar VCF for hg19 and hg38."""
-
-    COMMAND = "ref clinvar"
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefRevelParams(_Resource):
-    """Download REVEL pathogenicity scores for hg19 and hg38."""
-
-    COMMAND = "ref revel"
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefPhylopParams(_Resource):
-    """Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig)."""
-
-    COMMAND = "ref phylop"
-
-    build: str = _build_param("Genome build to download (default: hg38).")
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefGnomadParams(_Resource):
-    """Download gnomAD allele frequencies: the 2.1.1 exome sites VCFs, or
-    build the 4.1 frequency table."""
-
-    COMMAND = "ref gnomad"
-
-    release: str = param(
-        "2.1.1",
-        help=(
-            "2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). "
-            "4.1: native hg38 exomes+genomes, streamed (~900 GB, hours) into an "
-            "allele-frequency-only table of ~5 GB; --threads sets parallel streams."
-        ),
-        choices=GNOMAD_RELEASES,
-    )
-    threads: int | None = threads_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefSpliceaiParams(_Resource):
-    """Download SpliceAI scores for hg38 (Ensembl, MANE SNVs), or index a
-    manual hg19 download; or delete the installed score files."""
-
-    COMMAND = "ref spliceai"
-
-    delete: bool = _delete_param("SpliceAI score files")
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefAlphamissenseParams(_Resource):
-    """Download AlphaMissense scores for hg19 and hg38, or delete them."""
-
-    COMMAND = "ref alphamissense"
-
-    delete: bool = _delete_param("AlphaMissense score files")
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefPharmgkbParams(_Resource):
-    """Download PharmGKB annotations, or delete them."""
-
-    COMMAND = "ref pharmgkb"
-
-    delete: bool = _delete_param("PharmGKB annotation files")
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefCaddParams(_Resource):
-    """Download CADD v1.7 deleteriousness scores (~85 GB per build)."""
-
-    COMMAND = "ref cadd"
-
-    build: str = _build_param(
-        "Genome build to download (default: hg38). Each is about 85 GB."
-    )
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefGerpParams(_Resource):
-    """Download GERP++ conservation scores as a bigWig."""
-
-    COMMAND = "ref gerp"
-
-    build: str = _build_param("Genome build to download (default: hg38).")
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -664,7 +582,7 @@ class RefAcmgDataParams(_ConfiguredLibrary):
     )
     sa_dir: Path | None = param(
         None,
-        help="Folder to build the databases in (default: ref/acmg/sa in the library).",
+        help="Folder to build the databases in (default: downloads/acmg/sa in the library).",
         path="directory",
         config_key="acmg_sa_dir",
     )
@@ -734,10 +652,10 @@ class RefAcmgDataParams(_ConfiguredLibrary):
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
         # The library (configured when ref is omitted), then everything written
         # in it and in sa_dir: a server checks each with links resolved, so a
-        # linked ref/acmg or sa folder can't lead outside the allowed ones.
+        # linked downloads/acmg or sa folder can't lead outside the allowed ones.
         yield from super().implied_paths()
         folders, files = self._destinations()
-        databases = folders[3]  # destinations(): ref/acmg, sources, ref, sa_dir, ...
+        databases = folders[3]  # destinations(): acmg, sources, downloads, sa_dir, ...
         for path in (*folders, *files):
             yield "sa_dir" if path.is_relative_to(databases) else "ref", path
 
@@ -1015,6 +933,20 @@ def test_genome(
     )
 
 
+def cytobands(
+    params: RefCytobandsParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Validate/install UCSC cytobands (output role ``reference_resource``).
+    Missing or invalid tables require explicit ``download=True``."""
+    from wgsextract_cli.commands.ref.cytobands import run_cytobands
+
+    return execute(params, run_cytobands, progress=progress, cancel=cancel, check=check)
+
+
 def gene_map(
     params: RefGeneMapParams,
     *,
@@ -1039,6 +971,20 @@ def clinvar(
     from wgsextract_cli.commands.ref.library_commands import run_clinvar
 
     return execute(params, run_clinvar, progress=progress, cancel=cancel, check=check)
+
+
+def dbsnp(
+    params: RefDbsnpParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Download NCBI dbSNP b151 common rsIDs and build their offline SQLite
+    lookup index (output role ``reference_resource``), or delete them."""
+    from wgsextract_cli.commands.ref.library_commands import run_dbsnp
+
+    return execute(params, run_dbsnp, progress=progress, cancel=cancel, check=check)
 
 
 def revel(

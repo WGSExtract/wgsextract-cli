@@ -37,6 +37,7 @@ from wgsextract_cli.core.alignment.samtools_commands import (
     get_sam_view_cmd as get_sam_view_cmd,
 )
 from wgsextract_cli.core.download_progress import CancelEvent, redact_urls
+from wgsextract_cli.core.errors import WGSExtractError as WGSExtractError
 from wgsextract_cli.core.paths import PathInput, command_is_path, expand_path
 from wgsextract_cli.core.process_registry import (
     cleanup_processes as cleanup_processes,
@@ -44,16 +45,24 @@ from wgsextract_cli.core.process_registry import (
 from wgsextract_cli.core.process_registry import (
     proc_registry,
     process_group_kwargs,
+    remember_process_group,
     terminate_trees,
+)
+from wgsextract_cli.core.process_registry import (
+    wait_with_cancel as wait_with_cancel,
 )
 from wgsextract_cli.core.progress import Heartbeat, Worker, process_cpu_seconds
 from wgsextract_cli.core.resource_policy import (
     get_resource_defaults as _get_resource_defaults,
 )
+from wgsextract_cli.core.resource_policy import (
+    get_resource_threads as get_resource_threads,
+)
 from wgsextract_cli.core.run_log import active_run_log, record_command
 from wgsextract_cli.core.runtime import (
     default_thread_tuning_profile as default_thread_tuning_profile,
 )
+from wgsextract_cli.core.windows_app_control import blocked_child, launch_error_message
 
 _process_group_kwargs = process_group_kwargs
 
@@ -89,10 +98,6 @@ def _child_stdout(stdout: ProcessStream) -> ProcessStream:
         return subprocess.DEVNULL
 
 
-class WGSExtractError(Exception):
-    """Base exception for wgsextract-cli errors (exit code 1)."""
-
-
 class UsageError(WGSExtractError):
     """The command was invoked wrongly, e.g. a required option is missing (exit code 2)."""
 
@@ -108,6 +113,8 @@ class ToolExecutionError(WGSExtractError, subprocess.CalledProcessError):
         output = self.stderr or ""
         if isinstance(output, bytes):
             output = output.decode(errors="replace")
+        if block := blocked_child(output):
+            return block
         tail = "\n".join(redact_urls(str(output)).strip().splitlines()[-8:])[-2000:]
         tool = Path(str(self.cmd[0])).name if self.cmd else "Tool"
         return f"{tool} failed (exit {self.returncode}): {tail or 'no error output'}"
@@ -341,10 +348,16 @@ def run_command(
     cwd: PathInput | None = None,
     *,
     redact_output_urls: bool = False,
+    private_arguments: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    """Helper to run subprocess with logging and registry."""
+    """Run a registered subprocess; private arguments also hide raw errors."""
+    capture_output = capture_output or private_arguments
     cmd_list = _normalize_subprocess_cmd(cmd)
-    display_cmd = [redact_urls(part) for part in cmd_list]
+    display_cmd = (
+        [*cmd_list[:2], "<private arguments>"]
+        if private_arguments
+        else [redact_urls(part) for part in cmd_list]
+    )
     record_command(display_cmd)
 
     cmd_str = " ".join(display_cmd)
@@ -384,10 +397,7 @@ def run_command(
             if fd is not None:
                 os.close(fd)
         _start_relays(relays, launched=False)
-        raise ToolLaunchError(
-            f"Could not start {Path(cmd_list[0]).name}: {error.strerror or error}. "
-            "Run 'wgsextract deps check' to validate installed tools."
-        ) from error
+        raise ToolLaunchError(launch_error_message(cmd_list[0], error)) from error
 
     relay_threads = _start_relays(relays, launched=True)
     if stderr_read is not None:
@@ -427,10 +437,14 @@ def run_command(
             raise ToolExecutionError(
                 process.returncode,
                 display_cmd,
-                res_stdout,
-                redact_urls(res_stderr, sources=cmd_list)
-                if isinstance(res_stderr, str)
-                else res_stderr,
+                None if private_arguments else res_stdout,
+                None
+                if private_arguments
+                else (
+                    redact_urls(res_stderr, sources=cmd_list)
+                    if isinstance(res_stderr, str)
+                    else res_stderr
+                ),
             )
         return subprocess.CompletedProcess(
             cmd_list, process.returncode, res_stdout, res_stderr
@@ -539,10 +553,8 @@ def popen(
         )
     except OSError as error:
         _start_relays(relays, launched=False)
-        raise ToolLaunchError(
-            f"Could not start {Path(cmd_list[0]).name}: {error.strerror or error}. "
-            "Run 'wgsextract deps check' to validate installed tools."
-        ) from error
+        raise ToolLaunchError(launch_error_message(cmd_list[0], error)) from error
+    remember_process_group(process)
     if isinstance(process, _RelayedPopen):
         process.relays = _start_relays(relays, launched=True)
     proc_registry.register_process(cmd_str, process)
@@ -557,26 +569,9 @@ def popen(
     return process
 
 
-def wait_with_cancel(
-    process: subprocess.Popen[str] | subprocess.Popen[bytes],
-    cancel_event: CancelEvent | None = None,
-) -> bool:
-    """Waits for a process while checking for a cancel event."""
-    while process.poll() is None:
-        if cancel_event and cancel_event.is_set():
-            logging.info(f"Terminating process {process.pid} due to cancellation.")
-            process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-            return False
-        time.sleep(0.1)
-    return process.returncode == 0
-
-
 def _stderr_tail(stream: IO[bytes], max_lines: int = 20) -> str:
-    stream.seek(0)
+    # The last 64 KiB: a kept report can hold a line per record.
+    stream.seek(max(0, stream.seek(0, os.SEEK_END) - 65536))
     lines = stream.read().decode(errors="replace").strip().splitlines()
     return "\n".join(lines[-max_lines:])
 
@@ -602,6 +597,7 @@ def run_pipeline(
     heartbeat: bool = False,
     expected_reads: int | None = None,
     estimate: Callable[[], tuple[float, float]] | None = None,
+    keep_stderr: Mapping[int, PathInput] | None = None,
 ) -> None:
     """
     Run commands connected stdout-to-stdin, wait for every stage, and raise
@@ -614,10 +610,13 @@ def run_pipeline(
     Cancellation kills and reaps every started stage before closing its files.
     ``estimate`` returns the shares of the input read and output written,
     which the heartbeat shows until a stage reports its read count.
+    ``keep_stderr`` maps a stage's index to a file that receives its whole
+    stderr and is kept, for callers that read a tool's report.
     """
     if not stages:
         raise ValueError("run_pipeline requires at least one stage")
 
+    kept = {index: os.fspath(path) for index, path in (keep_stderr or {}).items()}
     procs: list[subprocess.Popen[bytes]] = []
     pipeline_step = contextlib.ExitStack()
     stderr_files: list[IO[bytes]] = []
@@ -679,18 +678,12 @@ def run_pipeline(
                 raise WGSExtractError(f"{description} cancelled")
             is_last = index == len(stages) - 1
             err_file: IO[bytes]
-            if heartbeat or active_run_log():
-                err_file = (
-                    tempfile.NamedTemporaryFile(delete=False, dir=stderr_dir)
-                    if stderr_dir is not None
-                    else tempfile.NamedTemporaryFile(delete=False)
-                )
+            if index in kept:
+                err_file = open(kept[index], "w+b")
+            elif heartbeat or active_run_log():
+                err_file = tempfile.NamedTemporaryFile(delete=False, dir=stderr_dir)
             else:
-                err_file = (
-                    tempfile.TemporaryFile(dir=stderr_dir)
-                    if stderr_dir is not None
-                    else tempfile.TemporaryFile()
-                )
+                err_file = tempfile.TemporaryFile(dir=stderr_dir)
             stderr_files.append(err_file)
             if heartbeat or active_run_log():
                 args = progress_args[index]
@@ -784,7 +777,9 @@ def run_pipeline(
                     logging.debug(f"{stage_name} stderr:\n{tail}")
                 continue
             detail = f"{stage_name} (exit {returncode})"
-            if tail:
+            if block := blocked_child(tail):
+                detail += f": {block}"
+            elif tail:
                 detail += f":\n{tail}"
             failures.append(detail)
         if failures:
@@ -805,5 +800,5 @@ def run_pipeline(
         for err_file in stderr_files:
             name = err_file.name
             err_file.close()
-            if isinstance(name, str):
+            if isinstance(name, str) and name not in kept.values():
                 Path(name).unlink(missing_ok=True)

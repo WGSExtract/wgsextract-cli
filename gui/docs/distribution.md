@@ -39,7 +39,7 @@ app_name = "WGSExtract"
 
 The branded name is used for the app bundle name, installer/DMG name, and native window title. If you omit `app_name`, packaging falls back to the bundle directory name. `TAURI_PRODUCT_SUFFIX` appends a suffix (for example `Ubuntu WebUI`) for side-by-side test builds.
 
-Packaging reads `version` from the bundle's `manifest.json` and uses it as the app version. For example, the bundled WGSExtract manifest currently sets `"version": "0.8.8"`, so installers are named with `0.8.8` instead of WGS Extract GUI's own version. Bundle-authored JSON files support `//` and `/* ... */` comments. Use SemVer-compatible values because Tauri/NSIS and macOS marketing versions reject arbitrary tags. Set `app_version` in `.devconfig.toml` or `PACKAGE_APP_VERSION` / `EMBEDDED_APP_VERSION` to override the manifest version.
+Packaging reads `version` from the bundle's `manifest.json` and uses it as the app version. For example, the bundled WGSExtract manifest currently sets `"version": "0.8.9"`, so installers are named with `0.8.9` instead of WGS Extract GUI's own version. Bundle-authored JSON files support `//` and `/* ... */` comments. Use SemVer-compatible values because Tauri/NSIS and macOS marketing versions reject arbitrary tags. Set `app_version` in `.devconfig.toml` or `PACKAGE_APP_VERSION` / `EMBEDDED_APP_VERSION` to override the manifest version.
 
 Embedded bundle scripts can be split by platform under `scripts/windows`, `scripts/macos`, `scripts/linux`, `scripts/linux/<distro>`, and `scripts/posix`. Runtime resolution chooses the most specific folder for the host and falls back to `posix` for POSIX platforms. Every platform folder present in a bundle must include the full referenced script set, otherwise bundle validation fails.
 
@@ -80,6 +80,11 @@ hooks, runs the native uninstaller, and checks cleanup. Run the same check
 locally on Windows with
 `pwsh -File scripts\validate-windows-tauri-lifecycle.ps1 -AutomatedAdmin` after
 `powershell -ExecutionPolicy Bypass -File .\make.ps1 package`.
+
+Window close must stop both the app and all matched app processes within
+`-ShutdownTimeoutSeconds` (30 seconds by default). The harness waits for
+asynchronous descendant cleanup without killing or ignoring survivors; it logs
+their PIDs, parent PIDs, names, and command lines when waiting or failing.
 
 ## CI / release automation
 
@@ -134,6 +139,13 @@ any file can't be updated. The root's `scripts/bump_version.py X.Y.Z` runs it
 with the CLI's own version bump, since the app and the CLI it bundles ship in
 the same release; the release workflow refuses a tag the bundle doesn't pin.
 
+The script also generates `examples/WGSExtract/scripts/pixi-minimum-version.txt`
+from the root `pixi.toml`'s `requires-pixi`. Rerunning it with the current tag
+refreshes this requirement without bumping the release. Setup checks existing
+Pixi versions on POSIX and Windows and stops with update instructions if one is
+too old; it never upgrades the user's Pixi automatically. A missing Pixi is
+installed as before.
+
 ## Self-updates
 
 The app uses Tauri's v2 updater plugin with GitHub Releases as the release
@@ -165,22 +177,33 @@ signature, installs the update, and restarts the app.
 
 ### GitHub Release feed generation
 
-For a release, `gui-distribution.yml` downloads the packaged artifacts, adds
-them to the `vX.Y.Z` GitHub Release, and runs (from the repository root):
+For a release, `gui-distribution.yml` downloads the packaged artifacts and
+passes the build matrix's target list as `EXPECTED_TARGETS` (a JSON array).
+Before uploading assets to the `vX.Y.Z` GitHub Release, it runs:
 
 ```bash
 python3 gui/tools/packaging/generate_update_feeds.py \
   --repo "$GITHUB_REPOSITORY" \
   --tag "$RELEASE_TAG" \
   --version "${RELEASE_TAG#v}" \
+  --expected-targets "$EXPECTED_TARGETS" \
   --artifacts-root release-artifacts \
-  --output-dir release-artifacts/update-feeds
+  --output-dir updater-feed
 ```
 
 It writes `latest.json` with `windows-x86_64`, `linux-x86_64`, and
-`darwin-aarch64`/`darwin-x86_64` entries for every signed artifact it finds.
+`darwin-aarch64`/`darwin-x86_64` entries for the release targets. Each must
+have exactly one updater artifact with a nonempty `.sig` beside it. A missing
+or ambiguous artifact or signature fails the job before it uploads anything,
+so it cannot replace an existing feed with a partial one.
 Release builds set `PACKAGE_APP_VERSION` from the tag name so the packaged apps and
 the feed agree on the update version.
+
+Artifact-only workflow runs (without a release tag) skip feed generation.
+For local development, replace `--expected-targets ...` with `--allow-unsigned`
+to write entries only for the signed platforms present, or no feed if none
+are signed. Use a clean output directory for an unsigned build so an old
+feed cannot be mistaken for a new one. This mode still rejects ambiguous artifacts.
 
 For end-to-end update testing before a production release, build the app with
 `TAURI_UPDATER_ENDPOINTS` pointed at a test release's `latest.json` instead of

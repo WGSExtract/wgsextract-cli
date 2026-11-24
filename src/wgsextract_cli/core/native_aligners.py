@@ -4,11 +4,13 @@ wgse-bwa-mem3 (bwa-mem3) writes bwa's or bwa-mem2's exact records with
 ``--compat``, faster still, and so can stand in for either. On Apple Silicon
 all of them are built, and all but wgse-minimap2 can also run on the Metal GPU;
 on Linux, wgse-bwa is, and on x86-64 wgse-bwa-mem3 and wgse-minimap2 too, all of
-which can also run on an NVIDIA GPU (CUDA) there. They are used when installed on
-PATH; they are never installed here.
+which can also run on an NVIDIA GPU (CUDA) there. On Windows x86-64, wgse-bwa
+and wgse-minimap2 support CPU and CUDA. Builds are used when installed;
+they are never installed here.
 
-Each tool is asked once per process what it can do (``capabilities --json``),
-and anything unexpected falls back to the upstream aligner.
+Tools are asked what they can do (``capabilities --json``), and anything
+unexpected falls back to the upstream aligner. Capabilities are cached except
+for Windows minimap2, whose CUDA selection depends on current free VRAM.
 """
 
 from __future__ import annotations
@@ -91,8 +93,8 @@ class NativeAligner:
     engine_version: str
     metal_available: bool
     cuda_available: bool = False
-    # A usable NVIDIA GPU, busy or not: capabilities are asked once per process,
-    # and cuda_available also depends on the GPU's free memory at that moment.
+    # A usable NVIDIA GPU, busy or not: cuda_available also depends on the
+    # GPU's free memory at the moment of the capabilities probe.
     cuda_hardware_supported: bool = False
 
     @property
@@ -304,11 +306,14 @@ class AlignerCommand:
         )
 
 
-def native_gpu_preference(value: bool | None) -> bool:
-    """The explicit speed preference, else config.toml's opt-in."""
+def native_gpu_preference(value: bool | None) -> bool | None:
+    """A run override takes precedence over config; None leaves it automatic."""
     from wgsextract_cli.core.config import settings
 
-    return value if value is not None else bool(settings.get("prefer_native_gpu"))
+    if value is not None:
+        return value
+    configured = settings.get("prefer_native_gpu")
+    return configured if isinstance(configured, bool) else None
 
 
 def native_setting(value: str | None) -> str:
@@ -334,11 +339,40 @@ def on_linux() -> bool:
     return platform.system() == "Linux"
 
 
+def on_windows_x64() -> bool:
+    if platform.system() != "Windows":
+        return False
+    from wgsextract_cli.core.windows_arm64 import (
+        IMAGE_FILE_MACHINE_ARM64,
+        windows_native_machine,
+    )
+
+    if platform.machine().lower() not in {"x86_64", "amd64"}:
+        return False
+    try:
+        return windows_native_machine() != IMAGE_FILE_MACHINE_ARM64
+    except (OSError, AttributeError):
+        return False
+
+
+def _build_path(binary: str) -> str | None:
+    if binary == BINARIES["bwa"] and on_windows_x64():
+        from wgsextract_cli.core.config import settings
+
+        configured = settings.get("wgse_bwa_path")
+        if configured:
+            # Probe explicit paths even when missing, so the usual fallback warns.
+            return str(Path(configured).resolve())
+    return shutil.which(binary)
+
+
 def platform_binaries() -> dict[str, str]:
     """The builds for this machine (BINARIES on Apple Silicon), by the upstream
     aligner each replaces."""
     if apple_silicon():
         return BINARIES
+    if on_windows_x64():
+        return {tool: BINARIES[tool] for tool in ("bwa", "minimap2")}
     if platform.system() != "Linux":
         return {}
     machine = platform.machine().lower()
@@ -364,6 +398,10 @@ def _probe(path: str, mtime_ns: int, size: int) -> dict[str, object] | str:
     a hung build costs one timeout per process and a replaced one is asked
     again."""
     del mtime_ns, size
+    return _read_capabilities(path)
+
+
+def _read_capabilities(path: str) -> dict[str, object] | str:
     try:
         completed = subprocess.run(
             [path, "capabilities", "--json"],
@@ -389,16 +427,20 @@ def _probe(path: str, mtime_ns: int, size: int) -> dict[str, object] | str:
     return document
 
 
-def _capabilities(path: str) -> dict[str, object]:
-    stat = Path(path).stat()
-    probed = _probe(path, stat.st_mtime_ns, stat.st_size)
+def _capabilities(path: str, *, live: bool) -> dict[str, object]:
+    if live:
+        probed = _read_capabilities(path)
+    else:
+        stat = Path(path).stat()
+        probed = _probe(path, stat.st_mtime_ns, stat.st_size)
     if isinstance(probed, str):
         raise NativeAlignerUnusable(probed)
     return probed
 
 
 def _check(tool: str, binary: str, path: str) -> NativeAligner:
-    document = _capabilities(path)
+    windows = on_windows_x64()
+    document = _capabilities(path, live=windows and tool == "minimap2")
     schema = document.get("schema_version")
     if schema != CAPABILITIES_SCHEMA:
         raise NativeAlignerUnusable(
@@ -421,7 +463,7 @@ def _check(tool: str, binary: str, path: str) -> NativeAligner:
     return NativeAligner(
         tool=tool,
         binary=binary,
-        command=binary,
+        command=path if windows else binary,
         path=path,
         version=str(version),
         engine_version=str(document.get("engine_version") or ""),
@@ -544,7 +586,7 @@ def installed_build(tool: str) -> NativeAligner:
     """The build on PATH that replaces upstream ``tool``, wherever this runs;
     NativeAlignerUnusable says why there is none."""
     binary = BINARIES[tool]
-    path = shutil.which(binary)
+    path = _build_path(binary)
     if path is None:
         raise NativeAlignerUnusable("isn't installed")
     try:
@@ -568,7 +610,7 @@ def find_native_aligner(
     binary = platform_binaries().get(tool)
     if binary is None or native_setting(setting) == "off":
         return None
-    path = shutil.which(binary)
+    path = _build_path(binary)
     if path is None:
         if quiet or probe:
             return None

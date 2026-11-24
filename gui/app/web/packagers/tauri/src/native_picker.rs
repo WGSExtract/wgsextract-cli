@@ -5,7 +5,13 @@ use std::{
     collections::HashMap,
     io::{Read, Write},
     net::{TcpListener, TcpStream},
+    path::Path,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
     thread,
+    time::{Duration, Instant},
 };
 
 use tauri_plugin_dialog::DialogExt;
@@ -13,6 +19,10 @@ use tauri_plugin_dialog::DialogExt;
 use crate::child_process_path;
 
 const MAX_REQUEST_BYTES: usize = 16 * 1024;
+const MAX_CONNECTIONS: usize = 8;
+const MAX_TITLE_BYTES: usize = 512;
+const MAX_DEFAULT_PATH_BYTES: usize = 4096;
+const SOCKET_TIMEOUT: Duration = Duration::from_secs(5);
 /// What the `bundle` picker offers: a bundle's manifest.json or a bundle archive.
 /// Keep in sync with BUNDLE_FILE_EXTENSIONS in bundle-archive.ts.
 const BUNDLE_EXTENSIONS: &[&str] = &["json", "zip", "tar", "tgz", "gz", "gzip"];
@@ -23,20 +33,48 @@ pub(crate) fn start_native_picker_listener<R: tauri::Runtime>(
     api_token: String,
 ) {
     thread::spawn(move || {
+        let active = Arc::new(AtomicUsize::new(0));
         for stream in listener.incoming().flatten() {
+            let Some(slot) = ConnectionSlot::acquire(&active) else {
+                continue;
+            };
+            let deadline = Instant::now() + SOCKET_TIMEOUT;
+            if stream.set_write_timeout(Some(SOCKET_TIMEOUT)).is_err() {
+                continue;
+            }
             let app = app.clone();
             let api_token = api_token.clone();
-            thread::spawn(move || handle_native_picker_request(stream, &app, &api_token));
+            let _ = thread::Builder::new().spawn(move || {
+                let _slot = slot;
+                handle_native_picker_request(stream, &app, &api_token, deadline);
+            });
         }
     });
+}
+
+struct ConnectionSlot(Arc<AtomicUsize>);
+
+impl ConnectionSlot {
+    fn acquire(active: &Arc<AtomicUsize>) -> Option<Self> {
+        let slot = Self(Arc::clone(active));
+        let previous = active.fetch_add(1, Ordering::Relaxed);
+        (previous < MAX_CONNECTIONS).then_some(slot)
+    }
+}
+
+impl Drop for ConnectionSlot {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 
 fn handle_native_picker_request<R: tauri::Runtime>(
     mut stream: TcpStream,
     app: &tauri::AppHandle<R>,
     api_token: &str,
+    deadline: Instant,
 ) {
-    let Some(request) = read_request_head(&mut stream) else {
+    let Some(request) = read_request_head(&mut stream, deadline) else {
         write_json_response(
             &mut stream,
             400,
@@ -80,9 +118,58 @@ fn handle_native_picker_request<R: tauri::Runtime>(
             "Choose file"
         });
     let default_path = values.get("defaultPath").map(String::as_str).unwrap_or("");
+    let multiple = values.get("multiple").map(String::as_str) == Some("true");
+    if !valid_dialog_options(title, default_path) {
+        write_json_response(
+            &mut stream,
+            400,
+            serde_json::json!({"error": "Invalid request"}),
+        );
+        return;
+    }
     let mut dialog = app.dialog().file().set_title(title);
     if !default_path.is_empty() {
         dialog = dialog.set_directory(default_path);
+    }
+    if kind == "file" && multiple {
+        match dialog.blocking_pick_files() {
+            Some(files) => {
+                let mut paths = Vec::with_capacity(files.len());
+                for file in files {
+                    match file.into_path() {
+                        Ok(path) => paths.push(child_process_path(&path)),
+                        Err(error) => {
+                            write_json_response(
+                                &mut stream,
+                                400,
+                                serde_json::json!({"error": error.to_string()}),
+                            );
+                            return;
+                        }
+                    }
+                }
+                if paths.is_empty() {
+                    write_json_response(
+                        &mut stream,
+                        200,
+                        serde_json::json!({"kind": kind, "cancelled": true}),
+                    );
+                } else {
+                    let joined = paths.join("\n");
+                    write_json_response(
+                        &mut stream,
+                        200,
+                        serde_json::json!({"path": joined, "paths": paths, "kind": kind, "cancelled": false}),
+                    );
+                }
+            }
+            None => write_json_response(
+                &mut stream,
+                200,
+                serde_json::json!({"kind": kind, "cancelled": true}),
+            ),
+        }
+        return;
     }
     // Blocking picks are fine here: this runs on a per-request thread, never the main thread.
     let picked = match kind {
@@ -119,11 +206,25 @@ fn handle_native_picker_request<R: tauri::Runtime>(
     }
 }
 
-fn read_request_head(stream: &mut TcpStream) -> Option<String> {
+fn valid_dialog_options(title: &str, default_path: &str) -> bool {
+    title.len() <= MAX_TITLE_BYTES
+        && !title.contains('\0')
+        && default_path.len() <= MAX_DEFAULT_PATH_BYTES
+        && !default_path.contains('\0')
+        && (default_path.is_empty() || Path::new(default_path).is_absolute())
+}
+
+fn read_request_head(stream: &mut TcpStream, deadline: Instant) -> Option<String> {
     let mut request = Vec::new();
     let mut buffer = [0; 4096];
     while !request.windows(4).any(|window| window == b"\r\n\r\n") {
-        let count = stream.read(&mut buffer).ok()?;
+        stream
+            .set_read_timeout(Some(deadline.checked_duration_since(Instant::now())?))
+            .ok()?;
+        let count = match stream.read(&mut buffer) {
+            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+            result => result.ok()?,
+        };
         if count == 0 || request.len() + count > MAX_REQUEST_BYTES {
             return None;
         }
@@ -194,7 +295,56 @@ fn write_json_response(stream: &mut TcpStream, status: u16, body: serde_json::Va
 
 #[cfg(test)]
 mod tests {
-    use super::{constant_time_eq, percent_decode};
+    use super::*;
+
+    #[test]
+    fn stalled_picker_request_releases_the_socket() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        client
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let worker = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            assert!(
+                read_request_head(&mut stream, Instant::now() + Duration::from_millis(50))
+                    .is_none()
+            );
+        });
+        assert_eq!(client.read(&mut [0; 1]).unwrap(), 0);
+        worker.join().unwrap();
+    }
+
+    #[test]
+    fn picker_rejects_excess_connections_until_a_slot_is_released() {
+        let active = Arc::new(AtomicUsize::new(0));
+        let mut slots: Vec<_> = (0..MAX_CONNECTIONS)
+            .map(|_| ConnectionSlot::acquire(&active).unwrap())
+            .collect();
+        assert!(ConnectionSlot::acquire(&active).is_none());
+        drop(slots.pop());
+        assert!(ConnectionSlot::acquire(&active).is_some());
+    }
+
+    #[test]
+    fn invalid_picker_options_are_not_passed_to_the_dialog() {
+        let absolute = std::env::current_dir().unwrap();
+        let absolute = absolute.to_str().unwrap();
+        assert!(valid_dialog_options("Choose file", absolute));
+        assert!(valid_dialog_options("Choose file", ""));
+        assert!(!valid_dialog_options("Choose file", "relative/path"));
+        assert!(!valid_dialog_options("a\0b", absolute));
+        assert!(!valid_dialog_options(
+            "Choose file",
+            &format!("{absolute}\0")
+        ));
+        assert!(!valid_dialog_options(&"é".repeat(MAX_TITLE_BYTES), ""));
+        let long_path = Path::new(absolute).join("x".repeat(MAX_DEFAULT_PATH_BYTES));
+        assert!(!valid_dialog_options(
+            "Choose file",
+            long_path.to_str().unwrap()
+        ));
+    }
 
     #[test]
     fn decodes_query_components() {

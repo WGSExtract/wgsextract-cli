@@ -33,6 +33,160 @@ Installers before this one set up MSYS2 (by default at `C:\msys64`) for their
 tools. Nothing uses it now; `uninstall_windows.bat --remove-msys2` removes it if
 you have no other use for it.
 
+### When Windows blocks an installed tool
+
+Smart App Control or App Control for Business (WDAC) can block an executable
+even though Pixi installed it. The full `wgsextract deps check` starts each tool
+to check that it runs; `deps check --tool NAME` only locates it. If Windows
+blocks the `wgsextract.exe` launcher itself, run the check through Python
+with `pixi run python -m wgsextract_cli deps check`.
+
+Use a signed build that your policy allows or ask your administrator for an
+approved build. Paired alignment uses `samtools markdup` when Windows blocks
+the optional `samblaster`. If Windows blocks BWA-MEM2's CPU-specific executable,
+you can explicitly select `--aligner bwa` if BWA is allowed. BWA can produce
+different alignment records from BWA-MEM2.
+
+## Work folders and Microsoft Defender
+
+On Windows 11, if your security policy allows it, prefer a trusted **Dev
+Drive** with Defender performance mode for WGS Extract's working files. Point
+`--tmp-dir` and `--outdir` at dedicated folders on that drive. Create the
+temp folder before running the command. Keep real-time protection on. Check
+**Windows Security → Virus & threat protection → Manage settings → See
+volumes** to confirm that performance mode is on for the drive. An ordinary
+ReFS volume is not necessarily a Dev Drive.
+
+Microsoft's [Dev Drive setup guide](https://learn.microsoft.com/en-us/windows/dev-drive/)
+says that Dev Drive “builds on ReFS technology to employ targeted file system
+optimizations”. The [Defender performance mode guide](https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-endpoint-antivirus-performance-mode)
+explains that it works by “deferring security scans until after the open file
+operation has completed”. Files are still scanned, but malware may be
+detected later than with synchronous scanning. Performance mode does not
+change Defender scanning on your NTFS system drive.
+
+If you cannot use a Dev Drive, leave NTFS scanning on by default. An
+administrator can make a [folder exclusion](https://learn.microsoft.com/en-us/defender-endpoint/microsoft-defender-antivirus-exclusions-configure)
+if measurement shows a worthwhile benefit and policy permits it. **A folder
+exclusion skips Defender Antivirus scans**, so malware there may go
+undetected. If you use this option, limit it to one dedicated scratch folder,
+use only trusted inputs there, and remove the exclusion as soon as the job
+finishes. Never exclude a whole drive, Downloads, a shared folder or the
+tool installation. WGS Extract never changes Defender settings.
+
+### One Windows benchmark
+
+In November 2026 we ran WGS Extract 0.8.9 on native Windows 11
+(build 26300.9974, Ryzen 9 9900X3D, 62 GiB RAM) with a 12-core,
+24 GiB job limit. We tested three setups:
+
+- **A:** NTFS, standard real-time scanning.
+- **B:** The same NTFS folder, with a temporary folder exclusion.
+- **C:** A trusted ReFS Dev Drive in a VHDX on the same SSD, with Defender
+  performance mode.
+
+We ran A/B/C and then C/B/A. Each run copied 9.65 GB from common sources
+on C: and D: to the test volume, a separate timing. With inputs, work
+files and outputs on that volume, we aligned 5 million HG002 pairs
+against hs38 using the default CPU BWA, called SNPs in the first 5 Mb of
+chr20 from a separate small BAM, and annotated the chr20 GIAB truth VCF
+against offline ClinVar.
+Every run started with fresh copies and outputs. We repeated the ClinVar
+timings with an empty normalization cache on the test volume for every
+run. We did not flush the Windows file cache.
+
+Values are medians (min–max) over two repeats. Peak working set is the
+sampled total for the command's process tree.
+
+| Workload | Setup | Wall time (s) | MsMpEng CPU (s) | Peak working set (GiB) |
+| --- | --- | ---: | ---: | ---: |
+| Copy inputs | A | 2.95 (2.92–2.98) | 1.99 (1.48–2.50) | 0.027 (0.027–0.027) |
+| Copy inputs | B | 2.83 (2.57–3.10) | 3.05 (0.09–6.00) | 0.027 (0.027–0.027) |
+| Copy inputs | C | 3.54 (2.96–4.12) | 2.46 (1.44–3.48) | 0.027 (0.027–0.027) |
+| Align | A | 262.25 (256.50–267.99) | 244.33 (178.50–310.16) | 10.045 (10.041–10.049) |
+| Align | B | 255.23 (252.23–258.23) | 258.35 (244.67–272.03) | 10.043 (10.038–10.049) |
+| Align | C | 261.00 (259.20–262.81) | 252.49 (143.30–361.69) | 10.052 (10.045–10.058) |
+| SNP calling | A | 1.73 (1.66–1.79) | 1.50 (0.38–2.63) | 0.157 (0.157–0.157) |
+| SNP calling | B | 1.76 (1.65–1.88) | 1.52 (1.13–1.91) | 0.158 (0.157–0.158) |
+| SNP calling | C | 1.79 (1.77–1.80) | 1.86 (0.80–2.92) | 0.158 (0.158–0.159) |
+| ClinVar | A | 152.74 (150.84–154.64) | 98.99 (92.03–105.95) | 0.726 (0.726–0.726) |
+| ClinVar | B | 149.58 (144.00–155.16) | 99.39 (60.14–138.64) | 0.726 (0.726–0.727) |
+| ClinVar | C | 169.10 (167.68–170.53) | 229.80 (160.75–298.84) | 0.726 (0.726–0.726) |
+
+`MsMpEng` CPU time is for the whole host, not just this job, and
+asynchronous scans can continue after a timed command finishes. Before
+each timed command, the shared host's total CPU use ranged from 4.5%
+to 43.1%. With the NTFS exclusion, median alignment and ClinVar times
+were about 3% and 2% lower, respectively, but both sets of ranges
+overlap; SNP calling was about the same. The Dev Drive was about 11%
+slower for ClinVar in this test. That comparison also changes the
+filesystem and adds a virtual disk layer, so it cannot isolate Defender
+overhead. These short runs are not a reason to turn off scanning or a
+prediction for whole-genome jobs.
+
+## Qualifying a whole genome on your own PC
+
+The [30x qualification script](../scripts/qualify_30x.ps1) runs public GIAB
+HG002 data through chr22 extraction, BWA realignment and SNP/indel calling,
+then repeats processing on the whole genome. Before calling variants it declares
+HG002's known Male sex with `sample set --input <aligned.bam> --sex Male` in
+both phases and uses GRCh38 ploidy; the chr22 slice cannot infer sex from
+coverage. Use native x64 Windows and
+PowerShell 7.2 or newer (`pwsh`). Install the CLI as above first; the script
+checks dependencies and does not install or upgrade software.
+
+Allow **400 GiB of free space on a local SSD** and **48 GiB RAM minimum
+(64 GiB recommended, with 40 GiB available)**. This conservative disk budget
+allows for a 100+ GB input, reference/indexes, both sets of outputs and temporary
+files. Existing files from the same run count toward the budget on resume.
+In the earlier qualification, chr22 extraction took 46 seconds and used
+4.2 GiB of system memory. That measures extraction only, not chr22 processing.
+The older full-genome baseline took about **14.4 hours on 16 vCPUs** and peaked
+at 35.8 GiB; allow longer for downloads, indexing or a slower PC.
+
+From your installed CLI folder, use a dedicated workspace on your chosen drive:
+
+```powershell
+pwsh -NoProfile -File .\scripts\qualify_30x.ps1 -Root D:\wgse-30x -DryRun
+pwsh -NoProfile -File .\scripts\qualify_30x.ps1 -Root D:\wgse-30x -Download
+```
+
+`-Download` permits only the documented public inputs: HG002 BAM/BAI from
+Google's `brain-genomics-public` bucket, the reference bootstrap archive from
+GitHub releases, and `hs38` from the CLI reference catalog's public mirrors.
+The script prints these sources before work starts. Without `-Download`,
+missing preparation steps stop with instructions to opt in. Processing runs
+locally; the script does not upload data or send results anywhere.
+
+`-Root` defaults to `$HOME\wgse-30x`; `-Threads` defaults to your logical CPU
+count. Use `-InstallDir` if you run outside your installed CLI folder.
+Select `-Phase prepare`, `-Phase slice` or `-Phase full` to run in stages;
+the default `all` runs them in order and requires a passing slice before full
+processing. Preparation downloads the whole BAM before making the slice.
+Close other workloads, keep the PC awake, and leave the PowerShell window open.
+After interruption, repeat the same command: completed steps remain skipped
+and curl resumes partial downloads. The CLI's realignment checkpoints resume
+an interrupted realignment.
+
+To select a version, install the desired release with `install_windows.bat`
+in that release's folder first. `-Version 0.9.0` checks the installed version;
+`-Commit <40-character SHA>` checks an existing Git checkout (and requires Git).
+Neither option downloads source or changes your installation. Keep the same
+script, installation, root and thread count when resuming; choose a fresh
+root to compare versions. Do not edit the workspace's generated `config.toml`
+or delete completed outputs.
+
+Attach `evidence\summary.md` and `evidence.zip` from the workspace to
+[#1024 (Windows 30x qualification)](https://github.com/WGSExtract/wgsextract-cli/issues/1024).
+The summary includes wall times, sampled process-tree and whole-system memory
+peaks, alignment/VCF record counts, CPU/RAM and disk details. The zip contains
+logs, installation manifests and summaries, including failed steps. Each retry
+keeps its own logs and measurements under `evidence\attempts`; summary wall
+times sum all attempts and peaks take the maximum, so checkpoint reuse does
+not hide earlier work. Time between retries is excluded. It excludes
+BAM/VCF/FASTQ files. Review it for local paths and machine details before posting.
+Failures print the evidence location and return a nonzero exit code.
+
 ## Where the tools come from
 
 Bioconda publishes no Windows packages, so WGS Extract builds its own:
@@ -186,6 +340,84 @@ needed for reads, sorting and Windows. The CLI checks the reference's memory
 estimate before choosing it. `--aligner bwa` selects the lower-memory option;
 `--aligner bwa-mem2` selects bwa-mem2 explicitly.
 
+### wgse-bwa and optional NVIDIA CUDA
+
+The default Pixi environment on Windows x86-64 includes `wgse-bwa` from
+[`windows-tools-12`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/windows-tools-12).
+When BWA is selected, `align` and `realign` use the validated `wgse-bwa.exe`
+from the environment. No manual PATH or configuration changes are needed.
+Run `pixi run wgsextract deps check --tool wgse-bwa` to see the installed path.
+To use a different build, set an explicit path in `config.toml`:
+
+```toml
+wgse_bwa_path = 'C:\tools\wgse-bwa.exe'
+```
+
+An explicit path takes precedence over `PATH`. If it is unusable, the CLI
+warns and continues with stock BWA. Stock BWA is also used when no native
+build is found or with `--native-aligners off`.
+
+On Windows x86-64, `align` and `realign` use CUDA automatically when
+`wgse-bwa` reports CUDA available and the alignment fits.
+CUDA needs a supported NVIDIA GPU and driver, not Docker, WSL or a CUDA
+Toolkit installation. It is distinct from the Linux-only `--gpu` Parabricks
+option. Windows can charge CUDA allocations to system commit (RAM plus
+page file) even when physical RAM is available. Preflight can reduce
+sort memory to fit both budgets; it uses the CPU if either check fails
+or available commit cannot be measured.
+
+Pass `--no-prefer-native-gpu` to force CPU, or set `prefer_native_gpu = false`
+in `config.toml` for future runs. `--prefer-native-gpu` overrides that setting
+for one run, but never bypasses either Windows memory check.
+
+With `windows-tools-12` and Segment Heap enabled, `wgsextract align` on
+5 million HG002 read pairs took 100 s with automatic CUDA versus 189 s with
+forced CPU (Ryzen 9 9900X3D, RTX 5080, 16 threads). Both runs produced
+identical decoded BAM records: 99.73% mapped and 97.85% properly paired.
+
+On the same host, `wgsextract realign` on a local HG002 BAM subset
+(19.47 million input records, below full-genome 30× coverage) took 154 s
+with automatic CUDA and 344 s with forced CPU. Both runs used
+`windows-tools-12`, 16 threads, and fresh output directories. Both produced
+identical decoded BAM records: 99.81% mapped and 99.12% properly paired.
+
+### wgse-minimap2 for long reads
+
+The default Pixi environment on Windows x86-64 includes `wgse-minimap2` from
+[`windows-tools-13`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/windows-tools-13).
+With `native_aligners = "auto"`, `align` and `realign` use it instead of
+stock minimap2 for long reads. No manual PATH or configuration changes are
+needed. Run `pixi run wgsextract deps check --tool wgse-minimap2` to see the
+installed path.
+
+The `map-ont`, `map-hifi` and `map-pb` presets can run their gap fills on
+CUDA. Check the driver, device and device-memory preflight with
+`wgse-minimap2 capabilities --json`. The CLI also checks available RAM and
+Windows commit; it uses the native CPU backend if CUDA is unavailable, the
+memory checks fail, or you pass `--no-prefer-native-gpu` (or set
+`prefer_native_gpu = false`). A failed or timed-out GPU batch is recomputed
+on the CPU. `--native-aligners off` uses stock minimap2. Short reads stay on
+the CPU. The CPU backend does not need the NVIDIA driver or CUDA Toolkit.
+
+On Seraph (Ryzen 9 9900X3D, RTX 5080), eight-thread `realign` to hs38
+produced the same 118,687 decoded records with upstream minimap2 2.31 and
+automatic CUDA; both retained all 86,935 primary read payloads including
+MM/ML. The test read 23 windows of 1.5 Mb from the public HG002 ONT CRAM
+(chr1–22 and X, BED start 20,000,000) and wrote indexed CRAMs with
+`--chunk-size 512M --memory 256M`. Outputs and temporary files were on a
+trusted ReFS Dev Drive with the Defender filter attached.
+
+| Backend | Wall | Peak working set (process tree) | Peak VRAM above idle | Peak run-directory disk |
+| --- | ---: | ---: | ---: | ---: |
+| Upstream CPU | 612 s | 11.8 GiB | 0 MiB | 9.63 GiB |
+| Automatic CUDA | 539 s | 12.9 GiB | 925 MiB | 9.77 GiB |
+
+This is one run per backend, not a whole-genome timing. The CUDA run was 12%
+shorter; its index build was also faster (29 s vs 47 s), and both runs
+spent time encoding and merging CRAM. WDDM VRAM is measured device-wide
+above idle. See [whole-genome sizing](resource_estimates.md#whole-genome-ont-requirements)
+for the projection and storage caveats.
+
 ## Upgrading from a WSL or MSYS2 setup
 
 Older Windows installs used a `tool_runtime` setting (`windows`, `pacman`,
@@ -281,6 +513,42 @@ Bugs found, fixed on `main` after v0.8.5:
 - [#586](https://github.com/WGSExtract/wgsextract-cli/pull/586): the `vcf snp`
   and `vcf indel` "Expected Wait" was divided by the thread count even when
   calling ran in one stream.
+
+## 30x genome with windows-tools-9 (v0.8.8)
+
+The same HG002 30x BAM was rerun with v0.8.8 and the pinned `windows-tools-9`
+packages (bwa with the SSE2 extension kernel, samblaster with a buffered SAM
+reader, bcftools with static mimalloc) in
+[#1024](https://github.com/WGSExtract/wgsextract-cli/issues/1024). The host
+was a Windows 11 Pro desktop (Intel Core i9-9900, 8 cores / 16 threads,
+96 GiB RAM, NVMe `C:`), with default settings and `--threads 16`:
+
+| step | v0.8.8, windows-tools-9 | v0.8.5 ([#554](https://github.com/WGSExtract/wgsextract-cli/issues/554)) |
+| --- | --- | --- |
+| build the BWA index for hs38 | 40 min | 58 min |
+| `realign`: unpack the reads | 22 min | 23 min |
+| `realign`: align, mark duplicates and sort | 7 h 13 min | 7 h 10 min |
+| `info` on the realigned BAM | 2 s | 2 s |
+| `vcf snp` | 25 min | 2 h 48 min |
+| `vcf indel` | 26 min | 3 h 3 min |
+
+The index was built by a chr22 sizing run just before, so the full `realign`
+took 7 h 36 min without it. Alignment took about as long as v0.8.5 did on
+#554's Azure D16ads_v5. The CPUs differ, so this is not a controlled
+comparison of the bwa kernel. The calling steps were about 7× faster because they now call
+contigs in parallel ([#560](https://github.com/WGSExtract/wgsextract-cli/pull/560));
+the "Expected Wait" of 21 minutes for each was close.
+
+Memory peaked at 28.8 GiB above the desktop's idle use (44.7 GiB in use in
+total; the preflight estimate was 40.0 GiB), with `samtools` the largest
+process at 24.4 GiB. `realign` used at most 144 GiB of disk beyond its input,
+and the calling steps used under 4 GiB of memory.
+
+The results agree with v0.8.5 to the precision it published: 99.70% of reads
+mapped and 97.76% properly paired; a 37.2 GiB BAM; 4,406,363 SNPs (3,907,801
+with QUAL ≥ 30 and depth ≥ 10, Ti/Tv 1.99); and 916,621 indels (842,400 with
+QUAL ≥ 30 and depth ≥ 10). v0.8.5 published only rounded counts, so this run
+does not show record-for-record identity.
 
 # Windows ARM64
 

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import psutil
 
 from wgsextract_cli.core import bwa_mem2, dense_suffix_array
+from wgsextract_cli.core.alignment import bwa_index
 from wgsextract_cli.core.alignment.memory import (
     BWA_MEM3_CUDA_BYTES,
     BWA_MEM3_METAL_BYTES,
@@ -17,6 +18,7 @@ from wgsextract_cli.core.alignment.memory import (
     available_memory,
     bwa_gpu_memory,
     estimate_mapping_memory,
+    windows_available_commit,
 )
 from wgsextract_cli.core.alignment.samtools_commands import parse_memory
 from wgsextract_cli.core.config import settings
@@ -33,6 +35,7 @@ from wgsextract_cli.core.native_aligners import (
     find_native_aligner,
     native_gpu_preference,
     native_setting,
+    on_windows_x64,
     platform_binaries,
 )
 from wgsextract_cli.core.pixi_tools import pixi_install_command
@@ -229,7 +232,7 @@ def native_short_read_aligner(
     """How to run bwa or bwa-mem2, and the sort memory per thread to use.
 
     Its build (wgse-bwa, wgse-bwa-mem2) writes the same alignments; it runs on
-    its GPU (Metal on Apple Silicon, CUDA on Linux) when it can. wgse-bwa's GPU
+    its GPU (Metal on Apple Silicon, CUDA on Linux or Windows) when it can. wgse-bwa's GPU
     backend needs bwa_gpu_memory more RAM: when the pipeline's estimate with it
     exceeds physical RAM less headroom or the RAM available now, sort memory
     is lowered without changing the output. When even 256M doesn't fit,
@@ -283,6 +286,17 @@ def native_short_read_aligner(
         aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
     elif tool != "bwa":
         aligner = AlignerCommand(tool, native, gpu=True)
+    elif (
+        native.gpu == "cuda"
+        and on_windows_x64()
+        and native_gpu_preference(job.prefer_native_gpu) is False
+    ):
+        if announce:
+            logging.info(
+                "Using wgse-bwa on the CPU: CUDA was disabled by "
+                "--no-prefer-native-gpu or config prefer_native_gpu=false."
+            )
+        aligner = AlignerCommand(tool, native, dense_sa=dense_sa)
     else:
         aligner, memory = _bwa_gpu_fit(
             job,
@@ -320,13 +334,15 @@ def _bwa_gpu_fit(
     gpu = bwa_gpu_memory(ref, reads, dense_sa_file=dense_sa is not None)
     dense_sa_bytes = dense_sa.stat().st_size if dense_sa else 0
     budget = _gpu_budget(additional_ram_bytes)
+    windows_cuda = native.gpu == "cuda" and on_windows_x64()
+    commit = windows_available_commit() if windows_cuda else None
     amount, unit = parse_memory(memory)
     mib = amount * (1024 if unit == "G" else 1)
     candidates = [memory] + [
         f"{step}M" for step in _GPU_SORT_MEMORY_STEPS_MIB if step < mib
     ]
 
-    def needed(sort_memory: str, gpu_bytes: int = gpu) -> int:
+    def needed(sort_memory: str, gpu_bytes: int = gpu) -> tuple[int, int]:
         estimate = estimate_mapping_memory(
             ref,
             tool,
@@ -342,17 +358,37 @@ def _bwa_gpu_fit(
             gpu_bytes=gpu_bytes,
             dense_sa_bytes=dense_sa_bytes,
         )
-        return estimate.total + additional_ram_bytes
+        physical = estimate.total + additional_ram_bytes
+        committed = physical
+        if commit is not None and gpu_bytes:
+            # WDDM charges the device index and CUDA scratch to host commit
+            # (#1119: 10.9 GiB committed vs 5.8 GiB resident at 5M pairs).
+            # Allow another 512 MiB for scratch and any implicit dense SA copy.
+            committed += estimate.index_resident + max(gpu_bytes - 256 * 1024**2, 0)
+        return physical, committed
 
-    fitting = next((m for m in candidates if needed(m) <= budget), None)
-    if fitting is None and native_gpu_preference(job.prefer_native_gpu):
-        preferred_memory = memory if job.memory_explicit or mib <= 256 else "256M"
+    ram_fitting = fitting = None
+    for candidate in candidates:
+        physical, committed = needed(candidate)
+        if physical > budget:
+            continue
+        if ram_fitting is None:
+            ram_fitting = candidate
+        if not windows_cuda or (commit is not None and committed <= commit):
+            fitting = candidate
+            break
+    preferred_memory = memory if job.memory_explicit or mib <= 256 else "256M"
+    if (
+        fitting is None
+        and not windows_cuda
+        and native_gpu_preference(job.prefer_native_gpu)
+    ):
         logging.info(
             "Preferring %s's native GPU (--prefer-native-gpu): estimated %.1f GiB "
             "against a %.1f GiB memory budget after GPU sort step-down; using %s. "
             "This speed preference may cause heavy swapping.",
             native.binary,
-            needed(preferred_memory) / 1024**3,
+            needed(preferred_memory)[0] / 1024**3,
             budget / 1024**3,
             preferred_memory,
         )
@@ -362,13 +398,17 @@ def _bwa_gpu_fit(
             gpu=True,
             dense_sa=dense_sa,
             memory_decision=NativeMemoryDecision(
-                "prefer_gpu", needed(preferred_memory), budget, memory, preferred_memory
+                "prefer_gpu",
+                needed(preferred_memory)[0],
+                budget,
+                memory,
+                preferred_memory,
             ),
         ), preferred_memory
 
     if fitting is None:
         requested_memory = memory
-        gpu_estimate = needed(candidates[-1])
+        gpu_estimate, gpu_commit = needed(candidates[-1])
         staged_estimate = None
         if native.gpu == "metal" and samblaster:
             chunk_memory = (
@@ -427,15 +467,42 @@ def _bwa_gpu_fit(
                         staged_estimate,
                     ),
                 ), chunk_memory
-        logging.info(
-            f"Running {native.binary} on the CPU: with its {_gpu_name(native)} GPU backend "
-            f"the alignment is estimated to need {gpu_estimate / 1024**3:.1f} "
-            f"GiB, more than the {budget / 1024**3:.1f} GiB memory budget. "
-            "CPU fallback was about 2.5x slower on the measured 16 GB M1 whole "
-            "genome. Use --prefer-native-gpu (config prefer_native_gpu=true) "
-            "to favor speed instead, accepting possible heavy swapping."
-        )
-        if mib > 256 and needed(memory, 0) > budget:
+        reason = "memory_budget_cpu"
+        limit = budget
+        if windows_cuda and commit is None:
+            reason = "windows_commit_unavailable_cpu"
+            logging.info(
+                "Running %s on the CPU: Windows commit headroom could not be checked.",
+                native.binary,
+            )
+        elif commit is not None and gpu_commit > commit:
+            reason = "windows_commit_budget_cpu"
+            gpu_estimate, limit = gpu_commit, commit
+            logging.info(
+                "Running %s on the CPU: CUDA needs about %.1f GiB of Windows commit "
+                "but only %.1f GiB is available (RAM plus page file).",
+                native.binary,
+                gpu_commit / 1024**3,
+                commit / 1024**3,
+            )
+        else:
+            override = (
+                ""
+                if windows_cuda
+                else " Use --prefer-native-gpu (config prefer_native_gpu=true) "
+                "to favor speed instead, accepting possible heavy swapping."
+            )
+            logging.info(
+                "Running %s on the CPU: with its %s GPU backend the alignment "
+                "is estimated to need %.1f GiB, more than the %.1f GiB memory budget.%s",
+                native.binary,
+                _gpu_name(native),
+                gpu_estimate / 1024**3,
+                budget / 1024**3,
+                override,
+            )
+        cpu_budget = min(budget, commit) if commit is not None else budget
+        if mib > 256 and needed(memory, 0)[0] > cpu_budget:
             logging.info(
                 "Sorting with 256M per thread (not %s) to reduce the over-budget "
                 "CPU pipeline's concurrent memory; workers and batch size are unchanged.",
@@ -447,26 +514,30 @@ def _bwa_gpu_fit(
             native,
             dense_sa=dense_sa,
             memory_decision=NativeMemoryDecision(
-                "memory_budget_cpu",
+                reason,
                 gpu_estimate,
-                budget,
+                limit,
                 requested_memory,
                 memory,
                 staged_estimate,
             ),
         )
     else:
+        commit_limited = fitting != ram_fitting
         if fitting != memory:
             logging.info(
                 f"Sorting with {fitting} per thread (not {memory}) to leave "
-                f"room for {native.binary}'s {_gpu_name(native)} GPU backend; the output "
+                f"{'Windows commit ' if commit_limited else ''}room for "
+                f"{native.binary}'s {_gpu_name(native)} GPU backend; the output "
                 "is the same."
             )
         decision = (
             NativeMemoryDecision(
-                f"memory_budget_{native.gpu}_low_sort",
-                needed(fitting),
-                budget,
+                "windows_commit_budget_low_sort"
+                if commit_limited
+                else f"memory_budget_{native.gpu}_low_sort",
+                needed(fitting)[1 if commit_limited else 0],
+                commit if commit_limited and commit is not None else budget,
                 memory,
                 fitting,
             )
@@ -593,6 +664,15 @@ def bwa_mem2_index_ready(model: str, ref: str) -> bool:
     if model in {"bwa-mem3", "wgse-bwa-mem2"}:
         return bwa_mem2.has_bwa_mem3_index(ref)
     return bwa_mem2.has_index(ref)
+
+
+def bwa_index_suffixes(model: str) -> tuple[str, ...]:
+    """Sidecars read by the selected BWA build, including optional ALT data."""
+    if model in {"bwa-mem3", "wgse-bwa-mem2"}:
+        return (*bwa_mem2.BWA_MEM3_INDEX_SUFFIXES, ".alt")
+    if model == "bwa-mem2":
+        return (*bwa_mem2.INDEX_SUFFIXES, ".alt")
+    return (*bwa_index.INDEX_SUFFIXES, ".alt")
 
 
 def aligner_gpu_bytes(aligner: AlignerCommand, ref: str, reads: int | None) -> int:

@@ -20,21 +20,18 @@ from wgsextract_cli.core import dev_download_cache, download_progress
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.download_progress import curl_progress_args
 from wgsextract_cli.core.ref_library import downloads, segmented
-from wgsextract_cli.core.ref_library.segmented import ranged_size
+from wgsextract_cli.core.ref_library.segmented import ranged_revision
 
 # More than one copy_response_to_file chunk (256 KiB), so a cancel can land mid-file.
 DATA = os.urandom(600_000)
 
 
-def _write_bound_partial(path: Path, url: str, data: bytes) -> None:
-    path.write_bytes(data)
-    Path(str(path) + ".source").write_text(hashlib.sha256(url.encode()).hexdigest())
-
-
 @pytest.fixture
 def server(monkeypatch):
-    """One-connection urllib downloads (no curl, no GitHub lookup, no sleeping)."""
+    """One-connection urllib downloads (no curl, no GitHub lookup, no sleeping)
+    from a server that names each version of its file by ETag."""
     srv = RangeServer(DATA)
+    srv.etags = True
     monkeypatch.setattr(
         downloads, "resolve_github_release_asset_sha256", lambda u: None
     )
@@ -140,7 +137,7 @@ def transport(request, server, monkeypatch):
             pytest.skip("needs curl")
         monkeypatch.setattr(downloads, "curl_progress_args", lambda: ["--progress-bar"])
     elif request.param == "segmented":
-        monkeypatch.setattr(segmented, "ranged_size", ranged_size)
+        monkeypatch.setattr(segmented, "ranged_revision", ranged_revision)
         monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", 1)
         monkeypatch.setattr(segmented, "SEGMENT_SIZE", 100_000)
     return server, request.param
@@ -378,7 +375,7 @@ def test_download_diagnostics_redact_urls_without_changing_requests(
 ):
     url = "https://secret-user:secret-password@example.test/a?token='signed-secret with spaces'"
     monkeypatch.setattr(downloads, "DOWNLOAD_ATTEMPTS", 1)
-    monkeypatch.setattr(downloads.segmented, "ranged_size", lambda _url: None)
+    monkeypatch.setattr(downloads.segmented, "ranged_revision", lambda _url: None)
     monkeypatch.setattr(
         downloads, "resolve_github_release_asset_sha256", lambda _url: None
     )
@@ -480,9 +477,7 @@ def test_a_cancelled_download_keeps_its_partial_for_the_next_run(server, tmp_pat
 def test_a_server_that_ignores_ranges_restarts_the_file(server, tmp_path):
     server.ignore_ranges = True
     dest = tmp_path / "hs38.fa.gz"
-    _write_bound_partial(
-        tmp_path / "hs38.fa.gz.partial", server.url, b"stale bytes from elsewhere"
-    )
+    server.leave_partial(server.url, dest, b"stale bytes from elsewhere")
 
     assert downloads.download_file(server.url, str(dest))
 
@@ -503,16 +498,14 @@ def test_an_existing_complete_file_is_fetched_from_byte_zero(server, tmp_path):
 def test_a_bare_416_is_checked_against_the_size_from_head(server, tmp_path):
     server.bare_416 = True
     dest = tmp_path / "hs38.fa.gz"
-    partial = Path(str(dest) + ".partial")
-    _write_bound_partial(partial, server.url, DATA)
+    server.leave_partial(server.url, dest, DATA)
 
     assert downloads.download_file(server.url, str(dest))
     assert server.requests == [("GET", f"bytes={len(DATA)}-"), ("HEAD", None)]
 
     # Without a size to compare, the file can't be trusted: fetch it again.
     server.head_status = 405
-    server.requests.clear()
-    _write_bound_partial(partial, server.url, DATA)
+    server.leave_partial(server.url, dest, DATA)
     assert downloads.download_file(server.url, str(dest))
     assert dest.read_bytes() == DATA
     assert server.gets() == [f"bytes={len(DATA)}-", None]
@@ -527,11 +520,15 @@ def test_an_empty_partial_starts_from_the_first_byte(server, tmp_path):
     assert server.gets() == [None]
 
 
-def test_a_server_error_is_retried(server, tmp_path, monkeypatch):
+@pytest.mark.parametrize("status", [429, 503])
+def test_1210_transient_http_errors_are_retried(server, tmp_path, monkeypatch, status):
     monkeypatch.setattr(downloads, "DOWNLOAD_ATTEMPTS", 3)
-    server.get_status = 503
+    server.get_errors["hs38.fa.gz"] = [status, status]
+    dest = tmp_path / "hs38.fa.gz"
 
-    assert not downloads.download_file(server.url, str(tmp_path / "hs38.fa.gz"))
+    assert downloads.download_file(server.url, str(dest))
+
+    assert dest.read_bytes() == DATA
     assert server.gets() == [None, None, None]
 
 
@@ -634,27 +631,20 @@ def test_without_a_terminal_progress_is_logged(server, tmp_path, monkeypatch, ca
     assert "hs38.fa.gz download progress: 100%" in caplog.text
 
 
+@pytest.mark.skipif(shutil.which("curl") is None, reason="needs curl")
 def test_curl_failure_falls_back_to_urllib_and_resumes_its_bytes(
     server, tmp_path, monkeypatch
 ):
-    """With a terminal, curl downloads to dest.partial; when it fails part-way,
-    the urllib fallback resumes from what curl wrote."""
+    """With a terminal, curl downloads to dest.partial; when it is cut off,
+    the urllib fallback resumes from what curl wrote, of the same version."""
     monkeypatch.setattr(downloads, "curl_progress_args", lambda: ["--progress-bar"])
+    server.drops = 1
     dest = tmp_path / "hs38.fa.gz"
-    commands = []
-
-    def half_curl(cmd, capture_output=False, **_kwargs):
-        commands.append(cmd)
-        Path(cmd[cmd.index("-o") + 1]).write_bytes(DATA[:1000])
-        raise subprocess.CalledProcessError(18, cmd)
-
-    monkeypatch.setattr(downloads, "run_command", half_curl)
 
     assert downloads.download_file(server.url, str(dest))
 
     assert dest.read_bytes() == DATA
-    assert "-C" not in commands[0]
-    assert server.gets() == ["bytes=1000-"]
+    assert server.gets() == [None, f"bytes={len(DATA) // 2}-"]
 
 
 @pytest.mark.parametrize("existing", [False, True])
@@ -689,7 +679,7 @@ def test_curl_resumes_into_the_partial_and_finishes_at_dest(
     monkeypatch.setattr(downloads, "curl_progress_args", lambda: ["--progress-bar"])
     dest = tmp_path / "hs38.fa.gz"
     if have:
-        _write_bound_partial(tmp_path / "hs38.fa.gz.partial", server.url, DATA[:have])
+        server.leave_partial(server.url, dest, DATA[:have])
 
     assert downloads.download_file(server.url, str(dest))
 
@@ -728,7 +718,7 @@ def test_a_poisoned_dev_cache_item_is_dropped_and_fetched_again(
 def segmented_server(server, monkeypatch):
     """Ranged downloads in 1000-byte pieces, one attempt each."""
     server.data = DATA[:10_000]
-    monkeypatch.setattr(segmented, "ranged_size", ranged_size)
+    monkeypatch.setattr(segmented, "ranged_revision", ranged_revision)
     monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", 1)
     monkeypatch.setattr(segmented, "SEGMENT_SIZE", 1000)
     monkeypatch.setattr(segmented, "ATTEMPTS", 1)
@@ -739,15 +729,20 @@ def segmented_server(server, monkeypatch):
 def test_a_cancelled_segmented_download_keeps_its_pieces(segmented_server, tmp_path):
     srv = segmented_server
     dest = tmp_path / "hs38.fa.gz"
-    cancel = threading.Event()
-    cancel.set()
-
-    assert not downloads.download_file(srv.url, str(dest), cancel_event=cancel)
-
+    started, release, cancel = threading.Event(), threading.Event(), threading.Event()
+    srv.body_pauses["hs38.fa.gz"] = (None, started, release)
+    worker = threading.Thread(target=lambda: (started.wait(5), cancel.set()))
+    worker.start()
+    try:
+        assert not downloads.download_file(srv.url, str(dest), cancel_event=cancel)
+        assert started.is_set()
+    finally:
+        release.set()
+        worker.join()
+        srv.body_pauses.clear()
     assert not dest.exists()
     state = json.loads((tmp_path / "hs38.fa.gz.partial.segments").read_text())
-    assert state["url"] == srv.url and state["size"] == len(srv.data)
-
+    assert state["size"] == len(srv.data)
     srv.requests.clear()
     assert downloads.download_file(srv.url, str(dest))
     assert dest.read_bytes() == srv.data

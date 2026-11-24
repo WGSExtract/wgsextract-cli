@@ -16,6 +16,255 @@ pytestmark = pytest.mark.skipif(
 
 
 @pytest.mark.parametrize(
+    ("step", "detached"),
+    [
+        ("install", False),
+        ("deps", False),
+        ("deps", True),
+        ("concurrent", False),
+        ("finalization", False),
+        ("layout", False),
+    ],
+    ids=[
+        "install-fails",
+        "verification-fails",
+        "detached-verification-fails",
+        "concurrent-upgrade",
+        "finalization-fails",
+        "optional-envs-cannot-relocate",
+    ],
+)
+def test_1211_failed_upgrade_keeps_the_previous_app(
+    tmp_path: Path, step: str, detached: bool
+) -> None:
+    payload = tmp_path / "source"
+    payload.mkdir()
+    (payload / "pixi.toml").write_text(
+        '[workspace]\nplatforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]\n'
+    )
+    shutil.copy(ROOT / "uninstall.sh", payload / "uninstall.sh")
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(payload, arcname="wgsextract-cli")
+
+    installation = tmp_path / "installation"
+    app = installation / "app"
+    (app / "reference").mkdir(parents=True)
+    (app / "reference/keep.fa").write_text("user reference")
+    (app / "pixi.toml").write_text("previous manifest")
+    (installation / "wgsextract").write_text("previous launcher")
+    (installation / "uninstall.sh").write_text("#!/bin/sh\n# previous uninstaller\n")
+    install_record = installation / "install-manifest.json"
+    if step == "finalization":
+        install_record.mkdir()
+        install_record /= "keep"
+    install_record.write_text("previous install record")
+    local_envs = app / ".pixi/envs"
+    envs = tmp_path / "detached/envs" if detached else local_envs
+    (envs / "default").mkdir(parents=True)
+    (envs / "default/keep").write_text("working environment")
+    if detached:
+        local_envs.parent.mkdir()
+        local_envs.symlink_to(envs, target_is_directory=True)
+    if step in {"finalization", "layout"}:
+        (local_envs / "gatk").mkdir()
+        (local_envs / "gatk/keep").write_text("working optional environment")
+
+    binary = tmp_path / "pixi"
+    candidate_detached = tmp_path / "detached/envs" if step == "layout" else envs
+    create_env = (
+        f'ln -s "{candidate_detached}" .pixi/envs && mkdir -p "{candidate_detached}/default"'
+        if detached or step == "layout"
+        else "mkdir -p .pixi/envs/default"
+    )
+    second_log = tmp_path / "second-upgrade.log"
+    second_upgrade = ""
+    if step == "concurrent":
+        other_pixi = tmp_path / "working-pixi"
+        other_pixi.write_text("#!/bin/sh\nexit 0\n")
+        other_pixi.chmod(0o755)
+        second_upgrade = (
+            f'  PIXI="{other_pixi}" sh "{ROOT / "install.sh"}" > "{second_log}" 2>&1 '
+            f'|| echo "$?" >> "{second_log}"\n'
+            "  echo 'injected concurrent failure' >&2; exit 42\n"
+        )
+    binary.write_text(
+        "#!/bin/sh\nset -eu\n"
+        'if [ "$1" = install ]; then\n'
+        f"  {create_env}\n"
+        "  printf partial > .pixi/envs/default/keep\n"
+        f"{second_upgrade}"
+        f"  [ '{step}' != install ] || {{ echo 'injected install failure' >&2; exit 42; }}\n"
+        f"elif [ \"$3\" = deps ] && [ '{step}' = deps ]; then\n"
+        "  echo 'injected deps failure' >&2; exit 42\n"
+        "fi\n"
+    )
+    binary.chmod(0o755)
+    env = {
+        **{k: v for k, v in os.environ.items() if not k.startswith("WGSEXTRACT_")},
+        "HOME": str(tmp_path),
+        "PIXI": str(binary),
+        "WGSEXTRACT_INSTALL_DIR": str(installation),
+        "WGSEXTRACT_ARCHIVE_URL": str(archive),
+        "WGSEXTRACT_NO_OPEN": "1",
+    }
+    if detached or step == "layout":
+        env["WGSEXTRACT_PIXI_ENV_DIR"] = str(candidate_detached.parent)
+    if detached:
+        envs.parent.chmod(0o555)
+    try:
+        result = subprocess.run(
+            [str(SH), str(ROOT / "install.sh")],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    finally:
+        if detached:
+            envs.parent.chmod(0o755)
+
+    if step in {"finalization", "layout"}:
+        assert result.returncode == 1, result.stderr
+        assert (local_envs / "gatk/keep").read_text() == "working optional environment"
+        assert (
+            "install-manifest.json"
+            if step == "finalization"
+            else "optional Pixi environments"
+        ) in result.stderr
+    else:
+        assert result.returncode == 42, result.stderr
+        assert f"injected {step} failure" in result.stderr
+    assert (app / "pixi.toml").read_text() == "previous manifest"
+    assert (app / "reference/keep.fa").read_text() == "user reference"
+    assert (local_envs / "default/keep").read_text() == "working environment"
+    assert (installation / "wgsextract").read_text() == "previous launcher"
+    assert "previous uninstaller" in (installation / "uninstall.sh").read_text()
+    assert install_record.read_text() == "previous install record"
+    assert not list(installation.glob(".source-download.*"))
+    assert not list(installation.glob(".wgse-launcher.*"))
+    assert not (installation / ".app-install-lock").exists()
+    if step == "concurrent":
+        log = second_log.read_text()
+        assert "Could not lock" in log
+        assert log.splitlines()[-1] == "1"
+    if detached:
+        assert list(envs.iterdir()) == [envs / "default"]
+
+
+@pytest.mark.parametrize("location", ["explicit", "path", "home"])
+def test_1138_installer_rejects_old_pixi_before_replacing_existing_app(
+    tmp_path: Path, location: str
+) -> None:
+    payload = tmp_path / "source"
+    payload.mkdir()
+    (payload / "pixi.toml").write_text(
+        '[workspace]\nrequires-pixi = ">=0.82.0"\nplatforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]\n'
+    )
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(payload, arcname="wgsextract-cli")
+    home = tmp_path / "home"
+    binary = home / ".pixi/bin/pixi"
+    binary.parent.mkdir(parents=True)
+    binary.write_text(
+        '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pixi 0.69.0"; else exit 99; fi\n'
+    )
+    binary.chmod(0o755)
+    installation = tmp_path / "installation"
+    app = installation / "app"
+    app.mkdir(parents=True)
+    (app / "keep").write_text("existing app")
+    env = {
+        **{
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith("WGSEXTRACT_")
+        },
+        "HOME": str(home),
+        "PATH": os.defpath,
+        "PIXI": "",
+        "WGSEXTRACT_INSTALL_DIR": str(installation),
+        "WGSEXTRACT_ARCHIVE_URL": str(archive),
+    }
+    if location == "explicit":
+        env["PIXI"] = str(binary)
+    elif location == "path":
+        env["PATH"] = str(binary.parent) + os.pathsep + os.defpath
+    result = subprocess.run(
+        [str(SH), str(ROOT / "install.sh")],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 1
+    assert ">=0.82.0" in result.stderr
+    assert "0.69.0" in result.stderr
+    assert "self-update" in result.stderr
+    assert str(binary) in result.stderr
+    assert (app / "keep").read_text() == "existing app"
+    assert "0.69.0" in binary.read_text()
+
+
+@pytest.mark.parametrize(
+    "requirement",
+    [None, 'requires-pixi = "unsupported"', 'requires-pixi = ">=0.82"'],
+    ids=["no-minimum", "invalid-constraint", "incomplete-version"],
+)
+def test_1138_pinned_release_without_pixi_minimum_installs_but_bad_constraint_fails(
+    tmp_path: Path, requirement: str | None
+) -> None:
+    payload = tmp_path / "source"
+    payload.mkdir()
+    manifest = '[workspace]\nplatforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]\n'
+    if requirement:
+        manifest += requirement + "\n"
+    (payload / "pixi.toml").write_text(manifest)
+    shutil.copy(ROOT / "uninstall.sh", payload / "uninstall.sh")
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(payload, arcname="wgsextract-cli")
+    binary = tmp_path / "pixi"
+    binary.write_text(
+        '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pixi 0.69.0"; fi\n'
+    )
+    binary.chmod(0o755)
+    installation = tmp_path / "installation"
+    app = installation / "app"
+    app.mkdir(parents=True)
+    (app / "keep").write_text("existing app")
+    result = subprocess.run(
+        [str(SH), str(ROOT / "install.sh")],
+        env={
+            **{
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("WGSEXTRACT_")
+            },
+            "HOME": str(tmp_path),
+            "PIXI": str(binary),
+            # #1337: a successful macOS install would open Finder on tmp_path.
+            "WGSEXTRACT_NO_OPEN": "1",
+            "WGSEXTRACT_INSTALL_DIR": str(installation),
+            "WGSEXTRACT_RELEASE_TAG": "v0.6.5",
+            "WGSEXTRACT_ARCHIVE_URL": str(archive),
+        },
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if requirement is None:
+        assert result.returncode == 0, result.stderr
+        assert (app / "pixi.toml").read_text() == manifest
+        assert (installation / "wgsextract").is_file()
+    else:
+        assert result.returncode == 1
+        assert "Cannot read the minimum Pixi version" in result.stderr
+        assert (app / "keep").read_text() == "existing app"
+
+
+@pytest.mark.parametrize(
     "compiler",
     ["usr/bin/clang", "Toolchains/XcodeDefault.xctoolchain/usr/bin/clang", None],
     ids=["command-line-tools", "full-xcode", "missing-compiler"],
@@ -205,12 +454,16 @@ def test_linux_arm_validates_downloaded_ref_before_pixi_or_app_changes(
     pixi_marker = tmp_path / "pixi-invoked"
     if supported:
         pixi = commands / "pixi"
-        pixi.write_text(f'#!/bin/sh\nprintf "%s\\n" "$*" >> \'{pixi_marker}\'\n')
+        pixi.write_text(
+            '#!/bin/sh\nif [ "$1" = "--version" ]; then echo "pixi 0.82.0"; exit; fi\n'
+            f'printf "%s\\n" "$*" >> \'{pixi_marker}\'\n'
+        )
         pixi.chmod(0o755)
 
     payload = tmp_path / "payload"
     payload.mkdir()
-    (payload / "pixi.toml").write_text("[workspace]\n" + declaration + "\n")
+    manifest_text = '[workspace]\nrequires-pixi = ">=0.82.0"\n' + declaration + "\n"
+    (payload / "pixi.toml").write_text(manifest_text)
     shutil.copy(ROOT / "uninstall.sh", payload / "uninstall.sh")
     archive = tmp_path / "source.tar.gz"
     with tarfile.open(archive, "w:gz") as tar:
@@ -255,7 +508,7 @@ def test_linux_arm_validates_downloaded_ref_before_pixi_or_app_changes(
     if supported:
         assert result.returncode == 0, result.stderr
         assert "install --locked" in pixi_marker.read_text()
-        assert (app / "pixi.toml").read_text() == "[workspace]\n" + declaration + "\n"
+        assert (app / "pixi.toml").read_text() == manifest_text
         assert launcher.read_text() != "existing launcher"
         assert (installation / "uninstall.sh").exists()
         assert (installation / "install-manifest.json").exists()
@@ -274,3 +527,52 @@ def test_linux_arm_validates_downloaded_ref_before_pixi_or_app_changes(
             else None
             for path in installation.rglob("*")
         } == before
+
+
+def test_1246_upgrade_keeps_cache_creation_record_across_path_spellings(
+    tmp_path: Path,
+) -> None:
+    payload = tmp_path / "source"
+    payload.mkdir()
+    (payload / "pixi.toml").write_text(
+        '[workspace]\nplatforms = ["linux-64", "linux-aarch64", "osx-arm64", "osx-64"]\n'
+    )
+    shutil.copy(ROOT / "uninstall.sh", payload / "uninstall.sh")
+    archive = tmp_path / "source.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        tar.add(payload, arcname="wgsextract-cli")
+    binary = tmp_path / "pixi"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o755)
+    installation = tmp_path / "installation"
+    cache = tmp_path / "pixi-cache"
+    env = {
+        **{k: v for k, v in os.environ.items() if not k.startswith("WGSEXTRACT_")},
+        "HOME": str(tmp_path),
+        "PIXI": str(binary),
+        "WGSEXTRACT_INSTALL_DIR": str(installation),
+        "WGSEXTRACT_ARCHIVE_URL": str(archive),
+        "WGSEXTRACT_NO_OPEN": "1",
+    }
+    # The first install creates the cache; the upgrade names it without the slash.
+    for spelling in (f"{cache}/", str(cache)):
+        result = subprocess.run(
+            [str(SH), str(ROOT / "install.sh")],
+            env={**env, "WGSEXTRACT_PIXI_CACHE_DIR": spelling},
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        assert result.returncode == 0, result.stderr
+
+    result = subprocess.run(
+        [str(SH), str(installation / "uninstall.sh"), "--yes", "--keep-pixi"],
+        env={k: v for k, v in env.items() if k != "PIXI"},
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert not cache.exists()
+    assert not installation.exists()

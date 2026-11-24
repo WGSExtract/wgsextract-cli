@@ -5,8 +5,15 @@ with an experimental NVIDIA GPU backend (see
 [Linux x86-64 and NVIDIA GPUs](#linux-x86-64-and-nvidia-gpus-cuda)).
 
 Native Windows uses [separate tool recipes](../packaging/windows/README.md).
-Its `bwa` recipe reuses the exact CPU extension kernel here, not the
-`wgse-*` GPU executables or their command-line options.
+The stock `bwa` recipe reuses the exact CPU extension kernel here;
+the Windows x86-64 `wgse-bwa` recipe builds both CPU and CUDA backends. The
+default Windows x86-64 Pixi environment includes it. When BWA is selected, the
+CLI uses CUDA automatically if `wgse-bwa` reports it available and the run fits
+Windows RAM and commit limits. Use `--no-prefer-native-gpu` or set
+`prefer_native_gpu = false` in `config.toml` to force CPU.
+The Windows x86-64 `wgse-minimap2` recipe provides the same choice for
+[long reads](../docs/windows.md#wgse-minimap2-for-long-reads), and the default
+Windows x86-64 Pixi environment includes it too.
 
 Optional macOS arm64 (macOS 13+) rebuilds of the aligners WGS Extract uses,
 published as `macos-aligners-*` prereleases. `wgsextract align` and `realign`
@@ -17,6 +24,18 @@ run them in place of their upstream aligners when they're on `PATH`, and
 [`deepvariant/`](deepvariant/README.md) builds `wgse-deepvariant`, an Apple
 Silicon build of DeepVariant 1.10.0, published separately as
 `macos-deepvariant-*` prereleases.
+
+[`pairhmm/`](pairhmm/README.md) is the experimental Linux CUDA PairHMM
+sidecar for GATK 4.6.2.0, explicitly selected with
+`vcf gatk --pair-hmm-cuda JAR`. It is separate from these aligner builds
+and does not change `vcf gatk --gpu` (Parabricks).
+
+[The ARM64 GKL recipe](../packaging/arm64/gkl/README.md#apple-silicon-pairhmm-experimental-issue-1117)
+also builds an experimental Apple Silicon PairHMM sidecar for
+`vcf gatk --pair-hmm-neon JAR`. It reuses GKL's native interface, selects
+double precision to preserve reference blocks, and falls back to Java if
+native loading fails. It is separate from the aligner builds and does not
+change `--gpu` (Parabricks).
 
 | Executable | Upstream | Notes |
 | --- | --- | --- |
@@ -167,6 +186,12 @@ backend of `mem` (other commands ignore them):
   complete and correct);
 - `--backend auto`: like `--metal`, but falls back to the CPU in both cases
   with only a note on stderr.
+
+Starting with `wgse-bwa` 0.14.1, `wgse-bwa-mem2` 0.5.4, `wgse-bwa-mem3` 0.4.1
+and `wgse-minimap2` 0.4.1, the aligners refuse to submit GPU work and log
+the reason if the Metal watchdog thread cannot start. `--backend auto`
+finishes on the CPU and exits successfully; `--metal` also completes the
+alignments on the CPU, but exits 1 as for other GPU batch failures.
 
 `wgse-bwa-mem3`'s `mem` is upstream bwa-mem3's: by default it writes bwa-mem3's records
 (BWA-MEM2's, with different MAPQs and `MQ`/`HN` tags), `--compat=bwa-mem` and
@@ -1067,7 +1092,8 @@ Unlike Apple's unified memory, a discrete GPU has its own:
 - **Host memory:** the pinned batch buffers add about 0.7 GiB.
 - **Runtime:** the CUDA runtime is linked statically, so the package needs only
   the NVIDIA driver, and only for `--cuda`. Without a usable driver or GPU,
-  `capabilities --json` reports `cuda_available: false`.
+  `capabilities --json` reports `cuda_available: false` and `--backend auto`
+  aligns on the CPU.
 - **Watchdog:** every wait for the GPU is bounded, by the larger of 60 s and 20
   times that stage's slowest batch so far. A batch that overruns (a hung GPU)
   is finished on the CPU with the same output. `--cuda` then exits 1, and
@@ -1282,9 +1308,10 @@ fills on an NVIDIA GPU as `--metal` does on a Mac, with the same exact-input
 matching. `--backend auto` uses the GPU when it can, and otherwise aligns on
 the CPU.
 
-- **Shared engine:** `ksw_host.cpp` is the engine both GPU builds share. It
-  runs reads as fibers on each `-t` thread (an x86-64 ELF context switch
-  alongside the arm64 one), queues their fills and dispatches the batches.
+- **Shared engine:** `ksw_host.cpp` is the engine both GPU backends share. It
+  runs reads as fibers on each `-t` thread (Win32 fibers on Windows, context
+  switches on x86-64 ELF and Apple arm64), queues their fills and dispatches
+  the batches.
   `ksw_engine.h` is the device interface: Metal (`metal_ksw.mm`) and CUDA
   (`ksw_cuda.cu`).
 - **Kernel:** `ksw_fill.cuh` is the Metal kernel ported to CUDA, one warp per
@@ -1389,6 +1416,37 @@ kernels for (such as Pascal or Volta, by default) is never selected, and
 whichever GPU backend the build and machine have. CI's runners have no NVIDIA GPU:
 `.github/workflows/linux_aligners.yml` compiles the CUDA backends (`cuda-build`)
 but can't run their tests.
+
+On Windows x86-64, `wgse-bwa` and `wgse-minimap2` build with
+`clang-cl` from a Visual Studio x64 developer prompt, the static C runtime and
+`-DWGSE_CUDA=ON` for the CUDA backend (nvcc with `cl.exe` as its host
+compiler). [windows/](windows/) supplies the POSIX functions MSVC lacks, with
+[packaging/windows/compat](../packaging/windows/compat/); BWA's source must
+carry the Windows bwa package's
+[0001 patch](../packaging/windows/recipes/bwa/patches/0001-windows-native-build.patch):
+
+```powershell
+cmake -S native -B out/native-win -G Ninja -DCMAKE_BUILD_TYPE=Release `
+    -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_LINKER=lld-link `
+    -DWGSE_CUDA=ON -DBUILD_TESTING=OFF -DZLIB_ROOT=<static /MT zlib> -DZLIB_USE_STATIC_LIBS=ON `
+    -DFETCHCONTENT_SOURCE_DIR_BWA=<patched bwa-0.7.19>
+cmake --build out/native-win
+```
+
+The executable needs only Windows' own DLLs and, for `--cuda`, the NVIDIA driver.
+Windows builds add native SM 120 code to the Linux targets, retaining
+compute 90 PTX for other newer GPUs. Use CUDA 13.5 as in the recipe, or set
+`CMAKE_CUDA_ARCHITECTURES` explicitly for a different toolkit.
+With `-DBUILD_TESTING=ON`, `ctest --test-dir out/native-win --output-on-failure`
+uses Git for Windows' Bash to run the shell-based tests; no WSL is used.
+For minimap2 instead of BWA, pass `-DWGSE_BWA=OFF -DWGSE_MINIMAP2=ON`,
+omit `FETCHCONTENT_SOURCE_DIR_BWA`, and optionally point
+`FETCHCONTENT_SOURCE_DIR_MINIMAP2` at a local copy of minimap2 2.31.
+The Windows CUDA package tests also exercise `--backend auto` with CUDA hidden
+and compare its CPU output to upstream. The Windows build does not enable
+Segment Heap: in an interleaved map-ont test on the RTX 5080, 13,714 HG002 ONT
+reads took 12.92/12.94 s with the classic heap and 12.94/12.91 s with a
+manifest-only Segment Heap change (six threads, chr20 index, SAM discarded).
 
 `-DBUILD_TESTING=OFF` builds the release executables without tests or the
 hidden GPU tuning flags. The public `--dense-sa on|off` switch remains

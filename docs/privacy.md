@@ -19,6 +19,12 @@ verified data is reused offline. `--no-download` overrides a persistent opt-in:
 allow_reference_downloads = false
 ```
 
+`ref cytobands` validates installed tables offline and requires its own
+explicit `--download` to fetch missing UCSC `cytoBand` data, even if the
+persistent setting is enabled. The request contains only the hg19/hg38 public
+assembly path on `hgdownload.soe.ucsc.edu`; no sample-derived data is sent.
+The genome viewer uses installed tables only and never requests UCSC data.
+
 `analyze comprehensive` runs these same guarded subcommands. Provision missing
 data first with the download command named in the error, or explicitly opt in
 through `config.toml` before running the comprehensive workflow.
@@ -34,6 +40,31 @@ job authorization and download permission; merely starting the server grants
 neither to an analysis. Do not enable downloads globally on a machine that
 must remain offline.
 
+## Checking a run before going offline
+
+`wgsextract deps ready -- COMMAND ...` reports whether a command line can run
+here without the network, before a long run or before disconnecting. It checks
+each prerequisite with the check the command's own run makes: the platform,
+the tools it runs (with their versions, Conda packages and the licences their
+metadata record), Docker images in the local engine (identity, digests,
+labels), NVIDIA GPUs and driver, Clair3 models and wgse-deepvariant weights
+against their pinned SHA-256, and the input, reference genome, indexes and
+annotation data. Each item is `runnable`, `installed`, `unverified`,
+`unsupported`, `missing`, `stale` or `incompatible`; a missing one names the
+explicit setup or download step that provides it (`deps install`,
+`ref library --install`, `docker pull`, `ref verify`, `bam index`). The check
+installs, pulls and downloads nothing and makes no network request; a command
+that downloads, or a remote input, is reported as needing the network. It
+exits 3 when the run isn't ready. Model and weight terms show as `unknown`
+where nothing installed records them: installing, verifying or signing a
+component doesn't grant a right to redistribute it. The server doesn't offer
+the check, since its command line names paths on the host.
+
+```sh
+wgsextract deps ready -- vcf clair3 --input ont.bam --gpu
+wgsextract --json deps ready -- vcf deepvariant --input sample.cram
+```
+
 ## What goes where
 
 Public-data requests reveal your IP address, requested asset/model identifiers,
@@ -44,6 +75,10 @@ available, use byte-identical public assets and the same consent. A mirror is
 not permission to download. No reference download sends sample files,
 genotypes or variant coordinates.
 
+`vep run` uses a local cache and fails if the required Ensembl cache is
+missing. Choosing `--engine ensembl` does not authorize sending variant
+queries. The separate `vep download` command fetches public data only.
+
 | Opt-in | Destination | Request data |
 | --- | --- | --- |
 | `qc ancestry --download` | GitHub WGSExtract releases/CDN | Pinned HGDP+1KG reference filename, not sample ancestry or positions |
@@ -51,21 +86,32 @@ genotypes or variant coordinates.
 | `vcf pharmcat --download` | `zenodo.org`, via PharmCAT's reference downloader (record 7288118) | Public GRCh38 reference archive/index filenames, not pharmacogenetic variants or sample files |
 | `ref index --aligner bwa-mem2 --download` | Published hs38DH index on Amazon S3 | Reference index filenames, not read/sample information; without permission the index is built locally if RAM permits |
 | `typing hla --download` | IPD-IMGT/HLA's public distribution, via T1K (GitHub ANHIG/IMGTHLA) | Allele-database identifiers, not reads or HLA calls |
+| `typing target-cnv --download` | NCBI (`ftp-trace.ncbi.nlm.nih.gov`), GIAB v3.5 stratifications | Assembly name in two fixed BED URLs; no target intervals, reads, sample identifiers or calls |
 | `lineage mt-haplogroup --download` | GitHub `genepi/phylotree-fu-rcrs`, `genepi/phylotree-rcrs-17`, `genebygene/mitotree` releases/CDN | Selected tree ID/version, not haplogroup or variants |
 | `lineage y-haplogroup --download` | GitHub WGSExtract releases/CDN; configured custom-tree host | Tree ID/version and selected reference build/table; custom-tree URL, not sample markers/calls |
 | `report --download` | GitHub WGSExtract releases/CDN | Selected public gene-list filename/version, not findings |
+| `report --pgx-context FILE --download` | `files.cpicpgx.org` | The pinned CPIC database release filename (`cpic_db_dump-v1.61.0.sql.gz`), not the medication list, findings or genotypes; the medication file is read locally only |
 | `score pgs --download` | `www.pgscatalog.org`, `ftp.ebi.ac.uk`, GitHub WGSExtract releases/CDN | PGS ID, coordinate build, public scoring weights and calibration/ancestry asset names, not sample scores or genotypes |
 | `basecall --download` | Oxford Nanopore's Dorado model distribution | Model/modification names and POD5 chemistry metadata used to select a model. No signal/read files are uploaded. For offline use pass a local `--model` directory without `--modified-bases`. |
+| `methylation regions --download` | `hgdownload.soe.ucsc.edu` | Pinned public hg38 `cpgIslandExt` filename; no sample positions or calls. The flag is local-only, and the server can read an allowed, preinstalled table. |
 | `ref library --remote-sizes` / desktop **Look up sizes** | Each catalog entry's host, including UCSC, NCBI and EBI | HTTP(S) HEAD or FTP SIZE requests for public reference filenames with missing or at least 30-day-old cached sizes; no sample data |
 | `realign --input https://…` | The URL's host and redirects | Explicitly selected remote alignment/index; HEAD, index download and sample-derived genomic byte ranges. Use a local file to avoid disclosing access patterns. Server clients cannot supply URLs. |
 | `benchmark --dataset real` / `--dataset-url` | Selected public benchmark host | Dataset/index URLs; this explicitly selected dataset mode downloads public test data |
 | Desktop **Check for Updates…**, then **Download** | Configured GitHub release/update endpoints/CDN | Application version, platform/architecture and asset requests, not sample information |
 | Desktop **Setup**, reference/dataset download actions | GitHub, Pixi/Conda/PyPI registries and each selected resource publisher | Selected package versions, platform and public dataset identifiers, not sample information |
+| Desktop genome viewer **Connect and view remote file**, after transfer consent | The operator-selected server URL displayed in the viewer | Selected server-side sample/index/reference paths, adjacent FASTA index paths and genomic byte offsets; the backend authenticates with the server token and receives selected genomic/reference bytes |
 
 Opening an external report/documentation link is an explicit browser action;
 the browser's own privacy settings apply. Generated reports do not load remote
 scripts, fonts or images automatically. The desktop's UI and job server talk
-over authenticated loopback connections on this computer, not a remote service.
+over authenticated loopback connections on this computer. The optional
+[remote genome viewer](../gui/docs/genome-viewer.md#view-files-on-a-remote-server)
+uses that local backend to proxy explicitly selected server file ranges.
+Importing or restoring its private TOML configuration makes no remote request.
+The backend keeps the server token outside browser-delivered data; the viewer
+receives revocable per-file grants. HTTPS retains certificate validation;
+redirects and cookie forwarding are disabled. Plain HTTP exposes credentials
+and genomic traffic, so use an operator-managed TLS proxy or encrypted tunnel.
 Opening the desktop's Reference Genomes page reads only local/catalog metadata
 and cached sizes, including old sizes. **Look up sizes** requires confirmation
 of the destinations and requests before any remote size lookup.
@@ -82,7 +128,7 @@ behavior. Classification describes the baseline, before this change.
 | `extract` and `bam` families, `repair`, `align`, local-input `realign`, `panel`, `sign`, `analyze batch-gen`, VCF conversion/calling/filtering/comparison/phasing/imputation, QC fake-data/fastp/FastQC/MultiQC/VCF/somalier/contamination, non-HLA typing, Y-STR, PET, methylation | No | Local; absent references, annotation data, panels and tools give guidance |
 | CRAM decoding by htslib/Java tools | No remote fallback intended | Local-only `REF_PATH` retained; no Java reference-download property; missing references fail |
 | Liftover/chip coordinates | Coordinate conversion is local; missing microarray chains were fetched | **Default-violation** found in review: missing whole-chain downloads now require `microarray --download`; pyliftover receives only local chain files |
-| VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | No | Local caches/indexes only; VEP cache missing names `vep download` |
+| VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | Ensembl VEP could fall back to online annotation if its cache directory was missing | Local caches/indexes only; a missing cache now stops `vep run` and names `vep download` |
 | DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required; `--pull=never`; no runtime dependency installation |
 | `ref download`, genome-library install, bootstrap, annotation resources, gene maps, microarray targets, ancestry/AADR/somalier/imputation/yBrowse/gnomAD-SV install, ACMG data preparation | Yes | Explicit network operations; retain downloads and mirrors |
 | Reference/dataset listing/status/verify/count/delete | No | Local metadata; remote sizes only with the opt-in above |
@@ -95,6 +141,7 @@ behavior. Classification describes the baseline, before this change.
 | `lineage mt-haplogroup`, `lineage y-haplogroup`, custom remote Y trees | Yes when data absent | **Default-violation**: require `--download`; cache reuse remains local |
 | `analyze comprehensive` | Inherits first-use tree downloads from lineage steps | **Default-violation**: child commands now refuse missing data without consent; pre-provision it or explicitly opt in through config |
 | `report` with clinical findings and absent selected gene list | Yes | **Default-violation**: require `--download`, not silent partial placement |
+| `report --pgx-context` with the pinned CPIC release absent | Yes | Requires `--download`; the medication list never leaves the computer |
 | Dorado `basecall` model names/modifications | Yes | **Default-violation**: require `--download` or a local model directory |
 | Remote realignment input, remote sizes, benchmark real-data selection | Yes | Explicit **opt-in**; request data disclosed above |
 | `serve` HTTP/MCP, desktop local backend/path picker | Loopback only | Explicit local transport, no automatic remote call; stdio MCP opens no listener |

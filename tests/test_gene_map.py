@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.htslib_helpers import needs_htslib
 from wgsextract_cli.core import gene_map as gm
 from wgsextract_cli.core.gene_map import (
     GENE_MAP_URLS,
@@ -13,6 +14,11 @@ from wgsextract_cli.core.gene_map import (
     delete_gene_maps,
     download_gene_maps,
     gene_map_exists,
+)
+from wgsextract_cli.core.gene_models import (
+    read_transcripts,
+    source_note,
+    transcripts_path,
 )
 
 
@@ -56,16 +62,20 @@ def ucsc(monkeypatch):
 
 
 def _tsv(lib: Path, build: str) -> list[str]:
-    return (lib / "ref" / f"genes_{build}.tsv").read_text().splitlines()
+    return (lib / "downloads" / f"genes_{build}.tsv").read_text().splitlines()
 
 
 def test_download_builds_sorted_merged_gene_maps(tmp_path, ucsc):
     assert not are_gene_maps_installed(str(tmp_path))
     assert download_gene_maps(str(tmp_path))
     assert are_gene_maps_installed(str(tmp_path))
-    assert sorted(p.name for p in (tmp_path / "ref").iterdir()) == [
+    assert sorted(p.name for p in (tmp_path / "downloads").iterdir()) == [
         "genes_hg19.tsv",
         "genes_hg38.tsv",
+        "transcripts_hg19.bed.gz",
+        "transcripts_hg19.bed.gz.tbi",
+        "transcripts_hg38.bed.gz",
+        "transcripts_hg38.bed.gz.tbi",
     ]
     assert _tsv(tmp_path, "hg38")[0] == "symbol\tchrom\tstart\tend"
     assert [line.split("\t")[0] for line in _tsv(tmp_path, "hg38")[1:]] == [
@@ -79,6 +89,53 @@ def test_download_builds_sorted_merged_gene_maps(tmp_path, ucsc):
     assert genes.get_coords("BRCA1", "hg38").endswith("-43170245")
     assert genes.get_coords("HLA-A", "hg38").startswith("chr6:")
     assert genes.get_coords("SHOX", "hg19").startswith("chrX:")
+
+
+def _transcript_row(accession, symbol, chrom, exons, cds=(0, 0)):
+    """A refGene.txt line with its exons and CDS (0-based, half-open)."""
+    starts = "".join(f"{a}," for a, _ in exons)
+    ends = "".join(f"{b}," for _, b in exons)
+    cols = ["0", accession, chrom, "-", str(exons[0][0]), str(exons[-1][1]),
+            str(cds[0]), str(cds[1]), str(len(exons)), starts, ends, "0", symbol]  # fmt: skip
+    return "\t".join([*cols, "cmpl", "cmpl", "0,\n"])
+
+
+@needs_htslib
+def test_1166_download_keeps_indexed_transcript_models(tmp_path, ucsc):
+    # The gene page and the viewer read exons from these, by region, offline.
+    ucsc["hg38"] = gzip.compress(
+        (
+            _transcript_row(
+                "NM_2", "BRCA1", "chr17", [(100, 200), (300, 450)], (150, 400)
+            )
+            + _transcript_row("NR_1", "BRCA1", "chr17", [(120, 200)])
+            + _transcript_row("NM_9", "BRCA1", "chr17_KI270_alt", [(100, 200)])
+            + _transcript_row("NM_3", "TP53", "chr17", [(5000, 5100)])
+            + _refgene_row("BROKEN", "chr17", 10, 20)  # exons outside the span
+        ).encode()
+    )
+    assert download_gene_maps(str(tmp_path))
+    path = transcripts_path(str(tmp_path), "hg38")
+    assert path is not None
+    assert "refGene" in source_note(path)
+    rows = [
+        r
+        for r in gzip.decompress(path.read_bytes()).decode().splitlines()
+        if r[0] != "#"
+    ]
+    # contract: igv splits BED columns on any white space, so the name has none.
+    assert [r.split("\t")[3] for r in rows][:2] == ["BRCA1|NM_2", "BRCA1|NR_1"]
+    coding, noncoding = read_transcripts(path, "chr17", 0, 1000, "brca1")
+    assert (coding.accession, coding.exons, coding.cds) == (
+        "NM_2",
+        ((100, 200), (300, 450)),
+        (150, 400),
+    )
+    assert (noncoding.accession, noncoding.cds) == ("NR_1", None)
+    assert read_transcripts(path, "chr17", 0, 1000, "TP53") == []
+    assert [
+        t.accession for t in read_transcripts(path, "chr17", 4000, 6000, "TP53")
+    ] == ["NM_3"]
 
 
 def test_gene_region_is_one_based(tmp_path, ucsc):
@@ -124,24 +181,26 @@ class _CancelAfter:
 def test_cancelled_download_writes_no_gene_map(tmp_path, ucsc, n):
     # Checks: before downloading, after downloading, then while parsing.
     assert not download_gene_maps(str(tmp_path), cancel_event=_CancelAfter(n))
-    assert not list((tmp_path / "ref").glob("genes_*.tsv"))
+    assert not list((tmp_path / "downloads").glob("genes_*.tsv"))
     if n == 2:
-        assert not list((tmp_path / "ref").iterdir())
+        assert not list((tmp_path / "downloads").iterdir())
 
 
 def test_delete_removes_both_maps(tmp_path, ucsc):
     assert not delete_gene_maps("")
     assert download_gene_maps(str(tmp_path))
     assert delete_gene_maps(str(tmp_path))
-    assert not list((tmp_path / "ref").iterdir())
+    assert not list((tmp_path / "downloads").iterdir())
     assert delete_gene_maps(str(tmp_path))  # nothing to delete is still success
 
 
 def test_delete_reports_a_map_it_cannot_remove(tmp_path):
-    (tmp_path / "ref" / "genes_hg38.tsv").mkdir(parents=True)
-    (tmp_path / "ref" / "genes_hg19.tsv").write_text("symbol\tchrom\tstart\tend\n")
+    (tmp_path / "downloads" / "genes_hg38.tsv").mkdir(parents=True)
+    (tmp_path / "downloads" / "genes_hg19.tsv").write_text(
+        "symbol\tchrom\tstart\tend\n"
+    )
     assert not delete_gene_maps(str(tmp_path))
-    assert not (tmp_path / "ref" / "genes_hg19.tsv").exists()
+    assert not (tmp_path / "downloads" / "genes_hg19.tsv").exists()
 
 
 def test_gene_map_falls_back_to_microarray_and_caches(tmp_path):
@@ -163,7 +222,7 @@ def test_gene_map_falls_back_to_microarray_and_caches(tmp_path):
 
 
 def test_malformed_gene_map_loads_nothing(tmp_path, caplog):
-    tsv = tmp_path / "ref" / "genes_hg38.tsv"
+    tsv = tmp_path / "downloads" / "genes_hg38.tsv"
     tsv.parent.mkdir()
     tsv.write_text("symbol\tchrom\tstart\tend\nBRCA1\tchr17\tforty\t43125364\n")
     assert GeneMap(str(tmp_path)).get_coords("BRCA1", "hg38") is None

@@ -447,7 +447,7 @@ class TestMicroarraySmoke:
     def setup_outdir(self, tmp_path):
         self.outdir = str(tmp_path)
         self.ref_dir = os.path.join(self.outdir, "fake_ref")
-        os.makedirs(os.path.join(self.ref_dir, "ref"), exist_ok=True)
+        os.makedirs(os.path.join(self.ref_dir, "downloads"), exist_ok=True)
         os.makedirs(os.path.join(self.ref_dir, "genomes"), exist_ok=True)
         os.makedirs(os.path.join(self.ref_dir, "microarray"), exist_ok=True)
         os.makedirs(
@@ -533,6 +533,8 @@ class TestMicroarraySmoke:
             self.ref_dir,
             "--outdir",
             self.outdir,
+            "--ref-vcf-tab",
+            os.path.join(self.ref_dir, "microarray", "All_SNPs_hg38_ref.tab.gz"),
             "--formats",
             "23andme_v5",
         ]
@@ -708,9 +710,8 @@ class TestVEPSmoke:
 
     @pytest.mark.skipif(VEP_MISSING, reason="VEP not available")
     def test_vep_basics(self):
-        # Offline against an installed cache: without one the CLI falls back
-        # to Ensembl's public database, which takes tens of minutes and fails
-        # whenever that server is slow.
+        # Annotation requires an installed local cache; it never falls back
+        # to Ensembl's public database.
         cache = vep_cache_dir(self.real_ref)
         if not (cache / "homo_sapiens").is_dir():
             pytest.skip(f"no VEP cache at {cache}; pass --real-ref <library>")

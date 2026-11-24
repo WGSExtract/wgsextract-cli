@@ -19,6 +19,7 @@ from wgsextract_cli.core.paths import (
     append_suffix,
     expand_path,
 )
+from wgsextract_cli.core.ref_library.layout import download_dirs
 
 FASTA_EXTENSIONS = (".fa", ".fasta", ".fna", ".fa.gz", ".fasta.gz", ".fna.gz")
 FASTA_SUFFIX_RE = re.compile(r"\.(fa|fasta|fna)(\.gz)?$", re.IGNORECASE)
@@ -178,9 +179,19 @@ def read_fai_lengths(fasta: PathInput) -> dict[str, int]:
 
 def fasta_build(fasta: PathInput) -> str | None:
     """The build a FASTA declares itself to be ("hg19", "hg38" or "t2t"), from
-    its chr1 length (.fai, else .dict), the .dict's AS assembly tags, the
-    description on its first header line, then its name; None when nothing
-    names one. Nothing here reads the sequence."""
+    its indexes (``fasta_index_build``), the description on its first header
+    line, then its name; None when nothing names one. Nothing here reads the
+    sequence."""
+    return (
+        fasta_index_build(fasta)
+        or build_from_path(_fasta_description(fasta))
+        or build_from_path(Path(fasta).name)
+    )
+
+
+def fasta_index_build(fasta: PathInput) -> str | None:
+    """The build a FASTA's indexes show: its chr1 length (.fai, else .dict),
+    then the .dict's AS assembly tags; never its name or description."""
     dict_path = Path(reference_dict_path(fasta))
     try:
         dictionary = (
@@ -196,11 +207,7 @@ def fasta_build(fasta: PathInput) -> str | None:
     build = build_from_chr1_length(lengths)
     for assembly in sorted({row["AS"] for row in dictionary if "AS" in row}):
         build = build or canonical_build(assembly) or build_from_path(assembly)
-    return (
-        build
-        or build_from_path(_fasta_description(fasta))
-        or build_from_path(Path(fasta).name)
-    )
+    return build
 
 
 def _fasta_description(fasta: PathInput) -> str:
@@ -320,7 +327,7 @@ def select_reference_fasta(candidates: list[str], *hints: PathInput | None) -> s
 def find_annotation_vcf(reflib: PathInput, build: str) -> str:
     directories = [
         reflib,
-        str(Path(reflib, "ref")),
+        *map(str, download_dirs(reflib)),
         str(Path(reflib, "microarray")),
         str(Path(reflib, "genomes", "microarray")),
     ]
@@ -354,7 +361,7 @@ def annotation_vcf_names(build: str) -> list[str]:
 def find_annotation_resource(
     reflib: PathInput, prefix: str, build: str, extensions: list[str]
 ) -> str:
-    directories = [reflib, str(Path(reflib, "ref"))]
+    directories = [reflib, *map(str, download_dirs(reflib))]
     patterns: list[str] = []
     if build:
         patterns.extend(f"{prefix}*{build}*{extension}" for extension in extensions)
@@ -387,7 +394,7 @@ def resolve_input_target_tab(input_path: PathInput | None) -> str:
 def find_reference_target_tab(reflib: PathInput, build: str) -> str:
     directories = [
         reflib,
-        str(Path(reflib, "ref")),
+        *map(str, download_dirs(reflib)),
         str(Path(reflib, "microarray")),
         str(Path(reflib, "genomes", "microarray")),
     ]

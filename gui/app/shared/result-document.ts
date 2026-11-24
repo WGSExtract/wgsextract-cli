@@ -16,6 +16,8 @@ export interface ResultDocumentSpec {
     executables: string[];
     /** Appended to the command, after its optional arguments, to ask for the document. */
     arguments?: string[];
+    /** Appended after `arguments` for an action with `resultCard`, to ask for the run's result card. */
+    cardArguments?: string[];
 }
 
 /** Stands in `arguments` for a file the app makes for each run and reads the document from. */
@@ -65,7 +67,7 @@ const exitCodeErrorKinds: Record<number, ResultNotice["kind"]> = { 2: "usage", 3
 /** The manifest's result document declaration when it covers this action's command. */
 export function resultDocumentSpecFor(manifest: Pick<BundleManifest, "resultDocument"> | null | undefined, action: ActionSpec): ResultDocumentSpec | undefined {
     const spec = manifest?.resultDocument;
-    return spec?.executables.includes(action.command?.executable) ? spec : undefined;
+    return action.command && spec?.executables.includes(action.command.executable) ? spec : undefined;
 }
 
 /** Whether the document is written to a file the app provides rather than to stdout. */
@@ -74,10 +76,12 @@ export function resultDocumentInFile(spec: ResultDocumentSpec): boolean {
 }
 
 /** The command with the declaration's arguments added at the end, naming `documentPath` as the document's file. */
-export function commandWithResultArguments(command: CommandSpec, spec: ResultDocumentSpec | undefined, documentPath: string): CommandSpec {
-    return spec?.arguments?.length
-        ? { ...command, optionalArguments: [...(command.optionalArguments ?? []), spec.arguments.map((argument) => argument.replaceAll(resultDocumentPathPlaceholder, documentPath))] }
-        : command;
+export function commandWithResultArguments(command: CommandSpec, spec: ResultDocumentSpec | undefined, documentPath: string, card = false): CommandSpec {
+    const added = [
+        ...(spec?.arguments ?? []).map((argument) => argument.replaceAll(resultDocumentPathPlaceholder, documentPath)),
+        ...(card ? spec?.cardArguments ?? [] : []),
+    ];
+    return added.length ? { ...command, optionalArguments: [...(command.optionalArguments ?? []), added] } : command;
 }
 
 /** Parses printed stdout; null when it is not one document of the declared format. */
@@ -129,6 +133,25 @@ export function resultNotice(document: ResultDocument | null, exitCode: number |
     }
     const message = document?.error?.message || lastLine(stderr);
     return { kind, message };
+}
+
+/** The role `wgsextract --card` gives the page it writes of a run's result (docs/result-manifest.md). */
+export const resultCardRole = "result_card";
+
+/** The output an action's `openOutput` names: the first role in its list that the run wrote and still exists. */
+export function preferredOutput(document: ResultDocument | null | undefined, roles: readonly string[] | undefined): ResultFile | undefined {
+    for (const role of roles ?? []) {
+        const output = document?.outputs.find((item) => item.role === role && item.exists);
+        if (output) {
+            return output;
+        }
+    }
+    return undefined;
+}
+
+/** The run's result card, when it wrote one. */
+export function resultCardOutput(document: ResultDocument | null | undefined): ResultFile | undefined {
+    return document?.outputs.find((output) => output.role === resultCardRole && output.exists);
 }
 
 /** Paths a document lets the user open: its outputs and its saved manifest. */

@@ -20,11 +20,13 @@ from wgsextract_cli.core.settings_schema import (  # noqa: E402
     DEV_SETTINGS,
     DEV_TABLE,
     MOVED_TO_DEV,
+    SERVER_SETTINGS,
     SETTINGS,
     SettingField,
 )
 
 OUTPUT = ROOT / "docs" / "configuration.md"
+GUIDE = ROOT / "docs" / "data" / "configuration-guide.md"
 TYPES = {
     "bool": "boolean",
     "int": "integer",
@@ -118,11 +120,22 @@ def render() -> str:
         "error that names the setting and what it expects. An unknown setting "
         "is ignored with a warning that suggests the closest name.",
         "",
+        "<!-- Usage guide: edit docs/data/configuration-guide.md, then regenerate. -->",
+        # The hand-written fragment lives one directory below the output page.
+        GUIDE.read_text(encoding="utf-8").replace("](../", "](").rstrip(),
+        "",
         "## Settings",
         "",
         *table(SETTINGS),
         "",
         f"Older names still read: {aliases}.",
+        "",
+        "## The [server] table",
+        "",
+        "Operator opt-ins for HTTP/JSON listening and viewer files. See "
+        "[server mode](server.md#remote-http-access) for exposure and TLS requirements.",
+        "",
+        *table(SERVER_SETTINGS),
         "",
         f"## The [{DEV_TABLE}] table",
         "",

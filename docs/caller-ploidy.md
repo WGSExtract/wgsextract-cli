@@ -50,7 +50,16 @@ are explicitly refused rather than silently interpreted as diploid.
   keeping it off the PARs. Ploidy-zero intervals aren't called. Each run
   checks the GPU's free memory just before it starts. Like Google's, its
   haploid calls keep diploid GT encoding (`1/1`).
-* **wgse-deepvariant, GATK `--gpu` and Clair3 `--gpu`:** explicitly refuse
+* **wgse-deepvariant 0.4.0+:** receives `--haploid_contigs` and
+  `--par_regions_bed` for both make_examples and postprocess_variants.
+  Like Google's pipeline, it removes heterozygous probability mass before
+  assigning GT, GQ, QUAL and FILTER, including multiallelic sites, and computes
+  haploid reference confidence before forming gVCF blocks. Haploid calls keep
+  Google's diploid GT/PL encoding (`1/1`, not `1`). PARs remain diploid.
+  Unlike Parabricks, the native engine accepts PAR intervals, so one
+  resumable run covers both ploidies without separate caller partitions.
+  Older builds refuse non-diploid policies rather than silently ignoring them.
+* **GATK `--gpu` and Clair3 `--gpu`:** explicitly refuse
   requests requiring non-diploid handling until those paths are qualified.
   Diploid-only regions still work. For Google's pipeline rather than the
   native engine, set `deepvariant_native = "off"` in config.toml.

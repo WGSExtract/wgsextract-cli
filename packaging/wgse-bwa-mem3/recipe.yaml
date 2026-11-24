@@ -1,6 +1,6 @@
 context:
   # native/bwa-mem3/CMakeLists.txt's WGSE_BWA_MEM3_VERSION and MEM3_VERSION.
-  version: "0.4.0"
+  version: "0.4.1"
   mem3_version: "0.16.0"
 
 package:

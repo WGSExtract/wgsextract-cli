@@ -7,11 +7,18 @@ import logging
 import os
 import socket
 import sys
+import threading
 import time
-from collections.abc import Iterator
+import uuid
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
+from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.utils import WGSExtractError
+
+_REMOTE_STALE_SECONDS = 7 * 24 * 60 * 60
+_HEARTBEAT_INTERVAL = 60
+_RELEASE_TIMEOUT = 30
 
 # Chosen at import, so tests that patch sys.platform still lock natively.
 if sys.platform == "win32":
@@ -34,7 +41,11 @@ else:
 
 
 @contextlib.contextmanager
-def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
+def _reclaim_guard(
+    path: Path,
+    deadline: float,
+    checkpoint: Callable[[], None] | None = None,
+) -> Iterator[None]:
     # Keep this inode: deleting it would let concurrent reclaimers lock different files.
     guard = Path(f"{path}.guard")
     try:
@@ -54,6 +65,8 @@ def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
         ) from error
     try:
         while True:
+            if checkpoint is not None:
+                checkpoint()
             try:
                 _try_lock(fd)
                 break
@@ -66,6 +79,8 @@ def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
                     ) from None
                 time.sleep(min(0.05, max(0, deadline - time.monotonic())))
         try:
+            if checkpoint is not None:
+                checkpoint()
             yield
         finally:
             _unlock(fd)
@@ -74,10 +89,16 @@ def _reclaim_guard(path: Path, deadline: float) -> Iterator[None]:
 
 
 @contextlib.contextmanager
-def exclusive_lock(path: Path, timeout: float = 30) -> Iterator[None]:
+def exclusive_lock(
+    path: Path,
+    timeout: float = 30,
+    *,
+    checkpoint: Callable[[], None] | None = None,
+) -> Iterator[None]:
     """Hold an advisory lock on ``<path>.guard`` (kept between runs) for a short
-    read-modify-write; waits up to ``timeout`` seconds for another holder."""
-    with _reclaim_guard(path, time.monotonic() + timeout):
+    read-modify-write; waits up to ``timeout`` seconds for another holder.
+    ``checkpoint``, when supplied, may raise to cancel acquisition or waiting."""
+    with _reclaim_guard(path, time.monotonic() + timeout, checkpoint):
         yield
 
 
@@ -87,7 +108,7 @@ def _abandoned(path: Path, timeout: float) -> bool:
     try:
         record = json.loads(path.read_text())
         if record["host"] != socket.gethostname():
-            return False
+            return time.time() - path.stat().st_mtime > _REMOTE_STALE_SECONDS
         try:
             process = psutil.Process(record["pid"])
             return bool(process.create_time() != record["created"])
@@ -106,9 +127,25 @@ def held(lock: str, timeout: float = 1800) -> bool:
     return path.exists() and not _abandoned(path, timeout)
 
 
+def _heartbeat(path: Path, record: str, stop: threading.Event) -> None:
+    while not stop.wait(_HEARTBEAT_INTERVAL):
+        try:
+            with _reclaim_guard(path, time.monotonic() + _RELEASE_TIMEOUT):
+                if stop.is_set() or not path.exists() or path.read_text() != record:
+                    return
+                os.utime(path, None)
+        except (OSError, WGSExtractError):
+            logging.warning("Could not refresh builder lock %s", path, exc_info=True)
+
+
 @contextlib.contextmanager
 def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
-    """Reclaim dead local owners, never evict a live hour-long index builder."""
+    """Reclaim dead local owners without expiring live local builders.
+
+    Remote owners cannot be checked by PID. Their lock expires seven days
+    after its last modification (the latest heartbeat, or creation for older
+    writers), independent of the acquisition timeout.
+    """
     import psutil
 
     path = Path(lock)
@@ -144,11 +181,206 @@ def build_lock(lock: str, timeout: float = 1800) -> Iterator[None]:
             raise WGSExtractError(
                 f"Timed out waiting for index builder lock: {path}"
             ) from None
-        logging.info(f"Waiting for another run to finish building {lock[:-5]}...")
+        logging.info(
+            "Waiting for another run to finish building %s...",
+            lock.removesuffix(".lock"),
+        )
         time.sleep(min(5, max(0, deadline - time.monotonic())))
+    stop = threading.Event()
+    body_failed = False
     try:
+        context_thread(
+            _heartbeat,
+            args=(path, record, stop),
+            name="builder-lock-heartbeat",
+            daemon=True,
+        ).start()
         yield
+    except BaseException:
+        body_failed = True
+        raise
     finally:
-        with _reclaim_guard(path, time.monotonic() + timeout):
-            if path.exists() and path.read_text() == record:
-                path.unlink(missing_ok=True)
+        stop.set()
+        try:
+            with _reclaim_guard(path, time.monotonic() + _RELEASE_TIMEOUT):
+                if path.exists() and path.read_text() == record:
+                    path.unlink(missing_ok=True)
+        except Exception:
+            if not body_failed:
+                raise
+            logging.exception("Could not release builder lock %s", path)
+
+
+# The desktop app's Node backend shares these locks but has no flock, so they
+# are files made with O_EXCL; gui/app/web/src/server/settings-lock.ts mirrors
+# this protocol. A holder keeps one for a single read-modify-write.
+
+# A lock is written straight after it is made; still empty after this long, its
+# maker stopped in between.
+_UNWRITTEN_SECONDS = 10
+# The records of the locks this process holds, or is making.
+_HELD: set[bytes] = set()
+
+
+def _shared_lock_record() -> bytes:
+    return json.dumps(
+        {"pid": os.getpid(), "host": socket.gethostname(), "token": uuid.uuid4().hex}
+    ).encode()
+
+
+def _owner_exited(record: bytes) -> bool:
+    """Whether the process that wrote ``record`` has provably exited, or is
+    this one and no longer holds the lock (its removal failed). An owner on
+    another computer, or whose process ID is in use, keeps its lock until it
+    is released, so a slow save is never overtaken. Raises ValueError,
+    KeyError or TypeError for a record that is not one."""
+    owner = json.loads(record)
+    pid, host = int(owner["pid"]), str(owner["host"])
+    if host.casefold() != socket.gethostname().casefold():
+        return False
+    if pid == os.getpid():
+        return record not in _HELD
+    import psutil
+
+    return not psutil.pid_exists(pid)
+
+
+def _windows_busy(error: OSError) -> bool:
+    # Windows refuses to create or delete a file another process is deleting
+    # or reading.
+    return sys.platform == "win32" and isinstance(error, PermissionError)
+
+
+def _create_shared_lock(lock: Path, record: bytes) -> bool:
+    """Create ``lock`` holding ``record``; False if another holds it. One this
+    leaves behind on failing, this process reclaims."""
+    _HELD.add(record)
+    created = False
+    try:
+        created = _publish_shared_lock(lock, record)
+    finally:
+        if not created:
+            _HELD.discard(record)
+    return created
+
+
+def _publish_shared_lock(lock: Path, record: bytes) -> bool:
+    try:
+        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+    except FileExistsError:
+        return False
+    try:
+        os.write(fd, record)
+    except BaseException:
+        os.close(fd)
+        lock.unlink(missing_ok=True)
+        raise
+    os.close(fd)
+    # A maker that stalled before writing may have lost its empty lock.
+    try:
+        return lock.read_bytes() == record
+    except FileNotFoundError:
+        return False
+    except OSError as error:
+        if not _windows_busy(error):
+            raise
+        return False
+
+
+def _remove_shared_lock(lock: Path, record: bytes) -> bool:
+    """Delete ``lock`` if it still holds ``record``; False if it is busy."""
+    try:
+        if lock.read_bytes() == record:
+            lock.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        if not _windows_busy(error):
+            raise
+        return False
+    return True
+
+
+def _release_shared_lock(lock: Path, record: bytes) -> None:
+    try:
+        for _ in range(100):
+            if _remove_shared_lock(lock, record):
+                return
+            time.sleep(0.02)
+        logging.warning(f"Could not remove lock {lock}; the next save removes it")
+    finally:
+        _HELD.discard(record)
+
+
+def _remove_if_abandoned(lock: Path) -> None:
+    try:
+        record = lock.read_bytes()
+        age = time.time() - lock.stat().st_mtime
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        if _windows_busy(error):
+            return
+        raise
+    try:
+        abandoned = _owner_exited(record)
+    except (ValueError, KeyError, TypeError):
+        abandoned = age > _UNWRITTEN_SECONDS
+    if abandoned and _remove_shared_lock(lock, record):
+        logging.info(f"Removed abandoned lock {lock}")
+
+
+def _reclaim_abandoned_shared_lock(lock: Path) -> None:
+    # One reclaimer at a time, so none deletes the lock a saver has just made
+    # in place of the abandoned one another reclaimer removed.
+    guard = lock.with_name(f"{lock.name}.reclaim")
+    record = _shared_lock_record()
+    try:
+        if not _create_shared_lock(guard, record):
+            _remove_if_abandoned(guard)
+            return
+    except OSError as error:
+        if _windows_busy(error):
+            return
+        raise
+    try:
+        _remove_if_abandoned(lock)
+    finally:
+        _release_shared_lock(guard, record)
+
+
+@contextlib.contextmanager
+def shared_file_lock(path: Path, timeout: float = 60) -> Iterator[Path]:
+    """Hold ``.<name>.lock`` beside the real file behind ``path`` while one
+    read-modify-write of it runs, and yield that real path. Every alias of the
+    file takes the same lock, and the desktop app's own saves take it too."""
+    target = Path(path).resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    lock = target.with_name(f".{target.name}.lock")
+    deadline = time.monotonic() + timeout
+    busy_since: float | None = None
+    while True:
+        # A new record each try: one left by a failed try is reclaimable.
+        record = _shared_lock_record()
+        try:
+            if _create_shared_lock(lock, record):
+                break
+            busy_since = None
+            _reclaim_abandoned_shared_lock(lock)
+        except OSError as error:
+            # A lock being deleted is busy for moments; a denial that lasts is
+            # the folder refusing writes.
+            busy_since = busy_since or time.monotonic()
+            if not _windows_busy(error) or time.monotonic() - busy_since > 2:
+                raise
+        if time.monotonic() >= deadline:
+            raise WGSExtractError(
+                f"Timed out waiting for {lock}: another WGS Extract command or "
+                "the app is saving this file. If neither is, delete the lock "
+                "and try again."
+            )
+        time.sleep(0.02)
+    try:
+        yield target
+    finally:
+        _release_shared_lock(lock, record)

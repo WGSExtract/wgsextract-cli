@@ -13,12 +13,12 @@ from wgsextract_cli.api.vcf import VcfClair3Params, VcfDeepvariantParams, VcfGat
 from wgsextract_cli.commands.info.metrics import sample_sex
 from wgsextract_cli.commands.vcf.basic import CallerSetup
 from wgsextract_cli.core.bgzf import is_bgzf
-from wgsextract_cli.core.builds import canonical_build, ploidy_for_build
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths, sequence_dictionary
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
 from wgsextract_cli.core.results import current_result, warn
-from wgsextract_cli.core.temp_directory import scratch_parent
+from wgsextract_cli.core.sample_ploidy import ploidy_args
+from wgsextract_cli.core.temp_directory import link_new_file, scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -161,18 +161,13 @@ def calling_ploidy(
             for chrom, spans in selected.items()
             for start, end in spans
         ]
-    if library.ploidy_file:
-        text = Path(library.ploidy_file).read_text()
-    elif canonical_build(library.build) in {"hg19", "hg38"}:
+    kind, source = ploidy_args(None, None, library, options=None)
+    if kind == "--ploidy-file":
+        text = Path(source).read_text()
+    else:
         from wgsextract_cli.core.ref_library.processing import _ploidy_content
 
-        assert library.build is not None
-        text = _ploidy_content(ploidy_for_build(library.build))
-    else:
-        raise WGSExtractError(
-            "Sex/PAR-aware calling needs a GRCh37/GRCh38 reference or a "
-            "reference library ploidy file; this build is unsupported."
-        )
+        text = _ploidy_content(source)
     rows = [
         line.split()
         for line in text.splitlines()
@@ -201,6 +196,26 @@ def calling_ploidy(
     return male if sex == "Male" else female
 
 
+def haploid_contig_policy(
+    alignment: str,
+    reference: str,
+    library: ReferenceLibrary,
+    directory: str,
+    intervals: list[PloidyInterval],
+) -> list[PloidyInterval]:
+    """Uncrop haploid contigs so deletions can see PAR beyond the selection."""
+    haploid = {i.chrom for i in intervals if i.ploidy == 1}
+    full = calling_ploidy(
+        alignment,
+        reference,
+        library,
+        directory,
+        None,
+        default_contigs=haploid,
+    )
+    return [i for i in intervals if i.chrom not in haploid] + full
+
+
 def policy_sex(intervals: list[PloidyInterval]) -> str:
     """The sex a ploidy policy was made for: M when an X or Y interval is
     haploid, F when Y is excluded (ploidy 0), else "" (it doesn't say)."""
@@ -224,7 +239,7 @@ def write_intervals(path: Path, intervals: list[PloidyInterval]) -> str:
         with os.fdopen(fd, "w", newline="\n") as stream:
             stream.write(content)
         try:
-            os.link(temporary, path)
+            link_new_file(temporary, path)
         except FileExistsError:
             if path.read_text() != content:
                 raise WGSExtractError(

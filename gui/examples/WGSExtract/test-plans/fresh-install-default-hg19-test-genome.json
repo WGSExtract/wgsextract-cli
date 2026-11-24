@@ -65,7 +65,7 @@
       "actionID": "ref-download",
       "rowID": "hg19-UCSC-hg19.fa.gz",
       "rowValues": {
-        "build": "GRCh37 / hg19",
+        "tag": "hg19h",
         "code": "hg19",
         "final": "hg19.fa.gz",
         "name": "hg19",
@@ -84,7 +84,7 @@
       "actionID": "ref-verify",
       "rowID": "hg19-UCSC-hg19.fa.gz",
       "rowValues": {
-        "build": "GRCh37 / hg19",
+        "tag": "hg19h",
         "code": "hg19",
         "final": "hg19.fa.gz",
         "name": "hg19",
@@ -102,7 +102,7 @@
       "controlID": "ref_fasta",
       "minimumOptions": 1,
       "requiredOutput": [
-        "hg19 (yoruba"
+        "hg19 (Yoruba"
       ]
     },
     {
@@ -113,7 +113,7 @@
       "controlID": "realign_ref",
       "minimumOptions": 1,
       "requiredOutput": [
-        "hg19 (yoruba"
+        "hg19 (Yoruba"
       ]
     },
     {
@@ -124,7 +124,7 @@
       "controlID": "ref_fasta",
       "minimumOptions": 1,
       "requiredOutput": [
-        "hg19 (yoruba"
+        "hg19 (Yoruba"
       ]
     },
     {
@@ -136,7 +136,7 @@
       "settingID": "ref_fasta",
       "minimumOptions": 1,
       "requiredOutput": [
-        "hg19 (yoruba"
+        "hg19 (Yoruba"
       ]
     },
     {
@@ -158,7 +158,7 @@
       "actionID": "ref-count-ns",
       "rowID": "hg19-UCSC-hg19.fa.gz",
       "rowValues": {
-        "build": "GRCh37 / hg19",
+        "tag": "hg19h",
         "code": "hg19",
         "final": "hg19.fa.gz",
         "name": "hg19",
@@ -169,11 +169,14 @@
       "timeoutSeconds": 3600
     },
     {
-      "id": "deps-check",
-      "kind": "action",
-      "pageID": "settings",
-      "sectionID": "dependency-checks",
-      "actionID": "deps-check",
+      "id": "tools-list",
+      "kind": "dataSource",
+      "pageID": "tools",
+      "sectionID": "tool-management",
+      "controlID": "tools",
+      "requiredOutput": [
+        "\"id\": \"samtools\""
+      ],
       "timeoutSeconds": 300
     },
     {
@@ -510,7 +513,7 @@
       "id": "vcf-qc",
       "kind": "action",
       "pageID": "vcf",
-      "sectionID": "vcf-annotation",
+      "sectionID": "vcf-info-commands",
       "actionID": "vcf-qc",
       "timeoutSeconds": 300
     },

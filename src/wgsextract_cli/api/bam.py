@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.mimalloc import SETTINGS as MIMALLOC_SETTINGS
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 
@@ -137,6 +138,16 @@ class BamToCramParams(_ConvertParams):
         "3.0",
         help="CRAM version to output (default: 3.0 for better compatibility)",
         choices=("2.1", "3.0", "3.1"),
+    )
+    mimalloc: str | None = param(
+        None,
+        help="Windows CRAM 3.1: use the installed native mimalloc encoder (auto) "
+        "or system allocator (off). Default: config mimalloc, else auto.",
+        doc="Only native Windows CRAM 3.1 encoding with a local reference uses "
+        "the validated samtools-mimalloc variant; unavailable variants fall back "
+        "to samtools. The compatibility default CRAM 3.0 is unchanged.",
+        choices=MIMALLOC_SETTINGS,
+        config_key="mimalloc",
     )
 
 

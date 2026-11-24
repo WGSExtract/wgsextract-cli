@@ -9,10 +9,11 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import bgzip_index, needs_htslib
 from tests.microarray_helpers import microarray_params
-from tests.smoke_utils import state_directory_setting
 from tests.test_microarray_library import _library
+from wgsextract_cli.core.microarray.targets import build_genome_wide_target
 
 pytestmark = needs_htslib
 
@@ -29,7 +30,11 @@ HEADER = (
 
 
 def _vcf(
-    path: Path, samples: list[str], records: list[str], contig: str = "chr1"
+    path: Path,
+    samples: list[str],
+    records: list[str],
+    contig: str = "chr1",
+    out: Path | None = None,
 ) -> str:
     columns = "\t".join(["#CHROM", "POS", "ID", "REF", "ALT", "QUAL", "FILTER"])
     prepared = []
@@ -47,14 +52,24 @@ def _vcf(
         + "\n"
         + "".join(prepared)
     )
-    return str(bgzip_index(path))
+    return str(bgzip_index(path, out))
 
 
-def _microarray(config: Path, vcf: str, fasta: Path, outdir: Path, *extra: str):
+def _microarray(
+    config: Path, vcf: str, fasta: Path, target: str, outdir: Path, *extra: str
+):
     return subprocess.run(
         [sys.executable, "-m", "wgsextract_cli.main", "--config", str(config)]
         + ["microarray", "--formats", "23andme_v3", "--input", vcf]
-        + ["--ref", str(fasta), "--outdir", str(outdir), *extra],
+        + [
+            "--ref",
+            str(fasta),
+            "--ref-vcf-tab",
+            target,
+            "--outdir",
+            str(outdir),
+            *extra,
+        ],
         capture_output=True,
         text=True,
     )
@@ -69,18 +84,25 @@ def _kit(path: Path) -> dict[str, str]:
 
 
 @pytest.fixture
-def library(tmp_path: Path) -> tuple[Path, Path, str]:
+def library(tmp_path: Path, marker_target: str) -> tuple[Path, Path, str, str]:
     root = tmp_path / "reference"
     fasta, seq = _library(root)
     config = tmp_path / "config.toml"
     config.write_text(
         f'reference_library = "{root.as_posix()}"\n' + state_directory_setting(tmp_path)
     )
-    return config, fasta, seq
+    return config, fasta, seq, marker_target
+
+
+@pytest.fixture(scope="module")
+def marker_target(tmp_path_factory: pytest.TempPathFactory) -> str:
+    root = tmp_path_factory.mktemp("interop-target")
+    _library(root)
+    return build_genome_wide_target(str(root), "hg19", [str(root)])
 
 
 def test_joint_vcf_needs_a_sample_and_exports_only_that_sample(tmp_path, library):
-    config, fasta, _seq = library
+    config, fasta, _seq, target = library
     # Markers rs101/rs102/rs103 sit at chr1:1000/2000/3000 on reference A.
     joint = _vcf(
         tmp_path / "joint_germline.vcf",
@@ -93,13 +115,13 @@ def test_joint_vcf_needs_a_sample_and_exports_only_that_sample(tmp_path, library
     )
     outdir = tmp_path / "out"
 
-    refused = _microarray(config, joint, fasta, outdir)
+    refused = _microarray(config, joint, fasta, target, outdir)
     assert refused.returncode != 0
     assert "choose one with --sample (P1_N, P2_N)" in refused.stderr
-    missing = _microarray(config, joint, fasta, outdir, "--sample", "P3_N")
+    missing = _microarray(config, joint, fasta, target, outdir, "--sample", "P3_N")
     assert missing.returncode != 0 and "not in" in missing.stderr
 
-    done = _microarray(config, joint, fasta, outdir, "--sample", "P2_N")
+    done = _microarray(config, joint, fasta, target, outdir, "--sample", "P2_N")
     assert done.returncode == 0, done.stderr
     assert _kit(outdir / "joint_germline_P2_N_23andMe_V3.txt") == {
         "rs101": "AC",
@@ -122,6 +144,31 @@ def test_joint_vcf_needs_a_sample_and_exports_only_that_sample(tmp_path, library
     assert rows["data"]["P2_N"]["autosomal_called"] > 0
 
 
+@pytest.mark.parametrize("name", ["kit.vcf.bgz", "KIT.VCF.GZ"])
+def test_issue_1243_bgz_and_upper_case_vcf_inputs_are_vcfs(tmp_path, library, name):
+    # gnomAD-style .vcf.bgz and upper-case names were taken for alignments.
+    config, fasta, _seq, target = library
+    stem = name.split(".")[0]
+    vcf = _vcf(
+        tmp_path / f"{stem}.vcf",
+        ["S"],
+        [
+            "chr1\t1000\t.\tA\tC\t50\tPASS\t.\tGT:GQ\t1/1:40",
+            "chr1\t2000\t.\tA\tG\t50\tPASS\t.\tGT:GQ\t0/1:40",
+            "chr1\t3000\t.\tA\tT\t50\tPASS\t.\tGT:GQ\t0/0:40",
+        ],
+        out=tmp_path / name,
+    )
+    outdir = tmp_path / "out"
+    done = _microarray(config, vcf, fasta, target, outdir)
+    assert done.returncode == 0, done.stderr
+    assert _kit(outdir / f"{stem}_23andMe_V3.txt") == {
+        "rs101": "CC",
+        "rs102": "AG",
+        "rs103": "AA",
+    }
+
+
 @pytest.mark.parametrize(
     ("contig", "block", "end"),
     [("chr1", "<*>", 1999), ("1", ".", 2000)],
@@ -131,7 +178,7 @@ def test_joint_vcf_needs_a_sample_and_exports_only_that_sample(tmp_path, library
 def test_issue_1044_reference_blocks_need_minimum_and_gaps_are_no_calls(
     tmp_path, library, contig, block, end, with_minimum
 ):
-    config, fasta, seq = library
+    config, fasta, seq, target = library
     # rs101 in a 0/0 block, rs102 a variant, rs103 in a ./. block (no
     # coverage). DRAGEN genome VCFs write blocks with ALT "." and, like
     # GRCh37 pipelines, may name contigs without "chr" unlike the FASTA. Its
@@ -150,7 +197,7 @@ def test_issue_1044_reference_blocks_need_minimum_and_gaps_are_no_calls(
         contig=contig,
     )
     outdir = tmp_path / "out"
-    done = _microarray(config, gvcf, fasta, outdir)
+    done = _microarray(config, gvcf, fasta, target, outdir)
     assert done.returncode == 0, done.stderr
     # Named like the input, so the gVCF's kit can't replace its VCF's.
     assert _kit(outdir / "P1_N.deepvariant.g_23andMe_V3.txt") == {

@@ -448,13 +448,14 @@ def _run_steps(
                 memory_threads=threads,
                 temp_parent=outdir,
                 cram_opt=cram_opt,
-            ) as stages:
+            ) as stream:
                 _align(
                     journal,
                     align_decision,
                     lambda: align_cmd.align_bwa(
                         align_job,
-                        upstream=stages,
+                        upstream=stream.stages,
+                        discarded_fastq=stream.discarded_fastq,
                         read_paths=[job.input],
                         additional_ram_bytes=additional_ram_bytes,
                     ),

@@ -81,6 +81,41 @@ class DevSettings:
 
 
 @dataclass(frozen=True)
+class ServerSettings:
+    """Operator opt-ins for the HTTP/JSON listener."""
+
+    listen: str = setting(
+        "127.0.0.1",
+        "HTTP listen address[:port]; explicit --port overrides the embedded port; loopback by default",
+    )
+    allowed_hosts: str | tuple[str, ...] | None = setting(
+        None, "Exact external Host headers, including ports; never wildcards"
+    )
+    allowed_origins: str | tuple[str, ...] | None = setting(
+        None, "Exact app origins allowed to read viewer files; never wildcards"
+    )
+    viewer_files: bool = setting(
+        False, "Enable authenticated, guarded viewer byte ranges"
+    )
+    public_url: str | None = setting(
+        None,
+        "Advertised HTTP/HTTPS client origin; required for non-loopback listening, with its authority in allowed_hosts",
+    )
+    max_connections: int = setting(
+        32,
+        "Maximum accepted HTTP connections, including unauthenticated peers",
+        minimum=1,
+        maximum=256,
+    )
+    header_timeout_seconds: float = setting(
+        10.0,
+        "Absolute request-header and keep-alive idle deadline; does not limit authenticated responses",
+        minimum=0.1,
+        maximum=60,
+    )
+
+
+@dataclass(frozen=True)
 class Settings:
     """Every config.toml setting, checked and with its default filled in."""
 
@@ -152,7 +187,7 @@ class Settings:
     )
     server_port: int = setting(
         0,
-        "Port `wgsextract serve` listens on at 127.0.0.1 (0: any free port)",
+        "Default HTTP/JSON listen port (0: any free port); an embedded server.listen port overrides this default, and explicit --port wins",
         minimum=0,
         maximum=65535,
     )
@@ -185,19 +220,39 @@ class Settings:
     keep_awake: bool = setting(
         False, "Best-effort sleep inhibition while commands run (opt-in)"
     )
+    result_card: bool = setting(
+        False,
+        "Also write `<name>.card.html`, a shareable page of each run's result, "
+        "beside its manifest",
+    )
     haplogrep_executable: str | None = setting(
         None, "Path to the Haplogrep 3 executable or JAR", path=True
     )
     dorado_executable: str | None = setting(
         None, "Path to ONT's dorado executable for `basecall`", path=True
     )
+    discvrseq_jar: str | None = setting(
+        None, "Path to DISCVRseq.jar for `vcf variantqc`", path=True
+    )
+    java17_executable: str | None = setting(
+        None,
+        "Path to a Java 17 binary for tools requiring Java 17 (such as `vcf variantqc`)",
+        path=True,
+    )
+    granite_executable: str | None = setting(
+        None, "Path to the granite executable for `vcf granite-qc`", path=True
+    )
     native_aligners: str | None = setting(
         None,
         "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
-        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
+        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2; "
+        "Windows x86-64: use wgse-bwa and wgse-minimap2 when installed",
         choices=AUTO_OFF,
         fold_case=True,
+    )
+    wgse_bwa_path: str | None = setting(
+        None, "Path to an optional native Windows x86-64 wgse-bwa executable", path=True
     )
     output_profile: str = setting(
         "default",
@@ -205,9 +260,11 @@ class Settings:
         "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0",
         choices=("default", "archive", "calling"),
     )
-    prefer_native_gpu: bool = setting(
-        False,
-        "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "
+    prefer_native_gpu: bool | None = setting(
+        None,
+        "`align`/`realign`: on Windows, native CUDA is automatic when it fits; "
+        "set false to force CPU. Elsewhere, set true to prefer "
+        "wgse-bwa's native GPU even above the RAM "
         "budget after normal sort step-down; retain explicit memory, otherwise "
         "cap default/config sort at 256M (may swap heavily)",
     )
@@ -226,8 +283,9 @@ class Settings:
     mimalloc: str | None = setting(
         None,
         "Apple Silicon: `vcf snp`/`vcf indel` run bcftools with WGS Extract's "
-        "wgse-mimalloc allocator when it's installed (auto, the default) or "
-        "never (off)",
+        "wgse-mimalloc allocator. Native Windows: `bam to-cram --cram-version 3.1` "
+        "with a local reference uses the matching samtools-mimalloc encoder. "
+        "Only validated installed variants run (auto, default), or never (off)",
         choices=AUTO_OFF,
         fold_case=True,
     )
@@ -495,6 +553,7 @@ class Settings:
         "Keep palindromic SNPs only with independently verified forward-strand alleles",
     )
     dev: DevSettings = field(default_factory=DevSettings)
+    server: ServerSettings = field(default_factory=ServerSettings)
 
 
 @dataclass(frozen=True)
@@ -598,6 +657,7 @@ def _found(value: object) -> str:
 
 _KINDS: tuple[tuple[object, Kind], ...] = (
     (bool, "bool"),
+    (bool | None, "bool"),
     (int, "int"),
     (float, "float"),
     (str, "str"),
@@ -629,6 +689,7 @@ def _schema(cls: type) -> Mapping[str, SettingField]:
 
 SETTINGS: Final = _schema(Settings)
 DEV_SETTINGS: Final = _schema(DevSettings)
+SERVER_SETTINGS: Final = _schema(ServerSettings)
 DEV_TABLE: Final = "dev"
 # Dev settings were top-level keys before the [dev] table; name the new place.
 MOVED_TO_DEV: Final = MappingProxyType(

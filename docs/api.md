@@ -89,6 +89,7 @@ An operation failed; `result` holds the error, warnings and partial outputs.
 ## `api.info`
 
 `info`: what a BAM/CRAM is (build, sequencer, sex, depth) and its coverage;
+`info gene`: one gene's transcripts, variants and coverage;
 `info chip`: which microarray chip a raw-data file came from.
 
 ### `api.info.info(InfoParams)`
@@ -114,6 +115,33 @@ BAM/CRAM. Metrics are cached next to the outputs as
 | `table_format` | `str \| None` | `None` | `--format` | Also save the per-chromosome table and the QC stats as <input>_chromosomes and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed. None saves no table. One of: `tsv`, `parquet` |
 | `cache` | `bool` | `True` | `--cache` | Save the metrics as ``<input>.wgse_info.json`` for later runs; an existing cache is read either way. |
 
+### `api.info.gene(InfoGeneParams)`
+
+CLI: `wgsextract info gene`.
+
+Summarise one gene from local data.
+
+`details` is the `wgsextract.gene/1` document: `gene` (span),
+`transcripts`, `variants` (rows with the page `filters` they pass),
+`coverage` (gene, bins and exons against `threshold`) and
+`notices` naming the command that provides what is missing.
+
+`InfoGeneParams`: One gene from local data: its span and transcripts, the sample's
+variants in it with their annotations, and read depth over its exons.
+`details` holds the `wgsextract.gene/1` document; nothing is fetched.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `gene` | `str` | required | `--gene` | Gene symbol or alias (RefSeq, e.g. BRCA1), from the bundled NCBI RefSeq annotations. |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | BAM or CRAM whose read depth over the gene's exons to report. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The sample's VCF (annotated with vep run, vcf clinvar, vcf gnomad and vcf acmg for those columns) whose variants in the gene to list. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `build` | `str \| None` | `None` | `--build` | Build of the gene annotations when no input gives one (default: hg38). One of: `hg38`, `hg19`, `t2t` |
+| `sample` | `str \| None` | `None` | `--sample` | VCF sample whose genotypes to use (default: the first). |
+| `min_depth` | `float \| None` | `None` | `--min-depth` | Depth an exon base needs to count as callable (default: config confidence_min_depth). |
+| `export` | `str \| None` | `None` | `--export` | Also write the gene's variant rows, all or one page filter's, as <vcf stem>_<gene>_<filter>_variants.tsv. One of: `all`, `rare-damaging`, `clinvar-plp`, `acmg-plp` |
+
 ### `api.info.calculate_coverage(CalculateCoverageParams)`
 
 CLI: `wgsextract info calculate-coverage`.
@@ -130,8 +158,8 @@ reports `with_bins` writes are `current` (both newer than the input).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000); with --by, declare the assessed scope (all targets must fit inside it); otherwise the whole alignment header is the assessed scope |
-| `bins` | `bool` | `False` | `--bins` | Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth in one streaming pass. |
-| `with_bins` | `bool` | `False` | `--with-bins` | After the coverage table, also report the --bins depth breadth; an up-to-date whole-file bins report is shown again instead of rescanned. |
+| `bins` | `bool` | `False` | `--bins` | Report exact per-contig depth 0, 1-3, 4-7 and 8+ breadth of the non-N bases in one streaming pass. |
+| `with_bins` | `bool` | `False` | `--with-bins` | Also measure the --bins depth breadth and show its table in place of the coverage table, which info --detailed then shows; up-to-date whole-file reports are shown again instead of rescanned. |
 | `by` | `Path \| None` | `None` | `--by` | Report depth per target of this BED (e.g. from 'panel bed'): mean, median and the fraction at >=10x, 20x, 30x and --min-depth, plus the on- versus off-target enrichment |
 | `min_depth` | `int` | `30` | `--min-depth` | With --by, list targets whose mean depth is below this (default: 30) |
 | `table_format` | `str \| None` | `None` | `--format` | Also save the per-chromosome table and the QC stats as <input>_chromosomes and <input>_qc .tsv or .parquet (needs pyarrow); implies --detailed; None saves none. With bins or by, that table's format instead (None: tsv). One of: `tsv`, `parquet` |
@@ -255,8 +283,10 @@ CLI: `wgsextract extract ydna-bam`.
 
 Extract the chrY reads (output role `y_bam`).
 
-`YdnaBamParams`: The chrY reads as `<input>_Y.bam` (`<input>_Y_poz.bam` with `poz`).
-Warns when the sample appears female, whose chrY reads are mismapped.
+`YdnaBamParams`: The chrY reads as `<input>_Y.bam` (`<input>_Y_poz.bam` with `poz`,
+`<input>_Y_associated.bam` with `y_scope="associated"`, which also reads
+the reference's Y-associated contigs). Warns when the sample appears female,
+whose chrY reads are mismapped.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -265,7 +295,8 @@ Warns when the sample appears female, whose chrY reads are mismapped.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
-| `poz` | `bool` | `False` | `--poz` | Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only). |
+| `poz` | `bool` | `False` | `--poz` | Restrict Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T). |
+| `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
 
 ### `api.extract.ydna_vcf(YdnaVcfParams)`
 
@@ -292,7 +323,9 @@ CLI: `wgsextract extract y-mt-extract`.
 
 Extract the chrY and chrM reads together (output role `y_mt_bam`).
 
-`YMtExtractParams`: The chrY and chrM reads in one `<input>_Y_MT.bam`.
+`YMtExtractParams`: The chrY and chrM reads in one `<input>_Y_MT.bam`, or with
+`y_scope="associated"` those and the reference's Y-associated contigs'
+in `<input>_Y_MT_associated.bam`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -301,6 +334,7 @@ Extract the chrY and chrM reads together (output role `y_mt_bam`).
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
+| `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
 
 ### `api.extract.unmapped(UnmappedParams)`
 
@@ -359,6 +393,9 @@ Extract one region in each chosen format (output roles `<t>_bam`,
 The BAM is `<input>_mtDNA.bam`, `<input>_Y.bam` (`<input>_Y_poz.bam`
 with `poz`), `<input>_Y_MT.bam` or `<input>_autosomes_X.bam`; the VCF
 and FASTA are `<input>_<MT|Y|Y_MT|autosomes_X>.vcf.gz` and `.fasta`.
+With `y_scope="associated"` the y and ymt targets also cover the
+reference's Y-associated contigs, named `<input>_Y_associated.*` and
+`<input>_Y_MT_associated.*`.
 chrM and chrY are called haploid with bcftools, indels included; autosomes
 and X are SNPs called contig by contig with the sex-aware ploidy of
 `vcf snp`. The FASTA is the region's reference with those calls applied,
@@ -375,7 +412,8 @@ are mismapped.
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
 | `target` | `str` | required | `--target` | Region to extract: mt (chrM), y (chrY), ymt (chrY and chrM) or autox (autosomes and chrX). One of: `mt`, `y`, `ymt`, `autox` |
 | `formats` | `str \| None` | `None` | `--formats` | Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf. |
-| `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37/38 only). |
+| `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T). |
+| `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
 | `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
 
 ## `api.bam`
@@ -464,6 +502,7 @@ or gene.
 | `region` | `str \| None` | `None` | `-r`, `--region` | Region (chrY:10000-20000), comma-separated regions, or a BED file to limit the output to. |
 | `gene` | `str \| None` | `None` | `--gene` | A gene name (e.g. BRCA1) to limit the output to, looked up in the reference library's gene map (hg19/hg38 only); the region wins when both are set. |
 | `cram_version` | `str` | `'3.0'` | `--cram-version` | CRAM version to output (default: 3.0 for better compatibility) One of: `2.1`, `3.0`, `3.1` |
+| `mimalloc` | `str \| None` | `None` (config `mimalloc`) | `--mimalloc` | Only native Windows CRAM 3.1 encoding with a local reference uses the validated samtools-mimalloc variant; unavailable variants fall back to samtools. The compatibility default CRAM 3.0 is unchanged. One of: `auto`, `off` |
 
 ### `api.bam.to_bam(BamToBamParams)`
 
@@ -745,6 +784,38 @@ and the `ancestry` fact; see docs/ancestry.md.
 | `build` | `str \| None` | `None` | `--build` | The input's build, when its header doesn't tell. One of: `hg19`, `hg38`, `t2t` |
 | `bootstrap` | `int` | `100` | `--bootstrap` | Bootstrap replicates for the 95% intervals; 0 skips them |
 
+### `api.qc.roh(QcRohParams)`
+
+CLI: `wgsextract qc roh`.
+
+Find runs of homozygosity (output roles `roh_segments`, `roh_report`
+and `roh_markers`; `details` is the `wgsextract.roh/1` document).
+
+`QcRohParams`: Runs of homozygosity (ROH) in a VCF sample with `bcftools roh`, using
+your local population allele frequencies (`af_file`, e.g. gnomAD or 1000
+Genomes) on the sample's build. Writes `<stem>.roh.tsv` (segments),
+`<stem>.roh.json` (`wgsextract.roh/1`: segments, marker evidence,
+scope, F_ROH and provenance) and `<stem>.roh.markers.tsv.gz`. A long run
+overlapping an imprinted region (e.g. 15q11-q13) gets an educational
+"investigate possible isodisomy" flag; ROH can't show which parent a
+chromosome came from, and it isn't a diagnosis. See docs/roh.md.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | VCF/BCF of the sample's genotypes (GRCh37, GRCh38 or T2T). |
+| `af_file` | `Path` | required | `--af-file` | Local population allele frequencies on the sample's build: a gnomAD/1000 Genomes sites VCF/BCF or a bcftools roh table |
+| `af_tag` | `str` | `'AF'` | `--af-tag` | INFO field of --af-file holding the frequency, e.g. AF_nfe (default: AF) |
+| `af_build` | `str \| None` | `None` | `--af-build` | Build of --af-file, when its header doesn't give contig lengths. One of: `hg19`, `hg38`, `t2t` |
+| `af_release` | `str \| None` | `None` | `--af-release` | Release of --af-file to record, e.g. 'gnomAD v4.1 genomes' |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `sample` | `str \| None` | `None` | `--sample` | The sample of a multi-sample VCF |
+| `build` | `str \| None` | `None` | `--build` | The input's build, when its header doesn't tell. One of: `hg19`, `hg38`, `t2t` |
+| `regions` | `str \| None` | `None` | `--regions` | Assessed scope: comma-separated autosomes or ranges, e.g. chr20 or chr15:20000000-30000000 (default: every autosome in the header) |
+| `imprinted_regions` | `Path \| None` | `None` | `--imprinted-regions` | Your own BED of imprinted regions, with a 'track db=hg38' line (default: the bundled list for the sample's build) |
+| `min_gq` | `int` | `20` | `--min-gq` | Leave out genotypes with GQ below this; a VCF without GQ needs 0 (default: 20) |
+| `flag_terminal_mb` | `float` | `5.0` | `--flag-terminal-mb` | Flag a run reaching a chromosome end from this length (default: 5) |
+| `flag_interstitial_mb` | `float` | `10.0` | `--flag-interstitial-mb` | Flag any other run from this length (default: 10) |
+
 ### `api.qc.fake_data(FakeDataParams)`
 
 CLI: `wgsextract qc fake-data`.
@@ -759,7 +830,7 @@ reference when there is one.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `coverage` | `float` | `1.0` | `--coverage` | Coverage depth (e.g. 30.0) |
-| `build` | `str` | `'hg38'` | `--build` | Human genome build naming convention. One of: `grch38`, `hg38`, `hs38`, `hs38d1`, `hs38d1v0`, `hs38dh`, `GRCh38`, `hs38DH`, `grch37`, `hg19`, `hg37`, `hs37`, `hs37d5`, `GRCh37`, `chm13`, `chm13v2`, `chm13v2.0`, `t2t`, `t2tv2`, `t2tv2.0`, `t2tv20`, `T2Tv20`, `T2Tv2`, `T2Tv2.0`, `CHM13`, `CHM13v2.0` |
+| `build` | `str` | `'hg38'` | `--build` | Human genome build naming convention. One of: `38`, `grch38`, `hg38`, `hs38`, `hs38d1`, `hs38d1v0`, `hs38dh`, `GRCh38`, `hs38DH`, `37`, `grch37`, `hg19`, `hg37`, `hs37`, `hs37d5`, `GRCh37`, `chm13`, `chm13v2`, `chm13v2.0`, `t2t`, `t2tv2`, `t2tv2.0`, `t2tv20`, `T2Tv20`, `T2Tv2`, `T2Tv2.0`, `CHM13`, `CHM13v2.0` |
 | `types` | `str` | `'cram'` | `--type` | Comma-separated list of types to generate (vcf, cram, bam, fastq, all). Default: cram |
 | `full_size` | `bool` | `False` | `--full-size` | Use real human chromosome lengths. The default scaled mode uses shorter chromosomes. |
 | `legacy_bam` | `bool` | `False` | `--legacy-bam` | Use the older scaled fake BAM generator. Slower and unavailable with --full-size, but includes randomized placement and indel CIGARs. |
@@ -826,10 +897,10 @@ workspace.
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform; selects platform-specific alignment tooling (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner to use. Auto uses bwa-mem2 for short reads when the reference has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, from bwa-mem2's index. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
-| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU speed over the RAM-budget CPU fallback. Sort memory is stepped down first; explicit --memory is kept, otherwise at most 256M per thread. May swap heavily. |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 on Linux x86-64; wgse-minimap2 on Linux and Windows x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
+| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Windows CUDA is automatic within RAM and commit limits; false forces CPU. Elsewhere, true can override RAM limits. See the configuration guide. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
-| `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample name for the read group (default: the reads' file name). |
 | `long_read` | `bool` | `False` | `--long-read` | Treat the reads as long reads (PacBio/ONT) and align them with pbmm2 or minimap2. |
@@ -866,10 +937,10 @@ settings and tools are unchanged.
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, with r1. |
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2 or pbmm2, chosen as for align. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
-| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Prefer native GPU speed over the RAM-budget CPU fallback. Sort memory is stepped down first; explicit --memory is kept, otherwise at most 256M per thread. May swap heavily. |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 on Linux x86-64; wgse-minimap2 on Linux and Windows x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
+| `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Windows CUDA is automatic within RAM and commit limits; false forces CPU. Elsewhere, true can override RAM limits. See the configuration guide. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
-| `gpu` | `bool` | `False` | `--gpu` | Align on an NVIDIA GPU with Parabricks: BWA-MEM for short reads, minimap2 for HiFi (Linux, Docker; see README). ONT requires CPU alignment to retain MM/ML methylation tags. |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
 | `preset` | `str \| None` | `None` | `--preset` | minimap2/pbmm2 preset. One of: `sr`, `map-pb`, `map-hifi`, `map-ont`, `ccs`, `subread` |
@@ -1013,7 +1084,7 @@ CLI: `wgsextract vcf filter`.
 
 Filter; output role `filtered_vcf`, with the record count in its metrics.
 
-`VcfFilterParams`: Keep the calls in a region or gene, matching an expression, into
+`VcfFilterParams`: Keep the calls in a region or panel, matching an expression, into
 `filtered.vcf.gz`.
 
 | Field | Type | Default | CLI | Description |
@@ -1022,10 +1093,15 @@ Filter; output role `filtered_vcf`, with the record count in its metrics.
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `gene` | `str \| None` | `None` | `--gene` | Keep a gene by symbol (repeatable). |
+| `genes` | `tuple[str, ...]` | `[]` | `--genes` | Comma-separated gene symbols (repeatable). |
+| `gene_file` | `Path \| None` | `None` | `--gene-file` | File of gene symbols (whitespace or comma-separated; # starts a comment). |
+| `presets` | `tuple[str, ...]` | `[]` | `--preset` | Gene panel preset (repeatable): pharmacogenes, hla, autoimmune, acmg-sf, cardiac. One of: `pharmacogenes`, `hla`, `autoimmune`, `acmg-sf`, `cardiac` |
+| `bed` | `Path \| None` | `None` | `--bed` | BED or BED.gz panel, unioned with the selected gene spans. |
+| `pad_kb` | `float` | `0.0` | `--pad-kb` | Padding on each side of a gene span, in kb (default: 0). |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region(s); when a panel is given, restrict its union to these regions. |
 | `expr` | `str \| None` | `None` | `--expr` | bcftools filter expression (e.g. 'QUAL>30') |
-| `gene` | `str \| None` | `None` | `--gene` | Filter by Gene Name (e.g. BRCA1, KCNQ2) |
 | `exclude_near_gaps` | `bool` | `False` | `--exclude-near-gaps` | Exclude variants in or near genomic gaps (requires Count Ns output) |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
 
 ### `api.vcf.table(VcfTableParams)`
 
@@ -1042,7 +1118,14 @@ Write the table (role `variant_table`) and database (`variant_database`);
 | `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Only export this region (e.g. chr22). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `gene` | `str \| None` | `None` | `--gene` | Keep a gene by symbol (repeatable). |
+| `genes` | `tuple[str, ...]` | `[]` | `--genes` | Comma-separated gene symbols (repeatable). |
+| `gene_file` | `Path \| None` | `None` | `--gene-file` | File of gene symbols (whitespace or comma-separated; # starts a comment). |
+| `presets` | `tuple[str, ...]` | `[]` | `--preset` | Gene panel preset (repeatable): pharmacogenes, hla, autoimmune, acmg-sf, cardiac. One of: `pharmacogenes`, `hla`, `autoimmune`, `acmg-sf`, `cardiac` |
+| `bed` | `Path \| None` | `None` | `--bed` | BED or BED.gz panel, unioned with the selected gene spans. |
+| `pad_kb` | `float` | `0.0` | `--pad-kb` | Padding on each side of a gene span, in kb (default: 0). |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region(s); when a panel is given, restrict its union to these regions. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample whose genotypes to use (default: the first). |
 | `all_alleles` | `bool` | `False` | `--all-alleles` | Also export ALT alleles the sample doesn't carry (0/0 calls, no-calls, the other ALT of a 0/1 multi-allelic site). |
 | `pharmcat_json` | `Path \| None` | `None` | `--pharmcat-json` | PharmCAT's <stem>.phenotype.json (from 'vcf pharmcat'), to add its diplotype and phenotype to rows in those genes. |
@@ -1073,6 +1156,31 @@ Build the consensus (role `consensus_fasta`, and `liftover_chain` with
 | `include_filtered` | `bool` | `False` | `--include-filtered` | Also apply variants whose FILTER is not PASS. |
 | `mask` | `Path \| None` | `None` | `--mask` | BED file of regions to replace with N (e.g. low coverage). |
 | `chain` | `bool` | `False` | `--chain` | Also write a chain file mapping reference coordinates to the consensus (indels shift positions). |
+
+### `api.vcf.prepare(VcfPrepareParams)`
+
+CLI: `wgsextract vcf prepare`.
+
+Write the prepared VCF (role `prepared_vcf`, with its `records`) and
+its index (`prepared_vcf_index`); every repair is a `vcf_prepare_*`
+warning.
+
+`VcfPrepareParams`: Repair a VCF that downstream tools reject (plain gzip, unsorted, missing
+or stale index, undeclared contigs or IDs, other contig names than the
+reference) into `<stem>_prepared.vcf.gz` with its index; never changes
+the input. With `ref`, contigs take the reference's names, order and
+lengths and REFs are checked; `normalize` also splits multiallelic
+records and left-aligns indels. Each repair is a structured warning.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `output` | `Path \| None` | `None` | `--output` | Prepared VCF to write, ending in .vcf.gz (default: <outdir>/<input stem>_prepared.vcf.gz); never the input itself. |
+| `normalize` | `bool` | `False` | `--normalize` | Also split multiallelic records and left-align indels against --ref (bcftools norm -m -any); originals are kept in INFO. |
 
 ### `api.vcf.trio(VcfTrioParams)`
 
@@ -1219,7 +1327,8 @@ CLI: `wgsextract vcf gnomad`.
 Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 `rare_variants`.
 
-`VcfGnomadParams`: gnomAD allele frequencies (GNOMAD_AF) as `gnomad_annotated.vcf.gz`.
+`VcfGnomadParams`: gnomAD allele frequencies and available homozygote counts as
+`gnomad_annotated.vcf.gz`.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1228,7 +1337,7 @@ Annotate with gnomAD; output roles `annotated_vcf` and, with `max_af`,
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `gnomad_file` | `Path \| None` | `None` (config `gnomad_vcf_path`) | `--gnomad-file` | Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref gnomad --release 4.1'. |
+| `gnomad_file` | `Path \| None` | `None` (config `gnomad_vcf_path`) | `--gnomad-file` | Path to gnomAD data: a sites VCF, or the allele-frequency table from 'ref gnomad --release 4.1 --download'. |
 | `max_af` | `float \| None` | `None` | `--max-af` | Also write the calls rarer than this gnomAD allele frequency (or absent from gnomAD), with confidence labels. |
 | `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
 | `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
@@ -1377,7 +1486,8 @@ Run the chain; output role `annotated_vcf`; `annotations_applied` is a
 metric.
 
 `VcfChainAnnotateParams`: Several annotations applied in turn, as `chain_annotated.vcf.gz`;
-steps whose tool or data is missing are skipped with a warning.
+steps whose tool or data is missing are skipped with a warning. A step
+journal lets interrupted chains resume from their last completed step.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -1385,8 +1495,15 @@ steps whose tool or data is missing are skipped with a warning.
 | `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `annotations` | `str` | `'clinvar,revel,phylop,gnomad,vep'` | `--annotations` | Comma-separated list of annotations to apply in order (default: clinvar,revel,phylop,gnomad,vep). |
-| `keep_intermediates` | `bool` | `False` | `--keep-intermediates` | Keep intermediate VCF files generated during the chain process. |
+| `keep_intermediates` | `bool` | `False` | `--keep-intermediates` | Keep intermediate VCFs after success so later runs can reuse them. |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Only annotate this region (e.g. chr22:1000-2000) or comma-separated regions. |
+| `bed` | `Path \| None` | `None` | `--bed` | Only annotate regions in this 0-based BED or BED.gz file. |
+| `restart` | `bool` | `False` | `--force`, `--no-resume`, `--restart` | Rerun every step, ignoring the steps an earlier run completed. |
+| `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step`, `--force-steps` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: select, clinvar, revel, phylop, cadd, gerp, gnomad, spliceai, alphamissense, pharmgkb, vep, trim. One of: `select`, `clinvar`, `revel`, `phylop`, `cadd`, `gerp`, `gnomad`, `spliceai`, `alphamissense`, `pharmgkb`, `vep`, `trim` |
+| `to_table` | `bool` | `False` | `--to-table` | Also export a variant table and SQLite database. |
+| `table_format` | `str \| None` | `None` | `--table-format` | Format with --to-table (default: tsv). One of: `tsv`, `parquet` |
 
 ### `api.vcf.call_types(value: str) -> list[str]`
 
@@ -1406,7 +1523,7 @@ Call CNVs; output role `copy_number_variants`.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `region` | `str \| None` | `None` | `-r`, `--region` | One region, a comma-separated list, or a BED file. |
 | `map` | `str \| None` | `None` | `-M`, `--map` | Deprecated and ignored: Delly 2 no longer uses mappability maps. |
 | `ploidy` | `int \| None` | `None` | `--ploidy` | Baseline ploidy for delly cnv (default: 2) |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
@@ -1431,7 +1548,7 @@ or `pacbio`), else delly. The `caller_reason` metric says why.
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `region` | `str \| None` | `None` | `-r`, `--region` | Delly/Sniffles: one region, a comma-separated list, or BED; pbsv: one region only. |
 | `caller` | `str \| None` | `None` | `--caller` | SV caller to use (default: sniffles for ONT or --long-read, pbsv/sniffles for PacBio, detected or flagged; else delly). pbsv is PacBio-only and is refused for ONT reads. One of: `delly`, `pbsv`, `sniffles` |
 | `pacbio` | `bool` | `False` | `--pacbio` | PacBio HiFi/CCS data: use pbsv (or sniffles if pbsv is missing) with CCS thresholds. Detected PacBio gets this automatically, without CCS thresholds for subreads (CLR). |
 | `ont` | `bool` | `False` | `--ont` | Oxford Nanopore data: use Sniffles (detected ONT input selects it automatically). |
@@ -1461,7 +1578,7 @@ command writes: `snps.vcf.gz` (`vcf snp`), `indels.vcf.gz`
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region |
+| `region` | `str \| None` | `None` | `-r`, `--region` | One region, a comma-separated list, or BED (Delly/Sniffles without SNP/indel calling); pbsv: one region only. |
 | `types` | `str` | `'snp,indel'` | `--types` | Comma-separated variant types to call: snp and indel (bcftools), sv (as vcf sv picks the caller) and cnv (Delly). Default: snp,indel. |
 | `merge` | `bool` | `False` | `--merge` | Merge the called types into one variants.vcf.gz (+ .tbi), or variants.g.vcf.gz with the gVCF, in place of each type's own VCF. |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf: write SNPs and indels as one gVCF, bcftools.g.vcf.gz (+ .tbi), with reference blocks, in place of snps.vcf.gz and indels.vcf.gz; none: the variant VCFs. Default: config reference_evidence, else none. One of: `none`, `gvcf` |
@@ -1509,7 +1626,9 @@ Call with GATK; output role `variants`.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Comma-separated region(s) to call (e.g. chrM), or a BED file. |
 | `scatter` | `bool` | `False` | `--scatter` | Opt-in Ultima flow-mode interval scattering, bounded by --threads and available RAM (6 GiB per worker, 4 GiB Java heap). Can change genotypes/annotations away from interval boundaries; default: one unscattered process. |
-| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see README). |
+| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU with Parabricks (Linux, Docker; see docs/hardware.md#nvidia-gpus-parabricks). |
+| `pair_hmm_cuda` | `Path \| None` | `None` | `--pair-hmm-cuda` | Experimental Linux x86-64 CUDA PairHMM sidecar jar for GATK 4.6.2.0, with GKL CPU fallback. Opt-in; not Parabricks. See native/pairhmm/README.md. Not with --gpu or --scatter. |
+| `pair_hmm_neon` | `Path \| None` | `None` | `--pair-hmm-neon` | Experimental Apple Silicon double-precision NEON PairHMM sidecar jar for GATK 4.6.2.0, with Java fallback. Opt-in; not Parabricks. See packaging/arm64/gkl/README.md. Not with --gpu or --scatter. |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes gatk.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
@@ -1541,7 +1660,7 @@ Google's ULTIMA GPU image runs the stages with call_variants on the GPU.
 | `pacbio` | `bool` | `False` | `--pacbio` | Alias for --model-type PACBIO. |
 | `checkpoint` | `Path \| None` | `None` | `--checkpoint` | A custom model: its directory, or a checkpoint prefix. |
 | `batch_size` | `int \| None` | `None` | `--batch-size` | call_variants batch size (upstream default: 1024; not Parabricks). Use 256 to lower TensorFlow peak RAM without changing models or precision; --threads controls make_examples shards, not this batch. |
-| `gpu` | `bool` | `False` | `--gpu` | NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (README). |
+| `gpu` | `bool` | `False` | `--gpu` | NVIDIA GPU (x86-64 Linux): WGS/ONT via wgse-deepvariant if set up, else Parabricks; Ultima: Google's GPU image (docs/hardware.md#nvidia-gpus-parabricks). |
 | `no_gpu_memory_check` | `bool` | `False` | `--no-gpu-memory-check` | Run on the GPU despite too little GPU or host memory; Parabricks' low-memory options are still chosen to fit. |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
@@ -1567,7 +1686,7 @@ Call with Clair3; output role `variants`.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chr20:1-1000000) |
 | `model` | `str \| None` | `None` | `--model` | Clair3 model directory, or the name of a bundled model, matching the reads' basecaller (e.g. r1041_e82_400bps_sup_v500). Overrides config clair3_model; default: chosen from the basecaller metadata. |
-| `gpu` | `bool` | `False` | `--gpu` | Call on an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
+| `gpu` | `bool` | `False` | `--gpu` | Call on Apple Silicon MPS (WGSE-built caller), or an NVIDIA GPU in HKU's Clair3 GPU image (x86-64 Linux, Docker; see docs/ont.md). |
 | `no_preflight` | `bool` | `False` | `--no-preflight` | Run despite too little disk or RAM (not recommended). |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 | `reference_evidence` | `str \| None` | `None` (config `reference_evidence`) | `--reference-evidence` | gvcf also writes clair3.g.vcf.gz and its index (output roles reference_evidence, reference_evidence_index); the variant VCF is unchanged. None uses config reference_evidence, else none. See docs/reference-evidence.md. One of: `none`, `gvcf` |
@@ -1615,6 +1734,10 @@ has GP below `min_gp` (GLIMPSE2: 0.9, Beagle: 0.95) are FILTERed
 `min_info` is an explicit opt-in site filter, meaningful only for
 multi-sample cohorts. Install panel chromosomes with `ref imputation`.
 
+GLIMPSE2 runs `threads` chunks at once, one thread each, largest
+first, as many as fit the memory available (or `memory` per chunk);
+the output doesn't depend on how many.
+
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `input` | `Path \| None` | `None` | `--input`, `-i` | Low-coverage BAM or CRAM to impute with GLIMPSE2 (about 0.5-8x). |
@@ -1626,6 +1749,81 @@ multi-sample cohorts. Install panel chromosomes with `ref imputation`.
 | `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes, e.g. chr20 or chr1-22 (default: every installed one). |
 | `min_gp` | `float \| None` | `None` | `--min-gp` | Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95). |
 | `min_info` | `float \| None` | `None` | `--min-info` | Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts. |
+
+### `api.vcf.info(VcfInfoParams)`
+
+CLI: `wgsextract vcf info`.
+
+Inspect a VCF/gVCF/BCF header, reference model/build, samples, and variant counts.
+
+`VcfInfoParams`: Inspect a VCF, gVCF, or BCF file: reference build/model, samples, counts, and format.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.vcf.variantqc(VcfVariantQcParams)`
+
+CLI: `wgsextract vcf variantqc`.
+
+Run DISCVRSeq VariantQC; output role `variantqc_report`.
+
+`VcfVariantQcParams`: Run DISCVRSeq VariantQC to write an interactive HTML VCF quality report.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `extra_vcf` | `tuple[Path, ...] \| None` | `None` | `--extra-vcf` | Additional VCF file(s) to analyze together in the same VariantQC report (repeat flag for multiple). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
+| `pedigree` | `Path \| None` | `None` | `--pedigree` | Optional pedigree file (.ped) for sex- and family-aware VariantQC metrics. |
+| `discvrseq_jar` | `Path \| None` | `None` (config `discvrseq_jar`) | `--discvrseq-jar` | Path to DISCVRseq.jar (default: config discvrseq_jar or jar_directory). |
+
+### `api.vcf.granite_qc(VcfGraniteQcParams)`
+
+CLI: `wgsextract vcf granite-qc`.
+
+Run granite qcVCF; output role `granite_qc_json`.
+
+`VcfGraniteQcParams`: Run granite qcVCF (dbmi-bgm/granite) to compute single-sample or family VCF QC metrics.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `pedigree` | `Path \| None` | `None` | `--pedigree` | Optional granite pedigree JSON file (auto-generated from VCF samples if omitted). |
+| `samples` | `str \| None` | `None` | `--samples` | Comma-separated sample IDs to include (default: all samples in the VCF header). |
+| `trio_errors` | `bool` | `False` | `--trio-errors` | Include Mendelian trio error statistics (requires a pedigree with parents). |
+| `granite_path` | `Path \| None` | `None` (config `granite_executable`) | `--granite-path` | Path to the granite executable (default: config granite_executable or PATH). |
+
+## `api.cohort`
+
+Local, callability-aware cohort summaries for research.
+
+### `api.cohort.summarize(CohortSummarizeParams)`
+
+CLI: `wgsextract cohort summarize`.
+
+Write a local allele-count table and a result manifest.
+
+`CohortSummarizeParams`: Summarize autosomal SNVs from a local cohort manifest and matched gVCFs.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `cohort_manifest` | `Path` | required | `MANIFEST` | Local cohort input manifest (wgsextract.cohort/1). |
+| `region` | `str \| None` | `None` | `--region` | Limit to an autosomal contig, interval or comma-separated list. |
+| `bed` | `Path \| None` | `None` | `--bed` | Limit to autosomal intervals from a local BED. |
+| `min_depth` | `int` | `10` | `--min-depth` | Minimum DP (block MIN_DP). |
+| `min_gq` | `int` | `20` | `--min-gq` | Minimum GQ for callers that provide it. |
+| `table_format` | `str` | `'tsv'` | `--format` | Table format: tsv or parquet (needs pyarrow). One of: `tsv`, `parquet` |
+| `include_identifiers` | `bool` | `False` | `--include-identifiers` | Also write a private participant/QC join with source paths and names. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the working folder). |
 
 ## `api.analyze`
 
@@ -1685,8 +1883,8 @@ VCFs under `directory`, grouping files into samples by name
 
 ## `api.lineage`
 
-`lineage`: mtDNA haplogroups (Haplogrep 3), Y haplogroups (native Yleaf)
-and Y-STR repeat counts.
+`lineage`: mtDNA haplogroups (Haplogrep 3), Y haplogroups (native Yleaf),
+Y-STR repeat counts and candidate private Y SNVs.
 
 ### `api.lineage.mt_haplogroup(MtHaplogroupParams)`
 
@@ -1703,7 +1901,9 @@ CHM13v2.0's chrM was mapped onto the rCRS, `mt_reference`.
 called first; needs the reference) or a VCF, into
 `haplogrep_results.txt`; a missing tree needs `download` permission.
 With `contamination`, haplocheck also looks for a mixture of
-two haplogroups (`haplocheck_contamination.txt`). Haplogrep reads
+two haplogroups (`haplocheck_contamination.txt`); on a BAM/CRAM, mutserve's
+calls and per-position read table are kept for `report`
+(`details.heteroplasmy`, docs/lineage.md). Haplogrep reads
 rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
 three more differences) is called at every site and mapped onto the rCRS
 through the bundled alignment (`details.mt_reference`); a VCF on it needs
@@ -1719,7 +1919,7 @@ confirm as the rCRS is warned of (`mt_reference_unconfirmed`).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `tree` | `str \| None` | `None` (config `haplogrep_tree`) | `--tree` | Haplogrep 3 tree (default: config haplogrep_tree, else phylotree-fu-rcrs, PhyloTree 17 Forensic Update). phylotree-rcrs is PhyloTree 17; mitotree-rcrs is FamilyTreeDNA Mitotree (non-commercial use only). One of: `phylotree-fu-rcrs`, `phylotree-rcrs`, `mitotree-rcrs` |
-| `contamination` | `bool` | `False` | `--contamination` | Also check for mtDNA contamination with haplocheck. VCF input needs heteroplasmy levels (FORMAT/AF). |
+| `contamination` | `bool` | `False` | `--contamination` | Also check for mtDNA contamination with haplocheck; a BAM/CRAM also keeps mutserve's heteroplasmy calls for `report`. VCF input needs heteroplasmy levels (FORMAT/AF). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `haplogrep_path` | `str \| None` | `None` (config `haplogrep_executable`) | `--haplogrep-path` | Path to the Haplogrep 3 executable or JAR (optional if in PATH) |
 | `haplocheck_path` | `str \| None` | `None` (config `haplocheck_executable`) | `--haplocheck-path` | Path to the haplocheck executable or JAR (optional if in PATH) |
@@ -1753,6 +1953,7 @@ or single-sample VCF/BCF. Outputs go to `yleaf/` in the output folder.
 | `min_score` | `float` | `0.95` | `--min-score` | Minimum QC score of a reported haplogroup prediction. |
 | `ancient` | `bool` | `False` | `--ancient` | Use ancient-DNA marker tables. |
 | `no_ref_inference` | `bool` | `False` | `--no-ref-inference` | VCF: use explicit genotypes only; otherwise --ref supplies bases inside callable reference blocks, never at unassessed sites. |
+| `assume_reference` | `bool` | `False` | `--assume-reference` | VCF: assume --ref at absent markers for upstream Yleaf parity. Unsafe for variant-only or low-coverage VCFs: may bias the haplogroup. |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ### `api.lineage.y_str(YStrParams)`
@@ -1775,6 +1976,36 @@ FamilyTreeDNA-order CSV).
 | `min_reads` | `int` | `2` | `--min-reads` | Spanning reads needed to support a repeat count (default: 2). |
 | `min_fraction` | `float` | `0.6` | `--min-fraction` | Share of spanning reads that must agree (default: 0.6). |
 | `min_mapq` | `int` | `20` | `--min-mapq` | Minimum mapping quality for single-copy markers (default: 20). |
+
+### `api.lineage.y_private(YPrivateParams)`
+
+CLI: `wgsextract lineage y-private`.
+
+Candidate private Y SNVs; `metrics` holds `y_private_candidates`,
+`y_called_snvs` and `y_known_snvs`. `details` states the
+`definition`, the `marker_sets` used, the `callable_mask`, the
+`filters` and the `counts` at each step, and lists the
+`candidates`.
+
+`YPrivateParams`: List candidate private (novel) Y SNVs: called chrY SNVs, inside the
+bundled Poz callable mask, that are in no installed marker set (the
+YBrowse snapshot on GRCh38, the YFull YTree positions on GRCh38 and T2T)
+and pass strict allele-fraction, read and quality gates. Outputs go to
+`y_private/`. They are candidates to confirm, not proven private SNPs.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
+| `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM, or a single-sample VCF/BCF with FORMAT/AD. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `build` | `str \| None` | `None` | `--build` | Y build of a VCF whose header has no chrY length: hg38 or t2t. One of: `hg38`, `t2t` |
+| `min_af` | `float` | `0.9` | `--min-af` | Lowest share of reads (FORMAT/AD) carrying the ALT allele (default: 0.9). |
+| `min_alt_reads` | `int` | `10` | `--min-alt-reads` | Fewest reads carrying the ALT allele (default: 10). |
+| `min_qual` | `float` | `30.0` | `--min-qual` | Lowest variant QUAL (default: 30). |
+| `min_mapq` | `int` | `20` | `--min-mapq` | BAM/CRAM: lowest read mapping quality counted (default: 20). |
+| `base_quality` | `int` | `20` | `--base-quality` | BAM/CRAM: lowest base quality counted (default: 20). |
+| `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ## `api.methylation`
 
@@ -1812,6 +2043,32 @@ methylation_combine_strands, else CpG, 5mC only and strands combined.
 | `hydroxymethyl` | `bool \| None` | `None` | `--5hmc` | Also report 5-hydroxymethylcytosine (Nanopore 5mCG_5hmCG models). Overrides methylation_5hmc in config.toml (default: 5mC only). |
 | `combine_strands` | `bool \| None` | `None` | `--combine-strands` | Sum both strands of each CpG into one row on its C. True with context 'all' is an error; the config default quietly gives way. |
 | `table_format` | `str` | `'tsv'` | `--format` | Summary table format: tsv, or parquet (needs pyarrow), which also writes the sites as <stem>.<context>.bedmethyl.parquet (default: tsv) One of: `tsv`, `parquet` |
+
+### `api.methylation.regions(MethylationRegionsParams)`
+
+CLI: `wgsextract methylation regions`.
+
+Summarize methylation over the selected build-matched regions.
+
+`MethylationRegionsParams`: Summarize pooled or haplotype-split CpG calls over RefSeq promoters or UCSC islands.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Sorted, strand-combined CpG bedMethyl, or indexed HP-tagged BAM/CRAM with --partition-hp. |
+| `ref` | `Path` | required | `--ref` | The indexed, local FASTA used to align the reads or make the bedMethyl. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `build` | `str` | required | `--build` | Assembly of both input and FASTA. One of: `hg38`, `t2t` |
+| `preset` | `str` | required | `--preset` | RefSeq promoters or UCSC masked CpG islands. One of: `promoters`, `cpg-islands` |
+| `upstream` | `int` | `2000` | `--upstream` | Promoter bases upstream of the TSS (default: 2000). |
+| `downstream` | `int` | `500` | `--downstream` | Promoter bases on the transcribed side (default: 500). |
+| `min_valid_calls` | `int` | `5` | `--min-valid-calls` | Minimum valid calls per CpG (default: 5). |
+| `min_cpgs` | `int` | `3` | `--min-cpgs` | Minimum qualifying CpGs per region (default: 3). |
+| `partition_hp` | `bool` | `False` | `--partition-hp` | Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS). |
+| `phase_blocks` | `Path \| None` | `None` | `--phase-blocks` | Matching phased.blocks.tsv from vcf phase; require region containment in one block. |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `hydroxymethyl` | `bool` | `False` | `--5hmc` | Also report 5hmC: declares the input was generated with a 5hmC-capable model. |
+| `download` | `bool` | `False` | `--download` | Fetch the missing pinned hg38 CpG island table from UCSC. No sample data is sent. |
+| `table_format` | `str` | `'tsv'` | `--format` | Output table: tsv (default) or parquet (needs pyarrow). One of: `tsv`, `parquet` |
 
 ## `api.microarray`
 
@@ -1853,7 +2110,7 @@ chains require `download`; lifting sample coordinates stays local.
 | `aadr_sex` | `str` | `'U'` | `--aadr-sex` | AADR metadata sex only; does not change genotype calling (default: U) One of: `U`, `M`, `F` |
 | `parallel` | `bool \| None` | `None` | `--parallel` | Call chromosomes in parallel workers (default: on with --threads above 1; calls are identical to one stream) |
 | `ref_vcf_tab` | `Path \| None` | `None` | `--ref-vcf-tab` | Master tabulated list of all consumer microarray SNPs (auto-resolved from --ref if possible) |
-| `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | File defining ploidy per chromosome (auto-resolved from --ref if possible) |
+| `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's, else the GRCh37 or GRCh38 preset). Other builds need one, except CHM13, which uses its own PAR ploidy and doesn't take one. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample to use from a multi-sample VCF (e.g. a joint-called nf-core/sarek VCF); required when the VCF has more than one |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
@@ -1962,13 +2219,13 @@ CLI: `wgsextract ref ybrowse`.
 
 Install the snapshot; output role `reference_resource`.
 
-`RefYbrowseParams`: Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
+`RefYbrowseParams`: Install a verified, sites-only GRCh38 yBrowse snapshot into the
 library, or delete the installed snapshots.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed yBrowse snapshots |
-| `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream pin. |
+| `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz) instead of downloading from ybrowse.org. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.download(RefDownloadParams)`
@@ -2104,7 +2361,7 @@ has `library`, `genomes_dir`, the genome's `code` and `file`,
 
 `RefLibraryDeleteParams`: Delete a catalog genome from the library's genomes folder: its FASTA,
 a partial download, its indexes and sequence dictionary. Its N counts,
-which the library bootstrap ships, stay.
+which never change, stay.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2150,6 +2407,23 @@ HG00096) in the My Genomes library. Reports whether it is installed;
 | `install` | `bool` | `False` | `--install` | Download the test genome (84 MB, SHA-256 checked) and unpack it. |
 | `delete` | `bool` | `False` | `--delete` | Delete the test genome and its download. |
 
+### `api.ref.cytobands(RefCytobandsParams)`
+
+CLI: `wgsextract ref cytobands`.
+
+Validate/install UCSC cytobands (output role `reference_resource`).
+Missing or invalid tables require explicit `download=True`.
+
+`RefCytobandsParams`: Validate installed UCSC cytobands; fetch a missing table only with
+`--download`. Installs primary-chromosome hg19/hg38 ideograms for the
+offline viewer; no sample data is sent.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `build` | `str` | `'hg38'` | `--build` | Cytoband assembly (default: hg38). One of: `hg38`, `hg19` |
+| `download` | `bool` | `False` | `--download` | Download missing UCSC cytoBand data from hgdownload.soe.ucsc.edu; only the public assembly URL is requested, never sample data. |
+| `ref` | `Path \| None` | `None` | `--ref` | Reference library folder (default: config reference_library); an explicit FASTA resolves its library. |
+
 ### `api.ref.gene_map(RefGeneMapParams)`
 
 CLI: `wgsextract ref gene-map`.
@@ -2174,6 +2448,22 @@ Download ClinVar; output role `reference_resource` for each file.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.dbsnp(RefDbsnpParams)`
+
+CLI: `wgsextract ref dbsnp`.
+
+Download NCBI dbSNP b151 common rsIDs and build their offline SQLite
+lookup index (output role `reference_resource`), or delete them.
+
+`RefDbsnpParams`: Download NCBI dbSNP b151 common human rsIDs (~37M SNPs, VCF + tabix +
+offline SQLite rsID search index) for hg38 and hg19, or delete them.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `build` | `str \| None` | `None` | `--build` | Only this build (default: both hg38 and hg19). One of: `hg38`, `hg19` |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed dbSNP common rsID files |
 
 ### `api.ref.revel(RefRevelParams)`
 
@@ -2206,14 +2496,15 @@ CLI: `wgsextract ref gnomad`.
 
 Download or build gnomAD; output role `reference_resource` for each file.
 
-`RefGnomadParams`: Download gnomAD allele frequencies: the 2.1.1 exome sites VCFs, or
-build the 4.1 frequency table.
+`RefGnomadParams`: Check or download the gnomAD 2.1.1 exome sites VCFs or the gnomAD 4.1
+frequency and homozygote-count table.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
-| `release` | `str` | `'2.1.1'` | `--release` | 2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native hg38 exomes+genomes, streamed (~900 GB, hours) into an allele-frequency-only table of ~5 GB; --threads sets parallel streams. One of: `2.1.1`, `4.1` |
+| `release` | `str` | `'2.1.1'` | `--release` | 2.1.1: exome sites VCFs for hg19 and hg38 (hg38 lifted over). 4.1: native hg38 exomes+genomes, with allele frequency, maximum ancestry-group frequency and homozygote counts; --threads sets parallel streams. One of: `2.1.1`, `4.1` |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `download` | `bool` | `False` | `--download` | Allow fetching the public sites VCFs for the selected release (4.1 streams ~900 GB, hours, to build or rebuild the table). |
 
 ### `api.ref.spliceai(RefSpliceaiParams)`
 
@@ -2297,7 +2588,7 @@ fastVEP's databases. Shows each source's terms; reruns resume.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `chromosomes` | `str \| None` | `None` | `--chromosomes` | Chromosomes for gnomAD, SpliceAI, REVEL and phyloP: chr22, chr1-22,chrX or all (default). |
-| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: ref/acmg/sa in the library). |
+| `sa_dir` | `Path \| None` | `None` (config `acmg_sa_dir`) | `--sa-dir` | Folder to build the databases in (default: downloads/acmg/sa in the library). |
 | `spliceai_file` | `Path \| None` | `None` | `--spliceai-file` | A GRCh38 SpliceAI VCF to use, such as Illumina's (default: the library's, downloaded from Ensembl when missing). |
 | `ensembl_release` | `str` | `'116'` | `--ensembl-release` | Ensembl release of the GFF3; match your vep-rs cache. |
 | `site_data` | `str \| None` | `None` | `--site-data` | per-run: don't build gnomAD and SpliceAI (877 GB streamed, 29 GB downloaded for a genome); vcf acmg reads each input's own sites of them. library builds them. Default: as the folder was built, else library. One of: `library`, `per-run` |
@@ -2342,7 +2633,7 @@ templates, or delete them. `microarray` builds a missing one itself.
 make standard tools reject them.
 
 `ftdna_bam` replaces the spaces in read names with `:`; `ftdna_vcf`
-drops the characters VCF forbids from the FILTER column. Each writes
+maps legacy FILTER expressions to declared IDs (docs/ftdna-vcf-repair.md). Each writes
 `<input stem>_repaired.bam` (or `.vcf`) in `outdir`, else beside the
 input, or the `output` path. The result's metrics count the records read
 (`records`) and changed (`repaired_records`). The CLI also repairs a
@@ -2373,8 +2664,11 @@ CLI: `wgsextract repair ftdna-vcf`.
 Repair an FTDNA VCF's FILTER column (see `RepairFtdnaVcfParams`).
 
 `RepairFtdnaVcfParams`: Copy an FTDNA VCF (plain, gzipped or BCF) to a plain VCF whose FILTER
-values hold only the characters VCF allows (`Low Qual;q<10` becomes
-`LowQual;q10`), so bcftools and VEP accept it.
+IDs are all declared, so bcftools and VEP accept it. Legacy expressions
+become IDs that keep their meaning (`DP=1` becomes `DP1`, `QUAL=12`
+`Q40`); ones it can't interpret become `FTDNA_UNKNOWN` with a
+warning. Failed calls never become PASS, and the original expressions
+are kept in `INFO/FTDNA_FILTER`. See docs/ftdna-vcf-repair.md.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -2481,9 +2775,16 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
 * `smn`: SMN1/SMN2 copy number and SMA carrier status with
   SMNCopyNumberCaller (`.smn.tsv`/`.json`), from the optional `smn`
   environment. A screening estimate, not a diagnosis.
+* `target_cnv`: screen short-read WGS for copy number over BED intervals
+  (`.target-cnv.tsv`). Uses an indexed matching FASTA, with an offline
+  baseline and callability mask for GRCh37, GRCh38 and T2T-CHM13v2.0.
+* `paraphase`: copy number and haplotypes for long-read paralog loci
+  (`.paraphase.tsv`/`.json` and raw files), using the opt-in `paraphase`
+  environment. PacBio HiFi or experimental, unvalidated ONT.
 * `hla`: HLA class I and II alleles with T1K (`.t1k_genotype.tsv`,
   `.t1k_allele.tsv`/`.vcf`), from the optional `t1k` environment.
-* `repeats` (`typing str`): disease repeat expansions (`.str.tsv`), with
+* `repeats` (`typing str`): disease repeat expansions (`.str.tsv` or
+  `.str.parquet`, also in `details.repeat_calls` in the result), with
   ExpansionHunter for short reads (`.str.vcf`/`.json`, optional
   `expansionhunter` environment) or LongTR for Nanopore and PacBio reads
   (`.str.vcf.gz`, `longtr` environment; STRkit's `.str.vcf` and
@@ -2543,6 +2844,45 @@ median depth no calls are reported (files kept as
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 
+### `api.genotyping.target_cnv(TypingTargetCnvParams)`
+
+CLI: `wgsextract typing target-cnv`.
+
+Screen BED targets for short-read copy number (see `TypingTargetCnvParams`).
+
+`TypingTargetCnvParams`: Estimate copy-number classes (0, 1, 2, 3+) with heuristic confidence
+from GC-matched autosomal depth in short-read whole-genome sequencing.
+Masked targets require a specialist, except whole curated deletion loci
+with clear depth evidence. This is a screen, not a diagnosis.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed short-read WGS BAM or CRAM. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `bed` | `Path` | required | `--bed` | Target intervals in a BED (0-based, end-exclusive; optional name in column 4). |
+| `download` | `bool` | `False` | `--download` | Use exact GIAB v3.5 masks, downloading missing public BEDs from NCBI into the reference library. No sample data is sent. |
+
+### `api.genotyping.paraphase(TypingParaphaseParams)`
+
+CLI: `wgsextract typing paraphase`.
+
+Type long-read paralogs (see `TypingParaphaseParams`).
+
+`TypingParaphaseParams`: Type paralogous loci from an indexed long-read BAM or CRAM, with
+the matching indexed FASTA. Reports locus copy number, gene-specific
+calls and explicit no-calls. ONT is experimental and unvalidated.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed PacBio HiFi or ONT whole-genome BAM or CRAM. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `genes` | `str \| None` | `None` | `--genes` | Comma-separated Paraphase locus names, e.g. SMN1,PMS2,STRC. Default: all loci supported by the engine for this reference build. |
+| `pacbio_licensed_executable` | `Path \| None` | `None` | `--pacbio-licensed-executable` | Opt in to a local Paraphase >=3.3.2 executable under the PacBio Software License Agreement. Every read group must be PL:PACBIO. Default: Paraphase 3.3.1 (BSD-3-Clause-Clear) from its Pixi environment. |
+
 ### `api.genotyping.hla(TypingHlaParams)`
 
 CLI: `wgsextract typing hla`.
@@ -2561,7 +2901,7 @@ decoys and chr6 ALT contigs. Metrics: diplotypes of HLA-A, -B, -C,
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's ref/t1k_hla one; download permits building it if missing. |
+| `hla_index` | `Path \| None` | `None` | `--hla-index` | T1K allele index (hla_dna_seq.fa); None uses the reference library's downloads/t1k_hla one; download permits building it if missing. |
 
 ### `api.genotyping.repeats(TypingStrParams)`
 
@@ -2574,7 +2914,8 @@ str`; see `TypingStrParams`).
 those outside the normal range, with ExpansionHunter for short reads and
 LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
 `sex`, `repeat_caller`, `disease_repeats`, `flagged_repeats` and
-`unconfirmed_repeats`;
+`unconfirmed_repeats` and `normal_repeats`. The result's
+`details.repeat_calls` holds the same per-locus rows as the summary table;
 each flagged repeat is a `repeat_outside_normal_range` warning
 (`repeat_unconfirmed` for a low-support-only finding or an unresolved
 all-weak or incomplete call,
@@ -2588,6 +2929,8 @@ all-weak or incomplete call,
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `caller` | `str \| None` | `None` | `--caller` | Repeat caller (default: longtr for Nanopore and PacBio reads, expansionhunter for others). strkit suits Nanopore R9 reads and very long alleles. One of: `expansionhunter`, `longtr`, `strkit` |
 | `catalog` | `Path \| None` | `None` | `--catalog` | Repeat catalog in the caller's format: an ExpansionHunter variant catalog (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped catalog for the input's build, or its repeats bundled for LongTR and STRkit. |
+| `loci` | `str \| None` | `None` | `--loci` | Only size these comma-separated, case-sensitive catalog locus IDs (example: HTT,FMR1,AR). Targeted files get a separate prefix. Default: the entire catalog. |
+| `table_format` | `str` | `'tsv'` | `--format` | Repeat summary table format: tsv or parquet (needs pyarrow). Default: tsv. One of: `tsv`, `parquet` |
 | `sex` | `str \| None` | `None` | `--sex` | Sample sex (the number of chrX alleles). Default: inferred from chrX/chrY coverage. One of: `male`, `female` |
 
 ## `api.report`
@@ -2597,9 +2940,10 @@ all-weak or incomplete call,
 The report summarises what earlier runs left in the sample folder (their
 result manifests and the sample workspace): overview and QC, lineage,
 pharmacogenomics, ClinVar pathogenic calls in the ACMG SF genes (or another
-gene list) and the microarray export. It runs no analysis; its only network
+gene list), the microarray export and, with `pgx_context`, CPIC guidance
+for the medications a person lists. It runs no analysis; its only network
 use, only with `download` permission, is fetching a missing built-in gene
-list into the reference library:
+list or the pinned CPIC database release into the reference library:
 
 ```python
 res = api.report.build(api.ReportParams(workspace=Path("HG002")))
@@ -2631,6 +2975,7 @@ plus a findings table, from the result manifests in its folder.
 | `results` | `tuple[Path, ...]` | `[]` | `--results` | Also read result manifests from this folder (repeatable); only runs on this sample's files are used. The --outdir is always read. |
 | `table_format` | `str` | `'tsv'` | `--format` | Format of the findings table, <sample>_personal_report_findings.tsv or .parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
 | `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; missing lists need --download), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
+| `pgx_context` | `Path \| None` | `None` | `--pgx-context` | Review these medications against CPIC guidance: a local TOML file listing them (see docs/personal-report.md); it is never uploaded. The pinned CPIC database release needs --download the first time. |
 
 ## `api.sample`
 
@@ -2768,8 +3113,9 @@ with `dataclasses.replace` and call `issue_url` for a new link.
 
 ## `api.deps`
 
-`deps check`: which bioinformatics tools this installation finds, where,
-and in what version.
+`deps check` and `deps list`: which bioinformatics tools this
+installation finds, where, and in what version; `deps install` and
+`deps uninstall`: add or remove an optional tool's Pixi environment.
 
 `check` without `tool` lists every mandatory and optional tool. The
 result's `details` hold `mandatory` and `optional`: one
@@ -2779,6 +3125,33 @@ a missing one). It fails with exit code 3 (error kind
 checks that one tool: its path is `details["path"]` and the result's text,
 and a missing tool fails the same way, naming the command that installs it
 when there is one.
+
+`list` reports the same, plus `details["tools"]`: every tool, those not
+built for this platform included, with its `group` ("mandatory" or
+"optional"), `status` ("installed", "missing" or "unavailable"), its own
+Pixi `environment` and the `environment_tools` it provides,
+`can_install` and `can_uninstall`, and a `note` (how to install it
+yourself, or why it can't be had). It doesn't fail on a missing tool.
+
+`ready` reports whether a command line (`command_line`, as its argv
+after `wgsextract`) can run on this computer without the network: each
+prerequisite its run checks (platform, tools, Docker images and GPUs, model
+weights and their SHA-256, the input, reference genome and indexes, and
+annotation data), with a `status` (runnable, installed, unverified,
+unsupported, missing, stale or incompatible), its evidence (version, path,
+Conda package and the licence its metadata records, image identity and
+labels, digests; terms are "unknown" where nothing local records them) and
+the explicit step that provides it. `details["status"]` is "ready",
+"ready_unverified" or "not_ready"; not ready fails with exit code 3 (error
+kind `missing_dependency`), with the details still set. It installs,
+pulls and downloads nothing. The server doesn't offer it: the command line
+names host paths its folder checks can't vet.
+
+`install` downloads and installs the Pixi environment that provides an
+optional tool (`pixi install --locked -e <env>`); `uninstall` removes it
+(`pixi clean -e <env>`), and with it the other tools in that environment.
+Tools that come with the CLI itself, or that you install yourself, are
+refused with how to get them.
 
 ### `api.deps.check(DepsCheckParams)`
 
@@ -2791,6 +3164,53 @@ Check the installed tools (see `DepsCheckParams`).
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `tool` | `str \| None` | `None` | `--tool` | The one tool to check (e.g. samtools); fails if it is missing. |
+
+### `api.deps.list_tools(DepsListParams)`
+
+CLI: `wgsextract deps list`.
+
+List every tool and its status (see `DepsListParams`).
+
+`DepsListParams`: List every tool, its status and whether it can be installed or removed.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+
+### `api.deps.ready(DepsReadyParams)`
+
+CLI: `wgsextract deps ready`.
+
+Report a command line's offline readiness (see `DepsReadyParams`).
+
+`DepsReadyParams`: Report whether a command line can run here without the network.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `command_line` | `tuple[str, ...]` | required | `-- COMMAND ...` | The command line to check: its arguments after ``wgsextract``. |
+
+### `api.deps.install(DepsInstallParams)`
+
+CLI: `wgsextract deps install`.
+
+Install an optional tool's Pixi environment (see `DepsInstallParams`).
+
+`DepsInstallParams`: Download and install the Pixi environment providing an optional tool.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `tool` | `str` | required | `TOOL` | The optional tool, as list names it (e.g. gatk). |
+
+### `api.deps.uninstall(DepsUninstallParams)`
+
+CLI: `wgsextract deps uninstall`.
+
+Remove an optional tool's Pixi environment (see `DepsUninstallParams`).
+
+`DepsUninstallParams`: Remove the Pixi environment providing an optional tool.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `tool` | `str` | required | `TOOL` | The optional tool, as list names it (e.g. gatk). |
 
 ## `api.examples`
 
@@ -2894,8 +3314,8 @@ Annotate variants with VEP (see `VepRunParams`).
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
-| `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline when it exists, else queries Ensembl's database. |
-| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
+| `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline. If the cache is missing, vep_cache_missing tells you how to fetch it with vep download. |
+| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used, and a BAM or CRAM whose header or reference index shows another build is refused. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_cache_version` | `str` | `'116'` | `--vep-cache-version` | VEP cache version (default: 116) |
 | `vcf_type` | `str` | `'auto'` | `--vcf-type` | Variant type: 'sv' and 'cnv' add VEP's structural-variant options; 'auto' detects it from the input. One of: `auto`, `snp-indel`, `sv`, `cnv` |
 | `add_chr` | `bool` | `False` | `--add-chr` | Give VEP the input with a 'chr' prefix on chromosome names. |
@@ -2904,7 +3324,7 @@ Annotate variants with VEP (see `VepRunParams`).
 | `vep_args` | `str \| None` | `None` | `--vep-args` | Additional raw arguments to pass to VEP (e.g., '--everything --pick') |
 | `format` | `str` | `'vcf'` | `--format` | Output format (default: vcf) One of: `vcf`, `tab`, `json` |
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's); wins over ploidy. |
-| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the build's). |
+| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the GRCh37 or GRCh38 preset; other builds, such as T2T, need this or a ploidy file). |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 
 ### `api.vep.download(VepDownloadParams)`
@@ -2928,7 +3348,7 @@ unpacked; an unpacked cache replaces the same release's old one.
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the vep folder of the reference library ref names, else ~/.vep). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference library folder, or a FASTA in one, whose vep folder holds the cache when vep_cache isn't set (default: config reference_fasta's library, else reference_library). |
 | `mirror` | `str` | `'uk'` | `--mirror` | Ensembl FTP mirror to use (default: uk) One of: `ebi`, `uk` |
-| `variations` | `bool` | `True` | `--variations` | vep-rs: include Ensembl's known variants (Existing_variation, 1000 Genomes frequencies; ~15 GB). |
+| `variations` | `bool` | `True` | `--variations` | vep-rs: include Ensembl's known variants (Existing_variation, 1000 Genomes frequencies; ~15 GB). Ensembl publishes no gnomAD frequencies to build from: use `vcf gnomad` for those. |
 
 ### `api.vep.verify(VepVerifyParams)`
 
@@ -3001,7 +3421,7 @@ for every step.
 | `profile` | `str` | `'standard'` | `--profile` | Benchmark size preset. smoke is chrM-only, standard is a scaled human-like genome, 200mb targets a ~200 MiB fake BAM, and full uses real chromosome lengths. One of: `200mb`, `full`, `smoke`, `standard` |
 | `coverage` | `float \| None` | `None` | `--coverage` | Override generated BAM coverage for the selected profile. |
 | `full_size` | `bool` | `False` | `--full-size` | Use real chromosome lengths for the generated benchmark reference. |
-| `build` | `str` | `'hg38'` | `--build` | Generated reference naming/build convention. One of: `grch38`, `hg38`, `hs38`, `hs38d1`, `hs38d1v0`, `hs38dh`, `GRCh38`, `hs38DH`, `grch37`, `hg19`, `hg37`, `hs37`, `hs37d5`, `GRCh37`, `chm13`, `chm13v2`, `chm13v2.0`, `t2t`, `t2tv2`, `t2tv2.0`, `t2tv20`, `T2Tv20`, `T2Tv2`, `T2Tv2.0`, `CHM13`, `CHM13v2.0` |
+| `build` | `str` | `'hg38'` | `--build` | Generated reference naming/build convention. One of: `38`, `grch38`, `hg38`, `hs38`, `hs38d1`, `hs38d1v0`, `hs38dh`, `GRCh38`, `hs38DH`, `37`, `grch37`, `hg19`, `hg37`, `hs37`, `hs37d5`, `GRCh37`, `chm13`, `chm13v2`, `chm13v2.0`, `t2t`, `t2tv2`, `t2tv2.0`, `t2tv20`, `T2Tv20`, `T2Tv2`, `T2Tv2.0`, `CHM13`, `CHM13v2.0` |
 | `seed` | `int` | `20260504` | `--seed` | Random seed for deterministic benchmark data generation. |
 | `target_count` | `int \| None` | `None` | `--target-count` | Approximate number of target SNPs for the microarray benchmark. |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Optional region to benchmark for region-aware operations. |

@@ -31,7 +31,7 @@ from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    get_resource_defaults,
+    get_resource_threads,
     popen,
     run_command,
     run_pipeline,
@@ -470,7 +470,7 @@ def run_merge(params: BamMergeParams) -> None:
             "reference."
         )
 
-    threads, _ = get_resource_defaults(params.threads, None)
+    threads = get_resource_threads(params.threads)
     outdir = fspath(params.outdir or absolute_path(paths[0]).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     out_file = _merge_output_path(params, outdir)

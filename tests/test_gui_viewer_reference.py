@@ -1,0 +1,174 @@
+"""The desktop viewer must use local CLI reference evidence, never CRAM URs."""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+from tests.home_isolation import state_directory_setting
+from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from wgsextract_cli.core.ref_library.mitochondrial import RCRS_ORIGIN
+from wgsextract_cli.core.utils import run_command
+
+SCRIPT = (
+    Path(__file__).resolve().parents[1]
+    / "gui/examples/WGSExtract/scripts/viewer_reference.py"
+)
+
+
+def resolve_viewer(source: Path, config: Path, *flags: str) -> dict[str, str]:
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT), str(source), str(config), *flags],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    parsed: object = json.loads(result.stdout)
+    assert isinstance(parsed, dict)
+    assert all(
+        isinstance(key, str) and isinstance(value, str) for key, value in parsed.items()
+    )
+    return {str(key): str(value) for key, value in parsed.items()}
+
+
+@needs_tools("samtools", "bcftools")
+def test_1090_viewer_matches_bam_cram_vcf_with_cli_library(tmp_path: Path) -> None:
+    library = tmp_path / "references"
+    library.mkdir()
+    fasta = Path(
+        write_fasta(
+            library / "exact.fa",
+            {"chrT": "ACGT" * 1000, "chrU": "GCTA" * 100, "chrV": "ACGT"},
+        )
+    )
+    config = tmp_path / "config.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + f"reference_library = {json.dumps(str(library))}\n",
+        encoding="utf-8",
+    )
+    bam = Path(
+        sam_to_bam(
+            [
+                "@HD\tVN:1.6\tSO:coordinate",
+                "@SQ\tSN:chrT\tLN:4000",
+                "@SQ\tSN:chrU\tLN:400",
+                f"one\t0\tchrT\t101\t60\t100M\t*\t0\t0\t{'ACGT' * 25}\t{'I' * 100}",
+            ],
+            tmp_path / "reads.bam",
+        )
+    )
+    cram = tmp_path / "reads.cram"
+    run_command(["samtools", "view", "-C", "-T", str(fasta), "-o", str(cram), str(bam)])
+    run_command(["samtools", "index", str(cram)])
+    dictionary = library / "exact.dict"
+    run_command(["samtools", "dict", "-o", str(dictionary), str(fasta)])
+    vcf = tmp_path / "variants.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chrT,length=4000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chrT\t101\t.\tA\tG\t60\tPASS\t.\n",
+        encoding="utf-8",
+    )
+    gvcf = tmp_path / "variants.gvcf.gz"
+    run_command(["bcftools", "view", "-Oz", "-o", str(gvcf), str(vcf)])
+    for source in [bam, cram]:
+        result = resolve_viewer(source, config)
+        assert Path(result["fasta"]) == fasta
+        assert result["locus"] == "chrT:101-200"
+    for source in [vcf, gvcf]:
+        result = resolve_viewer(source, config)
+        assert Path(result["fasta"]) == fasta
+        # VCF uses a readable window (up to 4 kb) covering the variant at chrT:101.
+        chrom, coords = result["locus"].split(":")
+        start_s, end_s = coords.split("-")
+        assert chrom == "chrT"
+        assert int(start_s) <= 101 <= int(end_s)
+    dictionary.unlink()
+    assert resolve_viewer(cram, config) == {"problem": "referenceUnverified"}
+    wrong = Path(
+        write_fasta(
+            tmp_path / "wrong.fa", {"chrT": "TGCA" * 1000, "chrU": "GCTA" * 100}
+        )
+    )
+    run_command(["samtools", "dict", "-o", str(dictionary), str(wrong)])
+    assert resolve_viewer(cram, config) == {"problem": "referenceMissing"}
+    fasta.unlink()
+    wrong.unlink()
+    assert resolve_viewer(bam, config) == {"problem": "referenceMissing"}
+
+
+@needs_tools("samtools")
+def test_1161_haplogroup_rows_learn_the_mitochondrion_by_sequence(
+    tmp_path: Path,
+) -> None:
+    """#1161: rCRS-numbered rows open only on an rCRS chrM. CHM13v2.0's is as
+    long, so the resolver reads its sequence when the app asks."""
+    rcrs = RCRS_ORIGIN + "ACGT" * 100
+    rotated = rcrs[100:] + rcrs[:100]
+    config = tmp_path / "config.toml"
+    origins = []
+    for name, chr_m in [("rcrs", rcrs), ("rotated", rotated)]:
+        library = tmp_path / name
+        library.mkdir()
+        write_fasta(library / "ref.fa", {"chrT": "ACGT" * 100, "chrM": chr_m})
+        config.write_text(
+            state_directory_setting(tmp_path)
+            + f"reference_library = {json.dumps(str(library))}\n",
+            encoding="utf-8",
+        )
+        bam = Path(
+            sam_to_bam(
+                [
+                    "@HD\tVN:1.6\tSO:coordinate",
+                    "@SQ\tSN:chrT\tLN:400",
+                    f"@SQ\tSN:chrM\tLN:{len(chr_m)}",
+                    "one\t0\tchrT\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
+                ],
+                tmp_path / f"{name}.bam",
+            )
+        )
+        assert "mitoOrigin" not in resolve_viewer(bam, config)
+        origins.append(resolve_viewer(bam, config, "--mito-origin")["mitoOrigin"])
+    assert origins[0] == "rCRS"
+    assert origins[1] != "rCRS"
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+def test_vcf_viewer_picks_populated_contig_and_4kb_window(tmp_path: Path) -> None:
+    """A chrY-only VCF whose header lists chr1 first opens on chrY around a variant,
+    not an empty chr1 window, with a readable 4 kb zoom."""
+    library = tmp_path / "references"
+    library.mkdir()
+    fasta = Path(
+        write_fasta(
+            library / "mini.fa",
+            {"chr1": "ACGT" * 25_000, "chrY": "GCTA" * 25_000},
+        )
+    )
+    config = tmp_path / "config.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + f"reference_library = {json.dumps(str(library))}\n",
+        encoding="utf-8",
+    )
+    plain = tmp_path / "chry_only.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=100000>\n"
+        "##contig=<ID=chrY,length=100000>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chrY\t42500\trs1\tG\tA\t60\tPASS\t.\n",
+        encoding="utf-8",
+    )
+    gz = tmp_path / "chry_only.vcf.gz"
+    run_command(["bcftools", "view", "-Oz", "-o", str(gz), str(plain)])
+    run_command(["tabix", "-p", "vcf", str(gz)])
+
+    result = resolve_viewer(gz, config)
+    assert Path(result["fasta"]) == fasta
+    chrom, coords = result["locus"].split(":")
+    start, end = (int(x) for x in coords.split("-"))
+    assert chrom == "chrY"
+    assert start <= 42500 <= end
+    assert end - start + 1 == 4000

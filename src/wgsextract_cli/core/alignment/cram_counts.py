@@ -11,6 +11,8 @@ import os
 import struct
 import zlib
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import BinaryIO
 
 from ..paths import PathInput
@@ -151,12 +153,23 @@ def cram_container_totals(
     return None
 
 
+@contextmanager
+def open_crai(path: PathInput) -> Iterator[io.TextIOWrapper]:
+    """Read a CRAI's rows, whether gzip-compressed or plain text."""
+    with open(path, "rb") as raw:
+        stream = (
+            gzip.GzipFile(fileobj=raw) if raw.peek(2).startswith(b"\x1f\x8b") else raw
+        )
+        with io.TextIOWrapper(stream, encoding="ascii") as text:
+            yield text
+
+
 def multi_ref_contigs(crai: PathInput, offsets: set[int]) -> set[int] | None:
     """Reference ids a .crai index places in the containers at `offsets`, or
     None if the index can't be read."""
     contigs = set()
     try:
-        with gzip.open(crai, "rt") as f:
+        with open_crai(crai) as f:
             for line in f:
                 ref, _start, _span, offset, *_ = line.split("\t")
                 if int(offset) in offsets and int(ref) >= 0:

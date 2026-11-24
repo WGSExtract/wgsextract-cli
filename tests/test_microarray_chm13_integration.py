@@ -10,6 +10,7 @@ import pytest
 
 from scripts.build_microarray_chm13_map import write_site_map
 from tests.microarray_helpers import microarray_params
+from tests.path_budget import utf16_len
 from wgsextract_cli.commands import _microarray_chm13 as command
 from wgsextract_cli.core import library_cache
 from wgsextract_cli.core.config import settings
@@ -68,6 +69,7 @@ def _native_library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         command, "validate_chm13_reference", lambda *_args: {"chr1": "chr1"}
     )
     (tmp_path / "hg18ToHg19.over.chain.gz").touch()
+    (tmp_path / "hg38ToHg19.over.chain.gz").touch()
     monkeypatch.setattr(command, "collect_template_markers", lambda *_args: {})
 
     def markers(_panel, _reflib_dir=None):
@@ -78,6 +80,30 @@ def _native_library(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(aadr, "aadr_markers", markers)
     monkeypatch.setattr(command, "aadr_markers", markers)
     return fasta
+
+
+def test_missing_hg38_chain_is_named_not_no_called(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The v2 map includes FTDNA's GRCh38 Y templates; without their chain the
+    # union can't be rebuilt, so the run stops and names the missing file.
+    fasta = _native_library(tmp_path, monkeypatch)
+    (tmp_path / "hg38ToHg19.over.chain.gz").unlink()
+    # The configured library is searched too; CI's bootstrapped one has the chain.
+    monkeypatch.setitem(settings, "reference_library", str(tmp_path))
+    source = tmp_path / "sample.vcf"
+    source.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=100>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+    )
+    args = microarray_params(
+        input=str(source), region=None, ref_vcf_tab=None, ploidy_file=None
+    )
+    with pytest.raises(WGSExtractError, match=r"hg38ToHg19\.over\.chain\.gz"):
+        command.run_chm13(
+            args, SimpleNamespace(root=str(tmp_path)), str(fasta), str(tmp_path), "1"
+        )
 
 
 @pytest.mark.parametrize("chrom", ["chr1", "1"])
@@ -199,14 +225,15 @@ def test_native_vcf_quality_and_unsupported_masks_survive_canonical_aadr_export(
         )
 
 
-def _deep_library(tmp_path: Path, length: int) -> Path:
-    """A reference library whose absolute path is ``length`` characters."""
-    library = tmp_path
-    while (missing := length - len(str(library.absolute())) - 1) > 0:
+def _deep_library(root: Path, length: int) -> Path:
+    """A reference library under ``root`` whose absolute path is ``length``
+    UTF-16 units long, as Windows counts it."""
+    library = root
+    while (missing := length - utf16_len(str(library.absolute())) - 1) > 0:
         # Never leave a single character, which needs a separator too.
         library /= "d" * (missing if missing <= 40 else min(40, missing - 2))
     library.mkdir(parents=True)
-    assert len(str(library.absolute())) == length
+    assert utf16_len(str(library.absolute())) == length
     return library
 
 
@@ -255,12 +282,12 @@ def _run_gvcf(
 
 
 def test_native_gvcf_reference_blocks_are_calls_and_gaps_are_no_calls(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, short_tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fasta = _native_library(tmp_path, monkeypatch)
     # Issue #419: the deepest library Windows' 260-character MAX_PATH allows
     # for its caches; htslib must open the cached native targets there.
-    library = _deep_library(tmp_path, 175)
+    library = _deep_library(short_tmp_path, 175)
     monkeypatch.setitem(settings, "reference_library", str(library))
     out = tmp_path / "outputs"
     calls, _result = _run_gvcf(tmp_path, fasta, out)
@@ -318,10 +345,10 @@ def test_chm13_cache_is_reused_and_ignores_full_digest_caches(
 
 
 def test_windows_library_too_deep_for_caches_runs_uncached_with_a_warning(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, short_tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fasta = _native_library(tmp_path, monkeypatch)
-    library = _deep_library(tmp_path, 176)
+    library = _deep_library(short_tmp_path, 176)
     monkeypatch.setitem(settings, "reference_library", str(library))
     calls, _result = _run_gvcf(tmp_path, fasta, tmp_path / "expected")
     shutil.rmtree(library / "microarray", ignore_errors=True)

@@ -22,6 +22,7 @@ from wgsextract_cli.core.ref_library.assets import (
     annotation_vcf_names,
     reference_dict_path,
 )
+from wgsextract_cli.core.ref_library.layout import download_dirs
 from wgsextract_cli.core.results import manifest_path_for
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
@@ -29,7 +30,7 @@ _INDEXES = (".tbi", ".csi")
 _DOWNLOAD_LEFTOVERS = (".partial", ".partial.segments", ".partial.source")
 
 # The files `ref status` finds for each deletable annotation resource:
-# <key>*<extension> in the library or its ref folder.
+# <key>*<extension> in the library or its downloads/ (or older ref/) folder.
 _RESOURCE_EXTENSIONS = {
     "spliceai": (".vcf.gz", ".vcf.bgz"),
     "alphamissense": (".tsv.gz", ".vcf.gz", ".vcf.bgz"),
@@ -58,7 +59,7 @@ def annotation_resource_paths(reflib: str, key: str) -> list[Path]:
     extensions = _RESOURCE_EXTENSIONS[key]
     found = {
         path
-        for directory in (Path(reflib), Path(reflib, "ref"))
+        for directory in (Path(reflib), *download_dirs(reflib))
         if directory.is_dir()
         for extension in extensions
         for path in directory.glob(f"{key}*{extension}")
@@ -67,13 +68,58 @@ def annotation_resource_paths(reflib: str, key: str) -> list[Path]:
     return [sidecar for path in sorted(found) for sidecar in _with_sidecars(path)]
 
 
+def dbsnp_paths(reflib: str, builds: Iterable[str] = ("hg38", "hg19")) -> list[Path]:
+    """dbSNP common rsID VCFs, tabix indexes, SQLite lookup DBs and leftovers."""
+    directories = (Path(reflib), *download_dirs(reflib))
+    paths: list[Path] = []
+    for directory in directories:
+        for build in builds:
+            vcf = directory / f"dbsnp_common_{build}.vcf.gz"
+            sqlite_db = directory / f"dbsnp_common_{build}.rsid.sqlite"
+            paths.extend(
+                (
+                    *_with_sidecars(vcf),
+                    sqlite_db,
+                    Path(f"{sqlite_db}-journal"),
+                    Path(f"{sqlite_db}-wal"),
+                    Path(f"{sqlite_db}-shm"),
+                    manifest_path_for(sqlite_db),
+                )
+            )
+    return paths
+
+
+def remove_dbsnp(reflib: str, builds: Iterable[str] = ("hg38", "hg19")) -> list[Path]:
+    """Delete installed dbSNP resources after coordinating with active installers."""
+    build_list = tuple(builds)
+    directories = [d for d in (Path(reflib), *download_dirs(reflib)) if d.is_dir()]
+    locks = [
+        directory / f"dbsnp_common_{build}.vcf.gz.lock"
+        for directory in directories
+        for build in build_list
+    ]
+    with contextlib.ExitStack() as stack:
+        for lock in locks:
+            stack.enter_context(exclusive_lock(lock, timeout=10))
+            if held(str(lock)):
+                raise WGSExtractError(
+                    f"Another run is installing {lock.name.removesuffix('.lock')} "
+                    f"({lock}); delete dbSNP once it has finished."
+                )
+        found = [
+            p for p in dbsnp_paths(reflib, build_list) if p.exists() or p.is_symlink()
+        ]
+        removed = remove([*found, *locks])
+    return [path for path in removed if path not in locks]
+
+
 def microarray_target_paths(reflib: str) -> list[Path]:
     """The genome-wide targets `microarray` builds (and older bootstraps
     shipped): All_SNPs_<build>_ref.tab.gz wherever `ref status` looks."""
     names = [n for n in annotation_vcf_names("") if n.startswith("All_SNPs_")]
     directories = (
         Path(reflib),
-        Path(reflib, "ref"),
+        *download_dirs(reflib),
         Path(reflib, "microarray"),
         Path(reflib, "genomes", "microarray"),
     )

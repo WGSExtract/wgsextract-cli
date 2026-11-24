@@ -1,29 +1,27 @@
 import { api } from "./api.js";
-import { openGenomeViewer } from "./genome-viewer-launcher.js";
-import { configValueKey } from "../../../shared/rendering.js";
-import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-picker-memory.js";
-import { clamp } from "./dom.js";
+import { bindGenomeViewerEvents } from "./genome-viewer-entry.js";
+import { configValueKey, splitPathList } from "../../../shared/rendering.js";
+import { installGlobalBundleLoadHandler, loadBundleFromPicker, type Bootstrap } from "./bundle-loading.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
 import { checkedOptionsChanged, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
 import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
-import { pathPickerDefaultPath, type PathPickerSpec } from "./path-picker-defaults.js";
+import { chooseLocalPath } from "./path-picker.js";
 import { bindPrerequisitesFocus } from "./prerequisites-focus.js";
+import { openResultCard } from "./result-card-dialog.js";
 import { nextFrame, scheduleRender } from "./rerender.js";
+import { bindSplitters } from "./splitters.js";
 import { state } from "./state.js";
 import { dismissUpdatePopover, downloadUpdate, installUpdate, toggleUpdatePopover } from "./tauri-updater.js";
-import { activeTerminalCopyText, appendTerminal, closeTerminalTab, openJob, resetTerminalEntries } from "./terminal.js";
+import { activeTerminalCopyText, appendTerminal, closeTerminalTab, openJob } from "./terminal.js";
 import { applyUIModeTerminalVisibility, setTerminalVisible } from "./terminal-visibility.js";
 import { bindTooltipEvents } from "./tooltips.js";
 import { bindWorkspaceLocationEvents } from "./workspace-location.js";
 import { bindCollapsibleSections } from "./view/collapsible.js";
 import { setupPageID } from "./view.js";
-import type { ConfigSetting, ControlSpec, PathPickResponse } from "../../../shared/types.js";
+import type { ConfigSetting, ControlSpec } from "../../../shared/types.js";
 import { normalizeUIMode } from "../../../shared/ui-mode.js";
-export { bindTooltipEvents } from "./tooltips.js";
 
-/** Reloads the manifest and re-renders, optionally for another locale. */
-type Bootstrap = (locale?: string) => Promise<void>;
 const app: HTMLElement = (() => {
     const el = document.querySelector<HTMLElement>("#app");
     if (!el) {
@@ -33,15 +31,13 @@ const app: HTMLElement = (() => {
 })();
 let terminalCopyFeedbackTimer = 0;
 let updateOutsideClickBound = false;
-let bundleLoadInFlight = false;
-let installedGlobalBundleLoadHandler = false;
 let installedGlobalAboutHandler = false;
 export function bindEvents(bootstrap: Bootstrap) {
-    app.querySelector("[data-genome-viewer-open]")?.addEventListener("click", () => openGenomeViewer(state.localizationCode, state.labels));
+    bindGenomeViewerEvents();
     installGlobalBundleLoadHandler(bootstrap);
     installGlobalAboutHandler();
     bindTooltipEvents();
-    bindSplitters();
+    bindSplitters(app);
     bindUpdateEvents();
     elements("[data-page-id]").forEach((button) => {
         button.addEventListener("click", async () => {
@@ -117,8 +113,20 @@ export function bindEvents(bootstrap: Bootstrap) {
     });
     elements<HTMLInputElement | HTMLSelectElement>("[data-field-id]").forEach((input) => {
         input.addEventListener("change", async () => {
-            const control = findControl(requiredDataset(input, "fieldId"));
-            await fieldValueChanged(input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value, control);
+            const id = requiredDataset(input, "fieldId");
+            const control = findControl(id);
+            let nextValue = input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value;
+            if (control?.kind === "path" && control.multiple === true) {
+                const existing = splitPathList(state.fieldValues[id]);
+                const entered = splitPathList(nextValue);
+                if (existing.length > 1 && entered.length === 1) {
+                    nextValue = [entered[0], ...existing.slice(1)].join("\n");
+                }
+                else if (entered.length > 1) {
+                    nextValue = entered.join("\n");
+                }
+            }
+            await fieldValueChanged(nextValue, control);
             clearDataSourcesAndRender();
         });
     });
@@ -131,6 +139,41 @@ export function bindEvents(bootstrap: Bootstrap) {
             const value = await chooseLocalPath(control, state.fieldValues[id] ?? "");
             if (value) {
                 await fieldValueChanged(value, control);
+                clearDataSourcesAndRender();
+            }
+        });
+    });
+    elements("[data-path-add]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const id = requiredDataset(button, "pathAdd");
+            const control = findControl(id);
+            const value = await chooseLocalPath(control, state.fieldValues[id] ?? "");
+            if (value) {
+                const existing = splitPathList(state.fieldValues[id]);
+                const added = splitPathList(value).filter((entry) => !existing.includes(entry));
+                const combined = [...existing, ...added];
+                if (combined.length > 0) {
+                    await fieldValueChanged(combined.join("\n"), control);
+                    clearDataSourcesAndRender();
+                }
+            }
+        });
+    });
+    elements("[data-path-remove]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const raw = requiredDataset(button, "pathRemove");
+            const splitAt = raw.lastIndexOf(":");
+            const id = raw.slice(0, splitAt);
+            const index = Number(raw.slice(splitAt + 1));
+            const control = findControl(id);
+            const existing = splitPathList(state.fieldValues[id]);
+            if (Number.isInteger(index) && index >= 0 && index < existing.length) {
+                existing.splice(index, 1);
+                await fieldValueChanged(existing.join("\n"), control);
                 clearDataSourcesAndRender();
             }
         });
@@ -204,7 +247,7 @@ export function bindEvents(bootstrap: Bootstrap) {
                 scheduleRender();
                 return;
             }
-            await runAction(action, context, reference);
+            await runAction(action, context, reference, { opener: button });
         });
     });
     elements("[data-result-open], [data-result-reveal]").forEach((button) => {
@@ -218,6 +261,9 @@ export function bindEvents(bootstrap: Bootstrap) {
                 scheduleRender();
             }
         });
+    });
+    elements("[data-result-card]").forEach((button) => {
+        button.addEventListener("click", () => void openResultCard(button.dataset.resultCard ?? "", state.labels));
     });
     elements("[data-result-open-setup]").forEach((button) => {
         button.addEventListener("click", async () => {
@@ -380,16 +426,6 @@ function focusUpdatePopover() {
     (app.querySelector("[data-update-popover]") as HTMLElement | null)?.focus();
 }
 
-function installGlobalBundleLoadHandler(bootstrap: Bootstrap) {
-    if (installedGlobalBundleLoadHandler) {
-        return;
-    }
-    installedGlobalBundleLoadHandler = true;
-    window.addEventListener("wgsextract-gui-load-bundle", () => {
-        void loadBundleFromPicker(bootstrap);
-    });
-}
-
 function installGlobalAboutHandler() {
     if (installedGlobalAboutHandler) {
         return;
@@ -409,67 +445,6 @@ function showAboutDialog() {
 function closeAboutDialog() {
     state.aboutDialogVisible = false;
     scheduleRender();
-}
-
-export async function loadBundleFromPicker(bootstrap: Bootstrap) {
-    if (bundleLoadInFlight) {
-        return;
-    }
-    bundleLoadInFlight = true;
-    try {
-        const selectedPath = await chooseLocalPath(
-            {
-                id: "bundle_root",
-                label: "Bundle",
-                pathKind: "bundle",
-                defaultDirectory: bundlePickerDefaultPath(state.sourceRootPath || state.bundleRootPath || ""),
-            },
-            "",
-        );
-        if (!selectedPath) {
-            return;
-        }
-        await api<void>("/api/bundle/load", {
-            method: "POST",
-            body: { path: selectedPath },
-        });
-        rememberBundlePickerPath(selectedPath);
-        resetBundleClientState();
-        await bootstrap();
-        appendTerminal("config", `[bundle] Loaded ${state.manifest?.displayName ?? "bundle"}`, state.sourceRootPath);
-        scheduleRender();
-    }
-    catch (error) {
-        appendTerminal("error", "Could not load bundle", errorMessage(error));
-        scheduleRender();
-    }
-    finally {
-        bundleLoadInFlight = false;
-    }
-}
-
-function resetBundleClientState() {
-    state.activePageID = "";
-    state.dataSourcePayloads.clear();
-    state.dataSourceErrors.clear();
-    state.loadingDataSources.clear();
-    state.fileStateValues.clear();
-    state.loadingFileStates.clear();
-    state.actionPrechecks.clear();
-    state.actionPrecheckErrors.clear();
-    state.actionResultNotices.clear();
-    state.loadingActionPrechecks.clear();
-    state.setupRun = null;
-    state.setupPreflight = null;
-    state.setupPreflightError = "";
-    state.setupPreflightKey = "";
-    state.loadingSetupPreflight = false;
-    state.setupPromptVisible = false;
-    state.setupPromptDismissed = false;
-    state.aboutDialogVisible = false;
-    state.pendingConfirmation = null;
-    state.pendingPrerequisites = null;
-    resetTerminalEntries();
 }
 
 /** Switches between Basic and Advanced and saves the choice, so the app restarts in the same mode. */
@@ -492,24 +467,6 @@ function clearDataSourcesAndRender() {
     state.dataSourcePayloads.clear();
     state.dataSourceErrors.clear();
     scheduleRender();
-}
-async function chooseLocalPath(spec: PathPickerSpec, currentValue: unknown) {
-    try {
-        const result = await api<PathPickResponse>("/api/path/pick", {
-            method: "POST",
-            body: {
-                kind: pathPickerKind(spec),
-                title: pathPickerTitle(spec),
-                defaultPath: pathPickerDefaultPath(spec, currentValue, state),
-            },
-        });
-        return result.cancelled ? null : result.path ?? null;
-    }
-    catch (error) {
-        appendTerminal("error", pathPickerTitle(spec), errorMessage(error));
-        scheduleRender();
-        return null;
-    }
 }
 async function copyText(text: string) {
     if (navigator.clipboard?.writeText) {
@@ -543,72 +500,4 @@ function findSetting(control: ControlSpec, settingID: string): ConfigSetting {
         throw new Error(`Unknown setting: ${control.id}.${settingID}`);
     }
     return setting;
-}
-function pathPickerTitle(spec: PathPickerSpec) {
-    return spec?.label ? `${state.labels.chooseButtonTitle} ${spec.label}` : state.labels.chooseButtonTitle;
-}
-function pathPickerKind(spec: PathPickerSpec) {
-    const explicitKind = String(spec?.pathType ?? spec?.pathKind ?? spec?.pathMode ?? "").toLowerCase();
-    if (explicitKind === "directory" || explicitKind === "folder") {
-        return "directory";
-    }
-    if (explicitKind === "file" || explicitKind === "bundle") {
-        return explicitKind;
-    }
-    const id = String(spec?.id ?? "").toLowerCase();
-    const key = String(spec?.key ?? "").toLowerCase();
-    const label = String(spec?.label ?? "").toLowerCase();
-    const tooltip = String(spec?.tooltip ?? "").toLowerCase();
-    const searchable = `${id} ${key} ${label} ${tooltip}`;
-    if (id === "ref_path" || key === "reference_library") {
-        return "directory";
-    }
-    if (/(^|[_\s-])(out|output)[_\s-]*(dir|directory)($|[_\s-])/.test(searchable) ||
-        /(^|[_\s-])(dir|directory|folder|library|cache)($|[_\s-])/.test(searchable)) {
-        return "directory";
-    }
-    return "file";
-}
-export function bindSplitters() {
-    if (!state.isSidebarVisible) {
-        return;
-    }
-    app.querySelector("[data-sidebar-resizer]")?.addEventListener("pointerdown", (event) => {
-        const pointerEvent = event as PointerEvent;
-        event.preventDefault();
-        const startX = pointerEvent.clientX;
-        const startWidth = state.sidebarWidth;
-        document.body.classList.add("resizing-sidebar");
-        const move = (moveEvent: PointerEvent) => {
-            state.sidebarWidth = clamp(startWidth + moveEvent.clientX - startX, 160, 420);
-            app.style.setProperty("--sidebar-width", `${state.sidebarWidth}px`);
-        };
-        const up = () => {
-            localStorage.setItem("wgsextractGui.sidebarWidth", String(Math.round(state.sidebarWidth)));
-            document.body.classList.remove("resizing-sidebar");
-            window.removeEventListener("pointermove", move);
-            window.removeEventListener("pointerup", up);
-        };
-        window.addEventListener("pointermove", move);
-        window.addEventListener("pointerup", up, { once: true });
-    });
-    app.querySelector("[data-terminal-resizer]")?.addEventListener("pointerdown", (event) => {
-        const pointerEvent = event as PointerEvent;
-        event.preventDefault();
-        const startY = pointerEvent.clientY;
-        const startHeight = state.terminalHeight;
-        document.body.classList.add("resizing-terminal");
-        const move = (moveEvent: PointerEvent) => {
-            state.terminalHeight = clamp(startHeight - (moveEvent.clientY - startY), 96, Math.max(96, window.innerHeight - 260));
-            app.style.setProperty("--terminal-height", `${state.terminalHeight}px`);
-        };
-        const up = () => {
-            localStorage.setItem("wgsextractGui.terminalHeight", String(Math.round(state.terminalHeight)));
-            document.body.classList.remove("resizing-terminal");
-            window.removeEventListener("pointermove", move);
-            window.removeEventListener("pointerup", up);
-        };
-        window.addEventListener("pointermove", move);
-        window.addEventListener("pointerup", up, { once: true });
-    });
 }

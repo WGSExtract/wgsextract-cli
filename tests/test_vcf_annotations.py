@@ -14,8 +14,9 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, reference_for_vcf, run_wgsextract
-from tests.smoke_utils import run_cli, state_directory_setting
+from tests.smoke_utils import run_cli
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -105,7 +106,7 @@ SAMPLE_ROWS = [
 
 @needs_bcftools
 def test_spliceai_uses_the_library_file_of_the_vcfs_build(tmp_path):
-    library = tmp_path / "lib" / "ref"
+    library = tmp_path / "lib" / "downloads"
     library.mkdir(parents=True)
     # Ensembl's scores name contigs 1, 2, ...; the sample uses chr1.
     for build, length, score in (
@@ -144,7 +145,7 @@ def test_spliceai_uses_the_library_file_of_the_vcfs_build(tmp_path):
 @needs_bcftools
 def test_spliceai_without_scores_names_the_ref_command(tmp_path):
     sample = _sample(tmp_path, SAMPLE_ROWS)
-    (tmp_path / "lib" / "ref").mkdir(parents=True)
+    (tmp_path / "lib" / "downloads").mkdir(parents=True)
     with pytest.raises(WGSExtractError, match="wgsextract ref spliceai"):
         run_wgsextract("vcf", "spliceai", "--input", sample,
                        "--ref", str(tmp_path / "lib"))  # fmt: skip
@@ -230,7 +231,7 @@ def test_pharmgkb_vcf_resource_annotates_by_allele(tmp_path):
 
 @needs_bcftools
 def test_clinvar_picks_the_builds_file_and_filters_pathogenic_classes(tmp_path):
-    library = tmp_path / "lib" / "ref"
+    library = tmp_path / "lib" / "downloads"
     library.mkdir(parents=True)
     sigs = ["Pathogenic", "Likely_pathogenic", "Pathogenic/Likely_pathogenic",
             "Conflicting_classifications_of_pathogenicity",
@@ -427,7 +428,7 @@ def test_gerp_scores_gvcf_and_multiallelic_variant_records(tmp_path):
 def test_chain_annotate_runs_each_installed_step_on_the_last_output(
     tmp_path, reference_location
 ):
-    library = tmp_path / "lib" / "ref"
+    library = tmp_path / "lib" / "downloads"
     library.mkdir(parents=True)
     _vcf(library / "clinvar_hg38.vcf.gz",
          ["100 c1 C T . . CLNSIG=Pathogenic;CLNDN=X GT 0/1"],
@@ -459,7 +460,8 @@ def test_chain_annotate_runs_each_installed_step_on_the_last_output(
     assert _query(final, "%CHROM:%ID:%CLNSIG:%REVEL\n") == [
         "chr1:snv:Pathogenic:0.9", "chr1:diffalt:.:.", "chr1:block:.:.", "chr1:del:.:."
     ]  # fmt: skip
-    assert sorted(os.listdir(outdir)) == [
+    assert sorted(p.name for p in outdir.iterdir() if not p.name.startswith(".")) == [
+        "chain_annotate.steps.json",
         "chain_annotated.vcf.gz",
         "chain_annotated.vcf.gz.tbi",
     ]
@@ -493,7 +495,8 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
         run_wgsextract("vcf", "chain-annotate", "--input", str(input_vcf),
                        "--ref", lib, "--annotations", "clinvar")  # fmt: skip
     assert sorted(os.listdir(tmp_path)) == ["in.vcf.gz", "wgse"]
-    assert os.listdir(tmp_path / "wgse") == ["chain_step_1_clinvar"]
+    assert (tmp_path / "wgse" / "chain_step_1_clinvar").is_dir()
+    assert (tmp_path / "wgse" / "chain_annotate.steps.json").is_file()
 
 
 @needs_bcftools
@@ -536,7 +539,7 @@ CLINVAR_SOURCE = (
 def test_clinvar_download_recompresses_and_indexes_each_build(tmp_path):
     from wgsextract_cli.core import annotation_resources as ar
 
-    def plain_gzip(url, dest, *_args):
+    def plain_gzip(url, dest, *_args, **_kwargs):
         if url == ar.CLINVAR_URLS["hg19"]:
             return False  # this build's download fails
         Path(dest).write_bytes(gzip.compress(CLINVAR_SOURCE.encode()))
@@ -544,7 +547,7 @@ def test_clinvar_download_recompresses_and_indexes_each_build(tmp_path):
 
     with patch.object(ar, "download_file", side_effect=plain_gzip):
         assert ar.download_clinvar(str(tmp_path)) is False
-    ref = tmp_path / "ref"
+    ref = tmp_path / "downloads"
     assert sorted(os.listdir(ref)) == ["clinvar_hg38.vcf.gz", "clinvar_hg38.vcf.gz.tbi"]
     with open(ref / "clinvar_hg38.vcf.gz", "rb") as f:
         assert f.read(4) == b"\x1f\x8b\x08\x04"  # BGZF now
@@ -560,7 +563,7 @@ def test_resource_download_stops_when_cancelled(tmp_path):
 
     cancel = threading.Event()
 
-    def cancel_after_first(_url, dest, *_args):
+    def cancel_after_first(_url, dest, *_args, **_kwargs):
         Path(dest).write_bytes(gzip.compress(CLINVAR_SOURCE.encode()))
         cancel.set()
         return True
@@ -568,14 +571,14 @@ def test_resource_download_stops_when_cancelled(tmp_path):
     with patch.object(ar, "download_file", side_effect=cancel_after_first) as dl:
         assert ar.download_clinvar(str(tmp_path), cancel_event=cancel) is False
     assert dl.call_count == 1  # hg38 only; never indexed, hg19 never started
-    assert not (tmp_path / "ref" / "clinvar_hg38.vcf.gz.tbi").exists()
+    assert not (tmp_path / "downloads" / "clinvar_hg38.vcf.gz.tbi").exists()
 
 
 @needs_bcftools
 def test_manual_spliceai_hg19_file_is_indexed_too(tmp_path):
     from wgsextract_cli.core import annotation_resources as ar
 
-    ref = tmp_path / "ref"
+    ref = tmp_path / "downloads"
     ref.mkdir()
     (ref / "spliceai_hg19.vcf.gz").write_bytes(gzip.compress(CLINVAR_SOURCE.encode()))
     with (
@@ -648,7 +651,7 @@ def test_cadd_download_checks_each_file_against_its_published_md5(tmp_path):
         snv = f"{base}/whole_genome_SNVs.tsv.gz"
         # The data before its index, indels first.
         assert fetched == [indel, f"{indel}.tbi", snv, f"{snv}.tbi"]
-        assert sorted(os.listdir(tmp_path / "ref")) == [
+        assert sorted(os.listdir(tmp_path / "downloads")) == [
             "cadd_hg19.tsv.gz", "cadd_hg19.tsv.gz.tbi",
             "cadd_indel_hg19.tsv.gz", "cadd_indel_hg19.tsv.gz.tbi",
         ]  # fmt: skip
@@ -671,7 +674,7 @@ def test_cadd_download_removes_a_file_that_fails_its_md5(tmp_path):
         patch.object(ar, "urlopen", return_value=io.BytesIO(b"0" * 32 + b"  x\n")),
     ):
         assert ar.download_cadd(str(tmp_path), "hg38") is False
-    assert os.listdir(tmp_path / "ref") == []
+    assert os.listdir(tmp_path / "downloads") == []
 
     with patch.object(ar, "download_file", return_value=False):
         assert ar.download_cadd(str(tmp_path), "hg38") is False
@@ -703,7 +706,7 @@ def _zip_with(dest: str, member: str, text: str, created: str = "") -> None:
 def test_pharmgkb_download_builds_the_hg38_table(tmp_path):
     from wgsextract_cli.core import pharmgkb
 
-    ref = tmp_path / "ref"
+    ref = tmp_path / "downloads"
     ref.mkdir()
     (ref / "pharmgkb_hg38.zip").write_text("old archive")
 
@@ -749,7 +752,7 @@ def test_pharmgkb_download_fails_without_placeable_annotations(tmp_path):
 
     with patch.object(pharmgkb, "download_file", side_effect=fake_download):
         assert pharmgkb.download_pharmgkb(str(tmp_path)) is False
-    assert os.listdir(tmp_path / "ref") == []
+    assert os.listdir(tmp_path / "downloads") == []
 
     with patch.object(pharmgkb, "download_file", return_value=False) as dl:
         assert pharmgkb.download_pharmgkb(str(tmp_path)) is False

@@ -12,6 +12,7 @@ on:
       - pixi.toml
       - pixi.lock
       - src/wgsextract_cli/commands/vcf/pharmcat.py
+      - src/wgsextract_cli/core/pharmcat_resources.py
       - src/wgsextract_cli/commands/vcf/basic.py
       - src/wgsextract_cli/commands/_deps_status.py
       - src/wgsextract_cli/cli/platform_support.py
@@ -34,6 +35,7 @@ on:
       - pixi.toml
       - pixi.lock
       - src/wgsextract_cli/commands/vcf/pharmcat.py
+      - src/wgsextract_cli/core/pharmcat_resources.py
       - src/wgsextract_cli/commands/vcf/basic.py
       - src/wgsextract_cli/commands/_deps_status.py
       - src/wgsextract_cli/cli/platform_support.py

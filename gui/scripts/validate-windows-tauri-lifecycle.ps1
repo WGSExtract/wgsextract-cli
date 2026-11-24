@@ -23,6 +23,7 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version 2.0
 
 Set-Location (Resolve-Path (Join-Path $PSScriptRoot ".."))
+. (Join-Path $PSScriptRoot "windows-process-cleanup.ps1")
 
 $script:StartedAt = Get-Date
 $script:StageResults = [System.Collections.Generic.List[object]]::new()
@@ -671,6 +672,7 @@ try {
 function Stop-InstalledApp {
     param([System.Diagnostics.Process]$Process)
 
+    $timer = [System.Diagnostics.Stopwatch]::StartNew()
     if (-not $Process.HasExited) {
         [void]$Process.CloseMainWindow()
         if (-not $Process.WaitForExit($ShutdownTimeoutSeconds * 1000)) {
@@ -678,11 +680,10 @@ function Stop-InstalledApp {
             throw "Installed app did not exit within $ShutdownTimeoutSeconds seconds after window close."
         }
     }
-    Start-Sleep -Seconds 2
-    $remaining = @(Get-TargetProcesses)
-    if ($remaining.Count -gt 0) {
-        throw "Processes remained after close: $($remaining.ProcessId -join ', ')"
-    }
+    # Windows descendants can finish asynchronously after their parent exits.
+    # Share the close deadline rather than checking just once after a fixed sleep.
+    Wait-WindowsProcessCleanup -GetProcesses { Get-TargetProcesses } `
+        -TimeoutSeconds ([math]::Max(0, $ShutdownTimeoutSeconds - $timer.Elapsed.TotalSeconds))
     return "app exited and processes cleaned up"
 }
 

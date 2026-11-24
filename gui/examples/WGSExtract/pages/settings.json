@@ -5,43 +5,6 @@
   "sidebarPlacement": "bottom",
   "sections": [
     {
-      "id": "dependency-checks",
-      "title": "sections.settings.dependency-checks.title",
-      "summary": "sections.settings.dependency-checks.summary",
-      "actions": [
-        {
-          "id": "deps-check",
-          "title": "actions.settings.dependency-checks.deps-check.title",
-          "tooltip": "actions.settings.dependency-checks.deps-check.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "deps",
-              "check"
-            ],
-            "optionalArguments": [
-              [
-                "--tool",
-                "{{deps_tool}}"
-              ]
-            ]
-          }
-        }
-      ],
-      "iconName": "precheck",
-      "textIcon": "☑️",
-      "controls": [
-        {
-          "id": "deps_tool",
-          "label": "controls.cli.deps_tool.label",
-          "kind": "text",
-          "tooltip": "controls.cli.deps_tool.tooltip",
-          "advancedOnly": true
-        }
-      ],
-      "collapsed": true
-    },
-    {
       "id": "report-issue",
       "title": "sections.settings.v066.report-issue.title",
       "subtitle": "sections.settings.v066.report-issue.subtitle",
@@ -90,6 +53,8 @@
         {
           "id": "report-issue",
           "title": "actions.settings.v066.report-issue.title",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "tooltip": "actions.settings.v066.report-issue.tooltip",
           "visibleWhen": [
             {
@@ -129,6 +94,8 @@
         },
         {
           "id": "report-issue-last-failed",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue.title",
           "tooltip": "actions.settings.v066.report-issue.tooltip",
           "visibleWhen": [
@@ -173,6 +140,8 @@
         },
         {
           "id": "report-issue-cli-last-failed",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue.title",
           "tooltip": "actions.settings.v066.report-issue.tooltip",
           "visibleWhen": [
@@ -216,6 +185,8 @@
         },
         {
           "id": "report-issue-open",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue-open.title",
           "tooltip": "actions.settings.v066.report-issue-open.tooltip",
           "confirm": {
@@ -262,6 +233,8 @@
         },
         {
           "id": "report-issue-open-last-failed",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue-open.title",
           "tooltip": "actions.settings.v066.report-issue-open.tooltip",
           "confirm": {
@@ -312,6 +285,8 @@
         },
         {
           "id": "report-issue-open-cli-last-failed",
+          "disabledWhen": [{ "placeholder": "setupReady", "notEquals": "true" }],
+          "disabledTooltip": "actions.settings.report-issue.setup-required",
           "title": "actions.settings.v066.report-issue-open.title",
           "tooltip": "actions.settings.v066.report-issue-open.tooltip",
           "confirm": {

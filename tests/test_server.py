@@ -130,6 +130,7 @@ def _serve(
     max_jobs: int = 1,
     *,
     allow_destructive: bool = False,
+    card: bool | None = None,
 ) -> Iterator[Client]:
     guard = PathGuard(roots, allow_destructive=allow_destructive)
     manager = JobManager(
@@ -137,6 +138,7 @@ def _serve(
         config_path=get_config_path(),
         max_jobs=max_jobs,
         allowed=roots,
+        card=card,
     )
     server = Server(0, TOKEN, manager, guard)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -168,21 +170,107 @@ def test_requests_need_the_token_and_a_local_host(client):
     assert (status, body["error"]["code"]) == (403, "bad_origin")
 
 
-def test_bad_lengths_are_refused_and_errors_close_the_connection(client):
-    # PR #422 review: a negative Content-Length read the body to EOF, and an
-    # error left an unread body to be parsed as the next request.
+@pytest.mark.parametrize(
+    ("headers", "status"),
+    [
+        ([("Content-Length", "-1")], 400),
+        ([], 411),
+        ([("Transfer-Encoding", "chunked")], 400),
+        ([("Content-Length", "0"), ("Content-Length", "0")], 400),
+        ([("Content-Length", "\xa00")], 400),
+    ],
+)
+def test_bad_lengths_are_refused_and_errors_close_the_connection(
+    client, headers, status
+):
+    # #1209: invalid or missing framing must be rejected before reading a body.
     host, port = client.url.removeprefix("http://").removesuffix("/v1").split(":")
     connection = http.client.HTTPConnection(host, int(port), timeout=30)
     connection.putrequest("POST", "/v1/ops/info")
     connection.putheader("Authorization", "Bearer " + TOKEN)
     connection.putheader("Content-Type", "application/json")
-    connection.putheader("Content-Length", "-1")
+    for name, value in headers:
+        connection.putheader(name, value)
     connection.endheaders()
     response = connection.getresponse()
-    assert response.status == 400
+    assert response.status == status
     assert json.loads(response.read())["error"]["code"] == "bad_length"
     assert response.headers["Connection"] == "close"
     connection.close()
+
+
+@pytest.mark.parametrize(
+    ("length", "expected"),
+    [(1, (409, "job_id_in_use")), (2, (400, "bad_length")), (2, None)],
+    ids=["complete-malformed-json", "truncated-body", "stalled-body"],
+)
+def test_1297_duplicate_job_reply_checks_body_framing(client, work, length, expected):
+    job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
+    path = "/ops/example-genome/list"
+    status, job = client.request(
+        "POST",
+        path + "?wait=30",
+        {"target_root": str(work)},
+        headers={"X-WGSE-Job-ID": job_id},
+    )
+    assert (status, job["id"], job["status"]) == (200, job_id, "succeeded")
+
+    # Headers and body can arrive separately. Closing with unread bytes can
+    # abort the connection before the client sees the 409 on Windows.
+    host, port = client.url.removeprefix("http://").removesuffix("/v1").split(":")
+    connection = http.client.HTTPConnection(host, int(port), timeout=30)
+    try:
+        connection.putrequest("POST", "/v1" + path)
+        connection.putheader("Authorization", "Bearer " + TOKEN)
+        connection.putheader("X-WGSE-Job-ID", job_id)
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Content-Length", str(length))
+        connection.endheaders()
+        connection.send(b"{")
+        if expected is None:
+            # Leave the write side open so only the input deadline ends the read.
+            with pytest.raises(
+                (
+                    http.client.RemoteDisconnected,
+                    ConnectionAbortedError,
+                    ConnectionResetError,
+                )
+            ):
+                connection.getresponse()
+            return
+        if length == 2:
+            assert connection.sock is not None
+            connection.sock.shutdown(socket.SHUT_WR)
+        with connection.getresponse() as response:
+            assert (
+                response.status,
+                json.loads(response.read())["error"]["code"],
+            ) == expected
+    finally:
+        connection.close()
+
+
+def test_1209_job_log_tails_text_and_disallows_caching(client, tmp_path, work):
+    status, job = client.request(
+        "POST", "/ops/example-genome/list?wait=10", {"target_root": str(work)}
+    )
+    assert status == 200
+    job_id = job["id"]
+    content = b"old\r\n" * 20_000 + b"boundary\r\n" + b"x" * 65_530 + b"\r\nend"
+    (tmp_path / "state" / "jobs" / f"{job_id}.log").write_bytes(content)
+    path = f"/jobs/{job_id}/log"
+
+    assert client.request("GET", f"{path}?tail=-1")[0] == 400
+    request = urllib.request.Request(
+        client.url + path + "?tail=2", headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.headers["Cache-Control"] == "no-store"
+        assert response.read() == b"x" * 65_530 + b"\nend\n"
+    assert client.request("GET", f"{path}?tail=0") == (
+        200,
+        content.decode().replace("\r\n", "\n") + "\n",
+    )
 
 
 def test_a_client_resetting_its_connection_prints_no_traceback(client, capfd):
@@ -363,7 +451,13 @@ _EXAMPLE_PATHS = [
 
 _TYPING_PATHS = [
     (op, item)
-    for op in ("typing/cyp2d6", "typing/hla", "typing/smn", "typing/str")
+    for op in (
+        "typing/cyp2d6",
+        "typing/hla",
+        "typing/smn",
+        "typing/str",
+        "typing/target-cnv",
+    )
     for item in find(op).fields()
     if item.spec.path or item.spec.may_name_file
 ]
@@ -560,6 +654,11 @@ _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("basecall", "alignment"): {"alignment": _FILE, "regions_bed": _FILE},
     ("bam/to-ubam", "r1"): {"input": None, "r1": _FILE},
     ("bam/to-ubam", "r2"): {"input": None, "r1": _FILE},
+    ("methylation/regions", "phase_blocks"): {
+        "input": _DATA + r"\haplotagged.bam",
+        "partition_hp": True,
+        "phase_blocks": _DATA + r"\phased.blocks.tsv",
+    },
     ("vcf/impute", "vcf_input"): {"input": None, "vcf_input": _FILE},
 }
 
@@ -638,8 +737,12 @@ _TABLE_HEADER = """##fileformat=VCFv4.2
 ##contig=<ID=chr2,length=1000>
 ##INFO=<ID=CLNSIG,Number=.,Type=String,Description="ClinVar significance">
 ##INFO=<ID=WGSE_CONF,Number=A,Type=String,Description="Confidence">
-##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL">
+##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Feature">
+##INFO=<ID=GNOMAD_POPMAX_AF,Number=A,Type=Float,Description="Group maximum AF">
+##INFO=<ID=GNOMAD_NHOMALT,Number=A,Type=Integer,Description="Homozygote count">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase set">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1
 """
 # (chrom, pos, id, ref, alt, gene, ClinVar, confidence)
@@ -670,11 +773,17 @@ def variant_tables(work: Path) -> dict[str, Path]:
                     ([f"CLNSIG={clnsig}"] if clnsig else [])
                     + [
                         f"WGSE_CONF={conf}",
-                        f"CSQ={alt}|missense_variant|MODERATE|{gene}",
+                        f"CSQ={alt}|missense_variant|MODERATE|{gene}|"
+                        + ("ENST4" if rsid == "rs4" else ""),
                     ]
+                    + (
+                        ["GNOMAD_POPMAX_AF=0.125", "GNOMAD_NHOMALT=0"]
+                        if rsid == "rs4"
+                        else []
+                    )
                 ),
-                "GT",
-                "0/1",
+                "GT:PS:AD" if rsid == "rs4" else "GT",
+                "0|1:350:14,6" if rsid == "rs4" else "0/1",
             ]
         )  # fmt: skip
         for chrom, pos, rsid, ref, alt, gene, clnsig, conf in _TABLE_RECORDS

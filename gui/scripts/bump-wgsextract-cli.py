@@ -14,6 +14,7 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,14 +43,23 @@ def main(argv: list[str]) -> int:
         print(__doc__, file=sys.stderr)
         return 2
     new_tag = argv[1]
+    requirement = tomllib.loads((ROOT.parent / "pixi.toml").read_text())["workspace"][
+        "requires-pixi"
+    ]
+    if not re.fullmatch(r">=\d+\.\d+\.\d+", requirement):
+        print("Unsupported requires-pixi constraint in pixi.toml.", file=sys.stderr)
+        return 1
+    minimum_file = TAG_FILE.parent / "pixi-minimum-version.txt"
     old_tag = TAG_FILE.read_text().strip()
     if new_tag == old_tag:
+        minimum_file.write_text(requirement[2:] + "\n")
         print(f"The bundle already uses {new_tag}.")
         return 0
     old, new = old_tag[1:], new_tag[1:]
     # Prepare every change before writing any, so a failure leaves the tree as it
     # was; the tag file goes last, since a rerun compares against it.
-    changes: dict[Path, str] = {}
+    # Generated from the workspace: the shipped bundle has no CLI manifest yet.
+    changes: dict[Path, str] = {minimum_file: requirement[2:] + "\n"}
     # The version alone, not inside another (10.4.3, 0.4.30).
     version = re.compile(rf"(?<![\d.]){re.escape(old)}(?!\.?\d)")
     for name in PINNED:
@@ -68,7 +78,7 @@ def main(argv: list[str]) -> int:
     for path, text in changes.items():
         path.write_text(text)
     # site/ is committed as well as deployed; keep it in step with site_src/.
-    site = subprocess.run([sys.executable, str(BUILD_SITE)], cwd=ROOT)
+    site = subprocess.run([sys.executable, str(BUILD_SITE)], cwd=ROOT, check=False)
     if site.returncode:
         print(
             f"{BUILD_SITE.relative_to(ROOT)} failed; rerun it before committing.",

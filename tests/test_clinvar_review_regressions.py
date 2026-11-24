@@ -285,19 +285,23 @@ def test_836_cadd_snv_indexed_subset_avoids_unrelated_resource_records(tmp_path)
     ref = write_fasta(tmp_path / "ref.fa", {"1": SEQ})
     sample = vcf(tmp_path / "sample.vcf", ["11 . C A 99 PASS . GT 0/1"])
     scores = tmp_path / "cadd.tsv"
+    # Stale rows at 1 (the FASTA has A) are never examined: only the rows at
+    # the sample's SNVs are normalized (issue #1325 drops stale rows it does).
     scores.write_text(
         "#Chrom\tPos\tRef\tAlt\tRawScore\tPHRED\n"
         + "1\t1\tT\tG\t0.1\t10\n" * 10000
+        + "1\t2\tC\tG\t0.1\t10\n" * 20000
         + "1\t11\tC\tA\t0.9\t40\n"
     )
     out = tmp_path / "out"
-    cadd(
+    result = cadd(
         VcfCaddParams(
             vcf_input=sample, ref=ref, cadd_file=scores, outdir=out, threads=1
         )
     )
     (finding,) = records(out / "cadd_annotated.vcf.gz")
     assert "CADD_PHRED=40" in finding[7]
+    assert all(w.code != "annotation_ref_mismatch_excluded" for w in result.warnings)
 
 
 def test_836_normalized_resource_cache_invalidates_when_source_changes(tmp_path):
@@ -322,7 +326,7 @@ def test_chain_skips_clinvar_without_fasta_and_keeps_other_annotations(tmp_path)
     sample.write_text(
         sample.read_text().replace("#CHROM", "##reference=GRCh38\n#CHROM")
     )
-    library = tmp_path / "lib" / "ref"
+    library = tmp_path / "lib" / "downloads"
     library.mkdir(parents=True)
     bgzip_index(
         vcf(

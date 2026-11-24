@@ -53,8 +53,17 @@ ADVANCED_OPTIONS: dict[str, tuple[str, ...]] = {
         "--base-majority",
         "--min-score",
         "--no-ref-inference",
+        "--assume-reference",
     ),
     "lineage y-str": ("--min-reads", "--min-fraction", "--min-mapq"),
+    "lineage y-private": (
+        "--build",
+        "--min-af",
+        "--min-alt-reads",
+        "--min-qual",
+        "--min-mapq",
+        "--base-quality",
+    ),
     "vep run": _VEP,
     "vcf gatk": ("--no-gpu-memory-check",),
     "vcf deepvariant": (
@@ -73,4 +82,10 @@ ADVANCED_OPTIONS: dict[str, tuple[str, ...]] = {
     ),
     "example-genome download": ("--aspera-key", "--target-root"),
     "report-issue": ("--log-lines", "--max-url-length"),
+    "qc roh": (
+        "--imprinted-regions",
+        "--min-gq",
+        "--flag-terminal-mb",
+        "--flag-interstitial-mb",
+    ),
 }

@@ -16,6 +16,7 @@ import threading
 import zipfile
 import zlib
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -25,7 +26,7 @@ from wgsextract_cli.commands.ref import library_commands
 from wgsextract_cli.core.bgzf import ensure_bgzf, is_bgzf
 from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.ref_library import downloads
+from wgsextract_cli.core.ref_library import downloads, ncount_table
 from wgsextract_cli.core.ref_library import processing as rp
 from wgsextract_cli.core.ref_library import removal as library_removal
 from wgsextract_cli.core.ref_library.catalog import get_genome_status
@@ -102,6 +103,9 @@ def _assert_installed(lib: Path, final: str) -> Path:
         f"{path.name}.fai",
         f"{path.name}.gzi",
         Path(rp.reference_dict_path(path)).name,
+        # The genome's N counts, measured on processing, and their lock.
+        "reference_ncounts.tsv",
+        ".reference_ncounts.tsv.guard",
     }
     assert not leftovers
     return path
@@ -125,7 +129,10 @@ def test_download_installs_an_indexed_bgzf_genome(tmp_path, monkeypatch, kind):
         assert "Processing: Recompressing (BGZF)..." not in statuses
     else:
         assert statuses[0] == "Processing: Recompressing (BGZF)..."
-    assert statuses[-1] == "Processing: Indexing FASTA..."
+    # The release never measured this genome, so processing counts its Ns.
+    assert statuses[-1] == "Processing: Counting N bases..."
+    (entry,) = ncount_table.library_table(path.parent)
+    assert (entry.reference, entry.sequences) == ("hs38.fa.gz", {"chrA": (3100, 100)})
 
 
 @needs_htslib
@@ -160,9 +167,13 @@ def test_installed_genome_is_reindexed_without_downloading(tmp_path, monkeypatch
     path = tmp_path / "genomes" / "hs38.fa.gz"
     Path(rp.reference_dict_path(path)).unlink()
 
-    assert rp.download_and_process_genome(_genome(), str(tmp_path))
+    statuses: list[str] = []
+    assert rp.download_and_process_genome(
+        _genome(), str(tmp_path), status_callback=statuses.append
+    )
     assert len(calls) == 1
     _assert_installed(tmp_path, "hs38.fa.gz")
+    assert "Processing: Counting N bases..." not in statuses  # already measured
 
 
 @needs_htslib
@@ -390,10 +401,10 @@ def test_remove_genome_removes_download_state_and_aligner_indexes(tmp_path):
 
 @pytest.mark.parametrize("sidecar", ["hs38_ncnt.csv", "hs38_nbin.csv"])
 def test_has_ref_ns_finds_either_n_count_file(tmp_path, sidecar):
-    assert not rp.has_ref_ns("hs38.fa.gz", "")
-    assert not rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
-    _touch(tmp_path / "genomes" / sidecar)
-    assert rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
+    assert rp.has_ref_ns("hs38.fa.gz", "")  # the release measured it
+    assert not rp.has_ref_ns("mine.fa.gz", str(tmp_path))
+    _touch(tmp_path / "genomes" / sidecar.replace("hs38", "mine"))
+    assert rp.has_ref_ns("mine.fa.gz", str(tmp_path))
 
 
 # --- bootstrap ----------------------------------------------------------------
@@ -560,6 +571,45 @@ def test_bootstrap_is_verified_against_its_pin_issue_509(tmp_path, monkeypatch):
     assert rp.bootstrap_has_support_assets(str(lib))
 
 
+def test_bootstrap_upgrades_v020_library_without_overwriting_existing(
+    tmp_path, monkeypatch
+):
+    from wgsextract_cli.core import constants
+
+    lib = tmp_path / "lib"
+    _touch(lib / ".bootstrap-0.2.0")
+    (lib / "00README.txt").write_bytes(b"v0.2.0 readme\r\n")
+    existing = lib / "microarray/raw_file_templates/body/23andMe_V3.txt"
+    existing.parent.mkdir(parents=True, exist_ok=True)
+    existing.write_bytes(b"existing-v3\n")
+    stale_delta = lib / "microarray/raw_file_templates/body/Genera_V1.csv.delta.gz"
+    stale_delta.write_bytes(b"old-v03-delta\n")
+    assert rp.bootstrap_has_support_assets(str(lib))
+    assert not rp.bootstrap_is_current(str(lib))
+
+    published = _tarball(
+        {
+            "reference/00README.txt": b"v0.4.0 readme\r\n",
+            "reference/microarray/raw_file_templates/body/23andMe_V3.txt": b"existing-v3\n",
+            "reference/microarray/raw_file_templates/body/Genera_V1.csv.delta.gz": b"rebased-v04-delta\n",
+            "reference/microarray/raw_file_templates/body/MyHeritage_V3.csv.gz": b"v5-add\n",
+        }
+    )
+    with serving(None, {"bootstrap.tgz": published}) as server:
+        _serve_bootstrap(monkeypatch, server, published)
+        assert rp.download_bootstrap(str(lib))
+    # Updated README and rebased templates replace older copies cleanly; nested reference/ is removed.
+    assert (lib / "00README.txt").read_bytes() == b"v0.4.0 readme\r\n"
+    assert not (lib / "reference").exists()
+    assert existing.read_bytes() == b"existing-v3\n"
+    assert stale_delta.read_bytes() == b"rebased-v04-delta\n"
+    assert (
+        lib / "microarray/raw_file_templates/body/MyHeritage_V3.csv.gz"
+    ).read_bytes() == b"v5-add\n"
+    assert (lib / f".bootstrap-{constants.BOOTSTRAP_VERSION}").is_file()
+    assert rp.bootstrap_is_current(str(lib))
+
+
 # --- ploidy files -------------------------------------------------------------
 
 
@@ -618,13 +668,13 @@ def test_gnomad_downloads_are_indexed_and_failures_reported(tmp_path, monkeypatc
         monkeypatch, {"https://x/38.bgz": _bgzip(_VCF), "https://x/19.bgz": None}
     )
     assert not rp.download_gnomad(str(tmp_path))
-    assert (tmp_path / "ref" / "gnomad_hg38.vcf.bgz.tbi").is_file()
-    assert not (tmp_path / "ref" / "gnomad_hg19.vcf.bgz").exists()
+    assert (tmp_path / "downloads" / "gnomad_hg38.vcf.bgz.tbi").is_file()
+    assert not (tmp_path / "downloads" / "gnomad_hg19.vcf.bgz").exists()
 
     _fake_download(monkeypatch, {"https://x/38.bgz": _VCF, "https://x/19.bgz": None})
-    (tmp_path / "ref" / "gnomad_hg38.vcf.bgz.tbi").unlink()
+    (tmp_path / "downloads" / "gnomad_hg38.vcf.bgz.tbi").unlink()
     assert not rp.download_gnomad(str(tmp_path))  # plain VCF: tabix refuses it
-    assert not (tmp_path / "ref" / "gnomad_hg38.vcf.bgz.tbi").exists()
+    assert not (tmp_path / "downloads" / "gnomad_hg38.vcf.bgz.tbi").exists()
 
     cancel = threading.Event()
     cancel.set()
@@ -726,3 +776,15 @@ def test_an_interrupted_bootstrap_extraction_is_resumed_review_514(
         assert (lib / name).read_bytes() == data
     assert not (lib / BOOTSTRAP_FILENAME).exists()
     assert not list(lib.rglob("*.partial"))
+
+
+@needs_htslib
+def test_unwritable_n_count_table_does_not_fail_the_install(tmp_path, monkeypatch):
+    """Review of #1271: recording N counts is optional; a write failure must
+    not turn a verified install into an error."""
+    _fake_download(monkeypatch, {_genome()["url"]: gzip.compress(FASTA)})
+    monkeypatch.setattr(
+        ncount_table, "add_to_library", Mock(side_effect=PermissionError("read-only"))
+    )
+    assert rp.download_and_process_genome(_genome(), str(tmp_path))
+    assert get_genome_status("hs38.fa.gz", str(tmp_path)) == "installed"

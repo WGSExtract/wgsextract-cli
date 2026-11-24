@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
-import { localViewerFiles, localViewerLocus, ViewerFileError } from "../dist/shared/genome-viewer.js";
+import { localViewerFiles, localViewerLocus, ViewerFileError, viewerNavigationCopy } from "../dist/shared/genome-viewer.js";
 
 const file = (name) => new File(["fixture"], name);
 const reference = [file("reference.fa"), file("reference.fa.fai")];
@@ -75,8 +77,60 @@ test("#1090: the shipped genome bundle has a localized built-in viewer entry poi
     labels: { viewerTitle: "Visualiseur de génome" },
     localizationCode: "fr",
   });
-  assert.match(renderNavigation(), /data-genome-viewer-open>Visualiseur de génome/);
+  assert.match(renderNavigation(), /data-genome-viewer-open><span class="nav-icon" aria-hidden="true">[\s\S]*?<\/span><span>Visualiseur de génome<\/span>/);
   assert.doesNotMatch(renderNavigation(), /href="\/viewer/);
   state.manifest.id = "git-helper";
   assert.doesNotMatch(renderNavigation(), /data-genome-viewer-open/);
+});
+
+test("#1090: a selected My Genomes alignment has a localized View reads entry without running a job", async () => {
+  const { state, createInitialState } = await import("../dist/web/src/client/state.js");
+  const { renderTextControl } = await import("../dist/web/src/client/view.js");
+  Object.assign(state, createInitialState(), {
+    manifest: { id: "wgs-extract", pages: [] },
+    labels: { viewerStrings: { viewReads: "Voir les lectures" } },
+    fieldValues: { bam_path: "/genomes/HG002.bam" },
+  });
+  const rendered = renderTextControl({ id: "bam_path", kind: "path", label: "BAM" });
+  assert.match(rendered, /data-view-reads="bam_path">Voir les lectures/);
+  assert.doesNotMatch(rendered, /data-action-id/);
+  state.activePageID = "info-bam";
+  assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path", label: "BAM" }), /data-view-reads/);
+  state.activePageID = "vcf";
+  state.fieldValues.vcf_path = "/genomes/HG002.vcf.gz";
+  assert.doesNotMatch(renderTextControl({ id: "vcf_path", kind: "path", label: "VCF" }), /data-view-reads/);
+  state.fieldValues.bam_path = "/genomes/HG002.bam.bai";
+  assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path" }), /data-view-reads/);
+});
+
+test("viewer navigation copy matches available gene-map and dbSNP indexes and UI strings omit CLI commands", () => {
+  const stringsPath = path.resolve(import.meta.dirname, "../../resources/BuiltinStrings/strings.en.toml");
+  const rawStrings = fs.readFileSync(stringsPath, "utf8");
+  const viewerStrings = Object.fromEntries(
+    [...rawStrings.matchAll(/^"viewer\.([^"]+)"\s*=\s*"((?:\\.|[^"\\])*)"/gm)].map(([, key, value]) => [key, value]),
+  );
+
+  for (const [key, value] of Object.entries(viewerStrings)) {
+    assert.doesNotMatch(value, /wgsextract ref/, `viewer.${key} should direct users to Reference Data instead of CLI commands`);
+  }
+
+  const coordsOnly = viewerNavigationCopy(false, false);
+  assert.equal(viewerStrings[coordsOnly.labelKey], "Position");
+  assert.doesNotMatch(viewerStrings[coordsOnly.helpKey], /RefSeq|rsID/i);
+
+  const genesOnly = viewerNavigationCopy(true, false);
+  assert.match(viewerStrings[genesOnly.labelKey], /RefSeq gene symbol/);
+  assert.doesNotMatch(viewerStrings[genesOnly.labelKey], /rsID/i);
+
+  const rsidOnly = viewerNavigationCopy(false, true);
+  assert.match(viewerStrings[rsidOnly.labelKey], /common rsID/);
+  assert.doesNotMatch(viewerStrings[rsidOnly.labelKey], /RefSeq/);
+  assert.match(viewerStrings[rsidOnly.helpKey], /most common/i);
+
+  const both = viewerNavigationCopy(true, true);
+  assert.match(viewerStrings[both.labelKey], /RefSeq gene symbol/);
+  assert.match(viewerStrings[both.labelKey], /common rsID/);
+  assert.match(viewerStrings[both.helpKey], /most common/i);
+
+  assert.match(viewerStrings.rsidMissing, /Reference Data/);
 });

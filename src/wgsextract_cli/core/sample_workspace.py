@@ -26,9 +26,7 @@ docs/sample-workspace.md describes the format.
 from __future__ import annotations
 
 import contextlib
-import functools
 import logging
-import os
 import sys
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextvars import ContextVar
@@ -66,6 +64,7 @@ from wgsextract_cli.core.sample_view import (
     FileView,
     WorkspaceView,
 )
+from wgsextract_cli.core.step_identity import file_fingerprint as file_fingerprint
 
 if TYPE_CHECKING:
     from wgsextract_cli.core.sample_document import (
@@ -140,14 +139,16 @@ class FactSpec:
 FACTS: dict[str, FactSpec] = {
     spec.name: spec
     for spec in (
-        FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 4),
+        FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 6),
         FactSpec(
             "platform",
             "Sequencing platform, from read groups, read names or a bounded FASTQ sample.",
             PLATFORMS,
             4,
         ),
-        FactSpec("build", "Reference build the file is aligned to."),
+        # 2: a VCF's ##reference path counts only by its file name.
+        # 3: .vcf.bgz and upper-case VCF names are read as VCFs (#1243).
+        FactSpec("build", "Reference build the file is aligned to.", version=3),
         FactSpec(
             "somalier_sex",
             "Male or Female, from chrX heterozygosity and chrY depth (qc relate).",
@@ -242,22 +243,6 @@ class Fact:
 
 
 # --- fingerprints ------------------------------------------------------------
-
-
-def file_fingerprint(path: PathInput) -> str | None:
-    """``results.fingerprint`` of a regular file, computed once per revision."""
-    try:
-        st = os.stat(path)
-    except OSError:
-        return None
-    return _fingerprint(str(absolute_path(path)), st.st_size, st.st_mtime_ns, st.st_ino)
-
-
-@functools.lru_cache(maxsize=256)
-def _fingerprint(path: str, size: int, mtime_ns: int, inode: int) -> str | None:
-    from wgsextract_cli.core.results import fingerprint
-
-    return fingerprint(path)
 
 
 def _now() -> str:

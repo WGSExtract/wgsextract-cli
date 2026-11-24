@@ -54,12 +54,16 @@ OPTIONAL_TOOLS = [
     "htsfile",
     "pharmcat_python",
     "cyrius",
+    "paraphase",
     "smn_caller.py",
     "run-t1k",
     "ExpansionHunter",
     "LongTR",
     "strkit",
     "dorado",
+    "java17",
+    "discvrseq",
+    "granite",
 ]
 
 # Optional tools users install themselves (no Pixi environment): how to.
@@ -76,10 +80,18 @@ INSTALL_HINTS = {
     "Linux `pixi install -e deepvariant` (NVIDIA driver) or the CPU-only "
     "linux-deepvariant package on PATH, on a Mac a macos-deepvariant release on "
     "PATH; set deepvariant_weights in config.toml (native/deepvariant/README.md).",
-    "fastvep": "Bioconda builds fastVEP for x86-64 Linux and Intel macOS only "
-    "(`pixi install -e fastvep`). Elsewhere, download the fastVEP 0.5 release "
-    "for your system from https://github.com/Huang-lab/fastVEP/releases and "
-    "put fastvep on PATH.",
+    "java17": "Install Java 17 with 'wgsextract deps install java17' (or "
+    "install OpenJDK 17 yourself and put it on PATH or set java17_executable "
+    "in config.toml). Required by vcf variantqc (DISCVRSeq).",
+    "discvrseq": "Install with 'wgsextract deps install discvrseq' (or download "
+    "DISCVRSeq.jar from https://github.com/BimberLab/DISCVRSeq/releases into "
+    "jartools, set discvrseq_jar in config.toml, or pass vcf variantqc "
+    "--discvrseq-jar). Requires Java 17 (java17); optional, used by vcf variantqc.",
+    "granite": "Install with 'wgsextract deps install granite' (or install "
+    "granite-suite from https://github.com/dbmi-bgm/granite with "
+    "'pip install granite-suite' and put granite on PATH, or set "
+    "granite_executable in config.toml / pass vcf granite-qc --granite-path). "
+    "Optional, used by vcf granite-qc.",
 }
 # What a tool still needs after its Pixi environment is installed.
 PIXI_SETUP_HINTS = {
@@ -101,6 +113,7 @@ PLATFORM_ONLY_TOOLS = {
     "bwa-mem3": ("linux", "darwin"),
     "sambamba": ("linux",),
     "cyrius": ("linux", "darwin"),
+    "paraphase": ("linux", "darwin"),
     "smn_caller.py": ("linux", "darwin"),
     "run-t1k": ("linux", "darwin"),
     "ExpansionHunter": ("linux", "darwin"),
@@ -109,13 +122,13 @@ PLATFORM_ONLY_TOOLS = {
     "modkit": ("linux", "darwin"),
     "verifybamid2": ("linux", "darwin"),
     "somalier": ("linux", "darwin"),
-    "fastvep": ("linux", "darwin"),
     "whatshap": ("linux", "darwin"),
     "longphase": ("linux", "darwin"),
     "GLIMPSE2_phase": ("linux", "darwin", "win32"),
     "GLIMPSE2_ligate": ("linux", "darwin", "win32"),
     "GLIMPSE2_chunk": ("linux", "darwin", "win32"),
     "GLIMPSE2_split_reference": ("linux", "darwin", "win32"),
+    "granite": ("linux", "darwin"),
 }
 
 
@@ -136,10 +149,10 @@ def clair3_host_supported() -> bool:
 def imputation_host_supported() -> bool:
     """Hosts with the opt-in GLIMPSE2/Beagle environment."""
     system = "linux" if sys.platform.startswith("linux") else sys.platform
-    return system in {"linux", "darwin", "win32"} and platform.machine().lower() in {
-        "x86_64",
-        "amd64",
-    }
+    machine = platform.machine().lower()
+    if machine in {"x86_64", "amd64"}:
+        return system in {"linux", "darwin", "win32"}
+    return system in {"linux", "darwin"} and machine in {"arm64", "aarch64"}
 
 
 def _x86_deepvariant_host() -> bool:
@@ -211,6 +224,7 @@ PIXI_TOOL_ENVS = {
     "bgzip": "default",
     "tabix": "default",
     "java": "default",
+    "java17": "java17",
     "sambamba": "default",
     "samblaster": "default",
     "bwa": "default",
@@ -222,6 +236,7 @@ PIXI_TOOL_ENVS = {
     "sniffles": "pacbio",
     "htsfile": "default",
     "cyrius": "cyrius",
+    "paraphase": "paraphase",
     "smn_caller.py": "smn",
     "run-t1k": "t1k",
     "t1k-build.pl": "t1k",
@@ -229,6 +244,7 @@ PIXI_TOOL_ENVS = {
     "LongTR": "longtr",
     "strkit": "strkit",
     "run_clair3.sh": "clair3",
+    "wgse-clair3": "clair3",
     "wgse-deepvariant": "deepvariant",
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",
@@ -239,20 +255,22 @@ PIXI_TOOL_ENVS = {
     "GLIMPSE2_ligate": "imputation",
     "GLIMPSE2_chunk": "imputation",
     "GLIMPSE2_split_reference": "imputation",
+    "granite": "granite",
     # Only through their own environments (never a `python` on PATH): pixi_env_tool.
     "pharmcat_python": "pharmcat",
     "cyrius_python": "cyrius",
 }
 # Environments without a Python of their own: their tools are probed from here.
-PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant"})
+PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant", "java17"})
 
 
 # Interpreters only their own Pixi environment provides (its packages matter).
-ENV_ONLY_TOOLS = frozenset({"pharmcat_python", "cyrius_python"})
+ENV_ONLY_TOOLS = frozenset({"pharmcat_python", "cyrius_python", "java17"})
 
 TOOL_EXECUTABLE_ALIASES = {
     "pharmcat_python": ("python",),
     "cyrius_python": ("python",),
+    "java17": ("java",),
 }
 
 
@@ -269,6 +287,7 @@ WINDOWS_PIXI_SCRIPT_LAUNCHERS = {
 # Conda package that provides a tool in its Pixi environment, when the names differ.
 PIXI_TOOL_PACKAGES = {
     "gatk": "gatk4",
+    "java17": "openjdk",
     "vep": "ensembl-vep",
     "vep-cache-builder": "vep-rs",
     "pharmcat_python": "pandas",
@@ -284,6 +303,7 @@ PIXI_TOOL_PACKAGES = {
     "GLIMPSE2_ligate": "glimpse-bio",
     "GLIMPSE2_chunk": "glimpse-bio",
     "GLIMPSE2_split_reference": "glimpse-bio",
+    "granite": "granite_suite",
 }
 
 

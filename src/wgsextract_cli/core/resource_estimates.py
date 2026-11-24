@@ -1,1240 +1,151 @@
 """Read-only, GUI-reusable resource estimates; all sizes are bytes."""
 
-import json
 import logging
 import math
-import shutil
 import subprocess
-import zlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Literal
 
-from wgsextract_cli.core.alignment.samtools_commands import parse_memory
-from wgsextract_cli.core.ref_library.assets import read_fai_lengths
-from wgsextract_cli.core.resource_volumes import reference_evidence_demands
-
+from ._resource_inputs import (
+    BAM_BYTES_PER_READ as BAM_BYTES_PER_READ,
+)
+from ._resource_inputs import (
+    CRAM_BYTES_PER_READ as CRAM_BYTES_PER_READ,
+)
+from ._resource_inputs import (
+    DV_BYTES_PER_RECORD as DV_BYTES_PER_RECORD,
+)
+from ._resource_inputs import (
+    DV_GVCF_PER_INPUT_BYTE as DV_GVCF_PER_INPUT_BYTE,
+)
+from ._resource_inputs import (
+    DV_MAX_PARTITIONS as DV_MAX_PARTITIONS,
+)
+from ._resource_inputs import (
+    DV_RECORDS_PER_BASE as DV_RECORDS_PER_BASE,
+)
+from ._resource_inputs import (
+    DV_WORKER_BASE_BYTES as DV_WORKER_BASE_BYTES,
+)
+from ._resource_inputs import (
+    FASTQ_BYTES_PER_READ as FASTQ_BYTES_PER_READ,
+)
+from ._resource_inputs import (
+    GATK_GVCF_BYTES_PER_READ as GATK_GVCF_BYTES_PER_READ,
+)
+from ._resource_inputs import (
+    GATK_WORKER_BYTES as GATK_WORKER_BYTES,
+)
+from ._resource_inputs import (
+    GIB as GIB,
+)
+from ._resource_inputs import (
+    GVCF_COPIES as GVCF_COPIES,
+)
+from ._resource_inputs import (
+    LONG_READ_FASTQ_PER_CRAM_BYTE as LONG_READ_FASTQ_PER_CRAM_BYTE,
+)
+from ._resource_inputs import (
+    LONG_READ_OUTPUT_PER_CRAM_BYTE as LONG_READ_OUTPUT_PER_CRAM_BYTE,
+)
+from ._resource_inputs import (
+    LONG_READ_SPILL_PER_CRAM_BYTE as LONG_READ_SPILL_PER_CRAM_BYTE,
+)
+from ._resource_inputs import (
+    NATIVE_DV_BASE_BYTES as NATIVE_DV_BASE_BYTES,
+)
+from ._resource_inputs import (
+    NATIVE_DV_CONTIG_BYTES_PER_BASE as NATIVE_DV_CONTIG_BYTES_PER_BASE,
+)
+from ._resource_inputs import (
+    NATIVE_DV_EXAMPLES_PER_INPUT_BYTE as NATIVE_DV_EXAMPLES_PER_INPUT_BYTE,
+)
+from ._resource_inputs import (
+    NATIVE_DV_GVCF_BYTES_PER_BASE as NATIVE_DV_GVCF_BYTES_PER_BASE,
+)
+from ._resource_inputs import (
+    NATIVE_DV_GVCF_TEMPORARY_PER_INPUT_BYTE as NATIVE_DV_GVCF_TEMPORARY_PER_INPUT_BYTE,
+)
+from ._resource_inputs import (
+    NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE as NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE,
+)
+from ._resource_inputs import (
+    NATIVE_DV_PHASE_MERGE_BYTES_PER_INPUT_BYTE as NATIVE_DV_PHASE_MERGE_BYTES_PER_INPUT_BYTE,
+)
+from ._resource_inputs import (
+    NATIVE_DV_RECORD_BYTES_PER_BASE as NATIVE_DV_RECORD_BYTES_PER_BASE,
+)
+from ._resource_inputs import (
+    NATIVE_DV_THREAD_BYTES as NATIVE_DV_THREAD_BYTES,
+)
+from ._resource_inputs import (
+    SORT_BYTES_PER_READ as SORT_BYTES_PER_READ,
+)
+from ._resource_inputs import (
+    LongReadDisk as LongReadDisk,
+)
+from ._resource_inputs import (
+    Operation as Operation,
+)
+from ._resource_inputs import (
+    PostprocessPlan as PostprocessPlan,
+)
+from ._resource_inputs import (
+    PreflightEstimate as PreflightEstimate,
+)
+from ._resource_inputs import (
+    ResourceEstimate as ResourceEstimate,
+)
+from ._resource_inputs import (
+    _disk_space,
+)
+from ._resource_inputs import (
+    bcftools_batches as bcftools_batches,
+)
+from ._resource_inputs import (
+    dv_calling_regions as dv_calling_regions,
+)
+from ._resource_inputs import (
+    dv_partition_bases as dv_partition_bases,
+)
+from ._resource_inputs import (
+    dv_postprocess_worker_bytes as dv_postprocess_worker_bytes,
+)
+from ._resource_inputs import (
+    long_read_cram_bytes as long_read_cram_bytes,
+)
+from ._resource_inputs import (
+    long_read_disk as long_read_disk,
+)
+from ._resource_inputs import (
+    plan_dv_postprocess as plan_dv_postprocess,
+)
+from ._resource_parabricks import (
+    PB_GPU_NEEDS as PB_GPU_NEEDS,
+)
+from ._resource_parabricks import (
+    PB_HOST_RECOMMENDED as PB_HOST_RECOMMENDED,
+)
+from ._resource_parabricks import (
+    PB_HOST_RECOMMENDED_PER_GPU as PB_HOST_RECOMMENDED_PER_GPU,
+)
+from ._resource_parabricks import (
+    PB_LOW_MEMORY_FLOOR as PB_LOW_MEMORY_FLOOR,
+)
+from ._resource_parabricks import (
+    PB_MIN_GPU_TOTAL as PB_MIN_GPU_TOTAL,
+)
+from ._resource_parabricks import (
+    GpuMemory as GpuMemory,
+)
+from ._resource_parabricks import (
+    ParabricksNeed as ParabricksNeed,
+)
+from ._resource_parabricks import (
+    ParabricksPlan as ParabricksPlan,
+)
+from ._resource_pipeline import estimate_resources as estimate_resources
 from .alignment import memory as alignment_memory
-from .native_support import is_arm64_docker_host
-from .region_selection import selected_intervals
-
-Operation = Literal[
-    "align",
-    "realign",
-    "sort",
-    "to-bam",
-    "to-cram",
-    "snp",
-    "indel",
-    "gatk",
-    "deepvariant",
-    "clair3",
-    "vep-download",
-    "vep",
-    "impute",
-]
-GIB = 1024**3
-GATK_WORKER_BYTES = 6 * GIB
-# Conservative 30x envelope: 680M reads -> 81.6 GB sort spill, 19.0 GB CRAM.
-# H2's binned-quality CRAM was only 8.63 GB; don't assume all inputs compress so well.
-SORT_BYTES_PER_READ = 120
-CRAM_BYTES_PER_READ = 28
-BAM_BYTES_PER_READ = 100
-FASTQ_BYTES_PER_READ = 100
-# HG002 30x, #722: 2.95 MB SNP and 0.80 MB indel VCF.gz from a 670.5 MB BAM.
-# Leave several times the measured size, normalizing BAM/CRAM via disk_reads.
-_BCFTOOLS_VCF_BYTES_PER_READ = {"snp": 1.6, "indel": 0.4}
-# --reference-evidence gvcf, HG002 35x chr20 (#863): 7.8 MB from 19.5M reads.
-_BCFTOOLS_GVCF_BYTES_PER_READ = 2.0
-_BCFTOOLS_PART_HEADER_BYTES = 16 * 1024
-_BCFTOOLS_JOBS_PER_WORKER = 16
-# Long reads realigned with minimap2 -Y, which keeps every supplementary
-# record's full SEQ, QUAL and modification tags, per byte of input CRAM (#474).
-# HG002 ONT (PAO83395.pass.cram) onto hs38: the whole genome's sort spills
-# reached 2.8x by 12% of the input. A chr20 slice whose supplementary
-# alignments add 1.93x its bases, against 1.42-1.70x elsewhere, came to 3.35x
-# as spills and 1.9x as CRAM; scaled to a 1.55x genome, 2.7x and 1.5x. The
-# whole genome's CRAM came to 1.79x (#431), 5% above the 1.7x first budgeted
-# from the slice; BAM's slice-scaled 2.6x is raised by the same 5% (#690).
-LONG_READ_SPILL_PER_CRAM_BYTE = 3.0
-LONG_READ_OUTPUT_PER_CRAM_BYTE = {"CRAM": 1.8, "BAM": 2.75}
-LONG_READ_FASTQ_PER_CRAM_BYTE = 1.45
-# The same reads as level-6 BAM, bgzipped and plain tagged FASTQ.
-_LONG_READ_BYTES_PER_CRAM_BYTE = {"bam": 1.76, "gz": 1.39, "plain": 3.3}
-# samtools sort spills its whole -m x threads buffer into each file, at about
-# 0.65 of the records' decoded size, then merges every 32 files into a new one
-# beside them.
-_SORT_SPILL_PER_BUFFER_BYTE = 0.65
-_SORT_CONSOLIDATED_FILES = 33
-# DeepVariant postprocess_variants: each partition worker loads and sorts its
-# partition's call_variants records in memory. #173 (HG008 Ultima ~30x, hs38DH,
-# --cpus 5): DeepVariant's five partitions held 1.06-3.30 million records; the
-# densest, chr13-chr20 (700,430,089 bases), held 3,295,319 (4.70 per kb). Three
-# workers were OOM-killed mid-sort at 3.39-6.14 GB anonymous RSS, below their peaks.
-DV_RECORDS_PER_BASE = 4.75e-3
-DV_BYTES_PER_RECORD = 2048
-DV_WORKER_BASE_BYTES = 768 * 1024**2
-DV_MAX_PARTITIONS = 128
-# wgse-deepvariant: #647 measured 12.9 GB inference footprint at batch 1024.
-# #721, 0.1.1 on a 16 GiB M1, six threads, HG002 35x chr20: 6.56 GB
-# inference footprint at batch 512; 0.84 GB workspace from a 1.09 GB BAM.
-# The 0.1.0 whole-genome run peaked at 1.62/2.24/3.70 GB stage RSS
-# (make/infer/postprocess); batch-512 Metal inference footprint was 5.26 GB,
-# with 17.3 GB workspace from a 46.0 GB BAM. The batch-512 RAM envelope is
-# 7 GiB for inference (1 GiB base + 512 * 12 MiB) + 1 GiB driver headroom.
-# The allowances below remain conservative; 0.1.1 WGS is not yet measured.
-# postprocess_variants keeps the run's records serialized (~0.6 B/base) and
-# parses one contig at a time (~10 B/base). The 0.8 temporary bytes/input byte
-# allowance is shared by regional and whole-genome runs; chr20 needs a larger
-# ratio than the measured whole genome.
-# On Linux (#719) call_variants peaked at 1.5 GiB at batch 256,
-# on CUDA or the CPU: within the Mac's estimate.
-NATIVE_DV_BASE_BYTES = GIB
-NATIVE_DV_THREAD_BYTES = GIB // 4
-NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE = 12 * 1024**2
-NATIVE_DV_RECORD_BYTES_PER_BASE = 0.6
-NATIVE_DV_CONTIG_BYTES_PER_BASE = 10.0
-NATIVE_DV_EXAMPLES_PER_INPUT_BYTE = 0.8
-# #739: for ONT_R104, postprocess_variants first merges every read's phase in
-# each region (282,000 records for HG002 ONT chr20); 48 times that, a whole
-# genome's worth, took 4.2 GiB, about 0.055 bytes per byte of its 81 GB CRAM.
-NATIVE_DV_PHASE_MERGE_BYTES_PER_INPUT_BYTE = 0.06
-# --reference-evidence gvcf (#863): wgse-deepvariant's postprocess_variants
-# keeps every contig's calls until it writes the gVCF (patch 0005). HG002 35x
-# Illumina chr20+chr22 peaked at 0.94 GiB with the gVCF and 0.81 without;
-# adding chr22 to chr20 added 3.5 B/base beyond the serialized records. Allow
-# 5 (the 4.75 per kb density above, against 3.3 measured) for every called
-# base. Its make_examples' gVCF records took 0.26 more temporary bytes per
-# input byte (285 MiB from a 1.09 GB BAM), the published gVCF 1.9% of the
-# input (20.8 MB for chr20; ~1 GB for a 30x genome).
-NATIVE_DV_GVCF_BYTES_PER_BASE = 5.0
-NATIVE_DV_GVCF_TEMPORARY_PER_INPUT_BYTE = 0.4
-DV_GVCF_PER_INPUT_BYTE = 0.05
-# GATK's gVCF with GQ bands 10,20,30,60 (#863): 2.6% of HG002 35x chr20's
-# BAM; 3% of its bytes at the 80 BAM bytes per read disk_reads infers.
-GATK_GVCF_BYTES_PER_READ = 0.03 * 80
-
-
-@dataclass(frozen=True)
-class ResourceEstimate:
-    resource: str
-    estimated_bytes: int | None
-    available_bytes: int | None
-    components: dict[str, int]
-    paths: tuple[str, ...] = ()
-
-    @property
-    def status(self) -> str:
-        if self.estimated_bytes is None or self.available_bytes is None:
-            return "UNKNOWN"
-        return "OK" if self.estimated_bytes <= self.available_bytes else "LOW"
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "resource": self.resource,
-            "estimated_bytes": self.estimated_bytes,
-            "available_bytes": self.available_bytes,
-            "status": self.status,
-            "components": dict(self.components),
-            "paths": list(self.paths),
-        }
-
-
-@dataclass(frozen=True)
-class PreflightEstimate:
-    operation: Operation
-    resources: tuple[ResourceEstimate, ...]
-    notes: tuple[str, ...]
-
-    def to_dict(self) -> dict[str, object]:
-        """Versioned JSON-compatible data, without executing any external tool."""
-        return {
-            "schema_version": 1,
-            "operation": self.operation,
-            "resources": [resource.to_dict() for resource in self.resources],
-            "notes": list(self.notes),
-        }
-
-
-@dataclass(frozen=True)
-class PostprocessPlan:
-    """DeepVariant postprocess_variants workers (--cpus) and --num_partitions."""
-
-    cpus: int
-    partitions: int
-    worker_bytes: int
-    fits: bool | None
-
-    @property
-    def peak_bytes(self) -> int:
-        return self.cpus * self.worker_bytes
-
-
-def dv_calling_regions(
-    lengths: dict[str, int], region: str | None
-) -> list[tuple[str, int, int]] | None:
-    """DeepVariant's calling regions in reference order; None without lengths."""
-    if not lengths:
-        return None
-    if not region:
-        return [(contig, 0, length) for contig, length in lengths.items()]
-    selected = selected_intervals(region, lengths)
-    return [(c, start, end) for c in lengths for start, end in selected.get(c, ())]
-
-
-def dv_partition_bases(
-    regions: Sequence[tuple[str, int, int]], partitions: int
-) -> list[int] | None:
-    """Bases per partition from DeepVariant 1.9+'s partition_calling_regions.
-
-    None when DeepVariant itself would fail: fewer bases than partitions, or a
-    single oversized piece left to split.
-    """
-    total = sum(end - start for _, start, end in regions)
-    size = total // partitions
-    if size < 1:
-        return None
-    pieces = [
-        min(end, at + size) - at
-        for _, start, end in regions
-        for at in range(start, end, size)
-    ]
-    prefix = [0]
-    for piece in pieces:
-        prefix.append(prefix[-1] + piece)
-
-    def bases(group: tuple[int, int]) -> int:
-        return prefix[group[1]] - prefix[group[0]]
-
-    # Groups are contiguous [first, last) piece ranges, closed once they exceed size.
-    groups: list[tuple[int, int]] = []
-    first = 0
-    for index in range(len(pieces)):
-        if index > first and prefix[index] - prefix[first] > size:
-            groups.append((first, index))
-            first = index
-    groups.append((first, len(pieces)))
-    while len(groups) < partitions:
-        groups.sort(key=bases)
-        first, last = groups.pop()
-        middle = first + (last - first) // 2
-        if middle == first:
-            return None
-        groups += [(first, middle), (middle, last)]
-    return [bases(group) for group in sorted(groups)]
-
-
-def dv_postprocess_worker_bytes(bases: int) -> int:
-    records = math.ceil(bases * DV_RECORDS_PER_BASE)
-    return DV_WORKER_BASE_BYTES + records * DV_BYTES_PER_RECORD
-
-
-def plan_dv_postprocess(
-    regions: Sequence[tuple[str, int, int]],
-    threads: int,
-    available: int | None,
-    partitions: bool = True,
-) -> PostprocessPlan:
-    """Bound postprocess_variants' in-memory partition sorts by available RAM.
-
-    DeepVariant's default is ``threads`` workers over as many partitions. If
-    that does not fit beside 1 GiB of driver headroom, keep the most workers
-    and add the fewest partitions that make their largest partitions fit.
-    Without known RAM the default is kept (``fits`` None); when one worker
-    cannot fit, the plan is the smallest one-worker plan with ``fits`` False.
-    Without ``partitions`` (DeepVariant before 1.9 has no --num_partitions),
-    only the workers, and so the partitions with them, are reduced.
-    """
-    workers: dict[int, int | None] = {}
-
-    def worker(partitions: int) -> int | None:
-        if partitions not in workers:
-            sizes = dv_partition_bases(regions, partitions)
-            workers[partitions] = (
-                None if sizes is None else dv_postprocess_worker_bytes(max(sizes))
-            )
-        return workers[partitions]
-
-    default = worker(threads)
-    if default is None:
-        # DeepVariant runs (or fails) as it would have; keep its default.
-        total = sum(end - start for _, start, end in regions)
-        return PostprocessPlan(
-            threads, threads, dv_postprocess_worker_bytes(total), None
-        )
-    if available is None:
-        return PostprocessPlan(threads, threads, default, None)
-    budget = available - GIB
-    limit = max(DV_MAX_PARTITIONS, threads)
-    for cpus in range(threads, 0, -1):
-        for count in range(cpus, (limit if partitions else cpus) + 1):
-            need = worker(count)
-            if need is not None and cpus * need <= budget:
-                return PostprocessPlan(cpus, count, need, True)
-    smallest = min(
-        range(1, (limit if partitions else 1) + 1),
-        key=lambda count: worker(count) or math.inf,
-    )
-    return PostprocessPlan(1, smallest, worker(smallest) or default, False)
-
-
-def _disk_space(path: str) -> tuple[object, int | None]:
-    existing = Path(path).expanduser().resolve()
-    while not existing.exists() and existing.parent != existing:
-        existing = existing.parent
-    try:
-        return existing.stat().st_dev, shutil.disk_usage(existing).free
-    except OSError:
-        return str(existing), None
-
-
-def _input_size(paths: Sequence[str]) -> int | None:
-    try:
-        if not paths or any(not Path(path).is_file() for path in paths):
-            return None
-        return sum(Path(path).stat().st_size for path in dict.fromkeys(paths))
-    except OSError:
-        return None
-
-
-@dataclass(frozen=True)
-class LongReadDisk:
-    """Peak bytes of a long-read minimap2 alignment: the sorter's spills, the
-    sorted output and, when kept, the tagged FASTQ.gz extracted from a BAM/CRAM."""
-
-    spill: int
-    output: int
-    fastq: int
-
-
-def long_read_cram_bytes(input_path: str, input_bytes: int) -> float:
-    """The size of long reads' ``input_bytes`` as CRAM."""
-    name = input_path.lower()
-    kind = "cram" if name.endswith(".cram") else "bam" if name.endswith(".bam") else ""
-    if not kind:
-        # Read files are gzip/BGZF compressed whatever their names.
-        try:
-            with open(input_path, "rb") as handle:
-                kind = "gz" if handle.read(2) == b"\x1f\x8b" else "plain"
-        except OSError:
-            kind = "gz" if name.endswith((".gz", ".bgz", ".bgzf")) else "plain"
-    return max(0, input_bytes) / _LONG_READ_BYTES_PER_CRAM_BYTE.get(kind, 1)
-
-
-def long_read_disk(
-    input_path: str, input_bytes: int, output_format: str, sort_buffer_bytes: float
-) -> LongReadDisk:
-    """Scale by the input's size, not by short-read per-read sizes: one long
-    read takes tens of kilobytes. ``sort_buffer_bytes`` is -m times threads."""
-    cram = long_read_cram_bytes(input_path, input_bytes)
-    spill = cram * LONG_READ_SPILL_PER_CRAM_BYTE
-    merging = _SORT_CONSOLIDATED_FILES * sort_buffer_bytes * _SORT_SPILL_PER_BUFFER_BYTE
-    return LongReadDisk(
-        math.ceil(spill + min(spill, merging)),
-        math.ceil(cram * LONG_READ_OUTPUT_PER_CRAM_BYTE.get(output_format, 2.6)),
-        math.ceil(cram * LONG_READ_FASTQ_PER_CRAM_BYTE),
-    )
-
-
-def bcftools_batches(contigs: dict[str, int], workers: int) -> list[dict[str, int]]:
-    """Consecutive contigs grouped into the same jobs as the calling pipeline."""
-    limit = max(1, sum(contigs.values()) // (workers * _BCFTOOLS_JOBS_PER_WORKER))
-    batches: list[dict[str, int]] = []
-    batch: dict[str, int] = {}
-    for name, length in contigs.items():
-        if length >= limit:
-            batches += [batch] if batch else []
-            batches.append({name: length})
-            batch = {}
-            continue
-        batch[name] = length
-        if sum(batch.values()) >= limit:
-            batches.append(batch)
-            batch = {}
-    return batches + ([batch] if batch else [])
-
-
-def estimate_resources(
-    operation: Operation,
-    *,
-    input_paths: Sequence[str],
-    output_dir: str,
-    reference: str | None = None,
-    threads: str = "1",
-    alignment_threads: str | None = None,
-    memory: str = "512M",
-    aligner: str = "bwa",
-    preset: str | None = None,
-    reads: int | None = None,
-    platform: str | None = None,
-    read_length: float | None = None,
-    output_format: str = "BAM",
-    samblaster: bool = True,
-    extract_fastq: bool = False,
-    fastq_dir: str | None = None,
-    temp_dir: str | None = None,
-    gatk_staging_dir: str | None = None,
-    region: str | None = None,
-    duplicate_marking: Literal["samblaster", "markdup", "gatk-flow"] | None = None,
-    parallel: bool = False,
-    gatk_workers: int = 1,
-    additional_ram_bytes: int = 0,
-    gpu_bytes: int = 0,
-    dense_sa_bytes: int = 0,
-    inference_batch_size: int = 1024,
-    deepvariant_model: str = "WGS",
-    postprocess_plan: PostprocessPlan | None = None,
-    available_ram: int | None = None,
-    deepvariant_native: bool = False,
-    bcftools_contigs: dict[str, int] | None = None,
-    alignment_header: str | None = None,
-    staged: bool = False,
-    keep_fastq: bool = False,
-    retire_fastqs: tuple[str, ...] = (),
-    staged_workspace: str | None = None,
-    reference_evidence: bool = False,
-) -> PreflightEstimate:
-    """Estimate a resolved command without creating files or running tools.
-
-    ``bcftools_contigs`` is the caller's resolved parallel plan (empty for a
-    serial fallback); None conservatively infers it from the reference index.
-    ``alignment_header`` helps budget full headers without launching metadata
-    tools in this read-only API. ``reference_evidence`` adds the disk of
-    ``vcf snp``/``vcf indel``'s gVCF and its per-contig parts, GATK's gVCF
-    and its partition copies, or DeepVariant's gVCF and the memory and work
-    it takes.
-
-    ``reads`` counts individual reads, not pairs. Callers may provide a cheap
-    FASTQ sample/indexed count. Otherwise disk uses a conservative byte-size
-    fallback; alignment RAM retains the D3 model's explicit unknown-count budget.
-    Regional operations retain whole-input disk bounds, not guessed coverage.
-    Callers that already planned DeepVariant's postprocess_variants pass that
-    ``postprocess_plan`` and the ``available_ram`` it was sized against (for
-    example capped by Docker's VM); otherwise both are derived here.
-    """
-    count = int(threads)
-    if (
-        count < 1
-        or gatk_workers < 1
-        or (reads is not None and reads < 0)
-        or additional_ram_bytes < 0
-        or inference_batch_size < 1
-    ):
-        raise ValueError(
-            "threads/workers/batch size must be positive and reads/additional RAM nonnegative"
-        )
-    amount, unit = parse_memory(memory)
-    sort_buffer = count * amount * (GIB if unit == "G" else 1024**2)
-    sort_memory = math.ceil(sort_buffer * 1.25)
-    size = _input_size(input_paths)
-    cram_input = bool(input_paths) and input_paths[0].lower().endswith(".cram")
-    bam_input = bool(input_paths) and input_paths[0].lower().endswith(".bam")
-    notes = [
-        "Conservative estimates, not allocations or hard limits; existing inputs are excluded."
-    ]
-    if region:
-        notes.append("Regional disk estimates use the whole input as an upper bound.")
-    long_read = (
-        long_read_disk(input_paths[0], size, output_format, sort_buffer)
-        if operation in {"align", "realign"}
-        and aligner == "minimap2"
-        and preset not in {None, "sr"}
-        and size is not None
-        else None
-    )
-    disk_reads = reads
-    if disk_reads is None and size is not None and long_read is None:
-        bytes_per_read = 12 if cram_input else (80 if bam_input else 70)
-        disk_reads = math.ceil(size / bytes_per_read)
-        notes.append(
-            "Disk read count inferred from input bytes; compression and read lengths vary."
-        )
-    available_memory: int | None = available_ram
-    if available_memory is None:
-        try:
-            available_memory = alignment_memory.available_memory()
-        except OSError:
-            available_memory = None
-    demands: list[tuple[str, str, int | None]] = []
-    staged_phases: list[list[tuple[str, str, int | None]]] | None = None
-    memory_components: dict[str, int]
-    output: int | None
-    temporary: int | None = 0
-    if operation in {"align", "realign"}:
-        if not reference:
-            notes.append(
-                "Reference unresolved: RAM uses the human-reference fallback; reference-index disk is unknown."
-            )
-        mapping = alignment_memory.estimate_mapping_memory(
-            reference,
-            aligner,
-            threads=threads,
-            alignment_threads=alignment_threads,
-            memory=memory,
-            samblaster=samblaster and duplicate_marking != "gatk-flow",
-            reads=reads,
-            platform=platform,
-            read_length=read_length,
-            preset=preset,
-            input_bytes=size if aligner == "minimap2" else None,
-            gpu_bytes=gpu_bytes,
-            dense_sa_bytes=dense_sa_bytes,
-            staged=staged,
-        )
-        if gpu_bytes:
-            notes.append(
-                f"Working memory includes {gpu_bytes / 1024**3:.1f} GiB for the "
-                "aligner's GPU backend (Metal or CUDA)."
-            )
-        if dense_sa_bytes:
-            notes.append(
-                f"Index memory includes {dense_sa_bytes / 1024**3:.1f} GiB for "
-                "wgse-bwa's dense suffix-array file."
-            )
-        if aligner == "minimap2":
-            notes.append(
-                f"minimap2 builds its {preset or 'largest (sr)'} index in memory each "
-                "run; working memory is its build peak or its mapping batches."
-            )
-        if aligner == "bwa":
-            length = (
-                read_length
-                if read_length is not None
-                else (300 if platform == "ultima" else 150)
-            )
-            notes.append(
-                f"BWA working memory uses {platform or 'short-read'} / {length:g} bp "
-                f"({'sampled/provided' if read_length is not None else 'fallback'}), "
-                "fixed -K 100000000; thread budgets follow the resolved stage plan."
-            )
-        memory_components = dict(zip(mapping._fields, mapping, strict=True))
-        if additional_ram_bytes:
-            memory_components["collation"] = additional_ram_bytes
-            notes.append(
-                "Streamed FASTQ collation overlaps the alignment pipeline; its "
-                "spills drain as the sorter's grow, within the temporary estimate."
-            )
-        if reads is None and (aligner != "minimap2" or samblaster):
-            notes.append(
-                "Alignment RAM uses the D3 680-million-read unknown-count fallback."
-            )
-        output = (
-            None
-            if disk_reads is None
-            else disk_reads
-            * (CRAM_BYTES_PER_READ if output_format == "CRAM" else BAM_BYTES_PER_READ)
-        )
-        temporary = None if disk_reads is None else disk_reads * SORT_BYTES_PER_READ
-        if staged and disk_reads is not None:
-            scale = max(1, (read_length or 150) / 150)
-            raw = math.ceil(disk_reads * 108 * scale)
-            parts = math.ceil(disk_reads * 115 * scale)
-            merge_group = min(parts, math.ceil(64 * 2_000_000 * 115 * scale))
-            scratch = 2 * GIB
-            temporary = raw + parts + scratch
-            place = temp_dir or output_dir
-            fq: list[tuple[str, str, int | None]] = (
-                [
-                    (
-                        fastq_dir or output_dir,
-                        "extracted_fastqs",
-                        disk_reads * FASTQ_BYTES_PER_READ,
-                    )
-                ]
-                if extract_fastq
-                else []
-            )
-            staged_retained = fq if keep_fastq else []
-            staged_phases = [
-                [*fq, (place, "raw_alignment", raw)],
-                [
-                    *staged_retained,
-                    (place, "raw_alignment", raw),
-                    (place, "sorted_parts", parts),
-                    (place, "rolling_sort", scratch),
-                ],
-                [
-                    *staged_retained,
-                    (place, "sorted_parts", parts),
-                    (place, "merge_generation", merge_group),
-                ],
-                [
-                    *staged_retained,
-                    (place, "sorted_parts", parts),
-                    (output_dir, "output", output),
-                ],
-            ]
-            if extract_fastq:
-                from wgsextract_cli.core.warnings import get_free_space_needed
-
-                spill, final = get_free_space_needed(
-                    size or 0, sort_type="Name", is_cram=cram_input, reads=disk_reads
-                )
-                staged_phases.insert(
-                    0,
-                    [
-                        (place, "extraction_collate", spill * GIB),
-                        (fastq_dir or output_dir, "extracted_fastqs", final * GIB),
-                    ],
-                )
-            if staged_workspace:
-                work = Path(staged_workspace)
-                checkpoint = work / "parts.json"
-                complete = False
-                if checkpoint.is_file():
-                    try:
-                        saved_parts = json.loads(checkpoint.read_text())
-                        complete = (
-                            isinstance(saved_parts, dict)
-                            and saved_parts.get("complete") is True
-                        )
-                    except (OSError, ValueError):
-                        pass
-                if complete:
-                    staged_phases = [
-                        fq,
-                        [*staged_retained, (place, "merge_generation", merge_group)],
-                        [*staged_retained, (output_dir, "output", output)],
-                    ]
-                elif (work / "alignment.json").is_file() and (
-                    work / "unsorted.bam"
-                ).is_file():
-                    credit = (work / "unsorted.bam").stat().st_size
-                    for phase in staged_phases:
-                        phase.append((str(work), "existing_checkpoint", -credit))
-            for path in retire_fastqs:
-                if Path(path).is_file():
-                    for phase in staged_phases[1:]:
-                        phase.append(
-                            (path, "retired_fastqs", -Path(path).stat().st_size)
-                        )
-            notes.append(
-                "Staged Metal peaks are per phase, not concurrent sums: alignment "
-                "has no samblaster/sort; compressed marked parts replace the raw BAM "
-                "before final merge. Generated FASTQs retire after alignment unless kept. "
-                "Disk allows 108/115 bytes per short input read for raw/marked checkpoints "
-                "and 2 GiB rolling scratch (HG002 35x calibration)."
-            )
-            from wgsextract_cli.core.staged_alignment import safety_reserve
-
-            reserve = safety_reserve(reads)
-            for phase in staged_phases:
-                devices: set[object] = set()
-                for path in (place, output_dir):
-                    device, _ = _disk_space(path)
-                    if device not in devices:
-                        phase.append((path, "disk_safety_reserve", reserve))
-                        devices.add(device)
-        if long_read is not None:
-            output, temporary = long_read.output, long_read.spill
-            notes.append(
-                "Long-read disk scales with the input's size: minimap2 -Y keeps "
-                "each supplementary alignment's full read and tags."
-            )
-        if duplicate_marking == "gatk-flow":
-            if disk_reads is not None:
-                retained = (
-                    disk_reads
-                    * BAM_BYTES_PER_READ
-                    * (2 if output_format == "CRAM" else 1)
-                )
-                temporary = max(temporary or 0, retained)
-            notes.append(
-                "GATK flow duplicate marking includes retained sorted/marked BAMs."
-            )
-        if extract_fastq:
-            demands.append(
-                (
-                    fastq_dir or output_dir,
-                    "extracted_fastqs",
-                    long_read.fastq
-                    if long_read is not None
-                    else None
-                    if disk_reads is None
-                    else disk_reads * FASTQ_BYTES_PER_READ,
-                )
-            )
-        index_suffixes = {
-            "bwa": (".bwt", ".sa", ".pac", ".ann", ".amb"),
-            "bwa-mem2": (".0123", ".bwt.2bit.64", ".pac", ".ann", ".amb"),
-            "bwa-mem3": (".bwt.2bit.64", ".pac", ".ann", ".amb"),
-            "wgse-bwa-mem2": (".bwt.2bit.64", ".pac", ".ann", ".amb"),
-        }
-        if reference and aligner in index_suffixes:
-            suffixes = index_suffixes[aligner]
-            if not all(Path(reference + suffix).is_file() for suffix in suffixes):
-                demands.append(
-                    (
-                        str(Path(reference).parent),
-                        "reference_indexes",
-                        (
-                            alignment_memory.estimate_mapping_memory(
-                                reference,
-                                aligner,
-                                threads=threads,
-                                memory=memory,
-                                samblaster=samblaster,
-                                reads=reads,
-                            ).index_resident
-                            if staged
-                            else mapping.index_resident
-                        )
-                        * 2,
-                    )
-                )
-                notes.append(
-                    "Missing reference indexes include an additional build-space allowance."
-                )
-    elif operation == "sort":
-        memory_components = {"sort": sort_memory, "overhead": GIB // 4}
-        output = (
-            None
-            if disk_reads is None
-            else disk_reads
-            * (CRAM_BYTES_PER_READ if output_format == "CRAM" else BAM_BYTES_PER_READ)
-        )
-        temporary = None if disk_reads is None else disk_reads * SORT_BYTES_PER_READ
-    elif operation in {"to-bam", "to-cram"}:
-        memory_components = {"codecs": (count + 1) * 64 * 1024**2, "overhead": GIB // 4}
-        output = (
-            None
-            if disk_reads is None
-            else disk_reads
-            * (CRAM_BYTES_PER_READ if operation == "to-cram" else BAM_BYTES_PER_READ)
-        )
-    elif operation == "deepvariant" and deepvariant_native:
-        calling = dv_calling_regions(
-            read_fai_lengths(reference) if reference else {}, region
-        )
-        contig_bases: dict[str, int] = {}
-        for contig, start, end in calling or []:
-            contig_bases[contig] = contig_bases.get(contig, 0) + end - start
-        memory_components = {
-            "largest_sequential_stage": max(
-                NATIVE_DV_BASE_BYTES + count * NATIVE_DV_THREAD_BYTES,
-                NATIVE_DV_BASE_BYTES
-                + inference_batch_size * NATIVE_DV_INFERENCE_BYTES_PER_EXAMPLE,
-                NATIVE_DV_BASE_BYTES
-                + math.ceil(
-                    sum(contig_bases.values())
-                    * (
-                        NATIVE_DV_RECORD_BYTES_PER_BASE
-                        + (NATIVE_DV_GVCF_BYTES_PER_BASE if reference_evidence else 0)
-                    )
-                    + max(contig_bases.values(), default=0)
-                    * NATIVE_DV_CONTIG_BYTES_PER_BASE
-                ),
-                NATIVE_DV_BASE_BYTES
-                + (
-                    math.ceil((size or 0) * NATIVE_DV_PHASE_MERGE_BYTES_PER_INPUT_BYTE)
-                    if deepvariant_model == "ONT_R104"
-                    else 0
-                ),
-            ),
-            "driver_headroom": GIB,
-        }
-        notes.append(
-            "wgse-deepvariant runs make_examples, call_variants (memory set "
-            "by --batch-size) and postprocess_variants (one contig at a "
-            "time) one after another: allow for the largest."
-        )
-        if reference_evidence:
-            notes.append(
-                "With the gVCF, wgse-deepvariant's postprocess_variants keeps "
-                "every contig's calls until it writes it: ~5 more bytes per "
-                "called base (~15 GiB for a genome)."
-            )
-        output = None if size is None else math.ceil(size / 10)
-        temporary = (
-            None
-            if size is None
-            else math.ceil(
-                size
-                * (
-                    NATIVE_DV_EXAMPLES_PER_INPUT_BYTE
-                    + (
-                        NATIVE_DV_GVCF_TEMPORARY_PER_INPUT_BYTE
-                        if reference_evidence
-                        else 0
-                    )
-                )
-            )
-        )
-    elif operation == "deepvariant":
-        arm64 = is_arm64_docker_host()
-        inference = 2 * GIB + math.ceil(
-            (30 if arm64 else 14) * GIB * inference_batch_size / 1024
-        )
-        sharded = count * (2 if arm64 else 1) * GIB
-        # run_deepvariant postprocesses WES in one sequential pass (--cpus 0).
-        regions = (
-            None
-            if deepvariant_model == "WES"
-            else dv_calling_regions(
-                read_fai_lengths(reference) if reference else {}, region
-            )
-        )
-        plan = postprocess_plan or (
-            None
-            if regions is None
-            else plan_dv_postprocess(regions, count, available_memory)
-        )
-        memory_components = {
-            "largest_sequential_stage": max(
-                inference, sharded, plan.peak_bytes if plan else 0
-            ),
-            "driver_headroom": GIB,
-        }
-        notes.append(
-            "DeepVariant WGS uses sequential stages: allow for the largest of "
-            "TensorFlow inference, concurrent make_examples shards and "
-            "postprocess_variants partition sorts, not their sum. "
-            "Reducing --threads does not remove the default inference memory floor; "
-            "other models/checkpoints may require more RAM."
-        )
-        if regions is None and deepvariant_model != "WES":
-            notes.append(
-                "postprocess_variants RAM is unknown without a reference .fai."
-            )
-        elif plan is not None:
-            notes.append(
-                f"postprocess_variants: {plan.cpus} workers over {plan.partitions} "
-                f"partitions, up to {plan.worker_bytes / GIB:.2f} GiB each "
-                "(calibrated on 30x Ultima call density)."
-            )
-        output = None if size is None else math.ceil(size / 10)
-        temporary = size
-        notes.append(
-            "DeepVariant temporary disk allows one input-sized pileup/intermediate "
-            "working set; actual coverage and candidate density can change it."
-        )
-    else:
-        if operation == "gatk":
-            memory_components = {"caller": gatk_workers * GATK_WORKER_BYTES}
-            notes.append(
-                "GATK RAM is a heuristic; Java heap and flow-mode settings can change its peak."
-            )
-            if cram_input and region:
-                demands.append(
-                    (
-                        gatk_staging_dir or output_dir,
-                        "regional_bam",
-                        None if disk_reads is None else disk_reads * BAM_BYTES_PER_READ,
-                    )
-                )
-        else:
-            contigs = read_fai_lengths(reference) if reference else {}
-            selected = contigs if bcftools_contigs is None else bcftools_contigs
-            unknown_parallel = (
-                parallel
-                and count > 1
-                and not region
-                and bcftools_contigs is None
-                and not contigs
-            )
-            active = parallel and count > 1 and not region and len(selected) > 1
-            batches = (
-                bcftools_batches(selected, min(count, len(selected))) if active else []
-            )
-            workers = 1
-            if unknown_parallel:
-                workers = count
-            elif batches:
-                workers = min(count, len(batches))
-            memory_components = {"callers": workers * GIB, "overhead": GIB // 4}
-            notes.append(
-                "bcftools RAM allows 1 GiB per active contig worker plus overhead."
-            )
-        if operation in _BCFTOOLS_VCF_BYTES_PER_READ:
-            reference_header = "".join(
-                f"##contig=<ID={name},length={length}>\n"
-                for name, length in contigs.items()
-            ).encode()
-            input_header = (alignment_header or "").encode()
-            # Include the complete contig dictionary, not a fixed allowance
-            # per shard. Extra room covers INFO/FORMAT declarations and BCF IDs.
-            raw_header = (
-                2 * len(reference_header)
-                + len(input_header)
-                + 4 * _BCFTOOLS_PART_HEADER_BYTES
-            )
-            compressed_header = (
-                2 * len(zlib.compress(reference_header + input_header))
-                + _BCFTOOLS_PART_HEADER_BYTES
-            )
-            output = (
-                None
-                if disk_reads is None
-                else max(
-                    64 * 1024,
-                    compressed_header,
-                    math.ceil(disk_reads * _BCFTOOLS_VCF_BYTES_PER_READ[operation]),
-                )
-            )
-            temporary = None if unknown_parallel else 0
-            if unknown_parallel:
-                notes.append(
-                    "Parallel bcftools temporary disk is unknown without a "
-                    "reference index or resolved calling contigs."
-                )
-            if batches:
-                replay = operation == "snp"
-                compressed_copies = len(batches) + (3 if replay else 1)
-                split_contigs = sum(len(batch) for batch in batches if len(batch) > 1)
-                # Split batches, window splices, whole-contig fallback splices,
-                # and the reheadering text can coexist until final publication.
-                raw_copies = split_contigs + 2 * len(selected) + 1 if replay else 0
-                requests = sum(len(name.encode()) + 32 for name in selected)
-                temporary = (
-                    None
-                    if output is None
-                    else (8 if replay else 2) * output
-                    + compressed_copies * compressed_header
-                    + raw_copies * raw_header
-                    + requests
-                )
-                notes.append(
-                    f"bcftools budgets {len(batches)} compressed batches and "
-                    f"{raw_copies} possible full uncompressed replay headers "
-                    f"({raw_header} bytes each)."
-                )
-            if reference_evidence:
-                gvcf = (
-                    None
-                    if disk_reads is None
-                    else max(
-                        64 * 1024,
-                        math.ceil(disk_reads * _BCFTOOLS_GVCF_BYTES_PER_READ),
-                    )
-                )
-                # Per-contig parts coexist with the merged gVCF until it's published.
-                demands += [
-                    (output_dir, "reference_evidence", gvcf),
-                    (temp_dir or output_dir, "reference_evidence_parts", gvcf),
-                ]
-            notes.append(
-                "bcftools compressed VCF disk uses the HG002 30x envelope "
-                "(BAM/CRAM read-count normalization); serial calling writes "
-                "directly to output with no parts. Depth, variant burden and "
-                "compression vary."
-            )
-        else:
-            output = None if size is None else math.ceil(size / 10)
-            temporary = (
-                None if output is None else output * (2 if operation == "gatk" else 1)
-            )
-    if operation == "deepvariant" and reference_evidence:
-        gvcf_bytes = None if size is None else math.ceil(size * DV_GVCF_PER_INPUT_BYTE)
-        demands.append((output_dir, "reference_evidence", gvcf_bytes))
-    if operation == "gatk" and reference_evidence:
-        gvcf_bytes = (
-            None
-            if disk_reads is None
-            else math.ceil(disk_reads * GATK_GVCF_BYTES_PER_READ)
-        )
-        demands += reference_evidence_demands(
-            output_dir, gatk_staging_dir, gvcf_bytes, GVCF_COPIES
-        )
-    indexes = None if output is None else max(64 * 1024, math.ceil(output / 100))
-    if operation == "gatk" and gatk_workers > 1:
-        # Shards coexist with the gathered output.
-        demands += [
-            (gatk_staging_dir or output_dir, "scatter_parts", output),
-            (gatk_staging_dir or output_dir, "scatter_indexes", indexes),
-        ]
-    final_demands = [
-        (output_dir, "output", output),
-        (output_dir, "indexes", indexes),
-        (
-            temp_dir or output_dir,
-            "temporary",
-            temporary,
-        ),
-    ]
-    if staged_phases is None:
-        demands += final_demands
-    else:
-        demands = [entry for entry in demands if entry[1] != "extracted_fastqs"]
-        for phase in staged_phases:
-            phase.append((output_dir, "indexes", indexes))
-    grouped: dict[object, tuple[int | None, dict[str, int], list[str], bool]] = {}
-    for path, component, needed in demands:
-        if needed == 0:
-            continue
-        device, available = _disk_space(path)
-        if device not in grouped:
-            grouped[device] = (available, {}, [], False)
-        old_available, components, paths, unknown = grouped[device]
-        if path not in paths:
-            paths.append(path)
-        if needed is not None:
-            components[component] = components.get(component, 0) + needed
-        free = (
-            min(old_available, available)
-            if old_available is not None and available is not None
-            else None
-        )
-        grouped[device] = (free, components, paths, unknown or needed is None)
-    if staged_phases is not None:
-        for phase in staged_phases:
-            totals: dict[object, int | None] = {}
-            for path, _, needed in phase:
-                device, available = _disk_space(path)
-                if device not in grouped:
-                    grouped[device] = (available, {}, [], False)
-                old_available, components, paths, unknown = grouped[device]
-                if path not in paths:
-                    paths.append(path)
-                total = totals.get(device, 0)
-                totals[device] = (
-                    None if total is None or needed is None else total + needed
-                )
-                free = (
-                    min(old_available, available)
-                    if old_available is not None and available is not None
-                    else None
-                )
-                grouped[device] = (free, components, paths, unknown or needed is None)
-            for device, total in totals.items():
-                if total is not None:
-                    grouped[device][1]["staged_peak"] = max(
-                        grouped[device][1].get("staged_peak", 0), total
-                    )
-    resources = [
-        ResourceEstimate(
-            "memory",
-            sum(memory_components.values()),
-            available_memory,
-            memory_components,
-        )
-    ]
-    resources += [
-        ResourceEstimate(
-            "disk",
-            None if unknown else sum(components.values()),
-            available,
-            components,
-            tuple(paths),
-        )
-        for available, components, paths, unknown in grouped.values()
-    ]
-    if operation in {"align", "realign"} and not reference:
-        resources.append(ResourceEstimate("disk", None, None, {}))
-    return PreflightEstimate(operation, tuple(resources), tuple(notes))
-
-
-@dataclass(frozen=True)
-class GpuMemory:
-    """One GPU as nvidia-smi reports it; memory is None where it reports
-    none (N/A, as on unified-memory systems)."""
-
-    index: int
-    name: str
-    total_bytes: int | None
-    free_bytes: int | None
-
-
-@dataclass(frozen=True)
-class ParabricksNeed:
-    """Free GPU memory a Parabricks tool needs by default (``full``, or the
-    GPU's total less ``headroom`` for tools that size themselves from it) and
-    with its low-memory option (``floor``; tools without one need ``full``),
-    and the host RAM a whole genome needs either way (``host``), of which
-    ``host_floor`` is needed for any input."""
-
-    full: int
-    floor: int
-    host: int
-    option: str | None = None
-    headroom: int | None = None
-    host_floor: int | None = None
-
-
-# Parabricks 4.8 needs a GPU with 16 GB (a T4 reports 15360 MiB). Measured on
-# an RTX 3090 (24 GiB) with chr20 of a 30x genome (docs/resource_estimates.md):
-# fq2bam sizes its streams from the GPU's total memory and peaked at 21.5 GiB,
-# so a GPU that other programs share needs --low-memory, which peaked at
-# 13.5 GiB; DeepVariant peaked at 12.9 GiB and HaplotypeCaller at 17.2 GiB, or
-# 10.7 GiB with --htvc-low-memory. minimap2's 18 GB is NVIDIA's figure.
-# Host RAM peaked at 33 GiB for fq2bam (30 GiB in low-memory mode, which a
-# 24 GiB container limit kills either way), 24 GiB for DeepVariant and
-# 17 GiB for HaplotypeCaller; minimap2's is assumed to match fq2bam's. A whole
-# 30x genome's fq2bam peaked at 41 GiB, while sorting.
-PB_MIN_GPU_TOTAL = 15 * GIB
-PB_LOW_MEMORY_FLOOR = 14 * GIB
-PB_GPU_NEEDS = {
-    "fq2bam": ParabricksNeed(
-        PB_LOW_MEMORY_FLOOR,
-        PB_LOW_MEMORY_FLOOR,
-        41 * GIB,
-        "--low-memory",
-        headroom=2 * GIB,
-        host_floor=34 * GIB,
-    ),
-    "minimap2": ParabricksNeed(
-        18 * GIB, PB_LOW_MEMORY_FLOOR, 41 * GIB, "--low-memory", host_floor=34 * GIB
-    ),
-    "haplotypecaller": ParabricksNeed(
-        18 * GIB, 12 * GIB, 18 * GIB, "--htvc-low-memory"
-    ),
-    "deepvariant": ParabricksNeed(PB_LOW_MEMORY_FLOOR, PB_LOW_MEMORY_FLOOR, 25 * GIB),
-}
-# NVIDIA recommends 100 GB of host RAM for one or two GPUs, 196 GB for four
-# and 392 GB for eight (49 GB a GPU).
-PB_HOST_RECOMMENDED = 100 * 10**9
-PB_HOST_RECOMMENDED_PER_GPU = 49 * 10**9
-
-
-@dataclass(frozen=True)
-class ParabricksPlan:
-    """How a Parabricks tool fits the GPUs and the host: whether it needs its
-    low-memory option and what falls short."""
-
-    tool: str
-    gpus: tuple[GpuMemory, ...]
-    host_total: int
-    host_available: int
-
-    @property
-    def need(self) -> ParabricksNeed:
-        return PB_GPU_NEEDS[self.tool]
-
-    @property
-    def gpu_free(self) -> int | None:
-        """The least free memory of any GPU (pbrun uses them all), if known."""
-        free = [g.free_bytes for g in self.gpus if g.free_bytes is not None]
-        return min(free) if free and len(free) == len(self.gpus) else None
-
-    def default_need(self, gpu: GpuMemory) -> int:
-        """What the tool needs of this GPU without its low-memory option."""
-        if self.need.headroom is None or gpu.total_bytes is None:
-            return self.need.full
-        return max(self.need.full, gpu.total_bytes - self.need.headroom)
-
-    @property
-    def busy_gpu(self) -> GpuMemory | None:
-        """The GPU furthest below its default need, if any is; each GPU is
-        judged by its own reading, whatever the others report."""
-        short = [
-            g
-            for g in self.gpus
-            if g.free_bytes is not None and g.free_bytes < self.default_need(g)
-        ]
-        return min(
-            short,
-            key=lambda g: (g.free_bytes or 0) - self.default_need(g),
-            default=None,
-        )
-
-    @property
-    def low_memory(self) -> bool:
-        return self.need.option is not None and self.busy_gpu is not None
-
-    @property
-    def options(self) -> list[str]:
-        """The pbrun options this plan adds."""
-        return [self.need.option] if self.low_memory and self.need.option else []
-
-    def gpu_need(self, gpu: GpuMemory) -> int:
-        return self.need.floor if self.low_memory else self.default_need(gpu)
-
-    @property
-    def gpu_needed(self) -> int:
-        return max(
-            (self.gpu_need(g) for g in self.gpus),
-            default=self.need.floor if self.low_memory else self.need.full,
-        )
-
-    @property
-    def host_needed(self) -> int:
-        return self.need.host
-
-    @property
-    def host_minimum(self) -> int:
-        return self.need.host_floor or self.need.host
-
-    @property
-    def host_recommended(self) -> int:
-        return max(PB_HOST_RECOMMENDED, PB_HOST_RECOMMENDED_PER_GPU * len(self.gpus))
-
-    def shortfalls(self) -> list[str]:
-        """Why the tool can't run here, if it can't."""
-        problems = []
-        small = [
-            g
-            for g in self.gpus
-            if g.total_bytes is not None and g.total_bytes < PB_MIN_GPU_TOTAL
-        ]
-        short = [
-            g
-            for g in self.gpus
-            if g.free_bytes is not None and g.free_bytes < self.gpu_need(g)
-        ]
-        if small:
-            problems.append(
-                f"Parabricks needs a GPU with 16 GB of memory; GPU "
-                f"{small[0].index} has {(small[0].total_bytes or 0) / GIB:.1f} "
-                "GiB, so align or call on the CPU instead."
-            )
-        elif short:
-            gpu = min(short, key=lambda g: (g.free_bytes or 0) - self.gpu_need(g))
-            problems.append(
-                f"Parabricks {self.tool} needs {self.gpu_need(gpu) / GIB:.1f} GiB "
-                f"of free GPU memory{' even in low-memory mode' if self.low_memory else ''}"
-                f", but GPU {gpu.index} has only {(gpu.free_bytes or 0) / GIB:.1f} "
-                "GiB free: close the other programs using the GPU (see nvidia-smi)."
-            )
-        if self.host_total < self.host_minimum:
-            problems.append(
-                f"Parabricks {self.tool} needs at least {self.host_minimum / GIB:.0f} "
-                f"GiB of RAM, but this computer has {self.host_total / GIB:.1f} "
-                "GiB, so run it on the CPU instead."
-            )
-        return problems
-
-    def host_warning(self) -> str | None:
-        """Why the host's RAM may fall short this time, though it has enough."""
-        if (
-            self.host_available < self.host_needed
-            and self.host_minimum <= self.host_total
-        ):
-            return (
-                f"Parabricks {self.tool} needs about {self.host_needed / GIB:.0f} "
-                f"GiB of RAM, but only {self.host_available / GIB:.1f} GiB is "
-                "available: close other programs, or it may be killed partway."
-            )
-        return None
-
-    def estimate(self, operation: Operation) -> PreflightEstimate:
-        """Rows for report_resources: GPU and host memory."""
-        notes = [
-            f"Parabricks {self.tool} on {len(self.gpus)} GPU(s): "
-            + ", ".join(
-                f"{g.name} ({'unknown' if g.free_bytes is None else f'{g.free_bytes / GIB:.1f}'}"
-                f" GiB free)"
-                for g in self.gpus
-            )
-        ]
-        if self.low_memory:
-            notes.append(
-                f"Using {self.need.option}: less GPU memory is free than "
-                f"{self.tool}'s default needs."
-            )
-        if self.host_total < self.host_recommended:
-            notes.append(
-                f"NVIDIA recommends {self.host_recommended / 10**9:.0f} GB of RAM "
-                f"for {len(self.gpus) or 1} GPU(s); this host has "
-                f"{self.host_total / 10**9:.0f} GB."
-            )
-        return PreflightEstimate(
-            operation,
-            (
-                ResourceEstimate("gpu", self.gpu_needed, self.gpu_free, {}),
-                ResourceEstimate("memory", self.host_needed, self.host_available, {}),
-            ),
-            tuple(notes),
-        )
 
 
 def preflight_resources(
@@ -1580,7 +491,6 @@ CLAIR3_CPU_BYTES_PER_BASE = 2.0
 # their gathered copy and the published gVCF can coexist: three copies.
 CLAIR3_GVCF_TIME_FACTOR = {"clair3": 2.4, "clair3-gpu": 4.3}
 CLAIR3_GVCF_BYTES_PER_BASE = 0.35
-GVCF_COPIES = 3
 
 
 def estimate_vep_download(
@@ -1674,25 +584,57 @@ def estimate_clair3(
     )
 
 
-def estimate_imputation(*, reads: bool, threads: int, bases: int) -> PreflightEstimate:
-    """HG002 chr20 measurements (#621), scaled by selected reference bases.
+def estimate_imputation(
+    *,
+    reads: bool,
+    threads: int,
+    bases: int,
+    chunk_memory: Sequence[int] = (),
+    memory_budget: int | None = None,
+) -> PreflightEstimate:
+    """HG002 chr20 measurements (#621, #1118), scaled by selected reference bases.
 
-    Sequential chunks keep memory roughly constant; thread scaling of time
-    and extrapolation beyond chr20 are estimates, not measured genome runs.
+    GLIMPSE2 runs one single-threaded chunk per thread, as many at once as
+    ``memory_budget`` holds by the chunks' ``chunk_memory`` estimates; its
+    threads don't speed up a single sample's chunk. Beagle's threads do.
+    Extrapolation beyond chr20 is an estimate, not a measured genome run.
     """
     fraction = bases / 64_444_167
-    seconds = (450 if reads else 60) * fraction * 4 / max(1, threads)
-    tool = "GLIMPSE2" if reads else "Beagle"
-    memory = 4 * GIB if reads else 8 * GIB
+    jobs = max(1, threads)
+    if not reads:
+        seconds = 60 * fraction * 4 / jobs
+        return PreflightEstimate(
+            "impute",
+            (ResourceEstimate("memory", 8 * GIB, _available_memory(), {}),),
+            (
+                f"Beagle: estimated {seconds / 3600:.2f} h at {jobs} threads for "
+                f"{bases:,} reference bases (HG002 chr20 extrapolation).",
+                "Excludes one-time panel preparation (~10 min for chr20). Actual "
+                "runtime depends on hardware and panel.",
+            ),
+        )
+    memory = 4 * GIB
+    if chunk_memory:
+        largest = sorted(chunk_memory, reverse=True)
+        jobs = min(jobs, len(largest))
+        memory = sum(largest[:jobs])
+        if memory_budget is not None:
+            memory = max(largest[0], min(memory, memory_budget))
+            typical = largest[len(largest) // 2]
+            jobs = max(1, min(jobs, memory_budget // typical))
+    # chr20's chunks took 450 s one after another; side by side they slow
+    # each other a little (4.8x at 8 on chr20, its longest chunk last).
+    seconds = 450 * fraction * (1 + 0.05 * (jobs - 1)) / jobs
     return PreflightEstimate(
         "impute",
         (ResourceEstimate("memory", memory, _available_memory(), {}),),
         (
-            f"{tool}: estimated {seconds / 3600:.2f} h at {threads} threads "
-            f"for {bases:,} reference bases (HG002 chr20 extrapolation).",
+            f"GLIMPSE2: estimated {seconds / 3600:.2f} h running {jobs} chunks at "
+            f"once, one thread each, for {bases:,} reference bases (HG002 chr20 "
+            "extrapolation).",
             "Excludes one-time panel preparation (~10 min for chr20); "
-            "GLIMPSE2 whole autosomes ~5.5 h at 4 threads, ~2.8 h at 8. "
-            "Actual runtime depends on depth, hardware and panel.",
+            "GLIMPSE2 whole autosomes ~5.6 h one chunk at a time, ~1 h eight at "
+            "once. Actual runtime depends on depth, hardware and panel.",
         ),
     )
 

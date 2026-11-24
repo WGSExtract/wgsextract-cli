@@ -13,8 +13,14 @@ resource mapping. The viewer document and stylesheet are copied into `dist/web`,
 also an existing desktop resource. No Tauri shell configuration change is needed.
 
 Regenerate just the library with `npm run vendor-igv` in `gui/app`.
-The script copies the upstream build and licence and removes only its source-map
-URL. The bundled build includes the CRAM decoder; no CDN, remote worker or WASM
+The script copies the upstream build and licence, removes its source-map URL,
+and applies the fail-closed `scripts/patch-igv-viewports.mjs` lifecycle repair
+for [#1158 (heap retention on repeated locus jumps)](https://github.com/WGSExtract/wgsextract-cli/issues/1158).
+Upstream detaches old ruler viewports without unsubscribing their browser and
+document listeners. The repair disposes those obsolete ruler sweepers, allowing
+their viewport/read/canvas graphs to be collected after pending reads finish.
+Review the patch when updating igv; it rejects a changed upstream removal method.
+The bundled build includes the CRAM decoder; no CDN, remote worker or WASM
 download is needed. It adds approximately 1.5 MB uncompressed; it loads only when
 the viewer opens, not on app startup. Builds enforce a 2 MB uncompressed limit.
 

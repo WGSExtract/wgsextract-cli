@@ -42,14 +42,24 @@ each sample's ploidy and isn't supported yet. A chip VCF with contigs named
 GRCh38; for a lengthless header, supply the matching GRCh38 FASTA index with
 `bcftools reheader --fai GRCh38.fa.fai` first.
 
-The optional environment supports **x86-64 Linux, Windows x64 and Intel macOS**.
+The optional environment supports **Linux and macOS (x86-64 and ARM64) and
+Windows x64**. `pixi install --locked -e imputation` installs native GLIMPSE2
+2.0.1 on Apple Silicon and Linux ARM64. The
+[ARM64 packages](https://github.com/WGSExtract/wgsextract-cli/releases/tag/glimpse2-arm64-1)
+use NEON without emulation; the HG002 fixture produces identical variant
+records to Bioconda's x86-64 build on the same OS. If an Intel binary on
+your Mac's `PATH` fails to start, move it off `PATH` to use the native Pixi
+build; Intel binaries need a compatible Rosetta runtime. If you already
+prepared a panel with the Intel build, rerun `ref imputation --install` for
+the same chromosomes to rebuild the binary chunks from the local panel.
+
 On Windows, `pixi install -e imputation` installs our native GLIMPSE2 2.0.1
 package from the `glimpse2-1` release, pinned by URL and SHA-256 in `pixi.toml`,
 alongside conda-forge's native OpenJDK and the pinned noarch Beagle jar.
 No MSYS2 or WSL runtime is needed; GLIMPSE2 phase requires an AVX2/FMA-capable
 CPU. Windows CI tests a fresh install and both tools on the real HG002 fixture
 without skips. Missing tools fail dependency validation; neither feature command
-installs tools. **Windows ARM64, Linux ARM64 and Apple Silicon remain gated off.**
+installs tools. **Windows ARM64 remains unsupported.**
 The server must allow the effective reference library and panel paths,
 not just the FASTA's `genomes/` subfolder; configured defaults and symlinks are
 checked too. Failed or version-mismatched binary-chunk builds also recheck
@@ -152,7 +162,7 @@ accuracy guarantee for other ancestries or arrays.
 
 ### Resources
 
-Measured on lin-big with four threads:
+Measured on lin-big with four threads, before chunks ran side by side:
 
 | Step | chr20 wall time | Peak RSS |
 |---|---|---|
@@ -160,13 +170,42 @@ Measured on lin-big with four threads:
 | Beagle | 60 s | 3.4 GB |
 | One-time panel preparation | about 10 min | — |
 
-Extrapolating chr20 (about 2.2% of autosomal bases) gives **about 5.5 hours
-for whole-autosome GLIMPSE2 at four threads**, or **2.8 hours at eight**,
-with peak RAM near 3 GB. Beagle extrapolates to about 45 minutes. These are
-projections, not measured whole-genome runs, and exclude panel preparation.
-The original two-hour target at four threads was **not met**; memory fits
-a 16 GB machine comfortably. `vcf impute` prints its selected-chromosome
-time/RAM estimate before running; use `--threads` to select the CPU budget.
+GLIMPSE2's `--threads` only splits work between target samples, and
+`vcf impute` imputes one, so those four threads did no more than one
+([#1118, imputation speed](https://github.com/WGSExtract/wgsextract-cli/issues/1118)).
+`vcf impute` therefore runs **`--threads` chunks at once, one thread each**,
+largest first. Each chunk's peak memory is estimated from its binary
+reference (about 1.2 GB for a typical chunk, 3 GB for chr20's centromeric
+one), and chunks start only while the running ones fit in 80% of the memory
+available when the command starts, or in `--memory` per chunk; one always
+runs. Each chunk's output doesn't depend on how many run, so the result is
+identical to running them one at a time. (GLIMPSE2 2.0.1's own threads, used
+before, sometimes changed a chunk's genotypes from run to run.) A failed chunk
+stops the others, and the error names it and quotes GLIMPSE2's message.
+
+On an M1 Pro (10 cores, 32 GB, a shared host, so absolute times are
+pessimistic), `vcf impute` of HG002 1x chr20 (26 chunks, 1,430,673 sites) with
+Bioconda's x86-64 GLIMPSE2 2.0.1 under Rosetta took:
+
+| Run | Wall time | GLIMPSE2 memory, all running / largest |
+|---|---:|---:|
+| Before: one chunk at a time, `--threads 4` | 978 s | 3.8 / 3.8 GB |
+| `--threads 1` | 958 s | 2.6 / 2.6 GB |
+| `--threads 4` | 277 s (3.5x) | 5.8 / 2.5 GB |
+| `--threads 8` | 208 s (4.7x) | 7.8 / 2.6 GB |
+
+The three new runs wrote identical genotypes, dosages and probabilities. The
+old `--threads 4` run differed from them at 798 genotypes. The native ARM64
+build phased these chunks in 479 s one at a time and 100 s eight at once in
+the initial [#1118 speed study](https://github.com/WGSExtract/wgsextract-cli/issues/1118).
+Preparing the chr20 panel took 577 s.
+
+Extrapolating chr20 (about 2.2% of autosomal bases) gives **about 5.6 hours
+for whole-autosome GLIMPSE2 one chunk at a time, and about 1 hour with eight
+at once**, needing about 10–14 GB at eight. Beagle extrapolates to about 45
+minutes. These are projections, not measured whole-genome runs, and exclude
+panel preparation. `vcf impute` prints its selected-chromosome time/RAM
+estimate before running.
 
 The Phase 0 scripts, per-bin JSON, time.tsv and logs are retained in
 `out/621/phase0/` in the validation checkout, with the result summary on

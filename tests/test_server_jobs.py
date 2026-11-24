@@ -3,8 +3,12 @@
 import json
 import shutil
 import subprocess
+import sys
+import threading
 
 import pytest
+
+from tests.htslib_helpers import needs_htslib, vcf_calls
 
 # The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
 from tests.smoke_utils import ensure_fake_data as ensure_fake_data
@@ -29,8 +33,11 @@ from tests.test_server import (
 from tests.test_server import (
     work as work,
 )
+from tests.test_vep_run import _vcf, ensembl_test_cache
+from tests.test_vep_run import fake_vep as fake_vep
 from wgsextract_cli.core import results
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.workspace_activity import desktop_data_dir
 from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.operations import (
     PathGuard,
@@ -38,6 +45,86 @@ from wgsextract_cli.server.operations import (
     find,
     params_from_json,
 )
+
+
+def test_1209_cancel_wins_when_worker_exits_before_cancel_thread(tmp_path, monkeypatch):
+    workers = []
+    spawn = subprocess.Popen
+
+    def capture_worker(*args, **kwargs):
+        worker = spawn(*args, **kwargs)
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr(subprocess, "Popen", capture_worker)
+    manager = JobManager(
+        tmp_path / "jobs",
+        config_path=None,
+        worker_command=[
+            sys.executable,
+            "-c",
+            "import sys; sys.stdin.readline(); sys.stdin.readline()",
+        ],
+    )
+    delayed = []
+    start = threading.Thread.start
+
+    def postpone(thread):
+        delayed.append(thread)
+
+    try:
+        job = manager.submit(
+            find("example-genome/list"), {"target_root": str(tmp_path)}
+        )
+        # Delay scheduling the stop thread while the real worker exits without a result.
+        with monkeypatch.context() as schedule:
+            schedule.setattr(threading.Thread, "start", postpone)
+            manager.cancel(job.id)
+        workers[-1].terminate()
+        done = manager.wait(job.id, 10)
+        assert done is not None
+        assert (done.status, done.exit_code) == ("cancelled", 130)
+    finally:
+        for thread in delayed:
+            start(thread)
+            thread.join(timeout=10)
+        manager.shutdown()
+
+
+def test_1322_failed_worker_start_does_not_keep_workspace_busy(tmp_path):
+    (desktop_data_dir() / "workspace-activity").mkdir(parents=True)
+    manager = JobManager(tmp_path / "jobs", config_path=None)
+    job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
+    manager.log_path(job_id).mkdir()  # An OS error when opening the log.
+    try:
+        job = manager.submit(
+            find("example-genome/list"), {"target_root": str(tmp_path)}, job_id=job_id
+        )
+        assert job.status == "failed"
+        assert job.error and "job log" in job.error["message"]
+        assert not list((desktop_data_dir() / "workspace-activity").iterdir())
+    finally:
+        manager.shutdown()
+
+
+def test_1235_client_job_id_recovers_original_job_and_refuses_duplicate(client, work):
+    job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
+    headers = {"X-WGSE-Job-ID": job_id}
+    path = "/ops/example-genome/list"
+    params = {"target_root": str(work)}
+    assert client.request("POST", path, params, headers=headers)[0] in (200, 202)
+
+    status, job = client.request("GET", f"/jobs/{job_id}?wait=30")
+    assert (status, job["id"], job["status"]) == (200, job_id, "succeeded")
+    status, error = client.request("POST", path, params, headers=headers)
+    assert (status, error["error"]["code"]) == (409, "job_id_in_use")
+    status, error = client.request("POST", path, {"unknown": True}, headers=headers)
+    assert (status, error["error"]["code"]) == (409, "job_id_in_use")
+    status, error = client.request(
+        "POST", path, params, headers={"X-WGSE-Job-ID": "invalid"}
+    )
+    assert (status, error["error"]["code"]) == (400, "invalid_job_id")
+    assert [job["id"] for job in client.request("GET", "/jobs")[1]["jobs"]] == [job_id]
 
 
 def test_jobs_writing_to_one_folder_run_one_at_a_time(
@@ -238,7 +325,7 @@ def test_hla_typing_building_its_library_index_waits_for_a_busy_library(
     # reference library, outside its outdir, so that folder is locked too.
     bam, ref = fake_data
     library = work / "library"
-    index = library / "ref" / "t1k_hla"
+    index = library / "downloads" / "t1k_hla"
     index.mkdir(parents=True)
     (library / "genomes").mkdir()
     shutil.copy(ref, library / "genomes" / "ref.fa")
@@ -467,6 +554,40 @@ def test_a_server_request_cannot_pass_raw_vep_arguments():
     # which the path guard can't see.
     with pytest.raises(RequestError, match="can't be set by a server request"):
         params_from_json(find("vep/run"), {"input": "a.vcf.gz", "vep_args": "-o x"})
+
+
+@needs_htslib
+@pytest.mark.skipif(sys.platform == "win32", reason="Ensembl VEP is not on Windows")
+def test_1238_server_ensembl_requires_local_cache(
+    tmp_path, work, fake_vep, monkeypatch
+):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    vcf = _vcf(work / "s.vcf.gz")
+    cache = work / "cache"
+    request = {
+        "input": vcf,
+        "outdir": str(work),
+        "engine": "ensembl",
+        "vep_cache": str(cache),
+        "vep_assembly": "GRCh38",
+    }
+    with _serve(tmp_path, [work]) as client:
+        status, job = client.request("POST", "/ops/vep/run?wait=60", request)
+        assert (status, job["status"], job["exit_code"]) == (200, "failed", 1), job
+        JOB_VALIDATOR.validate(job)
+        assert job["error"]["code"] == "vep_cache_missing"
+        assert str(cache) in job["error"]["message"]
+        assert "vep download --engine ensembl" in job["error"]["message"]
+        assert not fake_vep()
+
+        ensembl_test_cache(cache)
+        status, job = client.request("POST", "/ops/vep/run?wait=60", request)
+
+    assert (status, job["status"]) == (200, "succeeded"), job
+    [args] = fake_vep()
+    # contract: annotation must not send sample-derived queries to Ensembl.
+    assert "--offline" in args and "--database" not in args
+    assert vcf_calls(work / "s_vep.vcf.gz") == [("1", "10", "A", "G", "0/1")]
 
 
 def test_home_relative_paths_reach_the_job_expanded(tmp_path, work, monkeypatch):

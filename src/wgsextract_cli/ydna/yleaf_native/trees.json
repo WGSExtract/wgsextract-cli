@@ -147,7 +147,32 @@
       "tree": "hg_prediction_tables/ftdna_tree.json",
       "positions": "{build}/ftdna_positions_{build}.txt",
       "positions_ancient": "{build}/ftdna_positions_ancient_{build}.txt",
-      "qc": "ftdna"
+      "qc": "ftdna",
+      "modules": {
+        "polarity": {
+          "folder": "y-polarity",
+          "license": "CC-BY-SA (version not stated)",
+          "source": "YBrowse snapshot ybrowse-snps_hg38-2026-11-05.csv.gz",
+          "notice": "Licence: Y marker polarity corrections are a separate CC-BY-SA YBrowse data module (NOTICE-YBrowse.md).",
+          "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/yleaf-polarity-v2/y-polarity-2.tar.gz",
+          "sha256": "b1390df008e40b03024ec251b5a689190aaad7ae1e148e61260bff8547585f1f",
+          "size": 11448,
+          "files": {
+            "NOTICE-YBrowse.md": {
+              "sha256": "15a3becfdc7515dd602da80ecc01ad9c26fe73935f188f8e5149722dedd5f24d",
+              "size": 588
+            },
+            "build_info.json": {
+              "sha256": "af3e164bbc8a8d58bd8d8dd798eb18d8860741f5b4f5383322bbd322340b7716",
+              "size": 4894
+            },
+            "polarity.json": {
+              "sha256": "b62293650e901f7b924cc4d5c2f1c2086c446df62c8acc2120f5b4aa862c8771",
+              "size": 91574
+            }
+          }
+        }
+      }
     },
     "isogg": {
       "name": "ISOGG Y-DNA Haplogroup Tree",
@@ -165,7 +190,32 @@
       "tree": "hg_prediction_tables/isogg_tree.json",
       "positions": "{build}/isogg_positions_{build}.txt",
       "positions_ancient": "{build}/isogg_positions_{build}.txt",
-      "qc": "isogg"
+      "qc": "isogg",
+      "modules": {
+        "polarity": {
+          "folder": "y-polarity",
+          "license": "CC-BY-SA (version not stated)",
+          "source": "YBrowse snapshot ybrowse-snps_hg38-2026-11-05.csv.gz",
+          "notice": "Licence: Y marker polarity corrections are a separate CC-BY-SA YBrowse data module (NOTICE-YBrowse.md).",
+          "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/yleaf-polarity-v2/y-polarity-2.tar.gz",
+          "sha256": "b1390df008e40b03024ec251b5a689190aaad7ae1e148e61260bff8547585f1f",
+          "size": 11448,
+          "files": {
+            "NOTICE-YBrowse.md": {
+              "sha256": "15a3becfdc7515dd602da80ecc01ad9c26fe73935f188f8e5149722dedd5f24d",
+              "size": 588
+            },
+            "build_info.json": {
+              "sha256": "af3e164bbc8a8d58bd8d8dd798eb18d8860741f5b4f5383322bbd322340b7716",
+              "size": 4894
+            },
+            "polarity.json": {
+              "sha256": "b62293650e901f7b924cc4d5c2f1c2086c446df62c8acc2120f5b4aa862c8771",
+              "size": 91574
+            }
+          }
+        }
+      }
     }
   }
 }

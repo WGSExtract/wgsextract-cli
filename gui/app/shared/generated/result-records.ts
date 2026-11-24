@@ -13,11 +13,13 @@ export interface ResultDocumentRecord {
     details: Record<string, unknown> | null;
     manifest: string | null;
     provenance: ResultProvenanceRecord;
+    run: RunRecord;
 }
 
 export interface ResultErrorRecord {
     kind: "failure" | "usage" | "missing_dependency" | "cancelled";
     message: string;
+    code?: string | null;
 }
 
 export interface ResultFileRecord {
@@ -30,6 +32,41 @@ export interface ResultFileRecord {
     fingerprint: string | null;
     index: string | null;
     metrics: Record<string, string | number | boolean | null>;
+    artifact?: ArtifactRecord | null;
+}
+
+export interface ArtifactRecord {
+    origin: "this_run" | "recorded" | "external";
+    lifecycle: "final" | "intermediate" | "cache" | "temp" | null;
+    retained: boolean;
+    digest_kind: "full" | "sampled" | null;
+    assembly: string | null;
+    reference: string | null;
+    samples: (string)[];
+    index: ArtifactIndex | null;
+    producer: Producer | null;
+    sources: (SourceEdge)[];
+}
+
+export interface ArtifactIndex {
+    path: string | null;
+    state: "ready" | "missing" | "stale" | "mismatched";
+}
+
+export interface Producer {
+    run: string | null;
+    root: string | null;
+    command: string;
+    step: string | null;
+}
+
+export interface SourceEdge {
+    path: string;
+    role: string;
+    fingerprint: string | null;
+    producer: string | null;
+    lifecycle: "final" | "intermediate" | "cache" | "temp" | null;
+    retained: boolean;
 }
 
 export interface ResultWarningRecord {
@@ -55,4 +92,20 @@ export interface ResultReferenceRecord {
     path: string;
     build: string | null;
     fingerprint: string | null;
+}
+
+export interface RunRecord {
+    id: string;
+    root: string | null;
+    parent: string | null;
+    step: string | null;
+    children: (ChildRun)[];
+}
+
+export interface ChildRun {
+    step: string;
+    run: string | null;
+    command: string | null;
+    status: "ok" | "failed" | "cancelled" | "reused";
+    reason: string;
 }

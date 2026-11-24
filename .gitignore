@@ -8,6 +8,8 @@ local_bin/
 runtime/
 reference_bootstrap/
 reference/
+# ...but not the package's own reference assets (catalog, N counts, BEDs).
+!src/wgsextract_cli/assets/reference/
 genomes/
 mygenomes/
 datasets/
@@ -29,13 +31,16 @@ datasets/
 *.cram
 *.vcf
 *.vcf.gz
-!src/wgsextract_cli/assets/microarray/chm13/v1/mt-alignment-v1-*.fa.gz
+!src/wgsextract_cli/assets/microarray/chm13/v2/mt-alignment-v1-*.fa.gz
 !tests/fixtures/ont_hg002/*
 !tests/fixtures/ont_hg002_phasing/*
 !tests/fixtures/vep_rs/*
 !tests/fixtures/pharmcat_hg002/*
 !tests/fixtures/acmg/*
 !tests/fixtures/pgs/*
+!tests/fixtures/ftdna_vcf/*
+!tests/fixtures/viewer_tracks/*
+!packaging/fastvep/fixtures/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

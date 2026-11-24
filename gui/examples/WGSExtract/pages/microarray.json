@@ -85,6 +85,7 @@
       "actions": [
         {
           "id": "info-chip",
+          "resultCard": true,
           "title": "actions.cli.info-chip.title",
           "tooltip": "actions.cli.info-chip.tooltip",
           "advancedOnly": true,
@@ -147,18 +148,31 @@
           "tooltip": "controls.microarray.microarray-formats.microarray_formats.tooltip",
           "options": [
             {
-              "id": "all",
+              "id": "combined_v3",
               "title": "options.microarray.formats.v3.title",
+              "group": "options.microarray.formats.group.combined",
+              "groupTooltip": "options.microarray.formats.group.combined.tooltip",
+              "category": "options.microarray.formats.category.wgse"
+            },
+            {
+              "id": "all",
+              "title": "options.microarray.formats.v5.title",
               "group": "options.microarray.formats.group.combined",
               "category": "options.microarray.formats.category.wgse",
               "selected": true
             },
             {
-              "id": "23andme_v3",
-              "title": "options.microarray.formats.v3.title",
+              "id": "23andme_v2",
+              "title": "options.microarray.formats.v1-v2.title",
               "group": "23andMe",
               "category": "options.microarray.formats.category.consumer",
               "categoryTooltip": "options.microarray.formats.category.consumer.tooltip"
+            },
+            {
+              "id": "23andme_v3",
+              "title": "options.microarray.formats.v3.title",
+              "group": "23andMe",
+              "category": "options.microarray.formats.category.consumer"
             },
             {
               "id": "23andme_v4",
@@ -193,24 +207,28 @@
               "category": "options.microarray.formats.category.consumer"
             },
             {
-              "id": "ancestry_v2",
-              "title": "options.microarray.formats.v2.title",
+              "id": "ancestry_v2ab",
+              "title": "options.microarray.formats.v2ab.title",
               "group": "AncestryDNA",
               "category": "options.microarray.formats.category.consumer"
             },
             {
-              "id": "ancestry_v2_2021",
-              "title": "options.microarray.formats.ancestry-v2-2021.title",
+              "id": "ancestry_v2cd",
+              "title": "options.microarray.formats.v2cd.title",
               "group": "AncestryDNA",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
+              "category": "options.microarray.formats.category.consumer"
             },
             {
-              "id": "ancestry_v2_2024",
-              "title": "options.microarray.formats.ancestry-v2-2024.title",
+              "id": "ancestry_v2e",
+              "title": "options.microarray.formats.v2e.title",
               "group": "AncestryDNA",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "ftdna_v1_affy",
+              "title": "options.microarray.formats.v1-affy.title",
+              "group": "FamilyTreeDNA",
+              "category": "options.microarray.formats.category.consumer"
             },
             {
               "id": "ftdna_v2",
@@ -222,6 +240,30 @@
               "id": "ftdna_v3",
               "title": "options.microarray.formats.v3.title",
               "group": "FamilyTreeDNA",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "ftdna_v4",
+              "title": "options.microarray.formats.v4.title",
+              "group": "FamilyTreeDNA",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "ftdna_v2y",
+              "title": "options.microarray.formats.v2y.title",
+              "group": "options.microarray.formats.group.ftdna-y",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "ftdna_v3y",
+              "title": "options.microarray.formats.v3y.title",
+              "group": "options.microarray.formats.group.ftdna-y",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "ftdna_v4y",
+              "title": "options.microarray.formats.v4y.title",
+              "group": "options.microarray.formats.group.ftdna-y",
               "category": "options.microarray.formats.category.consumer"
             },
             {
@@ -249,18 +291,52 @@
               "category": "options.microarray.formats.category.consumer"
             },
             {
-              "id": "myheritage_gsa_2025",
-              "title": "options.microarray.formats.myheritage-gsa-2025.title",
+              "id": "myheritage_v3",
+              "title": "options.microarray.formats.v3.title",
               "group": "MyHeritage",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
+              "category": "options.microarray.formats.category.consumer"
             },
             {
-              "id": "myheritage_gsa_2025_609424",
-              "title": "options.microarray.formats.myheritage-gsa-2025-609424.title",
-              "group": "MyHeritage",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
+              "id": "tellmegen",
+              "title": "options.microarray.formats.v1.title",
+              "group": "tellmeGen",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "genera",
+              "title": "options.microarray.formats.v1.title",
+              "group": "Genera",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "mthfr",
+              "title": "options.microarray.formats.v1.title",
+              "group": "MTHFR Genetics",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "meudna_v1",
+              "title": "options.microarray.formats.v1.title",
+              "group": "meuDNA",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "meudna_v2",
+              "title": "options.microarray.formats.v2.title",
+              "group": "meuDNA",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "selfdecode",
+              "title": "options.microarray.formats.v1.title",
+              "group": "SelfDecode",
+              "category": "options.microarray.formats.category.consumer"
+            },
+            {
+              "id": "nucleus",
+              "title": "options.microarray.formats.v1.title",
+              "group": "Nucleus",
+              "category": "options.microarray.formats.category.consumer"
             },
             {
               "id": "aadr_ho",

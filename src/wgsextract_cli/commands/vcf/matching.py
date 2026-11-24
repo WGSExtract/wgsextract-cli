@@ -13,16 +13,20 @@ from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_confidence as vc
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
-from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.results import ResultWarning, current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
+from wgsextract_cli.core.variant_depths import ad_total_header, preserve_ad_total
 from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
+    is_vcf_path,
     match_chromosome_name,
     normalize_vcf_chromosomes,
     vcf_chromosomes,
 )
 from wgsextract_cli.core.variant_table import parse_header
+
+from .resource_ref_check import check_table_build, record_count, ref_mismatch_warning
 
 
 def table_as_vcf(
@@ -36,6 +40,12 @@ def table_as_vcf(
     fields = columns.split(",")
     if "REF" not in fields or "ALT" not in fields:
         return source, columns
+    lengths = {
+        name: int(length)
+        for line in Path(reference + ".fai").read_text().splitlines()
+        for name, length, *_ in [line.split("\t")]
+    }
+    check_table_build(source, fields, lengths, reference, work)
     info_fields = [
         (i, c.removeprefix("INFO/"))
         for i, c in enumerate(fields)
@@ -112,7 +122,7 @@ def _text_copy(
     clinical: bool,
     allowed: set[str] | None = None,
     incompatible_mito: set[str] | None = None,
-) -> None:
+) -> tuple[int, bool]:
     text = run_command(["bcftools", "view", "-h", source], capture_output=True).stdout
     if clinical:
         text = "\n".join(
@@ -122,7 +132,8 @@ def _text_copy(
                 tuple(f"##INFO=<ID={tag}," for tag in (ce.IDENTITY, ce.STARS, ce.TIER))
             )
         )
-    info_numbers = parse_header(text.splitlines()).info_number
+    header = parse_header(text.splitlines())
+    info_numbers = header.info_number
     definitions = (
         {}
         if allowed is not None
@@ -136,9 +147,13 @@ def _text_copy(
                 ce.TIER: "ClinVar review tier; not sequencing confidence",
             }
         )
+    records_written = 0
+    has_multiallelic = False
     with output.open("w", newline="\n") as handle:
         for line in text.splitlines():
             if line.startswith("#CHROM"):
+                if allowed is None and header.samples:
+                    handle.write(ad_total_header(header.format_number))
                 for contig in vcf_chromosomes(source):
                     if (
                         f"##contig=<ID={contig}," not in text
@@ -155,7 +170,7 @@ def _text_copy(
                         )
             handle.write(line + "\n")
         # Streaming a prepared BGZF VCF avoids capturing a whole genome.
-        opener = gzip.open if source.endswith((".gz", ".bgz")) else open
+        opener = gzip.open if source.lower().endswith((".gz", ".bgz")) else open
         skipped = set()
         skipped_count = 0
         mito_count = 0
@@ -171,6 +186,8 @@ def _text_copy(
                     skipped.add(fields[0])
                     skipped_count += 1
                     continue
+                records_written += 1
+                has_multiallelic |= "," in fields[4]
                 info = dict(item.partition("=")[::2] for item in fields[7].split(";"))
                 if clinical:
                     for tag in (ce.IDENTITY, ce.STARS, ce.TIER):
@@ -219,6 +236,8 @@ def _text_copy(
                 fields[7] = (
                     ";".join(f"{k}={v}" if v else k for k, v in info.items()) or "."
                 )
+                if allowed is None and "AD" in header.format_number:
+                    preserve_ad_total(fields)
                 handle.write("\t".join(fields) + "\n")
     if skipped:
         warn(
@@ -233,6 +252,14 @@ def _text_copy(
             "Excluded resource mitochondrial records: UCSC hg19 Yoruba chrM and GRCh37 rCRS MT are incompatible. Autosomal records remain validated.",
             count=mito_count,
         )
+    return records_written, has_multiallelic
+
+
+def _left_align(source: str, reference: str, output: str, check_ref: str) -> None:
+    run_command(
+        ["bcftools", "norm", "-f", reference, "-c", check_ref, "-Oz", "-o", output, source],
+        capture_output=True,
+    )  # fmt: skip
 
 
 def _normalize(
@@ -242,7 +269,8 @@ def _normalize(
     work: str,
     clinical: bool,
     is_resource: bool = False,
-) -> str:
+    origin: str | None = None,
+) -> tuple[str, ResultWarning | None]:
     fai = Path(reference + ".fai")
     if not fai.is_file():
         raise WGSExtractError(
@@ -276,35 +304,36 @@ def _normalize(
         if is_resource
         else None
     )
-    _text_copy(source, staged, clinical, allowed, incompatible_mito)
+    total, has_multiallelic = _text_copy(
+        source, staged, clinical, allowed, incompatible_mito
+    )
     renamed = normalize_vcf_chromosomes(str(staged), list(lengths), work)
-    split = output + ".split.gz"
-    run_command(
-        [
-            "bcftools",
-            "norm",
-            "-m",
-            "-any",
-            "--old-rec-tag",
-            SPLIT_TAG,
-            "-Oz",
-            "-o",
-            split,
-            renamed,
-        ],
-        capture_output=True,
-    )
     norm = output + ".norm.gz"
-    run_command(
-        ["bcftools", "norm", "-f", reference, "-c", "e", "-Oz", "-o", norm, split],
-        capture_output=True,
-    )
+    warning = None
+    # Check unsplit resources so a row with several ALTs counts only once.
+    # Compute drops from records, not bcftools' version-dependent summary.
+    if is_resource:
+        kept = output + ".checked.gz" if has_multiallelic else norm
+        _left_align(renamed, reference, kept, "x")
+        warning = ref_mismatch_warning(
+            total - record_count(kept), total, origin or source
+        )
+        renamed = kept
+    if not is_resource or has_multiallelic:
+        split = output + ".split.gz"
+        run_command(
+            ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
+             "-Oz", "-o", split, renamed],
+            capture_output=True,
+        )  # fmt: skip
+        # Left-align split alleles independently, without dropping sample rows.
+        _left_align(split, reference, norm, "e")
     run_command(
         ["bcftools", "sort", "-T", str(Path(work, "sort")), "-Oz", "-o", output, norm],
         capture_output=True,
     )
     ensure_vcf_indexed(output)
-    return output
+    return output, warning
 
 
 def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) -> str:
@@ -621,7 +650,13 @@ def normalized_clinvar_resource(source: str, reference: str, work: str) -> str:
         reference,
         ["", [], True],
         lambda: _normalize(
-            source, reference, str(Path(work, "resource.vcf.gz")), work, True, True
+            source,
+            reference,
+            str(Path(work, "resource.vcf.gz")),
+            work,
+            True,
+            True,
+            source,
         ),
     )
 
@@ -638,12 +673,12 @@ def normalized_inputs(
     snv_table: bool = False,
     resource_source: str | None = None,
 ) -> tuple[str, str, str]:
-    normalized_query = _normalize(
+    normalized_query, _ = _normalize(
         query, reference, str(Path(work, "query.vcf.gz")), work, False
     )
     from .resource_cache import normalized_resource
 
-    is_vcf = resource.lower().endswith((".vcf", ".vcf.gz", ".vcf.bgz"))
+    is_vcf = is_vcf_path(resource, bcf=False)
     if not is_vcf and (
         "REF" not in columns.split(",") or "ALT" not in columns.split(",")
     ):
@@ -655,7 +690,7 @@ def normalized_inputs(
         else ",".join(c for c in columns.split(",") if c.startswith("INFO/"))
     )
 
-    def build() -> str:
+    def build() -> tuple[str, ResultWarning | None]:
         selected = source
         if not is_vcf:
             selected, _ = table_as_vcf(
@@ -673,12 +708,15 @@ def normalized_inputs(
             work,
             clinical,
             True,
+            resource_source or source,
         )
 
-    resource = (
-        build()
-        if snv_table and not is_vcf
-        else normalized_resource(
+    if snv_table and not is_vcf:
+        resource, warning = build()
+        if warning:
+            warn(warning.code, warning.message, **warning.details)
+    else:
+        resource = normalized_resource(
             resource_source or source,
             reference,
             ["", [], True]
@@ -686,7 +724,6 @@ def normalized_inputs(
             else [columns, list(headers), clinical],
             build,
         )
-    )
     if clinical:
         normalized_query = _compose(
             normalized_query, resource, work, thresholds or vc.thresholds_from()

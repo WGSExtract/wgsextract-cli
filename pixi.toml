@@ -1,7 +1,7 @@
 [workspace]
 requires-pixi = ">=0.82.0"
 name = "wgsextract-cli"
-version = "0.8.8"
+version = "0.8.9"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 authors = ["WGS Extract Contributors"]
 channels = ["conda-forge", "bioconda"]
@@ -24,6 +24,10 @@ curl = ">=8.21,<9"
 # to UTF-8, not the Windows ANSI code page, as on macOS and Linux.
 [target.win-64.activation.env]
 PYTHONUTF8 = "1"
+
+# Standalone Java 17 runtime for Java tools built for Java 17 (e.g. DISCVRSeq VariantQC).
+[feature.java17.dependencies]
+openjdk = "17.*"
 
 # GATK4's Bioconda package requires Python 3.10, so it gets its own environment;
 # the CLI runs `gatk` through it automatically. GATK 4.6 is built for Java 17.
@@ -56,6 +60,10 @@ openjdk = "17.*"
 [feature.pharmcat.target.unix.dependencies]
 bcftools = ">=1.18"
 htslib = ">=1.18"
+
+[feature.pharmcat.target.osx.dependencies]
+# Keep the isolated PharmCAT bcftools off OpenMP-backed CBLAS too (#1257).
+libcblas = { build = "*_accelerate" }
 
 [feature.pharmcat.target.win-64.dependencies]
 # pharmcat-windows-tools-begin
@@ -93,6 +101,11 @@ sambamba = ">=1.0.1,<2"
 # Match the qualified x64 calling version; do not introduce architecture drift.
 bcftools = "==1.24"
 
+[feature.bio-tools.target.osx.dependencies]
+# bcftools loads CBLAS through GSL. OpenMP-backed BLAS can abort on stale PID
+# registration even with only one runtime loaded (#1257).
+libcblas = { build = "*_accelerate" }
+
 [feature.bio-tools.target.osx-arm64.dependencies]
 # Override-enabled mimalloc for bcftools; published by mimalloc.yml.
 wgse-mimalloc = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/wgse-mimalloc-1/wgse-mimalloc-3.6.1-osxarm64_wgse_1.conda", sha256 = "970706abfefea9610af0f4624e58dc8d816e5e1068f690ab07c06b27e6978429" }
@@ -113,7 +126,9 @@ fastp = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/
 htslib = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/htslib-1.24-wgse_2.conda", sha256 = "cf4d42c7c0a3b0867394485bed2511296b84e819deac1577cb132971a686c4f9" }
 minimap2 = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/minimap2-2.31-wgse_1.conda", sha256 = "1cd0e2770487968abf684a04fbe591f1f81d23d60b2edd30c5207a19fe547bbf" }
 samblaster = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/samblaster-0.1.26-wgse_2.conda", sha256 = "195387af307f978dee16cac77ad332c7943a118a6c2c66c20d3fa5afd27b1003" }
-samtools = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/samtools-1.24-wgse_3.conda", sha256 = "5aeb7f62293a8dd1b3e75982d53b258be02d38a39a81ff3ff76dec530190ad48" }
+samtools = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-10/samtools-1.24-wgse_4.conda", sha256 = "91d89b823a9f91359d2e7f10897b482f502bce9699dae5a11792a55bfc7ae851" }
+wgse-bwa = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-12/wgse-bwa-0.14.1-win64_wgse_0.conda", sha256 = "3ea3b80a46b2fc6c59539a9a07604709c2de9d465889fb287871e22a12b9fde0" }
+wgse-minimap2 = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-13/wgse-minimap2-0.4.1-win64_wgse_0.conda", sha256 = "fc58634d78c57b6851192918f3bb511ee3dc219317ad46316e00014684dddfab" }
 # windows-tools-end
 
 # FreeBayes' only osx-arm64 build pins htslib 1.21, which conflicts with the
@@ -190,6 +205,10 @@ platforms = ["linux-64", "linux-aarch64", "osx-arm64"]
 [feature.clair3.dependencies]
 clair3 = ">=2.0.5,<3"
 
+[feature.clair3.target.osx-arm64.dependencies]
+# Code-only Clair3 caller with Apple MPS for `vcf clair3 --gpu` (native/clair3/README.md).
+wgse-clair3 = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/macos-clair3-2/wgse-clair3-0.1.0-py311_osxarm64_wgse_2.conda", sha256 = "c7235628d6f74acf547df475f7996211c8bb9cec8f9d015a61df9b2f39ced674" }
+
 # wgse-deepvariant (`vcf deepvariant`; native/deepvariant/README.md):
 # DeepVariant 1.10.0's WGS and ONT_R104 models without Docker, with
 # call_variants on an NVIDIA GPU for `--gpu` (CUDA 12.9) or the CPU. Opt-in
@@ -197,13 +216,13 @@ clair3 = ">=2.0.5,<3"
 # an NVIDIA driver: only it takes the workspace's linux-64-cuda platform (every
 # other environment takes feature.standard-platforms). WGS Extract's build from
 # packaging/wgse-deepvariant (workflow linux_deepvariant.yml), published as
-# linux-deepvariant-3 and pinned by URL
+# linux-deepvariant-4 and pinned by URL
 # and SHA-256; its weights are a separate download (deepvariant_weights).
 [feature.deepvariant]
 platforms = ["linux-64-cuda"]
 
 [feature.deepvariant.dependencies]
-wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-3/wgse-deepvariant-0.3.1-linux64_cuda129_wgse_0.conda", sha256 = "f2ab6bad55fb978cf2d674605612f4c78e2cf990b772f8c9f99409e49ff0271f" }
+wgse-deepvariant = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/linux-deepvariant-4/wgse-deepvariant-0.4.0-linux64_cuda129_wgse_2.conda", sha256 = "77d983c6839cbc9741270d2a5ee059426320646d3fda0bf1c75df3d80a239d85" }
 
 # modkit summarizes Nanopore/PacBio base-modification (MM/ML) tags into
 # bedMethyl (`methylation pileup`). Opt-in environment (`pixi install -e modkit`);
@@ -224,14 +243,27 @@ platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
 somalier = ">=0.3.7,<0.4"
 
 # fastVEP classifies variants by ACMG/AMP criteria for the opt-in, research-only
-# `vcf acmg`. Opt-in environment (`pixi install -e fastvep`); Bioconda builds it
-# for linux-64 and osx-64 only. On Linux ARM64 and Apple Silicon the CLI uses the
-# upstream release binary on PATH; there is no Windows build.
+# `vcf acmg`. Opt-in environment (`pixi install -e fastvep`), on all five
+# supported platforms. CLI-only WGS Extract builds of upstream 0.5.0 from
+# packaging/fastvep (workflow fastvep.yml), published as fastvep-1 and pinned
+# by URL and SHA-256. No annotation databases are bundled.
 [feature.fastvep]
-platforms = ["linux-64", "osx-64"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
 
-[feature.fastvep.dependencies]
-fastvep = ">=0.5.0,<0.6"
+[feature.fastvep.target.linux-64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-linux64_wgse_0.conda", sha256 = "bdf8079bc3a4269a6bcb6f86fb4e1f22f76e8f5d8af442fdda0b37f7731522f5" }
+
+[feature.fastvep.target.linux-aarch64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-linuxaarch64_wgse_0.conda", sha256 = "d45c2b1d66a1595d389810048b828259e106fdb51d0b2da343958c994ab096bd" }
+
+[feature.fastvep.target.osx-64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-osx64_wgse_0.conda", sha256 = "1da1a7cdc17af847093d5eee362d85858d9d9af0e115a00cf9f24569846938f8" }
+
+[feature.fastvep.target.osx-arm64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-osxarm64_wgse_0.conda", sha256 = "69b6147a4f9f2e4ac5b58764940c941540cd8db8242de13cf24d2b8b0c7a5395" }
+
+[feature.fastvep.target.win-64.dependencies]
+fastvep = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/fastvep-1/fastvep-0.5.0-win64_wgse_0.conda", sha256 = "bf295a143ac2fdb65dac60664e3bf62eec9c6693d49eaccfa9ae3cdf819ccc48" }
 
 # VerifyBamID2 estimates nuclear-DNA contamination (FREEMIX) from a GRCh37/38
 # BAM/CRAM (`qc contamination`) with the 1000 Genomes SVD resources its package
@@ -261,10 +293,10 @@ longphase = ">=2.1.1,<3"
 
 # Genotype imputation (`vcf impute`, `ref imputation`): GLIMPSE2 (MIT) imputes
 # low-coverage reads, Beagle 5 (GPL-3, run as a separate program) genotype-only
-# VCFs such as microarray calls. Bioconda builds GLIMPSE2 for Intel only.
+# VCFs such as microarray calls. Bioconda builds GLIMPSE2 for x86-64 only.
 # Opt-in environment (`pixi install -e imputation`) that the CLI runs automatically.
 [feature.imputation]
-platforms = ["linux-64", "osx-64", "win-64"]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64", "win-64"]
 
 [feature.imputation.dependencies]
 beagle = "==5.5_27Feb25.75f"
@@ -272,6 +304,13 @@ openjdk = ">=17"
 
 [feature.imputation.target.unix.dependencies]
 glimpse-bio = "==2.0.1"
+
+# Native builds from packaging/glimpse2-arm64.
+[feature.imputation.target.linux-aarch64.dependencies]
+glimpse-bio = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-arm64-1/glimpse-bio-2.0.1-linuxaarch64_wgse_1.conda", sha256 = "057124c93d969726e351e68d23057571e74970d999b5e3f62978c5c1e607a5a9" }
+
+[feature.imputation.target.osx-arm64.dependencies]
+glimpse-bio = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/glimpse2-arm64-1/glimpse-bio-2.0.1-osxarm64_wgse_1.conda", sha256 = "495ab782024f50c00a3f9261ae7178fa6144e564532b9a780fc447b7df24569a" }
 
 # Our native Windows build; upstream Bioconda has no win-64 package.
 [feature.imputation.target.win-64.dependencies]
@@ -350,6 +389,33 @@ smncopynumbercaller = "==1.1.2"
 numpy = ">=2"
 pysam = ">=0.23"
 
+# Paraphase 3.3.1 is the last BSD-3-Clause-Clear release.
+[feature.paraphase]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.paraphase.dependencies]
+python = "3.11.*"
+paraphase = "==3.3.1"
+samtools = ">=1.24,<2"
+minimap2 = ">=2.31,<3"
+
+# granite-suite (`granite qcVCF`) for VCF quality control (`vcf granite-qc`).
+# Needs pysam and pytabix (Unix only; no native Windows builds).
+[feature.granite]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.granite.dependencies]
+python = "3.11.*"
+numpy = ">=1.26.4,<2.0.0"
+h5py = ">=3.11.0,<4.0.0"
+matplotlib = ">=3.9.0,<4.0.0"
+bitarray = ">=2.9.2,<3.0.0"
+pysam = ">=0.22.1,<0.23.0"
+pytabix = ">=0.1,<0.2"
+
+[feature.granite.pypi-dependencies]
+granite-suite = "==0.5.1"
+
 # Optional report aggregation; never installed by command invocation.
 [feature.multiqc.pypi-dependencies]
 multiqc = ">=1.32,<2"
@@ -409,7 +475,7 @@ actionlint = "actionlint"
 validate-actions = "python scripts/validate_github_actions.py"
 lint = "ruff check . && python scripts/check_python_size.py && python scripts/validate_site_sources.py && actionlint && python scripts/validate_github_actions.py"
 format = "ruff format ."
-typecheck = "mypy src/wgsextract_cli"
+typecheck = "mypy src/wgsextract_cli && mypy --platform darwin src/wgsextract_cli && mypy --platform win32 src/wgsextract_cli"
 test-smells = { cmd = "python scripts/test_smells.py", description = "Advisory: flag change-detector patterns in test lines added since origin/main." }
 package-smoke = "python scripts/package_smoke.py"
 jscpd = "npx --yes jscpd@5.4.2 src/wgsextract_cli --reporters console,json --output out/jscpd --min-lines 5 --min-tokens 50 --ignore '**/__pycache__/**' --ignore '**/.mypy_cache/**'"
@@ -439,6 +505,7 @@ multiqc = { features = ["standard-platforms", "multiqc"], solve-group = "default
 parquet = { features = ["standard-platforms", "bio-tools", "pysam", "parquet"], solve-group = "default" }
 mcp = { features = ["standard-platforms", "bio-tools", "pysam", "mcp"], solve-group = "default" }
 gatk = { features = ["standard-platforms", "gatk"], no-default-feature = true }
+java17 = { features = ["standard-platforms", "java17"], no-default-feature = true }
 freebayes = { features = ["standard-platforms", "freebayes"], no-default-feature = true }
 bwa-mem3 = { features = ["standard-platforms", "bwa-mem3"], no-default-feature = true }
 t1k = { features = ["standard-platforms", "t1k"], no-default-feature = true }
@@ -458,7 +525,9 @@ somalier = { features = ["standard-platforms", "somalier"], no-default-feature =
 fastvep = { features = ["standard-platforms", "fastvep"], no-default-feature = true }
 phasing = { features = ["standard-platforms", "phasing"], no-default-feature = true }
 smn = { features = ["standard-platforms", "smn"], no-default-feature = true }
+paraphase = { features = ["standard-platforms", "paraphase"], no-default-feature = true }
 imputation = { features = ["standard-platforms", "imputation"], no-default-feature = true }
+granite = { features = ["standard-platforms", "granite"], no-default-feature = true }
 
 [pypi-dependencies]
 # pysam is platform-specific (no native Windows build); see feature.pysam.

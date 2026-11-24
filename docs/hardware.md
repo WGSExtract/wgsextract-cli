@@ -9,7 +9,87 @@ page says which hardware speeds it up and by how much. Each figure is labelled:
 
 For memory and disk planning, see [resource estimates](resource_estimates.md).
 
+## Genotype imputation
+
+GLIMPSE2 in the optional `imputation` environment runs natively on Apple
+Silicon and Linux ARM64 using NEON. On the M1 Pro, native phasing of a typical
+HG002 chr20 chunk took 14.6 s versus 28 s under Rosetta in the
+[#1118 speed study](https://github.com/WGSExtract/wgsextract-cli/issues/1118).
+For installation, thread sizing and chr20 results, see
+[imputation](imputation.md).
+
 ## CPU aligners
+
+### Input and output safety
+
+FASTQ alignment requires an explicit `--ref FASTA` when the library holds
+several genomes: reads cannot identify the intended reference.
+`align` validates every FASTQ record before mapping. Paired files need equal
+counts and ordered matching names (`/1`/`/2` accepted); truncated FASTQ or
+gzip fails. Setup/platform checks run first. Completed alignment must contain
+exactly one primary record per FASTQ read, not counting secondary/supplementary
+records. Only validated files replace earlier alignments, atomically, even
+with `--no-atomic-output`. API cancellation interrupts validation cooperatively.
+
+Pipes/stdin spool under `--tmp-dir` (else `--outdir`) before validation;
+budget disk for the entire stream. Read names/output filenames retain the
+original inputs. Use `--platform` for long-read streams: unlabelled streams
+use Illumina defaults without consuming the first read to detect platform.
+Native HiFi/CCS FASTQs select long-read defaults; bounded header/length/quality
+sampling handles renamed FASTQs. Ambiguous long reads require `--platform
+ont|hifi|clr`, never silent BWA defaults; see [platform evidence](ont.md).
+
+BWA/bwa-mem2 use fixed `-K 100000000` for thread-count reproducibility,
+including realign, pet and Ultima alignment; older releases used thread-based
+batches. On references with ALT contigs (hs38DH/full GRCh38), BWA gets a
+`<ref>.alt` list. Without it, reads across ~110 Mb of duplicated sequence
+(including HLA) get MAPQ 0 or land on ALT copies, losing variants.
+WGS Extract v4 aligned that way; callers, microarray and trios warn,
+and `realign` recovers the affected regions. See [input diagnostics](usage.md#inspecting-an-alignment).
+`pet-align` writes beside the R1 FASTQ unless `--outdir` is given.
+
+Short-read realign checks the first 10,000 primary reads and, when indexed,
+10,000 unplaced unmapped reads before extraction. It refuses single-end
+primary reads (neither first nor second mate, e.g. flag 0 or 4) with exit 1,
+rather than silently discarding them. This costs ~0.1 s on a 30x CRAM versus
+~3 min for an exact count. Sampling can miss rare single-end reads in paired
+input, so extraction also counts dropped reads and warns. Extract such inputs
+with `bam unalign --se`, then `align` the single-end FASTQ.
+ONT, PacBio and Ultima `--platform` paths handle single ends themselves.
+
+Paired short-read realign streams newly extracted reads as interleaved pairs
+(`-p`) into BWA/bwa-mem2 when a collate bucket fits beside alignment, including
+30x genomes. It uses extraction's bucket count for identical records and
+preserves paired filtering; the program header truthfully records stdin `-p`.
+Otherwise it extracts to files without changing aligner. `--keep-fastq`,
+supplied/reused FASTQs, minimap2, GPU and long reads retain their file paths.
+`--force-extract` with cached FASTQs at the exact output paths also retains
+file handling and success-cleanup/failure-retention rules; fresh forced
+extraction may stream. Collation needs temp disk and one bucket's RAM beside
+sorting, both in [preflight](resource_estimates.md#other-pipelines).
+Failed streams leave no reusable FASTQs: use `--keep-fastq` for retries.
+
+### Long-read realignment
+
+Single-end PacBio (`PL:PACBIO` or read names, all sampled primary reads
+single-end) selects minimap2 `map-hifi`, or `map-pb` for `READTYPE=SUBREAD`,
+as explicit `--platform pacbio|hifi|clr` does. Paired PacBio-labelled input
+keeps short-read defaults.
+Aligned BAM/CRAM and unaligned basecaller BAM each supply one primary record
+per read: `samtools fastq -F 0x900 -T MM,ML,MN,pi | minimap2 -y -Y`.
+MM/ML tags survive; secondary/supplementary records never become extra reads.
+Kinetics tags `fi`/`ri`/`fp`/`rp` do not carry through.
+`--keep-fastq` writes tagged `<input stem>.fastq.gz` first:
+`movie.ccs.bam` gives `movie.fastq.gz` and `movie_aligned.bam`, also for ONT.
+
+Streaming long-read realign uses neither pbmm2 nor `--gpu`. For pbmm2 give PacBio BAM
+to `align --r1 BAM --aligner pbmm2`, which reads primary records itself;
+convert CRAM with `bam to-bam` first.
+ONT read groups/UUID read names select minimap2 `map-ont`; CPU alignment
+and sorting retain MM/ML. See [ONT](ont.md) for methylation, Sniffles,
+Clair3 basecaller-matched models, phasing and qualification limits.
+
+### Automatic short-read selection
 
 `--aligner auto` (the default) aligns short reads with bwa-mem2 when all of
 these hold, and with bwa otherwise:
@@ -136,15 +216,16 @@ otherwise on the CPU, with the same records either way. The manifest records
   outside Apple Silicon; on Apple Silicon, the per-stage plan below.
   An explicit positive count applies to every parallel stage, including
   staged alignment. No CPU affinity is set: macOS still decides where workers run.
-- `--memory` is the sort memory per thread. `auto` uses 25% of RAM (at least
-  2 GB) split across the threads, with at least 1 GiB per thread; for example
-  16 GiB and 12 threads gives 1 GiB each, 12 GiB in total. With bwa-mem2,
+- `--memory` is the sort memory per thread. `auto` divides 25% of effective
+  RAM across the threads and rounds down. For example, 16 GiB and 12 threads
+  gives 341 MiB per thread. With bwa-mem2,
   sorting is capped at 256 MiB per thread to leave room for its index.
   Native `wgse-bwa` can also lower the requested sort budget
   when fitting its GPU pipeline, or cap an over-budget CPU fallback at 256M
   per thread as described below.
-- `samtools sort` reserves all of its threads' memory when it starts, so every
-  sort gets at most half the RAM in total and no more than its input can fill
+- `samtools sort` reserves all of its threads' memory when it starts. The CLI
+  caps its buffers at half of effective RAM, including Linux cgroup v2 limits,
+  even with explicit `--memory`, and can lower them further for small inputs
   (see [resource_estimates.md](resource_estimates.md#samtools-sort-buffers)).
   The log says when this lowers `--memory`; the output is the same.
 - Before a native BWA run, the CLI prints a memory and disk preflight. More
@@ -262,6 +343,145 @@ contain this table. Only M1 and the 10-core M1 Pro are available for measurement
 | M6 (10-core) | 2S + 3P + 5E | 10 | 5 | Derived |
 | M6 (12-core) | 2S + 4P + 6E | 12 | 6 | Derived |
 
+### Experimental Apple Silicon NEON PairHMM
+
+`vcf gatk --pair-hmm-neon JAR` opts into the existing native ARM64 GKL
+PairHMM port, built for macOS. It is **not Parabricks**; `--gpu` keeps its
+existing meaning. GATK 4.6.2.0, JDK 17+, Apple Silicon and locally installed
+libomp are required. No dependency is installed or downloaded by calling.
+See [build, fallback and native validation instructions](../packaging/arm64/gkl/README.md#apple-silicon-pairhmm-experimental-issue-1117).
+Metal is not used. NEON removes PairHMM as the main bottleneck in ordinary
+slices, but the difficult-window measurements below still spend substantial
+time in PairHMM.
+
+**Opt-in, not a default.** It calls the same sites, alleles, GT and FILTER as
+the Java PairHMM across the five-window HG002 panel below, 9.1× faster. In
+difficult regions (pericentromere, high depth) a few reads near the
+informative cutoff are counted differently, so 9 of 306,024 gVCF reference
+blocks and 8 final records differ in AD/DP, QUAL or annotations (for example
+AD/DP `63,38`/101 vs `62,38`/100). GATK's own x86 GKL AVX PairHMM is not
+bit-identical to Java either; #1193 measures how far apart those two are.
+
+Queued measurement: M1 Pro (10 cores, 32 GiB), macOS 27.2.1, OpenJDK
+17.0.21, HG002 PCR-free 35×, hs38, `chr20:10000001-20000000` (10 Mb),
+four native threads and 4 GiB Java heap. JVM startup is included;
+Smith-Waterman stays Java.
+
+| Backend | Wall seconds | PairHMM timer seconds | Peak process RSS MiB |
+| :--- | ---: | ---: | ---: |
+| Java LOGLESS_CACHING | 396.37 | 238.374 | 658.8 |
+| NEON float (rejected) | 175.61 | 10.094 | 766.7 |
+| NEON double (selected) | 179.75 | 15.373 | 770.8 |
+
+Stock GATK rejects its bundled x86 dylibs and selects Java LOGLESS_CACHING.
+An initial 1 Mb slice showed PairHMM at 51.6% of wall; in this expanded
+region it is 60.1%. NEON double reduces HaplotypeCaller wall by **54.7%**
+and leaves PairHMM at 8.6% of wall, no longer dominant.
+
+All 1,631,572 gVCF records have identical sites, alleles, GT and FILTER;
+all 1,612,162 reference blocks match completely. One variant's non-reference
+PL annotations differ; the final genotyped VCF's 17,107 records match
+byte-for-byte apart from headers. Float was rejected because one block's DP was 50
+instead of Java's 49 at chr20:17778563-17778607. A separate 200 kb control
+reproduces that mismatch with float and matches every gVCF record with
+double. The CLI therefore always requests native double precision.
+
+32,000 synthetic likelihoods per precision/native-thread configuration
+(one and four threads) are within 0.00001 absolute log10 of Java; observed
+maximum errors are 0.00000425 (float) and 0.00000106 (double).
+JVM thread FP-state restoration passes for both thread counts.
+
+Full `vcf gatk --reference-evidence gvcf` timings on the initial 1 Mb slice
+(`--threads 4 --qc-min-depth 0`, JVM default heap) confirm the CLI gate:
+interleaved Java/NEON/NEON/Java runs took **45.29 / 25.00 / 25.61 / 45.38 s**.
+Mean wall falls from 45.34 to 25.31 s (**44.2%**). Every CLI gVCF body
+(25,534 records) and final VCF body (1,779 calls) matches exactly.
+
+These are **bounded-region prototype results**, not full chr20 or
+whole-genome performance/accuracy qualification. Do not extrapolate RSS
+from the slice or treat the sidecar as a qualified default.
+
+The 2026-11-19 whole-chr20 real-CLI qualification attempt did **not**
+complete: Java's progress meter reached chr20:29,840,219 after 283.6
+traversal minutes before cancellation. No final gVCF or genotyped VCF was
+published, and the NEON comparison was not started. This is an incomplete
+run, not a chr20 timing or parity result. The 10–20 Mb slice does not cover
+the slow pericentromeric traversal; its speedup is not a whole-chromosome
+runtime estimate.
+
+#### Five-window panel: identical calls, small read-count differences
+
+On 2026-11-20, five matched intervals totaling **12.551 Mb** replaced the
+infeasible whole-chr20 comparison. Each Java/NEON run used the real CLI:
+`vcf gatk --threads 4 --reference-evidence gvcf --qc-min-depth 0`, default
+JVM heap, the same shared HG002 BAM/hs38, and no scattering. This differs
+from the direct 10 Mb HC microbenchmark's explicit 4 GiB heap; those results
+are not combined. The sidecar and scientific options were unchanged.
+
+| Window, 1-based inclusive | Selection evidence |
+| :--- | :--- |
+| chr20:1,000,001–4,000,000 | Ordinary p-arm control: mean depth 38.15×, only 819 bases at ≥100×. |
+| chr20:17,000,001–20,000,000 | Low complexity: 48-base homopolymer, 72-base GAAA tandem tract at 17,347,788; includes the prior float block-DP regression and double non-reference PL site. |
+| chr20:26,000,001–29,050,000 | Pericentromere: mean 56.71×, maximum 3,432×; 441,098 bases at ≥100×. Prior whole-chr20 Java traversal took roughly 31 minutes through this vicinity. |
+| chr20:29,060,001–29,061,000 | Narrow slow-region sentinel: the previous unpartitioned progress meter advanced 980 bases near here in 12.8 minutes. Mean depth 81.81×. |
+| chr20:31,000,001–34,500,000 | Proximal q-arm high-depth stress: mean 53.91×, maximum 23,756×; 25,326 bases at ≥500×; 60-base homopolymer. |
+
+Depth and repeat evidence comes from the existing BAM and hs38, not downloaded
+stratification tracks. High depth is a duplication-like stress proxy, not proof
+of membership in an annotated segmental duplication. The pericentromeric and
+q-arm windows contain 90,575 and 102,506 reference N bases, respectively.
+Distal q-arm sequence is not sampled. Interval clipping changes assembly
+context: the 1 kb sentinel is much cheaper than the unpartitioned traversal
+and does not reproduce that traversal's full pathological workload.
+
+All values below are **Java → NEON double**. Wall/CPU include CLI startup,
+HaplotypeCaller, GenotypeGVCFs and output; RSS is the largest process,
+not simultaneous aggregate memory. PairHMM share uses its logged compute
+timer divided by complete CLI wall time.
+
+| Window | Wall s | CPU s | Peak RSS MiB | PairHMM s | PairHMM share | Exact parity |
+| :--- | ---: | ---: | ---: | ---: | ---: | :--- |
+| Ordinary p-arm | 168.43 → 68.98 | 197.17 → 114.16 | 627.0 → 815.5 | 107.479 → 6.458 | 63.8% → 9.4% | Pass |
+| Repeat control | 155.67 → 67.90 | 183.17 → 109.94 | 640.2 → 921.6 | 93.092 → 5.841 | 59.8% → 8.6% | Pass |
+| Pericentromere | 1,771.92 → 217.25 | 1,805.22 → 500.79 | 727.5 → 845.1 | 1,644.638 → 87.643 | 92.8% → 40.3% | Differs |
+| Slow sentinel | 8.67 → 6.30 | 14.12 → 11.62 | 529.1 → 490.9 | 2.440 → 0.145 | 28.1% → 2.3% | Pass |
+| High-depth q-arm | 4,527.37 → 365.53 | 4,551.16 → 1,073.74 | 1,883.9 → 1,509.2 | 4,397.515 → 234.098 | 97.1% → 64.0% | Differs |
+| **Totals / maximum RSS** | **6,632.06 → 725.96** | **6,750.84 → 1,810.25** | **1,883.9 → 1,509.2** | **6,245.165 → 334.185** | **94.2% → 46.0%** | Differs |
+
+The observed panel speedup is **9.14× (89.1% less wall time)**. Each backend/window
+ran once, sequential Java then NEON, with warm caches on a shared desktop;
+the exclusive bench queue excludes other queued heavy jobs, not all desktop
+activity. All ten turns finished within the independently enforced 80-minute
+deadline (largest: 75.46 minutes). A forced process-group timeout smoke
+terminated both a TERM-resistant parent and its child without leaks.
+
+Ordered sites, alleles, GT and FILTER match across **340,743 gVCF records**
+and **28,065 final VCF records**. Of **306,024 reference blocks**, **nine
+do not match completely**: six in the pericentromeric window, three in the
+q-arm window. **Eight final VCF records** differ in more than the allowed
+PL-level exception. At chr20:28,830,216, for example, sample AD/DP changes
+from `63,38`/101 to `62,38`/100; the next block's DP changes 112→111.
+At chr20:31,068,903, block DP changes 924→920, and the nearby final variants
+also change depth and other annotations. These differences are why the
+option stays opt-in rather than a default.
+The ordinary and repeat windows have only three already-characterized
+variant-gVCF `<NON_REF>` PL differences; their final VCF bodies are identical.
+
+Independent real-CLI **20 kb controls reproduce the failures**. At
+chr20:28,820,001–28,840,000, all twelve differing gVCF rows (six blocks)
+and six final-VCF mismatch pairs reproduce exactly, taking
+214.14→26.08 s Java→NEON. At chr20:31,060,001–31,080,000, two blocks and
+both nearby final variants still differ beyond PL alone, taking
+3,006.57→208.72 s. The q-arm control's absolute annotations change with
+clipped assembly context, but its depth/allele-depth discrepancies recur
+at the same sites. Control timings are excluded from the panel totals.
+
+Double precision fixes the earlier ordinary-slice float regression, but is
+**insufficient for exact difficult-region parity**. Native likelihood/vector
+tolerance tests and passing software certification do not establish this
+scientific gate. Do not infer whole-chromosome/WGS equivalence, extend this
+speedup to other chips, or conclude PairHMM can never remain a bottleneck.
+
 ### Around the aligner
 
 Short reads stream from the aligner through samblaster into `samtools sort`
@@ -288,12 +508,25 @@ The gain is modest. Measured at 4 threads on an 8-core Linux workstation
   marked 5,884 duplicate records instead of 5,894. samblaster stays the
   default for paired reads.
 
+<a id="nvidia-gpus-parabricks"></a>
+
 ## NVIDIA GPUs (`--gpu`, Parabricks)
 
 `align --gpu` and `realign --gpu` run [NVIDIA Parabricks](https://docs.nvidia.com/clara/parabricks/):
 `fq2bam` (BWA-MEM, sorting and duplicate marking) for short reads, and its
-minimap2 for PacBio HiFi. The [README](../README.md#nvidia-gpus-parabricks)
-lists exactly what each command runs.
+minimap2 for PacBio HiFi FASTQs. Streaming long-read realignment directly
+from BAM/CRAM refuses `--gpu` to retain tags; supply FASTQs for that GPU path.
+
+| Command | With `--gpu` |
+| :--- | :--- |
+| `align`, `realign` (short reads) | `pbrun fq2bam`, same index, `.alt` and read group as `--aligner bwa` |
+| `align`, `realign` with supplied FASTQs (HiFi) | minimap2 `map-hifi`, or `map-pbmm2` for `--aligner pbmm2` |
+| `vcf deepvariant` | WGS, WES, PACBIO or ONT_R104 (`--mode ont`); no checkpoint/hybrid. ONT mapping is tested, GPU ONT accuracy is not qualified. With native wgse-deepvariant ≥0.3.0 and weights installed, WGS/ONT use CUDA instead. |
+| `vcf gatk` | HaplotypeCaller |
+
+These are BWA-MEM, DeepVariant and GATK-equivalent paths, not new callers.
+On the measured RTX 3090, DeepVariant and HaplotypeCaller took about a minute
+for chr20. Ultima uses Google's experimental image instead, below.
 
 Requirements, which the CLI checks but doesn't install:
 
@@ -302,6 +535,14 @@ Requirements, which the CLI checks but doesn't install:
 - an NVIDIA GPU with 16 GB or more and its driver;
 - Docker with the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/);
 - the Parabricks image (`parabricks_image` in `config.toml`).
+
+Install the image explicitly with
+`docker pull nvcr.io/nvidia/clara/clara-parabricks:4.8.0-1`.
+Reads, outputs and reference mount at their own paths; tools run as you.
+Parabricks cannot write CRAM against gzipped FASTA, so it writes BAM and
+host samtools converts. With [wgse-deepvariant](#deepvariant-on-nvidia-gpus-without-parabricks-wgse-deepvariant)
+and `deepvariant_weights`, WGS/ONT_R104 run natively on CUDA;
+`deepvariant_native = "off"` keeps Parabricks. Other models still use it.
 
 Before starting Parabricks, the CLI reads the GPU's free memory from
 `nvidia-smi`. When another program holds part of the GPU, it uses the tool's
@@ -326,6 +567,81 @@ What `--gpu` refuses:
   flow-based duplicates.
 - **PacBio CLR/subreads**: there is no GPU preset.
 - **`--aligner bwa-mem2`**: Parabricks runs its own BWA-MEM; use `auto` or `bwa`.
+
+Parabricks has no Ultima model. `vcf deepvariant --gpu` on Ultima
+(or `--model-type ULTIMA`) instead runs Google's experimental
+`google/deepvariant:gh1100-ultima-gpu`, pinned by digest:
+
+```bash
+docker pull google/deepvariant:gh1100-ultima-gpu@sha256:f5572ef9b996c619c9e73a3f3391f894af72bf868d27578d9a4985298e75a1f7
+```
+
+`deepvariant_ultima_gpu_image` overrides it. The CPU image's resumable
+stages, `--dry-run`, `--force-step` and `--batch-size` remain; only
+call_variants uses GPU. It needs x86-64 Linux, NVIDIA driver and Docker's
+NVIDIA runtime. Before call_variants, each GPU must have 7.3 GiB free;
+`--no-gpu-memory-check` warns and runs anyway. This was measured at batch
+1024; another batch warns that the check may not fit. Download/unpacked
+sizes are ~10/17.5 GB.
+
+## Experimental native CUDA PairHMM for GATK
+
+`vcf gatk --pair-hmm-cuda JAR` opts into a locally built native PairHMM
+sidecar, **not Parabricks**. `vcf gatk --gpu` keeps its existing Parabricks
+meaning. This prototype is pinned to Linux x86-64, GATK 4.6.2.0 and
+GKL 0.8.11; see [build and validation instructions](../native/pairhmm/README.md).
+The CLI validates local dependencies but installs or downloads nothing.
+
+An AVX-capable CPU supplies the original GKL fallback. Kernels target
+Turing/SM 7.5 and newer; only the RTX 3090 has been tested. There is no
+16 GiB device minimum: native preflight checks actual buffers plus a
+256 MiB reserve, falling back to GKL when the GPU/driver is unavailable,
+incompatible or short of memory. Long reads and explicit double-precision
+requests also stay on the CPU.
+
+**Measured calling and genotyping:** Ryzen 5 5600X, RTX 3090, driver
+615.78.08, CUDA 13.4. Each HaplotypeCaller used one JVM-visible CPU, one
+native thread, a 4 GiB Java heap and GQ bands 10/20/30/60. These were
+standalone GATK runs at fixed ploidy 2, not measurements of the CLI's
+ploidy-partitioned workflow.
+
+| Input | PairHMM | HaplotypeCaller wall | GenotypeGVCFs wall | Caller peak sampled RSS |
+| :--- | :--- | ---: | ---: | ---: |
+| HG002 chr20 | Java | 10,785.5 s | 26.3 s | 728 MiB |
+| HG002 chr20 | GKL AVX OpenMP | 2,458.9 s | 32.7 s | 812 MiB |
+| HG002 chr20 | CUDA sidecar | 1,525.6 s | 39.4 s | 1,066 MiB |
+| HG00096 full mapped reference | GKL AVX OpenMP | 17.984 h | 788.18 s | 1,808 MiB |
+| HG00096 full mapped reference | CUDA sidecar | 12.605 h | 628.07 s | 2,060 MiB |
+
+On [HG002 PCR-free 35× chr20, GRCh38 no-alt](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7040349983),
+GKL and CUDA matched every decoded gVCF and final VCF record, including
+reference blocks. Java and GKL matched all 134,083 final site/allele/GT/FILTER
+tuples, but differed in annotations and PL; their raw gVCFs also differed in
+two GTs and in reference-block segmentation and fields. These are not just
+rounding differences.
+
+On [public HG00096 with hs38DH](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7071143485),
+GKL and CUDA matched all **78,187,031 gVCF records** and **5,031,943
+genotyped VCF records**, with gVCF coverage of all **3,217,346,917 bp**
+across **3,366 reference sequences**. Parity means identical decoded
+records, not identical headers or compressed files. CUDA computed
+1,515,388,466 read/haplotype pairs with 338 MiB sampled peak GPU process
+memory. Each backend produced about 1.55 GiB of compressed calls and
+indexes; decoded bodies and evidence brought the retained total to
+18.85 GiB for both runs. An 8 GiB RAM lease and 64 GiB disk reservation
+per run were sufficient for these inputs, not general requirements.
+
+The full run used mapped intervals and a separate mapped-only CRAI to work
+around HTSJDK's rejection of this input's unmapped index entries. The
+original CRAM and CRAI were untouched. Sampled mapped-read preservation
+does not prove exhaustive no-read-loss. No full Java run was performed.
+These comparisons establish neither accuracy against a truth set nor
+sex-chromosome ploidy accuracy. The timings are single sequential
+shared-host measurements, not a controlled speedup: in particular, only
+the full CUDA run had an exclusive GPU lease with guaranteed CPU admission.
+See the [reproduction settings](../native/pairhmm/README.md#reproduce-the-calling-comparison)
+and the [32 Mb sizing run](https://github.com/WGSExtract/wgsextract-cli/issues/1131#issuecomment-7043274181)
+for context.
 
 ## NVIDIA GPUs without Parabricks (`wgse-bwa --cuda`)
 
@@ -403,9 +719,14 @@ On Linux x86-64, WGS Extract's `wgse-deepvariant` 0.2.0 or later (DeepVariant
 1.10.0 without Docker; [native/deepvariant/README.md](../native/deepvariant/README.md#linux-x86-64-and-nvidia-gpus-cuda))
 runs call_variants on an NVIDIA GPU through CUDA, or on the CPU.
 
+Updating WGS Extract preserves the optional `deepvariant` environment. To
+upgrade an older install, rerun `pixi install -e deepvariant` from the updated
+checkout. Haploid chrX/Y/MT calling requires 0.4.0 or later. Replace any older
+standalone `wgse-deepvariant` on `PATH` too, since it takes precedence.
+
 - **When it runs:** with `deepvariant_native = "auto"` (the default),
   `wgse-deepvariant` installed (on `PATH`, or `pixi install -e deepvariant`,
-  which installs 0.3.1 from `linux-deepvariant-3`) and `deepvariant_weights`
+  which installs 0.4.0 from `linux-deepvariant-4`) and `deepvariant_weights`
   set to its weights folder (`wgse-deepvariant-weights-1.10.0`, with both
   models), `vcf deepvariant`
   calls the WGS model with it instead of Google's image: on the CPU, or with
@@ -645,8 +966,57 @@ showed less than 2% wall-time changes. No full-human-genome allocator
 comparison or Linux packaging/default change followed this gate; these
 measurements do not qualify Linux ARM64 or every glibc version.
 
-`vcf clair3` runs on Apple Silicon on the CPU only: Clair3 2.0.5 has no Metal
-(MPS) path; see [docs/ont.md](ont.md#clair3-optional).
+`vcf clair3` defaults to the CPU on Apple Silicon. Opt-in `--gpu` uses
+PyTorch MPS with the WGSE-built code-only caller, preserving CPU streaming
+and high-depth scaling (gVCF included). It refuses unavailable MPS or a
+missing patched package; no automatic installation or fallback. Package
+publication/Pixi pinning and whole-genome qualification are pending; see
+[docs/ont.md](ont.md#clair3-optional).
+
+### Native Windows CRAM encoding with mimalloc
+
+[The Windows allocator measurements, #1123](https://github.com/WGSExtract/wgsextract-cli/issues/1123)
+qualified only standalone samtools CRAM **3.1** encoding with a local reference.
+`bam to-cram --cram-version 3.1` selects the installed
+`samtools-mimalloc.exe` beside samtools when `mimalloc = "auto"` (default).
+`--mimalloc off` retains the system build. A startup probe requires matching
+samtools/HTS versions and actual allocator activation; absent or broken
+variants fall back without downloads. The manifest records `samtools_allocator`.
+CRAM 3.0 remains the compatibility default and is not promoted on unmeasured
+results. Sort, markdup, other conversions, minimap2 and macOS/Linux samtools
+retain their existing allocators.
+
+Azure Central US D8ds_v7, Xeon 6973P-C (8 logical CPUs / 4 cores), Windows 11
+Pro 25H2, 32 GiB RAM and local NVMe; samtools/htslib 1.24, minimap2 2.31,
+static mimalloc 3.6.1. Only final linking differs between each allocator pair;
+UCRT itself is not patched. Four AB/BA pairs on public 5M HG002 Illumina pairs
+mapped to hs38, plus 45,622 chr20-derived ONT reads / 912 Mb against full hs38:
+
+| Stage | System / mimalloc median wall s | Change | Median peak RSS MiB system / mimalloc |
+|---|---:|---:|---:|
+| sort | 15.93 / 15.97 | +0.30% | 2018.2 / 2044.8 |
+| markdup | 10.49 / 10.27 | −2.15% | 29.4 / 41.6 |
+| BAM→CRAM 3.1 | 17.72 / 16.53 | −6.70% | 846.5 / 1212.5 |
+| minimap2 map-ont | 152.75 / 151.99 | −0.50% | 11280.6 / 12065.4 |
+
+CRAM alone passed the 5% slice gate. Three AB/BA/AB full-genome pairs then
+encoded the public HG002 NovaSeq PCR-free 30x BAM, **723,327,664 records**, on
+the same VM model with the same executables and hs38. At samtools `-@ 7`,
+median encoding wall time fell from **2168.14 to 443.45 s (79.55% less)**,
+CPU time from 4898.47 to 3193.73 s, and median peak RSS rose from 2425.9 to
+2903.7 MiB. All six exact ordered decoded-record hashes matched:
+`4a71e114f4c505ac9903263a4225eb0757d5a28dc93b3701fb6f3477163e9661`.
+The largest CRAM was 14.90 GiB. Hashing and downloads are outside encoding
+timings; these are not whole-pipeline or CRAM 3.0 speed claims. Native working-set
+high-water counters were polled at 25 ms. Defender remained enabled throughout.
+Reference pages can remain resident, so Windows CRAM preflight includes a
+full-reference cache allowance rather than extrapolating the slice's memory,
+including regional runs whose headers may fill missing M5 tags from other contigs.
+
+On the M1 Pro, all four workloads missed the same slice gate (−2.30% at best);
+no macOS allocator change followed. Native Windows sort/markdup/minimap2
+missed it too. These workloads and public subsets do not establish universal
+allocator gains or long-read whole-genome mapping performance.
 
 ## Other GPUs
 
@@ -667,7 +1037,20 @@ give no meaningful benefit.
   runs DeepVariant's WGS and ONT_R104 models on the GPU without Docker or Parabricks:
   call_variants for chr20 in about 20 seconds (**measured**). Apple Silicon has
   [wgse-deepvariant](../native/deepvariant/README.md), a native build with
-  call_variants on the GPU: chr20 in about 5 minutes on an M1 Pro, with the
-  same calls as Google's image (**measured**). Linux ARM64 has a
+  call_variants on the GPU: the original chr20 qualification took about
+  5 minutes for the **whole pipeline** on an M1 Pro, with the same calls as
+  Google's image (**measured**). Its self-contained 0.4.1 build reduces
+  make_examples wall/CPU medians by 10.7%/9.8% against released 0.4.0,
+  retaining chr20 calls and gVCF blocks. A measured HG002 35x whole-genome
+  comparison (ten workers, batch 1024, gVCF) took **8,831.4 → 7,984.3 s**
+  wall and **50,708.6 → 46,455.5 s** CPU: 9.6% / 8.4% less.
+  Peak RSS grew **11.95 → 13.32 GB** (about 1.4 GB), sampled temporary
+  space **29.4 → 29.5 GB**, with zero swap growth. All **7,709,239 VCF**
+  and **72,210,019 gVCF** non-header records, including **64,500,780
+  reference blocks**, have identical full-body SHA-256 hashes.
+  One run each on the 32 GiB M1 Pro only, not a GPU speedup claim or a
+  qualification of the **16 GB base M1**; that remains follow-up.
+  See [measurements and qualification limits](resource_estimates.md#apple-silicon-cpu-hill-climb).
+  Linux ARM64 has a
   [native CPU build](deepvariant-arm64.md); native Windows has no DeepVariant
   ([Windows](windows.md)).

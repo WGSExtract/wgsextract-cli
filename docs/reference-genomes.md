@@ -36,6 +36,106 @@ placing it under a folder named `hg19` or `chm13` does not identify it.
 FASTA descriptions and assembly tags, and VCF reference/assembly metadata,
 remain build evidence. Tool command-history lines in VCF headers are not.
 
+## Verification and gene maps
+
+`ref verify` checks gzip integrity, the FASTA index and catalog
+sequence-dictionary signature, failing on mismatch.
+`ref library --install` also verifies the signature after indexing.
+The catalog's `md5` is a sequence-name/length dictionary signature,
+**not a FASTA content checksum**.
+
+### N counts
+
+Depth and breadth leave out each reference's N (unsequenceable) bases,
+counted from that reference's own FASTA, upper- and lowercase alike. The
+release ships the counts of every catalog genome in
+`assets/reference/reference_ncounts.tsv`, read at run time, keyed by FASTA
+file name and sequence-dictionary signature (two FASTAs can share a
+signature, so one could mask regions the other doesn't). Installing a genome
+the release didn't measure counts its Ns once, into the library's own
+`genomes/reference_ncounts.tsv`.
+
+`info` and genotype QC take the counts for a `--ref` FASTA from its entry
+under the header's signature, else from that FASTA's own `_ncnt.csv` (`ref
+count-ns` writes it and `_nbin.csv` beside the FASTA, or in `--outdir`; only
+rows with a length apply), else from its entry under its name alone; never
+from another genome. Without `--ref`, they use the entry for the header's
+signature. A contig gets a count only at the length it was measured at, and
+none when two of the header's contigs share a name (chr1 and 1). Otherwise
+they warn `n_counts_unavailable` (`n_counts_ambiguous` when genomes sharing
+the signature differ) and leave the N gaps in; run `ref count-ns` on the
+reference's FASTA and pass it with `--ref`. Maintainers regenerate the
+shipped table with `scripts/gen_reference_ncounts.py`.
+
+Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
+T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.
+The same download also keeps UCSC refGene's RefSeq transcripts (primary
+contigs only) as `downloads/transcripts_<build>.bed.gz`, a BGZF BED12 with a
+tabix index whose name column is `SYMBOL|ACCESSION` and whose thick part is the
+CDS. The genome viewer shows them as the **RefSeq transcripts** track, and
+[`info gene`](variants.md#one-gene) reads a gene's exons from them; a library
+whose gene maps came from an older version gets them by running `ref gene-map`
+again.
+
+### Offline cytobands
+
+The library viewer can display chromosome ideograms from UCSC's public
+`cytoBand` data. Install the appropriate assembly explicitly:
+
+```sh
+wgsextract ref cytobands --build hg19 --download
+wgsextract ref cytobands --build hg38 --download
+```
+
+Use the same `config.toml` as the desktop, or pass `--ref /path/to/reference-library`.
+Without `--download`, the command validates the installed asset offline;
+missing or invalid data produces an error naming it and the explicit command.
+It does not inherit the persistent download opt-in. Tables are installed as
+`downloads/cytobands_hg19.tsv` and `downloads/cytobands_hg38.tsv` in the configured
+reference library. The viewer never downloads them.
+Validation-only runs record the table as an input and leave its installation
+manifest unchanged. The default is the configured reference library even when
+`reference_fasta` points elsewhere; only an explicit `--ref` FASTA selects its
+containing library. Repair hints retain the selected library and configuration.
+
+The installer checks pinned SHA-256 snapshots of `cytoBand.txt.gz`, gzip
+integrity, five columns, zero-based half-open coordinates, continuous chromosome
+coverage, band names and stains before publishing the table atomically.
+Only primary chromosomes 1–22, X and Y are retained; UCSC's unbanded alternate
+contigs are validated but excluded. Partial downloads use the standard
+URL-bound resume helper. UCSC changing a snapshot requires a reviewed pin update,
+not accepting unchecked replacement bytes.
+Downloads and publication are serialized per assembly. Completed archives use
+private staging without replacing user archives; new public tables follow the
+process umask. Installed tables must stay within the library, use LF or CRLF
+row endings and contain at most 10,000 primary bands, matching viewer validation.
+
+Source URLs are under
+`https://hgdownload.soe.ucsc.edu/goldenPath/{hg19,hg38}/database/cytoBand.txt.gz`.
+The [UCSC download terms](https://hgdownload.soe.ucsc.edu/downloads.html#terms)
+permit use of downloaded data for any purpose except directory-specific
+exceptions; see the [database README](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/README.txt)
+and assembly credits. These are annotation data, not UCSC's separately licensed
+Genome Browser software. Credit UCSC and its assembly contributors. No new
+redistribution mirror is introduced.
+
+## Download safety
+
+Reference HTTP downloads resume only explicit `.partial` files bound to
+their source URL and to the version of the file the server named (a strong
+ETag, else a Last-Modified date at least a second older than the reply) by
+a `.partial.source` sidecar. Segmented downloads record the URL hash, that
+version and per-segment progress in `.partial.segments`. A resume asks for the rest of that version only
+(`If-Range`): a file replaced at the same URL, even by one of the same size,
+downloads again from the start instead of mixing old and new bytes. Without a
+version from the server, a partial restarts unless a pinned SHA-256 will check
+the result, and a large file is fetched over one connection. Legacy or invalid
+state and changed URLs cause the download to restart.
+Refreshing a complete file starts from zero and preserves it until replacement
+finishes and passes available checksums, then publishes atomically.
+Diagnostic URLs omit userinfo and queries, while requests keep the original
+URL. MD5-pinned benchmark files enter the dev cache only after verification.
+
 ## The test genome
 
 `wgsextract ref test-genome --install` downloads and verifies the small

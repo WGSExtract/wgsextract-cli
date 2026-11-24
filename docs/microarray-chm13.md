@@ -31,7 +31,12 @@ declared contig signatures, and every observed REF is checked against the actual
 FASTA before projection.
 
 The complete installed marker-template union and the installed
-`hg18ToHg19.over.chain.gz` are required. No tools, templates or chains are
+`hg18ToHg19.over.chain.gz` and `hg38ToHg19.over.chain.gz` are required: they
+place the NCBI36 (FTDNA_V1_Affy) and GRCh38 (FTDNA's Y files) templates'
+markers on GRCh37. Among same-named chains in the searched folders, the copy
+with UCSC's pinned SHA-256 is used; any other copy is used only when no pinned
+one is found, with a warning, and then the site-map union check can fail with
+"Installed templates differ". No tools, templates or chains are
 installed by this path. Custom `--ref-vcf-tab` and `--ploidy-file` overrides are
 not supported for CHM13.
 
@@ -153,6 +158,7 @@ disagree on which chrM it is (rCRS or CHM13) is refused before calling.
 
 `scripts/build_microarray_chm13_map.py --help` documents the developer generator.
 It requires the complete marker-only templates, direct and reciprocal chains,
+the pinned `hg18ToHg19` and `hg38ToHg19` lifts (in the `--chains` folder),
 the independent GRCh38 cross-check chains, indexed source/native references with
 sequence dictionaries, and the published CHM13 PAR BED.
 
@@ -161,17 +167,26 @@ SHA256 sidecar. The independent GRCh38 eligibility
 table is validation-only and is not shipped. Direct GRCh37↔CHM13 mappings remain
 authoritative when the GRCh38 route disagrees.
 
-The v1 union contains 2,862,500 sites (2,392,384 legacy sites plus the pinned AADR
-union). Its compact payload is 6,802,944 compressed / 16,621,310 decoded bytes.
-Runtime limits are 7 MiB compressed, 17 MiB decoded and 3,000,000 rows. Changing
-these measured budgets requires an explicit asset update, not a writable cache
-or an automatic download.
+The v2 map covers every CombinedKit v5 template (`CHM13_V2_FORMATS` in
+`core/microarray/targets.py`), including the merged 23andMe v4 (v4a–c) and
+FTDNA v2 (v2a–d) layouts, letter-named variants, FTDNA's GRCh38 Y files (lifted
+with `hg38ToHg19`), tellmeGen, Genera, MTHFR Genetics, meuDNA and SelfDecode.
+Its union contains 2,992,588 sites (2,531,391 template sites plus the pinned AADR
+union); the sites v1 had keep identical projections. Its compact payload is
+7,018,085 compressed / 17,302,476 decoded bytes.
 
-The v1 map covers the templates shipped before CombinedKit v5. Markers found
-only in later templates (the letter-named variants such as `ancestry_v2e`,
-FTDNA's GRCh38 Y files, tellmeGen, Genera, MTHFR Genetics, meuDNA and
-SelfDecode) are not in it, so those exports write no-calls there on CHM13 input
-until the map is rebuilt with them.
+| Map | Sites | Compressed | Decoded |
+|---|---:|---:|---:|
+| v1 (pre-v5 templates) | 2,862,500 | 6,802,944 | 16,621,310 |
+| v2 (CombinedKit v5) | 2,992,588 | 7,018,085 | 17,302,476 |
+
+Runtime limits are 7 MiB (7,340,032) compressed, 17 MiB (17,825,792) decoded
+and 3,000,000 rows, so v2 has about 7,400 rows of headroom: the next template
+that adds many new markers will need these budgets raised. Changing these
+measured budgets requires an explicit asset update, not a writable cache or an
+automatic download. A template added to `_FORMATS` after `CHM13_V2_FORMATS`
+stays outside the map, and its markers are no-calls on CHM13 input, until the
+map is rebuilt with it.
 
 ### Derived caches
 

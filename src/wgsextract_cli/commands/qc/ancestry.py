@@ -30,7 +30,7 @@ from collections import Counter
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import IO, TYPE_CHECKING, Any, Final
 
 import numpy as np
 
@@ -51,7 +51,7 @@ from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
-from wgsextract_cli.core.microarray_revisions import decode_text, read_raw_bytes
+from wgsextract_cli.core.microarray.revisions import decode_text, read_raw_bytes
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.reference_assets import (
     input_stem,
@@ -68,7 +68,11 @@ from wgsextract_cli.core.utils import (
     popen,
     run_command,
 )
-from wgsextract_cli.core.variant_files import vcf_header_chromosomes, verify_paths_exist
+from wgsextract_cli.core.variant_files import (
+    is_vcf_path,
+    vcf_header_chromosomes,
+    verify_paths_exist,
+)
 
 from ..genotyping.common import open_alignment
 from ._relate_vcf import (
@@ -86,7 +90,6 @@ GUIDE = "docs/ancestry.md"
 # they are reported with a warning (docs/ancestry.md, measured in #620).
 MIN_SITES = 2_000
 WARN_SITES = 10_000
-_VCF_SUFFIXES = (".vcf", ".vcf.gz", ".vcf.bgz", ".bcf")
 _PASSING = (".", "PASS")
 _SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -113,7 +116,7 @@ def _input_kind(path: str) -> str:
     lower = path.lower()
     if lower.endswith((".bam", ".cram")):
         return "alignment"
-    if lower.endswith(_VCF_SUFFIXES):
+    if is_vcf_path(path):
         return "vcf"
     return "microarray"
 
@@ -139,6 +142,12 @@ def _contig(chrom: int, chr_prefix: bool) -> str:
 # --- BAM / CRAM ---------------------------------------------------------------
 
 
+def _diagnostic_tail(stderr: IO[bytes]) -> str:
+    size = stderr.seek(0, io.SEEK_END)
+    stderr.seek(max(0, size - 3200))
+    return stderr.read().decode(errors="replace")[-800:]
+
+
 def _pileup(
     path: str, reference: str, regions: Path, contig: str
 ) -> Iterator[tuple[int, str, str, list[int]]]:
@@ -147,8 +156,18 @@ def _pileup(
     mpileup = ["bcftools", "mpileup", "-f", reference, "-R", str(regions), "-a", "FORMAT/AD", "-B", "-I", "-q", "20", "-Q", "20",
                "-d", "500", "-Ou", path]  # fmt: skip
     query = ["bcftools", "query", "-f", "%POS\t%REF\t%ALT\t[%AD]\n"]
-    with popen(mpileup, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as pile:
-        with popen(query, stdin=pile.stdout, stdout=subprocess.PIPE, text=True) as q:
+    with (
+        tempfile.TemporaryFile(dir=regions.parent) as pile_stderr,
+        tempfile.TemporaryFile(dir=regions.parent) as query_stderr,
+        popen(mpileup, stdout=subprocess.PIPE, stderr=pile_stderr) as pile,
+    ):
+        with popen(
+            query,
+            stdin=pile.stdout,
+            stdout=subprocess.PIPE,
+            stderr=query_stderr,
+            text=True,
+        ) as q:
             assert pile.stdout is not None and q.stdout is not None
             pile.stdout.close()
             for line in q.stdout:
@@ -159,11 +178,17 @@ def _pileup(
                     alts,
                     [int(x) if x != "." else 0 for x in ad.split(",")],
                 )
-        _, error = pile.communicate()
-        if pile.returncode:
-            raise WGSExtractError(
-                f"bcftools mpileup failed on {contig}: {error.decode(errors='replace')[-800:]}"
-            )
+        errors = []
+        for tool, status, stderr in (
+            ("mpileup", pile.wait(), pile_stderr),
+            ("query", q.returncode, query_stderr),
+        ):
+            if status:
+                errors.append(
+                    f"bcftools {tool} failed on {contig}: {_diagnostic_tail(stderr)}"
+                )
+        if errors:
+            raise WGSExtractError("\n".join(errors))
 
 
 def _alignment_genotypes(

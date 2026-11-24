@@ -3,7 +3,9 @@ checked through the commands' outputs: the labelled VCF, the TSV and the
 result manifest."""
 
 import csv
+import gc
 import json
+import warnings
 from pathlib import Path
 
 import pytest
@@ -15,7 +17,7 @@ from wgsextract_cli.cli.parser import build_parser, parse_args
 from wgsextract_cli.commands._analyze_workflows import run_discovery_filter
 from wgsextract_cli.core import results
 from wgsextract_cli.core.utils import UsageError, run_command
-from wgsextract_cli.core.variant_confidence import Thresholds, label_records
+from wgsextract_cli.core.variant_confidence import Thresholds, label_records, label_vcf
 
 needs_bcftools = needs_tools("bcftools", "bgzip", "tabix")
 HG38_CHR1 = 248956422
@@ -63,6 +65,49 @@ def _text(
     )
 
 
+def test_1103_native_encoded_haploid_variants_use_published_policy():
+    """#1103: a native 1/1 at 7x is moderate off PAR, low inside PAR."""
+    from wgsextract_cli.core.reference_evidence import POLICY_HEADER_KEY, Provenance
+
+    provenance = Provenance(
+        "deepvariant",
+        "wgse-deepvariant 0.4.0",
+        "gq",
+        ploidy="chrX:1-40=1,chrX:61-100=1",
+    )
+    text = _text(
+        [
+            "20 . A C 50 PASS . GT:DP:GQ:AD 1/1:7:50:0,7",
+            "50 . A C 50 PASS . GT:DP:GQ:AD 1/1:7:50:0,7",
+            "60 . AC A 50 PASS . GT:DP:GQ:AD 1/1:7:50:0,7",
+            "80 . A C 50 PASS . GT:DP:GQ:AD 1/1:7:50:0,7",
+        ],
+        header=provenance.header(key=POLICY_HEADER_KEY) + "\n",
+        contig="chrX",
+    )
+    labelled = [
+        row
+        for row in label_records(
+            text.splitlines(),
+            Thresholds(
+                min_depth=10,
+                high_depth=20,
+                min_gq=20,
+                high_gq=30,
+            ),
+        )
+        if isinstance(row, str) and not row.startswith("#")
+    ]
+    assert [row.split("\t")[7].split(";")[0] for row in labelled] == [
+        "WGSE_CONF=moderate",
+        "WGSE_CONF=low",
+        "WGSE_CONF=low",
+        "WGSE_CONF=moderate",
+    ]
+    assert all("low_depth" not in row for row in (labelled[0], labelled[3]))
+    assert all("low_depth" in row for row in (labelled[1], labelled[2]))
+
+
 def _vcf(path: Path, rows: list[str], **kwargs: str) -> str:
     plain = path.with_suffix("")
     plain.write_text(_text(rows, **kwargs))
@@ -77,6 +122,44 @@ def _labels(vcf: str | Path) -> list[str]:
         capture_output=True,
     )
     return out.stdout.splitlines()
+
+
+@needs_bcftools
+def test_1473_variant_confidence_closes_subprocess_pipes(tmp_path: Path) -> None:
+    source = _vcf(tmp_path / "sample.vcf.gz", ["100 . A G 50 PASS . GT 0/1"])
+    labelled = tmp_path / "labelled.vcf.gz"
+    thresholds = Thresholds(min_depth=10, high_depth=20, min_gq=20, high_gq=30)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        summary = label_vcf(source, labelled, thresholds)
+        gc.collect()
+
+    assert not [w.message for w in caught if issubclass(w.category, ResourceWarning)]
+    assert summary.carried == 1
+    assert [row.split(":")[0] for row in _labels(labelled)] == ["100"]
+
+
+@needs_bcftools
+def test_1248_item_3_split_reference_record_keeps_confidence_for_both_alts(tmp_path):
+    source = _vcf(
+        tmp_path / "sample.vcf.gz",
+        ["100 . A G,T 50 PASS . GT:AD:DP:GQ 0/0:14,0,0:14:99"],
+    )
+    labelled = tmp_path / "labelled.vcf.gz"
+    thresholds = Thresholds(min_depth=10, high_depth=20, min_gq=20, high_gq=30)
+    summary = label_vcf(source, labelled, thresholds, include_reference=True)
+    assert summary.carried == 1
+
+    split = tmp_path / "split.vcf"
+    run_command(["bcftools", "norm", "-m", "-any", "-o", str(split), str(labelled)])
+    queried = run_command(
+        ["bcftools", "query", "-f", "%ALT:%WGSE_CONF:%WGSE_CONF_REASONS\n", str(split)],
+        capture_output=True,
+    )
+    assert queried.stdout.splitlines() == [
+        "G:moderate:moderate_depth",
+        "T:moderate:moderate_depth",
+    ]
 
 
 def _table(path: Path) -> list[dict[str, str]]:

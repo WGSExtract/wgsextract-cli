@@ -1,5 +1,6 @@
 import { apiStream, api } from "./api.js";
 import { errorMessage } from "./model.js";
+import { formatLinkedMoveFolder } from "../../../shared/workspace-move-message.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { appendTerminal } from "./terminal.js";
@@ -20,7 +21,7 @@ function cancelSettingMove() {
 type WorkspaceMoveEvent =
     | { type: "progress"; percent: number }
     | { type: "complete" }
-    | { type: "error"; error: string };
+    | { type: "error"; error: string; linkedFolder?: { link: string; target: string | null } };
 
 /** What the setting-only button does: save the new folder without moving what is in the old one. */
 let saveSettingOnly: (() => Promise<void>) | null = null;
@@ -109,7 +110,9 @@ async function moveWorkspace() {
                 scheduleRender();
             }
             else if (event.type === "error") {
-                failure = event.error;
+                failure = event.linkedFolder ? formatLinkedMoveFolder(
+                    event.linkedFolder, state.labels.workspaceLocationLinkedFolderFormat, state.labels.workspaceLocationLinkTargetUnavailable,
+                ) : event.error;
             }
         }, { label: "Workspace move" });
         // Everything the page holds (paths, settings, setup status) came from the old location.
@@ -118,11 +121,12 @@ async function moveWorkspace() {
     catch (error) {
         state.workspaceMove = null;
         saveSettingOnly = null;
-        reportFailure(failure ?? errorMessage(error));
+        reportFailure(errorMessage(failure ?? error));
     }
 }
 
 function reportFailure(message: string) {
     appendTerminal("error", state.labels.workspaceLocationTitle, message);
+    state.isTerminalVisible = true;
     scheduleRender();
 }

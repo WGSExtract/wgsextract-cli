@@ -20,8 +20,8 @@ from wgsextract_cli.api.ref import (
 from wgsextract_cli.core import bwa_mem2
 from wgsextract_cli.core.annotation_resources import genome_bytes
 from wgsextract_cli.core.bgzf import open_decompressed
-from wgsextract_cli.core.builds import build_from_path, canonical_build
-from wgsextract_cli.core.constants import REFERENCE_MODELS
+from wgsextract_cli.core.builds import build_from_path, canonical_build, display_build
+from wgsextract_cli.core.constants import MODEL_TAGS_BY_CODE, REFERENCE_MODELS
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -44,6 +44,7 @@ from wgsextract_cli.core.ref_library.catalog import (
     get_genome_status,
 )
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.ref_library.ncount import write_n_count_files
 from wgsextract_cli.core.ref_library.processing import has_ref_ns
 from wgsextract_cli.core.ref_library.remote_sizes import cached_sizes, refresh_sizes
@@ -316,17 +317,15 @@ def _vep_cache(genome: dict[str, str], reflib_dir: str) -> str | None:
 
 
 def _annotation_resources(reflib_dir: str) -> dict[str, dict[str, bool]]:
-    ref_dir = Path(reflib_dir, "ref")
-
     def any_of(stem: str, *exts: str) -> bool:
-        return any(Path(ref_dir, f"{stem}{ext}").exists() for ext in exts)
+        return any(download_path(reflib_dir, stem + ext).exists() for ext in exts)
 
     return {
         build: {
             "clinvar": any_of(f"clinvar_{build}", ".vcf.gz"),
             "revel": any_of(f"revel_{build}", ".tsv.gz"),
             "phylop": any_of(f"phylop_{build}", ".bw", ".tsv.gz"),
-            "gnomad": any_of(f"gnomad_{build}", ".vcf.bgz", ".vcf.gz"),
+            "gnomad": any_of(f"gnomad_{build}", ".vcf.bgz", ".vcf.gz", ".tsv.gz"),
         }
         for build in ("hg19", "hg38")
     }
@@ -352,6 +351,7 @@ def run_library_list(params: RefLibraryListParams) -> None:
         genomes.append(
             {
                 "code": g["code"],
+                "tag": g.get("tag") or MODEL_TAGS_BY_CODE.get(g["code"], ""),
                 "label": g["label"],
                 "source": g.get("source"),
                 "file": g["final"],
@@ -383,16 +383,14 @@ def run_library_list(params: RefLibraryListParams) -> None:
     rule = "-" * 80
     human_output(f"\nREFERENCE LIBRARY: {reflib_dir}")
     human_output(rule)
-    human_output(f"{'GENOME':<40} {'STATUS':<15} {'SIZE':<10} {'DETAILS'}")
+    human_output(f"{'GENOME':<40} {'TAG':<12} {'STATUS':<15} {'DETAILS'}")
     human_output(rule)
     for row, vep in zip(genomes, vep_labels, strict=True):
         details = ["N-counts"] if row["n_counts"] else []
         if vep:
             details.append(vep)
-        if not row["size_bytes"] and row["remote_bytes"]:
-            details.append(f"download {format_bytes(row['remote_bytes'])}")
         human_output(
-            f"{row['label']:<40} {row['status'].upper():<15} {row['size']:<10} "
+            f"{row['label']:<40} {row['tag']:<12} {row['status'].upper():<15} "
             f"{', '.join(details)}"
         )
     human_output(rule)
@@ -400,12 +398,13 @@ def run_library_list(params: RefLibraryListParams) -> None:
     def installed(flag: bool) -> str:
         return "INSTALLED" if flag else "MISSING"
 
-    human_output(f"{'Gene Maps (hg19/hg38)':<40} {installed(gene_maps)}")
+    human_output(f"{'Gene Maps (GRCh37 / GRCh38)':<40} {'':<12} {installed(gene_maps)}")
     names = {"clinvar": "ClinVar", "revel": "REVEL", "phylop": "PhyloP"}
     for build, found in builds.items():
+        build_name = display_build(build) or build
         for key, flag in found.items():
-            name = f"{names.get(key, 'gnomAD')} ({build})"
-            human_output(f"{name:<40} {installed(flag)}")
+            name = f"{names.get(key, 'gnomAD')} ({build_name})"
+            human_output(f"{name:<40} {'':<12} {installed(flag)}")
     human_output(rule)
 
 

@@ -57,6 +57,84 @@ def test_issue_1043_aadr_forward_chain_edit_recomputes_genotypes(tmp_path, marke
     assert all(not output.metrics.get("reused") for output in result.outputs)
 
 
+@needs_tools("bcftools", "samtools", "bgzip", "tabix")
+@pytest.mark.parametrize("manifest_indels", [False, True], ids=["aadr", "mixed"])
+def test_issue_1249_missing_aadr_chain_is_fetched_once(
+    tmp_path, markers, monkeypatch, manifest_indels
+):
+    from tests.htslib_helpers import bgzip_index, write_fasta
+    from tests.http_server import RangeServer
+    from tests.test_microarray_indels import CONTEXT, LEFT, RIGHT, _manifest
+    from tests.test_microarray_vcf_indels import _targets
+    from wgsextract_cli import api
+    from wgsextract_cli.core.ref_library import downloads
+
+    name = microarray_targets.HG19_TO_HG38_CHAIN.name
+    # GRCh37 chr1:100 (rs1) is GRCh38 chr1:200.
+    data = gzip.compress(b"chain 1 chr1 1000 + 0 900 chr1 1000 + 100 1000 1\n900\n\n")
+    library = tmp_path / "library"
+    library.mkdir()
+    seq = "A" * (800 - len(LEFT)) + LEFT + "GT" + RIGHT
+    ref = write_fasta(library / "hs38.fa", {"chr1": seq.ljust(1000, "A")})
+    formats = "aadr_ho"
+    bindings = []
+    targets = None
+    if manifest_indels:
+        (library / "hg38ToHg19.over.chain.gz").write_bytes(
+            gzip.compress(b"chain 1 chr1 1000 + 100 1000 chr1 1000 + 0 900 1\n900\n\n")
+        )
+        body = library / "raw_file_templates" / "body"
+        body.mkdir(parents=True)
+        (body / "23andMe_V4.txt").write_text("rs1\t1\t100\nrsProbe\t1\t700\n")
+        manifest = _manifest(
+            tmp_path / "manifest.csv",
+            [["rsProbe", "[I/D]", "37", "1", "700", CONTEXT]],
+        )
+        targets = Path(_targets(tmp_path / "targets.tab", [("chr1", 200, "rs1")]))
+        formats += ",23andme_v4"
+        bindings.append(f"23andme_v4={manifest}")
+    plain = tmp_path / "sample.vcf"
+    plain.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        "chr1\t200\t.\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t1/1:30:60\n"
+        f"chr1\t800\t.\t{LEFT[-1]}GT\t{LEFT[-1]}\t.\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
+    )
+    out = tmp_path / "out"
+    server = RangeServer(None, {name: data})
+    try:
+        monkeypatch.setattr(downloads, "curl_progress_args", lambda: ["--silent"])
+        monkeypatch.setattr(
+            microarray_targets,
+            "HG19_TO_HG38_CHAIN",
+            microarray_targets.ChainSource(
+                name, (server.url_for(name),), hashlib.sha256(data).hexdigest()
+            ),
+        )
+        api.microarray.generate(
+            api.MicroarrayParams(
+                input=Path(bgzip_index(plain)),
+                ref=ref,
+                outdir=out,
+                formats=formats,
+                ref_vcf_tab=targets,
+                indel_manifest=bindings,
+                download=True,
+            )
+        )
+        gets = server.gets()
+    finally:
+        server.close()
+    assert (out / "sample_AADR_ho.geno").read_text().splitlines()[0] == "0"
+    if manifest_indels:
+        kit = (out / "sample_23andMe_V4.txt").read_text()
+        assert "rsProbe\t1\t700\tDI" in kit.splitlines()
+    assert len(gets) == 1
+
+
 @pytest.fixture
 def markers(tmp_path, monkeypatch):
     source = tmp_path / "markers.tsv.gz"
@@ -243,9 +321,13 @@ def test_mixed_2m_vendor_preflights_chain_before_consumer_target_build(
 
 @needs_tools("bcftools", "bgzip", "tabix", "samtools")
 @pytest.mark.parametrize("chroms", [("chr1", "chrX"), ("1", "X")])
-@pytest.mark.parametrize("legacy_fill", [False, True])
+@pytest.mark.parametrize(
+    ("legacy_fill", "legacy_alt", "legacy_gt"),
+    [(False, "G", "1/1"), (True, "G", "1/1"), (True, "AT", "0/0")],
+    ids=["default", "reference-fill", "issue-1249-indel-only"],
+)
 def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
-    tmp_path, installed_2m, chroms, legacy_fill
+    tmp_path, installed_2m, chroms, legacy_fill, legacy_alt, legacy_gt
 ):
     fasta = installed_2m / "genomes" / "hg19.fa"
     fasta.parent.mkdir()
@@ -261,7 +343,7 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
         '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
-        f"{chroms[0]}\t100\trs1\tA\tG\t.\tPASS\t.\tGT:DP:GQ\t1/1:30:60\n"
+        f"{chroms[0]}\t100\trs1\tA\t{legacy_alt}\t.\tPASS\t.\tGT:DP:GQ\t{legacy_gt}:30:60\n"
         f"{chroms[1]}\t550\tnew_probe_x\tT\tC\t.\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
     )
     compressed = str(plain) + ".gz"
@@ -278,7 +360,16 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
         parallel=False,
         ref_vcf_tab=None,
         ploidy_file=None,
-        **({"assume_hom_ref": True, "min_dp": 0, "min_gq": 0} if legacy_fill else {}),
+        **(
+            {
+                "assume_hom_ref": True,
+                "min_dp": 0,
+                "min_gq": 0,
+                "exclude_filtered": False,
+            }
+            if legacy_fill
+            else {}
+        ),
     )
     result = CommandResult(command="microarray")
     with collecting(result):
@@ -294,6 +385,9 @@ def test_sparse_vcf_2m_only_hit_does_not_reference_fill_legacy_panels(
     args.formats = "aadr_2m,aadr_1240k,aadr_ho"
     args.outdir = str(tmp_path / "mixed")
     microarray.run(args)
+    if legacy_alt == "AT":
+        dosages = (tmp_path / "mixed" / "input_AADR_ho.geno").read_text().splitlines()
+        assert dosages[:2] == ["9", "9"]  # rs1 is indel-only; rs2 is absent.
     assert len(baseline) == 12
     assert all(
         (tmp_path / "mixed" / name).read_bytes() == data
@@ -492,7 +586,8 @@ def test_aadr_dispatch_uses_input_build_calls_without_reverse_chain(tmp_path, ma
     calls.write_text("rs1\t1\t100\tAA\n")
     library = tmp_path / "library"
     library.mkdir()
-    (library / "hg19ToHg38.over.chain.gz").write_bytes(
+    chain = library / "hg19ToHg38.over.chain.gz"
+    chain.write_bytes(
         gzip.compress(b"chain 1000 chr1 1000 + 0 1000 chr1 1000 + 0 1000 1\n1000\n\n")
     )
     microarray._convert_microarray_outputs(
@@ -503,6 +598,7 @@ def test_aadr_dispatch_uses_input_build_calls_without_reverse_chain(tmp_path, ma
         combined_kit_txt=str(calls),
         ref_fasta=str(library / "hg38.fa"),
         start_total=time.time(),
+        aadr_liftover=LiftOver(str(chain)),
     )
     assert (tmp_path / "input_AADR_ho.geno").read_text() == "2\n9\n9\n"
     assert not (tmp_path / "input_CombinedKit_hg19.txt").exists()
@@ -630,6 +726,9 @@ def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, marker
     for part, text in (("head", "# h\n"), ("body", "rs1\t1\t100\n")):
         (templates / part).mkdir(parents=True)
         (templates / part / "23andMe_V3.txt").write_text(text)
+    target = microarray_targets.build_genome_wide_target(
+        str(library), "hg19", [str(library)]
+    )
     vcf = _plain_vcf(tmp_path / "input.vcf")
     outdir = tmp_path / "out"
 
@@ -639,6 +738,7 @@ def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, marker
             run_wgsextract(
                 "microarray", "--input", str(vcf), "--ref", str(fasta),
                 "--formats", formats, "--outdir", str(outdir),
+                "--ref-vcf-tab", target,
             )  # fmt: skip
         [kit] = [o for o in result.outputs if o.role == "vendor_kit"]
         return bool(kit.metrics.get("reused"))

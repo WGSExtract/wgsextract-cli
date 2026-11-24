@@ -12,6 +12,13 @@ from wgsextract_cli.core.utils import WGSExtractError, run_command
 needs_samtools = needs_tools("samtools")
 
 
+def _saved_bins(folder: Path) -> list[dict[str, str]]:
+    """The rows of the one bins TSV report in ``folder``."""
+    (report,) = folder.glob("*_coverage_bins.tsv")
+    lines = [ln for ln in report.read_text().splitlines() if not ln.startswith("#")]
+    return list(csv.DictReader(lines, delimiter="\t"))
+
+
 def test_bin_boundaries_and_inferred_uncovered_contigs():
     depths = [0, 1, 3, 4, 7, 8, 11, 44, 77, 100]
     rows = [f"chrY\t{i + 1}\t{depth}\n" for i, depth in enumerate(depths)]
@@ -117,7 +124,7 @@ def test_bins_real_samtools_default_filters_and_region(
     if reference:
         args += ["--ref", str(reference)]
     run_wgsextract(*args)
-    rows = list(csv.DictReader(io.StringIO(capsys.readouterr().out), delimiter="\t"))
+    rows = _saved_bins(tmp_path / "o")
     y = rows[0]
     assert [int(y[f"Depth {b} bases"]) for b in ("0", "1-3", "4-7", "8+")] == (
         [0, 2, 2, 0] if region else [2, 4, 2, 2]
@@ -191,7 +198,7 @@ def test_bins_honor_exact_name_before_mitochondrial_aliases(tmp_path, capsys, re
         "--region",
         region,
     )
-    rows = list(csv.DictReader(io.StringIO(capsys.readouterr().out), delimiter="\t"))
+    rows = _saved_bins(tmp_path / "o")
     assert len(rows) == 1
     assert rows[0]["Seq Name"] == "MT"
     assert rows[0]["Model Len"] == ("10" if region == "MT" else "4")
@@ -209,17 +216,18 @@ def test_bins_parquet_holds_the_printed_table(tmp_path: Path, capsys):
         "info", "calculate-coverage", "--bins", "--format", "parquet",
         "--input", bam, "--outdir", str(out),
     )  # fmt: skip
-    printed = list(csv.reader(io.StringIO(capsys.readouterr().out), delimiter="\t"))
+    printed = capsys.readouterr().out
     table = pq.read_table(out / "tiny.bam_coverage_bins.parquet")
-    assert table.column_names == printed[0]
+    assert table.column("Seq Name").to_pylist() == ["chrY", "chrM"]
     assert table.column("Depth 1-3 bases").to_pylist() == [2, 0]
     assert table.column("Depth 0 fraction").to_pylist() == [0.5, 1.0]
-    assert [r[2:6] for r in printed[1:]] == [["2", "2", "0", "0"], ["3", "0", "0", "0"]]
+    # --bins prints the rows as TSV, as before Ns were counted.
+    assert printed.splitlines()[1].startswith("chrY\t4\t0\t2\t2\t0\t0\t0.5")
     assert not list(out.glob("*.tsv"))
 
 
 @needs_samtools
-def test_with_bins_follows_the_coverage_table_and_reuses_both_reports(
+def test_with_bins_shows_the_bins_table_and_reuses_both_reports(
     tmp_path, capsys, monkeypatch
 ):
     from wgsextract_cli.commands.info import bins
@@ -237,9 +245,12 @@ def test_with_bins_follows_the_coverage_table_and_reuses_both_reports(
 
     run_wgsextract(*args)
     first = capsys.readouterr().out
-    assert first.index("Seq Name\tModel Len\tDepth 0 bases") > 0
-    bins_text = first[first.index("Seq Name\tModel Len\tDepth 0 bases") :]
-    y = next(csv.DictReader(io.StringIO(bins_text), delimiter="\t"))
+    # The bins table is the report (the v4 Detailed Coverage window); the
+    # chromosome table is cached for `info --detailed`.
+    assert first.startswith("Bin Coverage by Sequence Name")
+    assert "Map ARD" not in first
+    assert any(line.startswith("chrM") for line in first.splitlines())  # as in v4
+    y = _saved_bins(tmp_path / "o")[0]
     assert [int(y[f"Depth {b} bases"]) for b in ("0", "1-3", "4-7", "8+")] == [
         4,
         2,
@@ -254,7 +265,7 @@ def test_with_bins_follows_the_coverage_table_and_reuses_both_reports(
         bins, "popen", Mock(side_effect=AssertionError("bins must be reused"))
     )
     run_wgsextract(*args)
-    assert capsys.readouterr().out.endswith(bins_text)
+    assert capsys.readouterr().out == first
 
 
 @needs_samtools
@@ -318,3 +329,38 @@ def test_with_bins_is_refused_with_bins_or_by(tmp_path, extra):
         run_wgsextract(
             "info", "calculate-coverage", "--with-bins", *extra, "--input", str(bam)
         )
+
+
+def test_cat_autosomes_are_rows_of_the_bins_table():
+    """Review: the human-only check pooled a cat's A1-F2 into Other."""
+    from wgsextract_cli.commands.info.bins import render_bins
+
+    # Seq Name, Model Len, Model N Len, depth 0, 1-3, 4-7, 8+ bases
+    rows = [("chrA1", 10, 0, 5, 5, 0, 0), ("chrUn1", 10, 0, 10, 0, 0, 0)]
+    lines = render_bins(rows).splitlines()
+    assert any(ln.startswith("chrA1") for ln in lines)
+    total = next(ln for ln in lines if ln.startswith("Total"))
+    assert total.split()[-2] == "50.00"
+
+
+@needs_samtools
+def test_with_bins_csv_prints_the_bins_rows_as_csv(tmp_path: Path, capsys):
+    """Review: `info --csv calculate-coverage --with-bins` printed the table."""
+    lines = ["@SQ\tSN:chrY\tLN:4", "r1\t0\tchrY\t1\t60\t1M\t*\t0\t0\tA\tI"]
+    bam = sam_to_bam(lines, tmp_path / "tiny.bam")
+    run_wgsextract(
+        "info", "--csv", "calculate-coverage", "--with-bins",
+        "--input", bam, "--outdir", str(tmp_path / "o"),
+    )  # fmt: skip
+    rows = list(csv.reader(capsys.readouterr().out.splitlines()))
+    assert rows[-2][:4] == ["Seq Name", "Model Len", "Model N Len", "Depth 0 bases"]
+    assert rows[-1][:5] == ["chrY", "4", "0", "3", "1"]
+
+
+def test_reads_over_an_n_base_keep_shares_within_100_percent():
+    """HG01356: reads spanning chrM's one N read as 100.01 % at 8 or more."""
+    from wgsextract_cli.commands.info.bins import render_bins
+
+    # Seq Name, Model Len, Model N Len, depth 0, 1-3, 4-7, 8+ bases
+    lines = render_bins([("chrM", 16569, 1, 0, 0, 0, 16569)]).splitlines()
+    assert next(ln for ln in lines if ln.startswith("chrM")).split()[-2] == "100.00"

@@ -485,6 +485,8 @@ def test_saved_marker_table_prediction_parity(request, tmp_path):
         tree=upstream_tree,
         reference=Path(reference) if reference else None,
         no_ref_inference=not reference,
+        assume_reference=bool(reference)
+        and Path(input_path).name.lower().endswith((".vcf", ".vcf.gz", ".bcf")),
     )
     with result.open() as stream:
         extracted = list(csv.DictReader(stream, delimiter="\t"))

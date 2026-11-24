@@ -13,6 +13,7 @@ from tests.htslib_helpers import (
     needs_htslib,
     run_wgsextract,
     sam_to_bam,
+    t2t_stand_in,
     vcf_calls,
     write_fasta,
 )
@@ -150,9 +151,11 @@ def test_sex_par_850_gpu_gatk_refuses_unsupported_haploid_policy(
     assert not (sex_par.root / "refused" / "gatk.vcf.gz").exists()
 
 
-def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(sex_par, request):
+@pytest.mark.parametrize("version", ["0.1.1", "0.3.1"])
+def test_1136_native_deepvariant_refusal_explains_upgrade(sex_par, request, version):
     require_bare_name_fakes()
-    request.getfixturevalue("mac_native")
+    native = request.getfixturevalue("mac_native")
+    native.deepvariant.set_native_version(version)
     run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
     result = api.vcf.deepvariant(
         VcfDeepvariantParams(
@@ -166,8 +169,39 @@ def test_sex_par_850_native_deepvariant_refuses_unsupported_policy(sex_par, requ
         check=False,
     )
     assert result.status == "failed"
-    assert "wgse-deepvariant does not support this sex/PAR" in str(result.error)
+    assert "does not support this sex/PAR" in str(result.error)
+    assert "0.4.0" in str(result.error)
+    assert "pixi install -e deepvariant" in str(result.error)
+    assert "updated WGS Extract checkout" in str(result.error)
+    assert "PATH" in str(result.error)
     assert not (sex_par.root / "refused" / "deepvariant.vcf.gz").exists()
+
+
+def test_1103_native_policy_reaches_reference_and_calling_stages(sex_par, request):
+    require_bare_name_fakes()
+    native = request.getfixturevalue("mac_native")
+    native.deepvariant.set_native_version("0.4.0")
+    run_wgsextract("sample", "set", "--input", str(sex_par.bam), "--sex", "Male")
+    result = api.vcf.deepvariant(
+        VcfDeepvariantParams(
+            input=sex_par.bam,
+            ref=sex_par.ref,
+            outdir=sex_par.root / "calls",
+            region="chrX",
+            model_type="WGS",
+            threads=1,
+        ),
+        check=False,
+    )
+    assert result.status == "ok", result.error
+    # contract: recalibration must precede both gVCF GQ binning and GT assignment.
+    for stage in ("make_examples", "postprocess_variants"):
+        opts = native.deepvariant.runs(f"wgse-deepvariant {stage}")[-1]["opts"]
+        assert opts["haploid_contigs"] == "chrX"
+        assert Path(opts["par_regions_bed"]).read_text().splitlines() == [
+            f"chrX\t{sex_par.boundary}\t{sex_par.boundary + 2000}"
+        ]
+    assert (sex_par.root / "calls" / "deepvariant.vcf.gz").is_file()
 
 
 @pytest.mark.parametrize(
@@ -246,3 +280,39 @@ def test_sex_par_850_dry_run_cannot_rewrite_an_interrupted_runs_policy(
     )
     assert planned.status == "ok"
     assert original.read_text() == content
+
+
+@pytest.mark.parametrize("caller", ["gatk", "clair3", "deepvariant"])
+def test_1334_t2t_chrx_is_refused_rather_than_given_grch38_pars(
+    tmp_path, caller, request
+):
+    """#1334: T2T's PARs aren't GRCh38's, so sex-aware calling of its chrX
+    has no preset to borrow; the refusal names the library file to add."""
+    require_bare_name_fakes()
+    ref, [bam] = t2t_stand_in(tmp_path, "sample")
+    common = {
+        "input": Path(bam),
+        "ref": Path(ref),
+        "outdir": tmp_path / "out",
+        "region": "chrX",
+        "threads": 1,
+    }
+    if caller == "gatk":
+        request.getfixturevalue("gatk")
+        result = api.vcf.gatk(VcfGatkParams(**common), check=False)
+    elif caller == "clair3":
+        request.getfixturevalue("linux_x86")
+        request.getfixturevalue("fake_clair3")
+        model = make_model(tmp_path, "custom")
+        result = api.vcf.clair3(
+            VcfClair3Params(**common, model=str(model)), check=False
+        )
+    else:
+        request.getfixturevalue("dv")
+        result = api.vcf.deepvariant(
+            VcfDeepvariantParams(**common, model_type="WGS"), check=False
+        )
+    assert result.status == "failed"
+    assert "reference build: t2t" in str(result.error)
+    assert "ploidy_t2t.txt" in str(result.error)
+    assert not (tmp_path / "out" / f"{caller}.vcf.gz").exists()

@@ -14,7 +14,8 @@ how it was made: the engine and its version, its quality model (``gq``: blocks
 carry GQ; ``depth_only``: bcftools blocks carry only DP/MIN_DP), its bands, the
 assessed region and the bases its ploidy policy excludes (ploidy 0, such as a
 woman's chrY). A gVCF without the header (another tool's) is read with the
-model its FORMAT/GQ declaration implies and no exclusions.
+model its recorded bcftools gVCF options or FORMAT/GQ declaration imply,
+and no exclusions.
 
 Public imports stay here. ``reference_evidence_records`` shares the record
 states and interval sweep with ``clair3_reference_shadow``, which owns the
@@ -29,9 +30,10 @@ import json
 import re
 import subprocess
 import tempfile
-from collections import Counter
+from bisect import bisect_right
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import InitVar, dataclass, field, replace
+from functools import cached_property
 from pathlib import Path
 
 from wgsextract_cli.core.clair3_reference_shadow import (
@@ -40,12 +42,14 @@ from wgsextract_cli.core.clair3_reference_shadow import (
 from wgsextract_cli.core.clair3_reference_shadow import (
     CLAIR3_DELETION_SPAN as CLAIR3_DELETION_SPAN,
 )
-from wgsextract_cli.core.clair3_reference_shadow import (
-    classified_records as _classified,
-)
+from wgsextract_cli.core.clair3_reference_shadow import classify_spans as classify_spans
 from wgsextract_cli.core.clair3_reference_shadow import query_intervals
 from wgsextract_cli.core.paths import PathInput
-from wgsextract_cli.core.reference_evidence_records import _RANK, _merge, _sweep
+from wgsextract_cli.core.reference_evidence_records import (
+    _RANK,
+    _merge,
+    bcftools_gvcf_header,
+)
 from wgsextract_cli.core.reference_evidence_records import (
     DEPTH_ONLY as DEPTH_ONLY,
 )
@@ -64,6 +68,7 @@ from wgsextract_cli.core.reference_evidence_records import (
 from wgsextract_cli.core.reference_evidence_records import (
     State as State,
 )
+from wgsextract_cli.core.reference_evidence_records import count_bases as count_bases
 from wgsextract_cli.core.reference_evidence_records import record_state as record_state
 from wgsextract_cli.core.reference_evidence_records import (
     reference_depth as reference_depth,
@@ -76,6 +81,7 @@ from wgsextract_cli.core.variant_confidence import Thresholds
 SCHEMA = "wgsextract.reference_evidence/1"
 ROLE, INDEX_ROLE = "reference_evidence", "reference_evidence_index"
 HEADER_KEY = "wgseReferenceEvidence"
+POLICY_HEADER_KEY = "wgsePloidyPolicy"
 # Blocks below the first band would be written one record per base.
 BCFTOOLS_BANDS = "0,5,10,20"
 # Reads under this MAPQ are not evidence for a reference claim; GATK
@@ -87,6 +93,14 @@ GATK_BANDS = "10,20,30,60"
 GATK_MIN_MAPPING_QUALITY = 20
 # Clair3's --min_mq default (shared/param_p.py, param_f.py).
 CLAIR3_MIN_MAPPING_QUALITY = 5
+
+
+def header_declares_gvcf(header: str) -> bool:
+    """Recognize WGS Extract evidence and GATK-style reference confidence bands."""
+    return any(
+        line.startswith((f"##{HEADER_KEY}=", "##GVCFBlock"))
+        for line in header.splitlines()
+    )
 
 
 @dataclass(frozen=True)
@@ -107,13 +121,41 @@ class Provenance:
     # Ploidy-0 bases, as "contig:start-end" (1-based, inclusive) items.
     ploidy_zero: tuple[str, ...] = ()
 
+    @cached_property
+    def _ploidy_intervals(self) -> dict[str, list[tuple[int, int, int]]]:
+        intervals: dict[str, list[tuple[int, int, int]]] = {}
+        for item in self.ploidy.split(","):
+            match = re.fullmatch(r"(.+):(\d+)-(\d+)=([012])", item)
+            if match:
+                chrom, start, end, ploidy = match.groups()
+                intervals.setdefault(chrom, []).append(
+                    (int(start), int(end), int(ploidy))
+                )
+        return {chrom: sorted(spans) for chrom, spans in intervals.items()}
+
+    def record_ploidy(self, chrom: str, start: int, end: int) -> int | None:
+        """Effective ploidy of an inclusive record span, not its GT encoding.
+
+        A span touching diploid PAR stays diploid. Headers without interval
+        rules (including bcftools' named policies) leave GT-based inference intact.
+        """
+        if not self._ploidy_intervals:
+            return None
+        spans = self._ploidy_intervals.get(chrom, [])
+        index = bisect_right(spans, start, key=lambda span: span[0]) - 1
+        if index >= 0:
+            left, right, ploidy = spans[index]
+            if left <= start <= end <= right:
+                return ploidy
+        return 2
+
     @property
     def ploidy_policy(self) -> str:
         """A digest of the ploidy rules and sex the caller applied."""
         text = "\n".join((self.ploidy, self.sex, *self.ploidy_zero))
         return "sha256:" + hashlib.sha256(text.encode()).hexdigest()[:16]
 
-    def header(self) -> str:
+    def header(self, *, key: str = HEADER_KEY) -> str:
         values = {
             "Schema": SCHEMA,
             "Engine": self.engine,
@@ -128,7 +170,7 @@ class Provenance:
             "PloidyZero": ",".join(self.ploidy_zero),
         }  # fmt: skip
         body = ",".join(f'{key}="{_quote(value)}"' for key, value in values.items())
-        return f"##{HEADER_KEY}=<{body}>"
+        return f"##{key}=<{body}>"
 
     def metrics(self) -> dict[str, str | int | None]:
         """The provenance as result-manifest metrics of the gVCF output."""
@@ -153,8 +195,15 @@ def _quote(value: str) -> str:
 
 def parse_provenance(line: str) -> Provenance | None:
     """The Provenance of a ``##wgseReferenceEvidence`` header line."""
-    prefix = f"##{HEADER_KEY}=<"
-    if not line.startswith(prefix):
+    prefix = next(
+        (
+            f"##{key}=<"
+            for key in (HEADER_KEY, POLICY_HEADER_KEY)
+            if line.startswith(f"##{key}=<")
+        ),
+        None,
+    )
+    if prefix is None:
         return None
     values = {
         key: re.sub(r"\\(.)", r"\1", value)
@@ -280,6 +329,20 @@ def _joined(spans: Iterable[Span]) -> Iterator[Span]:
         yield pending
 
 
+def quality_model_from_header(header: str) -> str:
+    """Shared caller model; bcftools block depth does not imply block GQ."""
+    provenance = next(
+        (p for line in header.splitlines() if (p := parse_provenance(line))), None
+    )
+    if provenance:
+        return provenance.quality_model
+    return (
+        DEPTH_ONLY
+        if bcftools_gvcf_header(header) or "##FORMAT=<ID=GQ," not in header
+        else GQ
+    )
+
+
 _CONTIG_ID = re.compile(r"^##contig=<(?:.*?,)?ID=([^,>]+)", re.MULTILINE)
 
 
@@ -291,15 +354,20 @@ class ReferenceEvidence:
 
     path: str
     known_lengths: Mapping[str, int] = field(default_factory=dict, repr=False)
+    header_text: InitVar[str | None] = None
     lengths: dict[str, int] = field(init=False)
     provenance: Provenance | None = field(init=False)
     quality_model: str = field(init=False)
     deletion_shadow: bool = field(init=False)
 
-    def __post_init__(self) -> None:
-        header = run_command(
-            ["bcftools", "view", "-h", self.path], capture_output=True
-        ).stdout
+    def __post_init__(self, header_text: str | None) -> None:
+        header = (
+            header_text
+            if header_text is not None
+            else run_command(
+                ["bcftools", "view", "-h", self.path], capture_output=True
+            ).stdout
+        )
         declared = header_contig_lengths(header)
         self.lengths = {}
         for name in _CONTIG_ID.findall(header):
@@ -314,12 +382,7 @@ class ReferenceEvidence:
         self.deletion_shadow = engine == "clair3" or (
             engine is None and "\n##source=Clair3" in f"\n{header}"
         )
-        has_gq = "##FORMAT=<ID=GQ," in header
-        self.quality_model = (
-            self.provenance.quality_model
-            if self.provenance
-            else (GQ if has_gq else DEPTH_ONLY)
-        )
+        self.quality_model = quality_model_from_header(header)
 
     def assessed(self) -> list[Interval] | None:
         """The intervals the caller assessed, or None when unknown."""
@@ -430,6 +493,16 @@ class ReferenceEvidence:
                 ploidy_zero=tuple(
                     f"{c}:{s}-{e}" for c, s, e in mapped(self.excluded())
                 ),
+                ploidy=(
+                    ",".join(
+                        f"{alias}:{start}-{end}={ploidy}"
+                        for contig, spans in self.provenance._ploidy_intervals.items()
+                        if (alias := match_chromosome_name(contig, lengths))
+                        for start, end, ploidy in spans
+                    )
+                    if self.provenance._ploidy_intervals
+                    else self.provenance.ploidy
+                ),
             )
         return result
 
@@ -443,11 +516,20 @@ class ReferenceEvidence:
         return intervals
 
     def spans(
-        self, thresholds: Thresholds, regions: Iterable[Interval] | None = None
+        self,
+        thresholds: Thresholds,
+        regions: Iterable[Interval] | None = None,
+        *,
+        records: Iterator[list[str]] | None = None,
+        ploidy: int | None = None,
+        stream_complete: bool = False,
     ) -> Iterator[Span]:
         """Every base of ``regions`` (default: every contig) in its state, as
         maximal spans in contig order. Bases no record covers are uncovered
-        where the caller assessed them and not assessed elsewhere."""
+        where the caller assessed them and not assessed elsewhere.
+        ``records`` supplies a sorted, already-open single-sample stream;
+        missing records remain not assessed unless ``stream_complete`` covers
+        every requested interval. ``ploidy`` overrides GT encoding."""
         order = {name: index for index, name in enumerate(self.lengths)}
         requested = (
             regions
@@ -465,7 +547,27 @@ class ReferenceEvidence:
         if not wanted:
             return
         assessed = self.assessed()
-        observed = self._observed(wanted, thresholds, order)
+        observed = (
+            self._observed(wanted, thresholds, order)
+            if records is None
+            else classify_spans(
+                records,
+                self.quality_model,
+                thresholds,
+                wanted,
+                deletion_shadow=self.deletion_shadow,
+                record_ploidy=(
+                    (lambda _c, _s, _e: ploidy)
+                    if ploidy is not None
+                    else self.provenance.record_ploidy
+                    if self.provenance
+                    else None
+                ),
+                missing_state=State.UNCOVERED
+                if stream_complete
+                else State.NOT_ASSESSED,
+            )
+        )
         spans: Iterator[Span] = observed
         if assessed is not None:
             spans = _overlay(
@@ -510,15 +612,15 @@ class ReferenceEvidence:
                 assert process.stdout is not None
                 try:
                     records = (line.rstrip("\n").split("\t") for line in process.stdout)
-                    yield from _sweep(
+                    yield from classify_spans(
+                        records,
+                        self.quality_model,
+                        thresholds,
                         wanted,
-                        _classified(
-                            records,
-                            self.quality_model,
-                            thresholds,
-                            self.deletion_shadow,
-                        ),
-                        order,
+                        deletion_shadow=self.deletion_shadow,
+                        record_ploidy=self.provenance.record_ploidy
+                        if self.provenance
+                        else None,
                     )
                 finally:
                     process.stdout.close()
@@ -543,14 +645,6 @@ class ReferenceEvidence:
         return query_intervals(
             self.path, self.quality_model, wanted, thresholds, order, regions
         )
-
-
-def count_bases(spans: Iterable[Span]) -> Counter[State]:
-    """Bases per state."""
-    counts: Counter[State] = Counter()
-    for span in spans:
-        counts[span.state] += span.length
-    return counts
 
 
 def _recorded_file(

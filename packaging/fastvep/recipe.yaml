@@ -1,0 +1,51 @@
+context:
+  version: "0.5.0"
+
+package:
+  name: fastvep
+  version: ${{ version }}
+
+source:
+  url: https://github.com/Huang-lab/fastVEP/archive/refs/tags/v${{ version }}.tar.gz
+  sha256: 3dc78363bea912f133f8cf502a1911c284f3c9576a14c3ed6573d6fe907222a4
+
+build:
+  number: 0
+  string: ${{ target_platform | replace('-', '') }}_wgse_${{ build_number }}
+  script:
+    - if: win
+      then:
+        - call "%RECIPE_DIR%\build.bat"
+      else:
+        - bash "$RECIPE_DIR/build.sh"
+
+requirements:
+  build:
+    - ${{ compiler('rust') }}
+    - ${{ compiler('c') }}
+    - ${{ stdlib('c') }}
+    - cargo-bundle-licenses
+
+tests:
+  - script:
+      - fastvep --version
+      - fastvep sa-build --help
+  - files:
+      recipe:
+        - check_vcf.py
+        - fixtures/**
+    script:
+      - python check_vcf.py
+    requirements:
+      run:
+        - python >=3.10
+
+about:
+  homepage: https://github.com/Huang-lab/fastVEP
+  license: Apache-2.0
+  license_file:
+    - LICENSE.md
+    - THIRDPARTY.yml
+  summary: >-
+    fastVEP's CLI annotator and research-only ACMG classifier, built by WGS
+    Extract for Linux, macOS and Windows. Annotation databases are not bundled.

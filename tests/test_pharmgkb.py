@@ -45,11 +45,12 @@ def test_build_table_lists_each_hg38_snv_allele():
 
 def test_vcf_pharmgkb_annotates_matching_alleles_only(tmp_path):
     library = tmp_path / "reflib"
-    (library / "ref").mkdir(parents=True)
+    (library / "downloads").mkdir(parents=True)
     # A library resolves annotation data only alongside a genome.
     (library / "genomes").mkdir()
     write_table(
-        build_table(CLINICAL, VARIANTS), str(library / "ref" / "pharmgkb_hg38.tsv.gz")
+        build_table(CLINICAL, VARIANTS),
+        str(library / "downloads" / "pharmgkb_hg38.tsv.gz"),
     )
     vcf = tmp_path / "sample.vcf"
     vcf.write_text(
@@ -94,11 +95,11 @@ def test_vcf_pharmgkb_annotates_matching_alleles_only(tmp_path):
 
 def _hg38_library(tmp_path, header=()):
     library = tmp_path / "reflib"
-    (library / "ref").mkdir(parents=True)
+    (library / "downloads").mkdir(parents=True)
     (library / "genomes").mkdir()
     write_table(
         build_table(CLINICAL, VARIANTS),
-        str(library / "ref" / "pharmgkb_hg38.tsv.gz"),
+        str(library / "downloads" / "pharmgkb_hg38.tsv.gz"),
         header,
     )
     vcf = tmp_path / "sample.vcf"
@@ -176,10 +177,11 @@ def test_864_vcf_pharmgkb_warns_when_the_table_records_no_licence(tmp_path):
 
 def test_vcf_pharmgkb_on_grch37_says_the_data_is_grch38(tmp_path):
     library = tmp_path / "reflib"
-    (library / "ref").mkdir(parents=True)
+    (library / "downloads").mkdir(parents=True)
     (library / "genomes").mkdir()
     write_table(
-        build_table(CLINICAL, VARIANTS), str(library / "ref" / "pharmgkb_hg38.tsv.gz")
+        build_table(CLINICAL, VARIANTS),
+        str(library / "downloads" / "pharmgkb_hg38.tsv.gz"),
     )
     vcf = tmp_path / "sample.vcf"
     vcf.write_text(

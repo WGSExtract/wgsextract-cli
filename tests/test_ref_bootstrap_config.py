@@ -1,17 +1,51 @@
 import json
 import runpy
 import sys
+import threading
 from pathlib import Path
 
+from tests.http_server import serving
 from wgsextract_cli import api
-from wgsextract_cli.core import config
+from wgsextract_cli.core import config, constants
 from wgsextract_cli.core.ref_library import processing as reference_processing
 
 
-def _bootstrap(path: str) -> bool:
+def _bootstrap(path: str, *, cancel_event=None) -> bool:
     """The archive's download is tested elsewhere; it leaves the library."""
     Path(path).mkdir(parents=True, exist_ok=True)
     return True
+
+
+def test_1213_cancelled_bootstrap_does_not_retry(tmp_path, monkeypatch):
+    path = "bootstrap.tar.gz"
+    started, release = threading.Event(), threading.Event()
+    cancel = api.CancelToken()
+    reflib = tmp_path / "library"
+    result = []
+
+    def download():
+        result.append(
+            api.ref.bootstrap(
+                api.RefBootstrapParams(ref=reflib), cancel=cancel, check=False
+            )
+        )
+
+    with serving(files={path: b"a" * (1 << 20)}) as server:
+        monkeypatch.setattr(constants, "BOOTSTRAP_URL", server.url_for(path))
+        server.body_pauses[path] = (1 << 18, started, release)
+        worker = threading.Thread(target=download, daemon=True)
+        worker.start()
+        try:
+            assert started.wait(5), "the bootstrap request never reached the server"
+            cancel.cancel()
+            worker.join(2)
+            assert not worker.is_alive(), "cancelled bootstrap did not return promptly"
+            assert result[0].exit_code == 130
+            assert server.get_paths == [path]
+            assert not (reflib / constants.BOOTSTRAP_FILENAME).exists()
+        finally:
+            release.set()
+            worker.join(5)
 
 
 def test_bootstrap_saves_reference_library_when_unconfigured(
@@ -69,7 +103,7 @@ def test_1087_gui_bootstrap_uses_library_not_last_selected_fasta(
     monkeypatch.delenv("WGSEXTRACT_GUI_CONFIG_PATH", raising=False)
     monkeypatch.setattr(sys, "argv", ["bootstrap_reference_library.py"])
 
-    def download(folder):
+    def download(folder, *, cancel_event=None):
         destination = Path(folder)
         destination.mkdir(parents=True, exist_ok=True)
         (destination / "bootstrap.txt").write_text("downloaded")
@@ -96,6 +130,9 @@ def test_download_bootstrap_normalizes_existing_assets_and_installs_ploidy(
     nested_ref.mkdir(parents=True)
     (nested_ref / "All_SNPs_hg19_ref.tab.gz").write_text("snps\n", encoding="utf-8")
     (nested_ref / ".DS_Store").write_text("metadata\n", encoding="utf-8")
+    (reflib / f".bootstrap-{constants.BOOTSTRAP_VERSION}").write_text(
+        constants.BOOTSTRAP_SHA256 + "\n", encoding="utf-8"
+    )
 
     monkeypatch.setattr(
         reference_processing,
@@ -108,3 +145,32 @@ def test_download_bootstrap_normalizes_existing_assets_and_installs_ploidy(
     assert not (reflib / "ref" / ".DS_Store").exists()
     assert (reflib / "ploidy_hg19.txt").is_file()
     assert (reflib / "ploidy_hg38.txt").is_file()
+
+
+def test_bootstrap_upgrade_preserves_non_template_files_and_refuses_symlinks(tmp_path):
+    lib = tmp_path / "lib"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_file = outside / "keep.txt"
+    outside_file.write_bytes(b"outside-secret\n")
+
+    # User-customized file outside microarray/raw_file_templates/ must not be overwritten.
+    custom = lib / "genomes/custom.txt"
+    custom.parent.mkdir(parents=True)
+    custom.write_bytes(b"user-version\n")
+
+    # Symlinked directory inside microarray/raw_file_templates/ must never be traversed.
+    (lib / "microarray/raw_file_templates").mkdir(parents=True)
+    (lib / "microarray/raw_file_templates/body").symlink_to(outside)
+
+    staged_custom = lib / "reference/genomes/custom.txt"
+    staged_custom.parent.mkdir(parents=True)
+    staged_custom.write_bytes(b"tarball-version\n")
+    staged_tmpl = lib / "reference/microarray/raw_file_templates/body/keep.txt"
+    staged_tmpl.parent.mkdir(parents=True)
+    staged_tmpl.write_bytes(b"overwrite-attempt\n")
+
+    reference_processing.normalize_bootstrap_layout(str(lib))
+
+    assert custom.read_bytes() == b"user-version\n"
+    assert outside_file.read_bytes() == b"outside-secret\n"

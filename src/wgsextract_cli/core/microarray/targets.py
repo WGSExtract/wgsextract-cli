@@ -21,6 +21,7 @@ import tempfile
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache, lru_cache
 from pathlib import Path
 
 from pyliftover import LiftOver
@@ -34,7 +35,7 @@ from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
     _chrom_for_liftover,
     _resolve_templates_roots,
-    _template_body_paths,
+    _select_template_root,
     chr_to_int,
     delta_bases,
     get_template_format,
@@ -42,6 +43,7 @@ from wgsextract_cli.core.microarray.templates import (
     template_rows,
 )
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -100,13 +102,13 @@ _FORMATS = [
     "23andMe_V3",
     "23andMe_V35",
     "23andMe_V4",
+    "23andMe_V4_v3",
     "23andMe_V5",
-    "23andMe_V5_2025",
     "23andMe_SNPs_API",
     "Ancestry_V1",
     "Ancestry_V2",
-    "Ancestry_V2_2024",
     "FTDNA_V2",
+    "FTDNA_V2_v3",
     "FTDNA_V3",
     "LDNA_V1",
     "LDNA_V2",
@@ -114,12 +116,7 @@ _FORMATS = [
     "MyHeritage_V2",
     "Nucleus_V1",
     "FTDNA_V1_Affy",
-    "Ancestry_V2_2021",
-    "MyHeritage_GSA_2025",
-    "MyHeritage_GSA_2025_609424",
 ]
-# The pinned CHM13 v1 site map covers exactly these templates' markers.
-CHM13_V1_FORMATS = tuple(_FORMATS)
 _FORMATS += [
     "Ancestry_V2ab",
     "Ancestry_V2cd",
@@ -136,6 +133,9 @@ _FORMATS += [
     "meuDNA_V2",
     "SelfDecode_V1",
 ]
+# The pinned CHM13 v2 site map covers exactly these templates' markers: add a
+# template after this only together with a rebuilt map.
+CHM13_V2_FORMATS = tuple(_FORMATS)
 
 
 def genome_wide_target_path(reflib_dir: str, build: str) -> str:
@@ -188,17 +188,15 @@ def _template_paths(
     roots: list[str], formats: Sequence[str] = ()
 ) -> Iterator[tuple[str, str | None, list[str]]]:
     """(format, the build of its positions when not GRCh37, body paths) of each
-    template found (of formats, by default every chip's), from the first root
-    holding all of its parts."""
+    template found (of formats, by default every chip's), from the first usable
+    root holding all of its parts."""
     for name in formats or _FORMATS:
         fmt = get_template_format(name)
         if not fmt:
             continue
-        for root in roots:
-            paths = _template_body_paths(root, name, fmt)
-            if all(Path(p).exists() for p in paths):
-                yield name, fmt.get("build"), paths
-                break
+        selected = _select_template_root(roots, name, fmt)
+        if selected is not None:
+            yield name, fmt.get("build"), selected[1]
 
 
 def collect_template_markers(
@@ -213,12 +211,15 @@ def collect_template_markers(
     roots = _resolve_templates_roots(list(template_roots))
     markers: dict[tuple[str, int], str] = {}
     lifters: dict[str, LiftOver] = {}
+    canonical_chrom = lru_cache(maxsize=64)(_chrom_for_liftover)
     for name, build, paths in _template_paths(roots, formats):
         lifter = None
         if build:
             if not chains or build not in chains:
                 continue
-            lifter = lifters.setdefault(build, LiftOver(chains[build]))
+            if build not in lifters:
+                lifters[build] = LiftOver(chains[build])
+            lifter = lifters[build]
         for path in paths:
             for rsid, chrom, pos in template_rows(name, path):
                 if lifter:
@@ -228,15 +229,15 @@ def collect_template_markers(
                     chrom, pos, _inverted = lifted
                 if pos.isdigit() and chrom:
                     position = int(pos)
-                    site = (_chrom_for_liftover(chrom), position)
+                    site = (canonical_chrom(chrom), position)
                     if position > 0 and markers.get(site, ".") == ".":
                         markers[site] = rsid
     # A site only tellmeGen's "." names gets an ID of its own, so the sites
     # aren't one marker to readers matching by ID.
-    return {
-        site: f"{site[0]}_{site[1]}" if rsid == "." else rsid
-        for site, rsid in markers.items()
-    }
+    for site, rsid in markers.items():
+        if rsid == ".":
+            markers[site] = f"{site[0]}_{site[1]}"
+    return markers
 
 
 def lifted_builds(template_roots: Sequence[str | None]) -> set[str]:
@@ -410,6 +411,17 @@ def chain_to_grch37(reflib_dir: str, build: str, search: Sequence[str] = ()) -> 
     return _chain(reflib_dir, _CHAINS_TO_GRCH37[build], search)
 
 
+def installed_lifted_chain(
+    reflib_dir: str | None, build: str, search: Sequence[str] = ()
+) -> str | None:
+    """An already-installed chain from ``build`` to GRCh37, without downloading."""
+    source = _CHAINS_TO_GRCH37.get(build)
+    if source is None:
+        return None
+    dirs = [*search, *([reflib_dir] if reflib_dir else [])]
+    return _installed_chain(reflib_dir or "", source, dirs) if dirs else None
+
+
 def lifted_chain(
     reflib_dir: str | None, build: str, search: Sequence[str] = ()
 ) -> str | None:
@@ -477,20 +489,53 @@ def download_chain(source: ChainSource, dest: str) -> bool:
     return False
 
 
+def installed_chain_copy(
+    source: ChainSource, directories: Iterable[str | Path]
+) -> Path | None:
+    """The first copy of source in directories, or their downloads/, ref/ and
+    microarray/ subdirectories (as ReferenceLibrary finds them), with its
+    pinned SHA-256, else the first copy by that name (warned): a different
+    chain places markers elsewhere, so a pinned copy later in the search order
+    wins."""
+    copies = [
+        path
+        for directory in directories
+        for sub in ("", *DOWNLOAD_DIRS, "microarray")
+        if (path := Path(directory, sub, source.name)).is_file()
+    ]
+    for path in copies:
+        stat = path.stat()
+        if _chain_sha256(str(path), stat.st_size, stat.st_mtime_ns) == source.sha256:
+            return path
+    if copies:
+        _warn_unpinned_chain(str(copies[0]), source.name)
+        return copies[0]
+    return None
+
+
+@lru_cache(maxsize=32)
+def _chain_sha256(path: str, _size: int, _mtime_ns: int) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+@cache
+def _warn_unpinned_chain(path: str, name: str) -> None:
+    logging.warning(
+        f"{path} is not UCSC's pinned {name} (its SHA-256 differs) and no pinned "
+        "copy was found; using it anyway. Replace it with UCSC's copy if chip "
+        "markers land in the wrong place."
+    )
+
+
 def _installed_chain(
     reflib_dir: str, source: ChainSource, search: Sequence[str] = ()
 ) -> str | None:
-    """An installed chain in a search root or the library, or their ref/ and
-    microarray/ subdirectories (as ReferenceLibrary finds them)."""
-    return next(
-        (
-            str(path)
-            for directory in (*search, reflib_dir)
-            for sub in ("", "ref", "microarray")
-            if (path := Path(directory, sub, source.name)).is_file()
-        ),
-        None,
-    )
+    found = installed_chain_copy(source, (*search, reflib_dir))
+    return str(found) if found else None
 
 
 def _chain(reflib_dir: str, source: ChainSource, search: Sequence[str] = ()) -> str:

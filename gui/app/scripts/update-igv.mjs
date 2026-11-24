@@ -1,4 +1,5 @@
 import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { disposeDiscardedViewports } from "./patch-igv-viewports.mjs";
 
 const source = new URL("../node_modules/igv/", import.meta.url);
 const target = new URL("../web/vendor/igv/", import.meta.url);
@@ -12,6 +13,6 @@ const code = await readFile(new URL("dist/igv.min.js", source), "utf8");
 if (Buffer.byteLength(code) > 2_000_000) {
   throw new Error("igv.js exceeds the viewer's 2 MB uncompressed asset budget.");
 }
-await writeFile(new URL("igv.min.js", target), `${code.replace(/^\/\/# sourceMappingURL=.*$/m, "").trimEnd()}\n`);
+await writeFile(new URL("igv.min.js", target), `${disposeDiscardedViewports(code).replace(/^\/\/# sourceMappingURL=.*$/m, "").trimEnd()}\n`);
 await copyFile(new URL("LICENSE", source), new URL("LICENSE", target));
 console.log(`Vendored igv.js ${version} (${Buffer.byteLength(code)} bytes).`);

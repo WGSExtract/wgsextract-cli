@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from wgsextract_cli.core import (
@@ -26,6 +27,7 @@ from .context import (
     _section,
     _worst,
 )
+from .pgx_state import PgxAlternative, PgxGene
 from .rendering import (
     _number,
 )
@@ -60,6 +62,7 @@ def _pharmacogenomics(ctx: _Context) -> ReportSectionDocument:
             "HLA-A and HLA-B alleles (T1K)",
             ctx.command_for("typing hla", ctx.alignment, "cram"),
         )
+    _check_outside_calls(section, cyrius, hla, ctx)
     gene_statuses: dict[str | None, str] = {}
     priority = {"resolved": 0, "ambiguous": 1, "no_call": 2}
     for finding in section["findings"]:
@@ -98,7 +101,17 @@ def _pharmcat_findings(
         )
         rows = []
     calls: dict[str, list[dict[str, Any]]] = {}
-    for call in _labelled_calls(source, "pgx_calls", "confidence_table")[0]:
+    labelled, complete = _labelled_calls(source, "pgx_calls", "confidence_table")
+    if not complete:
+        section["warnings"].append(
+            ReportWarningDocument(
+                code="calls_truncated",
+                message="The PharmCAT run's confidence table is missing and its "
+                "manifest lists only some calls, so gene labels can't be "
+                "confirmed. Restore the confidence table or rerun vcf pharmcat.",
+            )
+        )
+    for call in labelled:
         for gene in str(call.get("gene") or "").split(","):
             if gene:
                 calls.setdefault(gene, []).append(call)
@@ -120,6 +133,28 @@ def _pharmcat_findings(
         else:
             label, reasons = NOT_ASSESSED, ["no_labelled_calls"]
             basis = "no labelled calls in the gene"
+        if not complete and label in (
+            variant_confidence.HIGH,
+            variant_confidence.MODERATE,
+        ):
+            # Unlisted calls may be weaker than every listed one.
+            label, reasons = NOT_ASSESSED, ["calls_truncated"]
+            basis = "only some of the run's labelled calls are listed"
+        ctx.pgx_genes[gene] = PgxGene(
+            gene=gene,
+            status=row.status,
+            alternatives=tuple(
+                PgxAlternative(
+                    a["diplotype"], a["phenotype"], tuple(a.get("lookup_keys") or ())
+                )
+                for a in row.alternatives
+            ),
+            evidence=label,
+            reasons=tuple(reasons),
+            source="PharmCAT outside call"
+            if row.call_source == "OUTSIDE"
+            else "PharmCAT",
+        )
         if row.status != "resolved":
             label = variant_confidence.LOW
             reasons = sorted({*reasons, row.status})
@@ -149,6 +184,69 @@ def _pharmcat_findings(
             source="PharmCAT",
         )
         section["findings"].append(finding)
+
+
+def _check_outside_calls(
+    section: ReportSectionDocument,
+    cyrius: Source | None,
+    hla: Source | None,
+    ctx: _Context,
+) -> None:
+    """Rest each gene PharmCAT took from an outside call on that call's own
+    evidence: this report's Cyrius (CYP2D6) or T1K (HLA) finding for the gene,
+    and only while PharmCAT's diplotype is that caller's newest call.
+    Unresolved Cyrius candidates stay a note, never a call."""
+    from wgsextract_cli.commands.genotyping.cyp2d6 import pharmcat_copy_numbers
+    from wgsextract_cli.commands.genotyping.hla import PHARMCAT_GENES, two_field
+
+    callers = {
+        f["gene"]: f for f in section["findings"] if f["gene"] and "pgx" not in f
+    }
+    metrics = cyrius.metrics if cyrius is not None and cyrius.status == "ok" else {}
+    # Each caller's call as PharmCAT names it; None when it made no usable one.
+    called: dict[str, list[str] | None] = {}
+    if metrics:
+        genotype = str(metrics.get("cyp2d6_genotype") or "")
+        resolved = genotype and metrics.get("cyp2d6_call_status") == "resolved"
+        called["CYP2D6"] = (
+            sorted(pharmcat_copy_numbers(genotype).split("/")) if resolved else None
+        )
+    if hla is not None and hla.status == "ok":
+        for gene in PHARMCAT_GENES:
+            diplotype = str(hla.metrics.get(gene) or "")
+            called[gene] = (
+                sorted(two_field(a) for a in diplotype.split("/"))
+                if diplotype
+                else None
+            )
+    for gene, state in list(ctx.pgx_genes.items()):
+        if state.source != "PharmCAT outside call":
+            continue
+        caller = callers.get(gene)
+        evidence: str = NOT_ASSESSED
+        reasons: tuple[str, ...] = ("outside_call_unverified",)
+        if caller is not None:
+            evidence = caller["confidence"]
+            reasons = tuple(caller["confidence_reasons"])
+        if gene in called and any(
+            sorted(a.diplotype.split("/")) != called[gene] for a in state.alternatives
+        ):
+            evidence, reasons = variant_confidence.LOW, ("outside_call_mismatch",)
+        ctx.pgx_genes[gene] = replace(state, evidence=evidence, reasons=reasons)
+    cyp2d6 = ctx.pgx_genes.get("CYP2D6")
+    if (
+        cyp2d6 is not None
+        and cyp2d6.status == "no_call"
+        and metrics.get("cyp2d6_genotype")
+    ):
+        candidates = (
+            metrics.get("cyp2d6_raw_star_alleles") or metrics["cyp2d6_genotype"]
+        )
+        ctx.pgx_genes["CYP2D6"] = replace(
+            cyp2d6,
+            note=f"Cyrius {metrics.get('cyp2d6_call_status') or 'call'}: "
+            f"candidates {candidates}",
+        )
 
 
 def _cyrius_finding(
@@ -236,6 +334,94 @@ def _carrier_screening(ctx: _Context) -> ReportSectionDocument:
         )
     if section["findings"]:
         section["summary"] = f"{section['findings'][0]['value']}."
+    return section
+
+
+def repeat_expansions(ctx: _Context) -> ReportSectionDocument:
+    source = ctx.latest(_command("typing str"))
+    section = _section("repeat_expansions", [source], ctx)
+    if source is None or source.status != "ok":
+        _missing(
+            section,
+            "Repeat sizes and possible expansions",
+            ctx.command_for("typing str", ctx.alignment, "cram"),
+        )
+        return section
+    caller = source.metrics.get("repeat_caller") or "unknown"
+    counts = (
+        ("flagged_repeats", "flagged"),
+        ("unconfirmed_repeats", "unconfirmed"),
+        ("normal_repeats", "normal"),
+    )
+    summary = ", ".join(
+        f"{count} {label}" if isinstance(count, int) else f"{label} count not recorded"
+        for metric, label in counts
+        for count in [source.metrics.get(metric)]
+    )
+    loci = source.details.get("requested_loci")
+    targeted = (
+        f"; targeted: {', '.join(map(str, loci))}"
+        if isinstance(loci, list) and loci
+        else ""
+    )
+    section["summary"] = (
+        f"{summary} (caller: {caller}{targeted}). Counts can overlap, for example "
+        "when clipped reads flag an unconfirmed call. Repeat sizing depends on coverage and "
+        "the caller's ability to size long alleles. A normal count does not "
+        "rule out an expansion. Technical result, not a diagnosis."
+    )
+    rows = {
+        row["locus"]: row
+        for row in source.details.get("repeat_calls") or []
+        if isinstance(row, dict) and isinstance(row.get("locus"), str)
+    }
+    findings: dict[str, dict[str, str]] = {}
+    for warning in source.records("warnings"):
+        code = warning.get("code")
+        if code not in ("repeat_outside_normal_range", "repeat_unconfirmed"):
+            continue
+        locus = (warning.get("details") or {}).get("locus")
+        if isinstance(locus, str):
+            findings.setdefault(locus, {})[code] = str(warning.get("message") or "")
+    evidence = ctx.rel(source.output("repeat_summary"))
+    for locus, warnings in sorted(findings.items()):
+        row = rows.get(locus, {})
+        coverage = row.get("coverage")
+        label = " and ".join(
+            word
+            for code, word in (
+                ("repeat_outside_normal_range", "flagged"),
+                ("repeat_unconfirmed", "unconfirmed"),
+            )
+            if code in warnings
+        )
+        call = str(row.get("status") or next(iter(warnings.values())))
+        genotype = row.get("genotype")
+        if genotype and genotype != "-":
+            call = f"{genotype} repeat units: {call}"
+        section["findings"].append(
+            _finding(
+                "repeat_expansions",
+                f"{locus} ({label})",
+                call,
+                detail=f"{caller}; locus coverage {coverage:g}x"
+                if isinstance(coverage, (int, float))
+                else str(caller),
+                confidence=str(
+                    row.get("confidence")
+                    or (
+                        variant_confidence.LOW
+                        if "repeat_unconfirmed" in warnings
+                        else NOT_ASSESSED
+                    )
+                ),
+                reasons=list(warnings),
+                basis="Repeat range, caller intervals, and read support where available",
+                evidence=evidence,
+                region=row.get("region") or None,
+                manifest=ctx.rel(source.manifest),
+            )
+        )
     return section
 
 

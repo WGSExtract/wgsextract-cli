@@ -9,6 +9,10 @@ from os import devnull, fspath
 from pathlib import Path
 from typing import IO, Literal, NamedTuple
 
+from wgsextract_cli.core.alignment.fastq import (
+    discarded_read_count,
+    warn_discarded_reads,
+)
 from wgsextract_cli.core.alignment.samtools_commands import parse_memory
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -16,12 +20,14 @@ from wgsextract_cli.core.paths import PathInput, absolute_path
 from wgsextract_cli.core.ref_library.assets import input_stem, read_fai_lengths
 from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.region_selection import is_region_file
+from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.run_log import is_run_log_path
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
     get_resource_defaults,
+    get_resource_threads,
     run_command,
     run_pipeline,
 )
@@ -34,7 +40,7 @@ from wgsextract_cli.core.variant_files import (
 
 class BaseArgs(NamedTuple):
     threads: str
-    memory: str
+    memory: str | None
     outdir: str
     cram_opt: list[str]
     ref: str | None
@@ -49,6 +55,7 @@ def base_args(
     memory: str | None,
     region: str | None = None,
     stage: Literal["sort", "compression"] = "compression",
+    budget_memory: bool = True,
 ) -> BaseArgs:
     """Validate the input, create the output directory and resolve the reference."""
     if not input_path:
@@ -57,7 +64,10 @@ def base_args(
     verify_paths_exist({"--input": input_path})
     logging.debug(f"Input file: {str(absolute_path(input_path))}")
 
-    threads, memory = get_resource_defaults(threads, memory, stage=stage)
+    if budget_memory:
+        threads, memory = get_resource_defaults(threads, memory, stage=stage)
+    else:
+        threads, memory = get_resource_threads(threads, stage=stage), None
     outdir = fspath(outdir) if outdir else str(absolute_path(input_path).parent)
     Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
@@ -308,10 +318,15 @@ def _fastq_stages(
     out_other: PathInput | None = None,
     from_stdin: bool = False,
     memory_threads: str | None = None,
-) -> list[list[str]]:
-    view = ["samtools", "view", "-uh", "--no-PG", "-@", threads]
-    view += cram_opt or []
-    view += ["-" if from_stdin else fspath(input_path), *([region] if region else [])]
+) -> list[Sequence[str | Path]]:
+    view: list[str | Path] = ["samtools", "view", "-uh", "--no-PG", "-@", threads]
+    if cram_opt:
+        view.extend(
+            Path(arg) if i and cram_opt[i - 1] in ("-T", "--reference") else arg
+            for i, arg in enumerate(cram_opt)
+        )
+    source = fspath(input_path) if is_url(input_path) else Path(input_path)
+    view.extend(["-" if from_stdin else source, *([region] if region else [])])
     collate = ["samtools", "collate", "-u", "-O", "--no-PG", "-@", threads]
     collate += [
         "-n",
@@ -355,19 +370,9 @@ def _collate_progress(
     return estimate
 
 
-def _warn_unpaired(other: Path) -> None:
-    """Warn about READ_OTHER records ``samtools fastq`` wrote to ``other``."""
-    import gzip
-
-    if not other.exists():
-        return
-    with gzip.open(other, "rb") as reads:
-        count = sum(1 for _ in reads) // 4
-    if count:
-        logging.warning(
-            f"{count:,} primary reads flagged neither first nor second of a pair "
-            "(single-end) were left out of the paired FASTQ."
-        )
+class PairedFastqStream(NamedTuple):
+    stages: list[Sequence[str | Path]]
+    discarded_fastq: Path
 
 
 @contextlib.contextmanager
@@ -379,25 +384,27 @@ def paired_fastq_stream(
     temp_parent: PathInput,
     cram_opt: list[str] | None = None,
     memory_threads: str | None = None,
-) -> Iterator[list[list[str]]]:
-    """Interleaved pairs; ``memory_threads`` keeps sort RAM separate from codecs."""
+) -> Iterator[PairedFastqStream]:
+    """Interleaved pairs and scratch for discarded reads, owned by this context."""
     with tempfile.TemporaryDirectory(
         dir=configured_temp_directory() or temp_parent, prefix=".collate_"
     ) as tmp:
         other = Path(tmp, "other.fastq.gz")
-        yield _fastq_stages(
-            input_path,
-            "-",
-            "-",
-            threads=threads,
-            memory=memory,
-            memory_threads=memory_threads,
-            temporary=tmp,
-            singletons=devnull,
-            out_other=other,
-            cram_opt=cram_opt,
+        yield PairedFastqStream(
+            _fastq_stages(
+                input_path,
+                "-",
+                "-",
+                threads=threads,
+                memory=memory,
+                memory_threads=memory_threads,
+                temporary=tmp,
+                singletons=devnull,
+                out_other=other,
+                cram_opt=cram_opt,
+            ),
+            other,
         )
-        _warn_unpaired(other)
 
 
 def alignments_to_fastq(
@@ -485,4 +492,4 @@ def alignments_to_fastq(
             expected_reads=expected_reads,
         )
         if not staged_other:
-            _warn_unpaired(Path(tmp, "other.fastq.gz"))
+            warn_discarded_reads(discarded_read_count(Path(tmp, "other.fastq.gz")))

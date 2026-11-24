@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+import email.parser
 import hashlib
 import json
 import logging
@@ -9,13 +11,16 @@ import shutil
 import subprocess
 import time
 from collections.abc import Callable
+from contextlib import ExitStack
+from email.message import Message
 from http.client import HTTPException, IncompleteRead
 from pathlib import Path
-from typing import BinaryIO, Literal, Protocol
+from typing import Protocol
 from urllib.error import HTTPError, URLError
 from urllib.parse import unquote, urlparse
 from urllib.request import Request, urlopen
 
+from wgsextract_cli.core.cancellable_http import cancellable_http
 from wgsextract_cli.core.dev_download_cache import (
     restore_cached_download,
     store_download_in_dev_cache,
@@ -27,11 +32,13 @@ from wgsextract_cli.core.download_progress import (
     curl_progress_args,
     redact_urls,
     require_http_url,
+    retryable_http_status,
 )
 from wgsextract_cli.core.network_policy import require_download
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 from . import segmented
+from .segmented import range_start
 
 
 class CancelEvent(Protocol):
@@ -269,23 +276,34 @@ def _download_file(
     # an earlier single-connection attempt left a partial to resume.
     single_partial = partial_path.exists() and not segments_path.exists()
     if not single_partial:
-        size = segmented.ranged_size(url)
-        if size is None and segments_path.exists():
+        remote = (
+            segmented.ranged_revision(url, cancel_event)
+            if cancel_event is not None
+            else segmented.ranged_revision(url)
+        )
+        if cancel_event and cancel_event.is_set():
+            return False
+        if remote is None and segments_path.exists():
             # A started segmented download is finished as one: its partial is
             # full-size with holes, which one connection would take as done.
-            size = segmented.saved_size(str(segments_path), url)
+            remote = segmented.saved_revision(str(segments_path), url)
+        # Pieces are only safe from one version of the file, which needs a
+        # validator to name it (#1225).
+        size = remote.size if remote is not None and remote.validator else None
         if size is None and segments_path.exists():
             logging.info("Unfinished download has no usable state; starting over.")
             partial_path.unlink(missing_ok=True)
             segments_path.unlink(missing_ok=True)
-        elif size is not None and (
-            size >= segmented.SEGMENTED_MIN_SIZE or segments_path.exists()
+        elif (
+            remote is not None
+            and size is not None
+            and (size >= segmented.SEGMENTED_MIN_SIZE or segments_path.exists())
         ):
             try:
                 verified = segmented.download_segmented(
                     url,
                     dest,
-                    size,
+                    remote,
                     progress_callback,
                     cancel_event,
                     verify=lambda path: verify_download_sha256(path, expected_sha256),
@@ -294,6 +312,16 @@ def _download_file(
                 logging.info("Server ignores byte ranges; using one connection.")
                 for leftover in (partial_dest, partial_dest + ".segments"):
                     Path(leftover).unlink(missing_ok=True)
+            except segmented.RemoteChanged as e:
+                for leftover in (partial_dest, partial_dest + ".segments"):
+                    Path(leftover).unlink(missing_ok=True)
+                logging.error(
+                    "Download error: %s changed on the server during the download "
+                    "(or sent another byte range than asked); its pieces were "
+                    "discarded. Run the command again to download it from the start.",
+                    redact_urls(str(e), sources=(url,)),
+                )
+                return False
             except DownloadCancelled as e:
                 logging.info(redact_urls(str(e), sources=(url,)))
                 return False
@@ -316,21 +344,25 @@ def _download_file(
     # Use curl only when it can surface its native progress bar directly.
     # Non-TTY runs should take the urllib path so progress is emitted as logs.
     curl_args = curl_progress_args()
+    # A resume goes through urllib, which ties the bytes it appends to the
+    # partial's version (If-Range); curl's -C - would append any version.
     if (
         progress_callback is None
         and cancel_event is None
         and "--progress-bar" in curl_args
+        and not partial_path.exists()
     ):
         try:
             # Into dest.partial, so an interrupted curl never leaves a short
             # file at dest. -L follows redirects, --fail keeps HTTP error pages
-            # out of the file, -C - resumes.
+            # out of the file. -D writes the reply's headers as they arrive,
+            # so even an interrupted download records its version.
             cmd = ["curl", "-L", "--fail", *curl_args]
-            if partial_path.exists():
-                cmd.extend(["-C", "-"])
-            cmd.extend(["-o", partial_dest, url])
-
-            run_command(cmd, capture_output=False, redact_output_urls=True)
+            cmd.extend(["-D", f"{partial_dest}.source", "-o", partial_dest, url])
+            try:
+                run_command(cmd, capture_output=False, redact_output_urls=True)
+            finally:
+                _record_curl_revision(url, partial_path)
             return _finish_download(
                 url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
             )
@@ -341,6 +373,8 @@ def _download_file(
             )
 
     for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        if cancel_event and cancel_event.is_set():
+            return False
         try:
             return _urllib_download(
                 url,
@@ -352,6 +386,8 @@ def _download_file(
                 use_cache,
             )
         except _RESUMABLE as e:
+            if cancel_event and cancel_event.is_set():
+                return False
             if attempt == DOWNLOAD_ATTEMPTS:
                 logging.error(
                     f"Download error: {redact_urls(str(e), sources=(url,))} (gave up after {attempt} attempts; "
@@ -362,21 +398,74 @@ def _download_file(
                 f"Download interrupted ({redact_urls(str(e), sources=(url,))}); resuming "
                 f"(attempt {attempt + 1} of {DOWNLOAD_ATTEMPTS})..."
             )
-            time.sleep(min(30, 2**attempt))
+            delay = min(30, 2**attempt)
+            if cancel_event is None:
+                time.sleep(delay)
+            else:
+                deadline = time.monotonic() + delay
+                while not cancel_event.is_set():
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    time.sleep(min(0.1, remaining))
     return False
 
 
-def _bind_single_partial(url: str, partial: Path) -> None:
-    source = Path(str(partial) + ".source")
-    digest = hashlib.sha256(url.encode()).hexdigest()
+def _read_source(partial: Path) -> tuple[str, segmented.Revision] | None:
+    """The URL digest and version recorded beside a single-connection partial."""
     try:
-        previous = source.read_text(encoding="ascii").strip()
-    except (OSError, UnicodeError):
-        previous = None
-    if partial.exists() and previous != digest:
-        logging.info("Partial download has a different or unknown source; restarting.")
-        partial.unlink()
-    source.write_text(digest + "\n", encoding="ascii", newline="\n")
+        record = json.loads(Path(f"{partial}.source").read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError):
+        return None
+    revision = segmented.Revision.from_json(record)
+    if revision is None or not isinstance(record.get("url_sha256"), str):
+        return None
+    return record["url_sha256"], revision
+
+
+def _write_source(url: str, partial: Path, revision: segmented.Revision) -> None:
+    record = {"url_sha256": hashlib.sha256(url.encode()).hexdigest()}
+    Path(f"{partial}.source").write_text(
+        json.dumps({**record, **revision.to_json()}) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _bind_single_partial(url: str, partial: Path) -> None:
+    """Drop a partial from another URL, or of unknown source, and bind the next
+    download to url, keeping the recorded version of a partial from it."""
+    source = _read_source(partial)
+    digest = hashlib.sha256(url.encode()).hexdigest()
+    if source is None or source[0] != digest:
+        if partial.exists():
+            logging.info(
+                "Partial download has a different or unknown source; restarting."
+            )
+            partial.unlink()
+        source = (digest, segmented.Revision())
+    _write_source(url, partial, source[1])
+
+
+def _record_curl_revision(url: str, partial: Path) -> None:
+    """Turn the headers curl wrote to partial.source (-D) into its record.
+
+    A process killed before this leaves the raw headers, which _read_source
+    can't read: the partial restarts, never mixing versions."""
+    source = Path(f"{partial}.source")
+    try:
+        text = source.read_text(encoding="latin-1")
+    except OSError:
+        text = ""
+    # The last reply after any redirects: its status line, then its headers.
+    blocks = re.split(r"(?m)^(?=HTTP/)", text)
+    status, _, headers = blocks[-1].partition("\n")
+    revision = segmented.Revision()
+    if status.split()[1:2] == ["200"]:
+        revision = segmented.Revision.from_headers(
+            email.parser.HeaderParser().parsestr(headers)
+        )
+    _write_source(url, partial, revision)
 
 
 def _urllib_download(
@@ -391,67 +480,102 @@ def _urllib_download(
     """One attempt; an interrupted transfer raises one of _RESUMABLE and leaves
     dest.partial for the next attempt to resume."""
     partial_dest = dest + ".partial"
+    partial_path = Path(partial_dest)
     headers = {"User-Agent": segmented.user_agent(url)}
     initial_size = 0
-    mode: Literal["ab", "wb"] = "wb"
+    source = _read_source(partial_path)
+    known = source[1] if source is not None else segmented.Revision()
 
-    if Path(partial_dest).exists():
-        initial_size = Path(partial_dest).stat().st_size
-        if initial_size > 0:
+    if partial_path.exists() and partial_path.stat().st_size > 0:
+        # Resume only the version that wrote the partial (#1225): If-Range
+        # makes a server whose file changed send the whole new file. With
+        # no validator, only a pinned checksum can catch a mix.
+        if known.validator or expected_sha256:
+            initial_size = partial_path.stat().st_size
             headers["Range"] = f"bytes={initial_size}-"
-            mode = "ab"
+            if known.validator:
+                headers["If-Range"] = known.validator
         else:
-            mode = "wb"
+            logging.info(
+                "%s: the server gave no ETag or Last-Modified to resume the "
+                "partial download by; starting over.",
+                Path(dest).name,
+            )
 
     try:
         req = Request(url, headers=headers)
-        try:
-            response_cm = urlopen(req, timeout=DOWNLOAD_TIMEOUT_SECONDS)
-        except HTTPError as e:
-            if e.code != 416 or initial_size == 0:
-                raise
-            e.close()
-            if not _partial_is_complete(
-                url, e.headers.get("Content-Range"), initial_size
-            ):
-                # The partial file does not fit the remote file; start over.
-                Path(partial_dest).unlink()
-                return _urllib_download(
-                    url,
-                    dest,
-                    progress_callback,
-                    cancel_event,
-                    expected_sha256,
-                    checksum_hint,
-                    use_cache,
+        with ExitStack() as stack:
+            try:
+                response = stack.enter_context(
+                    cancellable_http(req, DOWNLOAD_TIMEOUT_SECONDS, cancel_event)
+                    if cancel_event is not None
+                    else urlopen(req, timeout=DOWNLOAD_TIMEOUT_SECONDS)
                 )
-            logging.info("%s is already fully downloaded.", Path(dest).name)
-            return _finish_download(
-                url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
-            )
-        with response_cm as response:
+            except HTTPError as e:
+                if e.code != 416 or initial_size == 0:
+                    raise
+                e.close()
+                if not _partial_is_complete(
+                    url, e.headers, initial_size, known, cancel_event
+                ):
+                    # The partial file does not fit the remote file; start over.
+                    partial_path.unlink()
+                    return _urllib_download(
+                        url,
+                        dest,
+                        progress_callback,
+                        cancel_event,
+                        expected_sha256,
+                        checksum_hint,
+                        use_cache,
+                    )
+                logging.info("%s is already fully downloaded.", Path(dest).name)
+                return _finish_download(
+                    url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
+                )
             code = response.getcode()
-            # If we requested a range but got 200, the server doesn't support range or sent full file
-            if initial_size > 0 and code == 200:
-                logging.info(
-                    "Server does not support Range requests, starting from scratch."
-                )
-                initial_size = 0
-                mode = "wb"
+            served = segmented.Revision.from_headers(response.info())
+            changed = code == 206 and (
+                range_start(response.info().get("Content-Range")) != initial_size
+                or known.conflicts(served)
+            )
+            if not changed:
+                # The whole file (200): it changed, or the server ignores ranges.
+                whole = code != 206 or initial_size == 0
+                if whole and initial_size > 0:
+                    logging.info(
+                        "Server sent the whole file instead of the rest; "
+                        "starting from scratch."
+                    )
+                    initial_size = 0
+                with open(partial_dest, "wb" if whole else "ab") as f:
+                    # Only once the old version's bytes are gone (#1225).
+                    if whole:
+                        _write_source(url, partial_path, served)
+                    copy_response_to_file(
+                        response,
+                        f,
+                        initial_size=initial_size,
+                        progress_callback=progress_callback,
+                        progress_label=Path(dest).name,
+                        cancel_event=cancel_event,
+                    )
 
-            def write_partial(f: BinaryIO) -> None:
-                copy_response_to_file(
-                    response,
-                    f,
-                    initial_size=initial_size,
-                    progress_callback=progress_callback,
-                    progress_label=Path(dest).name,
-                    cancel_event=cancel_event,
-                )
-
-            with open(partial_dest, mode) as f:
-                write_partial(f)
-
+        if changed:
+            logging.info(
+                "%s changed on the server since the partial download; starting over.",
+                Path(dest).name,
+            )
+            partial_path.unlink()
+            return _urllib_download(
+                url,
+                dest,
+                progress_callback,
+                cancel_event,
+                expected_sha256,
+                checksum_hint,
+                use_cache,
+            )
         return _finish_download(
             url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
         )
@@ -460,9 +584,9 @@ def _urllib_download(
     except _RESUMABLE:
         raise
     except URLError as e:
-        # A server error (5xx) or no connection at all (DNS, refused, network
-        # down) may pass; retry those. A client error (4xx) won't.
-        if not isinstance(e, HTTPError) or e.code >= 500:
+        if isinstance(e, HTTPError):
+            e.close()
+        if not isinstance(e, HTTPError) or retryable_http_status(e.code):
             raise ConnectionError(str(e)) from e
         logging.error("Download error: %s", redact_urls(str(e), sources=(url,)))
     except (
@@ -476,25 +600,40 @@ def _urllib_download(
 
 
 def _partial_is_complete(
-    url: str, content_range: str | None, partial_size: int
+    url: str,
+    reply: Message,
+    partial_size: int,
+    known: segmented.Revision,
+    cancel_event: CancelEvent | None,
 ) -> bool:
-    """A 416 reply to `Range: bytes=N-` means done when the remote size is N.
+    """A 416 reply to `Range: bytes=N-` means done when N is the size of both
+    the version that wrote the partial and the file served now (#1225).
 
     The size is in the reply's Content-Range; servers that leave it out (such
     as Ensembl's) are asked with a HEAD request.
     """
-    match = re.fullmatch(r"bytes \*/(\d+)", (content_range or "").strip())
-    if match:
-        return int(match.group(1)) == partial_size
-    try:
-        request = Request(
-            url, method="HEAD", headers={"User-Agent": segmented.user_agent(url)}
-        )
-        with urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
-            length = response.headers.get("Content-Length")
-    except (OSError, HTTPException):
+    if known.size != partial_size:
         return False
-    return length is not None and length.isdigit() and int(length) == partial_size
+    match = re.fullmatch(r"bytes \*/(\d+)", (reply.get("Content-Range") or "").strip())
+    if match:
+        served = dataclasses.replace(
+            segmented.Revision.from_headers(reply), size=int(match.group(1))
+        )
+    else:
+        try:
+            request = Request(
+                url, method="HEAD", headers={"User-Agent": segmented.user_agent(url)}
+            )
+            response_cm = (
+                cancellable_http(request, DOWNLOAD_TIMEOUT_SECONDS, cancel_event)
+                if cancel_event is not None
+                else urlopen(request, timeout=DOWNLOAD_TIMEOUT_SECONDS)
+            )
+            with response_cm as response:
+                served = segmented.Revision.from_headers(response.headers)
+        except (OSError, HTTPException):
+            return False
+    return served.size == partial_size and not known.conflicts(served)
 
 
 def _finish_download(

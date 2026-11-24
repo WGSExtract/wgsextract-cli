@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, stat, statfs } from "node:fs/promises";
 import { homedir, platform, tmpdir } from "node:os";
 import path from "node:path";
-import { commandLine, evaluateNumeric, interpolate, renderedCommand } from "../../../shared/rendering.js";
+import { commandLine, evaluateNumeric, firstPathValue, interpolate, renderedCommand } from "../../../shared/rendering.js";
 import { commandWithResultArguments, parseResultDocumentText, resultDocumentInFile, type ResultDocument, type ResultDocumentSpec } from "../../../shared/result-document.js";
 import type { ActionSpec, BundleManifest, CommandContext, DataSourcePayload, Labels, LastResultDocumentPaths, LooseRecord, ProcessResult, RunProcess, StringMap, ValueMap } from "../../../shared/types.js";
 import { decodeXML, environmentKey, formatGB, resolveBundlePath, resolveUserPath, bundleEnvironment } from "./paths.js";
@@ -23,6 +23,7 @@ export type ActionRunResult = ProcessResult & {
 };
 
 export type ActionEvent =
+    | { type: "submission-pending"; jobID: string | null }
     | { type: "start"; command: string; startedAt: string }
     | { type: "output"; stream: "stdout" | "stderr"; text: string }
     | { type: "complete"; result: ActionRunResult };
@@ -35,6 +36,8 @@ interface DataSourceSpec {
     optionalArguments: string[][];
     environment: StringMap;
     workingDirectory?: string;
+    /** How long the script may run; 15 seconds unless the manifest says otherwise. */
+    timeoutMs?: number;
     transform?: DataSourceTransform;
 }
 
@@ -64,7 +67,7 @@ export async function runAction(
     const documentDirectory = resultSpec && resultDocumentInFile(resultSpec) ? await mkdtemp(path.join(tmpdir(), "wgsextract-gui-result-")) : undefined;
     const documentPath = documentDirectory ? path.join(documentDirectory, "result.json") : "";
     try {
-        const rendered = renderedCommand(commandWithResultArguments(action.command, resultSpec, documentPath), resolvedContext);
+        const rendered = renderedCommand(commandWithResultArguments(action.command, resultSpec, documentPath, action.resultCard === true), resolvedContext);
         const executable = isPlatformScriptReference(rendered.executable, bundleRoot)
             ? await resolvePlatformScriptPath(rendered.executable, bundleRoot)
             : rendered.executable;
@@ -129,6 +132,10 @@ function dataSourceSpec(value: LooseRecord | undefined): DataSourceSpec {
     if (workingDirectory != null && typeof workingDirectory !== "string") {
         throw new Error(`Data source ${sourcePath} workingDirectory must be a string.`);
     }
+    const timeoutSeconds = value?.timeoutSeconds;
+    if (timeoutSeconds != null && !isPositiveNumber(timeoutSeconds)) {
+        throw new Error(`Data source ${sourcePath} timeoutSeconds must be a positive number.`);
+    }
     const transform = dataSourceTransform(value?.transform, sourcePath);
     return {
         path: sourcePath,
@@ -136,8 +143,13 @@ function dataSourceSpec(value: LooseRecord | undefined): DataSourceSpec {
         optionalArguments: optionalArgs as string[][],
         environment: environment as StringMap,
         ...(workingDirectory ? { workingDirectory } : {}),
+        ...(timeoutSeconds != null ? { timeoutMs: timeoutSeconds * 1000 } : {}),
         ...(transform ? { transform } : {}),
     };
+}
+
+function isPositiveNumber(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 export async function runDataSource(dataSourceValue: LooseRecord | undefined, context: CommandContext, bundleRoot: string, runProcess: RunProcess): Promise<DataSourcePayload> {
@@ -159,7 +171,7 @@ export async function runDataSourceScript(
     context: CommandContext,
     bundleRoot: string,
     runProcess: RunProcess,
-    timeoutMs = dataSourceTimeoutMs,
+    timeoutMs?: number,
 ): Promise<{ path: string; stdout: string; transform?: DataSourceTransform }> {
     const dataSource = dataSourceSpec(dataSourceValue);
     const executable = await resolvePlatformScriptPath(dataSource.path, bundleRoot);
@@ -181,7 +193,7 @@ export async function runDataSourceScript(
     for (const [key, value] of Object.entries(dataSource.environment)) {
         env[key] = interpolate(value, resolvedContext);
     }
-    const result = await runProcess(executable, args, { cwd: workingDirectory, env, timeoutMs });
+    const result = await runProcess(executable, args, { cwd: workingDirectory, env, timeoutMs: timeoutMs ?? dataSource.timeoutMs ?? dataSourceTimeoutMs });
     if (result.exitCode !== 0) {
         throw new Error(`Data source ${dataSource.path} exited ${result.exitCode}: ${result.stderr || "no stderr"}`);
     }
@@ -368,7 +380,7 @@ async function precheckContextValue(context: CommandContext, placeholder: string
     if (separator > 0 && separator < placeholder.length - 1) {
         const fieldID = placeholder.slice(0, separator);
         const property = placeholder.slice(separator + 1);
-        const rawPath = context.fieldValues?.[fieldID] ?? context.configValues?.[fieldID];
+        const rawPath = firstPathValue(context.fieldValues?.[fieldID] ?? context.configValues?.[fieldID]);
         if (property === "fileSizeGB" || property === "fileSize") {
             const bytes = await fileSizeBytes(rawPath, bundleRoot);
             if (!Number.isFinite(bytes)) {

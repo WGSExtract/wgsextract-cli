@@ -573,6 +573,23 @@ test("review regression: the 40-tab cap drops finished tabs before a running job
   }
 });
 
+test("#1235: a truncated submission stream leaves the recovery ID in Jobs", async (t) => {
+  resetState();
+  state.labels.terminalJobSubmissionUnknown = "The server may still be running this job.";
+  const stream = setupStreamResponse();
+  t.mock.method(globalThis, "fetch", async () => stream.response);
+  const run = runAction({
+    title: "Coverage", command: { executable: "tool" }, serverOperation: { operation: "coverage" },
+  }, { fieldValues: {} }, actionReference, { prerequisitesChecked: true });
+  stream.write({ type: "submission-pending", jobID: "original-job-id" });
+  stream.close();
+  await run;
+  const [job] = state.jobHistory;
+  assert.equal(job.kind, "error");
+  assert.match(job.body, /may still be running/);
+  assert.match(job.body, /original-job-id/);
+});
+
 test("an action's result document reaches its terminal tab, and a usage error its notice until the next run", async () => {
   resetState();
   const originalFetch = globalThis.fetch;
@@ -756,6 +773,39 @@ test("PR #530 review: a section shown by a value from its own data source appear
     await waitUntil(() => state.dataSourcePayloads.has("section:methylation"));
     assert.deepEqual(requests, ["/api/datasource"]);
     assert.match(renderPage(page), /Methylation pileup/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("#1230 changing a setting saves only that setting, never this window's older values of the rest", async () => {
+  resetState();
+  const { configSettingChanged, fieldValueChanged } = await import("../dist/web/src/client/operations.js");
+  const control = {
+    id: "paths",
+    kind: "configEditor",
+    configFile: { path: "{{usersWorkspace}}/config.toml", format: "toml" },
+    settings: [
+      { id: "out_dir", key: "output_directory", kind: "path" },
+      { id: "ref_path", key: "reference_library", kind: "path" },
+    ],
+  };
+  state.manifest = { pages: [{ id: "settings", title: "Settings", sections: [{ id: "s", controls: [control] }] }] };
+  state.uiMode = "advanced";
+  state.configValues = { "paths.out_dir": "/loaded/output", "paths.ref_path": "/loaded/lib" };
+  const saved = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (path, options) => {
+    if (path === "/api/config/save") {
+      saved.push(JSON.parse(options.body).values);
+      return Promise.resolve(new Response(JSON.stringify({ path: "/u/config.toml", keyCount: 1 }), { status: 200, headers: { "content-type": "application/json" } }));
+    }
+    return Promise.resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
+  };
+  try {
+    await configSettingChanged("/new/output", control.settings[0], control);
+    await fieldValueChanged("/bound/lib", { id: "ref_path", kind: "path" });
+    assert.deepEqual(saved, [{ output_directory: "/new/output" }, { reference_library: "/bound/lib" }]);
   } finally {
     globalThis.fetch = originalFetch;
   }

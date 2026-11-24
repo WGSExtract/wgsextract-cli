@@ -11,11 +11,11 @@ from typing import Any
 
 from wgsextract_cli.core import (
     contamination,
+    mt_heteroplasmy,
     read_scope,
     variant_confidence,
 )
 from wgsextract_cli.core.multiqc import find_documents
-from wgsextract_cli.core.reference_assets import input_stem
 from wgsextract_cli.core.report_documents import (
     ReportAttemptDocument,
     ReportEvidenceDocument,
@@ -32,6 +32,7 @@ from wgsextract_cli.core.report_documents import (
 from wgsextract_cli.core.sample_workspace import SampleWorkspace
 from wgsextract_cli.core.utils import UsageError
 
+from .pgx_state import PgxGene
 from .rendering import (
     NEWER_ATTEMPT_FAILED,
     NOT_DIAGNOSIS,
@@ -39,6 +40,8 @@ from .rendering import (
 )
 
 COMMAND = "report"
+# Relatedness compares people; reading both inputs does not link their samples.
+_IGNORED_COMMANDS = (COMMAND, "qc relate")
 _ENDED = {"failed": "failed", "cancelled": "was cancelled"}
 NOT_ASSESSED = "not_assessed"
 CONFIDENCE = (*variant_confidence.LABELS, NOT_ASSESSED)
@@ -64,6 +67,15 @@ REASONS = {
     "aligner_not_calibrated": "the input's aligner isn't one the caller is "
     "calibrated on (bwa-like)",
     "below_target_depth": "median depth is below the ~30x the caller is calibrated on",
+    **mt_heteroplasmy.REASONS,
+    "outside_call_unverified": "PharmCAT took this gene from an outside call "
+    "whose caller's run isn't in this report, so its evidence wasn't assessed",
+    "outside_call_mismatch": "PharmCAT's outside call differs from the newest "
+    "call of the caller that makes it; rerun vcf pharmcat with its current call",
+    "alternatives_differ": "the call's alternatives (or a weak call's possible "
+    "results) lead to different CPIC recommendations, or CPIC has none for some",
+    "calls_truncated": "only some of the run's labelled calls are listed (its "
+    "confidence table is missing), so unlisted calls may be weaker",
 }
 SECTIONS = {
     "overview": "Sample overview",
@@ -71,9 +83,12 @@ SECTIONS = {
     "ancestry": "Ancestry proportions",
     "pharmacogenomics": "Pharmacogenomics",
     "carrier_screening": "Carrier screening by copy number",
+    "repeat_expansions": "Repeat Expansions",
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
+    "mitochondrial": "Mitochondrial DNA: heteroplasmy at reviewed variants",
     "acmg_research": "Automated ACMG classes in {gene_list} genes (research only)",
     "structural_variants": "Rare structural variants",
+    "medication_review": "Medication review (CPIC guidance; not a prescription)",
     "microarray": "Microarray export",
 }
 _ALIGNMENT_SUFFIXES = (".bam", ".cram")
@@ -129,9 +144,11 @@ class Source:
                         return path
         return None
 
-    def files(self, kind: str) -> list[Path]:
+    def files(self, kind: str, *, exclude_role: str | None = None) -> list[Path]:
         return [
-            self.locate(str(r["path"])) for r in self.records(kind) if r.get("path")
+            self.locate(str(r["path"]))
+            for r in self.records(kind)
+            if r.get("path") and (exclude_role is None or r.get("role") != exclude_role)
         ]
 
     def locate(self, recorded: str) -> Path:
@@ -191,13 +208,13 @@ def collect_sources(folder: Path, extra: Iterable[Path] = ()) -> list[Source]:
     ``folder`` or outputs of a manifest already kept."""
     found: dict[str, Source] = {}
     for path, document in find_documents(folder):
-        if document.get("command") != COMMAND:
+        if document.get("command") not in _IGNORED_COMMANDS:
             found[_key(path)] = Source(Path(os.path.abspath(path)), document)
     candidates: dict[str, Source] = {}
     for directory in extra:
         for path, document in find_documents(directory):
             key = _key(path)
-            if document.get("command") != COMMAND and key not in found:
+            if document.get("command") not in _IGNORED_COMMANDS and key not in found:
                 candidates[key] = Source(Path(os.path.abspath(path)), document)
     produced = {_key(p) for source in found.values() for p in source.files("outputs")}
     while candidates:
@@ -206,7 +223,8 @@ def collect_sources(folder: Path, extra: Iterable[Path] = ()) -> list[Source]:
             for key, source in candidates.items()
             if any(
                 _inside(p, folder) or _key(p) in produced
-                for p in source.files("inputs")
+                # The catalog selects what to size, not whose sample it is.
+                for p in source.files("inputs", exclude_role="repeat_catalog")
             )
         ]
         if not kept:
@@ -218,7 +236,15 @@ def collect_sources(folder: Path, extra: Iterable[Path] = ()) -> list[Source]:
 
 
 def _files(source: Source) -> set[str]:
-    return {_key(p) for p in [*source.sample_files(), *source.files("outputs")]}
+    outside_calls = (
+        source.locate(str(record["path"]))
+        for record in source.records("inputs")
+        if record.get("role") == "pharmcat_outside_call" and record.get("path")
+    )
+    return {
+        _key(p)
+        for p in [*source.sample_files(), *source.files("outputs"), *outside_calls]
+    }
 
 
 def sample_groups(sources: Sequence[Source]) -> list[list[Source]]:
@@ -244,6 +270,19 @@ def _roots(group: Sequence[Source]) -> list[Path]:
     return [p for key, p in roots.items() if key not in produced]
 
 
+def _selection_paths(group: Sequence[Source]) -> list[Path]:
+    # An align run can produce the first selectable file from FASTQs that
+    # aren't report inputs. Its alignment still identifies a sample group.
+    return _roots(group) or list(
+        {
+            path
+            for source in group
+            for path in source.files("outputs")
+            if path.name.lower().endswith(_ALIGNMENT_SUFFIXES + _VCF_SUFFIXES)
+        }
+    )
+
+
 def select_sample(
     sources: Sequence[Source], input_file: Path | None, *, workspace: bool
 ) -> list[Source]:
@@ -262,7 +301,8 @@ def select_sample(
             or (
                 workspace
                 and not any(
-                    p.name.lower().endswith(_ALIGNMENT_SUFFIXES) for p in _roots(g)
+                    p.name.lower().endswith(_ALIGNMENT_SUFFIXES)
+                    for p in _selection_paths(g)
                 )
             )
         ]
@@ -270,11 +310,14 @@ def select_sample(
             (s for g in kept for s in g), key=lambda s: (s.finished, str(s.manifest))
         )
     if not workspace:
-        stems = sorted({input_stem(p) for g in groups for p in _roots(g)})
-        if len(stems) > 1:
+        choices = [
+            group_paths for group in groups if (group_paths := _selection_paths(group))
+        ]
+        if len(choices) > 1:
+            labels = sorted(str(path) for choice in choices for path in choice)
             raise UsageError(
                 "The folder has results of several samples ("
-                + ", ".join(stems)
+                + ", ".join(labels)
                 + "); choose one with --input."
             )
     return list(sources)
@@ -288,7 +331,7 @@ def sample_sources(
     return select_sample(
         collect_sources(folder, results),
         input_file,
-        workspace=workspace.path.exists() or workspace.is_genome_folder,
+        workspace=workspace.is_genome_folder,
     )
 
 
@@ -327,6 +370,8 @@ class _Context:
     # A selected run's manifest -> the newer attempt that failed (or was
     # cancelled) after it.
     superseded: dict[str, Source] = field(default_factory=dict)
+    # Each PharmCAT gene's result and evidence, from the pharmacogenomics section.
+    pgx_genes: dict[str, PgxGene] = field(default_factory=dict)
 
     def latest(self, match: Callable[[Source], bool]) -> Source | None:
         """:func:`latest` of this sample's runs, remembering the newest
@@ -423,7 +468,11 @@ def _finding(
 
 
 def _section(
-    name: str, sources: Sequence[Source | None], ctx: _Context
+    name: str,
+    sources: Sequence[Source | None],
+    ctx: _Context,
+    *,
+    newer_attempt_matches: Callable[[Source], bool] | None = None,
 ) -> ReportSectionDocument:
     used = [s for s in sources if s is not None]
     failed = [s for s in used if s.status != "ok"]
@@ -438,6 +487,12 @@ def _section(
     )
     for s in used:
         newer = ctx.superseded.get(_key(s.manifest))
+        if (
+            newer is not None
+            and newer_attempt_matches
+            and not newer_attempt_matches(newer)
+        ):
+            newer = None
         section["sources"].append(
             ReportSourceDocument(
                 command=s.command,

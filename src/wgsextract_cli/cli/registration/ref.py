@@ -15,6 +15,8 @@ from wgsextract_cli.api.ref import (
     RefCaddParams,
     RefClinvarParams,
     RefCountNsParams,
+    RefCytobandsParams,
+    RefDbsnpParams,
     RefDenseSaParams,
     RefDownloadParams,
     RefGeneMapParams,
@@ -53,6 +55,9 @@ cmd_bootstrap = command_handler(
 )
 cmd_count_ns = command_handler(
     "wgsextract_cli.commands.ref.core_commands", "cmd_count_ns"
+)
+cmd_cytobands = command_handler(
+    "wgsextract_cli.commands.ref.cytobands", "cmd_cytobands"
 )
 cmd_dense_sa = command_handler("wgsextract_cli.commands.ref.dense_sa", "cmd_dense_sa")
 cmd_download = command_handler(
@@ -95,6 +100,14 @@ RESOURCE_COMMANDS = (
             "wgsextract_cli.commands.ref.library_commands",
             "run_clinvar",
             RefClinvarParams,
+        ),
+    ),
+    (
+        RefDbsnpParams,
+        command_handler(
+            "wgsextract_cli.commands.ref.library_commands",
+            "run_dbsnp",
+            RefDbsnpParams,
         ),
     ),
     (
@@ -173,6 +186,7 @@ def _install_or_delete(func: Handler) -> Handler:
 
 _RESOURCE_HELP = {
     "clinvar": "Download official ClinVar VCF for hg19 and hg38.",
+    "dbsnp": "Download NCBI dbSNP b151 common human rsIDs (~37M SNPs, VCF + offline rsID search index) for hg38 and hg19, or delete them.",
     "revel": "Download REVEL pathogenicity scores for hg19 and hg38.",
     "phylop": "Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).",
     "gnomad": "Download gnomAD population allele frequencies.",
@@ -220,7 +234,7 @@ def register(
         "ybrowse",
         RefYbrowseParams,
         cmd_ybrowse,
-        "Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.",
+        "Explicitly install a verified, sites-only GRCh38 yBrowse snapshot.",
     )
     add(
         "somalier",
@@ -285,7 +299,7 @@ def register(
         "needs",
         None,
         cmd_ref_needs,
-        "Report the reference genome or annotation data a command line needs that isn't installed, and how to install it.",
+        "Report the reference genome, annotation data or optional tools a command line needs that aren't installed, and how to install them.",
     )
     needs.add_argument(
         "--report-json",
@@ -299,6 +313,12 @@ def register(
         help="The wgsextract command line to check, after --.",
     )
     add("gene-map", RefGeneMapParams, cmd_gene_map, CLI_HELP["cmd_ref-gene-map"])
+    add(
+        "cytobands",
+        RefCytobandsParams,
+        cmd_cytobands,
+        "Validate installed hg19/hg38 UCSC cytobands; download missing data only with --download.",
+    )
     for cls, run in RESOURCE_COMMANDS:
         name = cls.COMMAND.removeprefix("ref ")
         add(name, cls, run, _RESOURCE_HELP[name])

@@ -15,6 +15,7 @@ from wgsextract_cli.core.process_registry import (
     process_group_kwargs,
     terminate_trees,
 )
+from wgsextract_cli.core.workspace_activity import forward_workspace_admission
 
 from .models import (
     BenchmarkJob,
@@ -161,7 +162,7 @@ def _run_cli_subprocess(
         )
         checkpoint()
         process = subprocess.Popen(
-            command,
+            forward_workspace_admission(command),
             stdin=stdin,
             stdout=stdout,
             stderr=stderr,

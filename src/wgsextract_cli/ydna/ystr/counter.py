@@ -11,6 +11,7 @@ indel or soft-clipped a read that ends in the repeat.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -80,13 +81,28 @@ def tract_length(seq: str, left: str, right: str) -> int | None:
     return measured
 
 
-def measure(seq: str, left: str, right: str) -> tuple[int | None, int | None]:
+def _boundary_size(
+    seq: str, kind: str, *, left_known: bool, right_known: bool
+) -> int | None:
+    if kind == "poly_t_prefix":
+        found = re.match(r"T+AG", seq) if left_known else re.search(r"T+AG", seq)
+    elif kind == "poly_a_suffix":
+        found = re.search(r"CTA+$" if right_known else r"CTA+", seq)
+    else:
+        raise ValueError(f"Unknown Y-STR boundary: {kind}")
+    return len(found.group()) if found is not None else None
+
+
+def measure(
+    seq: str, left: str, right: str, *, trim_boundary: str = ""
+) -> tuple[int | None, int | None]:
     """A read's tract length, or failing that a lower bound on it.
 
     A read with only one flank shows at least the bases between that flank
     and the read's far end, less a flank (it may end inside the other one).
     No bound is given when the other flank is there but unusable (repeated or
-    with sequencing errors).
+    with sequencing errors). DYS589's variable non-STR poly-T/AG boundary
+    (or its reverse complement) is removed without counting repeat motifs.
     """
     left_pos = find_flank(seq, left)
     if left_pos is not None:
@@ -94,13 +110,35 @@ def measure(seq: str, left: str, right: str) -> tuple[int | None, int | None]:
         rest = seq[tract_start:]
         right_pos = find_flank(rest, right)
         if right_pos is not None:
+            if trim_boundary:
+                boundary = _boundary_size(
+                    rest[:right_pos],
+                    trim_boundary,
+                    left_known=True,
+                    right_known=True,
+                )
+                if boundary is None:
+                    return None, None
+                return right_pos - boundary, None
             return right_pos, None
         if _near_match(rest, right):
             return None, None
-        return None, len(rest) - len(right) + 1
+        boundary = (
+            _boundary_size(rest, trim_boundary, left_known=True, right_known=False)
+            if trim_boundary
+            else 0
+        )
+        return None, len(rest) - len(right) + 1 - (boundary or 0)
     right_pos = find_flank(seq, right)
     if right_pos is not None and not _near_match(seq[:right_pos], left):
-        return None, right_pos - len(left) + 1
+        boundary = (
+            _boundary_size(
+                seq[:right_pos], trim_boundary, left_known=False, right_known=True
+            )
+            if trim_boundary
+            else 0
+        )
+        return None, right_pos - len(left) + 1 - (boundary or 0)
     return None, None
 
 
@@ -114,7 +152,15 @@ class TractReads:
     overlapping: int = 0
     longest_read: int = 0
 
-    def add(self, seq: str, left: str, right: str, *, aligned: bool = True) -> None:
+    def add(
+        self,
+        seq: str,
+        left: str,
+        right: str,
+        *,
+        aligned: bool = True,
+        trim_boundary: str = "",
+    ) -> None:
         """Measure one read; ``aligned`` when its alignment overlaps the tract.
 
         Bounds are kept only from aligned reads: a read placed elsewhere can
@@ -123,7 +169,7 @@ class TractReads:
         if aligned:
             self.overlapping += 1
             self.longest_read = max(self.longest_read, len(seq))
-        length, bound = measure(seq, left, right)
+        length, bound = measure(seq, left, right, trim_boundary=trim_boundary)
         if length is not None:
             self.lengths[length] += 1
         elif bound is not None and aligned:
@@ -151,6 +197,8 @@ class TractReads:
 def collect(
     reads: Iterable[tuple[str, int, str]],
     tracts: dict[str, tuple[str, int, int, str, str]],
+    *,
+    trim_boundaries: dict[str, str] | None = None,
 ) -> dict[str, TractReads]:
     """Measure every tract in reads given as (contig, aligned start, sequence).
 
@@ -169,5 +217,11 @@ def collect(
             if pos - size <= t_end and pos + 2 * size >= t_start:
                 _c, _s, _e, left, right = tracts[key]
                 aligned = pos <= t_end and pos + size > t_start
-                result[key].add(seq, left, right, aligned=aligned)
+                result[key].add(
+                    seq,
+                    left,
+                    right,
+                    aligned=aligned,
+                    trim_boundary=(trim_boundaries or {}).get(key, ""),
+                )
     return result

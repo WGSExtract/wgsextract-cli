@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from wgsextract_cli.cli import help as cli_help
 from wgsextract_cli.cli import hints, parser
 from wgsextract_cli.commands._advanced_options import ADVANCED_OPTIONS, COMMON_ADVANCED
@@ -98,12 +99,13 @@ def test_every_group_and_command_renders_its_help(root):
 
 
 def test_every_example_parses_to_its_own_command(entries):
+    root, base = parser.build_parser()
     for entry in entries:
         assert entry.help is not None
         for example in entry.help.examples:
             words = shlex.split(example)
             assert words[0] == "wgsextract", example
-            args, _ = parser.parse_args(*parser.build_parser(), words[1:])
+            args, _ = parser.parse_args(root, base, words[1:])
             assert args._command == entry.path, example
 
 
@@ -356,7 +358,8 @@ def test_help_index_has_no_settings_from_the_users_config(tmp_path):
     }
     config = tmp_path / "config.toml"
     config.write_text(
-        "".join(f'{key} = "{value}"\n' for key, value in paths.items())
+        state_directory_setting(tmp_path)
+        + "".join(f'{key} = "{value}"\n' for key, value in paths.items())
         + "cpu_threads = 7\n",
         encoding="utf-8",
     )
@@ -467,6 +470,18 @@ def test_ref_library_list_option_lists_the_library(tmp_path, capsys):
     assert result["status"] == "ok"
     assert result["details"]["library"] == str(tmp_path)
     assert {g["status"] for g in result["details"]["genomes"]} == {"missing"}
+
+
+def test_1247_ref_library_list_reports_downloaded_gnomad_table(tmp_path, capsys):
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    (downloads / "gnomad_hg38.tsv.gz").touch()
+
+    main(["--json", "ref", "library", "--list", "--ref", str(tmp_path)])
+
+    resources = json.loads(capsys.readouterr().out)["details"]["resources"]
+    assert resources["hg38"]["gnomad"] is True
+    assert resources["hg19"]["gnomad"] is False
 
 
 def _parse(words: list[str]):
@@ -582,6 +597,7 @@ def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
         "23andme_v5",
     )
 
+    root, base = parser.build_parser()
     for entry in doc["commands"]:
         main(["help", *entry["path"].split(), "--json"])
         details = json.loads(capsys.readouterr().out)
@@ -596,7 +612,8 @@ def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
                 words.append(option["flags"][0])
                 if option["type"] != "flag":
                     words.append(_value(option))
-        assert _parse(words)._command == command["path"], words
+        args, _ = parser.parse_args(root, base, words)
+        assert args._command == command["path"], words
 
 
 def test_help_stays_token_efficient(capsys, record_property):
