@@ -70,8 +70,9 @@ class State(enum.Enum):
 _RANK = {state: rank for rank, state in enumerate(State)}
 _STRICT_RANK = {
     **_RANK,
-    State.VARIANT: _RANK[State.FILTERED],
     State.FILTERED: _RANK[State.VARIANT],
+    State.NO_CALL: _RANK[State.FILTERED],
+    State.VARIANT: _RANK[State.NO_CALL],
 }
 Classified = tuple[str, int, int, State]  # a record's bases and their state
 

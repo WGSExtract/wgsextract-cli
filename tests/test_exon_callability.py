@@ -448,8 +448,12 @@ def test_1357_multisample_gvcf_does_not_silently_assess_first_sample(
 
 
 @needs_htslib
-def test_1357_passing_alt_does_not_mask_overlapping_filtered_alt(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "alt,filter_,gt,unread",
+    [("T", "Fail", "0/1", "filtered"), ("T", "PASS", "./.", "no_call")],
+)
+def test_1357_passing_alt_does_not_mask_overlapping_failed_call(
+    tmp_path: Path, alt: str, filter_: str, gt: str, unread: str
 ) -> None:
     gvcf = tmp_path / "overlap.g.vcf"
     text = _GQ_GVCF.replace(
@@ -460,7 +464,7 @@ def test_1357_passing_alt_does_not_mask_overlapping_filtered_alt(
         "END=1000\tGT:GQ:MIN_DP\t0/0:50:30",
         "END=499\tGT:GQ:MIN_DP\t0/0:50:30\n"
         "chr7\t500\t.\tA\tG,<NON_REF>\t50\tPASS\t.\tGT:GQ:DP\t0/1:50:30\n"
-        "chr7\t500\t.\tA\tT,<NON_REF>\t50\tFail\t.\tGT:GQ:DP\t0/1:50:30\n"
+        f"chr7\t500\t.\tA\t{alt},<NON_REF>\t50\t{filter_}\t.\tGT:GQ:DP\t{gt}:50:30\n"
         "chr7\t501\t.\tA\t<NON_REF>\t.\t.\tEND=1000\tGT:GQ:MIN_DP\t0/0:50:30",
     )
     gvcf.write_text(text, encoding="utf-8", newline="\n")
@@ -471,7 +475,7 @@ def test_1357_passing_alt_does_not_mask_overlapping_filtered_alt(
         )
     )  # fmt: skip
     exon = _exons(tmp_path)[("GENEE", 1)]
-    assert (exon["status"], exon["filtered_bases"]) == ("partial", "1")
+    assert (exon["status"], exon[f"{unread}_bases"]) == ("partial", "1")
 
 
 @needs_htslib
