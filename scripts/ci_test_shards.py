@@ -23,6 +23,8 @@ from scripts.ci_run_tests import test_targets
 from scripts.ci_test_tiers import SINGLE_OS_MODULES, module_shard, shared_fake_data
 
 MAX_JUNIT_BYTES = 16 * 1024 * 1024
+# Reserve 35 s for selector Pixi/setup/fetch and 40 s for the receipt job.
+UBUNTU_PR_SHARD_OVERHEAD = 75
 
 
 @dataclass(frozen=True)
@@ -159,6 +161,7 @@ def plan(
     *,
     skip_independent: bool,
     gate: str = "",
+    pull_request: bool = False,
 ) -> list[Shard]:
     if not durations or os not in LANES:
         return serial()
@@ -184,6 +187,7 @@ def plan(
     lane = LANES[os]
     wall = worker_wall(groups, lane)
     baseline = wall + lane.lead_setup
+    overhead = UBUNTU_PR_SHARD_OVERHEAD if os == "ubuntu" and pull_request else 0
     desired = min(
         lane.max_jobs,
         len(groups),
@@ -199,8 +203,8 @@ def plan(
         if (
             all(bins)
             and max(times) <= 1.2 * sum(times) / count
-            and max(jobs) < baseline
-            and sum(jobs) <= 1.05 * baseline
+            and max(jobs) + overhead < baseline
+            and sum(jobs) + overhead <= 1.05 * baseline
         ):
             return [
                 {
@@ -306,6 +310,7 @@ def main() -> None:
     parser.add_argument("--os", choices=LANES, required=True)
     parser.add_argument("--selection", default="all")
     parser.add_argument("--skip-independent", action="store_true")
+    parser.add_argument("--pull-request", action="store_true")
     parser.add_argument("--linux-observations", type=Path)
     parser.add_argument("--disable-symbol-selection", action="store_true")
     source = parser.add_mutually_exclusive_group(required=True)
@@ -338,7 +343,11 @@ def main() -> None:
         args.save_timings.parent.mkdir(parents=True, exist_ok=True)
         args.save_timings.write_text(json.dumps(durations) + "\n", encoding="utf-8")
     shards = plan(
-        args.os, args.selection, durations, skip_independent=args.skip_independent
+        args.os,
+        args.selection,
+        durations,
+        skip_independent=args.skip_independent,
+        pull_request=args.pull_request,
     )
     if args.os == "ubuntu" and len(shards) > 1 and args.linux_observations:
         # A single decision must precede partitioning. Re-running the symbol
@@ -361,6 +370,7 @@ def main() -> None:
                 durations,
                 skip_independent=args.skip_independent,
                 gate=decision["mode"],
+                pull_request=args.pull_request,
             )
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             print(f"Linux selector unavailable ({error!r}); using one job.")

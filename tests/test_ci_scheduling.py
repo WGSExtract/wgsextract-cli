@@ -218,6 +218,36 @@ def test_1492_balance_three_jobs_without_splitting_shared_fixtures(
     assert small["gate"] == "symbol"
 
 
+@pytest.mark.parametrize(("seconds_per_module", "pr_job_count"), [(610, 1), (3000, 2)])
+def test_1492_ubuntu_pr_budget_includes_selector_and_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    seconds_per_module: int,
+    pr_job_count: int,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("tests").mkdir()
+    files = [f"tests/test_budget_{i}.py" for i in range(8)]
+    for path in files:
+        Path(path).touch()
+    durations = dict.fromkeys(files, float(seconds_per_module))
+    selection = json.dumps(files)
+
+    assert len(plan("ubuntu", selection, durations, skip_independent=False)) == 2
+    assert (
+        len(
+            plan(
+                "ubuntu",
+                selection,
+                durations,
+                skip_independent=False,
+                pull_request=True,
+            )
+        )
+        == pr_job_count
+    )
+
+
 def test_1492_partial_nightly_artifacts_do_not_seed_shard_estimates() -> None:
     def report(module: str, duration: float) -> bytes:
         stream = io.BytesIO()

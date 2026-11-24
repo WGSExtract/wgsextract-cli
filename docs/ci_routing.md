@@ -851,7 +851,10 @@ split would not reduce wall time, or aggregate job time including repeated
 setup would rise by more than 5%. Small selections stay in one job. Shard summaries report estimated
 pytest time before cache skips and actual elapsed time for the test step.
 For a sharded Ubuntu PR, a single symbol-selector decision precedes the
-split, and one advisory receipt combines the shards' results.
+split, and one advisory receipt combines the shards' results. The Ubuntu PR
+planner reserves 75 seconds for that selector setup and receipt job when
+checking both wall time and the 5% aggregate budget. The manual Ubuntu run
+does not perform these PR-only steps or include that allowance.
 
 The lead job keeps the `all` label, seeds shared caches, and runs one-off
 checks; ARM64 retains `native`. The other jobs use `shard-2` and `shard-3`.

@@ -129,7 +129,7 @@ jobs:
           if [ "$UBUNTU" != '[]' ]; then
             timeout 45 python3 -m scripts.ci_test_shards --os ubuntu --selection "$UBUNTU" \
               --save-timings out/shard-timings/ubuntu.json \
-              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name ubuntu --github-output out/shard-timings/ubuntu.outputs &
+              --pull-request --skip-independent --repository "$GITHUB_REPOSITORY" --output-name ubuntu --github-output out/shard-timings/ubuntu.outputs &
           fi
           if [ "$MACOS" != '[]' ]; then
             timeout 45 python3 -m scripts.ci_test_shards --os macos --selection "$MACOS" \
@@ -174,7 +174,7 @@ jobs:
           timeout 90 pixi run -e dev --no-install python -m scripts.ci_test_shards \
             --os ubuntu --selection "$TEST_SELECTION" \
             --linux-observations out/test-impact-map/linux.json.gz "${flags[@]}" \
-            --skip-independent --timings out/shard-timings/ubuntu.json \
+            --pull-request --skip-independent --timings out/shard-timings/ubuntu.json \
             --output-name ubuntu --github-output "$GITHUB_OUTPUT"
       - name: Prepare selector activation canary
         id: selector-setup
