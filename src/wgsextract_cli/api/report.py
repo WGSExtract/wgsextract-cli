@@ -3,9 +3,10 @@
 The report summarises what earlier runs left in the sample folder (their
 result manifests and the sample workspace): overview and QC, lineage,
 pharmacogenomics, ClinVar pathogenic calls in the ACMG SF genes (or another
-gene list) and the microarray export. It runs no analysis; its only network
+gene list), the microarray export and, with ``pgx_context``, CPIC guidance
+for the medications a person lists. It runs no analysis; its only network
 use, only with ``download`` permission, is fetching a missing built-in gene
-list into the reference library::
+list or the pinned CPIC database release into the reference library::
 
     res = api.report.build(api.ReportParams(workspace=Path("HG002")))
     report = res.details          # the wgsextract.report/1 document
@@ -84,6 +85,15 @@ class ReportParams(DownloadParams):
         metavar="LIST",
         config_key="report_gene_list",
         may_name_file=True,
+    )
+
+    pgx_context: Path | None = param(
+        None,
+        help="Review these medications against CPIC guidance: a local TOML file "
+        "listing them (see docs/personal-report.md); it is never uploaded. The "
+        "pinned CPIC database release needs --download the first time.",
+        path="file",
+        metavar="FILE",
     )
 
     def __post_init__(self) -> None:

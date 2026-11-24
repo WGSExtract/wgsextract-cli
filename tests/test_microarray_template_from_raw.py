@@ -199,12 +199,18 @@ def test_y_snp_names_and_marker_lists_without_genotypes_are_read(tmp_path):
 
 
 def test_delta_against_a_shipped_template_reproduces_the_rows(tmp_path):
+    from itertools import islice
+
     from scripts.microarray_template_from_raw import TEMPLATES
     from wgsextract_cli.core.microarray.templates import template_rows
 
     base = list(
-        template_rows(
-            "MyHeritage_GSA_2025", str(TEMPLATES / "body/MyHeritage_GSA_2025.csv.gz")
+        islice(
+            template_rows(
+                "MyHeritage_GSA_2025",
+                str(TEMPLATES / "body/MyHeritage_GSA_2025.csv.gz"),
+            ),
+            1000,
         )
     )
     rows = [base[0], ("rs_new1", "1", "5"), *base[2:1000], ("rs_new2", "X", "9")]

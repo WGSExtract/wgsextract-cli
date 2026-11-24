@@ -46,6 +46,7 @@ from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
     ensure_vcf_indexed,
 )
+from wgsextract_cli.core.workspace_activity import forward_workspace_admission
 
 
 def _safe_console_text(value: object) -> str:
@@ -461,7 +462,7 @@ def run_cli_subcommand(cmd_args: list[str], job: AnalyzeJob) -> dict[str, Scalar
             words = itertools.takewhile(lambda word: word[:1] != "-", cmd_args)
             started_step(running.metrics, " ".join(words))
         try:
-            run_command(cmd)
+            run_command(forward_workspace_admission(cmd))
         except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
             record_step_result(result_file)
             logging.warning(f"Subcommand failed: {' '.join(cmd)}. Error: {e}")

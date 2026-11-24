@@ -594,6 +594,7 @@ class Lineage:
 
 
 _LIFECYCLES = ("final", "intermediate", "cache", "temp")
+_SOURCE_EDGE_FIELDS = frozenset(f.name for f in fields(SourceEdge))
 
 
 def _run_id(value: object) -> bool:
@@ -623,7 +624,7 @@ def _edges(value: object) -> list[SourceEdge]:
     for item in value if isinstance(value, list) else []:
         if not (
             isinstance(item, dict)
-            and set(item) <= {f.name for f in fields(SourceEdge)}
+            and item.keys() <= _SOURCE_EDGE_FIELDS
             and isinstance(item.get("path"), str)
             and isinstance(item.get("role"), str)
             and isinstance(item.get("fingerprint"), str | None)

@@ -26,7 +26,8 @@ import { applySecurityHeaders, contentSecurityPolicy, guardRequest } from "./req
 import { runSetup, runUninstall } from "./setup-runner.js";
 import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
-import { usersWorkspaceFor, usersWorkspaceLocationInfo } from "./users-workspace.js";
+import { assertCurrentUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo, workspaceMoveRevision } from "./users-workspace.js";
+import { withWorkspaceMove, withWorkspaceUse } from "./workspace-activity.js";
 import type { WorkspaceMoveTarget } from "./workspace-move.js";
 import { LinkedMoveFolderError } from "./workspace-move-guard.js";
 import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
@@ -62,6 +63,8 @@ export interface RequestHandlerContext {
     jobServer: JobServer | undefined;
     localizedBundleLoader: {
         load: (locale?: string, preferredLocales?: string[]) => Promise<LocalizedBundle>;
+        /** The startup preload, which holds a workspace use while it bootstraps the settings files. */
+        preloaded?: Promise<unknown> | undefined;
     };
     loadBundle: (requestedSource: string) => Promise<LooseRecord>;
     /** Moves the users workspace, or one setting's folder, and loads the bundle again. */
@@ -77,6 +80,7 @@ export interface RequestHandlerContext {
     shutdown: (reason: string) => void;
     sourceBundleRoot: string;
     webRoot: string;
+    workspaceMoveRevision?: string;
 }
 
 type RouteHandler = (response: ServerResponse, headOnly: boolean) => Promise<void>;
@@ -84,6 +88,28 @@ type JSONHandler = (body: LooseRecord) => Promise<unknown>;
 type StepRunner = typeof runSetup;
 
 const maxRememberedPicks = 16;
+const independentlyGuardedRoutes = new Set([
+    "/api/workspace-location/move", "/api/setup/stream", "/api/uninstall/stream",
+    "/api/path/pick", "/api/shutdown",
+]);
+
+async function assertCurrentWorkspace(context: RequestHandlerContext, request?: IncomingMessage) {
+    await assertCurrentUsersWorkspace(context.manifest, context.bundleRoot);
+    const revision = await workspaceMoveRevision(context.manifest);
+    const client = request?.headers["x-wgse-workspace-revision"];
+    if ((context.workspaceMoveRevision !== undefined && context.workspaceMoveRevision !== revision) ||
+        (client !== undefined && client !== revision)) {
+        throw new HttpError(409, "workspaceMoveStale");
+    }
+    return revision;
+}
+
+function withCurrentWorkspace<T>(context: RequestHandlerContext, run: () => Promise<T>, request?: IncomingMessage) {
+    return withWorkspaceUse(async () => {
+        await assertCurrentWorkspace(context, request);
+        return run();
+    });
+}
 
 export function createRequestHandler(context: RequestHandlerContext) {
     // Bundles can only be loaded from folders the user picked in a native dialog during this session.
@@ -96,8 +122,6 @@ export function createRequestHandler(context: RequestHandlerContext) {
     const requireRemoteViewer = () => {
         if (context.manifest.id !== "wgs-extract") throw new HttpError(403, "remoteUnavailable");
     };
-    // While the workspace moves nothing may start a process or write to it, or the write would be lost with the old copy.
-    let workspaceMoving = false;
     const staticRoutes: Record<string, RouteHandler> = {
         "/": (response, headOnly) => serveIndex(path.join(context.webRoot, "index.html"), indexToken(context), response, headOnly),
         "/index.html": (response, headOnly) => serveIndex(path.join(context.webRoot, "index.html"), indexToken(context), response, headOnly),
@@ -324,18 +348,16 @@ export function createRequestHandler(context: RequestHandlerContext) {
             const controlID = optionalString(body, "controlID");
             const key = optionalString(body, "key");
             const target: WorkspaceMoveTarget = { folder, ...(controlID && key ? { setting: { controlID, key } } : {}) };
+            // The app's own startup preload is not a running command; wait for it instead of refusing the move as busy.
+            await context.localizedBundleLoader.preloaded?.catch(() => undefined);
             await streamNDJSON(
                 response,
-                async (emit, signal) => {
-                    workspaceMoving = true;
-                    try {
-                        await context.moveWorkspace(target, emit, signal);
-                    }
-                    finally {
-                        workspaceMoving = false;
-                    }
+                (emit, signal) => withWorkspaceMove(async () => {
+                    await assertCurrentWorkspace(context, request);
+                    await context.moveWorkspace(target, emit, signal);
+                    context.workspaceMoveRevision = await workspaceMoveRevision(context.manifest);
                     await emit({ type: "complete" });
-                },
+                }),
                 (error, cause) => ({
                     type: "error",
                     error,
@@ -372,8 +394,10 @@ export function createRequestHandler(context: RequestHandlerContext) {
             }
             if (url.pathname.startsWith("/viewer-data/")) {
                 requireViewerLoopback(request);
-                const library = await viewerLibraries(context);
-                await viewerFiles.serve(request, response, url.pathname, library.roots, library.key);
+                await withCurrentWorkspace(context, async () => {
+                    const library = await viewerLibraries(context);
+                    await viewerFiles.serve(request, response, url.pathname, library.roots, library.key);
+                });
                 return;
             }
             if (method === "GET" || method === "HEAD") {
@@ -381,11 +405,12 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 return;
             }
             const postRoute = postRoutes[url.pathname];
-            if (method === "POST" && postRoute && workspaceMoving && url.pathname !== "/api/shutdown") {
-                throw new HttpError(409, "The workspace is being moved. Try again when the move has finished.");
-            }
             if (method === "POST" && postRoute) {
-                await postRoute(request, response);
+                if (independentlyGuardedRoutes.has(url.pathname)) {
+                    await postRoute(request, response);
+                } else {
+                    await withCurrentWorkspace(context, () => postRoute(request, response), request);
+                }
                 return;
             }
             throw new HttpError(url.pathname in postRoutes ? 405 : 404, "Not found");
@@ -428,11 +453,14 @@ async function handleGet(url: URL, request: IncomingMessage, response: ServerRes
         return;
     }
     if (url.pathname === "/api/manifest") {
+        const before = await assertCurrentWorkspace(context);
         const locale = url.searchParams.has("locale") ? url.searchParams.get("locale") || undefined : context.defaultLocale;
         const loaded = await context.localizedBundleLoader.load(locale, preferredLocales(request.headers["accept-language"]));
+        if (before !== await assertCurrentWorkspace(context)) throw new HttpError(409, "workspaceMoveStale");
         const body = {
             ...withAutoRunSetup(withAppVersion(loaded, context.appVersion)),
             workspaceLocation: await usersWorkspaceLocationInfo(context.manifest, usersWorkspaceFor(context.bundleRoot)),
+            workspaceMoveRevision: before,
         };
         json(response, context.enableDevReload ? { ...body, devReload: true } : body);
         return;
@@ -483,13 +511,13 @@ function rememberDynamicActions(context: RequestHandlerContext, location: Return
 }
 
 async function handleStepStream(request: IncomingMessage, response: ServerResponse, context: RequestHandlerContext, runner: StepRunner) {
-    const body = await readBody(request, context);
+    const body = await withCurrentWorkspace(context, () => readBody(request, context), request);
     const bundle = await context.localizedBundleLoader.load(requestedLocale(body, context.defaultLocale), preferredLocales(request.headers["accept-language"]));
-    await streamNDJSON(
+    await withCurrentWorkspace(context, () => streamNDJSON(
         response,
         (emit, signal) => runner(bundle.manifest, context.bundleRoot, context.runProcess, wrapEmitWithEventLog(emit), bundle.labels ?? {}, signal),
         (error) => ({ type: "complete", result: { status: "failed", results: [], error } }),
-    );
+    ), request);
 }
 
 function withAppVersion(bundle: ManifestResponse, appVersion: unknown): ManifestResponse {
