@@ -262,6 +262,24 @@ def test_1492_cross_module_xdist_group_stays_on_one_runner(
     )
 
 
+def test_1492_bad_fixture_marker_does_not_hide_pytest_collection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("tests").mkdir()
+    files = [f"tests/test_worker_{index}.py" for index in range(12)]
+    for path in files:
+        Path(path).touch()
+    Path(files[0]).write_text("pytest.mark.xdist_group(", encoding="utf-8")
+    shards = plan(
+        "macos", json.dumps(files), dict.fromkeys(files, 900), skip_independent=False
+    )
+    assert len(shards) == 2
+    assert {path for shard in shards for path in json.loads(shard["selection"])} == set(
+        files
+    )
+
+
 def test_1492_does_not_split_modules_already_running_concurrently(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

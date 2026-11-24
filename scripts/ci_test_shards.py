@@ -85,11 +85,16 @@ def fixture_sets(targets: list[str]) -> dict[str, list[str]]:
     grouped: dict[str, list[str]] = defaultdict(list)
     tagged: list[str] = []
     for path in targets:
-        source = Path(path).read_bytes()
-        if b"xdist_group" in source and any(
-            isinstance(node, ast.Attribute) and node.attr == "xdist_group"
-            for node in ast.walk(ast.parse(source, path))
-        ):
+        try:
+            source = Path(path).read_bytes()
+            marked = b"xdist_group" in source and any(
+                isinstance(node, ast.Attribute) and node.attr == "xdist_group"
+                for node in ast.walk(ast.parse(source, path))
+            )
+        except (OSError, SyntaxError):
+            # Keep unreadable modules in the plan; pytest owns collection errors.
+            marked = True
+        if marked:
             tagged.append(path)
         else:
             group = "shared-smoke" if shared_fake_data(Path(path)) else path

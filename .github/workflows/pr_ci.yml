@@ -121,20 +121,25 @@ jobs:
           MACOS: ${{ steps.diff.outputs.macos_smoke != 'true' && (steps.cert.outputs.macos_arm64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.macos_tests || '[]' }}
           WINDOWS: ${{ steps.diff.outputs.windows_smoke != 'true' && (steps.cert.outputs.windows_x64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.windows_tests || '[]' }}
         run: |
+          mkdir -p out/shard-timings
+          for lane in ubuntu macos windows; do
+            : > "out/shard-timings/$lane.outputs"
+          done
           if [ "$UBUNTU" != '[]' ]; then
             timeout 45 python3 -m scripts.ci_test_shards --os ubuntu --selection "$UBUNTU" \
               --save-timings out/shard-timings/ubuntu.json \
-              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name ubuntu --github-output "$GITHUB_OUTPUT" &
+              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name ubuntu --github-output out/shard-timings/ubuntu.outputs &
           fi
           if [ "$MACOS" != '[]' ]; then
             timeout 45 python3 -m scripts.ci_test_shards --os macos --selection "$MACOS" \
-              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name macos --github-output "$GITHUB_OUTPUT" &
+              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name macos --github-output out/shard-timings/macos.outputs &
           fi
           if [ "$WINDOWS" != '[]' ]; then
             timeout 45 python3 -m scripts.ci_test_shards --os windows --selection "$WINDOWS" \
-              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name windows --github-output "$GITHUB_OUTPUT" &
+              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name windows --github-output out/shard-timings/windows.outputs &
           fi
           wait
+          cat out/shard-timings/{ubuntu,macos,windows}.outputs >> "$GITHUB_OUTPUT"
       - name: Set up the locked Python for the Linux shard selector
         id: shard-selector-setup
         if: fromJSON(steps.shards.outputs.ubuntu || '[]')[1].label == 'shard-2'

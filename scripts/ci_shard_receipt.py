@@ -12,11 +12,14 @@ from scripts.ci_test_shards import Shard
 def combine(shards: list[Shard], reports: Path, output: Path) -> None:
     suites = ET.Element("testsuites")
     selected: set[str] = set()
-    (mode,) = {shard["gate"] for shard in shards}
+    modes = {shard["gate"] for shard in shards}
+    if len(modes) != 1 or "" in modes:
+        raise ValueError("Linux pytest shards must share one nonempty selector mode")
+    (mode,) = modes
     outcome = "success"
     for shard in shards:
         label = shard["label"]
-        if not re.fullmatch(r"all|shard-[23]", label) or not mode:
+        if not re.fullmatch(r"all|shard-[23]", label):
             raise ValueError("Invalid Linux shard matrix")
         paths = set(json.loads(shard["selection"]))
         if selected & paths:
