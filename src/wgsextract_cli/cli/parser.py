@@ -23,8 +23,8 @@ from .config_view import configuration_rows
 from .help import (
     advanced_note,
     apply_help_metadata,
+    command_contract,
     command_map,
-    contract_text,
     did_you_mean,
     resolve_command,
     run_help,
@@ -151,11 +151,8 @@ class WgsArgumentParser(argparse.ArgumentParser):
             text = super().format_help()
         if self.advanced_actions and not self.show_advanced:
             text += "\n" + advanced_note(self.prog, len(self.advanced_actions))
-        command_help = getattr(self, "command_help", None)
-        if command_help is not None:
-            needs = getattr(self, "command_needs", None)
-            deprecation = getattr(self, "deprecation", None)
-            text += "\n" + contract_text(command_help, use_color(), needs, deprecation)
+        if path := self.get_default("_command"):
+            text += command_contract(path, getattr(self, "deprecation", None))
         return text
 
     def format_usage(self) -> str:
