@@ -241,15 +241,15 @@ def test_reference_model_alias_genome_calls_male_x_haploid(tmp_path):
     assert _genotypes(tmp_path / "out" / "male_23andMe_V3.txt")["rsX"] in ("AA", "GG")
 
 
-def test_unknown_build_calls_every_chromosome_diploid(tmp_path):
-    fasta = _renamed_library(tmp_path / "reference", "custom.fa")
+def test_1334_unknown_build_is_refused_not_called_all_diploid(tmp_path):
+    fasta = str(_renamed_library(tmp_path / "reference", "custom.fa"))
     bam = _bam(tmp_path / "male.bam", _genome(), {**MALE, "rsX": "AG"})
-    targets = _target_tab(tmp_path / "targets.tab")
-
-    _microarray(bam, str(fasta), tmp_path / "out", "--ref-vcf-tab", targets)
-
-    kit = _genotypes(tmp_path / "out" / "male_CombinedKit.txt")
-    assert (kit["rsHet"], kit["rsX"], kit["rsY"]) == ("AC", "AG", "TT")
+    args = (bam, fasta, tmp_path / "o", "--ref-vcf-tab", _target_tab(tmp_path / "t"))
+    with pytest.raises(WGSExtractError, match="build: unknown.*ploidy.txt"):
+        _microarray(*args)  # #1334: called all-diploid, his chrX came out het
+    (tmp_path / "reference" / "ploidy.txt").write_text("chrX 1 5000 M 1\n")
+    _microarray(*args)
+    assert _genotypes(tmp_path / "o" / "male_CombinedKit.txt")["rsX"] in ("AA", "GG")
 
 
 def test_hg38_without_a_liftover_chain_fails_before_calling(tmp_path):

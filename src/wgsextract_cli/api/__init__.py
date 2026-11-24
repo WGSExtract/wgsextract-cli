@@ -142,7 +142,7 @@ from .info import (
     InfoGeneParams,
     InfoParams,
 )
-from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
+from .lineage import MtHaplogroupParams, YHaplogroupParams, YPrivateParams, YStrParams
 from .lookup import LookupParams
 from .methylation import MethylationPileupParams, MethylationRegionsParams
 from .microarray import MicroarrayParams
@@ -223,6 +223,7 @@ from .vcf import (
     VcfPharmgkbParams,
     VcfPhaseParams,
     VcfPhylopParams,
+    VcfPrepareParams,
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
@@ -368,6 +369,7 @@ __all__ = [
     "VcfImputeParams",
     "VcfPhaseParams",
     "VcfPhylopParams",
+    "VcfPrepareParams",
     "VcfRevelParams",
     "VcfSnpParams",
     "VcfSpliceaiParams",
@@ -385,6 +387,7 @@ __all__ = [
     "WGSExtractError",
     "YHaplogroupParams",
     "YMtExtractParams",
+    "YPrivateParams",
     "YStrParams",
     "YdnaBamParams",
     "YdnaVcfParams",

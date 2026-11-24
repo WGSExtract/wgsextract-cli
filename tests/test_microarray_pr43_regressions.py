@@ -21,7 +21,7 @@ from tests.microarray_helpers import microarray_params
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.commands import _microarray_combined, _microarray_vcf, microarray
 from wgsextract_cli.core import variant_files
-from wgsextract_cli.core.builds import ploidy_for_build
+from wgsextract_cli.core.builds import ploidy_preset
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.microarray.formats import resolve_format_key
 from wgsextract_cli.core.microarray.templates import (
@@ -51,7 +51,7 @@ GENOME += "".join(_rng.choice("ACGT") for _ in range(LENGTH - 101))
 def test_reference_model_aliases_get_their_builds_sex_aware_ploidy(
     build, expected_ploidy
 ):
-    assert ploidy_for_build(build) == expected_ploidy
+    assert ploidy_preset(build) == expected_ploidy
 
 
 @pytest.mark.parametrize(
@@ -66,8 +66,11 @@ def test_reference_model_aliases_get_their_builds_sex_aware_ploidy(
         ("familytreedna-v2", "FTDNA_V2"),
         ("livingdna-v1", "LDNA_V1"),
         ("myheritage-v2", "MyHeritage_V2"),
-        ("23andme-v5-2025", "23andMe_V5_2025"),
-        ("ancestry_v2_2024", "Ancestry_V2_2024"),
+        ("myheritage-v3", "MyHeritage_V3"),
+        ("ancestry_v2", "Ancestry_V2ab"),
+        ("ancestry_v2ab", "Ancestry_V2ab"),
+        ("ancestry_v2cd", "Ancestry_V2cd"),
+        ("ancestry_v2e", "Ancestry_V2e"),
         ("nucleus", "Nucleus_V1"),
         ("23andMe_SNPs_API", "23andMe_SNPs_API"),
     ],

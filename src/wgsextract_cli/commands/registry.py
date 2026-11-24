@@ -196,6 +196,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
 ADVANCED_SUBCOMMANDS = frozenset(
     {
         "extract bam-subset",
+        "lineage y-private",
         "vcf freebayes",
         "vcf gatk",
         "vcf deepvariant",
@@ -293,6 +294,7 @@ JOURNEYS: tuple[Journey, ...] = (
     Journey(
         "A VCF (from a provider or another pipeline)",
         (
+            ("vcf prepare", "fix its compression, sorting, contig names and index"),
             ("vcf clinvar", "add ClinVar clinical significance"),
             ("vcf filter", "keep a gene, region or quality range"),
             ("vep run", "predict each variant's effect on genes"),
