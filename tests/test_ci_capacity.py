@@ -222,6 +222,17 @@ def test_agent_yields_to_priority_merge_entry_even_without_ci(capsys: Any) -> No
     assert report["priority_queued"] == [1]
 
 
+def test_agent_yields_to_priority_standalone_gui_ci(capsys: Any) -> None:
+    gui = run(1, "pull_request", "GUI CI", ".github/workflows/gui-ci.yml")
+    fake = FakeActions(
+        snapshot((gui, "queued", jobs("queued")), pulls=(priority_pr(1),))
+    )
+    code, report, _ = invoke(fake, capsys=capsys)
+    assert code == ci_capacity.HOLD
+    assert report["priority_ci"] == [1]
+    assert report["ready_matrices"] == []
+
+
 @pytest.mark.parametrize("companion_label", ["hands-off", "land-asap"])
 def test_collaborator_action_labels_do_not_change_capacity_admission(
     companion_label: str, capsys: Any

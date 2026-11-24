@@ -1048,7 +1048,7 @@ It reads PRs, workflow runs and jobs through `gh api` (read-only) and exits 0
 when admission is fine. The `priority` label, added to PRs from non-bot
 collaborators with write access other than `theontho`, lets the named PR skip
 the capacity gate. Other PRs exit 3 (hold) while a priority PR has active
-draft or ready area CI or is in the merge queue, while any `merge_group` job
+draft or ready CI or is in the merge queue, while any `merge_group` job
 is queued for a runner, or while more than `--max-ready` (default 4)
 ready-PR area matrices are in flight. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
