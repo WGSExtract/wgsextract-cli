@@ -9,6 +9,8 @@ import sys
 import time
 from pathlib import Path
 
+from wgsextract_cli.cli.help_index import PACKAGE_ROOT
+
 
 def measure(command: list[str], env: dict[str, str]) -> float:
     before = time.perf_counter()
@@ -23,6 +25,14 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=Path("out/help-timings"))
     parser.add_argument("--repeats", type=int, default=15)
     args = parser.parse_args()
+    source = PACKAGE_ROOT.parent.parent
+    if (
+        not (source / "pyproject.toml").is_file()
+        or (source / "tmp" / ".managed-help-cache").is_file()
+    ):
+        parser.error("run this benchmark from an unmanaged source checkout")
+    if args.repeats < 1:
+        parser.error("--repeats must be at least 1")
     args.output.mkdir(parents=True, exist_ok=False)
     command = [sys.executable, "-m", "wgsextract_cli.main", "help", "--all", "--json"]
     cold = []
