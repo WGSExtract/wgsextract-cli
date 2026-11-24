@@ -18,6 +18,7 @@ from tests.sex_fixtures import distributed_alignment
 from wgsextract_cli import api
 from wgsextract_cli.commands.info import metrics
 from wgsextract_cli.core import genotype_qc, sample_workspace
+from wgsextract_cli.core.alignment.sequencing import input_platform
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.sample_workspace import (
@@ -25,7 +26,6 @@ from wgsextract_cli.core.sample_workspace import (
     SampleWorkspace,
     active_workspace,
 )
-from wgsextract_cli.core.sequencing import input_platform
 from wgsextract_cli.main import main
 
 LENGTHS = {"chr1": 1000, "chr7": 1000, "chrX": 1000, "chrY": 1000}

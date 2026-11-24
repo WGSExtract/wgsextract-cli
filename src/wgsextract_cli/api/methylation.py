@@ -197,7 +197,7 @@ class MethylationRegionsParams(Params):
         yield "ref", append_suffix(ref, ".fai")
         yield "ref", append_suffix(ref, ".gzi")
         if self.partition_hp:
-            from wgsextract_cli.core.samtools_commands import alignment_index
+            from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 
             if index := alignment_index(self.input):
                 yield "input", absolute_path(index)
