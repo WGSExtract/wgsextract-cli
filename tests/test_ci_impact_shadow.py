@@ -232,19 +232,41 @@ def test_1452_line_shadow_uses_prior_base_contexts_without_deduplicating_tests(
         )
 
     (tmp_path / "out").mkdir()
+    # The lean merge-queue policy lane installs coverage, not pytest-cov.
     run(
-        "-m",
-        "pytest",
+        "-c",
+        """
+import sys
+import pytest
+from coverage import Coverage
+
+cov = Coverage(config_file=False, data_file="out/.coverage",
+               include=["*/src/wgsextract_cli/*"])
+cov.set_option("run:core", "ctrace")
+
+class Contexts:
+    @pytest.hookimpl(hookwrapper=True)
+    def pytest_runtest_call(self, item):
+        cov.switch_context(item.nodeid + "|run")
+        try:
+            yield
+        finally:
+            cov.switch_context("")
+
+with cov.collect():
+    status = pytest.main(sys.argv[1:], plugins=[Contexts()])
+cov.save()
+sys.exit(status)
+""",
         "-q",
         "--rootdir=.",
+        "-p",
+        "no:pytest_cov",
         "-o",
         "addopts=",
         "-c",
         "pytest.ini",
         "--basetemp=out/pytest",
-        "--cov=src/wgsextract_cli",
-        "--cov-context=test",
-        f"--cov-config={ROOT / '.github/coverage-impact.ini'}",
         "--junitxml=out/nightly.xml",
     )
     metadata = ("--coverage-file", "out/.coverage", "--run-id", "1", "--attempt", "1")
