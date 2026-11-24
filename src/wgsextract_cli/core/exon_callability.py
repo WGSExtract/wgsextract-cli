@@ -219,6 +219,8 @@ def _parse_model(name: str, data: bytes, build: str | None) -> ExonModel:
                     int(row["end"]), int(row["cds_start"]) if row["cds_start"] else None,
                     int(row["cds_end"]) if row["cds_end"] else None, limits,
                 )  # fmt: skip
+                if (exon.cds_start is None) != (exon.cds_end is None):
+                    raise ValueError("cds_start and cds_end must both be set or empty")
             except (KeyError, ValueError, IndexError) as error:
                 raise UsageError(
                     f"Exon model {name}, line {number}: bad row ({error})."

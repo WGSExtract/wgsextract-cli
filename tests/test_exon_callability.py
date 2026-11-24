@@ -111,7 +111,7 @@ def sample(tmp_path_factory: pytest.TempPathFactory) -> Path:
     )
     api.vcf.clinvar(
         api.VcfClinvarParams(
-            vcf_input=folder / "snps.vcf.gz", clinvar_file=Path(bgzip_index(clinvar)),
+            vcf_input=folder / "bcftools.g.vcf.gz", clinvar_file=Path(bgzip_index(clinvar)),
             ref=ref, outdir=folder, threads=1,
         )
     )  # fmt: skip
@@ -329,6 +329,79 @@ chr7\t1001\t.\tA\t<NON_REF>\t.\t.\tEND=6000\tGT:GQ:MIN_DP\t0/0:5:30
 
 
 @needs_htslib
+def test_1357_structural_variant_end_is_not_reference_evidence(tmp_path: Path) -> None:
+    structural = tmp_path / "structural.vcf"
+    text = (
+        _GQ_GVCF.replace(
+            "##GVCFBlock0-20=minGQ=0(inclusive),maxGQ=20(exclusive)\n", ""
+        ).split("chr7\t1\t")[0]
+        + "chr7\t1\t.\tA\t<DEL>\t50\tPASS\tEND=6000\tGT\t0/1\n"
+    )
+    structural.write_text(text, encoding="utf-8", newline="\n")
+    result = api.vcf.callability(
+        api.VcfCallabilityParams(
+            vcf_input=Path(bgzip_index(structural)), exons=_model(tmp_path / "exons.tsv"),
+            gene_list=str(_genes(tmp_path)), outdir=tmp_path,
+        ),
+        check=False,
+    )  # fmt: skip
+    assert result.exit_code != 0
+    assert "has no reference evidence" in _error(result)
+
+
+@needs_htslib
+@pytest.mark.parametrize("missing", ["cds_start", "cds_end"])
+def test_1357_half_populated_cds_does_not_hide_unread_exon(
+    sample: Path, tmp_path: Path, missing: str
+) -> None:
+    model = _model(tmp_path / "halfbounds.tsv")
+    lines = model.read_text().splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("GENEA\t") and "\t3\t4\t" in line:
+            row = line.split("\t")
+            row[ec.MODEL_COLUMNS.index(missing)] = ""
+            lines[i] = "\t".join(row)
+    model.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    result = api.vcf.callability(
+        api.VcfCallabilityParams(
+            vcf_input=sample / "snps.vcf.gz", exons=model,
+            gene_list=str(sample / "genes.tsv"), outdir=tmp_path,
+        ),
+        check=False,
+    )  # fmt: skip
+    assert result.exit_code != 0
+    assert "cds_start and cds_end" in _error(result)
+
+
+@needs_htslib
+@pytest.mark.parametrize("dp,gq", [(1, 50), (30, 1)])
+def test_1357_low_quality_alt_is_not_readable(tmp_path: Path, dp: int, gq: int) -> None:
+    gvcf = tmp_path / "low_alt.g.vcf"
+    text = _GQ_GVCF.replace(
+        "##GVCFBlock",
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="DP">\n##GVCFBlock',
+    ).replace(
+        "END=1000\tGT:GQ:MIN_DP\t0/0:50:30",
+        "END=499\tGT:GQ:MIN_DP\t0/0:50:30\n"
+        f"chr7\t500\t.\tA\tT,<NON_REF>\t50\tPASS\t.\tGT:GQ:DP\t0/1:{gq}:{dp}\n"
+        "chr7\t501\t.\tA\t<NON_REF>\t.\t.\tEND=1000\tGT:GQ:MIN_DP\t0/0:50:30",
+    )
+    gvcf.write_text(text, encoding="utf-8", newline="\n")
+    api.vcf.callability(
+        api.VcfCallabilityParams(
+            vcf_input=Path(bgzip_index(gvcf)), exons=_model(tmp_path / "exons.tsv"),
+            gene_list=str(_genes(tmp_path)), outdir=tmp_path,
+        )
+    )  # fmt: skip
+    exon = _exons(tmp_path)[("GENEE", 1)]
+    assert (exon["status"], exon["reasons"], exon["low_quality_variant_bases"]) == (
+        "partial",
+        "low_quality_variant",
+        "1",
+    )
+
+
+@needs_htslib
 def test_1177_low_genotype_quality_blocks_are_not_read(tmp_path: Path) -> None:
     """A GQ gVCF (GATK-style blocks): depth 30 everywhere, but GQ 5 from 1001."""
     gvcf = tmp_path / "sample.g.vcf"
@@ -455,7 +528,7 @@ def test_1177_unplaced_clinvar_calls_leave_no_gene_not_reported(
     )
     api.vcf.clinvar(
         api.VcfClinvarParams(
-            vcf_input=folder / "snps.vcf.gz", ref=folder / "ref.fa", threads=1,
+            vcf_input=folder / "bcftools.g.vcf.gz", ref=folder / "ref.fa", threads=1,
             clinvar_file=Path(bgzip_index(clinvar, folder / "unnamed.vcf.gz")),
             outdir=folder,
         )
@@ -494,15 +567,30 @@ def test_1177_clinvar_on_another_call_set_is_not_combined(
 def test_1177_clinvar_on_rewritten_calls_is_not_combined_with_a_stale_assessment(
     sample: Path, tmp_path: Path
 ) -> None:
-    """PR #1357 review: the caller rewrote snps.vcf.gz and only ClinVar was
-    rerun; the paths still match, but the assessment is of the old calls."""
+    """PR #1357 review: the caller rewrote the gVCF and only ClinVar was rerun."""
     folder = _copy_with_callability(sample, tmp_path)
     api.vcf.snp(
         api.VcfSnpParams(
             input=folder / "S.bam", ref=folder / "ref.fa", outdir=folder,
-            threads=1, region="chr7:1-5000", ploidy="GRCh38",
+            threads=1, region="chr7:1-5000", ploidy="GRCh38", reference_evidence="gvcf",
         )
     )  # fmt: skip
+    api.vcf.clinvar(
+        api.VcfClinvarParams(
+            vcf_input=folder / "bcftools.g.vcf.gz", ref=folder / "ref.fa", threads=1,
+            clinvar_file=folder / "clinvar.vcf.gz", outdir=folder,
+        )
+    )  # fmt: skip
+    results, warnings = _results(folder, tmp_path)
+    assert results["GENEE"] == "not_run"
+    assert "clinvar_not_combined" in warnings
+
+
+@needs_htslib
+def test_1357_snp_only_annotation_does_not_exclude_indel_findings(
+    sample: Path, tmp_path: Path
+) -> None:
+    folder = _copy_with_callability(sample, tmp_path)
     api.vcf.clinvar(
         api.VcfClinvarParams(
             vcf_input=folder / "snps.vcf.gz", ref=folder / "ref.fa", threads=1,
@@ -510,6 +598,7 @@ def test_1177_clinvar_on_rewritten_calls_is_not_combined_with_a_stale_assessment
         )
     )  # fmt: skip
     results, warnings = _results(folder, tmp_path)
+    assert results["GENEA"] == "reported"
     assert results["GENEE"] == "not_run"
     assert "clinvar_not_combined" in warnings
 

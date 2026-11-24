@@ -101,7 +101,9 @@ def run_callability(params: VcfCallabilityParams) -> None:
                 f"The gVCF {gvcf} holds another sample than {vcf} ({sample})."
             )
         header = _header(read)
-        source = evidence.ReferenceEvidence(read, header_text=header)
+        source = evidence.ReferenceEvidence(
+            read, header_text=header, check_variant_quality=True
+        )
         model, names = ec.choose_model(source.lengths, params.exons)
         exons = [e for s in symbols for e in model.genes.get(s.upper(), ())]
         logging.info(
