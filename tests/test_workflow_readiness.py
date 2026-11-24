@@ -498,6 +498,19 @@ def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
     text = workflow.read_text()
     if workflow.name == "copilot_review_collaborators.yml":
         pytest.skip("Owner-approved API-only draft review request (#1045)")
+    if workflow.name == "priority_collaborator_prs.yml":
+        # Label drafts without allowing this exception to run PR code or gain
+        # broader permissions. Its only step is the reviewed API-only labeler.
+        assert event_path_filters(workflow, "pull_request_target") is not None
+        assert event_path_filters(workflow, "pull_request") is None
+        assert not re.search(r"^\s*(?:-\s*)?uses:", text, re.MULTILINE)
+        assert re.findall(r"^ *permissions:.*$", text, re.MULTILINE) == [
+            "permissions: {}",
+            "    permissions:",
+        ]
+        assert "    permissions:\n      pull-requests: write\n    steps:" in text
+        assert len(re.findall(r"^\s*(?:-\s*)?run:", text, re.MULTILINE)) == 1
+        return
     events = list(
         re.finditer(
             r"^  (pull_request(?:_target)?):\s*\n((?:    .*\n|\n)*)",

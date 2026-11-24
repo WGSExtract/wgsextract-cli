@@ -11,7 +11,7 @@ from wgsextract_cli.core.chunked_alignment import (
     parse_size,
 )
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     find_fasta_by_signature,
     input_stem,
     reference_genomes_dir,

@@ -42,7 +42,7 @@ def _install_fasta(
     the M5 checksums of the alignment file ``like``, or ``m5`` for every
     sequence (a different genome's sequences)."""
     from wgsextract_cli.core.alignment.metadata import get_bam_header
-    from wgsextract_cli.core.reference_assets import (
+    from wgsextract_cli.core.ref_library.assets import (
         header_sequences,
         reference_dict_path,
     )

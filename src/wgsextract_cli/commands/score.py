@@ -21,7 +21,7 @@ from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.network_policy import DownloadRequired
-from wgsextract_cli.core.reference_assets import input_stem
+from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
