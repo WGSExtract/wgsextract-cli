@@ -188,9 +188,13 @@ flag is also a warning (`investigate_possible_isodisomy`).
 
 Errors have codes: `roh_af_missing`, `roh_af_build_mismatch`,
 `roh_af_build_unknown`, `roh_af_tag_missing`, `roh_af_unreadable`,
-`roh_af_unsorted`, `roh_regions_build_mismatch`, `roh_regions_build_unknown`,
-`roh_regions_unreadable`,
-`roh_no_gq`, `roh_gvcf` and `roh_no_markers`.
+`roh_af_unsorted`, `roh_af_index_failed`, `roh_regions_build_mismatch`,
+`roh_regions_build_unknown`, `roh_regions_unreadable`, `roh_no_gq`, `roh_gvcf`
+and `roh_no_markers`.
+
+`roh_af_unsorted` means tabix found descending positions or a contig split
+across multiple blocks in the prepared frequency table. Other tabix indexing
+failures report `roh_af_index_failed` with the tool's diagnostic.
 
 ## Validation
 

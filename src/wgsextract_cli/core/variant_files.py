@@ -84,6 +84,19 @@ def _short_index_sibling(vcf: Path) -> Path | None:
     return None
 
 
+def is_tabix_order_error(stderr: str | None) -> bool:
+    """Whether HTSlib reported a position or contig ordering error."""
+    return any(
+        line.startswith(
+            (
+                "[E::hts_idx_push] Unsorted positions",
+                "[E::hts_idx_push] Chromosome blocks not continuous",
+            )
+        )
+        for line in (stderr or "").splitlines()
+    )
+
+
 def ensure_vcf_indexed(vcf_path: PathInput) -> None:
     """Create an index when missing, or refresh all sidecars if any look stale."""
     vcf = Path(vcf_path)
@@ -161,10 +174,15 @@ def ensure_vcf_indexed(vcf_path: PathInput) -> None:
     except MissingDependencyError:
         raise
     except (OSError, subprocess.SubprocessError) as exc:
+        order_hint = (
+            " The VCF must be coordinate-sorted; sort it and retry."
+            if isinstance(exc, subprocess.CalledProcessError)
+            and is_tabix_order_error(exc.stderr)
+            else ""
+        )
         raise WGSExtractError(
-            f"Could not index VCF {vcf}: {exc}. "
-            "Check that the VCF is coordinate-sorted and BGZF-compressed; "
-            "if the index cannot be written, copy the VCF without its indexes "
+            f"Could not index VCF {vcf}: {exc}.{order_hint} "
+            "If the index cannot be written, copy the VCF without its indexes "
             "to a writable directory and retry."
         ) from exc
 
