@@ -124,6 +124,23 @@ def test_915_adding_a_test_file_keeps_unrelated_passes(tmp_path: Path) -> None:
     assert reusable(before, after) == set(before.hashes)
 
 
+def test_1509_updated_hs38_pin_cannot_reuse_old_reference_passes(
+    tmp_path: Path,
+) -> None:
+    files = FILES | {
+        "scripts/ci_hs38.sh": "sha256=old",
+        "tests/test_install_hs38.py": 'from pathlib import Path\nPath("scripts/ci_hs38.sh")',
+    }
+    before = fingerprint("ubuntu", repository=checkout(tmp_path / "before", files))
+    after = fingerprint(
+        "ubuntu",
+        repository=checkout(
+            tmp_path / "after", files | {"scripts/ci_hs38.sh": "sha256=new"}
+        ),
+    )
+    assert not reusable(before, after)
+
+
 def test_915_passed_hashes_skip_pytest_and_are_listed_in_the_summary(
     tmp_path: Path,
 ) -> None:

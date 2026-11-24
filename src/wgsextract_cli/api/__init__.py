@@ -13,10 +13,12 @@ Operations raise ``CommandFailed`` (carrying the failed ``Result``) unless
 called with ``check=False``. They accept a ``progress`` callback and a
 ``CancelToken``. Operations that write files or run long run one at a time
 per process; quick read-only ones (``info``, ``info chip``, ``lookup``, ``sample show``,
-``ref status``, ``ref library-list``, ``example-genome list``, ``deps check``)
+``ref status``, ``ref recheck``, ``ref library-list``, ``report-delta``,
+``example-genome list``, ``deps check``)
 may run on several threads at once, each call with its own result, progress,
 cancellation and settings, unless asked to save files (``info`` with
-``detailed`` or ``table_format``, ``ref library-list`` with ``remote_sizes``),
+``detailed`` or ``table_format``, ``ref library-list`` with ``remote_sizes``,
+``ref recheck`` with ``online``),
 which makes them one at a time too. They write the same
 output files and manifests as the CLI but print nothing to stdout: the
 human-readable report the CLI would print is in ``Result.text`` instead, and
@@ -133,6 +135,7 @@ from .extract import (
 from .genotyping import (
     TypingCyp2d6Params,
     TypingHlaParams,
+    TypingParaphaseParams,
     TypingSmnParams,
     TypingStrParams,
     TypingTargetCnvParams,
@@ -187,6 +190,7 @@ from .ref import (
     RefMicroarrayTargetsParams,
     RefPharmgkbParams,
     RefPhylopParams,
+    RefRecheckParams,
     RefRevelParams,
     RefSomalierParams,
     RefSpliceaiParams,
@@ -196,7 +200,7 @@ from .ref import (
     RefYbrowseParams,
 )
 from .repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
-from .report import ReportParams
+from .report import ReportDeltaParams, ReportParams
 from .sample import SampleSetParams, SampleShowParams, SampleUnsetParams
 from .score import ScorePgsParams
 from .sign import SignCreateParams, SignVerifyParams
@@ -322,6 +326,7 @@ __all__ = [
     "RefMicroarrayTargetsParams",
     "RefPharmgkbParams",
     "RefPhylopParams",
+    "RefRecheckParams",
     "RefRevelParams",
     "RefAncestryParams",
     "RefImputationParams",
@@ -333,6 +338,7 @@ __all__ = [
     "RefYbrowseParams",
     "RepairFtdnaBamParams",
     "RepairFtdnaVcfParams",
+    "ReportDeltaParams",
     "ReportIssueParams",
     "ReportParams",
     "Result",
@@ -347,6 +353,7 @@ __all__ = [
     "TypingCyp2d6Params",
     "TypingSmnParams",
     "TypingHlaParams",
+    "TypingParaphaseParams",
     "TypingStrParams",
     "TypingTargetCnvParams",
     "UsageError",
