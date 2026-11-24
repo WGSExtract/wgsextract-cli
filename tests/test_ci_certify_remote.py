@@ -15,8 +15,8 @@ from typing import Any
 
 import pytest
 
-from scripts.ci_certify_remote import REPOSITORY, RESULT, certify_remote
-from scripts.ci_certify_ssh import CANCEL, HOST, SUPERVISOR, ssh_command
+from scripts.ci_certify_remote import BOOTSTRAP, REPOSITORY, certify_remote
+from scripts.ci_certify_ssh import CANCEL, PROBE, RESULT, SUPERVISOR, program_line
 
 
 @pytest.fixture
@@ -67,11 +67,15 @@ def transport(
     binding: str | None = None,
     before_binding: str | None = None,
     layer: str = "macos-arm64",
+    result_platform: str = "macos-arm64",
+    unavailable: str = "",
     disconnect: bool = False,
     moved_pr: bool = False,
     lock_refused: bool = False,
     cleanup_refused: bool = False,
     terminated: bool = False,
+    cancel_interrupted: bool = False,
+    sends_environment: bool = False,
 ) -> tuple[list[dict[str, str]], list[str]]:
     popen = subprocess.Popen
     statuses: list[dict[str, str]] = []
@@ -81,33 +85,51 @@ def transport(
         output = ""
         exit_code = 0
         if command[0] == "ssh":
-            if command[-1] == ssh_command(CANCEL)[-1]:
+            if "-G" in command:
+                options = (
+                    "setenv GITHUB_TOKEN=dummy-value\n" if sends_environment else ""
+                )
                 return popen(
-                    [
-                        sys.executable,
-                        "-c",
-                        "import sys; sys.stdin.readline(); "
-                        f"print('stopped'); sys.exit({int(cleanup_refused)})",
-                    ],
+                    [sys.executable, "-c", f"print({options!r}, end='')"],
                     *args,
                     **kwargs,
                 )
-            if terminated:
+            alias = command[-2]
+            if terminated and kwargs.get("encoding"):
                 os.kill(os.getpid(), signal.SIGTERM)
+            if cancel_interrupted and "stderr" not in kwargs:
+                raise KeyboardInterrupt
+            probe_platform = "macos-arm64" if alias == "randy-mini" else "windows-x64"
             result = {
                 "sha_before": before_binding
                 if before_binding is not None
                 else pr["head"]["sha"],
                 "sha_after": binding if binding is not None else pr["head"]["sha"],
                 "base": pr["base"]["sha"],
-                "platform": "macos-arm64",
+                "platform": result_platform,
                 "layer": layer,
                 "state": state,
             }
             output = "live remote test output\n"
             if not disconnect:
                 output += RESULT + json.dumps(result) + "\n"
-            exit_code = code
+            return popen(
+                [
+                    sys.executable,
+                    "-c",
+                    "import sys; first = sys.stdin.readline(); "
+                    f"probe = first.rstrip() == {program_line(PROBE).rstrip()!r}; "
+                    f"cancel = first.rstrip() == {program_line(CANCEL).rstrip()!r}; "
+                    f"ready = {alias != unavailable!r}; "
+                    "sys.stdin.readline() if not probe else None; "
+                    f"print('WGSE_READY {probe_platform}' if ready else 'offline') if probe "
+                    "else print('stopped') if cancel "
+                    f"else sys.stdout.write({output!r}); "
+                    f"sys.exit(int(not ready) if probe else {int(cleanup_refused)} if cancel else {code})",
+                ],
+                *args,
+                **kwargs,
+            )
         elif command[0] == "gh":
             if "comment" not in command:
                 fields = dict(part.split("=", 1) for part in command if "=" in part)
@@ -130,8 +152,7 @@ def transport(
             [
                 sys.executable,
                 "-c",
-                f"import sys; sys.stdin.readline() if {command[0] == 'ssh'!r} else None; "
-                f"sys.stdout.write({output!r}); sys.exit({exit_code})",
+                f"import sys; sys.stdout.write({output!r}); sys.exit({exit_code})",
             ],
             *args,
             **kwargs,
@@ -141,12 +162,20 @@ def transport(
     return statuses, locks
 
 
-def certify(pr: dict[str, Any]) -> None:
+def certify(
+    pr: dict[str, Any], *, remote: str = "randy-mini", generic: bool = False
+) -> None:
     certify_remote(
         REPOSITORY,
         pr,
         pr["head"]["sha"],
-        argparse.Namespace(platform_only=True, generic_only=False, workers=1),
+        argparse.Namespace(
+            platform_only=not generic,
+            generic_only=generic,
+            remote=remote,
+            remote_config=Path("config.toml"),
+            workers=1,
+        ),
     )
 
 
@@ -158,12 +187,12 @@ def test_972_remote_success_streams_and_posts_local_log_digest(
     statuses, locks = transport(monkeypatch, remote_pr)
     certify(remote_pr)
     sha = remote_pr["head"]["sha"]
-    log = Path("out/certify") / sha / f"remote-{HOST}/macos-arm64/run.log"
+    log = Path("out/certify") / sha / "remote-randy-mini/macos-arm64/run.log"
     digest = hashlib.sha256(log.read_bytes()).hexdigest()
     assert "live remote test output" in capsys.readouterr().out
     assert "live remote test output" in log.read_text()
     assert [status["state"] for status in statuses] == ["pending", "success"]
-    assert HOST in statuses[-1]["description"]
+    assert "randy-mini" in statuses[-1]["description"]
     assert digest in statuses[-1]["description"]
     assert locks == ["lock", "unlock"]
 
@@ -179,8 +208,10 @@ def test_972_remote_success_streams_and_posts_local_log_digest(
         ({"disconnect": True, "code": 255}, "error"),
         ({"moved_pr": True}, "error"),
         ({"state": "success", "code": 1}, "error"),
+        ({"result_platform": "windows-x64"}, "error"),
         ({"lock_refused": True}, "error"),
         ({"cleanup_refused": True}, "error"),
+        ({"cancel_interrupted": True}, "error"),
         pytest.param(
             {"terminated": True},
             "error",
@@ -200,10 +231,15 @@ def test_972_refusals_never_publish_test_failure(
     statuses, locks = transport(monkeypatch, remote_pr, **options)
     with pytest.raises((ValueError, subprocess.SubprocessError)):
         certify(remote_pr)
-    assert [status["state"] for status in statuses] == ["pending", expected]
+    assert [status["state"] for status in statuses] == (
+        [] if options.get("lock_refused") else ["pending", expected]
+    )
     assert locks == (
         ["lock"]
-        if options.get("lock_refused") or options.get("cleanup_refused")
+        if any(
+            options.get(flag)
+            for flag in ("lock_refused", "cleanup_refused", "cancel_interrupted")
+        )
         else ["lock", "unlock"]
     )
 
@@ -226,30 +262,93 @@ def test_972_generic_only_posts_only_its_remote_layer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     statuses, locks = transport(monkeypatch, remote_pr, layer="generic")
-    certify_remote(
-        REPOSITORY,
-        remote_pr,
-        remote_pr["head"]["sha"],
-        argparse.Namespace(platform_only=False, generic_only=True, workers=1),
-    )
+    certify(remote_pr, generic=True)
     assert [status["state"] for status in statuses] == ["pending", "success"]
     assert {status["context"] for status in statuses} == {"local-ci/generic"}
     assert locks == ["lock", "unlock"]
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="POSIX SSH process groups")
+def test_1495_selects_next_native_windows_host(
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    Path("config.toml").write_text(
+        '[[certification.hosts]]\nalias = "minipc"\nplatform = "windows-x64"\n'
+        '[[certification.hosts]]\nalias = "seraph"\nplatform = "windows-x64"\n'
+    )
+    Path(".git/info/exclude").write_text("config.toml\n")
+    statuses, locks = transport(
+        monkeypatch,
+        remote_pr,
+        unavailable="minipc",
+        result_platform="windows-x64",
+        layer="windows-x64",
+    )
+    certify(remote_pr, remote="windows-x64")
+    assert [status["state"] for status in statuses] == ["pending", "success"]
+    assert statuses[-1]["context"] == "local-ci/windows-x64"
+    assert statuses[-1]["description"].startswith("seraph ")
+    assert locks == ["lock", "unlock"]
+
+
+def test_1495_rejects_unregistered_ssh_options(
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    statuses, locks = transport(monkeypatch, remote_pr)
+    with pytest.raises(ValueError, match="No registered certification host"):
+        certify(remote_pr, remote="-oProxyCommand=anything")
+    assert not statuses and not locks
+
+
+def test_1495_refuses_ssh_setenv_without_publishing(
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    statuses, locks = transport(monkeypatch, remote_pr, sends_environment=True)
+    with pytest.raises(ValueError, match="forwards environment data"):
+        certify(remote_pr)
+    assert not statuses and not locks
+
+
+def test_1495_refuses_repository_local_rewrite_of_public_https(tmp_path: Path) -> None:
+    if shutil.disk_usage(tmp_path).free < 30 * 1024**3:
+        pytest.skip("Remote bootstrap requires its 30 GiB disk reserve")
+    checkout = tmp_path / "src/wgsextract-cli"
+    checkout.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(checkout)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(checkout),
+            "config",
+            f"url.{tmp_path.as_uri()}.insteadOf",
+            "https://github.com/",
+        ],
+        check=True,
+    )
+    run = subprocess.run(
+        [sys.executable, "-c", BOOTSTRAP],
+        env={**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert run.returncode != 0
+    assert "unmodified public HTTPS" in run.stderr
+
+
 def test_972_disconnect_reaps_remote_test_children(tmp_path: Path) -> None:
     if shutil.disk_usage(tmp_path).free < 30 * 1024**3:
         pytest.skip("Remote supervisor integration needs its 30 GiB disk reserve")
     child_script = (
-        "import subprocess, sys, time; "
-        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)']); "
+        "import os, subprocess, sys, time; "
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'], "
+        "start_new_session=os.name != 'nt'); "
         "print(child.pid, flush=True); time.sleep(300)"
     )
     run_id = "a" * 32
     with subprocess.Popen(
         [sys.executable, "-u", "-c", SUPERVISOR],
-        env={**os.environ, "HOME": str(tmp_path)},
+        env={**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path)},
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -265,10 +364,16 @@ def test_972_disconnect_reaps_remote_test_children(tmp_path: Path) -> None:
     assert "disconnected" in output
     control = tmp_path / "src/wgsextract-cli/out/certify/remote-control"
     assert (control / (run_id + ".done")).is_file()
-    status = subprocess.run(
-        ["ps", "-o", "stat=", "-p", str(pid)],
-        text=True,
-        stdout=subprocess.PIPE,
-        check=False,
-    )
-    assert not status.stdout.strip() or status.stdout.strip().startswith("Z")
+    if sys.platform == "win32":
+        rows = subprocess.check_output(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], text=True
+        )
+        assert f'"{pid}"' not in rows
+    else:
+        status = subprocess.run(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            text=True,
+            stdout=subprocess.PIPE,
+            check=False,
+        )
+        assert not status.stdout.strip() or status.stdout.strip().startswith("Z")
