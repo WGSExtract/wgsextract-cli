@@ -288,8 +288,8 @@ def _convert_microarray_outputs(
             if real_fmt == COMBINED_V3_FORMAT:
                 hg18_chain = (
                     lifted_chain(lib.root, "NCBI36", lib.resource_roots)
-                    if params.download is True and lib.root
-                    else installed_lifted_chain(lib.root, "NCBI36", lib.resource_roots)
+                    if lib.root
+                    else installed_lifted_chain(None, "NCBI36", lib.resource_roots)
                 )
                 tallies[real_fmt] = convert_to_combined_v3(
                     final_txt,

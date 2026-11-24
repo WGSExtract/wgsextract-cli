@@ -14,6 +14,7 @@ from wgsextract_cli.core.microarray.templates import (
     _chrom_for_liftover,
     _iter_template_search_dirs,
     is_autosome,
+    template_resource_paths,
     vendor_chrom,
 )
 from wgsextract_cli.core.utils import WGSExtractError
@@ -31,8 +32,6 @@ def convert_to_combined_v3(
     """Filter a GRCh37 CombinedKit v5 file to the classic 14-template
     CombinedKit v3 marker set, restoring v3 rsID precedence."""
     search_roots = list(_iter_template_search_dirs(templates_dir))
-    from wgsextract_cli.core.microarray.templates import template_resource_paths
-
     if not lift_chain and template_resource_paths(search_roots, "FTDNA_V1_Affy"):
         raise WGSExtractError(
             "CombinedKit v3 needs hg18ToHg19.over.chain.gz to include "

@@ -169,3 +169,28 @@ def test_stale_v03_delta_falls_through_to_packaged_templates(tmp_path):
     )
     assert root == str(_PACKAGED_TEMPLATES)
     assert paths == [str(_PACKAGED_TEMPLATES / "body/Ancestry_V2cd.txt.gz")]
+
+
+def test_combined_v3_requires_hg18_chain_when_affy_template_present(tmp_path):
+    """PR #1490 review: never silently drop FTDNA_V1_Affy markers from CombinedKit v3
+    when the Affy template is installed without hg18ToHg19.over.chain.gz."""
+    import pytest
+
+    from wgsextract_cli.core.utils import WGSExtractError
+
+    body = tmp_path / "microarray/raw_file_templates/body"
+    head = tmp_path / "microarray/raw_file_templates/head"
+    body.mkdir(parents=True)
+    head.mkdir(parents=True)
+    (head / "23andMe_V3.txt").write_text("# header\n")
+    (body / "23andMe_V3.txt").write_text("rs1\t1\t100\n")
+    (head / "FTDNA_V1_Affy.csv").write_text("RSID,CHROMOSOME,POSITION,RESULT\n")
+    (body / "FTDNA_V1_Affy.csv").write_text('"rs2","1","200"\n')
+
+    kit_v5 = tmp_path / "sample_CombinedKit.txt"
+    kit_v5.write_text("# rsid\tchromosome\tposition\tgenotype\nrs1\t1\t100\tAA\n")
+    out_v3 = tmp_path / "sample_CombinedKit_v3.txt"
+
+    with pytest.raises(WGSExtractError, match="hg18ToHg19.over.chain.gz"):
+        convert_to_combined_v3(str(kit_v5), str(out_v3), str(tmp_path), lift_chain=None)
+    assert not out_v3.exists()

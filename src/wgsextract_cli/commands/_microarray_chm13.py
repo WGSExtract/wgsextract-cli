@@ -516,11 +516,14 @@ def run_chm13(
             )
 
             hg18_path = microarray_chm13_cache.installed_chains(roots).get("NCBI36")
+            hg18_chain = (
+                str(hg18_path) if hg18_path else lifted_chain(lib.root, "NCBI36", roots)
+            )
             tallies[real_format] = convert_to_combined_v3(
                 str(combined),
                 kit,
                 roots,
-                str(hg18_path) if hg18_path else None,
+                hg18_chain,
                 identity=identity,
                 rejected_ids=rejected_ids,
             )
