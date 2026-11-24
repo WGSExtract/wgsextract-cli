@@ -1,3 +1,4 @@
+-- Opt-in template. See docs/developer_setup.md for per-machine setup.
 herdr.caps { agents_per_run = 0, tokens_per_day = 0, wall_time = "30m" }
 
 herdr.every("1d", { name = "stale-worktrees" }, function()

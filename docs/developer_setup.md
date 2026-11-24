@@ -583,27 +583,42 @@ contents. It stops if any task's filesystem view or references cannot be
 verified; use the installed inspector on such hosts. To suspend inspection,
 disable the socket and stop the service; pause the Sheprd schedule as well.
 
-### Approve the daily cleanup schedule
+### Enable or disable daily cleanup on a machine
 
-Start the Sheprd automation service on the host, register the primary
-checkout, and inspect the plan. The scheduled command uses the installed
-inspector and `agent-coord` for its worktree-cleanup lock and resource limits:
+Scheduled cleanup is off by default. The plan in `scripts/worktree-inspector/`
+is a template outside Sheprd's automation directory. Enable it only on a
+Linux machine you choose (for example, `lin-big-omarchy`), as the owner of the
+primary checkout on `main`. Leave it off on other hosts. First verify the
+installed inspector and its busy/clear results as described above. Make sure
+the owner's Sheprd automation service is running, `agent-coord` is available,
+and `gh` is authenticated for the repository.
 
 ```sh
+mkdir -p .herdr/automations
+install -m 0644 scripts/worktree-inspector/stale-worktrees.luau .herdr/automations/stale-worktrees.luau
 /usr/bin/sheprd-automate repo add "$PWD"
 /usr/bin/sheprd-automate check .herdr/automations/stale-worktrees.luau
 /usr/bin/sheprd automation approve .herdr/automations/stale-worktrees.luau
+/usr/bin/sheprd-automate status
 ```
 
-The owner must approve the plan; agents must not approve it. The scheduled run
+The owner must approve the exact plan in Sheprd; agents must not approve it.
+Confirm `status` shows the next run. To turn scheduling off on that machine,
+use `sheprd-automate disable SCRIPT`, with the script ID from `sheprd-automate
+status`, and confirm no next run is listed. If a run is already active,
+`sheprd-automate stop RUN` stops it; disabling prevents future runs.
+To turn the same approved plan back on, rerun the prerequisites and use
+`sheprd-automate enable SCRIPT`.
+
+The scheduled run
 uses GitHub explicitly, runs no agents, and reports success or failure in
 Sheprd. It retires eligible worktrees and trims verified caches in retained
-worktrees, without pulling `main` or installing anything. Update the
-inventory module's SHA-256 in the janitor if that module changes. After any
-janitor change, update its SHA-256 in the automation and have the owner
-approve the new plan before resuming scheduled cleanup. An
-inspector upgrade requires a separately reviewed administrator install as
-well as updated digests before scheduling resumes.
+worktrees, without pulling `main` or installing anything. If the inventory
+helper changes, update its SHA-256 in the janitor. When the janitor changes,
+update its hash in the template. On each enabled host, disable the old
+plan, copy and check the new one, and have the owner approve it before
+enabling it again. An inspector upgrade also needs a separately reviewed
+administrator install and matching digests.
 
 ## Release a change
 
