@@ -96,9 +96,21 @@ def container_apt(
     # Keep the regular lists available to the guest's own apt invocations.
     cleanup = f"rm -rf {CACHE_MOUNT}/{{lists,archives}}/{{partial,lock}}\n"
     if keep_system_lists:
+        # A cache-only install leaves the mirror file empty. Keep the source
+        # URI for the guest's copied indexes without changing host cache keys.
+        mirrors = (
+            ("http://archive.ubuntu.com/ubuntu/", "http://security.ubuntu.com/ubuntu/")
+            if arch in ("amd64", "i386")
+            else ("http://ports.ubuntu.com/ubuntu-ports/",)
+        )
+        mirror_file = "/etc/apt/ci-ubuntu-mirrors.txt"
         cleanup += (
-            f'if [ "$status" -eq 0 ]; then '
-            f"cp -a {CACHE_MOUNT}/lists/. /var/lib/apt/lists/; fi\n"
+            f'if [ "$status" -eq 0 ]; then\n'
+            f"  cp -a {CACHE_MOUNT}/lists/. /var/lib/apt/lists/\n"
+            f"  if [ ! -s {mirror_file} ]; then\n"
+            f"    printf '%s\\n' {shlex.join(mirrors)} > {mirror_file}\n"
+            "  fi\n"
+            "fi\n"
         )
     script = (
         f'status=0\n{shlex.join(command)} "$@" || status=$?\n'

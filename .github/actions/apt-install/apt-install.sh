@@ -249,27 +249,16 @@ install_from_cache() {
   apt_get "$INSTALL_SECONDS" install -y --no-download "${install_flags[@]}" "$@"
 }
 
-write_mirrors() {
-  local priority=0 uri
-  for uri; do
-    priority=$((priority + 1))
-    printf '%s\tpriority:%d\n' "$uri" "$priority"
-  done > "$mirror_list"
-}
-
 status=0
 if [ ${#mirrors[@]} -eq 0 ]; then
   : > "$mirror_list"
-  if install_from_cache "$@"; then
-    # Later apt commands may run after the mirrors recover. Keep the same
-    # source URI so those commands can use the indexes already in place.
-    write_mirrors "${candidates[@]}"
-    exit 0
-  fi
+  install_from_cache "$@" && exit 0
   outage "No Ubuntu mirror answered."
 fi
 # Without priorities, apt would try them in a random order.
-write_mirrors "${mirrors[@]}"
+for i in "${!mirrors[@]}"; do
+  printf '%s\tpriority:%d\n' "${mirrors[$i]}" "$((i + 1))"
+done > "$mirror_list"
 echo "Ubuntu mirrors, in order: ${mirrors[*]}"
 
 apt_get "$UPDATE_SECONDS" update --error-on=any || status=$?
