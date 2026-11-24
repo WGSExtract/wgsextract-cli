@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createRequire, syncBuiltinESMExports } from "node:module";
 import { fileURLToPath } from "node:url";
+import { isolateWorkspaceEnvironment } from "./workspace-fixture.mjs";
 
 test("a failed preload that no request uses does not become an unhandled rejection", async (t) => {
   // An unhandled rejection ends the server; the app's window then only shows "Failed to fetch".
@@ -693,9 +694,11 @@ printf '{"values":{"secondary":"script"}}\\n'
   }
 });
 
-async function loadWithPreviousConfig(prepare) {
+async function loadWithPreviousConfig(t, prepare) {
   const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
   const directory = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-config-previous-"));
+  isolateWorkspaceEnvironment(t, directory);
+  t.after(() => rm(directory, { force: true, recursive: true }));
   await writeFile(
     path.join(directory, "manifest.json"),
     JSON.stringify({
@@ -736,30 +739,22 @@ async function loadWithPreviousConfig(prepare) {
   return { directory, bundle };
 }
 
-test("a settings file at a previous path moves to the declared path", async () => {
-  const { directory, bundle } = await loadWithPreviousConfig();
-  try {
-    assert.equal(await readFile(path.join(directory, "config.toml"), "utf8"), 'primary = "saved"\n');
-    assert.equal(bundle.configValues["tool-settings.primary"], "saved");
-    assert.equal(bundle.configFilePaths["tool-settings"], "{{bundleWorkspace}}/config.toml");
-    // The emptied folder goes too.
-    await assert.rejects(readFile(path.join(directory, "settings", "config.toml")), { code: "ENOENT" });
-    await assert.rejects(rm(path.join(directory, "settings")), { code: "ENOENT" });
-  } finally {
-    await rm(directory, { force: true, recursive: true });
-  }
+test("a settings file at a previous path moves to the declared path", async (t) => {
+  const { directory, bundle } = await loadWithPreviousConfig(t);
+  assert.equal(await readFile(path.join(directory, "config.toml"), "utf8"), 'primary = "saved"\n');
+  assert.equal(bundle.configValues["tool-settings.primary"], "saved");
+  assert.equal(bundle.configFilePaths["tool-settings"], "{{bundleWorkspace}}/config.toml");
+  // The emptied folder goes too.
+  await assert.rejects(readFile(path.join(directory, "settings", "config.toml")), { code: "ENOENT" });
+  await assert.rejects(rm(path.join(directory, "settings")), { code: "ENOENT" });
 });
 
-test("a previous settings folder with other files in it stays, and an existing file is not replaced", async () => {
-  const { directory, bundle } = await loadWithPreviousConfig(async (root) => {
+test("a previous settings folder with other files in it stays, and an existing file is not replaced", async (t) => {
+  const { directory, bundle } = await loadWithPreviousConfig(t, async (root) => {
     await writeFile(path.join(root, "settings", "mytree.json"), "{}\n");
     await writeFile(path.join(root, "config.toml"), 'primary = "current"\n');
   });
-  try {
-    assert.equal(bundle.configValues["tool-settings.primary"], "current");
-    assert.equal(await readFile(path.join(directory, "settings", "config.toml"), "utf8"), 'primary = "saved"\n');
-    assert.equal(await readFile(path.join(directory, "settings", "mytree.json"), "utf8"), "{}\n");
-  } finally {
-    await rm(directory, { force: true, recursive: true });
-  }
+  assert.equal(bundle.configValues["tool-settings.primary"], "current");
+  assert.equal(await readFile(path.join(directory, "settings", "config.toml"), "utf8"), 'primary = "saved"\n');
+  assert.equal(await readFile(path.join(directory, "settings", "mytree.json"), "utf8"), "{}\n");
 });
