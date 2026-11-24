@@ -264,7 +264,9 @@ def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]
 
     common = root / ".git"
     for location in locations:
-        for entry in inventory_files.entries(location, {common}):
+        # Scan the common Git directory too: even object storage can be
+        # symlinked into a worktree. Only inspect entry types, never blob data.
+        for entry in inventory_files.entries(location, set()):
             check_link(entry)
 
     # Git runs ordinary hooks in the checkout and receive hooks in $GIT_DIR.

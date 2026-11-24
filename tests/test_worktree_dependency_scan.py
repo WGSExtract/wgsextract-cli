@@ -31,6 +31,26 @@ from tests.test_cleanup_worktrees import (
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
 
 
+def test_1393_preserves_worktree_target_of_common_git_metadata_link(
+    repo: Path, github: Callable[..., None]
+) -> None:
+    path = topic(repo)
+    target = path / "shared-excludes"
+    write(target, "*.local\n")
+    git(path, "add", "shared-excludes")
+    git(path, "commit", "-m", "Track shared Git excludes")
+    exclude = repo / ".git" / "info" / "exclude"
+    exclude.unlink()
+    exclude.symlink_to(target)
+    github([pull(path)])
+
+    run = cleanup(repo, "--apply", "--github")
+
+    assert run.returncode == 0, run.stderr
+    assert result(repo, path)["reason"] == "symlink-dependency"
+    assert exclude.read_text() == "*.local\n"
+
+
 @pytest.mark.parametrize(
     "location",
     [
