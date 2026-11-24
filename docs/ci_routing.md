@@ -1114,7 +1114,14 @@ selection. If the cron run is delayed or missing, run
 `gh workflow run ubuntu_ci.yml --ref main` (leave `optional-tools-only` off).
 Both triggers run the full regular suite without skipping from either result
 cache. A passing run refreshes main's test cache and exports the Linux
-observation map. Dispatches on other refs cannot publish that map.
+observation map as a seven-day workflow artifact, separate from the
+evictable Actions cache. Dispatches on other refs cannot publish that map.
+The Ubuntu jobs and activation canary use a read-only Actions token to find
+the latest compatible artifact from a successful scheduled or full manual
+Ubuntu run on main. The artifact digest, run and attempt, source ancestry,
+Pixi lock, Python version, and 48-hour freshness limit must all match.
+Absent or incompatible artifacts leave the legacy selection in force.
+The merge queue does not change its test selection based on this map.
 Where the suite provides pytest node IDs, the failure replay reruns only those
 cases; a collection error instead replays its one test module. It checks
 first-parent trees in order since the last verified passing scheduled or full
