@@ -1157,6 +1157,31 @@ Build the consensus (role `consensus_fasta`, and `liftover_chain` with
 | `mask` | `Path \| None` | `None` | `--mask` | BED file of regions to replace with N (e.g. low coverage). |
 | `chain` | `bool` | `False` | `--chain` | Also write a chain file mapping reference coordinates to the consensus (indels shift positions). |
 
+### `api.vcf.prepare(VcfPrepareParams)`
+
+CLI: `wgsextract vcf prepare`.
+
+Write the prepared VCF (role `prepared_vcf`, with its `records`) and
+its index (`prepared_vcf_index`); every repair is a `vcf_prepare_*`
+warning.
+
+`VcfPrepareParams`: Repair a VCF that downstream tools reject (plain gzip, unsorted, missing
+or stale index, undeclared contigs or IDs, other contig names than the
+reference) into `<stem>_prepared.vcf.gz` with its index; never changes
+the input. With `ref`, contigs take the reference's names, order and
+lengths and REFs are checked; `normalize` also splits multiallelic
+records and left-aligns indels. Each repair is a structured warning.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `output` | `Path \| None` | `None` | `--output` | Prepared VCF to write, ending in .vcf.gz (default: <outdir>/<input stem>_prepared.vcf.gz); never the input itself. |
+| `normalize` | `bool` | `False` | `--normalize` | Also split multiallelic records and left-align indels against --ref (bcftools norm -m -any); originals are kept in INFO. |
+
 ### `api.vcf.trio(VcfTrioParams)`
 
 CLI: `wgsextract vcf trio`.
@@ -1777,6 +1802,29 @@ Run granite qcVCF; output role `granite_qc_json`.
 | `trio_errors` | `bool` | `False` | `--trio-errors` | Include Mendelian trio error statistics (requires a pedigree with parents). |
 | `granite_path` | `Path \| None` | `None` (config `granite_executable`) | `--granite-path` | Path to the granite executable (default: config granite_executable or PATH). |
 
+## `api.cohort`
+
+Local, callability-aware cohort summaries for research.
+
+### `api.cohort.summarize(CohortSummarizeParams)`
+
+CLI: `wgsextract cohort summarize`.
+
+Write a local allele-count table and a result manifest.
+
+`CohortSummarizeParams`: Summarize autosomal SNVs from a local cohort manifest and matched gVCFs.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `cohort_manifest` | `Path` | required | `MANIFEST` | Local cohort input manifest (wgsextract.cohort/1). |
+| `region` | `str \| None` | `None` | `--region` | Limit to an autosomal contig, interval or comma-separated list. |
+| `bed` | `Path \| None` | `None` | `--bed` | Limit to autosomal intervals from a local BED. |
+| `min_depth` | `int` | `10` | `--min-depth` | Minimum DP (block MIN_DP). |
+| `min_gq` | `int` | `20` | `--min-gq` | Minimum GQ for callers that provide it. |
+| `table_format` | `str` | `'tsv'` | `--format` | Table format: tsv or parquet (needs pyarrow). One of: `tsv`, `parquet` |
+| `include_identifiers` | `bool` | `False` | `--include-identifiers` | Also write a private participant/QC join with source paths and names. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the working folder). |
+
 ## `api.analyze`
 
 `analyze`: whole-sample workflows that chain other commands.
@@ -2000,19 +2048,22 @@ CLI: `wgsextract methylation regions`.
 
 Summarize methylation over the selected build-matched regions.
 
-`MethylationRegionsParams`: Summarize strand-combined CpG calls over RefSeq promoters or UCSC islands.
+`MethylationRegionsParams`: Summarize pooled or haplotype-split CpG calls over RefSeq promoters or UCSC islands.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
-| `input` | `Path` | required | `--input`, `-i` | Coordinate-sorted, strand-combined CpG bedMethyl. |
-| `ref` | `Path` | required | `--ref` | The indexed, local FASTA used for the bedMethyl coordinates. |
+| `input` | `Path` | required | `--input`, `-i` | Sorted, strand-combined CpG bedMethyl, or indexed HP-tagged BAM/CRAM with --partition-hp. |
+| `ref` | `Path` | required | `--ref` | The indexed, local FASTA used to align the reads or make the bedMethyl. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
-| `build` | `str` | required | `--build` | Assembly of both bedMethyl and FASTA. One of: `hg38`, `t2t` |
+| `build` | `str` | required | `--build` | Assembly of both input and FASTA. One of: `hg38`, `t2t` |
 | `preset` | `str` | required | `--preset` | RefSeq promoters or UCSC masked CpG islands. One of: `promoters`, `cpg-islands` |
 | `upstream` | `int` | `2000` | `--upstream` | Promoter bases upstream of the TSS (default: 2000). |
 | `downstream` | `int` | `500` | `--downstream` | Promoter bases on the transcribed side (default: 500). |
 | `min_valid_calls` | `int` | `5` | `--min-valid-calls` | Minimum valid calls per CpG (default: 5). |
 | `min_cpgs` | `int` | `3` | `--min-cpgs` | Minimum qualifying CpGs per region (default: 3). |
+| `partition_hp` | `bool` | `False` | `--partition-hp` | Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS). |
+| `phase_blocks` | `Path \| None` | `None` | `--phase-blocks` | Matching phased.blocks.tsv from vcf phase; require region containment in one block. |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `hydroxymethyl` | `bool` | `False` | `--5hmc` | Also report 5hmC: declares the input was generated with a 5hmC-capable model. |
 | `download` | `bool` | `False` | `--download` | Fetch the missing pinned hg38 CpG island table from UCSC. No sample data is sent. |
 | `table_format` | `str` | `'tsv'` | `--format` | Output table: tsv (default) or parquet (needs pyarrow). One of: `tsv`, `parquet` |
@@ -2725,6 +2776,9 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
 * `target_cnv`: screen short-read WGS for copy number over BED intervals
   (`.target-cnv.tsv`). Uses an indexed matching FASTA, with an offline
   baseline and callability mask for GRCh37, GRCh38 and T2T-CHM13v2.0.
+* `paraphase`: copy number and haplotypes for long-read paralog loci
+  (`.paraphase.tsv`/`.json` and raw files), using the opt-in `paraphase`
+  environment. PacBio HiFi or experimental, unvalidated ONT.
 * `hla`: HLA class I and II alleles with T1K (`.t1k_genotype.tsv`,
   `.t1k_allele.tsv`/`.vcf`), from the optional `t1k` environment.
 * `repeats` (`typing str`): disease repeat expansions (`.str.tsv` or
@@ -2807,6 +2861,25 @@ with clear depth evidence. This is a screen, not a diagnosis.
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `bed` | `Path` | required | `--bed` | Target intervals in a BED (0-based, end-exclusive; optional name in column 4). |
 | `download` | `bool` | `False` | `--download` | Use exact GIAB v3.5 masks, downloading missing public BEDs from NCBI into the reference library. No sample data is sent. |
+
+### `api.genotyping.paraphase(TypingParaphaseParams)`
+
+CLI: `wgsextract typing paraphase`.
+
+Type long-read paralogs (see `TypingParaphaseParams`).
+
+`TypingParaphaseParams`: Type paralogous loci from an indexed long-read BAM or CRAM, with
+the matching indexed FASTA. Reports locus copy number, gene-specific
+calls and explicit no-calls. ONT is experimental and unvalidated.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | Indexed PacBio HiFi or ONT whole-genome BAM or CRAM. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `genes` | `str \| None` | `None` | `--genes` | Comma-separated Paraphase locus names, e.g. SMN1,PMS2,STRC. Default: all loci supported by the engine for this reference build. |
+| `pacbio_licensed_executable` | `Path \| None` | `None` | `--pacbio-licensed-executable` | Opt in to a local Paraphase >=3.3.2 executable under the PacBio Software License Agreement. Every read group must be PL:PACBIO. Default: Paraphase 3.3.1 (BSD-3-Clause-Clear) from its Pixi environment. |
 
 ### `api.genotyping.hla(TypingHlaParams)`
 
@@ -3058,6 +3131,20 @@ Pixi `environment` and the `environment_tools` it provides,
 `can_install` and `can_uninstall`, and a `note` (how to install it
 yourself, or why it can't be had). It doesn't fail on a missing tool.
 
+`ready` reports whether a command line (`command_line`, as its argv
+after `wgsextract`) can run on this computer without the network: each
+prerequisite its run checks (platform, tools, Docker images and GPUs, model
+weights and their SHA-256, the input, reference genome and indexes, and
+annotation data), with a `status` (runnable, installed, unverified,
+unsupported, missing, stale or incompatible), its evidence (version, path,
+Conda package and the licence its metadata records, image identity and
+labels, digests; terms are "unknown" where nothing local records them) and
+the explicit step that provides it. `details["status"]` is "ready",
+"ready_unverified" or "not_ready"; not ready fails with exit code 3 (error
+kind `missing_dependency`), with the details still set. It installs,
+pulls and downloads nothing. The server doesn't offer it: the command line
+names host paths its folder checks can't vet.
+
 `install` downloads and installs the Pixi environment that provides an
 optional tool (`pixi install --locked -e <env>`); `uninstall` removes it
 (`pixi clean -e <env>`), and with it the other tools in that environment.
@@ -3086,6 +3173,18 @@ List every tool and its status (see `DepsListParams`).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+
+### `api.deps.ready(DepsReadyParams)`
+
+CLI: `wgsextract deps ready`.
+
+Report a command line's offline readiness (see `DepsReadyParams`).
+
+`DepsReadyParams`: Report whether a command line can run here without the network.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `command_line` | `tuple[str, ...]` | required | `-- COMMAND ...` | The command line to check: its arguments after ``wgsextract``. |
 
 ### `api.deps.install(DepsInstallParams)`
 

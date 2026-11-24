@@ -4,6 +4,7 @@ import csv
 import json
 import shutil
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ import pytest
 from wgsextract_cli.api import methylation
 from wgsextract_cli.cli import platform_support
 from wgsextract_cli.core.config import save_config
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.methylation_annotations import island_regions, promoter_regions
 from wgsextract_cli.main import main
 
@@ -20,6 +22,209 @@ FIXTURES = Path(__file__).parent / "fixtures" / "methylation_regions"
 needs_samtools = pytest.mark.skipif(
     not shutil.which("samtools"), reason="needs samtools"
 )
+needs_modkit = pytest.mark.skipif(
+    sys.platform == "win32" or not get_tool_path("modkit"),
+    reason="modkit's Pixi environment is not installed or supported",
+)
+
+
+def _hp_regions_input(tmp_path, params, *, edge_ps=49001, with_hp=True, with_hp2=True):
+    contig = "NC_060945.1"
+    records = [
+        "@HD\tVN:1.6\tSO:coordinate\n",
+        f"@SQ\tSN:{contig}\tLN:45090682\n",
+        "@RG\tID:ont\tSM:synthetic\tPL:ONT\n",
+    ]
+
+    def add(start, seq, *, hp, ps, count, prob, reverse=False, duplicate=False):
+        bases = seq.count("G" if reverse else "C")
+        for _ in range(count):
+            tags = ["RG:Z:ont", "MM:Z:C+m," + ",".join(["0"] * bases) + ";"]
+            tags.append("ML:B:C," + ",".join([str(prob)] * bases))
+            if with_hp and hp:
+                tags.append(f"HP:i:{hp}")
+                if ps is not None:
+                    tags.append(f"PS:i:{ps}")
+            row = [
+                f"read{len(records)}",
+                str((16 if reverse else 0) | (1024 if duplicate else 0)),
+                contig,
+                str(start + 1),
+                "60",
+                f"{len(seq)}M",
+                "*",
+                "0",
+                "0",
+                seq,
+                "I" * len(seq),
+                *tags,
+            ]
+            records.append("\t".join(row) + "\n")
+
+    add(49616, "CGAACGAACGAA", hp=1, ps=49001, count=5, prob=255)
+    if with_hp2:
+        add(49616, "CGAACGAACGAA", hp=2, ps=49001, count=5, prob=0)
+    add(49616, "CGAACGAACGAA", hp=None, ps=None, count=2, prob=255)
+    if with_hp:
+        add(49616, "CG", hp=1, ps=123, count=1, prob=0, duplicate=True)
+    add(50090, "G", hp=1, ps=edge_ps, count=5, prob=0, reverse=True)
+    add(236555, "CG", hp=1, ps=236500, count=5, prob=255)
+    if with_hp2:
+        add(236555, "CG", hp=2, ps=236500, count=2, prob=0)
+    sam, bam = tmp_path / "reads.sam", tmp_path / "reads.bam"
+    sam.write_text("".join(records), newline="\n")
+    subprocess.run(["samtools", "view", "-b", "-o", str(bam), str(sam)], check=True)
+    subprocess.run(["samtools", "index", str(bam)], check=True)
+    return replace(params, input=bam, partition_hp=True, min_cpgs=1, threads=1)
+
+
+def _hp_tsv_rows(result):
+    [table] = [
+        o.path for o in result.outputs if o.role == "methylation_regions_haplotypes"
+    ]
+    with Path(table).open(encoding="utf-8", newline="") as handle:
+        return {
+            (row["region"], row["partition"]): row
+            for row in csv.DictReader(handle, delimiter="\t")
+        }
+
+
+@needs_samtools
+@needs_modkit
+def test_1293_haplotypes_use_common_cpgs_and_keep_unphased_counts(
+    tmp_path, island_params
+):
+    params = _hp_regions_input(tmp_path, island_params)
+    # The input basename can match the region summarizer's scratch FASTA.
+    ref = tmp_path / "reference-regions.fa"
+    ref_size = params.ref.stat().st_size
+    params.ref.rename(ref)
+    params.ref.with_suffix(".fa.fai").rename(ref.with_suffix(".fa.fai"))
+    blocks = tmp_path / "phased.blocks.tsv"
+    blocks.write_text(
+        "contig\tphase_set\tfirst\tlast\tspan_bp\tvariants\n"
+        "chr21\t49001\t49001\t51000\t1999\t4\n"
+        "chr21\t236500\t236500\t237000\t500\t4\n",
+        newline="\n",
+    )
+    result = methylation.regions(replace(params, phase_blocks=blocks, ref=ref))
+    rows = _hp_tsv_rows(result)
+    region = "chr21:49616-50090"
+    combined, hp1, hp2, unphased = (
+        rows[region, group] for group in ("combined", "hp1", "hp2", "unphased")
+    )
+    assert combined["phase_status"] == "single_block"
+    assert combined["phase_set"] == "49001"
+    assert combined["shared_qualified_cpgs"] == "3"
+    assert float(combined["hp1_minus_hp2_pp"]) == 100
+    assert float(hp1["pooled_percent"]) == 75
+    assert float(hp2["pooled_percent"]) == 0
+    assert unphased["observed_valid_calls"] == "6"
+    low = "chr21:236555-236851"
+    assert rows[low, "hp2"]["status"] == "insufficient_coverage"
+    assert rows[low, "hp2"]["pooled_percent"] == ""
+    assert rows[low, "combined"]["hp1_minus_hp2_pp"] == ""
+    absent = [row for row in rows.values() if row["status"] == "contig_absent"]
+    assert absent and {row["phase_status"] for row in absent} == {"contig_absent"}
+    assert result.details["haplotype_partition"]["phase_block_source"] == str(blocks)
+    assert ref.stat().st_size == ref_size
+
+
+@needs_samtools
+@needs_modkit
+@pytest.mark.skipif(not shutil.which("bgzip"), reason="needs bgzip")
+def test_1293_cram_parquet_preserves_absent_haplotype_and_block_bounds(
+    tmp_path, island_params
+):
+    pq = pytest.importorskip("pyarrow.parquet")
+    params = _hp_regions_input(tmp_path, island_params, with_hp2=False)
+    cram = tmp_path / "reads.cram"
+    subprocess.run(
+        [
+            "samtools",
+            "view",
+            "-C",
+            "-T",
+            str(params.ref),
+            "-o",
+            str(cram),
+            str(params.input),
+        ],
+        check=True,
+    )
+    subprocess.run(["samtools", "index", str(cram)], check=True)
+    compressed_ref = tmp_path / "reference.bgzf"
+    with compressed_ref.open("wb") as handle:
+        subprocess.run(["bgzip", "-c", str(params.ref)], stdout=handle, check=True)
+    subprocess.run(["samtools", "faidx", str(compressed_ref)], check=True)
+    blocks = tmp_path / "phased.blocks.tsv"
+    blocks.write_text(
+        "contig\tphase_set\tfirst\tlast\tspan_bp\tvariants\n"
+        "chr21\t49001\t49001\t49800\t799\t4\n"
+        "chr21\t49801\t49801\t51000\t1199\t4\n",
+        newline="\n",
+    )
+    result = methylation.regions(
+        replace(
+            params,
+            input=cram,
+            ref=compressed_ref,
+            phase_blocks=blocks,
+            table_format="parquet",
+        )
+    )
+    [output] = result.outputs
+    with pq.ParquetFile(output.path) as table:
+        rows = {
+            row["partition"]: row
+            for row in table.read().to_pylist()
+            if row["region"] == "chr21:49616-50090"
+        }
+        details = json.loads(table.schema_arrow.metadata[b"region_summary"])
+    assert rows["combined"]["phase_status"] == "cross_block"
+    assert rows["combined"]["hp1_minus_hp2_pp"] is None
+    assert rows["hp1"]["pooled_percent"] == 75
+    assert rows["hp2"]["status"] == "no_valid_calls"
+    assert rows["hp2"]["pooled_percent"] is None
+    assert details["haplotype_partition"]["phase_block_source"] == str(blocks)
+
+
+@needs_samtools
+@needs_modkit
+@pytest.mark.parametrize(
+    ("edge_ps", "status"), [(49991, "cross_block"), (None, "missing_ps")]
+)
+def test_1293_phase_ambiguity_withholds_delta(tmp_path, island_params, edge_ps, status):
+    params = _hp_regions_input(tmp_path, island_params, edge_ps=edge_ps)
+    rows = _hp_tsv_rows(methylation.regions(params))
+    combined = rows["chr21:49616-50090", "combined"]
+    assert combined["phase_status"] == status
+    assert combined["shared_qualified_cpgs"] == "3"
+    assert combined["hp1_minus_hp2_pp"] == ""
+
+
+@needs_samtools
+@needs_modkit
+def test_1293_untagged_alignment_names_the_missing_hp_tags(tmp_path, island_params):
+    params = _hp_regions_input(tmp_path, island_params, with_hp=False)
+    result = methylation.regions(params, check=False)
+    assert result.status == "failed"
+    assert result.error and "HP:i:1 or HP:i:2" in result.error.message
+    assert "vcf phase --haplotag" in result.error.message
+    assert not list(params.outdir.glob("*.tsv"))
+
+
+@needs_samtools
+def test_1293_windows_only_guards_alignment_partitioning(
+    tmp_path, island_params, monkeypatch
+):
+    from wgsextract_cli.commands import methylation as pileup
+
+    params = _hp_regions_input(tmp_path, island_params)
+    monkeypatch.setattr(pileup, "sys", SimpleNamespace(platform="win32"))
+    result = methylation.regions(params, check=False)
+    assert result.error and "modkit" in result.error.message
+    assert "WSL2" in result.error.message
 
 
 def test_1293_promoter_choice_and_strand_windows():
@@ -82,7 +287,9 @@ def test_1293_windows_precomputed_regions_report_coverage_and_nulls(
 ):
     # Only the CLI's early platform check is simulated, not subprocess/Path behavior.
     monkeypatch.setattr(platform_support, "sys", SimpleNamespace(platform="win32"))
-    params = island_params
+    bed = island_params.outdir.parent / "sample.bam.bedmethyl"
+    shutil.copyfile(island_params.input, bed)
+    params = replace(island_params, input=bed)
     main(
         [
             "methylation",
@@ -99,7 +306,7 @@ def test_1293_windows_precomputed_regions_report_coverage_and_nulls(
             str(params.outdir),
         ]
     )
-    table = next(params.outdir.glob("*.tsv"))
+    table = params.outdir / "sample.bam.t2t.cpg-islands.methylation.tsv"
     with table.open(encoding="utf-8", newline="") as f:
         rows = {r["region"]: r for r in csv.DictReader(f, delimiter="\t")}
     first = rows["chr21:49616-50090"]

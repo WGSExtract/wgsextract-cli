@@ -137,6 +137,26 @@ def gpu_memory() -> tuple[GpuMemory, ...]:
     return tuple(gpus)
 
 
+def gpu_driver_version() -> str | None:
+    """The NVIDIA driver's version nvidia-smi reports, or None if it can't."""
+    smi = get_tool_path("nvidia-smi")
+    if not smi:
+        return None
+    try:
+        out = subprocess.run(
+            [smi, "--query-gpu=driver_version", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            errors="replace",
+            check=True,
+            timeout=60,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    versions = sorted({line.strip() for line in out.splitlines() if line.strip()})
+    return ", ".join(versions) or None
+
+
 def plan_gpu_memory(
     tool: str,
     operation: Operation,

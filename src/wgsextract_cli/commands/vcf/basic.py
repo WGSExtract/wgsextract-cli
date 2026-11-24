@@ -260,22 +260,27 @@ def setup_caller(
 
 
 @contextmanager
-def plain_reference(ref: str, outdir: str) -> Iterator[str]:
+def plain_reference(
+    ref: str, outdir: str, *, compressed: bool | None = None
+) -> Iterator[str]:
     """
     Yield an uncompressed, faidx-indexed FASTA for tools that cannot read .fa.gz.
 
     Uses the uncompressed sibling (ref.fa next to ref.fa.gz) when present, indexing
     it if needed; otherwise decompresses into a temporary directory under outdir
-    that is removed on exit.
+    that is removed on exit. When compression was verified by the caller,
+    use that exact FASTA instead of trusting an unverified sibling.
     """
-    if not ref.lower().endswith(".gz"):
+    if not (ref.lower().endswith(".gz") if compressed is None else compressed):
         yield ref
         return
-    sibling = ref[:-3]
+    sibling = ref[:-3] if compressed is None else None
     # A server job may read only its allowed folders; the sibling or its
     # index can be a link elsewhere.
-    if Path(sibling).is_file() and all(
-        read_scope.may_follow(p) for p in (sibling, f"{sibling}.fai")
+    if (
+        sibling is not None
+        and Path(sibling).is_file()
+        and all(read_scope.may_follow(p) for p in (sibling, f"{sibling}.fai"))
     ):
         if not Path(sibling + ".fai").is_file():
             try:
@@ -288,7 +293,7 @@ def plain_reference(ref: str, outdir: str) -> Iterator[str]:
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(outdir), prefix=".wgse_ref_"
     ) as tmp:
-        target = str(Path(tmp, Path(sibling).name))
+        target = str(Path(tmp, Path(sibling).name if sibling else "reference.fa"))
         logging.info(f"Decompressing reference for this tool to {target}...")
         try:
             with gzip.open(ref, "rb") as src, open(target, "wb") as dst:
