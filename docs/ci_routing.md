@@ -1092,7 +1092,13 @@ for newly started runs; rerun a job to apply it to an in-flight PR. A missing,
 stale (over 48 hours), incompatible or unavailable map retains the existing
 input and emits a warning. With a usable ancestor map, the gate adds tests
 introduced or changed since recording and observed users of intervening
-source changes; changed test helper inputs retain the existing selection.
+source changes. For an unobserved Python module, it also follows the static
+import closure at the map commit and tested base, so tests of newly added
+and deleted modules can still be selected. If an intervening module has no
+resolvable test importers, or the drift includes an unobserved package
+initializer, non-Python source, unresolved dynamic imports, interpreter
+configuration changes or changed test harness inputs, the gate keeps the
+legacy selection.
 The gate's own PR runs the same planner against
 its synthetic merge tree even if regular hosted pytest was certified. All
 four advisory reports remain available and distinguish legacy-selected,

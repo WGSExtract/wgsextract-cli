@@ -120,6 +120,19 @@ def test_1330_harness_keeps_only_real_cli_dependencies(tmp_path: Path) -> None:
     assert select_tests([leaf], repository=root) == ["tests/test_cli.py"]
 
 
+def test_1482_root_fixture_imports_apply_to_regular_tests(tmp_path: Path) -> None:
+    module = "src/wgsextract_cli/core/fixture_dependency.py"
+    root = repository(
+        tmp_path,
+        {
+            module: "VALUE = 1",
+            "conftest.py": "from wgsextract_cli.core.fixture_dependency import VALUE",
+            "tests/test_uses_fixture.py": "def test_fixture(): pass",
+        },
+    )
+    assert select_tests([module], repository=root) == ["tests/test_uses_fixture.py"]
+
+
 @pytest.mark.parametrize(
     "path",
     [
