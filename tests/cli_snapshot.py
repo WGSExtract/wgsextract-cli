@@ -1,6 +1,6 @@
 """Snapshot the parsers of the commands migrated onto ``wgsextract_cli.api``.
 
-The golden file was written from the hand-built parsers before the migration;
+The original golden data was written from the hand-built parsers before migration;
 ``test_api_cli_parity`` checks the generated parsers still match it, both
 structurally (every action's flags, defaults, types, choices and help) and as
 rendered ``--help`` text and parsed namespaces. After a deliberate help or flag
@@ -20,7 +20,7 @@ import sys
 from pathlib import Path, PurePath
 from typing import Any, cast
 
-GOLDEN = Path(__file__).parent / "fixtures" / "api_cli_snapshot.json"
+GOLDEN = Path(__file__).parent / "fixtures" / "cli_snapshot"
 
 MIGRATED = (
     ("info",),
@@ -714,32 +714,58 @@ def _snapshot() -> dict[str, Any]:
 
     sys.argv[0] = "wgsextract"
     parser, base = build_parser()
-    commands = {}
+    commands: dict[str, dict[str, Any]] = {}
     for path in MIGRATED:
         sub = _subparser(parser, path)
         text = io.StringIO()
         with contextlib.redirect_stdout(text):
             sub.print_help()
-        commands[" ".join(path)] = {"parser": describe(sub), "help": text.getvalue()}
-    namespaces = {" ".join(argv): _namespace(argv, parser, base) for argv in ARGVS}
-    return {"commands": commands, "namespaces": namespaces}
+        commands[" ".join(path)] = {
+            "parser": describe(sub),
+            "help": text.getvalue(),
+            "namespaces": {},
+        }
+    for argv in ARGVS:
+        namespace = _namespace(argv, parser, base)
+        commands[namespace["_command"]]["namespaces"][" ".join(argv)] = namespace
+    return commands
 
 
-def normalise_funcs(document: dict[str, Any]) -> dict[str, Any]:
+def normalise_funcs(command: dict[str, Any]) -> dict[str, Any]:
     """Drop the handler names: migrated commands route through new adapters."""
-    copied: dict[str, Any] = json.loads(json.dumps(document))
+    copied: dict[str, Any] = json.loads(json.dumps(command))
     for ns in copied["namespaces"].values():
         ns.pop("func", None)
-    for command in copied["commands"].values():
-        command["parser"]["defaults"].pop("func", None)
+    copied["parser"]["defaults"].pop("func", None)
     return copied
+
+
+def read_snapshot(directory: Path = GOLDEN) -> dict[str, Any]:
+    return {
+        " ".join(path.relative_to(directory).with_suffix("").parts): json.loads(
+            path.read_text(encoding="utf-8")
+        )
+        for path in sorted(directory.rglob("*.json"))
+    }
+
+
+def write_snapshot(commands: dict[str, Any], directory: Path = GOLDEN) -> None:
+    stale = set(directory.rglob("*.json"))
+    for command, data in sorted(commands.items()):
+        *parents, leaf = command.split()
+        target = directory.joinpath(*parents, f"{leaf}.json")
+        stale.discard(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(data, indent=1, sort_keys=True) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    for target in sorted(stale):
+        target.unlink()
 
 
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-    GOLDEN.write_text(
-        json.dumps(snapshot(), indent=1, sort_keys=True) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    write_snapshot(snapshot())
     print(f"Wrote {GOLDEN}")

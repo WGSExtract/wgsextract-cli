@@ -1,0 +1,412 @@
+{
+ "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6      Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius,\n                and write a PharmCAT outside call. Cyrius's license allows noncommercial use only,\n                and no distribution or modification.\n    hla         Call HLA class I and II alleles with T1K from reads in the MHC, and write a\n                PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    paraphase   Type paralogous loci and copy number with Paraphase from PacBio HiFi or\n                experimental, unvalidated ONT reads.\n    smn         Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n                SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str         Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n                ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n                outside STRchive's normal range.\n    target-cnv  Screen BED targets for GC-normalized copy number from short-read WGS. Uses a\n                matching indexed FASTA; masked targets are withheld except clear calls at curated\n                deletion loci.\n\noptions:\n  -h, --help    show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+ "namespaces": {},
+ "parser": {
+  "actions": [
+   {
+    "choices": null,
+    "class": "_HelpAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help",
+    "exclusive_group": null,
+    "help": "show this help message and exit",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "-h",
+     "--help"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "cyp2d6",
+     "hla",
+     "paraphase",
+     "smn",
+     "str",
+     "target-cnv"
+    ],
+    "help": [
+     [
+      "cyp2d6",
+      "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius's license allows noncommercial use only, and no distribution or modification."
+     ],
+     [
+      "hla",
+      "Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB."
+     ],
+     [
+      "paraphase",
+      "Type paralogous loci and copy number with Paraphase from PacBio HiFi or experimental, unvalidated ONT reads."
+     ],
+     [
+      "smn",
+      "Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis."
+     ],
+     [
+      "str",
+      "Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72, ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those outside STRchive's normal range."
+     ],
+     [
+      "target-cnv",
+      "Screen BED targets for GC-normalized copy number from short-read WGS. Uses a matching indexed FASTA; masked targets are withheld except clear calls at curated deletion loci."
+     ]
+    ],
+    "required": true,
+    "subparsers": "typing_cmd"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "input",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--input",
+     "-i"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "outdir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--outdir",
+     "-o"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "genome",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--genome"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "ref",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ref"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "threads",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "N|auto",
+    "nargs": null,
+    "option_strings": [
+     "--threads",
+     "-t"
+    ],
+    "required": false,
+    "type": "_thread_count_arg"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "memory",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--memory",
+     "-m"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "tmp_dir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "DIRECTORY",
+    "nargs": null,
+    "option_strings": [
+     "--tmp-dir"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "json",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--json"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "card",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--card",
+     "--no-card"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "quiet",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--quiet"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "debug",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--debug"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "log_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--log-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "keep_awake",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--keep-awake",
+     "--no-keep-awake"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "atomic_output",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--atomic-output",
+     "--no-atomic-output"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "config_path",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--config"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_result_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--result-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_parent_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--parent-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_root_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--root-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_run_step",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "STEP",
+    "nargs": null,
+    "option_strings": [
+     "--run-step"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "parent_pid",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--parent-pid"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_HelpAllAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help_all",
+    "exclusive_group": null,
+    "help": "Show this help with the advanced options too, and exit.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--help-all"
+    ],
+    "required": false,
+    "type": null
+   }
+  ],
+  "defaults": {
+   "_command": "typing"
+  },
+  "description": null,
+  "formatter_class": "HelpFormatter",
+  "prog": "wgsextract typing"
+ }
+}

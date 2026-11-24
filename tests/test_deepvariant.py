@@ -615,19 +615,25 @@ def evidence_state(gvcf, contig, position):
     return next(iter(spans)).state
 
 
-def woman_sample(dv):
+def woman_sample(dv, extra_contigs: tuple[str, ...] = ()):
     """A synthetic GRCh38 sample with reads on chr1 and chrY, 500-2499."""
     rng = random.Random(863)
     seq = "".join(rng.choice("ACGT") for _ in range(3000))
     root = dv.tmp / "hg38"
     root.mkdir()
-    ref = write_fasta(root / "ref.fa", {"chr1": seq, "chrY": seq}, assembly="GRCh38")
-    lines = ["@HD\tVN:1.6\tSO:unsorted", "@SQ\tSN:chr1\tLN:3000"]
-    lines += ["@SQ\tSN:chrY\tLN:3000", "@RG\tID:rg\tSM:S"]
+    contigs = {"chr1": seq, "chrY": seq, **dict.fromkeys(extra_contigs, "ACGT")}
+    read_contigs = ["chr1", "chrY"]
+    if extra_contigs:
+        contigs[extra_contigs[-1]] = seq
+        read_contigs.append(extra_contigs[-1])
+    ref = write_fasta(root / "ref.fa", contigs, assembly="GRCh38")
+    lines = ["@HD\tVN:1.6\tSO:unsorted"]
+    lines += [f"@SQ\tSN:{chrom}\tLN:{len(bases)}" for chrom, bases in contigs.items()]
+    lines.append("@RG\tID:rg\tSM:S")
     lines += [
         f"{chrom}{i}\t0\t{chrom}\t{start}\t60\t100M\t*\t0\t0\t"
         f"{seq[start - 1 : start + 99]}\t{'I' * 100}\tRG:Z:rg"
-        for chrom in ("chr1", "chrY")
+        for chrom in read_contigs
         for i, start in enumerate(range(500, 2400, 5))
     ]
     bam = sam_to_bam(lines, root / "woman.bam")
