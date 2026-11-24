@@ -78,6 +78,7 @@ Pick the line that matches your file and run its commands in order. Each command
 
 ::: card
 ### A VCF (from a provider or another pipeline)
+- `vcf prepare`: fix its compression, sorting, contig names and index
 - `vcf clinvar`: add ClinVar clinical significance
 - `vcf filter`: keep a gene, region or quality range
 - `vep run`: predict each variant's effect on genes
@@ -129,6 +130,7 @@ Pick the line that matches your file and run its commands in order. Each command
 ### Advanced
 - `bam`: Sort, index, convert and merge BAM/CRAM files.
 - `qc`: Read and VCF quality reports; fake test data.
+- `cohort`: Summarize variants across a local cohort.
 - `repair`: Fix FTDNA BAM/VCF formatting problems.
 - `analyze`: Run several analyses in one go, for one or many genomes.
 - `typing`: CYP2D6, SMN1/2, HLA and repeat expansions (30x WGS).
@@ -141,7 +143,7 @@ Pick the line that matches your file and run its commands in order. Each command
 - `benchmark`: Time the main workflows on test data.
 - `serve`: Local HTTP/JSON and MCP server for apps and AI agents.
 
-Advanced subcommands of core groups: `extract bam-subset`, `vcf acmg`, `vcf alphamissense`, `vcf cadd`, `vcf callability`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf impute`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
+Advanced subcommands of core groups: `extract bam-subset`, `lineage y-private`, `vcf acmg`, `vcf alphamissense`, `vcf cadd`, `vcf callability`, `vcf chain-annotate`, `vcf clair3`, `vcf cnv`, `vcf deepvariant`, `vcf freebayes`, `vcf gatk`, `vcf gerp`, `vcf impute`, `vcf pharmcat`, `vcf phase`, `vcf phylop`, `vcf spliceai`, `vcf sv`, `vcf to-fasta`, `vcf trio`.
 :::
 
 :::

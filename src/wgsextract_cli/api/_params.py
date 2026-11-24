@@ -241,6 +241,8 @@ class Params:
     COMMAND: ClassVar[str] = ""
     CLI_COMMAND: ClassVar[str] = ""
     LOCAL_ONLY: ClassVar[bool] = False
+    # Keep raw invocation and input paths out of logs/results for cohort data.
+    PRIVATE_PROVENANCE: ClassVar[bool] = False
     DELETES: ClassVar[bool] = False
     WRITES_BESIDE: ClassVar[str] = ""
     SAVES_IN_WORKING_FOLDER: ClassVar[bool] = False

@@ -59,9 +59,9 @@ Run from the repository root in the existing development environment:
 
 ```sh
 pixi run python scripts/benchmark_microarray_chip.py \
-  --truth out/approved-chip.txt --truth-format Ancestry_V2_2024 \
+  --truth out/approved-chip.txt --truth-format Ancestry_V2cd \
   --kit 23andMe_V5=out/generated/sample_23andMe_V5.txt \
-  --kit MyHeritage_GSA_2025=out/generated/sample_MyHeritage_GSA_2025.csv \
+  --kit MyHeritage_V3=out/generated/sample_MyHeritage_V3.csv \
   --output out/chip-concordance.json
 ```
 

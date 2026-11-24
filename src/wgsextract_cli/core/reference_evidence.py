@@ -522,12 +522,14 @@ class ReferenceEvidence:
         *,
         records: Iterator[list[str]] | None = None,
         ploidy: int | None = None,
+        stream_complete: bool = False,
     ) -> Iterator[Span]:
         """Every base of ``regions`` (default: every contig) in its state, as
         maximal spans in contig order. Bases no record covers are uncovered
         where the caller assessed them and not assessed elsewhere.
         ``records`` supplies a sorted, already-open single-sample stream;
-        missing records remain not assessed. ``ploidy`` overrides GT encoding."""
+        missing records remain not assessed unless ``stream_complete`` covers
+        every requested interval. ``ploidy`` overrides GT encoding."""
         order = {name: index for index, name in enumerate(self.lengths)}
         requested = (
             regions
@@ -561,7 +563,9 @@ class ReferenceEvidence:
                     if self.provenance
                     else None
                 ),
-                missing_state=State.NOT_ASSESSED,
+                missing_state=State.UNCOVERED
+                if stream_complete
+                else State.NOT_ASSESSED,
             )
         )
         spans: Iterator[Span] = observed
@@ -653,21 +657,18 @@ def _recorded_file(
     from wgsextract_cli.core import read_scope
     from wgsextract_cli.core.results import fingerprint
 
-    recorded = Path(str(record.get("path") or ""))
-    place = recorded
-    if not (read_scope.may_follow(recorded) and recorded.is_file()) and isinstance(
+    place = Path(str(record.get("path") or ""))
+    if not (read_scope.may_follow(place) and place.is_file()) and isinstance(
         original := document.get("manifest"), str
     ):
         try:
-            place = manifest.parent / recorded.relative_to(Path(original).parent)
+            place = manifest.parent / place.relative_to(Path(original).parent)
         except ValueError:
             return None
-    if not read_scope.may_follow(place):
-        return None
     expected = record.get("fingerprint")
-    if not expected or not place.is_file() or fingerprint(place) != expected:
+    if not (expected and read_scope.may_follow(place) and place.is_file()):
         return None
-    return place
+    return place if fingerprint(place) == expected else None
 
 
 def companion(vcf: PathInput) -> str | None:

@@ -78,6 +78,52 @@ long markers can be no-calls; DYS464, CDY, DYF387S1 and Y-GGAAT-1B07 are not
 callable. Against 1000 Genomes PowerPlex Y23 typings, 99.9% of 30x calls match,
 with 8% no-calls. See [sources, licences and conventions](../src/wgsextract_cli/ydna/ystr/README.md).
 
+## Candidate private Y SNPs
+
+`lineage y-private` lists Y SNPs that may be the family's own branch: called
+chrY SNVs that no installed marker set lists. They are **candidates** to
+confirm (for example by Sanger sequencing or a second test), not proven
+private SNPs: sequencing and mapping errors pass the same filters.
+
+```bash
+# GRCh38: needs the YBrowse snapshot (see below) and, once, the YFull positions.
+wgsextract ref ybrowse --install --ref /path/to/reference-library
+wgsextract lineage y-private --input sample.cram --download
+# T2T, or a single-sample VCF/BCF with FORMAT/AD (DeepVariant, GATK, bcftools).
+wgsextract lineage y-private --input sample.vcf.gz --build t2t
+```
+
+- **Novel** means the call's alleles are in no installed marker set: on GRCh38
+  (primary) the [YBrowse snapshot](#opt-in-ybrowse-y-snp-calling-grch38-only)
+  and the `yfull-ybrowse-positions` module of the pinned YFull YTree; on
+  T2T-CHM13v2.0 only the YFull positions, since the YBrowse snapshot is GRCh38
+  only (`known_markers_partial` warning). A call at a known site with other
+  alleles is still a candidate, noted `known site, other allele`.
+  GRCh37/hg19 and other Y assemblies are refused: realign first.
+  The input must name one primary Y contig. With a contig length in the header,
+  this can be `chrY`, `Y`, or the primary Y's RefSeq/GenBank accession.
+- **Callable mask:** calls are made, or read from a VCF, only inside the
+  bundled Poz regions (the CombBED/McDonald/Poznik union, ~11.65 Mb on GRCh38,
+  ~11.6 Mb on T2T). It leaves out both PARs and the Yq12 heterochromatin, and
+  most ampliconic, palindromic and other low-mappability sequence; per-site
+  structural classes are not labelled.
+- **Filters**, in order: FILTER PASS or missing, QUAL ≥ `--min-qual` (30),
+  ALT reads ≥ `--min-alt-reads` (10), ALT fraction ≥ `--min-af` (0.9) of
+  the reads of every allele in FORMAT/AD (a call missing any AD value
+  fails). SNVs only. A BAM/CRAM is called haploid with bcftools, counting
+  reads with MAPQ ≥ `--min-mapq` (20) and bases with quality ≥
+  `--base-quality` (20); a VCF's mapping filters are its caller's.
+  The marker sets are read from the `--ref` library (or the library holding
+  its FASTA) when it has them, else from the configured library.
+- **QC:** more than 50 candidates raises `y_private_excess`: suspect
+  contamination, a mismatched reference, poor data or a marker set that misses
+  the lineage. A female sample, or reads of several samples, are refused.
+
+`<outdir>/y_private/` holds `<sample>.y_private.tsv` (candidates; its `#`
+header states the marker sets, mask and filters) and `<sample>.y_private.vcf.gz`.
+The result manifest's `details` records the `definition`, `marker_sets`,
+`callable_mask`, `filters`, the `counts` at each step and the `candidates`.
+
 ## Y and mitochondrial extracts
 
 `extract ydna-bam --poz` writes indexed `_Y_poz.bam` from the original
@@ -190,9 +236,9 @@ and fetched into the library when explicitly requested/authorized, not bundled.
 | Data module | Used by | Licence |
 | --- | --- | --- |
 | `yfull-tree` | `lineage y-haplogroup --tree yfull` (default) | CC-BY-4.0, YFull |
-| `yfull-ybrowse-positions` | Same, unless `--pos-file` is given | CC-BY-SA (version unspecified), Thomas Krahn YSEQ (2022) |
+| `yfull-ybrowse-positions` | Same, unless `--pos-file` is given; `lineage y-private` | CC-BY-SA (version unspecified), Thomas Krahn YSEQ (2022) |
 | Yleaf data `v4.1.6` | Y-haplogroup QC tables and other trees | GPL-3.0-or-later, Yleaf |
-| YBrowse SNP VCF | `ref ybrowse --install`, `extract ydna-vcf --ybrowse` | CC-BY-SA, Thomas Krahn YSEQ; downloaded on request, not redistributed or in bootstrap since v0.2.0 |
+| YBrowse SNP VCF | `ref ybrowse --install`, `extract ydna-vcf --ybrowse`, `lineage y-private` on GRCh38 | CC-BY-SA, Thomas Krahn YSEQ; downloaded on request, not redistributed or in bootstrap since v0.2.0 |
 
 YFull modules print a licence notice on first download; see
 [tree data](../src/wgsextract_cli/ydna/yleaf_native/README.md#trees).

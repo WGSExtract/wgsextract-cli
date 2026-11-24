@@ -87,6 +87,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         MINUTES, "bcftools", "bgzip", "samtools", "tabix", optional="curl"
     ),
     "lineage y-haplogroup": _n(MINUTES, "bcftools", "samtools"),
+    "lineage y-private": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "lineage y-str": _n(MINUTES, *_SAM, optional="bcftools"),
     "lineage mt-haplogroup": _n(
         MINUTES,
@@ -133,11 +134,13 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf filter": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf table": _n(MINUTES, "bcftools", optional="bgzip tabix"),
     "vcf callability": _n(SECONDS, "bcftools", optional="curl"),
+    "cohort summarize": _n(MINUTES, "bcftools"),
     "vcf clinvar": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf revel": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf prepare": _n(MINUTES, *_VCF),
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
     "vcf cnv": _n(HOURS, "bcftools", "delly", "samtools", "tabix"),
