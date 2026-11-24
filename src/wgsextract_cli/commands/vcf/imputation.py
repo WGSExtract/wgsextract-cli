@@ -33,6 +33,10 @@ from wgsextract_cli.api.vcf import VcfImputeParams
 from wgsextract_cli.core import imputation_panel
 from wgsextract_cli.core.alignment.memory import available_memory
 from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.samtools_commands import (
+    alignment_index,
+    parse_memory,
+)
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -55,7 +59,6 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import Scalar, current_result, warn
-from wgsextract_cli.core.samtools_commands import alignment_index, parse_memory
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import (

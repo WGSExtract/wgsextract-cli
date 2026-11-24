@@ -24,8 +24,7 @@ from wgsextract_cli.core.config import mygenomes_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.mini_genome import status as test_genome_status
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.ref_library.layout import download_dirs
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     build_hint,
     default_reference_library,
     find_annotation_resource,
@@ -35,6 +34,7 @@ from wgsextract_cli.core.reference_assets import (
     reference_genomes_dir,
     reference_library_of,
 )
+from wgsextract_cli.core.ref_library.layout import download_dirs
 from wgsextract_cli.core.reference_processing import bootstrap_has_support_assets
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, human_output

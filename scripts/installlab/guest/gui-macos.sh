@@ -211,6 +211,9 @@ use_workspace() {
 
 app_actions() {
     use_workspace
+    if [ -n "${LAB_ARCHIVE_URL:-}" ]; then
+        install_mini_genome_ploidy "$USERS_WORKSPACE" "$HERE" || return 1
+    fi
     if is_tauri; then
         resources="$APP/Contents/Resources"
         GUI_FOR_CLI_APP_SUPPORT_NAME="$BUNDLE_ID" "$resources/node/bin/node" \

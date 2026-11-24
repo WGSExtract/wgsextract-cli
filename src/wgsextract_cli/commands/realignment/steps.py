@@ -22,7 +22,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     input_stem,
 )
 from wgsextract_cli.core.resource_policy import stage_thread_plan

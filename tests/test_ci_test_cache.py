@@ -142,12 +142,12 @@ def test_1509_updated_hs38_pin_cannot_reuse_old_reference_passes(
 
 
 def test_915_passed_hashes_skip_pytest_and_are_listed_in_the_summary(
+    suite_repo: Path,
     tmp_path: Path,
 ) -> None:
-    test = "tests/test_table_writer.py"
-    job = "os=test tier=core"
+    test = "tests/test_helper_cached.py"
     manifest = tmp_path / "main" / "passed.json"
-    current = fingerprint(job)
+    current = fingerprint(JOB, repository=suite_repo)
     passed = Manifest()
     passed.record({current.hashes[test]}, current.names, NOW)
     passed.save(manifest)
@@ -155,11 +155,11 @@ def test_915_passed_hashes_skip_pytest_and_are_listed_in_the_summary(
     result = subprocess.run(
         [
             sys.executable,
-            str(ROOT / "scripts/ci_run_tests.py"),
+            str(suite_repo / "scripts/ci_run_tests.py"),
             "--selection",
             json.dumps([test]),
             "--cache-job",
-            job,
+            JOB,
             "--cache-read",
             f"main={manifest}",
             "--summary",
@@ -167,7 +167,7 @@ def test_915_passed_hashes_skip_pytest_and_are_listed_in_the_summary(
         ],
         capture_output=True,
         text=True,
-        cwd=ROOT,
+        cwd=suite_repo,
     )
     assert result.returncode == 0, result.stderr
     assert "already passed" in result.stdout

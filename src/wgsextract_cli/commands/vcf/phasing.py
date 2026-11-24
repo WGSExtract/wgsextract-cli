@@ -27,6 +27,7 @@ from threading import Event
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfPhaseParams
 from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
@@ -35,7 +36,6 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.results import Scalar, current_result, warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
     READS_INDEXES,
     REFERENCE_INDEXES,

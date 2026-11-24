@@ -11,6 +11,13 @@ Use this skill when the user wants an autonomous PR babysitter: watch GitHub CI 
 
 The loop is intentionally conservative. Prefer stopping and reporting over guessing on risky, destructive, security-sensitive, or product-significant changes.
 
+For human collaborator PRs, the **Collaborator PRs** section of `AGENTS.md`
+overrides the steps below. Never ready, push to, or review-fix their PRs.
+`hands-off` forbids all action. `land-asap` authorizes owner-account agents
+to rerun lost or cancelled jobs and enqueue a passing PR at the front.
+Without that label, only move a passing PR's existing queue entry after the
+author enabled auto-merge or enqueued it themselves.
+
 ## Requirements
 
 - Work inside the PR branch checkout.
@@ -68,8 +75,9 @@ For an existing draft, obtain authorization before marking ready. Readiness
 starts area-selected full CI; do not land using the old draft-run checks.
 Certify macOS (and Windows where a host exists) on the exact head before
 ready. Immediately before `gh pr ready`, run `python scripts/ci_capacity.py
---wait` in a background watcher and proceed only on exit 0 (3 = hold:
-merge-queue jobs wait for runners or too many ready matrices are in flight).
+--wait --pr N` in a background watcher and proceed only on exit 0.
+Priority PRs skip this gate; other PRs yield to priority PRs with active
+draft or ready CI or a merge queue entry, in addition to the usual capacity limits.
 Admit one PR at a time per supervisor: start the next check only after the
 previously admitted PR's ready area run is visible.
 
