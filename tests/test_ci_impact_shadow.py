@@ -6,6 +6,7 @@ import gzip
 import hashlib
 import json
 import platform
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -169,28 +170,46 @@ def test_shadow_reports_source_scans_and_base_only_failures(
     assert "not proof of PR origin" in (output / "summary.md").read_text()
 
 
-@pytest.mark.skipif(
-    platform.system() != "Linux" or platform.machine() != "x86_64",
-    reason="trusted Linux x64 coverage profile",
+BRANCHY_SOURCE = "src/wgsextract_cli/branchy.py"
+BRANCHY_TESTS = tuple(
+    f"tests/test_{name}.py" for name in ("left", "also_left", "right", "branchy")
 )
-@pytest.mark.parametrize(
-    "change", ["replacement", "fixture-drift", "insertion", "corrupt-cache"]
-)
-def test_1452_line_shadow_uses_prior_base_contexts_without_deduplicating_tests(
-    tmp_path: Path,
-    change: str,
-) -> None:
-    _git(tmp_path, "init", "-b", "main")
-    _git(tmp_path, "config", "user.email", "test@example.test")
-    _git(tmp_path, "config", "user.name", "Test")
-    _git(tmp_path, "config", "commit.gpgsign", "false")
-    source = "src/wgsextract_cli/branchy.py"
-    test_a, test_b, test_c, contract = [
-        f"tests/test_{name}.py" for name in ("left", "also_left", "right", "branchy")
-    ]
-    original = "def branchy(left):\n    if left:\n        return 1\n    return 2\n"
+
+
+def _run(root: Path, *args: str) -> str:
+    result = subprocess.run(
+        [sys.executable, *args],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return result.stdout
+
+
+def _impact_script(root: Path, name: str, *args: str) -> str:
+    return _run(
+        root,
+        "-c",
+        "import importlib, sys; sys.path.insert(0, sys.argv.pop(1)); "
+        "importlib.import_module(sys.argv.pop(1)).main()",
+        str(ROOT),
+        f"scripts.ci_impact_{name}",
+        *args,
+    )
+
+
+@pytest.fixture(scope="module")
+def nightly_line_checkout(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    base = tmp_path_factory.mktemp("nightly-line-checkout")
+    _git(base, "init", "-b", "main")
+    _git(base, "config", "user.email", "test@example.test")
+    _git(base, "config", "user.name", "Test")
+    _git(base, "config", "commit.gpgsign", "false")
+    test_a, test_b, test_c, contract = BRANCHY_TESTS
     files = {
-        source: original,
+        BRANCHY_SOURCE: "def branchy(left):\n    if left:\n        return 1\n    return 2\n",
         "pytest.ini": "[pytest]\npythonpath = src/wgsextract_cli\n",
         "pixi.lock": "lock\n",
         "test-data/frozen.txt": "fixture",
@@ -207,36 +226,16 @@ def test_1452_line_shadow_uses_prior_base_contexts_without_deduplicating_tests(
         },
     }
     for path, contents in files.items():
-        target = tmp_path / path
+        target = base / path
         target.parent.mkdir(exist_ok=True, parents=True)
         target.write_text(contents)
-    _git(tmp_path, "add", ".")
-    _git(tmp_path, "commit", "-m", "Nightly tested base")
+    _git(base, "add", ".")
+    _git(base, "commit", "-m", "Nightly tested base")
 
-    def run(*args: str) -> str:
-        result = subprocess.run(
-            [sys.executable, *args],
-            cwd=tmp_path,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0, result.stdout + result.stderr
-        return result.stdout
-
-    def script(name: str, *args: str) -> str:
-        return run(
-            "-c",
-            "import importlib, sys; sys.path.insert(0, sys.argv.pop(1)); "
-            "importlib.import_module(sys.argv.pop(1)).main()",
-            str(ROOT),
-            f"scripts.ci_impact_{name}",
-            *args,
-        )
-
-    (tmp_path / "out").mkdir()
+    (base / "out").mkdir()
     # The lean merge-queue policy lane installs coverage, not pytest-cov.
-    run(
+    _run(
+        base,
         "-c",
         """
 import sys
@@ -273,7 +272,8 @@ sys.exit(status)
         "--junitxml=out/nightly.xml",
     )
     metadata = ("--coverage-file", "out/.coverage", "--run-id", "1", "--attempt", "1")
-    script(
+    _impact_script(
+        base,
         "observations",
         *metadata,
         "--junit",
@@ -281,7 +281,28 @@ sys.exit(status)
         "--output",
         "out/map.gz",
     )
-    assert "bytes" in script("lines", *metadata, "--output", "out/lines.gz")
+    assert "bytes" in _impact_script(
+        base, "lines", *metadata, "--output", "out/lines.gz"
+    )
+    return base
+
+
+@pytest.mark.skipif(
+    platform.system() != "Linux" or platform.machine() != "x86_64",
+    reason="trusted Linux x64 coverage profile",
+)
+@pytest.mark.parametrize(
+    "change", ["replacement", "fixture-drift", "insertion", "corrupt-cache"]
+)
+def test_1452_line_shadow_uses_prior_base_contexts_without_deduplicating_tests(
+    tmp_path: Path,
+    nightly_line_checkout: Path,
+    change: str,
+) -> None:
+    shutil.copytree(nightly_line_checkout, tmp_path, dirs_exist_ok=True)
+    test_a, test_b, test_c, contract = BRANCHY_TESTS
+    source = tmp_path / BRANCHY_SOURCE
+    original = source.read_text()
     if change == "corrupt-cache":
         # A gzip header followed by the reserved DEFLATE block type.
         (tmp_path / "out/lines.gz").write_bytes(b"\x1f\x8b\x08\x00\0\0\0\0\0\xff\x07")
@@ -294,11 +315,12 @@ sys.exit(status)
         if change == "insertion"
         else original.replace("return 1", "return 10")
     )
-    (tmp_path / source).write_text(changed)
+    source.write_text(changed)
     _git(tmp_path, "commit", "-am", "Edit one body")
     _git(tmp_path, "switch", "main")
     _git(tmp_path, "merge", "--no-ff", "-m", "Synthetic PR tree", "pr")
-    script(
+    _impact_script(
+        tmp_path,
         "gate",
         "--event",
         "pull_request",
@@ -311,7 +333,8 @@ sys.exit(status)
         "--output",
         "out/gate.json",
     )
-    script(
+    _impact_script(
+        tmp_path,
         "shadow",
         "--observations",
         "out/map.gz",
