@@ -65,6 +65,7 @@ queries. The separate `vep download` command fetches public data only.
 | `lineage mt-haplogroup --download` | GitHub `genepi/phylotree-fu-rcrs`, `genepi/phylotree-rcrs-17`, `genebygene/mitotree` releases/CDN | Selected tree ID/version, not haplogroup or variants |
 | `lineage y-haplogroup --download` | GitHub WGSExtract releases/CDN; configured custom-tree host | Tree ID/version and selected reference build/table; custom-tree URL, not sample markers/calls |
 | `report --download` | GitHub WGSExtract releases/CDN | Selected public gene-list filename/version, not findings |
+| `report --pgx-context FILE --download` | `files.cpicpgx.org` | The pinned CPIC database release filename (`cpic_db_dump-v1.61.0.sql.gz`), not the medication list, findings or genotypes; the medication file is read locally only |
 | `ref recheck --online` | `ftp.ncbi.nlm.nih.gov` (ClinVar's weekly release listing for the recorded build) | A plain GET of the public listing URL; no sample name, paths, positions, genotypes or findings. Without `--online` (or with `--answers FILE`) nothing is contacted; see [recheck-and-delta.md](recheck-and-delta.md) |
 | `score pgs --download` | `www.pgscatalog.org`, `ftp.ebi.ac.uk`, GitHub WGSExtract releases/CDN | PGS ID, coordinate build, public scoring weights and calibration/ancestry asset names, not sample scores or genotypes |
 | `basecall --download` | Oxford Nanopore's Dorado model distribution | Model/modification names and POD5 chemistry metadata used to select a model. No signal/read files are uploaded. For offline use pass a local `--model` directory without `--modified-bases`. |
@@ -116,6 +117,7 @@ behavior. Classification describes the baseline, before this change.
 | `lineage mt-haplogroup`, `lineage y-haplogroup`, custom remote Y trees | Yes when data absent | **Default-violation**: require `--download`; cache reuse remains local |
 | `analyze comprehensive` | Inherits first-use tree downloads from lineage steps | **Default-violation**: child commands now refuse missing data without consent; pre-provision it or explicitly opt in through config |
 | `report` with clinical findings and absent selected gene list | Yes | **Default-violation**: require `--download`, not silent partial placement |
+| `report --pgx-context` with the pinned CPIC release absent | Yes | Requires `--download`; the medication list never leaves the computer |
 | Dorado `basecall` model names/modifications | Yes | **Default-violation**: require `--download` or a local model directory |
 | Remote realignment input, remote sizes, benchmark real-data selection | Yes | Explicit **opt-in**; request data disclosed above |
 | `serve` HTTP/MCP, desktop local backend/path picker | Loopback only | Explicit local transport, no automatic remote call; stdio MCP opens no listener |

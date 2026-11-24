@@ -166,7 +166,8 @@ def run_gnomad(params: VcfGnomadParams) -> None:
     gnomad_file = require_annotation_file(
         resource(params, "gnomad_file", lib.gnomad_vcf),
         "vcf_gnomad_missing",
-        "gnomad --download",
+        "gnomad",
+        install_args="--download",
     )
     logging.info(f"Using gnomAD file: {gnomad_file}")
 

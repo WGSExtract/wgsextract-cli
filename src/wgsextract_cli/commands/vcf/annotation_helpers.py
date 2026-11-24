@@ -88,14 +88,17 @@ def resource(params: _VcfFileParams, field: str, default: str | None) -> str | N
     return path
 
 
-def require_annotation_file(file_path: str | None, message_key: str, ann: str) -> str:
+def require_annotation_file(
+    file_path: str | None, message_key: str, resource_id: str, *, install_args: str = ""
+) -> str:
     """Return the resolved annotation resource or raise with a fix-it hint."""
     if not file_path:
-        msg = LOG_MESSAGES.get(message_key, f"Missing data file for {ann}")
+        msg = LOG_MESSAGES.get(message_key, f"Missing data file for {resource_id}")
+        install = " ".join(part for part in (resource_id, install_args) if part)
         raise WGSExtractError(
-            f"REQUIRED DATA MISSING: {msg}\nTo fix this, run: wgsextract ref {ann}"
+            f"REQUIRED DATA MISSING: {msg}\nTo fix this, run: wgsextract ref {install}"
         )
-    resource_releases.record(ann, file_path)
+    resource_releases.record(resource_id, file_path)
     return str(file_path)
 
 

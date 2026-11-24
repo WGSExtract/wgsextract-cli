@@ -47,8 +47,16 @@ from wgsextract_cli.server.operations import (
     PathGuard,
     RequestError,
     find,
+    find_tool,
     params_from_json,
 )
+
+
+def test_cohort_1288_manifest_children_are_not_http_or_mcp_inputs():
+    with pytest.raises(RequestError) as refused:
+        find("cohort/summarize")
+    assert refused.value.code == "unknown_op"
+    assert find_tool("cohort_summarize") is None
 
 
 @pytest.mark.parametrize(

@@ -259,7 +259,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `sample_female` | Y extraction | Female sample; Y outputs will be empty or noise. |
 | `ybrowse_reference_n_sites_excluded` | `extract ydna-vcf --ybrowse` | The reference chrY is N at some yBrowse sites (the PARs in hs38 and the GRCh38 no-alt analysis set), so they were not called (`sites`, `contig`). The `ybrowse_excluded_reference_n_sites` metric and the VCF header's `##ybrowse_excluded_reference_N_sites` give the count. |
 | `sex_check_skipped` | Y extraction | The female-sample check couldn't run to completion (for example, the alignment lacks supported GRCh37/38 contigs or the CRAM reference couldn't be read). Declare the sex with `sample set --sex`, or pass `--ref` if a CRAM reference is missing. |
-| `build_unknown`, `build_unsupported` | microarray, Y haplogroup | The reference build is unknown or unsupported by the tool. |
+| `build_unknown`, `build_unsupported` | personal report, Y haplogroup | The reference build is unknown or unsupported by the tool. |
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |
 | `panel_contigs_not_in_vcf` | `vcf filter` and `vcf table` panel selection | Panel intervals on contigs absent from the VCF were omitted. |
@@ -288,6 +288,8 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `unsigned` | `sign verify` | The checksum manifest has no signature; only hashes were checked. |
 | `sample_mismatch` | `analyze comprehensive` | A VCF not called from reads by wgsextract names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
 | `ystr_unverified_convention` | `lineage y-str` | Markers use a repeat-count convention the panel has not verified. |
+| `known_markers_partial` | `lineage y-private` on T2T | Only the YFull YTree positions are known markers there (the YBrowse snapshot is GRCh38-only), so SNPs YBrowse names but YFull's tree doesn't place can be candidates (`build`). |
+| `y_private_excess` | `lineage y-private` | More candidate private Y SNVs (`count`) than expected (`threshold`): suspect contamination, a mismatched reference, poor data or a marker set that misses the lineage. |
 
 New codes may be added in any release. Consumers should treat unknown codes
 as generic warnings.
@@ -363,6 +365,7 @@ These commands record full manifests: `info` (including `--detailed`),
 `info chip`, `info calculate-coverage`, `info coverage-sample`, `ref status`,
 `align`, `realign`, every `vcf` subcommand, every `extract` subcommand,
 `lineage mt-haplogroup`, `lineage y-haplogroup`, `lineage y-str`,
+`lineage y-private`,
 `microarray`, every `bam`, `qc`, `ref`, `vep` and `typing` subcommand,
 `analyze`, `pet`, `methylation`, `repair`, `benchmark`, `example-genome
 download`, `sign` and `report`.
@@ -420,6 +423,10 @@ Other commands' metrics:
   combined CYP2D6+CYP2D7 copy number; one diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
   `sma_carrier` and `sma_affected`); `repair` the records read and
   repaired.
+- `vcf prepare` records `records_in`, `records_out`, the input's
+  compression and index state and the number of `repairs`, with one
+  `vcf_prepare_*` warning per repair
+  ([variants.md](variants.md#preparing-a-vcf-from-a-provider)).
 - `microarray` on hg38 input records how the hg38-to-hg19 liftover placed the
   CombinedKit's sites: `liftover_lifted`, and the no-calls by reason,
   `liftover_unmapped`, `liftover_alt_contig`, `liftover_ambiguous` (more than
