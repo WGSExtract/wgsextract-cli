@@ -242,3 +242,41 @@ def test_fastq_archive_1432_allows_distinct_case_on_case_sensitive_storage(tmp_p
         api.FastqRestoreParams(input=archive, output=first, output_r2=second)
     )
     assert (first.read_bytes(), second.read_bytes()) == (R1, R2)
+
+
+def test_fastq_archive_1447_refuses_a_manifest_that_aliases_its_source(tmp_path):
+    source = tmp_path / "r.fq"
+    archive = tmp_path / "reads.wgfq"
+    manifest = tmp_path / "reads.wgfq.manifest.json"
+    source.write_bytes(R1)
+    manifest.hardlink_to(source)
+
+    result = api.fastq.archive(
+        api.FastqArchiveParams(r1=source, output=archive), check=False
+    )
+
+    assert result.error and result.error.code == "fastq_output_conflict"
+    assert manifest.read_bytes() == source.read_bytes() == R1
+    assert not archive.exists()
+
+
+def test_fastq_restore_1447_manifest_cannot_replace_the_second_mate(tmp_path):
+    probe = tmp_path / "case-probe"
+    probe.touch()
+    if not (tmp_path / "CASE-PROBE").exists():
+        pytest.skip("test storage is case-sensitive")
+    r1, r2, archive = (tmp_path / name for name in ("r1.fq", "r2.fq", "reads.wgfq"))
+    r1.write_bytes(R1)
+    r2.write_bytes(R2)
+    api.fastq.archive(api.FastqArchiveParams(r1=r1, r2=r2, output=archive))
+    first = tmp_path / "restored.fq"
+    second = tmp_path / "RESTORED.FQ.MANIFEST.JSON"
+
+    result = api.fastq.restore(
+        api.FastqRestoreParams(input=archive, output=first, output_r2=second),
+        check=False,
+    )
+
+    assert result.error and result.error.code == "fastq_output_conflict"
+    assert not first.exists()
+    assert not second.exists()

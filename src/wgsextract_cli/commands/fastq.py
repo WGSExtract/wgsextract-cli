@@ -45,15 +45,25 @@ def _validate_sources(paths: tuple[Path, ...]) -> None:
         )
 
 
+def _aliases(first: Path, second: Path) -> bool:
+    if _destination_key(first) == _destination_key(second):
+        return True
+    with suppress(FileNotFoundError):
+        return first.samefile(second)
+    return False
+
+
 def _validate_manifest(sources: tuple[Path, ...], outputs: tuple[Path, ...]) -> None:
     manifest = manifest_path_for(outputs[0])
     stem = manifest.name.removesuffix(MANIFEST_SUFFIX)
-    sidecars = {
-        _destination_key(manifest),
-        _destination_key(manifest.with_name(stem + CARD_SUFFIX)),
-        _destination_key(manifest.with_name(stem + ".failed" + CARD_SUFFIX)),
-    }
-    if sidecars.intersection(_destination_key(path) for path in (*sources, *outputs)):
+    sidecars = (
+        manifest,
+        manifest.with_name(stem + CARD_SUFFIX),
+        manifest.with_name(stem + ".failed" + CARD_SUFFIX),
+    )
+    if any(
+        _aliases(sidecar, path) for sidecar in sidecars for path in sources + outputs
+    ):
         raise CodedError(
             "fastq_output_conflict",
             "A result sidecar would replace a FASTQ input or output.",
@@ -61,7 +71,9 @@ def _validate_manifest(sources: tuple[Path, ...], outputs: tuple[Path, ...]) -> 
 
 
 @contextmanager
-def _stage_outputs(paths: tuple[Path, ...]) -> Iterator[tuple[FastqWriter, ...]]:
+def _stage_outputs(
+    paths: tuple[Path, ...], sources: tuple[Path, ...]
+) -> Iterator[tuple[FastqWriter, ...]]:
     keys = [_destination_key(path) for path in paths]
     if len(set(keys)) != len(paths):
         raise CodedError(
@@ -97,12 +109,16 @@ def _stage_outputs(paths: tuple[Path, ...]) -> Iterator[tuple[FastqWriter, ...]]
             yield tuple(outputs)
         checkpoint()
         published = []
+        complete = False
         try:
             for temporary, path in zip(staged_paths, paths, strict=True):
                 # Linking publishes the validated file without replacing a name
                 # created by another process while this run was working.
                 path.hardlink_to(temporary)
                 published.append((temporary, path))
+            # A new mate can only alias a sidecar by file identity once it exists.
+            _validate_manifest(sources, paths)
+            complete = True
         except FileExistsError as error:
             raise CodedError(
                 "fastq_output_conflict",
@@ -114,7 +130,7 @@ def _stage_outputs(paths: tuple[Path, ...]) -> Iterator[tuple[FastqWriter, ...]]
                 f"Could not publish {path} without replacing it: {error}",
             ) from error
         finally:
-            if len(published) != len(paths):
+            if not complete:
                 _rollback_outputs(published)
 
 
@@ -139,7 +155,7 @@ def run_archive(params: FastqArchiveParams) -> None:
         result.add_input(path, f"fastq_r{index}")
     codec = StreamCodec()
     try:
-        with _stage_outputs((output,)) as (archive,):
+        with _stage_outputs((output,), sources) as (archive,):
             write_archive(sources, archive, codec, checkpoint=checkpoint)
     except (OSError, EOFError, FastqArchiveError, zlib.error) as error:
         raise CodedError("fastq_archive_failed", str(error)) from error
@@ -164,7 +180,7 @@ def run_restore(params: FastqRestoreParams) -> None:
     result.add_input(source, "fastq_archive")
     codec = StreamCodec()
     try:
-        with source.open("rb") as archive, _stage_outputs(outputs) as staged:
+        with source.open("rb") as archive, _stage_outputs(outputs, (source,)) as staged:
             restore_archive(archive, staged, codec, checkpoint=checkpoint)
     except (OSError, FastqArchiveError, zlib.error) as error:
         raise CodedError("fastq_restore_failed", str(error)) from error

@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from wgsextract_cli.core.results import CommandResult
 
 from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import input_param
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -21,6 +25,9 @@ class FastqArchiveParams(Params):
     r1: Path = param(doc="First or only FASTQ; plain, gzip or BGZF.", path="file")
     r2: Path | None = param(None, doc="Matching read 2 FASTQ.", path="file")
     output: Path = param(doc="New .wgfq archive to write.", path="file", writes=True)
+
+    def write_folders(self) -> Iterator[Path]:
+        yield self.output.expanduser().parent
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -41,6 +48,11 @@ class FastqRestoreParams(Params):
         path="file",
         writes=True,
     )
+
+    def write_folders(self) -> Iterator[Path]:
+        yield self.output.expanduser().parent
+        if self.output_r2 is not None:
+            yield self.output_r2.expanduser().parent
 
 
 def archive(
