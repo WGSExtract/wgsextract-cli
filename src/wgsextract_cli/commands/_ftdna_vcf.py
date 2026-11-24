@@ -13,6 +13,7 @@ from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.variant_files import header_attributes
 
 _CHECK_EVERY = 10_000
 _SPOOL_IN_MEMORY = 64 << 20
@@ -68,33 +69,6 @@ def _encode(expression: str) -> str:
     )
 
 
-def _attributes(body: str) -> dict[str, str]:
-    """``key=value`` pairs of a structured header line's ``<...>`` body, in
-    any order; commas and ``=`` inside quoted values don't split it."""
-    pairs: dict[str, str] = {}
-    key, value, quoted, escaped, in_value = "", "", False, False, False
-    for char in body + ",":
-        if escaped:
-            value += char
-            escaped = False
-        elif quoted and char == "\\":
-            value += char
-            escaped = True
-        elif char == '"':
-            quoted = not quoted
-            value += char
-        elif char == "," and not quoted:
-            pairs.setdefault(key.strip(), value.strip())
-            key, value, in_value = "", "", False
-        elif char == "=" and not in_value:
-            in_value = True
-        elif in_value:
-            value += char
-        else:
-            key += char
-    return pairs
-
-
 def _unquote(value: str) -> str:
     return value[1:-1] if len(value) > 1 and value[0] == value[-1] == '"' else value
 
@@ -110,7 +84,7 @@ class _Header:
         match = _STRUCTURED.match(line)
         if match is None:
             return
-        attributes = _attributes(match[2])
+        attributes = header_attributes(match[2])
         if "ID" in attributes:
             table = self.filters if match[1] == "FILTER" else self.infos
             description = attributes.get("Description")

@@ -40,6 +40,31 @@ job authorization and download permission; merely starting the server grants
 neither to an analysis. Do not enable downloads globally on a machine that
 must remain offline.
 
+## Checking a run before going offline
+
+`wgsextract deps ready -- COMMAND ...` reports whether a command line can run
+here without the network, before a long run or before disconnecting. It checks
+each prerequisite with the check the command's own run makes: the platform,
+the tools it runs (with their versions, Conda packages and the licences their
+metadata record), Docker images in the local engine (identity, digests,
+labels), NVIDIA GPUs and driver, Clair3 models and wgse-deepvariant weights
+against their pinned SHA-256, and the input, reference genome, indexes and
+annotation data. Each item is `runnable`, `installed`, `unverified`,
+`unsupported`, `missing`, `stale` or `incompatible`; a missing one names the
+explicit setup or download step that provides it (`deps install`,
+`ref library --install`, `docker pull`, `ref verify`, `bam index`). The check
+installs, pulls and downloads nothing and makes no network request; a command
+that downloads, or a remote input, is reported as needing the network. It
+exits 3 when the run isn't ready. Model and weight terms show as `unknown`
+where nothing installed records them: installing, verifying or signing a
+component doesn't grant a right to redistribute it. The server doesn't offer
+the check, since its command line names paths on the host.
+
+```sh
+wgsextract deps ready -- vcf clair3 --input ont.bam --gpu
+wgsextract --json deps ready -- vcf deepvariant --input sample.cram
+```
+
 ## What goes where
 
 Public-data requests reveal your IP address, requested asset/model identifiers,

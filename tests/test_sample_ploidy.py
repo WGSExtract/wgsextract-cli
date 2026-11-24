@@ -154,7 +154,7 @@ def test_microarray_normalizes_region_before_custom_sex_ploidy(
 ):
     ref, bam = _snp_bam(tmp_path / "sample", contig, "chrY")
     run_wgsextract("sample", "set", "--input", bam, "--sex", "Male")
-    _templates(tmp_path / "sample", "23andMe_V5_2025.txt", "", "rs1000\t20\t1000\n")
+    _templates(tmp_path / "sample", "23andMe_V4.txt", "", "rs1000\t20\t1000\n")
     targets = tmp_path / "targets.tab"
     targets.write_text(f"{contig}\t1000\trs1000\tA\n")
     run_command(["bgzip", "-f", str(targets)])
@@ -165,12 +165,12 @@ def test_microarray_normalizes_region_before_custom_sex_ploidy(
     out = tmp_path / "out"
     run_wgsextract("microarray", "--input", bam, "--ref", ref,
                    "--ref-vcf-tab", target_gz, "--ploidy-file", str(ploidy),
-                   "--region", region, "--formats", "23andme_v5_2025",
+                   "--region", region, "--formats", "23andme_v4",
                    "--threads", "1", "--outdir", str(out))  # fmt: skip
     assert _scanned_sex(bam) == "Unknown"
     assert vcf_calls(out / "man_combined.vcf.gz")[0][-1] == "1"
     assert not list(out.glob("*.samples.txt"))
-    export = next(out.glob("*23andMe_V5_2025.txt")).read_text()
+    export = next(out.glob("*23andMe_V4.txt")).read_text()
     assert export == "rs1000\t20\t1000\tAA\n"
 
 
