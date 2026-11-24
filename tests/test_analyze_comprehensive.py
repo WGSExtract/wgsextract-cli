@@ -173,9 +173,13 @@ def test_1220_comprehensive_keeps_configured_vcf_out_of_explicit_bam_run(
     expected_inputs = set()
     reference = sample.ref
     if selection != "configured":
-        # Select hg38 ploidy; a non-rCRS chrM skips mitochondrial classification.
+        # A non-rCRS chrM skips mitochondrial classification.
         reference = str(
-            write_fasta(tmp_path / "hg38.fa", {"chr1": sequence, "chrM": "A" * 100})
+            write_fasta(
+                tmp_path / "hg38.fa",
+                {"chr1": sequence, "chrM": "A" * 100},
+                assembly="GRCh38",
+            )
         )
         sam = run_command(
             [get_tool_path("samtools"), "view", "-h", sample.bam],

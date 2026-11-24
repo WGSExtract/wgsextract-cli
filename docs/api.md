@@ -18,7 +18,7 @@ res.outputs, res.metrics, res.warnings
 Operations raise `CommandFailed` (carrying the failed `Result`) unless
 called with `check=False`. They accept a `progress` callback and a
 `CancelToken`. Operations that write files or run long run one at a time
-per process; quick read-only ones (`info`, `info chip`, `sample show`,
+per process; quick read-only ones (`info`, `info chip`, `lookup`, `sample show`,
 `ref status`, `ref recheck`, `ref library-list`, `report-delta`,
 `example-genome list`, `deps check`)
 may run on several threads at once, each call with its own result, progress,
@@ -43,7 +43,7 @@ from its Params fields, so the API and `--help` cannot drift.
 Stability: the names exported here and the group modules (`api.extract`,
 `api.info`, `api.bam`, `api.qc`, `api.align`, `api.vcf`,
 `api.lineage`, `api.methylation`, `api.microarray`, `api.panel`, `api.ref`,
-`api.repair`, `api.genotyping`, `api.report`, `api.sample`,
+`api.repair`, `api.genotyping`, `api.report`, `api.lookup`, `api.sample`,
 `api.support`, `api.pet`, `api.analyze`, `api.sign`, `api.deps`,
 `api.examples`, `api.vep`, `api.benchmark`, `api.score`) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
@@ -1022,8 +1022,8 @@ Call SNPs; the `snps` output carries the record count in its metrics.
 
 Ploidy comes from `ploidy` or `ploidy_file`, else the reference
 library's ploidy file, else bcftools' built-in GRCh37/GRCh38 table for
-the build of the input, or of a FASTA outside any library (its chr1
-length, `.dict` assembly, header description or file name).
+a build confirmed by the input or reference sequence dictionary.
+A file or folder name alone does not select a ploidy table.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
@@ -3021,6 +3021,50 @@ resource releases and provenance. Timestamps and ordering are ignored.
 | `before` | `Path` | required | `--before` | The earlier run's result manifest, e.g. <sample>_personal_report.manifest.json. |
 | `after` | `Path` | required | `--after` | The later run's result manifest, of the same command and sample. |
 
+## `api.lookup`
+
+`lookup`: one sample's genotype, evidence state and existing results at
+an rsID, a build-qualified locus or a gene.
+
+Reads only local files: the input VCF (variants-only or gVCF), its reference
+evidence and the sample's personal report. Writes nothing:
+
+```python
+res = api.lookup.lookup(api.LookupParams(input=Path("s.vcf.gz"), rsid="rs429358"))
+res.details["site"]["status"]   # confident_call, confident_reference, ...
+```
+
+See docs/lookup.md.
+
+### `api.lookup.lookup(LookupParams)`
+
+CLI: `wgsextract lookup`.
+
+`details` is the `wgsextract.lookup/1` document: `resolution`
+(and its `candidates` when the identifier is ambiguous), `site` or
+`region` (genotype, `status` and evidence state, calls),
+`interpretation` (report findings, section states) and `resources`.
+
+`LookupParams`: Look up one sample's genotype and evidence state at an rsID, a
+build-qualified locus or a gene, with what its personal report says
+there. Local files only; writes nothing.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path` | required | `--input`, `-i` | The sample's VCF/BCF: variants-only or a gVCF. Its gVCF (from --gvcf, or its run's manifest) tells confident reference from not assessed. |
+| `rsid` | `str \| None` | `None` | `--rsid` | dbSNP rsID, e.g. rs429358 (merged IDs follow dbSNP build 157). |
+| `gene` | `str \| None` | `None` | `--gene` | Gene symbol or alias (NCBI RefSeq), e.g. APOE: its calls and evidence, paged by --limit. |
+| `locus` | `str \| None` | `None` | `--locus` | BUILD:CHROM:POS[-END][:REF>ALT], e.g. GRCh38:chr19:44908684:T>C; with --rsid or --gene, chooses one of several placements. |
+| `sample` | `str \| None` | `None` | `--sample` | Sample of a multi-sample VCF (required for one). |
+| `gvcf` | `Path \| None` | `None` | `--gvcf` | The sample's gVCF, if not the input or recorded by its run. |
+| `report` | `Path \| None` | `None` | `--report` | Personal report JSON (or its folder) to join (default: the one in the input's folder). |
+| `build` | `str \| None` | `None` | `--build` | The input's build when its header doesn't show it. One of: `GRCh37`, `GRCh38`, `CHM13v2.0` |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `limit` | `int` | `50` | `--limit` | Calls per page of a gene or region (1-1000; default 50). |
+| `cursor` | `str \| None` | `None` | `--cursor` | next_cursor of the previous page. |
+| `confidence_depth` | `tuple[float, float] \| None` | `None` | `--confidence-depth` | (LOW, HIGH): read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
+| `confidence_gq` | `tuple[float, float] \| None` | `None` | `--confidence-gq` | (LOW, HIGH): genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_* and confidence_high_*). |
+
 ## `api.sample`
 
 `sample`: show and correct what is recorded about a sample in its
@@ -3359,16 +3403,16 @@ Annotate variants with VEP (see `VepRunParams`).
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `engine` | `str \| None` | `None` (config `vep_engine`) | `--engine` | Engine, 'vep-rs' or 'ensembl' (default: config vep_engine, else 'vep-rs'; with only an Ensembl VEP cache, Ensembl VEP, warning vep_engine_fallback). One of: `ensembl`, `vep-rs` |
 | `vep_cache` | `Path \| None` | `None` (config `vep_cache_directory`) | `--vep-cache` | VEP cache folder (default: config vep_cache_directory, else the reference library's, else ~/.vep). VEP runs offline. If the cache is missing, vep_cache_missing tells you how to fetch it with vep download. |
-| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against (default: the reference's build); a resolved FASTA of another build is not used, and a BAM or CRAM whose header or reference index shows another build is refused. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
+| `vep_assembly` | `str \| None` | `None` | `--assembly` | Assembly VEP annotates against. For BAM or CRAM input, the alignment header, FASTA and explicit assembly must agree where known. T2T-CHM13v2.0 needs vep-rs. One of: `GRCh37`, `GRCh38`, `T2T-CHM13v2.0` |
 | `vep_cache_version` | `str` | `'116'` | `--vep-cache-version` | VEP cache version (default: 116) |
 | `vcf_type` | `str` | `'auto'` | `--vcf-type` | Variant type: 'sv' and 'cnv' add VEP's structural-variant options; 'auto' detects it from the input. One of: `auto`, `snp-indel`, `sv`, `cnv` |
 | `add_chr` | `bool` | `False` | `--add-chr` | Give VEP the input with a 'chr' prefix on chromosome names. |
 | `force` | `bool` | `False` | `--force` | Force re-run even if output exists |
 | `preset` | `str` | `'everything'` | `--preset` | What VEP annotates: 'everything' (default), or 'fast' (about twice as fast: consequences, genes, MANE transcripts, SIFT and PolyPhen; no population frequencies, for which use 'vcf gnomad', and no HGVS) One of: `everything`, `fast` |
-| `vep_args` | `str \| None` | `None` | `--vep-args` | Additional raw arguments to pass to VEP (e.g., '--everything --pick') |
+| `vep_args` | `str \| None` | `None` | `--vep-args` | Additional raw arguments to pass to VEP. For BAM or CRAM, choose the assembly and FASTA with --assembly and --ref instead. |
 | `format` | `str` | `'vcf'` | `--format` | Output format (default: vcf) One of: `vcf`, `tab`, `json` |
 | `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's); wins over ploidy. |
-| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the GRCh37 or GRCh38 preset; other builds, such as T2T, need this or a ploidy file). |
+| `ploidy` | `str \| None` | `None` | `--ploidy` | bcftools ploidy name or value for calling a BAM or CRAM (default: the preset for a confirmed GRCh37 or GRCh38 build). Unknown builds and T2T need this or a ploidy file. |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 
 ### `api.vep.download(VepDownloadParams)`

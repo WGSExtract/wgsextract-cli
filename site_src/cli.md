@@ -140,6 +140,7 @@ Pick the line that matches your file and run its commands in order. Each command
 - `pet-align`: Align and call variants for a cat or dog genome.
 - `sign`: Checksum and sign output files; verify them.
 - `score`: Research-only polygenic scores from local genotypes.
+- `lookup`: Genotype and evidence at an rsID, locus or gene.
 - `report-delta`: What changed between two reports: findings, releases.
 - `benchmark`: Time the main workflows on test data.
 - `serve`: Local HTTP/JSON and MCP server for apps and AI agents.
