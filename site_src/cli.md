@@ -130,6 +130,7 @@ Pick the line that matches your file and run its commands in order. Each command
 ### Advanced
 - `bam`: Sort, index, convert and merge BAM/CRAM files.
 - `qc`: Read and VCF quality reports; fake test data.
+- `cohort`: Summarize variants across a local cohort.
 - `repair`: Fix FTDNA BAM/VCF formatting problems.
 - `analyze`: Run several analyses in one go, for one or many genomes.
 - `typing`: CYP2D6, SMN1/2, HLA and repeat expansions (30x WGS).

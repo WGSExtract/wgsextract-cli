@@ -348,10 +348,16 @@ def run_command(
     cwd: PathInput | None = None,
     *,
     redact_output_urls: bool = False,
+    private_arguments: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    """Helper to run subprocess with logging and registry."""
+    """Run a registered subprocess; private arguments also hide raw errors."""
+    capture_output = capture_output or private_arguments
     cmd_list = _normalize_subprocess_cmd(cmd)
-    display_cmd = [redact_urls(part) for part in cmd_list]
+    display_cmd = (
+        [*cmd_list[:2], "<private arguments>"]
+        if private_arguments
+        else [redact_urls(part) for part in cmd_list]
+    )
     record_command(display_cmd)
 
     cmd_str = " ".join(display_cmd)
@@ -431,10 +437,14 @@ def run_command(
             raise ToolExecutionError(
                 process.returncode,
                 display_cmd,
-                res_stdout,
-                redact_urls(res_stderr, sources=cmd_list)
-                if isinstance(res_stderr, str)
-                else res_stderr,
+                None if private_arguments else res_stdout,
+                None
+                if private_arguments
+                else (
+                    redact_urls(res_stderr, sources=cmd_list)
+                    if isinstance(res_stderr, str)
+                    else res_stderr
+                ),
             )
         return subprocess.CompletedProcess(
             cmd_list, process.returncode, res_stdout, res_stderr
