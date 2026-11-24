@@ -475,7 +475,9 @@ process visibility is insufficient. Use `git worktree lock` before starting
 work in a checkout that might be eligible for cleanup.
 Do not start work in an eligible checkout during cleanup. Symlinks are checked
 in this repository and its registered worktrees, including shared Git
-metadata and custom `core.hooksPath` directories. If
+metadata and each checkout's effective `core.hooksPath`. If a symlinked
+Git metadata directory could hide dependencies, cleanup keeps the candidates.
+If
 any `hook.<name>.command` is configured, cleanup retains every candidate
 and reports the hook key: arbitrary hook commands can depend on paths that
 cleanup cannot verify. Lock a worktree if a hook script in a hooks directory

@@ -41,10 +41,10 @@ else:
         return module
 
     inventory_files = load_helper(
-        "inventory", "99b932cc0159e65548b1bae6a195583f64587e086b43a3e1b93a7d6230a537be"
+        "inventory", "468ad3e0149a7374a699e3d687bd40fcc1915e6dc0efc410a68312ab76f66f3c"
     )
     activity = load_helper(
-        "activity", "92b96c9c258e7706abd80b5d18523896c88378fbd2bff9facb98757533d34ff3"
+        "activity", "2700ae87bfa047a1668db32a7a592beaf0b3d67013594420400eb31bda1125d1"
     )
 
 REPO = "WGSExtract/wgsextract-cli"
@@ -52,7 +52,7 @@ LEGACY_REPO = "theontho/wgsextract-cli"
 PROC = Path("/proc")
 INSPECTOR_SOCKET = Path("/run/wgse-worktree-inspector.sock")
 INSPECTOR_UID = 0
-INSPECTOR_SHA256 = "8cf03a1ce3dba0f4d4c2e14252cc4ac3893bee659c6ba711916a345f570c9523"
+INSPECTOR_SHA256 = "512c326798a3971160a32392aa76cb22548d95cba385a8b3a9d30509a558abec"
 MIN_MERGE_AGE = timedelta(days=1)
 PR_QUERY = """
 query($owner: String!, $name: String!, $endCursor: String) {
@@ -231,66 +231,25 @@ def reject_configured_hooks(root: Path) -> None:
 
 
 def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]:
-    reject_configured_hooks(root)
-    # The primary walk includes registered worktrees under the repository.
     locations = {root}
+    hook_paths: list[tuple[Path, Path]] = []
     for tree in trees:
         location = tree.directory.resolve()
-        if not location.is_relative_to(root) and location.is_dir():
-            locations.add(location)
-    blocked = set()
-
-    def check_target(link: Path, target: Path) -> None:
-        lexical, resolved = Path(os.path.abspath(target)), target.resolve()
-        for path in paths:
-            inside = link.is_relative_to(path)
-            if inside != resolved.is_relative_to(path) or (
-                not inside
-                and (
-                    lexical.is_relative_to(path)
-                    or (
-                        resolved != root
-                        and path.is_relative_to(resolved)
-                        and resolved.is_relative_to(root / "scratch")
-                    )
-                )
-            ):
-                blocked.add(path)
-
-    def check_link(entry: os.DirEntry[str]) -> None:
-        if entry.is_symlink():
-            link = Path(entry.path)
-            check_target(link, link.parent / os.readlink(link))
-
-    common = root / ".git"
-    for location in locations:
-        # Scan the common Git directory too: even object storage can be
-        # symlinked into a worktree. Only inspect entry types, never blob data.
-        for entry in inventory_files.entries(location, set()):
-            check_link(entry)
-
-    # Git runs ordinary hooks in the checkout and receive hooks in $GIT_DIR.
-    # Ask Git for the effective path without resolving away configured aliases.
-    hook_dirs = set()
-    for cwd in (root, common):
-        reported = git(cwd, "rev-parse", "--git-path", "hooks").removesuffix("\n")
-        if not reported:
-            raise CleanupError("Git did not report its hooks path")
-        hooks = cwd / reported
-        check_target(root, hooks)
-        try:
-            directory = hooks.resolve(strict=True)
-        except (FileNotFoundError, NotADirectoryError):
+        if not location.is_dir():
             continue
-        if directory.is_dir():
-            hook_dirs.add(directory)
-    # Git looks up named hooks directly in each directory; do not recurse
-    # into .git objects or arbitrary trees pointed to by core.hooksPath.
-    for directory in hook_dirs:
-        with os.scandir(directory) as children:
-            for entry in children:
-                check_link(entry)
-    return blocked
+        if not location.is_relative_to(root):
+            locations.add(location)
+        reject_configured_hooks(location)
+        git_dir = Path(
+            git(location, "rev-parse", "--absolute-git-dir").removesuffix("\n")
+        )
+        # Git uses the checkout or $GIT_DIR as hook cwd. Resolve relative
+        # paths from either base using this checkout's effective config.
+        reported = git(location, "rev-parse", "--git-path", "hooks").removesuffix("\n")
+        if not git_dir.is_absolute() or not reported:
+            raise CleanupError("Git did not report its hooks or metadata path")
+        hook_paths.extend((location, cwd / reported) for cwd in (location, git_dir))
+    return inventory_files.dependency_links(root, locations, paths, hook_paths)
 
 
 def inspected_paths(root: Path, paths: set[Path]) -> set[Path]:

@@ -85,7 +85,9 @@ def process_paths(process: Path) -> Iterator[Path]:
     if not arguments.endswith(b"\0"):
         raise OSError("Incomplete userspace command line")
     for arg in arguments.split(b"\0"):
-        if not arg or arg.startswith(b"-"):
+        if arg.startswith(b"-"):
+            _, _, arg = arg.partition(b"=")
+        if not arg:
             continue
         path = Path(os.fsdecode(arg))
         if not path.is_absolute():

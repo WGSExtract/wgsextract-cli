@@ -31,8 +31,9 @@ from tests.test_cleanup_worktrees import (
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
 
 
+@pytest.mark.parametrize("linked_parent", [False, True])
 def test_1393_preserves_worktree_target_of_common_git_metadata_link(
-    repo: Path, github: Callable[..., None]
+    repo: Path, github: Callable[..., None], linked_parent: bool
 ) -> None:
     path = topic(repo)
     target = path / "shared-excludes"
@@ -40,6 +41,10 @@ def test_1393_preserves_worktree_target_of_common_git_metadata_link(
     git(path, "add", "shared-excludes")
     git(path, "commit", "-m", "Track shared Git excludes")
     exclude = repo / ".git" / "info" / "exclude"
+    if linked_parent:
+        outside = repo.parent / "git-info"
+        exclude.parent.rename(outside)
+        exclude.parent.symlink_to(outside, target_is_directory=True)
     exclude.unlink()
     exclude.symlink_to(target)
     github([pull(path)])
@@ -49,6 +54,29 @@ def test_1393_preserves_worktree_target_of_common_git_metadata_link(
     assert run.returncode == 0, run.stderr
     assert result(repo, path)["reason"] == "symlink-dependency"
     assert exclude.read_text() == "*.local\n"
+
+
+def test_1393_preserves_hook_path_used_by_retained_linked_worktree(
+    repo: Path, github: Callable[..., None]
+) -> None:
+    path = topic(repo)
+    active = topic(repo, "active")
+    git(repo, "worktree", "lock", str(active))
+    hook = path / "hooks" / "pre-commit"
+    write(hook, "#!/bin/sh\nexit 0\n")
+    hook.chmod(0o755)
+    git(path, "add", "hooks")
+    git(path, "commit", "-m", "Track shared hook")
+    git(repo, "config", "extensions.worktreeConfig", "true")
+    git(active, "config", "--worktree", "core.hooksPath", "../stale/hooks")
+    git(active, "hook", "run", "pre-commit")
+    github([pull(path)])
+
+    run = cleanup(repo, "--apply", "--github")
+
+    assert run.returncode == 0, run.stderr
+    assert result(repo, path)["reason"] == "symlink-dependency"
+    git(active, "hook", "run", "pre-commit")
 
 
 @pytest.mark.parametrize(

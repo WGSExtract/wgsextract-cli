@@ -1,17 +1,71 @@
 """Local cleanup must protect aliases and worker-private references (#1393)."""
 
 import shutil
+import socket
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 
-from tests.test_cleanup_worktrees import cleanup, result, topic
+from scripts import cleanup_worktrees, worktree_activity_inspector
+from tests.test_cleanup_worktrees import cleanup, handle_requests, result, topic
+from tests.test_cleanup_worktrees import inspector as inspector
 from tests.test_cleanup_worktrees import proc as proc
 from tests.test_cleanup_worktrees import repo as repo
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
+
+
+@pytest.mark.parametrize("use_inspector", [False, True])
+def test_1393_live_process_option_value_keeps_referenced_worktree(
+    repo: Path,
+    proc: Path,
+    inspector: socket.socket,
+    monkeypatch: pytest.MonkeyPatch,
+    use_inspector: bool,
+) -> None:
+    path = topic(repo)
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            "import sys; print('ready', flush=True); sys.stdin.read()",
+            "--source=./scratch/stale/source.txt",
+        ],
+        cwd=repo,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        text=True,
+    ) as process:
+        try:
+            assert process.stdout is not None
+            assert process.stdout.readline() == "ready\n"
+            if use_inspector:
+                monkeypatch.setattr(
+                    worktree_activity_inspector,
+                    "process_ids",
+                    lambda fd: iter([str(process.pid)]),
+                )
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    handled = pool.submit(
+                        handle_requests,
+                        inspector,
+                        repo,
+                        1,
+                        cleanup_worktrees.INSPECTOR_SHA256,
+                    )
+                    run = cleanup(repo, "--inspector")
+                    handled.result()
+            else:
+                (proc / str(process.pid)).symlink_to(Path("/proc") / str(process.pid))
+                run = cleanup(repo)
+            assert run.returncode == 0, run.stderr
+            assert result(repo, path)["reason"] == "active-process"
+        finally:
+            process.terminate()
+
 
 WORKER = """
 import ctypes, os, sys, threading

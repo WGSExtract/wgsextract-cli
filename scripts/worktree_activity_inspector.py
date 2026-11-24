@@ -498,7 +498,9 @@ def process_targets(
         and all(identity(root)[0] != expected[0] for expected in candidates.values())
     )
     for raw in arguments.split(b"\0"):
-        if not raw or raw.startswith(b"-"):
+        if raw.startswith(b"-"):
+            _, _, raw = raw.partition(b"=")
+        if not raw:
             continue
         arg = Path(os.fsdecode(raw))
         if base != Path("/"):

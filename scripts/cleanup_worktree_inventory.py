@@ -14,7 +14,7 @@ import shutil
 import stat
 import sys
 import warnings
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -56,6 +56,69 @@ def entries(path: Path, excluded: set[Path]) -> Iterator[os.DirEntry[str]]:
                     todo.append(child)
                 else:
                     yield entry
+
+
+def dependency_links(
+    root: Path,
+    locations: set[Path],
+    paths: set[Path],
+    hooks: Iterable[tuple[Path, Path]],
+) -> set[Path]:
+    blocked = set()
+
+    def check_target(link: Path, target: Path, own: Path | None = None) -> None:
+        lexical, resolved = Path(os.path.abspath(target)), target.resolve()
+        for path in paths:
+            if path == own:
+                continue
+            inside = link.is_relative_to(path)
+            if inside != resolved.is_relative_to(path) or (
+                not inside
+                and (
+                    lexical.is_relative_to(path)
+                    or (
+                        resolved != root
+                        and path.is_relative_to(resolved)
+                        and resolved.is_relative_to(root / "scratch")
+                    )
+                )
+            ):
+                blocked.add(path)
+
+    def check_link(entry: os.DirEntry[str]) -> None:
+        if entry.is_symlink():
+            link = Path(entry.path)
+            check_target(link, link.parent / os.readlink(link))
+
+    common = root / ".git"
+    for location in locations:
+        for entry in entries(location, set()):
+            check_link(entry)
+            link = Path(entry.path)
+            if (
+                entry.is_symlink()
+                and link.is_relative_to(common)
+                and link != common / "hooks"
+                and entry.is_dir(follow_symlinks=True)
+            ):
+                # The ordinary walk does not follow directory aliases. A
+                # linked metadata directory could hide further dependencies.
+                return paths
+
+    hook_dirs = set()
+    for checkout, hooks_path in hooks:
+        check_target(root, hooks_path, own=checkout)
+        try:
+            directory = hooks_path.resolve(strict=True)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        if directory.is_dir():
+            hook_dirs.add(directory)
+    for directory in hook_dirs:
+        with os.scandir(directory) as children:
+            for entry in children:
+                check_link(entry)
+    return blocked
 
 
 def stamp(info: os.stat_result) -> Stamp:
