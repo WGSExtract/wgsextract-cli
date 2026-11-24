@@ -371,9 +371,10 @@ def _mito_notes(section: ReportMitochondrialDocument) -> list[str]:
     if t := section.get("thresholds"):
         notes.append(
             f"Homoplasmic from {t['homoplasmic']:.0%}; heteroplasmic from "
-            f"{t['supported_heteroplasmy']:.0%} (gnomAD's reporting floor, below "
-            "which misaligned nuclear mtDNA copies dominate calls); weak evidence "
-            f"from {t['weak_evidence']:.0%} of reads on a strand; not detected "
+            f"{t['supported_heteroplasmy']:.0%} (gnomAD's reporting floor; "
+            "misaligned nuclear mtDNA copies can inflate low-level calls). "
+            f"Lower calls remain weak evidence, as do uncalled signals from "
+            f"{t['weak_evidence']:.0%} of reads on a strand. Not detected "
             f"needs {t['min_depth']} or more reads without the ALT."
         )
     if r := section.get("resource"):

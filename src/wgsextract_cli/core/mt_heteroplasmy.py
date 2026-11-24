@@ -11,10 +11,10 @@ Thresholds (docs/personal-report.md explains them):
 
 - ``HOMOPLASMIC_LEVEL`` 0.95 and ``SUPPORTED_LEVEL`` 0.10 follow gnomAD's
   mtDNA release (Laricchia et al., Genome Res 2022;32:569-582, PMID
-  35074858): it reports heteroplasmy from 10% and calls 95-100% homoplasmic,
-  since misaligned nuclear copies (NUMTs) made at least 43% of its 1-5% calls
-  and 1% of its 5-10% calls. A call below 10% is weak evidence, not a
-  negative.
+  35074858): it reports heteroplasmy from 10% and calls 95-100% homoplasmic.
+  In that dataset, the authors estimated that misaligned nuclear mtDNA copies
+  (NUMTs) accounted for at least 43% of 1-5% calls and 1% of 5-10% calls.
+  A call below 10% is weak evidence, not a negative.
 - ``EVIDENCE_LEVEL`` 0.01 is the level mutserve calls from in this run
   (``--level 0.01``); ALT reads at that fraction on either strand are evidence
   worth showing even when mutserve made no call (one strand only: strand bias).
@@ -74,8 +74,8 @@ REASONS = {
     "mt_low_depth": f"fewer than {MIN_DEPTH} mtDNA reads: too few to confirm a "
     f"heteroplasmy or rule out one of {SUPPORTED_LEVEL:.0%} or more",
     "mt_no_coverage": "no reads cover the site",
-    "mt_below_supported_level": f"heteroplasmy below {SUPPORTED_LEVEL:.0%}, where "
-    "misaligned nuclear copies of mtDNA (NUMTs) and errors dominate calls",
+    "mt_below_supported_level": f"heteroplasmy below {SUPPORTED_LEVEL:.0%}; "
+    "misaligned nuclear copies of mtDNA (NUMTs) and errors can inflate low-level calls",
     "mt_not_called": "ALT reads are present, but mutserve made no call",
     "mt_reference_unconfirmed": "the run's mtDNA reference isn't confirmed as the "
     "rCRS or CHM13v2.0's chrM, so its positions can't be read as rCRS positions",

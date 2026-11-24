@@ -332,10 +332,12 @@ position (a CHM13 run's evidence is read at the matching CHM13 position):
 | `not_assessed` | fewer than 100 reads, no reads, an unconfirmed reference, a reference base or call that disagrees with the read table, or missing evidence (see `reasons`) |
 
 The thresholds follow gnomAD's mtDNA release (Laricchia et al., *Genome Res*
-2022;32:569-582, PMID 35074858): it reports heteroplasmy from 10% and calls
-95-100% homoplasmic because misaligned nuclear copies of mtDNA (NUMTs) made at
-least 43% of its 1-5% calls and 1% of its 5-10% calls, and it reads a site
-without a call as reference only above 100x. With 100 reads, a 10%
+2022;32:569-582, PMID 35074858): it reports heteroplasmy from 10%, calls
+95-100% homoplasmic, and treats a site without a call as reference only
+above 100x. In their dataset, the authors estimated that misaligned nuclear
+copies of mtDNA (NUMTs) accounted for at least 43% of 1-5% calls and 1% of
+5-10% calls. Those estimates are not universal error rates, and this report
+retains lower calls as weak evidence. With 100 reads, a 10%
 heteroplasmy leaves no ALT read with probability 0.9^100 (under 3 in 100,000),
 so **not detected rules out heteroplasmy of 10% or more, not lower levels**.
 1% is the level mutserve calls from in this run. These are technical limits:
