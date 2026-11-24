@@ -10,7 +10,7 @@ import { parseFlatToml } from "../dist/shared/rendering.js";
 const { writeFileAtomically } = await import("../dist/web/src/server/atomic-file.js");
 const { loadBundleState, saveBundleState, takeBundleStateWarning } = await import("../dist/web/src/server/bundle-state.js");
 const { bootstrapConfigFiles } = await import("../dist/web/src/server/config-bootstrap.js");
-const { loadConfig, saveConfig } = await import("../dist/web/src/server/config-store.js");
+const { initialCheckedOptions, loadConfig, saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
 const { withSettingsFileLock } = await import("../dist/web/src/server/settings-lock.js");
 
@@ -448,4 +448,36 @@ test("the GUI mode is not written to the CLI settings file", async (t) => {
   await saveBundleState({ uiMode: "advanced" }, bundleRoot);
 
   assert.equal(await readFile(path.join(bundleRoot, "config.toml"), "utf8"), 'threads = "4"\n');
+});
+
+test("PR #1490: initialCheckedOptions drops removed Microarray format IDs while preserving supported selections", async (t) => {
+  const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
+  const wgseRoot = path.join(repoRoot, "examples", "WGSExtract");
+  const bundleRoot = await tempDirectory(t);
+  await cp(wgseRoot, bundleRoot, { recursive: true });
+  await rm(path.join(bundleRoot, "state.json"), { force: true });
+  await saveBundleState({
+    checkedOptions: {
+      microarray_formats: ["all", "myheritage_gsa_2025", "ancestry_v2_2021", "23andme_v5_2025", "23andme_v5"],
+    },
+  }, bundleRoot);
+
+  const bundle = await loadLocalizedBundle("en", repoRoot, bundleRoot, wgseRoot);
+  assert.deepEqual(bundle.checkedOptions.microarray_formats, ["all", "23andme_v5"]);
+
+  // When every previously saved ID was removed, fall back to the control's defaults.
+  const onlyRemoved = initialCheckedOptions(bundle.manifest, {}, {
+    checkedOptions: {
+      microarray_formats: ["myheritage_gsa_2025", "myheritage_gsa_2025_609424"],
+    },
+  });
+  assert.deepEqual(onlyRemoved.microarray_formats, ["all", "23andme_v5", "23andme_v35"]);
+
+  // An explicit empty saved selection stays empty.
+  const explicitEmpty = initialCheckedOptions(bundle.manifest, {}, {
+    checkedOptions: {
+      microarray_formats: [],
+    },
+  });
+  assert.deepEqual(explicitEmpty.microarray_formats, []);
 });
