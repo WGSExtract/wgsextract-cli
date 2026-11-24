@@ -1901,7 +1901,9 @@ CHM13v2.0's chrM was mapped onto the rCRS, `mt_reference`.
 called first; needs the reference) or a VCF, into
 `haplogrep_results.txt`; a missing tree needs `download` permission.
 With `contamination`, haplocheck also looks for a mixture of
-two haplogroups (`haplocheck_contamination.txt`). Haplogrep reads
+two haplogroups (`haplocheck_contamination.txt`); on a BAM/CRAM, mutserve's
+calls and per-position read table are kept for `report`
+(`details.heteroplasmy`, docs/lineage.md). Haplogrep reads
 rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
 three more differences) is called at every site and mapped onto the rCRS
 through the bundled alignment (`details.mt_reference`); a VCF on it needs
@@ -1917,7 +1919,7 @@ confirm as the rCRS is warned of (`mt_reference_unconfirmed`).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `tree` | `str \| None` | `None` (config `haplogrep_tree`) | `--tree` | Haplogrep 3 tree (default: config haplogrep_tree, else phylotree-fu-rcrs, PhyloTree 17 Forensic Update). phylotree-rcrs is PhyloTree 17; mitotree-rcrs is FamilyTreeDNA Mitotree (non-commercial use only). One of: `phylotree-fu-rcrs`, `phylotree-rcrs`, `mitotree-rcrs` |
-| `contamination` | `bool` | `False` | `--contamination` | Also check for mtDNA contamination with haplocheck. VCF input needs heteroplasmy levels (FORMAT/AF). |
+| `contamination` | `bool` | `False` | `--contamination` | Also check for mtDNA contamination with haplocheck; a BAM/CRAM also keeps mutserve's heteroplasmy calls for `report`. VCF input needs heteroplasmy levels (FORMAT/AF). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `haplogrep_path` | `str \| None` | `None` (config `haplogrep_executable`) | `--haplogrep-path` | Path to the Haplogrep 3 executable or JAR (optional if in PATH) |
 | `haplocheck_path` | `str \| None` | `None` (config `haplocheck_executable`) | `--haplocheck-path` | Path to the haplocheck executable or JAR (optional if in PATH) |

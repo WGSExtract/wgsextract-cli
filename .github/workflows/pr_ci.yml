@@ -65,7 +65,7 @@ jobs:
       macos_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.macos_arm64 || 'false' }}
       # The Windows imputation lane includes a fresh locked install, not just
       # testing the already-provisioned tool validated by local certification.
-      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && (steps.diff.outputs.windows_smoke == 'true' || (steps.diff.outputs.windows_tests != 'all' && !contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py'))) && steps.cert.outputs.windows_x64 || 'false' }}
+      windows_x64: &windows-certified ${{ steps.diff.outputs.move_modules == '[]' && (steps.diff.outputs.windows_smoke == 'true' || (steps.diff.outputs.windows_tests != 'all' && !contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py'))) && steps.cert.outputs.windows_x64 || 'false' }}
       generic: ${{ steps.cert.outputs.generic }}
     steps:
       - name: Check out the trusted base verifier
@@ -119,7 +119,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           UBUNTU: ${{ steps.diff.outputs.ubuntu_smoke != 'true' && (steps.cert.outputs.linux_x64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.ubuntu_tests || '[]' }}
           MACOS: ${{ steps.diff.outputs.macos_smoke != 'true' && (steps.cert.outputs.macos_arm64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.macos_tests || '[]' }}
-          WINDOWS: ${{ steps.diff.outputs.windows_smoke != 'true' && (steps.cert.outputs.windows_x64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.windows_tests || '[]' }}
+          WINDOWS: ${{ steps.diff.outputs.windows_smoke != 'true' && steps.diff.outputs.windows_tests || '[]' }}
+          WINDOWS_CERTIFIED: *windows-certified
         run: |
           mkdir -p out/shard-timings
           for lane in ubuntu macos windows; do
@@ -134,7 +135,7 @@ jobs:
             timeout 45 python3 -m scripts.ci_test_shards --os macos --selection "$MACOS" \
               --skip-independent --repository "$GITHUB_REPOSITORY" --output-name macos --github-output out/shard-timings/macos.outputs &
           fi
-          if [ "$WINDOWS" != '[]' ]; then
+          if [ "$WINDOWS" != '[]' ] && [ "$WINDOWS_CERTIFIED" != true ]; then
             timeout 45 python3 -m scripts.ci_test_shards --os windows --selection "$WINDOWS" \
               --skip-independent --repository "$GITHUB_REPOSITORY" --output-name windows --github-output out/shard-timings/windows.outputs &
           fi

@@ -78,7 +78,10 @@ def render_concurrency_group(
         for name, context_value in values.items():
             source = source.replace(name, repr(context_value))
         tree = ast.parse(
-            source.replace("&&", " and ").replace("||", " or ").strip(), mode="eval"
+            re.sub(
+                r"!(?!=)", " not ", source.replace("&&", " and ").replace("||", " or ")
+            ).strip(),
+            mode="eval",
         )
 
         def value(node: ast.AST) -> object:
@@ -96,6 +99,9 @@ def render_concurrency_group(
                     return str(value(label)).casefold() in {
                         str(value(item)).casefold() for item in labels.elts
                     }
+                return str(value(label)).casefold() in str(value(labels)).casefold()
+            if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+                return not value(node.operand)
             if isinstance(node, ast.BoolOp):
                 result = value(node.values[0])
                 for child in node.values[1:]:
@@ -116,6 +122,40 @@ def render_concurrency_group(
         return str(value(tree.body))
 
     return re.sub(r"\$\{\{(.*?)\}\}", render, group)
+
+
+@pytest.mark.parametrize(
+    ("selection", "certified"),
+    [
+        ("all", "false"),
+        ('["tests/test_imputation.py"]', "false"),
+        ('["tests/test_microarray.py"]', "true"),
+    ],
+)
+def test_1492_windows_shard_planning_uses_effective_certification(
+    selection: str, certified: str
+) -> None:
+    workflow = (WORKFLOWS / "pr_ci.yml").read_text()
+    gate = re.search(r"^\s+windows_x64: &(\S+) (.+)$", workflow, re.M)
+    assert gate is not None
+    anchor, expression = gate.groups()
+    planner = workflow.split("id: shards", 1)[1].split(
+        "- name: Set up the locked Python", 1
+    )[0]
+    assert f"WINDOWS_CERTIFIED: *{anchor}" in planner
+    assert '[ "$WINDOWS_CERTIFIED" != true ]' in planner
+    assert (
+        render_concurrency_group(
+            expression,
+            {
+                "steps.diff.outputs.move_modules": "[]",
+                "steps.diff.outputs.windows_smoke": "false",
+                "steps.diff.outputs.windows_tests": selection,
+                "steps.cert.outputs.windows_x64": "true",
+            },
+        )
+        == certified
+    )
 
 
 def test_1488_noop_pr_runs_do_not_queue_behind_failure_observers() -> None:
