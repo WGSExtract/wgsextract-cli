@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import ast
 import fnmatch
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache
+from importlib.util import resolve_name
 from pathlib import Path
 
 from scripts.ci_test_dependencies import (
@@ -36,12 +38,23 @@ CI_TESTS = (
     "tests/test_ci_impact_symbols.py",
     "tests/test_ci_impact_wide.py",
     "tests/test_ci_impact_gate.py",
+    "tests/test_ci_impact_fetch.py",
     "tests/test_ci_nightly.py",
     "tests/test_ci_auto_merge_watch.py",
     "tests/test_ci_release_latest.py",
     "tests/test_ci_capacity.py",
+    "tests/test_ci_cache_prune.py",
 )
 SMOKE_TESTS = ("tests/test_microarray_vendor_formats.py", "tests/test_table_writer.py")
+REMOTE_CERTIFICATION_TEST = "tests/test_ci_certify_remote.py"
+REMOTE_CERTIFICATION_INPUTS = {
+    REMOTE_CERTIFICATION_TEST,
+    "scripts/ci_certify.py",
+    "scripts/ci_certify_hosts.py",
+    "scripts/ci_certify_remote.py",
+    "scripts/ci_certify_remote_worker.py",
+    "scripts/ci_certify_ssh.py",
+}
 OS_WORKFLOWS = {
     "ubuntu": ".github/workflows/ubuntu_ci.yml",
     "macos": ".github/workflows/macos_ci.yml",
@@ -69,12 +82,48 @@ def ci_path(path: str) -> bool:
     )
 
 
+def _call_argument(call: ast.Call, index: int, keyword: str) -> ast.AST | None:
+    if index < len(call.args):
+        return call.args[index]
+    return next((arg.value for arg in call.keywords if arg.arg == keyword), None)
+
+
 class ImportGraph:
     """Module edges include package initializers and literal lazy registries."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        files: dict[str, Path] | None = None,
+        parse: Callable[[Path], ast.Module] | None = None,
+    ) -> None:
         self.root = root
-        self.files: dict[str, Path] = {}
+        self.files = self.checkout_files(root) if files is None else files
+        self.edges: dict[str, set[str]] = {}
+        self.import_edges: dict[str, set[str]] = {}
+        self.fixture_cache: dict[tuple[Path, bool], set[str]] = {}
+        self.reach_cache: dict[tuple[str, bool], frozenset[str]] = {}
+        self.unsafe: set[str] = set()
+        for name, file in self.files.items():
+            try:
+                tree = (
+                    parse(file)
+                    if parse
+                    else ast.parse(file.read_text(encoding="utf-8"))
+                )
+                imports, references = self.imports(name, tree)
+                self.import_edges[name] = imports
+                self.edges[name] = imports | references
+            except (SyntaxError, ValueError, OSError):
+                self.edges[name] = set()
+                self.unsafe.add(name)
+
+    @staticmethod
+    def checkout_files(root: Path) -> dict[str, Path]:
+        files = {}
+        if (conftest := root / "conftest.py").is_file():
+            files["conftest"] = conftest
         for base in (root / "src", root):
             directories = (
                 ("wgsextract_cli",) if base.name == "src" else ("tests", "scripts")
@@ -83,18 +132,8 @@ class ImportGraph:
                 for file in (base / directory).rglob("*.py"):
                     parts = file.relative_to(base).with_suffix("").parts
                     name = ".".join(parts[:-1] if parts[-1] == "__init__" else parts)
-                    self.files[name] = file
-        self.edges: dict[str, set[str]] = {}
-        self.fixture_cache: dict[Path, set[str]] = {}
-        self.reach_cache: dict[str, frozenset[str]] = {}
-        self.unsafe: set[str] = set()
-        for name, file in self.files.items():
-            try:
-                tree = ast.parse(file.read_text(encoding="utf-8"))
-                self.edges[name] = self.imports(name, tree)
-            except (SyntaxError, UnicodeError, OSError):
-                self.edges[name] = set()
-                self.unsafe.add(name)
+                    files[name] = file
+        return files
 
     def module(self, name: str) -> set[str]:
         if name.split(".")[0].startswith("test_") and f"tests.{name}" in self.files:
@@ -106,15 +145,17 @@ class ImportGraph:
             if ".".join(parts[:length]) in self.files
         }
 
-    def imports(self, name: str, tree: ast.Module) -> set[str]:
+    def imports(self, name: str, tree: ast.Module) -> tuple[set[str], set[str]]:
         file = self.files[name]
         package = name if file.name == "__init__.py" else name.rpartition(".")[0]
         result = self.module(package) - {name}
+        references: set[str] = set()
         nodes = list(ast.walk(tree))
         parents = {
             child: node for node in nodes for child in ast.iter_child_nodes(node)
         }
-        dynamic_names = {"__import__"}
+        builtin_names = {"__import__"}
+        dynamic_names: set[str] = set()
         lazy_names = {"command_handler"}
         for node in nodes:
             if isinstance(node, ast.ImportFrom) and node.module == "importlib":
@@ -122,6 +163,12 @@ class ImportGraph:
                     alias.asname or alias.name
                     for alias in node.names
                     if alias.name == "import_module"
+                )
+            if isinstance(node, ast.ImportFrom) and node.module == "builtins":
+                builtin_names.update(
+                    alias.asname or alias.name
+                    for alias in node.names
+                    if alias.name == "__import__"
                 )
             if isinstance(node, ast.ImportFrom) and node.module == LAZY_LOADER:
                 lazy_names.update(
@@ -144,9 +191,9 @@ class ImportGraph:
                 for alias in node.names:
                     result.update(self.module(f"{prefix}.{alias.name}"))
             elif isinstance(node, ast.Constant) and isinstance(node.value, str):
-                # Includes patch targets, subprocess -m and literal import_module.
+                # Patch targets and subprocess -m are useful, but not proof of an import.
                 if node.value.startswith(APP_PREFIX):
-                    result.update(self.module(node.value))
+                    references.update(self.module(node.value))
                 if (
                     name.startswith("tests.")
                     and node.value
@@ -157,36 +204,69 @@ class ImportGraph:
                     }
                     and isinstance(parents.get(node), (ast.List, ast.Tuple))
                 ):
-                    result.update(self.module(CLI_MAIN))
+                    references.update(self.module(CLI_MAIN))
             elif isinstance(node, ast.Call):
                 func = node.func
-                dynamic = (isinstance(func, ast.Name) and func.id in dynamic_names) or (
-                    isinstance(func, ast.Attribute) and func.attr == "import_module"
+                builtin = (isinstance(func, ast.Name) and func.id in builtin_names) or (
+                    isinstance(func, ast.Attribute) and func.attr == "__import__"
+                )
+                dynamic = (
+                    builtin
+                    or (isinstance(func, ast.Name) and func.id in dynamic_names)
+                    or (
+                        isinstance(func, ast.Attribute) and func.attr == "import_module"
+                    )
                 )
                 lazy = isinstance(func, ast.Name) and func.id in lazy_names
                 if not (dynamic or lazy):
                     continue
-                argument = node.args[0] if node.args else None
+                if builtin and (level := _call_argument(node, 4, "level")) is not None:
+                    if not (isinstance(level, ast.Constant) and level.value == 0):
+                        self.unsafe.add(name)
+                        continue
+                argument = _call_argument(node, 0, "module" if lazy else "name")
                 if isinstance(argument, ast.Constant) and isinstance(
                     argument.value, str
                 ):
+                    target = argument.value
                     if argument.value.startswith("."):
-                        anchor = package
-                        if len(node.args) > 1:
-                            supplied = node.args[1]
-                            if not isinstance(supplied, ast.Constant) or not isinstance(
-                                supplied.value, str
-                            ):
-                                self.unsafe.add(name)
-                                continue
+                        supplied = _call_argument(node, 1, "package")
+                        if isinstance(supplied, ast.Constant) and isinstance(
+                            supplied.value, str
+                        ):
                             anchor = supplied.value
-                        dots = len(argument.value) - len(argument.value.lstrip("."))
-                        prefix = ".".join(
-                            anchor.split(".")[: len(anchor.split(".")) - dots + 1]
-                        )
-                        result.update(self.module(prefix + "." + argument.value[dots:]))
-                    else:
-                        result.update(self.module(argument.value))
+                        elif (
+                            isinstance(supplied, ast.Name)
+                            and supplied.id == "__package__"
+                        ):
+                            anchor = package
+                        else:
+                            self.unsafe.add(name)
+                            continue
+                        try:
+                            target = resolve_name(target, anchor)
+                        except ImportError:
+                            self.unsafe.add(name)
+                            continue
+                    result.update(self.module(target))
+                    if (
+                        builtin
+                        and (names := _call_argument(node, 3, "fromlist")) is not None
+                    ):
+                        if isinstance(names, ast.Constant) and names.value is None:
+                            continue
+                        if not isinstance(names, (ast.List, ast.Tuple)):
+                            self.unsafe.add(name)
+                            continue
+                        for item in names.elts:
+                            if (
+                                isinstance(item, ast.Constant)
+                                and isinstance(item.value, str)
+                                and item.value != "*"
+                            ):
+                                result.update(self.module(f"{target}.{item.value}"))
+                            else:
+                                self.unsafe.add(name)
                 elif name == LAZY_LOADER:
                     # Resolved at command_handler call sites, not on this shared
                     # execution wrapper (which must not depend on every command).
@@ -205,7 +285,7 @@ class ImportGraph:
                         result.update(targets)
                 else:
                     self.unsafe.add(name)
-        return result
+        return result, references
 
     def registry_targets(
         self, tree: ast.Module, argument: ast.AST | None
@@ -254,9 +334,11 @@ class ImportGraph:
             return targets
         return None
 
-    def reaches(self, name: str) -> frozenset[str]:
-        if name in self.reach_cache:
-            return self.reach_cache[name]
+    def reaches(self, name: str, *, imports_only: bool = False) -> frozenset[str]:
+        key = (name, imports_only)
+        if key in self.reach_cache:
+            return self.reach_cache[key]
+        edges = self.import_edges if imports_only else self.edges
         seen: set[str] = set()
         pending = [name]
         while pending:
@@ -264,24 +346,27 @@ class ImportGraph:
             if current in seen:
                 continue
             seen.add(current)
-            pending.extend(self.edges.get(current, set()) - seen)
-        self.reach_cache[name] = frozenset(seen)
-        return self.reach_cache[name]
+            pending.extend(edges.get(current, set()) - seen)
+        self.reach_cache[key] = frozenset(seen)
+        return self.reach_cache[key]
 
-    def fixture_dependencies(self, directory: Path) -> set[str]:
+    def fixture_dependencies(
+        self, directory: Path, *, imports_only: bool = False
+    ) -> set[str]:
         """Tests implicitly import conftest and its shared helper dependencies."""
-        if directory in self.fixture_cache:
-            return self.fixture_cache[directory]
+        key = (directory, imports_only)
+        if key in self.fixture_cache:
+            return self.fixture_cache[key]
         dependencies: set[str] = set()
 
         for parent in (directory, *directory.parents):
             if not parent.is_relative_to(self.root):
                 break
             conftest = parent / "conftest.py"
-            if conftest.is_file():
-                name = ".".join(conftest.relative_to(self.root).with_suffix("").parts)
-                dependencies.update(self.reaches(name))
-        self.fixture_cache[directory] = dependencies
+            name = ".".join(conftest.relative_to(self.root).with_suffix("").parts)
+            if name in self.files:
+                dependencies.update(self.reaches(name, imports_only=imports_only))
+        self.fixture_cache[key] = dependencies
         return dependencies
 
 
@@ -409,14 +494,18 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
 def os_selection(
     paths: list[str], selection: list[str] | str, *, cli: bool
 ) -> dict[str, list[str] | str]:
-    return {
-        os: selection
-        if cli
-        else list(SMOKE_TESTS)
-        if workflow in paths or ".github/workflows/os_tests.yml" in paths
-        else []
-        for os, workflow in OS_WORKFLOWS.items()
-    }
+    if cli:
+        return dict.fromkeys(OS_WORKFLOWS, selection)
+    remote = bool(REMOTE_CERTIFICATION_INPUTS.intersection(paths))
+    result: dict[str, list[str] | str] = {}
+    for os, workflow in OS_WORKFLOWS.items():
+        smoke = workflow in paths or ".github/workflows/os_tests.yml" in paths
+        # The supervisor exercises native Windows jobs and POSIX process groups.
+        result[os] = [
+            *(SMOKE_TESTS if smoke else ()),
+            *([REMOTE_CERTIFICATION_TEST] if remote else []),
+        ]
+    return result
 
 
 def ci_test_targets(paths: list[str], *, repository: Path = ROOT) -> list[str]:

@@ -35,7 +35,7 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result, human_output, warn
-from wgsextract_cli.core.sample_ploidy import sex_samples_args
+from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
 from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -58,7 +58,6 @@ from ._vep_engines import (
     vep_engine,
 )
 from ._vep_resources import preprocess_vcf_chr_prefix
-from .vcf.basic import ploidy_args
 from .vcf.call_cleanup import indel_cleanup_pipeline
 
 GENOMIC_SUFFIXES = (".vcf", ".vcf.gz", ".bcf", ".bam", ".cram")

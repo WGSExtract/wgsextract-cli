@@ -119,6 +119,20 @@ def test_923_merge_group_never_uses_certifications() -> None:
     assert certifications("owner/repo", {"merge_group": {"head_sha": "abc"}}) == set()
 
 
+def test_1495_windows_cert_does_not_skip_the_pinned_fresh_install() -> None:
+    workflow = Path(".github/workflows/pr_ci.yml").read_text()
+    gate = next(line for line in workflow.splitlines() if "windows_x64:" in line)
+    assert "steps.diff.outputs.move_modules == '[]'" in gate
+    assert "steps.diff.outputs.windows_tests != 'all'" in gate
+    assert (
+        "!contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py')"
+        in gate
+    )
+    assert "&& steps.cert.outputs.windows_x64 || 'false'" in gate
+    windows = workflow.split("\n  windows:\n", 1)[1].split("\n\n", 1)[0]
+    assert "needs.changes.outputs.windows_x64 != 'true'" in windows
+
+
 @pytest.mark.parametrize(
     "source",
     [

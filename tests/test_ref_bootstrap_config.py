@@ -145,3 +145,32 @@ def test_download_bootstrap_normalizes_existing_assets_and_installs_ploidy(
     assert not (reflib / "ref" / ".DS_Store").exists()
     assert (reflib / "ploidy_hg19.txt").is_file()
     assert (reflib / "ploidy_hg38.txt").is_file()
+
+
+def test_bootstrap_upgrade_preserves_non_template_files_and_refuses_symlinks(tmp_path):
+    lib = tmp_path / "lib"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_file = outside / "keep.txt"
+    outside_file.write_bytes(b"outside-secret\n")
+
+    # User-customized file outside microarray/raw_file_templates/ must not be overwritten.
+    custom = lib / "genomes/custom.txt"
+    custom.parent.mkdir(parents=True)
+    custom.write_bytes(b"user-version\n")
+
+    # Symlinked directory inside microarray/raw_file_templates/ must never be traversed.
+    (lib / "microarray/raw_file_templates").mkdir(parents=True)
+    (lib / "microarray/raw_file_templates/body").symlink_to(outside)
+
+    staged_custom = lib / "reference/genomes/custom.txt"
+    staged_custom.parent.mkdir(parents=True)
+    staged_custom.write_bytes(b"tarball-version\n")
+    staged_tmpl = lib / "reference/microarray/raw_file_templates/body/keep.txt"
+    staged_tmpl.parent.mkdir(parents=True)
+    staged_tmpl.write_bytes(b"overwrite-attempt\n")
+
+    reference_processing.normalize_bootstrap_layout(str(lib))
+
+    assert custom.read_bytes() == b"user-version\n"
+    assert outside_file.read_bytes() == b"outside-secret\n"

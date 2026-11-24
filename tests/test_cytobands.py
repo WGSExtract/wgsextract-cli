@@ -8,6 +8,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,6 +16,7 @@ from tests.http_server import RangeServer, serving
 from wgsextract_cli import api
 from wgsextract_cli.api.ref import RefCytobandsParams
 from wgsextract_cli.core import cytobands
+from wgsextract_cli.core.ref_library import downloads
 from wgsextract_cli.main import main
 
 
@@ -144,6 +146,8 @@ def test_1148_truncated_gzip_and_checksum_mismatch_preserve_installed_bytes(
 def test_1148_cytobands_resume_partial_and_changed_url_cannot_mix_sources(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Keep real retry requests, but don't wait out their exponential backoff.
+    monkeypatch.setattr(downloads, "time", SimpleNamespace(sleep=lambda _: None))
     compressed = gzip.compress(table("hg38"), mtime=0)
     with serving(data=None) as server:
         source(monkeypatch, server, "hg38", compressed, "first.gz")
