@@ -135,6 +135,10 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
         ("tests/test_contamination.py", "tests/test_contamination.py"),
         ("src/wgsextract_cli/commands/vcf/callers.py", "tests/test_vcf_callers.py"),
         ("tests/test_methylation.py", "tests/test_methylation.py"),
+        (
+            "src/wgsextract_cli/commands/methylation_hp.py",
+            "tests/test_methylation_regions.py",
+        ),
     ],
 )
 def test_1199_optional_tools_follow_affected_test_imports(
