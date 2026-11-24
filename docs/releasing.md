@@ -1,5 +1,9 @@
 # Releasing
 
+`pixi run package-smoke` builds a source distribution and a wheel from it,
+checks that both contain the compact CLI help index, and runs discovery from
+the installed wheel. Builds generate the index without changing the checkout.
+
 One `vX.Y.Z` release ships both the CLI and the WGS Extract desktop app
 (`gui/`), which bundles that same CLI release. Most of it is automated; this is
 the whole sequence, with what to check at each step.

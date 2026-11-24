@@ -66,6 +66,7 @@ if (Test-Path -LiteralPath (Join-Path $Root ".git")) {
 
 Step "Checking the CLI and its tools"
 Invoke-Checked pixi @("run", "wgsextract", "--version")
+Invoke-Checked pixi @("run", "wgsextract", "help", "--all", "--json") | Out-Null
 Invoke-Checked pixi @("run", "wgsextract", "deps", "check")
 
 if (-not $SkipTests) {

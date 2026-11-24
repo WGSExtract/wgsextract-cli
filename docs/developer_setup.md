@@ -189,10 +189,12 @@ When you add or rename a command:
   execution imports inside handlers. `cli/_lazy.py` defers loading command
   implementations until execution; help must not import scientific libraries.
 - Run `pixi run gen-command-docs` to regenerate `docs/commands.md` and the
-  command cards on the site's CLI page (`site_src/cli.md`), plus the bundled
-  `assets/cli/help-index.json` used for fast, configuration-independent discovery.
+  command cards on the site's CLI page (`site_src/cli.md`).
 
-`tests/test_cli_help.py` fails until all three are done.
+The compact help index is not committed. `just regen` and developer setup warm
+it, and the first `help --all --json` after `pixi install` also builds it if
+needed. The CLI caches it in the platform's per-user cache directory. The
+cache expires when the package version or parser and registry sources change.
 
 ### Benchmark fixture ploidy
 
@@ -218,8 +220,8 @@ reference stable without duplicating parameter descriptions beside their handler
 
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
 help. It updates the CLI snapshot under `tests/fixtures/cli_snapshot/`,
-`docs/api.md`, `docs/commands.md`, the bundled
-compact discovery index, and the generated command cards in `site_src/cli.md`.
+`docs/api.md`, `docs/commands.md`, and the generated command cards in
+`site_src/cli.md`. It also refreshes the user's compact discovery cache.
 The snapshot stores one JSON file per covered command (for example
 `vcf/snp.json`), including its parser, help and argv cases. Different command
 files can merge independently; adding children to the same group can still

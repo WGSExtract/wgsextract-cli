@@ -22,7 +22,6 @@ GENERATOR_SCRIPTS = (
 GENERATED = (
     "docs/api.md",
     "docs/commands.md",
-    "src/wgsextract_cli/assets/cli/help-index.json",
     "docs/configuration.md",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
@@ -66,6 +65,9 @@ def main() -> None:
             )
     for script in GENERATOR_SCRIPTS:
         subprocess.run([sys.executable, script], cwd=ROOT, check=True)
+    subprocess.run(
+        [sys.executable, "-m", "wgsextract_cli.cli.help_index"], cwd=ROOT, check=True
+    )
     if args.resolve:
         if retired:
             (ROOT / RETIRED_SNAPSHOT).unlink(missing_ok=True)

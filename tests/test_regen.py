@@ -19,7 +19,6 @@ GENERATED = (
     STALE_SNAPSHOT,
     "docs/api.md",
     "docs/commands.md",
-    "src/wgsextract_cli/assets/cli/help-index.json",
     "docs/configuration.md",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",

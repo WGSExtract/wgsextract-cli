@@ -699,13 +699,9 @@ def run_help(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
             sys.stdout.write(HELP_TOPICS[topic[0]].body)
         return
     if as_json and not topic and not getattr(args, "full", False):
-        from importlib.resources import files
+        from .help_index import load_index
 
-        document = json.loads(
-            files("wgsextract_cli")
-            .joinpath("assets/cli/help-index.json")
-            .read_text(encoding="utf-8")
-        )
+        document = load_index()
         for command in document["commands"]:
             command.pop("deprecated", None)
             if deprecation := DEPRECATED.get(command["path"]):

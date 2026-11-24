@@ -49,7 +49,6 @@ _GENERATED_DOCS = frozenset(
         # Hand-written generator input also requires configuration freshness.
         "docs/data/configuration-guide.md",
         "site_src/cli.md",
-        "src/wgsextract_cli/assets/cli/help-index.json",
     }
 )
 DOCS_TARGET_INPUTS = {

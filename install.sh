@@ -799,6 +799,7 @@ export PIXI_CACHE_DIR
 
 log "Checking installation..."
 "$PIXI" run wgsextract --help >/dev/null
+"$PIXI" run wgsextract help --all --json >/dev/null
 "$PIXI" run wgsextract deps check >/dev/null
 
 if [ -n "$DETACHED_BACKUP" ]; then

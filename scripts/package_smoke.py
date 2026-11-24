@@ -3,9 +3,12 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
+import tarfile
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -58,16 +61,34 @@ def main() -> int:
 
     shutil.rmtree(OUT_DIR, ignore_errors=True)
     DIST_DIR.mkdir(parents=True, exist_ok=True)
-    _run([uv, "build", "--wheel", "--out-dir", str(DIST_DIR)])
+    _run([uv, "build", "--out-dir", str(DIST_DIR)])
 
     wheels = sorted(DIST_DIR.glob("*.whl"))
-    if not wheels:
-        print(f"No wheel was built in {DIST_DIR}", file=sys.stderr)
+    sdists = sorted(DIST_DIR.glob("*.tar.gz"))
+    if not wheels or not sdists:
+        print(
+            f"Expected a wheel and source distribution in {DIST_DIR}", file=sys.stderr
+        )
         return 1
+    index = "wgsextract_cli/assets/cli/help-index.json"
+    with zipfile.ZipFile(wheels[-1]) as wheel, tarfile.open(sdists[-1]) as sdist:
+        [member] = [
+            item for item in sdist.getmembers() if item.name.endswith(f"/src/{index}")
+        ]
+        source = sdist.extractfile(member)
+        assert source is not None
+        assert json.loads(source.read()) == json.loads(wheel.read(index))
 
     _run([uv, "venv", str(VENV_DIR), "--clear"])
     _run([uv, "pip", "install", "--python", str(_venv_python()), str(wheels[-1])])
     _run([str(_wgsextract_launcher()), "--help"], quiet=True)
+    document = json.loads(
+        subprocess.check_output(
+            [str(_wgsextract_launcher()), "help", "--all", "--json"]
+        )
+    )
+    assert document["schema"] == "wgsextract.help-index/1"
+    assert any(item["path"] == "vcf snp" for item in document["commands"])
     return 0
 
 

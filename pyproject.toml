@@ -89,8 +89,14 @@ relative_files = true
 core = "sysmon"
 disable_warnings = ["no-sysmon"]
 
+[tool.hatch.build]
+exclude = ["/src/wgsextract_cli/assets/cli/help-index.json", "/src/wgsextract_cli/assets/cli/help-index.key"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/wgsextract_cli"]
+
+[tool.hatch.build.hooks.custom]
+dependencies = ["platformdirs", "pyliftover", "tomli-w", "tomli; python_version < '3.11'"]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "src", "tests"]

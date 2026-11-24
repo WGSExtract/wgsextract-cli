@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the command docs, site command cards and compact CLI discovery index
+"""Write the command docs and site command cards
 from the command tiers, journeys, deprecations and the help catalog.
 
 Run with --check to fail (exit 1) when any generated file is out of date.
@@ -14,9 +14,6 @@ from pathlib import Path
 from wgsextract_cli.cli.help import (
     SITE_BLOCK_END,
     SITE_BLOCK_START,
-    command_index,
-    global_options_json,
-    index_json,
     render_markdown,
     render_site_commands,
 )
@@ -26,7 +23,6 @@ from wgsextract_cli.core.config import settings_suspended
 ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs" / "commands.md"
 SITE_PAGE = ROOT / "site_src" / "cli.md"
-INDEX = ROOT / "src/wgsextract_cli/assets/cli/help-index.json"
 
 
 def site_page_text(current: str) -> str:
@@ -45,9 +41,6 @@ def main() -> int:
         wanted = {
             DOC: render_markdown(parser),
             SITE_PAGE: site_page_text(SITE_PAGE.read_text(encoding="utf-8")),
-            INDEX: index_json(
-                command_index(parser), global_options_json(parser), compact=True
-            ),
         }
     stale = [
         path

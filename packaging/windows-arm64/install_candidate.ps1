@@ -127,3 +127,5 @@ if ($LASTEXITCODE) { throw "Windows certificate trust/HTTPS preflight failed" }
 if ($LASTEXITCODE) { throw "Installed Python certificate verification failed" }
 & $pixi run --manifest-path $manifestPath --locked wgsextract deps check
 if ($LASTEXITCODE) { throw "Native default tool dependency check failed" }
+& $pixi run --manifest-path $manifestPath --locked wgsextract help --all --json | Out-Null
+if ($LASTEXITCODE) { throw "Native CLI discovery check failed" }
