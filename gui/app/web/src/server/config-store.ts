@@ -8,6 +8,7 @@ import { parseConfigToml as parseToml, readOptionalFlatToml, serializeConfigToml
 import { errnoCode } from "./errors.js";
 import { configPath, expandWorkspaceToken, isPreviousConfigPath } from "./paths.js";
 import { withSettingsFileLock } from "./settings-lock.js";
+import { withWorkspaceUse } from "./workspace-activity.js";
 
 export function initialConfigFilePaths(manifest: BundleManifest, bundleState: Pick<BundleState, "configFilePaths">, bundleRoot: string): StringMap {
     return Object.fromEntries(configEditorControls(manifest).flatMap((control) => {
@@ -136,6 +137,9 @@ export async function loadConfig(control: ControlSpec, requestedPath: string | u
     };
 }
 export async function saveConfig(control: ControlSpec, requestedPath: string | undefined, values: Readonly<Record<string, unknown>>, bundleRoot: string) {
+    return withWorkspaceUse(() => saveConfigNow(control, requestedPath, values, bundleRoot));
+}
+async function saveConfigNow(control: ControlSpec, requestedPath: string | undefined, values: Readonly<Record<string, unknown>>, bundleRoot: string) {
     const filePath = configPath(control, requestedPath, bundleRoot);
     const byKey: Record<string, unknown> = {};
     for (const setting of control.settings ?? []) {

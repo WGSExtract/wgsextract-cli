@@ -34,6 +34,36 @@ def test_1373_symbol_gate_cannot_hide_cache_skips_from_main() -> None:
     assert "steps.merge-group.outcome == 'success'" in step
 
 
+@pytest.mark.parametrize(
+    ("os_name", "event", "jobs", "fetches"),
+    [
+        ("ubuntu", "pull_request", "1", True),
+        ("ubuntu", "pull_request", "2", False),
+        ("ubuntu", "merge_group", "1", True),
+        ("ubuntu", "push", "1", False),
+        ("ubuntu", "schedule", "1", False),
+        ("windows", "pull_request", "1", False),
+    ],
+)
+def test_1482_map_reads_are_limited_to_linux_pr_and_queue(
+    os_name: str, event: str, jobs: str, fetches: bool
+) -> None:
+    step = suite_step("Fetch main's Linux observation artifact")
+    condition = re.search(r"if: (.+)", step)
+    assert condition is not None
+    assert (
+        matches_workflow_condition(
+            condition[1].replace("strategy.job-total == 1", "single-job"),
+            {
+                "inputs.os": os_name,
+                "github.event_name": event,
+                "single-job": jobs == "1",
+            },
+        )
+        is fetches
+    )
+
+
 def test_1373_daily_linux_backstop_cannot_reuse_push_coverage() -> None:
     ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
     assert re.search(r'^  schedule:\n    - cron: "\d+ \d+ \* \* \*"', ubuntu, re.M)
@@ -118,7 +148,7 @@ def test_1464_only_full_ubuntu_main_runs_publish_observations(
 
     for name, outcome, step in [
         ("Export Linux test observations", "success", "regular-pytest"),
-        ("Save main's Linux observation map", "success", "impact-map"),
+        ("Publish main's Linux observation artifact", "success", "impact-map"),
         ("Attribute failed daily Linux tests", "failure", "regular-pytest"),
         ("Upload Linux selector miss receipts", "failure", "regular-pytest"),
     ]:

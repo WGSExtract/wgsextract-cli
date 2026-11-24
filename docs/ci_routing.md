@@ -321,53 +321,95 @@ test runner report containing failed tests produces `failure`. Landing still
 requires the passing hosted ready run; non-success local attestations never
 make that otherwise-passing run fail the landing gate.
 
-For macOS remotely, push the branch and run on lin-mid:
+#### Remote certification on owned hosts
 
-```sh
-just certify --remote randy-mini
+Register SSH aliases and their native platforms in a controller-side
+`config.toml` (keep the file outside the Git checkout, or ignore it locally):
+
+```toml
+[[certification.hosts]]
+alias = "seraph"
+platform = "windows-x64"
+
+[[certification.hosts]]
+alias = "minipc"
+platform = "windows-x64"
+
+[[certification.hosts]]
+alias = "mahyar-pro-14"
+platform = "macos-arm64"
 ```
 
+Push the branch, then run on the controller:
+
+```sh
+just certify --remote windows-x64 --remote-config /path/to/config.toml --platform-only
+just certify --remote macos-arm64 --remote-config /path/to/config.toml --platform-only
+```
+
+`--remote` accepts a registered alias or a platform. For a platform it tries
+hosts in listed order and skips hosts that fail the SSH, checkout, disk or
+native-platform probe, or whose controller lock is busy. It does not retry a
+failed or interrupted test on another host. `randy-mini` remains the built-in
+macOS ARM64 fallback; `just certify --remote randy-mini` still works. If
+`--remote-config` is omitted, the controller reads `config.toml` in its
+working directory if present.
+
 The controller enforces the same clean, pushed, same-repository open-PR and
-writer checks as local certification. It acquires `agent-coord lock randy-mini`
-for the entire remote operation and releases it even on refusal. A busy lock
-refuses without disturbing its owner; retry only after the owner releases it.
-Only the registered `randy-mini` SSH alias and public WGSExtract repository are
-supported. SSH agent/port/environment forwarding is disabled; neither `gh` nor
-a GitHub token is installed or sent to the Mac.
+writer checks as local certification. It holds an `agent-coord` lock named for
+the selected alias. All controllers sharing a coordinator must use the same
+alias for a machine. SSH requires a known host key and noninteractive
+authentication. SSH agent, port and environment forwarding are disabled.
+Workers need neither `gh` nor a GitHub token; configure the worker checkout
+for public HTTPS, without credential-bearing remotes or extra Git hooks.
 
-The remote bootstrap fetches the exact head and base SHAs over public HTTPS,
-then creates/reuses `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a
-detached worktree. Branch names never enter a remote shell command. Prepare
-that worktree's locked Pixi environments explicitly as above; missing tools
-refuse rather than being installed. The worker runs `certify-setup` if retained
-wheels or reference inputs need preparation, then uses the same macOS ARM64
-selection and generic commands as local certification. `--platform-only` skips
-the generic layer when it already ran locally; `--generic-only` runs only generic.
-This explicit remote input-setup phase may download pinned archives; the test
-phase still uses `--no-install`.
+Prepare an isolated clone at `~/src/wgsextract-cli` on each registered machine
+and ensure Git and locked-compatible Pixi are on the SSH user's PATH. POSIX
+workers need `python3`; Windows uses OpenSSH and PowerShell with Python from
+`pixi install --locked -e dev` in that clone. No administrator access is
+needed. Check the worker's resource coordinator before preparing inputs. If
+`agent-coord` is present on the worker, the test invocation uses its resource
+lease and a worker-side `wgsextract-certification` lock. On hosts without it,
+coordinate explicitly with anyone else using the machine.
 
-The Mac must start setup with 30 GiB disk free. A one-second watchdog stops the
-worker and its child process group below 26 GiB, leaving headroom for the
-required 25 GiB reserve. The controller sends five-second heartbeats; a lost
-connection or 30 seconds without a heartbeat cancels the entire remote process
-group, including setup and test children. SIGTERM follows the refusal/cleanup
-path. A fresh SSH connection requests cancellation and confirms termination
-before the controller releases the lock, including after transport failures.
+The bootstrap fetches the exact pushed head and base SHAs over public HTTPS
+and creates `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a detached
+worktree if absent. Branch names never enter the remote command. If the run
+refuses for missing environments, explicitly install the locked environments
+in **that worktree**, as in one-time preparation above, then retry. The worker
+runs `certify-setup` if retained wheels or reference inputs need preparation,
+then executes the same native platform or generic commands as local
+certification. Remote input setup may download pinned archives; the test phase
+uses `--no-install`.
+
+The worker's filesystem must start with 30 GiB free. A one-second watchdog
+stops the worker below 26 GiB to preserve the 25 GiB reserve. Loss of SSH or
+30 seconds without a five-second controller heartbeat cancels setup and
+tests using a Windows kill-on-close Job Object or the worker's and observed
+descendants' POSIX process groups. A fresh SSH connection confirms cleanup
+before the controller unlocks the alias, including after a transport failure
+or SIGTERM.
 If that confirmation fails the lock deliberately remains held: retry once SSH
 is reachable, or confirm the matching control ID has a `.done` marker under
 `~/src/wgsextract-cli/out/certify/remote-control/` before manually unlocking.
 An abruptly killed controller (SIGKILL/power loss) likewise leaves its lock for
 recovery; never break it while the remote supervisor may still be running.
-No sudo, reboot, reverse SSH, or access to
-`/Users/randy` is needed. The worker checks platform, clean tree and HEAD before
-and after execution. Logs stream to lin-mid under
-`out/certify/<sha>/remote-randy-mini/<layer>/run.log`; only lin-mid publishes
-`local-ci/macos-arm64` and (if requested) `local-ci/generic`, with the machine
-name and full streamed-log SHA-256. Missing/mismatched results, disk refusals,
-SSH failures and interruptions produce `error`; verified failed-test reports
-produce `failure`. Run Linux certification separately on lin-mid.
-Whole-suite baseline savings are about 22 Linux runner-minutes plus 1–3 generic
-minutes (package smoke remains), or about 33 additional minutes for macOS ARM64.
+The worker checks the native platform, clean tree and HEAD before and after
+execution. Logs stream to `out/certify/<sha>/remote-<alias>/<layer>/run.log`;
+only the controller publishes `local-ci/<platform>` and (if requested)
+`local-ci/generic`, with the alias and full log SHA-256. Missing or mismatched
+results produce no successful status. Tests that actually fail produce
+`failure`; refusals and interruptions during a run produce `error`.
+
+Windows x64, macOS ARM64 and Linux ARM64 statuses can replace their routed
+suite or workflow-only smoke, not a different platform or the package and
+real-data benchmark smoke. Edits to remote certification route its supervisor
+regressions to native OS smoke jobs even without a product-code change.
+Optional-tool integrations also stay hosted: an OS
+certificate does not prove that the five separate optional environments and
+their no-skips tests ran. Windows imputation selections still run their
+hosted fresh locked install. Install Lab and merged-tree import checks still run
+when routed.
 Sparse selected PRs save less.
 
 ### Decisive test selection rollout
@@ -1030,9 +1072,19 @@ publish exact hit/miss and key in each job summary.
 
 Target steady state is roughly **6.6–7 GB**, leaving headroom for CodeQL-managed
 caches and lockfile rollover. This is a size plan, not an asserted measured
-post-deployment size. Old keys age out after seven days unused; no active caches
-are deleted by this PR. Monitor the API inventory after main seeds the new keys;
-old and new keys can temporarily coexist.
+post-deployment size. Old keys also age out after seven days unused.
+
+The **Actions cache hygiene** workflow runs daily on `main`. It removes a
+stale Pixi lock key only after the current lock has a cache for the same
+OS, architecture, Pixi version, scope, workspace path and cache archive version.
+It preserves equivalent checkout line endings. It keeps two recent
+CodeQL overlay bases for each configuration plus any for the exact main tip,
+and three passed-test cache generations for each suite on main and on each
+PR. Other PR-ref keys and unknown families remain untouched. Preview the plan
+in a manually dispatched `cache_hygiene.yml` run on `main`; set `apply` to delete.
+The summary records
+before and after repository cache bytes and the entries removed. Main moving
+during the cleanup stops further deletes.
 
 Only each OS matrix job seeds its CLI Pixi cache; other jobs restore that same
 set and install any missing optional environments without saving duplicate sets.
@@ -1160,7 +1212,14 @@ selection. If the cron run is delayed or missing, run
 `gh workflow run ubuntu_ci.yml --ref main` (leave `optional-tools-only` off).
 Both triggers run the full regular suite without skipping from either result
 cache. A passing run refreshes main's test cache and exports the Linux
-observation map. Dispatches on other refs cannot publish that map.
+observation map as a seven-day workflow artifact, separate from the
+evictable Actions cache. Dispatches on other refs cannot publish that map.
+The Ubuntu jobs and activation canary use a read-only Actions token to find
+the latest compatible artifact from a successful scheduled or full manual
+Ubuntu run on main. The artifact digest, run and attempt, source ancestry,
+Pixi lock, Python version, and 48-hour freshness limit must all match.
+Absent or incompatible artifacts leave the legacy selection in force.
+The merge queue does not change its test selection based on this map.
 Where the suite provides pytest node IDs, the failure replay reruns only those
 cases; a collection error instead replays its one test module. It checks
 first-parent trees in order since the last verified passing scheduled or full

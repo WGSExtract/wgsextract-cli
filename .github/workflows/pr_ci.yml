@@ -63,7 +63,9 @@ jobs:
       linux_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_x64 || 'false' }}
       linux_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_arm64 || 'false' }}
       macos_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.macos_arm64 || 'false' }}
-      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.windows_x64 || 'false' }}
+      # The Windows imputation lane includes a fresh locked install, not just
+      # testing the already-provisioned tool validated by local certification.
+      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && (steps.diff.outputs.windows_smoke == 'true' || (steps.diff.outputs.windows_tests != 'all' && !contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py'))) && steps.cert.outputs.windows_x64 || 'false' }}
       generic: ${{ steps.cert.outputs.generic }}
     steps:
       - name: Check out the trusted base verifier
@@ -142,15 +144,16 @@ jobs:
         with:
           environments: dev
           writer: "false"
-      - name: Restore Linux observations for the shard planner
+      - name: Fetch trusted Linux observations for the shard planner
         if: steps.shard-selector-setup.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 1
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: out/test-impact-map/linux.json.gz
-          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ci-impact-v2-linux-x64-
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_fetch
+          --repository "$GITHUB_REPOSITORY" --base HEAD^1
+          --output out/test-impact-map/linux.json.gz
       - name: Finalize the Linux pytest plan from one selector decision
         id: linux-shards
         if: steps.shard-selector-setup.outcome == 'success'
@@ -176,15 +179,16 @@ jobs:
         with:
           environments: dev
           writer: "false"
-      - name: Restore the Linux observation map for the activation canary
+      - name: Fetch the Linux observation artifact for the activation canary
         if: steps.selector-setup.outcome == 'success'
         continue-on-error: true
-        timeout-minutes: 1
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: out/test-impact-map/linux.json.gz
-          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ci-impact-v2-linux-x64-
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_fetch
+          --repository "$GITHUB_REPOSITORY" --base HEAD^1
+          --output out/test-impact-map/linux.json.gz
       - name: Verify fresh Linux selector evidence on this change
         if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.selector-setup.outcome != 'skipped' && steps.selector-setup.outcome != '' }}
         continue-on-error: true

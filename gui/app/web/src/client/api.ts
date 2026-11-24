@@ -8,6 +8,11 @@ type ApiOptions = {
 type TokenGlobal = typeof globalThis & { __GFC_API_TOKEN__?: unknown };
 
 let cachedToken: string | undefined;
+let workspaceMoveRevision: string | undefined;
+
+export function setWorkspaceMoveRevision(revision: string | undefined) {
+    workspaceMoveRevision = revision;
+}
 
 /** The per-launch API token: injected by the desktop shell, or embedded in index.html for the plain web server. */
 function apiToken(): string {
@@ -22,6 +27,7 @@ function apiToken(): string {
 
 function requestInit(options: ApiOptions): RequestInit {
     const headers: Record<string, string> = { "x-gfc-token": apiToken() };
+    if (workspaceMoveRevision !== undefined) headers["x-wgse-workspace-revision"] = workspaceMoveRevision;
     const method = options.method ?? (options.body === undefined ? "GET" : "POST");
     if (method !== "GET") {
         headers["content-type"] = "application/json";

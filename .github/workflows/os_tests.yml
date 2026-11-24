@@ -93,7 +93,7 @@ jobs:
           if [ "$GITHUB_REF" = refs/heads/main ]; then echo "trusted=true" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: ${{ ((inputs.os == 'ubuntu' && github.event_name == 'pull_request') || steps.backstop.outputs.trusted == 'true') && 128 || 1 }}
+          fetch-depth: ${{ ((inputs.os == 'ubuntu' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')) || steps.backstop.outputs.trusted == 'true') && 128 || 1 }}
           persist-credentials: false
       - name: Verify native runner architecture
         if: inputs.os == 'linux-arm64'
@@ -275,15 +275,18 @@ jobs:
           path: out/test-cache/pr
           key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-${{ github.run_id }}
           restore-keys: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-
-      - name: Restore main's Linux observation map
-        if: inputs.os == 'ubuntu' && github.event_name == 'pull_request' && strategy.job-total == 1
+      - name: Fetch main's Linux observation artifact
+        if: inputs.os == 'ubuntu' && strategy.job-total == 1 && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         continue-on-error: true
         timeout-minutes: 2
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: out/test-impact-map/linux.json.gz
-          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ci-impact-v2-linux-x64-
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_fetch
+          --repository "$GITHUB_REPOSITORY" --base "${QUEUE_BASE:-HEAD^1}"
+          --output out/test-impact-map/linux.json.gz
       - name: Run Tests
         id: regular-pytest
         shell: bash
@@ -460,14 +463,17 @@ jobs:
           --coverage-file out/.coverage --junit out/pytest.xml
           --output out/test-impact-map/linux.json.gz
           --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
-      - name: Save main's Linux observation map
+      - name: Publish main's Linux observation artifact
         if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.impact-map.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 2
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: linux-test-observations-${{ github.run_attempt }}
           path: out/test-impact-map/linux.json.gz
-          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
       - name: Export advisory Linux line observations
         id: line-map
         if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.impact-map.outcome == 'success' }}
@@ -589,12 +595,15 @@ jobs:
         with:
           environments: dev
           writer: "false"
-      - name: Restore main's Linux observation map
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: out/test-impact-map/linux.json.gz
-          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ci-impact-v2-linux-x64-
+      - name: Fetch trusted Linux observations for the shard receipt
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_fetch
+          --repository "$GITHUB_REPOSITORY" --base HEAD^1
+          --output out/test-impact-map/linux.json.gz
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: tests-ubuntu-*
