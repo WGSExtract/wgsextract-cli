@@ -214,27 +214,161 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
                 disabled=False,
             )
             assert newer_test in checked["selection"]
-            git("switch", "--detach", newer_base)
-            new_module = source.parent / "unobserved.py"
-            new_module.write_text("VALUE = 1\n")
-            git("add", str(new_module))
-            git("commit", "-qm", "Add package source outside the map")
-            drift_base = git("rev-parse", "HEAD")
-            source.write_text("def write(path):\n    path.write_text('after')\n")
-            git("commit", "-qam", "Edit writer against unobserved source drift")
-            assert plan(
-                tmp_path,
-                event="pull_request",
-                base=drift_base,
-                observations=map_path,
-                legacy=legacy,
-                disabled=False,
-            ) == {
-                "mode": "legacy-unobserved-source-drift",
-                "selection": ["tests/test_legacy.py"],
-            }
     else:
         assert run_gate() == {"mode": "universal-full", "selection": "all"}
+
+
+@pytest.mark.parametrize(
+    ("drift", "mode"),
+    [
+        ("added", "symbol"),
+        ("modified", "symbol"),
+        ("deleted", "symbol"),
+        ("no-importer", "legacy-unobserved-source-drift"),
+        ("dynamic", "legacy-unobserved-source-drift"),
+        ("relative-dynamic", "symbol"),
+        ("relative-dynamic-unknown", "legacy-unobserved-source-drift"),
+        ("builtin-fromlist", "symbol"),
+        ("builtin-fromlist-unknown", "legacy-unobserved-source-drift"),
+        ("unparsed", "legacy-unobserved-source-drift"),
+        ("initializer", "legacy-unobserved-source-drift"),
+        ("asset", "legacy-unobserved-source-drift"),
+        ("harness", "legacy-test-harness-changed-since-map"),
+        ("project-config", "legacy-test-harness-changed-since-map"),
+        ("run-45252205057", "legacy-test-harness-changed-since-map"),
+    ],
+)
+def test_1482_symbol_gate_resolves_importable_drift_but_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, drift: str, mode: str
+) -> None:
+    # Run 45252205057 tested e69ea2587 (PR #1470) against 64c2c6924,
+    # with a 7f81a036c map exported by nightly run 45233258080. Model its PR
+    # and the intervening native-aligner, OpenAPI and test helper changes.
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-c", "core.hooksPath=", *args], cwd=tmp_path, text=True
+        ).strip()
+
+    def write(path: str, text: str) -> None:
+        file = tmp_path / path
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(text, encoding="utf-8")
+
+    def commit() -> str:
+        git("add", ".")
+        git("commit", "-qm", "Tree under test")
+        return git("rev-parse", "HEAD")
+
+    git("init", "-qb", "main")
+    git("config", "user.email", "test@example.test")
+    git("config", "user.name", "Test")
+    git("config", "commit.gpgsign", "false")
+    source = "src/wgsextract_cli/core"
+    module = f"{source}/native_aligners.py"
+    launcher = "tests/fake_tool_launchers.py"
+    schema = "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+    workflow = ".github/workflows/install_lab.yml"
+    write(workflow, "name: before\n")
+    write("pixi.lock", "lock")
+    write("tests/test_github_actions_policy.py", "def test_workflows(): pass\n")
+    write("tests/test_legacy.py", "def test_unrelated(): pass\n")
+    caller = "tests/test_native_aligners_minimap2.py"
+    dynamic_caller = "tests/test_dynamic_importer.py"
+    write(caller, "from wgsextract_cli.core.backends import align\n")
+    write(
+        f"{source}/backends.py",
+        "from .native_aligners import align\n"
+        if drift not in {"added", "no-importer"}
+        else "def align(): pass\n",
+    )
+    if drift == "no-importer":
+        write(caller, 'EXPECTED_LOGGER = "wgsextract_cli.core.native_aligners"\n')
+    if drift in {"relative-dynamic", "relative-dynamic-unknown"}:
+        anchor = '"wgsextract_cli.core"' if drift == "relative-dynamic" else "package"
+        write(
+            dynamic_caller,
+            "from importlib import import_module as load\n"
+            "def call(package):\n"
+            f'    return load(name=".native_aligners", package={anchor})\n',
+        )
+    if drift in {"builtin-fromlist", "builtin-fromlist-unknown"}:
+        names = '["native_aligners"]' if drift == "builtin-fromlist" else "fromlist"
+        write(
+            dynamic_caller,
+            "def call(fromlist):\n"
+            f'    return __import__("wgsextract_cli.core", fromlist={names})\n',
+        )
+    if drift not in {"added", "no-importer"}:
+        write(module, "def align(): return 'old'\n")
+    if drift in {"asset", "run-45252205057"}:
+        write(schema, "{}\n")
+    if drift in {"harness", "run-45252205057"}:
+        write(launcher, "def launch(): return 'old'\n")
+    map_sha = commit()
+    if drift == "deleted":
+        (tmp_path / module).unlink()
+    else:
+        write(module, "def align(): return 'new'\n")
+    if drift == "added":
+        write(f"{source}/backends.py", "from .native_aligners import align\n")
+    if drift == "dynamic":
+        write(
+            module,
+            "from importlib import import_module as load\n"
+            "def align(name): return load(name)\n",
+        )
+    if drift == "unparsed":
+        write(module, "def align(!!!)\n")
+    if drift == "initializer":
+        write(f"{source}/__init__.py", "from .native_aligners import align\n")
+    if drift in {"asset", "run-45252205057"}:
+        write(schema, '{"info": {}}\n')
+    if drift in {"harness", "run-45252205057"}:
+        write(launcher, "def launch(): return 'new'\n")
+    if drift == "project-config":
+        write("pyproject.toml", "[tool.pytest.ini_options]\naddopts = '-x'\n")
+    base = commit()
+    write(workflow, "name: after\n")
+    commit()
+    map_path = tmp_path / "map.json.gz"
+    with gzip.open(map_path, "wt", encoding="utf-8") as stream:
+        json.dump(
+            {
+                "manifest": {
+                    "source_sha": map_sha,
+                    "schema": SCHEMA,
+                    "platform": "Linux",
+                    "machine": "x86_64",
+                    "python": platform.python_version(),
+                    "profile": "ubuntu-x64/all/skip-independent=false",
+                    "run_id": 45233258080,
+                    "attempt": 1,
+                    "lock_sha256": hashlib.sha256(b"lock").hexdigest(),
+                },
+                "observed_tests": ["tests/test_github_actions_policy.py"],
+                "modules": {},
+                "functions": {},
+                "symbol_reads": {},
+                "seconds": {},
+            },
+            stream,
+        )
+    monkeypatch.chdir(tmp_path)
+    result = plan(
+        tmp_path,
+        event="pull_request",
+        base=base,
+        observations=map_path,
+        legacy='["tests/test_legacy.py"]',
+        disabled=False,
+    )
+    selected = [caller, "tests/test_github_actions_policy.py"]
+    if drift in {"relative-dynamic", "builtin-fromlist"}:
+        selected.append(dynamic_caller)
+    assert result == {
+        "mode": mode,
+        "selection": sorted(selected) if mode == "symbol" else ["tests/test_legacy.py"],
+    }
 
 
 def test_backstop_requires_reproduction_after_a_clean_boundary() -> None:

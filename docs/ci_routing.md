@@ -711,6 +711,11 @@ merges still run the matching workflows. Coalescing limits each workflow's
 main-push backlog to its newest run; it does not promise a fixed saving in
 runner-minutes or a measured queue-wait target.
 
+Workflow completions and PR events carrying `ci-red-main` share the observer
+queue so they cannot update quarantine state concurrently. Other PR events do
+no work and use a separate group per run, so a full observer queue cannot
+block their startup. The weekly rollup keeps its own group.
+
 The failure observer treats a cancelled superseded main run as obsolete:
 no retry, red-main update or flake exemption from its partial passes.
 Cancelled runs do not replace the last conclusive main failure/success used
@@ -1119,7 +1124,13 @@ for newly started runs; rerun a job to apply it to an in-flight PR. A missing,
 stale (over 48 hours), incompatible or unavailable map retains the existing
 input and emits a warning. With a usable ancestor map, the gate adds tests
 introduced or changed since recording and observed users of intervening
-source changes; changed test helper inputs retain the existing selection.
+source changes. For an unobserved Python module, it also follows the static
+import closure at the map commit and tested base, so tests of newly added
+and deleted modules can still be selected. If an intervening module has no
+resolvable test importers, or the drift includes an unobserved package
+initializer, non-Python source, unresolved dynamic imports, interpreter
+configuration changes or changed test harness inputs, the gate keeps the
+legacy selection.
 The gate's own PR runs the same planner against
 its synthetic merge tree even if regular hosted pytest was certified. All
 four advisory reports remain available and distinguish legacy-selected,
