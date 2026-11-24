@@ -63,7 +63,7 @@ def observation_map(
     root: Path, file: Path, base: str
 ) -> tuple[dict[str, Any], str | None]:
     if not file.is_file():
-        return {}, "No trusted scheduled Linux observation map available."
+        return {}, "No trusted Linux observation map available."
     try:
         with gzip.open(file, "rt", encoding="utf-8") as stream:
             data = json.load(stream)

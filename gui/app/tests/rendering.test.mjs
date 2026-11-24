@@ -515,16 +515,36 @@ test("renders genome build values as colorful library table pills", async () => 
   Object.assign(state, createInitialState(), { labels: {} });
 
   assert.match(
-    renderRowCell({ id: "hg19", values: { build: "GRCh37 / hg19" } }, { id: "build", title: "Build" }),
-    /<span class="pill build primary">GRCh37 \/ hg19<\/span>/,
+    renderRowCell({ id: "hg19", values: { build: "37" } }, { id: "build", title: "Build" }),
+    /<span class="pill build primary">37<\/span>/,
   );
   assert.match(
-    renderRowCell({ id: "hg38", values: { build: "GRCh38 / hg38" } }, { id: "build", title: "Build" }),
-    /<span class="pill build success">GRCh38 \/ hg38<\/span>/,
+    renderRowCell({ id: "hg38", values: { build: "38" } }, { id: "build", title: "Build" }),
+    /<span class="pill build success">38<\/span>/,
   );
   assert.match(
-    renderRowCell({ id: "t2t", values: { build: "T2T / CHM13" } }, { id: "build", title: "Build" }),
-    /<span class="pill build warning">T2T \/ CHM13<\/span>/,
+    renderRowCell({ id: "both", values: { build: "37 / 38" } }, { id: "build", title: "Build" }),
+    /<span class="pill build secondary">37 \/ 38<\/span>/,
+  );
+  assert.match(
+    renderRowCell({ id: "hs37d5", values: { tag: "1K37g" } }, { id: "tag", title: "Tag" }),
+    /<span class="pill build primary">1K37g<\/span>/,
+  );
+  assert.match(
+    renderRowCell({ id: "hs38", values: { tag: "1K38h" } }, { id: "tag", title: "Tag" }),
+    /<span class="pill build success">1K38h<\/span>/,
+  );
+  assert.match(
+    renderRowCell({ id: "t2t", values: { tag: "T2T CHM13" } }, { id: "tag", title: "Tag" }),
+    /<span class="pill build warning">T2T CHM13<\/span>/,
+  );
+  assert.match(
+    renderRowCell({ id: "pr1", values: { tag: "T2T PR1" } }, { id: "tag", title: "Tag" }),
+    /<span class="pill build warning">T2T PR1<\/span>/,
+  );
+  assert.match(
+    renderRowCell({ id: "hg002", values: { tag: "T2T HG002" } }, { id: "tag", title: "Tag" }),
+    /<span class="pill build warning">T2T HG002<\/span>/,
   );
   assert.match(
     renderRowCell({ id: "custom", values: { build: "MyBuild42" } }, { id: "build", title: "Build" }),
@@ -534,6 +554,17 @@ test("renders genome build values as colorful library table pills", async () => 
     renderRowCell({ id: "empty", values: { build: "   " } }, { id: "build", title: "Build" }),
     "<div></div>",
   );
+  const namedWithTooltip = renderRowCell(
+    { id: "ybrowse", title: "yBrowse Y-SNPs", status: "installed", tooltip: "Source: https://ybrowse.org/\nLicense: CC BY-SA" },
+    { id: "name", title: "Resource" },
+  );
+  assert.match(namedWithTooltip, /class="row-name-tooltip" tabindex="0" data-tooltip="Source: https:\/\/ybrowse\.org\/&#10;|Source: https:\/\/ybrowse\.org\//);
+  assert.match(namedWithTooltip, />yBrowse Y-SNPs<\/span>/);
+  const namedWithoutTooltip = renderRowCell(
+    { id: "plain", title: "Plain Item" },
+    { id: "name", title: "Resource" },
+  );
+  assert.equal(namedWithoutTooltip, "<div>Plain Item</div>");
 });
 
 test("path text fields stay left-to-right in RTL locales", async () => {

@@ -565,3 +565,29 @@ def test_internal_steps_write_no_cards_when_config_asks_for_them(tmp_path):
     finally:
         config.set_config_path(None)
         config.reload_settings()
+
+
+@pytest.mark.parametrize(
+    ("fasta_name", "build", "expected_badge"),
+    [
+        ("hs37d5.fa.gz", "hg19", "hs37d5 [1K37g]"),
+        ("chm13v2.0.fa.gz", "t2t", "T2Tv20 [T2T CHM13]"),
+        ("hg01243_v3.fna.gz", None, "THG1243v3 [T2T PR1]"),
+        ("hg002xy_v2.7.fasta.gz", None, "THGv27 [T2T HG002]"),
+        ("custom.fa", "hg19", "GRCh37"),
+        ("custom.fa", "hg38", "GRCh38"),
+        ("custom.fa", "t2t", "T2T CHM13"),
+    ],
+)
+def test_card_shows_model_tag_or_major_build_for_reference(
+    tmp_path, fasta_name, build, expected_badge
+):
+    ref = tmp_path / fasta_name
+    ref.write_text(">chr1\nA\n")
+    result = results.CommandResult("info")
+    result.set_reference(ref, build)
+    html = result_card.render_card(result)
+    assert f"Reference</th><td>{fasta_name}" in html
+    assert expected_badge in html
+    assert f'{fasta_name} <span class="muted">hg19</span>' not in html
+    assert f'{fasta_name} <span class="muted">t2t</span>' not in html
