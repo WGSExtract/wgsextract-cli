@@ -86,7 +86,7 @@ def test_info_fast_mode(info_env):
     sample, _calls = info_env
     output = _run_info(sample, "info")
 
-    assert "Reference Genome            hg38 (Num), , 1 SNs" in output
+    assert "Reference Genome            hg38 [hg38h] (Num), , 1 SNs" in output
     assert "File Stats                  Sorted, Indexed, 50.0 GBs" in output
     assert "Avg Read Length             150 bp" in output
     assert "Avg Insert Size             300 bp" in output
@@ -99,7 +99,7 @@ def test_info_detailed_mode(info_env):
     sample, _calls = info_env
     output = _run_info(sample, "info", "--detailed")
 
-    assert "hg38 (Num), , 1 SNs" in output
+    assert "hg38 [hg38h] (Num), , 1 SNs" in output
     assert "150 bp" in output
     assert "Bio Gender                  Unknown" in output
     assert "Illumina NS 6000 (Dante)" in output
@@ -206,10 +206,12 @@ def test_cached_reference_from_older_detection_is_recomputed(info_env):
 
     output = _run_info(sample, "info", "--detailed")
 
-    assert "hg38 (Num), , 1 SNs" in output
+    assert "hg38 [hg38h] (Num), , 1 SNs" in output
     assert calls["run_body_sample"] == 2
     assert calls["parse_idxstats"] == 2
-    assert json.loads(cache_path.read_text())["ref_model_str"].startswith("hg38")
+    assert json.loads(cache_path.read_text())["ref_model_str"].startswith(
+        "hg38 [hg38h]"
+    )
 
 
 def test_reference_name_counts_only_for_a_fasta_the_user_named(info_env, monkeypatch):
@@ -228,7 +230,7 @@ def test_reference_name_counts_only_for_a_fasta_the_user_named(info_env, monkeyp
     fasta = sample.parent / "hg38.fa.gz"
     fasta.write_bytes(b"")
     output = _run_info(sample, "info", "--ref", str(fasta))
-    assert "hg38, , 1 SNs" in output
+    assert "GRCh38, , 1 SNs" in output
 
 
 def test_json_reports_the_library_resolved_reference(info_env, monkeypatch, capsys):

@@ -1,4 +1,6 @@
+import re
 import shutil
+import subprocess
 from functools import lru_cache
 from pathlib import Path
 
@@ -6,6 +8,7 @@ from wgsextract_cli.core import runtime
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.pixi_tools import (
     _host_pixi_tool_command,
+    _join_command,
     is_pixi_tool_command,
     is_pixi_tool_path,
     locked_packages,
@@ -21,6 +24,7 @@ from wgsextract_cli.core.tool_catalog import (
     optional_dependency_tools,
     required_dependency_tools,
 )
+from wgsextract_cli.core.tool_commands import _tool_command_parts
 
 __all__ = [
     "MANDATORY_TOOLS",
@@ -91,10 +95,114 @@ def clear_tool_caches() -> None:
     clear_remote_input_cache()
 
 
+def managed_jar_dir() -> Path:
+    """Writable directory where CLI-installed optional JAR tools are stored."""
+    from wgsextract_cli.core.config import settings
+
+    configured = settings.get("jar_directory")
+    if isinstance(configured, str) and configured.strip():
+        return Path(expand_path(configured.strip()))
+    reflib = settings.get("reference_library")
+    if isinstance(reflib, str) and reflib.strip():
+        return Path(expand_path(reflib.strip()), "jartools")
+    return runtime.app_data_root() / "jartools"
+
+
+def find_discvrseq_jar(explicit: str | None = None) -> str | None:
+    """Locate DISCVRseq.jar from explicit path, config discvrseq_jar, or jartools folders."""
+    from wgsextract_cli.core.config import settings
+
+    if explicit and explicit.strip():
+        resolved = Path(expand_path(explicit.strip()))
+        return str(resolved) if resolved.is_file() else None
+    configured = settings.get("discvrseq_jar")
+    if isinstance(configured, str) and configured.strip():
+        resolved = Path(expand_path(configured.strip()))
+        if resolved.is_file():
+            return str(resolved)
+    search_dirs: list[Path] = []
+    for folder in (
+        managed_jar_dir(),
+        Path(get_jar_dir()),
+        runtime.app_data_root() / "jartools",
+    ):
+        if folder not in search_dirs:
+            search_dirs.append(folder)
+    for folder in search_dirs:
+        if not folder.is_dir():
+            continue
+        for entry in sorted(folder.iterdir()):
+            if (
+                entry.is_file()
+                and entry.name.lower().startswith("discvrseq")
+                and entry.name.lower().endswith(".jar")
+            ):
+                return str(entry)
+    return None
+
+
+_JAVA17_RE = re.compile(r'(?:version\s+"|openjdk\s+)17(?:\.|\b)', re.IGNORECASE)
+
+
+def _is_java17(java_path: str) -> bool:
+    try:
+        res = subprocess.run(
+            [java_path, "-version"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    combined = f"{res.stdout}\n{res.stderr}"
+    return bool(_JAVA17_RE.search(combined))
+
+
 @lru_cache(maxsize=256)
 def _resolve_tool_path(tool: str) -> str | None:
+    if tool == "java17":
+        from wgsextract_cli.core.config import settings
+
+        configured = settings.get("java17_executable")
+        if isinstance(configured, str) and configured.strip():
+            resolved = Path(expand_path(configured.strip()))
+            if resolved.is_file():
+                return str(resolved)
+        pixi_java17 = _host_pixi_tool_command("java17")
+        if pixi_java17:
+            return pixi_java17
+        on_path = _which_tool("java")
+        if on_path and _is_java17(on_path):
+            return on_path
+        return None
     if tool in ENV_ONLY_TOOLS:
         return _host_pixi_tool_command(tool)
+    if tool == "discvrseq":
+        on_path = _which_tool("discvrseq")
+        if on_path:
+            return on_path
+        jar = find_discvrseq_jar()
+        java = (
+            (_resolve_tool_path("java17") or _resolve_tool_path("java"))
+            if jar
+            else None
+        )
+        if jar and java:
+            return _join_command([*_tool_command_parts(java), "-jar", jar])
+        return None
+    if tool == "granite":
+        from wgsextract_cli.core.config import settings
+
+        configured = settings.get("granite_executable")
+        if isinstance(configured, str) and configured.strip():
+            resolved = Path(expand_path(configured.strip()))
+            if resolved.is_file():
+                return str(resolved)
+    if tool == "multiqc":
+        return _host_pixi_tool_command("multiqc") or _which_tool("multiqc")
     return _which_tool(tool) or _host_pixi_tool_command(tool)
 
 
