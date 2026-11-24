@@ -297,9 +297,13 @@ the same typed Params definitions as per-command CLI help, not the compact
 help index, so their invocation schemas remain complete.
 
 Server response envelopes are writer-used TypedDicts in `server/transport.py`.
-`scripts/gen_server_contracts.py` generates the committed response JSON Schema
-bundle, OpenAPI 3.1 document and raw GUI TypeScript transport declarations;
-`--check` detects drift, and `just regen` updates all three. Keep GUI presentation
+`scripts/gen_server_contracts.py --check` checks the committed response JSON
+Schema bundle and result/report writer types. OpenAPI 3.1 and the GUI transport
+types are not committed. CLI developer setup builds OpenAPI under
+`out/contracts/` and `just regen` rebuilds both. The GUI build regenerates the
+transport declarations from OpenAPI before compiling. Wheel and sdist builds
+include the generated JSON under the CLI's schema assets. `wgsextract serve --openapi`
+generates the same default document without reading a file. Keep GUI presentation
 types and tolerant parsing adapters handwritten: they are not wire documents.
 Loaded result/report documents remain opaque in the server spec until their
 own writer models drive their public schemas; a schema ID check is not full

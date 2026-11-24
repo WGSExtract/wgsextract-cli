@@ -60,6 +60,7 @@ jobs:
         uses: ./.github/actions/setup-gui
         with:
           rust: "true"
+          cli-python: "true"
 
       - name: Restore Rust dependencies
         uses: ./.github/actions/rust-cache
