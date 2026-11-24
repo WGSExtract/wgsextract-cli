@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 const { moveWorkspace } = await import("../dist/web/src/server/workspace-move.js");
+const { workspaceActivityDirectory } = await import("../dist/web/src/server/workspace-activity.js");
 const { parseFlatToml } = await import("../dist/shared/rendering.js");
 
 // A bundle with a users workspace and a settings editor whose folders the app can move, in a throwaway home folder.
@@ -36,14 +37,13 @@ export function dataEnvironment(root) {
   };
 }
 
-export async function fixture(t, fixtureManifest = manifest) {
-  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-workspace-location-"));
+export function isolateWorkspaceEnvironment(t, root) {
   const original = {};
   for (const [key, value] of Object.entries(dataEnvironment(root))) {
     original[key] = process.env[key];
     process.env[key] = value;
   }
-  t.after(async () => {
+  t.after(() => {
     for (const [key, value] of Object.entries(original)) {
       if (value === undefined) {
         delete process.env[key];
@@ -51,8 +51,14 @@ export async function fixture(t, fixtureManifest = manifest) {
         process.env[key] = value;
       }
     }
-    await rm(root, { force: true, recursive: true });
   });
+}
+
+export async function fixture(t, fixtureManifest = manifest) {
+  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-workspace-location-"));
+  isolateWorkspaceEnvironment(t, root);
+  t.after(() => rm(root, { force: true, recursive: true }));
+  await mkdir(workspaceActivityDirectory(), { recursive: true });
   const source = path.join(root, "source");
   await mkdir(source, { recursive: true });
   await writeFile(path.join(source, "manifest.json"), JSON.stringify(fixtureManifest));
