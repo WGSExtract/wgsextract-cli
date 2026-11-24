@@ -383,9 +383,17 @@ def test_1357_invalid_cds_bounds_do_not_hide_unread_exon(
 
 
 @needs_htslib
-@pytest.mark.parametrize("gt,dp,gq", [("0/1", 1, 50), ("0/1", 30, 1), ("1/2", 30, 50)])
+@pytest.mark.parametrize(
+    "alt,gt,dp,gq",
+    [
+        ("T", "0/1", 1, 50),
+        ("T", "0/1", 30, 1),
+        ("T", "1/2", 30, 50),
+        ("N", "0/1", 30, 50),
+    ],
+)
 def test_1357_unresolved_or_low_quality_alt_is_not_readable(
-    tmp_path: Path, gt: str, dp: int, gq: int
+    tmp_path: Path, alt: str, gt: str, dp: int, gq: int
 ) -> None:
     gvcf = tmp_path / "low_alt.g.vcf"
     text = _GQ_GVCF.replace(
@@ -394,7 +402,7 @@ def test_1357_unresolved_or_low_quality_alt_is_not_readable(
     ).replace(
         "END=1000\tGT:GQ:MIN_DP\t0/0:50:30",
         "END=499\tGT:GQ:MIN_DP\t0/0:50:30\n"
-        f"chr7\t500\t.\tA\tT,<NON_REF>\t50\tPASS\t.\tGT:GQ:DP\t{gt}:{gq}:{dp}\n"
+        f"chr7\t500\t.\tA\t{alt},<NON_REF>\t50\tPASS\t.\tGT:GQ:DP\t{gt}:{gq}:{dp}\n"
         "chr7\t501\t.\tA\t<NON_REF>\t.\t.\tEND=1000\tGT:GQ:MIN_DP\t0/0:50:30",
     )
     gvcf.write_text(text, encoding="utf-8", newline="\n")
@@ -410,6 +418,27 @@ def test_1357_unresolved_or_low_quality_alt_is_not_readable(
         "low_quality_variant",
         "1",
     )
+
+
+@needs_htslib
+def test_1357_multisample_gvcf_does_not_silently_assess_first_sample(
+    tmp_path: Path,
+) -> None:
+    gvcf = tmp_path / "multisample.g.vcf"
+    text = _GQ_GVCF.replace("\tFORMAT\tS\n", "\tFORMAT\tS\tOTHER\n")
+    text = text.replace("\t0/0:50:30\n", "\t0/0:50:30\t./.:.:.\n").replace(
+        "\t0/0:5:30\n", "\t0/0:5:30\t./.:.:.\n"
+    )
+    gvcf.write_text(text, encoding="utf-8", newline="\n")
+    result = api.vcf.callability(
+        api.VcfCallabilityParams(
+            vcf_input=Path(bgzip_index(gvcf)), exons=_model(tmp_path / "exons.tsv"),
+            gene_list=str(_genes(tmp_path)), outdir=tmp_path,
+        ),
+        check=False,
+    )  # fmt: skip
+    assert result.exit_code != 0
+    assert "exactly one sample" in _error(result)
 
 
 @needs_htslib

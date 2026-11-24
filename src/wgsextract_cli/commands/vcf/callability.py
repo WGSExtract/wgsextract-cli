@@ -34,9 +34,14 @@ def _header(vcf: str) -> str:
     return run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
 
 
-def _first_sample(header: str) -> str | None:
+def _single_sample(vcf: str, header: str) -> str:
     columns = header.rstrip("\n").rsplit("\n", 1)[-1].split("\t")
-    return columns[9] if len(columns) > 9 else None
+    if len(columns) != 10 or not columns[9]:
+        raise UsageError(
+            f"{vcf} must contain exactly one sample for exon callability. "
+            "Select one sample into its own gVCF before assessing exons."
+        )
+    return columns[9]
 
 
 def _reference_file(header: str) -> str | None:
@@ -89,7 +94,9 @@ def run_callability(params: VcfCallabilityParams) -> None:
     result.expect_output(outdir / JSON_NAME)
     vcf_header = _header(vcf)
     gvcf = _find_gvcf(vcf, vcf_header)
-    sample = _first_sample(vcf_header)
+    sample = _single_sample(vcf, vcf_header)
+    if gvcf != vcf and _single_sample(gvcf, _header(gvcf)) != sample:
+        raise UsageError(f"The gVCF {gvcf} holds another sample than {vcf} ({sample}).")
     described, symbols = _genes(params.gene_list)
     thresholds = thresholds_from(params)
     with tempfile.TemporaryDirectory(

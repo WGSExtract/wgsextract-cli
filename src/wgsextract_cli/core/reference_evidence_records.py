@@ -157,8 +157,8 @@ def record_state(
             or (model == GQ and (gq is None or gq < thresholds.min_gq))
             or any(a not in carried and a != "0" for a in alleles)
             or any(
-                re.fullmatch(r"[ACGTN]+", alts[int(a) - 1], re.IGNORECASE) is None
-                for a in carried
+                re.fullmatch(r"[ACGT]+", allele, re.IGNORECASE) is None
+                for allele in (fields[3], *(alts[int(a) - 1] for a in carried))
             )
         ):
             return State.LOW_QUALITY_VARIANT

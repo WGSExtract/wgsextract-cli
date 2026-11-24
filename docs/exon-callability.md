@@ -32,11 +32,12 @@ wgsextract report --input sample.cram
 
 ## Inputs
 
-- **A gVCF.** `--vcf-input` is a gVCF, or a VCF whose caller also wrote one
+- **A single-sample gVCF.** `--vcf-input` is a gVCF, or a VCF whose caller also wrote one
   (`--reference-evidence gvcf` with `vcf snp`, `vcf indel`, `vcf gatk`,
   `vcf deepvariant` or `vcf clair3`), found through its result manifest. A VCF
   without one stops with the command that makes it: a variant-only VCF can't
-  tell a confident reference base from one nobody read. The caller's
+  tell a confident reference base from one nobody read. Both files must name
+  exactly one sample and agree on its name. The caller's
   `--region` limits what was assessed; exons outside it are `not_run`.
 - **A gene list.** `--gene-list` takes the report's lists (default
   `acmg-sf-3.3`, or config `report_gene_list`) or a TSV/BED of symbols. Only
