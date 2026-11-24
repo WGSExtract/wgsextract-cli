@@ -522,12 +522,14 @@ class ReferenceEvidence:
         *,
         records: Iterator[list[str]] | None = None,
         ploidy: int | None = None,
+        stream_complete: bool = False,
     ) -> Iterator[Span]:
         """Every base of ``regions`` (default: every contig) in its state, as
         maximal spans in contig order. Bases no record covers are uncovered
         where the caller assessed them and not assessed elsewhere.
         ``records`` supplies a sorted, already-open single-sample stream;
-        missing records remain not assessed. ``ploidy`` overrides GT encoding."""
+        missing records remain not assessed unless ``stream_complete`` covers
+        every requested interval. ``ploidy`` overrides GT encoding."""
         order = {name: index for index, name in enumerate(self.lengths)}
         requested = (
             regions
@@ -561,7 +563,9 @@ class ReferenceEvidence:
                     if self.provenance
                     else None
                 ),
-                missing_state=State.NOT_ASSESSED,
+                missing_state=State.UNCOVERED
+                if stream_complete
+                else State.NOT_ASSESSED,
             )
         )
         spans: Iterator[Span] = observed

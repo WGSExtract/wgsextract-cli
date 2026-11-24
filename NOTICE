@@ -74,6 +74,15 @@ yfull-ybrowse-positions (marker positions derived from YBrowse, CC-BY-SA
 Thomas Krahn YSEQ (2022), no CC-BY-SA version stated). Each module carries its own licence file and
 SHA-256 pins; neither licence applies to this program.
 
+`typing paraphase` invokes the optional Paraphase 3.3.1 package from
+Pacific Biosciences, licensed BSD-3-Clause-Clear:
+https://github.com/PacificBiosciences/paraphase/blob/v3.3.1/LICENSE
+The CLI's locus-name list comes from that release's public locus catalog.
+Paraphase 3.3.2 and later instead use the PacBio Software License Agreement;
+WGS Extract does not package those versions. A user-supplied executable under
+that agreement is an explicit opt-in for PacBio-instrument data only:
+https://github.com/PacificBiosciences/paraphase/blob/v4.1.0/LICENSE.md
+
 Please cite:
 Ralf A, Montiel González D, Zhong K, Kayser M. Yleaf: Software for Human
 Y-Chromosomal Haplogroup Inference from Next-Generation Sequencing Data.

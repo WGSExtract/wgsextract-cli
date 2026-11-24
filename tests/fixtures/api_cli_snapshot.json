@@ -7698,8 +7698,882 @@
     "prog": "wgsextract benchmark"
    }
   },
+  "cohort": {
+   "help": "usage: wgsextract cohort [-h] <command> ...\n\npositional arguments:\n  <command>\n    summarize  Summarize autosomal SNVs from a local cohort manifest and matched gVCFs.\n\noptions:\n  -h, --help   show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "parser": {
+    "actions": [
+     {
+      "choices": null,
+      "class": "_HelpAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help",
+      "exclusive_group": null,
+      "help": "show this help message and exit",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": [
+       "summarize"
+      ],
+      "help": [
+       [
+        "summarize",
+        "Summarize autosomal SNVs from a local cohort manifest and matched gVCFs."
+       ]
+      ],
+      "required": true,
+      "subparsers": "cohort_cmd"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "input",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--input",
+       "-i"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "outdir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--outdir",
+       "-o"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "genome",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--genome"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "ref",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--ref"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "threads",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "N|auto",
+      "nargs": null,
+      "option_strings": [
+       "--threads",
+       "-t"
+      ],
+      "required": false,
+      "type": "_thread_count_arg"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "memory",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--memory",
+       "-m"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "tmp_dir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "DIRECTORY",
+      "nargs": null,
+      "option_strings": [
+       "--tmp-dir"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "json",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "quiet",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--quiet"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "debug",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--debug"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "log_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--log-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "keep_awake",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--keep-awake",
+       "--no-keep-awake"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "atomic_output",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--atomic-output",
+       "--no-atomic-output"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "config_path",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--config"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_result_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "parent_pid",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--parent-pid"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_HelpAllAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help_all",
+      "exclusive_group": null,
+      "help": "Show this help with the advanced options too, and exit.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--help-all"
+      ],
+      "required": false,
+      "type": null
+     }
+    ],
+    "defaults": {
+     "_command": "cohort"
+    },
+    "description": null,
+    "formatter_class": "HelpFormatter",
+    "prog": "wgsextract cohort"
+   }
+  },
+  "cohort summarize": {
+   "help": "usage: wgsextract cohort summarize [-h] [--region REGION] [--bed BED] [--min-depth MIN_DEPTH]\n                                   [--min-gq MIN_GQ] [--format {tsv,parquet}]\n                                   [--include-identifiers]\n                                   MANIFEST\n\npositional arguments:\n  MANIFEST              Local cohort input manifest (wgsextract.cohort/1).\n\noptions:\n  -h, --help            show this help message and exit\n  --region REGION       Limit to an autosomal contig, interval or comma-separated list.\n  --bed BED             Limit to autosomal intervals from a local BED.\n  --min-depth MIN_DEPTH\n                        Minimum DP (block MIN_DP).\n  --min-gq MIN_GQ       Minimum GQ for callers that provide it.\n  --format {tsv,parquet}\n                        Table format: tsv or parquet (needs pyarrow).\n  --include-identifiers\n                        Also write a private participant/QC join with source paths and names.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract cohort summarize cohort.json --region chr22 --outdir summary\n\noutputs (in the output directory unless noted):\n  cohort.variants.tsv (or .parquet) and a result manifest; a private\n  participant join only with --include-identifiers.\n\nneeds:\n  bcftools; minutes on a 30x genome.\n",
+   "parser": {
+    "actions": [
+     {
+      "choices": null,
+      "class": "_HelpAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help",
+      "exclusive_group": null,
+      "help": "show this help message and exit",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "input",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--input",
+       "-i"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "outdir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--outdir",
+       "-o"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "genome",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--genome"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "ref",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--ref"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "threads",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "N|auto",
+      "nargs": null,
+      "option_strings": [
+       "--threads",
+       "-t"
+      ],
+      "required": false,
+      "type": "_thread_count_arg"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "memory",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--memory",
+       "-m"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "tmp_dir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "DIRECTORY",
+      "nargs": null,
+      "option_strings": [
+       "--tmp-dir"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "json",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "quiet",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--quiet"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "debug",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--debug"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "log_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--log-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "keep_awake",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--keep-awake",
+       "--no-keep-awake"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "atomic_output",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--atomic-output",
+       "--no-atomic-output"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "config_path",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--config"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_result_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "parent_pid",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--parent-pid"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "cohort_manifest",
+      "exclusive_group": null,
+      "help": "Local cohort input manifest (wgsextract.cohort/1).",
+      "metavar": "MANIFEST",
+      "nargs": null,
+      "option_strings": [],
+      "required": true,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "region",
+      "exclusive_group": null,
+      "help": "Limit to an autosomal contig, interval or comma-separated list.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--region"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "bed",
+      "exclusive_group": null,
+      "help": "Limit to autosomal intervals from a local BED.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--bed"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 10,
+      "dest": "min_depth",
+      "exclusive_group": null,
+      "help": "Minimum DP (block MIN_DP).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--min-depth"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 20,
+      "dest": "min_gq",
+      "exclusive_group": null,
+      "help": "Minimum GQ for callers that provide it.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--min-gq"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": [
+       "tsv",
+       "parquet"
+      ],
+      "class": "_StoreAction",
+      "const": null,
+      "default": "tsv",
+      "dest": "table_format",
+      "exclusive_group": null,
+      "help": "Table format: tsv or parquet (needs pyarrow).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--format"
+      ],
+      "required": false,
+      "type": "table_format_type.<locals>.table_format"
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "include_identifiers",
+      "exclusive_group": null,
+      "help": "Also write a private participant/QC join with source paths and names.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--include-identifiers"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_HelpAllAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help_all",
+      "exclusive_group": null,
+      "help": "Show this help with the advanced options too, and exit.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--help-all"
+      ],
+      "required": false,
+      "type": null
+     }
+    ],
+    "defaults": {
+     "_command": "cohort summarize",
+     "_private_provenance": true,
+     "func": "run_summary"
+    },
+    "description": null,
+    "formatter_class": "HelpFormatter",
+    "prog": "wgsextract cohort summarize"
+   }
+  },
   "deps": {
-   "help": "usage: wgsextract deps [-h] <command> ...\n\npositional arguments:\n  <command>\n    check      Verify that all required bioinformatics tools (samtools, bcftools, etc.) are\n               installed and accessible in your system path.\n    list       List every mandatory and optional tool with its status, and whether 'deps install'\n               or 'deps uninstall' can act on it.\n    install    Download and install the Pixi environment that provides an optional tool (e.g.\n               gatk).\n    uninstall  Remove the Pixi environment that provides an optional tool, and the other tools in\n               it.\n\noptions:\n  -h, --help   show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract deps [-h] <command> ...\n\npositional arguments:\n  <command>\n    check      Verify that all required bioinformatics tools (samtools, bcftools, etc.) are\n               installed and accessible in your system path.\n    list       List every mandatory and optional tool with its status, and whether 'deps install'\n               or 'deps uninstall' can act on it.\n    ready      Report whether a command line can run on this computer without the network: its\n               tools, images, GPUs, model weights, input, reference genome and indexes, checked\n               offline without installing or downloading anything.\n    install    Download and install the Pixi environment that provides an optional tool (e.g.\n               gatk).\n    uninstall  Remove the Pixi environment that provides an optional tool, and the other tools in\n               it.\n\noptions:\n  -h, --help   show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -7723,6 +8597,7 @@
       "choices": [
        "check",
        "list",
+       "ready",
        "install",
        "uninstall"
       ],
@@ -7734,6 +8609,10 @@
        [
         "list",
         "List every mandatory and optional tool with its status, and whether 'deps install' or 'deps uninstall' can act on it."
+       ],
+       [
+        "ready",
+        "Report whether a command line can run on this computer without the network: its tools, images, GPUs, model weights, input, reference genome and indexes, checked offline without installing or downloading anything."
        ],
        [
         "install",
@@ -39711,7 +40590,7 @@
    }
   },
   "typing": {
-   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6      Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius,\n                and write a PharmCAT outside call. Cyrius's license allows noncommercial use only,\n                and no distribution or modification.\n    hla         Call HLA class I and II alleles with T1K from reads in the MHC, and write a\n                PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    smn         Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n                SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str         Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n                ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n                outside STRchive's normal range.\n    target-cnv  Screen BED targets for GC-normalized copy number from short-read WGS. Uses a\n                matching indexed FASTA; masked targets are withheld except clear calls at curated\n                deletion loci.\n\noptions:\n  -h, --help    show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract typing [-h] <command> ...\n\npositional arguments:\n  <command>\n    cyp2d6      Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius,\n                and write a PharmCAT outside call. Cyrius's license allows noncommercial use only,\n                and no distribution or modification.\n    hla         Call HLA class I and II alleles with T1K from reads in the MHC, and write a\n                PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.\n    paraphase   Type paralogous loci and copy number with Paraphase from PacBio HiFi or\n                experimental, unvalidated ONT reads.\n    smn         Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one\n                SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.\n    str         Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72,\n                ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those\n                outside STRchive's normal range.\n    target-cnv  Screen BED targets for GC-normalized copy number from short-read WGS. Uses a\n                matching indexed FASTA; masked targets are withheld except clear calls at curated\n                deletion loci.\n\noptions:\n  -h, --help    show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -39735,6 +40614,7 @@
       "choices": [
        "cyp2d6",
        "hla",
+       "paraphase",
        "smn",
        "str",
        "target-cnv"
@@ -39747,6 +40627,10 @@
        [
         "hla",
         "Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB."
+       ],
+       [
+        "paraphase",
+        "Type paralogous loci and copy number with Paraphase from PacBio HiFi or experimental, unvalidated ONT reads."
        ],
        [
         "smn",
@@ -41736,7 +42620,7 @@
    }
   },
   "vcf": {
-   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    call            Call several variant types in one run: SNPs and InDels (bcftools), SVs and\n                    CNVs, each into its own VCF, and with --merge also into one combined VCF.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    sv-freq         Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    info            Quick summary of a VCF, gVCF or BCF: reference build/model, samples, format,\n                    and record counts.\n    variantqc       Run DISCVRSeq VariantQC to generate an interactive HTML VCF quality report.\n    granite-qc      Run granite qcVCF (dbmi-bgm/granite) for single-sample or family VCF quality\n                    metrics.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    impute          (advanced) Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-\n                    coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle. Optional;\n                    Linux x64, Windows x64 and Intel macOS, `pixi install -e imputation`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    acmg            (advanced) Research-only ACMG/AMP classes with fastVEP (opt-in).\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    call            Call several variant types in one run: SNPs and InDels (bcftools), SVs and\n                    CNVs, each into its own VCF, and with --merge also into one combined VCF.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    prepare         Repair a VCF from a sequencing service so other tools accept it: BGZF\n                    compression, sorting, contig names and header lines, and a fresh index;\n                    optionally split multiallelics and left-align indels. Reports every change.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    sv-freq         Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    info            Quick summary of a VCF, gVCF or BCF: reference build/model, samples, format,\n                    and record counts.\n    variantqc       Run DISCVRSeq VariantQC to generate an interactive HTML VCF quality report.\n    granite-qc      Run granite qcVCF (dbmi-bgm/granite) for single-sample or family VCF quality\n                    metrics.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    impute          (advanced) Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-\n                    coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle. Optional;\n                    Linux x64, Windows x64 and Intel macOS, `pixi install -e imputation`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    acmg            (advanced) Research-only ACMG/AMP classes with fastVEP (opt-in).\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -41764,6 +42648,7 @@
        "annotate",
        "filter",
        "table",
+       "prepare",
        "to-fasta",
        "trio",
        "cnv",
@@ -41815,6 +42700,10 @@
        [
         "table",
         "Export variants and their annotations (gene, consequence, ClinVar, gnomAD, genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and an SQLite database to query."
+       ],
+       [
+        "prepare",
+        "Repair a VCF from a sequencing service so other tools accept it: BGZF compression, sorting, contig names and header lines, and a fresh index; optionally split multiallelics and left-align indels. Reports every change."
        ],
        [
         "clinvar",
