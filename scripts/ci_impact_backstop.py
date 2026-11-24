@@ -103,12 +103,16 @@ def git(root: Path, *args: str) -> str:
 
 
 def green_nightly(gh: GitHub, root: Path, run: int, head: str) -> str | None:
-    runs = gh.api(
-        "GET",
-        "actions/workflows/ubuntu_ci.yml/runs?event=schedule&branch=main&per_page=15",
-    )
+    runs = [
+        candidate
+        for event in ("schedule", "workflow_dispatch")
+        for candidate in gh.api(
+            "GET",
+            f"actions/workflows/ubuntu_ci.yml/runs?event={event}&branch=main&per_page=15",
+        )["workflow_runs"]
+    ]
     ancestry = set(git(root, "rev-list", "--first-parent", head).splitlines())
-    for candidate in runs["workflow_runs"]:
+    for candidate in sorted(runs, key=lambda row: row["id"], reverse=True):
         sha = candidate["head_sha"]
         if candidate["id"] >= run or sha not in ancestry or sha == head:
             continue
@@ -116,9 +120,19 @@ def green_nightly(gh: GitHub, root: Path, run: int, head: str) -> str | None:
             f"actions/runs/{int(candidate['id'])}/jobs?filter=latest", "jobs"
         )
         for job in jobs:
-            if job["name"] == "test-ubuntu / all" and any(
-                step["name"] == "Run Tests" and step["conclusion"] == "success"
+            passed = {
+                step["name"]
                 for step in job.get("steps", ())
+                if step["conclusion"] == "success"
+            }
+            if (
+                job["name"] == "test-ubuntu / all"
+                and "Run Tests" in passed
+                and (
+                    candidate["event"] == "schedule"
+                    # Older dispatches ran pytest but did not collect observations.
+                    or "Export Linux test observations" in passed
+                )
             ):
                 return str(sha)
     return None

@@ -80,6 +80,10 @@
           "enum": ["file", "directory", "bundle"],
           "description": "Explicit native picker kind, independent of translated labels."
         },
+        "multiple": {
+          "type": "boolean",
+          "description": "Allow selecting multiple files for a path control (newline-separated). Single-file placeholders resolve to the first chosen path; {{id.all}} and {{id.extra}} expand to all or remaining paths."
+        },
         "placeholder": { "type": "string" },
         "tooltip": { "type": "string" },
         "emptyText": { "type": "string", "description": "Dropdown text shown, disabled, when its data source returns no options." },
@@ -334,7 +338,11 @@
     },
     "action": {
       "type": "object",
-      "required": ["id", "title", "command"],
+      "required": ["id", "title"],
+      "oneOf": [
+        { "required": ["command"] },
+        { "required": ["viewerInput"] }
+      ],
       "additionalProperties": false,
       "properties": {
         "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
@@ -346,6 +354,16 @@
         "iconName": { "type": "string" },
         "textIcon": { "$ref": "#/$defs/textIcon" },
         "iconOnly": { "type": "boolean", "default": false },
+        "row": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional 1-based button row inside the section's actions area."
+        },
+        "viewerInput": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Control id whose selected alignment or variant file opens in the built-in genome viewer instead of running a command."
+        },
         "estimatedDurationMinutes": {
           "type": "integer",
           "minimum": 0,

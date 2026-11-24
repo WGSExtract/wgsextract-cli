@@ -1,6 +1,6 @@
 import { api } from "./api.js";
 import { bindGenomeViewerEvents } from "./genome-viewer-entry.js";
-import { configValueKey } from "../../../shared/rendering.js";
+import { configValueKey, splitPathList } from "../../../shared/rendering.js";
 import { installGlobalBundleLoadHandler, loadBundleFromPicker, type Bootstrap } from "./bundle-loading.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
@@ -113,8 +113,20 @@ export function bindEvents(bootstrap: Bootstrap) {
     });
     elements<HTMLInputElement | HTMLSelectElement>("[data-field-id]").forEach((input) => {
         input.addEventListener("change", async () => {
-            const control = findControl(requiredDataset(input, "fieldId"));
-            await fieldValueChanged(input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value, control);
+            const id = requiredDataset(input, "fieldId");
+            const control = findControl(id);
+            let nextValue = input.dataset.toggle != null ? String((input as HTMLInputElement).checked) : input.value;
+            if (control?.kind === "path" && control.multiple === true) {
+                const existing = splitPathList(state.fieldValues[id]);
+                const entered = splitPathList(nextValue);
+                if (existing.length > 1 && entered.length === 1) {
+                    nextValue = [entered[0], ...existing.slice(1)].join("\n");
+                }
+                else if (entered.length > 1) {
+                    nextValue = entered.join("\n");
+                }
+            }
+            await fieldValueChanged(nextValue, control);
             clearDataSourcesAndRender();
         });
     });
@@ -127,6 +139,41 @@ export function bindEvents(bootstrap: Bootstrap) {
             const value = await chooseLocalPath(control, state.fieldValues[id] ?? "");
             if (value) {
                 await fieldValueChanged(value, control);
+                clearDataSourcesAndRender();
+            }
+        });
+    });
+    elements("[data-path-add]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const id = requiredDataset(button, "pathAdd");
+            const control = findControl(id);
+            const value = await chooseLocalPath(control, state.fieldValues[id] ?? "");
+            if (value) {
+                const existing = splitPathList(state.fieldValues[id]);
+                const added = splitPathList(value).filter((entry) => !existing.includes(entry));
+                const combined = [...existing, ...added];
+                if (combined.length > 0) {
+                    await fieldValueChanged(combined.join("\n"), control);
+                    clearDataSourcesAndRender();
+                }
+            }
+        });
+    });
+    elements("[data-path-remove]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const raw = requiredDataset(button, "pathRemove");
+            const splitAt = raw.lastIndexOf(":");
+            const id = raw.slice(0, splitAt);
+            const index = Number(raw.slice(splitAt + 1));
+            const control = findControl(id);
+            const existing = splitPathList(state.fieldValues[id]);
+            if (Number.isInteger(index) && index >= 0 && index < existing.length) {
+                existing.splice(index, 1);
+                await fieldValueChanged(existing.join("\n"), control);
                 clearDataSourcesAndRender();
             }
         });
@@ -200,7 +247,7 @@ export function bindEvents(bootstrap: Bootstrap) {
                 scheduleRender();
                 return;
             }
-            await runAction(action, context, reference);
+            await runAction(action, context, reference, { opener: button });
         });
     });
     elements("[data-result-open], [data-result-reveal]").forEach((button) => {
