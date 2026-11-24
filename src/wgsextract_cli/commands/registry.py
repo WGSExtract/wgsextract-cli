@@ -57,6 +57,7 @@ COMMAND_MODULES = tuple(
         "genotyping",
         "methylation",
         "report",
+        "lookup",
         "report_delta",
         "report_issue",
         "panel",
@@ -182,6 +183,11 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier("sign", ADVANCED, "Checksum and sign output files; verify them."),
     CommandTier(
         "score", ADVANCED, "Research-only polygenic scores from local genotypes."
+    ),
+    CommandTier(
+        "lookup",
+        ADVANCED,
+        "Genotype and evidence at an rsID, locus or gene.",
     ),
     CommandTier(
         "report-delta",

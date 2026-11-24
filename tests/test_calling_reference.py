@@ -91,24 +91,13 @@ def _standalone_fasta(tmp_path, sample, header: str) -> Path:
     return fasta
 
 
-@pytest.mark.parametrize(
-    ("header", "assembly", "ploidy"),
-    [
-        ("chr1 Homo sapiens chromosome 1, GRCh38.p14 Primary Assembly", None, "GRCh38"),
-        ("chr1", "GRCh37", "GRCh37"),
-    ],
-    ids=["header-description", "dict-assembly"],
-)
-def test_ploidy_825_comes_from_a_standalone_fasta(tmp_path, header, assembly, ploidy):
+def test_ploidy_825_comes_from_a_standalone_fasta_dictionary(tmp_path):
     # The GUI guessed --ploidy from the FASTA's name in a wrapper script, so a
     # FASTA outside a library whose name names no build could not be called.
     sample = snp_sample(tmp_path)
-    fasta = _standalone_fasta(tmp_path, sample, header)
-    if assembly:
-        dictionary = fasta.with_suffix(".dict")
-        run_command(
-            ["samtools", "dict", "-a", assembly, "-o", str(dictionary), str(fasta)]
-        )
+    fasta = _standalone_fasta(tmp_path, sample, "chr1")
+    dictionary = fasta.with_suffix(".dict")
+    run_command(["samtools", "dict", "-a", "GRCh37", "-o", str(dictionary), str(fasta)])
     output = tmp_path / "calls"
     api.vcf.snp(
         VcfSnpParams(input=Path(sample.bam), ref=fasta, outdir=output, threads=1)
@@ -122,7 +111,31 @@ def test_ploidy_825_comes_from_a_standalone_fasta(tmp_path, header, assembly, pl
         line for line in header_lines.splitlines() if "bcftools_callCommand" in line
     )
     # contract: the build's sex-chromosome ploidy table is what the calls assume.
-    assert f"--ploidy {ploidy}" in call_command
+    assert "--ploidy GRCh37" in call_command
+
+
+def test_1346_snp_does_not_use_a_ploidy_table_from_the_reference_folder_name(tmp_path):
+    sample = snp_sample(tmp_path / "sample")
+    library = tmp_path / "hg38"
+    fasta = write_fasta(
+        library / "reference.fa", {"chr1": Path(sample.ref).read_text().splitlines()[1]}
+    )
+    (library / "ploidy_hg38.txt").write_text("* * * * 1\n")
+    output = tmp_path / "calls"
+    params = VcfSnpParams(input=Path(sample.bam), ref=library, outdir=output, threads=1)
+
+    result = api.vcf.snp(params, check=False)
+
+    assert result.status == "failed"
+    assert "not confirmed" in str(result.error)
+    assert "reference build: unknown" in str(result.error)
+    assert "--ploidy-file" in str(result.error)
+    assert not (output / "snps.vcf.gz").exists()
+
+    api.vcf.snp(
+        VcfSnpParams(input=Path(sample.bam), ref=fasta, outdir=output, ploidy="2")
+    )
+    assert vcf_calls(output / "snps.vcf.gz") == sample.calls
 
 
 def test_ploidy_825_still_required_when_a_fasta_names_no_build(tmp_path):
