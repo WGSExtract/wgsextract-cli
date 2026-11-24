@@ -45,7 +45,7 @@ jobs:
         run: pixi run package-smoke
       - name: Build Package on Minimum Supported Python
         if: matrix.os == 'ubuntu-latest'
-        run: uv build --python 3.10 --out-dir out/package-py310
+        run: pixi run --no-install -e dev uv build --python 3.10 --out-dir out/package-py310
       - name: Run Benchmark
         env:
           GITHUB_TOKEN: ${{ github.token }}
