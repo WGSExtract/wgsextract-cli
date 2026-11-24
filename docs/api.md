@@ -1157,6 +1157,31 @@ Build the consensus (role `consensus_fasta`, and `liftover_chain` with
 | `mask` | `Path \| None` | `None` | `--mask` | BED file of regions to replace with N (e.g. low coverage). |
 | `chain` | `bool` | `False` | `--chain` | Also write a chain file mapping reference coordinates to the consensus (indels shift positions). |
 
+### `api.vcf.prepare(VcfPrepareParams)`
+
+CLI: `wgsextract vcf prepare`.
+
+Write the prepared VCF (role `prepared_vcf`, with its `records`) and
+its index (`prepared_vcf_index`); every repair is a `vcf_prepare_*`
+warning.
+
+`VcfPrepareParams`: Repair a VCF that downstream tools reject (plain gzip, unsorted, missing
+or stale index, undeclared contigs or IDs, other contig names than the
+reference) into `<stem>_prepared.vcf.gz` with its index; never changes
+the input. With `ref`, contigs take the reference's names, order and
+lengths and REFs are checked; `normalize` also splits multiallelic
+records and left-aligns indels. Each repair is a structured warning.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
+| `output` | `Path \| None` | `None` | `--output` | Prepared VCF to write, ending in .vcf.gz (default: <outdir>/<input stem>_prepared.vcf.gz); never the input itself. |
+| `normalize` | `bool` | `False` | `--normalize` | Also split multiallelic records and left-align indels against --ref (bcftools norm -m -any); originals are kept in INFO. |
+
 ### `api.vcf.trio(VcfTrioParams)`
 
 CLI: `wgsextract vcf trio`.
@@ -1777,6 +1802,29 @@ Run granite qcVCF; output role `granite_qc_json`.
 | `trio_errors` | `bool` | `False` | `--trio-errors` | Include Mendelian trio error statistics (requires a pedigree with parents). |
 | `granite_path` | `Path \| None` | `None` (config `granite_executable`) | `--granite-path` | Path to the granite executable (default: config granite_executable or PATH). |
 
+## `api.cohort`
+
+Local, callability-aware cohort summaries for research.
+
+### `api.cohort.summarize(CohortSummarizeParams)`
+
+CLI: `wgsextract cohort summarize`.
+
+Write a local allele-count table and a result manifest.
+
+`CohortSummarizeParams`: Summarize autosomal SNVs from a local cohort manifest and matched gVCFs.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `cohort_manifest` | `Path` | required | `MANIFEST` | Local cohort input manifest (wgsextract.cohort/1). |
+| `region` | `str \| None` | `None` | `--region` | Limit to an autosomal contig, interval or comma-separated list. |
+| `bed` | `Path \| None` | `None` | `--bed` | Limit to autosomal intervals from a local BED. |
+| `min_depth` | `int` | `10` | `--min-depth` | Minimum DP (block MIN_DP). |
+| `min_gq` | `int` | `20` | `--min-gq` | Minimum GQ for callers that provide it. |
+| `table_format` | `str` | `'tsv'` | `--format` | Table format: tsv or parquet (needs pyarrow). One of: `tsv`, `parquet` |
+| `include_identifiers` | `bool` | `False` | `--include-identifiers` | Also write a private participant/QC join with source paths and names. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the working folder). |
+
 ## `api.analyze`
 
 `analyze`: whole-sample workflows that chain other commands.
@@ -1835,8 +1883,8 @@ VCFs under `directory`, grouping files into samples by name
 
 ## `api.lineage`
 
-`lineage`: mtDNA haplogroups (Haplogrep 3), Y haplogroups (native Yleaf)
-and Y-STR repeat counts.
+`lineage`: mtDNA haplogroups (Haplogrep 3), Y haplogroups (native Yleaf),
+Y-STR repeat counts and candidate private Y SNVs.
 
 ### `api.lineage.mt_haplogroup(MtHaplogroupParams)`
 
@@ -1926,6 +1974,36 @@ FamilyTreeDNA-order CSV).
 | `min_reads` | `int` | `2` | `--min-reads` | Spanning reads needed to support a repeat count (default: 2). |
 | `min_fraction` | `float` | `0.6` | `--min-fraction` | Share of spanning reads that must agree (default: 0.6). |
 | `min_mapq` | `int` | `20` | `--min-mapq` | Minimum mapping quality for single-copy markers (default: 20). |
+
+### `api.lineage.y_private(YPrivateParams)`
+
+CLI: `wgsextract lineage y-private`.
+
+Candidate private Y SNVs; `metrics` holds `y_private_candidates`,
+`y_called_snvs` and `y_known_snvs`. `details` states the
+`definition`, the `marker_sets` used, the `callable_mask`, the
+`filters` and the `counts` at each step, and lists the
+`candidates`.
+
+`YPrivateParams`: List candidate private (novel) Y SNVs: called chrY SNVs, inside the
+bundled Poz callable mask, that are in no installed marker set (the
+YBrowse snapshot on GRCh38, the YFull YTree positions on GRCh38 and T2T)
+and pass strict allele-fraction, read and quality gates. Outputs go to
+`y_private/`. They are candidates to confirm, not proven private SNPs.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `download` | `bool \| None` | `None` (config `allow_reference_downloads`) | `--download` | Allow missing public reference/model downloads; no sample files or genotypes are uploaded. Hosts and request data: docs/privacy.md. Default: config allow_reference_downloads, else off. |
+| `input` | `Path` | required | `--input`, `-i` | Indexed BAM or CRAM, or a single-sample VCF/BCF with FORMAT/AD. |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
+| `build` | `str \| None` | `None` | `--build` | Y build of a VCF whose header has no chrY length: hg38 or t2t. One of: `hg38`, `t2t` |
+| `min_af` | `float` | `0.9` | `--min-af` | Lowest share of reads (FORMAT/AD) carrying the ALT allele (default: 0.9). |
+| `min_alt_reads` | `int` | `10` | `--min-alt-reads` | Fewest reads carrying the ALT allele (default: 10). |
+| `min_qual` | `float` | `30.0` | `--min-qual` | Lowest variant QUAL (default: 30). |
+| `min_mapq` | `int` | `20` | `--min-mapq` | BAM/CRAM: lowest read mapping quality counted (default: 20). |
+| `base_quality` | `int` | `20` | `--base-quality` | BAM/CRAM: lowest base quality counted (default: 20). |
+| `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
 
 ## `api.methylation`
 
