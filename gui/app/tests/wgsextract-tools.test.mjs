@@ -74,6 +74,13 @@ test("each Tools row shows its status, whether it is mandatory, and where it com
     assert.equal(rows.sambamba.values.details, "sambamba isn't built for win32 AMD64.");
     // The uninstall confirmation names every tool the environment takes with it.
     assert.equal(rows.sniffles.values.environmentTools, "pbmm2, pbsv, sniffles");
+    for (const row of Object.values(rows)) {
+        assert.match(row.tooltip, /Source: https?:\/\//, `${row.id} tooltip missing Source URL`);
+        assert.match(row.tooltip, /Organization: .+/, `${row.id} tooltip missing Organization`);
+        assert.match(row.tooltip, /License: .+/, `${row.id} tooltip missing License`);
+    }
+    assert.match(rows.samtools.tooltip, /Installed path: \/env\/bin\/samtools/);
+    assert.match(rows.plink2.tooltip, /Note: Download PLINK 2 for your system\./);
 });
 
 test("the Tools table needs deps list's tool rows", () => {
