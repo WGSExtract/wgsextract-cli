@@ -41214,7 +41214,7 @@
    }
   },
   "vcf": {
-   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    call            Call several variant types in one run: SNPs and InDels (bcftools), SVs and\n                    CNVs, each into its own VCF, and with --merge also into one combined VCF.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    sv-freq         Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    info            Quick summary of a VCF, gVCF or BCF: reference build/model, samples, format,\n                    and record counts.\n    variantqc       Run DISCVRSeq VariantQC to generate an interactive HTML VCF quality report.\n    granite-qc      Run granite qcVCF (dbmi-bgm/granite) for single-sample or family VCF quality\n                    metrics.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    impute          (advanced) Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-\n                    coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle. Optional;\n                    Linux x64, Windows x64 and Intel macOS, `pixi install -e imputation`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    acmg            (advanced) Research-only ACMG/AMP classes with fastVEP (opt-in).\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    call            Call several variant types in one run: SNPs and InDels (bcftools), SVs and\n                    CNVs, each into its own VCF, and with --merge also into one combined VCF.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    sv-freq         Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    info            Quick summary of a VCF, gVCF or BCF: reference build/model, samples, format,\n                    and record counts.\n    variantqc       Run DISCVRSeq VariantQC to generate an interactive HTML VCF quality report.\n    granite-qc      Run granite qcVCF (dbmi-bgm/granite) for single-sample or family VCF quality\n                    metrics.\n    callability     (advanced) Which coding exons of a gene list (ACMG SF by default) the sample's\n                    gVCF could read: callable, partial, not readable, specialist or not run.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    impute          (advanced) Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-\n                    coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle. Optional;\n                    Linux x64, Windows x64 and Intel macOS, `pixi install -e imputation`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    acmg            (advanced) Research-only ACMG/AMP classes with fastVEP (opt-in).\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -41242,6 +41242,7 @@
        "annotate",
        "filter",
        "table",
+       "callability",
        "to-fasta",
        "trio",
        "cnv",
@@ -41325,6 +41326,10 @@
        [
         "granite-qc",
         "Run granite qcVCF (dbmi-bgm/granite) for single-sample or family VCF quality metrics."
+       ],
+       [
+        "callability",
+        "(advanced) Which coding exons of a gene list (ACMG SF by default) the sample's gVCF could read: callable, partial, not readable, specialist or not run."
        ],
        [
         "to-fasta",
@@ -43037,6 +43042,483 @@
     "description": null,
     "formatter_class": "HelpFormatter",
     "prog": "wgsextract vcf cadd"
+   }
+  },
+  "vcf callability": {
+   "help": "usage: wgsextract vcf callability [-h] [--vcf-input VCF_INPUT] [--gene-list LIST] [--exons FILE]\n                                  [--flank FLANK] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Input gVCF, or a VCF whose caller wrote one (--reference-evidence gvcf).\n  --gene-list LIST      Genes to assess: a built-in list (acmg-sf-3.3, acmg-sf-3.2), or a TSV\n                        (column gene) or BED file (gene symbol in column 4) (default: config\n                        report_gene_list, else acmg-sf-3.3)\n  --exons FILE          Exon model TSV for other genes or builds (format: docs/exon-\n                        callability.md) (default: the bundled hg19/hg38 MANE or RefSeq Select\n                        coding exons of the built-in lists' genes)\n  --flank FLANK         Intronic bases assessed on each side of a coding exon, 0-50 (default 2:\n                        the splice-site dinucleotides)\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf callability --help-all' lists them.\n\nexamples:\n  wgsextract vcf callability --vcf-input snps.vcf.gz\n  wgsextract vcf callability --vcf-input bcftools.g.vcf.gz --flank 10\n  wgsextract vcf callability --vcf-input snps.vcf.gz --gene-list my_genes.tsv\n\noutputs (in the output directory unless noted):\n  exon_callability.json (per gene: callable, partial, not readable or not run,\n  with the sources and thresholds) and exon_callability.tsv (one row per\n  coding exon).\n\nneeds:\n  bcftools; depending on options and inputs, also: curl; seconds on a 30x\n  genome.\n",
+   "parser": {
+    "actions": [
+     {
+      "choices": null,
+      "class": "_HelpAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help",
+      "exclusive_group": null,
+      "help": "show this help message and exit",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "-h",
+       "--help"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "input",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--input",
+       "-i"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "outdir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--outdir",
+       "-o"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "genome",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--genome"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "ref",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--ref"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "threads",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "N|auto",
+      "nargs": null,
+      "option_strings": [
+       "--threads",
+       "-t"
+      ],
+      "required": false,
+      "type": "_thread_count_arg"
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "memory",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--memory",
+       "-m"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "tmp_dir",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "DIRECTORY",
+      "nargs": null,
+      "option_strings": [
+       "--tmp-dir"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "json",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--json"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "card",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--card",
+       "--no-card"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "quiet",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--quiet"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStoreTrue",
+      "const": true,
+      "default": "==SUPPRESS==",
+      "dest": "debug",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--debug"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "log_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--log-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "keep_awake",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--keep-awake",
+       "--no-keep-awake"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalBoolean",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "atomic_output",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--atomic-output",
+       "--no-atomic-output"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "config_path",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--config"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_result_file",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "PATH",
+      "nargs": null,
+      "option_strings": [
+       "--result-file"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_parent_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--parent-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_root_run",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "ID",
+      "nargs": null,
+      "option_strings": [
+       "--root-run"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_run_step",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "STEP",
+      "nargs": null,
+      "option_strings": [
+       "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "parent_pid",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--parent-pid"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "vcf_input",
+      "exclusive_group": null,
+      "help": "Input gVCF, or a VCF whose caller wrote one (--reference-evidence gvcf).",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--vcf-input"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "gene_list",
+      "exclusive_group": null,
+      "help": "Genes to assess: a built-in list (acmg-sf-3.3, acmg-sf-3.2), or a TSV (column gene) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3)",
+      "metavar": "LIST",
+      "nargs": null,
+      "option_strings": [
+       "--gene-list"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "exons",
+      "exclusive_group": null,
+      "help": "Exon model TSV for other genes or builds (format: docs/exon-callability.md) (default: the bundled hg19/hg38 MANE or RefSeq Select coding exons of the built-in lists' genes)",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--exons"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": 2,
+      "dest": "flank",
+      "exclusive_group": null,
+      "help": "Intronic bases assessed on each side of a coding exon, 0-50 (default 2: the splice-site dinucleotides)",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--flank"
+      ],
+      "required": false,
+      "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "confidence_depth",
+      "exclusive_group": null,
+      "help": "Read depth below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_depth 10, confidence_high_depth 20; halved for haploid calls)",
+      "metavar": [
+       "LOW",
+       "HIGH"
+      ],
+      "nargs": 2,
+      "option_strings": [
+       "--confidence-depth"
+      ],
+      "required": false,
+      "type": "_non_negative"
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "confidence_gq",
+      "exclusive_group": null,
+      "help": "Genotype quality below LOW labels a call low confidence, below HIGH moderate (default: config confidence_min_gq 20, confidence_high_gq 30)",
+      "metavar": [
+       "LOW",
+       "HIGH"
+      ],
+      "nargs": 2,
+      "option_strings": [
+       "--confidence-gq"
+      ],
+      "required": false,
+      "type": "_non_negative"
+     },
+     {
+      "choices": null,
+      "class": "_HelpAllAction",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "help_all",
+      "exclusive_group": null,
+      "help": "Show this help with the advanced options too, and exit.",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--help-all"
+      ],
+      "required": false,
+      "type": null
+     }
+    ],
+    "defaults": {
+     "_command": "vcf callability",
+     "_one_vcf_input": true,
+     "func": "cmd_callability"
+    },
+    "description": null,
+    "formatter_class": "HelpFormatter",
+    "prog": "wgsextract vcf callability"
    }
   },
   "vcf chain-annotate": {
@@ -60904,6 +61386,40 @@
    "tmp_dir": null,
    "vcf_cmd": "cadd",
    "vcf_input": null
+  },
+  "vcf callability --vcf-input s.vcf.gz --flank 5 --exons e.tsv": {
+   "_command": "vcf callability",
+   "_explicit_dests": [
+    "exons",
+    "flank",
+    "vcf_input"
+   ],
+   "_one_vcf_input": true,
+   "atomic_output": false,
+   "command": "vcf",
+   "confidence_depth": null,
+   "confidence_gq": null,
+   "debug": false,
+   "exons": "e.tsv",
+   "flank": 5,
+   "full_help": false,
+   "func": "cmd_callability",
+   "gene_list": null,
+   "genome": null,
+   "input": null,
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "outdir": null,
+   "parent_pid": null,
+   "quiet": false,
+   "ref": null,
+   "threads": null,
+   "tmp_dir": null,
+   "vcf_cmd": "callability",
+   "vcf_input": "s.vcf.gz"
   },
   "vcf chain-annotate --vcf-input x.vcf.gz --keep-intermediates": {
    "_command": "vcf chain-annotate",
