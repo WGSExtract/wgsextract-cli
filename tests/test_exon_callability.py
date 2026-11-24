@@ -384,16 +384,17 @@ def test_1357_invalid_cds_bounds_do_not_hide_unread_exon(
 
 @needs_htslib
 @pytest.mark.parametrize(
-    "alt,gt,dp,gq",
+    "alt,gt,dp,gq,overlap",
     [
-        ("T", "0/1", 1, 50),
-        ("T", "0/1", 30, 1),
-        ("T", "1/2", 30, 50),
-        ("N", "0/1", 30, 50),
+        ("T", "0/1", 1, 50, False),
+        ("T", "0/1", 30, 1, False),
+        ("T", "1/2", 30, 50, False),
+        ("N", "0/1", 30, 50, False),
+        ("T", "0/1", 30, 1, True),
     ],
 )
 def test_1357_unresolved_or_low_quality_alt_is_not_readable(
-    tmp_path: Path, alt: str, gt: str, dp: int, gq: int
+    tmp_path: Path, alt: str, gt: str, dp: int, gq: int, overlap: bool
 ) -> None:
     gvcf = tmp_path / "low_alt.g.vcf"
     text = _GQ_GVCF.replace(
@@ -405,6 +406,11 @@ def test_1357_unresolved_or_low_quality_alt_is_not_readable(
         f"chr7\t500\t.\tA\t{alt},<NON_REF>\t50\tPASS\t.\tGT:GQ:DP\t{gt}:{gq}:{dp}\n"
         "chr7\t501\t.\tA\t<NON_REF>\t.\t.\tEND=1000\tGT:GQ:MIN_DP\t0/0:50:30",
     )
+    if overlap:
+        text = text.replace(
+            "chr7\t501",
+            "chr7\t500\t.\tA\tG,<NON_REF>\t50\tPASS\t.\tGT:GQ:DP\t0/1:50:30\nchr7\t501",
+        )
     gvcf.write_text(text, encoding="utf-8", newline="\n")
     api.vcf.callability(
         api.VcfCallabilityParams(

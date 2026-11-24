@@ -56,8 +56,9 @@ class State(enum.Enum):
     to the weakest. Where records overlap, the earlier state wins."""
 
     EXCLUDED_BY_POLICY = "excluded_by_policy"
-    VARIANT = "variant"
+    # A resolved call must not mask a different unreliable call at the same base.
     LOW_QUALITY_VARIANT = "low_quality_variant"
+    VARIANT = "variant"
     FILTERED = "filtered"
     NO_CALL = "no_call"
     LOW_QUALITY_REFERENCE = "low_quality_reference"
