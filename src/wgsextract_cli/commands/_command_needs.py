@@ -228,6 +228,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref gerp": _n(DOWNLOAD, optional="curl"),
     "deps check": _n(SECONDS, scale=""),
     "deps list": _n(SECONDS, scale=""),
+    "deps ready": _n(SECONDS, scale=""),
     "deps install": _n(DOWNLOAD, optional="java java17"),
     "deps uninstall": _n(SECONDS, scale=""),
     "example-genome list": _n(INSTANT),

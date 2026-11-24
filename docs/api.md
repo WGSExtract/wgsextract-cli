@@ -3106,6 +3106,20 @@ Pixi `environment` and the `environment_tools` it provides,
 `can_install` and `can_uninstall`, and a `note` (how to install it
 yourself, or why it can't be had). It doesn't fail on a missing tool.
 
+`ready` reports whether a command line (`command_line`, as its argv
+after `wgsextract`) can run on this computer without the network: each
+prerequisite its run checks (platform, tools, Docker images and GPUs, model
+weights and their SHA-256, the input, reference genome and indexes, and
+annotation data), with a `status` (runnable, installed, unverified,
+unsupported, missing, stale or incompatible), its evidence (version, path,
+Conda package and the licence its metadata records, image identity and
+labels, digests; terms are "unknown" where nothing local records them) and
+the explicit step that provides it. `details["status"]` is "ready",
+"ready_unverified" or "not_ready"; not ready fails with exit code 3 (error
+kind `missing_dependency`), with the details still set. It installs,
+pulls and downloads nothing. The server doesn't offer it: the command line
+names host paths its folder checks can't vet.
+
 `install` downloads and installs the Pixi environment that provides an
 optional tool (`pixi install --locked -e <env>`); `uninstall` removes it
 (`pixi clean -e <env>`), and with it the other tools in that environment.
@@ -3134,6 +3148,18 @@ List every tool and its status (see `DepsListParams`).
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
+
+### `api.deps.ready(DepsReadyParams)`
+
+CLI: `wgsextract deps ready`.
+
+Report a command line's offline readiness (see `DepsReadyParams`).
+
+`DepsReadyParams`: Report whether a command line can run here without the network.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `command_line` | `tuple[str, ...]` | required | `-- COMMAND ...` | The command line to check: its arguments after ``wgsextract``. |
 
 ### `api.deps.install(DepsInstallParams)`
 

@@ -82,10 +82,13 @@ class Annotation:
     name: str  # shown to people
     per_build: bool = False  # the install takes --build
     builds: tuple[str, ...] = ("hg19", "hg38")
+    requires_fasta: bool = False  # the annotator refuses to run without one
 
 
 ANNOTATION_COMMANDS = {
-    "vcf clinvar": Annotation("clinvar_vcf", "clinvar_file", "clinvar", "ClinVar"),
+    "vcf clinvar": Annotation(
+        "clinvar_vcf", "clinvar_file", "clinvar", "ClinVar", requires_fasta=True
+    ),
     "vcf revel": Annotation("revel_file", "revel_file", "revel", "REVEL"),
     "vcf cadd": Annotation("cadd_file", "cadd_file", "cadd", "CADD", per_build=True),
     "vcf gerp": Annotation("gerp_file", "gerp_file", "gerp", "GERP", per_build=True),
@@ -129,14 +132,38 @@ class MissingReference:
 def missing_references(args: argparse.Namespace) -> list[MissingReference]:
     """What the parsed command line ``args`` needs and the library lacks."""
     command = str(getattr(args, "_command", "") or "")
-    missing: list[MissingReference] = []
-    genome = _missing_genome(command, args) or _missing_vcf_genome(command, args)
-    if genome:
-        missing.append(genome)
-    annotation = _missing_annotation(command, args)
-    if annotation:
-        missing.append(annotation)
-    return missing
+    needs = (genome_need(command, args), annotation_need(command, args))
+    return [need.missing for need in needs if need and need.missing]
+
+
+@dataclass(frozen=True)
+class GenomeNeed:
+    """The reference genome a command line reads its BAM/CRAM or VCF
+    with, and why (``reason``). ``fasta`` is the FASTA it would use: one the
+    user named (``chosen``; theirs to vouch for, so not checked here), else
+    one that fits the input, else the library's that doesn't (or None);
+    ``missing`` is set when the library lacks a fitting one."""
+
+    reason: str
+    input: str
+    fasta: str | None
+    chosen: bool = False
+    missing: MissingReference | None = None
+
+
+@dataclass(frozen=True)
+class AnnotationNeed:
+    """The annotation data a VCF command line reads: ``path`` is the file it
+    would use (named by its option, or installed), ``missing`` set when the
+    library lacks it; ``fasta`` the reference the annotator normalises with
+    (the VCF's ``build``'s), when the library has one."""
+
+    annotation: Annotation
+    vcf: str
+    path: str | None
+    missing: MissingReference | None = None
+    fasta: str | None = None
+    build: str | None = None
 
 
 def _library_option(library: str | None) -> list[str]:
@@ -172,13 +199,13 @@ def _needs_genome(command: str, args: argparse.Namespace, input_path: str) -> st
     return ""
 
 
-def _reads_vcf(command: str, args: argparse.Namespace) -> bool:
+def reads_vcf(command: str, args: argparse.Namespace) -> bool:
     """Whether ``command`` reads a VCF rather than its BAM/CRAM ``--input``:
     a VCF command (it has --vcf-input) that doesn't call variants."""
     return hasattr(args, "vcf_input") and command not in GENOME_COMMANDS
 
 
-def _selected_vcf(args: argparse.Namespace) -> str | None:
+def selected_vcf(args: argparse.Namespace) -> str | None:
     """The VCF a VCF command reads, chosen as its handler chooses it
     (``vcf_input_handler``): --vcf-input or config default_input_vcf, or
     --input."""
@@ -207,7 +234,7 @@ def _fits_bam(fasta: str, header: str) -> bool:
     )
 
 
-def _usable_fasta(fasta: str | None, input_path: str, header: str) -> bool:
+def usable_fasta(fasta: str | None, input_path: str, header: str) -> bool:
     """Whether the command can use ``fasta`` with this input: decoding a CRAM
     takes the very sequences it was written against (names, lengths and the
     recorded M5 checksums); a BAM needs its contigs in the FASTA."""
@@ -220,14 +247,17 @@ def _usable_fasta(fasta: str | None, input_path: str, header: str) -> bool:
     return _fits_bam(fasta, header)
 
 
-def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference | None:
+def genome_need(command: str, args: argparse.Namespace) -> GenomeNeed | None:
+    """Resolve the command's input genome when needed and identifiable."""
+    if command in VCF_GENOME_COMMANDS:
+        return _vcf_genome_need(command, args)
     input_path = _given_path(args, "input")
     if (
         not input_path
         or not input_path.lower().endswith((".bam", ".cram"))
         or not Path(input_path).is_file()
         or command.split()[0] in {"ref", "help", "deps", "serve"}
-        or _reads_vcf(command, args)
+        or reads_vcf(command, args)
     ):
         return None
     reason = _needs_genome(command, args, input_path)
@@ -240,7 +270,7 @@ def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference 
     if ref and is_fasta_path(ref):
         # A FASTA the user chose is theirs to vouch for; a missing one is the
         # command's own error, which nothing here installs.
-        return None
+        return GenomeNeed(reason, input_path, ref, chosen=True)
     library = _explicit_library(ref)
 
     from wgsextract_cli.core.alignment.metadata import get_bam_header
@@ -253,17 +283,18 @@ def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference 
     if not header:
         return None  # The command itself reports an unreadable input.
     target = _given_path(args, "ref") if realigns else None
-    if target and _usable_fasta(target, input_path, header):
-        return None  # realign decodes with a --ref target that fits the input.
+    if target and usable_fasta(target, input_path, header):
+        # realign decodes with a --ref target that fits the input.
+        return GenomeNeed(reason, input_path, target)
     signature = calculate_bam_md5(input_path, header=header)
     lib = ReferenceLibrary(
         library, signature, skip_full_search=True, input_path=input_path
     )
-    if _usable_fasta(lib.fasta, input_path, header):
-        return None
+    if usable_fasta(lib.fasta, input_path, header):
+        return GenomeNeed(reason, input_path, lib.fasta)
     genome = catalog_genome_for(header, signature)
     if genome:
-        return MissingReference(
+        missing = MissingReference(
             id=str(genome["code"]),
             kind="genome",
             name=str(genome["code"]),
@@ -276,11 +307,13 @@ def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference 
                 *_library_option(library),
             ],
         )
-    model = identify_reference(header, signature)
-    name = model.name if model else "matching"
-    return MissingReference(
-        id=name, kind="genome", name=name, reason=reason, install_arguments=None
-    )
+    else:
+        model = identify_reference(header, signature)
+        name = model.name if model else "matching"
+        missing = MissingReference(
+            id=name, kind="genome", name=name, reason=reason, install_arguments=None
+        )
+    return GenomeNeed(reason, input_path, lib.fasta, missing=missing)
 
 
 _DEFAULT_VCF_CATALOG_CODES: dict[tuple[str, str], str] = {
@@ -363,17 +396,13 @@ def _compatible_vcf_fasta(
     return None
 
 
-def _missing_vcf_genome(
-    command: str, args: argparse.Namespace
-) -> MissingReference | None:
-    if command not in VCF_GENOME_COMMANDS:
-        return None
-    vcf = _selected_vcf(args)
+def _vcf_genome_need(command: str, args: argparse.Namespace) -> GenomeNeed | None:
+    vcf = selected_vcf(args)
     if not vcf or not Path(vcf).is_file():
         return None
     ref = _given_path(args, "ref")
     if ref and is_fasta_path(ref):
-        return None
+        return GenomeNeed(command, vcf, ref, chosen=True)
     library = _explicit_library(ref)
 
     from wgsextract_cli.core import sample_workspace
@@ -425,10 +454,12 @@ def _missing_vcf_genome(
         )
 
     directories = [Path(root), Path(reference_genomes_dir(root))] if root else []
-    if directories and _compatible_vcf_fasta(
-        directories, header_lengths, present_contigs, build, naming
-    ):
-        return None
+    if directories:
+        fasta = _compatible_vcf_fasta(
+            directories, header_lengths, present_contigs, build, naming
+        )
+        if fasta:
+            return GenomeNeed(command, vcf, fasta)
 
     genome = (
         catalog_genome_for(header, detection.signature) if detection.signature else None
@@ -443,7 +474,7 @@ def _missing_vcf_genome(
                 None,
             )
     if genome:
-        return MissingReference(
+        missing = MissingReference(
             id=str(genome["code"]),
             kind="genome",
             name=str(genome["code"]),
@@ -456,24 +487,24 @@ def _missing_vcf_genome(
                 *_library_option(library),
             ],
         )
-    if build:
+    elif build:
         name = detection.major_build or build
-        return MissingReference(
+        missing = MissingReference(
             id=name, kind="genome", name=name, reason=command, install_arguments=None
         )
-    return None
+    else:
+        return None
+    return GenomeNeed(command, vcf, None, missing=missing)
 
 
-def _missing_annotation(
-    command: str, args: argparse.Namespace
-) -> MissingReference | None:
+def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | None:
+    """The annotation data the VCF command line ``args`` reads, or None when
+    it reads none (or can't say: running the command explains why)."""
     annotation = ANNOTATION_COMMANDS.get(command)
     if not annotation:
         return None
-    vcf = _selected_vcf(args)
+    vcf = selected_vcf(args)
     if not vcf or not Path(vcf).is_file():
-        return None
-    if getattr(args, annotation.option, None):
         return None
     from wgsextract_cli.core.builds import canonical_build
     from wgsextract_cli.core.reference_resolver import ReferenceLibrary
@@ -482,8 +513,13 @@ def _missing_annotation(
     if ref and is_fasta_path(ref) and not Path(ref).is_file():
         return None  # The command reports the missing FASTA itself.
     lib = ReferenceLibrary(ref, None, input_path=vcf)
-    if getattr(lib, annotation.attribute, None):
-        return None
+    if given := _given_path(args, annotation.option):
+        return AnnotationNeed(annotation, vcf, given, fasta=lib.fasta, build=lib.build)
+    installed = getattr(lib, annotation.attribute, None)
+    if installed:
+        return AnnotationNeed(
+            annotation, vcf, str(installed), fasta=lib.fasta, build=lib.build
+        )
     build = canonical_build(lib.build) if lib.build else None
     if build not in annotation.builds:
         return None  # The command explains the build it can't annotate.
@@ -492,10 +528,17 @@ def _missing_annotation(
         install += ["--build", build]
     if annotation.resource == "gnomad":
         install.append("--download")
-    return MissingReference(
-        id=annotation.resource,
-        kind="annotation",
-        name=annotation.name,
-        reason=command,
-        install_arguments=install,
+    return AnnotationNeed(
+        annotation,
+        vcf,
+        None,
+        fasta=lib.fasta,
+        build=lib.build,
+        missing=MissingReference(
+            id=annotation.resource,
+            kind="annotation",
+            name=annotation.name,
+            reason=command,
+            install_arguments=install,
+        ),
     )
