@@ -162,7 +162,9 @@ app-bundle check. `run-install-lab` remains an explicit full-platform override.
 
 The four full OS workflows and CLI smoke call `nightly_guard.yml`. Its small
 Ubuntu API check runs on a schedule or on a full manual Ubuntu run on `main`;
-PRs, pushes and other dispatches skip it without a runner. The check lets
+PRs, pushes and other dispatches skip that API check. A full macOS or Windows
+dispatch (or an opted-in balanced Ubuntu dispatch) uses the same runner only
+to plan shards. The check lets
 those workflows skip expensive jobs only if their own successful **push**
 run exists for the exact current main SHA in this repository. A different SHA,
 a failed/cancelled run, a PR/nightly success, missing evidence or an API error
@@ -170,7 +172,7 @@ retains full coverage.
 Failure or timeout of the guard runner itself also runs coverage; a skip
 requires both a successful guard and its explicit `skip=true` output.
 Regular Ubuntu pytest always runs on schedule or on a full manual Ubuntu
-run on `main`: the backstop must not reuse a green main push.
+run on `main`: the default observation backstop must not reuse a green main push.
 The `required` queue summary now directly depends on Windows as well as Ubuntu;
 it cannot pass while code-selected Windows failed or was cancelled.
 Queue Windows selection uses changed code/runtime-input paths, independently
@@ -241,7 +243,7 @@ just certify-setup -e default -e dev -e vep-rs --reference
 Repeated `-e` replaces the default environment list. `--reference` retains the
 bootstrap release archive after verifying its pinned SHA-256, safely extracts
 missing support files, fetches the pinned liftOver chain (with the same mirror
-fallback as CI), and invokes CI's normal hs38 catalog installer. It then
+fallback as CI), and prepares hs38 with the catalog installer. It then
 validates all reference bytes, including the catalog-pinned full genome.
 This can download several GiB; run under the resource coordinator on shared
 hosts. Existing conflicting bootstrap files are not overwritten: the refusal
@@ -503,8 +505,8 @@ Explicitly declared generated documentation inputs retain their freshness lane.
 The `changes` job publishes `tests` and per-OS selections as JSON test-file
 arrays or `all`. The four OS wrappers forward these inputs to the shared
 `os_tests.yml` workflow, which passes them through
-`scripts/ci_run_tests.py` to `pixi run test-ci`; existing tiers, stable module
-Ubuntu-only partitions apply **within** that set. Empty selections
+`scripts/ci_run_tests.py` to `pixi run test-ci`; the duration plan and the
+Ubuntu-only partition apply **within** that set. Empty selections
 skip jobs, and empty partitions exit successfully. Selections are
 validated and passed as argv, never evaluated as shell text. Explicit paths
 are filtered using the `test-ci` task's ignore rules so generated-genome and
@@ -793,13 +795,13 @@ a failing CodeQL app check.
 
 ### CLI test time and tiers
 
-Each OS runs one all-tier pytest job with `-n logical --dist loadgroup`: one
-worker per vCPU. `-n auto` counts physical cores when psutil is installed, so
+Each OS runs all tiers with `-n logical --dist loadgroup`: one worker per
+vCPU. `-n auto` counts physical cores when psutil is installed, so
 it ran two workers on the four-vCPU hosted Ubuntu and Windows runners (#1305,
 CI slowdown); macOS's three vCPUs and ARM64's four are physical either way.
-Pixi setup, installer validation and reference installation happen once per OS,
-not once per tier/shard. The tier definitions remain available for local
-diagnosis:
+Pixi and reference setup run on each allocated runner; installer validation
+and dedicated integration checks run once per OS. The tier definitions remain
+available for local diagnosis:
 
 - **Core:** every test not explicitly listed in `INTEGRATION_MODULES` in
   `scripts/ci_test_tiers.py`. New tests automatically join this tier.
@@ -819,16 +821,47 @@ pytest is uncached; other nightly jobs retain their exact-SHA guard. ARM64
 runs its selection in one job. No slow suite is demoted to nightly-only coverage.
 Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
 modules whose import closure includes command/tool behavior remain cross-platform.
-Ordinary local pytest still collects everything; the opt-in `--ci-tier` and
-`--ci-skip-independent` and `--ci-shard` flags implement these CI-only partitions.
+Ordinary local pytest still collects everything. `--ci-tier` and
+`--ci-skip-independent` narrow collection; `--ci-shard INDEX/COUNT` is the
+local stable-hash fallback.
 
-The former core-1/core-2/integration fan-out traded repeated setup for latency.
-Issue #1038 reverses that trade to reduce runner usage and macOS slot pressure.
-The first/only matrix entry still seeds shared main caches and runs one-off
-checks; ARM64 keeps its existing `native` label. The all-tier x64 label is `all`.
-The result-cache identity includes `tier=all shard=all`, so old shard entries
-are not reused incorrectly. New main runs seed all-tier `passed.json` entries;
-PR and merge-queue reads/records retain their existing trust and selection rules.
+Ready PRs can fan out regular Ubuntu x64, Windows and macOS pytest without
+adding a planning runner: the existing `changes` job reads the last usable
+full JUnit reports from successful scheduled runs of that OS workflow on this
+repository's `main`. The nightly guard can also size eligible full macOS and
+Windows nightlies and main-branch dispatches. To measure a full Ubuntu run
+without the daily observation instrumentation, dispatch with
+`gh workflow run ubuntu_ci.yml --ref main -f balanced-full-suite=true`.
+Merge groups, ordinary main
+pushes, ARM64 and the daily Ubuntu observation backstop remain single jobs:
+they retain exact-SHA replay/cache contracts or produce a single coverage
+context map. Missing or partial timing evidence never drops tests; it falls
+back to one job.
+
+The planner sums historical case times by module, assigns the longest groups
+first to the least loaded job, and uses a stable hash for unknown groups.
+Modules, the shared synthetic-data group and modules declaring xdist groups
+stay whole. The target estimated
+pytest times are 12 minutes (Ubuntu), 15 (Windows) and 22 (macOS); at most
+three jobs on Ubuntu/Windows and two on macOS, where only five hosted slots
+are available. It estimates each runner's pytest time by assigning whole
+fixture groups to workers, not by dividing a single long test across cores.
+It uses fewer jobs if the largest bin would exceed 1.2 times the mean, the
+split would not reduce wall time, or aggregate job time including repeated
+setup would rise by more than 5%. Small selections stay in one job. Shard summaries report estimated
+pytest time before cache skips and actual elapsed time for the test step.
+For a sharded Ubuntu PR, a single symbol-selector decision precedes the
+split, and one advisory receipt combines the shards' results. The Ubuntu PR
+planner reserves 75 seconds for that selector setup and receipt job when
+checking both wall time and the 5% aggregate budget. The manual Ubuntu run
+does not perform these PR-only steps or include that allowance.
+
+The lead job keeps the `all` label, seeds shared caches, and runs one-off
+checks; ARM64 retains `native`. The other jobs use `shard-2` and `shard-3`.
+Passed-test manifests keep `test-pass-v1-<os>-<label>` keys, but a module's
+hash does not depend on its duration bin. Sharded lanes consume passing hashes
+from all main labels when skipping cached work. Exact-SHA queue
+receipts, cache trust boundaries and required checks are unchanged.
 
 Timeouts use recent successful hosted job timings (November 16, 2026), rounded
 up from 1.4 times the larger combined main/PR duration. Combined shard time is
@@ -1034,7 +1067,7 @@ publish exact hit/miss and key in each job summary.
 | Pixi | Many overlapping default/dev/optional environment sets (~8 GB in the sampled inventory) | Four CLI OS/architecture sets (~5.4 GB) + Linux lint (~0.1 GB) |
 | npm | actions/setup-node could save PR-scoped duplicates | One download cache per OS/arch and package-lock hash (~0.1 GB total) |
 | Cargo | Registry downloads plus a second Windows Tauri cache including `target/` | Shared registry/git downloads per OS/arch and Cargo.lock hash (~0.1 GB); no target cache |
-| hs38 reference | Automatic writes on PRs | One main-owned verified public reference (~0.8 GB), read-only on PRs |
+| hs38 reference | One main-owned Actions cache (~0.8 GB), keyed to the genome catalog | Not cached; CI downloads the pinned FASTA and prebuilt indexes from GitHub Releases |
 | liftOver chain | A new run-id key on each download | One checksum key (<0.001 GB), main-only writes |
 | apt | PR cold misses could save duplicates | Main-only writes (~0.1–0.3 GB) |
 | PharmCAT reference | Up to two infrequently reused ~1 GB OS-specific entries | Not cached; leave space for the common tool environments |
@@ -1055,6 +1088,19 @@ in a manually dispatched `cache_hygiene.yml` run on `main`; set `apply` to delet
 The summary records
 before and after repository cache bytes and the entries removed. Main moving
 during the cleanup stops further deletes.
+
+The shared OS suite downloads `hs38.fa.gz` from `v0.1.0` and its samtools
+dictionary, `.fai` and `.gzi` from `ci-hs38-1`. It verifies both SHA-256 pins
+in `scripts/ci_hs38.sh` before installing the files beside the bootstrap's
+support data, then uses the indexes to read a region before running tests.
+Updates to the installer invalidate passed-test hashes. CI does not rebuild
+indexes or fall back to upstream mirrors.
+To refresh the indexes, dispatch **Mirror reference genomes** with `ci_hs38`
+enabled and a new `ci-hs38-N` release tag. The hosted job builds against the
+pinned FASTA and publishes just the index bundle. Update the tag and archive
+SHA-256 together; retain the old release for older CI revisions. Once this
+change lands and older runs have finished, obsolete `hs38-v1-*` Actions
+entries can be deleted without removing any other cache family.
 
 Only each OS matrix job seeds its CLI Pixi cache; other jobs restore that same
 set and install any missing optional environments without saving duplicate sets.
@@ -1092,9 +1138,8 @@ CI Ubuntu, CI macOS, CI Windows and CI Linux ARM64 keep their own triggers,
 concurrency groups and workflow names, but run the CLI suite through one
 reusable workflow, `os_tests.yml`. Its `os` input selects the installer checks,
 Windows imputation and vep-rs, and ARM64 checks; `reference: true` (Ubuntu and
-macOS) adds the hg19ToHg38 chain and hs38 reference library. Every caller uses one
-`tier: all, shard: all` matrix entry, the `--ci-tier`/`--ci-shard` defaults, so
-it collects both tiers. Jobs report as `test-ubuntu / all`
+macOS) adds the hg19ToHg38 chain and hs38 reference library. Each regular
+matrix collects both tiers. Its lead job reports as `test-ubuntu / all`
 on main and `ubuntu / test-ubuntu / all` in PR area checks (likewise macOS and
 Windows); ARM64's single job is
 `native-arm64 / native`. Each job uploads `tests-<os>-<label>`. The workflow has
@@ -1103,8 +1148,8 @@ other.
 Smoke contexts change from `smoke (OS, package)` / `smoke (OS, benchmark)` to
 `smoke (OS)` (prefixed `smoke / ` in PR area checks). The reusable caller IDs,
 `required` and `Ready PR area checks` names and dependencies are unchanged.
-Failure observation, red-main matching and flake-ledger retries use the same
-normalized PR/main job names; historical shard failures remain historical data.
+Failure observation, red-main matching and flake-ledger retries use normalized
+PR/main job names, including the shard label.
 
 ### Reading the Linux shadow report
 

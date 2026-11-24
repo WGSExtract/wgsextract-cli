@@ -34,6 +34,7 @@ NEXT_STEPS: dict[str, tuple[str, ...]] = {
     "vcf snp": _ANNOTATE,
     "vcf call": _ANNOTATE,
     "vcf indel": _ANNOTATE,
+    "vcf prepare": _ANNOTATE,
     "vcf clinvar": (_REPORT,),
     "vcf pharmcat": (_REPORT,),
 }

@@ -53,8 +53,8 @@ from wgsextract_cli.core.builds import is_hg38_build as is_hg38_build
 from wgsextract_cli.core.cpic_data import CpicData as CpicData
 from wgsextract_cli.core.multiqc import find_documents as find_documents
 from wgsextract_cli.core.pgx_context import PgxContext as PgxContext
+from wgsextract_cli.core.ref_library.assets import input_stem as input_stem
 from wgsextract_cli.core.ref_library.models import sequence_lengths as sequence_lengths
-from wgsextract_cli.core.reference_assets import input_stem as input_stem
 from wgsextract_cli.core.report_documents import (
     ReportAttemptDocument as ReportAttemptDocument,
 )
@@ -282,6 +282,7 @@ from .genotyping import (
 )
 from .medication_review import load_rules as load_rules
 from .medication_review import medication_review as medication_review
+from .mitochondrial import mitochondrial as mitochondrial
 from .overview import (
     _INFO_FACTS as _INFO_FACTS,
 )
@@ -346,7 +347,8 @@ FINDING_COLUMNS: tuple[Column, ...] = (
         "section",
         TEXT,
         "Report section: lineage, pharmacogenomics, medication_review, "
-        "carrier_screening, repeat_expansions, clinvar, acmg_research or structural_variants.",
+        "carrier_screening, repeat_expansions, clinvar, mitochondrial, "
+        "acmg_research or structural_variants.",
     ),
     Column("label", TEXT, "What the finding is, e.g. 'BRCA2 Pathogenic'."),
     Column("value", TEXT, "The result: haplogroup, diplotype or ClinVar class."),
@@ -357,10 +359,18 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column("ref", TEXT, "Reference allele."),
     Column("alt", TEXT, "Alternate allele."),
     Column("genotype", TEXT, "The sample's GT."),
-    Column("zygosity", TEXT, "het, hom_alt or hemizygous."),
+    Column(
+        "zygosity",
+        TEXT,
+        "het, hom_alt or hemizygous; homoplasmic or heteroplasmic for mtDNA.",
+    ),
     Column("depth", INTEGER, "Read depth at the call."),
     Column("genotype_quality", INTEGER, "Genotype quality (GQ)."),
-    Column("alt_fraction", REAL, "Fraction of reads carrying the ALT."),
+    Column(
+        "alt_fraction",
+        REAL,
+        "Fraction of reads carrying the ALT (an mtDNA heteroplasmy level).",
+    ),
     Column(
         "confidence", TEXT, "Confidence label: high, moderate, low or not_assessed."
     ),
@@ -490,6 +500,7 @@ def build_report(
         carrier_screening=_carrier_screening(ctx),
         repeat_expansions=repeat_expansions(ctx),
         clinvar=_clinvar(ctx),
+        mitochondrial=mitochondrial(ctx),
         **research_section,
         structural_variants=_structural_variants(ctx),
         microarray=_microarray(ctx),

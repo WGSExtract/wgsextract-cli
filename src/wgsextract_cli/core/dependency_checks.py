@@ -414,22 +414,25 @@ def verify_dependencies(
                 logging.error(f"{tool} at {get_tool_path(tool)} does not run.")
                 raise MissingDependencyError(f"{tool} does not run: {problem}")
 
-            # Handle version strings like "bcftools 1.12" or "Version: 0.1.19"
+            if minimum and (too_old_message := too_old(tool, version_str)):
+                logging.error(
+                    f"This tool requires {tool} version "
+                    f"{'.'.join(map(str, minimum))} or newer."
+                )
+                logging.info(f"Your current path for {tool} is: {get_tool_path(tool)}")
+                logging.info("Please update your conda environment or system path.")
+                raise MissingDependencyError(too_old_message)
 
-            match = re.search(r"(\d+)\.(\d+)", version_str)
-            if match and minimum:
-                if (int(match.group(1)), int(match.group(2))) < minimum:
-                    logging.error(
-                        f"This tool requires {tool} version "
-                        f"{'.'.join(map(str, minimum))} or newer."
-                    )
-                    logging.info(
-                        f"Your current path for {tool} is: {get_tool_path(tool)}"
-                    )
-                    logging.info("Please update your conda environment or system path.")
-                    raise MissingDependencyError(
-                        f"{tool} version {version_str} is too old."
-                    )
+
+def too_old(tool: str, version_str: str | None) -> str | None:
+    """Why ``tool`` at ``version_str`` (its version probe's output, such as
+    "bcftools 1.12" or "Version: 0.1.19") is older than ``MINIMUM_VERSIONS``
+    allows; None when it isn't, or can't be told."""
+    minimum = MINIMUM_VERSIONS.get(tool)
+    match = re.search(r"(\d+)\.(\d+)", version_str or "")
+    if minimum and match and (int(match.group(1)), int(match.group(2))) < minimum:
+        return f"{tool} version {version_str} is too old."
+    return None
 
 
 def _missing_tool_hint(tool: str) -> str | None:

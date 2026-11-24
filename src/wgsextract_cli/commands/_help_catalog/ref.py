@@ -17,6 +17,15 @@ ENTRIES: dict[str, CommandHelp] = {
         "Prints the reference library's status; writes no files.",
         "wgsextract ref status",
     ),
+    "ref recheck": _h(
+        "Prints each recorded resource release, the newest and its status; "
+        "writes no files except the --save-answers file. With --json, the "
+        "result's details are the wgsextract.recheck/1 document.",
+        "wgsextract ref recheck HG002/HG002_personal_report.manifest.json "
+        "--answers answers.json",
+        "wgsextract ref recheck HG002/HG002_personal_report.manifest.json "
+        "--online --save-answers answers.json",
+    ),
     "ref test-genome": _h(
         "In the dataset library: wgsextract-benchmark-hg19-mini/ with its "
         "genome-config.toml, and the verified zip in .downloads (--delete "

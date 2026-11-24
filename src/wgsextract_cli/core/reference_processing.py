@@ -18,16 +18,16 @@ from wgsextract_cli.core.bgzf import ensure_bgzf as ensure_bgzf
 from wgsextract_cli.core.dependency_checks import (
     verify_dependencies as verify_dependencies,
 )
-from wgsextract_cli.core.reference_assets import GENOME_SIDECARS as GENOME_SIDECARS
-from wgsextract_cli.core.reference_assets import n_count_paths as n_count_paths
-from wgsextract_cli.core.reference_assets import read_fai_lengths as read_fai_lengths
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import GENOME_SIDECARS as GENOME_SIDECARS
+from wgsextract_cli.core.ref_library.assets import n_count_paths as n_count_paths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths as read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import (
     reference_dict_path as reference_dict_path,
 )
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     reference_genomes_dir as reference_genomes_dir,
 )
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     verify_sequence_signature as verify_sequence_signature,
 )
 from wgsextract_cli.core.utils import WGSExtractError as WGSExtractError

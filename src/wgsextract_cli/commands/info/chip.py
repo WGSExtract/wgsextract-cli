@@ -17,7 +17,7 @@ from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
     _resolve_templates_roots,
 )
-from wgsextract_cli.core.reference_assets import resolve_reference_library
+from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.variant_files import verify_paths_exist
 

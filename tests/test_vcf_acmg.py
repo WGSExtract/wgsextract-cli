@@ -12,6 +12,7 @@ import os
 import shutil
 import stat
 import warnings
+from io import IOBase
 from pathlib import Path
 
 import pytest
@@ -326,7 +327,12 @@ def test_acmg_reports_fastveps_own_error_when_it_cannot_start(tmp_path):
         result = api.vcf.acmg(params, check=False)
         gc.collect()
     # #1473: stopping before setup completes must still close both stderr pipes.
-    assert not [w.message for w in caught if issubclass(w.category, ResourceWarning)]
+    # #1517: collection can also finalize sockets left by other tests in this worker.
+    assert not [
+        w.message
+        for w in caught
+        if issubclass(w.category, ResourceWarning) and isinstance(w.source, IOBase)
+    ]
     assert result.error is not None
     assert "fastVEP failed before reading the input" in result.error.message
 
