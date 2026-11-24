@@ -43,8 +43,6 @@ def _export(tmp_path, template: str, **kwargs) -> list[str]:
     (root / "body").mkdir(exist_ok=True)
     (root / "head" / f"{template}.txt").write_text("# h\n")
     bodies = ["rsQ\t1\t1000\nrsP\t1\t2000\n"]
-    if template == "23andMe_V4":
-        bodies.append("")
     for part, body in enumerate(bodies, 1):
         suffix = f"_{part}" if len(bodies) > 1 else ""
         (root / "body" / f"{template}{suffix}.txt").write_text(body)
