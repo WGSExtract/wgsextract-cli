@@ -8,11 +8,12 @@ import logging
 import re
 import tempfile
 import urllib.request
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import TextIO, cast
 
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core import read_scope
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
 SOURCE_URL = "https://ybrowse.org/gbrowse2/gff/snps_hg38.vcf.gz"
 COPYRIGHT = "CC-BY-SA Thomas Krahn YSEQ (2022)."
@@ -24,6 +25,26 @@ RESOURCE_FILES = (
     "targets.tsv.gz.tbi",
 )
 _BASES = set("ACGT")
+
+
+def require_allowed_paths(paths: Iterable[Path]) -> None:
+    for path in paths:
+        if not read_scope.may_follow(path):
+            raise UsageError(f"{path} is outside the folders this run may use.")
+
+
+def resource_paths(directory: Path) -> Iterator[Path]:
+    yield directory
+    yield directory / "manifest.json"
+    yield from (directory / name for name in RESOURCE_FILES)
+
+
+def guarded_snapshot_paths(root: Path) -> Iterator[Path]:
+    """Yield the pointer for authorization before reading the version it names."""
+    yield root
+    yield root / "current.json"
+    if version := current_version(root):
+        yield from resource_paths(root / version)
 
 
 def file_sha256(path: Path) -> str:
@@ -263,6 +284,7 @@ def _download(path: Path) -> None:
 
 def install_snapshot(library: Path, snapshot: Path | None = None) -> Path:
     root = library / "ybrowse" / "hg38"
+    require_allowed_paths((root, root / "current.json"))
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".install_", dir=root) as temporary:
         stage = Path(temporary)
@@ -301,6 +323,7 @@ def publish(
     """Move the staged ``resource`` to ``root/version`` (unless ``keep`` says
     the copy already there stays) and point ``root/current.json`` at it."""
     destination = root / version
+    require_allowed_paths(resource_paths(destination))
     if not destination.exists():
         resource.rename(destination)
     elif not keep(destination):
@@ -319,6 +342,7 @@ def publish(
 
 def current_version(root: Path) -> str | None:
     """The version ``root/current.json`` names, None when it names none."""
+    require_allowed_paths((root, root / "current.json"))
     try:
         version = json.loads((root / "current.json").read_text(encoding="utf-8"))[
             "version"
@@ -365,4 +389,5 @@ def installed_snapshot(library: Path) -> tuple[Path, dict[str, object]]:
             "wgsextract ref ybrowse --install [--snapshot PATH] --ref LIBRARY."
         )
     directory = root / version
+    require_allowed_paths(resource_paths(directory))
     return directory, _validate_resource(directory)

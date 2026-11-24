@@ -29,6 +29,7 @@ from wgsextract_cli.core.ybrowse import (
     SOURCE_URL,
     Y_LENGTH,
     installed_snapshot,
+    require_allowed_paths,
 )
 
 from ._extract_helpers import BaseArgs, cleanup_files, derive_output_path
@@ -119,6 +120,7 @@ def call_ybrowse(input_path: str, base: BaseArgs) -> None:
     from .extract import _extract_regions, _warn_if_female, require_reference
 
     ref = require_reference(base.ref, "yBrowse Y calling", input_path)
+    require_allowed_paths(ybrowse_grch37.fasta_paths(Path(ref)))
     contigs = sequence_lengths(get_bam_header(input_path, base.cram_opt))
     chr_y = get_chr_name(input_path, "Y", base.cram_opt)
     build = _build(contigs, read_fai_lengths(ref), chr_y)

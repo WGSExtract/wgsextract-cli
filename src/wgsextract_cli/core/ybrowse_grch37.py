@@ -15,10 +15,12 @@ import json
 import logging
 import tempfile
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
 from typing import TextIO, cast
 
 from wgsextract_cli.core.network_policy import DownloadRequired
+from wgsextract_cli.core.paths import append_suffix
 from wgsextract_cli.core.ref_library.assets import (
     read_fai_lengths,
     reference_fasta_candidates,
@@ -36,7 +38,9 @@ from wgsextract_cli.core.ybrowse import (
     file_sha256,
     installed_snapshot,
     publish,
+    require_allowed_paths,
     resource_hashes,
+    resource_paths,
     sites_header,
     write_group,
 )
@@ -83,12 +87,20 @@ def library_chain(library: Path) -> Path:
     return library / "ybrowse" / CHAIN_NAME
 
 
+def chain_staging_paths(library: Path) -> Iterator[Path]:
+    stage = library_chain(library).with_name(CHAIN_STAGE)
+    yield stage
+    for suffix in (".partial", ".partial.source", ".partial.segments"):
+        yield append_suffix(stage, suffix)
+
+
 def lift_chain(
     library: Path, chain: Path | None, download: bool
 ) -> tuple[Path, dict[str, object]]:
     """The chain to lift with and its provenance: ``chain`` when given, else
     Ensembl's pinned chain in the library, fetched only when ``download``."""
     if chain is not None:
+        require_allowed_paths((chain,))
         if not chain.is_file():
             raise WGSExtractError(f"Chain not found: {chain}")
         sha = file_sha256(chain)
@@ -96,6 +108,7 @@ def lift_chain(
             return chain, {**_PINNED, "name": chain.name}
         return chain, {"name": chain.name, "sha256": sha, "kind": "user-supplied"}
     path = library_chain(library)
+    require_allowed_paths((path,))
     if not path.is_file():
         if not download:
             raise DownloadRequired(
@@ -107,6 +120,7 @@ def lift_chain(
             )
         from wgsextract_cli.core.ref_library.downloads import download_file
 
+        require_allowed_paths(chain_staging_paths(library))
         path.parent.mkdir(parents=True, exist_ok=True)
         staged = path.with_name(CHAIN_STAGE)
         if not download_file(CHAIN_URL, str(staged), expected_sha256=CHAIN_SHA256):
@@ -138,17 +152,41 @@ def is_grch37(fasta: Path) -> bool:
     return _y_contig(fasta) is not None
 
 
+def fasta_paths(fasta: Path) -> Iterator[Path]:
+    yield fasta
+    yield append_suffix(fasta, ".fai")
+    yield append_suffix(fasta, ".gzi")
+
+
+def _fasta_candidates(library: Path) -> Iterator[Path]:
+    for directory in dict.fromkeys((library, Path(reference_genomes_dir(library)))):
+        require_allowed_paths((directory,))
+        yield from map(Path, reference_fasta_candidates(directory))
+
+
+def guarded_fasta_paths(library: Path, fasta: Path | None) -> Iterator[Path]:
+    if fasta is not None:
+        yield from fasta_paths(fasta)
+        if is_grch37(fasta):
+            return
+    for directory in dict.fromkeys((library, Path(reference_genomes_dir(library)))):
+        yield directory
+        for candidate in reference_fasta_candidates(directory):
+            yield from fasta_paths(Path(candidate))
+
+
 def grch37_fasta(library: Path, fasta: Path | None) -> Path:
     """``fasta`` when it is an indexed GRCh37 FASTA, else the first one in the
     library or its genomes folder (warning that ``fasta`` was passed over)."""
-    if fasta is not None and is_grch37(fasta):
-        return fasta
-    found = [
-        Path(candidate)
-        for directory in (library, Path(reference_genomes_dir(library)))
-        for candidate in reference_fasta_candidates(directory)
-        if is_grch37(Path(candidate))
-    ]
+    if fasta is not None:
+        require_allowed_paths(fasta_paths(fasta))
+        if is_grch37(fasta):
+            return fasta
+    found = []
+    for candidate in _fasta_candidates(library):
+        require_allowed_paths(fasta_paths(candidate))
+        if is_grch37(candidate):
+            found.append(candidate)
     wrong = (
         f"{fasta} is not an indexed GRCh37 FASTA (chrY/Y length {Y_LENGTH:,}, "
         f"chr1 {CHR1_LENGTH:,})"
@@ -304,6 +342,7 @@ def derive(
         raise WGSExtractError(f"{fasta} is not an indexed GRCh37 FASTA.")
     lifter = YLiftOver(chain, (GRCH38_Y_LENGTH, Y_LENGTH))
     root = library / "ybrowse" / "hg19"
+    require_allowed_paths((root, root / "current.json"))
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".install_", dir=root) as temporary:
         stage = Path(temporary)
@@ -421,6 +460,7 @@ def installed_grch37(library: Path) -> tuple[Path, dict[str, object]]:
     if version is None:
         raise WGSExtractError(f"No GRCh37 yBrowse resource. {install}")
     directory = library / "ybrowse" / "hg19" / version
+    require_allowed_paths(resource_paths(directory))
     try:
         manifest = _validate(directory)
     except (OSError, ValueError, KeyError, TypeError) as exc:

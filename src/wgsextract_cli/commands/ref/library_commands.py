@@ -218,13 +218,15 @@ def run_imputation(params: RefImputationParams) -> None:
 
 
 def run_ybrowse(params: RefYbrowseParams) -> None:
-    from wgsextract_cli.core.ybrowse import install_snapshot
+    from wgsextract_cli.core.ybrowse import install_snapshot, require_allowed_paths
 
     library = Path(_library(params.ref))
     if params.delete:
+        paths = library_removal.ybrowse_paths(str(library))
+        require_allowed_paths([library / "ybrowse", *paths])
         _delete(
             "yBrowse snapshots",
-            library_removal.ybrowse_paths(str(library)),
+            paths,
             [library / "ybrowse"],
         )
         return
