@@ -24,11 +24,13 @@ CLI_HELP = {
     "arg_csv": "Output the table as CSV instead of formatted text",
     "cmd_calculate-coverage": "Generate a full breadth-of-coverage report. Uses samtools coverage to calculate exactly how much of each chromosome was sequenced.",
     "cmd_coverage-sample": "Quickly estimate per-chromosome breadth of coverage by sampling ~1,000 evenly spaced, length-weighted 1 kb windows. An estimate; use calculate-coverage for exact numbers.",
+    "cmd_info-gene": "Look at one gene from local data: its span and RefSeq transcripts, your VCF's variants in it with consequence, ClinVar, gnomAD and research-only ACMG annotations, and BAM/CRAM read depth over each exon against a callable threshold. Nothing is downloaded; missing data names the command that makes it.",
     "cmd_info-chip": "Identify the vendor, chip and revision of a consumer microarray raw-data file (23andMe, AncestryDNA, MyHeritage, FTDNA, ...) from its header and marker set, with a confidence score and the matching --formats template.",
     "cmd_report": "Summarise a sample's results (overview, QC, lineage, pharmacogenomics including HLA, ClinVar pathogenic calls in ACMG SF genes with carrier status, microarray files) as a local HTML, Markdown and JSON report with confidence-labelled findings. Reads earlier runs' result manifests and runs no analysis; its only network call downloads a built-in gene list once. Technical results, not diagnosis.",
     "cmd_basecall": "Basecall Nanopore POD5 signal with ONT's Dorado (optional; install it yourself) into an unaligned BAM that keeps the MM/ML methylation tags and feeds `align --r1`. Picks the GPU (Apple silicon, else NVIDIA) or CPU, downloads hac/sup models into the wgsextract cache, and can re-basecall only a panel's reads with sup.",
-    "cmd_panel": "Turn gene lists and presets (pharmacogenes, HLA/MHC, autoimmune, ACMG SF, cardiac) into target regions.",
+    "cmd_panel": "Turn gene lists and presets (pharmacogenes, HLA/MHC, autoimmune, ACMG SF, cardiac) into target regions, and check research panel files.",
     "cmd_panel-bed": "Write a BED of gene regions for Nanopore adaptive sampling (MinKNOW) or targeted analysis: genes and presets are padded (default 100 kb each side), clipped and merged, from the bundled NCBI RefSeq annotations of hg38, T2T or hg19. Reports the panel's share of the genome; ONT advises under 5 percent (best under 1 percent).",
+    "cmd_panel-check": "Validate a research panel file (wgsextract.panel/1, TOML or JSON: gene groups with variant filters, watched sites and haplotypes) and resolve its genes in the bundled NCBI RefSeq annotations, with their coding lengths. Lists every problem with its location, and unknown or ambiguous gene names. Reads no sample data. Research use only.",
     "cmd_sample": "Show or correct what is known about a sample (sex, sequencing platform, build, depth), recorded once in its folder's wgsextract.sample.toml.",
     "cmd_sample-show": "Show the sample's overrides, the facts commands detected from each of its files (with method, confidence and date) and its recorded results.",
     "cmd_sample-set": "Set an override (--sex, --platform) that commands use instead of what they detect: a sex for the whole genome folder, else for --input alone. Commands warn when the reads disagree.",
@@ -67,6 +69,7 @@ CLI_HELP = {
     "cmd_phase": "Phase a sample's heterozygous calls with its reads (WhatsHap, or LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype. Optional; Linux and macOS, install with `pixi install -e phasing`.",
     "cmd_annotate": "Add external metadata (like population frequencies or disease risk) to your VCF file.",
     "cmd_filter": "Filter your results. Use this to focus on specific genes of interest or to remove low-quality 'noisy' variant calls.",
+    "cmd_vcf-prepare": "Repair a VCF from a sequencing service so other tools accept it: BGZF compression, sorting, contig names and header lines, and a fresh index; optionally split multiallelics and left-align indels. Reports every change.",
     "cmd_vcf-to-fasta": "Build your personal consensus genome: the reference FASTA with your variants applied (heterozygous SNVs as IUPAC codes by default), and N where a gVCF has no call.",
     "cmd_trio": "Analyze inheritance patterns. Compares a child's VCF with their parents to identify de novo (new) mutations or inherited conditions.",
     "cmd_analyze": "Comprehensive genomic analysis combining multiple tools into a single workflow.",
@@ -85,6 +88,7 @@ CLI_HELP = {
     "cmd_microarray": "Simulate a consumer microarray (like 23andMe or AncestryDNA) from your WGS data.",
     "cmd_pet-align": "Align raw FASTQ reads against a cat or dog reference genome and call variants to produce a VCF file.",
     "cmd_lineage-y-haplogroup": "Predict paternal haplogroups with native Yleaf-derived analysis (BAM/CRAM/VCF).",
+    "cmd_lineage-y-private": "List candidate private (novel) Y SNPs: calls absent from the installed YBrowse/YFull marker sets, in callable regions, passing strict filters.",
     "cmd_lineage-y-str": "Count Y-STR repeats (FamilyTreeDNA Y-12 to Y-111, PowerPlex Y23, Yfiler Plus) from a BAM/CRAM for genealogy matching.",
     "cmd_lineage-mt-haplogroup": "Predict your maternal haplogroup using Haplogrep 3, optionally checking mtDNA contamination with haplocheck. Requires a BAM, CRAM or VCF with mitochondrial data.",
     "cmd_fastqc": "The industry-standard quality check for raw reads. Produces a visual report of base quality, GC content, and adapter contamination.",
@@ -99,37 +103,42 @@ CLI_HELP = {
     "cmd_sign": "Write SHA-256 checksum manifests for output files, sign them with an OpenSSH key, and verify them later.",
     "cmd_sign-create": "Hash files or directories into a sha256sum-compatible SHA256SUMS manifest, signed with ssh-keygen when a key is given.",
     "cmd_sign-verify": "Check a SHA256SUMS manifest's OpenSSH signature against a trusted key, then re-hash every listed file.",
-    "cmd_typing": "Genotype genes and repeats a VCF can't capture from a 30x WGS BAM/CRAM: CYP2D6 star alleles (Cyrius), SMN1/SMN2 copy number (SMNCopyNumberCaller), HLA alleles (T1K) and repeat expansions (ExpansionHunter, or LongTR for long reads).",
+    "cmd_typing": "Genotype genes and repeats a VCF can't capture from a WGS BAM/CRAM, or screen BED targets for copy number.",
+    "cmd_typing-paraphase": "Type paralogous loci and copy number with Paraphase from PacBio HiFi or experimental, unvalidated ONT reads.",
     "cmd_typing-smn": "Call SMN1/SMN2 copy number with SMNCopyNumberCaller for SMA carrier screening (one SMN1 copy: carrier; none: affected). Short-read ~30x WGS only; not a diagnosis.",
     "cmd_typing-cyp2d6": "Call CYP2D6 star alleles, including copy-number and hybrid alleles, with Cyrius, and write a PharmCAT outside call. Cyrius's license allows noncommercial use only, and no distribution or modification.",
     "cmd_typing-hla": "Call HLA class I and II alleles with T1K from reads in the MHC, and write a PharmCAT outside call for HLA-A/HLA-B. The first run downloads 45 MB.",
     "cmd_typing-str": "Size the disease-causing repeats of ExpansionHunter's catalog (HTT, FMR1, C9ORF72, ...) with ExpansionHunter, or LongTR for Nanopore and PacBio reads, and flag those outside STRchive's normal range.",
+    "cmd_typing-target-cnv": "Screen BED targets for GC-normalized copy number from short-read WGS. Uses a matching indexed FASTA; masked targets are withheld except clear calls at curated deletion loci.",
     "cmd_methylation": "Methylation (5mC/5hmC) from the base-modification (MM/ML) tags of Nanopore and PacBio HiFi reads.",
     "cmd_qc-relate": "Sex, relatedness and 1000 Genomes superpopulation of BAM/CRAM/VCF files with somalier; flags sample swaps. Optional: Linux and macOS, install with `pixi install -e somalier`.",
     "cmd_methylation-pileup": "Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and summary. Optional: Linux and macOS, install with `pixi install -e modkit`.",
+    "cmd_methylation-regions": "Summarize CpG bedMethyl over gene promoters or CpG islands.",
     "cmd_ref-cadd": "Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD indels, ~85 GB per build) with their tabix indexes.",
     "cmd_ref-gerp": "Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6 GB; hg19 from UCSC, ~7.6 GB).",
     "cmd_ref-index": "Prepare a FASTA file for use by indexing it. This is required before you can align reads or call variants against it.",
     "cmd_ref-download": "Download a reference FASTA from a URL (--url) to a path (--out). For curated hg19/hg38/T2T genomes use 'ref library --install'.",
     "cmd_ref-verify": "Ensure your reference genome file isn't corrupted and has all the necessary companion files (indexes, dicts).",
     "cmd_ref-count-ns": "Calculate the percentage of 'N' (unknown) bases in a genome. Useful for understanding the 'mappability' of different reference builds.",
-    "cmd_ref-gene-map": "Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1).",
+    "cmd_ref-gene-map": "Download or delete lightweight gene-to-coordinate mapping files (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1), with the RefSeq transcript and exon models the genome viewer and info gene show.",
     "cmd_ref-library": "Opens the interactive reference manager to help you organize and download genomic data.",
     "micro_formats_help": """Comma-separated list of formats to generate (default: all).
 Variants are named by letter (h600.org's Microarray File Formats); similar
 minor variants are merged into one file, e.g. ancestry_v2ab.
 Available formats:
-  Combined kit only (always written):
-    all (CombinedKit v5: every chip's markers in one 23andMe-style file, e.g.
-    for GEDmatch; writes no vendor files: list the vendor formats to get them)
+  Combined kits:
+    all, combined_v5 (CombinedKit v5: every chip's markers in one 23andMe-style
+    file, e.g. for GEDmatch; always written, writes no vendor files alone)
+    combined_v3 (CombinedKit v3: classic 14-template subset of CombinedKit v5,
+    written as <sample>_CombinedKit_v3.txt)
   23andMe:
     23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4 (v4a-c),
     23andme_v5, 23andme_v3+v5, 23andme_api
   AncestryDNA:
-    ancestry_v1, ancestry_v2ab (v2a and v2b merged; ancestry_v2 is v2a alone),
-    ancestry_v2cd (v2c and v2d merged), ancestry_v2e (2026: no Y or MT)
+    ancestry_v1, ancestry_v2ab (v2a and v2b merged; alias: ancestry_v2),
+    ancestry_v2cd (v2c and v2d merged), ancestry_v2e
   Family Tree DNA:
-    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3, ftdna_v4
+    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2 (v2a-d), ftdna_v3, ftdna_v4
     ftdna_v2y, ftdna_v3y, ftdna_v4y (the separate Y files, GRCh38 positions)
   Living DNA:
     ldna_v1, ldna_v2
@@ -138,9 +147,6 @@ Available formats:
   Other vendors:
     tellmegen, genera, mthfr (MTHFR Genetics), meudna_v1, meudna_v2,
     selfdecode, nucleus
-  Earlier IDs naming a date or size (ancestry_v2_2021, ancestry_v2_2024,
-  23andme_v5_2025, myheritage_gsa_2025, myheritage_gsa_2025_609424) are
-  accepted: they are exact sub-minor export layouts of v2d, v5 and v2.
   AADR v66.p1 (GRCh37 outputs, PLINK .bed/.bim/.fam AND EIGENSTRAT .geno/.snp/.ind):
     aadr_1240k, aadr_ho, aadr_1240k+ho (HO is a subset of 1240K in this release)
     aadr_2m (opt-in; first run 'ref aadr --install'; v66.p1 genetic distances
@@ -153,13 +159,15 @@ Available formats:
     "arg_se": "Single-End FASTQ file",
     "arg_long_read": "Use minimap2 for long-read alignment",
     "cmd_bam_mgmt": "BAM/CRAM management commands.",
-    "cmd_deps": "Check, list, install and remove the external tools.",
+    "cmd_deps": "Check, list, install and remove the external tools, and check whether a command can run offline.",
     "cmd_deps-list": "List every mandatory and optional tool with its status, and whether 'deps install' or 'deps uninstall' can act on it.",
+    "cmd_deps-ready": "Report whether a command line can run on this computer without the network: its tools, images, GPUs, model weights, input, reference genome and indexes, checked offline without installing or downloading anything.",
     "cmd_deps-install": "Download and install the Pixi environment that provides an optional tool (e.g. gatk).",
     "cmd_deps-uninstall": "Remove the Pixi environment that provides an optional tool, and the other tools in it.",
-    "cmd_qc": "Quality control for raw reads, alignments and VCFs (fastp, FastQC, contamination, ancestry, VCF stats) and test data generation.",
+    "cmd_qc": "Quality control for raw reads, alignments and VCFs (fastp, FastQC, contamination, ancestry, runs of homozygosity, VCF stats) and test data generation.",
     "cmd_qc-ancestry": "Admixture-style ancestry proportions (HGDP+1KG reference components) from a BAM/CRAM, VCF or microarray file.",
     "cmd_qc-contamination": "Estimate how much of a GRCh37/38 BAM/CRAM's DNA comes from another person (VerifyBamID2 FREEMIX). Optional: Linux and macOS, install with `pixi install -e verifybamid2`.",
+    "cmd_qc-roh": "Find runs of homozygosity in a VCF with bcftools roh and your local population allele frequencies; flags long runs over imprinted regions for review (not a diagnosis).",
     "cmd_vcf": "Variant calling (bcftools, freebayes, GATK, DeepVariant, Clair3, Delly, pbsv, Sniffles), annotation, filtering, and trio analysis.",
 }
 
@@ -265,7 +273,7 @@ LOG_MESSAGES = {
     "vcf_gerp_resolve": "Auto-resolved GERP file: {path}",
     "vcf_gerp_missing": "GERP data file not found. Please provide with --gerp-file or place it in the reference library's 'downloads/' folder as gerp_hg38.bw.",
     "vcf_gerp_done": "GERP annotation and filtering complete: {output}",
-    "vcf_gnomad_missing": "gnomAD data file not found. Please run 'ref gnomad' first.",
+    "vcf_gnomad_missing": "gnomAD data file not found.",
     "vcf_gnomad_done": "gnomAD annotation complete: {output}",
     "vcf_spliceai_missing": "SpliceAI data file not found. Please run 'ref spliceai' first.",
     "vcf_spliceai_done": "SpliceAI annotation complete: {output}",

@@ -85,14 +85,14 @@ def test_issue_1249_missing_aadr_chain_is_fetched_once(
         )
         body = library / "raw_file_templates" / "body"
         body.mkdir(parents=True)
-        (body / "23andMe_V5_2025.txt").write_text("rs1\t1\t100\nrsProbe\t1\t700\n")
+        (body / "23andMe_V4.txt").write_text("rs1\t1\t100\nrsProbe\t1\t700\n")
         manifest = _manifest(
             tmp_path / "manifest.csv",
             [["rsProbe", "[I/D]", "37", "1", "700", CONTEXT]],
         )
         targets = Path(_targets(tmp_path / "targets.tab", [("chr1", 200, "rs1")]))
-        formats += ",23andme_v5_2025"
-        bindings.append(f"23andme_v5_2025={manifest}")
+        formats += ",23andme_v4"
+        bindings.append(f"23andme_v4={manifest}")
     plain = tmp_path / "sample.vcf"
     plain.write_text(
         "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
@@ -130,7 +130,7 @@ def test_issue_1249_missing_aadr_chain_is_fetched_once(
         server.close()
     assert (out / "sample_AADR_ho.geno").read_text().splitlines()[0] == "0"
     if manifest_indels:
-        kit = (out / "sample_23andMe_V5_2025.txt").read_text()
+        kit = (out / "sample_23andMe_V4.txt").read_text()
         assert "rsProbe\t1\t700\tDI" in kit.splitlines()
     assert len(gets) == 1
 
@@ -726,6 +726,9 @@ def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, marker
     for part, text in (("head", "# h\n"), ("body", "rs1\t1\t100\n")):
         (templates / part).mkdir(parents=True)
         (templates / part / "23andMe_V3.txt").write_text(text)
+    target = microarray_targets.build_genome_wide_target(
+        str(library), "hg19", [str(library)]
+    )
     vcf = _plain_vcf(tmp_path / "input.vcf")
     outdir = tmp_path / "out"
 
@@ -735,6 +738,7 @@ def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, marker
             run_wgsextract(
                 "microarray", "--input", str(vcf), "--ref", str(fasta),
                 "--formats", formats, "--outdir", str(outdir),
+                "--ref-vcf-tab", target,
             )  # fmt: skip
         [kit] = [o for o in result.outputs if o.role == "vendor_kit"]
         return bool(kit.metrics.get("reused"))

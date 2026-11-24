@@ -21,12 +21,15 @@ from wgsextract_cli.api.vcf import (
     VcfGatkParams,
     VcfGerpParams,
     VcfGnomadParams,
+    VcfGraniteQcParams,
     VcfImputeParams,
     VcfIndelParams,
+    VcfInfoParams,
     VcfPharmcatParams,
     VcfPharmgkbParams,
     VcfPhaseParams,
     VcfPhylopParams,
+    VcfPrepareParams,
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
@@ -35,6 +38,7 @@ from wgsextract_cli.api.vcf import (
     VcfTableParams,
     VcfToFastaParams,
     VcfTrioParams,
+    VcfVariantQcParams,
     _VcfFileParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
@@ -64,9 +68,14 @@ cmd_freebayes = command_handler("wgsextract_cli.commands.vcf.callers", "cmd_free
 cmd_gatk = command_handler("wgsextract_cli.commands.vcf.callers", "cmd_gatk")
 cmd_gerp = command_handler("wgsextract_cli.commands.vcf.deleteriousness", "cmd_gerp")
 cmd_gnomad = command_handler("wgsextract_cli.commands.vcf.population", "cmd_gnomad")
+cmd_granite_qc = command_handler(
+    "wgsextract_cli.commands.vcf.qc_tools", "cmd_granite_qc"
+)
 cmd_impute = command_handler("wgsextract_cli.commands.vcf.imputation", "cmd_impute")
 cmd_indel = command_handler("wgsextract_cli.commands.vcf.basic", "cmd_indel")
+cmd_info = command_handler("wgsextract_cli.commands.vcf.info", "cmd_vcf_info")
 cmd_pharmcat = command_handler("wgsextract_cli.commands.vcf.pharmcat", "cmd_pharmcat")
+cmd_prepare = command_handler("wgsextract_cli.commands.vcf.prepare", "cmd_prepare")
 cmd_pharmgkb = command_handler("wgsextract_cli.commands.vcf.splicing", "cmd_pharmgkb")
 cmd_phase = command_handler("wgsextract_cli.commands.vcf.phasing", "cmd_phase")
 cmd_phylop = command_handler("wgsextract_cli.commands.vcf.population", "cmd_phylop")
@@ -78,6 +87,7 @@ cmd_sv_freq = command_handler("wgsextract_cli.commands.vcf.sv_frequency", "cmd_s
 cmd_table = command_handler("wgsextract_cli.commands.vcf.table", "cmd_table")
 cmd_to_fasta = command_handler("wgsextract_cli.commands.vcf.consensus", "cmd_to_fasta")
 cmd_trio = command_handler("wgsextract_cli.commands.vcf.filter_trio", "cmd_trio")
+cmd_variantqc = command_handler("wgsextract_cli.commands.vcf.qc_tools", "cmd_variantqc")
 
 
 def _add_vcf_command(
@@ -145,6 +155,14 @@ def register(
         "Export variants and their annotations (gene, consequence, ClinVar, gnomAD, genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and an SQLite database to query.",
         VcfTableParams,
         cmd_table,
+    )
+    _add_vcf_command(
+        vcf_subs,
+        base_parser,
+        "prepare",
+        CLI_HELP["cmd_vcf-prepare"],
+        VcfPrepareParams,
+        cmd_prepare,
     )
     _add_vcf_command(
         vcf_subs,
@@ -256,6 +274,24 @@ def register(
             "Call star-allele diplotypes and drug-response phenotypes (CYP2C19, CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.",
             VcfPharmcatParams,
             cmd_pharmcat,
+        ),
+        (
+            "info",
+            "Quick summary of a VCF, gVCF or BCF: reference build/model, samples, format, and record counts.",
+            VcfInfoParams,
+            cmd_info,
+        ),
+        (
+            "variantqc",
+            "Run DISCVRSeq VariantQC to generate an interactive HTML VCF quality report.",
+            VcfVariantQcParams,
+            cmd_variantqc,
+        ),
+        (
+            "granite-qc",
+            "Run granite qcVCF (dbmi-bgm/granite) for single-sample or family VCF quality metrics.",
+            VcfGraniteQcParams,
+            cmd_granite_qc,
         ),
         (
             "chain-annotate",

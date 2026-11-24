@@ -115,6 +115,38 @@ reads both: its reads as `input` and its calls as `vcf_input`.
 (`default`, `archive` or `calling`) in `metrics.output_profile`; see
 [output profiles](ont.md#lossless-output-profiles).
 
+### Repeat calls
+
+`typing str` records `details.repeat_calls` in the manifest and in `--json`
+output. These are the same locus-sorted rows as the `repeat_summary` output
+(`<stem>.str.tsv` or `<stem>.str.parquet`), not the caller's own JSON.
+`details.requested_loci` contains the sorted `--loci` IDs, or `[]` for a full
+catalog run. Targeted runs append a digest of the IDs to their `.str` prefix
+so their outputs have their own manifests. An unnamed LongTR or STRkit locus
+uses its catalog interval (`contig:start-end`, zero-based with an exclusive
+end) as its `locus` ID.
+
+- `allele_1`, `allele_2`, `ci_1_low`, `ci_1_high`, `ci_2_low` and
+  `ci_2_high` are integer repeat counts. `allele_1_reads`, `allele_2_reads`
+  and `clipped_reads` are integer read counts. An uncalled allele or a bound
+  or support count the caller could not provide is `null` (blank in TSV),
+  not zero. A hemizygous call has no second allele. No-call variants from
+  the caller are retained with any coverage it reported.
+- `coverage` is caller-reported locus coverage, rounded to one decimal.
+  `clipped_reads` counts reads that meet the unsized-expansion warning rule
+  for long-read callers; zero means no such signal was reported.
+- `status` retains the readable classification and caveats. `confidence`
+  is `low` for a no-call, incomplete or low-support call, a below-threshold
+  estimate whose CI reaches the pathogenic range, an unchecked expansion
+  motif or evidence of an unsized expansion. `not_assessed` does not mean
+  high confidence.
+  `normal_max` and `pathogenic_min` are nullable integers (`-` in TSV);
+  custom loci without thresholds are sized but not classified.
+- `normal_repeats`, `flagged_repeats` and `unconfirmed_repeats` summarize
+  the calls. An unconfirmed call can also be flagged, for example when
+  clipped reads suggest an expansion. The personal report reads this
+  manifest without running a caller.
+
 ### Fingerprints
 
 Inputs, outputs and the reference carry a `wgse-fp1:<sha256 hex>` fingerprint.
@@ -226,9 +258,10 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `sample_female` | Y extraction | Female sample; Y outputs will be empty or noise. |
 | `ybrowse_reference_n_sites_excluded` | `extract ydna-vcf --ybrowse` | The reference chrY is N at some yBrowse sites (the PARs in hs38 and the GRCh38 no-alt analysis set), so they were not called (`sites`, `contig`). The `ybrowse_excluded_reference_n_sites` metric and the VCF header's `##ybrowse_excluded_reference_N_sites` give the count. |
 | `sex_check_skipped` | Y extraction | The female-sample check couldn't run to completion (for example, the alignment lacks supported GRCh37/38 contigs or the CRAM reference couldn't be read). Declare the sex with `sample set --sex`, or pass `--ref` if a CRAM reference is missing. |
-| `build_unknown`, `build_unsupported` | microarray, Y haplogroup | The reference build is unknown or unsupported by the tool. |
+| `build_unknown`, `build_unsupported` | personal report, Y haplogroup | The reference build is unknown or unsupported by the tool. |
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |
+| `panel_contigs_not_in_vcf` | `vcf filter` and `vcf table` panel selection | Panel intervals on contigs absent from the VCF were omitted. |
 | `gvcf_reference_missing`, `inconclusive_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; missing, partial or unassessed parental genotypes prevent inheritance classification. Inconclusive candidates are written separately (`count`, `mode`) and included in the personal report's overview warnings. |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |
@@ -242,8 +275,10 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `mod_tags_partial`, `mod_models_differ` | `bam merge` | Only some runs carry MM/ML tags (`inputs` lists those without), or the runs' basecalls name different modified-base models (`models`). |
 | `few_modification_tags`, `opposite_strand_modifications`, `pacbio_5hmc_limited`, `unknown_platform` | `methylation` | The input's MM/ML modification tags are sparse, strand-mixed, or from a platform with limited calls. |
 | `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). For CYP2D6, an ambiguous call (`filter`, `call_info`, `candidates`) or Cyrius's `LowQ_high_CN` (about 6 or more CYP2D6 copies; `cyp2d6_cyp2d7_copies`) writes no PharmCAT outside call. |
+| `paraphase_ont_experimental` | `typing paraphase` | The input read groups are ONT; these calls are experimental and unvalidated. |
 | `repeat_outside_normal_range` | `typing repeats` | A repeat length is outside its normal range (`locus`). |
 | `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | A low-support allele alone changes the grade, all called alleles have low support, or missing expected copies leave the call unresolved; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
+| `repeat_clipped_reads` | `typing str` | Reads clipped at an unclassified locus may indicate an unsized expansion; the locus has no disease thresholds (`locus`). |
 | `primary_overwrite` | any | An output of a lab primary kind (BAM, CRAM, FASTQ, VCF, microarray file) was written into the folder of an input, outside the output folder, where it could replace a file from the lab (`path`). |
 | `output_exists`, `input_failed` | `vep` | An input was skipped because its output exists (`path`), or failed while the batch went on. |
 | `vep_info_missing`, `chromosomes_missing` | `vep verify` | The VEP cache lacks its `info.txt` or chromosome directories (`chromosomes`). |
@@ -253,6 +288,8 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `unsigned` | `sign verify` | The checksum manifest has no signature; only hashes were checked. |
 | `sample_mismatch` | `analyze comprehensive` | A VCF not called from reads by wgsextract names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
 | `ystr_unverified_convention` | `lineage y-str` | Markers use a repeat-count convention the panel has not verified. |
+| `known_markers_partial` | `lineage y-private` on T2T | Only the YFull YTree positions are known markers there (the YBrowse snapshot is GRCh38-only), so SNPs YBrowse names but YFull's tree doesn't place can be candidates (`build`). |
+| `y_private_excess` | `lineage y-private` | More candidate private Y SNVs (`count`) than expected (`threshold`): suspect contamination, a mismatched reference, poor data or a marker set that misses the lineage. |
 
 New codes may be added in any release. Consumers should treat unknown codes
 as generic warnings.
@@ -328,6 +365,7 @@ These commands record full manifests: `info` (including `--detailed`),
 `info chip`, `info calculate-coverage`, `info coverage-sample`, `ref status`,
 `align`, `realign`, every `vcf` subcommand, every `extract` subcommand,
 `lineage mt-haplogroup`, `lineage y-haplogroup`, `lineage y-str`,
+`lineage y-private`,
 `microarray`, every `bam`, `qc`, `ref`, `vep` and `typing` subcommand,
 `analyze`, `pet`, `methylation`, `repair`, `benchmark`, `example-genome
 download`, `sign` and `report`.
@@ -362,6 +400,12 @@ Other commands' metrics:
   `bam merge` adds `merged_inputs`, `read_groups` and, for indexed inputs,
   the combined `autosomal_depth` (each run's in `details.runs`); `bam unalign`
   its `read_groups`.
+- Y extractions (`extract ydna-bam`, `extract y-mt-extract`, `extract region
+  --target y|ymt`) record each output's `y_scope` and its comma-separated
+  `contigs`; `details` holds `y_scope` and `contigs`, one row per considered
+  contig (`name`, `length`, `role`, `included`, `reason`, and for a BAM its
+  `mapped_records` and `placed_unmapped_records`). See
+  [Y-associated contigs](lineage.md#y-associated-contigs---y-scope).
 - `qc fastp` records read counts before and after filtering, the Q30 rate and
   duplication rate; `qc fastqc` the module pass/warn/fail counts and total
   sequences (`r2_`-prefixed for `--r2`); `qc vcf` the `bcftools stats` totals (records, SNPs, indels,
@@ -379,6 +423,10 @@ Other commands' metrics:
   combined CYP2D6+CYP2D7 copy number; one diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
   `sma_carrier` and `sma_affected`); `repair` the records read and
   repaired.
+- `vcf prepare` records `records_in`, `records_out`, the input's
+  compression and index state and the number of `repairs`, with one
+  `vcf_prepare_*` warning per repair
+  ([variants.md](variants.md#preparing-a-vcf-from-a-provider)).
 - `microarray` on hg38 input records how the hg38-to-hg19 liftover placed the
   CombinedKit's sites: `liftover_lifted`, and the no-calls by reason,
   `liftover_unmapped`, `liftover_alt_contig`, `liftover_ambiguous` (more than

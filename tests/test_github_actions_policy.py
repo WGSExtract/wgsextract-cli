@@ -203,70 +203,6 @@ def top_level_conjuncts(expression: str) -> list[str]:
     return atoms
 
 
-def workflow_concurrency(workflow: Path) -> dict[str, str]:
-    """Read workflow-level concurrency without assuming a YAML indent width."""
-    lines = workflow.read_text().splitlines()
-    start = next(
-        (
-            index
-            for index, line in enumerate(lines)
-            if re.fullmatch(r"concurrency:\s*(?:#.*)?", line)
-        ),
-        None,
-    )
-    if start is None:
-        return {}
-    fields = {}
-    for line in lines[start + 1 :]:
-        if not line.strip() or line.lstrip().startswith("#"):
-            continue
-        if not line[0].isspace():
-            break
-        key, separator, value = line.strip().partition(":")
-        if separator:
-            fields[key] = value.strip()
-    return fields
-
-
-def draft_concurrency_group(workflow: Path, *, draft: bool, action: str) -> str:
-    """Render the draft-dependent expression; keep identical PR context opaque."""
-    group = workflow_concurrency(workflow)["group"]
-
-    def render(expression: re.Match[str]) -> str:
-        source = expression[1]
-        if "github.event.pull_request.draft" not in source:
-            return expression[0]
-        source = source.replace("github.event.pull_request.draft", repr(draft))
-        source = source.replace("github.event.action", repr(action))
-        tree = ast.parse(
-            source.replace("&&", " and ").replace("||", " or ").strip(), mode="eval"
-        )
-
-        def value(node: ast.AST) -> object:
-            if isinstance(node, ast.Constant):
-                return node.value
-            if isinstance(node, ast.BoolOp):
-                result = value(node.values[0])
-                for child in node.values[1:]:
-                    if (isinstance(node.op, ast.And) and not result) or (
-                        isinstance(node.op, ast.Or) and result
-                    ):
-                        return result
-                    result = value(child)
-                return result
-            if isinstance(node, ast.Compare) and len(node.ops) == 1:
-                left, right = value(node.left), value(node.comparators[0])
-                if isinstance(node.ops[0], ast.NotEq):
-                    return left != right
-                if isinstance(node.ops[0], ast.Eq):
-                    return left == right
-            raise AssertionError(f"Unsupported concurrency expression: {source}")
-
-        return str(value(tree.body))
-
-    return re.sub(r"\$\{\{(.*?)\}\}", render, group)
-
-
 def write_workflow(root: Path, uses: str) -> None:
     directory = root / ".github" / "workflows"
     directory.mkdir(parents=True)
@@ -430,29 +366,37 @@ def test_916_pr_refs_cannot_save_compiler_caches(
     else:
         condition = text.split("- name: Save successful compiler objects", 1)[1]
         condition = condition.split("uses:", 1)[0]
-    values = {
+    values: dict[str, str | bool] = {
         "github.ref": ref,
         "github.event_name": event,
         "github.actor": actor,
         "inputs.phase": "save",
         "inputs.writer": "true",
     }
-    for name, value in values.items():
-        condition = condition.replace(name, repr(value))
     condition = (
         condition.split("if:", 1)[-1]
         .replace(">-", "")
         .replace("${{", "")
         .replace("}}", "")
     )
+    assert matches_workflow_condition(condition, values) is expected
+    if ref.startswith("refs/pull/"):
+        assert re.search(r"measure-916-[a-z]+-v1", text)
+
+
+def matches_workflow_condition(condition: str, values: dict[str, str | bool]) -> bool:
+    for name, value in values.items():
+        condition = condition.replace(name, repr(value))
     condition = condition.replace("&&", " and ").replace("||", " or ")
+    condition = re.sub(r"!(?!=)", " not ", condition)
     tree = ast.parse(" ".join(condition.split()), mode="eval")
 
-    # CI contract: evaluate the actual writer guard for PR, tag, main and
-    # owner dispatch contexts, without executing code from a workflow.
+    # Evaluate only the boolean/comparison subset, never execute workflow code.
     def matches(node: ast.AST) -> bool | str:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        if isinstance(node, ast.Constant) and isinstance(node.value, (str, bool)):
             return node.value
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+            return not matches(node.operand)
         if isinstance(node, ast.BoolOp):
             truth_values = [bool(matches(value)) for value in node.values]
             return (
@@ -460,15 +404,15 @@ def test_916_pr_refs_cannot_save_compiler_caches(
             )
         if isinstance(node, ast.Compare) and len(node.ops) == 1:
             left, right = matches(node.left), matches(node.comparators[0])
+            if isinstance(left, str) and isinstance(right, str):
+                left, right = left.lower(), right.lower()
             if isinstance(node.ops[0], ast.Eq):
                 return left == right
             if isinstance(node.ops[0], ast.NotEq):
                 return left != right
-        raise AssertionError(f"Unreviewed writer condition: {ast.dump(node)}")
+        raise AssertionError(f"Unreviewed workflow condition: {ast.dump(node)}")
 
-    assert matches(tree.body) is expected
-    if ref.startswith("refs/pull/"):
-        assert re.search(r"measure-916-[a-z]+-v1", text)
+    return bool(matches(tree.body))
 
 
 CLI_PUSH_WORKFLOWS = {

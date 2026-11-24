@@ -332,7 +332,9 @@ ACTIONS = {
     "stable": "Restore it, or follow the breaking-change procedure in "
     "docs/output-contracts.md (a new schema major version, or an owner-approved "
     "entry in contracts/output-contracts.json approved_breaks).",
-    "experimental": "Announce it: name `{key}` in docs/release-notes/unreleased.md.",
+    "experimental": "Announce it: name `{key}` in this change's release-note fragment "
+    "at docs/release-notes/unreleased/<number>-<slug>.md "
+    "(format in docs/release-notes/unreleased/README.md).",
 }
 
 

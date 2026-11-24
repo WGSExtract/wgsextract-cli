@@ -78,7 +78,9 @@ def _contig_aliases(name: str) -> list[str]:
     return [f"chr{bare}", bare]
 
 
-def read_bed(path: Path, lengths: Mapping[str, int]) -> list[BedTarget]:
+def read_bed(
+    path: Path, lengths: Mapping[str, int], *, option: str = "--by"
+) -> list[BedTarget]:
     """BED targets in the alignment's contig names (chr1 and 1, chrM and MT
     are matched); unnamed ones are named contig:start-end (1-based)."""
     targets: list[BedTarget] = []
@@ -87,7 +89,7 @@ def read_bed(path: Path, lengths: Mapping[str, int]) -> list[BedTarget]:
     try:
         lines = path.read_text(encoding="utf-8-sig").splitlines()
     except OSError as exc:
-        raise UsageError(f"Cannot read --by {path}: {exc}") from exc
+        raise UsageError(f"Cannot read {option} {path}: {exc}") from exc
     for number, line in enumerate(lines, 1):
         if not line.strip() or line.startswith(("#", "track", "browser")):
             continue
@@ -96,11 +98,11 @@ def read_bed(path: Path, lengths: Mapping[str, int]) -> list[BedTarget]:
             chrom, start, end = fields[0], int(fields[1]), int(fields[2])
         except (IndexError, ValueError):
             raise UsageError(
-                f"--by {path} line {number} is not BED (contig, start, end): "
+                f"{option} {path} line {number} is not BED (contig, start, end): "
                 f"{line[:80]!r}"
             ) from None
         if not 0 <= start < end:
-            raise UsageError(f"--by {path} line {number}: start must be below end.")
+            raise UsageError(f"{option} {path} line {number}: start must be below end.")
         contig = chrom
         if contig not in lengths:
             contig = next((a for a in _contig_aliases(chrom) if a in lengths), "")
@@ -110,7 +112,7 @@ def read_bed(path: Path, lengths: Mapping[str, int]) -> list[BedTarget]:
             renamed[chrom] = contig
         if end > lengths[contig]:
             raise UsageError(
-                f"--by {path} line {number}: {chrom}:{end} is beyond the end of "
+                f"{option} {path} line {number}: {chrom}:{end} is beyond the end of "
                 f"{contig} ({lengths[contig]:,} bp); is the BED for another build?"
             )
         name = (
@@ -119,12 +121,12 @@ def read_bed(path: Path, lengths: Mapping[str, int]) -> list[BedTarget]:
         targets.append(BedTarget(name, contig, start, end))
     if unknown:
         raise UsageError(
-            f"--by {path} names contigs the alignment lacks: {', '.join(sorted(unknown))}."
+            f"{option} {path} names contigs the alignment lacks: {', '.join(sorted(unknown))}."
         )
     if not targets:
-        raise UsageError(f"--by {path} has no targets.")
+        raise UsageError(f"{option} {path} has no targets.")
     for given, contig in sorted(renamed.items()):
-        logging.info("--by: %s is %s in the alignment.", given, contig)
+        logging.info("%s: %s is %s in the alignment.", option, given, contig)
     return targets
 
 
@@ -170,7 +172,7 @@ def _segments(
 def _count_depths(
     stream: Iterable[bytes], targets: Sequence[BedTarget]
 ) -> dict[str, dict[int, int]]:
-    """Fill each target's histogram from ``samtools depth -a`` rows (bases
+    """Fill each target's histogram from ``samtools depth`` rows (bases
     samtools leaves out count as depth 0); returns each contig's depth
     histogram over its targets, overlaps counted once."""
     segments = _segments(targets)
@@ -241,29 +243,39 @@ def _pipeline(commands: Sequence[Sequence[str]], scratch: Path) -> Iterator[IO[b
             stderr.close()
 
 
-def _target_depths(
+def target_depths(
     input_path: str,
     reference: str | None,
-    bed: Path,
+    scratch_bed: Path,
     targets: Sequence[BedTarget],
+    lengths: Mapping[str, int],
+    *,
+    depth_options: Sequence[str] = (),
 ) -> dict[str, dict[int, int]]:
-    """Fill the targets' histograms; returns each contig's, overlaps once.
+    """Write the merged intervals to ``scratch_bed`` and fill the target
+    histograms. Return each contig's histogram with overlaps counted once.
 
     With an index only the reads over the targets are decoded (``samtools
     view -M -L``); ``samtools depth -b`` alone reads the whole file.
     """
+    merged = _merged(targets, {name: i for i, name in enumerate(lengths)})
+    scratch_bed.write_text(
+        "".join(f"{c}\t{s}\t{e}\n" for c, s, e in merged), newline="\n"
+    )
     ref = _cram_reference_opts(input_path, reference)
-    depth = ["samtools", "depth", "-a", "-b", str(bed)]
+    # -a walks uncovered spans even outside the BED. The histogram fills in
+    # absent positions as zeroes without visiting them.
+    depth = ["samtools", "depth", "-b", str(scratch_bed), *depth_options]
     index = alignment_index(input_path)
     if index:
         commands = [
-            ["samtools", "view", "-u", "-M", "-L", str(bed), *ref,
+            ["samtools", "view", "-u", "-M", "-L", str(scratch_bed), *ref,
              f"{input_path}##idx##{index}"],
             [*depth, "-"],
         ]  # fmt: skip
     else:
         commands = [[*depth, *ref, input_path]]
-    with _pipeline(commands, bed.parent) as stream:
+    with _pipeline(commands, scratch_bed.parent) as stream:
         try:
             return _count_depths(stream, targets)
         except ValueError as exc:
@@ -398,10 +410,7 @@ def run_target_coverage(
         dir=scratch_parent(outdir), prefix=".by-"
     ) as scratch:
         union = Path(scratch, "targets.bed")
-        union.write_text(
-            "".join(f"{c}\t{s}\t{e}\n" for c, s, e in merged), newline="\n"
-        )
-        on_depths = _target_depths(input_path, reference, union, targets)
+        on_depths = target_depths(input_path, reference, union, targets, lengths)
         on_sums = {c: sum(d * n for d, n in h.items()) for c, h in on_depths.items()}
         # The mitochondrial contig is left out of off-target: its copy
         # number isn't the nuclear genome's.

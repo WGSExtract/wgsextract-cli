@@ -12,6 +12,7 @@ from platformdirs import user_config_dir
 
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.execution_context import ConfigState, bound, current
+from wgsextract_cli.core.file_lock import shared_file_lock
 from wgsextract_cli.core.paths import expand_path, windows_local_app_dir
 from wgsextract_cli.core.settings_schema import (
     DEV_SETTINGS,
@@ -32,6 +33,7 @@ from wgsextract_cli.core.users_workspace import (
     users_workspace,
 )
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.workspace_activity import relocated_config_path, workspace_use
 
 # For Python < 3.11, use tomli
 if sys.version_info >= (3, 11):
@@ -195,7 +197,7 @@ def _state() -> ConfigState:
 
 
 def _resolve(path: str | os.PathLike[str] | None) -> Path | None:
-    return Path(path).expanduser().resolve() if path else None
+    return relocated_config_path(Path(path).expanduser().resolve()) if path else None
 
 
 def set_config_path(path: str | os.PathLike[str] | None) -> None:
@@ -486,24 +488,14 @@ def _update_table(
         config.pop(table_name, None)
 
 
-def save_config(updates: dict[str, Any]) -> None:
-    """Save configuration updates to the config.toml file."""
-    import tomli_w
-
-    config_path = get_config_path()
-
-    current_config = {}
-    if config_path.exists():
-        # Refuse to overwrite a config we cannot parse; that would drop the
-        # user's other settings.
-        current_config = _read_settings_file(config_path)
-
+def _apply_config_updates(config: dict[str, Any], updates: dict[str, Any]) -> None:
+    """Merge save_config's ``updates`` into the settings read from config.toml."""
     for legacy_key in LEGACY_SETTINGS:
-        current_config.pop(legacy_key, None)
+        config.pop(legacy_key, None)
     for key, value in updates.items():
         if key in (DEV_TABLE, "server"):
             _update_table(
-                current_config,
+                config,
                 value,
                 key,
                 DEV_PATH_SETTINGS if key == DEV_TABLE else frozenset(),
@@ -511,9 +503,9 @@ def save_config(updates: dict[str, Any]) -> None:
             continue
         if key in MOVED_TO_DEV:
             if value is None or value == "":
-                current_config.pop(key, None)
+                config.pop(key, None)
             else:
-                current_config[key] = value  # rejected below, naming its [dev] key
+                config[key] = value  # rejected below, naming its [dev] key
             continue
         if key not in SETTINGS:
             continue
@@ -521,18 +513,42 @@ def save_config(updates: dict[str, Any]) -> None:
         # would resurrect a cleared value or shadow nothing but confuse users.
         for alias, canonical in CONFIG_ALIASES.items():
             if canonical == key:
-                current_config.pop(alias, None)
+                config.pop(alias, None)
         if value is None or value == "":
-            current_config.pop(key, None)
+            config.pop(key, None)
         else:
-            current_config[key] = _normalize_path_setting(value)
+            config[key] = _normalize_path_setting(value)
 
-    _validate_config_types(current_config, config_path)
+
+@workspace_use()
+def save_config(updates: dict[str, Any]) -> None:
+    """Save configuration updates to the config.toml file."""
+    import tomli_w
+
+    with _load_lock:
+        state = _state()
+        selected = state.path
+        config_path = get_config_path()
+    config_path = relocated_config_path(config_path)
     if config_path == users_workspace() / "config.toml":
         claim_users_workspace(config_path.parent)
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write(config_path, tomli_w.dumps(current_config).encode("utf-8"))
-    reload_settings()
+    # The app and other commands save this file too: merge into what is there
+    # now. Take the workspace lease before the file lock so the target cannot
+    # move between resolution and publication.
+    with shared_file_lock(config_path) as target:
+        current_config = {}
+        if target.exists():
+            # Refuse to overwrite a config we cannot parse; that would drop the
+            # user's other settings.
+            current_config = _read_settings_file(target)
+
+        _apply_config_updates(current_config, updates)
+        _validate_config_types(current_config, config_path)
+        atomic_write(target, tomli_w.dumps(current_config).encode("utf-8"))
+    with _load_lock:
+        if selected is not None and state.path == selected:
+            state.path = config_path
+        reload_settings()
 
 
 @overload

@@ -571,6 +571,45 @@ def test_bootstrap_is_verified_against_its_pin_issue_509(tmp_path, monkeypatch):
     assert rp.bootstrap_has_support_assets(str(lib))
 
 
+def test_bootstrap_upgrades_v020_library_without_overwriting_existing(
+    tmp_path, monkeypatch
+):
+    from wgsextract_cli.core import constants
+
+    lib = tmp_path / "lib"
+    _touch(lib / ".bootstrap-0.2.0")
+    (lib / "00README.txt").write_bytes(b"v0.2.0 readme\r\n")
+    existing = lib / "microarray/raw_file_templates/body/23andMe_V3.txt"
+    existing.parent.mkdir(parents=True, exist_ok=True)
+    existing.write_bytes(b"existing-v3\n")
+    stale_delta = lib / "microarray/raw_file_templates/body/Genera_V1.csv.delta.gz"
+    stale_delta.write_bytes(b"old-v03-delta\n")
+    assert rp.bootstrap_has_support_assets(str(lib))
+    assert not rp.bootstrap_is_current(str(lib))
+
+    published = _tarball(
+        {
+            "reference/00README.txt": b"v0.4.0 readme\r\n",
+            "reference/microarray/raw_file_templates/body/23andMe_V3.txt": b"existing-v3\n",
+            "reference/microarray/raw_file_templates/body/Genera_V1.csv.delta.gz": b"rebased-v04-delta\n",
+            "reference/microarray/raw_file_templates/body/MyHeritage_V3.csv.gz": b"v5-add\n",
+        }
+    )
+    with serving(None, {"bootstrap.tgz": published}) as server:
+        _serve_bootstrap(monkeypatch, server, published)
+        assert rp.download_bootstrap(str(lib))
+    # Updated README and rebased templates replace older copies cleanly; nested reference/ is removed.
+    assert (lib / "00README.txt").read_bytes() == b"v0.4.0 readme\r\n"
+    assert not (lib / "reference").exists()
+    assert existing.read_bytes() == b"existing-v3\n"
+    assert stale_delta.read_bytes() == b"rebased-v04-delta\n"
+    assert (
+        lib / "microarray/raw_file_templates/body/MyHeritage_V3.csv.gz"
+    ).read_bytes() == b"v5-add\n"
+    assert (lib / f".bootstrap-{constants.BOOTSTRAP_VERSION}").is_file()
+    assert rp.bootstrap_is_current(str(lib))
+
+
 # --- ploidy files -------------------------------------------------------------
 
 

@@ -41,6 +41,7 @@ COMMAND_MODULES = tuple(
         "microarray",
         "lineage",
         "vcf",
+        "cohort",
         "repair",
         "qc",
         "ref",
@@ -152,6 +153,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier(
         "fastq", ADVANCED, "Archive and restore FASTQ reads without changing bytes."
     ),
+    CommandTier("cohort", ADVANCED, "Summarize variants across a local cohort."),
     CommandTier("repair", ADVANCED, "Fix FTDNA BAM/VCF formatting problems."),
     CommandTier(
         "analyze", ADVANCED, "Run several analyses in one go, for one or many genomes."
@@ -174,7 +176,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier(
         "panel",
         ADVANCED,
-        "Gene lists to BED targets for Nanopore adaptive sampling.",
+        "Gene lists to BED targets; research panel file checks.",
     ),
     CommandTier(
         "pet-align", ADVANCED, "Align and call variants for a cat or dog genome."
@@ -194,6 +196,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
 ADVANCED_SUBCOMMANDS = frozenset(
     {
         "extract bam-subset",
+        "lineage y-private",
         "vcf freebayes",
         "vcf gatk",
         "vcf deepvariant",
@@ -291,6 +294,7 @@ JOURNEYS: tuple[Journey, ...] = (
     Journey(
         "A VCF (from a provider or another pipeline)",
         (
+            ("vcf prepare", "fix its compression, sorting, contig names and index"),
             ("vcf clinvar", "add ClinVar clinical significance"),
             ("vcf filter", "keep a gene, region or quality range"),
             ("vep run", "predict each variant's effect on genes"),

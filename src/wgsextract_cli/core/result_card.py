@@ -25,6 +25,8 @@ from typing import Final
 from urllib.parse import urlsplit
 
 from wgsextract_cli.core.atomic_output import atomic_output
+from wgsextract_cli.core.builds import display_build
+from wgsextract_cli.core.constants import MODEL_TAGS_BY_CODE, REF_GENOME_FILENAMES
 from wgsextract_cli.core.download_progress import format_bytes
 from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.read_scope import may_follow
@@ -175,12 +177,11 @@ def render_card(result: CommandResult, *, manifest_name: str | None = None) -> s
         facts.append((_role_label(record.role), _file_fact(record)))
     if (reference := provenance.reference) is not None:
         name = Path(reference.path).name
+        badge = _reference_badge(name, reference.build)
         facts.append(
             (
                 "Reference",
-                f"{escape(name)}{_muted(reference.build)}"
-                if reference.build
-                else escape(name),
+                f"{escape(name)}{_muted(badge)}" if badge else escape(name),
             )
         )
     facts.append(("WGS Extract", escape(provenance.version)))
@@ -245,6 +246,15 @@ def render_card(result: CommandResult, *, manifest_name: str | None = None) -> s
         body="\n".join(body),
         footer=footer,
     )
+
+
+def _reference_badge(filename: str, build: str | None) -> str | None:
+    """Model code + tag when the reference matches a known catalog FASTA, else Major Build."""
+    code = next((c for c, f in REF_GENOME_FILENAMES.items() if f == filename), None)
+    if code:
+        tag = MODEL_TAGS_BY_CODE.get(code, "")
+        return f"{code} [{tag}]" if tag else code
+    return display_build(build)
 
 
 def _input_name(path: str) -> str:

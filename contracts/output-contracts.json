@@ -66,6 +66,16 @@
       "schema": "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
       "tier": "experimental",
       "docs": "docs/server.md"
+    },
+    "wgsextract.paraphase/1": {
+      "schema": "src/wgsextract_cli/assets/schemas/wgsextract.paraphase.1.schema.json",
+      "tier": "stable",
+      "docs": "docs/variants.md#long-read-paralog-typing",
+      "fields": {
+        "loci[].total_cn": {"tier": "experimental", "scientific": true, "meaning": "Paralog-family copy number as reported by Paraphase; null does not mean zero."},
+        "loci[].call_status": {"meaning": "Whether the engine reported a copy-number call, a partial SMN call, or no call."},
+        "loci[].gene_fields": {"tier": "experimental", "scientific": true, "note": "Upstream locus-specific values can differ by locus and engine version."}
+      }
     }
   },
   "roles": {
@@ -76,7 +86,15 @@
     "result_card": {"tier": "stable", "meaning": "The shareable HTML card written beside the manifest with --card.", "producers": [{"command": "extract mt-bam", "when": "card"}]},
     "combined_kit": {"tier": "experimental", "meaning": "A combined consumer microarray kit file."},
     "vendor_kit": {"tier": "experimental", "meaning": "A vendor-format consumer microarray kit file."},
-    "aadr": {"tier": "experimental", "meaning": "An AADR research-panel export."}
+    "variant_table": {"tier": "experimental", "meaning": "A TSV or Parquet export of VCF records and their annotations."},
+    "variant_database": {"tier": "experimental", "meaning": "The SQLite export of a variant table."},
+    "aadr": {"tier": "experimental", "meaning": "An AADR research-panel export."},
+    "paraphase_calls_json": {"tier": "experimental", "meaning": "Normalized per-locus Paraphase copy-number calls and run metadata (wgsextract.paraphase/1)."},
+    "paraphase_calls_tsv": {"tier": "experimental", "meaning": "Tabular per-locus Paraphase copy-number calls."},
+    "paraphase_raw_json": {"tier": "experimental", "meaning": "Unmodified report produced by the selected Paraphase engine."},
+    "paraphase_vcf": {"tier": "experimental", "meaning": "Paraphase's unmodified VCF for one locus."},
+    "paraphase_bam": {"tier": "experimental", "meaning": "Paraphase's haplotagged, locally realigned reads."},
+    "paraphase_bam_index": {"tier": "experimental", "meaning": "Index of the Paraphase BAM."}
   },
   "approved_breaks": []
 }

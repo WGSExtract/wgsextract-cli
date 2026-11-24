@@ -8,7 +8,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from os import fspath
 from pathlib import Path
 
@@ -224,6 +224,46 @@ def _check_published_indexes(
     raise WGSExtractError(f"VCF changed while indexing {vcf}; retry.")
 
 
+def publish_indexed_vcf(
+    staged: Path, final: Path, verify: Callable[[Path], None] | None = None
+) -> Path:
+    """Index ``staged``, run ``verify`` on it, and publish it with its index as
+    ``final``, retiring indexes a reader could pick up instead; returns the
+    published index."""
+    from wgsextract_cli.api._runtime import checkpoint
+    from wgsextract_cli.core.atomic_output import publish_output_set
+
+    # Let the indexer see restrictions the publisher will preserve.
+    if final.is_file():
+        staged.chmod(staged.stat().st_mode & final.stat().st_mode & 0o777)
+    ensure_vcf_indexed(staged)
+    if verify is not None:
+        verify(staged)
+    outputs = {}
+    obsolete = []
+    sibling = final.with_suffix(".gz" if final.suffix == ".bgz" else ".bgz")
+    for ext in (".tbi", ".csi"):
+        index = Path(f"{staged}{ext}")
+        destination = Path(f"{final}{ext}")
+        if index.is_file():
+            outputs[index] = destination
+        else:
+            obsolete.append(destination)
+        alternate = final.with_suffix(ext)
+        if not sibling.is_file():
+            obsolete.append(alternate)
+        elif alternate.exists() or alternate.is_symlink():
+            raise WGSExtractError(
+                f"Cannot replace {final}: {sibling.name} shares {alternate}."
+            )
+    if not outputs:
+        raise WGSExtractError(f"Indexing did not produce an index for {final}.")
+    published = next(iter(outputs.values()))
+    outputs[staged] = final
+    publish_output_set(outputs, retire=obsolete, checkpoint=checkpoint)
+    return published
+
+
 def ensure_vcf_prepared(
     vcf_path: PathInput | None, workdir: PathInput | None = None
 ) -> str:
@@ -316,10 +356,16 @@ def check_vcf_build(
     vcf_path: PathInput, lengths: Mapping[str, int], against: str
 ) -> None:
     """Fail when the VCF's ##contig lengths show a build other than ``against``'s."""
+    check_header_build(get_bam_header(vcf_path), lengths, against)
+
+
+def check_header_build(header: str, lengths: Mapping[str, int], against: str) -> None:
+    """Fail when a VCF header's ##contig lengths show a build other than
+    ``against``'s."""
     contigs = list(lengths)
     mismatched = [
         f"{name} ({length:,} vs {lengths[other]:,})"
-        for name, length in header_contig_lengths(get_bam_header(vcf_path)).items()
+        for name, length in header_contig_lengths(header).items()
         if (other := match_chromosome_name(name, contigs)) and lengths[other] != length
     ]
     if mismatched:
@@ -365,6 +411,33 @@ def vcf_index_chromosomes(vcf_path: PathInput) -> list[str]:
         for line in (res.stdout or "").splitlines()
         if line.strip()
     ]
+
+
+def header_attributes(body: str) -> dict[str, str]:
+    """``key=value`` pairs of a structured header line's ``<...>`` body, in
+    any order; commas and ``=`` inside quoted values don't split it."""
+    pairs: dict[str, str] = {}
+    key, value, quoted, escaped, in_value = "", "", False, False, False
+    for char in body + ",":
+        if escaped:
+            value += char
+            escaped = False
+        elif quoted and char == "\\":
+            value += char
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+            value += char
+        elif char == "," and not quoted:
+            pairs.setdefault(key.strip(), value.strip())
+            key, value, in_value = "", "", False
+        elif char == "=" and not in_value:
+            in_value = True
+        elif in_value:
+            value += char
+        else:
+            key += char
+    return pairs
 
 
 def vcf_header_chromosomes(header: str) -> list[str]:
@@ -515,6 +588,12 @@ def calculate_bam_md5(
                 ln = part[3:]
         if sn and ln:
             bamsq_header[sn] = ln
+
+    if not bamsq_header:
+        from wgsextract_cli.core.ref_library.models import sequence_lengths
+
+        for name, length in sequence_lengths(header).items():
+            bamsq_header[name.upper()] = str(length)
 
     pseudo_header = ""
     for key in sorted(bamsq_header.keys()):

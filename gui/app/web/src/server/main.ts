@@ -16,8 +16,10 @@ import { createRequestHandler } from "./routes.js";
 import { forgetSetupWithMissingTools } from "./setup-runner.js";
 import { prepareBundleWorkspace } from "./workspace.js";
 import { moveWorkspace } from "./workspace-move.js";
+import { withWorkspaceUse } from "./workspace-activity.js";
+import { LinkedMoveFolderError } from "./workspace-move-guard.js";
 import { migrateLegacyAppData } from "./workspace-location.js";
-import { usersWorkspaceFor } from "./users-workspace.js";
+import { usersWorkspaceFor, workspaceMoveRevision } from "./users-workspace.js";
 import { errorMessage } from "./errors.js";
 import { leaveAppImageEnvironment } from "./appimage-environment.js";
 
@@ -42,8 +44,11 @@ const portFile = process.env.GFC_PORT_FILE;
 delete process.env.GFC_PORT_FILE;
 
 const { runProcess, terminateAllProcesses } = createProcessManager({ maxOutputBytes: 1_048_576, maxErrorBytes: 65_536 });
-await migrateLegacyAppData();
-let bundleRuntime = await loadBundleRuntime(sourceBundleRoot, Boolean(args.bundle));
+const initialRuntime = await withWorkspaceUse(async () => {
+    await migrateLegacyAppData();
+    return loadBundleRuntime(sourceBundleRoot, false);
+});
+let bundleRuntime = { ...initialRuntime, localizedBundleLoader: localizedLoader(initialRuntime, Boolean(args.bundle)) };
 let server: Server | undefined;
 let bundleChangeInFlight = false;
 /** Loading a bundle and moving its workspace both replace the running bundle, so only one may run at a time. */
@@ -90,20 +95,28 @@ const requestContext: RequestHandlerContext = {
         };
     }),
     moveWorkspace: (target, emit, signal) => exclusively(async () => {
-        await terminateAllProcesses();
+        let started = false;
         try {
             await moveWorkspace({
                 manifest: bundleRuntime.manifest,
                 sourceRoot: bundleRuntime.sourceBundleRoot,
                 bundleRoot: bundleRuntime.bundleRoot,
                 ...target,
+                beforeMove: async () => {
+                    await terminateAllProcesses();
+                    started = true;
+                },
                 onProgress: (percent) => emit({ type: "progress", percent }),
                 signal,
             });
         }
+        catch (error) {
+            if (error instanceof LinkedMoveFolderError) started = false;
+            throw error;
+        }
         finally {
             // From wherever the users workspace is recorded now, even when a step after the move itself failed.
-            useBundleRuntime(await loadBundleRuntime(bundleRuntime.sourceBundleRoot, false));
+            if (started) useBundleRuntime(await loadBundleRuntime(bundleRuntime.sourceBundleRoot, false));
         }
     }),
 };
@@ -141,16 +154,21 @@ async function loadBundleRuntime(requestedSource: string, preload: boolean) {
     const resolvedBundleRoot = await prepareBundleWorkspace(sourceManifest, resolvedSourceBundleRoot);
     const manifest = await loadManifestFromRoot(resolvedBundleRoot);
     await forgetSetupWithMissingTools(manifest, resolvedBundleRoot);
-    return {
+    const runtime = {
         sourceBundleRoot: resolvedSourceBundleRoot,
         bundleRoot: resolvedBundleRoot,
         manifest,
+        workspaceMoveRevision: await workspaceMoveRevision(manifest),
         jobServer: manifest.jobServer ? createJobServer(manifest.jobServer, resolvedBundleRoot, runProcess) : undefined,
         dynamicActions: new Map(),
-        localizedBundleLoader: createOneShotBundlePreload(
-            (locale, preferredLocales = []) => loadLocalizedBundle(locale, repoRoot, resolvedBundleRoot, resolvedSourceBundleRoot, preferredLocales),
-            defaultLocale,
-            preload,
-        ),
     };
+    return { ...runtime, localizedBundleLoader: localizedLoader(runtime, preload) };
+}
+
+function localizedLoader(runtime: { bundleRoot: string; sourceBundleRoot: string }, preload: boolean) {
+    return createOneShotBundlePreload(
+        (locale, preferredLocales = []) => loadLocalizedBundle(locale, repoRoot, runtime.bundleRoot, runtime.sourceBundleRoot, preferredLocales),
+        defaultLocale,
+        preload,
+    );
 }

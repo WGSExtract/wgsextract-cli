@@ -1,7 +1,8 @@
-import type { LibraryViewerSession } from "../../../shared/genome-viewer.js";
+import type { LibraryViewerSession, ViewerProblem } from "../../../shared/genome-viewer.js";
 import { api } from "./api.js";
 
 export type LibraryViewerResult = LibraryViewerSession | { problem: string; fileName?: string };
+export type RsidLookupResult = { locus: string; rsid: string } | { problem: ViewerProblem };
 
 const standaloneSessions = new Set<string>();
 let lifecycleBound = false;
@@ -48,11 +49,12 @@ export async function rememberStandaloneViewer(id: string) {
 }
 
 /** The iframe gets only a file-scoped grant, never the main app's API credential. */
-export async function requestLibraryViewer(path: string, locus: string, tracks: string[] = []): Promise<LibraryViewerResult> {
+export async function requestLibraryViewer(path: string, locus: string, tracks: string[] = [], build = ""): Promise<LibraryViewerResult> {
+    const required = build ? { build } : {};
     if (window.parent === window) {
         bindStandaloneViewerLifecycle();
         await releaseLibraryViewer();
-        const result = await api<LibraryViewerResult>("/api/viewer/open", { body: { path, locus, tracks } });
+        const result = await api<LibraryViewerResult>("/api/viewer/open", { body: { path, locus, tracks, ...required } });
         if ("id" in result) {
             await rememberStandaloneViewer(result.id);
         }
@@ -73,6 +75,29 @@ export async function requestLibraryViewer(path: string, locus: string, tracks: 
             resolve(event.data.result);
         };
         window.addEventListener("message", receive);
-        window.parent.postMessage({ type: "genomeViewerOpenLibrary", requestID, path, locus, tracks }, location.origin);
+        window.parent.postMessage({ type: "genomeViewerOpenLibrary", requestID, path, locus, tracks, ...required }, location.origin);
+    });
+}
+
+export async function lookupLibraryRsid(id: string, rsid: string): Promise<RsidLookupResult> {
+    if (window.parent === window) {
+        return api<RsidLookupResult>("/api/viewer/rsid", { body: { id, rsid } });
+    }
+    return new Promise((resolve, reject) => {
+        const requestID = crypto.randomUUID();
+        const timer = window.setTimeout(() => {
+            window.removeEventListener("message", receive);
+            reject(new Error("Local rsID lookup timed out."));
+        }, 10_000);
+        const receive = (event: MessageEvent) => {
+            if (event.origin !== location.origin || event.source !== window.parent || event.data?.type !== "genomeViewerRsid" || event.data.requestID !== requestID) {
+                return;
+            }
+            window.clearTimeout(timer);
+            window.removeEventListener("message", receive);
+            resolve(event.data.result);
+        };
+        window.addEventListener("message", receive);
+        window.parent.postMessage({ type: "genomeViewerLookupRsid", requestID, id, rsid }, location.origin);
     });
 }

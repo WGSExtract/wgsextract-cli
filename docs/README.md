@@ -42,6 +42,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Variant workflows](variants.md) | Call/annotate, analyse trios and type pharmacogenes/repeats |
 | [Variant confidence](variant-confidence.md) | Understand technical evidence labels and caller accuracy |
 | [Built-in genome viewer](../gui/docs/genome-viewer.md) | Inspect local reads and variants, or open an extraction result at its locus |
+| [Gene page](../gui/docs/gene-page.md) | One gene's transcripts, your variants in it and its exon coverage, offline |
 | [Caller ploidy](caller-ploidy.md) | Handle sex, PARs and policy masks |
 | [Reference evidence](reference-evidence.md) | Distinguish assessed reference from absent calls |
 | [Genotype QC](genotype-qc.md) | Interpret depth, homozygosity and no-call warnings |
@@ -50,10 +51,12 @@ Start with the [README quick start](../README.md#quick-start), the
 | [VEP engines](vep-engines.md) | Annotate with vep-rs or Ensembl VEP |
 | [SV frequencies](sv-frequency.md) | Match structural variants to population frequencies |
 | [ACMG](acmg.md) | Use research-only classification with fastVEP |
+| [Research panels](panel.md) | Write and check a research panel file of genes, filters, sites and haplotypes |
 | [Personal report](personal-report.md) | Read findings with links to evidence, not diagnoses |
 | [Contamination](contamination.md) | Screen for another person's DNA |
 | [Relatedness](relate.md) | Check sex, relatedness and continental ancestry |
 | [Ancestry](ancestry.md) | Estimate HGDP+1KG component proportions |
+| [Runs of homozygosity](roh.md) | Find ROH with population frequencies; review isodisomy flags |
 | [Imputation](imputation.md) | Review phasing/imputation workflows and limits |
 | [Polygenic scores](pgs.md) | Calculate research scores and inspect their limitations |
 

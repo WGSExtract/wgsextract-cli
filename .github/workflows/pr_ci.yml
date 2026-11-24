@@ -23,8 +23,9 @@ jobs:
     name: changes
     if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions:
+      actions: read
       contents: read
       statuses: read
       pull-requests: read
@@ -59,7 +60,9 @@ jobs:
       linux_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_x64 || 'false' }}
       linux_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_arm64 || 'false' }}
       macos_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.macos_arm64 || 'false' }}
-      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.windows_x64 || 'false' }}
+      # The Windows imputation lane includes a fresh locked install, not just
+      # testing the already-provisioned tool validated by local certification.
+      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && (steps.diff.outputs.windows_smoke == 'true' || (steps.diff.outputs.windows_tests != 'all' && !contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py'))) && steps.cert.outputs.windows_x64 || 'false' }}
       generic: ${{ steps.cert.outputs.generic }}
     steps:
       - name: Check out the trusted base verifier
@@ -104,6 +107,42 @@ jobs:
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Prepare selector activation canary
+        id: selector-setup
+        if: github.event_name == 'pull_request' && contains(fromJSON(steps.diff.outputs.python_files), 'scripts/ci_impact_gate.py')
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+          writer: "false"
+      - name: Fetch the Linux observation artifact for the activation canary
+        if: steps.selector-setup.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_fetch
+          --repository "$GITHUB_REPOSITORY" --base HEAD^1
+          --output out/test-impact-map/linux.json.gz
+      - name: Verify fresh Linux selector evidence on this change
+        if: ${{ !cancelled() && github.event_name == 'pull_request' && steps.selector-setup.outcome != 'skipped' && steps.selector-setup.outcome != '' }}
+        continue-on-error: true
+        env:
+          TEST_SELECTION: ${{ steps.diff.outputs.tests }}
+          SYMBOL_DISABLED: ${{ vars.CI_DISABLE_SYMBOL_SELECTION }}
+        run: |
+          set -o pipefail
+          flags=()
+          if [ "$SYMBOL_DISABLED" = true ]; then flags+=(--disabled); fi
+          if ! timeout 60 pixi run -e dev --no-install python -m scripts.ci_impact_gate \
+            --verify-wiring --event pull_request --base HEAD^1 --legacy "$TEST_SELECTION" \
+            --observations out/test-impact-map/linux.json.gz \
+            --output out/test-selection-canary.json "${flags[@]}" | tee -a "$GITHUB_STEP_SUMMARY"; then
+            echo '::warning::Linux selector verification unavailable; the current selection remains in force when the gate cannot validate its inputs.'
+            exit 1
+          fi
       - name: Compare output contracts with the base's pinned baselines
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}

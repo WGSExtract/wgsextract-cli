@@ -1,7 +1,8 @@
 from collections.abc import Callable
 from pathlib import Path
 
-from wgsextract_cli.core.builds import ploidy_for_build
+from wgsextract_cli.core.builds import ploidy_preset
+from wgsextract_cli.core.utils import WGSExtractError
 
 from .execution import (
     _run_cli_step,
@@ -34,8 +35,14 @@ def _run_core_benchmark_analysis_steps(
     calling_ploidy = (
         "2"
         if real_dataset is None or job.dataset == "real"
-        else ploidy_for_build(benchmark_build)
+        else ploidy_preset(benchmark_build)
     )
+    if calling_ploidy is None:
+        # Another build's preset would call its sex chromosomes wrongly (#1334).
+        raise WGSExtractError(
+            f"Benchmark dataset build {benchmark_build} has no bcftools ploidy "
+            "preset; only GRCh37 and GRCh38 datasets can be called."
+        )
     subset_dir = steps_dir / "bam-subset"
     subset_bam = subset_dir / f"{analysis_bam.stem}_subset.bam"
     subset_cmd = [

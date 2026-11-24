@@ -3,7 +3,6 @@ import gzip
 import io
 import logging
 import os
-import stat
 import subprocess
 import sys
 import tempfile
@@ -18,7 +17,8 @@ from wgsextract_cli.api.repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
 from wgsextract_cli.cli.registration.repair import register as register
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.messages import LOG_MESSAGES
-from wgsextract_cli.core.paths import absolute_path, expand_path
+from wgsextract_cli.core.output_location import single_output_path
+from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, json_mode
@@ -209,25 +209,8 @@ def _repair_output_path(
     params: RepairFtdnaBamParams | RepairFtdnaVcfParams, extension: str
 ) -> str:
     input_path = expand_path(params.input)
-    if params.output:
-        output = str(absolute_path(expand_path(params.output)))
-    else:
-        outdir = expand_path(params.outdir or absolute_path(input_path).parent)
-        name = f"{input_stem(input_path)}_repaired{extension}"
-        output = str(absolute_path(Path(outdir, name)))
-    destination = Path(output)
-    try:
-        aliases_input = destination.samefile(input_path)
-    except FileNotFoundError:
-        aliases_input = False
-    if aliases_input:
-        raise WGSExtractError(f"Output {output} would overwrite the input.")
-    try:
-        if not stat.S_ISREG(destination.lstat().st_mode):
-            raise WGSExtractError(f"Output {output} is not a regular file.")
-    except FileNotFoundError:
-        pass
-    return output
+    name = f"{input_stem(input_path)}_repaired{extension}"
+    return single_output_path(input_path, params.output, params.outdir, name)
 
 
 @contextmanager

@@ -3,10 +3,10 @@ import path from "node:path";
 import { type LocalTrack, ViewerFileError } from "../../../shared/genome-viewer.js";
 import { errnoCode } from "./errors.js";
 import { expandWorkspaceToken } from "./paths.js";
-import { guardedViewerPath, isMissingViewerPath } from "./viewer-files.js";
+import { isMissingViewerPath, localViewerPath } from "./viewer-files.js";
 import { validateViewerTrack } from "./viewer-track-metadata.js";
 
-export async function supplementalViewerTracks(paths: string[], fasta: string, roots: string[], bundleRoot: string): Promise<LocalTrack<string>[]> {
+export async function supplementalViewerTracks(paths: string[], fasta: string, bundleRoot: string): Promise<LocalTrack<string>[]> {
     if (!paths.length) return [];
     const reference = new Map((await readFile(`${fasta}.fai`, "utf8")).trim().split(/\r?\n/).map((line): [string, number] => {
         const columns = line.split("\t");
@@ -17,7 +17,7 @@ export async function supplementalViewerTracks(paths: string[], fasta: string, r
         const file = expandWorkspaceToken(requested, bundleRoot);
         const name = path.basename(file);
         try {
-            await guardedViewerPath(file, roots);
+            await localViewerPath(file);
         } catch (error) {
             if (isMissingViewerPath(error)) throw new ViewerFileError("trackMissing", name);
             throw error;
@@ -38,7 +38,7 @@ export async function supplementalViewerTracks(paths: string[], fasta: string, r
                 }
             }
             if (!index) throw new ViewerFileError("trackIndexMissing", name);
-            await guardedViewerPath(index, roots);
+            await localViewerPath(index);
         }
         try {
             await validateViewerTrack(file, format, index, reference);

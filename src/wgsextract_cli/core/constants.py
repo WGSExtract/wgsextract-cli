@@ -52,68 +52,76 @@ SEQUENCERS = {
 
 REFERENCE_MODELS = {
     "ee4efe40ebd6f9468dab89963dcc5b65": ["hg19", "Yoruba", "hg19.fa.gz"],
-    "eed540239f34de0b80734add1779cb5b": ["hg19", "Yoruba", "hg19.p13.plusMT.fa.gz"],
+    "eed540239f34de0b80734add1779cb5b": ["hg19p13", "Yoruba", "hg19.p13.plusMT.fa.gz"],
     "8ed6919c076595f09e1028325dc86fbe": [
-        "hg19",
+        "hg19p13a",
         "rCRS",
         "hg19.p13.plusMT.full_analysis_set.fa.gz",
     ],
     "5a923ccfc7ee30aebe864817653d41d8": [
-        "hg19",
+        "hg19p13n",
         "rCRS",
         "hg19.p13.plusMT.no_alt_analysis_set.fa.gz",
     ],
-    "9b3bf038da5fef087723525d5174f0bd": ["hg19", "rCRS", "hg19_yseq.fa.gz"],
-    "50093bf43ed53848c9c7696752e65c2f": ["hg19", "rCRS", "hg19_WGSE.fa.gz"],
+    "9b3bf038da5fef087723525d5174f0bd": ["hg37", "rCRS", "hg19_yseq.fa.gz"],
+    "50093bf43ed53848c9c7696752e65c2f": ["hg37w", "rCRS", "hg19_WGSE.fa.gz"],
     "bd894134bddba260df88a90123a2ee9c": ["hg38", "rCRS", "hg38.fa.gz"],
-    "f5abbfc73ccdb2e8356003d230bce0ce": ["hg38", "rCRS", "hg38p12.fa.gz"],
+    "f5abbfc73ccdb2e8356003d230bce0ce": ["hg38p12", "rCRS", "hg38p12.fa.gz"],
     "88b5f4bbaaec4a097b3aa160bf776093": [
-        "GRCh37",
+        "hs37-",
         "rCRS",
-        "human_g1k_v37_WGSE.fasta.gz",
+        "human_g1k_v37.fasta.gz",
     ],
     "92c90b84dac3d9d8402bf2f2dbe95961": ["hs37d5", "rCRS", "hs37d5.fa.gz"],
     "f8812b68f2aa4aa592e742e081f82807": [
         "GRCh37",
         "rCRS",
-        "Homo_sapiens.GRCh37.latest.dna.toplevel.fa.gz",
+        "Homo_sapiens.GRCh37.dna.toplevel.fa.gz",
     ],
     "abf297943fca66859d781349e8e28687": [
         "GRCh38",
         "rCRS",
         "Homo_sapiens.GRCh38.99.dna.toplevel.fa.gz",
     ],
-    "5c38f3f6774ece1a75c4d5d55010ced7": ["hg19", "rCRS", "GRCh37.p13.genome.fa.gz"],
+    "5c38f3f6774ece1a75c4d5d55010ced7": [
+        "GRCh37p13",
+        "rCRS",
+        "GRCh37.p13.genome.fa.gz",
+    ],
     "a08daf6f9f22170759705fd99e471b62": [
         "hs38DH",
         "rCRS",
-        "GRCh38_full_analysis_set_plus_decoy_hla.fa.gz",
+        "hs38DH.fa.gz",
     ],
-    "42c06a6446741565da8cae7bbeb67184": ["hg38", "rCRS", "GRCh38.p13.genome.fa.gz"],
+    "42c06a6446741565da8cae7bbeb67184": [
+        "GRCh38p13",
+        "rCRS",
+        "GRCh38.p13.genome.fa.gz",
+    ],
     "236b4fa639deaaa51691eb16ea92a0f9": [
-        "hg19",
+        "hs37a",
         "rCRS",
         "GCA_000001405.14_GRCh37.p13_full_analysis_set.fna.gz",
     ],
     "0b94854439441bc45d1b061eedb2ac0e": [
-        "hg19",
+        "hs37n",
         "rCRS",
         "GCA_000001405.14_GRCh37.p13_no_alt_analysis_set.fna.gz",
     ],
     "53f744f1771eabfded06778564b931bc": [
-        "hg38",
+        "hs38a",
         "rCRS",
-        "GCA_000001405.15_GRCh38_full_analysis_set.fna.gz",
+        "hs38a.fna.gz",
     ],
     "c9ef5f042a951d511567dd4ea9bd126e": [
-        "hg38",
+        "hs38",
         "rCRS",
-        "GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz",
+        "hs38.fa.gz",
     ],
     "ee77d771adff64d7ee6357316ee24b6b": [
-        "hg38",
+        "hs38d1",
         "rCRS",
-        "GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.fna.gz",
+        "hs38d1.fna.gz",
     ],
     "567b0b7efc021c69f64fe63d85dbc797": [
         "Dog_UU_GSD",
@@ -125,7 +133,7 @@ REFERENCE_MODELS = {
         "MT",
         "GCF_018350175.1_F.catus_Fca126_mat1.0_genomic.fna.gz",
     ],
-    "ed9f80c8e04c461cba35dd1b85a2e2e8": ["T2Tv2.0", "rCRS", "chm13v2.0.fa.gz"],
+    "ed9f80c8e04c461cba35dd1b85a2e2e8": ["T2Tv20", "rCRS", "chm13v2.0.fa.gz"],
     # Reference catalog genomes (seed_genomes.csv); compute a new one's with
     # scripts/reference_signatures.py.
     "2777429fbb9f8cbcde449ac60b1b8613": ["hs38d1a", "rCRS", "hs38d1a.fna.gz"],
@@ -133,23 +141,23 @@ REFERENCE_MODELS = {
     "89cbafdbfcd4369f5aaa3bb34911125d": ["hs38d1s", "rCRS", "hs38d1s.fa.gz"],
     "fae44dd244ce77ff30499b64b8e008a8": ["hs38d1t", "rCRS", "hs38d1t.fa.gz"],
     "7bdc7b6c9928b422cacc4244f7d448cb": ["hs38d1c", "rCRS", "hs38d1c.fa.gz"],
-    "d52b52352eb5bb59ac527a918131bf2d": ["hg38", "rCRS", "hg38_CP086569.fasta.gz"],
+    "d52b52352eb5bb59ac527a918131bf2d": ["THGySeqp", "rCRS", "hg38_CP086569.fasta.gz"],
     "38482ccb4720d61b3caceaf0cb2c0df0": [
-        "hg19",
+        "GRCh37-",
         "rCRS",
         "GRCh37.primary_assembly.genome.fa.gz",
     ],
     "3c38d6e133ff02bf1e3d982f03d19054": [
-        "hg38",
+        "GRCh38-",
         "rCRS",
         "GRCh38.primary_assembly.genome.fa.gz",
     ],
-    "3b16431997472dd3de17f58cc8d73fc4": ["T2Tv2.0", "rCRS", "GCA_009914755.4.fna.gz"],
-    "0dfc6af84589531ba6c7c7a2bfda581f": ["T2T", "rCRS", "CHM13v11Y.fa.gz"],
-    "18f6472fda529a5edf8398711464ab9f": ["T2T", "rCRS", "chm13.draft_v1.1.fasta.gz"],
-    "89fe3fb609c16630417a0bc64035058f": ["T2T", "rCRS", "chm13.draft_v1.0.fasta.gz"],
-    "5c36e82a6c3dc291a08722144aaa6b6a": ["T2T", "rCRS", "chm13.draft_v0.9.fasta.gz"],
-    # Not hg19/hg38/T2T builds: HG002 (CHM13 with HG002's X and Y) and HG01243.
+    "3b16431997472dd3de17f58cc8d73fc4": ["T2Tv20a", "rCRS", "GCA_009914755.4.fna.gz"],
+    "0dfc6af84589531ba6c7c7a2bfda581f": ["HPPv11", "rCRS", "CHM13v11Y.fa.gz"],
+    "18f6472fda529a5edf8398711464ab9f": ["T2Tv11", "rCRS", "chm13.draft_v1.1.fasta.gz"],
+    "89fe3fb609c16630417a0bc64035058f": ["T2Tv10", "rCRS", "chm13.draft_v1.0.fasta.gz"],
+    "5c36e82a6c3dc291a08722144aaa6b6a": ["T2Tv09", "rCRS", "chm13.draft_v0.9.fasta.gz"],
+    # T2T HG002 and T2T PR1 (HG01243) models.
     "8219a5fb530e4ec7963d240fc97876a5": ["THGv27", "rCRS", "hg002xy_v2.7.fasta.gz"],
     "502f4ec6812385d2f9e6d7e19a29730d": ["THGv20", "rCRS", "hg002xy_v2.fasta.gz"],
     "19f89605b2479e947a7cd571fdf70750": ["THG1243v3", "", "hg01243_v3.fna.gz"],
@@ -160,6 +168,54 @@ REFERENCE_MODELS = {
         "rCRS",
         "Homo_sapiens.GRCh38.dna.toplevel.fa.gz",
     ],
+}
+
+# Reference model classification tags (MinorClass + Build + SN naming, e.g. 1K38h,
+# hg19h, EBI37g; and T2T CHM13 / T2T PR1 / T2T HG002 for post-scheme T2T models).
+MODEL_TAGS_BY_CODE: dict[str, str] = {
+    "hg19": "hg19h",
+    "hg19p13": "hg19ht",
+    "hg19p13a": "1K37ht",
+    "hg19p13n": "1K37ht",
+    "hg37": "hg37h",
+    "hg37w": "EBI37h",
+    "GRCh37-": "EBI37h",
+    "GRCh37": "EBI37g",
+    "GRCh37p13": "hg37h",
+    "hs37-": "1K37g",
+    "hs37": "1K37g",
+    "hs37d5": "1K37g",
+    "hs37a": "1K37h",
+    "hs37n": "1K37h",
+    "hg38": "hg38h",
+    "hg38p12": "hg38h",
+    "GRCh38-": "hg38h",
+    "GRCh38p13": "hg38h",
+    "GRCh38": "EBI38g",
+    "hs38": "1K38h",
+    "hs38a": "1K38h",
+    "hs38d1": "1K38h",
+    "hs38d1a": "1K38h",
+    "hs38DH": "1K38h",
+    "hs38d1c": "1K38ph",
+    "hs38d1v": "1K38ph",
+    "hs38d1s": "1K38pg",
+    "hs38d1t": "1K38pg",
+    "T2Tv20": "T2T CHM13",
+    "T2Tv20a": "T2T CHM13",
+    "T2Tv11": "T2T CHM13",
+    "T2Tv10": "T2T CHM13",
+    "T2Tv09": "T2T CHM13",
+    "HPPv11": "T2T CHM13",
+    "HPPv1": "T2T CHM13",
+    "THG1243v3": "T2T PR1",
+    "THGv27": "T2T HG002",
+    "THGv20": "T2T HG002",
+    "THGySeqp": "T2T HG002",
+    "Dog_UU_GSD": "Dog",
+    "UU_Cfam_GSD_1.0": "Dog",
+    "Cat_Fca126": "Cat",
+    "Fca126_mat1.0": "Cat",
 }
 
 # Likely reference by @SQ count: [legacy flag, FASTA, mito name, human build or
@@ -259,9 +315,12 @@ REF_GENOME_FILENAMES = {
 
 # Reference library bootstrap, built by scripts/build_reference_bootstrap.py.
 # Since v0.2.0 it carries no YBrowse data (#509); `ref ybrowse --install` fetches it.
-BOOTSTRAP_VERSION = "0.2.0"
+# Since v0.3.0 it expands CombinedKit v3 with the CombinedKit v5 microarray templates (#1107).
+# v0.4.0 updates 23andMe v4 (v4a-c) and FTDNA v2 (v2a-d), drops minor date/size variants,
+# and keeps CombinedKit v3 frozen via 23andMe_V4_v3 / FTDNA_V2_v3 deltas.
+BOOTSTRAP_VERSION = "0.4.0"
 BOOTSTRAP_URL = f"https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-bootstrap-v{BOOTSTRAP_VERSION}/wgsextract-reference-bootstrap-{BOOTSTRAP_VERSION}.tar.gz"
-BOOTSTRAP_SHA256 = "03d7f58ba813c12e1efed048466f62959dc51f996d95aace76105c49fefca8e9"
+BOOTSTRAP_SHA256 = "32d7fc08ec4b727a27d2f4bf5f2129451873afeae44c116535c696639018130c"
 BOOTSTRAP_FILENAME = "wgsextract-reference-bootstrap.tar.gz"
 
 # Delly mappability map files `ref status` reports (Delly 2 no longer needs them).

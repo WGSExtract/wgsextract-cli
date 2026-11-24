@@ -238,7 +238,7 @@ class BundleSandbox:
             "microarray_call_reasons": "--call-reasons",
             "aadr_sample_id": "research_sample",
             "aadr_sex": "U",
-            "indel_format": "myheritage_gsa_2025",
+            "indel_format": "myheritage_v3",
             "indel_manifest": self._file("manifests/matching chip.csv"),
             "extract_formats": "fasta,bam,vcf",
             "extract_poz": "--poz",
@@ -314,6 +314,7 @@ class BundleSandbox:
             "trio_vcf_input": vcf,
             "ubam_sample": "sample",
             "vcf_annotate_cols": "ID,INFO/HG",
+            "vcf_path.extra": self._file("input/extra.vcf.gz"),
             "vcf_table_format": "tsv",
             "vep_assembly": "GRCh38",
             "vep_species": "homo_sapiens",
@@ -499,7 +500,9 @@ def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
                         )
                 actions += control.get("rowActions", [])
             for action in actions:
-                command = action["command"]
+                command = action.get("command")
+                if not command:
+                    continue
                 groups = command.get("optionalArguments", [])
                 flags = {group[0] for group in groups if group}
                 pairs = [pair for pair in EXCLUSIVE_FLAGS if set(pair) <= flags]

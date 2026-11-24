@@ -10,7 +10,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
+from wgsextract_cli.core import paraphase_document, roh_document  # noqa: E402
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
+from wgsextract_cli.core.panel_spec import panel_schema  # noqa: E402
 from wgsextract_cli.core.result_schema import result_schema  # noqa: E402
 from wgsextract_cli.core.sample_document import (  # noqa: E402
     SAMPLE_SHAPES,
@@ -37,6 +39,39 @@ STEP_OUTPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schem
 RESULT_OUTPUT = (
     ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json"
 )
+ROH_OUTPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.roh.1.schema.json"
+PARAPHASE_OUTPUT = (
+    ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.paraphase.1.schema.json"
+)
+# An input format, not an output: the research panel files `panel check` reads.
+PANEL_INPUT = ROOT / "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json"
+
+
+def roh_schema() -> dict[str, object]:
+    r = roh_document
+    shapes: dict[object, Shape] = {
+        r.RohDocument: Shape("document", additional=False),
+        r.Scope: Shape("scope", additional=False),
+        r.PopulationFrequencies: Shape("populationFrequencies", additional=False),
+        r.ImprintedRegions: Shape("imprintedRegions", additional=False),
+        r.ImprintedRegion: Shape("imprintedRegion", additional=False),
+        r.Condition: Shape("condition", additional=False),
+        r.Markers: Shape("markers", additional=False),
+        r.Parameters: Shape("parameters", additional=False),
+        r.Summary: Shape("summary", additional=False),
+        r.Segment: Shape("segment", additional=False),
+        r.Flag: Shape("flag", additional=False),
+    }
+    return output_schema(
+        r.RohDocument,
+        shapes=shapes,
+        schema_id="urn:wgsextract:schema:roh:1",
+        title=r.SCHEMA_ID,
+        description="qc roh: runs of homozygosity, their marker evidence, the "
+        "assessed scope and F_ROH, isodisomy review flags over imprinted "
+        "regions, and the provenance of the population frequencies "
+        "(docs/roh.md).",
+    )
 
 
 def documents() -> dict[Path, dict[str, object]]:
@@ -65,7 +100,25 @@ def documents() -> dict[Path, dict[str, object]]:
         "runningStep/completeStep definitions; unclassified historical records "
         "remain opaque objects and are not validated by the reader.",
     )
-    return {OUTPUT: sample, STEP_OUTPUT: steps, RESULT_OUTPUT: result_schema()}
+    return {
+        OUTPUT: sample,
+        STEP_OUTPUT: steps,
+        RESULT_OUTPUT: result_schema(),
+        ROH_OUTPUT: roh_schema(),
+        PARAPHASE_OUTPUT: output_schema(
+            paraphase_document.ParaphaseDocument,
+            shapes={
+                paraphase_document.ParaphaseDocument: Shape(
+                    "document", additional=False
+                ),
+                paraphase_document.LocusCall: Shape("locus", additional=False),
+            },
+            schema_id="urn:wgsextract:schema:paraphase:1",
+            title=paraphase_document.SCHEMA_ID,
+            description="Normalized copy number and haplotype calls from typing paraphase.",
+        ),
+        PANEL_INPUT: panel_schema(),
+    }
 
 
 def main() -> None:

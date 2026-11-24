@@ -1,4 +1,4 @@
-import { contextValue, displayCommand, placeholdersIn } from "../../../shared/rendering.js";
+import { contextValue, displayCommand, firstPathValue, placeholdersIn } from "../../../shared/rendering.js";
 import { controlWithID, errorMessage } from "./model.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
@@ -8,6 +8,7 @@ import { findTerminalEntry } from "./terminal-output.js";
 import { preferredOutput, resultCardOutput, resultNotice, type ResultDocument } from "../../../shared/result-document.js";
 import { openResultCard } from "./result-card-dialog.js";
 import { actionNoticeKey } from "./result-view.js";
+import { openGenomeViewer } from "./genome-viewer-launcher.js";
 import { prerequisitesInstalled } from "./operations-prerequisites.js";
 import type { ActionReference, ActionSpec, CommandContext, CommandSpec, LastResultDocumentPaths, TerminalEntry, ValueMap } from "../../../shared/types.js";
 
@@ -25,18 +26,40 @@ type ActionStreamEvent =
     | { type: "submission-unknown"; jobID: string | null }
     | { type: "error"; error?: string };
 
-export async function runAction(action: ActionSpec, context: CommandContext, reference: ActionReference, options: { prerequisitesChecked?: boolean } = {}) {
+export async function runAction(
+    action: ActionSpec,
+    context: CommandContext,
+    reference: ActionReference,
+    options: { prerequisitesChecked?: boolean; opener?: HTMLElement | null } = {},
+) {
     if (action.confirm) {
         state.pendingConfirmation = { action, reference, context, input: "" };
         scheduleRender();
         return;
     }
-    if (!action.command) {
+    if (!action.command && !action.viewerInput) {
         throw new Error("Missing action command.");
     }
     // Without a check the tab opens at once, as it always has.
     const checked = options.prerequisitesChecked || !state.manifest?.prerequisites;
     if (!checked && !(await prerequisitesInstalled(action, context, reference))) {
+        return;
+    }
+    if (action.viewerInput) {
+        const key = action.viewerInput;
+        const fieldEl = typeof document !== "undefined" && typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? document.querySelector<HTMLInputElement>(`[data-field-id="${CSS.escape(key)}"]`)
+            : null;
+        const value = firstPathValue(contextValue(context, key) ?? state.fieldValues[key] ?? fieldEl?.value ?? "");
+        const escapedId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+            ? CSS.escape(String(action.id ?? ""))
+            : String(action.id ?? "");
+        const opener = options.opener
+            ?? (typeof document !== "undefined" ? document.querySelector<HTMLElement>(`[data-action-id="${escapedId}"]`) : null)
+            ?? (typeof document !== "undefined" ? document.querySelector<HTMLElement>("[data-genome-viewer-open]") : null);
+        if (opener) {
+            openGenomeViewer(state.localizationCode, state.labels, opener, value);
+        }
         return;
     }
     // Only the latest run of an action (or row action) may set its notice; an older run can finish later.
@@ -51,7 +74,7 @@ export async function runAction(action: ActionSpec, context: CommandContext, ref
  * Resolves to its exit code, or null when it couldn't run or was cancelled.
  */
 export async function streamCommand(action: ActionSpec, context: CommandContext, endpoint: string, body: unknown, noticeRun: NoticeRun | null = null): Promise<number | null> {
-    const command = displayCommand(action.command, context);
+    const command = action.command ? displayCommand(action.command, context) : "";
     const runningID = appendTerminal(
         "command",
         action.title,
@@ -196,7 +219,9 @@ function applyResultDocument(tab: TerminalEntry, document: ResultDocument | null
 function primaryFileDetail(action: ActionSpec, context: CommandContext): { primaryFile?: string } {
     const candidates = action.primaryInput
         ? [action.primaryInput]
-        : actionCommandPlaceholders(action.command).map(inputValueKey).filter(isFilePathControl);
+        : action.command
+            ? actionCommandPlaceholders(action.command).map(inputValueKey).filter(isFilePathControl)
+            : [];
     for (const key of candidates) {
         const value = String(contextValue(context, key) ?? "").trim();
         if (value) {

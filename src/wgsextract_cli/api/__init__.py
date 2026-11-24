@@ -62,6 +62,7 @@ from . import (
     analyze,
     bam,
     benchmark,
+    cohort,
     deps,
     examples,
     extract,
@@ -109,6 +110,7 @@ from .bam import (
     BamUnsortParams,
 )
 from .benchmark import BenchmarkParams
+from .cohort import CohortSummarizeParams as CohortSummarizeParams
 from .deps import (
     DepsCheckParams,
     DepsInstallParams,
@@ -132,14 +134,22 @@ from .fastq import FastqArchiveParams, FastqRestoreParams
 from .genotyping import (
     TypingCyp2d6Params,
     TypingHlaParams,
+    TypingParaphaseParams,
     TypingSmnParams,
     TypingStrParams,
+    TypingTargetCnvParams,
 )
-from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
-from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
-from .methylation import MethylationPileupParams
+from .info import (
+    CalculateCoverageParams,
+    ChipParams,
+    CoverageSampleParams,
+    InfoGeneParams,
+    InfoParams,
+)
+from .lineage import MtHaplogroupParams, YHaplogroupParams, YPrivateParams, YStrParams
+from .methylation import MethylationPileupParams, MethylationRegionsParams
 from .microarray import MicroarrayParams
-from .panel import PanelBedParams
+from .panel import PanelBedParams, PanelCheckParams
 from .pet import PetAlignParams
 from .qc import (
     FakeDataParams,
@@ -149,6 +159,7 @@ from .qc import (
     MultiqcParams,
     QcAncestryParams,
     QcContaminationParams,
+    QcRohParams,
     QcVcfParams,
     RelateParams,
 )
@@ -162,6 +173,7 @@ from .ref import (
     RefClinvarParams,
     RefCountNsParams,
     RefCytobandsParams,
+    RefDbsnpParams,
     RefDenseSaParams,
     RefDownloadParams,
     RefGeneMapParams,
@@ -206,12 +218,15 @@ from .vcf import (
     VcfGatkParams,
     VcfGerpParams,
     VcfGnomadParams,
+    VcfGraniteQcParams,
     VcfImputeParams,
     VcfIndelParams,
+    VcfInfoParams,
     VcfPharmcatParams,
     VcfPharmgkbParams,
     VcfPhaseParams,
     VcfPhylopParams,
+    VcfPrepareParams,
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
@@ -220,6 +235,7 @@ from .vcf import (
     VcfTableParams,
     VcfToFastaParams,
     VcfTrioParams,
+    VcfVariantQcParams,
 )
 from .vep import VepDeleteParams, VepDownloadParams, VepRunParams, VepVerifyParams
 
@@ -247,6 +263,7 @@ __all__ = [
     "CancelToken",
     "Cancelled",
     "ChipParams",
+    "CohortSummarizeParams",
     "CommandFailed",
     "CoverageSampleParams",
     "CustomParams",
@@ -261,9 +278,11 @@ __all__ = [
     "FastpParams",
     "FastqcParams",
     "FileRecord",
+    "InfoGeneParams",
     "InfoParams",
     "IssueReport",
     "MethylationPileupParams",
+    "MethylationRegionsParams",
     "MicroarrayParams",
     "MissingDependencyError",
     "MitoFastaParams",
@@ -271,6 +290,7 @@ __all__ = [
     "MtBamParams",
     "MtHaplogroupParams",
     "PanelBedParams",
+    "PanelCheckParams",
     "MultiqcMetricsParams",
     "MultiqcParams",
     "Params",
@@ -279,6 +299,7 @@ __all__ = [
     "ProgressEvent",
     "QcAncestryParams",
     "QcContaminationParams",
+    "QcRohParams",
     "QcVcfParams",
     "RealignParams",
     "RelateParams",
@@ -290,6 +311,7 @@ __all__ = [
     "RefClinvarParams",
     "RefCountNsParams",
     "RefCytobandsParams",
+    "RefDbsnpParams",
     "RefDenseSaParams",
     "RefDownloadParams",
     "RefGeneMapParams",
@@ -328,7 +350,9 @@ __all__ = [
     "TypingCyp2d6Params",
     "TypingSmnParams",
     "TypingHlaParams",
+    "TypingParaphaseParams",
     "TypingStrParams",
+    "TypingTargetCnvParams",
     "UsageError",
     "VcfAcmgParams",
     "VcfAlphamissenseParams",
@@ -352,12 +376,16 @@ __all__ = [
     "VcfImputeParams",
     "VcfPhaseParams",
     "VcfPhylopParams",
+    "VcfPrepareParams",
     "VcfRevelParams",
     "VcfSnpParams",
     "VcfSpliceaiParams",
     "VcfSvParams",
+    "VcfGraniteQcParams",
+    "VcfInfoParams",
     "VcfTableParams",
     "VcfToFastaParams",
+    "VcfVariantQcParams",
     "VcfTrioParams",
     "VepDeleteParams",
     "VepDownloadParams",
@@ -366,6 +394,7 @@ __all__ = [
     "WGSExtractError",
     "YHaplogroupParams",
     "YMtExtractParams",
+    "YPrivateParams",
     "YStrParams",
     "YdnaBamParams",
     "YdnaVcfParams",
@@ -373,6 +402,7 @@ __all__ = [
     "analyze",
     "bam",
     "benchmark",
+    "cohort",
     "deps",
     "examples",
     "extract",

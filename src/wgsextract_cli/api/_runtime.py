@@ -231,6 +231,7 @@ def _allows_downloads(params: Params) -> bool:
             "ref test-genome",
             "ref gene-map",
             "ref clinvar",
+            "ref dbsnp",
             "ref revel",
             "ref phylop",
             "ref gnomad",
@@ -242,6 +243,7 @@ def _allows_downloads(params: Params) -> bool:
             "ref acmg-data",
             "ref bootstrap",
             "ref microarray-targets",
+            "deps install",
             "vep download",
             "example-genome download",
         }
@@ -391,7 +393,8 @@ def _run(
             "output_directory"
         )
         params = _one_vcf_input(with_config_defaults(params))
-        result.provenance.params = redact_params(params.to_dict())
+        if not params.PRIVATE_PROVENANCE:
+            result.provenance.params = redact_params(params.to_dict())
         unregister = (
             cancel.on_cancel(lambda: proc_registry.cancel(scope)) if cancel else None
         )
@@ -471,7 +474,7 @@ def _prepare(params: Params, result: CommandResult) -> Path | None:
     if isinstance(input_path, str) and is_url(input_path):
         check_public(input_path)  # Before a secret in it is recorded.
         result.add_input(input_path, "input")
-    for name in INPUT_ARGS:
+    for name in () if params.PRIVATE_PROVENANCE else INPUT_ARGS:
         path = getattr(params, name, None)
         if isinstance(path, Path) and path.expanduser().exists():
             result.add_input(path.expanduser(), input_role(params.COMMAND, name))
@@ -484,7 +487,7 @@ def _prepare(params: Params, result: CommandResult) -> Path | None:
 
             validate_alignment_input(input_path)
     outdir = getattr(params, "outdir", None)
-    if isinstance(outdir, Path):
+    if not params.PRIVATE_PROVENANCE and isinstance(outdir, Path):
         from wgsextract_cli.core.output_location import make_output_folder
 
         return make_output_folder(outdir)

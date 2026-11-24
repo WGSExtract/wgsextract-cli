@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { BundleManifest } from "../../../shared/types.js";
-import { writeFileAtomically } from "./config-store.js";
+import { writeFileAtomically } from "./atomic-file.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { applicationSupportDirectory, appSupportContainerName, appSupportDirectory, defaultAppDataName, safePathComponent } from "./paths.js";
 
@@ -82,6 +82,28 @@ export async function readAppSettings(): Promise<Record<string, unknown>> {
 export async function writeAppSettings(settings: Record<string, unknown>) {
     await mkdir(appSupportDirectory(), { recursive: true });
     await writeFileAtomically(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+export type MovedConfigPath = readonly [from: string, to: string];
+
+/** Records where an explicit CLI --config path went; read only if the old file is gone. */
+export function withMovedConfigPaths(settings: Record<string, unknown>, paths: readonly MovedConfigPath[]) {
+    if (paths.length === 0) return settings;
+    const previous = settings.movedConfigPaths;
+    const redirects = previous != null && typeof previous === "object" && !Array.isArray(previous)
+        ? { ...previous } as Record<string, unknown>
+        : {};
+    for (const [from, to] of paths) {
+        for (const oldPath of Object.keys(redirects)) {
+            if (!path.relative(oldPath, to) || !path.relative(oldPath, from)) delete redirects[oldPath];
+        }
+        redirects[from] = to;
+    }
+    return { ...settings, movedConfigPaths: redirects };
+}
+
+export async function saveMovedConfigPath(from: string, to: string) {
+    await writeAppSettings(withMovedConfigPaths(await readAppSettings(), [[from, to]]));
 }
 
 /** One bundle's entry of a map in the app settings, keyed by bundle ID. */

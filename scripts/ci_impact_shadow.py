@@ -12,12 +12,14 @@ import platform
 import subprocess
 import xml.etree.ElementTree as ET
 from collections import defaultdict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TypedDict
 
 from scripts.ci_impact_diff import ImpactDiff, git_blob, impact_diff
 from scripts.ci_impact_import_smoke import smoke_package
 from scripts.ci_impact_observations import SCHEMA
+from scripts.ci_impact_observations import SOURCE as SOURCE
 from scripts.ci_impact_results import file_results
 from scripts.ci_impact_scopes import (
     ChangedScopes,
@@ -41,16 +43,43 @@ from scripts.ci_select_tests import CI_TESTS, ci_path
 from scripts.ci_test_dependencies import docs_test_targets, test_inputs
 from scripts.ci_test_tiers import SINGLE_OS_MODULES
 
-SOURCE = "src/wgsextract_cli/"
 VARIANTS = ("decisive", "tight", "symbol", "widely_called")
 LOCKS = {"pixi.toml", "pixi.lock", "pyproject.toml"}
+
+
+class GateDecision(TypedDict):
+    mode: str
+    selection: Literal["all"] | list[str]
+
+
+def parse_selection(value: object) -> Literal["all"] | list[str]:
+    if value == "all":
+        return "all"
+    if isinstance(value, list) and all(isinstance(item, str) for item in value):
+        return value
+    raise ValueError("selection must be 'all' or a JSON array of test paths")
+
+
+def fresh_observations(root: Path, manifest: dict[str, Any]) -> bool:
+    recorded = manifest.get("recorded_at")
+    try:
+        if recorded is None:
+            recorded = subprocess.check_output(
+                ["git", "show", "-s", "--format=%cI", manifest["source_sha"]],
+                cwd=root,
+                text=True,
+            ).strip()
+        age = datetime.now(timezone.utc) - datetime.fromisoformat(recorded)
+    except (ValueError, TypeError, subprocess.CalledProcessError):
+        return False
+    return timedelta(minutes=-5) <= age <= timedelta(hours=48)
 
 
 def observation_map(
     root: Path, file: Path, base: str
 ) -> tuple[dict[str, Any], str | None]:
     if not file.is_file():
-        return {}, "No trusted scheduled Linux observation map available."
+        return {}, "No trusted Linux observation map available."
     try:
         with gzip.open(file, "rt", encoding="utf-8") as stream:
             data = json.load(stream)
@@ -98,7 +127,12 @@ def observation_map(
 
 
 def compute(
-    root: Path, diff: ImpactDiff, tests: set[str], evidence: dict[str, Any]
+    root: Path,
+    diff: ImpactDiff,
+    tests: set[str],
+    evidence: dict[str, Any],
+    *,
+    line_override: tuple[str, str, set[str]] | None = None,
 ) -> tuple[dict[str, list[str]], dict[str, set[str]], list[str]]:
     reasons: dict[str, set[str]] = defaultdict(set)
     paths = {path for row in diff.changes for path in (row.before, row.after) if path}
@@ -117,6 +151,7 @@ def compute(
         t.split("::", 1)[0] for t in docs_test_targets(sorted(paths), repository=root)
     }
     observed_calls: set[str] = set()
+    line_calls: set[str] = set()
     wide_calls: set[str] = set()
     scopes = {}
     module_users = {}
@@ -242,6 +277,10 @@ def compute(
             else:
                 reasons[source].add("observed-function")
             observed_calls.update(callers)
+            if line_override is not None:
+                line_calls.update(
+                    line_override[2] if line_override[:2] == (source, fn) else callers
+                )
             sampled = sample_callers(
                 source,
                 fn,
@@ -315,24 +354,52 @@ def compute(
         if contracts:
             shared.update(contracts)
     # Overlapping non-sampled reasons must never be subtracted from wide.
-    return (
-        shadow_candidates(
-            shared | observed_calls,
+    candidates = shadow_candidates(
+        shared | observed_calls,
+        module_users,
+        scopes,
+        tests,
+        SYMBOL_CONTRACTS,
+        symbol_module_users=symbol_users,
+        widely_called_shared=shared | wide_calls,
+    )
+    if line_override is not None:
+        candidates["line"] = shadow_candidates(
+            shared | line_calls,
             module_users,
             scopes,
             tests,
             SYMBOL_CONTRACTS,
             symbol_module_users=symbol_users,
-            widely_called_shared=shared | wide_calls,
-        ),
-        reasons,
-        sorted(set(unmodeled)),
+        )["symbol"]
+    return candidates, reasons, sorted(set(unmodeled))
+
+
+def lane_tests(root: Path, head: str, *, skip_independent: bool) -> set[str]:
+    return set(
+        test_targets(
+            json.dumps(
+                sorted(
+                    path
+                    for path in tracked_python(root, head)
+                    if path.startswith("tests/")
+                    and Path(path).name.startswith("test_")
+                    and (
+                        not skip_independent or Path(path).name not in SINGLE_OS_MODULES
+                    )
+                )
+            )
+        )
+        or ()
     )
 
 
 def main() -> None:
+    from scripts.ci_impact_lines import line_callers
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--observations", type=Path, required=True)
+    parser.add_argument("--line-map", type=Path)
     parser.add_argument("--junit", type=Path, required=True)
     parser.add_argument("--summary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -340,28 +407,23 @@ def main() -> None:
     parser.add_argument("--outcome", required=True)
     parser.add_argument("--run-id", type=int, required=True)
     parser.add_argument("--attempt", type=int, required=True)
+    parser.add_argument("--gate-decision", type=Path)
     args = parser.parse_args()
     root = Path.cwd().resolve()
     diff = impact_diff(root, "HEAD^1", "HEAD")
     source_head = subprocess.check_output(
         ["git", "rev-parse", "HEAD^2"], text=True
     ).strip()
-    tests = set(
-        test_targets(
-            json.dumps(
-                sorted(
-                    path
-                    for path in tracked_python(root, diff.head)
-                    if path.startswith("tests/")
-                    and Path(path).name.startswith("test_")
-                    and Path(path).name not in SINGLE_OS_MODULES
-                )
-            )
-        )
-        or ()
-    )
+    tests = lane_tests(root, diff.head, skip_independent=True)
     evidence, gap = observation_map(root, args.observations, diff.base)
-    candidates, reasons, unmatched = compute(root, diff, tests, evidence)
+    override, line_status = (
+        line_callers(root, diff, args.line_map, evidence, tests)
+        if args.line_map is not None
+        else (None, "no-paired-map")
+    )
+    candidates, reasons, unmatched = compute(
+        root, diff, tests, evidence, line_override=override
+    )
     import_probe = (
         smoke_package(root)
         if any("eager-import-smoke" in rule for rule in reasons.values())
@@ -369,6 +431,32 @@ def main() -> None:
     )
     actual_selection = test_targets(args.selection)
     requested = tests if actual_selection is None else tests & set(actual_selection)
+    gate_decision: GateDecision = {"mode": "legacy", "selection": sorted(requested)}
+    if args.gate_decision is not None and args.gate_decision.is_file():
+        try:
+            decision = json.loads(args.gate_decision.read_text(encoding="utf-8"))
+            if not isinstance(decision, dict) or not isinstance(
+                decision.get("mode"), str
+            ):
+                raise ValueError("missing gate decision mode")
+            gate_decision = {
+                "mode": decision["mode"],
+                "selection": parse_selection(decision.get("selection")),
+            }
+        except (OSError, ValueError):
+            gate_decision["mode"] = "unknown-invalid-decision"
+    enforced = gate_decision["selection"]
+    effective = tests if enforced == "all" else tests & set(enforced)
+    invalid_decision = gate_decision["mode"] == "unknown-invalid-decision"
+    if override is not None and (
+        gate_decision["mode"] != "symbol"
+        or unmatched
+        or effective != set(candidates["symbol"])
+        or not candidates.get("line")
+    ):
+        line_status = "symbol-fallback-or-unmodeled"
+    if line_status != "eligible":
+        candidates["line"] = sorted(effective)
     actual: dict[str, Any] = {}
     unmapped = 0
     receipt = "No regular pytest receipt (not run, cache-only, or interrupted)."
@@ -381,7 +469,7 @@ def main() -> None:
     failures = {t for t, r in actual.items() if r["failed"]}
     passed = {t for t, r in actual.items() if r["passed"] and not r["failed"]}
     completed = failures | passed
-    seconds = evidence.get("seconds", {})
+    seconds: dict[str, float] = evidence.get("seconds", {})
     baseline_timed = requested & seconds.keys()
     baseline_minutes = (
         round(sum(seconds[t] for t in baseline_timed) / 60, 3)
@@ -399,6 +487,11 @@ def main() -> None:
         "observation_gap": gap,
         "unmatched_inputs": unmatched,
         "actual_selected": sorted(requested),
+        "effective_selected": sorted(effective),
+        "gate_mode": gate_decision["mode"],
+        "tested_git_tree": subprocess.check_output(
+            ["git", "rev-parse", "HEAD^{tree}"], text=True
+        ).strip(),
         "actual_estimated_test_minutes": baseline_minutes,
         "actual_timed_files": len(baseline_timed),
         "actual_results": actual,
@@ -412,6 +505,11 @@ def main() -> None:
     summary = [
         "### Linux x64 test selection shadow (advisory)",
         f"Actual selector: {len(requested)} files before cache; {len(completed)} files with pass/fail observations.",
+        (
+            "Enforced selector unknown: invalid gate receipt; showing legacy selection."
+            if invalid_decision
+            else f"Enforced selector: {gate_decision['mode']} ({len(effective)} files before cache)."
+        ),
         receipt,
         gap or f"Observation map: `{evidence['manifest']['source_sha']}`.",
         f"Advisory symbol/helper package-import smoke: {import_probe}.",
@@ -421,6 +519,15 @@ def main() -> None:
         f"| current | {len(requested)} | {baseline_minutes if baseline_minutes is not None else 'n/a'} | "
         f"{len(baseline_timed)} | {len(failures - requested)} | {len(requested - completed)} |",
     ]
+
+    def estimated_with_imputation(selected: set[str]) -> float | None:
+        if not seconds:
+            return None
+        default = max(seconds.values())
+        return round(
+            sum(seconds.get(test, default) for test in sorted(selected)) / 60, 3
+        )
+
     for name, targets in candidates.items():
         selected = set(targets)
         timed = selected & seconds.keys()
@@ -435,6 +542,19 @@ def main() -> None:
             "observed_omitted_passes": sorted(passed - selected),
             "selected_without_pass_or_fail": sorted(selected - completed),
         }
+        if name == "line":
+            minutes = estimated_with_imputation(selected)
+            symbol_minutes = estimated_with_imputation(effective)
+            report["variants"][name].update(
+                status=line_status,
+                estimated_test_minutes=minutes,
+                estimated_minutes_saved_vs_enforced=(
+                    round(symbol_minutes - minutes, 3)
+                    if symbol_minutes is not None and minutes is not None
+                    else None
+                ),
+                nightly_recall=None,
+            )
         summary.append(
             f"| {name} | {len(selected)} | {minutes if minutes is not None else 'n/a'} | "
             f"{len(timed)} | {len(omitted_failures)} | {len(selected - completed)} |"
@@ -456,10 +576,15 @@ def main() -> None:
         and completed
         and args.outcome in {"success", "failure"}
         and unmapped == 0
+        and gate_decision["mode"] != "symbol"
+        and not invalid_decision
     )
     summary.extend(
         (
             "",
+            f"Line shadow: {line_status}. Unknown line-arm timings use the maximum "
+            "observed file duration. Nightly recall is unavailable until reproducible "
+            "failures can be tied to this exact tree by the backstop.",
             f"Unmatched inputs: {len(unmatched)}. Unmapped JUnit cases: {unmapped}.",
             "An omitted failure is a triage lead, not proof of PR origin. "
             "Untested, skipped, cached and certified work is not a pass observation.",

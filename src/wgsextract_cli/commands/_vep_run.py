@@ -35,7 +35,7 @@ from wgsextract_cli.core.resource_estimates import (
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result, human_output, warn
-from wgsextract_cli.core.sample_ploidy import sex_samples_args
+from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
 from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -58,7 +58,6 @@ from ._vep_engines import (
     vep_engine,
 )
 from ._vep_resources import preprocess_vcf_chr_prefix
-from .vcf.basic import ploidy_args
 from .vcf.call_cleanup import indel_cleanup_pipeline
 
 GENOMIC_SUFFIXES = (".vcf", ".vcf.gz", ".bcf", ".bam", ".cram")
@@ -362,8 +361,9 @@ def _check_annotation_cache(
 
 def _warn_about_cache_gaps(version_dir: Path) -> None:
     """Say which columns a vep-rs cache leaves empty that Ensembl VEP's
-    cache fills: known variants without its variations, SIFT and PolyPhen
-    without their prediction matrices."""
+    cache fills: known variants without its variations, gnomAD frequencies
+    without gnomAD columns in them, SIFT and PolyPhen without their
+    prediction matrices."""
     try:
         info = json.loads(Path(version_dir, "info.json").read_text())
     except (OSError, ValueError):
@@ -371,6 +371,12 @@ def _warn_about_cache_gaps(version_dir: Path) -> None:
     gaps = []
     if not Path(version_dir, "variations").is_dir():
         gaps.append("Existing_variation and the frequency columns")
+    elif not any(str(c).startswith("gnomAD") for c in info.get("variation_cols", [])):
+        # vep-cache-builder reads 1000 Genomes frequencies only (#1354).
+        gaps.append(
+            "gnomAD frequencies (gnomADe_*, gnomADg_*: use 'vcf gnomad'; "
+            "AF and MAX_AF are 1000 Genomes only)"
+        )
     if not (info.get("sift") and info.get("polyphen")):
         gaps.append("SIFT and PolyPhen")
     if gaps:

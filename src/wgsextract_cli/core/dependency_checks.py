@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.native_support import (
+    is_arm64_docker_host,
     require_native_tool,
     tool_unsupported_reason,
 )
@@ -195,11 +196,12 @@ VERSION_ARGS = {
     "bwa-mem2": "version",
     "bwa-mem3": "version",
     "vep-cache-builder": "--help",
+    "granite": "--help",
 }
 # samtools 1.10 added --write-index and the file##idx##index output name.
 MINIMUM_VERSIONS = {"bcftools": (1, 0), "samtools": (1, 10)}
 # Tools whose banner names them differently ("Haplogrep 3 3.2.2").
-VERSION_BANNER_NAMES = {"haplogrep3": "haplogrep 3 "}
+VERSION_BANNER_NAMES = {"haplogrep3": "haplogrep 3 ", "granite": "granite ("}
 
 
 def get_tool_version(tool: str) -> str | None:
@@ -325,6 +327,13 @@ def _probe_version_in(tool: str, full_cmd: list[str], cwd: str | None) -> str:
     except _SlowToStart as e:
         return f"Error: {e}"
     except OSError as e:
+        # Darwin's EBADARCH: the kernel can't launch this Mach-O architecture.
+        if tool.startswith("GLIMPSE2_") and sys.platform == "darwin" and e.errno == 86:
+            return (
+                f"Error: {tool} has an incompatible CPU architecture. "
+                "Use native GLIMPSE2 (pixi install --locked -e imputation) "
+                "and remove the Intel binary from PATH, or use Rosetta for that binary."
+            )
         return f"Error: {blocked_launch(full_cmd[0], e) or e}"
     except (subprocess.SubprocessError, RuntimeError, ValueError) as e:
         return f"Error: {str(e)}"
@@ -387,9 +396,11 @@ def verify_dependencies(
             f"Missing required core tool(s): {', '.join(missing)}"
         )
 
-    # Version Validation for critical tools
-    for tool in MINIMUM_VERSIONS:
-        if tool in tool_list and tool not in missing:
+    # Check that GLIMPSE2 launches on ARM64: PATH can still contain an Intel
+    # copy even though the supported Pixi environment now installs native tools.
+    for tool in tool_list:
+        minimum = MINIMUM_VERSIONS.get(tool)
+        if minimum or (tool.startswith("GLIMPSE2_") and is_arm64_docker_host()):
             version_str = get_tool_version(tool)
             if not version_str:
                 continue
@@ -403,23 +414,25 @@ def verify_dependencies(
                 logging.error(f"{tool} at {get_tool_path(tool)} does not run.")
                 raise MissingDependencyError(f"{tool} does not run: {problem}")
 
-            # Handle version strings like "bcftools 1.12" or "Version: 0.1.19"
+            if minimum and (too_old_message := too_old(tool, version_str)):
+                logging.error(
+                    f"This tool requires {tool} version "
+                    f"{'.'.join(map(str, minimum))} or newer."
+                )
+                logging.info(f"Your current path for {tool} is: {get_tool_path(tool)}")
+                logging.info("Please update your conda environment or system path.")
+                raise MissingDependencyError(too_old_message)
 
-            match = re.search(r"(\d+)\.(\d+)", version_str)
-            if match:
-                minimum = MINIMUM_VERSIONS[tool]
-                if (int(match.group(1)), int(match.group(2))) < minimum:
-                    logging.error(
-                        f"This tool requires {tool} version "
-                        f"{'.'.join(map(str, minimum))} or newer."
-                    )
-                    logging.info(
-                        f"Your current path for {tool} is: {get_tool_path(tool)}"
-                    )
-                    logging.info("Please update your conda environment or system path.")
-                    raise MissingDependencyError(
-                        f"{tool} version {version_str} is too old."
-                    )
+
+def too_old(tool: str, version_str: str | None) -> str | None:
+    """Why ``tool`` at ``version_str`` (its version probe's output, such as
+    "bcftools 1.12" or "Version: 0.1.19") is older than ``MINIMUM_VERSIONS``
+    allows; None when it isn't, or can't be told."""
+    minimum = MINIMUM_VERSIONS.get(tool)
+    match = re.search(r"(\d+)\.(\d+)", version_str or "")
+    if minimum and match and (int(match.group(1)), int(match.group(2))) < minimum:
+        return f"{tool} version {version_str} is too old."
+    return None
 
 
 def _missing_tool_hint(tool: str) -> str | None:

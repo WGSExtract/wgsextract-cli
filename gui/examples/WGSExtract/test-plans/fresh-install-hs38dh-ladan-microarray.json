@@ -29,7 +29,7 @@
       "actionID": "ref-download",
       "rowID": "hs38DH-NIH-Alt-hs38DH.fa.gz",
       "rowValues": {
-        "build": "GRCh38 / hg38",
+        "tag": "1K38h",
         "code": "hs38DH",
         "final": "hs38DH.fa.gz",
         "name": "hs38DH",

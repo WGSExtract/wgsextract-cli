@@ -1,0 +1,56 @@
+name: Publish daily Linux selector misses
+
+on:
+  workflow_run:
+    workflows: ["CI Ubuntu"]
+    branches: [main]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  publish:
+    if: >-
+      (github.event.workflow_run.event == 'schedule' || github.event.workflow_run.event == 'workflow_dispatch') &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Check out the trusted default-branch SHA, not the triggering run's SHA.
+          ref: ${{ github.sha }}
+          fetch-depth: ${{ github.event.workflow_run.event == 'schedule' && 1 || 0 }}
+          filter: ${{ github.event.workflow_run.event == 'workflow_dispatch' && 'blob:none' || '' }}
+          persist-credentials: false
+      - name: Verify the dispatch ran a main commit
+        if: github.event.workflow_run.event == 'workflow_dispatch'
+        shell: bash
+        env:
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        # head_branch alone cannot distinguish a tag or establish main provenance.
+        run: |
+          [[ "$RUN_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git rev-list --first-parent HEAD | grep -Fx "$RUN_SHA" > /dev/null
+      - name: Download confirmed omission receipts
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: linux-selector-misses
+          path: out/selector-misses
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      - name: Open or refresh confirmed selector miss issues
+        if: hashFiles('out/selector-misses/report.json') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_RUN: ${{ github.event.workflow_run.id }}
+        run: >-
+          python3 -m scripts.ci_impact_backstop --repository "$GITHUB_REPOSITORY"
+          --run "$NIGHTLY_RUN" --report out/selector-misses/report.json

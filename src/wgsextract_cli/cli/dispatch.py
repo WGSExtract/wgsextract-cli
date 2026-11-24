@@ -94,13 +94,18 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
         command=getattr(args, "_command", None)
         or str(getattr(args, "command", None) or "wgsextract")
     )
-    result.provenance.argv = redact_argv(getattr(args, "_argv", None) or sys.argv[1:])
+    private = getattr(args, "_private_provenance", False)
+    if not private:
+        result.provenance.argv = redact_argv(
+            getattr(args, "_argv", None) or sys.argv[1:]
+        )
     result.run.join(
         getattr(args, "_parent_run", None),
         getattr(args, "_root_run", None),
         getattr(args, "_run_step", None),
     )
-    result.provenance.params = params_from_args(args)
+    if not private:
+        result.provenance.params = params_from_args(args)
     if not as_json:
         result.stream_text(_to_stdout)
     reserved = stdout_reserved() if as_json else contextlib.nullcontext(sys.stdout)
@@ -236,15 +241,21 @@ def _run(
                 remove_in=deprecation.remove_in,
             )
         verify_platform_support(args)
-        apply_genome_selection(args, set(explicit_dests))
+        private = getattr(args, "_private_provenance", False)
+        if not private:
+            apply_genome_selection(args, set(explicit_dests))
         if getattr(args, "_one_vcf_input", False):
             # Of --input and --vcf-input, only the VCF it reads is an input.
             from wgsextract_cli.commands.vcf.basic import resolve_vcf_input
 
             resolve_vcf_input(args)
-        with active_workspace(
-            getattr(args, "genome_dir", None),
-            (getattr(args, dest, None) for dest in INPUT_ARGS),
+        with (
+            contextlib.nullcontext()
+            if private
+            else active_workspace(
+                getattr(args, "genome_dir", None),
+                (getattr(args, dest, None) for dest in INPUT_ARGS),
+            )
         ):
             _run_command(args, explicit_dests, result)
     except (Exception, KeyboardInterrupt, SystemExit) as e:
@@ -301,8 +312,10 @@ def _run_command(
         args._default_outdir = args.outdir is not None and not settings.get(
             "output_directory"
         )
-    result.provenance.params = params_from_args(args)
-    for dest in INPUT_ARGS:
+    private = getattr(args, "_private_provenance", False)
+    if not private:
+        result.provenance.params = params_from_args(args)
+    for dest in () if private else INPUT_ARGS:
         role = input_role(result.command, dest)
         value = getattr(args, dest, None)
         if isinstance(value, str) and value and Path(value).expanduser().exists():
@@ -310,7 +323,7 @@ def _run_command(
         elif dest == "input" and is_url(value) and command_reads_urls(args):
             check_public(str(value))  # Before a secret in it is recorded.
             result.add_input(value, role)
-    input_path = getattr(args, "input", None)
+    input_path = None if private else getattr(args, "input", None)
     command = getattr(args, "command", None) or ""
     status = reports_status(args)
     if (
@@ -328,6 +341,7 @@ def _run_command(
     if (
         args.outdir
         and not status
+        and not private
         and getattr(args, "command", None) not in READ_ONLY_COMMANDS
     ):
         created = make_output_folder(args.outdir)

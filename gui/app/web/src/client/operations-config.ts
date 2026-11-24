@@ -1,4 +1,4 @@
-import { configEditorControls, configValueKey } from "../../../shared/rendering.js";
+import { configEditorControls, configValueKey, firstPathValue, splitPathList } from "../../../shared/rendering.js";
 import { api } from "./api.js";
 import { boundFieldKey, configSettingBindings, errorMessage, formatLabel, syncSharedField } from "./model.js";
 import { scheduleRender } from "./rerender.js";
@@ -33,7 +33,9 @@ export async function fieldValueChanged(value: string, control: ControlSpec) {
         return;
     }
     state.fieldValues[control.id] = value;
-    await syncBoundConfigSettings(control.id, value, { removeFieldIDs: [control.id] });
+    const isMulti = control.kind === "path" && control.multiple === true && splitPathList(value).length > 1;
+    const configValue = control.kind === "path" && control.multiple === true ? firstPathValue(value) : value;
+    await syncBoundConfigSettings(control.id, configValue, isMulti ? {} : { removeFieldIDs: [control.id] });
 }
 export async function checkedOptionsChanged(selectedIDs: Set<string>, control: ControlSpec) {
     state.checkedOptions[control.id] = selectedIDs;
@@ -61,7 +63,7 @@ async function syncBoundConfigSettings(controlID: string, value: string, removeP
     }
     for (const binding of bindings) {
         state.configValues[configValueKey(binding.control, binding.setting)] = value;
-        await saveConfig(binding.control);
+        await saveConfig(binding.control, false, [binding.setting]);
     }
     await persistBundleState(removePersistedState);
 }
@@ -80,14 +82,18 @@ async function saveSetting(value: string, setting: ConfigSetting, control: Contr
     if (fieldKey) {
         state.fieldValues[fieldKey] = value;
     }
-    await saveConfig(control);
+    await saveConfig(control, false, [setting]);
     if (fieldKey) {
         await persistBundleState({ removeFieldIDs: [fieldKey] });
     }
 }
-export async function saveConfig(control: ControlSpec, reportSuccess = false) {
+/**
+ * Saves `settings` (all of the editor's by default). A change saves only its own setting, so values this
+ * window loaded earlier never undo what the CLI or another window saved since.
+ */
+export async function saveConfig(control: ControlSpec, reportSuccess = false, settings = control.settings ?? []) {
     try {
-        const values = Object.fromEntries((control.settings ?? []).filter((setting) => state.uiMode === "advanced" || setting.advancedOnly !== true).map((setting) => [setting.key, state.configValues[configValueKey(control, setting)] ?? setting.value ?? ""]));
+        const values = Object.fromEntries(settings.filter((setting) => state.uiMode === "advanced" || setting.advancedOnly !== true).map((setting) => [setting.key, state.configValues[configValueKey(control, setting)] ?? setting.value ?? ""]));
         const result = await api<ConfigSaveResponse>("/api/config/save", {
             method: "POST",
             body: { controlID: control.id, path: state.configFilePaths[control.id], values },

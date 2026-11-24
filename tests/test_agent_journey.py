@@ -19,6 +19,7 @@ from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_htslib
 from tests.test_microarray_library import MARKERS, _library, _sample_bam
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.microarray.targets import build_genome_wide_target
 
 pytestmark = needs_htslib
 
@@ -53,6 +54,10 @@ def test_an_agent_gets_from_top_level_help_to_a_23andme_file(tmp_path: Path):
     )
     (templates / "body" / "23andMe_V5_2.txt").write_text("")
     bam = _sample_bam(tmp_path, seq)
+    target = build_genome_wide_target(str(library), "hg19", [str(library)])
+    sample_target = f"{Path(bam).with_suffix('')}.targets.tab.gz"
+    Path(target).replace(sample_target)
+    Path(target + ".tbi").replace(sample_target + ".tbi")
     config = tmp_path / "config.toml"
     config.write_text(
         f'reference_library = "{library.as_posix()}"\n'
