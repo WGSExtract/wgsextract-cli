@@ -25,6 +25,10 @@ curl = ">=8.21,<9"
 [target.win-64.activation.env]
 PYTHONUTF8 = "1"
 
+# Standalone Java 17 runtime for Java tools built for Java 17 (e.g. DISCVRSeq VariantQC).
+[feature.java17.dependencies]
+openjdk = "17.*"
+
 # GATK4's Bioconda package requires Python 3.10, so it gets its own environment;
 # the CLI runs `gatk` through it automatically. GATK 4.6 is built for Java 17.
 [feature.gatk.dependencies]
@@ -394,6 +398,23 @@ paraphase = "==3.3.1"
 samtools = ">=1.24,<2"
 minimap2 = ">=2.31,<3"
 
+# granite-suite (`granite qcVCF`) for VCF quality control (`vcf granite-qc`).
+# Needs pysam and pytabix (Unix only; no native Windows builds).
+[feature.granite]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.granite.dependencies]
+python = "3.11.*"
+numpy = ">=1.26.4,<2.0.0"
+h5py = ">=3.11.0,<4.0.0"
+matplotlib = ">=3.9.0,<4.0.0"
+bitarray = ">=2.9.2,<3.0.0"
+pysam = ">=0.22.1,<0.23.0"
+pytabix = ">=0.1,<0.2"
+
+[feature.granite.pypi-dependencies]
+granite-suite = "==0.5.1"
+
 # Optional report aggregation; never installed by command invocation.
 [feature.multiqc.pypi-dependencies]
 multiqc = ">=1.32,<2"
@@ -483,6 +504,7 @@ multiqc = { features = ["standard-platforms", "multiqc"], solve-group = "default
 parquet = { features = ["standard-platforms", "bio-tools", "pysam", "parquet"], solve-group = "default" }
 mcp = { features = ["standard-platforms", "bio-tools", "pysam", "mcp"], solve-group = "default" }
 gatk = { features = ["standard-platforms", "gatk"], no-default-feature = true }
+java17 = { features = ["standard-platforms", "java17"], no-default-feature = true }
 freebayes = { features = ["standard-platforms", "freebayes"], no-default-feature = true }
 bwa-mem3 = { features = ["standard-platforms", "bwa-mem3"], no-default-feature = true }
 t1k = { features = ["standard-platforms", "t1k"], no-default-feature = true }
@@ -504,6 +526,7 @@ phasing = { features = ["standard-platforms", "phasing"], no-default-feature = t
 smn = { features = ["standard-platforms", "smn"], no-default-feature = true }
 paraphase = { features = ["standard-platforms", "paraphase"], no-default-feature = true }
 imputation = { features = ["standard-platforms", "imputation"], no-default-feature = true }
+granite = { features = ["standard-platforms", "granite"], no-default-feature = true }
 
 [pypi-dependencies]
 # pysam is platform-specific (no native Windows build); see feature.pysam.

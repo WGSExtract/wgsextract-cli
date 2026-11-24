@@ -321,7 +321,7 @@ def _rows(output: str) -> dict[str, list[str]]:
     """Library listing rows keyed by their label column."""
     rows = {}
     for line in output.splitlines():
-        fields = [line[41:56], line[57:67], line[68:]]
+        fields = [line[41:53], line[54:69], line[70:]]
         fields = [f.strip() for f in fields]
         while fields and not fields[-1]:
             fields.pop()
@@ -357,18 +357,18 @@ def test_library_list_reports_genome_status_and_resources(tmp_path, genomes, cap
     out = capsys.readouterr().out
     assert f"REFERENCE LIBRARY: {tmp_path}" in out
     rows = _rows(out)
-    assert rows["hg38 (YSEQ)"] == ["INSTALLED", "2.0 MiB", "N-counts, VEP-GRCh38"]
-    assert rows["hs37d5 (Dante)"] == ["INCOMPLETE", "1 B", "N-counts"]  # no VEP
-    assert rows["T2T_v2.0"] == ["UNINDEXED", "1 B", "N-counts"]
-    assert rows["Dog GSD"] == ["MISSING", "", "VEP-Cache"]
-    assert rows["Cat Fca126"] == ["MISSING"]  # only the dog's VEP cache is there
-    assert rows["Gene Maps (hg19/hg38)"] == ["INSTALLED"]
-    assert rows["ClinVar (hg38)"] == ["INSTALLED"]
-    assert rows["ClinVar (hg19)"] == ["MISSING"]
-    assert rows["PhyloP (hg19)"] == ["INSTALLED"]
-    assert rows["gnomAD (hg38)"] == ["INSTALLED"]
-    assert rows["gnomAD (hg19)"] == ["MISSING"]
-    assert rows["REVEL (hg38)"] == ["MISSING"]
+    assert rows["hg38 (YSEQ)"] == ["hg38h", "INSTALLED", "N-counts, VEP-GRCh38"]
+    assert rows["hs37d5 (Dante)"] == ["1K37g", "INCOMPLETE", "N-counts"]  # no VEP
+    assert rows["T2T_v2.0"] == ["T2T CHM13", "UNINDEXED", "N-counts"]
+    assert rows["Dog GSD"] == ["", "MISSING", "VEP-Cache"]
+    assert rows["Cat Fca126"] == ["", "MISSING"]  # only the dog's VEP cache is there
+    assert rows["Gene Maps (GRCh37 / GRCh38)"] == ["", "INSTALLED"]
+    assert rows["ClinVar (GRCh38)"] == ["", "INSTALLED"]
+    assert rows["ClinVar (GRCh37)"] == ["", "MISSING"]
+    assert rows["PhyloP (GRCh37)"] == ["", "INSTALLED"]
+    assert rows["gnomAD (GRCh38)"] == ["", "INSTALLED"]
+    assert rows["gnomAD (GRCh37)"] == ["", "MISSING"]
+    assert rows["REVEL (GRCh38)"] == ["", "MISSING"]
 
 
 @pytest.mark.parametrize("newline", ["\n", "\r\n"], ids=["lf", "crlf"])
@@ -392,6 +392,7 @@ def test_issue_947_api_library_list_gives_the_listing_as_details_and_text(
     assert details["genomes_dir"] == str(lib / "genomes")
     assert by_code["hg38"] == {
         "code": "hg38",
+        "tag": "hg38h",
         "label": "hg38 (YSEQ)",
         "source": None,
         "file": "hg38.fa.gz",
@@ -421,8 +422,8 @@ def test_issue_947_api_library_list_gives_the_listing_as_details_and_text(
         "hg38": {"clinvar": True, "revel": False, "phylop": False, "gnomad": True},
     }
     rows = _rows(result.text)
-    assert rows["hg38 (YSEQ)"] == ["INSTALLED", "2.0 MiB", "N-counts, VEP-GRCh38"]
-    assert rows["Gene Maps (hg19/hg38)"] == ["INSTALLED"]
+    assert rows["hg38 (YSEQ)"] == ["hg38h", "INSTALLED", "N-counts, VEP-GRCh38"]
+    assert rows["Gene Maps (GRCh37 / GRCh38)"] == ["", "INSTALLED"]
 
 
 def test_api_library_list_expands_home(tmp_path, genomes, monkeypatch):
@@ -456,7 +457,7 @@ def test_library_list_defaults_to_the_configured_fastas_library(
 
     assert result.details["library"] == str(other.parent)
     assert f"REFERENCE LIBRARY: {other.parent}" in result.text
-    assert _rows(result.text)["hg38 (YSEQ)"] == ["UNINDEXED", "1 B", "N-counts"]
+    assert _rows(result.text)["hg38 (YSEQ)"] == ["hg38h", "UNINDEXED", "N-counts"]
 
 
 @contextmanager
@@ -525,7 +526,7 @@ def test_library_list_looks_up_download_sizes_once_and_reports_them_offline(
 
     offline = api.ref.library_list(RefLibraryListParams(ref=tmp_path))
     assert _remote_bytes(offline) == sizes
-    assert _rows(offline.text)["a"] == ["MISSING", "", "download 1000 B"]
+    assert _rows(offline.text)["a"] == ["", "MISSING"]
 
 
 def test_download_sizes_give_up_on_a_server_that_never_answers(tmp_path, monkeypatch):
@@ -658,8 +659,8 @@ def test_library_install_by_code_or_number(tmp_path, server, catalog, choice, ca
     capsys.readouterr()
     library_commands.cmd_library(Namespace(ref=str(lib), list=True))
     rows = _rows(capsys.readouterr().out)
-    assert rows["tiny (local)"][0] == "INSTALLED"
-    assert rows["other (local)"] == ["MISSING"]
+    assert rows["tiny (local)"][1] == "INSTALLED"
+    assert rows["other (local)"] == ["", "MISSING"]
 
 
 @needs_library_tools
@@ -786,8 +787,8 @@ def test_library_menu_shows_each_genomes_status(
     assert " 1) tiny (local) [Installed]" in out
     assert " 2) part (local) [Incomplete]" in out
     assert " 3) dog (local)\n" in out
-    assert " C) ClinVar (hg19/hg38)" in out
-    assert " P) PhyloP hg38 (~9.9 GB)\n" in out
+    assert " C) ClinVar (GRCh37/GRCh38)" in out
+    assert " P) PhyloP GRCh38 (~9.9 GB)\n" in out
     assert " K) PharmGKB\n" in out
 
 
@@ -1245,4 +1246,4 @@ def test_library_list_finds_the_build_of_a_genome_from_its_signature(
     library_commands.cmd_library(Namespace(ref=str(tmp_path), list=True))
 
     row = _rows(capsys.readouterr().out)["human_g1k_v37"]
-    assert row[1:] == ["29.3 KiB", "N-counts, VEP-GRCh37"]
+    assert row == ["1K37g", "UNINDEXED", "N-counts, VEP-GRCh37"]
