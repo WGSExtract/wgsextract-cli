@@ -381,12 +381,12 @@ def _status(
     latest = answer.get("latest") if answer else None
     if not latest:
         return "unknown", "The answers name no newer release for this resource."
-    if latest == record.release:
-        return "up_to_date", "The run used the newest release."
     used, newest = (
         resource_releases.iso_date(record.release),
         resource_releases.iso_date(latest),
     )
+    if latest == record.release or (used is not None and used == newest):
+        return "up_to_date", "The run used the newest release."
     if used and newest and newest > used:
         return "newer_available", f"Release {latest} is newer than {record.release}."
     if used and newest and newest < used:
@@ -404,9 +404,14 @@ def _installed(record: ResourceRecord) -> tuple[Installed, str | None]:
     path = Path(record.path)
     if not read_scope.may_follow(path):
         return "unknown", None  # a server job follows only allowed folders
-    if not path.is_file():
-        return "missing", None
+    try:
+        if not path.is_file():
+            return "missing", None
+    except OSError:
+        return "unknown", None
     now = resource_releases.describe(record.id, path, record.role)
+    if now.fingerprint is None:
+        return "unknown", None
     if now.fingerprint == record.fingerprint:
         return "same", record.release
     return "changed", now.release
@@ -416,13 +421,21 @@ def _next_step(
     record: ResourceRecord,
     status: Status,
     installed: Installed,
+    installed_release: str | None,
     commands: Sequence[str],
     latest: str | None,
 ) -> str | None:
     rerun = f"rerun {', '.join(commands)}" if commands else "rerun the runs above"
-    if installed == "changed":
+    needs_new_release = status in ("newer_available", "different_release")
+    installed_is_latest = bool(
+        installed_release
+        and latest
+        and (resource_releases.iso_date(installed_release) or installed_release)
+        == (resource_releases.iso_date(latest) or latest)
+    )
+    if installed == "changed" and (not needs_new_release or installed_is_latest):
         return f"The installed file has changed since these runs; {rerun} to use it."
-    if status not in ("newer_available", "different_release"):
+    if not needs_new_release:
         return None
     wanted = f"release {latest}" if latest else "the newer release"
     # `ref <id>` installs the release this WGS Extract pins (often an audited
@@ -454,12 +467,12 @@ def recheck(
     used, unrecorded = used_resources(manifests)
     fetched: AnswersDocument | None = None
     sha256: str | None = None
-    if not used:
+    if answers_file is not None:
+        answers, sha256 = read_answers(answers_file)
+    elif not used:
         answers = AnswersDocument(
             schema=ANSWERS_SCHEMA, retrieved="", source="", answers=[]
         )
-    elif answers_file is not None:
-        answers, sha256 = read_answers(answers_file)
     elif online:
         answers = fetched = lookup_online(used)
     else:
@@ -485,7 +498,12 @@ def recheck(
                 installed_release=installed_release,
                 used_by=item.uses,
                 next_step=_next_step(
-                    record, status, installed, item.rerun, (answer or {}).get("latest")
+                    record,
+                    status,
+                    installed,
+                    installed_release,
+                    item.rerun,
+                    (answer or {}).get("latest"),
                 ),
                 source_url=record.source_url,
                 licence=record.licence,

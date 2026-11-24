@@ -15,6 +15,7 @@ import gzip
 import logging
 import os
 import re
+import zlib
 from collections.abc import Iterable, Mapping
 from dataclasses import fields
 from pathlib import Path
@@ -67,7 +68,7 @@ def vcf_header(path: str | Path) -> dict[str, str]:
                 key, sep, value = line[2:].rstrip("\r\n").partition("=")
                 if sep and not value.startswith("<"):
                     meta.setdefault(key, value)
-    except (OSError, EOFError, UnicodeDecodeError):
+    except (OSError, EOFError, UnicodeDecodeError, zlib.error):
         return {}
     return meta
 

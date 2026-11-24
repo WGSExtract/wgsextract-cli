@@ -62,7 +62,8 @@ folders). Copies of the same release at different paths are checked separately.
 `used_by` lists the runs, and `next_step` says what to do: download
 the newer release yourself (for ClinVar from NCBI, then pass it with
 `vcf clinvar --clinvar-file`), then rerun those commands, the analyses before
-the report. `wgsextract ref <resource>` installs the release this WGS Extract
+the report. If the installed file already has that release, rerun without
+downloading it again. `wgsextract ref <resource>` installs the release this WGS Extract
 pins, often an audited mirror snapshot, which may be older than the newest. A
 truncated or failed listing is a `lookup_error`. The result has the warnings
 `newer_release_available`, `release_differs` (for `different_release`),

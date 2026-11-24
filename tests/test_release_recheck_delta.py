@@ -5,7 +5,9 @@ are built from those runs. Only the network boundary is replaced, by the
 loopback server in tests/http_server.py.
 """
 
+import gzip
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -444,12 +446,17 @@ def test_1179_unsupported_answers_and_unrecorded_manifests(runs, tmp_path):
     del old["resources"]
     legacy = tmp_path / "legacy.manifest.json"
     legacy.write_text(json.dumps(old))
+    refused = api.ref.recheck(
+        api.RefRecheckParams(manifests=(legacy,), answers=bad), check=False
+    )
+    assert refused.error and refused.error.code == "unsupported_schema"
     answers = _answers(tmp_path / "answers.json", "2026-11-15")
     checked = api.ref.recheck(
         api.RefRecheckParams(manifests=(legacy,), answers=answers)
     )
     assert checked.details["unrecorded_manifests"] == [str(legacy)]
     assert checked.details["resources"] == []
+    assert checked.details["answers"]["sha256"]
     assert "resources_not_recorded" in [w.code for w in checked.warnings]
 
 
@@ -510,7 +517,12 @@ def test_1363_identical_releases_at_different_paths_are_rechecked_separately(tmp
     ]
 
 
-def test_1179_installed_change_is_reported_without_downloading(runs, tmp_path):
+@pytest.mark.parametrize(
+    ("latest", "downloads"), [("2026-11-15", False), ("2026-11-22", True)]
+)
+def test_1363_a_changed_installation_is_not_necessarily_latest(
+    runs, tmp_path, latest, downloads
+):
     folder = tmp_path / "moved"
     shutil.copytree(runs["october"].parent, folder)
     manifest = folder / "clinvar_pathogenic.vcf.manifest.json"
@@ -519,7 +531,7 @@ def test_1179_installed_change_is_reported_without_downloading(runs, tmp_path):
     installed = _clinvar(tmp_path / "clinvar_now.vcf", "2026-11-15", NOVEMBER)
     document["resources"][0]["path"] = str(installed)
     manifest.write_text(json.dumps(document))
-    answers = _answers(tmp_path / "answers.json", "2026-11-15")
+    answers = _answers(tmp_path / "answers.json", latest)
     result = api.ref.recheck(
         api.RefRecheckParams(manifests=(manifest,), answers=answers)
     )
@@ -529,7 +541,51 @@ def test_1179_installed_change_is_reported_without_downloading(runs, tmp_path):
         "2026-11-15",
     )
     assert "vcf clinvar" in clinvar["next_step"]
+    assert ("Download" in clinvar["next_step"]) == downloads
     assert resource.exists()
+
+
+@pytest.mark.parametrize("damage", ["unreadable", "corrupt_gzip"])
+def test_1363_recheck_survives_an_unreadable_or_corrupt_installation(
+    runs, tmp_path, damage
+):
+    source = runs["october"].parent / "clinvar_pathogenic.vcf.manifest.json"
+    document = json.loads(source.read_text())
+    original = Path(document["resources"][0]["path"])
+    damaged = tmp_path / "clinvar.vcf.gz"
+    if damage == "unreadable":
+        shutil.copyfile(original, damaged)
+        damaged.chmod(0)
+        if os.access(damaged, os.R_OK):
+            damaged.chmod(0o600)
+            pytest.skip("File permissions do not prevent reads on this host")
+    else:
+        contents = bytearray(gzip.compress(original.read_bytes()))
+        contents[10] = 0x07  # Reserved deflate block type after the gzip header.
+        damaged.write_bytes(contents)
+    document["resources"][0]["path"] = str(damaged)
+    manifest = tmp_path / "clinvar.manifest.json"
+    manifest.write_text(json.dumps(document))
+    answers = _answers(tmp_path / "answers.json", "2026-11-15")
+    try:
+        result = api.ref.recheck(
+            api.RefRecheckParams(manifests=(manifest,), answers=answers)
+        )
+    finally:
+        damaged.chmod(0o600)
+    (clinvar,) = result.details["resources"]
+    expected = "unknown" if damage == "unreadable" else "changed"
+    assert (clinvar["installed"], clinvar["installed_release"]) == (expected, None)
+
+
+def test_1363_compact_answer_date_can_match_the_release_used(runs, tmp_path):
+    answers = _answers(tmp_path / "answers.json", "20261115")
+    result = api.ref.recheck(
+        api.RefRecheckParams(manifests=(runs["november"],), answers=answers)
+    )
+    (clinvar,) = [r for r in result.details["resources"] if r["id"] == "clinvar"]
+    assert (clinvar["status"], clinvar["next_step"]) == ("up_to_date", None)
+    assert "release_differs" not in [w.code for w in result.warnings]
 
 
 def test_1179_answers_older_than_the_release_used_never_suggest_a_downgrade(
