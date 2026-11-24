@@ -13,6 +13,13 @@ ENTRIES: dict[str, CommandHelp] = {
         "wgsextract deps list",
         "wgsextract --json deps list",
     ),
+    "deps ready": _h(
+        "Prints each prerequisite of the command line, its status and the "
+        "explicit step that provides a missing one; writes no files. With "
+        "--json, the result's details list every item and its evidence.",
+        "wgsextract deps ready -- vcf snp --input sample.bam",
+        "wgsextract --json deps ready -- vcf clair3 --input ont.bam --gpu",
+    ),
     "deps install": _h(
         "Installs the tool's Pixi environment beside the CLI's own.",
         "wgsextract deps install gatk",

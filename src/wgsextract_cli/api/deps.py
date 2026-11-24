@@ -18,6 +18,20 @@ Pixi ``environment`` and the ``environment_tools`` it provides,
 ``can_install`` and ``can_uninstall``, and a ``note`` (how to install it
 yourself, or why it can't be had). It doesn't fail on a missing tool.
 
+``ready`` reports whether a command line (``command_line``, as its argv
+after ``wgsextract``) can run on this computer without the network: each
+prerequisite its run checks (platform, tools, Docker images and GPUs, model
+weights and their SHA-256, the input, reference genome and indexes, and
+annotation data), with a ``status`` (runnable, installed, unverified,
+unsupported, missing, stale or incompatible), its evidence (version, path,
+Conda package and the licence its metadata records, image identity and
+labels, digests; terms are "unknown" where nothing local records them) and
+the explicit step that provides it. ``details["status"]`` is "ready",
+"ready_unverified" or "not_ready"; not ready fails with exit code 3 (error
+kind ``missing_dependency``), with the details still set. It installs,
+pulls and downloads nothing. The server doesn't offer it: the command line
+names host paths its folder checks can't vet.
+
 ``install`` downloads and installs the Pixi environment that provides an
 optional tool (``pixi install --locked -e <env>``); ``uninstall`` removes it
 (``pixi clean -e <env>``), and with it the other tools in that environment.
@@ -54,6 +68,22 @@ class DepsListParams(Params):
     """List every tool, its status and whether it can be installed or removed."""
 
     COMMAND = "deps list"
+
+
+@dataclass(frozen=True, kw_only=True)
+class DepsReadyParams(Params):
+    """Report whether a command line can run here without the network."""
+
+    COMMAND = "deps ready"
+    LOCAL_ONLY = True
+
+    command_line: tuple[str, ...] = param(
+        help="The wgsextract command line to check, after --.",
+        doc="The command line to check: its arguments after ``wgsextract``.",
+        remainder=True,
+        metavar="-- COMMAND ...",
+        may_name_file=True,
+    )
 
 
 def _tool_param() -> Any:
@@ -112,6 +142,19 @@ def list_tools(
     return execute(params, run_list, progress=progress, cancel=cancel, check=check)
 
 
+def ready(
+    params: DepsReadyParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Report a command line's offline readiness (see ``DepsReadyParams``)."""
+    from wgsextract_cli.commands._deps_status import run_ready
+
+    return execute(params, run_ready, progress=progress, cancel=cancel, check=check)
+
+
 def install(
     params: DepsInstallParams,
     *,
@@ -142,9 +185,11 @@ __all__ = [
     "DepsCheckParams",
     "DepsInstallParams",
     "DepsListParams",
+    "DepsReadyParams",
     "DepsUninstallParams",
     "check",
     "install",
     "list_tools",
+    "ready",
     "uninstall",
 ]
