@@ -42,13 +42,13 @@ pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process g
         "config",
         "config-substitution",
         "config-glob",
+        "config-nested",
     ],
 )
 def test_1393_preserves_primary_git_hooks_using_a_stale_worktree(
     repo: Path, github: Callable[..., None], location: str
 ) -> None:
     configured = location.startswith("config")
-    dynamic = location in {"config-substitution", "config-glob"}
     if configured:
         version = git(repo, "version").split()[2].split(".")
         if tuple(map(int, version[:2])) < (2, 56):
@@ -83,6 +83,8 @@ def test_1393_preserves_primary_git_hooks_using_a_stale_worktree(
             )
         elif location == "config-glob":
             command = f"sh scratch/st*/hooks/{shlex.quote(target.name)}"
+        elif location == "config-nested":
+            command = shlex.join(["sh", "-c", f"exec {shlex.quote(str(relative))}"])
         else:
             command = shlex.join(["sh", str(relative)])
         git(repo, "config", "hook.lint.command", command)
@@ -93,10 +95,12 @@ def test_1393_preserves_primary_git_hooks_using_a_stale_worktree(
     github([pull(path)])
 
     run = cleanup(repo, "--apply", "--github")
-    if dynamic:
+    if configured:
         assert path.is_dir()
         assert run.returncode == 1
-        assert "shell expansion" in str(manifest(repo)["error"])
+        assert "config-hook-unverifiable: hook.lint.command" in str(
+            manifest(repo)["error"]
+        )
     else:
         assert run.returncode == 0, run.stderr
         assert result(repo, path)["reason"] == "symlink-dependency"

@@ -9,7 +9,6 @@ import hashlib
 import json
 import os
 import re
-import shlex
 import socket
 import stat
 import struct
@@ -214,45 +213,23 @@ def link_blocks(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path
     raise AssertionError("unreachable dependency scan retry")
 
 
-def configured_hook_paths(root: Path) -> set[Path]:
-    records = git(
+def reject_configured_hooks(root: Path) -> None:
+    keys = git(
         root,
         "config",
         "--null",
+        "--name-only",
         "--get-regexp",
         r"^hook\..*\.command$",
         allow_no_matches=True,
-    ).split("\0")
-    if records.pop():
-        raise CleanupError("Incomplete Git hook configuration")
-    paths: set[Path] = set()
-    for record in records:
-        _, separator, command = record.partition("\n")
-        if not separator:
-            raise CleanupError("Git hook configuration has no command value")
-        if any(char in command for char in "$`*?["):
-            raise CleanupError("Cannot verify configured Git hook shell expansion")
-        # Shell punctuation can delimit adjacent command words without whitespace.
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        try:
-            for word in lexer:
-                if "~" in word[1:]:
-                    raise CleanupError(
-                        "Cannot verify configured Git hook shell expansion"
-                    )
-                for token in (word, word.partition("=")[2]):
-                    if token:
-                        path = Path(token)
-                        # Tokenization cannot distinguish a quoted tilde.
-                        paths.update((path, path.expanduser()))
-        except ValueError as error:
-            raise CleanupError("Cannot tokenize configured Git hook command") from error
-    return paths
+    )
+    if keys:
+        key = keys.split("\0", 1)[0]
+        raise CleanupError(f"config-hook-unverifiable: {key}")
 
 
 def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]:
+    reject_configured_hooks(root)
     # The primary walk includes registered worktrees under the repository.
     locations = {root}
     for tree in trees:
@@ -291,10 +268,7 @@ def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]
     # Git runs ordinary hooks in the checkout and receive hooks in $GIT_DIR.
     # Ask Git for the effective path without resolving away configured aliases.
     hook_dirs = set()
-    configured_paths = configured_hook_paths(root)
     for cwd in (root, common):
-        for target in configured_paths:
-            check_target(root, cwd / target)
         reported = git(cwd, "rev-parse", "--git-path", "hooks").removesuffix("\n")
         if not reported:
             raise CleanupError("Git did not report its hooks path")
@@ -688,7 +662,10 @@ def cleanup(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="Cleanup stops if Git config defines any hook.<name>.command.",
+    )
     parser.add_argument(
         "--apply", action="store_true", help="remove verified eligible worktrees"
     )
