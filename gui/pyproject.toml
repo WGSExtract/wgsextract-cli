@@ -8,7 +8,8 @@ requires-python = ">=3.11"
 dependencies = ["platformdirs", "pyliftover", "tomli-w"]
 
 [dependency-groups]
-dev = []
+# GUI/CLI lock interoperability tests exercise the CLI's PID checks.
+dev = ["psutil"]
 
 [tool.uv]
 package = false
