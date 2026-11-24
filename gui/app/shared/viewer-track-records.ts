@@ -25,8 +25,33 @@ export function validateTrackRecord(columns: string[], format: "bed" | "bedgraph
     }
 }
 
+export type ViewerTrackConfig<Source> = (Omit<LocalTrack<Source>, "format"> & {
+    format: LocalTrack<Source>["format"];
+    delimiter?: string;
+    decode?: (columns: string[]) => { chr: string; start: number; end: number; value?: number; name?: string } | undefined;
+});
+
 /** igv calls this decoder only on the indexed blocks it reads, including after panning. */
-export function validatedBedGraphTrack<Source>(track: LocalTrack<Source>, report: (error: ViewerFileError) => void): LocalTrack<Source> & { decode?: (columns: string[]) => { chr: string; start: number; end: number; value: number } | undefined } {
+export function validatedBedGraphTrack<Source>(track: LocalTrack<Source>, report: (error: ViewerFileError) => void): ViewerTrackConfig<Source> {
+    if (track.format === "rsid-tab" || track.format === "pharmgkb-tsv") {
+        const isPharmgkb = track.format === "pharmgkb-tsv";
+        return {
+            ...track,
+            format: "bed",
+            delimiter: "\t",
+            decode(columns) {
+                const contig = columns[0] ?? "";
+                const rawPos = columns[1] ?? "";
+                if (columns.length < 3 || contig.startsWith("#") || !/^\d+$/.test(rawPos)) return undefined;
+                const pos = Number(rawPos);
+                if (!Number.isSafeInteger(pos) || pos < 1) return undefined;
+                const name = isPharmgkb
+                    ? ((columns[4] ?? "").trim() || `${(columns[2] ?? "").trim()}>${(columns[3] ?? "").trim()}`)
+                    : (columns[2] ?? "").trim();
+                return { chr: contig, start: pos - 1, end: pos, name };
+            },
+        };
+    }
     if (track.format !== "bedgraph" || !track.referenceLengths) return track;
     const reference = new Map(Object.entries(track.referenceLengths));
     return {

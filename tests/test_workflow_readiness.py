@@ -1,6 +1,5 @@
 """Focused workflow readiness regressions."""
 
-import ast
 import json
 import re
 from fnmatch import fnmatchcase
@@ -17,6 +16,9 @@ from tests.test_github_actions_policy import (
 )
 from tests.test_github_actions_policy import (
     event_path_filters as event_path_filters,
+)
+from tests.test_github_actions_policy import (
+    matches_workflow_condition as matches_workflow_condition,
 )
 from tests.test_github_actions_policy import (
     top_level_conjuncts as top_level_conjuncts,
@@ -148,7 +150,7 @@ def test_nightly_reuses_green_main_except_for_linux_shadow_observations(
     assert f"workflow: {workflow}" in source
     jobs = re.split(r"^  ([\w-]+):\s*\n", source.split("\njobs:\n", 1)[1], flags=re.M)
     for name, body in zip(jobs[1::2], jobs[2::2], strict=True):
-        if name == "nightly":
+        if name == "nightly" or (workflow == "ubuntu_ci.yml" and name == "test-ubuntu"):
             continue
         assert "needs: nightly" in body
         gate = re.search(r"\(([^()\n]*needs\.nightly\.result[^()\n]*)\)", body)
@@ -160,31 +162,53 @@ def test_nightly_reuses_green_main_except_for_linux_shadow_observations(
             ("schedule", "failure", "true", True),
             ("push", "success", "true", False),
             ("push", "skipped", "", True),
+            ("workflow_dispatch", "success", "true", False),
+            ("workflow_dispatch", "skipped", "", True),
         ]:
-            # contract: the #1339 full daily Ubuntu run must seed fresh observations.
-            if event == "schedule" and (workflow, name) == (
-                "ubuntu_ci.yml",
-                "test-ubuntu",
-            ):
-                run = True
-            expression = (
-                gate[1]
-                .replace("needs.nightly.result", repr(result))
-                .replace("needs.nightly.outputs.skip", repr(skip))
-                .replace("github.event_name", repr(event))
-            )
-            tree = ast.parse(expression.replace("||", " or "), mode="eval").body
-            assert isinstance(tree, ast.BoolOp) and isinstance(tree.op, ast.Or)
-            decisions = []
-            for compare in tree.values:
-                assert isinstance(compare, ast.Compare)
-                op = compare.ops[0]
-                assert isinstance(op, (ast.Eq, ast.NotEq))
-                equal = ast.literal_eval(compare.left) == ast.literal_eval(
-                    compare.comparators[0]
+            assert (
+                matches_workflow_condition(
+                    gate[1],
+                    {
+                        "needs.nightly.result": result,
+                        "needs.nightly.outputs.skip": skip,
+                    },
                 )
-                decisions.append(equal if isinstance(op, ast.Eq) else not equal)
-            assert any(decisions) is run, (workflow, name, event, result, skip)
+                is run
+            ), (
+                workflow,
+                name,
+                event,
+                result,
+                skip,
+            )
+
+
+def test_1464_ubuntu_dispatch_reaches_the_full_backstop_through_reusable_calls() -> (
+    None
+):
+    guard = (WORKFLOWS / "nightly_guard.yml").read_text()
+    assert (
+        "if: github.event_name == 'schedule' || inputs.main-backstop-candidate" in guard
+    )
+    ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
+    backstop = ubuntu.split("\n  test-ubuntu:\n", 1)[1].split("\n  optional-tools:", 1)[
+        0
+    ]
+    # A slow, failed or skipped guard cannot prevent a trusted full pytest run.
+    assert "needs.nightly" not in backstop and "needs: nightly" not in backstop
+    assert "main-backstop-candidate: *main-backstop-candidate" in backstop
+    suite = (WORKFLOWS / "os_tests.yml").read_text()
+    assert (
+        "timeout-minutes: ${{ inputs.main-backstop-candidate && 80 || inputs.timeout-minutes }}"
+        in suite
+    )
+    assert "TRUSTED_FULL_MAIN: ${{ steps.backstop.outputs.trusted }}" in suite
+    assert (
+        'if [ "$TRUSTED_FULL_MAIN" = true ]; then\n            args+=(--cov-context=test'
+        in suite
+    )
+    for name in ("macos_ci.yml", "windows_ci.yml", "linux_arm64.yml", "cli_smoke.yml"):
+        assert "main-backstop-candidate:" not in (WORKFLOWS / name).read_text()
 
 
 def test_1045_move_import_collection_cannot_be_skipped_by_writer_certificates() -> None:
