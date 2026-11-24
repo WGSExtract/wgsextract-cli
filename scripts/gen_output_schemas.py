@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from wgsextract_cli.core import paraphase_document, roh_document  # noqa: E402
+from wgsextract_cli.core.methylation_haplotypes import HP_TABLE, PARTITIONS  # noqa: E402
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
 from wgsextract_cli.core.panel_spec import panel_schema  # noqa: E402
 from wgsextract_cli.core.release_recheck import recheck_schema  # noqa: E402
@@ -43,6 +44,7 @@ RESULT_OUTPUT = (
 )
 SCHEMAS = ROOT / "src/wgsextract_cli/assets/schemas"
 ROH_OUTPUT = SCHEMAS / "wgsextract.roh.1.schema.json"
+HP_OUTPUT = SCHEMAS / "wgsextract.methylation-regions-hp.1.schema.json"
 PARAPHASE_OUTPUT = SCHEMAS / "wgsextract.paraphase.1.schema.json"
 # An input format, not an output: the research panel files `panel check` reads.
 PANEL_INPUT = SCHEMAS / "wgsextract.panel.1.schema.json"
@@ -73,6 +75,46 @@ def roh_schema() -> dict[str, object]:
         "regions, and the provenance of the population frequencies "
         "(docs/roh.md).",
     )
+
+
+def haplotype_region_schema() -> dict[str, object]:
+    nullable = {
+        "start",
+        "end",
+        "gene_id",
+        "transcript",
+        "strand",
+        "expected_cpgs",
+        "qualified_fraction",
+        "median_valid_depth",
+        "pooled_percent",
+        "mean_percent",
+        "median_percent",
+        "phase_set",
+        "shared_qualified_cpgs",
+        "hp1_minus_hp2_pp",
+    }
+    kinds = {"TEXT": "string", "INTEGER": "integer", "REAL": "number"}
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "urn:wgsextract:schema:methylation-regions-hp:1",
+        "title": "wgsextract.methylation-regions-hp/1",
+        "description": "One typed row of methylation regions --partition-hp. Nulls "
+        "are empty fields in TSV; the same column names are used in Parquet.",
+        "type": "object",
+        "required": [col.name for col in HP_TABLE],
+        "properties": {
+            col.name: {
+                "type": [kinds[col.type], "null"]
+                if col.name in nullable
+                else kinds[col.type],
+                "description": col.description,
+                **({"enum": list(PARTITIONS)} if col.name == "partition" else {}),
+            }
+            for col in HP_TABLE
+        },
+        "additionalProperties": False,
+    }
 
 
 def documents() -> dict[Path, dict[str, object]]:
@@ -108,6 +150,7 @@ def documents() -> dict[Path, dict[str, object]]:
         ROH_OUTPUT: roh_schema(),
         SCHEMAS / "wgsextract.recheck.1.schema.json": recheck_schema(),
         SCHEMAS / "wgsextract.delta.1.schema.json": delta_schema(),
+        HP_OUTPUT: haplotype_region_schema(),
         PARAPHASE_OUTPUT: output_schema(
             paraphase_document.ParaphaseDocument,
             shapes={

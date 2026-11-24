@@ -20,6 +20,7 @@ GENERATED = (
     "src/wgsextract_cli/assets/schemas/wgsextract.roh.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.recheck.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.delta.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.methylation-regions-hp.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.paraphase.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",

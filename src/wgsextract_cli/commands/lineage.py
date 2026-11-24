@@ -59,6 +59,7 @@ from wgsextract_cli.core.variant_files import (
     verify_paths_exist,
 )
 
+from . import _lineage_heteroplasmy as heteroplasmy
 from ._lineage_chm13 import (
     has_reference_calls,
     lift_heteroplasmies,
@@ -140,13 +141,14 @@ def _banner_version(cmd: list[str], pattern: re.Pattern[str], home: str) -> str 
 
 def _record_banner_version(
     cmd: list[str], tool: str, pattern: re.Pattern[str], home: str
-) -> None:
+) -> str | None:
     """Record the version of the command that runs, not of one found by name."""
     version = _banner_version([*cmd, "--version"], pattern, home)
     if version:
         current_result().record_tool_version(tool, version)
     else:
         current_result().record_tool_command([tool])
+    return version
 
 
 def _require_one_sample(header: str) -> None:
@@ -204,6 +206,9 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
     bases: dict[int, str] = {}
     contamination: dict[str, str] | None = None
     contamination_outputs: list[tuple[Path, str]] = []
+    mutserve_calls: tuple[str, str, str, str | None, str | None] | None = None
+    kept: dict[str, Any] = {}
+    kept_outputs: list[tuple[Path, str]] = []
 
     with tempfile.TemporaryDirectory(
         prefix=".wgse_haplogrep_", dir=scratch_parent(outdir)
@@ -240,7 +245,8 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
 
             cram_opt = ["-T", lib.fasta] if input_lower.endswith(".cram") else []
             chr_m = get_chr_name(input_file, "MT", cram_opt)
-            mapped = _require_rcrs(input_file, chr_m, cram_opt, lib.fasta)
+            origin = _require_rcrs(input_file, chr_m, cram_opt, lib.fasta)
+            mapped = origin == CHM13_CHRM
             if haplocheck_cmd:
                 _require_one_sample(get_bam_header(input_file, cram_opt))
             warn_low_depth(
@@ -267,8 +273,15 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
             if mapped:
                 bases = map_to_rcrs(calls, chr_m, temp_vcf)
             if haplocheck_cmd:
-                contamination_vcf = _call_heteroplasmies(
+                contamination_vcf, mutserve_version = _call_heteroplasmies(
                     haplocheck_cmd, params, input_file, lib.fasta, chr_m, Path(tmp)
+                )
+                mutserve_calls = (
+                    contamination_vcf,
+                    chr_m,
+                    lib.fasta,
+                    origin,
+                    mutserve_version,
                 )
                 if mapped:
                     contamination_vcf = Path(
@@ -284,7 +297,7 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
         else:
             # Filter VCF to chrM to avoid Haplogrep errors on large VCFs
             chr_m = extract_vcf_chromosome(input_file, "MT", temp_vcf)
-            mapped = _require_rcrs(temp_vcf, chr_m)
+            mapped = _require_rcrs(temp_vcf, chr_m) == CHM13_CHRM
             input_file = temp_vcf
             if mapped:
                 if haplocheck_cmd:
@@ -318,6 +331,17 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
             contamination, contamination_outputs = _run_haplocheck(
                 haplocheck_cmd, Path(contamination_vcf).name, Path(outdir), tmp
             )
+        if mutserve_calls:
+            calls, contig, fasta, called_on, mutserve_version = mutserve_calls
+            kept, kept_outputs = heteroplasmy.keep(
+                Path(tmp),
+                calls,
+                Path(outdir),
+                origin=called_on,
+                contig=contig,
+                fasta=fasta,
+                version=mutserve_version,
+            )
 
     _print_haplogrep_result(
         out_file,
@@ -327,10 +351,11 @@ def run_mt_haplogroup(params: MtHaplogroupParams, *, tree_links: bool = False) -
             "haplogrep_version": version,
             "tree": {"id": tree.id, "version": tree.version, "name": tree.name},
         }
-        | ({"mt_reference": f"{CHM13_CHRM}, mapped onto the rCRS"} if mapped else {}),
+        | ({"mt_reference": f"{CHM13_CHRM}, mapped onto the rCRS"} if mapped else {})
+        | ({"heteroplasmy": kept} if kept else {}),
         contamination=contamination,
     )
-    for path, role in contamination_outputs:
+    for path, role in [*contamination_outputs, *kept_outputs]:
         current_result().add_output(path, role)
 
 
@@ -344,12 +369,12 @@ def _call_heteroplasmies(
     fasta: str,
     chr_m: str,
     tmp: Path,
-) -> str:
+) -> tuple[str, str | None]:
     """Call chrM homo- and heteroplasmies with mutserve, as haplocheck's own
     workflow does: bcftools calls have no heteroplasmy levels. Returns the
-    calls' file name in ``tmp``."""
+    calls' file name in ``tmp`` and mutserve's version."""
     mutserve = _mutserve_command(haplocheck_cmd)
-    _record_banner_version(mutserve, "mutserve", MUTSERVE_BANNER, str(tmp))
+    version = _record_banner_version(mutserve, "mutserve", MUTSERVE_BANNER, str(tmp))
     # mutserve names the sample after the BAM file, and haplocheck splits sample
     # names at "_maj"; a fixed name keeps user file names out of both.
     chrm_bam = "sample.bam"
@@ -367,17 +392,16 @@ def _call_heteroplasmies(
     try:
         # mutserve names its text report after the output path up to the
         # path's first dot, so every path it gets is relative to tmp.
-        # contract: haplocheck's workflow settings (level 1%, mapQ 30, baseQ 20).
         run_command(
-            [*mutserve, "call", "--level", "0.01", "--mapQ", "30", "--baseQ", "20"]
-            + ["--deletions", "--no-ansi", "--threads", str(threads)]
+            [*mutserve, "call", *heteroplasmy.mutserve_settings()]
+            + ["--no-ansi", "--threads", str(threads)]
             + ["--contig-name", chr_m, "--reference", "chrM.fasta"]
             + ["--output", calls, chrm_bam],
             cwd=str(tmp),
         )
     except (OSError, subprocess.SubprocessError) as e:
         raise WGSExtractError(f"mutserve failed: {e}") from e
-    return calls
+    return calls, version
 
 
 def _require_heteroplasmy_levels(vcf: str) -> None:
@@ -444,16 +468,17 @@ def _require_rcrs(
     chr_m: str,
     cram_opt: list[str] | None = None,
     fasta: str | None = None,
-) -> bool:
+) -> str | None:
     """Refuse an mtDNA sequence that isn't the rCRS Haplogrep's positions
-    assume, unless it is CHM13v2.0's chrM, which is mapped onto the rCRS
-    (True); warn of one nothing confirms as the rCRS."""
+    assume, unless it is CHM13v2.0's chrM, which is mapped onto the rCRS;
+    warn of one nothing confirms as the rCRS. Returns its origin: "rCRS",
+    CHM13_CHRM or None (unconfirmed)."""
     problem, origin = _mito_check(path, chr_m, cram_opt, fasta)
     if problem:
         raise WGSExtractError(problem)
     if origin == CHM13_CHRM:
         logging.info(f"{chr_m} is {CHM13_CHRM}: mapping its calls onto the rCRS.")
-        return True
+        return origin
     if origin is None:
         warn(
             "mt_reference_unconfirmed",
@@ -461,7 +486,7 @@ def _require_rcrs(
             "classifies; check that it was called against an rCRS chrM (such "
             "as hg38's or hs37d5's), or the haplogroup may be wrong.",
         )
-    return False
+    return origin
 
 
 def alignment_mito_problem(alignment: str, ref: str | None) -> str | None:

@@ -16858,7 +16858,7 @@
    }
   },
   "lineage mt-haplogroup": {
-   "help": "usage: wgsextract lineage mt-haplogroup [-h] [--download | --no-download]\n                                        [--tree {phylotree-fu-rcrs,phylotree-rcrs,mitotree-rcrs}]\n                                        [--contamination] [--haplogrep-path HAPLOGREP_PATH]\n                                        [--haplocheck-path HAPLOCHECK_PATH] [--tree-links]\n                                        [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --tree {phylotree-fu-rcrs,phylotree-rcrs,mitotree-rcrs}\n                        Haplogrep 3 tree (default: config haplogrep_tree, else phylotree-fu-rcrs,\n                        PhyloTree 17 Forensic Update). phylotree-rcrs is PhyloTree 17; mitotree-\n                        rcrs is FamilyTreeDNA Mitotree (non-commercial use only).\n  --contamination       Also check for mtDNA contamination with haplocheck. VCF input needs\n                        heteroplasmy levels (FORMAT/AF).\n  --haplogrep-path HAPLOGREP_PATH\n                        Path to the Haplogrep 3 executable or JAR (optional if in PATH)\n  --haplocheck-path HAPLOCHECK_PATH\n                        Path to the haplocheck executable or JAR (optional if in PATH)\n  --tree-links          Print YFull and FamilyTreeDNA mtDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n1 advanced option not shown; 'wgsextract lineage mt-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage mt-haplogroup --input sample.cram\n  wgsextract lineage mt-haplogroup --input sample.cram --contamination\n  wgsextract lineage mt-haplogroup --input sample.vcf.gz --tree mitotree-rcrs\n\noutputs (in the output directory unless noted):\n  haplogrep_results.txt; prints the mtDNA haplogroup and Haplogrep 3 tree.\n  With --contamination, also haplocheck_contamination.txt (+ .raw.txt, .html).\n\nneeds:\n  bcftools, haplogrep3, java, samtools; depending on options and inputs, also:\n  curl, haplocheck, tabix; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract lineage mt-haplogroup [-h] [--download | --no-download]\n                                        [--tree {phylotree-fu-rcrs,phylotree-rcrs,mitotree-rcrs}]\n                                        [--contamination] [--haplogrep-path HAPLOGREP_PATH]\n                                        [--haplocheck-path HAPLOCHECK_PATH] [--tree-links]\n                                        [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --tree {phylotree-fu-rcrs,phylotree-rcrs,mitotree-rcrs}\n                        Haplogrep 3 tree (default: config haplogrep_tree, else phylotree-fu-rcrs,\n                        PhyloTree 17 Forensic Update). phylotree-rcrs is PhyloTree 17; mitotree-\n                        rcrs is FamilyTreeDNA Mitotree (non-commercial use only).\n  --contamination       Also check for mtDNA contamination with haplocheck; a BAM/CRAM also keeps\n                        mutserve's heteroplasmy calls for `report`. VCF input needs heteroplasmy\n                        levels (FORMAT/AF).\n  --haplogrep-path HAPLOGREP_PATH\n                        Path to the Haplogrep 3 executable or JAR (optional if in PATH)\n  --haplocheck-path HAPLOCHECK_PATH\n                        Path to the haplocheck executable or JAR (optional if in PATH)\n  --tree-links          Print YFull and FamilyTreeDNA mtDNA tree links.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n1 advanced option not shown; 'wgsextract lineage mt-haplogroup --help-all' lists them.\n\nexamples:\n  wgsextract lineage mt-haplogroup --input sample.cram\n  wgsextract lineage mt-haplogroup --input sample.cram --contamination\n  wgsextract lineage mt-haplogroup --input sample.vcf.gz --tree mitotree-rcrs\n\noutputs (in the output directory unless noted):\n  haplogrep_results.txt; prints the mtDNA haplogroup and Haplogrep 3 tree.\n  With --contamination, also haplocheck_contamination.txt (+ .raw.txt, .html).\n\nneeds:\n  bcftools, haplogrep3, java, samtools; depending on options and inputs, also:\n  curl, haplocheck, tabix; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -17249,7 +17249,7 @@
       "default": false,
       "dest": "contamination",
       "exclusive_group": null,
-      "help": "Also check for mtDNA contamination with haplocheck. VCF input needs heteroplasmy levels (FORMAT/AF).",
+      "help": "Also check for mtDNA contamination with haplocheck; a BAM/CRAM also keeps mutserve's heteroplasmy calls for `report`. VCF input needs heteroplasmy levels (FORMAT/AF).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
@@ -18925,7 +18925,7 @@
    }
   },
   "methylation": {
-   "help": "usage: wgsextract methylation [-h] <command> ...\n\npositional arguments:\n  <command>\n    pileup    Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and\n              summary. Optional: Linux and macOS, install with `pixi install -e modkit`.\n    regions   Summarize CpG bedMethyl over gene promoters or CpG islands.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract methylation [-h] <command> ...\n\npositional arguments:\n  <command>\n    pileup    Tabulate 5mC (and optionally 5hmC) per CpG with modkit into a bedMethyl file and\n              summary. Optional: Linux and macOS, install with `pixi install -e modkit`.\n    regions   Summarize CpG calls over gene promoters or CpG islands.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -18957,7 +18957,7 @@
        ],
        [
         "regions",
-        "Summarize CpG bedMethyl over gene promoters or CpG islands."
+        "Summarize CpG calls over gene promoters or CpG islands."
        ]
       ],
       "required": true,
@@ -19779,7 +19779,7 @@
    }
   },
   "methylation regions": {
-   "help": "usage: wgsextract methylation regions [-h] --build {hg38,t2t} --preset {promoters,cpg-islands}\n                                      [--upstream UPSTREAM] [--downstream DOWNSTREAM]\n                                      [--min-valid-calls MIN_VALID_CALLS] [--min-cpgs MIN_CPGS]\n                                      [--5hmc] [--download] [--format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {hg38,t2t}    Assembly of both bedMethyl and FASTA.\n  --preset {promoters,cpg-islands}\n                        RefSeq promoters or UCSC masked CpG islands.\n  --upstream UPSTREAM   Promoter bases upstream of the TSS (default: 2000).\n  --downstream DOWNSTREAM\n                        Promoter bases on the transcribed side (default: 500).\n  --min-valid-calls MIN_VALID_CALLS\n                        Minimum valid calls per CpG (default: 5).\n  --min-cpgs MIN_CPGS   Minimum qualifying CpGs per region (default: 3).\n  --5hmc                Also report 5hmC: declares the input was generated with a 5hmC-capable\n                        model.\n  --download            Fetch the missing pinned hg38 CpG island table from UCSC. No sample data\n                        is sent.\n  --format {tsv,parquet}\n                        Output table: tsv (default) or parquet (needs pyarrow).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa --build hg38 --preset promoters\n\noutputs (in the output directory unless noted):\n  <input stem>.<build>.<preset>.methylation.tsv (or .parquet) and its run\n  manifest.\n\nneeds:\n  samtools; depending on options and inputs, also: curl; minutes on a 30x\n  genome.\n",
+   "help": "usage: wgsextract methylation regions [-h] --build {hg38,t2t} --preset {promoters,cpg-islands}\n                                      [--upstream UPSTREAM] [--downstream DOWNSTREAM]\n                                      [--min-valid-calls MIN_VALID_CALLS] [--min-cpgs MIN_CPGS]\n                                      [--partition-hp] [--phase-blocks PHASE_BLOCKS] [--5hmc]\n                                      [--download] [--format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {hg38,t2t}    Assembly of both input and FASTA.\n  --preset {promoters,cpg-islands}\n                        RefSeq promoters or UCSC masked CpG islands.\n  --upstream UPSTREAM   Promoter bases upstream of the TSS (default: 2000).\n  --downstream DOWNSTREAM\n                        Promoter bases on the transcribed side (default: 500).\n  --min-valid-calls MIN_VALID_CALLS\n                        Minimum valid calls per CpG (default: 5).\n  --min-cpgs MIN_CPGS   Minimum qualifying CpGs per region (default: 3).\n  --partition-hp        Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS).\n  --phase-blocks PHASE_BLOCKS\n                        Matching phased.blocks.tsv from vcf phase; require region containment in\n                        one block.\n  --5hmc                Also report 5hmC: declares the input was generated with a 5hmC-capable\n                        model.\n  --download            Fetch the missing pinned hg38 CpG island table from UCSC. No sample data\n                        is sent.\n  --format {tsv,parquet}\n                        Output table: tsv (default) or parquet (needs pyarrow).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa --build hg38 --preset promoters\n  wgsextract methylation regions -i haplotagged.bam --ref hg38.fa --build hg38 --preset promoters --partition-hp --phase-blocks phased.blocks.tsv\n\noutputs (in the output directory unless noted):\n  <input stem>.<build>.<preset>.methylation.tsv (or .parquet) and its run\n  manifest. With --partition-hp, writes .methylation.hp.tsv (or .parquet)\n  instead.\n\nneeds:\n  samtools; depending on options and inputs, also: modkit, curl; minutes on a\n  30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -20136,7 +20136,7 @@
       "default": null,
       "dest": "build",
       "exclusive_group": null,
-      "help": "Assembly of both bedMethyl and FASTA.",
+      "help": "Assembly of both input and FASTA.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -20227,6 +20227,38 @@
       ],
       "required": false,
       "type": "int"
+     },
+     {
+      "choices": null,
+      "class": "_StoreTrueAction",
+      "const": true,
+      "default": false,
+      "dest": "partition_hp",
+      "exclusive_group": null,
+      "help": "Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS).",
+      "metavar": null,
+      "nargs": 0,
+      "option_strings": [
+       "--partition-hp"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "phase_blocks",
+      "exclusive_group": null,
+      "help": "Matching phased.blocks.tsv from vcf phase; require region containment in one block.",
+      "metavar": null,
+      "nargs": null,
+      "option_strings": [
+       "--phase-blocks"
+      ],
+      "required": false,
+      "type": null
      },
      {
       "choices": null,
@@ -60302,6 +60334,8 @@
    "min_valid_calls": 5,
    "outdir": null,
    "parent_pid": null,
+   "partition_hp": false,
+   "phase_blocks": null,
    "preset": "cpg-islands",
    "quiet": false,
    "ref": "r.fa",

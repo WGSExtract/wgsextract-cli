@@ -43,6 +43,11 @@ _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("basecall", "alignment"): {"alignment": _FILE, "regions_bed": _FILE},
     ("bam/to-ubam", "r1"): {"input": None, "r1": _FILE},
     ("bam/to-ubam", "r2"): {"input": None, "r1": _FILE},
+    ("methylation/regions", "phase_blocks"): {
+        "input": _DATA + r"\haplotagged.bam",
+        "partition_hp": True,
+        "phase_blocks": _DATA + r"\phased.blocks.tsv",
+    },
     ("vcf/impute", "vcf_input"): {"input": None, "vcf_input": _FILE},
     ("ref/recheck", "save_answers"): {"online": True},
 }

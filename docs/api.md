@@ -1903,7 +1903,9 @@ CHM13v2.0's chrM was mapped onto the rCRS, `mt_reference`.
 called first; needs the reference) or a VCF, into
 `haplogrep_results.txt`; a missing tree needs `download` permission.
 With `contamination`, haplocheck also looks for a mixture of
-two haplogroups (`haplocheck_contamination.txt`). Haplogrep reads
+two haplogroups (`haplocheck_contamination.txt`); on a BAM/CRAM, mutserve's
+calls and per-position read table are kept for `report`
+(`details.heteroplasmy`, docs/lineage.md). Haplogrep reads
 rCRS positions. CHM13v2.0's original chrM (the rCRS rotated 576 bp, with
 three more differences) is called at every site and mapped onto the rCRS
 through the bundled alignment (`details.mt_reference`); a VCF on it needs
@@ -1919,7 +1921,7 @@ confirm as the rCRS is warned of (`mt_reference_unconfirmed`).
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `tree` | `str \| None` | `None` (config `haplogrep_tree`) | `--tree` | Haplogrep 3 tree (default: config haplogrep_tree, else phylotree-fu-rcrs, PhyloTree 17 Forensic Update). phylotree-rcrs is PhyloTree 17; mitotree-rcrs is FamilyTreeDNA Mitotree (non-commercial use only). One of: `phylotree-fu-rcrs`, `phylotree-rcrs`, `mitotree-rcrs` |
-| `contamination` | `bool` | `False` | `--contamination` | Also check for mtDNA contamination with haplocheck. VCF input needs heteroplasmy levels (FORMAT/AF). |
+| `contamination` | `bool` | `False` | `--contamination` | Also check for mtDNA contamination with haplocheck; a BAM/CRAM also keeps mutserve's heteroplasmy calls for `report`. VCF input needs heteroplasmy levels (FORMAT/AF). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `haplogrep_path` | `str \| None` | `None` (config `haplogrep_executable`) | `--haplogrep-path` | Path to the Haplogrep 3 executable or JAR (optional if in PATH) |
 | `haplocheck_path` | `str \| None` | `None` (config `haplocheck_executable`) | `--haplocheck-path` | Path to the haplocheck executable or JAR (optional if in PATH) |
@@ -2050,19 +2052,22 @@ CLI: `wgsextract methylation regions`.
 
 Summarize methylation over the selected build-matched regions.
 
-`MethylationRegionsParams`: Summarize strand-combined CpG calls over RefSeq promoters or UCSC islands.
+`MethylationRegionsParams`: Summarize pooled or haplotype-split CpG calls over RefSeq promoters or UCSC islands.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
-| `input` | `Path` | required | `--input`, `-i` | Coordinate-sorted, strand-combined CpG bedMethyl. |
-| `ref` | `Path` | required | `--ref` | The indexed, local FASTA used for the bedMethyl coordinates. |
+| `input` | `Path` | required | `--input`, `-i` | Sorted, strand-combined CpG bedMethyl, or indexed HP-tagged BAM/CRAM with --partition-hp. |
+| `ref` | `Path` | required | `--ref` | The indexed, local FASTA used to align the reads or make the bedMethyl. |
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
-| `build` | `str` | required | `--build` | Assembly of both bedMethyl and FASTA. One of: `hg38`, `t2t` |
+| `build` | `str` | required | `--build` | Assembly of both input and FASTA. One of: `hg38`, `t2t` |
 | `preset` | `str` | required | `--preset` | RefSeq promoters or UCSC masked CpG islands. One of: `promoters`, `cpg-islands` |
 | `upstream` | `int` | `2000` | `--upstream` | Promoter bases upstream of the TSS (default: 2000). |
 | `downstream` | `int` | `500` | `--downstream` | Promoter bases on the transcribed side (default: 500). |
 | `min_valid_calls` | `int` | `5` | `--min-valid-calls` | Minimum valid calls per CpG (default: 5). |
 | `min_cpgs` | `int` | `3` | `--min-cpgs` | Minimum qualifying CpGs per region (default: 3). |
+| `partition_hp` | `bool` | `False` | `--partition-hp` | Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS). |
+| `phase_blocks` | `Path \| None` | `None` | `--phase-blocks` | Matching phased.blocks.tsv from vcf phase; require region containment in one block. |
+| `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `hydroxymethyl` | `bool` | `False` | `--5hmc` | Also report 5hmC: declares the input was generated with a 5hmC-capable model. |
 | `download` | `bool` | `False` | `--download` | Fetch the missing pinned hg38 CpG island table from UCSC. No sample data is sent. |
 | `table_format` | `str` | `'tsv'` | `--format` | Output table: tsv (default) or parquet (needs pyarrow). One of: `tsv`, `parquet` |
