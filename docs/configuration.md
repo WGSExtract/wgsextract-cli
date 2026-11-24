@@ -168,6 +168,9 @@ display sleep is allowed. Report-only help/config/deps never inhibit sleep.
 | `result_card` | boolean | `false` | Also write `<name>.card.html`, a shareable page of each run's result, beside its manifest |
 | `haplogrep_executable` | string, path (`~` expands) | unset | Path to the Haplogrep 3 executable or JAR |
 | `dorado_executable` | string, path (`~` expands) | unset | Path to ONT's dorado executable for `basecall` |
+| `discvrseq_jar` | string, path (`~` expands) | unset | Path to DISCVRseq.jar for `vcf variantqc` |
+| `java17_executable` | string, path (`~` expands) | unset | Path to a Java 17 binary for tools requiring Java 17 (such as `vcf variantqc`) |
+| `granite_executable` | string, path (`~` expands) | unset | Path to the granite executable for `vcf granite-qc` |
 | `native_aligners` | `auto` or `off` | unset | Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2; Windows x86-64: use wgse-bwa and wgse-minimap2 when installed |
 | `wgse_bwa_path` | string, path (`~` expands) | unset | Path to an optional native Windows x86-64 wgse-bwa executable |
 | `output_profile` | `default` or `archive` or `calling` | `"default"` | `align`/`realign`: default keeps --format; archive selects lossless CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0 |

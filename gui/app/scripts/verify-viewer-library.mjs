@@ -297,7 +297,7 @@ try {
             await page.getByRole("button", { name: "Open library file", exact: true }).click();
             await checkDrawing(page, "reads.bam");
             await page.locator("[data-cytoband-status]").filter({ hasText: "Cytoband resource cytobands_hg38.tsv is not installed" }).waitFor();
-            assert.match(await page.locator("[data-cytoband-status]").innerText(), /wgsextract ref cytobands --build hg38 --download/);
+            assert.match(await page.locator("[data-cytoband-status]").innerText(), /Reference Data/);
             assert.equal(await ideogram.count(), 0);
             await page.locator('[data-locus] [name="locus"]').fill(values["next-locus"]);
             await page.getByRole("button", { name: "Go", exact: true }).click();
@@ -333,7 +333,7 @@ try {
             await page.getByRole("button", { name: "Open library file", exact: true }).click();
             await checkDrawing(page, "reads.bam");
             await page.locator("[data-gene-status]").filter({ hasText: "Gene-map genes_hg38.tsv is not installed" }).waitFor();
-            assert.match(await page.locator("[data-gene-status]").innerText(), /wgsextract ref gene-map/);
+            assert.match(await page.locator("[data-gene-status]").innerText(), /Reference Data/);
             assert.equal(await page.locator(".igv-track-label").filter({ hasText: "RefSeq gene spans" }).count(), 0);
             await page.screenshot({ path: path.join(out, "library-gene-missing.png"), fullPage: true });
             await page.locator('[data-locus] [name="locus"]').fill("REFGENE_DEMO");
