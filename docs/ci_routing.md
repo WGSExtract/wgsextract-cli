@@ -319,53 +319,95 @@ test runner report containing failed tests produces `failure`. Landing still
 requires the passing hosted ready run; non-success local attestations never
 make that otherwise-passing run fail the landing gate.
 
-For macOS remotely, push the branch and run on lin-mid:
+#### Remote certification on owned hosts
 
-```sh
-just certify --remote randy-mini
+Register SSH aliases and their native platforms in a controller-side
+`config.toml` (keep the file outside the Git checkout, or ignore it locally):
+
+```toml
+[[certification.hosts]]
+alias = "seraph"
+platform = "windows-x64"
+
+[[certification.hosts]]
+alias = "minipc"
+platform = "windows-x64"
+
+[[certification.hosts]]
+alias = "mahyar-pro-14"
+platform = "macos-arm64"
 ```
 
+Push the branch, then run on the controller:
+
+```sh
+just certify --remote windows-x64 --remote-config /path/to/config.toml --platform-only
+just certify --remote macos-arm64 --remote-config /path/to/config.toml --platform-only
+```
+
+`--remote` accepts a registered alias or a platform. For a platform it tries
+hosts in listed order and skips hosts that fail the SSH, checkout, disk or
+native-platform probe, or whose controller lock is busy. It does not retry a
+failed or interrupted test on another host. `randy-mini` remains the built-in
+macOS ARM64 fallback; `just certify --remote randy-mini` still works. If
+`--remote-config` is omitted, the controller reads `config.toml` in its
+working directory if present.
+
 The controller enforces the same clean, pushed, same-repository open-PR and
-writer checks as local certification. It acquires `agent-coord lock randy-mini`
-for the entire remote operation and releases it even on refusal. A busy lock
-refuses without disturbing its owner; retry only after the owner releases it.
-Only the registered `randy-mini` SSH alias and public WGSExtract repository are
-supported. SSH agent/port/environment forwarding is disabled; neither `gh` nor
-a GitHub token is installed or sent to the Mac.
+writer checks as local certification. It holds an `agent-coord` lock named for
+the selected alias. All controllers sharing a coordinator must use the same
+alias for a machine. SSH requires a known host key and noninteractive
+authentication. SSH agent, port and environment forwarding are disabled.
+Workers need neither `gh` nor a GitHub token; configure the worker checkout
+for public HTTPS, without credential-bearing remotes or extra Git hooks.
 
-The remote bootstrap fetches the exact head and base SHAs over public HTTPS,
-then creates/reuses `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a
-detached worktree. Branch names never enter a remote shell command. Prepare
-that worktree's locked Pixi environments explicitly as above; missing tools
-refuse rather than being installed. The worker runs `certify-setup` if retained
-wheels or reference inputs need preparation, then uses the same macOS ARM64
-selection and generic commands as local certification. `--platform-only` skips
-the generic layer when it already ran locally; `--generic-only` runs only generic.
-This explicit remote input-setup phase may download pinned archives; the test
-phase still uses `--no-install`.
+Prepare an isolated clone at `~/src/wgsextract-cli` on each registered machine
+and ensure Git and locked-compatible Pixi are on the SSH user's PATH. POSIX
+workers need `python3`; Windows uses OpenSSH and PowerShell with Python from
+`pixi install --locked -e dev` in that clone. No administrator access is
+needed. Check the worker's resource coordinator before preparing inputs. If
+`agent-coord` is present on the worker, the test invocation uses its resource
+lease and a worker-side `wgsextract-certification` lock. On hosts without it,
+coordinate explicitly with anyone else using the machine.
 
-The Mac must start setup with 30 GiB disk free. A one-second watchdog stops the
-worker and its child process group below 26 GiB, leaving headroom for the
-required 25 GiB reserve. The controller sends five-second heartbeats; a lost
-connection or 30 seconds without a heartbeat cancels the entire remote process
-group, including setup and test children. SIGTERM follows the refusal/cleanup
-path. A fresh SSH connection requests cancellation and confirms termination
-before the controller releases the lock, including after transport failures.
+The bootstrap fetches the exact pushed head and base SHAs over public HTTPS
+and creates `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a detached
+worktree if absent. Branch names never enter the remote command. If the run
+refuses for missing environments, explicitly install the locked environments
+in **that worktree**, as in one-time preparation above, then retry. The worker
+runs `certify-setup` if retained wheels or reference inputs need preparation,
+then executes the same native platform or generic commands as local
+certification. Remote input setup may download pinned archives; the test phase
+uses `--no-install`.
+
+The worker's filesystem must start with 30 GiB free. A one-second watchdog
+stops the worker below 26 GiB to preserve the 25 GiB reserve. Loss of SSH or
+30 seconds without a five-second controller heartbeat cancels setup and
+tests using a Windows kill-on-close Job Object or the worker's and observed
+descendants' POSIX process groups. A fresh SSH connection confirms cleanup
+before the controller unlocks the alias, including after a transport failure
+or SIGTERM.
 If that confirmation fails the lock deliberately remains held: retry once SSH
 is reachable, or confirm the matching control ID has a `.done` marker under
 `~/src/wgsextract-cli/out/certify/remote-control/` before manually unlocking.
 An abruptly killed controller (SIGKILL/power loss) likewise leaves its lock for
 recovery; never break it while the remote supervisor may still be running.
-No sudo, reboot, reverse SSH, or access to
-`/Users/randy` is needed. The worker checks platform, clean tree and HEAD before
-and after execution. Logs stream to lin-mid under
-`out/certify/<sha>/remote-randy-mini/<layer>/run.log`; only lin-mid publishes
-`local-ci/macos-arm64` and (if requested) `local-ci/generic`, with the machine
-name and full streamed-log SHA-256. Missing/mismatched results, disk refusals,
-SSH failures and interruptions produce `error`; verified failed-test reports
-produce `failure`. Run Linux certification separately on lin-mid.
-Whole-suite baseline savings are about 22 Linux runner-minutes plus 1–3 generic
-minutes (package smoke remains), or about 33 additional minutes for macOS ARM64.
+The worker checks the native platform, clean tree and HEAD before and after
+execution. Logs stream to `out/certify/<sha>/remote-<alias>/<layer>/run.log`;
+only the controller publishes `local-ci/<platform>` and (if requested)
+`local-ci/generic`, with the alias and full log SHA-256. Missing or mismatched
+results produce no successful status. Tests that actually fail produce
+`failure`; refusals and interruptions during a run produce `error`.
+
+Windows x64, macOS ARM64 and Linux ARM64 statuses can replace their routed
+suite or workflow-only smoke, not a different platform or the package and
+real-data benchmark smoke. Edits to remote certification route its supervisor
+regressions to native OS smoke jobs even without a product-code change.
+Optional-tool integrations also stay hosted: an OS
+certificate does not prove that the five separate optional environments and
+their no-skips tests ran. Windows imputation selections still run their
+hosted fresh locked install. Install Lab and merged-tree import checks still run
+when routed.
 Sparse selected PRs save less.
 
 ### Decisive test selection rollout
