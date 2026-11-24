@@ -7,6 +7,7 @@ import os as os
 import subprocess as subprocess
 import sys as sys
 from pathlib import Path as Path
+from pathlib import PurePosixPath as PurePosixPath
 from typing import Any as Any
 
 import pytest as pytest
@@ -15,9 +16,13 @@ from scripts import pr_checks_ready as pr_checks_ready
 from scripts.ci_changes import routes as routes
 from scripts.ci_changes import setup_checks as setup_checks
 from scripts.ci_changes import site_validation as site_validation
+from scripts.ci_codeql_scope import EXTENSIONS as EXTENSIONS
+from scripts.ci_codeql_scope import LANGUAGES as LANGUAGES
+from scripts.ci_codeql_scope import languages as codeql_languages
 from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
 from scripts.ci_select_tests import ci_test_targets as ci_test_targets
+from scripts.ci_select_tests import os_selection
 from scripts.ci_select_tests import select_tests as select_tests
 from scripts.ci_test_dependencies import DOCS_ONLY_SCRIPTS as DOCS_ONLY_SCRIPTS
 from scripts.ci_test_dependencies import DOCS_TEST_TARGETS as DOCS_TEST_TARGETS
@@ -64,6 +69,15 @@ def test_757_routes_isolated_and_mixed_prs(paths: list[str], enabled: set[str]) 
 
 def test_757_label_forces_install_lab_on_a_docs_pr() -> None:
     assert routes(["README.md"], force_install_lab=True)["install"]
+
+
+def test_1495_remote_supervisor_change_runs_native_smoke_not_product_suite() -> None:
+    paths = ["scripts/ci_certify_ssh.py"]
+    cli = routes(paths)["cli"]
+    assert not cli
+    lanes = os_selection(paths, select_tests(paths), cli=cli)
+    for platform in ("windows", "macos", "ubuntu", "arm64"):
+        assert lanes[platform] == ["tests/test_ci_certify_remote.py"]
 
 
 def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() -> None:
@@ -677,3 +691,96 @@ def test_1229_release_helper_edits_run_only_the_ci_policy_lane() -> None:
     for changed in [*([path] for path in paths), paths]:
         assert not routes(changed)["cli"], changed
         assert "tests/test_ci_release_latest.py" in ci_test_targets(changed), changed
+
+
+def test_1373_main_push_dedupe_edits_run_the_cache_regressions() -> None:
+    for path in ("scripts/ci_merge_group_passes.py", "scripts/ci_run_tests.py"):
+        assert not routes([path])["cli"], path
+        assert "tests/test_ci_test_cache.py" in ci_test_targets([path]), path
+    workflow = [".github/workflows/os_tests.yml"]
+    assert "tests/test_github_actions_policy.py" in ci_test_targets(workflow)
+
+
+CODEQL_SCOPE = Path(__file__).resolve().parents[1] / "scripts/ci_codeql_scope.py"
+
+
+def codeql_scope(repo: Path, *args: str) -> list[str]:
+    result = subprocess.run(
+        [sys.executable, str(CODEQL_SCOPE), *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    key, _, value = result.stdout.strip().partition("=")
+    assert key == "analyze"
+    languages: list[str] = json.loads(value)
+    return languages
+
+
+@pytest.mark.parametrize(
+    ("changed", "expected"),
+    [
+        ({"src/pkg/mod.py": "x = 2\n"}, ["python"]),
+        ({"docs/guide.md": "changed\n"}, []),
+        ({"tests/fixtures/data.json": "{}\n"}, ["javascript-typescript"]),
+        ({"crate/src/main.rs": "fn main() {}\n"}, ["rust"]),
+        # Non-Rust crate inputs (configs, icons) may change what Rust embeds.
+        ({"crate/tauri.conf.json": "{}\n"}, ["javascript-typescript", "rust"]),
+        ({"crate/icons/icon.png": "png\n"}, ["rust"]),
+        (
+            {"tools/check/action.yml": "runs: {}\n"},
+            ["javascript-typescript", "actions"],
+        ),
+        (
+            {".github/codeql/config.txt": "x\n"},
+            ["python", "javascript-typescript", "rust", "actions"],
+        ),
+    ],
+)
+def test_1373_codeql_pr_analyzes_only_the_languages_it_touches(
+    tmp_path: Path, changed: dict[str, str], expected: list[str]
+) -> None:
+    def commit(files: dict[str, str]) -> str:
+        for name, text in files.items():
+            (tmp_path / name).parent.mkdir(parents=True, exist_ok=True)
+            (tmp_path / name).write_text(text)
+        subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+        subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-qm",
+                "c",
+            ],
+            cwd=tmp_path,
+            check=True,
+        )
+        return subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=tmp_path, text=True
+        ).strip()
+
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    base = commit({"src/pkg/mod.py": "x = 1\n", "crate/Cargo.toml": "[package]\n"})
+    head = commit(changed)
+    assert codeql_scope(tmp_path, "--base", base, "--head", head) == expected
+    # Pushes and the nightly schedule keep every language.
+    assert codeql_scope(tmp_path, "--all") == [
+        "python",
+        "javascript-typescript",
+        "rust",
+        "actions",
+    ]
+
+
+def test_1373_root_level_crate_treats_every_file_as_rust_input() -> None:
+    assert set(LANGUAGES) == set(EXTENSIONS)
+    root = {PurePosixPath(".")}
+    assert codeql_languages(["assets/logo.png"], root) == ["rust"]
+    assert codeql_languages(["assets/logo.png"], {PurePosixPath("crate")}) == []

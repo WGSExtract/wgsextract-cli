@@ -339,8 +339,9 @@ def _check_annotation_cache(
 
 def _warn_about_cache_gaps(version_dir: Path) -> None:
     """Say which columns a vep-rs cache leaves empty that Ensembl VEP's
-    cache fills: known variants without its variations, SIFT and PolyPhen
-    without their prediction matrices."""
+    cache fills: known variants without its variations, gnomAD frequencies
+    without gnomAD columns in them, SIFT and PolyPhen without their
+    prediction matrices."""
     try:
         info = json.loads(Path(version_dir, "info.json").read_text())
     except (OSError, ValueError):
@@ -348,6 +349,12 @@ def _warn_about_cache_gaps(version_dir: Path) -> None:
     gaps = []
     if not Path(version_dir, "variations").is_dir():
         gaps.append("Existing_variation and the frequency columns")
+    elif not any(str(c).startswith("gnomAD") for c in info.get("variation_cols", [])):
+        # vep-cache-builder reads 1000 Genomes frequencies only (#1354).
+        gaps.append(
+            "gnomAD frequencies (gnomADe_*, gnomADg_*: use 'vcf gnomad'; "
+            "AF and MAX_AF are 1000 Genomes only)"
+        )
     if not (info.get("sift") and info.get("polyphen")):
         gaps.append("SIFT and PolyPhen")
     if gaps:

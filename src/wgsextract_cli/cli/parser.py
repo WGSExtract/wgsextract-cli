@@ -17,6 +17,7 @@ from wgsextract_cli.commands.registry import (
 from wgsextract_cli.core.config import get_config_path, settings
 from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.resource_policy import parse_thread_count
+from wgsextract_cli.core.users_workspace import write_initial_config
 
 from .config_view import configuration_rows
 from .help import (
@@ -65,8 +66,11 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # haplocheck_path = "/path/to/haplocheck"
 # haplogrep_tree = "phylotree-fu-rcrs"  # or phylotree-rcrs, mitotree-rcrs
 # jar_dir = "/path/to/jars"
-# Apple Silicon aligner builds on PATH (native/README.md): "auto" or "off"
+# Optional native aligner builds (native/README.md): "auto" or "off"
 # native_aligners = "auto"
+# Windows x86-64: optional path to a local wgse-bwa build
+# wgse_bwa_path = 'C:\\tools\\wgse-bwa.exe'
+# prefer_native_gpu = false  # Force CPU for native aligners on Windows
 # wgse-bwa reads the dense suffix-array file `ref dense-sa` builds (opt-in)
 # dense_suffix_array = false
 # Apple Silicon: bcftools calls variants with wgse-mimalloc when installed: "auto" or "off"
@@ -642,6 +646,11 @@ def add_shared_arguments(
     # (docs/result-manifest.md). analyze reads its steps' results this way,
     # and so does the desktop app. Hidden from help like other caller flags.
     add("--result-file", dest="_result_file", metavar="PATH", help=argparse.SUPPRESS)
+    # A workflow (analyze) starting this run as one of its steps names its own
+    # run, its root run and the step, so the manifests link (#1182).
+    add("--parent-run", dest="_parent_run", metavar="ID", help=argparse.SUPPRESS)
+    add("--root-run", dest="_root_run", metavar="ID", help=argparse.SUPPRESS)
+    add("--run-step", dest="_run_step", metavar="STEP", help=argparse.SUPPRESS)
     add(
         "--parent-pid",
         type=int,
@@ -734,14 +743,13 @@ def bootstrap_default_config(config_path: Path) -> None:
             .strip()
             .lower()
         )
-        if choice == "y":
-            from wgsextract_cli.core.users_workspace import write_initial_config
-
-            write_initial_config(config_path, DEFAULT_CONFIG)
+        if choice != "y":
+            print("\nSkipping bootstrap.")
+        elif write_initial_config(config_path, DEFAULT_CONFIG):
             print(f"\n✅ Created default config at {config_path}")
             print("You can now edit this file to persist your settings.")
         else:
-            print("\nSkipping bootstrap.")
+            print(f"\n{config_path} was created meanwhile; leaving it as it is.")
     except (EOFError, KeyboardInterrupt):
         print("\nBootstrap cancelled.")
 

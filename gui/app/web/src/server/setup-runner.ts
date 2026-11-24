@@ -5,7 +5,7 @@ import { setupStepsForPlatform } from "../../../shared/setup-platforms.js";
 import { isSetupStepKind, type SetupStepKind } from "../../../shared/setup-step-kinds.js";
 import type { BundleManifest, Labels, ProcessResult, RunProcess, SetupRun, SetupStep, StringMap } from "../../../shared/types.js";
 import { evaluateSetupInstallSizePrecheck, type PrecheckEvaluation } from "./action-runner.js";
-import { loadBundleState, saveBundleState } from "./config-store.js";
+import { loadBundleState, saveBundleState } from "./bundle-state.js";
 import { expandPathTokens, resolveBundlePath, bundleEnvironment } from "./paths.js";
 import { platformCommand } from "./platform-command.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";

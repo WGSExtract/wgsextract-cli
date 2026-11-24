@@ -119,6 +119,20 @@ def test_923_merge_group_never_uses_certifications() -> None:
     assert certifications("owner/repo", {"merge_group": {"head_sha": "abc"}}) == set()
 
 
+def test_1495_windows_cert_does_not_skip_the_pinned_fresh_install() -> None:
+    workflow = Path(".github/workflows/pr_ci.yml").read_text()
+    gate = next(line for line in workflow.splitlines() if "windows_x64:" in line)
+    assert "steps.diff.outputs.move_modules == '[]'" in gate
+    assert "steps.diff.outputs.windows_tests != 'all'" in gate
+    assert (
+        "!contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py')"
+        in gate
+    )
+    assert "&& steps.cert.outputs.windows_x64 || 'false'" in gate
+    windows = workflow.split("\n  windows:\n", 1)[1].split("\n\n", 1)[0]
+    assert "needs.changes.outputs.windows_x64 != 'true'" in windows
+
+
 @pytest.mark.parametrize(
     "source",
     [
@@ -255,6 +269,34 @@ def test_923_linting_the_test_runner_does_not_turn_lint_into_pytest(
         1,
     )
     assert "validation completed" in Path(log).read_text()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Unix imputation environment")
+def test_1398_arm64_certification_uses_pinned_glimpse2_before_host_tools(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    tool = "GLIMPSE2_phase"
+    host = tmp_path / "host-tools"
+    pinned = tmp_path / ".pixi/envs/imputation/bin"
+    for bin_dir in (host, pinned):
+        bin_dir.mkdir(parents=True)
+        (bin_dir / tool).touch(mode=0o755)
+    monkeypatch.setenv("PATH", str(host), prepend=os.pathsep)
+    suite = tmp_path / "tests/test_imputation.py"
+    suite.parent.mkdir()
+    suite.write_text(
+        "import shutil\n"
+        "def test_which_glimpse2():\n"
+        f"    assert shutil.which({tool!r}) == {str((pinned / tool).resolve())!r}\n"
+    )
+
+    run_layer(
+        "macos-arm64",
+        [[sys.executable, "-m", "pytest", "tests/test_imputation.py"]],
+        "imputation",
+        1,
+    )
 
 
 @pytest.mark.parametrize(

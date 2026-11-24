@@ -132,12 +132,19 @@ from .genotyping import (
     TypingHlaParams,
     TypingSmnParams,
     TypingStrParams,
+    TypingTargetCnvParams,
 )
-from .info import CalculateCoverageParams, ChipParams, CoverageSampleParams, InfoParams
+from .info import (
+    CalculateCoverageParams,
+    ChipParams,
+    CoverageSampleParams,
+    InfoGeneParams,
+    InfoParams,
+)
 from .lineage import MtHaplogroupParams, YHaplogroupParams, YStrParams
-from .methylation import MethylationPileupParams
+from .methylation import MethylationPileupParams, MethylationRegionsParams
 from .microarray import MicroarrayParams
-from .panel import PanelBedParams
+from .panel import PanelBedParams, PanelCheckParams
 from .pet import PetAlignParams
 from .qc import (
     FakeDataParams,
@@ -147,6 +154,7 @@ from .qc import (
     MultiqcParams,
     QcAncestryParams,
     QcContaminationParams,
+    QcRohParams,
     QcVcfParams,
     RelateParams,
 )
@@ -160,6 +168,7 @@ from .ref import (
     RefClinvarParams,
     RefCountNsParams,
     RefCytobandsParams,
+    RefDbsnpParams,
     RefDenseSaParams,
     RefDownloadParams,
     RefGeneMapParams,
@@ -204,8 +213,10 @@ from .vcf import (
     VcfGatkParams,
     VcfGerpParams,
     VcfGnomadParams,
+    VcfGraniteQcParams,
     VcfImputeParams,
     VcfIndelParams,
+    VcfInfoParams,
     VcfPharmcatParams,
     VcfPharmgkbParams,
     VcfPhaseParams,
@@ -218,6 +229,7 @@ from .vcf import (
     VcfTableParams,
     VcfToFastaParams,
     VcfTrioParams,
+    VcfVariantQcParams,
 )
 from .vep import VepDeleteParams, VepDownloadParams, VepRunParams, VepVerifyParams
 
@@ -256,9 +268,11 @@ __all__ = [
     "FastpParams",
     "FastqcParams",
     "FileRecord",
+    "InfoGeneParams",
     "InfoParams",
     "IssueReport",
     "MethylationPileupParams",
+    "MethylationRegionsParams",
     "MicroarrayParams",
     "MissingDependencyError",
     "MitoFastaParams",
@@ -266,6 +280,7 @@ __all__ = [
     "MtBamParams",
     "MtHaplogroupParams",
     "PanelBedParams",
+    "PanelCheckParams",
     "MultiqcMetricsParams",
     "MultiqcParams",
     "Params",
@@ -274,6 +289,7 @@ __all__ = [
     "ProgressEvent",
     "QcAncestryParams",
     "QcContaminationParams",
+    "QcRohParams",
     "QcVcfParams",
     "RealignParams",
     "RelateParams",
@@ -285,6 +301,7 @@ __all__ = [
     "RefClinvarParams",
     "RefCountNsParams",
     "RefCytobandsParams",
+    "RefDbsnpParams",
     "RefDenseSaParams",
     "RefDownloadParams",
     "RefGeneMapParams",
@@ -324,6 +341,7 @@ __all__ = [
     "TypingSmnParams",
     "TypingHlaParams",
     "TypingStrParams",
+    "TypingTargetCnvParams",
     "UsageError",
     "VcfAcmgParams",
     "VcfAlphamissenseParams",
@@ -351,8 +369,11 @@ __all__ = [
     "VcfSnpParams",
     "VcfSpliceaiParams",
     "VcfSvParams",
+    "VcfGraniteQcParams",
+    "VcfInfoParams",
     "VcfTableParams",
     "VcfToFastaParams",
+    "VcfVariantQcParams",
     "VcfTrioParams",
     "VepDeleteParams",
     "VepDownloadParams",

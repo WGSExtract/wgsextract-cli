@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import tempfile
 from pathlib import Path
@@ -25,7 +26,7 @@ from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
 from .basic import record_variants, run_small_variants
 from .structural import _sv_caller as sv_caller
-from .structural import run_cnv, run_sv
+from .structural import mixed_call_region, run_cnv, run_sv, validate_pbsv_region
 
 #: The output role of each type's VCF, as its own command records it.
 TYPE_ROLES = {
@@ -95,6 +96,8 @@ def _preflight(params: VcfCallParams, types: list[str]) -> None:
         sv = _step_params(params, "sv")
         assert isinstance(sv, VcfSvParams)
         caller, _reason, _hifi = sv_caller(sv)
+        if caller == "pbsv":
+            validate_pbsv_region(sv.region)
         tools.append(caller)
     if "cnv" in types:
         tools.append("delly")
@@ -163,17 +166,27 @@ def run_call(params: VcfCallParams) -> None:
     types = call_types(params.types)
     _preflight(params, types)
     small = [kind for kind in types if kind in ("snp", "indel")]
+    small_params = params
+    if small and params.region is not None and ("sv" in types or "cnv" in types):
+        small_params = dataclasses.replace(
+            params,
+            region=mixed_call_region(
+                str(params.input),
+                str(params.ref) if params.ref else None,
+                params.region,
+            ),
+        )
     gvcf = params.reference_evidence == "gvcf"
     parts: list[str] = []
     if small and gvcf:
         logging.info("vcf call: writing the SNP and indel gVCF")
-        _run_step(params, small[0], gvcf=True, variants=False)
+        _run_step(small_params, small[0], gvcf=True, variants=False)
         parts.append(_output_for("reference_evidence"))
     for kind in types:
         if kind in small and gvcf:
             continue
         logging.info(f"vcf call: calling {kind}")
-        _run_step(params, kind, gvcf=False)
+        _run_step(small_params if kind in small else params, kind, gvcf=False)
         parts.append(_output_for(TYPE_ROLES[kind]))
     # Each step set the run's variant count to its own; the run's is their sum,
     # unknown when a count is: the gVCF, whose records include reference
@@ -190,6 +203,12 @@ def run_call(params: VcfCallParams) -> None:
         merge_vcfs(parts, out_vcf)
         _remove_parts(parts)
         record_variants(out_vcf, "merged_variants", None if small and gvcf else total)
+        # The merge is made from the parts (which the manifest keeps as
+        # discarded temporary files rather than deliverables), called from
+        # the reads.
+        current_result().add_output(
+            out_vcf, "merged_variants", sources=[*parts, params.input]
+        )
 
 
 def _variant_count(role: str) -> int | None:
@@ -201,16 +220,13 @@ def _variant_count(role: str) -> int | None:
 
 
 def _remove_parts(parts: list[str]) -> None:
-    """Delete the merged parts and their indexes, and drop them from the result."""
-    removed: set[str] = set()
+    """Delete the merged parts and their indexes; the result keeps them as
+    discarded temporary files, not outputs."""
+    result = current_result()
     for part in parts:
         for path in (part, part + ".tbi", part + ".csi"):
-            file = Path(path)
-            if file.exists():
-                file.unlink()
-            removed.add(str(file.expanduser().absolute()))
-    result = current_result()
-    result.outputs[:] = [r for r in result.outputs if r.path not in removed]
+            result.discard_output(path)
+            Path(path).unlink(missing_ok=True)
 
 
 cmd_call = cli_handler(VcfCallParams, run_call)

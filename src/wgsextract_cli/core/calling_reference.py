@@ -82,10 +82,18 @@ def validate_calling_reference(
             if expected and actual and expected.lower() != actual.lower():
                 problems.append(f"{sequence['SN']}: sequence MD5 differs")
     if problems:
-        raise WGSExtractError(
+        from wgsextract_cli.core.artifact_checks import ArtifactIncompatible
+        from wgsextract_cli.core.artifact_facts import assembly_of
+
+        reads = assembly_of({row["SN"]: int(row["LN"]) for row in sequences})
+        built = assembly_of(lengths)
+        code = "assembly_mismatch" if reads and built and reads != built else ""
+        raise ArtifactIncompatible(
+            code or "reference_mismatch",
             f"Incompatible calling reference {fasta} for {alignment}: "
+            + (f"the reads are on {reads}, the reference is {built}; " if code else "")
             + "; ".join(problems[:5])
-            + ". Use the FASTA used to align this input (same build and contig names)."
+            + ". Use the FASTA used to align this input (same build and contig names).",
         )
 
 

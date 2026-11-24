@@ -276,10 +276,11 @@ class VepDownloadParams(_VepCacheParams):
     )
     variations: bool = param(
         True,
-        help="vep-rs: include known variants (Existing_variation, frequencies; "
-        "~15 GB; default: on)",
+        help="vep-rs: include known variants (Existing_variation, 1000 Genomes "
+        "frequencies, not gnomAD; ~15 GB; default: on)",
         doc="vep-rs: include Ensembl's known variants (Existing_variation, "
-        "1000 Genomes frequencies; ~15 GB).",
+        "1000 Genomes frequencies; ~15 GB). Ensembl publishes no gnomAD "
+        "frequencies to build from: use `vcf gnomad` for those.",
         action="boolean_optional",
     )
 

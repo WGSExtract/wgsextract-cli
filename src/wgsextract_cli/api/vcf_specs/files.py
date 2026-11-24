@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,8 @@ from wgsextract_cli.api._shared import (
     threads_param,
 )
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.panel_presets import PRESETS
+from wgsextract_cli.core.paths import append_suffix
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 from wgsextract_cli.core.utils import UsageError
 
@@ -26,6 +29,78 @@ from .shared import (
 )
 
 HAPLOTYPES = ("iupac", "alt", "1", "2")
+
+
+@dataclass(frozen=True, kw_only=True)
+class VcfInfoParams(_VcfFileParams):
+    """Inspect a VCF, gVCF, or BCF file: reference build/model, samples, counts, and format."""
+
+    COMMAND = "vcf info"
+
+    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    ref: Path | None = ref_param()
+
+
+@dataclass(frozen=True, kw_only=True)
+class VcfVariantQcParams(_VcfFileParams):
+    """Run DISCVRSeq VariantQC to write an interactive HTML VCF quality report."""
+
+    COMMAND = "vcf variantqc"
+
+    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    extra_vcf: tuple[Path, ...] | None = param(
+        None,
+        help="Additional VCF file(s) to analyze together in the same VariantQC report (repeat flag for multiple).",
+        metavar="FILE",
+        action="append",
+        path="file",
+    )
+    ref: Path | None = ref_param()
+    memory: str | None = memory_param()
+    pedigree: Path | None = param(
+        None,
+        help="Optional pedigree file (.ped) for sex- and family-aware VariantQC metrics.",
+        metavar="FILE",
+        path="file",
+    )
+    discvrseq_jar: Path | None = param(
+        None,
+        help="Path to DISCVRseq.jar (default: config discvrseq_jar or jar_directory).",
+        metavar="FILE",
+        path="file",
+        config_key="discvrseq_jar",
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class VcfGraniteQcParams(_VcfFileParams):
+    """Run granite qcVCF (dbmi-bgm/granite) to compute single-sample or family VCF QC metrics."""
+
+    COMMAND = "vcf granite-qc"
+
+    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    pedigree: Path | None = param(
+        None,
+        help="Optional granite pedigree JSON file (auto-generated from VCF samples if omitted).",
+        metavar="FILE",
+        path="file",
+    )
+    samples: str | None = param(
+        None,
+        help="Comma-separated sample IDs to include (default: all samples in the VCF header).",
+    )
+    trio_errors: bool = param(
+        False,
+        help="Include Mendelian trio error statistics (requires a pedigree with parents).",
+        action="store_true",
+    )
+    granite_path: Path | None = param(
+        None,
+        help="Path to the granite executable (default: config granite_executable or PATH).",
+        metavar="FILE",
+        path="file",
+        config_key="granite_executable",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -50,35 +125,95 @@ class VcfAnnotateParams(_VcfFileParams):
 
 
 @dataclass(frozen=True, kw_only=True)
-class VcfFilterParams(_VcfFileParams):
-    """Keep the calls in a region or gene, matching an expression, into
+class _VcfSliceParams(_VcfFileParams):
+    ref: Path | None = ref_param()
+    gene: str | None = param(
+        None, help="Keep a gene by symbol (repeatable).", action="append"
+    )
+    genes: tuple[str, ...] = param(
+        (), help="Comma-separated gene symbols (repeatable).", action="append"
+    )
+    gene_file: Path | None = param(
+        None,
+        help="File of gene symbols (whitespace or comma-separated; # starts a comment).",
+        path="file",
+        metavar="FILE",
+    )
+    presets: tuple[str, ...] = param(
+        (),
+        help="Gene panel preset (repeatable): " + ", ".join(PRESETS),
+        flags=("--preset",),
+        choices=tuple(PRESETS),
+        action="append",
+        metavar="NAME",
+    )
+    bed: Path | None = param(
+        None,
+        help="BED or BED.gz panel, unioned with the selected gene spans.",
+        path="file",
+        metavar="FILE",
+    )
+    pad_kb: float = param(
+        0.0,
+        help="Padding on each side of a gene span, in kb (default: 0).",
+        minimum=0,
+    )
+    region: str | None = _region_param(
+        "Chromosomal region(s); when a panel is given, restrict its union to these regions."
+    )
+
+    def __post_init__(self) -> None:
+        # Repeated CLI --gene values and the existing scalar API field have
+        # the same meaning as a comma-separated list.
+        if isinstance(self.gene, tuple):
+            object.__setattr__(self, "gene", ",".join(self.gene))
+        for name in ("genes", "presets"):
+            object.__setattr__(self, name, tuple(getattr(self, name) or ()))
+        super().__post_init__()
+        if not math.isfinite(self.pad_kb):
+            raise UsageError("--pad-kb must be finite.")
+        if self.pad_kb and not self.has_gene_panel:
+            raise UsageError(
+                "--pad-kb requires --gene, --genes, --gene-file or --preset."
+            )
+
+    @property
+    def has_gene_panel(self) -> bool:
+        return self.gene is not None or bool(
+            self.genes or self.gene_file or self.presets
+        )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        if self.has_gene_panel and self.ref is not None and not self.ref.is_dir():
+            yield "ref_index", append_suffix(self.ref, ".fai")
+
+
+@dataclass(frozen=True, kw_only=True)
+class VcfFilterParams(_VcfSliceParams):
+    """Keep the calls in a region or panel, matching an expression, into
     ``filtered.vcf.gz``."""
 
     COMMAND = "vcf filter"
 
     vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
-    ref: Path | None = ref_param()
     expr: str | None = param(
         None, help="bcftools filter expression (e.g. 'QUAL>30')", expression=True
     )
-    gene: str | None = param(None, help="Filter by Gene Name (e.g. BRCA1, KCNQ2)")
     exclude_near_gaps: bool = param(
         False,
         help="Exclude variants in or near genomic gaps (requires Count Ns output)",
         action="store_true",
     )
-    region: str | None = _region_param()
 
 
 @dataclass(frozen=True, kw_only=True)
-class VcfTableParams(_VcfFileParams):
+class VcfTableParams(_VcfSliceParams):
     """One row per variant with its annotations, as ``<stem>_variants.tsv``
     (or ``.parquet``) and an SQLite database."""
 
     COMMAND = "vcf table"
 
     vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
-    region: str | None = _region_param("Only export this region (e.g. chr22).")
     sample: str | None = param(
         None, help="Sample whose genotypes to use (default: the first)."
     )

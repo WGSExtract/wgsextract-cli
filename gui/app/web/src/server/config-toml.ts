@@ -1,4 +1,6 @@
+import { readFile } from "node:fs/promises";
 import { parse, stringify } from "smol-toml";
+import { errnoCode } from "./errors.js";
 
 /** Read old library keys without shadowing a deliberately blank canonical value. */
 export function parseConfigToml(text: string): Record<string, unknown> {
@@ -13,3 +15,15 @@ export function parseConfigToml(text: string): Record<string, unknown> {
 }
 
 export { stringify as serializeConfigToml };
+
+export async function readOptionalFlatToml(filePath: string): Promise<Record<string, unknown> | null> {
+    try {
+        return parseConfigToml(await readFile(filePath, "utf8"));
+    }
+    catch (error) {
+        if (errnoCode(error) === "ENOENT") {
+            return null;
+        }
+        throw error;
+    }
+}

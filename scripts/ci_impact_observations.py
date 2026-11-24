@@ -11,15 +11,18 @@ import platform
 import subprocess
 from collections import defaultdict
 from collections.abc import Iterable
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
-import coverage
+if TYPE_CHECKING:
+    import coverage
 
 from scripts.ci_impact_results import file_results
 from scripts.ci_impact_scopes import module_scopes
 
 SCHEMA = 2
+SOURCE = "src/wgsextract_cli/"
 PHASES = {"setup", "run", "teardown"}
 
 
@@ -83,7 +86,7 @@ def read_observations(
             for line in range(first, last + 1):
                 owners.setdefault(line, fn)
         for line, contexts in hits.items():
-            files = _observed_files(contexts, tracked)
+            files = observed_files(contexts, tracked)
             test_files.update(files)
             if files:
                 for symbol in loaded.get(line, ()):
@@ -113,11 +116,13 @@ def read_observations(
     }
 
 
-def _observed_files(contexts: Iterable[str], tracked: set[str]) -> set[str]:
+def observed_files(contexts: Iterable[str], tracked: set[str]) -> set[str]:
     return {test for context in contexts if (test := _context_file(context, tracked))}
 
 
 def main() -> None:
+    import coverage
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--coverage-file", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -148,6 +153,7 @@ def main() -> None:
         "python": platform.python_version(),
         "lock_sha256": lock_sha256,
         "profile": "ubuntu-x64/all/skip-independent=false",
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
     }
     timings = {}
     if args.junit is not None:

@@ -8,7 +8,8 @@ verified bidirectional CHM13 assets; ``site_map_cache`` caches decoded columns.
 ``templates`` resolves chip templates and writes vendor-format genotypes.
 ``revisions`` fingerprints consumer-chip exports and ranks catalogue revisions;
 ``targets`` builds and indexes the union of chip markers on supported assemblies.
-The existing ``core.microarray_revisions`` public import interface re-exports
-the same objects; new internal consumers import ``microarray.revisions``.
+Internal callers import ``wgsextract_cli.core.microarray.revisions`` directly.
+The documented ``wgsextract_cli.core.microarray_revisions`` path remains
+available for existing callers.
 Public operations remain available through ``wgsextract_cli.api.microarray``.
 """

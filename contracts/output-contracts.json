@@ -76,6 +76,8 @@
     "result_card": {"tier": "stable", "meaning": "The shareable HTML card written beside the manifest with --card.", "producers": [{"command": "extract mt-bam", "when": "card"}]},
     "combined_kit": {"tier": "experimental", "meaning": "A combined consumer microarray kit file."},
     "vendor_kit": {"tier": "experimental", "meaning": "A vendor-format consumer microarray kit file."},
+    "variant_table": {"tier": "experimental", "meaning": "A TSV or Parquet export of VCF records and their annotations."},
+    "variant_database": {"tier": "experimental", "meaning": "The SQLite export of a variant table."},
     "aadr": {"tier": "experimental", "meaning": "An AADR research-panel export."}
   },
   "approved_breaks": []

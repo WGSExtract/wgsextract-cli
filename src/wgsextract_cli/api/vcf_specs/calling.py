@@ -28,6 +28,7 @@ from .shared import (
     _deepvariant_items,
     _public,
     _region_param,
+    _structural_region_param,
     reference_evidence_param,
 )
 
@@ -147,6 +148,9 @@ class VcfCnvParams(_CallerParams):
 
     COMMAND = "vcf cnv"
 
+    region: str | None = _structural_region_param(
+        "One region, a comma-separated list, or a BED file."
+    )
     map: str | None = param(
         None,
         help="Deprecated and ignored: Delly 2 no longer uses mappability maps.",
@@ -168,6 +172,10 @@ class VcfSvParams(_CallerParams):
 
     COMMAND = "vcf sv"
 
+    region: str | None = _structural_region_param(
+        "Delly/Sniffles: one region, a comma-separated list, or BED; "
+        "pbsv: one region only.",
+    )
     caller: str | None = param(
         None,
         help="SV caller to use (default: sniffles for ONT or --long-read, "
@@ -248,6 +256,10 @@ class VcfCallParams(_CallerParams):
 
     COMMAND = "vcf call"
 
+    region: str | None = _structural_region_param(
+        "One region, a comma-separated list, or BED (Delly/Sniffles without "
+        "SNP/indel calling); pbsv: one region only.",
+    )
     types: str = param(
         "snp,indel",
         help="Comma-separated variant types to call: snp and indel (bcftools), "

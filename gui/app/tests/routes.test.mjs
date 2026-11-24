@@ -6,10 +6,12 @@ import { connect } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { dataEnvironment } from "./workspace-fixture.mjs";
 
 const { createRequestHandler } = await import("../dist/web/src/server/routes.js");
 const { streamNDJSON } = await import("../dist/web/src/server/ndjson.js");
 const { takeApiToken } = await import("../dist/web/src/server/request-guard.js");
+const { recordWorkspaceMove } = await import("../dist/web/src/server/users-workspace.js");
 
 const apiToken = "test-token-0123456789abcdefghijklmnopqrstuvwxyz";
 
@@ -51,6 +53,14 @@ function testManifest() {
 
 async function withTestServer(t, overrides = {}) {
   const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-routes-"));
+  for (const [key, value] of Object.entries(dataEnvironment(tempRoot))) {
+      const original = process.env[key];
+      process.env[key] = value;
+      t.after(() => {
+          if (original === undefined) delete process.env[key];
+          else process.env[key] = original;
+      });
+  }
   t.after(async () => {
     await rm(tempRoot, { force: true, recursive: true });
   });
@@ -115,19 +125,23 @@ function apiFetch(baseURL, route, { body, headers = {}, method } = {}) {
   });
 }
 
-test("#1090: opening viewer library files uses API authentication and cannot grant arbitrary paths", async (t) => {
+test("#1090: opening viewer files uses API authentication and rejects traversal or non-local paths", async (t) => {
   const manifest = testManifest();
   manifest.id = "wgs-extract";
   manifest.pages[0].sections[0].controls[1].id = "wgs_settings";
   const { baseURL, tempRoot } = await withTestServer(t, { manifest });
   const outside = path.join(tempRoot, "outside.bam");
-  await writeFile(outside, "not a library file");
+  await writeFile(outside, "not indexed yet");
   for (const route of ["/api/viewer/open", "/api/viewer/close"]) {
     const response = await apiFetch(baseURL, route, { body: { path: outside, id: "unknown" }, headers: { "x-gfc-token": "" } });
     assert.equal(response.status, 401);
   }
   const response = await apiFetch(baseURL, "/api/viewer/open", { body: { path: outside } });
-  assert.equal(response.status, 403);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { problem: "indexMissing", fileName: "outside.bam" });
+  for (const badPath of [`${tempRoot}/sub/../outside.bam`, "relative.bam", "https://example.com/outside.bam"]) {
+    assert.equal((await apiFetch(baseURL, "/api/viewer/open", { body: { path: badPath } })).status, 403);
+  }
 });
 
 /** fetch() cannot spoof Host, so attacks that rely on it go through http.request. */
@@ -561,14 +575,46 @@ test("PR #531 review: nothing starts or writes while the workspace moves, so no 
   await moveStarted;
   const blocked = await apiFetch(baseURL, "/api/setup/stream", { body: { locale: "en" } });
   assert.equal(blocked.status, 409);
-  assert.match((await blocked.json()).error, /being moved/);
+  assert.equal((await blocked.json()).error, "workspaceMoveInProgress");
+  const save = () => apiFetch(baseURL, "/api/config/save", { body: { controlID: "settings", values: { threads: "8" } } });
+  assert.equal((await save()).status, 409);
   assert.equal(calls.runProcess.length, 0);
 
   finishMove();
   assert.equal((await readNDJSON(await move)).at(-1).type, "complete");
+  assert.equal((await save()).status, 200);
   const after = await apiFetch(baseURL, "/api/setup/stream", { body: { locale: "en" } });
   assert.equal((await readNDJSON(after)).at(-1).type, "complete");
   assert.equal(calls.runProcess.length, 1);
+});
+
+test("#1322: another tab's older settings cannot undo a completed folder move", async (t) => {
+  const { baseURL, context, tempRoot } = await withTestServer(t, {
+    workspaceMoveRevision: "0",
+    async moveWorkspace() {
+      await writeFile(path.join(tempRoot, "config.toml"), 'threads = "9"\n');
+      await recordWorkspaceMove(context.manifest);
+    },
+  });
+  const manifest = async () => {
+    const response = await apiFetch(baseURL, "/api/manifest");
+    assert.equal(response.status, 200);
+    return response.json();
+  };
+  const before = (await manifest()).workspaceMoveRevision;
+  const move = await readNDJSON(await apiFetch(baseURL, "/api/workspace-location/move", { body: { folder: "/elsewhere" } }));
+  assert.equal(move.at(-1).type, "complete");
+
+  const save = (revision) => apiFetch(baseURL, "/api/config/save", {
+    headers: { "x-wgse-workspace-revision": revision },
+    body: { controlID: "settings", values: { threads: "5" } },
+  });
+  const blocked = await save(before);
+  assert.equal(blocked.status, 409);
+  assert.equal((await blocked.json()).error, "workspaceMoveStale");
+  assert.match(await readFile(path.join(tempRoot, "config.toml"), "utf8"), /"9"/);
+  assert.equal((await save((await manifest()).workspaceMoveRevision)).status, 200);
+  assert.match(await readFile(path.join(tempRoot, "config.toml"), "utf8"), /"5"/);
 });
 
 test("disconnecting a setup stream cancels the running step and frees the workspace", async (t) => {

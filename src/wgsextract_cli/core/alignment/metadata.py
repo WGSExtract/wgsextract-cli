@@ -99,20 +99,28 @@ def get_bam_header(
         return ""
 
 
-def get_vcf_build(vcf_path: str) -> str | None:
-    """Scan VCF header for build identifiers."""
+def get_vcf_build(vcf_path: str, *, header: str | None = None) -> str | None:
+    """Resolve the VCF build from its header, falling back to body evidence."""
     try:
-        from wgsextract_cli.core.dependencies import get_tool_path
+        if header is None:
+            from wgsextract_cli.core.dependencies import get_tool_path
 
-        bcftools = get_tool_path("bcftools")
-        if bcftools is None:
-            return None
-        res = run_command([bcftools, "view", "-h", vcf_path], capture_output=True)
+            bcftools = get_tool_path("bcftools")
+            if bcftools is None:
+                return None
+            header = run_command(
+                [bcftools, "view", "-h", vcf_path], capture_output=True
+            ).stdout
         # The ##contig lengths identify the assembly whatever the file names
         # it (chm13, human_g1k_v37, ...); the text search is the fallback.
-        return build_from_chr1_length(sequence_lengths(res.stdout)) or (
-            vcf_metadata_build_hint(res.stdout)
+        detected = build_from_chr1_length(sequence_lengths(header)) or (
+            vcf_metadata_build_hint(header)
         )
+        if detected:
+            return detected
+        from wgsextract_cli.core.vcf_reference import identify_vcf_reference
+
+        return identify_vcf_reference(vcf_path, header=header).build
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError):
         logging.debug("Unable to infer VCF build from header.", exc_info=True)
     return None

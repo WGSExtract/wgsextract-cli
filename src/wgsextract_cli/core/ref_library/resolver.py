@@ -9,7 +9,7 @@ from typing import NamedTuple
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.alignment.metadata import (
     get_bam_header,
-    vcf_metadata_build_hint,
+    get_vcf_build,
 )
 from wgsextract_cli.core.builds import (
     HG37_BUILD_ALIASES,
@@ -330,7 +330,11 @@ class ReferenceLibrary:
         if is_vcf:
             if build := build_from_chr1_length(lengths):
                 return build, "VCF header contig lengths", "high"
-            return vcf_metadata_build_hint(header), "VCF metadata", "low"
+            return (
+                get_vcf_build(header_target, header=header),
+                "VCF reference hint",
+                "low",
+            )
         model = (
             identify_reference(header, sequence_signature(lengths)) if lengths else None
         )
