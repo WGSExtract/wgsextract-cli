@@ -11,8 +11,10 @@ release PR runs `python scripts/release_notes.py assemble X.Y.Z`, which writes
   never share one.
 - **Content:** one or more `## Section` headings, each followed by its
   entries, written for users as in the past releases' notes. Sections are
-  assembled in this order: `Changed`, `New`, `Fixes`, `Deprecated`, `Removed`,
-  `Desktop app`. Within a section, entries follow the file numbers.
+  assembled in this order: `Changed`, `New`, `Fixes`, `Deprecated`, `Removed`.
+  Within a section, entries follow the file numbers. Add app changes to
+  [desktop changelog fragments](../../../gui/docs/changelog/unreleased/README.md)
+  instead; release assembly puts those under `Desktop app` in the joint notes.
 
 ```markdown
 ## Fixes
