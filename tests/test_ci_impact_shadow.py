@@ -47,7 +47,7 @@ def test_shadow_reports_source_scans_and_base_only_failures(
     for file, contents in fixture_files.items():
         target = tmp_path / file
         target.parent.mkdir(exist_ok=True, parents=True)
-        target.write_text(contents, newline="\n")
+        target.write_text(contents)
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "Common base")
     _git(tmp_path, "switch", "-c", "pr")
