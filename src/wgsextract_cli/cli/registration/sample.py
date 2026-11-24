@@ -13,7 +13,7 @@ from wgsextract_cli.commands._command_needs import (
     INSTANT,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.sample import CLI_HELP
 
 NEEDS = {
     "sample show": _n(INSTANT),

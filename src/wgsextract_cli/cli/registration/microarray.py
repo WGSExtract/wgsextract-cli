@@ -9,7 +9,7 @@ from wgsextract_cli.commands._command_needs import (
     MINUTES,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.microarray import CLI_HELP
 
 NEEDS = {
     "microarray": _n(

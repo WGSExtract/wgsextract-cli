@@ -12,7 +12,7 @@ from wgsextract_cli.commands._command_needs import (
     INSTANT,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.analyze import CLI_HELP
 
 NEEDS = {
     "analyze comprehensive": _n(HOURS, *_CALL),

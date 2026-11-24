@@ -17,7 +17,7 @@ from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.genotyping import CLI_HELP
 
 NEEDS = {
     "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),

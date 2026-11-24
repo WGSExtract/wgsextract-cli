@@ -17,7 +17,7 @@ from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.info import CLI_HELP
 
 NEEDS = {
     "info": _n(SECONDS, *_SAM, optional="bcftools"),

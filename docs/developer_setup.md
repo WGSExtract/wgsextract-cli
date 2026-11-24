@@ -196,6 +196,10 @@ When you add or rename a command:
 
 `tests/test_cli_help.py` fails until all three are done.
 
+Keep command-specific messages with the code that uses them. If registration
+and implementation both need the same strings, use the group's lightweight
+module under `src/wgsextract_cli/commands/_messages/`.
+
 ### Benchmark fixture ploidy
 
 The `benchmark` timing workload explicitly calls SNPs, indels and microarray

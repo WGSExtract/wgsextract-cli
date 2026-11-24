@@ -9,7 +9,7 @@ from wgsextract_cli.commands._command_needs import (
     HOURS,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.pet import CLI_HELP
 
 NEEDS = {
     "pet-align": _n(

@@ -16,7 +16,7 @@ from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.vep import CLI_HELP
 
 NEEDS = {
     # Minutes with vep-rs, the default; hours with Ensembl VEP.

@@ -17,7 +17,7 @@ from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.deps import CLI_HELP
 
 NEEDS = {
     "deps check": _n(SECONDS, scale=""),

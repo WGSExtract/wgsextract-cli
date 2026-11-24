@@ -11,7 +11,7 @@ from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.repair import CLI_HELP
 
 NEEDS = {
     "repair ftdna-bam": _n(MINUTES, *_SAM, optional="bcftools"),

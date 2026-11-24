@@ -24,7 +24,7 @@ from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.bam import CLI_HELP
 
 NEEDS = {
     "bam sort": _n(HOURS, *_SAM, optional="bcftools sambamba"),

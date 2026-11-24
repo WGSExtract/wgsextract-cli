@@ -10,7 +10,7 @@ from wgsextract_cli.commands._command_needs import (
     HOURS,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.benchmark import CLI_HELP
 
 NEEDS = {
     "benchmark": _n(

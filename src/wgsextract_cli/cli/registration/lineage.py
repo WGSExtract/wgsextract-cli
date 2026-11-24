@@ -15,7 +15,7 @@ from wgsextract_cli.commands._command_needs import (
     MINUTES,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.lineage import CLI_HELP
 
 NEEDS = {
     "lineage y-haplogroup": _n(MINUTES, "bcftools", "samtools"),

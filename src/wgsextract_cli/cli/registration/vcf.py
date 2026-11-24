@@ -50,8 +50,8 @@ from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
+from wgsextract_cli.commands._messages.vcf import CLI_HELP
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.messages import CLI_HELP
 
 NEEDS = {
     "vcf snp": _n(HOURS, *_CALL),

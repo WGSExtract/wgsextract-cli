@@ -9,7 +9,7 @@ from wgsextract_cli.commands._command_needs import (
     MINUTES,
     _n,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.sign import CLI_HELP
 
 NEEDS = {
     "sign create": _n(MINUTES, optional="ssh-keygen", scale=" for genome-sized files"),
