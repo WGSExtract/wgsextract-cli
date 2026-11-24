@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ._params import Params, param, with_config_defaults
-from ._ref_library import _InLibrary
+from ._ref_library import _InLibrary, _library_named
 from ._ref_resources import _delete_param
 from ._shared import ref_param
 
@@ -52,7 +52,7 @@ class RefYbrowseParams(_InLibrary, Params):
         ref = filled.ref.expanduser() if filled.ref is not None else None
         if ref is not None:
             yield "ref", ref
-        library = filled.library()
+        library = _library_named(ref) if ref is not None else filled.library()
         yield "ref", library
         root = library / "ybrowse"
         yield "ref", root
