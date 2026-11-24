@@ -542,7 +542,6 @@ The lightweight documentation job installs the package, pytest and jsonschema
 test-input reads, selects each target independently:
 
 - `tests/test_api.py::test_api_docs_are_up_to_date` (`docs/api.md`);
-- `tests/test_api_cli_parity.py` (the CLI structure/help snapshot);
 - `tests/test_cli_help.py` (`docs/commands.md`, generated site cards and help
   topics/examples);
 - `tests/test_bump_version.py` (CLI/app site sources, version/distribution docs);

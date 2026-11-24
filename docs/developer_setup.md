@@ -217,13 +217,8 @@ reference stable without duplicating parameter descriptions beside their handler
 ### Generated references and parallel PRs
 
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
-help. It updates the CLI snapshot under `tests/fixtures/cli_snapshot/`,
-`docs/api.md`, `docs/commands.md`, the bundled
-compact discovery index, and the generated command cards in `site_src/cli.md`.
-The snapshot stores one JSON file per covered command (for example
-`vcf/snp.json`), including its parser, help and argv cases. Different command
-files can merge independently; adding children to the same group can still
-change that group's help. Regenerate rather than editing snapshots by hand.
+help. It updates `docs/api.md`, `docs/commands.md`, the bundled compact
+discovery index, and the generated command cards in `site_src/cli.md`.
 It also generates the public sample-workspace JSON Schema from the output
 types in `core/sample_document.py`. Output types use `TypedDict`, dataclasses and
 `Annotated` constraints; `core/output_schema.py` rejects unsupported annotations.
