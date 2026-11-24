@@ -155,13 +155,13 @@ def _levels(alts: int, genotype: str, af: str) -> dict[int, float | None]:
     one AF per allele in the genotype's order (``2/1:0.7,0.3``: ALT 2 at 70%);
     a level it can't pair, as in a comma-decimal locale, is unknown."""
     if alts == 1:
-        return {1: _number(af)}
+        return {1: _fraction(af)}
     called = [int(a) for a in genotype.replace("|", "/").split("/") if a.isdigit()]
     called = [a for a in called if a > 0]
     parts = af.split(",")
     if len(parts) != len(called):
         return {}
-    return {a: _number(p) for a, p in zip(called, parts, strict=True)}
+    return {a: _fraction(p) for a, p in zip(called, parts, strict=True)}
 
 
 def read_calls(path: Path) -> dict[int, list[Call]]:
@@ -206,11 +206,10 @@ def _fractions(
     fractions = {}
     for base in "ACGTDN":
         column = f"%{base if strand == 'fwd' else base.lower()}"
-        value = _number(row.get(column))
-        valid = value is not None and 0 <= value <= 1
-        if depth and not valid:
+        value = _fraction(row.get(column))
+        if depth and value is None:
             raise ValueError(f"position {row.get('POS')}: unreadable {column}")
-        fractions[base] = value if valid and value is not None else 0.0
+        fractions[base] = value if value is not None else 0.0
     return fractions
 
 
@@ -273,6 +272,11 @@ def _number(value: object) -> float | None:
     except (TypeError, ValueError):
         return None
     return number if math.isfinite(number) else None
+
+
+def _fraction(value: object) -> float | None:
+    number = _number(value)
+    return number if number is not None and 0 <= number <= 1 else None
 
 
 def _whole(value: object) -> int | None:

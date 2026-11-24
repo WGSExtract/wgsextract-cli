@@ -348,6 +348,24 @@ def test_1175_nonfinite_vcf_numbers_fall_back_to_the_read_table(tmp_path):
     json.dumps(report, allow_nan=False)
 
 
+@pytest.mark.parametrize(
+    ("alts", "genotype", "af"),
+    [("G", "1", "1.01"), ("C,G", "2/1", "1.01,0")],
+)
+def test_1175_out_of_range_vcf_af_cannot_be_reported_as_101_percent(
+    tmp_path, alts, genotype, af
+):
+    _mutserve_run(
+        tmp_path,
+        calls=(
+            f"chrM\t1555\t.\tA\t{alts}\t.\tPASS\t.\tGT:AF:DP\t{genotype}:{af}:1000\n",
+        ),
+        raw=(_raw_row(1555, "A", 500, 500, "G", 1.0),),
+    )
+    site = _sites(pr.build_report(tmp_path))["m.1555A>G"]
+    assert (site["state"], site["level"]) == ("homoplasmic", 1.0)
+
+
 def test_1175_uncalled_weak_signal_links_to_the_read_table(tmp_path):
     _mutserve_run(tmp_path, raw=(_raw_row(1555, "A", 500, 500, "G", 0.03),))
     (finding,) = pr.build_report(tmp_path)["sections"]["mitochondrial"]["findings"]
