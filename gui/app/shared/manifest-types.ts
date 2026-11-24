@@ -78,6 +78,7 @@ export interface ControlSpec {
     kind: string;
     label?: string;
     value?: StateValue;
+    multiple?: boolean;
     options?: ControlOption[];
     settings?: ConfigSetting[];
     configFile?: ConfigFileSpec;
@@ -127,7 +128,11 @@ export interface ActionSpec {
     title?: string;
     /** The title Advanced mode shows instead of `title`, when the action does more there. */
     advancedTitle?: string;
-    command: CommandSpec;
+    command?: CommandSpec;
+    /** Control id whose selected alignment or variant file opens in the built-in genome viewer instead of running a command. */
+    viewerInput?: string;
+    /** Optional 1-based button row inside the section's actions area. */
+    row?: number;
     precheck?: LooseRecord;
     confirm?: ConfirmationSpec;
     role?: string;

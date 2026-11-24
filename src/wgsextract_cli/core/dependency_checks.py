@@ -196,11 +196,12 @@ VERSION_ARGS = {
     "bwa-mem2": "version",
     "bwa-mem3": "version",
     "vep-cache-builder": "--help",
+    "granite": "--help",
 }
 # samtools 1.10 added --write-index and the file##idx##index output name.
 MINIMUM_VERSIONS = {"bcftools": (1, 0), "samtools": (1, 10)}
 # Tools whose banner names them differently ("Haplogrep 3 3.2.2").
-VERSION_BANNER_NAMES = {"haplogrep3": "haplogrep 3 "}
+VERSION_BANNER_NAMES = {"haplogrep3": "haplogrep 3 ", "granite": "granite ("}
 
 
 def get_tool_version(tool: str) -> str | None:

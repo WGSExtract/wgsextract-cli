@@ -1,24 +1,10 @@
-"""Shared path parameters and authorization for reference-library operations."""
+"""Shared path authorization for reference-library operations."""
 
 import os
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
 
-from ._params import param
-
-
-def _library_ref_param() -> Any:
-    return param(
-        None,
-        doc="Reference library folder, or a FASTA in it (default: config "
-        "reference_fasta's library, else reference_library, else the default "
-        "library).",
-        flags=("--ref",),
-        path="file_or_directory",
-        shared=True,
-        config_key="reference_fasta",
-    )
+from ._params import Params, with_config_defaults
 
 
 def _library_named(ref: Path) -> Path:
@@ -55,3 +41,17 @@ class _InLibrary:
 
         library = self.library()
         yield from (library, Path(reference_genomes_dir(library)))
+
+
+class _ConfiguredLibrary(_InLibrary, Params):
+    """An operation on the library ``ref`` names, else the configured FASTA's."""
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        # Unset, ref is the configured FASTA's library, else reference_library.
+        filled = with_config_defaults(self)
+        if filled.ref is not None:
+            if self.ref is None:
+                yield "ref", filled.ref.expanduser()
+            yield "ref", _library_named(filled.ref)
+        else:
+            yield "ref", self.library()

@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core.constants import MODEL_TAGS_BY_CODE
 from wgsextract_cli.core.paths import absolute_path
 
 _GENOME_DATA_CACHE: list[dict[str, Any]] = []
@@ -24,9 +25,11 @@ def load_genomes_from_csv(csv_path: str) -> list[dict[str, Any]]:
             for raw in reader:
                 # Stray spaces in cells (hs38d1a's URL had one) aren't data.
                 row = {k: (v or "").strip() for k, v in raw.items() if k}
+                code = row.get("Pyth Code") or ""
                 genomes.append(
                     {
-                        "code": row.get("Pyth Code"),
+                        "code": code,
+                        "tag": row.get("Model Tag") or MODEL_TAGS_BY_CODE.get(code, ""),
                         "source": row.get("Source"),
                         "final": row.get("Final File Name"),
                         "url": row.get("URL"),
@@ -50,36 +53,40 @@ def load_genomes_from_csv(csv_path: str) -> list[dict[str, Any]]:
 FALLBACK_GENOMES: list[dict[str, Any]] = [
     {
         "code": "hg38",
+        "tag": "hg38h",
         "source": "GitHub",
         "final": "hg38.fa.gz",
         "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-genomes-1/hg38.fa.gz",
-        "label": "hg38 (Nebula) (NIH) (Rec)",
-        "description": "hg38 No Alt (1K Genome; @US NIH)",
+        "label": "hg38 (YSEQ)",
+        "description": "hg38 (@UCSC; used by YSEQ)",
         "md5": "bd894134bddba260df88a90123a2ee9c",
         "sha256": "362592f9bfeda5e761db0ccf6d8fca9988e2a6a4e22071985e4c86e1a53f7b75",
     },
     {
         "code": "hg19",
+        "tag": "hg19h",
         "source": "GitHub",
         "final": "hg19.fa.gz",
         "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-genomes-1/hg19.fa.gz",
-        "label": "hg19 (yoruba; early Dante)",
+        "label": "hg19 (Yoruba; early Dante)",
         "description": "hg19 Yoruba (@UCSC; used by Dante in 2018)",
         "md5": "ee4efe40ebd6f9468dab89963dcc5b65",
         "sha256": "88c00cae833c581536889748a9eb66f20a3ca6fac0323aec68304a6b3a13adff",
     },
     {
         "code": "T2Tv20",
+        "tag": "T2T CHM13",
         "source": "GitHub",
         "final": "chm13v2.0.fa.gz",
         "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-genomes-1/chm13v2.0.fa.gz",
-        "label": "T2T_v2.0 (PGP/HPP chrN) (Rec)",
-        "description": "T2T v2.0 (chm13 v1.1; HG002 Y v2.7; UCSC SN; @AWS)",
+        "label": "T2T CHM13 v2.0 (PGP/HPP chrN) (Rec)",
+        "description": "T2T CHM13 v2.0 (chm13 v1.1; HG002 Y v2.7; UCSC SN; @AWS)",
         "md5": "ed9f80c8e04c461cba35dd1b85a2e2e8",
         "sha256": "f274b0ee8bc1bca18d231d0eb80d764650d7f02d1fe07c43819e21168224304d",
     },
     {
         "code": "hs37d5",
+        "tag": "1K37g",
         "source": "GitHub",
         "final": "hs37d5.fa.gz",
         "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-genomes-1/hs37d5.fa.gz",
@@ -95,6 +102,7 @@ FALLBACK_GENOMES: list[dict[str, Any]] = [
 PET_GENOMES: list[dict[str, Any]] = [
     {
         "code": "UU_Cfam_GSD_1.0",
+        "tag": "Dog",
         "source": "GitHub",
         "final": "GCF_011100685.1_UU_Cfam_GSD_1.0_genomic.fna.gz",
         "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-genomes-1/GCF_011100685.1_UU_Cfam_GSD_1.0_genomic.fna.gz",
@@ -105,6 +113,7 @@ PET_GENOMES: list[dict[str, Any]] = [
     },
     {
         "code": "Fca126_mat1.0",
+        "tag": "Cat",
         "source": "GitHub",
         "final": "GCF_018350175.1_F.catus_Fca126_mat1.0_genomic.fna.gz",
         "url": "https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-genomes-1/GCF_018350175.1_F.catus_Fca126_mat1.0_genomic.fna.gz",

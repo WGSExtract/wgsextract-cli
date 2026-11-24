@@ -274,6 +274,7 @@ def test_multiqc_force_replaces_only_its_report_and_stays_offline(
         assert json.loads(cmd[cmd.index("--cl-config") + 1]) == {
             "ai_summary": False,
             "ai_summary_full": False,
+            "no_version_check": True,
             "output_fn_name": report.name,
         }
         stage = Path(cmd[cmd.index("--outdir") + 1])
@@ -286,6 +287,57 @@ def test_multiqc_force_replaces_only_its_report_and_stays_offline(
     assert report.read_text() == "new"
     assert unrelated.read_text() == "keep"
     assert _visible(tmp_path) == ["keep.txt", report.name]
+
+
+def test_multiqc_legacy_v1_15_omits_unsupported_flags_and_disables_version_check(
+    tmp_path, monkeypatch
+):
+    """Older system MultiQC (v1.15) lacks --no-version-check and --no-ai;
+    omit unsupported flags and still disable version checks via --cl-config."""
+    import sys
+
+    from wgsextract_cli.commands.qc import commands
+    from wgsextract_cli.core.pixi_tools import _join_command
+
+    legacy_multiqc = tmp_path / "legacy_multiqc.py"
+    legacy_multiqc.write_text(
+        "import pathlib, sys\n"
+        "if '--help' in sys.argv:\n"
+        "    print('Usage: multiqc [OPTIONS]\\n--no-megaqc-upload\\n--cl-config')\n"
+        "    raise SystemExit(0)\n"
+        "for bad in ('--no-version-check', '--no-ai'):\n"
+        "    if bad in sys.argv:\n"
+        "        print(f'No such option {bad}', file=sys.stderr)\n"
+        "        raise SystemExit(2)\n"
+        "outdir = pathlib.Path(sys.argv[sys.argv.index('--outdir') + 1])\n"
+        "name = sys.argv[sys.argv.index('--filename') + 1]\n"
+        "(outdir / name).write_text('legacy-report', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    launcher = _join_command([sys.executable, str(legacy_multiqc)])
+    commands._supported_multiqc_flags.cache_clear()
+    monkeypatch.setattr(commands, "verify_dependencies", lambda _tools: None)
+    monkeypatch.setattr(commands, "log_dependency_info", lambda _tools: None)
+    monkeypatch.setattr(commands, "get_tool_path", lambda _tool: launcher)
+    seen: list[list[str]] = []
+    real_run = commands.run_command
+
+    def intercept(cmd, **kwargs):
+        seen.append(list(cmd))
+        return real_run(cmd, **kwargs)
+
+    monkeypatch.setattr(commands, "run_command", intercept)
+    out = tmp_path / "out"
+    run_wgsextract("qc", "multiqc", "--input", str(tmp_path), "--outdir", str(out))
+    assert (out / "multiqc_report.html").read_text(encoding="utf-8") == "legacy-report"
+    assert seen
+    assert "--no-version-check" not in seen[0]
+    assert "--no-ai" not in seen[0]
+    assert "--no-megaqc-upload" in seen[0]
+    cfg = json.loads(seen[0][seen[0].index("--cl-config") + 1])
+    assert cfg["no_version_check"] is True
+    assert cfg["ai_summary"] is False
+    commands._supported_multiqc_flags.cache_clear()
 
 
 def test_multiqc_failed_force_preserves_previous_report(tmp_path, multiqc_stub):

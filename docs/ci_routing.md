@@ -160,16 +160,17 @@ Thus a CLI edit unrelated to setup and the parser contract runs **zero** OS-inst
 and **zero** Ubuntu app-bundle checks rather than four installer steps and one
 app-bundle check. `run-install-lab` remains an explicit full-platform override.
 
-The four full OS workflows and CLI smoke call `nightly_guard.yml`. Its only
-runner is a small Ubuntu API check, allocated only on `schedule`; PRs,
-pushes and dispatches skip it without a runner. A scheduled workflow skips its
-expensive jobs only if its own successful **push** run exists for the exact
-current main SHA in this repository. A different SHA, a failed/cancelled run,
-a PR/nightly success, missing evidence or an API error retains full coverage.
+The four full OS workflows and CLI smoke call `nightly_guard.yml`. Its small
+Ubuntu API check runs on a schedule or on a full manual Ubuntu run on `main`;
+PRs, pushes and other dispatches skip it without a runner. The check lets
+those workflows skip expensive jobs only if their own successful **push**
+run exists for the exact current main SHA in this repository. A different SHA,
+a failed/cancelled run, a PR/nightly success, missing evidence or an API error
+retains full coverage.
 Failure or timeout of the guard runner itself also runs coverage; a skip
 requires both a successful guard and its explicit `skip=true` output.
-Manual dispatch always runs. Regular Ubuntu pytest also always runs on
-schedule: its daily full-suite backstop must not reuse a green main push.
+Regular Ubuntu pytest always runs on schedule or on a full manual Ubuntu
+run on `main`: the backstop must not reuse a green main push.
 The `required` queue summary now directly depends on Windows as well as Ubuntu;
 it cannot pass while code-selected Windows failed or was cancelled.
 Queue Windows selection uses changed code/runtime-input paths, independently
@@ -415,7 +416,7 @@ without reusing a prior push's pass. It refreshes the existing test-result
 cache ([#915 (passed-test cache)](https://github.com/WGSExtract/wgsextract-cli/issues/915)).
 Main pushes can avoid repeating that exact SHA's queue passes, but not the
 files the queue skipped. Keep test-selection receipts for the tested trees.
-If nightly fails, rerun only the failing tests on
+If the backstop fails, rerun only the failing tests on
 first-parent main trees since the last comparable full pass to locate the
 first reproducibly bad commit. Do not infer a miss from timing or from a
 single failure: distinguish omissions from flakes, runner failures and
@@ -1098,12 +1099,15 @@ four advisory reports remain available and distinguish legacy-selected,
 enforced and actually observed files.
 
 Ubuntu pushes use the exact-SHA merge-group complement instead of symbol
-selection. A scheduled Ubuntu run never skips from either result cache and
-refreshes main's cache after a full regular run. Where the suite provides
-pytest node IDs, the failure replay
-reruns only those cases, otherwise a collection error replays its one test
-module. It checks first-parent trees in order since the last verified
-passing daily run, requires a clean baseline and repeats the first matching
+selection. If the cron run is delayed or missing, run
+`gh workflow run ubuntu_ci.yml --ref main` (leave `optional-tools-only` off).
+Both triggers run the full regular suite without skipping from either result
+cache. A passing run refreshes main's test cache and exports the Linux
+observation map. Dispatches on other refs cannot publish that map.
+Where the suite provides pytest node IDs, the failure replay reruns only those
+cases; a collection error instead replays its one test module. It checks
+first-parent trees in order since the last verified passing scheduled or full
+manual run on `main`, requires a clean baseline and repeats the first matching
 failure signature.
 It will not automatically attribute skipped cases, a dependency-lock
 change, unobserved trees or an unrelated shared-base failure. To open a

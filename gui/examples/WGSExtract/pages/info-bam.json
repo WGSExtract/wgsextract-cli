@@ -107,7 +107,22 @@
           }
         },
         {
+          "id": "view-bam",
+          "title": "actions.info-bam.info-commands.view-bam.title",
+          "tooltip": "actions.info-bam.info-commands.view-bam.tooltip",
+          "iconName": "alignment-info",
+          "textIcon": "🔎",
+          "viewerInput": "bam_path",
+          "prerequisiteArguments": [
+            "bam",
+            "to-cram",
+            "--input",
+            "{{bam_path}}"
+          ]
+        },
+        {
           "id": "coverage-sample",
+          "row": 2,
           "resultCard": true,
           "title": "actions.info-bam.info-commands.coverage-sample.title",
           "tooltip": "actions.info-bam.info-commands.coverage-sample.tooltip",
@@ -138,6 +153,7 @@
         },
         {
           "id": "calculate-coverage",
+          "row": 2,
           "resultCard": true,
           "title": "actions.info-bam.info-commands.calculate-coverage.title",
           "tooltip": "actions.info-bam.info-commands.calculate-coverage.tooltip",
@@ -179,6 +195,7 @@
         },
         {
           "id": "calculate-coverage-shown",
+          "row": 2,
           "resultCard": true,
           "title": "actions.info-bam.info-commands.calculate-coverage.title",
           "tooltip": "actions.info-bam.info-commands.calculate-coverage.shownTooltip",
@@ -219,6 +236,7 @@
         },
         {
           "id": "coverage-by-bed",
+          "row": 2,
           "resultCard": true,
           "title": "actions.cli.coverage-by-bed.title",
           "tooltip": "actions.cli.coverage-by-bed.tooltip",
