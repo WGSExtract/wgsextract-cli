@@ -33,6 +33,7 @@ from wgsextract_cli.core.users_workspace import (
     users_workspace,
 )
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.workspace_activity import relocated_config_path, workspace_use
 
 # For Python < 3.11, use tomli
 if sys.version_info >= (3, 11):
@@ -196,7 +197,7 @@ def _state() -> ConfigState:
 
 
 def _resolve(path: str | os.PathLike[str] | None) -> Path | None:
-    return Path(path).expanduser().resolve() if path else None
+    return relocated_config_path(Path(path).expanduser().resolve()) if path else None
 
 
 def set_config_path(path: str | os.PathLike[str] | None) -> None:
@@ -519,15 +520,21 @@ def _apply_config_updates(config: dict[str, Any], updates: dict[str, Any]) -> No
             config[key] = _normalize_path_setting(value)
 
 
+@workspace_use()
 def save_config(updates: dict[str, Any]) -> None:
     """Save configuration updates to the config.toml file."""
     import tomli_w
 
-    config_path = get_config_path()
+    with _load_lock:
+        state = _state()
+        selected = state.path
+        config_path = get_config_path()
+    config_path = relocated_config_path(config_path)
     if config_path == users_workspace() / "config.toml":
         claim_users_workspace(config_path.parent)
     # The app and other commands save this file too: merge into what is there
-    # now, under the lock they all take, so no save loses another's change.
+    # now. Take the workspace lease before the file lock so the target cannot
+    # move between resolution and publication.
     with shared_file_lock(config_path) as target:
         current_config = {}
         if target.exists():
@@ -538,7 +545,10 @@ def save_config(updates: dict[str, Any]) -> None:
         _apply_config_updates(current_config, updates)
         _validate_config_types(current_config, config_path)
         atomic_write(target, tomli_w.dumps(current_config).encode("utf-8"))
-    reload_settings()
+    with _load_lock:
+        if selected is not None and state.path == selected:
+            state.path = config_path
+        reload_settings()
 
 
 @overload

@@ -21,7 +21,7 @@ from tests.microarray_helpers import microarray_params
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.commands import _microarray_combined, _microarray_vcf, microarray
 from wgsextract_cli.core import variant_files
-from wgsextract_cli.core.builds import ploidy_for_build
+from wgsextract_cli.core.builds import ploidy_preset
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.microarray.formats import resolve_format_key
 from wgsextract_cli.core.microarray.templates import (
@@ -51,7 +51,7 @@ GENOME += "".join(_rng.choice("ACGT") for _ in range(LENGTH - 101))
 def test_reference_model_aliases_get_their_builds_sex_aware_ploidy(
     build, expected_ploidy
 ):
-    assert ploidy_for_build(build) == expected_ploidy
+    assert ploidy_preset(build) == expected_ploidy
 
 
 @pytest.mark.parametrize(
