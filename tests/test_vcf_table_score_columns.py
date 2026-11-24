@@ -379,6 +379,43 @@ def test_1284_normalized_alt_does_not_take_another_original_alts_scores(
     assert _scores(_rows(FASTVEP_HEADER, [record])["300", "T"]) == expected
 
 
+@pytestmark_tools
+def test_1284_spliceai_refresh_scores_the_normalized_alt_without_reviving_stale_scores(
+    tmp_path,
+):
+    sample = tmp_path / "sample.vcf"
+    header = FASTVEP_HEADER.replace(
+        "#CHROM",
+        '##INFO=<ID=OLD_MULTIALLELIC,Number=1,Type=String,Description="Original record">\n'
+        "#CHROM",
+    )
+    info = (
+        "OLD_MULTIALLELIC=chr1|299|AC|AT,T|1;"
+        "SpliceAI=T|GENEA|0.9|0|0|0|1|2|3|4;FV_REVEL=T|0.8"
+    )
+    sample.write_text(
+        header + _record("chr1", "300", ".", "C", "T", "50", "PASS", info, "GT", "0/1"),
+        encoding="utf-8",
+    )
+    resource = _vcf(
+        tmp_path / "spliceai.vcf.gz",
+        ["300 . C T . . SpliceAI=T|GENEA|0.75|0|0|0|1|2|3|4 GT 0/1"],
+        info=("SpliceAI",),
+    )
+    out = tmp_path / "results"
+    run_wgsextract(
+        "vcf", "spliceai", "--input", str(sample), "--spliceai-file", resource,
+        "--outdir", str(out),
+    )  # fmt: skip
+    run_wgsextract(
+        "vcf", "table", "--vcf-input", str(out / "spliceai_annotated.vcf.gz"),
+        "--outdir", str(out), "--format", "tsv",
+    )  # fmt: skip
+    row = _table_tsv(out / "spliceai_annotated_variants.tsv")["300", "T"]
+    assert row["spliceai_max"] == "0.75"
+    assert row["revel"] == ""
+
+
 @pytest.mark.parametrize(
     ("tag", "value", "column", "expected"),
     [

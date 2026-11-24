@@ -115,6 +115,7 @@ SCORE_COLUMNS: tuple[Column, ...] = (
 # conservation is a property of the position, so every ALT shares it.
 REVEL, AM_SCORE, AM_CLASS = "REVEL", "am_pathogenicity", "am_class"
 CADD_RAW, CADD_PHRED, SPLICEAI = "CADD_RAW", "CADD_PHRED", "SpliceAI"
+SPLICEAI_MATCH = "WGSE_SPLICEAI_MATCH"
 PHYLOP, GERP = "PHYLOP", "GERP"
 _POSITIONAL = frozenset({PHYLOP, GERP})
 

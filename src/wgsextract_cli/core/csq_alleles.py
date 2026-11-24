@@ -102,6 +102,8 @@ def allele_entries(
     formats: Mapping[str, Sequence[str]],
     spellings: Sequence[str],
     tag: str,
+    *,
+    refreshed: tuple[str, str] | None = None,
 ) -> list[dict[str, str]]:
     """The entries for one ALT of a pipe-delimited INFO field that leads with
     the allele as the VCF spells it (SpliceAI's, fastVEP's FV_*). Each entry
@@ -111,6 +113,8 @@ def allele_entries(
     if not raw or not names:
         return []
     entries = csq_entries(raw, names)
+    if refreshed and tag == refreshed[0]:
+        spellings = (refreshed[1], *spellings)
     for spelling in dict.fromkeys(spellings):
         matches = [e for e in entries if e.get("ALLELE") == spelling]
         if matches:

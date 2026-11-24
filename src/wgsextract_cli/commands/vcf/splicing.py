@@ -18,6 +18,7 @@ from wgsextract_cli.core.pharmgkb import table_provenance
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_files import ensure_vcf_prepared, is_vcf_path
+from wgsextract_cli.core.variant_scores import SPLICEAI_MATCH
 
 from .annotation_helpers import (
     annotate_vcf,
@@ -57,6 +58,7 @@ def run_spliceai(params: VcfSpliceaiParams) -> None:
         threads=params.threads,
         reference=lib.fasta,
         annotation_source=spliceai_file,
+        mark_matches=SPLICEAI_MATCH,
     )
     record_annotated(ann_out)
     logging.info(LOG_MESSAGES["vcf_spliceai_done"].format(output=ann_out))

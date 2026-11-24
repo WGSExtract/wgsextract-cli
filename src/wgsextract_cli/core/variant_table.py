@@ -711,7 +711,15 @@ def variant_rows(
                         variant_alts,
                         csq,
                         csq_matches,
-                        partial(allele_entries, info, pipe_formats, pipe_spellings),
+                        partial(
+                            allele_entries,
+                            info,
+                            pipe_formats,
+                            pipe_spellings,
+                            refreshed=(scores.SPLICEAI, alt)
+                            if split and scores.SPLICEAI_MATCH in info
+                            else None,
+                        ),
                         gene,
                     )
                     if scored
