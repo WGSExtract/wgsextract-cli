@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
 import logging
+import os
 import sys
 from collections.abc import Sequence
+from contextlib import ExitStack
 
 from .cli.bootstrap import (
     configure_logging,
@@ -15,14 +17,25 @@ from .cli.parser import build_parser, config_path_from_argv, parse_args
 from .core.config import reload_settings, set_config_path
 from .core.run_log import RunLogError, run_logging
 from .core.utils import WGSExtractError
+from .core.workspace_activity import WORKSPACE_LEASE_ARGUMENT, workspace_use
 
 __all__ = ["main"]
 
 
-def main(argv: Sequence[str] | None = None) -> None:
+def main(argv: Sequence[str] | None = None, *, admitted_by: str | None = None) -> None:
     configure_stdio_encoding()
-    set_config_path(config_path_from_argv(sys.argv[1:] if argv is None else argv))
+    with ExitStack() as workspace:
+        try:
+            workspace.enter_context(workspace_use(admitted_by))
+        except (OSError, WGSExtractError) as exc:
+            print(f"Cannot use the workspace: {exc}", file=sys.stderr)
+            raise SystemExit(1) from None
+        _run(argv, workspace)
+
+
+def _run(argv: Sequence[str] | None, workspace: ExitStack) -> None:
     try:
+        set_config_path(config_path_from_argv(sys.argv[1:] if argv is None else argv))
         reload_settings()
     except WGSExtractError as exc:
         detail = " ".join(str(exc).splitlines())
@@ -50,6 +63,15 @@ def main(argv: Sequence[str] | None = None) -> None:
     install_signal_handlers()
     start_parent_monitor(args.parent_pid)
 
+    # The desktop starts its server before submitting a job and keeps it idle
+    # between jobs. The app guards submissions; each worker owns its own lease.
+    if (
+        args.command == "serve"
+        and args.parent_pid
+        and os.getenv("WGSEXTRACT_GUI_APP_DATA")
+    ):
+        workspace.close()
+
     try:
         with run_logging(args, sys.argv[1:] if argv is None else argv):
             if hasattr(args, "func"):
@@ -64,4 +86,8 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 if __name__ == "__main__":
-    main()
+    argv = sys.argv[1:]
+    if argv and argv[0].startswith(WORKSPACE_LEASE_ARGUMENT):
+        main(argv[1:], admitted_by=argv[0][len(WORKSPACE_LEASE_ARGUMENT) :])
+    else:
+        main(argv)

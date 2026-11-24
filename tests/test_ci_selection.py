@@ -314,6 +314,19 @@ def test_914_real_lazy_command_and_startup_tests_are_selected() -> None:
     assert "tests/test_cli_parser.py" in selected
 
 
+def test_1496_split_help_catalog_selects_help_contract_tests() -> None:
+    paths = ["src/wgsextract_cli/commands/_help_catalog/vcf.py"]
+    selected = select_tests(paths)
+    assert selected != "all"
+    assert {
+        "tests/test_cli_help.py",
+        "tests/test_command_needs.py",
+        "tests/test_api_cli_parity.py",
+        "tests/test_regen.py",
+    }.issubset(selected)
+    assert "tests/test_cli_help.py" in docs_test_targets(paths)
+
+
 def test_914_real_leaf_module_does_not_select_unrelated_ci_tests() -> None:
     selected = select_tests(["src/wgsextract_cli/commands/benchmark/chip.py"])
     assert "tests/test_microarray_chip_benchmark.py" in selected

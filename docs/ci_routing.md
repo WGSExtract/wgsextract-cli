@@ -1057,8 +1057,8 @@ normalized PR/main job names; historical shard failures remain historical data.
 ### Reading the Linux shadow report
 
 On ready PRs that run regular Ubuntu x64 pytest on a hosted runner, the
-`test-selection-shadow` artifact records four advisory selections: decisive,
-tight, symbol and widely-called helpers. The job summary shows the current
+`test-selection-shadow` artifact records advisory selections: decisive,
+tight, symbol, widely-called helpers and line. The job summary shows the current
 selection, per-candidate files and timing estimates, and omitted observed
 failures. The artifact contains the full file sets, rule reasons, exact tested
 merge tree and parents, and the regular pytest receipt. Separate generic,
@@ -1076,6 +1076,23 @@ explicitly. Test-minute estimates sum recorded pytest durations; they omit
 unmeasured files and are not wall-clock predictions. Python tracing does not
 measure external tools or every file reader, so an unmatched input is a
 measurement gap to investigate, not permission to change CI selection.
+
+The line shadow uses a separate `linux-line-impact-map` artifact and read-only
+cache. It reuses the C-tracer contexts from the same successful scheduled or
+trusted full manual Ubuntu run; it adds no tracing to PRs. The gzip payload
+contains tracked package paths, positive line offsets, and integer IDs into a
+test-file table. It contains no source text or parameterized test names.
+
+The line map must match the symbol map's run and attempt, be no more than
+48 hours old, and match the tested base's tracked source, test and other
+input fingerprints (including fixtures outside `tests/`). The initial
+shadow only narrows a modification to one existing function body when every
+edited preimage line has attributed callers. Changed test files and independent
+routes such as contract tests remain selected. Insertions without a preimage,
+mixed input changes, and missing or incompatible evidence retain the enforced
+selection with a reason. Tests that cover the same lines are not interchangeable.
+The line arm imputes missing per-file durations with the longest measured
+file and uses that same estimate for its comparison with the enforced set.
 
 Every candidate includes the newline source scanner for changed package Python,
 and the tool-contract scanner for command or CLI Python changes. The historical
@@ -1105,8 +1122,8 @@ initializer, non-Python source, unresolved dynamic imports, interpreter
 configuration changes or changed test harness inputs, the gate keeps the
 legacy selection.
 The gate's own PR runs the same planner against
-its synthetic merge tree even if regular hosted pytest was certified. All
-four advisory reports remain available and distinguish legacy-selected,
+its synthetic merge tree even if regular hosted pytest was certified. The
+advisory reports remain available and distinguish legacy-selected,
 enforced and actually observed files.
 
 Ubuntu pushes use the exact-SHA merge-group complement instead of symbol
@@ -1133,3 +1150,10 @@ change, unobserved trees or an unrelated shared-base failure. To open a
 records an enforced symbol omission on the identical Git tree; the legacy
 selection must have included the test. Logs explain unverified outcomes and
 the stable case marker deduplicates a confirmed miss across nights.
+
+When nightly replay finds a reproducible failure on the exact Git tree from
+an eligible line-shadow receipt, `linux-selector-line-recall` and the nightly
+job summary compare how many failing test files the symbol and line sets
+included. A file with multiple failing cases counts once. No matched
+failures means recall is unavailable, not 100%. This score is advisory and
+does not publish issues or affect any gate.
