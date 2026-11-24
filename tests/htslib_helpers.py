@@ -183,6 +183,8 @@ def snp_sample(
     snps: Iterable[int] = (1000, 1550),
     tags: str = "",
     contig: str = "chr1",
+    *,
+    assembly: str | None = None,
 ) -> Namespace:
     """A 3 kb ``contig`` (chr1) and a sample homozygous for SNPs at 1-based ``snps``, as a
     BAM and a CRAM with 20x single-end coverage over 500-2500 in the read group
@@ -194,7 +196,7 @@ def snp_sample(
     for pos in snps:
         sample[pos - 1] = {"A": "C", "C": "G", "G": "T", "T": "A"}[ref[pos - 1]]
         calls.append((contig, str(pos), ref[pos - 1], sample[pos - 1], "1/1"))
-    fasta = write_fasta(work / "ref.fa", {contig: ref})
+    fasta = write_fasta(work / "ref.fa", {contig: ref}, assembly=assembly)
     lines = ["@HD\tVN:1.6\tSO:unsorted", f"@SQ\tSN:{contig}\tLN:3000", read_group]
     for i, start in enumerate(range(500, 2400, 5)):
         lines.append(

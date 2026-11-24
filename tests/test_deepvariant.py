@@ -131,7 +131,7 @@ def call(dv, *options, reads=None, out=None, threads="4"):
 @pytest.mark.parametrize("contig", ["chrM", "chrY", "chrX"])
 @pytest.mark.parametrize("bounded", [False, True])
 def test_963_par_free_haploid_calls_do_not_pass_an_empty_par_bed(dv, contig, bounded):
-    dv.sample = snp_sample(dv.tmp / "hg38", contig=contig)
+    dv.sample = snp_sample(dv.tmp / "hg38", contig=contig, assembly="GRCh38")
     if contig != "chrM":
         run_wgsextract("sample", "set", "--input", dv.sample.bam, "--sex", "Male")
     call(dv, *(["--region", contig] if bounded else []))
@@ -616,12 +616,12 @@ def evidence_state(gvcf, contig, position):
 
 
 def woman_sample(dv):
-    """An hg38-named woman with reads on chr1 and chrY, 500-2499."""
+    """A synthetic GRCh38 sample with reads on chr1 and chrY, 500-2499."""
     rng = random.Random(863)
     seq = "".join(rng.choice("ACGT") for _ in range(3000))
     root = dv.tmp / "hg38"
     root.mkdir()
-    ref = write_fasta(root / "ref.fa", {"chr1": seq, "chrY": seq})
+    ref = write_fasta(root / "ref.fa", {"chr1": seq, "chrY": seq}, assembly="GRCh38")
     lines = ["@HD\tVN:1.6\tSO:unsorted", "@SQ\tSN:chr1\tLN:3000"]
     lines += ["@SQ\tSN:chrY\tLN:3000", "@RG\tID:rg\tSM:S"]
     lines += [
