@@ -314,6 +314,7 @@ class _Hg38Library:
     """The reference library of an hg38 FASTA without a ploidy file."""
 
     build = "hg38"
+    confirmed_build = "hg38"
     ploidy_file: str | None = None
 
     def __init__(self, ref, *_args, **_kwargs):

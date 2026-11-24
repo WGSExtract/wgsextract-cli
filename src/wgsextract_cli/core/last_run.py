@@ -23,9 +23,10 @@ LOG_TAIL_LINES = 200
 # Commands that never replace the record: reporting on the last run must not
 # report on itself, and help/config don't run anything worth reporting.
 UNRECORDED_COMMANDS = frozenset({"help", "config", "report-issue"})
-# Subcommands that never replace it either: the app's pre-run check (`ref
-# needs`) runs before every action, so recording it would hide the real run.
-UNRECORDED_SUBCOMMANDS = frozenset({"ref needs"})
+# Subcommands that never replace it either: the pre-run checks (`ref needs`,
+# which the app runs before every action, and `deps ready`) would hide the
+# real run.
+UNRECORDED_SUBCOMMANDS = frozenset({"ref needs", "deps ready"})
 
 
 def state_directory() -> Path:

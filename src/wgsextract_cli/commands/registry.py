@@ -28,6 +28,7 @@ COMMAND_MODULES = tuple(
             "genotyping": "typing",
             "pet": "pet-align",
             "report_issue": "report-issue",
+            "report_delta": "report-delta",
         }.get(name, name),
     )
     for name in (
@@ -40,6 +41,7 @@ COMMAND_MODULES = tuple(
         "microarray",
         "lineage",
         "vcf",
+        "cohort",
         "repair",
         "qc",
         "ref",
@@ -55,6 +57,8 @@ COMMAND_MODULES = tuple(
         "genotyping",
         "methylation",
         "report",
+        "lookup",
+        "report_delta",
         "report_issue",
         "panel",
         "serve",
@@ -148,6 +152,7 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier("help", SETUP, "List every command, or explain one: 'help vcf snp'."),
     CommandTier("bam", ADVANCED, "Sort, index, convert and merge BAM/CRAM files."),
     CommandTier("qc", ADVANCED, "Read and VCF quality reports; fake test data."),
+    CommandTier("cohort", ADVANCED, "Summarize variants across a local cohort."),
     CommandTier("repair", ADVANCED, "Fix FTDNA BAM/VCF formatting problems."),
     CommandTier(
         "analyze", ADVANCED, "Run several analyses in one go, for one or many genomes."
@@ -178,6 +183,16 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier("sign", ADVANCED, "Checksum and sign output files; verify them."),
     CommandTier(
         "score", ADVANCED, "Research-only polygenic scores from local genotypes."
+    ),
+    CommandTier(
+        "lookup",
+        ADVANCED,
+        "Genotype and evidence at an rsID, locus or gene.",
+    ),
+    CommandTier(
+        "report-delta",
+        ADVANCED,
+        "What changed between two reports: findings, releases.",
     ),
     CommandTier("benchmark", ADVANCED, "Time the main workflows on test data."),
     CommandTier(

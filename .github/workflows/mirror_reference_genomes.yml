@@ -19,12 +19,17 @@ on:
         description: Comma-separated catalog file names (empty mirrors every genome not yet mirrored).
         required: false
         default: ""
+      ci_hs38:
+        description: Publish only CI's hs38 indexes (set release_tag to a new ci-hs38-N tag).
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   plan:
+    if: '!inputs.ci_hs38'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -121,3 +126,40 @@ jobs:
           python3 scripts/mirror_reference_genomes.py notes records/*.json > notes.md
           gh release upload "$TAG" records.tar.gz --clobber --repo "$GITHUB_REPOSITORY"
           gh release edit "$TAG" --notes-file notes.md --repo "$GITHUB_REPOSITORY"
+
+  ci-hs38:
+    if: inputs.ci_hs38
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Require a new ci-hs38 release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ ! "$TAG" =~ ^ci-hs38-[1-9][0-9]*$ ]]; then
+            echo "::error::Use a ci-hs38-N release tag"
+            exit 1
+          fi
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::error::Release $TAG already exists; choose a new tag"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+      - name: Prepare indexes for the pinned hs38 FASTA
+        shell: bash
+        run: bash scripts/ci_hs38.sh build
+      - name: Publish the index bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release_tag }}
+        run: |
+          shasum -a 256 out/ci-hs38/hs38-indexes.tar.gz
+          gh release create "$TAG" out/ci-hs38/hs38-indexes.tar.gz --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "CI hs38 indexes ($TAG)" --prerelease --latest=false \
+            --notes "Prepared samtools dictionary and FASTA indexes for the pinned hs38.fa.gz in release v0.1.0. Used by CLI CI (#1509)."

@@ -211,7 +211,7 @@ def test_liftover_block_edges_strand_and_ambiguous_hits(tmp_path, monkeypatch):
     root = tmp_path / "reference"
     seqs = _genome(LIFT_MARKERS, ("chr1",))
     (root / "genomes").mkdir(parents=True)
-    fasta = str(write_fasta(root / "genomes" / "hg38.fa", seqs))
+    fasta = str(write_fasta(root / "genomes" / "hg38.fa", seqs, assembly="GRCh38"))
     chain = root / "hg38ToHg19.over.chain.gz"
     with gzip.open(chain, "wt") as handle:
         handle.write(CHAINS)
@@ -256,7 +256,7 @@ def test_calling_policy_depth_mapq_and_male_x(tmp_path, monkeypatch):
     root = tmp_path / "reference"
     seqs = _genome(CALL_MARKERS, ("chr1", "chrX", "chrY"))
     (root / "genomes").mkdir(parents=True)
-    fasta = str(write_fasta(root / "genomes" / "hg19.fa", seqs))
+    fasta = str(write_fasta(root / "genomes" / "hg19.fa", seqs, assembly="GRCh37"))
     _templates(root, CALL_MARKERS)
     targets = _targets(tmp_path / "targets_hg19.tab", CALL_MARKERS)
     header = [f"@SQ\tSN:{c}\tLN:{LENGTH}" for c in seqs] + ["@RG\tID:s\tSM:s"]
@@ -500,17 +500,15 @@ def test_public_corpus_runs_tools_resolved_to_wrapper_commands(tmp_path, monkeyp
     assert digest == hashlib.sha256(direct.encode()).hexdigest()
 
 
-def test_synthetic_corpus_fails_when_a_completed_fix_did_not_run(tmp_path, monkeypatch):
+def test_synthetic_corpus_fails_when_a_completed_fix_did_not_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """#1375 review: a skipped completed-fix regression fails the run even
     when every comparison case passes."""
     from scripts import v4_differential_corpus as corpus
 
-    tests = tmp_path / "test_evidence.py"
-    tests.write_text(
-        "import pytest\n\n"
-        "def test_case_passes():\n    pass\n\n"
-        "def test_fix_is_skipped():\n    pytest.skip('not run here')\n"
-    )
+    # #1515: node IDs stay in the checkout so pytest does not scan shared temp directories.
+    tests = "tests/fixtures/v4_differential/pytest_evidence.py"
     record = tmp_path / "corpus.json"
     record.write_text(
         json.dumps(

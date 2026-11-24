@@ -35,7 +35,7 @@ pytestmark = needs_htslib
 def _sample(folder: Path, names: tuple[str, ...], build: str):
     folder.mkdir()
     seq = "ACGT" * 750
-    ref = write_fasta(folder / f"{build}.fa", dict.fromkeys(names, seq))
+    ref = write_fasta(folder / f"{build}.fa", dict.fromkeys(names, seq), assembly=build)
     rows = ["@HD\tVN:1.6\tSO:coordinate", "@RG\tID:r\tSM:S\tPL:ONT"]
     rows += [f"@SQ\tSN:{name}\tLN:3000" for name in names]
     sample = seq[:999] + "A" + seq[1000:]
@@ -185,7 +185,11 @@ def test_whole_reference_clair3_ploidy_does_not_add_alt_or_decoy_calls(
     request.getfixturevalue("fake_clair3")
     extra = ("chrUn_decoy", "chr1_KI000001v1_alt")
     sequences = {**sex_par.sequences, **dict.fromkeys(extra, "ACGT" * 750)}
-    ref = write_fasta(sex_par.root / f"scope_{sex_par.ref.stem}.fa", sequences)
+    ref = write_fasta(
+        sex_par.root / f"scope_{sex_par.ref.stem}.fa",
+        sequences,
+        assembly=sex_par.ref.stem,
+    )
     headers = [row for row in sex_par.rows if row.startswith("@")]
     headers += [f"@SQ\tSN:{name}\tLN:3000" for name in extra]
     rows = headers + [row for row in sex_par.rows if not row.startswith("@")]

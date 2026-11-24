@@ -31,6 +31,7 @@ from wgsextract_cli.api.ref import (
     RefMicroarrayTargetsParams,
     RefPharmgkbParams,
     RefPhylopParams,
+    RefRecheckParams,
     RefRevelParams,
     RefSomalierParams,
     RefSpliceaiParams,
@@ -81,6 +82,9 @@ cmd_microarray_targets = command_handler(
 )
 cmd_ref_needs = command_handler("wgsextract_cli.commands.ref.needs", "cmd_ref_needs")
 cmd_ref_status = command_handler("wgsextract_cli.commands.ref.status", "cmd_ref_status")
+cmd_recheck = command_handler(
+    "wgsextract_cli.commands.ref.recheck", "run_recheck", RefRecheckParams
+)
 cmd_test_genome = command_handler(
     "wgsextract_cli.commands.ref.mini_genome", "cmd_test_genome"
 )
@@ -288,6 +292,12 @@ def register(
         "--values",
         action="store_true",
         help="Emit a compact values JSON object for GUI data-source consumers.",
+    )
+    add(
+        "recheck",
+        RefRecheckParams,
+        cmd_recheck,
+        "Compare the resource releases result manifests recorded with the newest: from --answers FILE, or ask NCBI with --online. Downloads and reruns nothing.",
     )
     add(
         "test-genome",

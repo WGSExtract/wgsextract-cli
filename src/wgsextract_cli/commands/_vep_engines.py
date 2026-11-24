@@ -153,29 +153,36 @@ def require_assembly(engine: VepEngine, assembly: str | None) -> None:
         raise WGSExtractError(f"{engine.label} has no {assembly} cache; {hint}")
 
 
-def _refuses(engine: VepEngine, token: str) -> bool:
-    """Whether ``token`` names an option ``engine`` refuses. vep-rs, like
-    Ensembl VEP's Getopt, takes one or two dashes, any case and unambiguous
-    abbreviations (``-CUST``), so those count too."""
+def _refuses(options: tuple[str, ...], token: str, *, min_prefix: int = 3) -> bool:
+    """Match one or two dashes, any case and Getopt abbreviations."""
     if not token.startswith("-"):
         return False
     name = token.lstrip("-").split("=", 1)[0].lower()
     if not name:
         return False
-    for refused in engine.refused_args:
+    for refused in options:
         full = refused.lstrip("-")
         if name == full or name.startswith(f"{full}_"):
             return True
-        if len(name) >= 3 and full.startswith(name):
+        if len(name) >= min_prefix and full.startswith(name):
             return True
     return False
 
 
-def refuse_unsupported_args(engine: VepEngine, vep_args: str | None) -> None:
-    """Refuse --vep-args options ``engine`` would ignore or can't honour."""
-    if not vep_args or not engine.refused_args:
+def refuse_unsupported_args(
+    engine: VepEngine, vep_args: str | None, *, calling: bool = False
+) -> None:
+    """Refuse ignored options or ones that would change the validated assembly."""
+    if not vep_args:
         return
-    refused = sorted({t for t in shlex.split(vep_args) if _refuses(engine, t)})
+    args = shlex.split(vep_args)
+    calling_options = ("--assembly", "--fasta", "--grch37")
+    if calling and any(_refuses(calling_options, t, min_prefix=2) for t in args):
+        raise WGSExtractError(
+            "For BAM/CRAM input, use --assembly and --ref instead of setting "
+            "VEP's assembly or FASTA in --vep-args."
+        )
+    refused = sorted({t for t in args if _refuses(engine.refused_args, t)})
     if refused:
         raise WGSExtractError(
             f"{engine.label} does not support {', '.join(refused)}; "
