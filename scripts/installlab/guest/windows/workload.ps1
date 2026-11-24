@@ -45,7 +45,7 @@ W "snp" @("vcf", "snp", "--input", $BAM, "--ref", $REF, "--region", "20", "--plo
 # Unknown-sex ploidy until the sex is declared (#975).
 W "sample_sex" @("sample", "set", "--input", $BAM, "--sex", "Male")
 # The 5x fixture uses the real confidence defaults; explain weak-site no-calls.
-W "microarray" @("microarray", "--input", $BAM, "--ref", $REF, "--ref-vcf-tab", $TARGETS, "--formats", "23andme_v5", "--call-reasons", "--outdir", (Join-Path $Out "microarray"))
+W "microarray" @("microarray", "--input", $BAM, "--ref", $REF, "--ref-vcf-tab", $TARGETS, "--ploidy-file", (Join-Path (Split-Path $PSScriptRoot) "hg19-mini.ploidy.txt"), "--formats", "23andme_v5", "--call-reasons", "--outdir", (Join-Path $Out "microarray"))
 W "align" @("align", "--r1", $R1, "--r2", $R2, "--ref", $REF, "--outdir", (Join-Path $Out "align"))
 W "gatk" @("vcf", "gatk", "--input", $BAM, "--ref", $REF, "--region", "20:1-200000", "--outdir", (Join-Path $Out "gatk"))
 W "must_fail" @("info", "--input", (Join-Path $Data "does-not-exist.bam"), "--outdir", (Join-Path $Out "must_fail"))
