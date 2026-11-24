@@ -25,9 +25,19 @@ from collections.abc import Sequence
 from pathlib import Path, PurePosixPath
 
 SOURCE_SHA256 = "03d7f58ba813c12e1efed048466f62959dc51f996d95aace76105c49fefca8e9"
-VERSION = "0.3.0"
+VERSION = "0.4.0"
 README = "reference/00README.txt"
 TEMPLATES_ARCHIVE_ROOT = PurePosixPath("reference/microarray/raw_file_templates")
+# Packaged template files that intentionally replace older v0.2.0 copies.
+# The classic v0.2.0 bodies (23andMe_V4_{1,2}.txt, FTDNA_V2.csv) are kept so
+# older CLI releases remain compatible with v0.4.0 bootstraps; new CLIs pick
+# the single-part merged .gz files (and *_v3.delta.gz for frozen CombinedKit v3).
+REPLACED_TEMPLATES = frozenset(
+    {
+        str(TEMPLATES_ARCHIVE_ROOT / "head/23andMe_V4.txt"),
+        str(TEMPLATES_ARCHIVE_ROOT / "head/FTDNA_V2.csv"),
+    }
+)
 DEFAULT_TEMPLATES = (
     Path(__file__).resolve().parents[1]
     / "src/wgsextract_cli/assets/microarray/raw_file_templates"
@@ -48,11 +58,12 @@ Y Chromosome SNPs file (yBrowse.org):
 COMBINEDKIT_V5_MARKER = "CombinedKit v5"
 COMBINEDKIT_V5_NOTE = """\
 -- Since reference bootstrap v{version}, raw_file_templates/ expands
-   CombinedKit v3 into CombinedKit v5 with additional consumer vendor
-   templates (23andMe v2/v5_2025, Ancestry v2_2021/v2_2024/v2ab/v2cd/v2e,
-   FTDNA v4 and GRCh38 Y files v2y/v3y/v4y, MyHeritage GSA 2025/v3, Nucleus,
-   tellmeGen, Genera, MTHFR Genetics, meuDNA v1/v2, SelfDecode) and
-   corrections.tsv; all CombinedKit v3 templates remain unchanged.
+   CombinedKit v3 into CombinedKit v5 with additional and merged consumer
+   vendor templates (23andMe v2 and merged v4a-c, Ancestry v2ab/v2cd/v2e,
+   merged FTDNA v2a-d, FTDNA v4 and GRCh38 Y files v2y/v3y/v4y, MyHeritage v3,
+   Nucleus, tellmeGen, Genera, MTHFR Genetics, meuDNA v1/v2, SelfDecode) and
+   corrections.tsv; CombinedKit v3 remains frozen via classic v0.2.0 templates
+   and the frozen 23andMe_V4_v3/FTDNA_V2_v3 deltas.
 """
 
 
@@ -161,6 +172,8 @@ def _copy(
             if not (member.isfile() or member.isdir()):
                 raise SystemExit(f"Unexpected bootstrap member: {member.name}")
             if member.name in added_map:
+                if member.name in REPLACED_TEMPLATES:
+                    continue
                 raise SystemExit(
                     f"Bootstrap template collides with existing member: {member.name}"
                 )
