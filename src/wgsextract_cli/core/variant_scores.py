@@ -153,13 +153,11 @@ ANNOTATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )  # fmt: skip
 NAMES = frozenset(name for name, _ in ANNOTATIONS)
 
-# The numeric scores of our annotators' INFO fields, in column order (with
-# alphamissense_class and spliceai_max between them): each one's fastVEP field
-# and key, its CSQ fields (below), and whether any of an allele's CSQ entries
-# may give it (it describes the variant, not the transcript).
+# Numeric INFO scores other than AlphaMissense and SpliceAI: each one's
+# fastVEP field and key, its CSQ fields (below), and whether another CSQ
+# entry for the same allele can supply it.
 _NUMERIC = (
     (REVEL, (FV_REVEL, "SCORE"), "revel", False),
-    (AM_SCORE, (FV_AM, "PATHOGENICITY"), "am", False),
     (CADD_RAW, None, "cadd_raw", True),
     (CADD_PHRED, None, "cadd_phred", True),
     (PHYLOP, (FV_PHYLOP, "SCORE"), "phylop", True),
@@ -266,8 +264,8 @@ def _csq_value(
     *,
     any_entry: bool = False,
 ) -> float | None:
-    """The first of ``names`` the chosen entry scores; with ``any_entry``,
-    else the first any of the allele's entries scores."""
+    """Try score fields in ``names`` order. For each, check the chosen entry
+    first, then the allele's other entries if ``any_entry`` is true."""
     for name in names:
         for entry in (csq, *(entries if any_entry else ())):
             if entry and (value := _highest(entry.get(name))) is not None:
@@ -298,10 +296,23 @@ def _csq_am_class(csq: Mapping[str, str] | None) -> str | None:
 
 
 def _most_pathogenic(classes: Iterable[str | None]) -> str | None:
-    """The most pathogenic AlphaMissense class of several (one per entry or
-    transcript), to agree with the highest score; else an unknown class."""
+    """The most pathogenic known AlphaMissense class, else the first class."""
     found = [c for c in classes if c]
     return next((c for c in _AM_RANK if c in found), found[0] if found else None)
+
+
+def _fastvep_am(entries: Entries) -> tuple[float | None, str | None]:
+    """Use the highest-scoring entry for both AlphaMissense values."""
+    highest: float | None = None
+    classification = None
+    for entry in entries:
+        score = _highest(entry.get("PATHOGENICITY"))
+        if score is not None and (highest is None or score > highest):
+            highest = score
+            classification = _text(entry.get("CLASS"))
+    if classification is None:
+        classification = _most_pathogenic(_text(e.get("CLASS")) for e in entries)
+    return highest, classification
 
 
 def _spliceai_max(entries: Entries, gene: str | None) -> float | None:
@@ -374,12 +385,17 @@ def allele_scores(
         if value is None and names[key]:
             value = _csq_value(csq, csq_entries, names[key], any_entry=any_entry)
         numeric.append(value)
-    revel, am_score, cadd_raw, cadd_phred, phylop, gerp = numeric
+    revel, cadd_raw, cadd_phred, phylop, gerp = numeric
+    am_score = _number(_info_value(info, numbers, AM_SCORE, alt_index, variant_alts))
     am_class = _info_value(info, numbers, AM_CLASS, alt_index, variant_alts)
-    if am_class is None:
-        am_class = _most_pathogenic(
-            _text(e.get("CLASS")) for e in pipe_entries(FV_AM) if FV_AM in info
-        )
+    if FV_AM in info and (am_score is None or am_class is None):
+        fv_score, fv_class = _fastvep_am(pipe_entries(FV_AM))
+        if am_score is None:
+            am_score = fv_score
+        if am_class is None:
+            am_class = fv_class
+    if am_score is None and names["am"]:
+        am_score = _csq_value(csq, csq_entries, names["am"])
     if am_class is None and fields.am_class:
         am_class = _csq_am_class(csq)
     spliceai = _spliceai_max(pipe_entries(SPLICEAI), gene) if SPLICEAI in info else None

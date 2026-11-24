@@ -168,6 +168,25 @@ def test_1284_fastvep_projections_give_each_alt_its_own_scores():
     }
 
 
+@pytest.mark.parametrize(
+    ("highest_class", "expected_class"),
+    [("ambiguous", "ambiguous"), (".", "likely_pathogenic")],
+)
+def test_1284_fastvep_alphamissense_keeps_the_highest_scoring_entrys_class(
+    highest_class, expected_class
+):
+    """A lower-scoring entry supplies the class only if the winner lacks one."""
+    info = (
+        f"FV_ALPHAMISSENSE=G|0.4|likely_pathogenic,G|0.8|{highest_class},"
+        "T|0.99|likely_benign"
+    )
+    record = _record("chr1", "300", ".", "C", "T,G", "50", "PASS", info, "GT", "1/2")
+    assert _scores(_rows(FASTVEP_HEADER, [record])["300", "G"]) == {
+        "alphamissense_score": 0.8,
+        "alphamissense_class": expected_class,
+    }
+
+
 def test_1284_per_site_scores_of_a_multiallelic_record():
     """A Number=1 score can't belong to two ALTs, except conservation, which
     is the position's. A gVCF's <NON_REF> isn't a second ALT."""

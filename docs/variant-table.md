@@ -170,7 +170,9 @@ wgsextract vcf chain-annotate --vcf-input sample.vcf.gz \
   `am_class`, `CADD_RAW` / `CADD_PHRED`, `SpliceAI`, `PHYLOP` and `GERP` in
   INFO. It then tries fastVEP's `FV_REVEL`, `FV_ALPHAMISSENSE`, `FV_PHYLOP`
   and `FV_GERP`, then VEP's CSQ plugin fields and dbNSFP fields. SIFT and
-  PolyPhen come from VEP CSQ first, then fastVEP's `FV_DBNSFP`.
+  PolyPhen come from VEP CSQ first, then fastVEP's `FV_DBNSFP`. When fastVEP
+  has several AlphaMissense entries for one ALT, the highest-scoring entry
+  supplies both the score and, if present, its class.
 - **Transcript choice.** REVEL, AlphaMissense, SIFT and PolyPhen from CSQ
   use the chosen transcript. CADD, PhyloP and GERP can fall back to another
   CSQ entry for the same allele. When a numeric CSQ field lists several
