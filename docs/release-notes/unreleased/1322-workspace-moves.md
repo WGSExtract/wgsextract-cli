@@ -1,8 +1,5 @@
-## Desktop app
+## Fixes
 
-- Moving the users workspace or a folder named in Settings now asks you to
-  retry if a command or save is still running, instead of risking lost changes
-  or output in the old folder. A refused move does not interrupt the steps
-  of an already-running CLI workflow. The CLI also follows an old `--config` path
-  when the app moved that file and the old path no longer exists.
+- The CLI follows an old `--config` path when the desktop app moved the file
+  and the old path no longer exists.
   ([#1322, workspace move coordination](https://github.com/WGSExtract/wgsextract-cli/issues/1322))

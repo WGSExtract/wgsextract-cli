@@ -92,6 +92,9 @@ from anywhere. The root's pre-commit hooks lint `gui/` changes with
 ships in the same `vX.Y.Z` release as the CLI it bundles (see
 `docs/releasing.md` at the root).
 
+Record user-facing app changes in `docs/changelog/unreleased/` fragments, not
+in `docs/CHANGELOG.md`. The root release tool assembles the changelog.
+
 Run `make setup` to prepare the development tools.
 
 ## Build and run

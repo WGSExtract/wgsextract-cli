@@ -9,10 +9,3 @@
 - `ref gene-map` also installs UCSC refGene's RefSeq transcript and exon
   models as an indexed `transcripts_<build>.bed.gz`; run it again to add them
   to an existing library ([#1166](https://github.com/WGSExtract/wgsextract-cli/issues/1166)).
-
-## Desktop app
-
-- A **Gene page**: type a gene symbol to see its transcripts and exons, your
-  variants in it with filters and TSV export, and its exon coverage, all read
-  offline, then open it in the genome viewer. The viewer shows the installed
-  RefSeq transcripts as a track ([#1166, offline gene page](https://github.com/WGSExtract/wgsextract-cli/issues/1166)).
