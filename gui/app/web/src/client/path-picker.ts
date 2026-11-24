@@ -14,9 +14,16 @@ export async function chooseLocalPath(spec: PathPickerSpec, currentValue: unknow
                 kind: pathPickerKind(spec),
                 title: pathPickerTitle(spec),
                 defaultPath: pathPickerDefaultPath(spec, currentValue, state),
+                ...(spec?.multiple ? { multiple: true } : {}),
             },
         });
-        return result.cancelled ? null : result.path ?? null;
+        if (result.cancelled) {
+            return null;
+        }
+        if (Array.isArray(result.paths) && result.paths.length > 0) {
+            return result.paths.join("\n");
+        }
+        return result.path ?? null;
     }
     catch (error) {
         appendTerminal("error", pathPickerTitle(spec), errorMessage(error));
