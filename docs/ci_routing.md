@@ -1033,11 +1033,12 @@ It waits for GitHub to compute an auto-merging PR's mergeability after a push
 and leaves it alone if that stays unknown. `--dry-run` reports without changing anything.
 
 Routing (`changes`) also runs `python3 scripts/release_notes.py check --base`,
-the stdlib-only release-note fragment check (#1281), so a PR adding only a
-fragment under `docs/release-notes/unreleased/` needs no other runner. With the
-base (a PR merge commit's first parent, or the queue group's base), it also
-fails a release, a change that adds a `vX.Y.Z.md` or bumps the version, while
-fragments remain, so none is left out of that release or announced twice.
+the stdlib-only fragment check for CLI release notes and the desktop changelog,
+so a PR adding only a fragment under `docs/release-notes/unreleased/` needs no
+other runner. With the base (a PR merge commit's first parent, or the queue
+group's base), it also fails a release (a change that adds a `vX.Y.Z.md` or
+bumps the version) if fragments remain or the desktop changelog is missing
+the release's dated entry.
 
 ### Ready admission
 

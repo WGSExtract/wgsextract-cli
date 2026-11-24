@@ -17,7 +17,6 @@ GUI_FILES = [
     "gui/examples/WGSExtract/manifest.json",
     "gui/app/tests/conformance.test.mjs",
     "gui/tools/packaging/tests/test_embedded_branding.py",
-    "gui/docs/CHANGELOG.md",
     "gui/scripts/build_site.py",
     *(
         f"gui/scripts/{path.name}"
@@ -44,6 +43,7 @@ def bump(tmp_path, monkeypatch):
 
 
 def test_1537_bumps_release_versions_without_an_openapi_checkout_file(bump, tmp_path):
+    # #1537: an installer-pin bump doesn't need or edit the release history.
     assert bump.main(["bump", "9.8.7"]) == 0
     for name in FILES:
         assert '"9.8.7"' in (tmp_path / name).read_text()

@@ -20,7 +20,7 @@ it.
    `src/wgsextract_cli/__init__.py`, and points the app's bundle at the same
    release with `gui/scripts/bump-wgsextract-cli.py vX.Y.Z` (the tag file
    `gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt`, the bundle
-   version that names the installers, and an entry in `gui/docs/CHANGELOG.md`).
+   version that names the installers).
    The release workflow checks all four versions against the tag. It also
    moves the [CLI site](https://wgsextract.github.io/wgsextract-cli/)'s
    current release (`site_src/index.md` and `install.md`) to the new version,
@@ -37,23 +37,27 @@ it.
 
 2. **Write the release notes** in `docs/release-notes/vX.Y.Z.md`, in the same
    PR: what users get, under `## Changed`, `## New` and `## Fixes`, plus
-   `## Deprecated` when commands are deprecated, and the app's changes
-   (`gui/docs/CHANGELOG.md`'s Unreleased section), ending with a compare
-   link (`.../compare/vPREVIOUS...vX.Y.Z`). PRs record their entries as they
-   land, each in its own fragment under `docs/release-notes/unreleased/`
-   (deprecations must be announced there; see its README). Start with
+   `## Deprecated` when commands are deprecated, and `## Desktop app` for
+   app changes, ending with a compare link (`.../compare/vPREVIOUS...vX.Y.Z`).
+   PRs record CLI changes under `docs/release-notes/unreleased/` (deprecations
+   must be announced there) and app changes under
+   [`gui/docs/changelog/unreleased/`](../gui/docs/changelog/unreleased/README.md).
+   Assemble both sets of fragments with
 
    ```bash
    python scripts/release_notes.py assemble X.Y.Z
    ```
 
    which writes the notes file from the fragments, grouped by section, with
-   the title and a compare link from the newest older release tag, and deletes
-   the fragments. Then add a short summary under the title and the app's
-   changes under `## Desktop app`. If a fragment lands on main before the
-   release PR merges, the PR's checks fail: move its entries into the notes
-   file and delete it; a version bump that leaves fragments fails the same
-   way. The deprecated commands are also listed in
+   the title and a compare link from the newest older release tag. It also
+   adds a dated release to `gui/docs/CHANGELOG.md`, records the new CLI
+   installer target there, and deletes the fragments. Then add a short
+   summary under the title. If a fragment lands on main before the release
+   PR merges, the PR's checks fail: move its entries into the notes file
+   (and the dated changelog entry for a GUI fragment) and delete it. A
+   version bump that leaves fragments or has no dated desktop changelog
+   entry fails the same way. Run assembly even for a release with no fragments.
+   The deprecated commands are also listed in
    `DEPRECATIONS` in
    `src/wgsextract_cli/commands/registry.py`. A command deprecated in one minor
    release is removed in the next, so a release that reaches a deprecation's
