@@ -59,11 +59,8 @@ def _pack(data: bytes, alphabet: bytes) -> bytes:
     )
     delta = np.diff(positions, prepend=0).astype("<u4")
     escaped = np.frombuffer(data, dtype=np.uint8)[positions]
-    return (
-        _PACK.pack(1, len(data))
-        + packed.tobytes()
-        + delta.tobytes()
-        + escaped.tobytes()
+    return b"".join(
+        (_PACK.pack(1, len(data)), packed.tobytes(), delta.tobytes(), escaped.tobytes())
     )
 
 
@@ -93,7 +90,7 @@ def _unpack(data: bytes, alphabet: bytes) -> bytes:
         restored[positions] = np.frombuffer(
             data, dtype=np.uint8, offset=len(data) - size_escapes
         )
-    return restored.tobytes()
+    return bytes(restored.tobytes())
 
 
 class StreamCodec:
