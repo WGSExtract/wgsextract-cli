@@ -347,9 +347,9 @@ def _mito_notes(section: ReportMitochondrialDocument) -> list[str]:
     notes = []
     if technical := section.get("technical"):
         share = technical["min_depth_fraction"]
+        caller = f"{technical['caller']} {technical['version'] or ''}".strip()
         notes.append(
-            f"Called by {technical['caller']} {technical['version'] or ''} "
-            f"({technical['settings']}) against "
+            f"Called by {caller} ({technical['settings']}) against "
             f"{technical['mt_reference'] or 'an unconfirmed mtDNA reference'}"
             + (
                 f" (contig {technical['contig']}, MD5 {technical['reference_md5']})"

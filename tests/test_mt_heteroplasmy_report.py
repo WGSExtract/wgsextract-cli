@@ -348,6 +348,27 @@ def test_1175_nonfinite_vcf_numbers_fall_back_to_the_read_table(tmp_path):
     json.dumps(report, allow_nan=False)
 
 
+@pytest.mark.parametrize("depth", ["10.9", "-1"])
+def test_1175_invalid_vcf_depth_does_not_override_valid_read_depth(tmp_path, depth):
+    _mutserve_run(
+        tmp_path,
+        calls=(f"chrM\t1555\t.\tA\tG\t.\tPASS\t.\tGT:AF:DP\t0/1:0.3:{depth}\n",),
+        raw=(_raw_row(1555, "A", 500, 500, "G", 0.3),),
+    )
+    site = _sites(pr.build_report(tmp_path))["m.1555A>G"]
+    assert (site["state"], site["level"], site["depth"]) == ("heteroplasmic", 0.3, 1000)
+
+
+def test_1175_alt_not_in_genotype_remains_uncalled(tmp_path):
+    _mutserve_run(
+        tmp_path,
+        calls=("chrM\t1555\t.\tA\tC,G\t.\tPASS\t.\tGT:AF:DP\t0/1:0.7:1000\n",),
+        raw=(_raw_row(1555, "A", 500, 500, "G", 0.3),),
+    )
+    site = _sites(pr.build_report(tmp_path))["m.1555A>G"]
+    assert (site["state"], site["reasons"]) == ("weak_evidence", ["mt_not_called"])
+
+
 @pytest.mark.parametrize(
     ("alts", "genotype", "af"),
     [("G", "1", "1.01"), ("C,G", "2/1", "1.01,0")],

@@ -150,14 +150,12 @@ def _opener(path: Path) -> Any:
     return gzip.open if path.name.endswith(".gz") else open
 
 
-def _levels(alts: int, genotype: str, af: str) -> dict[int, float | None]:
+def _levels(alts: int, called: list[int], af: str) -> dict[int, float | None]:
     """Each ALT's level (by allele index). With several ALTs, mutserve gives
     one AF per allele in the genotype's order (``2/1:0.7,0.3``: ALT 2 at 70%);
     a level it can't pair, as in a comma-decimal locale, is unknown."""
     if alts == 1:
         return {1: _fraction(af)}
-    called = [int(a) for a in genotype.replace("|", "/").split("/") if a.isdigit()]
-    called = [a for a in called if a > 0]
     parts = af.split(",")
     if len(parts) != len(called):
         return {}
@@ -175,8 +173,15 @@ def read_calls(path: Path) -> dict[int, list[Call]]:
             values = dict(zip(fields[8].split(":"), fields[9].split(":"), strict=False))
             alts = fields[4].split(",")
             genotype = values.get("GT", "")
-            levels = _levels(len(alts), genotype, values.get("AF", ""))
+            called = [
+                int(a)
+                for a in genotype.replace("|", "/").split("/")
+                if a.isascii() and a.isdigit() and int(a) > 0
+            ]
+            levels = _levels(len(alts), called, values.get("AF", ""))
             for index, alt in enumerate(alts, 1):
+                if index not in called:
+                    continue
                 calls.setdefault(int(fields[1]), []).append(
                     Call(
                         ref=fields[3],
@@ -193,7 +198,7 @@ def read_calls(path: Path) -> dict[int, list[Call]]:
 
 def _depth(row: Mapping[str, str | None], column: str) -> int:
     depth = _whole(row.get(column))
-    if depth is None or depth < 0:
+    if depth is None:
         raise ValueError(f"position {row.get('POS')}: no {column}")
     return depth
 
@@ -281,7 +286,11 @@ def _fraction(value: object) -> float | None:
 
 def _whole(value: object) -> int | None:
     number = _number(value)
-    return int(number) if number is not None else None
+    return (
+        int(number)
+        if number is not None and number >= 0 and number.is_integer()
+        else None
+    )
 
 
 # --- assessing a reviewed variant -----------------------------------------------
