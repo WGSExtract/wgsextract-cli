@@ -5,7 +5,19 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    _SAM,
+    MINUTES,
+    SECONDS,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "repair ftdna-bam": _n(MINUTES, *_SAM, optional="bcftools"),
+    "repair ftdna-vcf": _n(SECONDS, optional="bcftools", scale=""),
+}
+
 
 repair_bam = command_handler("wgsextract_cli.commands.repair", "repair_bam")
 repair_vcf = command_handler("wgsextract_cli.commands.repair", "repair_vcf")

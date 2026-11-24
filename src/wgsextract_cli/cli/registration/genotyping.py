@@ -12,7 +12,28 @@ from wgsextract_cli.api.genotyping import (
     TypingTargetCnvParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    MINUTES,
+    SECONDS,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),
+    "typing paraphase": _n(MINUTES, "samtools", optional="paraphase minimap2 bcftools"),
+    "typing smn": _n(MINUTES, "smn_caller.py", "samtools", optional="bcftools"),
+    "typing target-cnv": _n(SECONDS, "samtools", optional="bcftools curl"),
+    "typing hla": _n(
+        MINUTES, "run-t1k", "samtools", "t1k-build.pl", optional="bcftools"
+    ),
+    "typing str": _n(
+        MINUTES,
+        "samtools",
+        optional="ExpansionHunter LongTR strkit bcftools",
+    ),
+}
+
 
 cmd_cyp2d6 = command_handler("wgsextract_cli.commands.genotyping.cyp2d6", "cmd_cyp2d6")
 cmd_hla = command_handler("wgsextract_cli.commands.genotyping.hla", "cmd_hla")

@@ -5,7 +5,17 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.align import BasecallParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    HOURS,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "basecall": _n(
+        HOURS, "dorado", "samtools", scale=" for a MinION flow cell on a GPU"
+    ),
+}
 
 
 def register(

@@ -5,7 +5,16 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.panel import PanelBedParams, PanelCheckParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    INSTANT,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "panel bed": _n(INSTANT),
+    "panel check": _n(INSTANT),
+}
 
 
 def register(

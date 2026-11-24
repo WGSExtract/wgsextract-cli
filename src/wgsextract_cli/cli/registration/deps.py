@@ -12,7 +12,20 @@ from wgsextract_cli.api.deps import (
     DepsUninstallParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    DOWNLOAD,
+    SECONDS,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "deps check": _n(SECONDS, scale=""),
+    "deps list": _n(SECONDS, scale=""),
+    "deps ready": _n(SECONDS, scale=""),
+    "deps install": _n(DOWNLOAD, optional="java java17"),
+    "deps uninstall": _n(SECONDS, scale=""),
+}
 
 
 def register(

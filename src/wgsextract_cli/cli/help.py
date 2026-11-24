@@ -220,7 +220,9 @@ def apply_help_metadata(parser: argparse.ArgumentParser, prefix: str = "") -> No
                 else first_sentence(plain_help(choice.help))
             )
             subparser.command_help = COMMAND_HELP.get(path)
-            subparser.command_needs = COMMAND_NEEDS.get(path)
+            # Lazy root placeholders have no handler. Don't import their groups.
+            if "func" in subparser._defaults:
+                subparser.command_needs = COMMAND_NEEDS.get(path)
             subparser.deprecation = DEPRECATED.get(path)
             subparser.advanced_actions = advanced_actions(subparser, path)
             tiers[choice.dest] = command_tier(path)
@@ -495,8 +497,8 @@ def index_json(
                 examples=list(entry.help.examples) if entry.help else [],
                 outputs=entry.help.outputs if entry.help else None,
             )
-        needs = COMMAND_NEEDS.get(entry.path)
-        if needs is not None and not compact:
+        needs = None if compact else COMMAND_NEEDS.get(entry.path)
+        if needs is not None:
             command["tools"] = list(needs.tools)
             command["optional_tools"] = list(needs.optional)
             command["runtime"] = needs.runtime

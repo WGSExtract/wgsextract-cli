@@ -8,7 +8,17 @@ from wgsextract_cli.api.methylation import (
     MethylationRegionsParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    HOURS,
+    MINUTES,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "methylation pileup": _n(HOURS, "modkit", "samtools", "tabix", optional="bcftools"),
+    "methylation regions": _n(MINUTES, "samtools", optional="modkit curl"),
+}
 
 
 def register(

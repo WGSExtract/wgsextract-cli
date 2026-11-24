@@ -188,6 +188,8 @@ When you add or rename a command:
 - Register its parser in `src/wgsextract_cli/cli/registration/`, keeping
   execution imports inside handlers. `cli/_lazy.py` defers loading command
   implementations until execution; help must not import scientific libraries.
+  Add its required/optional external tools and runtime to `NEEDS` in the
+  same registration module.
 - Run `pixi run gen-command-docs` to regenerate `docs/commands.md` and the
   command cards on the site's CLI page (`site_src/cli.md`), plus the bundled
   `assets/cli/help-index.json` used for fast, configuration-independent discovery.

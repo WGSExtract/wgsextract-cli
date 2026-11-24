@@ -10,7 +10,22 @@ from wgsextract_cli.api.vep import (
     VepVerifyParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    DOWNLOAD,
+    MINUTES,
+    SECONDS,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    # Minutes with vep-rs, the default; hours with Ensembl VEP.
+    "vep run": _n(MINUTES, "bcftools", "tabix", "vep-rs", optional="samtools vep"),
+    "vep download": _n(DOWNLOAD, "samtools", "vep-cache-builder", optional="curl tar"),
+    "vep verify": _n(SECONDS, scale=""),
+    "vep delete": _n(SECONDS, scale=""),
+}
+
 
 cli_vep_delete = command_handler("wgsextract_cli.commands.vep", "cli_vep_delete")
 cli_vep_download = command_handler("wgsextract_cli.commands.vep", "cli_vep_download")

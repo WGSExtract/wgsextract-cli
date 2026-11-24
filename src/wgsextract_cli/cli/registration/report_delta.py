@@ -5,6 +5,15 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.report import ReportDeltaParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    INSTANT,
+    _n,
+)
+
+NEEDS = {
+    "report-delta": _n(INSTANT),
+}
+
 
 HELP = (
     "Compare two runs' result manifests: findings added, removed or "

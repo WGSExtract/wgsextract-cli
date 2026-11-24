@@ -5,7 +5,20 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.align import AlignParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    _SAM,
+    HOURS,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "align": _n(
+        HOURS,
+        *_SAM,
+        optional="bcftools bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster",
+    ),
+}
 
 
 def register(

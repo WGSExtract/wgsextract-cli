@@ -16,7 +16,30 @@ from wgsextract_cli.api.extract import (
     YMtExtractParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    _CALL,
+    _SAM,
+    HOURS,
+    MINUTES,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "extract mito-fasta": _n(MINUTES, *_CALL, optional="sambamba"),
+    "extract mito-vcf": _n(MINUTES, *_CALL, optional="sambamba"),
+    "extract mt-bam": _n(MINUTES, *_SAM, optional="bcftools sambamba"),
+    "extract ydna-bam": _n(MINUTES, *_SAM, optional="bcftools sambamba"),
+    "extract ydna-vcf": _n(
+        MINUTES, "bcftools", "bgzip", "samtools", "tabix", optional="sambamba"
+    ),
+    "extract y-mt-extract": _n(MINUTES, *_SAM, optional="bcftools sambamba"),
+    "extract unmapped": _n(MINUTES, *_SAM, optional="bcftools"),
+    "extract custom": _n(MINUTES, *_SAM, optional="bcftools sambamba"),
+    "extract region": _n(HOURS, *_SAM, optional="bcftools bgzip tabix"),
+    "extract bam-subset": _n(MINUTES, *_SAM, optional="bcftools"),
+}
+
 
 cmd_bam_subset = command_handler("wgsextract_cli.commands.extract", "cmd_bam_subset")
 cmd_custom = command_handler("wgsextract_cli.commands.extract", "cmd_custom")

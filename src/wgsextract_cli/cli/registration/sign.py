@@ -5,7 +5,16 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.sign import SignCreateParams, SignVerifyParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    MINUTES,
+    _n,
+)
 from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "sign create": _n(MINUTES, optional="ssh-keygen", scale=" for genome-sized files"),
+    "sign verify": _n(MINUTES, optional="ssh-keygen", scale=" for genome-sized files"),
+}
 
 
 def register(
