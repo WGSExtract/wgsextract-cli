@@ -784,6 +784,7 @@ if [ -e "$APP_DIR" ] || [ -L "$APP_DIR" ]; then
 fi
 mv -- "$SOURCE_DIR" "$APP_DIR"
 mkdir -p "$TMP_DIR" "$PIXI_CACHE_DIR"
+: > "$TMP_DIR/.managed-help-cache"
 
 if [ "$PIXI_ENV_DIR" != "$DEFAULT_PIXI_ENV_DIR" ]; then
     # Pixi reads the environment location from project config, not from env vars.

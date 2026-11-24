@@ -112,13 +112,21 @@ def load_index() -> dict[str, Any]:
         bundled_key = ""
     # A wheel's metadata and its code are installed together. An editable
     # install from an unpacked sdist must still detect later source edits.
-    editable = (PACKAGE_ROOT.parent.parent / "pyproject.toml").is_file()
+    root = PACKAGE_ROOT.parent.parent
+    editable = (root / "pyproject.toml").is_file()
     if not editable and bundled_key.startswith(f"{__version__}-"):
         bundled = read_index(PACKAGE_ROOT / PACKAGE_INDEX, bundled_key)
         if bundled is not None:
             return bundled
     key = registry_key()
-    destination = Path(user_cache_dir("wgsextract")) / "cli" / "help-index.json"
+    # The installer marks a cache directory it can remove on uninstall.
+    managed_install = (root / "tmp" / ".managed-help-cache").is_file()
+    cache_root = (
+        root / "tmp" / "cache"
+        if managed_install
+        else Path(user_cache_dir("wgsextract"))
+    )
+    destination = cache_root / "cli" / "help-index.json"
     cached = read_index(destination, key)
     if cached is not None:
         return cached

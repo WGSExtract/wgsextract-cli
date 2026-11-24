@@ -193,8 +193,10 @@ When you add or rename a command:
 
 The compact help index is not committed. `just regen` and developer setup warm
 it, and the first `help --all --json` after `pixi install` also builds it if
-needed. The CLI caches it in the platform's per-user cache directory. The
-cache expires when the package version or parser and registry sources change.
+needed. Managed installs keep it in the installation's writable cache so
+uninstall removes it; other installs use the platform's per-user cache.
+The cache expires when the package version or parser and registry sources
+change.
 
 ### Benchmark fixture ploidy
 
