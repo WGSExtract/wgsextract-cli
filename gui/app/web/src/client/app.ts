@@ -29,6 +29,8 @@ const app: HTMLElement = (() => {
 let bindEventsModulePromise: Promise<typeof import("./events.js")> | null = null;
 let renderSerial = 0;
 let autoRunSetupTriggered = false;
+// Declared before the top-level await below: bootstrap() reaches installDevReload().
+let devReloadInstalled = false;
 setRender(render);
 window.addEventListener("resize", () => revealPathInputEnds(app));
 await bootstrap();
@@ -249,7 +251,6 @@ function renderError(error: unknown) {
     app.dataset.state = "error";
     app.innerHTML = `<main class="loading-screen"><h1>${escapeHTML(state.labels.loadWebUITitle ?? "Could not load Web UI")}</h1><p class="inline-error">${escapeHTML(message)}</p></main>`;
 }
-let devReloadInstalled = false;
 function installDevReload() {
     if (devReloadInstalled || typeof EventSource === "undefined") {
         return;

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { allControls, configEditorControls, persistsFieldValue } from "../../../shared/rendering.js";
+import { allControls, configEditorControls, firstPathValue, persistsFieldValue, splitPathList } from "../../../shared/rendering.js";
 import type { BundleManifest, ConfigSetting, ControlSpec, StringMap, ValueMap } from "../../../shared/types.js";
 import { writeFileAtomically } from "./atomic-file.js";
 import type { BundleState } from "./bundle-state.js";
@@ -75,6 +75,16 @@ export function initialFieldValues(manifest: BundleManifest, configValues: Value
                 values[settingKey(setting)] = value;
             if (Object.hasOwn(values, setting.id))
                 values[setting.id] = value;
+        }
+    }
+    // Preserve persisted multi-file lists when config.toml holds their matching primary (first) file.
+    for (const control of allControls(manifest).filter((candidate) => candidate.kind === "path" && candidate.multiple === true)) {
+        const persisted = bundleState.fieldValues?.[control.id];
+        if (splitPathList(persisted).length > 1) {
+            const current = String(values[control.id] ?? "").trim();
+            if (!current || firstPathValue(persisted) === current) {
+                values[control.id] = persisted;
+            }
         }
     }
     return values;

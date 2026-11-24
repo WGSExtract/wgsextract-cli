@@ -13,6 +13,7 @@ export interface CommandContext {
     rowValues?: ValueMap;
     fileStateValues?: ValueMap;
     placeholderLabels?: Labels;
+    multiPathControls?: string[];
     bundleRootPath?: string;
     usersWorkspacePath?: string;
     homePath?: string;
@@ -158,6 +159,7 @@ export interface ConfigSaveResponse {
 export interface PathPickResponse {
     cancelled?: boolean;
     path?: string;
+    paths?: string[];
 }
 
 export interface FileStateResponse {

@@ -1,5 +1,5 @@
 import type { Labels } from "../../../shared/types.js";
-import type { LibraryViewerResult } from "./genome-viewer-library.js";
+import type { LibraryViewerResult, RsidLookupResult } from "./genome-viewer-library.js";
 import { api } from "./api.js";
 import { isViewerBuild } from "../../../shared/viewer-rows.js";
 import type { RemoteViewerResult } from "./genome-viewer-remote.js";
@@ -123,6 +123,19 @@ export function openGenomeViewer(locale: string, labels: Labels, opener: HTMLEle
                     frame.contentWindow?.postMessage({ type: "genomeViewerLibrary", requestID: event.data.requestID, result }, location.origin);
                 });
         }
+        if (event.origin === location.origin && event.source === frame.contentWindow && event.data?.type === "genomeViewerLookupRsid"
+            && typeof event.data.requestID === "string" && typeof event.data.id === "string" && typeof event.data.rsid === "string") {
+            const send = (result: RsidLookupResult) => {
+                if (!closed) frame.contentWindow?.postMessage({ type: "genomeViewerRsid", requestID: event.data.requestID, result }, location.origin);
+            };
+            if (!sessions.has(event.data.id)) {
+                send({ problem: "rsidSearchUnavailable" });
+                return;
+            }
+            void api<RsidLookupResult>("/api/viewer/rsid", { body: { id: event.data.id, rsid: event.data.rsid } })
+                .catch((): RsidLookupResult => ({ problem: "rsidIndexInvalid" }))
+                .then(send);
+        }
     };
     window.addEventListener("message", onMessage);
     back.addEventListener("click", () => {
@@ -156,6 +169,9 @@ function openerSelector(opener: HTMLElement): string {
     }
     if (opener.dataset.viewReads != null) {
         return `[data-view-reads="${CSS.escape(opener.dataset.viewReads)}"]`;
+    }
+    if (opener.dataset.actionId != null) {
+        return `[data-action-id="${CSS.escape(opener.dataset.actionId)}"]`;
     }
     return "[data-genome-viewer-open]";
 }

@@ -830,7 +830,7 @@ reference when there is one.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `coverage` | `float` | `1.0` | `--coverage` | Coverage depth (e.g. 30.0) |
-| `build` | `str` | `'hg38'` | `--build` | Human genome build naming convention. One of: `grch38`, `hg38`, `hs38`, `hs38d1`, `hs38d1v0`, `hs38dh`, `GRCh38`, `hs38DH`, `grch37`, `hg19`, `hg37`, `hs37`, `hs37d5`, `GRCh37`, `chm13`, `chm13v2`, `chm13v2.0`, `t2t`, `t2tv2`, `t2tv2.0`, `t2tv20`, `T2Tv20`, `T2Tv2`, `T2Tv2.0`, `CHM13`, `CHM13v2.0` |
+| `build` | `str` | `'hg38'` | `--build` | Human genome build naming convention. One of: `38`, `grch38`, `hg38`, `hs38`, `hs38d1`, `hs38d1v0`, `hs38dh`, `GRCh38`, `hs38DH`, `37`, `grch37`, `hg19`, `hg37`, `hs37`, `hs37d5`, `GRCh37`, `chm13`, `chm13v2`, `chm13v2.0`, `t2t`, `t2tv2`, `t2tv2.0`, `t2tv20`, `T2Tv20`, `T2Tv2`, `T2Tv2.0`, `CHM13`, `CHM13v2.0` |
 | `types` | `str` | `'cram'` | `--type` | Comma-separated list of types to generate (vcf, cram, bam, fastq, all). Default: cram |
 | `full_size` | `bool` | `False` | `--full-size` | Use real human chromosome lengths. The default scaled mode uses shorter chromosomes. |
 | `legacy_bam` | `bool` | `False` | `--legacy-bam` | Use the older scaled fake BAM generator. Slower and unavailable with --full-size, but includes randomized placement and indel CIGARs. |
@@ -897,7 +897,7 @@ workspace.
 | `platform` | `str \| None` | `None` | `--platform` | Sequencing platform; selects platform-specific alignment tooling (default: detected from read groups or read names, else illumina). One of: `illumina`, `dnbseq`, `ultima`, `pacbio`, `hifi`, `clr`, `ont`, `nanopore` |
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner to use. Auto uses bwa-mem2 for short reads when the reference has its index (see `ref index`), else bwa; for long reads pbmm2 for PacBio when installed, otherwise minimap2. bwa-mem3 (wgse-bwa-mem3 on Apple Silicon and Linux x86-64, else bwa-mem3 from PATH or its Pixi environment) writes bwa's exact records faster, from bwa-mem2's index. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 on Linux x86-64; wgse-minimap2 on Linux and Windows x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Windows CUDA is automatic within RAM and commit limits; false forces CPU. Elsewhere, true can override RAM limits. See the configuration guide. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
 | `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
@@ -937,7 +937,7 @@ settings and tools are unchanged.
 | `r2` | `Path \| None` | `None` | `--r2` | Read 2 FASTQ, with r1. |
 | `aligner` | `str` | `'auto'` | `--aligner` | Aligner: auto, bwa, bwa-mem2, bwa-mem3, minimap2 or pbmm2, chosen as for align. One of: `auto`, `bwa`, `bwa-mem2`, `bwa-mem3`, `minimap2`, `pbmm2` |
 | `fast` | `bool` | `False` | `--fast` | Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records. |
-| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 and wgse-minimap2 on Linux x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
+| `native_aligners` | `str \| None` | `None` (config `native_aligners`) | `--native-aligners` | auto (the default, or config native_aligners) uses WGS Extract's aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; wgse-bwa-mem3 on Linux x86-64; wgse-minimap2 on Linux and Windows x86-64) when installed on PATH (or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 Bioconda's bwa-mem3 in place of bwa or bwa-mem2; off never does. One of: `auto`, `off` |
 | `prefer_native_gpu` | `bool \| None` | `None` (config `prefer_native_gpu`) | `--prefer-native-gpu` | Windows CUDA is automatic within RAM and commit limits; false forces CPU. Elsewhere, true can override RAM limits. See the configuration guide. |
 | `dense_suffix_array` | `bool \| None` | `None` (config `dense_suffix_array`) | `--dense-suffix-array` | Opt in to wgse-bwa's dense suffix-array file (``ref dense-sa``): the same alignments, faster, with the file held in RAM. None uses config dense_suffix_array, else off. Used only when wgse-bwa aligns; otherwise (another aligner, no file, or no wgse-bwa that reads it) the run warns (dense_suffix_array_unused). |
 | `gpu` | `bool` | `False` | `--gpu` | NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags. |
@@ -1725,6 +1725,58 @@ the output doesn't depend on how many.
 | `min_gp` | `float \| None` | `None` | `--min-gp` | Minimum max GP (default: GLIMPSE2 0.9; Beagle 0.95). |
 | `min_info` | `float \| None` | `None` | `--min-info` | Opt-in INFO/DR2 site filter; meaningful only for multi-sample cohorts. |
 
+### `api.vcf.info(VcfInfoParams)`
+
+CLI: `wgsextract vcf info`.
+
+Inspect a VCF/gVCF/BCF header, reference model/build, samples, and variant counts.
+
+`VcfInfoParams`: Inspect a VCF, gVCF, or BCF file: reference build/model, samples, counts, and format.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.vcf.variantqc(VcfVariantQcParams)`
+
+CLI: `wgsextract vcf variantqc`.
+
+Run DISCVRSeq VariantQC; output role `variantqc_report`.
+
+`VcfVariantQcParams`: Run DISCVRSeq VariantQC to write an interactive HTML VCF quality report.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `extra_vcf` | `tuple[Path, ...] \| None` | `None` | `--extra-vcf` | Additional VCF file(s) to analyze together in the same VariantQC report (repeat flag for multiple). |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
+| `pedigree` | `Path \| None` | `None` | `--pedigree` | Optional pedigree file (.ped) for sex- and family-aware VariantQC metrics. |
+| `discvrseq_jar` | `Path \| None` | `None` (config `discvrseq_jar`) | `--discvrseq-jar` | Path to DISCVRseq.jar (default: config discvrseq_jar or jar_directory). |
+
+### `api.vcf.granite_qc(VcfGraniteQcParams)`
+
+CLI: `wgsextract vcf granite-qc`.
+
+Run granite qcVCF; output role `granite_qc_json`.
+
+`VcfGraniteQcParams`: Run granite qcVCF (dbmi-bgm/granite) to compute single-sample or family VCF QC metrics.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `input` | `Path \| None` | `None` | `--input`, `-i` | The VCF to read when ``vcf_input`` is unset. |
+| `vcf_input` | `Path \| None` | `None` | `--vcf-input` | The VCF to read; wins over ``input``. On the CLI, --vcf-input defaults to config default_input_vcf when --input isn't given. |
+| `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
+| `pedigree` | `Path \| None` | `None` | `--pedigree` | Optional granite pedigree JSON file (auto-generated from VCF samples if omitted). |
+| `samples` | `str \| None` | `None` | `--samples` | Comma-separated sample IDs to include (default: all samples in the VCF header). |
+| `trio_errors` | `bool` | `False` | `--trio-errors` | Include Mendelian trio error statistics (requires a pedigree with parents). |
+| `granite_path` | `Path \| None` | `None` (config `granite_executable`) | `--granite-path` | Path to the granite executable (default: config granite_executable or PATH). |
+
 ## `api.analyze`
 
 `analyze`: whole-sample workflows that chain other commands.
@@ -2084,13 +2136,13 @@ CLI: `wgsextract ref ybrowse`.
 
 Install the snapshot; output role `reference_resource`.
 
-`RefYbrowseParams`: Install a hash-pinned, sites-only GRCh38 yBrowse snapshot into the
+`RefYbrowseParams`: Install a verified, sites-only GRCh38 yBrowse snapshot into the
 library, or delete the installed snapshots.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed yBrowse snapshots |
-| `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream pin. |
+| `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz) instead of downloading from ybrowse.org. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.download(RefDownloadParams)`
@@ -2313,6 +2365,22 @@ Download ClinVar; output role `reference_resource` for each file.
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+
+### `api.ref.dbsnp(RefDbsnpParams)`
+
+CLI: `wgsextract ref dbsnp`.
+
+Download NCBI dbSNP b151 common rsIDs and build their offline SQLite
+lookup index (output role `reference_resource`), or delete them.
+
+`RefDbsnpParams`: Download NCBI dbSNP b151 common human rsIDs (~37M SNPs, VCF + tabix +
+offline SQLite rsID search index) for hg38 and hg19, or delete them.
+
+| Field | Type | Default | CLI | Description |
+| --- | --- | --- | --- | --- |
+| `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
+| `build` | `str \| None` | `None` | `--build` | Only this build (default: both hg38 and hg19). One of: `hg38`, `hg19` |
+| `delete` | `bool` | `False` | `--delete` | Delete the installed dbSNP common rsID files |
 
 ### `api.ref.revel(RefRevelParams)`
 
@@ -2629,7 +2697,8 @@ Each writes `<input stem>.*` files in `outdir`, else beside the input:
   baseline and callability mask for GRCh37, GRCh38 and T2T-CHM13v2.0.
 * `hla`: HLA class I and II alleles with T1K (`.t1k_genotype.tsv`,
   `.t1k_allele.tsv`/`.vcf`), from the optional `t1k` environment.
-* `repeats` (`typing str`): disease repeat expansions (`.str.tsv`), with
+* `repeats` (`typing str`): disease repeat expansions (`.str.tsv` or
+  `.str.parquet`, also in `details.repeat_calls` in the result), with
   ExpansionHunter for short reads (`.str.vcf`/`.json`, optional
   `expansionhunter` environment) or LongTR for Nanopore and PacBio reads
   (`.str.vcf.gz`, `longtr` environment; STRkit's `.str.vcf` and
@@ -2740,7 +2809,8 @@ str`; see `TypingStrParams`).
 those outside the normal range, with ExpansionHunter for short reads and
 LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
 `sex`, `repeat_caller`, `disease_repeats`, `flagged_repeats` and
-`unconfirmed_repeats`;
+`unconfirmed_repeats` and `normal_repeats`. The result's
+`details.repeat_calls` holds the same per-locus rows as the summary table;
 each flagged repeat is a `repeat_outside_normal_range` warning
 (`repeat_unconfirmed` for a low-support-only finding or an unresolved
 all-weak or incomplete call,
@@ -2754,6 +2824,8 @@ all-weak or incomplete call,
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `caller` | `str \| None` | `None` | `--caller` | Repeat caller (default: longtr for Nanopore and PacBio reads, expansionhunter for others). strkit suits Nanopore R9 reads and very long alleles. One of: `expansionhunter`, `longtr`, `strkit` |
 | `catalog` | `Path \| None` | `None` | `--catalog` | Repeat catalog in the caller's format: an ExpansionHunter variant catalog (JSON) or a LongTR or STRkit BED. Default: ExpansionHunter's shipped catalog for the input's build, or its repeats bundled for LongTR and STRkit. |
+| `loci` | `str \| None` | `None` | `--loci` | Only size these comma-separated, case-sensitive catalog locus IDs (example: HTT,FMR1,AR). Targeted files get a separate prefix. Default: the entire catalog. |
+| `table_format` | `str` | `'tsv'` | `--format` | Repeat summary table format: tsv or parquet (needs pyarrow). Default: tsv. One of: `tsv`, `parquet` |
 | `sex` | `str \| None` | `None` | `--sex` | Sample sex (the number of chrX alleles). Default: inferred from chrX/chrY coverage. One of: `male`, `female` |
 
 ## `api.report`
@@ -3216,7 +3288,7 @@ for every step.
 | `profile` | `str` | `'standard'` | `--profile` | Benchmark size preset. smoke is chrM-only, standard is a scaled human-like genome, 200mb targets a ~200 MiB fake BAM, and full uses real chromosome lengths. One of: `200mb`, `full`, `smoke`, `standard` |
 | `coverage` | `float \| None` | `None` | `--coverage` | Override generated BAM coverage for the selected profile. |
 | `full_size` | `bool` | `False` | `--full-size` | Use real chromosome lengths for the generated benchmark reference. |
-| `build` | `str` | `'hg38'` | `--build` | Generated reference naming/build convention. One of: `grch38`, `hg38`, `hs38`, `hs38d1`, `hs38d1v0`, `hs38dh`, `GRCh38`, `hs38DH`, `grch37`, `hg19`, `hg37`, `hs37`, `hs37d5`, `GRCh37`, `chm13`, `chm13v2`, `chm13v2.0`, `t2t`, `t2tv2`, `t2tv2.0`, `t2tv20`, `T2Tv20`, `T2Tv2`, `T2Tv2.0`, `CHM13`, `CHM13v2.0` |
+| `build` | `str` | `'hg38'` | `--build` | Generated reference naming/build convention. One of: `38`, `grch38`, `hg38`, `hs38`, `hs38d1`, `hs38d1v0`, `hs38dh`, `GRCh38`, `hs38DH`, `37`, `grch37`, `hg19`, `hg37`, `hs37`, `hs37d5`, `GRCh37`, `chm13`, `chm13v2`, `chm13v2.0`, `t2t`, `t2tv2`, `t2tv2.0`, `t2tv20`, `T2Tv20`, `T2Tv2`, `T2Tv2.0`, `CHM13`, `CHM13v2.0` |
 | `seed` | `int` | `20260504` | `--seed` | Random seed for deterministic benchmark data generation. |
 | `target_count` | `int \| None` | `None` | `--target-count` | Approximate number of target SNPs for the microarray benchmark. |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Optional region to benchmark for region-aware operations. |

@@ -1,4 +1,4 @@
-import { commandContextFromState, configEditorControls, configValueKey, optionTitle } from "../../../shared/rendering.js";
+import { commandContextFromState, configEditorControls, configValueKey, firstPathValue, optionTitle, splitPathList } from "../../../shared/rendering.js";
 import { localizationLabels } from "../../../shared/localization.js";
 import type { CommandContext, ConfigSetting, ControlOption, ControlSpec, RowTagSpec, StateValue, ValueMap } from "../../../shared/types.js";
 import type { WorkspaceRoots } from "../../../shared/workspace-paths.js";
@@ -25,12 +25,20 @@ export function configDataSourceContext(control: ControlSpec): CommandContext {
     }
     return commandContextFromState({ ...state, fieldValues: { ...state.fieldValues, ...settingValues }, configValues: settingValues });
 }
+function assignSharedField(key: string, value: StateValue) {
+    const existing = state.fieldValues[key];
+    // Preserve a multi-file selection in state.json when config.toml matches its primary (first) file.
+    if (splitPathList(existing).length > 1 && firstPathValue(existing) === String(value ?? "").trim()) {
+        return;
+    }
+    state.fieldValues[key] = value;
+}
 export function syncSharedField(setting: ConfigSetting, value: StateValue) {
     if (setting.key && Object.hasOwn(state.fieldValues, setting.key)) {
-        state.fieldValues[setting.key] = value;
+        assignSharedField(setting.key, value);
     }
     if (Object.hasOwn(state.fieldValues, setting.id)) {
-        state.fieldValues[setting.id] = value;
+        assignSharedField(setting.id, value);
     }
 }
 export function boundFieldKey(setting: ConfigSetting): string | undefined {
@@ -110,13 +118,18 @@ export function buildTagStyle(build: unknown): string | undefined {
     if (!value) {
         return undefined;
     }
-    if (value.includes("grch37") || value.includes("hg19")) {
+    const is37 = value === "37" || value.includes("grch37") || value.includes("hg19") || value.includes("hg37") || value.includes("1k37") || value.includes("ebi37") || value.includes("ncb37");
+    const is38 = value === "38" || value.includes("grch38") || value.includes("hg38") || value.includes("1k38") || value.includes("ebi38") || value.includes("ncb38");
+    if (is37 && is38) {
+        return "secondary";
+    }
+    if (is37) {
         return "primary";
     }
-    if (value.includes("grch38") || value.includes("hg38")) {
+    if (is38) {
         return "success";
     }
-    if (value.includes("t2t") || value.includes("chm13")) {
+    if (value.includes("t2t") || value.includes("chm13") || value.includes("pr1") || value.includes("hg002")) {
         return "warning";
     }
     return "secondary";
@@ -130,7 +143,7 @@ export function renderTooltip(text: unknown): string {
         : "";
 }
 export function renderInlineError(message: unknown, accessory = ""): string {
-    return `<div class="inline-error"><span aria-hidden="true">${renderIcon("exclamationmark.triangle.fill", undefined, "⚠")}</span><span>${escapeHTML(message)}</span>${accessory}</div>`;
+    return `<div class="inline-error"><span aria-hidden="true">${renderIcon("exclamationmark.triangle.fill", undefined, "âš ")}</span><span>${escapeHTML(message)}</span>${accessory}</div>`;
 }
 export function renderLoadingInline(message: unknown): string {
     return `<p class="loading-inline"><span class="spinner small" aria-hidden="true"></span>${escapeHTML(message)}</p>`;
@@ -138,7 +151,7 @@ export function renderLoadingInline(message: unknown): string {
 export function renderLoadingBox(message: unknown): string {
     return `<div class="loading-box"><span class="spinner small" aria-hidden="true"></span>${escapeHTML(message)}</div>`;
 }
-export function renderIconTitle(title: unknown, iconName: unknown, textIcon: unknown, fallback = "•"): string {
+export function renderIconTitle(title: unknown, iconName: unknown, textIcon: unknown, fallback = "â€¢"): string {
     return `<span class="icon-title"><span class="icon-title-icon" aria-hidden="true">${renderIcon(iconName, textIcon, fallback)}</span><span>${escapeHTML(title)}</span></span>`;
 }
 export function renderIcon(iconName: unknown, textIcon: unknown, fallback: string): string {
@@ -164,7 +177,7 @@ function resolveIcon(source: string, iconName: unknown): string | undefined {
     return key ? state.iconMap?.[source]?.[key] : undefined;
 }
 function isPlayIcon(iconName: unknown, textIcon: unknown, fallback: string, bootstrap: string | undefined, emoji: string | undefined): boolean {
-    return iconName === "play" || iconName === "play.fill" || bootstrap === "play" || bootstrap === "play-fill" || emoji === "▶️" || (!iconName && !textIcon && fallback === "▶");
+    return iconName === "play" || iconName === "play.fill" || bootstrap === "play" || bootstrap === "play-fill" || emoji === "â–¶ï¸" || (!iconName && !textIcon && fallback === "â–¶");
 }
 export function resolveText(value: unknown, context: CommandContext): string {
     return String(value ?? "").replace(/\{\{([^}]+)\}\}/g, (_, raw) => {

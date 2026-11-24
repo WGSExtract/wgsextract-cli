@@ -19,28 +19,33 @@ export async function installedViewerCytobands(fasta: string, referenceRoot: str
     if (!build) return notice("cytobandBuildUnsupported");
     fileName = `cytobands_${build}.tsv`;
     command = installCommand(build);
-    const file = path.join(referenceRoot, "downloads", fileName);
-    let text: string;
-    try {
-        await guardedViewerPath(file, [referenceRoot]);
-        const handle = await open(file, "r");
+    let text: string | undefined;
+    for (const directory of ["downloads", "ref"]) {
+        const file = path.join(referenceRoot, directory, fileName);
         try {
-            if (!(await handle.stat()).isFile()) return notice("cytobandInvalid");
-            const buffer = Buffer.alloc(maxTableBytes + 1);
-            let offset = 0;
-            while (offset < buffer.length) {
-                const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, null);
-                if (!bytesRead) break;
-                offset += bytesRead;
+            await guardedViewerPath(file, [referenceRoot]);
+            const handle = await open(file, "r");
+            try {
+                if (!(await handle.stat()).isFile()) return notice("cytobandInvalid");
+                const buffer = Buffer.alloc(maxTableBytes + 1);
+                let offset = 0;
+                while (offset < buffer.length) {
+                    const { bytesRead } = await handle.read(buffer, offset, buffer.length - offset, null);
+                    if (!bytesRead) break;
+                    offset += bytesRead;
+                }
+                if (offset > maxTableBytes) return notice("cytobandInvalid");
+                text = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, offset));
+            } finally {
+                await handle.close();
             }
-            if (offset > maxTableBytes) return notice("cytobandInvalid");
-            text = new TextDecoder("utf-8", { fatal: true }).decode(buffer.subarray(0, offset));
-        } finally {
-            await handle.close();
+            break;
+        } catch (error) {
+            if (isMissingViewerPath(error)) continue;
+            return notice("cytobandInvalid");
         }
-    } catch (error) {
-        return notice(isMissingViewerPath(error) ? "cytobandMissing" : "cytobandInvalid");
     }
+    if (text === undefined) return notice("cytobandMissing");
     if (!text.endsWith("\n")) return notice("cytobandInvalid");
     const bands: ViewerCytoband[] = [];
     const ends = new Map<string, number>();
