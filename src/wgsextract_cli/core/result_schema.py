@@ -10,13 +10,16 @@ from wgsextract_cli.core.artifacts import (
 )
 from wgsextract_cli.core.errors import ResultError
 from wgsextract_cli.core.output_schema import Shape, output_schema
+from wgsextract_cli.core.provenance_records import (
+    Fingerprint,
+    ReferenceRecord,
+    ResourceRecord,
+)
 from wgsextract_cli.core.results import (
     SCHEMA_ID,
     CommandResult,
     FileRecord,
-    Fingerprint,
     Provenance,
-    ReferenceRecord,
     ResultWarning,
     Scalar,
 )
@@ -32,6 +35,7 @@ def result_schema() -> dict[str, object]:
             ResultError: Shape("error", additional=False),
             Provenance: Shape("provenance", additional=False),
             ReferenceRecord: Shape("reference", additional=False),
+            ResourceRecord: Shape("resource", additional=False),
             Scalar: Shape("scalar"),
             dict[str, Scalar]: Shape("scalars"),
             Fingerprint: Shape("fingerprint"),

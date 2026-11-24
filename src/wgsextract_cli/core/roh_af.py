@@ -35,6 +35,7 @@ from wgsextract_cli.core.roh_regions import bare
 from wgsextract_cli.core.step_documents import FileIdentity
 from wgsextract_cli.core.step_identity import file_drift, file_identity
 from wgsextract_cli.core.utils import popen, run_command
+from wgsextract_cli.core.variant_files import is_tabix_order_error
 
 GUIDE = "docs/roh.md"
 CACHE_FOLDER = "roh"
@@ -230,10 +231,17 @@ def _write_table(
         check=False,
     )
     if done.returncode:
+        detail = done.stderr.strip() or f"no error output (exit {done.returncode})"
+        if is_tabix_order_error(done.stderr):
+            raise CodedError(
+                "roh_af_unsorted",
+                f"{source.path.name} must have consecutive rows for each contig "
+                f"and positions in order (tabix: {detail}); sort it first.",
+            )
         raise CodedError(
-            "roh_af_unsorted",
-            f"{source.path.name} isn't sorted by position within each contig "
-            f"(tabix: {done.stderr.strip()[-300:]}); sort it first.",
+            "roh_af_index_failed",
+            f"tabix couldn't index the prepared allele frequencies from "
+            f"{source.path.name}: {detail}",
         )
     return written
 
