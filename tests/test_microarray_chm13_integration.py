@@ -100,10 +100,53 @@ def test_missing_hg38_chain_is_named_not_no_called(
     args = microarray_params(
         input=str(source), region=None, ref_vcf_tab=None, ploidy_file=None
     )
-    with pytest.raises(WGSExtractError, match=r"hg38ToHg19\.over\.chain\.gz"):
+    with pytest.raises(
+        WGSExtractError, match=r"hg38ToHg19\.over\.chain\.gz.*--download"
+    ):
         command.run_chm13(
             args, SimpleNamespace(root=str(tmp_path)), str(fasta), str(tmp_path), "1"
         )
+
+
+def test_pr1490_chm13_download_installs_missing_chain_before_marker_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR #1490 review: --download fetches missing CHM13 chains before _marker_ids
+    requires them locally, instead of failing before reaching output conversion."""
+    from wgsextract_cli.core.microarray import targets as mt
+
+    fasta = _native_library(tmp_path, monkeypatch)
+    chain_path = tmp_path / "hg18ToHg19.over.chain.gz"
+    saved_chain = chain_path.read_bytes()
+    chain_path.unlink()
+    monkeypatch.setitem(settings, "reference_library", str(tmp_path))
+
+    def fake_download(source: mt.ChainSource, dest: str) -> bool:
+        assert source.name == "hg18ToHg19.over.chain.gz"
+        Path(dest).write_bytes(saved_chain)
+        return True
+
+    monkeypatch.setattr(mt, "download_chain", fake_download)
+    source = tmp_path / "sample.vcf"
+    source.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=100>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS\n"
+        "chr1\t10\t.\tC\t.\t50\tPASS\t.\tGT\t0/0\n"
+    )
+    args = microarray_params(
+        input=str(source),
+        formats="all",
+        download=True,
+        region=None,
+        ref_vcf_tab=None,
+        ploidy_file=None,
+    )
+    out = command.run_chm13(
+        args, SimpleNamespace(root=str(tmp_path)), str(fasta), str(tmp_path), "1"
+    )
+    assert chain_path.is_file()
+    assert out.is_file()
 
 
 @pytest.mark.parametrize("chrom", ["chr1", "1"])
