@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 import ast
 import json
-import subprocess
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from scripts.ci_impact_diff import ChangedPath, ImpactDiff, impact_diff
@@ -15,6 +13,7 @@ from scripts.ci_impact_shadow import (
     SOURCE,
     GateDecision,
     compute,
+    fresh_observations,
     lane_tests,
     observation_map,
     parse_selection,
@@ -100,18 +99,7 @@ def plan(
     if gap:
         return fallback("legacy-observation-gap")
     manifest = evidence["manifest"]
-    recorded = manifest.get("recorded_at")
-    if recorded is None:
-        recorded = subprocess.check_output(
-            ["git", "show", "-s", "--format=%cI", manifest["source_sha"]],
-            cwd=root,
-            text=True,
-        ).strip()
-    try:
-        age = datetime.now(timezone.utc) - datetime.fromisoformat(recorded)
-    except (ValueError, TypeError):
-        return fallback("legacy-stale-map")
-    if not timedelta(minutes=-5) <= age <= timedelta(hours=48):
+    if not fresh_observations(root, manifest):
         return fallback("legacy-stale-map")
     tests = lane_tests(root, diff.head, skip_independent=event == "pull_request")
     candidates, reasons, unmatched = compute(root, diff, tests, evidence)

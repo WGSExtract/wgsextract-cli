@@ -272,7 +272,7 @@ def test_real_vcf_microarray(real_dataset: RealDataset, tmp_path: Path) -> None:
     combined_kit = _single_file(tmp_path, "*_CombinedKit.txt")
     _assert_combined_kit_has_calls(combined_kit)
     assert _single_file(tmp_path, "*_23andMe_V5.txt").exists()
-    assert _single_file(tmp_path, "*_Ancestry_V2.txt").exists()
+    assert _single_file(tmp_path, "*_Ancestry_V2ab.txt").exists()
 
 
 def test_real_bam_microarray(real_dataset: RealDataset, tmp_path: Path) -> None:

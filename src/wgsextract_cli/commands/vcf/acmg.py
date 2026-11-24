@@ -27,11 +27,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import IO
 
-from wgsextract_cli.api._runtime import cancel_event, checkpoint
+from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.vcf import VcfAcmgParams
 from wgsextract_cli.core import acmg_data, acmg_sites, read_scope
 from wgsextract_cli.core.acmg import DISCLAIMER
-from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.builds import canonical_build
 from wgsextract_cli.core.csq_alleles import csq_entries, csq_for_allele, split_origin
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -49,8 +48,8 @@ from wgsextract_cli.core.utils import (
 )
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_files import (
-    ensure_vcf_indexed,
     ensure_vcf_prepared,
+    publish_indexed_vcf,
     vcf_index_chromosomes,
 )
 from wgsextract_cli.core.variant_table import parse_header, pick_csq
@@ -568,7 +567,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
             run.check()
         finally:
             run.close()
-        _publish_indexed_vcf(partial, Path(out_vcf))
+        publish_indexed_vcf(partial, Path(out_vcf))
 
     summary_path = Path(outdir, ACMG_SUMMARY)
     summary = {
@@ -673,33 +672,6 @@ def _require_spliceai_coverage(databases: list[_Database], contigs: list[str]) -
             "or explicitly opt in with --site-data per-run (input-derived variant "
             "positions are sent to Google Cloud Storage and Ensembl)."
         )
-
-
-def _publish_indexed_vcf(staged: Path, final: Path) -> None:
-    # Let the indexer see restrictions the publisher will preserve.
-    if final.is_file():
-        staged.chmod(staged.stat().st_mode & final.stat().st_mode & 0o777)
-    ensure_vcf_indexed(staged)
-    outputs = {}
-    obsolete = []
-    for ext in (".tbi", ".csi"):
-        index = Path(f"{staged}{ext}")
-        destination = Path(f"{final}{ext}")
-        if index.is_file():
-            outputs[index] = destination
-        else:
-            obsolete.append(destination)
-        alternate = final.with_suffix(ext)
-        if not final.with_suffix(".bgz").is_file():
-            obsolete.append(alternate)
-        elif alternate.exists() or alternate.is_symlink():
-            raise WGSExtractError(
-                f"Cannot replace {final}: its .bgz sibling shares {alternate}."
-            )
-    if not outputs:
-        raise WGSExtractError(f"Indexing did not produce an index for {final}.")
-    outputs[staged] = final
-    publish_output_set(outputs, retire=obsolete, checkpoint=checkpoint)
 
 
 def _refuse_overwrite(source: str, out_vcf: str) -> None:
