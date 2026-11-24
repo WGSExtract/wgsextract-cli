@@ -447,6 +447,186 @@ The project is developed with AI coding agents. [AGENTS.md](../AGENTS.md) holds 
 
 Keep each change small and state how you'll verify it. Most problems show up when the result is checked against real data, not in review.
 
+## Retire stale agent worktrees
+
+The post-work cleanup checklist does not schedule itself. On a Linux host, run
+these commands from the primary checkout on `main`:
+
+```sh
+python3 scripts/cleanup_worktrees.py                   # offline audit, no removals
+python3 scripts/cleanup_worktrees.py --github          # verify eligibility only
+python3 scripts/cleanup_worktrees.py --github --apply  # retire eligible worktrees
+python3 scripts/cleanup_worktrees.py --github --trim-caches  # preview cache trimming too
+```
+
+`--github` uses an existing authenticated `gh` session to request PR metadata
+from github.com. Branch names and worktree contents are matched locally, never
+uploaded. A candidate must live directly under `scratch/`, and exactly match
+the head of its latest PR from this repository, merged into `main` at least a
+day ago and authored by the authenticated account. Git removes the worktree
+without `--force`; the branch stays. An authentication or state error stops the
+run. The private JSON report in `out/worktree-cleanup/` records skips, removals
+and errors.
+
+Dirty, locked, detached, active or linked worktrees are left alone. Tracked
+files must also match the exact committed Git blobs byte for byte, without
+relying on Git's cached file metadata. This can retain checkouts with locally
+converted line endings, smudge filters, or submodules, even if Git reports
+them clean. Activity is checked through Linux `/proc` across process UIDs.
+If Linux hides or denies
+inspection of a process, the run reports the error and does not remove
+unverified worktrees. Use the optional inspector below when unprivileged
+process visibility is insufficient. Use `git worktree lock` before starting
+work in a checkout that might be eligible for cleanup.
+Do not start work in an eligible checkout during cleanup. Symlinks are checked
+in this repository and its registered worktrees, including shared Git
+metadata and each checkout's effective `core.hooksPath`. If a symlinked
+Git metadata directory could hide dependencies, cleanup keeps the candidates.
+If
+any `hook.<name>.command` is configured, cleanup retains every candidate
+and reports the hook key: arbitrary hook commands can depend on paths that
+cleanup cannot verify. Lock a worktree if a hook script in a hooks directory
+or another project depends on its files.
+Nothing manages your reference library.
+Samples and other unknown files block removal. With `--trim-caches --apply`, the same
+PR and activity checks allow trimming verified generated Pixi, Ruff, mypy and
+pytest caches in retained worktrees. Unrecognized cache contents, unlocked
+Conda packages and links to a cache block trimming that cache. Pixi package
+files must match local installed Conda or wheel checksums; missing or
+mismatched checksums retain the environment without fetching metadata.
+Only the named cache directories are deleted; the checkout, branch and other
+files stay.
+Python bytecode blocks worktree retirement unless it can be reproduced from
+tracked or archived source. Unlisted bytecode in Pixi environments must match
+bytecode regenerated from verified installed source. A matching header is
+not enough; caches from another Python version or a source-rewriting tool
+such as pytest may therefore be retained.
+The report distinguishes cache trimming from worktree retirement.
+Small UTF-8 logs under `out/` and recognised Python, shell, Lua
+and R source files under `scratch/` (1 MiB per file, 32 MiB total) are copied
+to a private, local directory in `out/archive/` without following links. They
+are not executed. Do not put secrets in run logs or scratch sources.
+
+### Install the read-only activity inspector (Linux administrator)
+
+Linux can hide the cwd, mappings and file descriptors of services and login
+processes even from other processes of the same UID. The optional inspector
+reads this state across process UIDs without granting the cleanup command or Sheprd any elevated
+permissions. It accepts only inode-verified registered worktree names in one
+repository, checks the local Unix peer UID, and returns matching numeric PIDs
+or an unverifiable result, never process paths or arguments. The service
+cannot run Git, remove a checkout, or run caller-supplied commands. If a
+process's mount namespace or view of the root cannot be safely compared, it
+does not certify inactivity. A private root or masked `/home` alone does not
+prove inactivity: the inspector still checks retained descriptors, mappings,
+working directories and invocation paths, and rejects visible mount aliases.
+
+From the separately reviewed revision, as the ordinary repository owner,
+stage the exact committed blobs and prepare local settings under `out/`.
+Verify `pwd -P` is the registered **primary** checkout and `id -u` is its
+non-root owner:
+
+```sh
+reviewed=FULL_REVIEWED_COMMIT_SHA
+mkdir -p out/worktree-inspector-install
+git show "$reviewed:scripts/worktree_activity_inspector.py" \
+  > out/worktree-inspector-install/inspector.py
+for unit in wgse-worktree-inspector.service wgse-worktree-inspector.socket; do
+  git show "$reviewed:scripts/worktree-inspector/$unit" \
+    > "out/worktree-inspector-install/$unit" || break
+done
+printf '[Socket]\nSocketUser=%s\n' "$(id -u)" \
+  > out/worktree-inspector-install/owner.conf
+```
+
+Create `out/worktree-inspector-install/config.toml` with these two entries,
+using the actual primary canonical path and numeric owner UID:
+
+```toml
+repository = "/home/OWNER/src/wgsextract-cli"
+uid = 1000
+```
+
+An administrator explicitly installs the reviewed files; no worktree script
+is executed as root. The example uses an existing authorized `sudo-session`
+grant. On updates, stop the socket and service before replacing their files.
+Use systemd and system Python 3.11 or newer. Stop on any failure; verify the
+installed service and socket against the reviewed commit and inspector
+SHA-256 against `INSPECTOR_SHA256` in the reviewed `scripts/cleanup_worktrees.py`
+**before** enabling the socket.
+
+```sh
+sudo-session run -- /usr/bin/install -d -m 0755 \
+  /usr/local/lib/wgse-worktree-inspector /etc/wgse-worktree-inspector \
+  /etc/systemd/system/wgse-worktree-inspector.socket.d
+sudo-session run -- /usr/bin/install -m 0644 \
+  out/worktree-inspector-install/inspector.py /usr/local/lib/wgse-worktree-inspector/inspector.py
+sudo-session run -- /usr/bin/install -m 0644 \
+  out/worktree-inspector-install/wgse-worktree-inspector.service \
+  out/worktree-inspector-install/wgse-worktree-inspector.socket /etc/systemd/system/
+sudo-session run -- /usr/bin/install -m 0644 out/worktree-inspector-install/config.toml \
+  /etc/wgse-worktree-inspector/config.toml
+sudo-session run -- /usr/bin/install -m 0644 out/worktree-inspector-install/owner.conf \
+  /etc/systemd/system/wgse-worktree-inspector.socket.d/owner.conf
+/usr/bin/sha256sum /usr/local/lib/wgse-worktree-inspector/inspector.py
+git show "$reviewed:scripts/worktree-inspector/wgse-worktree-inspector.service" \
+  | cmp - /etc/systemd/system/wgse-worktree-inspector.service
+git show "$reviewed:scripts/worktree-inspector/wgse-worktree-inspector.socket" \
+  | cmp - /etc/systemd/system/wgse-worktree-inspector.socket
+sudo-session run -- /usr/bin/systemd-analyze verify \
+  wgse-worktree-inspector.service wgse-worktree-inspector.socket
+sudo-session run -- /usr/bin/systemctl daemon-reload
+sudo-session run -- /usr/bin/systemctl enable --now wgse-worktree-inspector.socket
+```
+
+Before enabling any cleanup schedule, run
+`python3 scripts/cleanup_worktrees.py --github --inspector` from the primary
+checkout **without** `--apply`. Verify it identifies a live test process as
+busy and reports a clear, otherwise eligible worktree accurately. When the
+socket is unavailable, unverifiable, or serving a different inspector digest,
+`--inspector` never falls back or removes worktrees. Local inspection checks
+each live Linux task and rejects external bind mounts of the checkout or its
+contents. It stops if any task's filesystem view or references cannot be
+verified; use the installed inspector on such hosts. To suspend inspection,
+disable the socket and stop the service; pause the Sheprd schedule as well.
+
+### Enable or disable daily cleanup on a machine
+
+Scheduled cleanup is off by default. The plan in `scripts/worktree-inspector/`
+is a template outside Sheprd's automation directory. Enable it only on a
+Linux machine you choose (for example, `lin-big-omarchy`), as the owner of the
+primary checkout on `main`. Leave it off on other hosts. First verify the
+installed inspector and its busy/clear results as described above. Make sure
+the owner's Sheprd automation service is running, `agent-coord` is available,
+and `gh` is authenticated for the repository.
+
+```sh
+mkdir -p .herdr/automations
+install -m 0644 scripts/worktree-inspector/stale-worktrees.luau .herdr/automations/stale-worktrees.luau
+/usr/bin/sheprd-automate repo add "$PWD"
+/usr/bin/sheprd-automate check .herdr/automations/stale-worktrees.luau
+/usr/bin/sheprd automation approve .herdr/automations/stale-worktrees.luau
+/usr/bin/sheprd-automate status
+```
+
+The owner must approve the exact plan in Sheprd; agents must not approve it.
+Confirm `status` shows the next run. To turn scheduling off on that machine,
+use `sheprd-automate disable SCRIPT`, with the script ID from `sheprd-automate
+status`, and confirm no next run is listed. If a run is already active,
+`sheprd-automate stop RUN` stops it; disabling prevents future runs.
+To turn the same approved plan back on, rerun the prerequisites and use
+`sheprd-automate enable SCRIPT`.
+
+The scheduled run
+uses GitHub explicitly, runs no agents, and reports success or failure in
+Sheprd. It retires eligible worktrees and trims verified caches in retained
+worktrees, without pulling `main` or installing anything. If the inventory
+helper changes, update its SHA-256 in the janitor. When the janitor changes,
+update its hash in the template. On each enabled host, disable the old
+plan, copy and check the new one, and have the owner approve it before
+enabling it again. An inspector upgrade also needs a separately reviewed
+administrator install and matching digests.
+
 ## Release a change
 
 Merged changes ship in the next release; see [releasing.md](releasing.md).
