@@ -8,8 +8,6 @@ target reference is the caller's check."""
 from pathlib import Path
 from typing import NamedTuple
 
-from pyliftover import LiftOver
-
 from wgsextract_cli.core.utils import WGSExtractError
 
 COMPLEMENT = str.maketrans("ACGTacgt", "TGCAtgca")
@@ -31,6 +29,8 @@ class YLiftOver:
     ) -> None:
         """``lengths``: the source and target chrY lengths every Y block must
         declare, so a chain between other builds is refused."""
+        from pyliftover import LiftOver
+
         try:
             self._lifter = LiftOver(str(chain))
         except (OSError, ValueError, EOFError) as exc:

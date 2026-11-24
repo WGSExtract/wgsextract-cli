@@ -282,9 +282,8 @@ and fetched into the library when explicitly requested/authorized, not bundled.
 | `yfull-tree` | `lineage y-haplogroup --tree yfull` (default) | CC-BY-4.0, YFull |
 | `yfull-ybrowse-positions` | Same, unless `--pos-file` is given; `lineage y-private` | CC-BY-SA (version unspecified), Thomas Krahn YSEQ (2022) |
 | Yleaf data `v4.1.6` | Y-haplogroup QC tables and other trees | GPL-3.0-or-later, Yleaf |
-| YBrowse SNP VCF | `ref ybrowse --install`, `extract ydna-vcf --ybrowse` | CC-BY-SA, Thomas Krahn YSEQ; downloaded on request, not redistributed or in bootstrap since v0.2.0 |
-| Ensembl GRCh38->GRCh37 chain | `ref ybrowse --install --grch37 --download` | Ensembl data, no restrictions on access or use; downloaded on request, not redistributed |
 | YBrowse SNP VCF | `ref ybrowse --install`, `extract ydna-vcf --ybrowse`, `lineage y-private` on GRCh38 | CC-BY-SA, Thomas Krahn YSEQ; downloaded on request, not redistributed or in bootstrap since v0.2.0 |
+| Ensembl GRCh38->GRCh37 chain | `ref ybrowse --install --grch37 --download` | Ensembl data, no restrictions on access or use; downloaded on request, not redistributed |
 
 YFull modules print a licence notice on first download; see
 [tree data](../src/wgsextract_cli/ydna/yleaf_native/README.md#trees).
