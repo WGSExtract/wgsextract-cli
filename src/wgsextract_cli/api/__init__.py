@@ -47,21 +47,24 @@ See docs/api.md.
 """
 
 from importlib import import_module
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from ._public import *  # noqa: F403 -- the public re-exports
-    from ._public import __all__ as __all__
 
 
-def __getattr__(name: str) -> object:
+def __getattr__(name: str) -> Any:
     if name == "__all__" or not name.startswith("_"):
         public = import_module("._public", __package__)
-        if name == "__all__" or name in public.__all__:
+        if name == "__all__":
+            return public._exported_names()
+        try:
             return getattr(public, name)
+        except AttributeError:
+            pass
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def __dir__() -> list[str]:
     public = import_module("._public", __package__)
-    return sorted(set(globals()) | set(public.__all__))
+    return sorted(set(globals()) | set(public._exported_names()))
