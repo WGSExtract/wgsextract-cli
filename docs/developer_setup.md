@@ -212,6 +212,10 @@ declared/observed sex or weaken normal Unknown-sex refusal. Full-reference
 
 ### VCF API specifications
 
+For any typed command, re-export its `Params` from the API group's module
+under `src/wgsextract_cli/api/_exports/`. This keeps `api.SomeParams`
+available to both Python callers and type checkers.
+
 `api/vcf.py` remains the public import and dispatch facade. Its parameter
 declarations live in `api/vcf_specs/`: shared field helpers, calling, file
 operations and annotations. Update the responsible specification module when

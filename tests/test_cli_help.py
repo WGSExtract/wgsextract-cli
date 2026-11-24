@@ -132,7 +132,7 @@ def test_every_example_parses_to_its_own_command(entries):
 def test_example_genome_examples_name_catalog_entries():
     ids = {example.example_id for example in EXAMPLES}
     tags = {tag for example in EXAMPLES for tag in example.tags}
-    assert cli_help.COMMAND_HELP["example-genome download"].examples
+    assert COMMAND_HELP["example-genome download"].examples
     for path in ("example-genome download", "example-genome list"):
         for example in COMMAND_HELP[path].examples:
             words = shlex.split(example)[3:]
@@ -191,6 +191,7 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
         ["--help"],
         ["--version"],
         ["help", "--all", "--json"],
+        ["info", "--help"],
         ["serve", "--help"],
         ["help", "serve"],
         ["qc", "ancestry", "--help"],
@@ -198,8 +199,10 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
         ["vcf", "impute", "--help"],
     ],
 )
-def test_startup_regression_help_does_not_import_analysis_libraries(argv):
-    """CLI startup regression: help and version must not load analysis code."""
+def test_startup_regression_help_does_not_import_analysis_libraries(
+    argv: list[str] | None,
+) -> None:
+    """#1506: discovery must not load analysis, serving, or unrelated API groups."""
     code = f"""
 import contextlib
 import io
@@ -226,12 +229,23 @@ implementations = {{
     "wgsextract_cli.commands.score",
     "wgsextract_cli.core.pgs",
     "wgsextract_cli.commands.vcf.imputation",
+    "wgsextract_cli.server",
 }}
 if argv in (
     ["--help"], ["--version"], ["help", "--all", "--json"],
     ["serve", "--help"], ["help", "serve"],
 ):
     implementations.add("wgsextract_cli.api")
+if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
+    implementations.update({{
+        "wgsextract_cli.commands._help_catalog",
+        "wgsextract_cli.commands._help_topics",
+        "wgsextract_cli.core.dependencies",
+        "wgsextract_cli.core.run_log",
+        "wgsextract_cli.core.utils",
+    }})
+if argv == ["info", "--help"]:
+    implementations.update({{"wgsextract_cli.api.vcf", "wgsextract_cli.api._public"}})
 print(json.dumps(sorted(
     name for name in sys.modules
     if name.split(".")[0] in heavy or name in implementations

@@ -8,7 +8,7 @@ import dataclasses
 import sys
 import textwrap
 
-from wgsextract_cli.api import support
+import wgsextract_cli.api.support as support
 from wgsextract_cli.api._params import from_namespace
 from wgsextract_cli.cli.registration.report_issue import register as register
 from wgsextract_cli.core.issue_report import IssueReport
