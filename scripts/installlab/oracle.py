@@ -244,7 +244,7 @@ class Oracle:
         )
         depth = float(chr20[5])
         ok = (
-            info["ref_model_str"].startswith("hg19")
+            info["ref_model_str"].startswith(("GRCh37", "hg19"))
             and info["avg_read_len"] == 100.0
             and info["is_paired"]
             and 3 <= depth <= 8

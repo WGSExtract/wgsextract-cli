@@ -498,3 +498,76 @@ def test_windows_gatk_rejects_an_unqualified_jar_abi(tmp_path, monkeypatch):
 def test_windows_gatk_rejects_incomplete_older_sidecar(tmp_path, monkeypatch, missing):
     prefix = _gatk_prefix(tmp_path, tuple(n for n in GKL if n != missing))
     assert _windows_gatk(tmp_path, monkeypatch, prefix) is None
+
+
+@posix_pixi
+def test_default_env_probe_does_not_leak_system_path_multiqc(
+    tmp_path, monkeypatch, fake_pixi
+):
+    """A stale system multiqc on PATH must not fool default-env probing into
+    skipping the installed Pixi multiqc environment."""
+    from wgsextract_cli.core import dependencies
+
+    default_prefix = tmp_path / "envs" / "default"
+    (default_prefix / "bin").mkdir(parents=True)
+    host_bin = tmp_path / "system-bin"
+    python_tool(host_bin, "multiqc", 'print("multiqc, version 1.15")')
+    mqc_prefix = fake_pixi.env("multiqc")
+    python_tool(mqc_prefix / "bin", "multiqc", 'print("multiqc, version 1.35")')
+
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: False)
+    monkeypatch.setenv("PIXI_EXE", str(fake_pixi.exe))
+    monkeypatch.setenv("PATH", str(host_bin))
+    _in_environment(monkeypatch, "default", default_prefix, windows=False)
+    dependencies.clear_tool_caches()
+
+    resolved = dependencies.get_tool_path("multiqc")
+    assert resolved is not None
+    assert "-e multiqc" in resolved
+    assert str(host_bin) not in resolved
+    dependencies.clear_tool_caches()
+
+
+@posix_pixi
+def test_probe_environment_with_pixi_uses_conda_prefix_for_pythonless_envs(
+    tmp_path, monkeypatch, fake_pixi
+):
+    """PR #1463: no-default-feature Pixi envs (verifybamid2, somalier, imputation)
+    run the host Python where sys.prefix != CONDA_PREFIX; probing must search
+    CONDA_PREFIX, not sys.prefix."""
+    vb_prefix = fake_pixi.env("verifybamid2")
+    python_tool(vb_prefix / "bin", "verifybamid2", 'print("verifybamid2")')
+    # Ensure the fake env does not ship its own python so fake_pixi uses host python
+    # (whose sys.prefix differs from CONDA_PREFIX == vb_prefix).
+    fake_python = vb_prefix / "bin" / "python"
+    if fake_python.exists():
+        fake_python.unlink()
+
+    default_prefix = tmp_path / "envs" / "default"
+    (default_prefix / "bin").mkdir(parents=True)
+    monkeypatch.setattr(runtime, "is_windows_host", lambda: False)
+    monkeypatch.setenv("PIXI_EXE", str(fake_pixi.exe))
+    _in_environment(monkeypatch, "default", default_prefix, windows=False)
+
+    command = pixi_tools.pixi_env_tool("verifybamid2")
+    assert command is not None
+    assert "-e verifybamid2" in command
+    assert command.endswith("verifybamid2")
+
+
+@posix_pixi
+def test_probe_environment_tolerates_one_arg_shutil_which_monkeypatch(
+    tmp_path, monkeypatch
+):
+    """PR #1463: tests like test_keep_awake monkeypatch shutil.which with a
+    1-arg callable; probing the current Pixi env must not raise TypeError."""
+    import shutil
+
+    prefix = tmp_path / "env"
+    python_tool(prefix / "bin", "samtools", 'print("samtools")')
+    original_which = shutil.which
+    monkeypatch.setattr(shutil, "which", lambda name: original_which(name))
+
+    assert pixi_tools._probe_environment(str(prefix), ["samtools"], False) == (
+        "direct-name:samtools"
+    )

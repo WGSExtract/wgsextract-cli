@@ -122,7 +122,12 @@ def get_vcf_build(vcf_path: str) -> str | None:
             for line in res.stdout.splitlines()
             if line.lower().startswith(("##reference=", "##assembly=", "##contig="))
         )
-        return build_from_path(metadata)
+        detected = build_from_path(metadata)
+        if detected:
+            return detected
+        from wgsextract_cli.core.vcf_reference import identify_vcf_reference
+
+        return identify_vcf_reference(vcf_path, header=res.stdout).build
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError):
         logging.debug("Unable to infer VCF build from header.", exc_info=True)
     return None
