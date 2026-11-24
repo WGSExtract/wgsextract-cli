@@ -28,7 +28,8 @@ MAX_JUNIT_BYTES = 16 * 1024 * 1024
 @dataclass(frozen=True)
 class Lane:
     target: int
-    workers: float
+    effective_workers: float
+    slots: int
     max_jobs: int
     lead_setup: int
     repeated_setup: int
@@ -36,9 +37,9 @@ class Lane:
 
 # Calibrated against successful full scheduled jobs. macOS has five slots.
 LANES = {
-    "ubuntu": Lane(12 * 60, 3.7, 3, 161, 62),
-    "windows": Lane(15 * 60, 1.9, 3, 239, 73),
-    "macos": Lane(22 * 60, 2.9, 2, 290, 125),
+    "ubuntu": Lane(12 * 60, 3.7, 4, 3, 161, 62),
+    "windows": Lane(15 * 60, 1.9, 4, 3, 239, 73),
+    "macos": Lane(22 * 60, 2.9, 3, 2, 290, 125),
 }
 
 
@@ -111,8 +112,8 @@ class Group:
     lead: bool
 
 
-def pack(groups: list[Group], count: int) -> tuple[list[list[str]], list[float]]:
-    bins: list[list[str]] = [[] for _ in range(count)]
+def pack(groups: list[Group], count: int) -> list[list[Group]]:
+    bins: list[list[Group]] = [[] for _ in range(count)]
     totals = [0.0] * count
     known = sorted(
         (group for group in groups if group.known and not group.lead),
@@ -131,9 +132,19 @@ def pack(groups: list[Group], count: int) -> tuple[list[list[str]], list[float]]
             )
         else:
             target = module_shard(group.key, count)
-        bins[target].extend(group.paths)
+        bins[target].append(group)
         totals[target] += group.seconds
-    return bins, totals
+    return bins
+
+
+def worker_wall(groups: list[Group], lane: Lane) -> float:
+    """Estimate completion without spreading one fixture group over workers."""
+    finish = [0.0] * lane.slots
+    weights = sorted((group.seconds for group in groups), reverse=True)
+    for seconds in weights:
+        worker = min(range(lane.slots), key=finish.__getitem__)
+        finish[worker] += seconds
+    return max(max(finish), sum(weights) / lane.effective_workers)
 
 
 def plan(
@@ -166,26 +177,37 @@ def plan(
         for group, paths in fixture_sets(targets).items()
     ]
     lane = LANES[os]
-    total = sum(group.seconds for group in groups)
-    wall = total / lane.workers
-    setup_budget = (wall + lane.lead_setup) * 0.05
+    wall = worker_wall(groups, lane)
+    baseline = wall + lane.lead_setup
     desired = min(
         lane.max_jobs,
         len(groups),
         math.ceil(wall / lane.target),
-        1 + int(setup_budget / lane.repeated_setup),
     )
     for count in range(desired, 1, -1):
-        bins, totals = pack(groups, count)
-        if all(bins) and max(totals) <= 1.2 * total / count:
+        bins = pack(groups, count)
+        times = [worker_wall(shard, lane) for shard in bins]
+        jobs = [
+            seconds + (lane.repeated_setup if index else lane.lead_setup)
+            for index, seconds in enumerate(times)
+        ]
+        if (
+            all(bins)
+            and max(times) <= 1.2 * sum(times) / count
+            and max(jobs) < baseline
+            and sum(jobs) <= 1.05 * baseline
+        ):
             return [
                 {
                     "label": "all" if index == 0 else f"shard-{index + 1}",
-                    "selection": json.dumps(sorted(paths), separators=(",", ":")),
-                    "seconds": round(totals[index] / lane.workers),
+                    "selection": json.dumps(
+                        sorted(path for group in shard for path in group.paths),
+                        separators=(",", ":"),
+                    ),
+                    "seconds": round(times[index]),
                     "gate": gate,
                 }
-                for index, paths in enumerate(bins)
+                for index, shard in enumerate(bins)
             ]
     return serial(round(wall), selection if gate else "", gate)
 

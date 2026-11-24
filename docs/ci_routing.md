@@ -802,9 +802,11 @@ Modules, the shared synthetic-data group and modules declaring xdist groups
 stay whole. The target estimated
 pytest times are 12 minutes (Ubuntu), 15 (Windows) and 22 (macOS); at most
 three jobs on Ubuntu/Windows and two on macOS, where only five hosted slots
-are available. It uses fewer jobs if the largest bin would exceed 1.2 times
-the mean or duplicated runner setup is projected to add more than 5% to the
-lane's job time. Small selections stay in one job. Shard summaries report estimated
+are available. It estimates each runner's pytest time by assigning whole
+fixture groups to workers, not by dividing a single long test across cores.
+It uses fewer jobs if the largest bin would exceed 1.2 times the mean, the
+split would not reduce wall time, or aggregate job time including repeated
+setup would rise by more than 5%. Small selections stay in one job. Shard summaries report estimated
 pytest time before cache skips and actual elapsed time for the test step.
 For a sharded Ubuntu PR, a single symbol-selector decision precedes the
 split, and one advisory receipt combines the shards' results.

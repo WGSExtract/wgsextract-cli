@@ -187,14 +187,15 @@ def test_1492_balance_three_jobs_without_splitting_shared_fixtures(
     monkeypatch.chdir(tmp_path)
     test_dir = Path("tests")
     test_dir.mkdir()
-    files = [f"tests/test_shard_example_{i}.py" for i in range(7)]
+    files = [f"tests/test_shard_example_{i}.py" for i in range(25)]
     for path in files:
         Path(path).touch()
     for path in files[:2]:
         Path(path).write_text(
             "from tests.smoke_utils import ensure_fake_data\n", encoding="utf-8"
         )
-    durations = dict(zip(files, [1500, 1000, 2400, 2200, 300, 200], strict=False))
+    durations = dict.fromkeys(files[:-1], 1200)
+    durations.update({files[0]: 700, files[1]: 500})
     selection = json.dumps(files)
     shards = plan("ubuntu", selection, durations, skip_independent=False)
     contents = [set(json.loads(shard["selection"])) for shard in shards]
@@ -208,7 +209,7 @@ def test_1492_balance_three_jobs_without_splitting_shared_fixtures(
     )
     for timing in (durations, {}):
         assert (
-            len(plan("ubuntu", json.dumps(files[-2:]), timing, skip_independent=False))
+            len(plan("ubuntu", json.dumps(files[:2]), timing, skip_independent=False))
             == 1
         )
     one_file = json.dumps([files[0]])
@@ -244,7 +245,7 @@ def test_1492_cross_module_xdist_group_stays_on_one_runner(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     Path("tests").mkdir()
-    files = [f"tests/test_worker_{index}.py" for index in range(4)]
+    files = [f"tests/test_worker_{index}.py" for index in range(9)]
     for path in files:
         Path(path).touch()
     for path in files[:2]:
@@ -252,12 +253,30 @@ def test_1492_cross_module_xdist_group_stays_on_one_runner(
             'import pytest\npytestmark = pytest.mark.xdist_group("fixture")\n',
             encoding="utf-8",
         )
-    durations = dict(zip(files, [1500, 1000, 1500, 1000], strict=True))
+    durations = dict.fromkeys(files, 350)
+    durations.update({files[0]: 175, files[1]: 175})
     shards = plan("windows", json.dumps(files), durations, skip_independent=False)
     assert len(shards) == 2
     assert any(
         set(files[:2]) <= set(json.loads(shard["selection"])) for shard in shards
     )
+
+
+def test_1492_does_not_split_modules_already_running_concurrently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    Path("tests").mkdir()
+    files = ["tests/test_slow_a.py", "tests/test_slow_b.py"]
+    for path in files:
+        Path(path).touch()
+    [shard] = plan(
+        "ubuntu",
+        json.dumps(files),
+        dict(zip(files, [2500, 2300], strict=True)),
+        skip_independent=False,
+    )
+    assert shard["seconds"] == 2500
 
 
 def test_1492_imputation_shard_owns_tool_setup_and_suffix_tests_are_collected(
@@ -275,12 +294,11 @@ def test_1492_imputation_shard_owns_tool_setup_and_suffix_tests_are_collected(
     shards = plan("macos", "all", dict.fromkeys(files, 3000), skip_independent=False)
     assert set(suite_files()) == set(files)
     assert len(shards) == 1  # Two bins cannot meet the imbalance limit.
-    shards = plan(
-        "macos",
-        "all",
-        {files[0]: 1000, files[1]: 4500, files[2]: 3500},
-        skip_independent=False,
-    )
+    for index in range(9):
+        path = f"tests/test_more_{index}.py"
+        Path(path).touch()
+        files.append(path)
+    shards = plan("macos", "all", dict.fromkeys(files, 900), skip_independent=False)
     assert len(shards) == 2
     assert "tests/test_imputation.py" in json.loads(shards[0]["selection"])
     assert any(
