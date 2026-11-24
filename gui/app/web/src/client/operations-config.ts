@@ -1,4 +1,4 @@
-import { configEditorControls, configValueKey } from "../../../shared/rendering.js";
+import { configEditorControls, configValueKey, firstPathValue, splitPathList } from "../../../shared/rendering.js";
 import { api } from "./api.js";
 import { boundFieldKey, configSettingBindings, errorMessage, formatLabel, syncSharedField } from "./model.js";
 import { scheduleRender } from "./rerender.js";
@@ -33,7 +33,9 @@ export async function fieldValueChanged(value: string, control: ControlSpec) {
         return;
     }
     state.fieldValues[control.id] = value;
-    await syncBoundConfigSettings(control.id, value, { removeFieldIDs: [control.id] });
+    const isMulti = control.kind === "path" && control.multiple === true && splitPathList(value).length > 1;
+    const configValue = control.kind === "path" && control.multiple === true ? firstPathValue(value) : value;
+    await syncBoundConfigSettings(control.id, configValue, isMulti ? {} : { removeFieldIDs: [control.id] });
 }
 export async function checkedOptionsChanged(selectedIDs: Set<string>, control: ControlSpec) {
     state.checkedOptions[control.id] = selectedIDs;

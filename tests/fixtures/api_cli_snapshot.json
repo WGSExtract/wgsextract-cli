@@ -7058,7 +7058,7 @@
    }
   },
   "benchmark": {
-   "help": "usage: wgsextract benchmark [-h] [--profile {200mb,full,smoke,standard}] [--coverage COVERAGE]\n                            [--full-size]\n                            [--build {grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}]\n                            [-r REGION] [--keep-going] [--suite {core,heavy}]\n                            [--dataset {fake,real,real-1x,real-30x}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --profile {200mb,full,smoke,standard}\n                        Benchmark size preset. smoke is chrM-only, standard is a scaled human-like genome, 200mb targets a ~200 MiB fake BAM, and full uses real chromosome lengths.\n  --coverage COVERAGE   Override generated BAM coverage for the selected profile.\n  --full-size           Use real chromosome lengths for the generated benchmark reference.\n  --build {grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}\n                        Generated reference naming/build convention.\n  -r, --region REGION   Optional region to benchmark for region-aware operations.\n  --keep-going          Continue independent benchmark steps after a failed step when possible.\n  --suite {core,heavy}  Benchmark operation coverage. core runs the lighter baseline suite.\n  --dataset {fake,real,real-1x,real-30x}\n                        Benchmark foundation data. fake generates synthetic data; real uses the release-backed mini genome zip; real-1x and real-30x cache public 1000 Genomes WGS references locally.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json,\n  --quiet, --debug, --config and the other global options are accepted before\n  or after the command; 'wgsextract --help' lists them all.\n\n6 advanced options not shown; 'wgsextract benchmark --help-all' lists them.\n\nexamples:\n  wgsextract benchmark --profile smoke\n\noutputs (in the output directory unless noted):\n  runs/<timestamp>/ under --outdir (default out/benchmark):\n  benchmark_report.md and benchmark_results.json (timings, tool versions) and\n  per-step logs.\n\nneeds:\n  no external tools; depending on options and inputs, also: bcftools, bgzip,\n  curl, samtools, tabix; hours for the full suite.\n",
+   "help": "usage: wgsextract benchmark [-h] [--profile {200mb,full,smoke,standard}] [--coverage COVERAGE]\n                            [--full-size]\n                            [--build {38,grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,37,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}]\n                            [-r REGION] [--keep-going] [--suite {core,heavy}]\n                            [--dataset {fake,real,real-1x,real-30x}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --profile {200mb,full,smoke,standard}\n                        Benchmark size preset. smoke is chrM-only, standard is a scaled human-like genome, 200mb targets a ~200 MiB fake BAM, and full uses real chromosome lengths.\n  --coverage COVERAGE   Override generated BAM coverage for the selected profile.\n  --full-size           Use real chromosome lengths for the generated benchmark reference.\n  --build {38,grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,37,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}\n                        Generated reference naming/build convention.\n  -r, --region REGION   Optional region to benchmark for region-aware operations.\n  --keep-going          Continue independent benchmark steps after a failed step when possible.\n  --suite {core,heavy}  Benchmark operation coverage. core runs the lighter baseline suite.\n  --dataset {fake,real,real-1x,real-30x}\n                        Benchmark foundation data. fake generates synthetic data; real uses the release-backed mini genome zip; real-1x and real-30x cache public 1000 Genomes WGS references locally.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json,\n  --quiet, --debug, --config and the other global options are accepted before\n  or after the command; 'wgsextract --help' lists them all.\n\n6 advanced options not shown; 'wgsextract benchmark --help-all' lists them.\n\nexamples:\n  wgsextract benchmark --profile smoke\n\noutputs (in the output directory unless noted):\n  runs/<timestamp>/ under --outdir (default out/benchmark):\n  benchmark_report.md and benchmark_results.json (timings, tool versions) and\n  per-step logs.\n\nneeds:\n  no external tools; depending on options and inputs, also: bcftools, bgzip,\n  curl, samtools, tabix; hours for the full suite.\n",
    "parser": {
     "actions": [
      {
@@ -7460,6 +7460,7 @@
      },
      {
       "choices": [
+       "38",
        "grch38",
        "hg38",
        "hs38",
@@ -7468,6 +7469,7 @@
        "hs38dh",
        "GRCh38",
        "hs38DH",
+       "37",
        "grch37",
        "hg19",
        "hg37",
@@ -21360,7 +21362,7 @@
    }
   },
   "qc fake-data": {
-   "help": "usage: wgsextract qc fake-data [-h] [--coverage COVERAGE]\n                               [--build {grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}]\n                               [--type TYPE] [--full-size] [--legacy-bam] [--seed SEED]\n\noptions:\n  -h, --help            show this help message and exit\n  --coverage COVERAGE   Coverage depth (e.g. 30.0)\n  --build {grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}\n                        Human genome build naming convention.\n  --type TYPE           Comma-separated list of types to generate (vcf, cram, bam, fastq, all).\n                        Default: cram\n  --full-size           Use real human chromosome lengths. The default scaled mode uses shorter\n                        chromosomes.\n  --legacy-bam          Use the older scaled fake BAM generator. Slower and unavailable with\n                        --full-size, but includes randomized placement and indel CIGARs.\n  --seed SEED           Random seed for reproducibility\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract qc fake-data --outdir out/fake --type bam,vcf --seed 1\n\noutputs (in the output directory unless noted):\n  fake.cram, fake.bam, fake.vcf or fake_R1/_R2.fastq.gz, and the fake\n  reference.\n\nneeds:\n  bcftools, bgzip, samtools, tabix; depending on options and inputs, also:\n  sambamba; seconds for small inputs.\n",
+   "help": "usage: wgsextract qc fake-data [-h] [--coverage COVERAGE]\n                               [--build {38,grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,37,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}]\n                               [--type TYPE] [--full-size] [--legacy-bam] [--seed SEED]\n\noptions:\n  -h, --help            show this help message and exit\n  --coverage COVERAGE   Coverage depth (e.g. 30.0)\n  --build {38,grch38,hg38,hs38,hs38d1,hs38d1v0,hs38dh,GRCh38,hs38DH,37,grch37,hg19,hg37,hs37,hs37d5,GRCh37,chm13,chm13v2,chm13v2.0,t2t,t2tv2,t2tv2.0,t2tv20,T2Tv20,T2Tv2,T2Tv2.0,CHM13,CHM13v2.0}\n                        Human genome build naming convention.\n  --type TYPE           Comma-separated list of types to generate (vcf, cram, bam, fastq, all).\n                        Default: cram\n  --full-size           Use real human chromosome lengths. The default scaled mode uses shorter\n                        chromosomes.\n  --legacy-bam          Use the older scaled fake BAM generator. Slower and unavailable with\n                        --full-size, but includes randomized placement and indel CIGARs.\n  --seed SEED           Random seed for reproducibility\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract qc fake-data --outdir out/fake --type bam,vcf --seed 1\n\noutputs (in the output directory unless noted):\n  fake.cram, fake.bam, fake.vcf or fake_R1/_R2.fastq.gz, and the fake\n  reference.\n\nneeds:\n  bcftools, bgzip, samtools, tabix; depending on options and inputs, also:\n  sambamba; seconds for small inputs.\n",
    "parser": {
     "actions": [
      {
@@ -21725,6 +21727,7 @@
      },
      {
       "choices": [
+       "38",
        "grch38",
        "hg38",
        "hs38",
@@ -21733,6 +21736,7 @@
        "hs38dh",
        "GRCh38",
        "hs38DH",
+       "37",
        "grch37",
        "hg19",
        "hg37",
@@ -25620,7 +25624,7 @@
    }
   },
   "ref": {
-   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr                Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse             Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot.\n    somalier            Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches\n                        for qc relate.\n    ancestry            Fetch the hash-pinned ancestry reference for qc ancestry.\n    gnomad-sv           Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.\n    imputation          Explicitly install the hash-pinned GRCh38 imputation panel, per\n                        chromosome.\n    download            Download a reference FASTA from a URL (--url) to a path (--out). For\n                        curated hg19/hg38/T2T genomes use 'ref library --install'.\n    index               Prepare a FASTA file for use by indexing it. This is required before you\n                        can align reads or call variants against it.\n    dense-sa            Build wgse-bwa's optional dense suffix-array file for a FASTA (0.8 GB for\n                        hs38; align reads it with --dense-suffix-array), list or delete it.\n    count-ns            Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                        understanding the 'mappability' of different reference builds.\n    verify              Ensure your reference genome file isn't corrupted and has all the\n                        necessary companion files (indexes, dicts).\n    library             Opens the interactive reference manager to help you organize and download\n                        genomic data.\n    status              Report reference library asset status.\n    test-genome         Report, install (--install) or delete (--delete) the small hg19 test\n                        genome in the dataset library.\n    needs               Report the reference genome, annotation data or optional tools a command\n                        line needs that aren't installed, and how to install them.\n    gene-map            Download or delete lightweight gene-to-coordinate mapping files\n                        (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1), with\n                        the RefSeq transcript and exon models the genome viewer and info gene\n                        show.\n    cytobands           Validate installed hg19/hg38 UCSC cytobands; download missing data only\n                        with --download.\n    clinvar             Download official ClinVar VCF for hg19 and hg38.\n    revel               Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop              Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad              Download gnomAD population allele frequencies.\n    spliceai            Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual\n                        hg19 download.\n    alphamissense       Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb            Download PharmGKB annotations.\n    cadd                Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                        indels, ~85 GB per build) with their tabix indexes.\n    gerp                Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6\n                        GB; hg19 from UCSC, ~7.6 GB).\n    bootstrap           Download and initialize the reference library bootstrap (liftover chains,\n                        chip templates, etc.).\n    acmg-data           Download vcf acmg's 8 sources and the GFF3, check them and build fastVEP's\n                        databases.\n    microarray-targets  Build the genome-wide hg19 and hg38 microarray targets from the chip\n                        templates, or delete them.\n\noptions:\n  -h, --help            show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract ref [-h] <command> ...\n\npositional arguments:\n  <command>\n    aadr                Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.\n    ybrowse             Explicitly install a verified, sites-only GRCh38 yBrowse snapshot.\n    somalier            Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches\n                        for qc relate.\n    ancestry            Fetch the hash-pinned ancestry reference for qc ancestry.\n    gnomad-sv           Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.\n    imputation          Explicitly install the hash-pinned GRCh38 imputation panel, per\n                        chromosome.\n    download            Download a reference FASTA from a URL (--url) to a path (--out). For\n                        curated hg19/hg38/T2T genomes use 'ref library --install'.\n    index               Prepare a FASTA file for use by indexing it. This is required before you\n                        can align reads or call variants against it.\n    dense-sa            Build wgse-bwa's optional dense suffix-array file for a FASTA (0.8 GB for\n                        hs38; align reads it with --dense-suffix-array), list or delete it.\n    count-ns            Calculate the percentage of 'N' (unknown) bases in a genome. Useful for\n                        understanding the 'mappability' of different reference builds.\n    verify              Ensure your reference genome file isn't corrupted and has all the\n                        necessary companion files (indexes, dicts).\n    library             Opens the interactive reference manager to help you organize and download\n                        genomic data.\n    status              Report reference library asset status.\n    test-genome         Report, install (--install) or delete (--delete) the small hg19 test\n                        genome in the dataset library.\n    needs               Report the reference genome, annotation data or optional tools a command\n                        line needs that aren't installed, and how to install them.\n    gene-map            Download or delete lightweight gene-to-coordinate mapping files\n                        (hg19/hg38), enabling you to filter VCFs by gene name (e.g. BRCA1), with\n                        the RefSeq transcript and exon models the genome viewer and info gene\n                        show.\n    cytobands           Validate installed hg19/hg38 UCSC cytobands; download missing data only\n                        with --download.\n    clinvar             Download official ClinVar VCF for hg19 and hg38.\n    dbsnp               Download NCBI dbSNP b151 common human rsIDs (~37M SNPs, VCF + offline rsID\n                        search index) for hg38 and hg19, or delete them.\n    revel               Download REVEL pathogenicity scores for hg19 and hg38.\n    phylop              Download UCSC's PhyloP 100-way conservation scores (~10 GB bigWig).\n    gnomad              Download gnomAD population allele frequencies.\n    spliceai            Download SpliceAI scores for hg38 (Ensembl, MANE SNVs); index a manual\n                        hg19 download.\n    alphamissense       Download AlphaMissense scores for hg19 and hg38.\n    pharmgkb            Download PharmGKB annotations.\n    cadd                Download CADD v1.7 deleteriousness scores (all possible SNVs plus gnomAD\n                        indels, ~85 GB per build) with their tabix indexes.\n    gerp                Download GERP++ conservation scores as a bigWig (hg38 from Ensembl, ~9.6\n                        GB; hg19 from UCSC, ~7.6 GB).\n    bootstrap           Download and initialize the reference library bootstrap (liftover chains,\n                        chip templates, etc.).\n    acmg-data           Download vcf acmg's 8 sources and the GFF3, check them and build fastVEP's\n                        databases.\n    microarray-targets  Build the genome-wide hg19 and hg38 microarray targets from the chip\n                        templates, or delete them.\n\noptions:\n  -h, --help            show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -25660,6 +25664,7 @@
        "gene-map",
        "cytobands",
        "clinvar",
+       "dbsnp",
        "revel",
        "phylop",
        "gnomad",
@@ -25679,7 +25684,7 @@
        ],
        [
         "ybrowse",
-        "Explicitly install a hash-pinned, sites-only GRCh38 yBrowse snapshot."
+        "Explicitly install a verified, sites-only GRCh38 yBrowse snapshot."
        ],
        [
         "somalier",
@@ -25744,6 +25749,10 @@
        [
         "clinvar",
         "Download official ClinVar VCF for hg19 and hg38."
+       ],
+       [
+        "dbsnp",
+        "Download NCBI dbSNP b151 common human rsIDs (~37M SNPs, VCF + offline rsID search index) for hg38 and hg19, or delete them."
        ],
        [
         "revel",
@@ -34941,7 +34950,7 @@
    }
   },
   "ref ybrowse": {
-   "help": "usage: wgsextract ref ybrowse [-h] [--install] [--delete] [--snapshot SNAPSHOT]\n\noptions:\n  -h, --help           show this help message and exit\n  --install            Install it.\n  --delete             Delete the installed yBrowse snapshots\n  --snapshot SNAPSHOT  Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream\n                       pin.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref ybrowse --install\n  wgsextract ref ybrowse --delete\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the yBrowse GRCh38 SNP sites (--delete\n  removes them).\n\nneeds:\n  bgzip, tabix; depends on download speed.\n",
+   "help": "usage: wgsextract ref ybrowse [-h] [--install] [--delete] [--snapshot SNAPSHOT]\n\noptions:\n  -h, --help           show this help message and exit\n  --install            Install it.\n  --delete             Delete the installed yBrowse snapshots\n  --snapshot SNAPSHOT  Use a local GRCh38 VCF(.gz) instead of downloading from ybrowse.org.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract ref ybrowse --install\n  wgsextract ref ybrowse --delete\n\noutputs (in the output directory unless noted):\n  Into the reference library (reflib): the yBrowse GRCh38 SNP sites (--delete\n  removes them).\n\nneeds:\n  bgzip, tabix; depends on download speed.\n",
    "parser": {
     "actions": [
      {
@@ -35327,7 +35336,7 @@
       "default": null,
       "dest": "snapshot",
       "exclusive_group": null,
-      "help": "Use a local GRCh38 VCF(.gz), verifying its header instead of the upstream pin.",
+      "help": "Use a local GRCh38 VCF(.gz) instead of downloading from ybrowse.org.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -41205,7 +41214,7 @@
    }
   },
   "vcf": {
-   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    call            Call several variant types in one run: SNPs and InDels (bcftools), SVs and\n                    CNVs, each into its own VCF, and with --merge also into one combined VCF.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    sv-freq         Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    impute          (advanced) Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-\n                    coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle. Optional;\n                    Linux x64, Windows x64 and Intel macOS, `pixi install -e imputation`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    acmg            (advanced) Research-only ACMG/AMP classes with fastVEP (opt-in).\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+   "help": "usage: wgsextract vcf [-h] <command> ...\n\npositional arguments:\n  <command>\n    snp             Call Single Nucleotide Polymorphisms (SNPs) using bcftools. Best for standard\n                    ancestry analysis and finding simple point mutations.\n    indel           Call Small Insertions and Deletions (InDels) using bcftools. Used to find\n                    small gaps or extra bases in the DNA sequence.\n    call            Call several variant types in one run: SNPs and InDels (bcftools), SVs and\n                    CNVs, each into its own VCF, and with --merge also into one combined VCF.\n    annotate        Add external metadata (like population frequencies or disease risk) to your\n                    VCF file.\n    filter          Filter your results. Use this to focus on specific genes of interest or to\n                    remove low-quality 'noisy' variant calls.\n    table           Export variants and their annotations (gene, consequence, ClinVar, gnomAD,\n                    genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and\n                    an SQLite database to query.\n    clinvar         Annotate VCF with ClinVar pathogenicity data.\n    revel           Annotate VCF with REVEL pathogenicity scores.\n    gnomad          Annotate VCF with gnomAD population frequencies.\n    sv-freq         Annotate SVs with gnomAD-SV/gnomAD-LR frequencies.\n    pharmgkb        Annotate VCF with PharmGKB drug metabolism data.\n    info            Quick summary of a VCF, gVCF or BCF: reference build/model, samples, format,\n                    and record counts.\n    variantqc       Run DISCVRSeq VariantQC to generate an interactive HTML VCF quality report.\n    granite-qc      Run granite qcVCF (dbmi-bgm/granite) for single-sample or family VCF quality\n                    metrics.\n    to-fasta        (advanced) Build your personal consensus genome: the reference FASTA with your\n                    variants applied (heterozygous SNVs as IUPAC codes by default), and N where a\n                    gVCF has no call.\n    trio            (advanced) Analyze inheritance patterns. Compares a child's VCF with their\n                    parents to identify de novo (new) mutations or inherited conditions.\n    cnv             (advanced) Call Copy Number Variants (CNVs) using Delly. Detects large regions\n                    of DNA that have been duplicated or deleted, affecting gene dosage. (Not\n                    tested on macOS.)\n    sv              (advanced) Call Structural Variants (SVs) using Delly for short reads,\n                    Sniffles for Nanopore (ONT, auto-detected) or other long reads, or\n                    pbsv/Sniffles for PacBio. Identifies large-scale DNA changes (over 50bp).\n    freebayes       (advanced) A Bayesian genetic variant detector. Excellent for finding small\n                    variants in complex regions or when you have variable sequencing depth.\n    gatk            (advanced) Industry-standard GATK HaplotypeCaller. Best for high-accuracy\n                    clinical-grade SNP and InDel calling using local de novo assembly.\n    deepvariant     (advanced) Google's Deep Variant variant caller. Supports WGS/WES and PacBio\n                    HiFi models; uses a neural network to achieve superior accuracy by 'looking'\n                    at read alignments as images. (Not tested on macOS.)\n    clair3          (advanced) Clair3 small-variant caller for Oxford Nanopore reads (optional;\n                    Linux x86-64/ARM64 and Apple Silicon macOS, install with `pixi install -e\n                    clair3`). DeepVariant remains the default ONT caller.\n    phase           (advanced) Phase a sample's heterozygous calls with its reads (WhatsHap, or\n                    LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype.\n                    Optional; Linux and macOS, install with `pixi install -e phasing`.\n    impute          (advanced) Impute a GRCh38 sample from the 1000 Genomes 30x panel: low-\n                    coverage reads with GLIMPSE2, or a genotype-only VCF with Beagle. Optional;\n                    Linux x64, Windows x64 and Intel macOS, `pixi install -e imputation`.\n    phylop          (advanced) Annotate VCF with PhyloP conservation scores.\n    cadd            (advanced) Annotate VCF with CADD deleteriousness scores (CADD_RAW,\n                    CADD_PHRED).\n    gerp            (advanced) Annotate VCF with GERP++ conservation scores (GERP).\n    spliceai        (advanced) Annotate VCF with SpliceAI splicing scores.\n    alphamissense   (advanced) Annotate VCF with AlphaMissense pathogenicity scores.\n    acmg            (advanced) Research-only ACMG/AMP classes with fastVEP (opt-in).\n    pharmcat        (advanced) Call star-allele diplotypes and drug-response phenotypes (CYP2C19,\n                    CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.\n    chain-annotate  (advanced) Sequentially apply multiple annotations to a single VCF.\n\noptions:\n  -h, --help        show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
    "parser": {
     "actions": [
      {
@@ -41255,6 +41264,9 @@
        "acmg",
        "pharmgkb",
        "pharmcat",
+       "info",
+       "variantqc",
+       "granite-qc",
        "chain-annotate"
       ],
       "help": [
@@ -41301,6 +41313,18 @@
        [
         "pharmgkb",
         "Annotate VCF with PharmGKB drug metabolism data."
+       ],
+       [
+        "info",
+        "Quick summary of a VCF, gVCF or BCF: reference build/model, samples, format, and record counts."
+       ],
+       [
+        "variantqc",
+        "Run DISCVRSeq VariantQC to generate an interactive HTML VCF quality report."
+       ],
+       [
+        "granite-qc",
+        "Run granite qcVCF (dbmi-bgm/granite) for single-sample or family VCF quality metrics."
        ],
        [
         "to-fasta",
@@ -48833,7 +48857,7 @@
    }
   },
   "vcf pharmcat": {
-   "help": "usage: wgsextract vcf pharmcat [-h] [--download | --no-download] [--vcf-input VCF_INPUT]\n                               [--pharmcat-dir PHARMCAT_DIR] [--absent-to-ref]\n                               [--alignment BAM/CRAM] [--alignment-reference FASTA]\n                               [--outside-call FILE] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --pharmcat-dir PHARMCAT_DIR\n                        Extracted PharmCAT pipeline release (default: <reference\n                        library>/pharmcat).\n  --absent-to-ref       Treat positions absent from the VCF as reference. Only for a whole-genome\n                        variants-only VCF. Incompatible with --alignment.\n  --alignment BAM/CRAM  Indexed BAM/CRAM of the same sample, for reference evidence at absent\n                        PharmCAT sites. Overrides any companion gVCF.\n  --alignment-reference FASTA\n                        Indexed GRCh38 FASTA used to align --alignment (default: PharmCAT's\n                        FASTA).\n  --outside-call FILE   PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6`\n                        or `typing hla`. Repeatable; one call per gene.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf pharmcat --help-all' lists them.\n\nexamples:\n  wgsextract vcf pharmcat --vcf-input sample.vcf.gz\n\noutputs (in the output directory unless noted):\n  <stem>.report.html and <stem>.phenotype.json from PharmCAT. With\n  supplemental reference evidence, also <stem>.reference-evidence.json.\n\nneeds:\n  bcftools, pharmcat, samtools, tabix; depending on options and inputs, also:\n  bgzip, curl; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf pharmcat [-h] [--download | --no-download] [--vcf-input VCF_INPUT]\n                               [--pharmcat-dir PHARMCAT_DIR] [--absent-to-ref]\n                               [--outside-call FILE] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --pharmcat-dir PHARMCAT_DIR\n                        Extracted PharmCAT pipeline release (default: <reference\n                        library>/pharmcat).\n  --absent-to-ref       Treat positions absent from the VCF as reference. Only for a whole-genome\n                        VCF that lists variants only (not a gVCF).\n  --outside-call FILE   PharmCAT outside-call file (gene<TAB>diplotype), e.g. from `typing cyp2d6`\n                        or `typing hla`. Repeatable; one call per gene.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n2 advanced options not shown; 'wgsextract vcf pharmcat --help-all' lists them.\n\nexamples:\n  wgsextract vcf pharmcat --vcf-input sample.vcf.gz\n\noutputs (in the output directory unless noted):\n  <stem>.report.html and <stem>.phenotype.json from PharmCAT.\n\nneeds:\n  bcftools, pharmcat, samtools, tabix; depending on options and inputs, also:\n  bgzip, curl; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -49236,43 +49260,11 @@
       "default": false,
       "dest": "absent_to_ref",
       "exclusive_group": null,
-      "help": "Treat positions absent from the VCF as reference. Only for a whole-genome variants-only VCF. Incompatible with --alignment.",
+      "help": "Treat positions absent from the VCF as reference. Only for a whole-genome VCF that lists variants only (not a gVCF).",
       "metavar": null,
       "nargs": 0,
       "option_strings": [
        "--absent-to-ref"
-      ],
-      "required": false,
-      "type": null
-     },
-     {
-      "choices": null,
-      "class": "_StoreAction",
-      "const": null,
-      "default": null,
-      "dest": "alignment",
-      "exclusive_group": null,
-      "help": "Indexed BAM/CRAM of the same sample, for reference evidence at absent PharmCAT sites. Overrides any companion gVCF.",
-      "metavar": "BAM/CRAM",
-      "nargs": null,
-      "option_strings": [
-       "--alignment"
-      ],
-      "required": false,
-      "type": null
-     },
-     {
-      "choices": null,
-      "class": "_StoreAction",
-      "const": null,
-      "default": null,
-      "dest": "alignment_reference",
-      "exclusive_group": null,
-      "help": "Indexed GRCh38 FASTA used to align --alignment (default: PharmCAT's FASTA).",
-      "metavar": "FASTA",
-      "nargs": null,
-      "option_strings": [
-       "--alignment-reference"
       ],
       "required": false,
       "type": null
@@ -61693,8 +61685,6 @@
    ],
    "_one_vcf_input": true,
    "absent_to_ref": false,
-   "alignment": null,
-   "alignment_reference": null,
    "atomic_output": false,
    "command": "vcf",
    "confidence_depth": null,
@@ -61736,8 +61726,6 @@
    ],
    "_one_vcf_input": true,
    "absent_to_ref": true,
-   "alignment": null,
-   "alignment_reference": null,
    "atomic_output": false,
    "command": "vcf",
    "confidence_depth": null,

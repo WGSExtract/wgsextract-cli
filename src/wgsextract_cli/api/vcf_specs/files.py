@@ -32,6 +32,78 @@ HAPLOTYPES = ("iupac", "alt", "1", "2")
 
 
 @dataclass(frozen=True, kw_only=True)
+class VcfInfoParams(_VcfFileParams):
+    """Inspect a VCF, gVCF, or BCF file: reference build/model, samples, counts, and format."""
+
+    COMMAND = "vcf info"
+
+    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    ref: Path | None = ref_param()
+
+
+@dataclass(frozen=True, kw_only=True)
+class VcfVariantQcParams(_VcfFileParams):
+    """Run DISCVRSeq VariantQC to write an interactive HTML VCF quality report."""
+
+    COMMAND = "vcf variantqc"
+
+    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    extra_vcf: tuple[Path, ...] | None = param(
+        None,
+        help="Additional VCF file(s) to analyze together in the same VariantQC report (repeat flag for multiple).",
+        metavar="FILE",
+        action="append",
+        path="file",
+    )
+    ref: Path | None = ref_param()
+    memory: str | None = memory_param()
+    pedigree: Path | None = param(
+        None,
+        help="Optional pedigree file (.ped) for sex- and family-aware VariantQC metrics.",
+        metavar="FILE",
+        path="file",
+    )
+    discvrseq_jar: Path | None = param(
+        None,
+        help="Path to DISCVRseq.jar (default: config discvrseq_jar or jar_directory).",
+        metavar="FILE",
+        path="file",
+        config_key="discvrseq_jar",
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class VcfGraniteQcParams(_VcfFileParams):
+    """Run granite qcVCF (dbmi-bgm/granite) to compute single-sample or family VCF QC metrics."""
+
+    COMMAND = "vcf granite-qc"
+
+    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    pedigree: Path | None = param(
+        None,
+        help="Optional granite pedigree JSON file (auto-generated from VCF samples if omitted).",
+        metavar="FILE",
+        path="file",
+    )
+    samples: str | None = param(
+        None,
+        help="Comma-separated sample IDs to include (default: all samples in the VCF header).",
+    )
+    trio_errors: bool = param(
+        False,
+        help="Include Mendelian trio error statistics (requires a pedigree with parents).",
+        action="store_true",
+    )
+    granite_path: Path | None = param(
+        None,
+        help="Path to the granite executable (default: config granite_executable or PATH).",
+        metavar="FILE",
+        path="file",
+        config_key="granite_executable",
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
 class VcfAnnotateParams(_VcfFileParams):
     """Copy columns from an annotation VCF or tab file into ``annotated.vcf.gz``."""
 
