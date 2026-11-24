@@ -37,11 +37,11 @@ def verify_checkout(sha: str, expected_platform: str) -> str:
     return head
 
 
-def execute(sha: str, base: str, name: str, host: str, workers: int) -> None:
-    verify_checkout(sha, host)
+def execute(sha: str, base: str, name: str, platform: str, workers: int) -> None:
+    verify_checkout(sha, platform)
     paths = changed_paths(base, sha)
-    cli, targets = selection(paths, host)
-    environments = required_environments(name, host, cli, targets)
+    cli, targets = selection(paths, platform)
+    environments = required_environments(name, platform, cli, targets)
     setup = ["pixi", "run", "--no-install", "python", "scripts/ci_certify_setup.py"]
     for environment in environments:
         setup += ["-e", environment]
@@ -54,7 +54,7 @@ def execute(sha: str, base: str, name: str, host: str, workers: int) -> None:
         name != "generic"
         and cli
         and targets
-        and host
+        and platform
         in {
             "linux-x64",
             "macos-arm64",
@@ -67,20 +67,20 @@ def execute(sha: str, base: str, name: str, host: str, workers: int) -> None:
             subprocess.run(
                 [*setup, "--reference"], check=True, stdin=subprocess.DEVNULL
             )
-    verify_checkout(sha, host)
+    verify_checkout(sha, platform)
     commands = (
         generic_commands(paths, select_tests(paths))
         if name == "generic"
-        else platform_commands(host, targets, not cli)
+        else platform_commands(platform, targets, not cli)
     )
     run_layer(name, commands, sha, workers, stream_output=True)
-    verify_checkout(sha, host)
+    verify_checkout(sha, platform)
 
 
 def main() -> int:
     import json
 
-    sha, base, name, host, worker_count = sys.argv[1:]
+    sha, base, name, platform, worker_count = sys.argv[1:]
     result = {
         "sha_before": "",
         "sha_after": "",
@@ -91,10 +91,10 @@ def main() -> int:
     }
     code = 2
     try:
-        if name not in {host, "generic"}:
+        if name not in {platform, "generic"}:
             raise ValueError(f"Unsupported remote layer {name}")
-        result["sha_before"] = verify_checkout(sha, host)
-        execute(sha, base, name, host, int(worker_count))
+        result["sha_before"] = verify_checkout(sha, platform)
+        execute(sha, base, name, platform, int(worker_count))
         result["state"], code = "success", 0
     except CertificationTestFailure as error:
         print(error, flush=True)
@@ -103,7 +103,7 @@ def main() -> int:
         print(f"Remote certification refused: {error}", flush=True)
     finally:
         try:
-            result["sha_after"] = verify_checkout(sha, host)
+            result["sha_after"] = verify_checkout(sha, platform)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             print(error, flush=True)
             result["state"], code = "error", 2

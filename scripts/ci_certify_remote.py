@@ -60,7 +60,7 @@ url = "https://github.com/WGSExtract/wgsextract-cli.git"
 effective_url = subprocess.check_output(["git", "ls-remote", "--get-url", url],
                                         text=True).strip()
 http_config = subprocess.run(["git", "config", "--name-only", "--get-regexp",
-                              r"^http\\.",], capture_output=True, text=True)
+                              "^http[.]"], capture_output=True, text=True)
 if effective_url != url or http_config.returncode != 1:
     raise ValueError("Remote checkout must use unmodified public HTTPS without HTTP overrides")
 for revision in (request["sha"], request["base"]):

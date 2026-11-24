@@ -163,7 +163,11 @@ def transport(
 
 
 def certify(
-    pr: dict[str, Any], *, remote: str = "randy-mini", generic: bool = False
+    pr: dict[str, Any],
+    *,
+    remote: str = "randy-mini",
+    generic: bool = False,
+    config: Path = Path("config.toml"),
 ) -> None:
     certify_remote(
         REPOSITORY,
@@ -173,7 +177,7 @@ def certify(
             platform_only=not generic,
             generic_only=generic,
             remote=remote,
-            remote_config=Path("config.toml"),
+            remote_config=config,
             workers=1,
         ),
     )
@@ -269,13 +273,13 @@ def test_972_generic_only_posts_only_its_remote_layer(
 
 
 def test_1495_selects_next_native_windows_host(
-    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    Path("config.toml").write_text(
+    config = tmp_path / "config.toml"
+    config.write_text(
         '[[certification.hosts]]\nalias = "minipc"\nplatform = "windows-x64"\n'
         '[[certification.hosts]]\nalias = "seraph"\nplatform = "windows-x64"\n'
     )
-    Path(".git/info/exclude").write_text("config.toml\n")
     statuses, locks = transport(
         monkeypatch,
         remote_pr,
@@ -283,7 +287,7 @@ def test_1495_selects_next_native_windows_host(
         result_platform="windows-x64",
         layer="windows-x64",
     )
-    certify(remote_pr, remote="windows-x64")
+    certify(remote_pr, remote="windows-x64", config=config)
     assert [status["state"] for status in statuses] == ["pending", "success"]
     assert statuses[-1]["context"] == "local-ci/windows-x64"
     assert statuses[-1]["description"].startswith("seraph ")
@@ -308,7 +312,12 @@ def test_1495_refuses_ssh_setenv_without_publishing(
     assert not statuses and not locks
 
 
-def test_1495_refuses_repository_local_rewrite_of_public_https(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "config_key", ["url.{uri}.insteadOf", "http.https://github.com/.extraHeader"]
+)
+def test_1495_refuses_repository_local_public_https_overrides(
+    tmp_path: Path, config_key: str
+) -> None:
     if shutil.disk_usage(tmp_path).free < 30 * 1024**3:
         pytest.skip("Remote bootstrap requires its 30 GiB disk reserve")
     checkout = tmp_path / "src/wgsextract-cli"
@@ -320,7 +329,7 @@ def test_1495_refuses_repository_local_rewrite_of_public_https(tmp_path: Path) -
             "-C",
             str(checkout),
             "config",
-            f"url.{tmp_path.as_uri()}.insteadOf",
+            config_key.format(uri=tmp_path.as_uri()),
             "https://github.com/",
         ],
         check=True,
