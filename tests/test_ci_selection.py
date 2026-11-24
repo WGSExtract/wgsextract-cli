@@ -365,11 +365,8 @@ def test_1132_config_guide_changes_run_generated_reference_freshness() -> None:
     paths = ["docs/data/configuration-guide.md"]
     assert routes(paths)["docs"]
     assert not routes(paths)["cli"]
-    assert docs_test_targets(paths) == [
-        "tests/test_site_references.py",
-        "tests/test_regen.py",
-    ]
-    assert "tests/test_core_cli.py" in select_tests(paths)
+    assert docs_test_targets(paths) == ["tests/test_site_references.py"]
+    assert select_tests(paths) == ["tests/test_site_references.py"]
 
 
 def test_914_ci_observer_change_keeps_its_actual_readers() -> None:
