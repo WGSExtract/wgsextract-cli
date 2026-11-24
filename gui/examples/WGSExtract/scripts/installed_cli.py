@@ -68,10 +68,18 @@ def launch(cache: Path, pixi: str, args: list[str]) -> None:
     main()
 
 
-if __name__ == "__main__":
-    mode, filename, *argv = sys.argv[1:]
-    if mode == "capture":
-        capture(Path(filename))
+def main(argv: list[str]) -> None:
+    if len(argv) == 2 and argv[0] == "capture":
+        capture(Path(argv[1]))
+    elif len(argv) >= 3 and argv[0] == "launch":
+        launch(Path(argv[1]), argv[2], argv[3:])
     else:
-        pixi, *cli_args = argv
-        launch(Path(filename), pixi, cli_args)
+        print(
+            "Usage: installed_cli.py capture CACHE | launch CACHE PIXI [CLI ARGS...]",
+            file=sys.stderr,
+        )
+        raise SystemExit(64)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

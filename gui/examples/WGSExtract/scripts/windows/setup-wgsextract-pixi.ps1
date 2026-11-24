@@ -288,6 +288,7 @@ try {
 
     Push-Location $appDir
     $previousConsoleEncoding = [Console]::OutputEncoding
+    $previousOutputEncoding = $OutputEncoding
     try {
         # Capture before activation. In an already activated shell, Pixi's
         # hook omits values it didn't need to change.
@@ -308,6 +309,7 @@ try {
         Write-Warning "Could not cache CLI activation; commands will continue to run through Pixi. $_"
     } finally {
         [Console]::OutputEncoding = $previousConsoleEncoding
+        $OutputEncoding = $previousOutputEncoding
         Pop-Location
     }
 

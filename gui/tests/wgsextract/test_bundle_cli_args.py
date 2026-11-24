@@ -549,6 +549,7 @@ class BundleCommandTests(unittest.TestCase):
     def test_bundle_commands_render_and_reach_wgsextract(self) -> None:
         self.assertGreater(len(self.cli_invocations()), 40)
 
+    @unittest.skipUnless(os.name != "nt" and Path("/bin/sh").is_file(), "POSIX wrapper")
     def test_1506_installed_cli_runs_without_pixi(self) -> None:
         sandbox = self.sandbox
         runtime = sandbox.app_data / "runtime" / "wgsextract-cli"
