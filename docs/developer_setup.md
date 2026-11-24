@@ -219,12 +219,7 @@ reference stable without duplicating parameter descriptions beside their handler
 ### Generated references and parallel PRs
 
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
-help. It updates the CLI snapshot under `tests/fixtures/cli_snapshot/` and the
-bundled compact discovery index. The snapshot stores one JSON file per covered
-command (for example `vcf/snp.json`), including its parser, help and argv cases.
-Different command files can merge independently; adding children to the same
-group can still change that group's help. Regenerate rather than editing
-snapshots by hand.
+help. It updates the bundled compact discovery index.
 The [site build](site_generation.md) generates the public references and CLI
 cards separately; they are not committed.
 If a branch still tracks a retired generated reference, `just regen-resolve`

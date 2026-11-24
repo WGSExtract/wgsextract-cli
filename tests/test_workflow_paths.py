@@ -6,12 +6,6 @@ import pytest
 
 from scripts.ci_changes import routes
 from tests.test_github_actions_policy import (
-    AREA_PUSH_WORKFLOWS as AREA_PUSH_WORKFLOWS,
-)
-from tests.test_github_actions_policy import (
-    HEAVY_PUSH_WORKFLOWS as HEAVY_PUSH_WORKFLOWS,
-)
-from tests.test_github_actions_policy import (
     event_path_filters as event_path_filters,
 )
 from tests.test_github_actions_policy import (
@@ -96,8 +90,7 @@ def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
     reference: str,
 ) -> None:
     triggered = triggered_workflows([reference])
-    assert not triggered & (HEAVY_PUSH_WORKFLOWS | AREA_PUSH_WORKFLOWS)
-    assert "gitleaks.yml" in triggered
+    assert EVERY_MAIN_PUSH <= triggered <= EVERY_MAIN_PUSH | {"pages.yml"}
     assert triggered_workflows([reference], "pull_request") == {"pr_ci.yml"}
     assert not routes([reference])["cli"]
 
@@ -107,8 +100,10 @@ def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
 )
 def test_docs_fast_path_909_does_not_hide_mixed_code_pushes(code: str) -> None:
     triggered = triggered_workflows(["README.md", code])
-    assert HEAVY_PUSH_WORKFLOWS | {"gitleaks.yml"} <= triggered
-    assert "os_tests.yml" not in triggered
+    expected = EVERY_MAIN_PUSH | {"codeql.yml"}
+    if code.startswith("src/wgsextract_cli/"):
+        expected.add("pages.yml")
+    assert triggered == expected
 
 
 def test_github_path_filters_reinclude_only_matching_files_in_order() -> None:
@@ -191,7 +186,7 @@ def test_docs_fast_path_909_pr_prose_runs_only_area_checks(paths: list[str]) -> 
     assert selected["docs"] == any(
         path.startswith(("site_src/", "gui/site_src/")) for path in paths
     )
-    assert not any(selected[area] for area in ("cli", "native", "install"))
+    assert not any(selected[area] for area in ("cli", "native"))
 
 
 @pytest.mark.parametrize(
@@ -222,8 +217,6 @@ def test_docs_fast_path_909_pr_code_still_runs_external_workflows() -> None:
         "codeql.yml",
         "gui-ci.yml",
         "gui-dev-setup.yml",
-        "gui-distribution.yml",
-        "gui-tauri-installer.yml",
     } <= triggered_workflows(
         ["README.md", "gui/app/web/packagers/tauri/src/main.rs"], "pull_request"
     )

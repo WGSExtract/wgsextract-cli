@@ -134,9 +134,7 @@ def test_1464_only_full_ubuntu_main_runs_publish_observations(
     event: str, ref: str, optional_only: bool, balanced: bool, trusted: bool
 ) -> None:
     ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
-    gate = re.search(
-        r"main-backstop-candidate: &main-backstop-candidate \$\{\{ (.+) \}\}", ubuntu
-    )
+    gate = re.search(r"main-backstop-candidate: \$\{\{ (.+) \}\}", ubuntu)
     assert gate is not None
     inputs: dict[str, str | bool] = {
         "github.event_name": event,

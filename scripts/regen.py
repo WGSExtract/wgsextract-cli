@@ -8,9 +8,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT_DIR = "tests/fixtures/cli_snapshot"
 GENERATOR_SCRIPTS = (
-    "tests/cli_snapshot.py",
     "scripts/gen_command_docs.py",
     "scripts/gen_output_schemas.py",
     "scripts/gen_report_schema.py",
@@ -35,7 +33,6 @@ GENERATED = (
     "gui/app/shared/generated/report-records.ts",
 )
 RETIRED_GENERATED = (
-    "tests/fixtures/api_cli_snapshot.json",
     "docs/api.md",
     "docs/commands.md",
     "docs/configuration.md",
@@ -53,11 +50,7 @@ def main() -> None:
         ).splitlines()
         retired = sorted(set(unresolved).intersection(RETIRED_GENERATED))
         sources = {
-            path
-            for path in unresolved
-            if path not in GENERATED
-            and path not in retired
-            and not (path.startswith(f"{SNAPSHOT_DIR}/") and path.endswith(".json"))
+            path for path in unresolved if path not in GENERATED and path not in retired
         }
         if sources:
             parser.error(
@@ -75,7 +68,6 @@ def main() -> None:
                 "add",
                 "--",
                 *GENERATED,
-                f":(glob){SNAPSHOT_DIR}/**/*.json",
                 *retired,
             ],
             cwd=ROOT,

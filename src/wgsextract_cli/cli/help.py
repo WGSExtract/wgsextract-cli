@@ -7,6 +7,8 @@ commands/_help_catalog/. Colour is used only on a terminal and never when
 NO_COLOR is set (https://no-color.org), so piped output stays plain.
 """
 
+from __future__ import annotations
+
 import argparse
 import difflib
 import functools
@@ -21,9 +23,6 @@ from dataclasses import dataclass
 from typing import IO, Any
 
 from wgsextract_cli.commands._advanced_options import ADVANCED_OPTIONS, COMMON_ADVANCED
-from wgsextract_cli.commands._command_needs import COMMAND_NEEDS, CommandNeeds
-from wgsextract_cli.commands._help_catalog import COMMAND_HELP, CommandHelp
-from wgsextract_cli.commands._help_topics import HELP_TOPICS
 from wgsextract_cli.commands.registry import (
     ADVANCED,
     ADVANCED_SUBCOMMANDS,
@@ -37,8 +36,11 @@ from wgsextract_cli.commands.registry import (
     Journey,
     command_tier,
 )
-from wgsextract_cli.core.config import settings_suspended
 from wgsextract_cli.core.messages import CLI_HELP
+
+if typing.TYPE_CHECKING:
+    from wgsextract_cli.commands._command_needs import CommandNeeds
+    from wgsextract_cli.commands._help_catalog import CommandHelp
 
 HELP_SCHEMA = "wgsextract.help/1"
 HELP_INDEX_SCHEMA = "wgsextract.help-index/1"
@@ -134,7 +136,12 @@ class CommandEntry:
     path: str
     parser: argparse.ArgumentParser
     summary: str
-    help: CommandHelp | None
+
+    @property
+    def help(self) -> CommandHelp | None:
+        from wgsextract_cli.commands._help_catalog import COMMAND_HELP
+
+        return COMMAND_HELP.get(self.path)
 
     @property
     def tier(self) -> str:
@@ -172,7 +179,7 @@ def walk_commands(
     for name, subparser, help_text in _subcommands(parser):
         path = f"{prefix} {name}".strip()
         summary = getattr(subparser, "summary", None) or help_text
-        yield CommandEntry(path, subparser, summary, COMMAND_HELP.get(path))
+        yield CommandEntry(path, subparser, summary)
         yield from walk_commands(subparser, path)
 
 
@@ -195,13 +202,11 @@ def command_index(
 
 
 def _entry_for(parser: argparse.ArgumentParser, path: str) -> CommandEntry:
-    return CommandEntry(
-        path, parser, getattr(parser, "summary", "") or "", COMMAND_HELP.get(path)
-    )
+    return CommandEntry(path, parser, getattr(parser, "summary", "") or "")
 
 
 def apply_help_metadata(parser: argparse.ArgumentParser, prefix: str = "") -> None:
-    """Attach each command's summary and examples/outputs to its parser, and
+    """Attach each command's summary and option visibility to its parser, and
     list a mixed-tier group's core subcommands first, marking the rest
     "(advanced)"."""
     for action in parser._actions:
@@ -219,8 +224,6 @@ def apply_help_metadata(parser: argparse.ArgumentParser, prefix: str = "") -> No
                 if not prefix
                 else first_sentence(plain_help(choice.help))
             )
-            subparser.command_help = COMMAND_HELP.get(path)
-            subparser.command_needs = COMMAND_NEEDS.get(path)
             subparser.deprecation = DEPRECATED.get(path)
             subparser.advanced_actions = advanced_actions(subparser, path)
             tiers[choice.dest] = command_tier(path)
@@ -495,12 +498,12 @@ def index_json(
                 examples=list(entry.help.examples) if entry.help else [],
                 outputs=entry.help.outputs if entry.help else None,
             )
-        needs = COMMAND_NEEDS.get(entry.path)
-        if needs is not None and not compact:
-            command["tools"] = list(needs.tools)
-            command["optional_tools"] = list(needs.optional)
-            command["runtime"] = needs.runtime
-            command["runtime_text"] = needs.runtime_text
+        if not compact:
+            if needs := command_needs(entry.path):
+                command["tools"] = list(needs.tools)
+                command["optional_tools"] = list(needs.optional)
+                command["runtime"] = needs.runtime
+                command["runtime_text"] = needs.runtime_text
         if entry.path in schemas:
             command["input_schema"] = schemas[entry.path]
         if entry.deprecation is not None:
@@ -511,6 +514,8 @@ def index_json(
         document["details"] = "wgsextract help <command> --json"
         document["full"] = "wgsextract help --all --json --full"
     if global_options is not None:
+        from wgsextract_cli.commands._help_topics import HELP_TOPICS
+
         document["global_options"] = global_options
     document["commands"] = commands
     if global_options is not None:
@@ -527,6 +532,22 @@ def _deprecation_json(deprecation: Deprecation) -> dict[str, str | bool]:
         "remove_in": deprecation.remove_in,
         "without_subcommand": deprecation.bare,
     }
+
+
+def command_needs(path: str) -> CommandNeeds | None:
+    from wgsextract_cli.commands._command_needs import COMMAND_NEEDS
+
+    return COMMAND_NEEDS.get(path)
+
+
+def command_contract(path: str, deprecation: Deprecation | None) -> str:
+    from wgsextract_cli.commands._help_catalog import COMMAND_HELP
+
+    if entry := COMMAND_HELP.get(path):
+        return "\n" + contract_text(
+            entry, use_color(), command_needs(path), deprecation
+        )
+    return ""
 
 
 def dump_json(document: dict[str, Any]) -> str:
@@ -659,28 +680,6 @@ def input_schemas() -> dict[str, dict[str, Any]]:
     return schemas
 
 
-def format_topics(color: bool) -> str:
-    """'help topics': the concept pages, one line each."""
-    width = max(len(name) for name in HELP_TOPICS) + 2
-    lines = [_heading("Help topics ('wgsextract help <topic>'):", color)]
-    for name, topic in HELP_TOPICS.items():
-        pad = " " * (width - len(name))
-        lines.append(f"  {_name(name, color)}{pad}{topic.summary}")
-    return "\n".join(lines) + "\n"
-
-
-def topics_json(names: Iterable[str]) -> str:
-    topics = [
-        {
-            "name": name,
-            "summary": HELP_TOPICS[name].summary,
-            "body": HELP_TOPICS[name].body,
-        }
-        for name in names
-    ]
-    return dump_json({"schema": HELP_SCHEMA, "topics": topics})
-
-
 def run_help(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     """The 'help' command: the command tree, the index (--all), a topic, or
     one command."""
@@ -689,15 +688,12 @@ def run_help(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if getattr(args, "full", False) and not as_json:
         resolve_command(parser, ["help"]).error("--full requires --json")
     color = use_color()
-    if topic == ["topics"] or (len(topic) == 1 and topic[0] in HELP_TOPICS):
-        names = list(HELP_TOPICS) if topic == ["topics"] else topic
-        if as_json:
-            sys.stdout.write(topics_json(names))
-        elif topic == ["topics"]:
-            sys.stdout.write(format_topics(color))
-        else:
-            sys.stdout.write(HELP_TOPICS[topic[0]].body)
-        return
+    if len(topic) == 1:
+        from .help_topics import topic_output
+
+        if (output := topic_output(topic[0], as_json=as_json, color=color)) is not None:
+            sys.stdout.write(output)
+            return
     if as_json and not topic and not getattr(args, "full", False):
         from importlib.resources import files
 
@@ -717,12 +713,16 @@ def run_help(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     except ValueError as error:
         message = str(error)
         if len(topic) == 1:
+            from wgsextract_cli.commands._help_topics import HELP_TOPICS
+
             hint = did_you_mean(topic[0], ["topics", *HELP_TOPICS, *_top_names(parser)])
             message = f"unknown command or topic '{topic[0]}'. "
             message += f"{hint} " if hint else ""
             message += "See 'wgsextract help --all' or 'wgsextract help topics'."
         resolve_command(parser, ["help"]).error(message)
     if as_json:
+        from wgsextract_cli.core.config import settings_suspended
+
         from .parser import build_parser
 
         with settings_suspended():
@@ -781,6 +781,8 @@ def journey_text(journey: Journey) -> str:
 def render_markdown(parser: argparse.ArgumentParser) -> str:
     """The command reference, generated from the tiers and
     the help catalog."""
+    from wgsextract_cli.commands._help_topics import HELP_TOPICS
+
     out = [
         "# Command reference",
         "",
@@ -819,7 +821,7 @@ def render_markdown(parser: argparse.ArgumentParser) -> str:
         ]
         for entry in group:
             example = entry.help.examples[0] if entry.help else ""
-            needs = COMMAND_NEEDS.get(entry.path)
+            needs = command_needs(entry.path)
             prose = [
                 entry.summary,
                 entry.help.outputs if entry.help else "",

@@ -28,7 +28,6 @@ jobs:
       actions: read
       contents: read
       statuses: read
-      pull-requests: read
     outputs:
       cli: ${{ steps.diff.outputs.cli }}
       docs: ${{ steps.diff.outputs.docs }}
@@ -36,7 +35,6 @@ jobs:
       site_validation: ${{ steps.diff.outputs.site_validation }}
       native: ${{ steps.diff.outputs.native }}
       site: ${{ steps.diff.outputs.site }}
-      install: ${{ steps.diff.outputs.install }}
       fast: ${{ steps.diff.outputs.fast }}
       draft_cli: ${{ steps.diff.outputs.draft_cli }}
       python_files: ${{ steps.diff.outputs.python_files }}
@@ -96,17 +94,11 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           DRAFT: ${{ github.event.pull_request.draft }}
           FULL_SUITE: ${{ github.event_name == 'merge_group' }}
         run: |
           set -euo pipefail
           flags=()
-          if [ -n "$PR_NUMBER" ]; then
-            force_install=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq 'any(.labels[]; .name == "run-install-lab")')
-            if [ "$force_install" = true ]; then flags+=(--force-install-lab); fi
-          fi
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
@@ -434,10 +426,6 @@ jobs:
           python -m pip install --quiet -e . pytest pytest-xdist jsonschema coverage 'markdown-it-py>=3,<5'
           mkdir -p out
           python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", *json.loads(os.environ["CI_TESTS"]), "--basetemp=out/ci-policy"], check=True)'
-  smoke:
-    needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
-    uses: ./.github/workflows/cli_smoke.yml
   generic:
     needs: changes
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.changes.outputs.generic != 'true' && needs.changes.outputs.generic_tests != '[]'
@@ -453,13 +441,6 @@ jobs:
           TEST_SELECTION: ${{ needs.changes.outputs.generic_tests }}
         run: pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION"
         shell: bash
-  install:
-    needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
-    uses: ./.github/workflows/install_lab.yml
-    with:
-      macos: ${{ needs.changes.outputs.setup_checks == 'true' }}
-
   # The secret scan covers every ready PR and queue group, docs-only ones included.
   gitleaks:
     if: ${{ github.event.pull_request.draft != true }}
@@ -507,7 +488,7 @@ jobs:
 
   ready-gate:
     name: Ready PR area checks
-    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, optional-tools, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
+    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, optional-tools, ubuntu, macos, windows, arm64, native-smoke, pages]
     if: >-
       ${{
         !cancelled() &&

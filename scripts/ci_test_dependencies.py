@@ -20,7 +20,6 @@ Value: TypeAlias = Path | str | None
 IGNORED = {".git", ".pixi", "out", "tmp", "scratch", "__pycache__", "node_modules"}
 DOCS_TEST_TARGETS = (
     "tests/test_site_references.py",
-    "tests/test_api_cli_parity.py",
     "tests/test_cli_help.py",
     # Real Git/generator checks need only the same Python deps as freshness tests.
     "tests/test_regen.py",
@@ -39,8 +38,7 @@ DOCS_TEST_TARGETS = (
 DOCS_TEST_MODULES = frozenset(
     target for target in DOCS_TEST_TARGETS if "::" not in target
 )
-CLI_SNAPSHOT_FILES = "tests/fixtures/cli_snapshot/*.json"
-_GENERATED_DOCS = frozenset(
+GENERATED_DOCS = frozenset(
     {
         # Hand-written inputs to the generated site references.
         "docs/data/configuration-guide.md",
@@ -67,11 +65,6 @@ DOCS_TARGET_INPUTS = {
         "site_src/configuration.md",
         "site_src/reference.md",
     ),
-    "tests/test_api_cli_parity.py": (
-        "src/wgsextract_cli/**",
-        "tests/cli_snapshot.py",
-        CLI_SNAPSHOT_FILES,
-    ),
     "tests/test_cli_help.py": (
         "src/wgsextract_cli/**",
         "scripts/gen_command_docs.py",
@@ -79,7 +72,6 @@ DOCS_TARGET_INPUTS = {
     "tests/test_regen.py": (
         "scripts/regen*",
         "scripts/gen_command_docs.py",
-        "tests/cli_snapshot.py",
         "justfile",
     ),
     "tests/test_text_newlines.py": (
@@ -88,7 +80,6 @@ DOCS_TARGET_INPUTS = {
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
-        "tests/cli_snapshot.py",
     ),
     "tests/test_bump_version.py": (
         "scripts/bump_version*",
@@ -142,10 +133,6 @@ DOCS_ONLY_SCRIPTS = frozenset(
 )
 
 
-def generated_docs_path(path: str) -> bool:
-    return path in _GENERATED_DOCS or fnmatch.fnmatchcase(path, CLI_SNAPSHOT_FILES)
-
-
 def docs_test_targets(
     paths: list[str], *, cli: bool = False, repository: Path = ROOT
 ) -> list[str]:
@@ -155,7 +142,7 @@ def docs_test_targets(
     selected = set()
     inputs = test_inputs(repository)
     for path in paths:
-        generated = generated_docs_path(path)
+        generated = path in GENERATED_DOCS
         if path.endswith(".md") and not generated:
             continue
         # Literal reads complement the declared transitive inputs. Inferred
