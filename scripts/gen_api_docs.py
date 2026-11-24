@@ -37,6 +37,7 @@ GROUPS = (
     api.align,
     api.pet,
     api.vcf,
+    api.cohort,
     api.analyze,
     api.lineage,
     api.methylation,

@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import bisect
 import hashlib
-import json
 import re
 import subprocess
 import tempfile
@@ -44,7 +43,9 @@ from wgsextract_cli.core.clair3_reference_shadow import (
 )
 from wgsextract_cli.core.clair3_reference_shadow import classify_spans as classify_spans
 from wgsextract_cli.core.clair3_reference_shadow import query_intervals
-from wgsextract_cli.core.paths import PathInput
+from wgsextract_cli.core.reference_evidence_companion import INDEX_ROLE as INDEX_ROLE
+from wgsextract_cli.core.reference_evidence_companion import ROLE as ROLE
+from wgsextract_cli.core.reference_evidence_companion import companion as companion
 from wgsextract_cli.core.reference_evidence_records import (
     _RANK,
     _merge,
@@ -79,7 +80,6 @@ from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 from wgsextract_cli.core.variant_confidence import Thresholds
 
 SCHEMA = "wgsextract.reference_evidence/1"
-ROLE, INDEX_ROLE = "reference_evidence", "reference_evidence_index"
 HEADER_KEY = "wgseReferenceEvidence"
 POLICY_HEADER_KEY = "wgsePloidyPolicy"
 # Blocks below the first band would be written one record per base.
@@ -522,12 +522,14 @@ class ReferenceEvidence:
         *,
         records: Iterator[list[str]] | None = None,
         ploidy: int | None = None,
+        stream_complete: bool = False,
     ) -> Iterator[Span]:
         """Every base of ``regions`` (default: every contig) in its state, as
         maximal spans in contig order. Bases no record covers are uncovered
         where the caller assessed them and not assessed elsewhere.
         ``records`` supplies a sorted, already-open single-sample stream;
-        missing records remain not assessed. ``ploidy`` overrides GT encoding."""
+        missing records remain not assessed unless ``stream_complete`` covers
+        every requested interval. ``ploidy`` overrides GT encoding."""
         order = {name: index for index, name in enumerate(self.lengths)}
         requested = (
             regions
@@ -561,7 +563,9 @@ class ReferenceEvidence:
                     if self.provenance
                     else None
                 ),
-                missing_state=State.NOT_ASSESSED,
+                missing_state=State.UNCOVERED
+                if stream_complete
+                else State.NOT_ASSESSED,
             )
         )
         spans: Iterator[Span] = observed
@@ -641,88 +645,6 @@ class ReferenceEvidence:
         return query_intervals(
             self.path, self.quality_model, wanted, thresholds, order, regions
         )
-
-
-def _recorded_file(
-    record: Mapping[str, object], manifest: Path, document: Mapping[str, object]
-) -> Path | None:
-    """A file a result manifest recorded, where it is now (relative to the
-    manifest when its folder has moved), if its recorded fingerprint shows
-    it unchanged since; without one the file can't be trusted to be the
-    run's."""
-    from wgsextract_cli.core import read_scope
-    from wgsextract_cli.core.results import fingerprint
-
-    recorded = Path(str(record.get("path") or ""))
-    place = recorded
-    original = document.get("manifest")
-    if not recorded.is_file() and isinstance(original, str):
-        try:
-            place = manifest.parent / recorded.relative_to(Path(original).parent)
-        except ValueError:
-            return None
-    expected = record.get("fingerprint")
-    if not expected or not read_scope.may_follow(place):
-        return None
-    if not place.is_file() or fingerprint(place) != expected:
-        return None
-    return place
-
-
-def companion(vcf: PathInput) -> str | None:
-    """The gVCF the run that wrote ``vcf`` published beside it, if any: the
-    ``reference_evidence`` output of a successful result manifest that also
-    lists ``vcf`` among its outputs. The manifests read are those in the
-    VCF's folder and those its sample workspace recorded; both files must
-    still be the ones the manifest describes (same fingerprint), and the gVCF
-    indexed. Of several such runs the newest wins. A server job follows only
-    manifests and files inside its allowed folders (``read_scope``)."""
-    from wgsextract_cli.core import read_scope, sample_workspace
-    from wgsextract_cli.core.results import MANIFEST_SUFFIX
-
-    given = Path(vcf).expanduser().absolute()
-    path = given.resolve()
-    if not path.is_file():
-        return None
-    candidates = {
-        manifest
-        for folder in {given.parent, path.parent}
-        for manifest in folder.glob(f"*{MANIFEST_SUFFIX}")
-    }
-    workspace = sample_workspace.workspace_for(given)
-    if workspace is not None:
-        candidates.update(workspace.recorded_manifests())
-    found: list[tuple[str, str]] = []
-    for manifest in candidates:
-        if not read_scope.may_follow(manifest):
-            continue
-        try:
-            document = json.loads(manifest.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, ValueError):
-            continue
-        if not isinstance(document, dict) or document.get("status") != "ok":
-            continue
-        outputs = [o for o in document.get("outputs") or [] if isinstance(o, dict)]
-        if not any(
-            o.get("role") != ROLE
-            and (p := _recorded_file(o, manifest, document)) is not None
-            and p.resolve() == path
-            for o in outputs
-        ):
-            continue
-        provenance = document.get("provenance")
-        finished = str(
-            (provenance.get("finished") if isinstance(provenance, dict) else "") or ""
-        )
-        for record in outputs:
-            if record.get("role") != ROLE:
-                continue
-            gvcf = _recorded_file(record, manifest, document)
-            if gvcf is not None and any(
-                Path(f"{gvcf}{suffix}").is_file() for suffix in (".tbi", ".csi")
-            ):
-                found.append((finished, str(gvcf)))
-    return max(found)[1] if found else None
 
 
 def site_state(states: Iterable[State]) -> State:

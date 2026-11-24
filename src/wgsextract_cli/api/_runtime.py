@@ -394,7 +394,8 @@ def _run(
             "output_directory"
         )
         params = _one_vcf_input(with_config_defaults(params))
-        result.provenance.params = redact_params(params.to_dict())
+        if not params.PRIVATE_PROVENANCE:
+            result.provenance.params = redact_params(params.to_dict())
         unregister = (
             cancel.on_cancel(lambda: proc_registry.cancel(scope)) if cancel else None
         )
@@ -475,7 +476,11 @@ def _prepare(params: Params, result: CommandResult) -> Path | None:
         result.add_input(input_path, "input")
     for name, role in INPUT_ARGS.items():
         path = getattr(params, name, None)
-        if isinstance(path, Path) and path.expanduser().exists():
+        if (
+            not params.PRIVATE_PROVENANCE
+            and isinstance(path, Path)
+            and path.expanduser().exists()
+        ):
             result.add_input(path.expanduser(), role)
     if isinstance(input_path, Path):
         input_path = input_path.expanduser()
@@ -486,7 +491,7 @@ def _prepare(params: Params, result: CommandResult) -> Path | None:
 
             validate_alignment_input(input_path)
     outdir = getattr(params, "outdir", None)
-    if isinstance(outdir, Path):
+    if not params.PRIVATE_PROVENANCE and isinstance(outdir, Path):
         from wgsextract_cli.core.output_location import make_output_folder
 
         return make_output_folder(outdir)

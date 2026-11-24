@@ -4,6 +4,8 @@ Use the [command reference](commands.md) for all callers and options.
 [Confidence labels and caller accuracy](variant-confidence.md) describe what
 the results can establish; research findings require clinical confirmation.
 For long reads, also read [ONT/PacBio support](ont.md).
+To count variants across samples without treating missing calls as reference,
+see [local cohort summaries](cohort.md).
 
 ## bcftools calling and consensus
 
