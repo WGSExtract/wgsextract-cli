@@ -197,9 +197,9 @@ def load_manifest(path: Path) -> dict[str, Any]:
 def used_resources(
     manifests: Sequence[Path],
 ) -> tuple[list[_Used], list[str]]:
-    """Resources the manifests recorded, merged by resource, build and
-    release; and the manifests that predate recording them."""
-    merged: dict[tuple[str, str | None, str | None, str | None], _Used] = {}
+    """Resources the manifests recorded, grouped by release and installation;
+    and the manifests that predate recording them."""
+    merged: dict[tuple[str, str | None, str | None, str | None, str | None], _Used] = {}
     unrecorded: list[str] = []
     for path in manifests:
         document = load_manifest(path)
@@ -209,7 +209,13 @@ def used_resources(
             continue
         finished = (document.get("provenance") or {}).get("finished") or None
         for record in records:
-            key = (record.id, record.build, record.release, record.fingerprint)
+            key = (
+                record.id,
+                record.build,
+                record.release,
+                record.fingerprint,
+                record.path,
+            )
             used = merged.setdefault(key, _Used(record))
             use = RecheckUseDocument(
                 command=str(document.get("command") or ""),
@@ -224,9 +230,9 @@ def used_resources(
     return sorted(merged.values(), key=_order), unrecorded
 
 
-def _order(used: _Used) -> tuple[str, str, str]:
+def _order(used: _Used) -> tuple[str, str, str, str, str]:
     r = used.record
-    return r.id, r.build or "", r.release or ""
+    return r.id, r.build or "", r.release or "", r.path or "", r.fingerprint or ""
 
 
 def read_answers(path: Path) -> tuple[AnswersDocument, str]:
@@ -269,7 +275,9 @@ def read_answers(path: Path) -> tuple[AnswersDocument, str]:
 
 
 def _answer(data: Mapping[str, Any]) -> AnswerDocument:
-    answer = AnswerDocument(id=data["id"], build=data["build"], latest=data["latest"])
+    answer = AnswerDocument(
+        id=data["id"], build=data.get("build"), latest=data.get("latest")
+    )
     if data.get("error"):
         answer["error"] = data["error"]
     return answer

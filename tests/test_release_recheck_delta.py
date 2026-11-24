@@ -453,6 +453,63 @@ def test_1179_unsupported_answers_and_unrecorded_manifests(runs, tmp_path):
     assert "resources_not_recorded" in [w.code for w in checked.warnings]
 
 
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [
+        ({"latest": "2026-11-15"}, ("newer_available", "2026-11-15")),
+        ({"build": "hg38"}, ("unknown", None)),
+    ],
+)
+def test_1363_offline_answers_allow_omitted_build_and_latest(
+    runs, tmp_path, fields, expected
+):
+    answers = tmp_path / "answers.json"
+    answers.write_text(
+        json.dumps(
+            {
+                "schema": "wgsextract.release_answers/1",
+                "answers": [{"id": "clinvar", **fields}],
+            }
+        )
+    )
+    result = api.ref.recheck(
+        api.RefRecheckParams(manifests=(runs["october"],), answers=answers)
+    )
+    (clinvar,) = [r for r in result.details["resources"] if r["id"] == "clinvar"]
+    assert (clinvar["status"], clinvar["latest_release"]) == expected
+
+
+def test_1363_identical_releases_at_different_paths_are_rechecked_separately(tmp_path):
+    original = _clinvar(tmp_path / "original.vcf", "2026-10-15", OCTOBER)
+    copy = original.with_name("copy.vcf")
+    shutil.copyfile(original, copy)
+    first = _run(tmp_path, "first", original)
+    second = _run(tmp_path, "second", copy)
+    _clinvar(tmp_path / "original.vcf", "2026-11-15", NOVEMBER)
+    answers = _answers(tmp_path / "answers.json", "2026-11-15")
+
+    def installed(manifests):
+        result = api.ref.recheck(
+            api.RefRecheckParams(manifests=manifests, answers=answers)
+        )
+        return [
+            (
+                [use["manifest"] for use in resource["used_by"]],
+                resource["installed"],
+                resource["installed_release"],
+            )
+            for resource in result.details["resources"]
+            if resource["id"] == "clinvar"
+        ]
+
+    checks = installed((first, second))
+    assert checks == installed((second, first))
+    assert checks == [
+        ([str(second)], "same", "2026-10-15"),
+        ([str(first)], "changed", "2026-11-15"),
+    ]
+
+
 def test_1179_installed_change_is_reported_without_downloading(runs, tmp_path):
     folder = tmp_path / "moved"
     shutil.copytree(runs["october"].parent, folder)

@@ -58,7 +58,8 @@ downloads data or reruns an analysis. Each resource gets a `status`:
 `installed` says whether the file at the recorded path is still the one the
 runs used (`same`, `changed` with its release as `installed_release`,
 `missing` or `unknown`; a server job checks only files in its allowed
-folders). `used_by` lists the runs, and `next_step` says what to do: download
+folders). Copies of the same release at different paths are checked separately.
+`used_by` lists the runs, and `next_step` says what to do: download
 the newer release yourself (for ClinVar from NCBI, then pass it with
 `vcf clinvar --clinvar-file`), then rerun those commands, the analyses before
 the report. `wgsextract ref <resource>` installs the release this WGS Extract
@@ -86,8 +87,10 @@ file is also an input of the result, with its fingerprint.
 }
 ```
 
-`build` may be `null` for a resource without builds. A file of another schema
-is refused with error code `unsupported_schema`.
+Omit `build` or use `null` for an answer that applies to any build without
+a build-specific answer. Omit `latest` or use `null` when the latest release
+is unknown. A file of another schema is refused with error code
+`unsupported_schema`.
 
 ## `report-delta`: what changed between two runs
 
