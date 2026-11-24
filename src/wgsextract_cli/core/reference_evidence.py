@@ -655,9 +655,8 @@ def _recorded_file(
 
     recorded = Path(str(record.get("path") or ""))
     place = recorded
-    original = document.get("manifest")
     if not (read_scope.may_follow(recorded) and recorded.is_file()) and isinstance(
-        original, str
+        original := document.get("manifest"), str
     ):
         try:
             place = manifest.parent / recorded.relative_to(Path(original).parent)

@@ -665,11 +665,11 @@ def describe(parser: argparse.ArgumentParser) -> dict[str, Any]:
     }
 
 
-def _namespace(argv: list[str]) -> dict[str, Any]:
-    from wgsextract_cli.cli.parser import build_parser, parse_args
+def _namespace(
+    argv: list[str], parser: argparse.ArgumentParser, base: argparse.ArgumentParser
+) -> dict[str, Any]:
+    from wgsextract_cli.cli.parser import parse_args
 
-    sys.argv[0] = "wgsextract"
-    parser, base = build_parser()
     args, explicit = parse_args(parser, base, argv)
     values = {
         key: _plain(value)
@@ -701,7 +701,7 @@ def _snapshot() -> dict[str, Any]:
     from wgsextract_cli.cli.parser import build_parser
 
     sys.argv[0] = "wgsextract"
-    parser, _base = build_parser()
+    parser, base = build_parser()
     commands = {}
     for path in MIGRATED:
         sub = _subparser(parser, path)
@@ -709,7 +709,7 @@ def _snapshot() -> dict[str, Any]:
         with contextlib.redirect_stdout(text):
             sub.print_help()
         commands[" ".join(path)] = {"parser": describe(sub), "help": text.getvalue()}
-    namespaces = {" ".join(argv): _namespace(argv) for argv in ARGVS}
+    namespaces = {" ".join(argv): _namespace(argv, parser, base) for argv in ARGVS}
     return {"commands": commands, "namespaces": namespaces}
 
 

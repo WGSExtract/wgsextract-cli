@@ -133,6 +133,10 @@
         "carrier_screening": {
           "$ref": "#/$defs/section"
         },
+        "medication_review": {
+          "$ref": "#/$defs/reportMedicationReview",
+          "description": "CPIC guidance for the medications in --pgx-context, gated on the pharmacogenomic calls' evidence; not a prescription. Present only with --pgx-context."
+        },
         "repeat_expansions": {
           "$ref": "#/$defs/section"
         },
@@ -233,7 +237,8 @@
             "repeat_expansions",
             "clinvar",
             "acmg_research",
-            "structural_variants"
+            "structural_variants",
+            "medication_review"
           ]
         },
         "label": {
@@ -314,14 +319,18 @@
         },
         "disclaimer": {
           "type": "string",
-          "description": "Research use only for acmg_research findings.",
+          "description": "Research use only for acmg_research findings; not a prescription for medication_review findings.",
           "enum": [
             "Technical result, not diagnosis.",
-            "Research use only; not a diagnosis."
+            "Research use only; not a diagnosis.",
+            "Not a prescription; review with a clinician."
           ]
         },
         "pgx": {
           "$ref": "#/$defs/reportPgx"
+        },
+        "advisory": {
+          "$ref": "#/$defs/reportAdvisory"
         }
       },
       "required": [
@@ -646,6 +655,159 @@
       "required": [
         "diplotype",
         "phenotype"
+      ],
+      "additionalProperties": false
+    },
+    "reportAdvisory": {
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "description": "advisory: one CPIC recommendation fits the confident call; context_review: it fits the genotype but a listed medication may change the phenotype or interact; withheld: the call's alternatives (or a weak call's possible results) lead to different recommendations; context_needed: CPIC's guidance differs by patient group or indication (give population); insufficient_evidence: CPIC has no recommendation for this medication, result or population; not_assessed: a gene the guidance needs has no result.",
+          "enum": [
+            "advisory",
+            "context_review",
+            "withheld",
+            "context_needed",
+            "insufficient_evidence",
+            "not_assessed"
+          ]
+        },
+        "medication": {
+          "type": "string"
+        },
+        "cpic_drug": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "population": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "genes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "contraindication": {
+          "type": "boolean",
+          "description": "CPIC's recommendation advises against the drug (avoid, not recommended, contraindicated, do not use)."
+        },
+        "recommendation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/reportCpicRecommendation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportCpicRecommendation"
+          },
+          "description": "Other CPIC recommendations the uncertainty or a listed medication's effect could lead to; not guidance for this person."
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "status",
+        "medication",
+        "cpic_drug",
+        "population",
+        "genes",
+        "contraindication",
+        "recommendation",
+        "alternatives",
+        "notes"
+      ],
+      "additionalProperties": false
+    },
+    "reportCpicRecommendation": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string",
+          "description": "CPIC's recommendation, verbatim."
+        },
+        "classification": {
+          "type": "string",
+          "description": "CPIC's strength: Strong, Moderate, Optional, ..."
+        },
+        "phenotypes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Gene -> the phenotype it is for."
+        },
+        "implication": {
+          "type": "string"
+        },
+        "population": {
+          "type": "string"
+        },
+        "guideline": {
+          "type": "string"
+        },
+        "pmid": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "doi": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "text",
+        "classification",
+        "phenotypes",
+        "implication",
+        "population",
+        "guideline",
+        "pmid",
+        "doi",
+        "url"
       ],
       "additionalProperties": false
     },
@@ -1728,6 +1890,274 @@
         "upper",
         "reference_populations"
       ]
+    },
+    "reportMedicationReview": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "not_run",
+            "failed"
+          ],
+          "description": "ok: at least one source run succeeded; not_run: no run found (see missing); failed: only failed runs found (see error)."
+        },
+        "summary": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportMissing"
+          },
+          "description": "Parts of the section not run yet, with the command that produces each (relative to the sample folder)."
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportWarning"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportSource"
+          },
+          "description": "The result manifests the section was built from: the selected evidence's status and finish time, and the newest attempt when that is newer."
+        },
+        "error": {
+          "type": "string"
+        },
+        "disclaimer": {
+          "type": "string"
+        },
+        "cpic": {
+          "$ref": "#/$defs/reportCpicRelease"
+        },
+        "rules": {
+          "$ref": "#/$defs/reportContextRules"
+        },
+        "context": {
+          "$ref": "#/$defs/reportPgxContext"
+        },
+        "genes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportContextGene"
+          },
+          "description": "Each gene the listed medications' CPIC guidance uses: its genetic (baseline) and medication-adjusted phenotype."
+        }
+      },
+      "required": [
+        "title",
+        "status",
+        "summary",
+        "findings",
+        "missing",
+        "warnings",
+        "sources",
+        "disclaimer",
+        "cpic",
+        "rules",
+        "context",
+        "genes"
+      ]
+    },
+    "reportCpicRelease": {
+      "type": "object",
+      "properties": {
+        "release": {
+          "type": "string"
+        },
+        "published": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "license": {
+          "type": "string"
+        },
+        "attribution": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "release",
+        "published",
+        "sha256",
+        "url",
+        "license",
+        "attribution"
+      ],
+      "additionalProperties": false
+    },
+    "reportContextRules": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "checked_against_cpic": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "sha256",
+        "checked_against_cpic"
+      ],
+      "additionalProperties": false
+    },
+    "reportPgxContext": {
+      "type": "object",
+      "properties": {
+        "sha256": {
+          "type": "string",
+          "description": "SHA-256 of the effective medication list (names and populations), not of the file."
+        },
+        "medications": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportContextMedication"
+          }
+        }
+      },
+      "required": [
+        "sha256",
+        "medications"
+      ],
+      "additionalProperties": false
+    },
+    "reportContextMedication": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "population": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cpic_drug": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "CPIC's drug id; null when not in CPIC."
+        }
+      },
+      "required": [
+        "name",
+        "population",
+        "cpic_drug"
+      ],
+      "additionalProperties": false
+    },
+    "reportContextGene": {
+      "type": "object",
+      "properties": {
+        "gene": {
+          "type": "string"
+        },
+        "baseline": {
+          "type": "string",
+          "description": "The genetic result, without medications."
+        },
+        "adjusted": {
+          "type": "string",
+          "description": "The phenotype with the listed medications, by a CPIC-cited rule; the baseline when no listed medication has a CPIC-stated effect."
+        },
+        "possible": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Phenotypes a CPIC-cited rule says may result."
+        },
+        "unclear": {
+          "type": "boolean"
+        },
+        "rule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trigger": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The listed medication the rule is for."
+        },
+        "quote": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "CPIC's statement the rule rests on, verbatim."
+        },
+        "cpic_recommendation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "gene",
+        "baseline",
+        "adjusted",
+        "possible",
+        "unclear",
+        "rule",
+        "trigger",
+        "quote",
+        "cpic_recommendation"
+      ],
+      "additionalProperties": false
     },
     "reportCallability": {
       "type": "object",
