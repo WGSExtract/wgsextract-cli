@@ -3,7 +3,9 @@ checked through the commands' outputs: the labelled VCF, the TSV and the
 result manifest."""
 
 import csv
+import gc
 import json
+import warnings
 from pathlib import Path
 
 import pytest
@@ -120,6 +122,21 @@ def _labels(vcf: str | Path) -> list[str]:
         capture_output=True,
     )
     return out.stdout.splitlines()
+
+
+@needs_bcftools
+def test_1473_variant_confidence_closes_subprocess_pipes(tmp_path: Path) -> None:
+    source = _vcf(tmp_path / "sample.vcf.gz", ["100 . A G 50 PASS . GT 0/1"])
+    labelled = tmp_path / "labelled.vcf.gz"
+    thresholds = Thresholds(min_depth=10, high_depth=20, min_gq=20, high_gq=30)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        summary = label_vcf(source, labelled, thresholds)
+        gc.collect()
+
+    assert not [w.message for w in caught if issubclass(w.category, ResourceWarning)]
+    assert summary.carried == 1
+    assert [row.split(":")[0] for row in _labels(labelled)] == ["100"]
 
 
 @needs_bcftools

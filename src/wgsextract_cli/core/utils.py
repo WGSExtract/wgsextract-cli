@@ -560,7 +560,8 @@ def popen(
 
 
 def _stderr_tail(stream: IO[bytes], max_lines: int = 20) -> str:
-    stream.seek(0)
+    # The last 64 KiB: a kept report can hold a line per record.
+    stream.seek(max(0, stream.seek(0, os.SEEK_END) - 65536))
     lines = stream.read().decode(errors="replace").strip().splitlines()
     return "\n".join(lines[-max_lines:])
 
@@ -586,6 +587,7 @@ def run_pipeline(
     heartbeat: bool = False,
     expected_reads: int | None = None,
     estimate: Callable[[], tuple[float, float]] | None = None,
+    keep_stderr: Mapping[int, PathInput] | None = None,
 ) -> None:
     """
     Run commands connected stdout-to-stdin, wait for every stage, and raise
@@ -598,10 +600,13 @@ def run_pipeline(
     Cancellation kills and reaps every started stage before closing its files.
     ``estimate`` returns the shares of the input read and output written,
     which the heartbeat shows until a stage reports its read count.
+    ``keep_stderr`` maps a stage's index to a file that receives its whole
+    stderr and is kept, for callers that read a tool's report.
     """
     if not stages:
         raise ValueError("run_pipeline requires at least one stage")
 
+    kept = {index: os.fspath(path) for index, path in (keep_stderr or {}).items()}
     procs: list[subprocess.Popen[bytes]] = []
     pipeline_step = contextlib.ExitStack()
     stderr_files: list[IO[bytes]] = []
@@ -663,18 +668,12 @@ def run_pipeline(
                 raise WGSExtractError(f"{description} cancelled")
             is_last = index == len(stages) - 1
             err_file: IO[bytes]
-            if heartbeat or active_run_log():
-                err_file = (
-                    tempfile.NamedTemporaryFile(delete=False, dir=stderr_dir)
-                    if stderr_dir is not None
-                    else tempfile.NamedTemporaryFile(delete=False)
-                )
+            if index in kept:
+                err_file = open(kept[index], "w+b")
+            elif heartbeat or active_run_log():
+                err_file = tempfile.NamedTemporaryFile(delete=False, dir=stderr_dir)
             else:
-                err_file = (
-                    tempfile.TemporaryFile(dir=stderr_dir)
-                    if stderr_dir is not None
-                    else tempfile.TemporaryFile()
-                )
+                err_file = tempfile.TemporaryFile(dir=stderr_dir)
             stderr_files.append(err_file)
             if heartbeat or active_run_log():
                 args = progress_args[index]
@@ -791,5 +790,5 @@ def run_pipeline(
         for err_file in stderr_files:
             name = err_file.name
             err_file.close()
-            if isinstance(name, str):
+            if isinstance(name, str) and name not in kept.values():
                 Path(name).unlink(missing_ok=True)
