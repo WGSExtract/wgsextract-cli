@@ -10,6 +10,7 @@ export interface ResultDocumentRecord {
     outputs: (ResultFileRecord)[];
     metrics: Record<string, string | number | boolean | null>;
     warnings: (ResultWarningRecord)[];
+    resources: (ResourceRecord)[];
     details: Record<string, unknown> | null;
     manifest: string | null;
     provenance: ResultProvenanceRecord;
@@ -73,6 +74,21 @@ export interface ResultWarningRecord {
     code: string;
     message: string;
     details: Record<string, string | number | boolean | null>;
+}
+
+export interface ResourceRecord {
+    id: string;
+    name: string;
+    role: string;
+    build: string | null;
+    release: string | null;
+    release_basis: "file_header" | "pinned_sha256" | "unrecorded";
+    path: string | null;
+    fingerprint: string | null;
+    source_url: string | null;
+    licence: string | null;
+    licence_url: string | null;
+    attribution: string | null;
 }
 
 export interface ResultProvenanceRecord {

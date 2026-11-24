@@ -1,0 +1,583 @@
+{
+ "schema_version": 1,
+ "id": "mt-reviewed-variants-20261115",
+ "name": "Reviewed mtDNA variants (ClinVar expert-panel pathogenic SNVs; CPIC MT-RNR1 aminoglycoside-risk alleles)",
+ "reference": {
+  "name": "rCRS",
+  "accession": "NC_012920.1",
+  "length": 16569
+ },
+ "sources": {
+  "clinvar": {
+   "release": "2026-11-15",
+   "url": "https://ftp.ncbi.nlm.nih.gov/pub/clinvar/vcf_GRCh38/clinvar_20261115.vcf.gz",
+   "md5": "8aa64cd0c6b40a0fbed10f99bb51a9d7",
+   "selection": "mtDNA SNVs; CLNSIG Pathogenic (or Pathogenic|drug_response); CLNREVSTAT reviewed_by_expert_panel or practice_guideline; no CLNSIGCONF",
+   "terms": "https://www.ncbi.nlm.nih.gov/home/about/policies/",
+   "attribution": "ClinVar, National Center for Biotechnology Information, U.S. National Library of Medicine"
+  },
+  "cpic": {
+   "citation": "McDermott JH, Wolf J, Hoshitsuki K, et al. Clinical Pharmacogenetics Implementation Consortium Guideline for the Use of Aminoglycosides Based on MT-RNR1 Genotype. Clin Pharmacol Ther 2022;111(2):366-372. doi:10.1002/cpt.2309. PMID 34032273",
+   "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8613315/",
+   "licence": "CC0-1.0",
+   "terms": "https://github.com/cpicpgx/cpic-data/blob/5ee5faf059211ff4636573aedda0eafc94deb1fc/LICENSE.md",
+   "heteroplasmy": "CPIC found insufficient evidence for a heteroplasmy level at which aminoglycosides become safe, and recommends following the guidance for a homoplasmic variant whenever a relevant MT-RNR1 variant is detected."
+  },
+  "genes": "NC_012920.1 gene spans, NCBI feature table"
+ },
+ "variants": [
+  {
+   "group": "aminoglycoside",
+   "gene": "MT-RNR1",
+   "hgvs": "m.1095T>C",
+   "pos": 1095,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "9631",
+    "classification": "drug_response",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Auditory neuropathy",
+     "Mitochondrial non-syndromic sensorineural hearing loss",
+     "Aminoglycoside-induced deafness",
+     "kanamycin response - Toxicity",
+     "streptomycin response - Toxicity",
+     "gentamicin response - Toxicity",
+     "aminoglycoside antibacterials response - Toxicity"
+    ]
+   },
+   "cpic": {
+    "phenotype": "increased risk of aminoglycoside-induced hearing loss",
+    "evidence": "moderate"
+   }
+  },
+  {
+   "group": "aminoglycoside",
+   "gene": "MT-RNR1",
+   "hgvs": "m.1494C>T",
+   "pos": 1494,
+   "ref": "C",
+   "alt": "T",
+   "clinvar": {
+    "variation_id": "9632",
+    "classification": "Likely_pathogenic|drug_response",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Aminoglycoside Ototoxicity",
+     "Primary Mitochondrial Disorders",
+     "Rare genetic deafness",
+     "Mitochondrial disease",
+     "Mitochondrial non-syndromic sensorineural hearing loss",
+     "Gentamicin response",
+     "Aminoglycoside-induced deafness",
+     "tobramycin response - Toxicity",
+     "aminoglycoside antibacterials response - Toxicity",
+     "kanamycin response - Toxicity",
+     "streptomycin response - Toxicity",
+     "gentamicin response - Toxicity"
+    ]
+   },
+   "cpic": {
+    "phenotype": "increased risk of aminoglycoside-induced hearing loss",
+    "evidence": "high"
+   }
+  },
+  {
+   "group": "aminoglycoside",
+   "gene": "MT-RNR1",
+   "hgvs": "m.1555A>G",
+   "pos": 1555,
+   "ref": "A",
+   "alt": "G",
+   "clinvar": {
+    "variation_id": "9628",
+    "classification": "Pathogenic|drug_response",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Aminoglycoside induced ototoxicity",
+     "Aminoglycoside Ototoxicity",
+     "Primary Mitochondrial Disorders",
+     "Rare genetic deafness",
+     "Aminoglycoside-induced deafness",
+     "Mitochondrial non-syndromic sensorineural hearing loss",
+     "Hearing loss, sensorineural, autosomal-mitochondrial type",
+     "Mitochondrial disease",
+     "Restrictive cardiomyopathy",
+     "Gentamicin response",
+     "kanamycin response - Toxicity",
+     "streptomycin response - Toxicity",
+     "tobramycin response - Toxicity",
+     "gentamicin response - Toxicity",
+     "amikacin response - Toxicity",
+     "aminoglycoside antibacterials response - Toxicity"
+    ]
+   },
+   "cpic": {
+    "phenotype": "increased risk of aminoglycoside-induced hearing loss",
+    "evidence": "high"
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-TL1",
+   "hgvs": "m.3243A>G",
+   "pos": 3243,
+   "ref": "A",
+   "alt": "G",
+   "clinvar": {
+    "variation_id": "9589",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Glucose intolerance",
+     "Sensorineural hearing loss disorder",
+     "Stroke disorder",
+     "Short stature",
+     "MT-TL1-related disorders",
+     "Leigh syndrome, mitochondrial",
+     "Leigh Syndrome (mtDNA mutation)",
+     "Hypertrophic cardiomyopathy",
+     "Diabetes-deafness syndrome maternally transmitted",
+     "MELAS syndrome",
+     "Kearns-Sayre syndrome",
+     "MERRF syndrome",
+     "Maternally-inherited mitochondrial myopathy",
+     "Auditory neuropathy spectrum disorder",
+     "Mitochondrial disease",
+     "Cyclical vomiting syndrome",
+     "Age related macular degeneration 2",
+     "MERRF/MELAS overlap syndrome",
+     "Histiocytoid cardiomyopathy",
+     "3-methylglutaconic aciduria type 1",
+     "Leigh syndrome",
+     "Focal segmental glomerulosclerosis 1",
+     "Mitochondrial complex IV deficiency, nuclear type 1",
+     "Cerebral palsy",
+     "See cases"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-TL1",
+   "hgvs": "m.3271T>C",
+   "pos": 3271,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "9590",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Primary Mitochondrial Disorders",
+     "MERRF syndrome",
+     "MELAS syndrome",
+     "Mitochondrial disease"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND1",
+   "hgvs": "m.3460G>A",
+   "pos": 3460,
+   "ref": "G",
+   "alt": "A",
+   "clinvar": {
+    "variation_id": "9722",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "MITOCHONDRIAL COMPLEX I DEFICIENCY, MITOCHONDRIAL TYPE 3",
+     "Primary Mitochondrial Disorders",
+     "Optic atrophy",
+     "Mitochondrial disease",
+     "Leigh syndrome",
+     "Leber optic atrophy and dystonia",
+     "Leber optic atrophy"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-TN",
+   "hgvs": "m.5703G>A",
+   "pos": 5703,
+   "ref": "G",
+   "alt": "A",
+   "clinvar": {
+    "variation_id": "9620",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Primary Mitochondrial Disorders",
+     "Mitochondrial disease",
+     "Ophthalmoplegia, isolated",
+     "Mitochondrial complex IV deficiency, nuclear type 1"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-CO1",
+   "hgvs": "m.7445A>G",
+   "pos": 7445,
+   "ref": "A",
+   "alt": "G",
+   "clinvar": {
+    "variation_id": "9563",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Mitochondrial disease",
+     "Palmoplantar keratoderma-deafness syndrome",
+     "Mitochondrial non-syndromic sensorineural hearing loss",
+     "MELAS syndrome"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-CO2",
+   "hgvs": "m.7896G>A",
+   "pos": 7896,
+   "ref": "G",
+   "alt": "A",
+   "clinvar": {
+    "variation_id": "9662",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Mitochondrial disease",
+     "Mitochondrial complex IV deficiency, nuclear type 1"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-TK",
+   "hgvs": "m.8344A>G",
+   "pos": 8344,
+   "ref": "A",
+   "alt": "G",
+   "clinvar": {
+    "variation_id": "9579",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "MT-TK-related disorder",
+     "Primary Mitochondrial Disorders",
+     "MT-TK-related mitochondrial disorder",
+     "Complex hereditary spastic paraplegia",
+     "Thrombocythemia 2",
+     "Mitochondrial disease",
+     "MELAS syndrome",
+     "MERRF syndrome",
+     "Parkinson disease, mitochondrial",
+     "Leigh syndrome"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ATP6",
+   "hgvs": "m.8993T>C",
+   "pos": 8993,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "9642",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "MT-ATP6-associated disorder",
+     "MT-ATP6-related disorder",
+     "Mitochondrial disease",
+     "Mitochondrial complex 5 (ATP synthase) deficiency, mitochondrial type 1",
+     "Leigh syndrome",
+     "Ataxia and polyneuropathy, adult-onset",
+     "Leber optic atrophy",
+     "NARP syndrome"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ATP6",
+   "hgvs": "m.8993T>G",
+   "pos": 8993,
+   "ref": "T",
+   "alt": "G",
+   "clinvar": {
+    "variation_id": "9641",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Cerebellar ataxia",
+     "MT-ATP6-related disorder",
+     "Primary Mitochondrial Disorders",
+     "Mitochondrial complex 5 (ATP synthase) deficiency, mitochondrial type 1",
+     "Mitochondrial disease",
+     "Leber optic atrophy",
+     "NARP syndrome",
+     "Leigh syndrome",
+     "Rod-cone dystrophy",
+     "Bilateral cleft lip and palate",
+     "Premature birth",
+     "Wide intermamillary distance",
+     "Hypoplasia of scrotum",
+     "Hypertelorism",
+     "Postaxial hand polydactyly",
+     "Low-set ears",
+     "Camptodactyly of finger"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ATP6",
+   "hgvs": "m.9176T>C",
+   "pos": 9176,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "9644",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "MT-ATP6-related disorder",
+     "Maternally-inherited spastic paraplegia",
+     "Primary Mitochondrial Disorders",
+     "Leigh syndrome, mitochondrial",
+     "Mitochondrial complex 5 (ATP synthase) deficiency, mitochondrial type 1",
+     "Mitochondrial disease",
+     "Striatonigral degeneration, infantile, mitochondrial",
+     "Leber optic atrophy",
+     "NARP syndrome",
+     "Leigh syndrome"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ATP6",
+   "hgvs": "m.9185T>C",
+   "pos": 9185,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "9647",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "MT-ATP6-related mitochondrial disease",
+     "Primary Mitochondrial Disorders",
+     "MT-ATP6-related disorder",
+     "Leigh syndrome, mitochondrial",
+     "NARP syndrome",
+     "Mitochondrial complex 5 (ATP synthase) deficiency, mitochondrial type 1",
+     "Charcot-Marie-Tooth disease",
+     "Mitochondrial DNA-Associated Leigh Syndrome and NARP",
+     "Mitochondrial disease",
+     "Charcot-Marie-Tooth disease, type IA",
+     "Leber optic atrophy",
+     "Leigh syndrome"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND3",
+   "hgvs": "m.10158T>C",
+   "pos": 10158,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "9714",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Mitochondrial complex I deficiency, mitochondrial type 1",
+     "Primary Mitochondrial Disorders",
+     "Mitochondrial disease",
+     "Leigh syndrome"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND3",
+   "hgvs": "m.10191T>C",
+   "pos": 10191,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "9712",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Mitochondrial complex I deficiency, mitochondrial type 1",
+     "Primary Mitochondrial Disorders",
+     "Leigh syndrome, mitochondrial",
+     "Mitochondrial complex I deficiency",
+     "Mitochondrial disease",
+     "Leigh syndrome"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND3",
+   "hgvs": "m.10197G>A",
+   "pos": 10197,
+   "ref": "G",
+   "alt": "A",
+   "clinvar": {
+    "variation_id": "9715",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Mitochondrial complex I deficiency, mitochondrial type 1",
+     "Primary Mitochondrial Disorders",
+     "Leigh syndrome, mitochondrial",
+     "Mitochondrial myopathy, episodic, with optic atrophy and reversible leukoencephalopathy",
+     "Mitochondrial DNA-Associated Leigh Syndrome and NARP",
+     "Mitochondrial disease",
+     "Leber optic atrophy and dystonia",
+     "Leigh syndrome",
+     "See cases"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND4",
+   "hgvs": "m.11778G>A",
+   "pos": 11778,
+   "ref": "G",
+   "alt": "A",
+   "clinvar": {
+    "variation_id": "9708",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Primary Mitochondrial Disorders",
+     "MT-ND4-related disorders",
+     "Leber optic atrophy, susceptibility to",
+     "Optic atrophy",
+     "Retinal dystrophy",
+     "Mitochondrial disease",
+     "Leber optic atrophy"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND5",
+   "hgvs": "m.13094T>C",
+   "pos": 13094,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "693516",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "MT-ND5-related disorder",
+     "Primary Mitochondrial Disorders",
+     "MT-ND5-related disorders",
+     "Leigh syndrome, mitochondrial",
+     "MELAS syndrome",
+     "Leber optic atrophy",
+     "Mitochondrial disease"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND5",
+   "hgvs": "m.13513G>A",
+   "pos": 13513,
+   "ref": "G",
+   "alt": "A",
+   "clinvar": {
+    "variation_id": "9702",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Leigh syndrome due to mitochondrial complex I deficiency",
+     "Primary Mitochondrial Disorders",
+     "Mitochondrial disease",
+     "MELAS syndrome",
+     "Leigh syndrome"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND6",
+   "hgvs": "m.14459G>A",
+   "pos": 14459,
+   "ref": "G",
+   "alt": "A",
+   "clinvar": {
+    "variation_id": "9689",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Primary Mitochondrial Disorders",
+     "MT-ND6-related disorder",
+     "Leigh syndrome due to mitochondrial complex I deficiency",
+     "Mitochondrial disease",
+     "Leber optic atrophy and dystonia",
+     "Leigh syndrome",
+     "Leber optic atrophy"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND6",
+   "hgvs": "m.14484T>C",
+   "pos": 14484,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "9688",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Primary Mitochondrial Disorders",
+     "Retinal dystrophy",
+     "Optic atrophy",
+     "Mitochondrial disease",
+     "MELAS syndrome",
+     "Leigh syndrome",
+     "Leber optic atrophy"
+    ]
+   }
+  },
+  {
+   "group": "disease",
+   "gene": "MT-ND6",
+   "hgvs": "m.14487T>C",
+   "pos": 14487,
+   "ref": "T",
+   "alt": "C",
+   "clinvar": {
+    "variation_id": "9694",
+    "classification": "Pathogenic",
+    "review_status": "reviewed_by_expert_panel",
+    "conditions": [
+     "Leigh syndrome due to mitochondrial complex I deficiency",
+     "MT-ND6-related disorder",
+     "Mitochondrial disease",
+     "Striatal necrosis, bilateral, with dystonia",
+     "Leber optic atrophy",
+     "Leigh syndrome"
+    ]
+   }
+  }
+ ]
+}

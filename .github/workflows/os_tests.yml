@@ -95,7 +95,7 @@ jobs:
           if [ "$GITHUB_REF" = refs/heads/main ]; then echo "trusted=true" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: ${{ ((inputs.os == 'ubuntu' && github.event_name == 'pull_request') || steps.backstop.outputs.trusted == 'true') && 128 || 1 }}
+          fetch-depth: ${{ ((inputs.os == 'ubuntu' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')) || steps.backstop.outputs.trusted == 'true') && 128 || 1 }}
           persist-credentials: false
       - name: Verify native runner architecture
         if: inputs.os == 'linux-arm64'
@@ -181,27 +181,13 @@ jobs:
         with:
           path: reference/hg19ToHg38.over.chain.gz
           key: ucsc-hg19ToHg38-${{ steps.chain.outputs.sha256 }}
-      - name: Cache public hs38 reference
+      - name: Install pinned hs38 release assets
         if: inputs.reference
-        id: reference-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: reference/genomes
-          key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
-      - name: Install Reference Genome
-        if: inputs.reference
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: pixi run python -m wgsextract_cli.main ref library --install hs38 --ref reference
-      # Only Ubuntu seeds the multi-gigabyte reference cache.
-      - name: Seed the shared hs38 reference on main
-        if: >-
-          inputs.reference && inputs.os == 'ubuntu' && github.ref == 'refs/heads/main' &&
-          strategy.job-index == 0 && steps.reference-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: reference/genomes
-          key: hs38-v1-${{ hashFiles('src/wgsextract_cli/assets/reference/seed_genomes.csv', 'src/wgsextract_cli/core/ref_library/catalog.py') }}
+        shell: bash
+        run: |
+          bash scripts/ci_hs38.sh install
+          # Exercise both indexes against the installed FASTA before pytest can reuse passes.
+          pixi run --no-install samtools faidx reference/genomes/hs38.fa.gz chr22:20000001-20000040 > /dev/null
       # This environment is deliberately not restored by setup-pixi above:
       # prove that a fresh install uses the published, SHA-256-pinned package.
       - name: Install pinned imputation tools from scratch
@@ -263,15 +249,18 @@ jobs:
           path: out/test-cache/pr
           key: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-${{ github.run_id }}
           restore-keys: test-pass-v1-${{ inputs.os }}-${{ matrix.label }}-pr-
-      - name: Restore main's Linux observation map
-        if: inputs.os == 'ubuntu' && github.event_name == 'pull_request'
+      - name: Fetch main's Linux observation artifact
+        if: inputs.os == 'ubuntu' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         continue-on-error: true
         timeout-minutes: 2
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: out/test-impact-map/linux.json.gz
-          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ci-impact-v2-linux-x64-
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUEUE_BASE: ${{ github.event.merge_group.base_sha }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_fetch
+          --repository "$GITHUB_REPOSITORY" --base "${QUEUE_BASE:-HEAD^1}"
+          --output out/test-impact-map/linux.json.gz
       - name: Run Tests
         id: regular-pytest
         shell: bash
@@ -406,14 +395,17 @@ jobs:
           --coverage-file out/.coverage --junit out/pytest.xml
           --output out/test-impact-map/linux.json.gz
           --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
-      - name: Save main's Linux observation map
+      - name: Publish main's Linux observation artifact
         if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.impact-map.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 2
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
+          name: linux-test-observations-${{ github.run_attempt }}
           path: out/test-impact-map/linux.json.gz
-          key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
       - name: Export advisory Linux line observations
         id: line-map
         if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.impact-map.outcome == 'success' }}

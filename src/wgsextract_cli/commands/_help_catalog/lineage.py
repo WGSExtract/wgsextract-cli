@@ -8,6 +8,13 @@ ENTRIES: dict[str, CommandHelp] = {
         "run.json; prints the haplogroup and the tree's name and version.",
         "wgsextract lineage y-haplogroup --input sample.cram",
     ),
+    "lineage y-private": _h(
+        "y_private/: <sample>.y_private.tsv (candidates, with the marker sets, "
+        "callable mask and filters in its header) and <sample>.y_private.vcf.gz "
+        "(+ .tbi).",
+        "wgsextract lineage y-private --input sample.cram",
+        "wgsextract lineage y-private --input sample.vcf.gz --build t2t --download",
+    ),
     "lineage y-str": _h(
         "ystr/: <sample>.ystr.tsv, <sample>.ftdna.csv (FTDNA marker order) and "
         "run.json.",

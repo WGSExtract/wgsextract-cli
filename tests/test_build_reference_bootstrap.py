@@ -7,6 +7,8 @@ import sys
 import tarfile
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "build_reference_bootstrap.py"
 README = (
@@ -32,6 +34,58 @@ MEMBERS = {
     "reference/._hg19-chm13v2.chain": b"appledouble",
     "reference/.DS_Store": b"finder",
 }
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="hs38 CI runs on Ubuntu and macOS")
+@pytest.mark.parametrize("corrupted", [None, "fasta", "indexes"])
+def test_1509_hs38_install_verifies_both_release_assets(
+    tmp_path: Path, corrupted: str | None
+) -> None:
+    fasta = tmp_path / "hs38.fa.gz"
+    fasta.write_bytes(b"synthetic FASTA")
+    fasta_sha = hashlib.sha256(fasta.read_bytes()).hexdigest()
+    members = {
+        "hs38.dict": b"dictionary",
+        "hs38.fa.gz.fai": b"FASTA index",
+        "hs38.fa.gz.gzi": b"BGZF index",
+    }
+    indexes = tmp_path / "indexes.tar.gz"
+    indexes_sha = _source(indexes, members)
+    if corrupted:
+        (fasta if corrupted == "fasta" else indexes).write_bytes(b"corrupted")
+
+    genomes = tmp_path / "reference" / "genomes"
+    genomes.mkdir(parents=True)
+    support_file = genomes / "hs38_nbin.csv"
+    support_file.write_bytes(b"from bootstrap")
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'source "$1"; shift; install_reference "$@"',
+            "bash",
+            str(ROOT / "scripts" / "ci_hs38.sh"),
+            str(tmp_path / "stage with spaces"),
+            str(genomes),
+            fasta.as_uri(),
+            fasta_sha,
+            indexes.as_uri(),
+            indexes_sha,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert support_file.read_bytes() == b"from bootstrap"
+    if corrupted:
+        assert result.returncode != 0
+        name = "hs38.fa.gz" if corrupted == "fasta" else "hs38-indexes.tar.gz"
+        assert f"{name}: FAILED" in result.stdout
+        assert sorted(genomes.iterdir()) == [support_file]
+    else:
+        assert result.returncode == 0, result.stderr
+        assert (genomes / fasta.name).read_bytes() == fasta.read_bytes()
+        for name, content in members.items():
+            assert (genomes / name).read_bytes() == content
 
 
 def _source(path: Path, members: dict[str, bytes] | None = None) -> str:

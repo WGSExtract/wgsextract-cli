@@ -87,6 +87,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         MINUTES, "bcftools", "bgzip", "samtools", "tabix", optional="curl"
     ),
     "lineage y-haplogroup": _n(MINUTES, "bcftools", "samtools"),
+    "lineage y-private": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "lineage y-str": _n(MINUTES, *_SAM, optional="bcftools"),
     "lineage mt-haplogroup": _n(
         MINUTES,
@@ -132,11 +133,13 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "vcf annotate": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf filter": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf table": _n(MINUTES, "bcftools", optional="bgzip tabix"),
+    "cohort summarize": _n(MINUTES, "bcftools"),
     "vcf clinvar": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf revel": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf prepare": _n(MINUTES, *_VCF),
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
     "vcf cnv": _n(HOURS, "bcftools", "delly", "samtools", "tabix"),
@@ -194,6 +197,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     ),
     "ref status": _n(SECONDS, scale=""),
     "ref needs": _n(SECONDS, optional="bcftools tabix", scale=""),
+    "ref recheck": _n(SECONDS, scale=""),
     "ref test-genome": _n(DOWNLOAD, optional="curl"),
     "ref bootstrap": _n(DOWNLOAD, optional="curl"),
     "ref aadr": _n(DOWNLOAD, optional="curl"),
@@ -225,6 +229,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "ref gerp": _n(DOWNLOAD, optional="curl"),
     "deps check": _n(SECONDS, scale=""),
     "deps list": _n(SECONDS, scale=""),
+    "deps ready": _n(SECONDS, scale=""),
     "deps install": _n(DOWNLOAD, optional="java java17"),
     "deps uninstall": _n(SECONDS, scale=""),
     "example-genome list": _n(INSTANT),
@@ -233,6 +238,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "panel check": _n(INSTANT),
     "report": _n(SECONDS, scale=" from existing results", optional="curl"),
     "report-issue": _n(SECONDS, scale=""),
+    "report-delta": _n(INSTANT),
     "serve": _n(SECONDS, scale=" to start; runs until stopped"),
     "bam sort": _n(HOURS, *_SAM, optional="bcftools sambamba"),
     "bam index": _n(MINUTES, *_SAM, optional="sambamba"),
@@ -270,6 +276,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
     "analyze comprehensive": _n(HOURS, *_CALL),
     "analyze batch-gen": _n(INSTANT),
     "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),
+    "typing paraphase": _n(MINUTES, "samtools", optional="paraphase minimap2 bcftools"),
     "typing smn": _n(MINUTES, "smn_caller.py", "samtools", optional="bcftools"),
     "typing target-cnv": _n(SECONDS, "samtools", optional="bcftools curl"),
     "typing hla": _n(
@@ -281,7 +288,7 @@ COMMAND_NEEDS: dict[str, CommandNeeds] = {
         optional="ExpansionHunter LongTR strkit bcftools",
     ),
     "methylation pileup": _n(HOURS, "modkit", "samtools", "tabix", optional="bcftools"),
-    "methylation regions": _n(MINUTES, "samtools", optional="curl"),
+    "methylation regions": _n(MINUTES, "samtools", optional="modkit curl"),
     "pet-align": _n(
         HOURS, "bcftools", "bwa", "samtools", optional="bwa-mem2 sambamba samblaster"
     ),

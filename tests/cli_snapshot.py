@@ -18,7 +18,7 @@ import json
 import os
 import sys
 from pathlib import Path, PurePath
-from typing import Any
+from typing import Any, cast
 
 GOLDEN = Path(__file__).parent / "fixtures" / "api_cli_snapshot.json"
 
@@ -55,9 +55,12 @@ MIGRATED = (
     ("vcf", "clair3"),
     ("vcf", "phase"),
     ("vcf", "impute"),
+    ("cohort",),
+    ("cohort", "summarize"),
     ("lineage", "mt-haplogroup"),
     ("lineage", "y-haplogroup"),
     ("lineage", "y-str"),
+    ("lineage", "y-private"),
     ("microarray",),
     ("report",),
     ("extract",),
@@ -301,6 +304,7 @@ ARGVS = (
         "pos.txt",
     ],
     ["lineage", "y-str", "-i", "x.bam", "--panel", "Y-37", "--min-fraction", "0.7"],
+    ["lineage", "y-private", "-i", "x.vcf.gz", "--build", "t2t", "--min-af", "0.95"],
     ["microarray", "-i", "x.bam"],
     ["extract", "mito-fasta", "-i", "x.bam", "--ref", "r.fa", "-t", "2"],
     ["extract", "mito-vcf", "-i", "x.cram", "-o", "o", "-m", "2G"],
@@ -648,17 +652,19 @@ def describe(parser: argparse.ArgumentParser) -> dict[str, Any]:
     return {
         "prog": parser.prog,
         "description": parser.description,
-        "formatter_class": parser.formatter_class.__name__,
+        "formatter_class": cast(
+            "type[argparse.HelpFormatter]", parser.formatter_class
+        ).__name__,
         "defaults": {k: _plain(v) for k, v in sorted(parser._defaults.items())},
         "actions": actions,
     }
 
 
-def _namespace(argv: list[str]) -> dict[str, Any]:
-    from wgsextract_cli.cli.parser import build_parser, parse_args
+def _namespace(
+    argv: list[str], parser: argparse.ArgumentParser, base: argparse.ArgumentParser
+) -> dict[str, Any]:
+    from wgsextract_cli.cli.parser import parse_args
 
-    sys.argv[0] = "wgsextract"
-    parser, base = build_parser()
     args, explicit = parse_args(parser, base, argv)
     values = {
         key: _plain(value)
@@ -690,7 +696,7 @@ def _snapshot() -> dict[str, Any]:
     from wgsextract_cli.cli.parser import build_parser
 
     sys.argv[0] = "wgsextract"
-    parser, _base = build_parser()
+    parser, base = build_parser()
     commands = {}
     for path in MIGRATED:
         sub = _subparser(parser, path)
@@ -698,13 +704,13 @@ def _snapshot() -> dict[str, Any]:
         with contextlib.redirect_stdout(text):
             sub.print_help()
         commands[" ".join(path)] = {"parser": describe(sub), "help": text.getvalue()}
-    namespaces = {" ".join(argv): _namespace(argv) for argv in ARGVS}
+    namespaces = {" ".join(argv): _namespace(argv, parser, base) for argv in ARGVS}
     return {"commands": commands, "namespaces": namespaces}
 
 
 def normalise_funcs(document: dict[str, Any]) -> dict[str, Any]:
     """Drop the handler names: migrated commands route through new adapters."""
-    copied = json.loads(json.dumps(document))
+    copied: dict[str, Any] = json.loads(json.dumps(document))
     for ns in copied["namespaces"].values():
         ns.pop("func", None)
     for command in copied["commands"].values():
@@ -714,5 +720,9 @@ def normalise_funcs(document: dict[str, Any]) -> dict[str, Any]:
 
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-    GOLDEN.write_text(json.dumps(snapshot(), indent=1, sort_keys=True) + "\n")
+    GOLDEN.write_text(
+        json.dumps(snapshot(), indent=1, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     print(f"Wrote {GOLDEN}")

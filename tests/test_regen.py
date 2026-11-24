@@ -21,6 +21,10 @@ GENERATED = (
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.roh.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.recheck.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.delta.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.methylation-regions-hp.1.schema.json",
+    "src/wgsextract_cli/assets/schemas/wgsextract.paraphase.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
@@ -134,9 +138,22 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
 ) -> None:
     conflict(regen_repo, GENERATED)
 
+    # #1471: regenerate to LF even if the existing files use CRLF.
+    crlf_artifacts = [
+        regen_repo / "docs/configuration.md",
+        regen_repo / "tests/fixtures/api_cli_snapshot.json",
+    ]
+    for path in crlf_artifacts:
+        path.write_text(
+            path.read_text(encoding="utf-8"), encoding="utf-8", newline="\r\n"
+        )
+
     result = resolve(regen_repo)
 
     assert result.returncode == 0, result.stderr
+    for path in crlf_artifacts:
+        output = path.read_bytes()
+        assert b"\r" not in output and output.count(b"\n") > 1
     assert not git(regen_repo, "diff", "--name-only", "--diff-filter=U").stdout
     staged = git(regen_repo, "diff", "--cached", "--name-only").stdout.splitlines()
     assert set(staged) == {*GENERATED, "site_src/cli.md"}

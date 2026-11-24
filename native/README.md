@@ -1338,6 +1338,60 @@ rounds, means; records identical):
 all but a few hundred of the HiFi set's 3.45M fills (the rest by CPU threads
 with no read left to map), at about 12 G cells/s.
 
+#### ONT chaining and qualification scope
+
+These are **slice mapping measurements**, not whole-genome `realign` timings:
+they load an existing index and exclude CRAM decoding, methylation-tag
+preservation, sorting and output encoding. Do not apply their speedup directly
+to the whole-genome CPU realignment in [docs/ont.md](../docs/ont.md#whole-genome-ont-requirements).
+Whole-genome RTX 3090 qualification remains tracked by
+[#1122 (Linux CUDA long-read alignment)](https://github.com/WGSExtract/wgsextract-cli/issues/1122).
+
+On 2026-11-18, a distributed HG002 ONT slice of 93,328 reads (1.834 Gbp,
+about 1.18% of the whole run's reads) was mapped to hs38 on the Ryzen 5
+5600X. At four threads, native CPU mapping with stage timers took 440.2 s,
+1661 CPU-s and 11.11 GiB peak RSS; unmodified upstream 2.31 took 449.9 s,
+1678 CPU-s and 10.80 GiB. All 6,740,128,893 SAM bytes excluding `@PG` were
+identical (SHA-256 `e17dfcf77c16c880426cdc15ed31c28735a1f56e2ef0f34cd938e89544dce6b2`).
+Native CPU at two threads took 749.2 s, 1451 CPU-s and 10.43 GiB peak RSS,
+with the same complete record digest. These single shared-host runs, one
+instrumented, are not an isolated speedup or thread-scaling benchmark.
+
+CPU-only linker wrappers measured thread CPU time around the unchanged
+functions, subtracting nested calls rather than counting them twice:
+
+| Stage | Share of total CPU time |
+| --- | ---: |
+| Anchor sorting | 26.6% |
+| DP chaining and backtracking, excluding sorts | 19.7% |
+| RMQ rechaining and backtracking, excluding sorts | 17.7% |
+| Base-level dual-affine gap alignment (`ksw_extd2`) | 18.3% |
+| Seed matching | 5.1% |
+| Minimizer sketching | 1.3% |
+| Other, including input/output and untimed mapping work | 11.3% |
+
+Thus chaining and its sorts still account for about 64% of CPU time.
+The gap-fill fraction is an upper bound on the CPU work the current CUDA
+kernels can remove; not every such fill is eligible for offload.
+The existing native tests also passed on the RTX 3090, including real CUDA
+kernel comparisons and synthetic-genome parity with upstream under GPU
+failure and watchdog fallback.
+
+Chaining stays on the CPU deliberately. Our exact CUDA chaining experiment
+reproduced upstream 2.31's records, but interleaved runs on the 47k-read ONT
+slice showed no repeatable gain over CUDA gap fills alone: 101.9/95.1 s
+without GPU chaining, versus 102.4/94.0 s with it. Packing the anchors and
+resuming cache-cold reads offset the faster chain-score fill.
+
+[mm2-gb](https://github.com/Minimap2onGPU/mm2-gb/tree/8a312e92b5e1cd043950b74306ac2727f7040f46)
+is MIT-licensed and supports NVIDIA SM86, but is not a drop-in replacement:
+it is based on minimap2 2.24, supports only one CPU mapping thread, and
+implicitly changes `max-chain-skip` to infinity. Its documented parity is
+against 2.24 with that same changed parameter, not default 2.31. We keep the
+existing exact gap-fill backend rather than change the mapping contract to
+obtain a different chaining benchmark. The evaluated default-branch revision
+is dated 2024-08-21.
+
 ## Building
 
 Requires Xcode command-line tools and CMake 3.24 or later. Upstream sources are

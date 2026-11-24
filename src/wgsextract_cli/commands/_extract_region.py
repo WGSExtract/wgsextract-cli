@@ -14,7 +14,7 @@ from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_outpu
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.sample_ploidy import sex_samples_args
+from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, run_pipeline
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed, get_chr_name
@@ -218,7 +218,7 @@ def _call_diploid_snps(
 ) -> None:
     """Autosome and chrX SNPs, called contig by contig as ``vcf snp --parallel``
     does, chrX with the sample's sex-aware ploidy."""
-    from .vcf.basic import caller_setup, ploidy_args
+    from .vcf.basic import caller_setup
     from .vcf.contig_calling import call_small_variants, calling_contigs
 
     region = ",".join(contigs)
@@ -230,7 +230,7 @@ def _call_diploid_snps(
         region=region,
         qc_min_depth=None,
     )
-    ploidy = ploidy_args(None, None, setup.lib)
+    ploidy = ploidy_args(None, None, setup.lib, options=None)
     profile, prior = ultima.bcftools_options(input_path)
     logging.info(f"Calling autosome and chrX SNPs into {out_vcf}...")
     with (
