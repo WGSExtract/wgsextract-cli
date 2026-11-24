@@ -1,0 +1,1043 @@
+{
+ "help": "usage: wgsextract realign [-h] [--r1 R1] [--r2 R2]\n                          [--aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}] [--fast]\n                          [--prefer-native-gpu | --no-prefer-native-gpu]\n                          [--dense-suffix-array | --no-dense-suffix-array]\n                          [--platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}]\n                          [--sample SAMPLE] [--format {BAM,CRAM}]\n                          [--output-profile {default,archive,calling}] [--chunk-size CHUNK_SIZE]\n                          [--force] [--force-step STEP] [--dry-run] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  --r1 R1               Read 1 FASTQ file\n  --r2 R2               Read 2 FASTQ file (optional)\n  --aligner {auto,bwa,bwa-mem2,bwa-mem3,minimap2,pbmm2}\n                        Aligner to use (matches the 'align' command).\n  --fast                Align short reads with bwa-mem3's --fast speed preset (implies --aligner\n                        bwa-mem3), about twice as fast. Its alignments differ from BWA's\n                        (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast).\n                        Without it bwa-mem3 writes BWA's exact records.\n  --prefer-native-gpu, --no-prefer-native-gpu\n                        Prefer native GPU alignment. Windows CUDA is automatic when it fits; --no-\n                        prefer-native-gpu forces CPU there.\n  --dense-suffix-array, --no-dense-suffix-array\n                        Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array\n                        file, built by `ref dense-sa`: the same alignments, faster, holding the\n                        file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise\n                        (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such\n                        wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it.\n                        Default: config dense_suffix_array, else off.\n  --platform {illumina,dnbseq,ultima,pacbio,hifi,clr,ont,nanopore}\n                        Sequencing platform (default: detected from read groups or read names,\n                        else illumina).\n  --sample SAMPLE       Sample name to embed in read-group metadata.\n  --format {BAM,CRAM}   Output format (default: BAM)\n  --output-profile {default,archive,calling}\n                        Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK\n                        >=4.7); calling selects CRAM 3.0. Default: config output_profile, else\n                        default. See docs/ont.md.\n  --chunk-size CHUNK_SIZE\n                        ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes unfinished\n                        chunks and bounds temporary files. Requires sorted, indexed input; ignored\n                        with --keep-fastq.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume  Rerun every step, ignoring the steps an earlier run completed.\n  --force-step STEP     Rerun STEP and the steps that use its outputs (repeatable). Steps:\n                        extract, align, index.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\n9 advanced options not shown; 'wgsextract realign --help-all' lists them.\n\nexamples:\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa\n  wgsextract realign --input sample_hg19.bam --ref hs38.fa --dry-run\n\noutputs (in the output directory unless noted):\n  <input stem>_aligned.bam or .cram (+ index); with --keep-fastq, also <input\n  stem>_R1/_R2.fastq.gz (single-end ONT/PacBio: <input stem>.fastq.gz).\n  Completed steps are recorded in <output>.steps.json, so a rerun resumes\n  after a crash.\n\nneeds:\n  samtools; depending on options and inputs, also: bcftools, bgzip, bwa, bwa-\n  mem2, bwa-mem3, curl, gatk, minimap2, pbmm2, sambamba, samblaster; hours on\n  a 30x genome.\n",
+ "namespaces": {
+  "realign -i x.bam --force --force-step align --dry-run": {
+   "_command": "realign",
+   "_explicit_dests": [
+    "dry_run",
+    "force_steps",
+    "input",
+    "restart"
+   ],
+   "aligner": "auto",
+   "atomic_output": false,
+   "chunk_size": "4G",
+   "command": "realign",
+   "debug": false,
+   "dense_suffix_array": null,
+   "dry_run": true,
+   "fast": false,
+   "force_extract": false,
+   "force_steps": [
+    "align"
+   ],
+   "format": null,
+   "full_help": false,
+   "func": "run_realign",
+   "genome": null,
+   "gpu": false,
+   "input": "x.bam",
+   "input_ref": null,
+   "json": false,
+   "keep_awake": false,
+   "keep_fastq": false,
+   "log_dir": null,
+   "log_file": null,
+   "long_read": false,
+   "memory": null,
+   "native_aligners": null,
+   "no_gpu_memory_check": false,
+   "no_preflight": false,
+   "outdir": null,
+   "output_profile": null,
+   "parent_pid": null,
+   "platform": null,
+   "prefer_native_gpu": null,
+   "preset": null,
+   "quiet": false,
+   "r1": null,
+   "r2": null,
+   "ref": null,
+   "restart": true,
+   "sample": null,
+   "threads": null,
+   "tmp_dir": null
+  },
+  "realign -i x.bam --no-resume --force-step extract --force-step index --no-preflight --gpu --format CRAM --preset sr --long-read": {
+   "_command": "realign",
+   "_explicit_dests": [
+    "force_steps",
+    "format",
+    "gpu",
+    "input",
+    "long_read",
+    "no_preflight",
+    "preset",
+    "restart"
+   ],
+   "aligner": "auto",
+   "atomic_output": false,
+   "chunk_size": "4G",
+   "command": "realign",
+   "debug": false,
+   "dense_suffix_array": null,
+   "dry_run": false,
+   "fast": false,
+   "force_extract": false,
+   "force_steps": [
+    "extract",
+    "index"
+   ],
+   "format": "CRAM",
+   "full_help": false,
+   "func": "run_realign",
+   "genome": null,
+   "gpu": true,
+   "input": "x.bam",
+   "input_ref": null,
+   "json": false,
+   "keep_awake": false,
+   "keep_fastq": false,
+   "log_dir": null,
+   "log_file": null,
+   "long_read": true,
+   "memory": null,
+   "native_aligners": null,
+   "no_gpu_memory_check": false,
+   "no_preflight": true,
+   "outdir": null,
+   "output_profile": null,
+   "parent_pid": null,
+   "platform": null,
+   "prefer_native_gpu": null,
+   "preset": "sr",
+   "quiet": false,
+   "r1": null,
+   "r2": null,
+   "ref": null,
+   "restart": true,
+   "sample": null,
+   "threads": null,
+   "tmp_dir": null
+  },
+  "realign -i x.bam --platform ultima --force-extract --sample S": {
+   "_command": "realign",
+   "_explicit_dests": [
+    "force_extract",
+    "input",
+    "platform",
+    "sample"
+   ],
+   "aligner": "auto",
+   "atomic_output": false,
+   "chunk_size": "4G",
+   "command": "realign",
+   "debug": false,
+   "dense_suffix_array": null,
+   "dry_run": false,
+   "fast": false,
+   "force_extract": true,
+   "force_steps": null,
+   "format": null,
+   "full_help": false,
+   "func": "run_realign",
+   "genome": null,
+   "gpu": false,
+   "input": "x.bam",
+   "input_ref": null,
+   "json": false,
+   "keep_awake": false,
+   "keep_fastq": false,
+   "log_dir": null,
+   "log_file": null,
+   "long_read": false,
+   "memory": null,
+   "native_aligners": null,
+   "no_gpu_memory_check": false,
+   "no_preflight": false,
+   "outdir": null,
+   "output_profile": null,
+   "parent_pid": null,
+   "platform": "ultima",
+   "prefer_native_gpu": null,
+   "preset": null,
+   "quiet": false,
+   "r1": null,
+   "r2": null,
+   "ref": null,
+   "restart": false,
+   "sample": "S",
+   "threads": null,
+   "tmp_dir": null
+  },
+  "realign -i x.bam --r1 a.fq --r2 b.fq --aligner minimap2": {
+   "_command": "realign",
+   "_explicit_dests": [
+    "aligner",
+    "input",
+    "r1",
+    "r2"
+   ],
+   "aligner": "minimap2",
+   "atomic_output": false,
+   "chunk_size": "4G",
+   "command": "realign",
+   "debug": false,
+   "dense_suffix_array": null,
+   "dry_run": false,
+   "fast": false,
+   "force_extract": false,
+   "force_steps": null,
+   "format": null,
+   "full_help": false,
+   "func": "run_realign",
+   "genome": null,
+   "gpu": false,
+   "input": "x.bam",
+   "input_ref": null,
+   "json": false,
+   "keep_awake": false,
+   "keep_fastq": false,
+   "log_dir": null,
+   "log_file": null,
+   "long_read": false,
+   "memory": null,
+   "native_aligners": null,
+   "no_gpu_memory_check": false,
+   "no_preflight": false,
+   "outdir": null,
+   "output_profile": null,
+   "parent_pid": null,
+   "platform": null,
+   "prefer_native_gpu": null,
+   "preset": null,
+   "quiet": false,
+   "r1": "a.fq",
+   "r2": "b.fq",
+   "ref": null,
+   "restart": false,
+   "sample": null,
+   "threads": null,
+   "tmp_dir": null
+  },
+  "realign -i x.cram --input-ref o.fa --ref r.fa --keep-fastq": {
+   "_command": "realign",
+   "_explicit_dests": [
+    "input",
+    "input_ref",
+    "keep_fastq",
+    "ref"
+   ],
+   "aligner": "auto",
+   "atomic_output": false,
+   "chunk_size": "4G",
+   "command": "realign",
+   "debug": false,
+   "dense_suffix_array": null,
+   "dry_run": false,
+   "fast": false,
+   "force_extract": false,
+   "force_steps": null,
+   "format": null,
+   "full_help": false,
+   "func": "run_realign",
+   "genome": null,
+   "gpu": false,
+   "input": "x.cram",
+   "input_ref": "o.fa",
+   "json": false,
+   "keep_awake": false,
+   "keep_fastq": true,
+   "log_dir": null,
+   "log_file": null,
+   "long_read": false,
+   "memory": null,
+   "native_aligners": null,
+   "no_gpu_memory_check": false,
+   "no_preflight": false,
+   "outdir": null,
+   "output_profile": null,
+   "parent_pid": null,
+   "platform": null,
+   "prefer_native_gpu": null,
+   "preset": null,
+   "quiet": false,
+   "r1": null,
+   "r2": null,
+   "ref": "r.fa",
+   "restart": false,
+   "sample": null,
+   "threads": null,
+   "tmp_dir": null
+  }
+ },
+ "parser": {
+  "actions": [
+   {
+    "choices": null,
+    "class": "_HelpAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help",
+    "exclusive_group": null,
+    "help": "show this help message and exit",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "-h",
+     "--help"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "input",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--input",
+     "-i"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "outdir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--outdir",
+     "-o"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "genome",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--genome"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "ref",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ref"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "threads",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "N|auto",
+    "nargs": null,
+    "option_strings": [
+     "--threads",
+     "-t"
+    ],
+    "required": false,
+    "type": "_thread_count_arg"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "memory",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--memory",
+     "-m"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "tmp_dir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "DIRECTORY",
+    "nargs": null,
+    "option_strings": [
+     "--tmp-dir"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "json",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--json"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "card",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--card",
+     "--no-card"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "quiet",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--quiet"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "debug",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--debug"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "log_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--log-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "keep_awake",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--keep-awake",
+     "--no-keep-awake"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "atomic_output",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--atomic-output",
+     "--no-atomic-output"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "config_path",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--config"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_result_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--result-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_parent_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--parent-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_root_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--root-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_run_step",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "STEP",
+    "nargs": null,
+    "option_strings": [
+     "--run-step"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "parent_pid",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--parent-pid"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "r1",
+    "exclusive_group": null,
+    "help": "Read 1 FASTQ file",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--r1"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "r2",
+    "exclusive_group": null,
+    "help": "Read 2 FASTQ file (optional)",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--r2"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "auto",
+     "bwa",
+     "bwa-mem2",
+     "bwa-mem3",
+     "minimap2",
+     "pbmm2"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": "auto",
+    "dest": "aligner",
+    "exclusive_group": null,
+    "help": "Aligner to use (matches the 'align' command).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--aligner"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "fast",
+    "exclusive_group": null,
+    "help": "Align short reads with bwa-mem3's --fast speed preset (implies --aligner bwa-mem3), about twice as fast. Its alignments differ from BWA's (docs/hardware.md has a measurement); the run warns (bwa_mem3_fast). Without it bwa-mem3 writes BWA's exact records.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--fast"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "auto",
+     "off"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "native_aligners",
+    "exclusive_group": null,
+    "help": "Use installed native aligners (auto) or upstream tools (off). See native/README.md for platform support and setup.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--native-aligners"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "BooleanOptionalAction",
+    "const": null,
+    "default": null,
+    "dest": "prefer_native_gpu",
+    "exclusive_group": null,
+    "help": "Prefer native GPU alignment. Windows CUDA is automatic when it fits; --no-prefer-native-gpu forces CPU there.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--prefer-native-gpu",
+     "--no-prefer-native-gpu"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "BooleanOptionalAction",
+    "const": null,
+    "default": null,
+    "dest": "dense_suffix_array",
+    "exclusive_group": null,
+    "help": "Have wgse-bwa (0.11.0 or later) read the reference's dense suffix-array file, built by `ref dense-sa`: the same alignments, faster, holding the file in RAM (0.8 GB for hs38). Used only when wgse-bwa aligns: otherwise (another aligner, such as wgse-bwa-mem3 standing in, no file, or no such wgse-bwa) the run warns (dense_suffix_array_unused) and aligns without it. Default: config dense_suffix_array, else off.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--dense-suffix-array",
+     "--no-dense-suffix-array"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "gpu",
+    "exclusive_group": null,
+    "help": "NVIDIA/Parabricks (Linux, Docker): BWA-MEM short reads, minimap2 HiFi; docs/hardware.md#nvidia-gpus-parabricks. ONT requires CPU alignment to retain MM/ML methylation tags.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--gpu"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "no_gpu_memory_check",
+    "exclusive_group": null,
+    "help": "With --gpu, run despite too little GPU or host memory.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--no-gpu-memory-check"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "illumina",
+     "dnbseq",
+     "ultima",
+     "pacbio",
+     "hifi",
+     "clr",
+     "ont",
+     "nanopore"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "platform",
+    "exclusive_group": null,
+    "help": "Sequencing platform (default: detected from read groups or read names, else illumina).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--platform"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "sr",
+     "map-pb",
+     "map-hifi",
+     "map-ont",
+     "ccs",
+     "subread"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "preset",
+    "exclusive_group": null,
+    "help": "minimap2/pbmm2 preset.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--preset"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "input_ref",
+    "exclusive_group": null,
+    "help": "FASTA decoding the input CRAM, not the target --ref. Default: --ref if sequence names, lengths and MD5s match, else the matching reference-library FASTA.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--input-ref"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "sample",
+    "exclusive_group": null,
+    "help": "Sample name to embed in read-group metadata.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--sample"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "long_read",
+    "exclusive_group": null,
+    "help": "Treat input as long-read data (PacBio/ONT).",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--long-read"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "BAM",
+     "CRAM"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "format",
+    "exclusive_group": null,
+    "help": "Output format (default: BAM)",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--format"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "default",
+     "archive",
+     "calling"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "output_profile",
+    "exclusive_group": null,
+    "help": "Lossless output: default keeps --format; archive selects CRAM 3.1 (GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, else default. See docs/ont.md.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--output-profile"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "keep_fastq",
+    "exclusive_group": null,
+    "help": "Keep extracted FASTQs (normally deleted): pairs, or one tagged <input stem>.fastq.gz for ONT/PacBio. Supplied or reused FASTQs are never deleted.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--keep-fastq"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "force_extract",
+    "exclusive_group": null,
+    "help": "Re-extract FASTQs even if a matching pair already exists next to the BAM.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--force-extract"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": "4G",
+    "dest": "chunk_size",
+    "exclusive_group": null,
+    "help": "ONT/PacBio input per chunk (K/M/G/T; 0: one pass). Resumes unfinished chunks and bounds temporary files. Requires sorted, indexed input; ignored with --keep-fastq.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--chunk-size"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "no_preflight",
+    "exclusive_group": null,
+    "help": "Run despite too little disk or RAM (not recommended).",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--no-preflight"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "restart",
+    "exclusive_group": null,
+    "help": "Rerun every step, ignoring the steps an earlier run completed.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--force",
+     "--no-resume"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "extract",
+     "align",
+     "index"
+    ],
+    "class": "_AppendAction",
+    "const": null,
+    "default": null,
+    "dest": "force_steps",
+    "exclusive_group": null,
+    "help": "Rerun STEP and the steps that use its outputs (repeatable). Steps: extract, align, index.",
+    "metavar": "STEP",
+    "nargs": null,
+    "option_strings": [
+     "--force-step"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "dry_run",
+    "exclusive_group": null,
+    "help": "Print which steps would run or be skipped, and why, then exit.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--dry-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_HelpAllAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help_all",
+    "exclusive_group": null,
+    "help": "Show this help with the advanced options too, and exit.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--help-all"
+    ],
+    "required": false,
+    "type": null
+   }
+  ],
+  "defaults": {
+   "_command": "realign",
+   "func": "run_realign"
+  },
+  "description": null,
+  "formatter_class": "HelpFormatter",
+  "prog": "wgsextract realign"
+ }
+}

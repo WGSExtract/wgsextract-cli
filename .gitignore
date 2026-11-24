@@ -199,3 +199,6 @@ cython_debug/
 
 # Personal, uncommitted settings (e.g. .claude/settings.local.json)
 *.local.json
+
+# Local opt-in copy of the scheduled worktree cleanup plan.
+/.herdr/automations/stale-worktrees.luau

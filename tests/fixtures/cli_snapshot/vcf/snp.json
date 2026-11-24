@@ -1,0 +1,620 @@
+{
+ "help": "usage: wgsextract vcf snp [-h] [-r REGION] [--parallel | --no-parallel] [--baq | --no-baq]\n                          [--reference-evidence {none,gvcf}] [--mimalloc {auto,off}] [--help-all]\n\noptions:\n  -h, --help            show this help message and exit\n  -r, --region REGION   Chromosomal region (e.g. chrM, chrY:10000-20000)\n  --parallel, --no-parallel\n                        Call contigs in parallel with up to --threads workers (default: on with\n                        --threads above 1). SNP calling recalls the stretches with sites deeper\n                        than 255 reads in one stream, because bcftools subsamples them with one\n                        random stream per process, so the calls match a single stream.\n  --baq, --no-baq       Enable heuristic base alignment quality (BAQ) in bcftools mpileup (slower;\n                        may reduce low-depth recall). Default: config baq, else off.\n  --reference-evidence {none,gvcf}\n                        Also write reference evidence: a gVCF, bcftools.g.vcf.gz (+ .tbi), beside\n                        the unchanged variant VCF (gvcf; costs a second, SNP+indel bcftools pass),\n                        or not (none). Default: config reference_evidence, else none.\n  --mimalloc {auto,off}\n                        Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not\n                        (off). Default: config mimalloc, else auto.\n  --help-all            Show this help with the advanced options too, and exit.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\n3 advanced options not shown; 'wgsextract vcf snp --help-all' lists them.\n\nexamples:\n  wgsextract vcf snp --input sample.cram\n  wgsextract vcf snp --input sample.cram --region chrM\n\noutputs (in the output directory unless noted):\n  snps.vcf.gz (+ .tbi); with --reference-evidence gvcf also bcftools.g.vcf.gz\n  (+ .tbi).\n\nneeds:\n  bcftools, samtools, tabix; hours on a 30x genome.\n",
+ "namespaces": {
+  "-t 4 vcf snp -i x.bam --ref r.fa --quiet": {
+   "_command": "vcf snp",
+   "_explicit_dests": [
+    "input",
+    "quiet",
+    "ref",
+    "threads"
+   ],
+   "atomic_output": false,
+   "baq": null,
+   "command": "vcf",
+   "debug": false,
+   "full_help": false,
+   "func": "cmd_snp",
+   "genome": null,
+   "input": "x.bam",
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "mimalloc": null,
+   "outdir": null,
+   "parallel": null,
+   "parent_pid": null,
+   "ploidy": null,
+   "ploidy_file": null,
+   "qc_min_depth": null,
+   "quiet": true,
+   "ref": "r.fa",
+   "reference_evidence": null,
+   "region": null,
+   "threads": 4,
+   "tmp_dir": null,
+   "vcf_cmd": "snp"
+  },
+  "vcf snp -i x.bam --ploidy-file p.txt --parallel": {
+   "_command": "vcf snp",
+   "_explicit_dests": [
+    "input",
+    "parallel",
+    "ploidy_file"
+   ],
+   "atomic_output": false,
+   "baq": null,
+   "command": "vcf",
+   "debug": false,
+   "full_help": false,
+   "func": "cmd_snp",
+   "genome": null,
+   "input": "x.bam",
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "mimalloc": null,
+   "outdir": null,
+   "parallel": true,
+   "parent_pid": null,
+   "ploidy": null,
+   "ploidy_file": "p.txt",
+   "qc_min_depth": null,
+   "quiet": false,
+   "ref": null,
+   "reference_evidence": null,
+   "region": null,
+   "threads": null,
+   "tmp_dir": null,
+   "vcf_cmd": "snp"
+  },
+  "vcf snp -i x.bam -o out -r chrM --ploidy 1": {
+   "_command": "vcf snp",
+   "_explicit_dests": [
+    "input",
+    "outdir",
+    "ploidy",
+    "region"
+   ],
+   "atomic_output": false,
+   "baq": null,
+   "command": "vcf",
+   "debug": false,
+   "full_help": false,
+   "func": "cmd_snp",
+   "genome": null,
+   "input": "x.bam",
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "mimalloc": null,
+   "outdir": "out",
+   "parallel": null,
+   "parent_pid": null,
+   "ploidy": "1",
+   "ploidy_file": null,
+   "qc_min_depth": null,
+   "quiet": false,
+   "ref": null,
+   "reference_evidence": null,
+   "region": "chrM",
+   "threads": null,
+   "tmp_dir": null,
+   "vcf_cmd": "snp"
+  }
+ },
+ "parser": {
+  "actions": [
+   {
+    "choices": null,
+    "class": "_HelpAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help",
+    "exclusive_group": null,
+    "help": "show this help message and exit",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "-h",
+     "--help"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "input",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--input",
+     "-i"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "outdir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--outdir",
+     "-o"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "genome",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--genome"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "ref",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ref"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "threads",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "N|auto",
+    "nargs": null,
+    "option_strings": [
+     "--threads",
+     "-t"
+    ],
+    "required": false,
+    "type": "_thread_count_arg"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "memory",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--memory",
+     "-m"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "tmp_dir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "DIRECTORY",
+    "nargs": null,
+    "option_strings": [
+     "--tmp-dir"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "json",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--json"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "card",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--card",
+     "--no-card"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "quiet",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--quiet"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "debug",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--debug"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "log_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--log-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "keep_awake",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--keep-awake",
+     "--no-keep-awake"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "atomic_output",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--atomic-output",
+     "--no-atomic-output"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "config_path",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--config"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_result_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--result-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_parent_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--parent-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_root_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--root-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_run_step",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "STEP",
+    "nargs": null,
+    "option_strings": [
+     "--run-step"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "parent_pid",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--parent-pid"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "ploidy_file",
+    "exclusive_group": 0,
+    "help": "File defining ploidy per chromosome (auto-resolved from --ref if possible)",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ploidy-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "ploidy",
+    "exclusive_group": 0,
+    "help": "Predefined ploidy name or value",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ploidy"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "region",
+    "exclusive_group": null,
+    "help": "Chromosomal region (e.g. chrM, chrY:10000-20000)",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "-r",
+     "--region"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "BooleanOptionalAction",
+    "const": null,
+    "default": null,
+    "dest": "parallel",
+    "exclusive_group": null,
+    "help": "Call contigs in parallel with up to --threads workers (default: on with --threads above 1). SNP calling recalls the stretches with sites deeper than 255 reads in one stream, because bcftools subsamples them with one random stream per process, so the calls match a single stream.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--parallel",
+     "--no-parallel"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "BooleanOptionalAction",
+    "const": null,
+    "default": null,
+    "dest": "baq",
+    "exclusive_group": null,
+    "help": "Enable heuristic base alignment quality (BAQ) in bcftools mpileup (slower; may reduce low-depth recall). Default: config baq, else off.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--baq",
+     "--no-baq"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "qc_min_depth",
+    "exclusive_group": null,
+    "help": "Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA)",
+    "metavar": "DEPTH",
+    "nargs": null,
+    "option_strings": [
+     "--qc-min-depth"
+    ],
+    "required": false,
+    "type": "_non_negative"
+   },
+   {
+    "choices": [
+     "none",
+     "gvcf"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "reference_evidence",
+    "exclusive_group": null,
+    "help": "Also write reference evidence: a gVCF, bcftools.g.vcf.gz (+ .tbi), beside the unchanged variant VCF (gvcf; costs a second, SNP+indel bcftools pass), or not (none). Default: config reference_evidence, else none.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--reference-evidence"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "auto",
+     "off"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "mimalloc",
+    "exclusive_group": null,
+    "help": "Apple Silicon: bcftools uses wgse-mimalloc if installed (auto) or not (off). Default: config mimalloc, else auto.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--mimalloc"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_HelpAllAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help_all",
+    "exclusive_group": null,
+    "help": "Show this help with the advanced options too, and exit.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--help-all"
+    ],
+    "required": false,
+    "type": null
+   }
+  ],
+  "defaults": {
+   "_command": "vcf snp",
+   "func": "cmd_snp"
+  },
+  "description": null,
+  "formatter_class": "HelpFormatter",
+  "prog": "wgsextract vcf snp"
+ }
+}
