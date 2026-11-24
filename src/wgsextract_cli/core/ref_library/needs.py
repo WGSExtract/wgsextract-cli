@@ -51,6 +51,14 @@ GENOME_COMMANDS = frozenset(
     }
 )
 
+# Commands whose --vcf-input requires the VCF's matching reference FASTA.
+VCF_GENOME_COMMANDS = frozenset(
+    {
+        "vcf to-fasta",
+        "vcf variantqc",
+    }
+)
+
 # Commands whose --input is a BAM/CRAM they read only the header or index of,
 # or not at all, so a CRAM's reference isn't needed.
 HEADER_ONLY_COMMANDS = frozenset(
@@ -122,7 +130,7 @@ def missing_references(args: argparse.Namespace) -> list[MissingReference]:
     """What the parsed command line ``args`` needs and the library lacks."""
     command = str(getattr(args, "_command", "") or "")
     missing: list[MissingReference] = []
-    genome = _missing_genome(command, args)
+    genome = _missing_genome(command, args) or _missing_vcf_genome(command, args)
     if genome:
         missing.append(genome)
     annotation = _missing_annotation(command, args)
@@ -275,6 +283,187 @@ def _missing_genome(command: str, args: argparse.Namespace) -> MissingReference 
     )
 
 
+_DEFAULT_VCF_CATALOG_CODES: dict[tuple[str, str], str] = {
+    ("hg38", "Chr"): "hg38",
+    ("hg38", "Num"): "hs38",
+    ("hg19", "Num"): "hs37d5",
+    ("hg19", "Chr"): "hg19",
+    ("t2t", "Chr"): "T2Tv20",
+    ("t2t", "Num"): "T2Tv20",
+}
+
+
+def _vcf_present_contigs(vcf_path: str) -> list[str]:
+    from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.utils import run_command
+
+    tabix = get_tool_path("tabix")
+    if tabix and any(Path(vcf_path + ext).is_file() for ext in (".tbi", ".csi")):
+        res = run_command([tabix, "-l", vcf_path], capture_output=True, check=False)
+        if res.returncode == 0:
+            chroms = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+            if chroms:
+                return chroms
+    return []
+
+
+def _fasta_build(installed: dict[str, int], fasta_path: str) -> str | None:
+    from wgsextract_cli.core.builds import CHR1_LENGTH_BUILDS, build_from_path
+
+    chr1 = next(
+        (installed[name] for name in ("chr1", "1", "CHR1") if name in installed), None
+    )
+    if chr1 is not None and chr1 in CHR1_LENGTH_BUILDS:
+        return CHR1_LENGTH_BUILDS[chr1]
+    return build_from_path(Path(fasta_path).name)
+
+
+def _compatible_vcf_fasta(
+    directories: list[Path],
+    header_lengths: dict[str, int],
+    present_contigs: list[str],
+    build: str | None,
+    naming: str,
+) -> str | None:
+    from wgsextract_cli.core.ref_library.assets import reference_fasta_candidates
+
+    candidates = [
+        file
+        for directory in directories
+        for file in reference_fasta_candidates(directory)
+    ]
+    if header_lengths:
+        for fasta in candidates:
+            installed = read_fai_lengths(fasta)
+            if installed and all(
+                installed.get(name) == length for name, length in header_lengths.items()
+            ):
+                return fasta
+    if not build:
+        return None
+    for fasta in candidates:
+        installed = read_fai_lengths(fasta)
+        if not installed or _fasta_build(installed, fasta) != build:
+            continue
+        if present_contigs:
+            if not all(
+                name in installed
+                and (
+                    name not in header_lengths
+                    or installed[name] == header_lengths[name]
+                )
+                for name in present_contigs
+            ):
+                continue
+        elif naming == "Chr" and not any(k.startswith("chr") for k in installed):
+            continue
+        elif naming == "Num" and "1" not in installed:
+            continue
+        return fasta
+    return None
+
+
+def _missing_vcf_genome(
+    command: str, args: argparse.Namespace
+) -> MissingReference | None:
+    if command not in VCF_GENOME_COMMANDS:
+        return None
+    vcf = _selected_vcf(args)
+    if not vcf or not Path(vcf).is_file():
+        return None
+    ref = _given_path(args, "ref")
+    if ref and is_fasta_path(ref):
+        return None
+    library = _explicit_library(ref)
+
+    from wgsextract_cli.core import sample_workspace
+    from wgsextract_cli.core.builds import canonical_build
+    from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.ref_library.assets import reference_genomes_dir
+    from wgsextract_cli.core.ref_library.catalog import (
+        catalog_genome_for,
+        get_available_genomes,
+    )
+    from wgsextract_cli.core.ref_library.models import sequence_lengths
+    from wgsextract_cli.core.ref_library.resolver import library_roots
+    from wgsextract_cli.core.utils import run_command
+    from wgsextract_cli.core.vcf_reference import identify_vcf_reference
+
+    root = library_roots(library).root
+    bcftools = get_tool_path("bcftools")
+    header = ""
+    if bcftools:
+        res = run_command(
+            [bcftools, "view", "-h", vcf], capture_output=True, check=False
+        )
+        if res.returncode == 0:
+            header = res.stdout
+
+    header_lengths = sequence_lengths(header)
+    present_contigs = _vcf_present_contigs(vcf)
+
+    recorded_build: str | None = None
+    ws = sample_workspace.workspace_for(vcf)
+    if ws is not None:
+        fact = ws.detected("build", vcf)
+        if fact and isinstance(fact.value, str):
+            recorded_build = canonical_build(fact.value)
+
+    detection = identify_vcf_reference(
+        vcf,
+        ref_lib_dir=root,
+        header=header,
+        allow_body_sampling=recorded_build is None,
+    )
+    build = detection.build or recorded_build
+    naming = detection.naming
+    if not naming and present_contigs:
+        naming = (
+            "Chr"
+            if any(c.startswith(("chr", "CHR")) for c in present_contigs)
+            else "Num"
+        )
+
+    directories = [Path(root), Path(reference_genomes_dir(root))] if root else []
+    if directories and _compatible_vcf_fasta(
+        directories, header_lengths, present_contigs, build, naming
+    ):
+        return None
+
+    genome = (
+        catalog_genome_for(header, detection.signature) if detection.signature else None
+    )
+    if genome is None and build:
+        fallback_code = _DEFAULT_VCF_CATALOG_CODES.get(
+            (build, naming or "Chr")
+        ) or _DEFAULT_VCF_CATALOG_CODES.get((build, "Chr"))
+        if fallback_code:
+            genome = next(
+                (g for g in get_available_genomes() if g["code"] == fallback_code),
+                None,
+            )
+    if genome:
+        return MissingReference(
+            id=str(genome["code"]),
+            kind="genome",
+            name=str(genome["code"]),
+            reason=command,
+            install_arguments=[
+                "ref",
+                "library",
+                "--install",
+                str(genome["code"]),
+                *_library_option(library),
+            ],
+        )
+    if build:
+        name = detection.major_build or build
+        return MissingReference(
+            id=name, kind="genome", name=name, reason=command, install_arguments=None
+        )
+    return None
+
+
 def _missing_annotation(
     command: str, args: argparse.Namespace
 ) -> MissingReference | None:
@@ -301,6 +490,8 @@ def _missing_annotation(
     install = ["ref", annotation.resource, *_library_option(lib.root)]
     if annotation.per_build:
         install += ["--build", build]
+    if annotation.resource == "gnomad":
+        install.append("--download")
     return MissingReference(
         id=annotation.resource,
         kind="annotation",

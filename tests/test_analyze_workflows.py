@@ -21,8 +21,8 @@ import psutil
 import pytest
 
 from tests.fake_tools import python_tool
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import bgzip_index, needs_tools, run_wgsextract, sam_to_bam
-from tests.smoke_utils import state_directory_setting
 from wgsextract_cli.commands import _analyze_workflows as wf
 from wgsextract_cli.core.config import get_config_path
 from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
@@ -101,6 +101,8 @@ if sys.argv[1:3] != ["-m", "wgsextract_cli.main"]:
 home = Path({home!r})
 state = json.loads((home / "state.json").read_text())
 argv = sys.argv[3:]  # after `-m wgsextract_cli.main`
+if argv[0].startswith("--workspace-lease="):
+    argv.pop(0)
 with open(home / "calls.jsonl", "a") as log:
     log.write(json.dumps(argv) + "\\n")
 # The real parser: a step must accept every option it is given.

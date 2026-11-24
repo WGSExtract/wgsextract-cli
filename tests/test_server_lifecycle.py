@@ -16,9 +16,11 @@ from urllib.parse import urlsplit
 import psutil
 import pytest
 
+from tests.home_isolation import state_directory_setting
+
 # The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
 from tests.smoke_utils import ensure_fake_data as ensure_fake_data
-from tests.smoke_utils import get_cli_command, state_directory_setting
+from tests.smoke_utils import get_cli_command
 from tests.test_server import (
     FAKE_DIR,
     Client,

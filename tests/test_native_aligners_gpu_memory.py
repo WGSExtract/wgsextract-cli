@@ -1,10 +1,14 @@
 """Focused native aligners gpu memory regressions."""
 
 import json
+import os
+import shutil
+from argparse import Namespace
 
 import psutil
 import pytest
 
+from tests.fake_tools import python_tool
 from tests.htslib_helpers import needs_tools, write_fasta
 from tests.test_alignment_commands import _samtools, _short_reads
 from tests.test_native_aligners import (
@@ -38,12 +42,233 @@ from tests.test_native_aligners import (
     mem3_bin as mem3_bin,
 )
 from tests.test_realign import _old_alignment
-from wgsextract_cli.core import native_aligners
+from wgsextract_cli.commands.alignment import common, preparation, short_reads
+from wgsextract_cli.core import config, native_aligners
 from wgsextract_cli.core.alignment.memory import (
     bwa_gpu_memory,
     estimate_mapping_memory,
 )
+from wgsextract_cli.core.bwa_mem2 import INDEX_SUFFIXES
 from wgsextract_cli.core.config import settings
+
+
+def test_issue1403_clearing_gpu_preference_restores_unset_config(tmp_path):
+    path = tmp_path / "config.toml"
+    path.write_text("prefer_native_gpu = false\n")
+    with config.scoped_config(path):
+        assert config.typed_settings().prefer_native_gpu is False
+
+        config.save_config({"prefer_native_gpu": None})
+
+        assert "prefer_native_gpu" not in config.load_config()
+        assert config.typed_settings().prefer_native_gpu is None
+
+
+def _windows_bwa_candidate(tmp_path, capabilities):
+    real = shutil.which("bwa")
+    assert real is not None
+    return python_tool(
+        tmp_path / "custom aligner",
+        "custom-bwa",
+        f"""\
+import subprocess, sys
+args = sys.argv[1:]
+if args[:1] == ["capabilities"]:
+    sys.stdout.write({capabilities!r})
+    sys.exit(0)
+if args[:1] == ["--backend"]:
+    args = args[2:]
+sys.exit(subprocess.call([{real!r}, *args]))
+""",
+    )
+
+
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize(
+    ("mode", "backend", "reason"),
+    [
+        ("missing", None, None),
+        ("unusable", None, None),
+        ("cpu", "cpu", None),
+        ("cuda-auto", "cuda", None),
+        ("cuda", "cuda", None),
+        ("cuda-config", "cuda", None),
+        ("cpu-config", "cpu", None),
+        ("gpu-overrides-config", "cuda", None),
+        ("cuda-config-disabled", "cpu", None),
+        ("low-ram", "cpu", "memory_budget_cpu"),
+        ("low-commit", "cpu", "windows_commit_budget_cpu"),
+        ("low-ram-preferred", "cpu", "memory_budget_cpu"),
+        ("low-commit-preferred", "cpu", "windows_commit_budget_cpu"),
+        ("unknown-commit", "cpu", "windows_commit_unavailable_cpu"),
+        ("commit-stepdown", "cuda", "windows_commit_budget_low_sort"),
+        ("ram-and-commit-same-step", "cuda", "memory_budget_cuda_low_sort"),
+        ("commit-steps-past-ram", "cuda", "windows_commit_budget_low_sort"),
+    ],
+)
+def test_issue1403_windows_automatic_cuda_requires_memory_preflight(
+    tmp_path, monkeypatch, ram, caplog, mode, backend, reason
+):
+    """#1403: automatic Windows CUDA still requires the RAM and commit checks."""
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Windows", machine=lambda: "AMD64"),
+    )
+    ram(11 * GIB // 2 if mode.startswith("low-ram") else 64 * GIB)
+    caplog.set_level("INFO")
+    reads = _short_reads(tmp_path, **_GENOME_SIZED)
+    ram_budget = (_needed(reads, "1G") + _needed(reads, "768M")) // 2
+    if mode in {"ram-and-commit-same-step", "commit-steps-past-ram"}:
+        ram(2 * GIB + ram_budget)
+    candidate = tmp_path / "missing" / "wgse-bwa.exe"
+    if mode != "missing":
+        capabilities = (
+            "not JSON"
+            if mode == "unusable"
+            else _cuda_capabilities("bwa", cuda_available=mode != "cpu")
+        )
+        candidate = _windows_bwa_candidate(tmp_path, capabilities)
+    monkeypatch.setitem(settings, "wgse_bwa_path", str(candidate))
+    commit = {
+        "low-commit": 4 * GIB,
+        "low-commit-preferred": 4 * GIB,
+        "unknown-commit": None,
+        "commit-stepdown": 23 * GIB // 4,
+        "ram-and-commit-same-step": 23 * GIB // 4,
+        "commit-steps-past-ram": 21 * GIB // 4,
+    }
+    monkeypatch.setattr(
+        short_reads, "windows_available_commit", lambda: commit.get(mode, 32 * GIB)
+    )
+    # Exercise the real samtools pipeline in a deployment without optional samblaster.
+    resolve = common.get_tool_path
+
+    def without_samblaster(tool):
+        return None if tool == "samblaster" else resolve(tool)
+
+    monkeypatch.setattr(common, "get_tool_path", without_samblaster)
+    monkeypatch.setattr(preparation, "get_tool_path", without_samblaster)
+    monkeypatch.delitem(settings, "prefer_native_gpu", raising=False)
+    if mode in {"cuda-config", "cuda-config-disabled"}:
+        monkeypatch.setitem(settings, "prefer_native_gpu", True)
+    elif mode in {"cpu-config", "gpu-overrides-config"}:
+        monkeypatch.setitem(settings, "prefer_native_gpu", False)
+    options = (
+        ["--prefer-native-gpu"]
+        if mode in {"cuda", "gpu-overrides-config"} or mode.endswith("-preferred")
+        else ["--no-prefer-native-gpu"]
+        if mode == "cuda-config-disabled"
+        else []
+    )
+    sort_memory = (
+        "1G"
+        if mode
+        in {"commit-stepdown", "ram-and-commit-same-step", "commit-steps-past-ram"}
+        else "256M"
+    )
+    bam, result = _align(reads, tmp_path / "out", *options, memory=sort_memory)
+    upstream, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+
+    assert _samtools("view", bam) == _samtools("view", upstream)
+    assert result.metrics.get("native_aligner_backend") == backend
+    assert result.metrics.get("native_aligner_backend_reason") == reason
+    assert ("native_aligner_unusable" in {w.code for w in result.warnings}) == (
+        mode in {"missing", "unusable"}
+    )
+    if mode == "low-commit":
+        assert "Windows commit" in caplog.text
+    if mode in {"commit-stepdown", "ram-and-commit-same-step"}:
+        assert result.metrics["native_aligner_sort_memory_actual"] == "768M"
+    if mode == "ram-and-commit-same-step":
+        assert result.metrics["native_aligner_memory_budget_bytes"] == ram_budget
+    if mode == "commit-steps-past-ram":
+        assert result.metrics["native_aligner_sort_memory_actual"] == "512M"
+        assert result.metrics["native_aligner_memory_budget_bytes"] == commit[mode]
+
+
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize(
+    ("streaming", "cuda", "hardware_supported"),
+    [
+        (False, True, True),
+        (True, True, True),
+        (False, False, False),
+        (False, False, True),
+    ],
+    ids=["fastq", "bam", "cpu-only", "cuda-unavailable"],
+)
+def test_issue1403_realign_respects_windows_cuda_policy_on_resume(
+    tmp_path, monkeypatch, ram, streaming, cuda, hardware_supported
+):
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Windows", machine=lambda: "AMD64"),
+    )
+    monkeypatch.setattr(short_reads, "windows_available_commit", lambda: 32 * GIB)
+    capabilities = json.loads(_cuda_capabilities("bwa", cuda_available=cuda))
+    capabilities["cuda_hardware_supported"] = hardware_supported
+    candidate = _windows_bwa_candidate(tmp_path, json.dumps(capabilities))
+    monkeypatch.setitem(settings, "wgse_bwa_path", str(candidate))
+    monkeypatch.delitem(settings, "prefer_native_gpu", raising=False)
+    ram(64 * GIB)
+    reads = _short_reads(tmp_path)
+    source, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    out = tmp_path / "out"
+    options = {"threads": 2, "memory": "256M"}
+    if not streaming:
+        options.update(r1=reads.r1, r2=reads.r2)
+
+    first = _run_realign(source, reads.ref, out, prefer_native_gpu=False, **options)
+    (bam,) = out.glob("*_aligned.bam")
+    assert first.metrics["native_aligner_backend"] == "cpu"
+    control = _samtools("view", str(bam))
+
+    automatic = _run_realign(source, reads.ref, out, **options)
+    assert automatic.metrics["native_aligner_backend"] == ("cuda" if cuda else "cpu")
+    assert automatic.details is not None
+    (align_step,) = [
+        step for step in automatic.details["steps"] if step["step"] == "align"
+    ]
+    assert align_step["action"] == ("run" if cuda else "skip")
+    assert _samtools("view", str(bam)) == control
+    forced_cpu = _run_realign(
+        source, reads.ref, out, prefer_native_gpu=False, **options
+    )
+    assert forced_cpu.metrics["native_aligner_backend"] == "cpu"
+    assert _samtools("view", str(bam)) == control
+
+
+@needs_tools("bwa", "samtools")
+def test_issue1403_windows_realign_dry_run_leaves_reference_unchanged(
+    tmp_path, monkeypatch, ram
+):
+    monkeypatch.setattr(
+        native_aligners,
+        "platform",
+        Namespace(system=lambda: "Windows", machine=lambda: "AMD64"),
+    )
+    monkeypatch.delitem(settings, "prefer_native_gpu", raising=False)
+    ram(64 * GIB)
+    reads = _short_reads(tmp_path)
+    source, _ = _align(reads, tmp_path / "off", "--native-aligners", "off")
+    reference = tmp_path / "target"
+    reference.mkdir()
+    fasta = reference / "ref.fa"
+    shutil.copyfile(reads.ref, fasta)
+    for suffix in INDEX_SUFFIXES:
+        (reference / f"ref.fa{suffix}").write_bytes(b"fake bwa-mem2 index")
+    fake_bin = tmp_path / "bin"
+    python_tool(fake_bin, "bwa-mem2", "raise SystemExit(0)\n")
+    monkeypatch.setenv("PATH", str(fake_bin), prepend=os.pathsep)
+    original = sorted(reference.iterdir())
+
+    _run_realign(
+        source, str(fasta), tmp_path / "out", dry_run=True, native_aligners="off"
+    )
+
+    assert sorted(reference.iterdir()) == original
 
 
 @pytest.mark.usefixtures("apple_silicon")
@@ -97,7 +322,10 @@ def test_issue747_gpu_does_not_inherit_an_over_budget_cpu_floor(
     assert result.metrics["native_aligner_memory_budget_bytes"] == budget
     assert result.metrics["native_aligner_sort_memory_requested"] == "1G"
     assert result.metrics["native_aligner_sort_memory_actual"] == "256M"
-    assert "2.5x slower" in caplog.text
+    assert any(
+        "on the CPU" in message and "memory budget" in message
+        for message in caplog.messages
+    )
     assert "--prefer-native-gpu" in caplog.text
 
 

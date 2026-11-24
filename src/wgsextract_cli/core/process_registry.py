@@ -9,6 +9,18 @@ import time
 import weakref
 from typing import Any
 
+from wgsextract_cli.core.download_progress import CancelEvent
+
+_owned_groups: weakref.WeakKeyDictionary[subprocess.Popen[Any], int] = (
+    weakref.WeakKeyDictionary()
+)
+
+
+def remember_process_group(process: subprocess.Popen[Any]) -> None:
+    """Record the POSIX group of a tool launched with process_group_kwargs."""
+    if sys.platform != "win32":
+        _owned_groups[process] = process.pid
+
 
 class ProcessRegistry:
     """Tracks running subprocesses so they can be terminated on exit.
@@ -90,13 +102,35 @@ class ProcessRegistry:
         terminate_trees(stopped)
 
 
+def wait_with_cancel(
+    process: subprocess.Popen[Any], cancel_event: CancelEvent | None = None
+) -> bool:
+    """Wait for a process, terminating its tree and reaping it on cancellation."""
+    while True:
+        if cancel_event and cancel_event.is_set():
+            logging.info("Terminating process %s due to cancellation.", process.pid)
+            terminate_trees([process])
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                logging.warning(
+                    "Timed out waiting for cancelled process %s.", process.pid
+                )
+            return False
+        if process.poll() is not None:
+            return process.returncode == 0
+        time.sleep(0.1)
+
+
 def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
     """Terminate these processes' trees, escalating Unix groups to SIGKILL."""
     if not processes:
         return
 
+    groups: set[int] = set()
     for proc in processes:
-        if proc.poll() is None:
+        owned_group = _owned_groups.get(proc)
+        if proc.poll() is None or owned_group is not None:
             try:
                 if sys.platform == "win32":
                     # CTRL_BREAK can exit the launcher while Java descendants
@@ -115,20 +149,34 @@ def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
                             result.returncode,
                         )
                 else:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    pgid = owned_group
+                    if pgid is None:
+                        pgid = os.getpgid(proc.pid)
+                    if pgid == proc.pid:
+                        groups.add(pgid)
+                        os.killpg(pgid, signal.SIGTERM)
+                    else:
+                        proc.terminate()
             except (OSError, subprocess.TimeoutExpired):
                 log = logging.warning if sys.platform == "win32" else logging.debug
                 log("Process %s could not be terminated.", proc.pid, exc_info=True)
 
     time.sleep(0.5)
 
-    for proc in processes:
-        if proc.poll() is None:
+    # The launcher can exit on SIGTERM while a descendant ignores it.
+    if sys.platform != "win32":
+        for pgid in groups:
             try:
-                if sys.platform == "win32":
+                os.killpg(pgid, signal.SIGKILL)
+            except OSError:
+                logging.debug(
+                    "Process group %s could not be killed.", pgid, exc_info=True
+                )
+    for proc in processes:
+        if proc.pid not in groups and proc.poll() is None:
+            try:
+                if _owned_groups.get(proc) is None or proc.returncode is None:
                     proc.kill()
-                else:
-                    os.killpg(os.getpgid(proc.pid), getattr(signal, "SIGKILL", 9))
             except OSError:
                 logging.debug(
                     "Process %s could not be killed.", proc.pid, exc_info=True

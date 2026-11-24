@@ -4,6 +4,7 @@ import logging
 import sys
 from pathlib import Path
 
+from wgsextract_cli.api._runtime import CancelToken
 from wgsextract_cli.commands._command_needs import COMMAND_NEEDS, HOURS, MINUTES
 from wgsextract_cli.commands.registry import DEPRECATED
 from wgsextract_cli.core import execution_context, live_status
@@ -81,6 +82,11 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
         or str(getattr(args, "command", None) or "wgsextract")
     )
     result.provenance.argv = redact_argv(getattr(args, "_argv", None) or sys.argv[1:])
+    result.run.join(
+        getattr(args, "_parent_run", None),
+        getattr(args, "_root_run", None),
+        getattr(args, "_run_step", None),
+    )
     result.provenance.params = params_from_args(args)
     if not as_json:
         result.stream_text(_to_stdout)
@@ -90,9 +96,15 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
     root.addHandler(tail)
     from wgsextract_cli.core.atomic_output import output_publication_scope
 
+    cancel = (
+        CancelToken()
+        if result.command in {"ref bootstrap", "ref gnomad"}
+        else execution_context.current().cancel
+    )
     with (
         reserved as stdout,
         collecting(result, as_json=as_json),
+        execution_context.bound(cancel=cancel),
         output_publication_scope(),
     ):
         try:

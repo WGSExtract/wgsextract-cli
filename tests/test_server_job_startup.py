@@ -1,12 +1,14 @@
 """Server job startup regressions (#1226): a job whose worker starts but
 whose bookkeeping then fails must not leave the worker or its slot behind."""
 
+import os
 import subprocess
 import sys
 
 import psutil
 import pytest
 
+from wgsextract_cli.core.workspace_activity import desktop_data_dir
 from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.operations import find
 
@@ -137,4 +139,44 @@ def test_1226_a_job_that_cannot_be_recorded_is_refused_without_a_trace(tmp_path)
         done = manager.wait(retried.id, 10)
         assert done is not None and done.status == "succeeded"
     finally:
+        manager.shutdown()
+
+
+def test_1322_admitted_worker_survives_a_refused_move(tmp_path):
+    worker = """
+import json, pathlib, runpy, sys
+marker = pathlib.Path(sys.argv[1])
+if marker.exists():
+    runpy.run_module("wgsextract_cli.server.worker", run_name="__main__")
+else:
+    sys.stdin.readline()
+    marker.touch()
+    sys.stdin.readline()
+    print(json.dumps({"event": "result", "result": {"status": "ok"}}))
+"""
+    started = tmp_path / "started"
+    manager = JobManager(
+        tmp_path / "jobs",
+        config_path=None,
+        worker_command=[sys.executable, "-c", worker, str(started)],
+    )
+    op = find("example-genome/download")
+    params = {"target_root": str(tmp_path), "dry_run": True}
+    move = desktop_data_dir() / "workspace-activity" / f"move-{os.getpid()}-a"
+    move.parent.mkdir(parents=True)
+    try:
+        holder = manager.submit(op, params)
+        queued = manager.submit(op, params)
+        assert queued.status == "queued"
+        # A mover can briefly publish a marker, but the queued job already
+        # owns admission so that move cannot proceed.
+        move.touch()
+        manager.cancel(holder.id)
+
+        done = manager.wait(queued.id, 20)
+        assert done is not None and done.status == "succeeded", manager.log_path(
+            queued.id
+        ).read_text()
+    finally:
+        move.unlink(missing_ok=True)
         manager.shutdown()

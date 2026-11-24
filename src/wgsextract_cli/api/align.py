@@ -47,20 +47,13 @@ REALIGN_STEPS = ("extract", "align", "index")
 def _native_aligners_param() -> Any:
     return param(
         None,
-        help="On Apple Silicon, align with wgse-bwa, wgse-bwa-mem2 or "
-        "wgse-minimap2 in place of bwa, bwa-mem2 or minimap2, and with "
-        "wgse-bwa-mem3 in place of bwa or bwa-mem2 when the reference has "
-        "bwa-mem2's index and it fits in RAM; on Linux (x86-64 and ARM64), with "
-        "wgse-bwa in place of bwa, and on x86-64 with wgse-bwa-mem3 as on Apple "
-        "Silicon and wgse-minimap2 in place of minimap2 (long reads' gap fills on "
-        "the NVIDIA GPU). Used when they're on PATH (auto; same alignments, "
-        "faster, on the Metal or NVIDIA GPU when it fits) or never (off). "
-        "On Linux without wgse-bwa-mem3, auto uses Bioconda's bwa-mem3 (`pixi "
-        "install -e bwa-mem3`) in its place, ahead of wgse-bwa. Default: config native_aligners, else "
-        "auto. Install the builds as native/README.md describes.",
+        help="Use installed native aligners (auto) or upstream tools (off). "
+        "See native/README.md for platform support and setup.",
         doc="auto (the default, or config native_aligners) uses WGS Extract's "
-        "aligner builds (Apple Silicon; wgse-bwa on Linux, and wgse-bwa-mem3 and "
-        "wgse-minimap2 on x86-64) when installed on PATH, and on Linux without wgse-bwa-mem3 "
+        "aligner builds (Apple Silicon; wgse-bwa on Linux or Windows x86-64; "
+        "wgse-bwa-mem3 on Linux x86-64; wgse-minimap2 on Linux and Windows x86-64) "
+        "when installed on PATH "
+        "(or wgse_bwa_path on Windows), and on Linux without wgse-bwa-mem3 "
         "Bioconda's bwa-mem3 in place of bwa or bwa-mem2; "
         "off never does.",
         choices=NATIVE_ALIGNER_SETTINGS,
@@ -91,12 +84,10 @@ def _dense_suffix_array_param() -> Any:
 def _prefer_native_gpu_param() -> Any:
     return param(
         None,
-        help="If no GPU plan fits the RAM budget even after the sort-memory "
-        "step-down, use the GPU anyway instead of the slower CPU path; may swap "
-        "heavily. Default: config prefer_native_gpu, else off.",
-        doc="Prefer native GPU speed over the RAM-budget CPU fallback. Sort "
-        "memory is stepped down first; explicit --memory is kept, otherwise "
-        "at most 256M per thread. May swap heavily.",
+        help="Prefer native GPU alignment. Windows CUDA is automatic when it fits; "
+        "--no-prefer-native-gpu forces CPU there.",
+        doc="Windows CUDA is automatic within RAM and commit limits; false forces CPU. "
+        "Elsewhere, true can override RAM limits. See the configuration guide.",
         action="boolean_optional",
         config_key="prefer_native_gpu",
     )

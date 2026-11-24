@@ -43,7 +43,7 @@ function fakeProcesses(missing) {
   const calls = [];
   const runProcess = async (executable, args) => {
     calls.push([executable, ...args]);
-    const isCheck = args[0] === "needs";
+    const isCheck = args[0] === "needs" || (args[0] === "ref" && args[1] === "needs");
     return { exitCode: 0, stdout: isCheck ? `log line\n${JSON.stringify({ missing: missing.current })}\n` : "", stderr: "" };
   };
   return { calls, runProcess };
@@ -250,4 +250,55 @@ test("data the app can't install offers no Install button", async (t) => {
   await runAction(action, context, reference);
 
   assert.doesNotMatch(renderPrerequisitesDialog(), /data-prerequisites-install/);
+});
+
+test("WGSExtract Viewer action checks its BAM/CRAM reference genome and offers Install and Continue, Continue, or Cancel", async (t) => {
+  const workspace = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, workspace, workspace);
+  const viewBam = bundle.manifest.pages
+    .flatMap((page) => page.sections ?? [])
+    .flatMap((section) => section.actions ?? [])
+    .find((action) => action.id === "view-bam");
+  assert.ok(viewBam, "view-bam action exists");
+
+  // Server check & install work for viewerInput actions via prerequisiteArguments.
+  const serverMissing = { current: [hs37d5] };
+  const { calls, runProcess } = fakeProcesses(serverMissing);
+  const wgsContext = { ...context, fieldValues: { bam_path: cram }, bundleRootPath: workspace };
+  assert.deepEqual(await missingPrerequisites(bundle.manifest, viewBam, wgsContext, workspace, runProcess), [hs37d5]);
+  assert.deepEqual(calls[0].slice(1), ["ref", "needs", "--report-json", "--", "bam", "to-cram", "--input", cram]);
+  const installed = await installPrerequisite(bundle.manifest, viewBam, "hs37d5", wgsContext, undefined, workspace, runProcess, () => {}, () => undefined);
+  assert.equal(installed.exitCode, 0);
+  assert.deepEqual(calls.at(-1).slice(1), ["ref", "library", "--install", "hs37d5"]);
+
+  // Client dialog: Cancel, Continue (still missing -> installed), and Install and Continue.
+  const clientMissing = { current: [hs37d5] };
+  Object.assign(state, createInitialState(), { manifest: bundle.manifest, labels: englishLabels, fieldValues: { bam_path: cram } });
+  const requests = fakeServer(t, clientMissing);
+  const reference = { pageID: "info-bam", sectionID: "info-commands", actionID: "view-bam" };
+
+  await runAction(viewBam, context, reference);
+  const dialog = renderPrerequisitesDialog();
+  assert.match(dialog, /<li>hs37d5 reference genome<\/li>/);
+  assert.match(dialog, /data-prerequisites-install[^>]*>Install and Continue</);
+  assert.match(dialog, /data-prerequisites-continue>Continue</);
+  assert.match(dialog, /data-prerequisites-cancel>Cancel</);
+
+  cancelPendingPrerequisites();
+  assert.equal(state.pendingPrerequisites, null);
+
+  await runAction(viewBam, context, reference);
+  await continuePendingPrerequisites();
+  assert.ok(state.pendingPrerequisites?.stillMissing);
+
+  clientMissing.current = [];
+  await continuePendingPrerequisites();
+  assert.equal(state.pendingPrerequisites, null);
+  assert.equal(requests.some((request) => request.url === "/api/run/stream"), false, "viewer opens locally without /api/run/stream");
+
+  clientMissing.current = [hs37d5];
+  await runAction(viewBam, context, reference);
+  await installPendingPrerequisites();
+  assert.equal(state.pendingPrerequisites, null);
+  assert.equal(requests.some((request) => request.url === "/api/prerequisites/install/stream" && request.body.id === "hs37d5"), true);
 });

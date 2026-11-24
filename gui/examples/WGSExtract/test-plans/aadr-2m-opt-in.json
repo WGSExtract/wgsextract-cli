@@ -19,11 +19,11 @@
       "kind": "action",
       "pageID": "library",
       "sectionID": "databases-tools",
+      "controlID": "reference_data",
       "actionID": "aadr-2m-install",
-      "inputs": {
-        "fieldValues": {
-          "library.aadrInstalled": "false"
-        }
+      "rowID": "aadr-2m",
+      "rowValues": {
+        "status": "missing"
       },
       "timeoutSeconds": 7200
     },

@@ -12,10 +12,14 @@ on:
     branches: [ main ]
     paths:
       - packaging/windows/**
-      - native/bwa/extend_neon.c.in
-      - native/bwa/wgse_neon.h
-      - native/bwa/ksw_batch.h
-      - native/bwa/tests/extend_neon_check.c
+      - native/CMakeLists.txt
+      - native/bwa/**
+      - native/bwa-mem2/rescue_prune.cpp
+      - native/bwa-mem2/wgse_rescue_prune.h
+      - native/gpu-common/**
+      - native/minimap2/**
+      - native/tests/**
+      - native/windows/**
       - .github/workflows/windows_tools.yml
       - .github/actions/setup-pixi/**
       - "!**/*.md"
@@ -74,7 +78,10 @@ jobs:
         env:
           MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
         run: |
-          pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id --recipe-dir packaging/windows/recipes `
+          $recipes = Get-ChildItem packaging/windows/recipes -Directory |
+            Where-Object { $_.Name -notin 'wgse-bwa', 'wgse-minimap2' } |
+            ForEach-Object { '--recipe'; $_.FullName }
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id @recipes `
             --output-dir out/conda --target-platform win-64
           Move-Item out/msys2-packages-used.txt out/conda/win-64/
 
@@ -94,9 +101,40 @@ jobs:
             out/conda/win-64/msys2-packages-used.txt
           if-no-files-found: error
 
+  cuda-aligners:
+    if: ${{ github.event.pull_request.draft != true }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [wgse-bwa, wgse-minimap2]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Pixi
+        uses: ./.github/actions/setup-pixi
+        with:
+          install: "false"
+
+      - name: Build with CUDA and test CPU fallback
+        shell: pwsh
+        env:
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          pixi exec --spec rattler-build==0.77.0 rattler-build build --no-build-id `
+            --recipe "packaging/windows/recipes/$env:PACKAGE" --channel conda-forge `
+            --output-dir out/conda --target-platform win-64
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-tools-${{ matrix.package }}
+          path: out/conda/win-64/${{ matrix.package }}-*.conda
+          if-no-files-found: error
+
   publish:
     if: github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
-    needs: build
+    needs: [build, cuda-aligners]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -110,8 +148,8 @@ jobs:
           tag: ${{ inputs.release_tag }}
           tag-prefix: windows-tools-
           title: Windows tools ${{ inputs.release_tag }}
-          source: packaging/windows/recipes
-          artifacts: windows-tools
+          source: packaging/windows/recipes and native
+          artifacts: windows-tools*
           extra-assets: msys2-packages-used.txt
           description: |
             Native Windows builds of WGS Extract's command-line tools, as conda packages that Pixi installs.

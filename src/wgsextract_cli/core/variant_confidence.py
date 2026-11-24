@@ -117,9 +117,6 @@ from ._confidence_rules import (
     _numbers,
 )
 from ._confidence_rules import (
-    alt_fraction as alt_fraction,
-)
-from ._confidence_rules import (
     classify as classify,
 )
 from ._confidence_rules import (
@@ -210,14 +207,23 @@ def rare_imputed(info: Mapping[str, str], alt: int) -> bool:
 
 
 def _header_lines(
-    thresholds: Thresholds, caller: str, contamination: float | None = None
+    thresholds: Thresholds,
+    caller: str,
+    contamination: float | None,
+    *,
+    include_reference: bool,
 ) -> list[str]:
     t = thresholds
     freemix = "" if contamination is None else f",Contamination={contamination:g}"
+    reference_note = (
+        "; for a reference call, its confidence is repeated for each ALT"
+        if include_reference
+        else ""
+    )
     return [
         f'##INFO=<ID={CONF_TAG},Number=A,Type=String,Description="wgsextract '
         f"confidence in the sample's call of this ALT: high, moderate or low "
-        f'({GUIDE}); . when the sample does not carry it">',
+        f'({GUIDE}); . when the sample does not carry it{reference_note}">',
         f'##INFO=<ID={REASONS_TAG},Number=A,Type=String,Description="Reason codes '
         f'behind {CONF_TAG}, joined by | ({GUIDE})">',
         f"##wgsextract_confidence=<Scheme={SCHEME},Caller={caller},"
@@ -314,7 +320,9 @@ def label_records(
                     sample=columns[9],
                 )
             yield from header
-            yield from _header_lines(thresholds, caller, contamination)
+            yield from _header_lines(
+                thresholds, caller, contamination, include_reference=include_reference
+            )
             yield line
             continue
         if summary is None:
@@ -339,7 +347,7 @@ def label_records(
             )
             or all(a in SYMBOLIC_REFERENCE_ALTS or a == "." for a in alts)
         )
-        for index, alt_allele in enumerate(alts, start=1):
+        for index, alt_allele in enumerate(alts[:1] if reference_record else alts, 1):
             result = (
                 None
                 if alt_allele in SYMBOLIC_REFERENCE_ALTS and not reference_record
@@ -372,8 +380,6 @@ def label_records(
                     ),
                 )
             )
-            if reference_record and index > 1:
-                continue
             if result is not None and reference_record:
                 support_reasons = info.get("PGX_REASONS", "").split("|")
                 result.reasons.extend(
@@ -438,6 +444,10 @@ def label_records(
                 )
         fields[7] = _strip_own_info(fields[7])
         if any(label != "." for label in labels):
+            if reference_record:
+                # Count one reference call, but emit both INFO tags per ALT.
+                labels *= len(alts)
+                reasons *= len(alts)
             tags = f"{CONF_TAG}={','.join(labels)};{REASONS_TAG}={','.join(reasons)}"
             fields[7] = tags if fields[7] == "." else f"{fields[7]};{tags}"
         yield "\t".join(fields)
@@ -459,11 +469,16 @@ class _Stderr:
 
     def _drain(self, stream: IO[str] | None) -> None:
         if stream is not None:
-            for line in stream:
-                self.lines.append(line.rstrip())
+            with stream:
+                for line in stream:
+                    self.lines.append(line.rstrip())
+
+    def join(self) -> None:
+        # A wrapper's descendants can keep the stderr pipe open after it exits.
+        self._thread.join(timeout=5)
 
     def tail(self) -> str:
-        self._thread.join(timeout=5)
+        self.join()
         return "\n".join(self.lines)
 
 
@@ -471,7 +486,12 @@ def _start(
     command: Sequence[str], **kwargs: Any
 ) -> tuple[subprocess.Popen[str], _Stderr]:
     process = popen(command, stderr=subprocess.PIPE, text=True, **kwargs)
-    return process, _Stderr(process)
+    try:
+        return process, _Stderr(process)
+    except BaseException:
+        with process:
+            process.kill()
+        raise
 
 
 def label_vcf(
@@ -549,7 +569,9 @@ def label_vcf(
         ):
             raise reader_error() from error
         raise
-    reader.stdout.close()
+    finally:
+        reader_errors.join()
+        reader.stdout.close()
     if out_vcf is not None:
         ensure_vcf_indexed(out_vcf)
     return summary
@@ -579,7 +601,9 @@ def _write_bgzipped(
     finally:
         with contextlib.suppress(OSError):
             writer.stdin.close()
-        if writer.wait() != 0 or stopped:
+        status = writer.wait()
+        writer_errors.join()
+        if status != 0 or stopped:
             raise _OutputError(
                 f"bgzip failed writing {out_vcf}: {writer_errors.tail()}"
             )

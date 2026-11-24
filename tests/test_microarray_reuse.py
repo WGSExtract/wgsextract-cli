@@ -17,8 +17,8 @@ from typing import Any
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_htslib, write_fasta
-from tests.smoke_utils import state_directory_setting
 from tests.test_microarray_library import MARKERS, _library, _sample_bam
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.commands import _microarray_reuse as reuse
@@ -345,6 +345,7 @@ def test_issue_853_reused_hg38_outputs_keep_the_liftover_counts(
         )
     )
     fasta = write_fasta(library / "genomes" / "hs38.fa", {"chr1": seq})
+    target = build_genome_wide_target(str(library), "hg38", [str(library)])
     bam = _sample_bam(tmp_path, seq)
     config = tmp_path / "config.toml"
     config.write_text(
@@ -357,7 +358,7 @@ def test_issue_853_reused_hg38_outputs_keep_the_liftover_counts(
         subprocess.run(
             [sys.executable, "-m", "wgsextract_cli.main", "--config", str(config)]
             + ["microarray", "--formats", "23andme_v3", "--input", bam]
-            + ["--ref", str(fasta), "--outdir", str(outdir)],
+            + ["--ref", str(fasta), "--outdir", str(outdir), "--ref-vcf-tab", target],
             check=True,
         )
         manifests.append(

@@ -1,5 +1,6 @@
 """Generated response contracts must describe actual server responses (#929)."""
 
+import copy
 import json
 import subprocess
 import sys
@@ -9,13 +10,14 @@ from typing import Annotated, TypedDict
 import pytest
 from jsonschema import Draft202012Validator
 
+from scripts.json_lines import dump_lines
 from scripts.server_transport_typescript import (
     report_typescript,
     result_typescript,
     typescript,
     typescript_records,
 )
-from tests.test_server import _serve
+from tests.test_server import Mcp, _serve
 from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.server.http_api import openapi_document
 from wgsextract_cli.server.jobs import Job
@@ -111,6 +113,38 @@ def test_929_checked_in_openapi_and_response_schemas_do_not_drift() -> None:
     check_refs(document)
 
 
+def test_1416_independent_openapi_operation_changes_merge_cleanly(
+    tmp_path: Path,
+) -> None:
+    text = (SCHEMAS / "wgsextract.server.openapi.json").read_text(encoding="utf-8")
+    base = json.loads(text)
+    expand = (("paths",), ("components", "schemas"))
+    # The layout gen_server_contracts.py writes, which the variants below share.
+    assert dump_lines(base, expand=expand) == text
+    first, _, third = list(base["paths"])[:3]
+    ours, theirs = copy.deepcopy(base), copy.deepcopy(base)
+    next(iter(ours["paths"][first].values()))["summary"] = "Ours."
+    next(iter(theirs["paths"][third].values()))["summary"] = "Theirs."
+    theirs["components"]["schemas"]["Theirs"] = {"type": "string"}
+    for name, document in (("base", base), ("ours", ours), ("theirs", theirs)):
+        (tmp_path / name).write_text(
+            dump_lines(document, expand=expand), encoding="utf-8"
+        )
+
+    # One single-line document made any two such changes conflict.
+    merged = subprocess.run(
+        ["git", "merge-file", "-p", "ours", "base", "theirs"],
+        cwd=tmp_path,
+        capture_output=True,
+        encoding="utf-8",
+    )
+
+    assert merged.returncode == 0, merged.stdout
+    expected = copy.deepcopy(theirs)
+    expected["paths"][first] = ours["paths"][first]
+    assert json.loads(merged.stdout) == expected
+
+
 @pytest.mark.parametrize("full", [False, True])
 def test_929_job_projections_preserve_omission_and_extension_data(full: bool) -> None:
     job = Job("example", "info", "query", {"input": "sample.bam"})
@@ -201,43 +235,8 @@ def test_1023_variant_pages_with_acmg_classes_carry_the_research_disclaimer(
             assert "disclaimer" not in body
 
 
-def test_1289_variant_pages_return_read_phase_and_gnomad_columns(
-    tmp_path: Path,
-) -> None:
-    """Issue 1289: /v1/variants (and MCP query_variants, which shares it) can
-    select the new columns, typed, and leave out empty ones."""
-    table = tmp_path / "sample_variants.tsv"
-    table.write_text(
-        "chrom\tpos\talt_fraction\tad_alt\tphase_set\ttranscript_id\t"
-        "gnomad_popmax_af\tgnomad_nhomalt\n"
-        "chr1\t100\t0.4375\t14\t100\tENST1.4\t0.08\t12\n"
-        "chr1\t200\t\t\t\t\t\t\n",
-        encoding="utf-8",
-    )
-    columns = "pos,alt_fraction,ad_alt,phase_set,transcript_id,gnomad_popmax_af"
-    with _serve(tmp_path, [tmp_path]) as client:
-        status, body = client.request(
-            "GET", f"/variants?path={table}&columns={columns},gnomad_nhomalt"
-        )
-    assert status == 200
-    validate(body, "VariantPage")
-    assert body["rows"] == [
-        {
-            "pos": 100,
-            "alt_fraction": 0.4375,
-            "ad_alt": 14,
-            "phase_set": "100",
-            "transcript_id": "ENST1.4",
-            "gnomad_popmax_af": 0.08,
-            "gnomad_nhomalt": 12,
-        },
-        {"pos": 200},
-    ]
-
-
 def test_1284_variant_pages_return_in_silico_score_columns(tmp_path: Path) -> None:
-    """Issue 1284: /v1/variants (and MCP query_variants) return the score
-    columns typed, and leave out the ones a row has no score for."""
+    """Issue 1284: projected scores remain typed, and missing scores stay absent."""
     table = tmp_path / "sample_variants.tsv"
     table.write_text(
         "chrom\tpos\trevel\talphamissense_class\tcadd_phred\tspliceai_max\tgerp\n"
@@ -245,14 +244,21 @@ def test_1284_variant_pages_return_in_silico_score_columns(tmp_path: Path) -> No
         "chr1\t200\t\t\t\t\t\n",
         encoding="utf-8",
     )
-    columns = "pos,revel,alphamissense_class,cadd_phred,spliceai_max,gerp"
+    columns = [
+        "pos",
+        "revel",
+        "alphamissense_class",
+        "cadd_phred",
+        "spliceai_max",
+        "gerp",
+    ]
     with _serve(tmp_path, [tmp_path]) as client:
         status, body = client.request(
-            "GET", f"/variants?path={table}&columns={columns}"
+            "GET", f"/variants?path={table}&columns={','.join(columns)}"
         )
     assert status == 200
     validate(body, "VariantPage")
-    assert body["rows"] == [
+    expected = [
         {
             "pos": 100,
             "revel": 0.93,
@@ -263,3 +269,11 @@ def test_1284_variant_pages_return_in_silico_score_columns(tmp_path: Path) -> No
         },
         {"pos": 200},
     ]
+    assert body["rows"] == expected
+
+    mcp = Mcp("--allow", str(tmp_path))
+    try:
+        result = mcp.call("query_variants", path=str(table), columns=columns)
+        assert result["structuredContent"]["rows"] == expected
+    finally:
+        assert mcp.close() == 0

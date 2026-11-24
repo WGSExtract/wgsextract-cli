@@ -34,6 +34,40 @@ above works.
 - A multi-sample VCF uses its first sample, or the one named with `--sample`.
 - `--region chr22` or `--region chr1:1000000-2000000` exports one region.
 
+### Slice a VCF to a panel
+
+Use the same options on `vcf filter` and `vcf table`:
+
+```bash
+wgsextract vcf filter --vcf-input sample.vcf.gz --genes BRCA1,BRCA2 --bed targets.bed
+wgsextract vcf table --vcf-input sample.vcf.gz --preset acmg-sf --region chr17
+```
+
+Repeat `--gene SYMBOL` or `--genes SYMBOL1,SYMBOL2`, give `--gene-file FILE`,
+or select a `--preset` listed by `wgsextract panel bed --list-presets`. A gene
+file accepts names separated by spaces, commas or newlines; `#` starts a
+comment. Symbols and unique aliases resolve offline against the bundled RefSeq
+gene spans. An unknown name or ambiguous alias is an error. The VCF header or
+the `.fai` of a matching `--ref` FASTA must identify GRCh37, GRCh38 or
+CHM13v2.0. If `--ref` is a local library and the header doesn't identify a
+build, its indexed FASTAs must point to a single build. Filenames alone
+don't identify an assembly. `--pad-kb` pads each whole gene span on both
+sides (default: no padding).
+
+The commands take the **union** of the gene spans and the zero-based,
+half-open `--bed` intervals (plain or gzipped), then **intersect** it with
+`--region` if given. `--region` takes a contig, a 1-based position or an
+inclusive range; separate multiple regions with commas. Contig names such
+as `chr17` and `17` match automatically. Supply BED coordinates for the VCF's
+assembly; this is not liftover. A VCF record is kept if it overlaps the final
+intervals, without duplicating records from overlapping targets. A panel with
+no matches returns a header-only VCF or table. Other filters (such as `--expr`
+or `--sample`) still apply.
+
+The result manifest's `details.panel` records the resolved genes and presets,
+the final intervals in VCF contig naming (BED coordinates), and the SHA-256
+of the BED file as supplied.
+
 ## Columns
 
 | Column | Type | Meaning |
@@ -44,7 +78,7 @@ above works.
 | `consequence`, `impact` | text | Sequence Ontology terms (`&`-separated) and HIGH/MODERATE/LOW/MODIFIER, from the chosen transcript. |
 | `hgvs_c`, `hgvs_p` | text | HGVS coding and protein change on the chosen transcript. |
 | `clinvar_significance`, `clinvar_condition` | text | ClinVar `CLNSIG` and `CLNDN` (from `vcf clinvar`; else VEP's `CLIN_SIG`). |
-| `gnomad_af` | real | gnomAD allele frequency of this ALT (from `vcf gnomad`; else VEP's `gnomADg_AF`, then `gnomADe_AF`, then `gnomAD_AF`). |
+| `gnomad_af` | real | gnomAD allele frequency of this ALT (from `vcf gnomad`; else VEP's `gnomADg_AF`, then `gnomADe_AF`, then `gnomAD_AF`). Empty when gnomAD lacks the ALT, or when the VCF has no gnomAD annotation: a vep-rs cache from `vep download` has none, so run `vcf gnomad` (see [Population frequencies](#population-frequencies)). |
 | `genotype`, `zygosity` | text | The sample's GT (`0/1`, `1\|1`, ...), and its copies of this ALT: `het`, `hom_alt`, `hemizygous`, `not_carried` or `no_call`. |
 | `depth`, `gq`, `qual`, `filter` | integer, integer, real, text | Read depth (FORMAT/DP, else the sum of AD, else INFO/DP), genotype quality, QUAL and FILTER. |
 | `confidence` | text | The depth-aware `high`/`moderate`/`low` label in `INFO/WGSE_CONF`, when the VCF has one ([variant-confidence.md](variant-confidence.md)). |
@@ -53,23 +87,39 @@ above works.
 | `pharmcat_diplotype`, `pharmcat_phenotype` | text | PharmCAT's call for the row's gene, with `--pharmcat-json <stem>.phenotype.json` from `vcf pharmcat`. |
 | `sv_af`, `sv_freq` | real, text | A structural variant's population frequency and its class (`common`, `low`, `rare` or `novel`), from [`vcf sv-freq`](sv-frequency.md). |
 | `acmg_class`, `acmg_criteria`, `acmg_transcript` | text | **Research use only; not a diagnosis.** fastVEP's automated ACMG/AMP class (`P`, `LP`, `VUS`, `LB`, `B`), the criteria it found met (`&`-separated) and the transcript it classified on, from [`vcf acmg`](acmg.md). Empty when the VCF has no classes. |
-| `transcript_id` | text | The chosen transcript's ID (VEP `Feature`, else SnpEff `Feature_ID`), which `consequence`, `impact` and the HGVS columns describe. Empty when the chosen annotation is a regulatory or intergenic feature. |
-| `phase_set` | text | The phase block (FORMAT/PS) of a phased genotype (`0\|1`). Calls with the same `phase_set` on one chromosome are phased to each other; see [Read evidence and phasing](#read-evidence-and-phasing). |
-| `alt_fraction`, `ad_ref`, `ad_alt` | real, integer, integer | The fraction of the sample's reads carrying this ALT (0-1), and the REF and ALT read counts from FORMAT/AD. |
-| `gnomad_popmax_af`, `gnomad_nhomalt` | real, integer | gnomAD's highest frequency of this ALT among non-bottlenecked genetic ancestry groups (grpmax, called popmax before v4), and the number of homozygous-ALT individuals in gnomAD. From `vcf gnomad` with a gnomAD VCF that has `AF_grpmax` (or `AF_popmax`) and `nhomalt`; `gnomad_popmax_af` else from VEP's per-group gnomAD frequencies. |
-| `revel`, `alphamissense_score`, `alphamissense_class` | real, real, text | REVEL and AlphaMissense missense pathogenicity (0-1) and AlphaMissense's class (`likely_benign`, `ambiguous`, `likely_pathogenic`), from `vcf revel` and `vcf alphamissense`; see [In-silico scores](#in-silico-scores). |
-| `cadd_raw`, `cadd_phred` | real, real | CADD's raw and PHRED-scaled deleteriousness scores, from `vcf cadd`. |
-| `spliceai_max` | real | The highest of the ALT's four SpliceAI delta scores (`DS_AG`, `DS_AL`, `DS_DG`, `DS_DL`, 0-1), for the row's gene when SpliceAI scored it, from `vcf spliceai`. |
-| `phylop`, `gerp` | real, real | PhyloP and GERP++ conservation of the position, from `vcf phylop` and `vcf gerp`. |
-| `sift_score`, `sift_prediction`, `polyphen_score`, `polyphen_prediction` | real, text, real, text | VEP's SIFT and PolyPhen-2 for the chosen transcript (for example `deleterious` 0.01, `probably_damaging` 0.998). |
 | `imputed`, `genotype_probability` | integer, real | `1` when the genotype was imputed from a reference panel (`INFO/IMP`, from [`vcf impute`](imputation.md)), else `0`; and the largest FORMAT/GP when its values are probabilities in [0, 1]. Unrecognised/phred-scaled scores leave the probability empty. Imputed rows below `vcf impute`'s thresholds have `filter` `ImpLowConf`. |
+| `phase_set` | text | The sample's `FORMAT/PS` for a phased genotype, otherwise empty. Compare phase sets only within the same sample and chromosome. Use `genotype` together with `phase_set` to see which alleles are on the same haplotype. |
+| `alt_fraction` | real | This ALT's depth divided by the sum of `FORMAT/AD` across REF and all ALTs in the record. If depths are incomplete or sum to zero, falls back to the allele's `FORMAT/VAF`, then `FORMAT/AF`, if present and in [0, 1]. `INFO/AF` is not a read fraction. |
+| `transcript_id` | text | The transcript associated with `consequence`: VEP `Feature` or SnpEff `Feature_ID`. Empty for non-transcript effects. |
+| `gnomad_popmax_af` | real | Maximum allele frequency across gnomAD genetic ancestry groups for this ALT (`GNOMAD_POPMAX_AF` from `vcf gnomad`, a native gnomAD `AF_grpmax_joint`/`AF_grpmax`/`AF_popmax` field, or a gnomAD-specific group-maximum field in VEP `CSQ`). VEP `MAX_AF` combines databases and is not a fallback. |
+| `gnomad_nhomalt` | integer | Count of homozygotes for this ALT in gnomAD (`GNOMAD_NHOMALT` from `vcf gnomad`, native `nhomalt_joint`/`nhomalt`, or a gnomAD homozygote count in VEP `CSQ`). A known count of zero is distinct from a missing count. |
+| `kg_af`, `max_af` | real | VEP's 1000 Genomes phase 3 frequency of this ALT over all populations (`AF`), and its `MAX_AF`: the highest frequency in any population VEP's cache has, gnomAD and 1000 Genomes with Ensembl VEP's cache but 1000 Genomes only with a vep-rs cache from `vep download`. Where VEP lists several co-located known variants, the highest value. |
+| `revel`, `alphamissense_score`, `alphamissense_class` | real, real, text | REVEL and AlphaMissense missense pathogenicity (0–1) and AlphaMissense's class (`likely_benign`, `ambiguous`, `likely_pathogenic`); see [In-silico scores](#in-silico-scores). |
+| `cadd_raw`, `cadd_phred` | real, real | CADD's raw and PHRED-scaled deleteriousness scores. |
+| `spliceai_max` | real | The highest of the ALT's four SpliceAI delta scores (`DS_AG`, `DS_AL`, `DS_DG`, `DS_DL`, 0–1), for the row's gene when scored. |
+| `phylop`, `gerp` | real, real | PhyloP and GERP++ conservation scores for the position. |
+| `sift_score`, `sift_prediction`, `polyphen_score`, `polyphen_prediction` | real, text, real, text | SIFT and PolyPhen-2 for the chosen transcript (for example `deleterious` 0.01, `probably_damaging` 0.998). |
+
+When a WGSE annotation splits a multi-allelic record, it saves the original
+AD total so the read fraction stays the same. A known split without a
+complete original total can only use `FORMAT/VAF` or `FORMAT/AF`.
 
 The TSV has a header row and leaves missing values empty. The SQLite database
 has the table `variants` with these columns, `columns` (each column's type and
 meaning, for an agent to read first) and `metadata` (wgsextract version,
 source VCF and its SHA-256, sample, reference build, region, annotations found,
-row count and command line). It is indexed on `gene`, `rsid` and
-`(chrom, pos)`.
+`population_af_sources`, row count and command line). It is indexed on `gene`,
+`rsid` and `(chrom, pos)`.
+
+[`/v1/variants` and MCP `query_variants`](server.md) can return these
+columns from any of the table formats. They omit fields that are missing.
+
+Newly built `ref gnomad --release 4.1` tables retain the joint dataset's
+`AF_grpmax_joint` and `nhomalt_joint`. `vcf gnomad` carries them into its
+annotated VCF and, with `--max-af`, its confidence table. Older five-column
+gnomAD tables still supply `gnomad_af`, but do not have the two additional
+statistics. To rebuild an installed table, move it and its index aside before
+running `ref gnomad --release 4.1` again (this streams about 900 GB).
 
 A table of a [`vcf acmg`](acmg.md) VCF keeps the research-only disclaimer
 where its readers look: the `acmg_*` column descriptions, the metadata key
@@ -90,74 +140,48 @@ table keeps one per allele, as VEP's `--pick` would: the one VEP flagged
 protein-coding one, then the most severe consequence. SnpEff lists the most
 severe effect first, and the table takes that one.
 
+## Population frequencies
+
+`gnomad_af` holds gnomAD frequencies only. VEP with a vep-rs cache built by
+`vep download` fills just the 1000 Genomes frequencies: Ensembl publishes no
+gnomAD frequencies to build the cache from, so VEP's `gnomADe_*` and
+`gnomADg_*` fields stay empty. Those 1000 Genomes values go to `kg_af` and
+`max_af`, never to `gnomad_af`. When no row has a gnomAD frequency and the VCF
+has no `vcf gnomad` annotation, `vcf table` warns `gnomad_af_missing`: an
+empty `gnomad_af` may then mean "not annotated" rather than "rare" (VEP leaves
+its gnomAD fields empty both for a cache without gnomAD and for variants
+gnomAD lacks, so the warning names both). The metadata key
+`population_af_sources` (`gnomad`, `1000genomes`, both or neither) and the
+manifest metrics `gnomad_af_rows`, `kg_af_rows` and `max_af_rows` say which
+frequencies the table holds. Run `vcf gnomad` before filtering on rarity.
+
 ## In-silico scores
 
-The score columns read what the annotation commands wrote; `vcf table` never
-downloads or computes a score. Annotate first, in any order:
+`vcf table` reads scores already in the VCF. It does not compute or download
+them. You can annotate first with `vcf revel`, `vcf alphamissense`, `vcf cadd`,
+`vcf spliceai`, `vcf phylop` and `vcf gerp`, or run them together:
 
 ```bash
-wgsextract vcf revel --vcf-input sample.vcf.gz
-wgsextract vcf cadd --vcf-input revel_annotated.vcf.gz
-wgsextract vcf table --vcf-input cadd_annotated.vcf.gz
+wgsextract vcf chain-annotate --vcf-input sample.vcf.gz \
+  --annotations revel,alphamissense,cadd,spliceai,phylop,gerp
 ```
 
-or all at once with `vcf chain-annotate --vcf-input sample.vcf.gz
---annotations revel,alphamissense,cadd,spliceai,phylop,gerp`. Each command
-reads its scores from the reference library (`ref revel`, `ref cadd` and so
-on install them) or from a file you name.
-
-- **Which source.** Each score comes from the first of these that has it:
-  1. the INFO field of our annotation command: `REVEL`, `am_pathogenicity` and
-     `am_class`, `CADD_RAW` and `CADD_PHRED`, `SpliceAI`, `PHYLOP`, `GERP`;
-  2. fastVEP's INFO fields: `FV_REVEL`, `FV_ALPHAMISSENSE`, `FV_PHYLOP`,
-     `FV_GERP` (and `SpliceAI`, which it writes in the same format);
-  3. VEP's CSQ: the REVEL, AlphaMissense, CADD, SpliceAI (`split_output=1`) and
-     Conservation (GERP) plugins, then dbNSFP's `REVEL_score`,
-     `AlphaMissense_score`/`AlphaMissense_pred`, `CADD_raw`/`CADD_phred`,
-     `phyloP100way_vertebrate` and `GERP++_RS`.
-
-  SIFT and PolyPhen come from VEP's CSQ, else fastVEP's `FV_DBNSFP`.
-- **Which transcript.** Scores that describe a transcript (REVEL,
-  AlphaMissense, SIFT, PolyPhen) are the chosen transcript's, the one
-  `transcript_id` names. CADD, PhyloP and GERP describe the variant or its
-  position, so another of the allele's transcripts gives them when the chosen
-  one has none. A CSQ field listing several values (`&`) gives the highest.
-- **SpliceAI** lists a score per gene, and per ALT at a multi-allelic site;
-  `spliceai_max` reads only entries naming the row's own ALT, and is the
-  highest delta of the row's gene over all its entries (VEP's transcripts
-  included), else, when that gene has none, of any gene. A missing delta
-  (`.`) is skipped.
-- **Unscored is empty, never 0.** A variant without a score, such as an indel
-  the REVEL table doesn't list, leaves the column empty, so `revel IS NULL`
-  means not scored and `revel < 0.5` means scored benign.
-- **One score per ALT.** Our annotation commands split multi-allelic sites,
-  so each ALT has its own scores. In a VCF annotated elsewhere, a per-site
-  (`Number=1`) score of a record with several ALTs can't be told apart and
-  stays empty; PhyloP and GERP, which belong to the position, apply to every
-  ALT.
-
-## Read evidence and phasing
-
-- **`alt_fraction`** is the sample's FORMAT/AD count for this ALT over the
-  larger of the sum of AD and FORMAT/DP. That's the same fraction behind the
-  `allele_imbalance` confidence reasons and the [personal report](personal-report.md).
-  Without AD it is the caller's own per-ALT FORMAT/VAF (DeepVariant), else
-  FORMAT/AF (Clair3, Mutect2), else a single-sample biallelic record's
-  INFO/DP4 (bcftools). A record that `bcftools norm -m-` split from a
-  multi-allelic one keeps only REF and its own ALT in AD, so its fraction
-  needs FORMAT/DP. At a multi-allelic site each ALT's fraction counts every
-  allele's reads, and a haploid call is read the same way as a diploid one.
-- **Missing is empty, never 0.** A site with no informative read (AD `0,0`,
-  whatever its DP) has `ad_ref` and `ad_alt` of 0 but an empty
-  `alt_fraction`. Without FORMAT/DP, an AD with a missing count (`.,12`)
-  falls back to the caller's VAF or AF rather than undercount the reads. A
-  VCF without read counts (a genotype-only or imputed VCF) leaves all three
-  empty.
-- **`phase_set`** comes from FORMAT/PS only when the genotype is phased
-  (`|`), as WhatsHap (`vcf phase`), GATK HaplotypeCaller's physical phasing and
-  Clair3 write it. An unphased `0/1` has an empty `phase_set` even if the VCF
-  gives it a PS. Statistically phased genotypes without PS (SHAPEIT, Beagle,
-  GLIMPSE) leave it empty too; their `genotype` still shows the `|`.
+- **Source priority.** The table first looks for `REVEL`, `am_pathogenicity` /
+  `am_class`, `CADD_RAW` / `CADD_PHRED`, `SpliceAI`, `PHYLOP` and `GERP` in
+  INFO. It then tries fastVEP's `FV_REVEL`, `FV_ALPHAMISSENSE`, `FV_PHYLOP`
+  and `FV_GERP`, then VEP's CSQ plugin fields and dbNSFP fields. SIFT and
+  PolyPhen come from VEP CSQ first, then fastVEP's `FV_DBNSFP`.
+- **Transcript choice.** REVEL, AlphaMissense, SIFT and PolyPhen from CSQ
+  use the chosen transcript. CADD, PhyloP and GERP can fall back to another
+  CSQ entry for the same allele. When a numeric CSQ field lists several
+  values separated by `&`, the table uses the highest.
+- **SpliceAI.** Each row reads only its own ALT's entries and skips missing
+  (`.`) deltas. It uses the highest delta for the row's gene if that gene was
+  scored, or the highest delta across all genes otherwise.
+- **Missing and site-level scores.** Missing scores stay empty, not zero.
+  At a site with several variant ALTs, a single allele-specific score
+  (`Number=1`) cannot be assigned to an ALT and stays empty. PhyloP and GERP
+  describe the position and apply to every ALT.
 
 ## Example queries
 
@@ -193,38 +217,17 @@ SELECT gene, rsid, clinvar_significance, confidence, confidence_reasons
 FROM variants
 WHERE clinvar_significance IS NOT NULL AND confidence IN ('low', 'moderate');
 
--- Rare protein-changing variants (absent from gnomAD or below 0.1%)
-SELECT gene, hgvs_p, consequence, gnomad_af, zygosity
+-- Protein-changing variants with a measured gnomAD frequency below 0.1%
+-- and no known VEP population frequency at or above 0.1%
+SELECT gene, hgvs_p, consequence, gnomad_af, max_af, zygosity
 FROM variants
 WHERE impact IN ('HIGH', 'MODERATE')
-  AND (gnomad_af IS NULL OR gnomad_af < 0.001)
+  AND gnomad_af < 0.001
+  AND (max_af IS NULL OR max_af < 0.001)
   AND filter = 'PASS';
 
--- Variants rare overall but common in some ancestry group, or seen
--- homozygous in gnomAD's (largely healthy) individuals
-SELECT gene, hgvs_p, gnomad_af, gnomad_popmax_af, gnomad_nhomalt
-FROM variants
-WHERE gnomad_af < 0.001 AND (gnomad_popmax_af >= 0.01 OR gnomad_nhomalt > 0);
-
--- Two phased heterozygous hits in one gene on the same haplotype (cis) or
--- on opposite ones (trans), within one phase block. Only 0|1 and 1|0: a
--- multi-allelic site's rows (1|2) all keep the site's genotype.
-SELECT a.gene, a.hgvs_p, a.genotype, b.hgvs_p, b.genotype,
-       CASE WHEN a.genotype = b.genotype THEN 'cis' ELSE 'trans' END AS phase
-FROM variants a JOIN variants b
-  ON a.gene = b.gene AND a.chrom = b.chrom AND a.phase_set = b.phase_set
-     AND a.pos < b.pos
-WHERE a.genotype IN ('0|1', '1|0') AND b.genotype IN ('0|1', '1|0')
-  AND a.impact IN ('HIGH', 'MODERATE') AND b.impact IN ('HIGH', 'MODERATE');
-
--- Heterozygous calls with skewed allele balance (possible mosaicism,
--- clonal haematopoiesis or an artifact)
-SELECT chrom, pos, gene, genotype, ad_ref, ad_alt, alt_fraction
-FROM variants
-WHERE zygosity = 'het' AND alt_fraction < 0.25 AND ad_alt >= 3;
-
--- Rare missense variants predicted damaging, and the scores behind them
-SELECT gene, hgvs_p, revel, alphamissense_score, cadd_phred, zygosity
+-- Rare missense variants with a high predicted pathogenicity score
+SELECT gene, hgvs_p, revel, alphamissense_score, cadd_phred
 FROM variants
 WHERE consequence LIKE '%missense_variant%'
   AND (gnomad_af IS NULL OR gnomad_af < 0.001)

@@ -18,10 +18,11 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import bgzip_index, needs_htslib, sam_to_bam, write_fasta
 from tests.http_server import serving
-from tests.smoke_utils import state_directory_setting
 from wgsextract_cli import api
+from wgsextract_cli.commands.microarray import PACKAGED_ASSETS
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.microarray import targets
@@ -84,11 +85,23 @@ def _identity_chain(path: Path) -> None:
     )
 
 
+def _shadow_packaged_bodies(library: Path) -> None:
+    """Keep automatic target building, but use tiny local bodies for its union."""
+    relative = Path("microarray/raw_file_templates/body")
+    local = library / relative
+    for bundled in (PACKAGED_ASSETS / relative).glob("*.gz"):
+        name = bundled.name.removesuffix(".gz").removesuffix(".delta")
+        body = local / name
+        if not body.exists():
+            body.write_text("rs9001\t1\t4000\n")
+
+
 def test_microarray_builds_its_target_and_calls_the_chip_markers(
     tmp_path: Path,
 ) -> None:
     library = tmp_path / "reference"
     fasta, seq = _library(library)
+    _shadow_packaged_bodies(library)
     bam = _sample_bam(tmp_path, seq)
     config = tmp_path / "config.toml"
     config.write_text(
@@ -119,6 +132,7 @@ def test_1052_microarray_chain_download_needs_consent_and_then_reuses_cache(
 ) -> None:
     library = tmp_path / "reference"
     _, sequence = _library(library)
+    _shadow_packaged_bodies(library)
     fasta = write_fasta(library / "genomes" / "hs38.fa", {"chr1": sequence})
     bam = _sample_bam(tmp_path, sequence)
     _identity_chain(library / "microarray" / "hg38ToHg19.over.chain.gz")
@@ -173,6 +187,7 @@ def test_ref_outside_the_library_still_finds_the_library_liftover_chain(
     the library."""
     library = tmp_path / "reference"
     _, seq = _library(library)
+    _shadow_packaged_bodies(library)
     _identity_chain(library / "hg19ToHg38.over.chain.gz")
     _identity_chain(library / "microarray" / "hg38ToHg19.over.chain.gz")
     (tmp_path / "elsewhere").mkdir()
@@ -318,6 +333,7 @@ def test_files_beside_an_outside_fasta_come_before_the_library(
     _library(library)
     elsewhere = tmp_path / "elsewhere"
     _, seq = _library(elsewhere)
+    _shadow_packaged_bodies(elsewhere)
     _identity_chain(elsewhere / "hg19ToHg38.over.chain.gz")
     _identity_chain(elsewhere / "microarray" / "hg38ToHg19.over.chain.gz")
     fasta = write_fasta(elsewhere / "hs38.fa", {"chr1": seq})

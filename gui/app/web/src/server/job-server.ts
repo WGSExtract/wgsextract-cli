@@ -38,6 +38,13 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
         return new Promise((resolve) => {
             let pending = "";
             let announced = false;
+            const clearCurrent = () => {
+                if (stopper === controller) {
+                    starting = undefined;
+                    stopper = undefined;
+                    currentAddress = undefined;
+                }
+            };
             const fail = (reason: string) => {
                 clearTimeout(timer);
                 if (!announced) {
@@ -49,7 +56,7 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
             };
             const timer = setTimeout(() => fail(`no ready line within ${timeoutMs / 1000} seconds`), timeoutMs);
             const onStdout = (text: string) => {
-                if (announced) {
+                if (announced || stopper !== controller) {
                     return;
                 }
                 // Wrapper scripts may print other lines first.
@@ -77,16 +84,16 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
                 signal: controller.signal,
                 maxOutputBytes: 64 * 1024,
                 onStdout,
+                onTerminated: () => {
+                    announced = true;
+                    clearTimeout(timer);
+                    clearCurrent();
+                    resolve(undefined);
+                },
             })
                 .then((result) => fail(`exited with code ${result.exitCode ?? result.signal}: ${result.stderr.trim().slice(-500)}`))
                 .catch((error: unknown) => fail(errorMessage(error)))
-                .finally(() => {
-                    if (stopper === controller) {
-                        starting = undefined;
-                        stopper = undefined;
-                        currentAddress = undefined;
-                    }
-                });
+                .finally(clearCurrent);
         });
     }
 

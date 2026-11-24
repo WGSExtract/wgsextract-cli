@@ -100,6 +100,14 @@ release**), or with
 Pushing a `vX.Y.Z` tag by hand still works too, and also uses the notes file
 if the tagged commit has one.
 
+4. **Pin the output-contract baseline** once the tag exists, in a follow-up
+   PR: `git fetch origin tag vX.Y.Z`, then
+   `python scripts/output_contracts.py pin --release vX.Y.Z` writes
+   `contracts/baselines/vX.Y.Z.json` (the tag, its commit and a digest) from
+   the tag's own files, and the PR removes any `approved_breaks` entries the
+   new baseline absorbed. Later changes are compared with it; see
+   [output contracts](output-contracts.md).
+
 ## 2. What the app's release needs
 
 - **Secrets and variables.** The app's build reads the Apple signing and
@@ -109,7 +117,8 @@ if the tagged commit has one.
   `APPLE_TEAM_ID`), the updater signing key (`TAURI_SIGNING_PRIVATE_KEY`,
   optional `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`) and the
   `TAURI_UPDATER_PUBKEY` variable. A release's macOS build fails without the
-  Apple secrets, and without the updater key the release has no `latest.json`.
+  Apple secrets. App publishing fails before uploading assets if any expected
+  platform lacks a uniquely matched updater artifact with a nonempty signature.
   See [gui/docs/distribution.md](../gui/docs/distribution.md).
 - **Trying a change first.** *Run workflow* on *GUI distribution* (or
   `gh workflow run gui-distribution.yml --ref BRANCH`) builds unsigned

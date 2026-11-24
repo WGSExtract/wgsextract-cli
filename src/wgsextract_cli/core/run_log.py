@@ -133,7 +133,7 @@ class RunLog:
         self, args: argparse.Namespace, argv: Sequence[str], status: str
     ) -> dict[str, object]:
         from wgsextract_cli.core.dependency_checks import get_tool_version
-        from wgsextract_cli.core.results import tools_in_command
+        from wgsextract_cli.core.tool_versions import tools_in_command
 
         tools: set[str] = set()
         for command in self.commands:
