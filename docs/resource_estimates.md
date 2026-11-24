@@ -445,8 +445,8 @@ The native CUDA backend's published ONT/HiFi speedups are slice mapping
 measurements, not whole-genome pipeline estimates. The GPU accelerates gap
 fills, not chaining, decoding, sorting or CRAM encoding. Until
 [#1122 (Linux CUDA long-read alignment)](https://github.com/WGSExtract/wgsextract-cli/issues/1122)
-records a full RTX 3090 realignment, use the existing whole-genome CPU sizing
-and disk requirements rather than scaling the slice's CUDA speedup.
+records a full RTX 3090 realignment, don't use the slice speedup to predict
+whole-genome runtime or reduce host resource budgets.
 
 ### Linux native ONT qualification
 
@@ -465,18 +465,23 @@ All produced the same 6.74 GB of SAM records, excluding `@PG`, streamed to a
 digest rather than retained. No mapper temporary files were needed; the shared
 index occupies 7.26 GB. These single shared-host runs are not an isolated
 performance or thread-scaling comparison; the native four-thread run also
-includes stage-timer overhead. A separate native full-reference index build at two
-threads took 51.1 s and **15.74 GiB** peak RSS on this toolchain: the mapper-only
-peaks above are not index-build memory bounds.
+includes stage-timer overhead. A separate native full-reference index build at
+two threads took 51.1 s and **15.74 GiB** peak RSS on this toolchain, before
+pipeline overhead. The upstream index-build estimate and the 12–13 GiB floor
+above do not bound the native build's RAM needs.
 
 Linear read-count scaling of the instrumented four-thread mapping gives about
 10.4 h and 573 GB of raw SAM for the whole run, **not a measured whole-genome
 time or a persisted CRAM size**. It excludes decoding the source CRAM,
 preserving methylation tags, sorting and encoding, and can miss the cost of
 rare repeat-rich regions. Memory does not scale linearly with read count.
-The earlier full-pipeline measurement still governs disk planning: 185.5 GB
-of output CRAM and about 211 GiB peak output-volume space. No full CUDA
-realignment has been measured.
+The earlier chunked, URL-streamed CPU run produced 185.5 GB of CRAM. Its
+preflight asked for about 211 GiB of output-volume space; that was not a
+measured peak. For planning, use the current
+[host requirement](#whole-genome-host-requirement) (about 221 GiB for that
+chunked run) and the [long-read disk estimates](#long-read-disk), including
+additional sort-spill space for unchunked runs. No full CUDA realignment has
+been measured.
 
 ### Long-read disk
 
