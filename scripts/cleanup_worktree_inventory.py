@@ -62,14 +62,60 @@ def stamp(info: os.stat_result) -> Stamp:
     return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
 
 
-def read_evidence(directory: Path, relative: Path, expected: Stamp) -> bytes:
-    dir_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-    with ExitStack() as stack:
-        parent = os.open(directory, dir_flags)
+def open_parent(directory: Path, relative: Path, stack: ExitStack) -> int:
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    parent = os.open(directory, flags)
+    stack.callback(os.close, parent)
+    for component in relative.parts[:-1]:
+        parent = os.open(component, flags, dir_fd=parent)
         stack.callback(os.close, parent)
-        for component in relative.parts[:-1]:
-            parent = os.open(component, dir_flags, dir_fd=parent)
-            stack.callback(os.close, parent)
+    return parent
+
+
+def matches_tracked_blob(directory: Path, relative: Path, mode: str, oid: str) -> bool:
+    algorithm = {40: "sha1", 64: "sha256"}.get(len(oid))
+    if algorithm is None or mode not in {"100644", "100755", "120000"}:
+        return False
+    digest = hashlib.new(algorithm, usedforsecurity=False)
+    try:
+        with ExitStack() as stack:
+            parent = open_parent(directory, relative, stack)
+            name = relative.name
+            info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            if mode == "120000":
+                if not stat.S_ISLNK(info.st_mode):
+                    return False
+                data = os.fsencode(os.readlink(name, dir_fd=parent))
+                digest.update(f"blob {len(data)}\0".encode("ascii"))
+                digest.update(data)
+            else:
+                if not stat.S_ISREG(info.st_mode) or bool(
+                    info.st_mode & stat.S_IXUSR
+                ) != (mode == "100755"):
+                    return False
+                fd = os.open(
+                    name,
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                    dir_fd=parent,
+                )
+                handle = stack.enter_context(os.fdopen(fd, "rb"))
+                if stamp(os.fstat(handle.fileno())) != stamp(info):
+                    return False
+                digest.update(f"blob {info.st_size}\0".encode("ascii"))
+                while chunk := handle.read(MAX_FILE):
+                    digest.update(chunk)
+            return (
+                stamp(os.stat(name, dir_fd=parent, follow_symlinks=False))
+                == stamp(info)
+                and digest.hexdigest() == oid
+            )
+    except OSError:
+        return False
+
+
+def read_evidence(directory: Path, relative: Path, expected: Stamp) -> bytes:
+    with ExitStack() as stack:
+        parent = open_parent(directory, relative, stack)
         fd = os.open(
             relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent
         )

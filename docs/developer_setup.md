@@ -458,8 +458,12 @@ without `--force`; the branch stays. An authentication or state error stops the
 run. The private JSON report in `out/worktree-cleanup/` records skips, removals
 and errors.
 
-Dirty, locked, detached, active or linked worktrees are left alone. Activity is
-checked through Linux `/proc` across process UIDs. If Linux hides or denies
+Dirty, locked, detached, active or linked worktrees are left alone. Tracked
+files must also match the exact committed Git blobs byte for byte, without
+relying on Git's cached file metadata. This can retain checkouts with locally
+converted line endings, smudge filters, or submodules, even if Git reports
+them clean. Activity is checked through Linux `/proc` across process UIDs.
+If Linux hides or denies
 inspection of a process, the run reports the error and does not remove
 unverified worktrees. Use the optional inspector below when unprivileged
 process visibility is insufficient. Use `git worktree lock` before starting

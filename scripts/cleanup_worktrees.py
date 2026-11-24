@@ -41,7 +41,7 @@ else:
         return module
 
     inventory_files = load_helper(
-        "inventory", "f9276431d724bebb6eed74a539e9f5330bce4c289ca6aaea73505147ce61aca6"
+        "inventory", "99b932cc0159e65548b1bae6a195583f64587e086b43a3e1b93a7d6230a537be"
     )
     activity = load_helper(
         "activity", "92b96c9c258e7706abd80b5d18523896c88378fbd2bff9facb98757533d34ff3"
@@ -110,7 +110,9 @@ def run(root: Path, *args: str, allow_no_matches: bool = False) -> str:
     env = os.environ.copy()
     if args[0] == "git":
         env = {k: v for k, v in env.items() if not k.startswith("GIT_")}
-        env.update(GIT_NO_LAZY_FETCH="1", GIT_OPTIONAL_LOCKS="0")
+        env.update(
+            GIT_NO_LAZY_FETCH="1", GIT_NO_REPLACE_OBJECTS="1", GIT_OPTIONAL_LOCKS="0"
+        )
     result = subprocess.run(
         args, cwd=root, env=env, capture_output=True, timeout=120, check=False
     )
@@ -357,7 +359,29 @@ def inspected_paths(root: Path, paths: set[Path]) -> set[Path]:
     return blocked
 
 
-def contents(path: Path) -> inventory_files.Inventory:
+def tracked_content_matches(path: Path, head: str, tracked: set[Path]) -> bool:
+    # Git status and worktree remove both trust cached index stat data. Hash
+    # the raw checkout bytes against the exact commit instead of running filters.
+    seen = set()
+    for record in git(path, "ls-tree", "-r", "-z", "--full-tree", head).split("\0")[
+        :-1
+    ]:
+        metadata, name = record.split("\t", 1)
+        mode, kind, oid = metadata.split()
+        relative = Path(name)
+        if (
+            kind != "blob"
+            or relative not in tracked
+            or relative.is_absolute()
+            or ".." in relative.parts
+            or not inventory_files.matches_tracked_blob(path, relative, mode, oid)
+        ):
+            return False
+        seen.add(relative)
+    return seen == tracked
+
+
+def checked_tracked_files(path: Path, head: str) -> tuple[set[Path], str]:
     if git(
         path,
         "status",
@@ -366,11 +390,20 @@ def contents(path: Path) -> inventory_files.Inventory:
         "--untracked-files=all",
         "--ignore-submodules=none",
     ):
-        return inventory_files.Inventory(blocked="dirty-or-untracked")
+        return set(), "dirty-or-untracked"
     index = git(path, "ls-files", "-v", "-z").split("\0")[:-1]
     if any(not entry.startswith("H ") for entry in index):
-        return inventory_files.Inventory(blocked="special-index-state")
+        return set(), "special-index-state"
     tracked = {Path(entry[2:]) for entry in index}
+    if not tracked_content_matches(path, head, tracked):
+        return set(), "tracked-content-unverified"
+    return tracked, ""
+
+
+def contents(path: Path, head: str) -> inventory_files.Inventory:
+    tracked, reason = checked_tracked_files(path, head)
+    if reason:
+        return inventory_files.Inventory(blocked=reason)
     return inventory_files.inventory(path, tracked)
 
 
@@ -502,7 +535,7 @@ def plan(
         if not tree.reason and activity.mounted(tree.directory):
             tree.reason = "contains-mount"
         if not tree.reason:
-            inventory = contents(tree.directory)
+            inventory = contents(tree.directory, tree.head)
             tree.reason = inventory.blocked
             if not tree.reason:
                 inventories[tree.directory] = inventory
@@ -573,7 +606,7 @@ def apply_tree(
     root: Path, tree: Worktree, inspector: bool, run_id: str, save: Callable[[], None]
 ) -> str:
     path = tree.directory
-    inventory = contents(path)
+    inventory = contents(path, tree.head)
     if inventory.blocked:
         return inventory.blocked
     keep = bool(tree.retained_reason)
@@ -583,12 +616,12 @@ def apply_tree(
     save()
     archive_evidence(root, tree, inventory.evidence, run_id)
     save()
-    if inventory != contents(path):
-        return "changed-during-archive"
     paths = {path / name for name in tree.planned_caches} if keep else {path}
     links = link_blocks(root, worktrees(root), paths)
     if reason := recheck(root, tree, inspector):
         return reason
+    if inventory != contents(path, tree.head):
+        return "changed-during-archive"
     if not keep:
         if links:
             return "symlink-dependency"
@@ -600,6 +633,9 @@ def apply_tree(
         if not inventory_files.verified_cache(path, name):
             raise CleanupError(f"Cache contents changed before removal: {name}")
         if reason := recheck(root, tree, inspector):
+            return reason
+        _, reason = checked_tracked_files(path, tree.head)
+        if reason:
             return reason
         tree.pruning_cache = name
         save()

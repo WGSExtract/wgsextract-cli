@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import json
+import os
 import py_compile
 import sys
 from collections.abc import Callable
@@ -241,3 +242,30 @@ def test_1393_preserves_unknown_or_dirty_data(
     assert run.returncode == 0, run.stderr
     assert str(result(repo, path)["reason"]).split(":")[0] == reason
     assert (path / relative).read_text() == data
+
+
+def test_1393_keeps_same_size_tracked_edit_hidden_by_git_stat_cache(
+    repo: Path, github: Callable[..., None]
+) -> None:
+    git(repo, "config", "core.trustctime", "false")
+    git(repo, "config", "core.checkStat", "minimal")
+    path = topic(repo)
+    source = path / "source.txt"
+    original = "committed bytes\n"
+    edited = "untracked bytes\n"
+    source.write_text(original)
+    # Give the tracked file an mtime older than the index so Git doesn't rehash
+    # it as a racily clean entry.
+    timestamp = 1_700_000_000
+    os.utime(source, (timestamp, timestamp))
+    git(path, "commit", "-am", "Record older tracked file")
+    source.write_text(edited)
+    os.utime(source, (timestamp, timestamp))
+    assert git(path, "status", "--porcelain") == ""
+    github([pull(path)])
+
+    run = cleanup(repo, "--apply", "--github")
+
+    assert run.returncode == 0, run.stderr
+    assert result(repo, path)["reason"] == "tracked-content-unverified"
+    assert source.read_text() == edited
