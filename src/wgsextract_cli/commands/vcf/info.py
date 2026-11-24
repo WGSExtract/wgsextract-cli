@@ -19,7 +19,7 @@ from wgsextract_cli.core.download_progress import format_bytes
 from wgsextract_cli.core.imputed_vcf import describe as describe_imputation
 from wgsextract_cli.core.imputed_vcf import imputation_info
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     is_fasta_path,
     reference_genomes_dir,
     resolve_reference_library,

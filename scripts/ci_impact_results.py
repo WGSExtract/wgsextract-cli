@@ -5,7 +5,7 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 from collections import defaultdict
 from pathlib import Path
-from typing import TypedDict
+from typing import IO, TypedDict
 
 
 class Result(TypedDict):
@@ -15,7 +15,9 @@ class Result(TypedDict):
     seconds: float
 
 
-def file_results(junit: Path, tests: set[str]) -> tuple[dict[str, Result], int]:
+def file_results(
+    junit: Path | IO[bytes], tests: set[str]
+) -> tuple[dict[str, Result], int]:
     names = {p.removesuffix(".py").replace("/", "."): p for p in tests}
     results: dict[str, Result] = defaultdict(
         lambda: {"passed": 0, "failed": 0, "skipped": 0, "seconds": 0.0}

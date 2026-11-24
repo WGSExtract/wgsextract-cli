@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any, TextIO
 
 from wgsextract_cli.core import ultima
 from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.download_progress import CancelEvent
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.imputed_vcf import (
@@ -25,7 +26,6 @@ from wgsextract_cli.core.imputed_vcf import (
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.progress import ContigProgress
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.temp_directory import move_file, scratch_parent
 from wgsextract_cli.core.utils import (
     WGSExtractError,

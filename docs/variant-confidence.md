@@ -171,6 +171,11 @@ reason makes it `moderate`; otherwise it is `high`.
 | A measure missing from the VCF | no depth, GQ or allele counts at all (`no_call_metrics`) | any one missing | `depth_unknown`, `gq_unknown`, `allele_balance_unknown` |
 | Sample contamination ([`qc contamination`](contamination.md) FREEMIX) | | at or above `qc_max_contamination` (3%) | `sample_contaminated` |
 
+Zero-sum `FORMAT/AD`, or AD with a missing count and no `FORMAT/DP`, does not
+measure allele balance. The confidence label falls back to the caller's
+`FORMAT/VAF` or `FORMAT/AF`, then to `INFO/DP4` for an unsplit, biallelic
+single-sample call. Without those, it reports `allele_balance_unknown`.
+
 An imputed genotype (`INFO/IMP`, from [`vcf impute`](imputation.md)) has no
 reads behind it to judge, so it is always `low`, reason `imputed` (with
 `filtered` when it is `ImpLowConf`). An imputed allele rarer than 1% in the
