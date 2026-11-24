@@ -59,6 +59,7 @@ from wgsextract_cli.core.microarray.site_map import SiteProjection
 from wgsextract_cli.core.microarray.targets import (
     _CHAINS_TO_GRCH37,
     CHM13_V2_FORMATS,
+    chain_to_grch37,
     collect_template_markers,
     lifted_chain,
 )
@@ -67,7 +68,7 @@ from wgsextract_cli.core.microarray.templates import (
     convert_to_vendor_format,
     get_template_format,
 )
-from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
+from wgsextract_cli.core.ref_library.assets import input_stem, resolve_reference_library
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
@@ -123,7 +124,9 @@ def _marker_ids(
         raise WGSExtractError(
             "CHM13 microarray needs the installed "
             + " and ".join(_CHAINS_TO_GRCH37[build].name for build in missing)
-            + " and the complete template set used by its pinned site map."
+            + " and the complete template set used by its pinned site map. "
+            "Install the missing chain(s) or rerun 'wgsextract microarray' "
+            "with --download."
         )
     markers = {
         (chrom, pos): marker
@@ -284,6 +287,13 @@ def run_chm13(
             get_bam_header(str(params.input), ref_fasta), catalogue, names
         )
     roots = _template_search_roots(ref_fasta, lib)
+    allow_downloads = params.download is True or (
+        params.download is None and bool(settings.get("allow_reference_downloads"))
+    )
+    if lib.root and allow_downloads:
+        installed = microarray_chm13_cache.installed_chains(roots)
+        for chain_build in sorted(set(_CHAINS_TO_GRCH37) - set(installed)):
+            chain_to_grch37(lib.root, chain_build, roots)
     cache = microarray_chm13_cache.cache_directory(cache_root, catalogue, roots)
     markers = microarray_chm13_cache.marker_ids(
         cache, lambda: _marker_ids(catalogue, roots)
@@ -516,14 +526,11 @@ def run_chm13(
             )
 
             hg18_path = microarray_chm13_cache.installed_chains(roots).get("NCBI36")
-            hg18_chain = (
-                str(hg18_path) if hg18_path else lifted_chain(lib.root, "NCBI36", roots)
-            )
             tallies[real_format] = convert_to_combined_v3(
                 str(combined),
                 kit,
                 roots,
-                hg18_chain,
+                str(hg18_path) if hg18_path else None,
                 identity=identity,
                 rejected_ids=rejected_ids,
             )

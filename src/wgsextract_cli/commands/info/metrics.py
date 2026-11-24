@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
 from wgsextract_cli.core import sample_workspace
+from wgsextract_cli.core.alignment.sequencing import platform_from_metadata
 from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.constants import SEQUENCERS
 from wgsextract_cli.core.messages import LOG_MESSAGES
@@ -19,7 +20,6 @@ from wgsextract_cli.core.ref_library.assets import n_count_paths
 from wgsextract_cli.core.results import fingerprint
 from wgsextract_cli.core.sample_types import is_observed_sex
 from wgsextract_cli.core.sample_workspace import Confidence
-from wgsextract_cli.core.sequencing import platform_from_metadata
 from wgsextract_cli.core.ultima import is_ultima_header
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 from wgsextract_cli.core.variant_files import calculate_bam_md5

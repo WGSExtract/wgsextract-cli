@@ -32,13 +32,23 @@ def convert_to_combined_v3(
     """Filter a GRCh37 CombinedKit v5 file to the classic 14-template
     CombinedKit v3 marker set, restoring v3 rsID precedence."""
     search_roots = list(_iter_template_search_dirs(templates_dir))
-    if not lift_chain and template_resource_paths(search_roots, "FTDNA_V1_Affy"):
+    missing = [
+        name
+        for name in COMBINED_V3_TEMPLATES
+        if not template_resource_paths(search_roots, name)
+    ]
+    if missing:
+        raise WGSExtractError(
+            f"CombinedKit v3 templates are incomplete near {templates_dir!r} "
+            f"(missing {', '.join(missing)}); run 'wgsextract ref bootstrap' first."
+        )
+    if not lift_chain:
         raise WGSExtractError(
             "CombinedKit v3 needs hg18ToHg19.over.chain.gz to include "
             "FTDNA_V1_Affy's markers. Install the chain locally or rerun "
             "'wgsextract microarray' with --download."
         )
-    chains = {"NCBI36": lift_chain} if lift_chain else None
+    chains = {"NCBI36": lift_chain}
     v3_markers = collect_template_markers(
         search_roots, chains=chains, formats=COMBINED_V3_TEMPLATES
     )

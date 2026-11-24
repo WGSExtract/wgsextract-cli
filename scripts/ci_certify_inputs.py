@@ -215,8 +215,8 @@ def validate_bootstrap(root: Path, archive_name: str, expected: str) -> None:
 def validate_reference() -> None:
     from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME, BOOTSTRAP_SHA256
     from wgsextract_cli.core.microarray.targets import HG19_TO_HG38_CHAIN
+    from wgsextract_cli.core.ref_library.assets import resolve_reference_library
     from wgsextract_cli.core.ref_library.catalog import get_available_genomes
-    from wgsextract_cli.core.reference_assets import resolve_reference_library
 
     root = Path(resolve_reference_library())
     retained = Path("out/certify/inputs") / BOOTSTRAP_FILENAME
