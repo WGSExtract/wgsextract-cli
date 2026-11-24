@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Hold `gh pr ready` while hosted runners are needed by the merge queue (#1373).
 
-Read-only: lists this repository's queued and in-progress workflow runs and
-their jobs through `gh api`. Exit 0 means a PR may be marked ready; exit 3
-means hold. Hold while any merge_group job waits for a runner, or while more
-than --max-ready ready-PR area matrices are in flight.
+Read-only: inspects this repository's pull requests, workflow runs and jobs
+through `gh api`. Exit 0 means a PR may be marked ready; exit 3 means hold.
+Pass --pr for a priority PR to bypass the gate. Otherwise hold while a
+priority PR has an active ready run or is in the merge queue, while any
+merge_group job waits for a runner, or while more than --max-ready ready-PR
+area matrices are in flight.
 """
 
 from __future__ import annotations
@@ -15,10 +17,10 @@ import subprocess
 import sys
 import time
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from typing import Any, Protocol
 
 OK = 0
 ERROR = 1
@@ -30,11 +32,13 @@ MAX_PAGES = 20
 # A run without jobs this old is a ghost that never started (seen 11 days stuck).
 GHOST_AFTER = timedelta(hours=1)
 
-Api = Callable[[str], Any]
+
+class Api(Protocol):
+    def __call__(self, path: str, /, *args: str) -> Any: ...
 
 
-def gh_api(path: str) -> Any:
-    return json.loads(subprocess.check_output(["gh", "api", path], text=True))
+def gh_api(path: str, *args: str) -> Any:
+    return json.loads(subprocess.check_output(["gh", "api", path, *args], text=True))
 
 
 def pages(api: Api, path: str, key: str) -> list[dict[str, Any]]:
@@ -48,6 +52,34 @@ def pages(api: Api, path: str, key: str) -> list[dict[str, Any]]:
     raise RuntimeError(f"More than {MAX_PAGES} pages for {path}; refusing to guess")
 
 
+def priority_pulls(repository: str, api: Api) -> Iterator[dict[str, Any]]:
+    owner, name = repository.split("/", 1)
+    query = """
+      query($owner: String!, $name: String!, $cursor: String) {
+        repository(owner: $owner, name: $name) {
+          pullRequests(first: 100, states: OPEN, labels: ["priority"], after: $cursor) {
+            nodes {
+              number isDraft headRefName headRefOid
+              headRepository { nameWithOwner }
+              mergeQueueEntry { id }
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }
+    """
+    fields = ("-f", f"query={query}", "-f", f"owner={owner}", "-f", f"name={name}")
+    cursor: tuple[str, ...] = ()
+    for _ in range(MAX_PAGES):
+        response = api("graphql", *fields, *cursor)
+        pulls = response["data"]["repository"]["pullRequests"]
+        yield from pulls["nodes"]
+        if not pulls["pageInfo"]["hasNextPage"]:
+            return
+        cursor = ("-f", f"cursor={pulls['pageInfo']['endCursor']}")
+    raise RuntimeError(f"Too many pages of priority PRs for {repository}")
+
+
 @dataclass
 class Capacity:
     max_ready: int
@@ -55,10 +87,19 @@ class Capacity:
     merge_group_in_progress: int = 0
     waiting_for_runner: dict[str, int] = field(default_factory=dict)
     ready_matrices: list[dict[str, Any]] = field(default_factory=list)
+    priority_bypass: int | None = None
+    priority_ready: list[int] = field(default_factory=list)
+    priority_queued: list[int] = field(default_factory=list)
 
     @property
     def reasons(self) -> list[str]:
         reasons = []
+        if self.priority_ready:
+            numbers = ", ".join(f"#{number}" for number in self.priority_ready)
+            reasons.append(f"priority PR(s) {numbers} with active ready runs")
+        if self.priority_queued:
+            numbers = ", ".join(f"#{number}" for number in self.priority_queued)
+            reasons.append(f"priority PR(s) {numbers} in the merge queue")
         if self.merge_group_queued:
             reasons.append(
                 f"{self.merge_group_queued} merge_group job(s) waiting for a runner"
@@ -78,6 +119,8 @@ class Capacity:
         return {"ok": self.ok, "reasons": self.reasons, **asdict(self)}
 
     def summary(self) -> str:
+        if self.priority_bypass is not None:
+            return f"OK to mark ready: priority PR #{self.priority_bypass} skips the capacity gate."
         waiting = sum(self.waiting_for_runner.values())
         state = "OK to mark ready" if self.ok else "HOLD: " + "; ".join(self.reasons)
         return (
@@ -102,13 +145,46 @@ def is_ghost(run: dict[str, Any], jobs: list[dict[str, Any]], now: datetime) -> 
     return not jobs and now - created > GHOST_AFTER
 
 
+def ready_pr_numbers(
+    run: dict[str, Any], priority: dict[int, dict[str, Any]]
+) -> set[int]:
+    numbers = {pr["number"] for pr in run.get("pull_requests") or []}
+    if not numbers:
+        # GitHub can omit pull_requests for fork runs; match the exact head.
+        run_repo = (run.get("head_repository") or {}).get("full_name", "")
+        numbers = {
+            number
+            for number, pr in priority.items()
+            if run_repo
+            and run_repo.lower()
+            == (pr["headRepository"] or {}).get("nameWithOwner", "").lower()
+            and run.get("head_sha") == pr["headRefOid"]
+            and run.get("head_branch") == pr["headRefName"]
+        }
+    return numbers
+
+
 def measure(
     repository: str,
     max_ready: int,
     api: Api = gh_api,
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
+    *,
+    pr: int | None = None,
 ) -> Capacity:
     capacity = Capacity(max_ready=max_ready)
+    priority = {}
+    for pull in priority_pulls(repository, api):
+        number = pull["number"]
+        if number == pr:
+            capacity.priority_bypass = pr
+            return capacity
+        if not pull["isDraft"]:
+            priority[number] = pull
+    capacity.priority_queued = sorted(
+        number for number, pull in priority.items() if pull["mergeQueueEntry"]
+    )
+    ready_priority: set[int] = set()
     checked = now()
     waiting: Counter[str] = Counter()
     runs = {
@@ -118,6 +194,16 @@ def measure(
             api, f"repos/{repository}/actions/runs?status={status}", "workflow_runs"
         )
     }
+    if priority:
+        # A replacement ready run can be pending while workflow concurrency
+        # cancels its predecessor, before GitHub queues it for a runner.
+        for run in pages(
+            api,
+            f"repos/{repository}/actions/workflows/pr_ci.yml/runs?status=pending",
+            "workflow_runs",
+        ):
+            if is_ready_matrix(run) and not is_ghost(run, [], checked):
+                ready_priority.update(ready_pr_numbers(run, priority) & priority.keys())
     for run_id, run in sorted(runs.items()):
         jobs = pages(
             api, f"repos/{repository}/actions/runs/{run_id}/jobs?filter=latest", "jobs"
@@ -131,15 +217,14 @@ def measure(
         if run.get("event") == "merge_group":
             capacity.merge_group_queued += queued
             capacity.merge_group_in_progress += running
-        active = queued or running or not jobs
-        if is_ready_matrix(run) and active and not is_ghost(run, jobs, checked):
-            capacity.ready_matrices.append(
-                {
-                    "run": run_id,
-                    "prs": [pr["number"] for pr in run.get("pull_requests") or []],
-                    "url": run.get("html_url"),
-                }
-            )
+        if is_ready_matrix(run) and not is_ghost(run, jobs, checked):
+            numbers = ready_pr_numbers(run, priority)
+            ready_priority.update(numbers & priority.keys())
+            if queued or running or not jobs:
+                capacity.ready_matrices.append(
+                    {"run": run_id, "prs": sorted(numbers), "url": run.get("html_url")}
+                )
+    capacity.priority_ready = sorted(ready_priority)
     capacity.waiting_for_runner = dict(sorted(waiting.items()))
     return capacity
 
@@ -177,6 +262,7 @@ def wait(
 def main(argv: list[str] | None = None, api: Api = gh_api) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", help="OWNER/REPO; defaults to the current repository")
+    parser.add_argument("--pr", type=int, help="PR number; bypass the gate if priority")
     parser.add_argument(
         "--max-ready",
         type=int,
@@ -195,6 +281,8 @@ def main(argv: list[str] | None = None, api: Api = gh_api) -> int:
     )
     parser.add_argument("--json", action="store_true", help="print a JSON report")
     args = parser.parse_args(argv)
+    if args.pr is not None and args.pr <= 0:
+        parser.error("--pr must be a positive PR number")
     if args.max_ready < 0 or args.timeout < 0 or args.interval <= 0:
         parser.error("--max-ready/--timeout must be >= 0 and --interval > 0")
     try:
@@ -208,7 +296,7 @@ def main(argv: list[str] | None = None, api: Api = gh_api) -> int:
         )
 
         def check() -> Capacity:
-            return measure(repository, args.max_ready, api)
+            return measure(repository, args.max_ready, api, pr=args.pr)
 
         capacity = (
             wait(

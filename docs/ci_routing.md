@@ -1043,11 +1043,14 @@ fragments remain, so none is left out of that release or announced twice.
 
 The Free plan runs at most 20 hosted jobs at once and GitHub gives queued
 jobs no priority, so a burst of ready PRs starves the merge queue (#1373).
-Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait`. It
-reads queued and in-progress runs and their jobs through `gh api` (read-only)
-and exits 0 when admission is fine. It exits 3 (hold) while any
-`merge_group` job is queued for a runner, or while more than `--max-ready`
-(default 4) ready-PR area matrices are in flight. `--wait` polls with
+Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait --pr N`.
+It reads PRs, workflow runs and jobs through `gh api` (read-only) and exits 0
+when admission is fine. The `priority` label, added to PRs from non-bot
+collaborators with write access other than `theontho`, lets the named PR skip
+the capacity gate. Other PRs exit 3 (hold) while a priority PR has active
+ready CI or is in the merge queue, while any `merge_group` job is queued for
+a runner, or while more than `--max-ready` (default 4) ready-PR area matrices
+are in flight. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
 prints the counts. The check reserves nothing, so each supervisor admits one
 PR at a time and starts the next check only once the previous PR's ready run

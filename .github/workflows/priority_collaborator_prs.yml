@@ -1,0 +1,30 @@
+name: Label priority collaborator PRs
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions: {}
+
+jobs:
+  label:
+    if: github.event.pull_request.user.type == 'User' && github.event.pull_request.user.login != 'theontho'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+    steps:
+      # Use only GitHub API calls; never check out or execute PR code.
+      - name: Label PRs from collaborators with write access
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          permission=$(gh api "repos/$GH_REPO/collaborators/$PR_AUTHOR/permission" --jq .permission)
+          case "$permission" in
+            write|maintain|admin)
+              gh api "repos/$GH_REPO/issues/$PR_NUMBER/labels" -f 'labels[]=priority' --silent
+              ;;
+          esac
