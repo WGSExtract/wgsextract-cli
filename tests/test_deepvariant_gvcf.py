@@ -1,5 +1,6 @@
 """Focused deepvariant gvcf regressions."""
 
+import os
 from pathlib import Path
 
 import pytest
@@ -51,6 +52,7 @@ from tests.test_deepvariant import (
 )
 from wgsextract_cli.commands.vcf import deepvariant
 from wgsextract_cli.core.alignment import memory as alignment_memory
+from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.reference_evidence import (
     INDEX_ROLE,
     ROLE,
@@ -129,6 +131,26 @@ def test_1103_a_womans_chry_has_no_raw_records_and_is_excluded(dv, request, engi
     assert not any(line.startswith("chrY\t") for line in records.splitlines())
     assert evidence_state(gvcf.path, "chrY", 1500) is State.EXCLUDED_BY_POLICY
     assert evidence_state(gvcf.path, "chr1", 1500) is State.CALLABLE_REFERENCE
+
+
+@pytest.mark.parametrize("engine", ["image", "local"])
+def test_1491_ploidy_exclusions_do_not_exceed_parallel_command_limit(
+    dv, engine, monkeypatch
+):
+    """A decoy-heavy reference cannot fit its ploidy selection in one argument."""
+    decoys = tuple(f"decoy_{i:04d}_" + "alt_" * 20 for i in range(3300))
+    dv.sample = woman_sample(dv, extra_contigs=decoys)
+    dv.out = dv.tmp / "calls with spaces"
+    if engine == "local":
+        monkeypatch.chdir(dv.tmp)
+        monkeypatch.setenv("PATH", f"deepvariant/bin{os.pathsep}{os.environ['PATH']}")
+        clear_tool_caches()
+
+    gvcf = call_with_evidence(dv)[ROLE]
+
+    assert evidence_state(gvcf.path, "chr1", 1500) is State.CALLABLE_REFERENCE
+    assert evidence_state(gvcf.path, decoys[-1], 1500) is State.CALLABLE_REFERENCE
+    assert evidence_state(gvcf.path, "chrY", 1500) is State.EXCLUDED_BY_POLICY
 
 
 @pytest.mark.parametrize("with_gvcf", [False, True])
