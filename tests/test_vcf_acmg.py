@@ -5,11 +5,13 @@ The input is `vep run --engine vep-rs` output for that gene
 `fastvep sa-build` from tiny source files in tests/fixtures/acmg. Skipped
 without fastVEP (`pixi install -e fastvep`), except the opt-in refusal."""
 
+import gc
 import gzip
 import json
 import os
 import shutil
 import stat
+import warnings
 from pathlib import Path
 
 import pytest
@@ -305,7 +307,13 @@ def test_acmg_reports_fastveps_own_error_when_it_cannot_start(tmp_path):
     # Review of #629: a GFF3 fastVEP can't read was reported as "no ACMG column".
     inputs = _inputs(tmp_path)
     inputs["gff3"].write_text("##gff-version 3\nthis is not gff\n")
-    result = api.vcf.acmg(_params(tmp_path, _sa_dir(tmp_path), **inputs), check=False)
+    params = _params(tmp_path, _sa_dir(tmp_path), **inputs)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        result = api.vcf.acmg(params, check=False)
+        gc.collect()
+    # #1473: stopping before setup completes must still close both stderr pipes.
+    assert not [w.message for w in caught if issubclass(w.category, ResourceWarning)]
     assert result.error is not None
     assert "fastVEP failed before reading the input" in result.error.message
 

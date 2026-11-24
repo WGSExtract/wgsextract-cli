@@ -9,6 +9,8 @@ from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.microarray.templates import (
     convert_to_vendor_format,
     liftover_hg38_to_hg19,
+    template_resource_paths,
+    template_rows,
 )
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -113,10 +115,25 @@ class TestMicroarrayTranslation(unittest.TestCase):
             f.write("rs3094315\t1\t752566\tAG\n")
             f.write("rs3131972\t1\t752721\tGG\n")
 
+        _, body, *_ = template_resource_paths(templates_root, "23andMe_V3")
+        ids = {"rs3094315", "rs3131972"}
+        # Match the assertion's last-row-wins behaviour for repeated IDs.
+        rows = {
+            row[0]: row
+            for row in template_rows("23andMe_V3", str(body))
+            if row[0] in ids
+        }
+        sample_templates = Path(self.test_dir) / "raw_file_templates"
+        sample_body = sample_templates / "body" / "23andMe_V3.txt"
+        sample_body.parent.mkdir(parents=True)
+        sample_body.write_text("".join("\t".join(row) + "\n" for row in rows.values()))
+
         out_23andme = os.path.join(self.test_dir, "23andme_v3.txt")
 
         # Run formatting
-        convert_to_vendor_format("23andMe_V3", input_hg19, out_23andme, templates_root)
+        convert_to_vendor_format(
+            "23andMe_V3", input_hg19, out_23andme, sample_templates
+        )
 
         # Verify content
         with open(out_23andme) as f:

@@ -1,8 +1,12 @@
 import { commandContextFromState, configEditorControls, configValueKey, firstPathValue, optionTitle, splitPathList } from "../../../shared/rendering.js";
+import { localizationLabels } from "../../../shared/localization.js";
 import type { CommandContext, ConfigSetting, ControlOption, ControlSpec, RowTagSpec, StateValue, ValueMap } from "../../../shared/types.js";
 import type { WorkspaceRoots } from "../../../shared/workspace-paths.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { state } from "./state.js";
+
+const fallbackLabels = localizationLabels({});
+
 /** The workspaces the GUI shows paths relative to. */
 export function workspaceRoots(): WorkspaceRoots {
     return { bundle: state.bundleRootPath, users: state.usersWorkspacePath || undefined };
@@ -57,7 +61,17 @@ export function elements<T extends Element = HTMLElement>(selector: string): T[]
     return [...appRoot.querySelectorAll<T>(selector)];
 }
 export function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
+    const message = error instanceof Error ? error.message : String(error);
+    switch (message) {
+        case "workspaceMoveBusy":
+        case "workspaceMoveInProgress":
+        case "workspaceMoveSettingsLocked":
+        case "workspaceMoveStale":
+        case "workspaceMoveProtectedFolder":
+            return state.labels[message] ?? fallbackLabels[message] ?? message;
+        default:
+            return message;
+    }
 }
 export function findControl(id: string): ControlSpec {
     const control = controlWithID(id);
@@ -129,7 +143,7 @@ export function renderTooltip(text: unknown): string {
         : "";
 }
 export function renderInlineError(message: unknown, accessory = ""): string {
-    return `<div class="inline-error"><span aria-hidden="true">${renderIcon("exclamationmark.triangle.fill", undefined, "⚠")}</span><span>${escapeHTML(message)}</span>${accessory}</div>`;
+    return `<div class="inline-error"><span aria-hidden="true">${renderIcon("exclamationmark.triangle.fill", undefined, "âš ")}</span><span>${escapeHTML(message)}</span>${accessory}</div>`;
 }
 export function renderLoadingInline(message: unknown): string {
     return `<p class="loading-inline"><span class="spinner small" aria-hidden="true"></span>${escapeHTML(message)}</p>`;
@@ -137,7 +151,7 @@ export function renderLoadingInline(message: unknown): string {
 export function renderLoadingBox(message: unknown): string {
     return `<div class="loading-box"><span class="spinner small" aria-hidden="true"></span>${escapeHTML(message)}</div>`;
 }
-export function renderIconTitle(title: unknown, iconName: unknown, textIcon: unknown, fallback = "•"): string {
+export function renderIconTitle(title: unknown, iconName: unknown, textIcon: unknown, fallback = "â€¢"): string {
     return `<span class="icon-title"><span class="icon-title-icon" aria-hidden="true">${renderIcon(iconName, textIcon, fallback)}</span><span>${escapeHTML(title)}</span></span>`;
 }
 export function renderIcon(iconName: unknown, textIcon: unknown, fallback: string): string {
@@ -163,7 +177,7 @@ function resolveIcon(source: string, iconName: unknown): string | undefined {
     return key ? state.iconMap?.[source]?.[key] : undefined;
 }
 function isPlayIcon(iconName: unknown, textIcon: unknown, fallback: string, bootstrap: string | undefined, emoji: string | undefined): boolean {
-    return iconName === "play" || iconName === "play.fill" || bootstrap === "play" || bootstrap === "play-fill" || emoji === "▶️" || (!iconName && !textIcon && fallback === "▶");
+    return iconName === "play" || iconName === "play.fill" || bootstrap === "play" || bootstrap === "play-fill" || emoji === "â–¶ï¸" || (!iconName && !textIcon && fallback === "â–¶");
 }
 export function resolveText(value: unknown, context: CommandContext): string {
     return String(value ?? "").replace(/\{\{([^}]+)\}\}/g, (_, raw) => {

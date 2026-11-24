@@ -29,6 +29,7 @@ from wgsextract_cli.core.utils import (
     run_command,
 )
 from wgsextract_cli.core.variant_files import calculate_bam_md5, ensure_vcf_indexed
+from wgsextract_cli.core.workspace_activity import forward_workspace_admission
 
 from .._vep_engines import VepEngine, configured_engine
 from .._vep_run import vep_output_paths
@@ -192,7 +193,7 @@ def _annotation_step(
 def _invoke_annotation(command: list[str], ann: str, step: str, output: str) -> None:
     try:
         # Captured so chained runs stay readable; surfaced on failure.
-        res = run_command(command, capture_output=True)
+        res = run_command(forward_workspace_admission(command), capture_output=True)
     except subprocess.CalledProcessError as e:
         for line in (e.stderr or "").strip().splitlines():
             logging.error(f"  [{ann} ERROR] {line}")

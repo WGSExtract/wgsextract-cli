@@ -3,12 +3,17 @@ and the My Genomes library, while an older install keeps the
 config.toml and library it already has."""
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from wgsextract_cli.api import ExtractRegionParams
 from wgsextract_cli.api._params import with_config_defaults
+from wgsextract_cli.commands._analyze_workflows import AnalyzeJob, run_cli_subcommand
 from wgsextract_cli.core import config
 from wgsextract_cli.core.config import (
     get_config_path,
@@ -18,6 +23,7 @@ from wgsextract_cli.core.config import (
     settings,
 )
 from wgsextract_cli.core.users_workspace import SENTINEL_NAME
+from wgsextract_cli.core.workspace_activity import desktop_data_dir, workspace_use
 
 
 @pytest.fixture
@@ -193,3 +199,172 @@ def test_1087_interactive_cli_bootstrap_marks_workspace_before_writing_config(
     bootstrap_default_config(path)
     assert path.is_file()
     assert (path.parent / SENTINEL_NAME).is_file()
+
+
+def test_1322_cli_cannot_start_or_save_during_a_desktop_move(tmp_path, monkeypatch):
+    file = tmp_path / "config.toml"
+    file.write_text("cpu_threads = 2\n")
+    # The desktop publishes its PID before any files are moved.
+    activity = desktop_data_dir() / "workspace-activity"
+    activity.mkdir(parents=True, exist_ok=True)
+    mover = activity / f"move-{os.getpid()}-a"
+    mover.touch()
+    monkeypatch.setenv("WGSEXTRACT_GUI_APP_DATA", str(tmp_path / "custom-app-data"))
+    args = [
+        sys.executable,
+        "-m",
+        "wgsextract_cli",
+        "--config",
+        str(file),
+        "ref",
+        "status",
+    ]
+
+    result = subprocess.run(args, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 1
+    assert "being moved" in result.stderr
+    with config.scoped_config(file):
+        with pytest.raises(config.WGSExtractError, match="being moved"):
+            save_config({"cpu_threads": 7})
+        assert config.read_toml(file)["cpu_threads"] == 2
+
+        mover.unlink()
+        save_config({"cpu_threads": 7})
+
+    assert config.read_toml(file)["cpu_threads"] == 7
+    assert not list(activity.iterdir())
+
+
+def test_1322_cli_without_the_desktop_app_leaves_no_app_folder(tmp_path):
+    # Install Lab: a CLI-only uninstall left the app's workspace-activity folder.
+    file = tmp_path / "config.toml"
+    file.write_text("cpu_threads = 2\n")
+    with config.scoped_config(file):
+        save_config({"cpu_threads": 7})
+
+    assert config.read_toml(file)["cpu_threads"] == 7
+    assert not desktop_data_dir().exists()
+
+
+def test_1322_admitted_workflow_child_survives_a_refused_move(tmp_path, capfd):
+    settings_file = tmp_path / "config.toml"
+    settings_file.write_text(
+        state_directory_setting(tmp_path) + f"temp_directory = '{tmp_path}'\n",
+        encoding="utf-8",
+    )
+    activity = desktop_data_dir() / "workspace-activity"
+    activity.mkdir(parents=True)
+    with config.scoped_config(settings_file), workspace_use():
+        # A mover publishes first, but the parent's active lease means it will
+        # refuse the move. Keep its marker present through the child's startup.
+        mover = activity / f"move-{os.getpid()}-a"
+        mover.touch()
+        try:
+            run_cli_subcommand(["ref", "status"], AnalyzeJob(ref=str(tmp_path)))
+        finally:
+            mover.unlink()
+
+    assert f"Reference library: {tmp_path}" in capfd.readouterr().out
+    assert not list(activity.iterdir())
+
+
+def test_1322_cli_saves_through_a_migrated_config_path(tmp_path):
+    previous = tmp_path / "old" / "config.toml"
+    destination = tmp_path / "new" / "config.toml"
+    destination.parent.mkdir()
+    destination.write_text("cpu_threads = 2\nram_gb = 4\n")
+    desktop = desktop_data_dir()
+    desktop.mkdir(parents=True, exist_ok=True)
+    (desktop / "settings.json").write_text(
+        json.dumps({"movedConfigPaths": {str(previous): str(destination)}})
+    )
+
+    with config.scoped_config(previous):
+        assert settings["cpu_threads"] == 2
+        save_config({"cpu_threads": 7})
+    assert not previous.exists()
+    assert config.read_toml(destination) == {"cpu_threads": 7, "ram_gb": 4}
+
+    previous.parent.mkdir()
+    previous.write_text("cpu_threads = 5\n")
+    with config.scoped_config(previous):
+        save_config({"cpu_threads": 9})
+    assert config.read_toml(previous)["cpu_threads"] == 9
+    assert config.read_toml(destination)["cpu_threads"] == 7
+
+
+def test_1322_cli_follows_a_redirect_recorded_through_an_alias(tmp_path):
+    original = tmp_path / "original"
+    original.mkdir()
+    alias = tmp_path / "alias"
+    if sys.platform == "win32":
+        from _winapi import CreateJunction
+
+        CreateJunction(str(original), str(alias))
+    else:
+        alias.symlink_to(original, target_is_directory=True)
+    recorded = str(alias / "old.toml")
+    if sys.platform == "win32":
+        recorded = alias.drive.swapcase() + recorded[len(alias.drive) :]
+    destination = tmp_path / "moved.toml"
+    destination.write_text("cpu_threads = 2\n")
+    desktop = desktop_data_dir()
+    desktop.mkdir(parents=True, exist_ok=True)
+    (desktop / "settings.json").write_text(
+        json.dumps({"movedConfigPaths": {recorded: str(destination)}})
+    )
+
+    with config.scoped_config(original / "old.toml"):
+        save_config({"cpu_threads": 7})
+
+    assert not (original / "old.toml").exists()
+    assert config.read_toml(destination)["cpu_threads"] == 7
+
+
+def test_1322_app_launched_cli_uses_the_apps_overridden_location(tmp_path, monkeypatch):
+    previous = tmp_path / "old" / "config.toml"
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    destination = moved / "config.toml"
+    destination.write_text("cpu_threads = 2\n")
+    app_data = tmp_path / "custom-app-data"
+    app_data.mkdir()
+    (app_data / "settings.json").write_text(
+        json.dumps(
+            {
+                "usersWorkspaces": {"wgs-extract": str(moved)},
+                "movedConfigPaths": {str(previous): str(destination)},
+            }
+        )
+    )
+    monkeypatch.setenv("WGSEXTRACT_GUI_APP_DATA", str(app_data))
+
+    with config.scoped_config():
+        assert get_config_path() == destination
+    with config.scoped_config(previous):
+        save_config({"cpu_threads": 7})
+
+    assert not previous.exists()
+    assert config.read_toml(destination)["cpu_threads"] == 7
+
+
+def test_1322_save_reloads_settings_after_an_explicit_config_moves(tmp_path):
+    previous = tmp_path / "old.toml"
+    destination = tmp_path / "new.toml"
+    previous.write_text("cpu_threads = 2\nram_gb = 4\n")
+    desktop = desktop_data_dir()
+    desktop.mkdir(parents=True, exist_ok=True)
+
+    with config.scoped_config(previous):
+        assert settings["cpu_threads"] == 2
+        previous.rename(destination)
+        (desktop / "settings.json").write_text(
+            json.dumps({"movedConfigPaths": {str(previous): str(destination)}})
+        )
+        save_config({"cpu_threads": 7})
+
+        assert settings["cpu_threads"] == 7
+        assert settings["ram_gb"] == 4
+        assert get_config_path() == destination
+    assert not previous.exists()
+    assert config.read_toml(destination)["cpu_threads"] == 7
