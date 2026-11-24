@@ -355,6 +355,31 @@ def test_1284_review_a_score_entry_must_name_its_alt():
 
 
 @pytest.mark.parametrize(
+    ("original_alts", "score_alleles", "expected"),
+    [
+        ("AT,T", "AT,T", {"spliceai_max": 0.3, "revel": 0.4}),
+        ("AT,T", "T", {}),
+        ("AT,G", "T", {"spliceai_max": 0.9, "revel": 0.8}),
+    ],
+)
+def test_1284_normalized_alt_does_not_take_another_original_alts_scores(
+    original_alts, score_alleles, expected
+):
+    splice = {"AT": "AT|GENEA|0.3|0|0|0|1|2|3|4", "T": "T|GENEA|0.9|0|0|0|1|2|3|4"}
+    revel = {"AT": "AT|0.4", "T": "T|0.8"}
+    alleles = score_alleles.split(",")
+    info = ";".join(
+        [
+            f"OLD_MULTIALLELIC=chr1|299|AC|{original_alts}|1",
+            "SpliceAI=" + ",".join(splice[a] for a in alleles),
+            "FV_REVEL=" + ",".join(revel[a] for a in alleles),
+        ]
+    )
+    record = _record("chr1", "300", ".", "C", "T", "50", "PASS", info, "GT", "0/1")
+    assert _scores(_rows(FASTVEP_HEADER, [record])["300", "T"]) == expected
+
+
+@pytest.mark.parametrize(
     ("tag", "value", "column", "expected"),
     [
         ("CADD_RAW", "1.5", "cadd_raw", 1.5),

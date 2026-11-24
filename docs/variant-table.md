@@ -179,7 +179,10 @@ wgsextract vcf chain-annotate --vcf-input sample.vcf.gz \
   values separated by `&`, the table uses the highest.
 - **SpliceAI.** Each row reads only its own ALT's entries and skips missing
   (`.`) deltas. It uses the highest delta for the row's gene if that gene was
-  scored, or the highest delta across all genes otherwise.
+  scored, or the highest delta across all genes otherwise. For split records
+  with `OLD_MULTIALLELIC`, SpliceAI and fastVEP entries match the original ALT
+  first. A normalized spelling is used only if it cannot name another original
+  ALT.
 - **Missing and site-level scores.** Missing scores stay empty, not zero.
   At a site with several variant ALTs, a single allele-specific score
   (`Number=1`) cannot be assigned to an ALT and stays empty. PhyloP and GERP

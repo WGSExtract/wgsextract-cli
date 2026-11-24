@@ -597,6 +597,7 @@ def variant_rows(
             if carried_only and zyg is not None and zyg not in CARRIED:
                 continue
             ann_spellings: tuple[str, ...] = (alt,)
+            pipe_spellings = ann_spellings
             index, n_alts = alt_index, len(alts)
             alt_fraction: float | None
             if ad_total and len(ad) == n_alts + 1 and ad[alt_index] <= ad_total:
@@ -607,8 +608,14 @@ def variant_rows(
                 )
             split = origin is not None and n_alts == 1
             if origin is not None and split:
-                o_ref, o_alts, index = origin
-                ann_spellings = (alt, o_alts[index - 1])
+                _, o_alts, index = origin
+                original_alt = o_alts[index - 1]
+                ann_spellings = (alt, original_alt)
+                if scored:
+                    # The normalized spelling can name another ALT's retained entries.
+                    pipe_spellings = (
+                        (original_alt,) if alt in o_alts else (original_alt, alt)
+                    )
             csq_matches = csq_for_allele(csq_all, ref, alts, alt_index, origin)
             csq = pick_csq(csq_matches)
             ann_matches = for_allele(
@@ -704,7 +711,7 @@ def variant_rows(
                         variant_alts,
                         csq,
                         csq_matches,
-                        partial(allele_entries, info, pipe_formats, ann_spellings),
+                        partial(allele_entries, info, pipe_formats, pipe_spellings),
                         gene,
                     )
                     if scored
