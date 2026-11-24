@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from wgsextract_cli.api.methylation import MethylationRegionsParams
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -25,7 +26,6 @@ from wgsextract_cli.core.methylation_regions import (
 from wgsextract_cli.core.paths import absolute_path, append_suffix
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.results import current_result, human_output
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.table_writer import (
     Column,
     check_format,

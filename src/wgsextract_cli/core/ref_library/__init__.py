@@ -6,9 +6,8 @@
 ``models`` identifies assemblies from headers; ``assets`` discovers local
 FASTA/annotation resources; ``processing`` installs and indexes reference data;
 ``resolver`` combines library roots, signatures and build-specific resources.
-Retained ``core.reference_assets``, ``core.reference_processing`` and
-``core.reference_resolver`` interfaces re-export the same objects; model
-callers import ``ref_library.models`` directly.
+Retained ``core.reference_processing`` and ``core.reference_resolver``
+interfaces re-export the same objects.
 """
 
 from .catalog import get_available_genomes

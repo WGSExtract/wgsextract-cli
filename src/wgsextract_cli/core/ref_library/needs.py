@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.paths import expand_path
-from wgsextract_cli.core.reference_assets import is_fasta_path, read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import is_fasta_path, read_fai_lengths
 
 # Commands that read the reference sequence even for a BAM: variant calling,
 # consensus sequences, typing and the like.
@@ -223,7 +223,7 @@ def selected_vcf(args: argparse.Namespace) -> str | None:
 def _fits_bam(fasta: str, header: str) -> bool:
     """Whether every @SQ of a BAM header is in ``fasta`` with the same length
     (from its .fai; a FASTA without one is given the benefit of the doubt)."""
-    from wgsextract_cli.core.reference_assets import header_sequences
+    from wgsextract_cli.core.ref_library.assets import header_sequences
 
     lengths = read_fai_lengths(fasta)
     if not lengths:

@@ -442,7 +442,7 @@ class VcfImputeParams(Params):
         from wgsextract_cli.api._params import with_config_defaults
         from wgsextract_cli.api._ref_library import _library_named
         from wgsextract_cli.core import imputation_panel
-        from wgsextract_cli.core.reference_assets import (
+        from wgsextract_cli.core.ref_library.assets import (
             resolve_reference_library,
         )
 
