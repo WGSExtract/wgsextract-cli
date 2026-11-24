@@ -7,7 +7,11 @@ import pytest
 
 from tests.smoke_utils import run_cli
 from wgsextract_cli.core.microarray import revisions as revisions
-from wgsextract_cli.core.microarray.templates import _PACKAGED_TEMPLATES, template_rows
+from wgsextract_cli.core.microarray.templates import (
+    _PACKAGED_TEMPLATES,
+    template_resource_paths,
+    template_rows,
+)
 from wgsextract_cli.core.utils import WGSExtractError
 
 BASE = [(f"rs{i}", str(1 + i % 22), str(1000 + i)) for i in range(3000)]
@@ -256,10 +260,10 @@ def test_packaged_catalogue_matches_packaged_templates():
         name = body.name.split(".")[0]
         if name in _INTERNAL_ONLY_FORMATS:
             continue
-        ids = revisions.template_ids(name, [str(_PACKAGED_TEMPLATES)])
         assert name in linked, name
+        assert body in template_resource_paths(str(_PACKAGED_TEMPLATES), name)
         rows = sum(1 for _ in template_rows(name, str(body)))
-        assert ids is not None and rows == linked[name].markers
+        assert rows == linked[name].markers, name
 
 
 def test_info_chip_cli(tmp_path):

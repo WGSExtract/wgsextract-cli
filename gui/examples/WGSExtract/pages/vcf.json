@@ -15,6 +15,7 @@
           "id": "vcf_path",
           "label": "controls.vcf.vcf-inputs.vcf_path.label",
           "kind": "path",
+          "multiple": true,
           "defaultDirectory": "{{mygenomes_library}}",
           "tooltip": "controls.vcf.vcf-inputs.vcf_path.tooltip"
         },
@@ -31,6 +32,124 @@
           "kind": "path",
           "tooltip": "controls.vcf.vcf-inputs.out_dir.tooltip",
           "advancedOnly": true
+        }
+      ]
+    },
+    {
+      "id": "vcf-info-commands",
+      "title": "sections.vcf.info-commands.title",
+      "iconName": "alignment-info",
+      "textIcon": "📊",
+      "actions": [
+        {
+          "id": "vcf-basic-info",
+          "resultCard": true,
+          "title": "actions.vcf.info-commands.vcf-basic-info.title",
+          "tooltip": "actions.vcf.info-commands.vcf-basic-info.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "info",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--ref",
+                "{{ref_path}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vcf-qc",
+          "resultCard": true,
+          "title": "actions.vcf.variant-calling.vcf-qc.title",
+          "tooltip": "actions.vcf.variant-calling.vcf-qc.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "qc",
+              "vcf",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "view-vcf",
+          "title": "actions.vcf.info-commands.view-vcf.title",
+          "tooltip": "actions.vcf.info-commands.view-vcf.tooltip",
+          "iconName": "alignment-info",
+          "textIcon": "🔎",
+          "viewerInput": "vcf_path",
+          "prerequisiteArguments": [
+            "vcf",
+            "to-fasta",
+            "--vcf-input",
+            "{{vcf_path}}"
+          ]
+        },
+        {
+          "id": "vcf-variantqc",
+          "row": 2,
+          "openOutput": [
+            "variantqc_report"
+          ],
+          "title": "actions.vcf.info-commands.vcf-variantqc.title",
+          "tooltip": "actions.vcf.info-commands.vcf-variantqc.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "variantqc",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--extra-vcf",
+                "{{vcf_path.extra}}"
+              ],
+              [
+                "--ref",
+                "{{ref_path}}"
+              ],
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "vcf-granite-qc",
+          "row": 2,
+          "resultCard": true,
+          "title": "actions.vcf.info-commands.vcf-granite-qc.title",
+          "tooltip": "actions.vcf.info-commands.vcf-granite-qc.tooltip",
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "vcf",
+              "granite-qc",
+              "--vcf-input",
+              "{{vcf_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ]
+            ]
+          }
         }
       ]
     },
@@ -420,27 +539,6 @@
             ]
           },
           "advancedOnly": true
-        },
-        {
-          "id": "vcf-qc",
-          "resultCard": true,
-          "title": "actions.vcf.variant-calling.vcf-qc.title",
-          "tooltip": "actions.vcf.variant-calling.vcf-qc.tooltip",
-          "command": {
-            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
-            "arguments": [
-              "qc",
-              "vcf",
-              "--vcf-input",
-              "{{vcf_path}}"
-            ],
-            "optionalArguments": [
-              [
-                "--outdir",
-                "{{out_dir}}"
-              ]
-            ]
-          }
         },
         {
           "id": "vcf-repair-ftdna",

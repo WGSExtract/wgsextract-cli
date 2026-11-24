@@ -17,7 +17,7 @@ export async function installedViewerGenes(fasta: string, referenceRoot: string)
     if (!build) return notice("geneBuildUnsupported");
     fileName = `genes_${build}.tsv`;
     let text: string | undefined;
-    for (const directory of ["downloads", "microarray"]) {
+    for (const directory of ["downloads", "ref", "microarray"]) {
         const file = path.join(referenceRoot, directory, fileName);
         try {
             await guardedViewerPath(file, [referenceRoot]);

@@ -314,6 +314,7 @@ class BundleSandbox:
             "trio_vcf_input": vcf,
             "ubam_sample": "sample",
             "vcf_annotate_cols": "ID,INFO/HG",
+            "vcf_path.extra": self._file("input/extra.vcf.gz"),
             "vcf_table_format": "tsv",
             "vep_assembly": "GRCh38",
             "vep_species": "homo_sapiens",
@@ -499,7 +500,9 @@ def bundle_commands() -> Iterator[tuple[str, str, list[str]]]:
                         )
                 actions += control.get("rowActions", [])
             for action in actions:
-                command = action["command"]
+                command = action.get("command")
+                if not command:
+                    continue
                 groups = command.get("optionalArguments", [])
                 flags = {group[0] for group in groups if group}
                 pairs = [pair for pair in EXCLUSIVE_FLAGS if set(pair) <= flags]

@@ -16,6 +16,7 @@ import { lastResultDocumentPaths, rememberLastResultDocument } from "./last-resu
 import { openResultPath, ResultPaths, systemOpener } from "./result-paths.js";
 import { readResultCard } from "./result-card.js";
 import { installPrerequisite, missingPrerequisites } from "./prerequisites.js";
+import { multiPathControlsFromManifest } from "../../../shared/rendering.js";
 import { resultDocumentSpecFor } from "../../../shared/result-document.js";
 import type { JobServer } from "./job-server.js";
 import { appSupportDirectory, configPath, distModulePath, normalizeContext } from "./paths.js";
@@ -31,6 +32,7 @@ import { LinkedMoveFolderError } from "./workspace-move-guard.js";
 import { requireViewerLoopback, ViewerFiles } from "./viewer-files.js";
 import { checkLibraryTracks, openLibraryViewer, viewerLibraries } from "./viewer-session.js";
 import { isViewerBuild } from "../../../shared/viewer-rows.js";
+import { lookupViewerRsid } from "./viewer-rsids.js";
 import { RemoteViewerConnection } from "./remote-viewer-connection.js";
 import { RemoteViewer } from "./remote-viewer.js";
 import { openGenePage } from "./gene-page.js";
@@ -144,6 +146,19 @@ export function createRequestHandler(context: RequestHandlerContext) {
             remoteViewer.revoke(requiredString(body, "id"));
             return { ok: true };
         }),
+        "/api/viewer/rsid": async (request, response) => {
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            const id = requiredString(body, "id");
+            const rsid = requiredString(body, "rsid");
+            const library = await viewerLibraries(context);
+            const index = viewerFiles.rsidIndexFor(id, library.key);
+            if (!index) {
+                json(response, { problem: "rsidSearchUnavailable" });
+                return;
+            }
+            json(response, await lookupViewerRsid(index, rsid, library.referenceRoots));
+        },
         "/api/viewer/remote/status": jsonRoute(context, async () => {
             requireRemoteViewer();
             return remoteViewer.connection.status();
@@ -279,7 +294,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
         "/api/setup/stream": (request, response) => handleStepStream(request, response, context, runSetup),
         "/api/uninstall/stream": (request, response) => handleStepStream(request, response, context, runUninstall),
         "/api/path/pick": jsonRoute(context, async (body) => {
-            const result = await pickPath({ kind: body.kind, title: body.title, defaultPath: body.defaultPath, bundleRoot: context.bundleRoot, nativePicker: context.nativePicker });
+            const result = await pickPath({ kind: body.kind, title: body.title, defaultPath: body.defaultPath, multiple: body.multiple, bundleRoot: context.bundleRoot, nativePicker: context.nativePicker });
             if (!result.cancelled && (result.kind === "directory" || path.basename(result.path).toLowerCase() === "manifest.json" || bundleArchiveFormat(result.path) != null)) {
                 pickedBundlePaths.add(result.path);
                 for (const stale of [...pickedBundlePaths].slice(0, -maxRememberedPicks)) {
@@ -443,7 +458,13 @@ async function readBody(request: IncomingMessage, context: RequestHandlerContext
 }
 
 function commandContext(body: LooseRecord, context: RequestHandlerContext) {
-    return normalizeContext(parseCommandContext(body.context), context.bundleRoot);
+    return normalizeContext(
+        {
+            ...parseCommandContext(body.context),
+            multiPathControls: multiPathControlsFromManifest(context.manifest),
+        },
+        context.bundleRoot,
+    );
 }
 
 function rememberDynamicActions(context: RequestHandlerContext, location: ReturnType<typeof parseManifestLocation>, payload: unknown) {

@@ -726,6 +726,9 @@ def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, marker
     for part, text in (("head", "# h\n"), ("body", "rs1\t1\t100\n")):
         (templates / part).mkdir(parents=True)
         (templates / part / "23andMe_V3.txt").write_text(text)
+    target = microarray_targets.build_genome_wide_target(
+        str(library), "hg19", [str(library)]
+    )
     vcf = _plain_vcf(tmp_path / "input.vcf")
     outdir = tmp_path / "out"
 
@@ -735,6 +738,7 @@ def test_issue_853_changing_aadr_panels_regenerates_vendor_kits(tmp_path, marker
             run_wgsextract(
                 "microarray", "--input", str(vcf), "--ref", str(fasta),
                 "--formats", formats, "--outdir", str(outdir),
+                "--ref-vcf-tab", target,
             )  # fmt: skip
         [kit] = [o for o in result.outputs if o.role == "vendor_kit"]
         return bool(kit.metrics.get("reused"))

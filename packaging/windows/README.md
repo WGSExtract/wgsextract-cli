@@ -156,12 +156,12 @@ the packaged build.
 
 ### wgse-minimap2 (Windows x86-64)
 
-The optional `wgse-minimap2` recipe uses the same clang-cl, VS 2022 and
+The `wgse-minimap2` recipe uses the same clang-cl, VS 2022 and
 CUDA 13.5 toolchain as `wgse-bwa`. The GPU is not needed to build, install or
 use its CPU backend. Build it by replacing `wgse-bwa` with `wgse-minimap2`
-in the `rattler-build` command above. The default Pixi environment is
-unchanged; put the package's `Library\bin` on `PATH` to let `align` and
-`realign` discover it. See [Windows alignment](../../docs/windows.md#wgse-minimap2-for-long-reads).
+in the `rattler-build` command above. The default win-64 Pixi environment
+pins `wgse-minimap2` from `windows-tools-13`, without changing the other tool
+pins. See [Windows alignment](../../docs/windows.md#wgse-minimap2-for-long-reads).
 
 ### GATK kernels
 

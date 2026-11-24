@@ -1,11 +1,11 @@
 import { pathInputAttributes } from "./view/path-input.js";
-import { applyDataSourcePayload, configValueKey, hydrateRows, isSectionVisible, optionDisabledReason, rowContext, withoutDisabledOptions, } from "../../../shared/rendering.js";
+import { applyDataSourcePayload, configValueKey, firstPathValue, hydrateRows, isSectionVisible, optionDisabledReason, rowContext, splitPathList, withoutDisabledOptions, } from "../../../shared/rendering.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { buildTagStyle, commandContext, configDataSourceContext, displayOption, localizedStatus, localizedTag, renderIcon, renderIconTitle, renderInlineError, renderLoadingBox, renderLoadingInline, renderTooltip, resolveText, tagStyle, } from "./model.js";
 import { ensureDataSource } from "./operations.js";
 import { state } from "./state.js";
-export { renderActions, renderPrecheckBanner } from "./view/actions.js";
-import { renderActions } from "./view/actions.js";
+export { renderActionRows, renderActions, renderPrecheckBanner } from "./view/actions.js";
+import { renderActionRows, renderActions } from "./view/actions.js";
 export { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
@@ -85,7 +85,7 @@ export function renderNavigation() {
     const bottomPages = pages.filter((page) => page.sidebarPlacement === "bottom");
     const updateItem = renderUpdateNavigationItem();
     return `
-    <div class="nav-primary">${renderNavigationGroups(primaryPages)}${manifest.id === "wgs-extract" ? `<button type="button" class="nav-item" data-genome-viewer-open>${escapeHTML(state.labels.viewerTitle ?? "")}</button><button type="button" class="nav-item" data-gene-page-open>${escapeHTML(state.labels.geneTitle ?? "")}</button>` : ""}</div>
+    <div class="nav-primary">${renderNavigationGroups(primaryPages)}${manifest.id === "wgs-extract" ? `<button type="button" class="nav-item" data-genome-viewer-open><span class="nav-icon" aria-hidden="true">${renderIcon("genome-viewer", "🔍", "🔍")}</span><span>${escapeHTML(state.labels.viewerTitle ?? "")}</span></button><button type="button" class="nav-item" data-gene-page-open>${escapeHTML(state.labels.geneTitle ?? "")}</button>` : ""}</div>
     ${bottomPages.length || updateItem ? `<div class="nav-bottom">${updateItem}${renderNavigationGroups(bottomPages, false)}</div>` : ""}
   `;
 }
@@ -232,7 +232,7 @@ export function renderSection(section: PageSection, page: BundlePage) {
       ${state.dataSourceErrors.has(key)
         ? renderInlineError(state.dataSourceErrors.get(key), `<button type="button" data-retry-source="${escapeAttribute(key)}">${escapeHTML(state.labels.retryButtonTitle)}</button>`)
         : ""}
-      ${sectionActions.length ? `<div class="action-row">${renderActions(sectionActions, context, location)}</div>` : ""}
+      ${sectionActions.length ? renderActionRows(sectionActions, context, location) : ""}
     </section>
   `;
 }
@@ -311,14 +311,28 @@ export function renderControl(control: ControlSpec, sectionContext: CommandConte
 export function renderTextControl(control: ControlSpec) {
     const inputID = `control-${control.id}`;
     const rawValue = state.fieldValues[control.id] ?? control.value ?? "";
-    const valueAttributes = control.kind === "path" ? pathInputAttributes(rawValue) : `value="${escapeAttribute(rawValue)}"`;
+    const isMultiPath = control.kind === "path" && control.multiple === true;
+    const paths = isMultiPath ? splitPathList(rawValue) : [];
+    const primaryValue = isMultiPath ? (paths[0] ?? "") : rawValue;
+    const valueAttributes = control.kind === "path" ? pathInputAttributes(primaryValue) : `value="${escapeAttribute(rawValue)}"`;
     const input = `<input id="${escapeAttribute(inputID)}" type="text" ${valueAttributes}
         placeholder="${escapeAttribute(control.placeholder ?? "")}" data-field-id="${escapeAttribute(control.id)}">`;
+    const showInlineViewer = state.manifest?.id === "wgs-extract"
+        && ["bam_path", "vcf_path"].includes(control.id)
+        && !(state.activePageID === "info-bam" && control.id === "bam_path")
+        && !(state.activePageID === "vcf" && control.id === "vcf_path")
+        && /\.(bam|cram|(g\.?vcf|vcf)\.(gz|bgz))$/i.test(String(firstPathValue(rawValue)));
+    const multiList = isMultiPath && paths.length > 1
+        ? `<ol class="multi-path-list" data-multi-path-list="${escapeAttribute(control.id)}">${paths.map((entry, index) => {
+            const name = entry.split(/[\\/]/).pop() ?? entry;
+            return `<li class="multi-path-item" title="${escapeAttribute(entry)}"><span class="multi-path-index">${index + 1}.</span><span class="multi-path-name">${escapeHTML(name)}</span>${index === 0 ? `<span class="multi-path-badge">primary</span>` : ""}<button type="button" class="multi-path-remove" data-path-remove="${escapeAttribute(control.id)}:${index}" aria-label="Remove ${escapeAttribute(name)}" title="Remove ${escapeAttribute(name)}">×</button></li>`;
+        }).join("")}</ol>`
+        : "";
     return `
-    <div class="form-row">
+    <div class="form-row${multiList ? " form-row-stacked" : ""}">
       <label class="row-label" for="${escapeAttribute(inputID)}">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</label>
       ${control.kind === "path"
-        ? `<span class="input-button-row">${input}<button type="button" class="secondary-button" data-path-prompt="${escapeAttribute(control.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button>${state.manifest?.id === "wgs-extract" && ["bam_path", "vcf_path"].includes(control.id) && /\.(bam|cram|(g\.?vcf|vcf)\.(gz|bgz))$/i.test(String(rawValue)) ? `<button type="button" class="secondary-button" data-view-reads="${escapeAttribute(control.id)}">${escapeHTML(state.labels.viewerStrings?.viewReads ?? "")}</button>` : ""}</span>`
+        ? `<div class="path-control-stack"><span class="input-button-row${isMultiPath ? " input-button-row-multi" : ""}">${input}<button type="button" class="secondary-button" data-path-prompt="${escapeAttribute(control.id)}">${escapeHTML(state.labels.chooseButtonTitle)}</button>${isMultiPath ? `<button type="button" class="secondary-button" data-path-add="${escapeAttribute(control.id)}" title="Add additional files">+</button>` : ""}${showInlineViewer ? `<button type="button" class="secondary-button" data-view-reads="${escapeAttribute(control.id)}">${escapeHTML(state.labels.viewerStrings?.viewReads ?? "")}</button>` : ""}</span>${multiList}</div>`
         : input}
     </div>
   `;
@@ -561,7 +575,7 @@ export function renderConfigSetting(control: ControlSpec, setting: ConfigSetting
 
 export function renderRowCell(row: RowSpec, column: RowColumnSpec) {
     const value = column.id === "name" ? row.title ?? row.values?.[column.id] ?? row.id : column.id === "status" ? localizedStatus(row.status ?? row.values?.status ?? "") : row.values?.[column.id] ?? "";
-    if (column.id === "build") {
+    if (column.id === "build" || column.id === "tag") {
         const style = buildTagStyle(value);
         return style ? `<div><span class="pill build ${style}">${escapeHTML(value)}</span></div>` : "<div></div>";
     }
@@ -571,7 +585,11 @@ export function renderRowCell(row: RowSpec, column: RowColumnSpec) {
             ...(row.tags ?? []).map((tag) => `<span class="pill ${escapeAttribute(tag.style ?? "secondary")}">${escapeHTML(localizedTag(tag))}</span>`),
         ].join("")
         : "";
-    return `<div>${escapeHTML(value)}${tags ? `<div class="pill-row">${tags}</div>` : ""}</div>`;
+    const tooltip = column.id === "name" ? row.tooltip?.trim() : "";
+    const label = tooltip
+        ? `<span class="row-name-tooltip" tabindex="0" data-tooltip="${escapeAttribute(tooltip)}">${escapeHTML(value)}</span>`
+        : escapeHTML(value);
+    return `<div>${label}${tags ? `<div class="pill-row">${tags}</div>` : ""}</div>`;
 }
 
 export function renderConfirmationDialog() {
