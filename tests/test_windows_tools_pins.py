@@ -88,6 +88,8 @@ def test_pharmcat_windows_pins_follow_bcftools_and_htslib(tmp_path, monkeypatch)
     assert "example.invalid/bcftools" in pharmcat
     assert "example.invalid/htslib" in pharmcat
     assert "samtools" not in pharmcat
-    # #1121: a full Windows Tools release includes the optional CUDA aligner
-    # without requiring it in the default or supplemental environments.
-    assert "wgse-minimap2" not in manifest.read_text()
+    # #1121: full-release re-pins keep the packaged CUDA long-read aligner in
+    # the default environment only.
+    default = manifest.read_text().split("# gatk-windows-tools-begin")[0]
+    assert "example.invalid/wgse-minimap2" in default
+    assert "wgse-minimap2" not in pharmcat
