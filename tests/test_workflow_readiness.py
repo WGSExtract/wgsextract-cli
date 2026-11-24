@@ -327,6 +327,35 @@ def test_1464_ubuntu_dispatch_reaches_the_full_backstop_through_reusable_calls()
         assert "main-backstop-candidate:" not in (WORKFLOWS / name).read_text()
 
 
+def test_1452_only_trusted_full_ubuntu_coverage_can_seed_the_line_cache() -> None:
+    suite = (WORKFLOWS / "os_tests.yml").read_text()
+    steps = dict(
+        re.findall(
+            r"^      - name: ([^\n]+)\n(.*?)(?=^      - name: |\Z)", suite, re.M | re.S
+        )
+    )
+    export = steps["Export advisory Linux line observations"]
+    for name in (
+        "Export advisory Linux line observations",
+        "Save main's advisory Linux line map",
+        "Archive the advisory Linux line map",
+    ):
+        assert "steps.backstop.outputs.trusted == 'true'" in steps[name]
+        assert "continue-on-error: true" in steps[name]
+    assert "steps.impact-map.outcome == 'success'" in export
+    assert "--coverage-file out/.coverage" in export
+    assert "--line-map" not in steps["Run Tests"]
+    assert "--line-map" in steps["Compare shadow selection with regular Linux pytest"]
+    assert "--line-map" in steps["Publish one Linux selection receipt from every shard"]
+    assert (
+        "overwrite: true"
+        in steps["Upload advisory Linux selection and outcome receipt"]
+    )
+    assert suite.index("Upload Linux selector miss receipts") < suite.index(
+        "Score advisory Linux line recall"
+    )
+
+
 def test_1045_move_import_collection_cannot_be_skipped_by_writer_certificates() -> None:
     source = (WORKFLOWS / "pr_ci.yml").read_text()
     for platform in ("linux_x64", "linux_arm64", "macos_arm64", "windows_x64"):
