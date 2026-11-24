@@ -141,7 +141,7 @@ Auto-merge is now safe for area-selected checks because `required` includes the 
 
 "Babysit" a PR (or "babysit landing" it) means: shepherd it until it merges, using the `ci-pr-autopilot` skill (`.agents/skills/ci-pr-autopilot`).
 
-**Exception for `priority` PRs:** Agents never mark them ready, enqueue them on their own, or push to them. They may rerun cancelled or lost-runner jobs. Only once the author has requested merge (enabled auto-merge or personally enqueued it) may an owner-account agent move a passing `priority` PR to the front of the merge queue.
+**Exception for `priority` PRs:** Agents never mark them ready, enqueue them, push to them, or fix their review feedback. They may rerun cancelled or lost-runner jobs. Only once the author has requested merge (enabled auto-merge or personally enqueued it) may an owner-account agent move a passing `priority` PR's queue entry to the front.
 
 - Fix review comments that are legitimate, then resolve their threads. Reply `(AI): Reason: ...` to the ones you decline, then resolve those too.
 - Fix real issues that CI finds, or fix CI itself when the failure is in CI rather than in the code.
