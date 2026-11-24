@@ -5,13 +5,14 @@ variants with the bundled igv.js. There is no separate IGV installation, upload,
 online reference lookup or CDN connection. Local viewing stays offline.
 Remote viewing requires the explicit connection and transfer consent below.
 
-## Open a file from My Genomes
+## Open a local file
 
 After choosing an indexed BAM/CRAM or bgzip VCF/gVCF on a tool page, choose
-**View reads** beside its path. You can also open **Genome viewer**, enter the
-full path under **File in My Genomes**, and choose **Open library file**.
-The file must be inside the **My Genomes** folder configured in Settings;
-changing a tool's input path does not grant access to another folder.
+**Viewer** in the BAM page's **Info Commands** section (or **View reads** beside
+the path). You can also open **Genome viewer**, enter the full path under
+**Local file path**, and choose **Open library file**.
+Files do not need to be inside the **My Genomes** folder; any indexed local
+BAM/CRAM/VCF (and matching index) on this computer can be opened directly.
 
 The viewer reads the header with the installed CLI's samtools or bcftools.
 It uses the CLI's local reference-library resolver and verifies the sequence
@@ -24,16 +25,23 @@ If the exact reference or indexes are missing, install them in
 No CRAM reference URL is followed and nothing is downloaded automatically.
 
 Enter an optional **1-based, inclusive** position such as
-`chr20:1000-2000`; leaving it empty opens the first chromosome. The loaded
-reference's filename appears beside the status. The existing browser-file
-workflow below is available for files outside the configured libraries.
+`chr20:1000-2000`; leaving it empty automatically zooms to a 100 bp well-mapped
+region on the first chromosome, avoiding telomeres, centromeres and low-mapped
+regions, and showing reference bases, read segments and any visible variants.
+When indexed build-matching annotation data is installed in the configured
+reference library (such as RefSeq gene spans, cytobands, microarray rsIDs
+`All_SNPs_<build>_ref.tab.gz`, dbSNP, ClinVar, PharmGKB, gnomAD, PhyloP or
+GERP), the viewer loads those tracks automatically over the same local grant.
+The loaded reference's filename appears beside the status. The existing
+browser-file workflow below is available for files outside the configured
+libraries.
 
 ### Add panels, regions or coverage
 
 In **Optional panels and coverage**, enter one full file path per line, then
-choose **Open library file**. Put these files in the configured **My Genomes**
-folder too. You can add up to 16 tracks alongside the BAM/CRAM/VCF that selects
-the reference. To remove a track, delete its path and reopen.
+choose **Open library file**. You can add up to 16 local tracks alongside the
+BAM/CRAM/VCF that selects the reference. To remove a track, delete its path and
+reopen.
 
 - Use plain `.bed` for panels/regions and `.bedgraph` for coverage or methylation
   values. Plain text tracks have a 32 MiB limit and load in full.
@@ -84,6 +92,25 @@ are accepted only when one name matches the reference. Absent or ambiguous
 contigs are reported and excluded from both drawing and search. Out-of-bounds
 coordinates disable the gene track with a mismatch notice. Manual file selection
 does not load installed gene maps; coordinate navigation remains available.
+
+## Installed dbSNP common rsIDs and offline rsID search
+
+Install NCBI dbSNP b151 common human rsIDs (~37M SNPs for hg38 and hg19) from
+**Reference Data** (**Download dbSNP Common rsIDs**) or via
+`wgsextract ref dbsnp` (optionally `--build hg38` or `--build hg19`). The
+installer saves `downloads/dbsnp_common_<build>.vcf.gz` (+ `.tbi`) and builds
+an offline SQLite lookup index `downloads/dbsnp_common_<build>.rsid.sqlite`.
+
+When present for the loaded reference build, the viewer automatically:
+
+- loads the tabix-indexed `dbSNP` variant track alongside reads and other
+  installed annotations;
+- enables offline rsID search in the navigation box (`rs429358` jumps to a
+  100 bp window centered on the variant, mapping NCBI/UCSC contig names
+  automatically via `POST /api/viewer/rsid` on loopback only).
+
+No external service is ever contacted during viewing or searching. Manual file
+selection and remote sessions do not use the local rsID lookup database.
 
 ## Installed cytobands
 
