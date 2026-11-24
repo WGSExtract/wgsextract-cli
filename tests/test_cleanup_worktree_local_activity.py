@@ -163,7 +163,13 @@ raise SystemExit(cleanup_worktrees.main())
         text=True,
         timeout=20,
     )
-    if run.returncode and "unshare failed: Operation not permitted" in run.stderr:
+    if run.returncode and any(
+        message in run.stderr
+        for message in (
+            "unshare failed: Operation not permitted",
+            "unshare: write failed /proc/self/uid_map: Operation not permitted",
+        )
+    ):
         pytest.skip("this runner does not permit unprivileged mount namespaces")
     assert run.returncode == 0, run.stderr
     assert result(repo, path)["reason"] == "contains-mount"
