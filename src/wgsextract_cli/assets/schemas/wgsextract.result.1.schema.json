@@ -57,6 +57,12 @@
         "$ref": "#/$defs/warning"
       }
     },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resource"
+      }
+    },
     "details": {
       "anyOf": [
         {
@@ -98,6 +104,7 @@
     "outputs",
     "metrics",
     "warnings",
+    "resources",
     "details",
     "manifest",
     "provenance",
@@ -525,6 +532,123 @@
         "code",
         "message",
         "details"
+      ],
+      "additionalProperties": false
+    },
+    "resource": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable resource identifier, e.g. \"clinvar\" or \"gene-list\".",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "role": {
+          "type": "string",
+          "description": "What the run used it for, e.g. annotation."
+        },
+        "build": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "hg19 or hg38, when the resource says."
+        },
+        "release": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The exact release name the run used, or null when the resource doesn't record one (unknown, never guessed)."
+        },
+        "release_basis": {
+          "enum": [
+            "file_header",
+            "pinned_sha256",
+            "unrecorded"
+          ],
+          "description": "Where the release came from: the file's own header, a SHA-256-pinned catalog entry, or unrecorded."
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Absolute path."
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/fingerprint"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "licence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The source's terms as audited; recording them grants no redistribution rights."
+        },
+        "licence_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "role",
+        "build",
+        "release",
+        "release_basis",
+        "path",
+        "fingerprint",
+        "source_url",
+        "licence",
+        "licence_url",
+        "attribution"
       ],
       "additionalProperties": false
     },

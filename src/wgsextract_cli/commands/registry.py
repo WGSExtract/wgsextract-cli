@@ -28,6 +28,7 @@ COMMAND_MODULES = tuple(
             "genotyping": "typing",
             "pet": "pet-align",
             "report_issue": "report-issue",
+            "report_delta": "report-delta",
         }.get(name, name),
     )
     for name in (
@@ -57,6 +58,8 @@ COMMAND_MODULES = tuple(
         "genotyping",
         "methylation",
         "report",
+        "lookup",
+        "report_delta",
         "report_issue",
         "panel",
         "serve",
@@ -184,6 +187,16 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier("sign", ADVANCED, "Checksum and sign output files; verify them."),
     CommandTier(
         "score", ADVANCED, "Research-only polygenic scores from local genotypes."
+    ),
+    CommandTier(
+        "lookup",
+        ADVANCED,
+        "Genotype and evidence at an rsID, locus or gene.",
+    ),
+    CommandTier(
+        "report-delta",
+        ADVANCED,
+        "What changed between two reports: findings, releases.",
     ),
     CommandTier("benchmark", ADVANCED, "Time the main workflows on test data."),
     CommandTier(

@@ -13,6 +13,7 @@ from wgsextract_cli.core.builds import (
     build_from_path,
     canonical_build,
 )
+from wgsextract_cli.core.constants import REFERENCE_MODELS
 from wgsextract_cli.core.paths import (
     PathInput,
     absolute_path,
@@ -189,9 +190,14 @@ def fasta_build(fasta: PathInput) -> str | None:
     )
 
 
-def fasta_index_build(fasta: PathInput) -> str | None:
-    """The build a FASTA's indexes show: its chr1 length (.fai, else .dict),
-    then the .dict's AS assembly tags; never its name or description."""
+def fasta_index_build(
+    fasta: PathInput, *, lengths: dict[str, int] | None = None
+) -> str | None:
+    """Identify a FASTA from indexed contig lengths, a catalog signature or
+    a .dict assembly tag; never from its name or description."""
+    lengths = lengths or read_fai_lengths(fasta)
+    if build := build_from_chr1_length(lengths):
+        return build
     dict_path = Path(reference_dict_path(fasta))
     try:
         dictionary = (
@@ -199,15 +205,22 @@ def fasta_index_build(fasta: PathInput) -> str | None:
         )
     except (OSError, UnicodeDecodeError):
         dictionary = []
-    lengths = read_fai_lengths(fasta) or {
+    lengths = lengths or {
         row["SN"]: int(row["LN"])
         for row in dictionary
         if "SN" in row and row.get("LN", "").isdigit()
     }
-    build = build_from_chr1_length(lengths)
-    for assembly in sorted({row["AS"] for row in dictionary if "AS" in row}):
-        build = build or canonical_build(assembly) or build_from_path(assembly)
-    return build
+    if build := build_from_chr1_length(lengths):
+        return build
+    if lengths and (model := REFERENCE_MODELS.get(sequence_signature(lengths))):
+        if build := canonical_build(model[0]):
+            return build
+    assemblies = {
+        canonical_build(row["AS"]) or build_from_path(row["AS"])
+        for row in dictionary
+        if "AS" in row
+    } - {None}
+    return next(iter(assemblies)) if len(assemblies) == 1 else None
 
 
 def _fasta_description(fasta: PathInput) -> str:

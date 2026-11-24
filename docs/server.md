@@ -10,7 +10,8 @@ fields, defaults, config.toml settings, result manifests and error kinds as
 the CLI. So an operation joins the server as soon as its command moves onto
 the API. Today they are `info`, `info calculate-coverage`,
 `info coverage-sample`, `info chip`, `vcf snp`, `vcf indel`, the three
-`lineage` commands, `microarray`, `report` and `sample show`/`set`/`unset`.
+`lineage` commands, `microarray`, `report`, [`lookup`](lookup.md) and
+`sample show`/`set`/`unset`.
 
 ```console
 $ wgsextract serve --allow ~/wgs
@@ -376,7 +377,7 @@ example:
 ```
 
 Tools are named after the operations, with `_` between words: `info`,
-`info_chip`, `sample_show`, and with `--allow-jobs` also `vcf_snp`,
+`info_chip`, `lookup`, `sample_show`, and with `--allow-jobs` also `vcf_snp`,
 `lineage_mt_haplogroup` and the others. Each tool's input schema is its
 Params' JSON Schema. These tools are always offered:
 

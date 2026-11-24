@@ -37,6 +37,7 @@ EXECUTION_INPUTS = (
     ".github/workflows/windows_ci.yml",
     ".github/workflows/linux_arm64.yml",
     ".github/actions/setup-pixi/",
+    "scripts/ci_hs38.sh",
     "scripts/ci_impact_results.py",
     "scripts/ci_run_tests.py",
     "scripts/ci_test_tiers.py",

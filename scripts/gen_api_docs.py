@@ -49,6 +49,7 @@ GROUPS = (
     api.score,
     api.genotyping,
     api.report,
+    api.lookup,
     api.sample,
     api.support,
     api.deps,
