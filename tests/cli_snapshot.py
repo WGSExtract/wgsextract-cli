@@ -720,14 +720,9 @@ def normalise_funcs(document: dict[str, Any]) -> dict[str, Any]:
 
 if __name__ == "__main__":
     sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
-    newline = "\n"
-    if GOLDEN.is_file():
-        with GOLDEN.open("rb") as existing:
-            if existing.readline().endswith(b"\r\n"):
-                newline = "\r\n"
     GOLDEN.write_text(
         json.dumps(snapshot(), indent=1, sort_keys=True) + "\n",
         encoding="utf-8",
-        newline=newline,
+        newline="\n",
     )
     print(f"Wrote {GOLDEN}")

@@ -138,8 +138,7 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
 ) -> None:
     conflict(regen_repo, GENERATED)
 
-    # #1363: regenerating these artifacts from a Windows-authored main
-    # must not turn every existing line into a PR change.
+    # #1471: regenerate to LF even if the existing files use CRLF.
     crlf_artifacts = [
         regen_repo / "docs/configuration.md",
         regen_repo / "tests/fixtures/api_cli_snapshot.json",
@@ -154,7 +153,7 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     assert result.returncode == 0, result.stderr
     for path in crlf_artifacts:
         output = path.read_bytes()
-        assert output.count(b"\r\n") == output.count(b"\n") > 1
+        assert b"\r" not in output and output.count(b"\n") > 1
     assert not git(regen_repo, "diff", "--name-only", "--diff-filter=U").stdout
     staged = git(regen_repo, "diff", "--cached", "--name-only").stdout.splitlines()
     assert set(staged) == {*GENERATED, "site_src/cli.md"}

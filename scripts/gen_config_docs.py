@@ -167,12 +167,7 @@ def main() -> None:
             print(f"{OUTPUT.relative_to(ROOT)} is stale; run 'just regen'.")
             raise SystemExit(1)
         return
-    newline = "\n"
-    if OUTPUT.is_file():
-        with OUTPUT.open("rb") as existing:
-            if existing.readline().endswith(b"\r\n"):
-                newline = "\r\n"
-    OUTPUT.write_text(text, encoding="utf-8", newline=newline)
+    OUTPUT.write_text(text, encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":
