@@ -8,6 +8,7 @@ import queue
 import secrets
 import socket
 import subprocess
+import sys
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -15,7 +16,8 @@ from urllib.parse import urlencode, urlsplit
 
 import pytest
 
-from tests.smoke_utils import get_cli_command, state_directory_setting
+from tests.home_isolation import state_directory_setting
+from tests.smoke_utils import get_cli_command
 from wgsextract_cli.core.config import (
     get_config_path,
     save_config,
@@ -39,6 +41,7 @@ def remote_server(
     tmp_path: Path,
     *,
     enabled: bool = True,
+    roots: list[Path] | None = None,
     listen: str = "0.0.0.0",
     max_connections: int = 32,
     header_timeout_seconds: float = 10,
@@ -48,7 +51,7 @@ def remote_server(
         0,
         secrets.token_urlsafe(32),
         manager,
-        PathGuard([tmp_path]),
+        PathGuard(roots or [tmp_path]),
         listen=listen,
         allowed_hosts=frozenset({HOST}),
         allowed_origins=frozenset({ORIGIN}),
@@ -205,7 +208,9 @@ def test_issue_1160_viewer_rejects_symlink_escape(tmp_path: Path) -> None:
     root = tmp_path / secrets.token_hex(12)
     root.mkdir()
     outside = tmp_path / "outside"
-    outside.write_bytes(b"private")
+    # #1360: a random secret, since "private" also appears in macOS temp paths.
+    secret = secrets.token_hex(16).encode()
+    outside.write_bytes(secret)
     link = root / "escape"
     try:
         link.symlink_to(outside)
@@ -216,7 +221,66 @@ def test_issue_1160_viewer_rejects_symlink_escape(tmp_path: Path) -> None:
             server, "/v1/viewer-file?" + urlencode({"path": str(link)})
         )
         assert status == (403 if safe_viewer_reads() else 503)
-        assert b"private" not in body
+        assert secret not in body
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows junctions")
+def test_issue_1318_windows_viewer_reads_nested_files_but_not_junctions(
+    tmp_path: Path,
+) -> None:
+    from _winapi import CreateJunction
+
+    root = tmp_path / "allowed"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    sample = nested / "sample.bam"
+    sample.write_bytes(b"0123456789")
+    (tmp_path / "sample.bam").write_bytes(b"private")
+    outside = root / "outside-junction"
+    inside = root / "inside-junction"
+    CreateJunction(str(tmp_path), str(outside))
+    CreateJunction(str(nested), str(inside))
+
+    with remote_server(root) as server:
+        target = "/v1/viewer-file?" + urlencode({"path": str(sample)})
+        status, headers, body = request(server, target, range_header="bytes=2-5")
+        assert (status, headers.get("Content-Range"), body) == (
+            206,
+            "bytes 2-5/10",
+            b"2345",
+        )
+        for junction in (outside, inside):
+            target = "/v1/viewer-file?" + urlencode(
+                {"path": str(junction / sample.name)}
+            )
+            status, _, body = request(server, target)
+            assert (status, json.loads(body)["error"]["code"]) == (
+                403,
+                "path_not_allowed",
+            )
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="native Windows folders")
+def test_issue_1318_windows_viewer_reads_the_root_named_in_case_sensitive_folders(
+    tmp_path: Path,
+) -> None:
+    parent = tmp_path / "case"
+    parent.mkdir()
+    enabled = subprocess.run(
+        ["fsutil", "file", "setCaseSensitiveInfo", str(parent), "enable"],
+        capture_output=True,
+    )
+    if enabled.returncode:
+        pytest.skip("case-sensitive folders are unavailable")
+    upper, lower = parent / "Data", parent / "data"
+    for root, content in ((upper, b"upper"), (lower, b"lower")):
+        root.mkdir()
+        (root / "sample.bam").write_bytes(content)
+
+    with remote_server(tmp_path, roots=[upper, lower]) as server:
+        for root, content in ((upper, b"upper"), (lower, b"lower")):
+            target = "/v1/viewer-file?" + urlencode({"path": str(root / "sample.bam")})
+            assert request(server, target)[::2] == (200, content)
 
 
 @requires_safe_reads
@@ -237,6 +301,25 @@ def test_issue_1160_explicit_large_range_streams_and_fallback_is_bounded(
         assert len(body) == size
         assert body.count(0) == size
         assert headers["Content-Length"] == str(size)
+
+
+@requires_safe_reads
+def test_issue_1227_unranged_head_reports_size_over_fallback_limit(
+    tmp_path: Path,
+) -> None:
+    file = tmp_path / secrets.token_hex(12)
+    size = 33 * 1024 * 1024
+    with file.open("wb") as output:
+        output.truncate(size)
+    with remote_server(tmp_path) as server:
+        target = "/v1/viewer-file?" + urlencode({"path": str(file)})
+        status, headers, body = request(server, target, method="HEAD")
+        assert (status, body) == (200, b"")
+        assert headers["Content-Length"] == str(size)
+        assert headers["Accept-Ranges"] == "bytes"
+        assert "Content-Range" not in headers
+        assert request(server, target)[0] == 416
+        assert request(server, target, method="HEAD", token=False)[0] == 401
 
 
 def test_issue_1160_server_table_config_round_trip(tmp_path: Path) -> None:
@@ -321,7 +404,7 @@ def test_issue_1160_cli_listen_override_binds_chosen_interface_and_warns(
         + '[server]\nlisten="127.0.0.1"\nallowed_hosts=["genomes.example"]\n'
         + ('public_url="https://genomes.example"\n' if listen == "0.0.0.0" else "")
     )
-    with (tmp_path / "server.log").open("w+") as log:
+    with (tmp_path / "server.log").open("w+", encoding="utf-8") as log:
         process = subprocess.Popen(
             [
                 *get_cli_command(),

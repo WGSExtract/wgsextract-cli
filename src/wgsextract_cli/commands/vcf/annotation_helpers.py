@@ -1,3 +1,4 @@
+import gzip
 import hashlib
 import logging
 import subprocess
@@ -31,17 +32,18 @@ from wgsextract_cli.core.utils import (
     run_command,
 )
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG, Thresholds
+from wgsextract_cli.core.variant_depths import ad_total_header, with_ad_totals
 from wgsextract_cli.core.variant_files import (
     calculate_bam_md5,
     ensure_vcf_indexed,
+    is_vcf_path,
     normalize_vcf_chromosomes,
     vcf_chromosomes,
     vcf_index_chromosomes,
 )
+from wgsextract_cli.core.variant_table import parse_header
 
 from .basic import record_variants, require_vcf_input
-
-VCF_SUFFIXES = (".vcf", ".vcf.gz", ".vcf.bgz")
 
 
 def annotation_context(
@@ -122,7 +124,7 @@ def prepare_tabix_annotation(
     begin_col: str = "2",
     end_col: str = "2",
 ) -> str:
-    if annotation_path.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(annotation_path, bcf=False):
         from wgsextract_cli.core.variant_files import ensure_vcf_prepared
 
         return str(ensure_vcf_prepared(annotation_path))
@@ -173,7 +175,7 @@ def prepare_tabix_annotation(
 
 def annotation_chromosomes(annotation_path: str) -> list[str]:
     """Contigs in an indexed annotation resource (VCF or tabix-indexed TSV)."""
-    if annotation_path.lower().endswith(VCF_SUFFIXES):
+    if is_vcf_path(annotation_path, bcf=False):
         return vcf_index_chromosomes(annotation_path)
     try:
         res = run_command(["tabix", "-l", annotation_path], capture_output=True)
@@ -232,6 +234,30 @@ def _run_annotate(cmd: list[str], vcf: str, out: str, work: str, threads: int) -
         Path(path).unlink()
 
 
+def _with_original_ad(vcf: str, work: str) -> str:
+    """Save complete multi-ALT AD totals before the no-reference split."""
+    opener = gzip.open if vcf.lower().endswith((".gz", ".bgz")) else open
+    with opener(vcf, "rt", encoding="utf-8") as source:
+        header = []
+        for line in source:
+            header.append(line)
+            if line.startswith("#CHROM\t"):
+                break
+        else:
+            return vcf  # bcftools reports the invalid header
+        parsed = parse_header(header)
+        if not parsed.samples or "AD" not in parsed.format_number:
+            return vcf
+        path = str(Path(work, "with-ad-totals.vcf.gz"))
+        with gzip.open(
+            path, "wt", compresslevel=1, encoding="utf-8", newline="\n"
+        ) as output:
+            output.writelines(
+                with_ad_totals(header, source, ad_total_header(parsed.format_number))
+            )
+    return path
+
+
 def annotate_vcf(
     input_vcf: str,
     annotation: str,
@@ -246,9 +272,13 @@ def annotate_vcf(
     compose_mnvs: bool = False,
     compose_thresholds: Thresholds | None = None,
     annotation_source: str | None = None,
-) -> None:
-    """Run bcftools annotate after matching the input's contig naming to the
-    resource, first removing the input's ``remove`` annotations."""
+    keep_existing: bool = False,
+) -> str:
+    """Refresh imported INFO fields, except when merging passes of one annotator.
+
+    Return the matched resource path; a query-specific table subset lives only
+    in the temporary work directory, but a cached ClinVar VCF can be reused.
+    """
     if Path(ann_out).resolve() == Path(input_vcf).resolve():
         raise WGSExtractError(
             f"The {label} output {ann_out} would overwrite its input {input_vcf}; "
@@ -264,8 +294,6 @@ def annotate_vcf(
         # every resource line under their END spans makes whole genomes ~25x
         # slower; pass those records through untouched.
         cmd += ["-e", 'TYPE="ref"', "-k"]
-        if remove:
-            cmd += ["-x", ",".join(remove)]
         if header_lines:
             header_path = str(Path(work, "annotation.hdr"))
             with open(header_path, "w", newline="\n") as f:
@@ -273,6 +301,9 @@ def annotate_vcf(
             cmd += ["-h", header_path]
         annotated = str(Path(work, "annotated.vcf.gz"))
         try:
+            input_vcf = _clear_annotations(
+                input_vcf, work, remove, columns, keep_existing
+            )
             # Biallelic records, so each ALT matches its own resource record/row
             # (bcftools transfers only one per multiallelic record). The tag
             # marks split records, whose PL/DP4 confidence labels can't judge.
@@ -294,6 +325,8 @@ def annotate_vcf(
                 )
                 cmd[cmd.index("-a") + 1] = annotation
                 cmd[cmd.index("-c") + 1] = columns
+            else:
+                input_vcf = _with_original_ad(input_vcf, work)
             run_command(
                 ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
                  "-Oz", "-o", split, input_vcf],
@@ -319,6 +352,37 @@ def annotate_vcf(
             detail = f"{e}\n{stderr.strip()}" if stderr else str(e)
             raise WGSExtractError(f"{label} annotation failed: {detail}") from e
     warn_if_nothing_annotated(ann_out, columns, label)
+    return annotation
+
+
+def _clear_annotations(
+    vcf: str, work: str, remove: Sequence[str], columns: str, keep_existing: bool
+) -> str:
+    tags = dict.fromkeys(remove)
+    if not keep_existing:
+        tags.update(
+            dict.fromkeys(
+                col.split(":=", 1)[0]
+                for col in columns.split(",")
+                if col.startswith("INFO/")
+            )
+        )
+    if not tags:
+        return vcf
+    header = run_command(["bcftools", "view", "-h", vcf], capture_output=True).stdout
+    present = [
+        tag for tag in tags if f"##INFO=<ID={tag.removeprefix('INFO/')}," in header
+    ]
+    if not present:
+        return vcf
+    # Combined transfer and removal skips reference blocks along with transfer.
+    # Clear before matching so stale scores cannot survive on those blocks.
+    cleared = str(Path(work, "refreshed.vcf.gz"))
+    run_command(
+        ["bcftools", "annotate", "-x", ",".join(present), "-Oz", "-o", cleared, vcf],
+        capture_output=True,
+    )
+    return cleared
 
 
 def record_annotated(ann_out: str) -> None:

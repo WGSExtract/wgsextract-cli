@@ -3,8 +3,21 @@ import { gunzipSync } from "node:zlib";
 
 const limit = 32 * 1024 * 1024;
 
+export type TabixPreset = "bed" | "vcf" | "rsid-tab";
+
+function matchesTabixPreset(aux: Buffer, preset: TabixPreset): boolean {
+    if (aux.length < 28) return false;
+    const format = aux.readInt32LE(0);
+    const colSeq = aux.readInt32LE(4);
+    const colBeg = aux.readInt32LE(8);
+    const colEnd = aux.readInt32LE(12);
+    if (preset === "vcf") return format === 2 && colSeq === 1 && colBeg === 2 && colEnd === 0;
+    if (preset === "rsid-tab") return (format === 0 || format === 65536) && colSeq === 1 && colBeg === 2 && colEnd === 2;
+    return format === 65536 && colSeq === 1 && colBeg === 2 && colEnd === 3;
+}
+
 /** Walk the complete, bounded index, not the potentially genome-sized BGZF data. */
-export async function tabixContigs(file: string, dataSize: number): Promise<string[]> {
+export async function tabixContigs(file: string, dataSize: number, preset: TabixPreset = "bed"): Promise<string[]> {
     const handle = await open(file, "r");
     try {
         const size = (await handle.stat()).size;
@@ -44,8 +57,8 @@ export async function tabixContigs(file: string, dataSize: number): Promise<stri
             const header = take(28);
             aux = Buffer.concat([header, take(header.readInt32LE(24))]);
         }
-        if (aux.length < 28 || aux.readInt32LE(0) !== 65536 || aux.readInt32LE(4) !== 1 || aux.readInt32LE(8) !== 2 || aux.readInt32LE(12) !== 3) {
-            throw new Error("Use tabix BED preset.");
+        if (!matchesTabixPreset(aux, preset)) {
+            throw new Error(`Unexpected tabix preset: expected ${preset}.`);
         }
         const namesLength = aux.readInt32LE(24);
         if (namesLength < 1 || 28 + namesLength !== aux.length || aux[aux.length - 1] !== 0) throw new Error("Invalid tabix names.");

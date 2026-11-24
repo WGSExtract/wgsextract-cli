@@ -5,6 +5,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { HttpError, isErrnoCode } from "./errors.js";
+import type { ViewerRsidIndex } from "./viewer-rsids.js";
 
 const maximumReadBytes = 32 * 1024 * 1024;
 const idleLifetimeMs = 60 * 60 * 1000;
@@ -35,6 +36,25 @@ class MissingViewerPath extends HttpError {}
 
 export function isMissingViewerPath(error: unknown): boolean {
     return error instanceof MissingViewerPath || isErrnoCode(error, "ENOENT", "ENOTDIR");
+}
+
+/** Any explicit local file chosen by the user: absolute, regular file, no traversal. */
+export async function localViewerPath(file: string): Promise<string> {
+    if (!path.isAbsolute(file) || file.includes("\0") || file.split(/[\\/]/).includes("..")) {
+        throw new HttpError(403, outsideLibraries);
+    }
+    const canonical = await realpath(path.resolve(file)).catch(rethrowUnlessMissing);
+    if (canonical === undefined) {
+        throw new MissingViewerPath(404, "Viewer file not found.");
+    }
+    const info = await stat(canonical).catch(rethrowUnlessMissing);
+    if (!info) {
+        throw new MissingViewerPath(404, "Viewer file not found.");
+    }
+    if (!info.isFile()) {
+        throw new HttpError(403, "Viewer paths must be regular files.");
+    }
+    return canonical;
 }
 
 /** Both the spelling and canonical target must be inside the same configured library. */
@@ -79,7 +99,8 @@ interface Grant {
     token: string;
     rootKey: string;
     touched: number;
-    files: Map<string, { path: string; device: number; inode: number; size: number; modified: number }>;
+    files: Map<string, { path: string; device: number; inode: number; size: number; modified: number; guarded: boolean }>;
+    rsidIndex?: ViewerRsidIndex;
 }
 
 export interface ViewerByteRead {
@@ -94,24 +115,38 @@ export class ViewerFiles {
 
     constructor(private readonly onRead?: (read: ViewerByteRead) => void) {}
 
-    async grant(files: string[], roots: string[], rootKey: string) {
+    async grant(files: string[], roots: string[], rootKey: string, unguardedFiles: string[] = [], rsidIndex?: ViewerRsidIndex) {
         this.expire();
         const id = randomBytes(24).toString("base64url");
         const token = randomBytes(32).toString("base64url");
         const entries: Grant["files"] = new Map();
         const urls = new Map<string, string>();
-        for (const file of new Set(files)) {
-            const canonical = await guardedViewerPath(file, roots);
+        const grantList: Array<{ file: string; guarded: boolean }> = [
+            ...[...new Set(files)].map((file) => ({ file, guarded: true })),
+            ...[...new Set(unguardedFiles)].filter((file) => !files.includes(file)).map((file) => ({ file, guarded: false })),
+        ];
+        for (const { file, guarded } of grantList) {
+            const canonical = guarded ? await guardedViewerPath(file, roots) : await localViewerPath(file);
             const info = await stat(canonical);
             const fileID = randomBytes(24).toString("base64url");
-            entries.set(fileID, { path: file, device: info.dev, inode: info.ino, size: info.size, modified: info.mtimeMs });
+            entries.set(fileID, { path: file, device: info.dev, inode: info.ino, size: info.size, modified: info.mtimeMs, guarded });
             urls.set(file, `/viewer-data/${id}/${fileID}`);
         }
         for (const stale of [...this.sessions.keys()].slice(0, Math.max(0, this.sessions.size - maximumSessions + 1))) {
             this.sessions.delete(stale);
         }
-        this.sessions.set(id, { token, rootKey, touched: Date.now(), files: entries });
+        this.sessions.set(id, { token, rootKey, touched: Date.now(), files: entries, ...(rsidIndex ? { rsidIndex } : {}) });
         return { id, headers: { [viewerTokenHeader]: token }, urls };
+    }
+
+    rsidIndexFor(id: string, rootKey: string): ViewerRsidIndex | undefined {
+        this.expire();
+        const grant = this.sessions.get(id);
+        if (!grant || grant.rootKey !== rootKey) {
+            return undefined;
+        }
+        grant.touched = Date.now();
+        return grant.rsidIndex;
     }
 
     revoke(id: string) {
@@ -132,7 +167,7 @@ export class ViewerFiles {
             throw new HttpError(405, "Viewer files are read-only.");
         }
         // Recheck after configuration changes and pin the opened inode before streaming.
-        const canonical = await guardedViewerPath(file.path, roots);
+        const canonical = file.guarded ? await guardedViewerPath(file.path, roots) : await localViewerPath(file.path);
         const handle = await open(canonical, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
         try {
             const info = await handle.stat();
@@ -143,7 +178,7 @@ export class ViewerFiles {
             response.setHeader("accept-ranges", "bytes");
             response.setHeader("cache-control", "no-store");
             response.setHeader("content-type", "application/octet-stream");
-            const range = byteRange(request.headers.range, info.size);
+            const range = byteRange(request.headers.range, info.size, request.method === "HEAD");
             if (!range) {
                 response.setHeader("content-range", `bytes */${info.size}`);
                 response.writeHead(416);
@@ -189,9 +224,10 @@ function sameToken(actual: string, expected: string) {
     return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export function byteRange(header: string | undefined, size: number) {
+/** The whole-file fallback limit bounds response bodies, so a bodyless HEAD can report any size. */
+export function byteRange(header: string | undefined, size: number, bodyless = false) {
     if (!header) {
-        return size <= maximumReadBytes ? { start: 0, end: size - 1, partial: false } : undefined;
+        return bodyless || size <= maximumReadBytes ? { start: 0, end: size - 1, partial: false } : undefined;
     }
     const match = /^bytes=(\d*)-(\d*)$/.exec(header);
     if (!match || (!match[1] && !match[2]) || size === 0) {

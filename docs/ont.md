@@ -608,6 +608,109 @@ Platform detection, tagged CPU alignment/realignment, x86-64 DeepVariant
 ONT_R104 calling, optional Clair3 calling (Linux and Apple Silicon), Sniffles SV calling,
 optional modkit CpG methylation and optional read-backed phasing are supported.
 
+### Promoter and CpG island summaries
+
+Use `methylation regions` on a coordinate-sorted, strand-combined CpG
+bedMethyl from `methylation pileup`, or on a precomputed modkit-style
+bedMethyl with valid-call and modified-call counts. It also reads the typed
+`.bedmethyl.parquet` from pileup. You don't need modkit to summarize these
+files; the command works natively on Windows with `samtools`. Supply the
+indexed plain or BGZF FASTA used for the pileup and declare its assembly
+(`hg38` or `t2t`, the CHM13v2.0/hs1 build).
+
+```bash
+wgsextract methylation regions -i sample.cpg.bedmethyl.gz --ref hg38.fa \
+  --build hg38 --preset promoters --outdir reports
+wgsextract methylation regions -i sample.cpg.bedmethyl.gz --ref hg38.fa \
+  --build hg38 --preset cpg-islands --outdir reports --download
+```
+
+- `promoters` uses primary-chromosome
+  [NCBI RefSeq RS_2025_08](https://www.ncbi.nlm.nih.gov/refseq/MANE/) annotations
+  for GRCh38.p14 and CHM13v2.0. It takes one transcript per gene locus: MANE
+  Select, then RefSeq Select, then the longest exonic transcript; ties within
+  a priority are resolved by accession (GFF feature ID for unaccessioned
+  transcripts, after accessioned ties). The window is 2,000 bases upstream and
+  500 transcribed-side bases from the 5′ boundary, clipped to each chromosome.
+  The half-open windows are `[t−2000,t+500)` on `+` and `[t−500,t+2000)` on
+  `−`; override the sizes with `--upstream` and `--downstream`.
+- `cpg-islands` uses the **masked** UCSC `cpgIslandExt` track on assembled
+  chromosomes ([hg38 SQL table](https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/cpgIslandExt.txt.gz),
+  [hs1 BigBed](https://hgdownload.soe.ucsc.edu/gbdb/hs1/bbi/cpgIslandExt.bb);
+  [UCSC data terms](https://genome.ucsc.edu/license/)). Both tracks are pinned
+  by SHA-256. The hs1 intervals and promoter starts are bundled. For hg38
+  islands, the first run needs explicit `--download`; subsequent runs verify and
+  reuse the cached table in the reference library's `methylation/` directory.
+  The request sends only the public table name to UCSC, never sample data.
+- BED positions are zero-based and half-open. A CpG belongs to a region when
+  its reference C is inside, even when its G is outside. Overlapping regions
+  each receive the CpG. Primary aliases (`21`, `chr21`, assembly accessions)
+  are matched only via the build's assembly report and matching FASTA lengths.
+  Plain bedMethyl has no reliable assembly header: you are responsible for
+  giving the same build and FASTA. The command checks the available assembly
+  metadata and the CpG context of calls that hit the selected regions.
+- A CpG qualifies with at least five valid calls (`--min-valid-calls`), and
+  a region needs at least three qualifying CpGs (`--min-cpgs`). The table gives
+  expected, observed and qualifying CpGs, the fraction that qualify, median
+  qualifying depth, valid and modified call counts, and three percentages
+  from qualifying sites: `pooled_percent` weights by call
+  count; `mean_percent` and `median_percent` give each CpG equal weight.
+  `no_transcript`, `contig_absent`, `no_reference_cpgs`, `no_valid_calls` and
+  `insufficient_coverage` leave percentages empty (null in Parquet), not zero.
+  `--5hmc` is an explicit declaration that the source model called 5hmC and
+  reports separate `m` and `h` rows. A missing code is marked
+  `modification_not_tabulated` when the file contains the other requested code.
+  Do not add valid depths across codes or use `--combine-mods` pileups.
+
+The output is `<input stem>.<build>.<preset>.methylation.tsv`, or `.parquet`
+with `--format parquet`. The result manifest records the reference,
+annotation version and checksums, and the promoter and coverage rules.
+Without `--partition-hp`, these are pooled, descriptive summaries.
+
+### Split region summaries by haplotype
+
+On Linux or macOS with modkit 0.6.4, add `--partition-hp` and pass the
+coordinate-sorted, indexed BAM or CRAM from `vcf phase --haplotag`. The
+alignment must retain its MM/ML tags and have HP tags on reads in the
+selected regions. Use the original indexed alignment FASTA. The command
+does not phase the reads again, and it does not fetch sample data.
+
+```bash
+wgsextract methylation regions -i phased/haplotagged.bam --ref hg38.fa \
+  --build hg38 --preset promoters --partition-hp \
+  --phase-blocks phased/phased.blocks.tsv --threads 4 --outdir reports
+```
+
+In this mode, the command writes `<input stem>.<build>.<preset>.methylation.hp.tsv`
+or `.methylation.hp.parquet`, without keeping intermediate bedMethyl files.
+The [row schema](../src/wgsextract_cli/assets/schemas/wgsextract.methylation-regions-hp.1.schema.json)
+describes the output. Each region and modification has `combined`, `hp1`,
+`hp2`, and `unphased` rows, with coverage thresholds applied independently.
+`unphased` counts are the site-level `combined` counts minus HP1 and HP2;
+they include calls without a usable HP tag. Use `observed_valid_calls` to
+see counts even below the reporting threshold. An absent or low-coverage
+partition has no percentage, not 0%.
+
+- The `combined` row reports `shared_qualified_cpgs` and, when there are
+  enough shared CpGs, `hp1_minus_hp2_pp`. This signed difference subtracts
+  HP2 from HP1 in percentage points, weighting each group by its own valid
+  depth on **the same CpGs**. It is not necessarily the difference between
+  the two partition rows' `pooled_percent` values.
+- A `single_ps` result requires one consistent PS among overlapping
+  haplotagged MM/ML reads. It does not assert phase-block bounds. Provide
+  `--phase-blocks` from the **same phasing run** to additionally require
+  the entire region to fit within one matching block (`single_block`).
+  `cross_block`, `missing_ps`, `phase_set_mismatch`, `outside_block`,
+  `no_phased_reads`, `no_transcript`, and `contig_absent` leave the difference
+  blank. The phase check conservatively includes reads overlapping the one-base right pad
+  used to capture reverse-strand CpG calls.
+- HP labels are local to the phase set. They do not identify maternal or
+  paternal copies, and the result does not call imprinting.
+
+The manifest records the modkit partition method, coverage cutoffs, and
+whether a phase block table was used. The pinned UCSC annotation download
+rules are the same as for the precomputed workflow.
+
 ## Phasing
 
 `vcf phase` phases a sample's heterozygous calls with its own reads and writes
@@ -667,12 +770,22 @@ pixi install -e longtr           # or -e strkit; checked, not installed
 wgsextract typing str --input sample.cram --ref hs38.fa.gz
 ```
 
-- The output contract is the same for every caller: `<stem>.str.tsv` with one
-  row per repeat, a `repeat_outside_normal_range` warning per flagged repeat
+- The output contract is the same for every caller: `<stem>.str.tsv` (or
+  `<stem>.str.parquet` with `--format parquet` and PyArrow) with one row per
+  repeat. There is a `repeat_outside_normal_range` warning per flagged repeat
   and the `repeat_caller` metric. GRCh37 has no NOTCH2NLC, so on hg19 its
   row reads "not available on hg19" with a `repeat_unavailable` warning. LongTR writes `<stem>.str.vcf.gz`; STRkit
   `<stem>.str.vcf` and `<stem>.str.strkit.json`. LongTR gives no confidence
-  interval, so its `ci` column is `-`.
+  interval, so its `ci` column is `-`. Typed allele counts, intervals and
+  support are in both formats and in `details.repeat_calls` in the result
+  JSON; see the [manifest contract](result-manifest.md#repeat-calls).
+- `--loci HTT,FMR1,AR` sizes only those case-sensitive catalog IDs. Selection
+  preserves catalog order, including all variants of a compound ExpansionHunter
+  locus. LongTR takes the ID from column 5 and STRkit from the `ID=` attribute
+  in column 4. Any unknown ID is an error. Targeted runs add a hash of the
+  selected IDs to the `.str` prefix, so they don't replace full-catalog
+  results. Custom loci without disease thresholds are still reported, with no
+  assigned disease range.
 - The bundled catalog (`commands/genotyping/str_catalog/`, rebuilt by
   `scripts/build_str_catalog.py`) uses ExpansionHunter's reference regions,
   so counts are in the units of the STRchive thresholds, with STRchive's
@@ -693,10 +806,10 @@ wgsextract typing str --input sample.cram --ref hs38.fa.gz
   copy for males or two for females (the explicit or inferred `--sex`).
   A missing allele is not evidence of homozygosity: incomplete recessive
   calls are `unresolved`, even when the observed allele is expanded.
-  Raw sizes remain in the TSV and caller files. These unresolved calls emit
+  Raw sizes remain in the table and caller files. These unresolved calls emit
   `repeat_unconfirmed`, count in `unconfirmed_repeats` rather than the normal
-  range or `flagged_repeats`, and appear in the personal report's overview
-  warnings.
+  range or `flagged_repeats`, and appear in the personal report's Repeat
+  Expansions section.
   If clipped reads independently suggest an unsized expansion, the unresolved
   call also retains `repeat_outside_normal_range`, its `flagged_repeats` count,
   and the clinical-confirmation warning.

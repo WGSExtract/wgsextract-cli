@@ -33,11 +33,15 @@ from wgsextract_cli.core.microarray.templates import (
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_files import (
+    is_vcf_path,
     match_chromosome_name,
     vcf_index_chromosomes,
 )
+from wgsextract_cli.core.variant_sample import indexed_vcf_copy
 
 if TYPE_CHECKING:
+    from pyliftover import LiftOver
+
     from wgsextract_cli.api.microarray import MicroarrayParams
 
 IndelCalls = dict[str, dict[tuple[str, str, str], str]]
@@ -47,24 +51,7 @@ def prepare_indel_vcf(source: str, outdir: str) -> str:
     """Keep preparation local, including when a source is on read-only storage."""
     if vcf_index_chromosomes(source):
         return source
-    workdir = tempfile.mkdtemp(prefix="IndelInput_", dir=outdir)
-    prepared = str(Path(workdir, "input.vcf.gz"))
-    run_command(
-        [
-            "bcftools",
-            "sort",
-            "-m",
-            "128M",
-            "-T",
-            str(Path(workdir, "sort")),
-            "-Oz",
-            "-o",
-            prepared,
-            source,
-        ]
-    )
-    run_command(["bcftools", "index", "-t", prepared])
-    return prepared
+    return indexed_vcf_copy(source, tempfile.mkdtemp(prefix="IndelInput_", dir=outdir))
 
 
 def indel_manifest_bindings(params: MicroarrayParams) -> dict[str, str]:
@@ -136,9 +123,8 @@ def _calling_regions(
 def _reference_windows(
     probes: dict[str, IndelProbe],
     ref_fasta: str,
-    build: str,
-    root: str | None,
     workdir: str,
+    lifter: LiftOver | None,
 ) -> dict[str, IndelSite]:
     if not Path(ref_fasta + ".fai").exists():
         run_command(["samtools", "faidx", ref_fasta])
@@ -147,11 +133,6 @@ def _reference_windows(
         for line in stream:
             parts = line.split("\t")
             contigs[parts[0]] = int(parts[1])
-    lifter = (
-        aadr_lifter(build, workdir, root)
-        if any(probe.chrom != "MT" for probe in probes.values())
-        else None
-    )
     regions: dict[str, list[str]] = defaultdict(list)
     for key, probe in probes.items():
         chrom, position = probe.chrom, probe.position
@@ -300,6 +281,7 @@ def call_manifest_indels(
     outdir: str,
     ploidy_args: list[str],
     threads: str,
+    lifter: LiftOver | None = None,
 ) -> IndelCalls:
     if not lib.fasta:
         raise WGSExtractError("Indel probes require a reference FASTA.")
@@ -341,7 +323,9 @@ def call_manifest_indels(
                     metadata[key] = format_name, marker, chrom, position
                     output[format_name][marker, chrom, position] = "--"
     counts["matched_probe_definitions"] = len(probes)
-    sites = _reference_windows(probes, lib.fasta, lib.build or "", lib.root, workdir)
+    if lifter is None and any(probe.chrom != "MT" for probe in probes.values()):
+        lifter = aadr_lifter(lib.build, workdir, lib.root)
+    sites = _reference_windows(probes, lib.fasta, workdir, lifter)
     if sites:
         sites = _normalize_sites(sites, lib.fasta, workdir)
     if not sites:
@@ -400,7 +384,7 @@ def call_manifest_indels(
     target_gz = str(targets) + ".gz"
     run_command(["tabix", "-s", "1", "-b", "2", "-e", "2", target_gz])
     vcf = str(Path(workdir, "indels.vcf.gz"))
-    is_vcf = str(params.input).endswith((".vcf", ".vcf.gz", ".bcf"))
+    is_vcf = is_vcf_path(params.input)
     if is_vcf:
         source = prepare_indel_vcf(str(params.input), workdir)
         chroms = vcf_index_chromosomes(source)

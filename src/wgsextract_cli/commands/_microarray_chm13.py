@@ -48,7 +48,10 @@ from wgsextract_cli.core.microarray.chm13_markers import (
     manifest_exclusions,
     vendor_no_calls,
 )
-from wgsextract_cli.core.microarray.formats import resolve_format_key
+from wgsextract_cli.core.microarray.formats import (
+    COMBINED_V3_FORMAT,
+    resolve_format_key,
+)
 from wgsextract_cli.core.microarray.identity import identity_policy
 from wgsextract_cli.core.microarray.quality import quality_policy
 from wgsextract_cli.core.microarray.quirks import quirks_mode
@@ -69,7 +72,7 @@ from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import sex_samples_args
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
-from wgsextract_cli.core.variant_files import chromosome_aliases
+from wgsextract_cli.core.variant_files import chromosome_aliases, is_vcf_path
 
 from ._microarray_combined import _command_lines, _reference_alleles
 from ._microarray_vcf import _expand_gvcf_targets, _prepare_microarray_vcf
@@ -274,7 +277,7 @@ def run_chm13(
     regions = _regions(params.region)
     if any(chrom not in names for chrom, _start, _end in regions):
         raise WGSExtractError("CHM13 region names an unsupported chromosome.")
-    is_vcf = str(params.input).endswith((".vcf", ".vcf.gz", ".vcf.bgz", ".bcf"))
+    is_vcf = is_vcf_path(params.input)
     input_chroms = None
     if not is_vcf:
         input_chroms = validate_chm13_alignment_header(
@@ -506,10 +509,29 @@ def run_chm13(
             continue
         info = get_template_format(real_format)
         suffix = info["suffix"] if info else ".txt"
+        kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
+        if real_format == COMBINED_V3_FORMAT:
+            from wgsextract_cli.core.microarray.combined_v3 import (
+                convert_to_combined_v3,
+            )
+
+            hg18_path = microarray_chm13_cache.installed_chains(roots).get("NCBI36")
+            hg18_chain = (
+                str(hg18_path) if hg18_path else lifted_chain(lib.root, "NCBI36", roots)
+            )
+            tallies[real_format] = convert_to_combined_v3(
+                str(combined),
+                kit,
+                roots,
+                hg18_chain,
+                identity=identity,
+                rejected_ids=rejected_ids,
+            )
+            record_kit(kit, real_format, tallies[real_format])
+            continue
         build = info.get("build") if info else None
         # Found in the library or fetched (with consent); else matched by ID.
         lift_chain = lifted_chain(lib.root, build, roots) if build else None
-        kit = str(Path(outdir, f"{base}_{real_format}{suffix}"))
         tallies[real_format] = convert_to_vendor_format(
             real_format,
             str(combined),

@@ -231,13 +231,28 @@ class Settings:
     dorado_executable: str | None = setting(
         None, "Path to ONT's dorado executable for `basecall`", path=True
     )
+    discvrseq_jar: str | None = setting(
+        None, "Path to DISCVRseq.jar for `vcf variantqc`", path=True
+    )
+    java17_executable: str | None = setting(
+        None,
+        "Path to a Java 17 binary for tools requiring Java 17 (such as `vcf variantqc`)",
+        path=True,
+    )
+    granite_executable: str | None = setting(
+        None, "Path to the granite executable for `vcf granite-qc`", path=True
+    )
     native_aligners: str | None = setting(
         None,
         "Apple Silicon: `align`/`realign` use wgse-bwa, wgse-bwa-mem2, "
         "wgse-bwa-mem3 and wgse-minimap2 when on PATH (auto, the default) or "
-        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2",
+        "never (off); Linux: Bioconda's bwa-mem3 in place of bwa/bwa-mem2; "
+        "Windows x86-64: use wgse-bwa and wgse-minimap2 when installed",
         choices=AUTO_OFF,
         fold_case=True,
+    )
+    wgse_bwa_path: str | None = setting(
+        None, "Path to an optional native Windows x86-64 wgse-bwa executable", path=True
     )
     output_profile: str = setting(
         "default",
@@ -245,9 +260,11 @@ class Settings:
         "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0",
         choices=("default", "archive", "calling"),
     )
-    prefer_native_gpu: bool = setting(
-        False,
-        "`align`/`realign`: prefer wgse-bwa's native GPU even above the RAM "
+    prefer_native_gpu: bool | None = setting(
+        None,
+        "`align`/`realign`: on Windows, native CUDA is automatic when it fits; "
+        "set false to force CPU. Elsewhere, set true to prefer "
+        "wgse-bwa's native GPU even above the RAM "
         "budget after normal sort step-down; retain explicit memory, otherwise "
         "cap default/config sort at 256M (may swap heavily)",
     )
@@ -640,6 +657,7 @@ def _found(value: object) -> str:
 
 _KINDS: tuple[tuple[object, Kind], ...] = (
     (bool, "bool"),
+    (bool | None, "bool"),
     (int, "int"),
     (float, "float"),
     (str, "str"),

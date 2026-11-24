@@ -180,8 +180,8 @@ When you add or rename a command:
 
 - Give a new top-level command a tier (core, setup or advanced) and a short
   summary in `COMMAND_TIERS` in `src/wgsextract_cli/commands/registry.py`.
-- Give every runnable command an example and an outputs line in
-  `src/wgsextract_cli/commands/_help_catalog.py`.
+- Give every runnable command an example and an outputs line in its command
+  group's module under `src/wgsextract_cli/commands/_help_catalog/`.
 - Register its parser in `src/wgsextract_cli/cli/registration/`, keeping
   execution imports inside handlers. `cli/_lazy.py` defers loading command
   implementations until execution; help must not import scientific libraries.
@@ -302,7 +302,8 @@ from the output-schema generator's complete dataclass projections.
 The "Start from what you have" paths in both come from `JOURNEYS` in
 `registry.py`. To retire a command, don't delete it: add it to `DEPRECATIONS`
 there with its replacement and the next minor version as `remove_in`, and add
-it under `## Deprecated` in `docs/release-notes/unreleased.md`. A deprecated
+it under `## Deprecated` in a release-note fragment in
+`docs/release-notes/unreleased/` (see its README). A deprecated
 command keeps working, warns `deprecated_command` when run, and is listed apart
 in the help and docs.
 

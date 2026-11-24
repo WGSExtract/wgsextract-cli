@@ -8,10 +8,11 @@ import os
 import re
 import sqlite3
 import subprocess
-from collections import deque
+import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
+from typing import IO
 
 from wgsextract_cli.api.vcf import VcfTableParams
 from wgsextract_cli.core import acmg
@@ -21,8 +22,8 @@ from wgsextract_cli.core.builds import (
     build_from_reference_header,
 )
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.process_registry import terminate_trees
 from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import (
     current_result,
@@ -35,15 +36,17 @@ from wgsextract_cli.core.table_writer import (
     provenance,
     table_path,
 )
+from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
     popen,
-    run_command,
 )
-from wgsextract_cli.core.variant_files import ensure_vcf_prepared, get_vcf_samples
+from wgsextract_cli.core.variant_files import get_vcf_samples
 from wgsextract_cli.core.variant_table import (
+    COLUMN_NAMES,
     COLUMNS,
+    VEP_GNOMAD_AF,
     Row,
     VcfHeader,
     parse_header,
@@ -51,6 +54,7 @@ from wgsextract_cli.core.variant_table import (
 )
 
 from .basic import require_vcf_input, vcf_input_handler
+from .panel_slice import indexed_vcf, resolve_panel_slice
 from .pharmcat import summarize
 
 _VCF_SUFFIX = re.compile(r"\.(g?vcf(\.b?gz)?|bcf)$", re.IGNORECASE)
@@ -118,6 +122,53 @@ def _batches(rows: Iterable[Row]) -> Iterator[list[Row]]:
         yield batch
 
 
+# The population frequency columns; the first two name the source they hold.
+_FREQUENCIES = ("gnomad_af", "kg_af", "max_af")
+_SOURCES = {"gnomad_af": "gnomad", "kg_af": "1000genomes"}
+
+
+def _count_frequencies(rows: Iterable[Row], counts: dict[str, int]) -> Iterator[Row]:
+    """Pass ``rows`` through, counting in ``counts`` the rows that have a
+    value in each population frequency column."""
+    columns = {name: COLUMN_NAMES.index(name) for name in _FREQUENCIES}
+    for row in rows:
+        for name, i in columns.items():
+            if row[i] is not None:
+                counts[name] += 1
+        yield row
+
+
+def _warn_missing_gnomad(
+    vcf: str, header: VcfHeader, rows: int, counts: dict[str, int]
+) -> None:
+    """Say so when no row has a gnomAD frequency, so an empty gnomad_af isn't
+    read as rare (#1354). The data can't always tell a cache without gnomAD
+    (a vep-rs cache from `vep download` gives VEP 1000 Genomes frequencies
+    only) from variants gnomAD lacks, so where VEP declares gnomAD fields
+    the warning says both are possible."""
+    if not rows or counts["gnomad_af"] or "GNOMAD_AF" in header.info_number:
+        return
+    kg = f", though it filled kg_af (1000 Genomes) on {counts['kg_af']:,} rows"
+    if set(header.csq_fields or ()) & set(VEP_GNOMAD_AF):
+        held = (
+            f"VEP left every gnomAD field empty{kg if counts['kg_af'] else ''}. "
+            "Either VEP's cache has no gnomAD frequencies (a vep-rs cache from "
+            "'vep download' has none) or no variant matched gnomAD, so an empty "
+            "gnomad_af may mean not annotated rather than rare"
+        )
+    else:
+        held = (
+            "it has no gnomAD annotation, so an empty gnomad_af means not "
+            "annotated, not rare"
+        )
+    warn(
+        "gnomad_af_missing",
+        f"No row of {vcf} has a gnomAD frequency: {held}. Run 'wgsextract vcf "
+        "gnomad' on the VCF before filtering on rarity.",
+        path=vcf,
+    )
+
+
 def _pharmcat_calls(path: str | None) -> dict[str, tuple[str, str]]:
     if not path:
         return {}
@@ -148,45 +199,47 @@ def _select_sample(vcf: str, requested: str | None) -> tuple[list[str], str | No
 class _VcfStream:
     """``bcftools view`` of the input as text: its parsed header and data lines.
 
-    stderr is drained by a thread, so a chatty bcftools can't stall stdout.
+    Spool stderr separately so it can't block stdout or outlive the stream.
     """
 
-    def __init__(self, command: list[str]) -> None:
+    def __init__(self, command: list[str], errors: IO[bytes]) -> None:
         self.command = command
-        self.proc = popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        assert self.proc.stdout is not None and self.proc.stderr is not None
+        self.errors = errors
+        self.proc = popen(command, stdout=subprocess.PIPE, stderr=errors, text=True)
+        assert self.proc.stdout is not None
         self.stdout = self.proc.stdout
-        self._stderr: deque[str] = deque(maxlen=20)
-        stderr = self.proc.stderr
-        self._drain = context_thread(
-            target=lambda: self._stderr.extend(stderr), daemon=True
-        )
-        self._drain.start()
+        try:
+            self.header = self._read_header()
+        except BaseException:
+            self.close()
+            raise
+
+    def _read_header(self) -> VcfHeader:
         lines = []
         for line in self.stdout:
             lines.append(line)
             if line.startswith("#CHROM"):
-                break
-        else:
-            self.check()  # no #CHROM line: bcftools failed or this isn't a VCF
-            raise WGSExtractError(f"{command[-1]} has no #CHROM header line.")
-        self.header = parse_header(lines)
+                return parse_header(lines)
+        self.check()  # no #CHROM line: bcftools failed or this isn't a VCF
+        raise WGSExtractError(f"{self.command[-1]} has no #CHROM header line.")
 
     def check(self) -> None:
         if self.proc.wait() != 0:
-            self._drain.join(timeout=5)
-            detail = "".join(self._stderr).strip()
+            end = self.errors.seek(0, os.SEEK_END)
+            self.errors.seek(max(0, end - 8192))
+            tail = self.errors.read(8192).decode(errors="replace").splitlines()
+            detail = "\n".join(tail[-20:]).strip()
             raise WGSExtractError(
                 f"bcftools failed reading {self.command[-1]}: {detail}"
             )
 
     def close(self) -> None:
-        if self.proc.poll() is None:
-            self.proc.kill()
-        self.proc.wait()
-        self.stdout.close()
+        try:
+            if self.proc.poll() is None:
+                terminate_trees([self.proc])
+            self.proc.wait()
+        finally:
+            self.stdout.close()
 
 
 def _write_tables(
@@ -196,9 +249,11 @@ def _write_tables(
     table_format: str,
     sqlite_path: str | None,
     metadata: dict[str, str],
+    frequencies: dict[str, int],
 ) -> int:
     """Stream ``rows`` into the table file (and SQLite database); return the
-    count. Each file appears under its final name only once complete."""
+    count, and count in ``frequencies`` the rows with each population
+    frequency. Each file appears under its final name only once complete."""
     with ExitStack() as stack:
         table = stack.enter_context(
             TableWriter(table_path, COLUMNS, table_format, metadata=metadata)
@@ -210,28 +265,23 @@ def _write_tables(
             _create_sqlite(db)
         insert = f"INSERT INTO {TABLE} VALUES ({', '.join('?' * len(COLUMNS))})"
         count = 0
-        for batch in _batches(rows):
+        for batch in _batches(_count_frequencies(rows, frequencies)):
             table.write(batch)
             if db is not None:
                 db.executemany(insert, batch)
             count += len(batch)
         stream.check()
         if db is not None:
-            _finish_sqlite(db, {**metadata, "rows": str(count)})
+            sources = [s for k, s in _SOURCES.items() if frequencies[k]]
+            _finish_sqlite(
+                db,
+                {
+                    **metadata,
+                    "rows": str(count),
+                    "population_af_sources": ",".join(sources),
+                },
+            )
     return count
-
-
-def _indexed_input(path: str) -> str:
-    """``path`` with a current index, for a region query. A BCF is indexed
-    in place with ``bcftools index`` (CSI); text VCFs go through the usual
-    bgzip + tabix preparation."""
-    if not path.lower().endswith(".bcf"):
-        return ensure_vcf_prepared(path)
-    index = Path(path + ".csi")
-    if not index.exists() or index.stat().st_mtime < Path(path).stat().st_mtime:
-        logging.info(f"Indexing {path}...")
-        run_command(["bcftools", "index", "-f", path])
-    return path
 
 
 def run_table(params: VcfTableParams) -> None:
@@ -243,8 +293,11 @@ def run_table(params: VcfTableParams) -> None:
     outdir = str(absolute_path(params.outdir or Path(input_vcf).parent))
     Path(outdir).mkdir(parents=True, exist_ok=True)
     source = input_vcf
-    if params.region:
-        input_vcf = _indexed_input(input_vcf)  # -r needs an index
+    scope = resolve_panel_slice(params, source)
+    if scope is not None:
+        input_vcf = scope.prepared
+    elif params.region:
+        input_vcf = indexed_vcf(input_vcf)
     samples, sample = _select_sample(input_vcf, params.sample)
     pharmcat = _pharmcat_calls(
         os.fspath(params.pharmcat_json) if params.pharmcat_json else None
@@ -260,15 +313,18 @@ def run_table(params: VcfTableParams) -> None:
     command = ["bcftools", "view", "--no-version"]
     if sample and len(samples) > 1:
         command += ["-s", sample, "-I"]  # -I: keep INFO as it is
-    if params.region:
-        command += ["-r", params.region]
-    command.append(input_vcf)
-
     logging.info(f"Writing the variant table from {input_vcf}...")
-    stream = _VcfStream(command)
-    try:
+    with ExitStack() as stack:
+        if scope is not None:
+            work = stack.enter_context(scratch_directory(outdir, ".wgse_table_panel_"))
+            command += scope.args(work)
+        elif params.region:
+            command += ["-r", params.region]
+        errors = stack.enter_context(tempfile.TemporaryFile(dir=outdir))
+        stream = _VcfStream([*command, input_vcf], errors)
+        stack.callback(stream.close)
         header = stream.header
-        build = _reference_build(header)
+        build = (scope.build if scope else None) or _reference_build(header)
         annotations = ",".join(header.annotations)
         research_acmg = "acmg" in header.annotations
         # A full pass over the VCF, so only when SQLite or Parquet keeps it.
@@ -284,6 +340,7 @@ def run_table(params: VcfTableParams) -> None:
             carried_only=str(not params.all_alleles).lower(),
             acmg_disclaimer=acmg.DISCLAIMER if research_acmg else None,
         )
+        frequencies = dict.fromkeys(_FREQUENCIES, 0)
         rows = _write_tables(
             stream,
             variant_rows(
@@ -297,19 +354,23 @@ def run_table(params: VcfTableParams) -> None:
             params.table_format,
             sqlite_path,
             metadata,
+            frequencies,
         )
-    finally:
-        stream.close()
-
     result.add_output(out_table, "variant_table", metrics={"rows": rows})
     if sqlite_path:
         result.add_output(
             sqlite_path, "variant_database", kind="sqlite", metrics={"rows": rows}
         )
     result.add_metrics(
-        rows=rows, sample=sample, reference_build=build, annotations=annotations
+        rows=rows,
+        sample=sample,
+        reference_build=build,
+        annotations=annotations,
+        **{f"{name}_rows": n for name, n in frequencies.items()},
     )
-    if not header.annotations:
+    if header.annotations:
+        _warn_missing_gnomad(input_vcf, header, rows, frequencies)
+    else:
         warn(
             "nothing_annotated",
             f"{input_vcf} has no VEP, SnpEff, ClinVar, gnomAD or PharmGKB "

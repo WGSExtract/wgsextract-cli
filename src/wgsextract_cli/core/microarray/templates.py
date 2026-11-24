@@ -1,3 +1,16 @@
+"""Chip-template (vendor) export and the hg38 to hg19 CombinedKit liftover.
+
+Provenance: the vendor-format export, chromosome ordering and liftover are
+modified ports of WGS Extract v4 ``program/aconv.py`` and
+``program/hg38tohg19.py`` (release v44.2, 28 Feb 2023), Copyright (C)
+2018-2020 City Farmer and Copyright (C) 2020-2022 Randy Harr, licensed under
+the GNU GPL version 3 or later. WGS Extract CLI contributors modified them from
+2026-03-02 (see the git history): zero-based liftover coordinates, strand
+complementing, rejection of ambiguous placements, rCRS mtDNA kept unlifted,
+template corrections and quality-gated no-calls. The modified work stays under
+GPL-3.0-or-later; see NOTICE and docs/migrating-from-v4.md.
+"""
+
 import functools
 import gzip
 import itertools
@@ -16,7 +29,12 @@ from wgsextract_cli.core.microarray.coordinates import (
     project_coordinates,
     sole_placement,
 )
-from wgsextract_cli.core.microarray.formats import TemplateFormat
+from wgsextract_cli.core.microarray.formats import (
+    COMBINED_V3_FORMAT,
+    COMBINED_V3_TEMPLATES,
+    TemplateFormat,
+    is_superseded_classic_body,
+)
 
 # Re-exported: most callers find template formats here.
 from wgsextract_cli.core.microarray.formats import (
@@ -44,7 +62,7 @@ def chr_to_int(chrom: str | int) -> int:
     """
     Converts chromosome name to an integer for sorting.
     M/MT -> 23, X -> 24, Y -> 25.
-    Ported from program/aconv.py chrconv().
+    Ported from WGS Extract v4 program/aconv.py chrconv().
     """
     c = str(chrom).upper().replace("CHR", "")
     if c == "M" or c == "MT":
@@ -205,8 +223,21 @@ def _body_rows(
                 yield parts[0], parts[1], parts[2]
 
 
+def _delta_base_path(
+    delta_path: str | Path, base_name: str, base_info: TemplateFormat
+) -> Path:
+    """Resolve a delta template's base beside the delta first, else in the CLI's
+    packaged templates."""
+    local_root = Path(delta_path).parent.parent
+    (local,) = _template_body_paths(str(local_root), base_name, base_info)
+    if Path(local).exists():
+        return Path(local)
+    (packaged,) = _template_body_paths(str(_PACKAGED_TEMPLATES), base_name, base_info)
+    return Path(packaged)
+
+
 def delta_bases(path: str | Path) -> list[Path]:
-    """The shipped bodies a delta body is decoded from, nearest first, so a
+    """The base bodies a delta body is decoded from, nearest first, so a
     change to any of them makes what was built from it stale."""
     bases: list[Path] = []
     current = str(path)
@@ -219,8 +250,9 @@ def delta_bases(path: str | Path) -> list[Path]:
         info = get_template_format(header[-1]) if header[0] == "#base" else None
         if len(header) != 2 or info is None or info["parts"] != 1:
             break
-        (current,) = _template_body_paths(str(_PACKAGED_TEMPLATES), header[1], info)
-        bases.append(Path(current))
+        base_path = _delta_base_path(current, header[1], info)
+        current = str(base_path)
+        bases.append(base_path)
     return bases
 
 
@@ -230,12 +262,10 @@ def _delta_rows(path: str, depth: int) -> Iterator[tuple[str, str, str]]:
         base_info = get_template_format(header[-1]) if len(header) == 2 else None
         if header[0] != "#base" or base_info is None or base_info["parts"] != 1:
             raise WGSExtractError(f"Template delta {path} names no shipped base.")
-        (base_path,) = _template_body_paths(
-            str(_PACKAGED_TEMPLATES), header[1], base_info
-        )
-        if not Path(base_path).exists():
+        base_path = _delta_base_path(path, header[1], base_info)
+        if not base_path.exists():
             raise WGSExtractError(f"Template delta {path}: base {header[1]} missing.")
-        base = _body_rows(header[1], base_path, depth + 1)
+        base = _body_rows(header[1], str(base_path), depth + 1)
         for line in f:
             op, arg = line[0], line[1:].rstrip("\n")
             if op == "+":
@@ -296,6 +326,41 @@ def lift_to_grch37(
     return _chrom_from_liftover(hit.chrom), str(hit.position + 1), hit.strand == "-"
 
 
+def _valid_delta_chain(path: str) -> bool:
+    """Whether a delta body's #base chain resolves to an installed base."""
+    current = path
+    for _ in range(_MAX_DELTA_DEPTH):
+        if not current.endswith(DELTA_SUFFIX):
+            return Path(current).exists()
+        try:
+            with gzip.open(current, "rt") as f:
+                header = f.readline().rstrip("\n").split("\t")
+        except OSError:
+            return False
+        info = get_template_format(header[-1]) if len(header) == 2 else None
+        if header[0] != "#base" or info is None or info["parts"] != 1:
+            return False
+        current = str(_delta_base_path(current, header[1], info))
+    return not current.endswith(DELTA_SUFFIX) and Path(current).exists()
+
+
+def _select_template_root(
+    roots: list[str], format_name: str, fmt_info: TemplateFormat
+) -> tuple[str, list[str]] | None:
+    """Pick the first root whose body files exist, have valid delta bases, and
+    are not superseded by a newer packaged body in a later root."""
+    fallback: tuple[str, list[str]] | None = None
+    for root in roots:
+        bodies = _template_body_paths(root, format_name, fmt_info)
+        if not all(Path(p).exists() and _valid_delta_chain(p) for p in bodies):
+            continue
+        if any(is_superseded_classic_body(format_name, p) for p in bodies):
+            fallback = fallback or (root, bodies)
+            continue
+        return root, bodies
+    return fallback
+
+
 def _resolve_templates_for_format(
     templates_dir: TemplateSearchInput, format_name: str, fmt_info: TemplateFormat
 ) -> tuple[str, list[str]]:
@@ -305,16 +370,18 @@ def _resolve_templates_for_format(
             f"Microarray templates not found near {templates_dir!r}; "
             f"cannot generate {format_name} output."
         )
-
-    first_missing: str | None = None
-    for templates_root in roots:
-        body_templates = _template_body_paths(templates_root, format_name, fmt_info)
-        missing = [path for path in body_templates if not Path(path).exists()]
-        if not missing:
-            return templates_root, body_templates
-        if first_missing is None:
-            first_missing = missing[0]
-
+    selected = _select_template_root(roots, format_name, fmt_info)
+    if selected is not None:
+        return selected
+    first_missing = next(
+        (
+            path
+            for root in roots
+            for path in _template_body_paths(root, format_name, fmt_info)
+            if not Path(path).exists()
+        ),
+        _template_body_paths(roots[0], format_name, fmt_info)[0],
+    )
     raise WGSExtractError(f"Template body not found: {first_missing}")
 
 
@@ -322,6 +389,15 @@ def template_resource_paths(
     templates_dir: TemplateSearchInput, format_name: str
 ) -> list[Path]:
     """The actual selected vendor header, bodies and packaged corrections."""
+    if format_name == COMBINED_V3_FORMAT:
+        paths: list[Path] = []
+        seen: set[Path] = set()
+        for name in COMBINED_V3_TEMPLATES:
+            for path in template_resource_paths(templates_dir, name):
+                if path not in seen:
+                    seen.add(path)
+                    paths.append(path)
+        return paths
     fmt = get_template_format(format_name)
     if fmt is None:
         return []
@@ -351,7 +427,7 @@ def liftover_hg38_to_hg19(
     outcomes. Unmapped, alternate-contig, multiply-placed and colliding sites are
     left out, so vendor files report them as no-calls.
     MT stays in rCRS coordinates, matching hg38 and GRCh37 chip templates.
-    Ported from legacy program/hg38tohg19.py.
+    Ported from WGS Extract v4 program/hg38tohg19.py.
     """
     if not Path(chain_file).exists():
         raise FileNotFoundError(f"Liftover chain file not found: {chain_file}")
@@ -463,7 +539,8 @@ def write_formatted_line(
     result: str,
     eol: str = "\n",
 ) -> None:
-    """Writes a line in the specific vendor format. Ported from aconv.py."""
+    """Writes a line in the specific vendor format. Ported from WGS Extract v4
+    program/aconv.py."""
 
     profile = vendor_output_profile(format_name)
     if profile.layout == "split_alleles":
@@ -571,7 +648,7 @@ def convert_to_vendor_format(
 ) -> GenotypeTally:
     """
     Converts a CombinedKit.txt (GRCh37) to a vendor-specific format using
-    templates. Ported from legacy program/aconv.py. Returns the tally of the
+    templates. Ported from WGS Extract v4 program/aconv.py. Returns the tally of the
     autosomal genotypes written.
 
     A template on another build (FTDNA's NCBI36 Affymetrix export, its GRCh38

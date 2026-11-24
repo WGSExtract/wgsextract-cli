@@ -4,7 +4,8 @@
 # token (COPILOT_REVIEW_TOKEN: fine-grained PAT, resource owner WGSExtract, this
 # repo only, Pull requests read/write); the review's AI credits are billed to
 # the token's owner. Authors with their own Copilot license are skipped, since
-# the ruleset already reviews their PRs.
+# the ruleset already reviews their PRs. On readiness it requests a review
+# only if Copilot hasn't already reviewed the PR's current head as a draft.
 #
 # pull_request_target runs with secrets, so this job must never check out or
 # execute PR code; it only calls the GitHub API.
@@ -31,9 +32,16 @@ jobs:
           GH_TOKEN: ${{ secrets.COPILOT_REVIEW_TOKEN }}
           GH_REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           if [ -z "$GH_TOKEN" ]; then
             echo "::warning::COPILOT_REVIEW_TOKEN is not set; skipping Copilot review request."
+            exit 0
+          fi
+          # A draft review of this exact head needs no second round on readiness (#1281).
+          reviewed=$(gh api "repos/$GH_REPO/pulls/$PR/reviews" --paginate --jq '.[] | select(.user.login == "copilot-pull-request-reviewer[bot]") | .commit_id' | tail -n 1)
+          if [ "$reviewed" = "$HEAD_SHA" ]; then
+            echo "Copilot already reviewed $HEAD_SHA; not requesting another review."
             exit 0
           fi
           gh pr edit "$PR" --add-reviewer @copilot

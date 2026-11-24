@@ -243,7 +243,10 @@ curl -H "Authorization: ******" \
   its `genomes` folder.
 - **Isolation.** Each job runs the API function in its own worker process.
   A crash or a cancel affects only that job. Its log, at the CLI's log level
-  (`--debug` for more), is `<state>/server/jobs/<id>.log`.
+  (`--debug` for more), is `<state>/server/jobs/<id>.log`. A worker gets its
+  job only once the job is recorded as running. If the worker can't be
+  started, recorded or given its job (a full disk, say), the job fails with
+  the reason in its `error`, the worker is stopped and the slot freed.
 - **Cancelling.** A queued job is cancelled immediately. A running job gets
   the API's `CancelToken`: tools stop, including running containers, and the
   manifest is written with status `cancelled` (exit code 130). If the job is
@@ -252,10 +255,12 @@ curl -H "Authorization: ******" \
   always-atomic exception: its failed or cancelled validation/writes preserve
   previous completed outputs.
 - **Persistence.** Job records are kept in `<state>/server/jobs/<id>.json`,
-  so a restarted server still lists the earlier jobs and their results. Jobs
-  that were queued or running when a server stopped are marked
-  `interrupted`. Start them again with `rerun`; commands with step-level
-  resume ([step-resume.md](step-resume.md)) continue from their last finished
+  so a restarted server still lists the earlier jobs and their results. A
+  finished job whose record can't be saved yet stays listed and is saved
+  once the disk recovers, when another job finishes. Jobs that were queued
+  or running when a server stopped are marked `interrupted`. Start them
+  again with `rerun`; commands with step-level resume
+  ([step-resume.md](step-resume.md)) continue from their last finished
   step. One HTTP server uses a state folder at a time; a second one refuses
   to start.
 
@@ -326,11 +331,17 @@ Clients send a bearer token in a header, not a URL or cookie. You allow file
 paths through `server.guard.roots`: the same canonical roots established by
 `--allow`, `server_allowed_paths` and existing configured libraries.
 The endpoint rejects `..`, network/device paths, symlink escapes, directories
-and other non-regular files. It provides no directory listing. It pins each
-canonical path component with directory-relative, no-follow opens before reading.
-On platforms without these safe primitives, including Windows, file serving
-fails closed with 503 `viewer_unavailable`; the job API remains available.
-Windows desktop clients can view files served by a supported Unix host.
+and other non-regular files. It provides no directory listing.
+
+On Windows, use an absolute path under a canonical allowed root on a local
+drive. UNC paths and mapped network drives are not supported. The server opens
+each component relative to a pinned directory handle and refuses symlinks,
+junctions and other reparse points along the path, even if they point inside
+an allowed root. Use the file's direct local path instead.
+
+On Unix, the server pins the canonical path with directory-relative, no-follow
+opens. On platforms without a safe open method, file serving fails closed with
+503 `viewer_unavailable`; the job API remains available.
 The path guard is not a sandbox against other programs running as you.
 
 Send `Range: bytes=START-END` for a closed byte range. The endpoint supports
@@ -338,7 +349,8 @@ suffix and open-ended ranges too; those and whole-file reads have a 32 MiB
 fallback limit. Closed ranges can exceed that limit and stream in 64 KiB chunks.
 An invalid, multipart, unsatisfiable or oversized fallback range returns 416
 with `Content-Range: bytes */SIZE`. `HEAD` returns the same metadata without
-bytes. Read/seek failures after response headers abort the connection instead
+bytes, except that a `HEAD` with no `Range` returns 200 and the full
+`Content-Length` for a file of any size. Read/seek failures after response headers abort the connection instead
 of inserting an error response into the genomic bytes. Clients must reject an
 incomplete body. For browser requests, only an exact configured app origin receives CORS
 access, including preflight for `Authorization` and `Range`. The endpoint sends

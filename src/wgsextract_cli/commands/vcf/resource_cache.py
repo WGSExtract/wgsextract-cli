@@ -9,13 +9,20 @@ from pathlib import Path
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dev_download_cache import wgsextract_cache_root
 from wgsextract_cli.core.file_lock import exclusive_lock
+from wgsextract_cli.core.result_warnings import (
+    RESOURCE_REF_MISMATCH_EXCLUDED,
+    ResultWarning,
+)
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.temp_directory import move_file
 from wgsextract_cli.core.utils import run_command
 
 
 def normalized_resource(
-    source: str, reference: str, options: object, build: Callable[[], str]
+    source: str,
+    reference: str,
+    options: object,
+    build: Callable[[], tuple[str, ResultWarning | None]],
 ) -> str:
     identity = []
     for name in (source, reference, reference + ".fai"):
@@ -26,7 +33,7 @@ def normalized_resource(
         ["bcftools", "--version"], capture_output=True
     ).stdout.splitlines()[0]
     key = hashlib.sha256(
-        json.dumps([3, identity, version, options], sort_keys=True).encode()
+        json.dumps([4, identity, version, options], sort_keys=True).encode()
     ).hexdigest()
     cache = wgsextract_cache_root() / "normalized-resources" / key
     cache.mkdir(parents=True, exist_ok=True)
@@ -41,11 +48,20 @@ def normalized_resource(
                 for name, size, modified in saved["files"]
             ):
                 for warning in saved["warnings"]:
-                    warn(warning["code"], warning["message"], **warning["details"])
+                    details = warning["details"]
+                    if warning["code"] == RESOURCE_REF_MISMATCH_EXCLUDED:
+                        details.setdefault("resource_path", identity[0][0])
+                    warn(warning["code"], warning["message"], **details)
                 current_result().add_metrics(annotation_normalization_cache_hit=True)
                 return str(output)
         before = len(current_result().warnings)
-        built = Path(build())
+        built_path, ref_warning = build()
+        built = Path(built_path)
+        warnings = current_result().warnings[before:]
+        if ref_warning:
+            # Keep this warning even if the current command already saw it.
+            warnings.append(ref_warning)
+            warn(ref_warning.code, ref_warning.message, **ref_warning.details)
         move_file(built, output)
         files = [output]
         for suffix in (".tbi", ".csi"):
@@ -62,9 +78,7 @@ def normalized_resource(
                             (str(p), p.stat().st_size, p.stat().st_mtime_ns)
                             for p in files
                         ],
-                        "warnings": [
-                            asdict(w) for w in current_result().warnings[before:]
-                        ],
+                        "warnings": [asdict(w) for w in warnings],
                     }
                 ),
                 newline="\n",

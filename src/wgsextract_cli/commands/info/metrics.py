@@ -364,6 +364,7 @@ def load_n_counts(
 # recomputed rather than trusted; bump it in sample_workspace.FACTS.
 SEX_INFERENCE_VERSION = sample_workspace.FACTS["sex"].version
 SEX_MEASUREMENT_UNAVAILABLE = "non-PAR measurement unavailable"
+SEX_SAMPLING_INCOMPLETE = "non-PAR sampling or autosomal baseline unavailable"
 
 
 class SexCall(NamedTuple):
@@ -384,7 +385,7 @@ def infer_sex_call(
     alignment: str | None = None,
     reference: str | None = None,
 ) -> SexCall:
-    """Screen GRCh37/38 non-PAR depth against autosomal depth, with breadth
+    """Screen human non-PAR depth against autosomal depth, with breadth
     gates for sparse/targeted assays. Index counts alone do not settle sex."""
     from wgsextract_cli.core.sex_inference import sampled_depth
 
@@ -403,7 +404,7 @@ def infer_sex_call(
         return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
     autosomes = [depths[c] for c in ("7", "19") if c in depths]
     if not autosomes or "X" not in depths or "Y" not in depths:
-        return unknown
+        return SexCall("Unknown", SEX_SAMPLING_INCOMPLETE, "low")
     auto = sum(d for d, _ in autosomes) / len(autosomes)
     x, x_breadth = depths["X"]
     y, _ = depths["Y"]
@@ -415,7 +416,8 @@ def infer_sex_call(
     ):
         return unknown
     x_ratio, y_ratio = x / auto, y / auto
-    method = "GRCh37/38 sampled non-PAR depth / autosomal depth (screening)"
+    assembly = "CHM13v2.0" if contigs["X"][1] == 154259566 else "GRCh37/38"
+    method = f"{assembly} sampled non-PAR depth / autosomal depth (screening)"
     if 0.35 <= x_ratio <= 0.65 and 0.1 <= y_ratio <= 0.8:
         return SexCall("Male", method, "medium")
     if 0.8 <= x_ratio <= 1.2 and y_ratio < 0.05:

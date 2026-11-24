@@ -107,24 +107,24 @@ def table_format_param(help: str, *, hint: str = "", doc: str | None = None) -> 
     )
 
 
-def restart_param() -> Any:
+def restart_param(*, aliases: tuple[str, ...] = ()) -> Any:
     """``--force``/``--no-resume`` of a step workflow (``core.steps``)."""
     return param(
         False,
         help=RESTART_HELP,
-        flags=("--force", "--no-resume"),
+        flags=("--force", "--no-resume", *aliases),
         action="store_true",
         group=RESUME_GROUP,
     )
 
 
-def force_steps_param(steps: tuple[str, ...]) -> Any:
+def force_steps_param(steps: tuple[str, ...], *, aliases: tuple[str, ...] = ()) -> Any:
     return param(
         None,
         help=force_step_help(steps),
         doc="Steps to rerun with the steps that use their outputs; None reruns "
         f"none. Steps: {', '.join(steps)}.",
-        flags=("--force-step",),
+        flags=("--force-step", *aliases),
         metavar="STEP",
         choices=steps,
         action="append",

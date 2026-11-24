@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.smoke_utils import state_directory_setting
+from tests.home_isolation import state_directory_setting
 from wgsextract_cli.cli import help as cli_help
 from wgsextract_cli.cli import hints, parser
 from wgsextract_cli.commands._advanced_options import ADVANCED_OPTIONS, COMMON_ADVANCED
@@ -99,12 +99,13 @@ def test_every_group_and_command_renders_its_help(root):
 
 
 def test_every_example_parses_to_its_own_command(entries):
+    root, base = parser.build_parser()
     for entry in entries:
         assert entry.help is not None
         for example in entry.help.examples:
             words = shlex.split(example)
             assert words[0] == "wgsextract", example
-            args, _ = parser.parse_args(*parser.build_parser(), words[1:])
+            args, _ = parser.parse_args(root, base, words[1:])
             assert args._command == entry.path, example
 
 
@@ -596,6 +597,7 @@ def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
         "23andme_v5",
     )
 
+    root, base = parser.build_parser()
     for entry in doc["commands"]:
         main(["help", *entry["path"].split(), "--json"])
         details = json.loads(capsys.readouterr().out)
@@ -610,7 +612,8 @@ def test_an_agent_can_go_from_help_json_to_valid_invocations(capsys):
                 words.append(option["flags"][0])
                 if option["type"] != "flag":
                     words.append(_value(option))
-        assert _parse(words)._command == command["path"], words
+        args, _ = parser.parse_args(root, base, words)
+        assert args._command == command["path"], words
 
 
 def test_help_stays_token_efficient(capsys, record_property):

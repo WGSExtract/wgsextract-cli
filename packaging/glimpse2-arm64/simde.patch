@@ -1,0 +1,12 @@
+--- a/phase/src/models/imputation_hmm.h
++++ b/phase/src/models/imputation_hmm.h
+@@ -31 +31,2 @@
+-#include <immintrin.h>
++#include <simde/x86/avx2.h>
++#include <simde/x86/fma.h>
+--- a/phase/src/models/phasing_hmm.h
++++ b/phase/src/models/phasing_hmm.h
+@@ -31 +31,2 @@
+-#include <immintrin.h>
++#include <simde/x86/avx2.h>
++#include <simde/x86/fma.h>

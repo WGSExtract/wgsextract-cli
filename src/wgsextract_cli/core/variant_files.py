@@ -1,5 +1,6 @@
 import contextlib
 import hashlib
+import itertools
 import logging
 import os
 import re
@@ -7,7 +8,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from os import fspath
 from pathlib import Path
 
@@ -26,6 +27,15 @@ from .utils import (
     WGSExtractError,
     run_command,
 )
+
+VCF_SUFFIXES = (".vcf", ".vcf.gz", ".vcf.bgz")
+
+
+def is_vcf_path(path: PathInput, *, bcf: bool = True) -> bool:
+    """Whether ``path`` is named as a plain or bgzipped VCF, or (unless
+    ``bcf`` is False) a BCF, ignoring case."""
+    suffixes = (*VCF_SUFFIXES, ".bcf") if bcf else VCF_SUFFIXES
+    return fspath(path).lower().endswith(suffixes)
 
 
 def resolve_reference(
@@ -63,15 +73,25 @@ def verify_paths_exist(paths_dict: Mapping[str, PathInput | None]) -> None:
         raise WGSExtractError("\n".join(problems))
 
 
+def _short_index_sibling(vcf: Path) -> Path | None:
+    """Another bgzipped VCF (``x.vcf.gz`` beside ``x.vcf.bgz``, in any case)
+    that HTSlib would pair with ``vcf``'s short index name ``x.vcf.csi``."""
+    for ext in ("gz", "bgz"):
+        for letters in itertools.product(*((c, c.upper()) for c in ext)):
+            candidate = vcf.with_suffix("." + "".join(letters))
+            if candidate.is_file() and not candidate.samefile(vcf):
+                return candidate
+    return None
+
+
 def ensure_vcf_indexed(vcf_path: PathInput) -> None:
     """Create an index when missing, or refresh all sidecars if any look stale."""
     vcf = Path(vcf_path)
-    if vcf.suffix not in {".gz", ".bgz"}:
+    if vcf.suffix.lower() not in {".gz", ".bgz"}:
         # We can't index plain VCF easily with tabix
         return
 
     vcf_mtime = vcf.stat().st_mtime_ns
-    sibling = vcf.with_suffix(".bgz" if vcf.suffix == ".gz" else ".gz")
     indexes: list[tuple[int, Path]] = []
     for ext in (".tbi", ".csi"):
         # HTSlib searches for both sample.vcf.gz.csi and sample.vcf.csi (and
@@ -81,7 +101,7 @@ def ensure_vcf_indexed(vcf_path: PathInput) -> None:
                 mtime = index.stat().st_mtime_ns
             except FileNotFoundError:
                 continue
-            if index == vcf.with_suffix(ext) and sibling.is_file():
+            if index == vcf.with_suffix(ext) and (sibling := _short_index_sibling(vcf)):
                 raise WGSExtractError(
                     f"{vcf} and {sibling} share the index name {index}. "
                     "Copy the intended VCF without its indexes to a separate "
@@ -204,6 +224,46 @@ def _check_published_indexes(
     raise WGSExtractError(f"VCF changed while indexing {vcf}; retry.")
 
 
+def publish_indexed_vcf(
+    staged: Path, final: Path, verify: Callable[[Path], None] | None = None
+) -> Path:
+    """Index ``staged``, run ``verify`` on it, and publish it with its index as
+    ``final``, retiring indexes a reader could pick up instead; returns the
+    published index."""
+    from wgsextract_cli.api._runtime import checkpoint
+    from wgsextract_cli.core.atomic_output import publish_output_set
+
+    # Let the indexer see restrictions the publisher will preserve.
+    if final.is_file():
+        staged.chmod(staged.stat().st_mode & final.stat().st_mode & 0o777)
+    ensure_vcf_indexed(staged)
+    if verify is not None:
+        verify(staged)
+    outputs = {}
+    obsolete = []
+    sibling = final.with_suffix(".gz" if final.suffix == ".bgz" else ".bgz")
+    for ext in (".tbi", ".csi"):
+        index = Path(f"{staged}{ext}")
+        destination = Path(f"{final}{ext}")
+        if index.is_file():
+            outputs[index] = destination
+        else:
+            obsolete.append(destination)
+        alternate = final.with_suffix(ext)
+        if not sibling.is_file():
+            obsolete.append(alternate)
+        elif alternate.exists() or alternate.is_symlink():
+            raise WGSExtractError(
+                f"Cannot replace {final}: {sibling.name} shares {alternate}."
+            )
+    if not outputs:
+        raise WGSExtractError(f"Indexing did not produce an index for {final}.")
+    published = next(iter(outputs.values()))
+    outputs[staged] = final
+    publish_output_set(outputs, retire=obsolete, checkpoint=checkpoint)
+    return published
+
+
 def ensure_vcf_prepared(
     vcf_path: PathInput | None, workdir: PathInput | None = None
 ) -> str:
@@ -218,7 +278,7 @@ def ensure_vcf_prepared(
     if vcf_path.lower().endswith((".bam", ".cram")):
         return vcf_path
 
-    if vcf_path.endswith(".gz") or vcf_path.endswith(".bgz"):
+    if vcf_path.lower().endswith((".gz", ".bgz")):
         ensure_vcf_indexed(vcf_path)
         return vcf_path
 
@@ -296,10 +356,16 @@ def check_vcf_build(
     vcf_path: PathInput, lengths: Mapping[str, int], against: str
 ) -> None:
     """Fail when the VCF's ##contig lengths show a build other than ``against``'s."""
+    check_header_build(get_bam_header(vcf_path), lengths, against)
+
+
+def check_header_build(header: str, lengths: Mapping[str, int], against: str) -> None:
+    """Fail when a VCF header's ##contig lengths show a build other than
+    ``against``'s."""
     contigs = list(lengths)
     mismatched = [
         f"{name} ({length:,} vs {lengths[other]:,})"
-        for name, length in header_contig_lengths(get_bam_header(vcf_path)).items()
+        for name, length in header_contig_lengths(header).items()
         if (other := match_chromosome_name(name, contigs)) and lengths[other] != length
     ]
     if mismatched:
@@ -345,6 +411,33 @@ def vcf_index_chromosomes(vcf_path: PathInput) -> list[str]:
         for line in (res.stdout or "").splitlines()
         if line.strip()
     ]
+
+
+def header_attributes(body: str) -> dict[str, str]:
+    """``key=value`` pairs of a structured header line's ``<...>`` body, in
+    any order; commas and ``=`` inside quoted values don't split it."""
+    pairs: dict[str, str] = {}
+    key, value, quoted, escaped, in_value = "", "", False, False, False
+    for char in body + ",":
+        if escaped:
+            value += char
+            escaped = False
+        elif quoted and char == "\\":
+            value += char
+            escaped = True
+        elif char == '"':
+            quoted = not quoted
+            value += char
+        elif char == "," and not quoted:
+            pairs.setdefault(key.strip(), value.strip())
+            key, value, in_value = "", "", False
+        elif char == "=" and not in_value:
+            in_value = True
+        elif in_value:
+            value += char
+        else:
+            key += char
+    return pairs
 
 
 def vcf_header_chromosomes(header: str) -> list[str]:
@@ -495,6 +588,12 @@ def calculate_bam_md5(
                 ln = part[3:]
         if sn and ln:
             bamsq_header[sn] = ln
+
+    if not bamsq_header:
+        from wgsextract_cli.core.ref_library.models import sequence_lengths
+
+        for name, length in sequence_lengths(header).items():
+            bamsq_header[name.upper()] = str(length)
 
     pseudo_header = ""
     for key in sorted(bamsq_header.keys()):

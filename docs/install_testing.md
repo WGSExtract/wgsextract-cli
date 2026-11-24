@@ -463,9 +463,21 @@ breaks.
 The `linux` jobs' container installs its prerequisites (`curl`,
 `ca-certificates` and, for the app, `sudo`, Xvfb and the rest) with
 `.github/actions/apt-install/apt-install.sh`: official Ubuntu mirrors in turn,
-bounded time, and an `Upstream package mirror unreachable` failure if none
-answers, rather than apt's misleading "Unable to locate package curl". The
-container's apt then uses the same mirrors for the app's own `.deb`.
+with bounded time. The lab bind-mounts an apt cache under
+`out/installlab-apt/`, split by Ubuntu image, architecture and package set.
+It can install prerequisites from cached lists and packages after verifying
+them against Ubuntu's signed archive metadata. It saves the cache after
+prerequisite setup; the installer under test cannot write to the saved copy.
+If neither the mirrors nor the cache can supply the prerequisites, the lab
+reports `Upstream package mirror unreachable`.
+The app's own `.deb` install still uses the normal guest apt and can need the
+network for other dependencies.
+
+The hosted Linux jobs restore that cache and refresh it weekly from `main`;
+PR jobs never save it. Local GUI builds and Windows VM media preparation also
+use a host cache for their container prerequisites. To test today's mirrors
+without reading or writing that cache, add `--no-apt-cache` to `lab.py run`,
+`prepare` or `selftest`, or set `no_apt_cache=true` on a manual Install Lab run.
 
 To try an app fix before releasing it, run the *GUI distribution* workflow
 (`gui-distribution.yml`) on its branch, then this workflow on the **same commit**:

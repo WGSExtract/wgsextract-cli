@@ -273,7 +273,9 @@ def test_sections_follow_the_runs_and_missing_ones_say_how_to_run(sample):
         "ancestry": "not_run",
         "pharmacogenomics": "ok",
         "carrier_screening": "not_run",
+        "repeat_expansions": "not_run",
         "clinvar": "ok",
+        "mitochondrial": "not_run",  # mt-haplogroup ran without --contamination
         "structural_variants": "not_run",
         "microarray": "not_run",
     }
@@ -288,8 +290,12 @@ def test_sections_follow_the_runs_and_missing_ones_say_how_to_run(sample):
         "wgsextract typing hla -i HG002.cram",
     ]
     assert hints["carrier_screening"] == ["wgsextract typing smn -i HG002.cram"]
+    assert hints["repeat_expansions"] == ["wgsextract typing str -i HG002.cram"]
     assert hints["microarray"] == ["wgsextract microarray -i HG002.cram"]
     assert hints["clinvar"] == []
+    assert hints["mitochondrial"] == [  # #1175
+        "wgsextract lineage mt-haplogroup -i HG002.cram --contamination"
+    ]
     assert hints["structural_variants"] == [  # #618
         "wgsextract vcf sv -i HG002.cram, then "
         "wgsextract vcf sv-freq --vcf-input sv.vcf.gz"

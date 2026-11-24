@@ -18,6 +18,7 @@ const { startJob } = await import("../dist/web/src/server/job-server-client.js")
 // anything else is refused. With --parent-pid PID it writes its own PID to server.pid and
 // exits when PID does; with --refuse it prints an error line instead of starting.
 const fakeServer = String.raw`
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { appendFileSync, writeFileSync } from "node:fs";
 const parentPid = process.argv.includes("--parent-pid") ? Number(process.argv[process.argv.indexOf("--parent-pid") + 1]) : undefined;
@@ -31,7 +32,7 @@ if (parentPid !== undefined) {
   writeFileSync("server.pid", String(process.pid));
   setInterval(watch, 100);
 }
-const token = "secret-" + process.pid;
+const token = randomUUID();
 const jobs = new Map();
 const watchers = new Map();
 function send(job, type, data) {
@@ -357,14 +358,18 @@ function isAlive(pid) {
   }
 }
 
-test("a job server stopped with the other processes starts again on next use", async (t) => {
+test("#1459: the next job succeeds on a new server immediately after terminate-all", async (t) => {
   const bundle = await withBundle(t);
   const jobServer = bundle.startServer();
   const first = await jobServer.address();
+  assert.ok(first);
   await bundle.manager.terminateAllProcesses();
 
-  const { result, output } = await run(bundle, action("quick"), jobServer);
+  const { result, events, output } = await run(bundle, action("quick"), jobServer);
   assert.equal(result.exitCode, 0);
   assert.match(output, /\[job\] succeeded/);
-  assert.notEqual((await jobServer.address()).url, first.url);
+  assert.equal(events.filter((event) => event.type === "submission-pending").length, 1, "no retry against a stale address");
+  const replacement = await jobServer.address();
+  assert.ok(replacement);
+  assert.notEqual(replacement.token, first.token);
 });

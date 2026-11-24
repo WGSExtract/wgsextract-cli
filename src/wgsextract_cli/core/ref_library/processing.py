@@ -299,7 +299,7 @@ def download_bootstrap(
         Path(reflib_dir).mkdir(parents=True, exist_ok=True)
 
     normalize_bootstrap_layout(reflib_dir)
-    if bootstrap_has_support_assets(reflib_dir):
+    if bootstrap_is_current(reflib_dir):
         logging.info("Reference bootstrap assets are already installed.")
         return install_bootstrap_support_files(reflib_dir)
 
@@ -311,6 +311,8 @@ def download_bootstrap(
     if not reuse and not _download_bootstrap_archive(
         BOOTSTRAP_URL, dest_path, BOOTSTRAP_SHA256, progress_callback, cancel_event
     ):
+        return False
+    if cancel_event and cancel_event.is_set():
         return False
 
     logging.info(f"Extracting bootstrap to {reflib_dir}...")
@@ -339,6 +341,8 @@ def _download_bootstrap_archive(
 ) -> bool:
     logging.info(f"Downloading bootstrap from {url}...")
     for attempt in range(1, 4):
+        if cancel_event and cancel_event.is_set():
+            return False
         if download_file(
             url,
             dest_path,
@@ -347,7 +351,9 @@ def _download_bootstrap_archive(
             expected_sha256=sha256,
             resolve_release_digest=False,
         ):
-            return True
+            return cancel_event is None or not cancel_event.is_set()
+        if cancel_event and cancel_event.is_set():
+            return False
         if attempt < 3:
             logging.warning(
                 "Bootstrap download failed; retrying (%s/3)...", attempt + 1
@@ -413,28 +419,51 @@ _LEGACY_BOOTSTRAP_SENTINELS = (
 )
 
 
-def bootstrap_has_support_assets(reflib_dir: str) -> bool:
-    """Whether the bootstrap is completely installed in ``reflib_dir``."""
+def _bootstrap_has_leftover_archive(root: Path) -> bool:
+    """Whether an interrupted bootstrap download/extraction left an archive behind."""
     from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME
 
-    root = Path(reflib_dir)
-    if not root.is_dir():
-        return False
-    # The archive (or partial download) download_bootstrap leaves in the
-    # library means a run was interrupted before extraction finished.
     archive = root / BOOTSTRAP_FILENAME
     leftovers = ("", ".partial", ".partial.segments", ".partial.source")
-    if any(Path(f"{archive}{suffix}").exists() for suffix in leftovers):
+    return any(Path(f"{archive}{suffix}").exists() for suffix in leftovers)
+
+
+def bootstrap_is_current(reflib_dir: str) -> bool:
+    """Whether the current ``BOOTSTRAP_VERSION`` is completely installed."""
+    from wgsextract_cli.core.constants import BOOTSTRAP_VERSION
+
+    root = Path(reflib_dir)
+    if not root.is_dir() or _bootstrap_has_leftover_archive(root):
+        return False
+    return (root / (BOOTSTRAP_MARKER_PREFIX + BOOTSTRAP_VERSION)).is_file()
+
+
+def bootstrap_has_support_assets(reflib_dir: str) -> bool:
+    """Whether any complete bootstrap release is installed in ``reflib_dir``."""
+    root = Path(reflib_dir)
+    if not root.is_dir() or _bootstrap_has_leftover_archive(root):
         return False
     if any(root.glob(BOOTSTRAP_MARKER_PREFIX + "*")):
         return True
     return all((root / name).is_file() for name in _LEGACY_BOOTSTRAP_SENTINELS)
 
 
+# Bootstrap files and subtrees whose content legitimately updates between
+# bootstrap releases (e.g. v0.2.0/v0.3.0 -> v0.4.0) and should replace the
+# older copy on flatten.
+_BOOTSTRAP_REPLACE_FILES = frozenset({"00README.txt"})
+_BOOTSTRAP_REPLACE_PREFIXES = ("microarray/raw_file_templates/",)
+
+
 def normalize_bootstrap_layout(reflib_dir: str) -> None:
     nested = str(Path(reflib_dir, "reference"))
     if Path(nested).is_dir():
-        _merge_directory(nested, reflib_dir)
+        _merge_directory(
+            nested,
+            reflib_dir,
+            replace_files=_BOOTSTRAP_REPLACE_FILES,
+            replace_prefixes=_BOOTSTRAP_REPLACE_PREFIXES,
+        )
         _remove_empty_directories(nested)
         if Path(nested).is_dir() and not os.listdir(nested):
             Path(nested).rmdir()
@@ -492,20 +521,51 @@ def _ploidy_content(alias: str) -> str:
     return _PLOIDY_TEMPLATES[alias]
 
 
-def _merge_directory(src: str, dst: str) -> None:
+def _merge_directory(
+    src: str,
+    dst: str,
+    *,
+    replace_files: frozenset[str] = frozenset(),
+    replace_prefixes: tuple[str, ...] = (),
+    _rel: str = "",
+) -> None:
     Path(dst).mkdir(parents=True, exist_ok=True)
     for name in os.listdir(src):
         source = str(Path(src, name))
         if name.startswith("._") or name == ".DS_Store":
             _remove_path(source)
             continue
+        rel_path = f"{_rel}/{name}" if _rel else name
         target = str(Path(dst, name))
         if Path(source).is_dir() and not Path(source).is_symlink():
-            _merge_directory(source, target)
+            if Path(target).is_symlink():
+                logging.warning(
+                    "Leaving bootstrap directory in place; target is a symlink: %s",
+                    target,
+                )
+                continue
+            _merge_directory(
+                source,
+                target,
+                replace_files=replace_files,
+                replace_prefixes=replace_prefixes,
+                _rel=rel_path,
+            )
             if not os.listdir(source):
                 Path(source).rmdir()
-        elif not Path(target).exists():
+        elif not Path(target).exists() and not Path(target).is_symlink():
             shutil.move(source, target)
+        elif (
+            (
+                rel_path in replace_files
+                or any(rel_path.startswith(prefix) for prefix in replace_prefixes)
+            )
+            and Path(source).is_file()
+            and not Path(source).is_symlink()
+            and Path(target).is_file()
+            and not Path(target).is_symlink()
+        ):
+            Path(source).replace(target)
         elif (
             Path(source).is_file()
             and Path(target).is_file()

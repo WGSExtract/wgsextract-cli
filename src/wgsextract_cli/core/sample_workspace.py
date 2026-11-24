@@ -139,7 +139,7 @@ class FactSpec:
 FACTS: dict[str, FactSpec] = {
     spec.name: spec
     for spec in (
-        FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 4),
+        FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 6),
         FactSpec(
             "platform",
             "Sequencing platform, from read groups, read names or a bounded FASTQ sample.",
@@ -147,7 +147,8 @@ FACTS: dict[str, FactSpec] = {
             4,
         ),
         # 2: a VCF's ##reference path counts only by its file name.
-        FactSpec("build", "Reference build the file is aligned to.", version=2),
+        # 3: .vcf.bgz and upper-case VCF names are read as VCFs (#1243).
+        FactSpec("build", "Reference build the file is aligned to.", version=3),
         FactSpec(
             "somalier_sex",
             "Male or Female, from chrX heterozygosity and chrY depth (qc relate).",

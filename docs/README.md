@@ -11,6 +11,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | Guide | Task |
 | --- | --- |
 | [Installation](installation.md) | Install, pin versions, update or uninstall |
+| [Migrating from v4](migrating-from-v4.md) | Map WGS Extract v4 buttons to current pages/commands and read what changed |
 | [Running commands](usage.md) | Discover help, understand outputs/progress, log runs or report a problem |
 | [Privacy](privacy.md) | Review network permissions and destinations |
 | [Windows](windows.md) | Use native Windows tools and GATK |
@@ -40,6 +41,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Variant workflows](variants.md) | Call/annotate, analyse trios and type pharmacogenes/repeats |
 | [Variant confidence](variant-confidence.md) | Understand technical evidence labels and caller accuracy |
 | [Built-in genome viewer](../gui/docs/genome-viewer.md) | Inspect local reads and variants, or open an extraction result at its locus |
+| [Gene page](../gui/docs/gene-page.md) | One gene's transcripts, your variants in it and its exon coverage, offline |
 | [Caller ploidy](caller-ploidy.md) | Handle sex, PARs and policy masks |
 | [Reference evidence](reference-evidence.md) | Distinguish assessed reference from absent calls |
 | [Genotype QC](genotype-qc.md) | Interpret depth, homozygosity and no-call warnings |
@@ -48,10 +50,12 @@ Start with the [README quick start](../README.md#quick-start), the
 | [VEP engines](vep-engines.md) | Annotate with vep-rs or Ensembl VEP |
 | [SV frequencies](sv-frequency.md) | Match structural variants to population frequencies |
 | [ACMG](acmg.md) | Use research-only classification with fastVEP |
+| [Research panels](panel.md) | Write and check a research panel file of genes, filters, sites and haplotypes |
 | [Personal report](personal-report.md) | Read findings with links to evidence, not diagnoses |
 | [Contamination](contamination.md) | Screen for another person's DNA |
 | [Relatedness](relate.md) | Check sex, relatedness and continental ancestry |
 | [Ancestry](ancestry.md) | Estimate HGDP+1KG component proportions |
+| [Runs of homozygosity](roh.md) | Find ROH with population frequencies; review isodisomy flags |
 | [Imputation](imputation.md) | Review phasing/imputation workflows and limits |
 | [Polygenic scores](pgs.md) | Calculate research scores and inspect their limitations |
 
@@ -63,6 +67,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Python API](api.md) | Call typed operations from Python |
 | [Local server](server.md) | Use HTTP/JSON or MCP with allowed-path restrictions |
 | [Result manifest](result-manifest.md) | Consume structured results, warnings and provenance |
+| [Output contracts](output-contracts.md) | Know which output fields are stable, experimental or internal |
 | [Variant table](variant-table.md) | Query TSV/SQLite output |
 | [Parquet](parquet.md) | Use typed tables with DuckDB, Polars or other tools |
 
@@ -79,7 +84,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Releasing](releasing.md) | Release the CLI and desktop app together |
 | [Bootstrap compression results](bootstrap_compression_results.md) | Read historical compression measurements |
 
-Release notes: [unreleased](release-notes/unreleased.md),
+Release notes: [unreleased](release-notes/unreleased/README.md),
 [v0.8.9](release-notes/v0.8.9.md), [v0.8.8](release-notes/v0.8.8.md), [v0.8.7](release-notes/v0.8.7.md),
 [v0.8.6](release-notes/v0.8.6.md), [v0.8.5](release-notes/v0.8.5.md).
 Documentation inputs under `data/` include the

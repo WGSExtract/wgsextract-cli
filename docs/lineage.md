@@ -37,6 +37,33 @@ reference-only calls (all-sites VCF or gVCF); a variants-only VCF is refused
 with instructions to use the alignment or call all sites. Simply rotating
 variant positions would lose sample alleles at reference-difference sites.
 
+### mtDNA heteroplasmy evidence
+
+On a BAM or CRAM, `--contamination` calls chrM with mutserve (bundled with
+haplocheck; level 1%, mapping quality 30, base quality 20, deletions) and keeps
+its output for `wgsextract report`:
+
+- `mutserve_heteroplasmies.vcf.gz` (role `heteroplasmy_calls`): each call with
+  its heteroplasmy level (`FORMAT/AF`) and depth. A mixture is written as
+  `0/1` or `1/0`; read it as a level, not a diploid genotype.
+- `mutserve_heteroplasmies.raw.txt.gz` (role `heteroplasmy_site_evidence`):
+  mutserve's per-position table (`--write-raw`), with the depth and each
+  base's fraction on each strand, so the report can tell a covered site
+  without the variant from one with too few reads.
+
+Both are in the coordinates of the mtDNA reference the reads were called
+against (CHM13v2.0 positions for a CHM13 alignment). `details.heteroplasmy`
+records mutserve's version and settings and that reference (`origin` `rCRS`,
+`CHM13v2.0's chrM`, or null when unconfirmed, with its contig and MD5); the
+metrics add `mt_median_depth`, `mt_min_depth_fraction` (positions with 100 or
+more reads), `mt_homoplasmies` and `mt_heteroplasmies`. If mutserve's read
+table is missing or unreadable, lineage keeps the calls and their counts and
+warns (`mt_evidence_missing`); the report does not assess the reviewed sites
+without read evidence. A VCF input keeps nothing: its levels come from
+another caller. See
+[personal-report.md](personal-report.md#mitochondrial-dna-heteroplasmy-at-reviewed-variants)
+for how the report reads them.
+
 ## Y haplogroups and STRs
 
 `lineage y-haplogroup` uses native code derived from
@@ -78,16 +105,99 @@ long markers can be no-calls; DYS464, CDY, DYF387S1 and Y-GGAAT-1B07 are not
 callable. Against 1000 Genomes PowerPlex Y23 typings, 99.9% of 30x calls match,
 with 8% no-calls. See [sources, licences and conventions](../src/wgsextract_cli/ydna/ystr/README.md).
 
+## Candidate private Y SNPs
+
+`lineage y-private` lists Y SNPs that may be the family's own branch: called
+chrY SNVs that no installed marker set lists. They are **candidates** to
+confirm (for example by Sanger sequencing or a second test), not proven
+private SNPs: sequencing and mapping errors pass the same filters.
+
+```bash
+# GRCh38: needs the YBrowse snapshot (see below) and, once, the YFull positions.
+wgsextract ref ybrowse --install --ref /path/to/reference-library
+wgsextract lineage y-private --input sample.cram --download
+# T2T, or a single-sample VCF/BCF with FORMAT/AD (DeepVariant, GATK, bcftools).
+wgsextract lineage y-private --input sample.vcf.gz --build t2t
+```
+
+- **Novel** means the call's alleles are in no installed marker set: on GRCh38
+  (primary) the [YBrowse snapshot](#opt-in-ybrowse-y-snp-calling-grch38-only)
+  and the `yfull-ybrowse-positions` module of the pinned YFull YTree; on
+  T2T-CHM13v2.0 only the YFull positions, since the YBrowse snapshot is GRCh38
+  only (`known_markers_partial` warning). A call at a known site with other
+  alleles is still a candidate, noted `known site, other allele`.
+  GRCh37/hg19 and other Y assemblies are refused: realign first.
+  The input must name one primary Y contig. With a contig length in the header,
+  this can be `chrY`, `Y`, or the primary Y's RefSeq/GenBank accession.
+- **Callable mask:** calls are made, or read from a VCF, only inside the
+  bundled Poz regions (the CombBED/McDonald/Poznik union, ~11.65 Mb on GRCh38,
+  ~11.6 Mb on T2T). It leaves out both PARs and the Yq12 heterochromatin, and
+  most ampliconic, palindromic and other low-mappability sequence; per-site
+  structural classes are not labelled.
+- **Filters**, in order: FILTER PASS or missing, QUAL ≥ `--min-qual` (30),
+  ALT reads ≥ `--min-alt-reads` (10), ALT fraction ≥ `--min-af` (0.9) of
+  the reads of every allele in FORMAT/AD (a call missing any AD value
+  fails). SNVs only. A BAM/CRAM is called haploid with bcftools, counting
+  reads with MAPQ ≥ `--min-mapq` (20) and bases with quality ≥
+  `--base-quality` (20); a VCF's mapping filters are its caller's.
+  The marker sets are read from the `--ref` library (or the library holding
+  its FASTA) when it has them, else from the configured library.
+- **QC:** more than 50 candidates raises `y_private_excess`: suspect
+  contamination, a mismatched reference, poor data or a marker set that misses
+  the lineage. A female sample, or reads of several samples, are refused.
+
+`<outdir>/y_private/` holds `<sample>.y_private.tsv` (candidates; its `#`
+header states the marker sets, mask and filters) and `<sample>.y_private.vcf.gz`.
+The result manifest's `details` records the `definition`, `marker_sets`,
+`callable_mask`, `filters`, the `counts` at each step and the `candidates`.
+
 ## Y and mitochondrial extracts
 
 `extract ydna-bam --poz` writes indexed `_Y_poz.bam` from the original
 WGS Extract CombBED/McDonald/Poznik union (~12 Mb), **not** all stable SNPs
-or a BigY/exome capture. Exact GRCh37/hg19 or GRCh38 Y lengths are required,
-with `chrY` or `Y`, including Y-only inputs. Original BED mitochondrial
-regions are excluded; boundary-overlapping reads remain whole.
-T2T, unknown and inconsistent assemblies are rejected, not lifted.
+or a BigY/exome capture. Exact GRCh37/hg19, GRCh38 or T2T-CHM13v2.0 Y lengths
+are required, with `chrY` or `Y`, including Y-only inputs. The T2T regions are
+the GRCh38 BED lifted with the UCSC `hg38ToHs1` chain (~11.6 Mb). Original BED
+mitochondrial regions are excluded; boundary-overlapping reads remain whole.
+Unknown and inconsistent assemblies are rejected.
 Bundled BED [provenance and licence](../src/wgsextract_cli/assets/reference/poz/NOTICE.txt) require
 no download. Without `--poz`, whole-Y extraction is unchanged.
+
+### Y-associated contigs (`--y-scope`)
+
+`extract ydna-bam`, `extract y-mt-extract` and `extract region --target y|ymt`
+read only the primary chrY (and chrM) by default: `--y-scope primary`.
+`--y-scope associated` adds the reference's Y-associated contigs, writing
+`_Y_associated.bam`, `_Y_MT_associated.bam` (and for `region`,
+`_Y_associated.vcf.gz`/`.fasta`). Of GRCh37, GRCh38 and T2T-CHM13v2.0 only
+GRCh38 assigns one: the 37,240 bp unlocalized scaffold `chrY_KI270740v1_random`,
+also named `KI270740.1`, `NT_187395.1` and `HSCHRY_RANDOM_CTG1` (NCBI assembly
+report GCA_000001405.15). The alignment header's contig is read only when its
+length, its `M5` (if recorded) and a GRCh38-length chrY all match; a
+same-named contig that differs, or a Y-like name no supported assembly assigns
+to Y, is listed and left out. On GRCh37 and T2T the associated scope reads
+chrY alone. A header without @SQ lines or a chrY fails; so does calling, or a
+CRAM, whose reference lacks the included contig or has no `.fai` or `.dict`
+to show it. Nothing is downloaded.
+
+Records are taken by position, as for chrY: secondary, supplementary and
+unmapped mates placed on a selected contig are kept, each record once, in
+header order with a BAM index; a mate mapped elsewhere and unplaced unmapped
+reads are not. The result's `details` list each considered contig with
+`included`, `reason` and, for BAMs, `mapped_records` and
+`placed_unmapped_records`; outputs record `y_scope` and `contigs`. `--poz`
+and `--ybrowse` take primary chrY only.
+
+**Differences from WGS Extract v4.** v44.2 always added
+`chrY_KI270740v1_random` to chr-named build-38 Y and Y+MT BAMs
+(`_chrY.bam`, `_chrYM.bam`), by name only, and never for `Y`/`KI270740.1`
+naming. `--y-scope associated` keeps those reads under any of the names above.
+On HG002 (GRCh38 no-alt, 35x) its Y and Y+MT BAMs hold exactly the records
+of v44.2's commands (7,372,465 and 9,938,023; primary chrY alone 7,368,299).
+v44.2 left its BAMs unindexed; these are indexed. It is opt-in so the default
+outputs keep their meaning. It restores retained reads; no change in
+haplogroup predictions was measured, and tools that read only chrY
+coordinates ignore the contig.
 
 `extract unmapped --fastq` adds `_unmapped_R1.fastq.gz`,
 `_unmapped_R2.fastq.gz`, `_unmapped_SE.fastq.gz` (unpaired) and
@@ -109,14 +219,16 @@ Set the library separately (`wgsextract config` shows its config path):
 reference_library = "/path/to/reference-library"
 ```
 
-The explicit download pins compressed SHA-256
-`b7984349c575c3d582933993a92770d6143603d3b895d3a0612340b167f37b62`
+The explicit download fetches the daily-updated `snps_hg38.vcf.gz` snapshot
 from <https://ybrowse.org/gbrowse2/gff/snps_hg38.vcf.gz>.
-The mutable URL's changed hash fails without replacing installed data.
-`--snapshot` deliberately selects a local VCF or VCF.gz replacement: GRCh38 Y
-length, copyright, annotation header and sorted coordinates are verified, and
-its hash is recorded. Only SNP sites/annotations are installed, never sample
-columns. No dataset is bundled or redistributed by these commands.
+Because upstream refreshes this file daily, downloads are validated by transfer
+completeness (`Content-Length` and gzip stream integrity), GRCh38 Y length,
+copyright, annotation headers, and sorted coordinates rather than a fixed
+upstream hash; any truncated or invalid download fails without replacing
+installed data. `--snapshot` selects a local VCF or VCF.gz instead of
+downloading. In both cases the snapshot's SHA-256 and prepared file checksums
+are recorded in `manifest.json`. Only SNP sites/annotations are installed, never
+sample columns. No dataset is bundled or redistributed by these commands.
 Since bootstrap v0.2.0, `ref bootstrap` includes no YBrowse files; old
 `snps_*.vcf.gz` bootstrap files are unused and safe to delete.
 
@@ -128,6 +240,11 @@ does redistribute positions with attribution and share-alike notice below.
 
 Calling never downloads or refreshes. It validates samtools/bcftools/bgzip/tabix,
 an indexed matching GRCh38 FASTA, and REF-allele agreement before calling.
+Sites where the FASTA's chrY is N, such as the PARs masked in hs38 and the
+GRCh38 no-alt analysis set, are skipped, not called; their count is in the
+VCF header (`##ybrowse_excluded_reference_N_sites`) and the
+`ybrowse_reference_n_sites_excluded` warning. Any other REF mismatch stops
+the run.
 `_Y_ybrowse.vcf.gz` has haploid genotypes at installed targets, aliases in ID
 and allele-matched HG/ISOGG annotations. Duplicate aliases combine only for
 the same REF/ALT. Multiallelic splitting never turns another ALT into reference;
@@ -146,9 +263,9 @@ and fetched into the library when explicitly requested/authorized, not bundled.
 | Data module | Used by | Licence |
 | --- | --- | --- |
 | `yfull-tree` | `lineage y-haplogroup --tree yfull` (default) | CC-BY-4.0, YFull |
-| `yfull-ybrowse-positions` | Same, unless `--pos-file` is given | CC-BY-SA (version unspecified), Thomas Krahn YSEQ (2022) |
+| `yfull-ybrowse-positions` | Same, unless `--pos-file` is given; `lineage y-private` | CC-BY-SA (version unspecified), Thomas Krahn YSEQ (2022) |
 | Yleaf data `v4.1.6` | Y-haplogroup QC tables and other trees | GPL-3.0-or-later, Yleaf |
-| YBrowse SNP VCF | `ref ybrowse --install`, `extract ydna-vcf --ybrowse` | CC-BY-SA, Thomas Krahn YSEQ; downloaded on request, not redistributed or in bootstrap since v0.2.0 |
+| YBrowse SNP VCF | `ref ybrowse --install`, `extract ydna-vcf --ybrowse`, `lineage y-private` on GRCh38 | CC-BY-SA, Thomas Krahn YSEQ; downloaded on request, not redistributed or in bootstrap since v0.2.0 |
 
 YFull modules print a licence notice on first download; see
 [tree data](../src/wgsextract_cli/ydna/yleaf_native/README.md#trees).

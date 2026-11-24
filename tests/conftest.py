@@ -13,9 +13,9 @@ from typing import Any
 import pytest
 
 from tests.fake_tools import FakePixi
+from tests.home_isolation import isolate_home, state_directory_setting
 from tests.macos_openmp import sweep_unwritten_openmp_registrations
 from tests.path_budget import utf16_len
-from tests.smoke_utils import isolate_home, state_directory_setting
 from wgsextract_cli.core import config as config_module
 from wgsextract_cli.core.config import get_config_path, reload_settings, settings
 from wgsextract_cli.core.dependencies import clear_tool_caches
@@ -267,7 +267,9 @@ def _no_segmented_size_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     segmented path call it directly."""
     from wgsextract_cli.core.ref_library import segmented
 
-    monkeypatch.setattr(segmented, "ranged_size", lambda url: None)
+    monkeypatch.setattr(
+        segmented, "ranged_revision", lambda url, cancel_event=None: None
+    )
 
 
 @pytest.fixture(autouse=True)

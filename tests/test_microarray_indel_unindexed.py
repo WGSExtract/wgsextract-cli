@@ -10,7 +10,7 @@ probe_inputs = indel_fixtures.probe_inputs
 
 
 @needs_tools("bcftools", "samtools", "bgzip", "tabix")
-@pytest.mark.parametrize("kind", ["vcf", "bcf"])
+@pytest.mark.parametrize("kind", ["vcf", "bcf", "vcf.gz"])
 def test_cli_prepares_unindexed_sources_without_changing_originals(
     tmp_path, monkeypatch, probe_inputs, kind
 ):
@@ -34,9 +34,10 @@ def test_cli_prepares_unindexed_sources_without_changing_originals(
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tsample\n"
         "1\t700\t.\tCGT\tC\t.\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
     )
-    if kind == "bcf":
-        binary = source.with_suffix(".bcf")
-        run_command(["bcftools", "view", "-Ob", "-o", str(binary), str(source)])
+    if kind != "vcf":
+        binary = source.with_suffix("." + kind)
+        output_type = "-Ob" if kind == "bcf" else "-Oz"
+        run_command(["bcftools", "view", output_type, "-o", str(binary), str(source)])
         source = binary
     original = source.read_bytes()
     out = tmp_path / "out"
@@ -53,15 +54,17 @@ def test_cli_prepares_unindexed_sources_without_changing_originals(
         "--region",
         "chr1:650-780",
         "--formats",
-        "23andme_v5_2025",
+        "23andme_v4",
         "--indel-manifest",
-        "23andme_v5_2025=" + manifest,
+        "23andme_v4=" + manifest,
         "--outdir",
         str(out),
     )
-    exported = next(out.glob("*23andMe_V5_2025.txt")).read_text()
+    exported = next(out.glob("*23andMe_V4.txt")).read_text()
     assert exported.rstrip().endswith("rsProbe\t1\t700\tDI")
     assert source.read_bytes() == original
-    assert not source.with_name(source.name + ".gz").exists()
-    assert not source.with_name(source.name + ".csi").exists()
-    assert list(out.glob("IndelInput_*/input.vcf.gz.tbi"))
+    if kind != "vcf.gz":  # a bgzipped VCF is indexed beside itself
+        assert not source.with_name(source.name + ".gz").exists()
+        assert not source.with_name(source.name + ".csi").exists()
+    # No working copy is left in the output folder (issue #1242).
+    assert not list(out.rglob("input.vcf.gz"))

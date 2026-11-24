@@ -72,6 +72,9 @@ file(READ "${bwa_SOURCE_DIR}/ksw.c" ksw_source)
 # fit 16 bits (extend_neon.c.in); upstream's is kept as wgse_ksw_extend2_upstream().
 seam_replace(ksw_source "int ksw_extend2(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)\n{"
     "int wgse_ksw_extend2_upstream(int qlen, const uint8_t *query, int tlen, const uint8_t *target, int m, const int8_t *mat, int o_del, int e_del, int o_ins, int e_ins, int w, int end_bonus, int zdrop, int h0, int *_qle, int *_tle, int *_gtle, int *_gscore, int *_max_off)\n{")
+# BWA-SW can extend an empty query prefix; in that case only the origin exists.
+seam_replace(ksw_source "eh[0].h = h0; eh[1].h = h0 > oe_ins? h0 - oe_ins : 0;"
+    "eh[0].h = h0; if (qlen > 0) eh[1].h = h0 > oe_ins? h0 - oe_ins : 0;")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/ksw_oracle.c.in" ksw_oracle_source)
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/extend_neon.c.in" extend_neon_source)
 file(WRITE "${generated}/ksw.c" "#include \"metal_backend.h\"\n${ksw_source}\n${ksw_oracle_source}\n${extend_neon_source}")
@@ -98,6 +101,9 @@ file(WRITE "${generated}/bwt.c" "#include \"metal_backend.h\"\n${bwt_source}\n${
 
 # With Metal, map the next chunk while this one pairs (fastmap_stages.c.in).
 file(READ "${bwa_SOURCE_DIR}/fastmap.c" fastmap_source)
+# Windows is LLP64: atol would truncate the valid 64-bit seed limit.
+seam_replace(fastmap_source "opt->max_mem_intv = atol(optarg)"
+    "opt->max_mem_intv = strtoll(optarg, NULL, 10)")
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/fastmap_stages.c.in" fastmap_stages_source)
 seam_replace(fastmap_source "int main_mem(int argc, char *argv[])"
     "${fastmap_stages_source}int main_mem(int argc, char *argv[])")

@@ -21,7 +21,7 @@ function assertWgsExtractReleaseCompatible(tag, pages) {
   const [major, minor, patch] = match.slice(1).map(Number);
   const supportsNewFeatures = major > 0 || minor > 6 || (minor === 6 && patch >= 4);
   const newFormats = new Set([
-    "myheritage_gsa_2025", "myheritage_gsa_2025_609424", "ancestry_v2_2021", "ancestry_v2_2024",
+    "ancestry_v2ab", "ancestry_v2cd", "ancestry_v2e", "myheritage_v3",
     "aadr_1240k", "aadr_ho", "aadr_1240k_ho", "aadr_2m",
   ]);
   const newSettings = new Set(["atomic_outputs", "keep_awake", "temp_directory", "log_dir"]);
@@ -302,20 +302,27 @@ test("WGSExtract exposes My Genomes and reference genome library controls in Typ
 
   const databaseTools = library.sections.find((section) => section.id === "databases-tools");
   assert.ok(databaseTools, "databases and tools section exists");
-  assert.equal(databaseTools.dataSource.path, "scripts/run-wgsextract.sh");
-  assert.deepEqual(databaseTools.dataSource.arguments, ["ref", "status", "--values"]);
-  assert.deepEqual(databaseTools.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--mygenomes-library", "{{mygenomes_library}}"]]);
-  assert.ok(databaseTools.actions.find((action) => action.id === "annotation-vcf-download"));
-  assert.ok(databaseTools.actions.find((action) => action.id === "spliceai-download"));
-  assert.ok(databaseTools.actions.find((action) => action.id === "alphamissense-download"));
-  assert.ok(databaseTools.actions.find((action) => action.id === "pharmgkb-download"));
+  const refDataTable = databaseTools.controls.find((control) => control.id === "reference_data");
+  assert.ok(refDataTable, "reference data table control exists");
+  assert.equal(refDataTable.kind, "libraryList");
+  assert.equal(refDataTable.dataSource.path, "scripts/run-wgsextract.sh");
+  assert.deepEqual(refDataTable.dataSource.arguments, ["--json", "ref", "status"]);
+  assert.deepEqual(refDataTable.dataSource.optionalArguments, [["--ref", "{{ref_path}}"], ["--mygenomes-library", "{{mygenomes_library}}"]]);
+  assert.deepEqual(refDataTable.dataSource.transform, { module: "transforms/reference-data.mjs", export: "items" });
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "annotation-vcf-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "dbsnp-hg38-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "dbsnp-hg19-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "spliceai-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "alphamissense-download"));
+  assert.ok(refDataTable.rowActions.find((action) => action.id === "pharmgkb-download"));
   assert.equal(
     library.sections.some((section) => section.id === "test-dataset"),
     false,
   );
   const testDataset = datasets.sections.find((section) => section.id === "test-dataset");
-  assert.deepEqual(testDataset.dataSource, databaseTools.dataSource);
-  assert.ok(!databaseTools.actions.some((action) => action.id.startsWith("test-")));
+  assert.equal(testDataset.dataSource.path, "scripts/run-wgsextract.sh");
+  assert.deepEqual(testDataset.dataSource.arguments, ["ref", "status", "--values"]);
+  assert.ok(!refDataTable.rowActions.some((action) => action.id.startsWith("test-")));
   assert.ok(datasets.sections.find((section) => section.id === "example-datasets"), "Example Datasets are on Datasets");
   const downloadAction = testDataset.actions.find((action) => action.id === "test-dataset-download");
   assert.ok(downloadAction, "test genome download action exists");
@@ -475,4 +482,108 @@ test("WGSExtract exposes My Genomes and reference genome library controls in Typ
   assert.equal(repairVcfAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
   assert.deepEqual(repairVcfAction.command.arguments, ["repair", "ftdna-vcf", "--input", "{{vcf_path}}"]);
   assert.deepEqual(repairVcfAction.command.optionalArguments[0], ["--outdir", "{{out_dir}}"]);
+
+  const vcfInfo = bundle.manifest.pages
+    .find((page) => page.id === "vcf")
+    .sections.find((section) => section.id === "vcf-info-commands");
+  assert.ok(vcfInfo, "VCF page includes the Info Commands section");
+  assert.deepEqual(
+    vcfInfo.actions.map((action) => action.id),
+    ["vcf-basic-info", "vcf-qc", "view-vcf", "vcf-variantqc", "vcf-granite-qc"],
+  );
+  assert.deepEqual(vcfInfo.actions[0].command.arguments, ["vcf", "info", "--vcf-input", "{{vcf_path}}"]);
+  assert.deepEqual(vcfInfo.actions[1].command.arguments, ["qc", "vcf", "--vcf-input", "{{vcf_path}}"]);
+  assert.equal(vcfInfo.actions[2].viewerInput, "vcf_path");
+  assert.deepEqual(vcfInfo.actions[2].prerequisiteArguments, ["vcf", "to-fasta", "--vcf-input", "{{vcf_path}}"]);
+  assert.deepEqual(vcfInfo.actions[3].command.arguments, ["vcf", "variantqc", "--vcf-input", "{{vcf_path}}"]);
+  assert.deepEqual(vcfInfo.actions[3].openOutput, ["variantqc_report"]);
+  assert.equal(vcfInfo.actions[3].resultCard, undefined);
+  assert.deepEqual(vcfInfo.actions[4].command.arguments, ["vcf", "granite-qc", "--vcf-input", "{{vcf_path}}"]);
+
+  const vcfPage = bundle.manifest.pages.find((page) => page.id === "vcf");
+  const vcfPathControl = vcfPage.sections
+    .find((section) => section.id === "vcf-inputs")
+    .controls.find((control) => control.id === "vcf_path");
+  assert.equal(vcfPathControl.multiple, true, "VCF Input allows multi-file selection");
+
+  const multiVcfContext = commandContextFromState({
+    manifest: bundle.manifest,
+    fieldValues: { vcf_path: "/data/first.vcf.gz\n/data/second.vcf.gz\n/data/third.vcf.gz", body: "line1\nline2" },
+    checkedOptions: {},
+    configValues: {},
+    bundleRootPath: wgsExtractBundleRoot,
+  });
+  const basicCmd = displayCommand(vcfInfo.actions[0].command, multiVcfContext);
+  assert.match(basicCmd, /vcf info --vcf-input \/data\/first\.vcf\.gz$/);
+  const graniteCmd = displayCommand(vcfInfo.actions[4].command, multiVcfContext);
+  assert.match(graniteCmd, /vcf granite-qc --vcf-input \/data\/first\.vcf\.gz$/);
+  const variantqcCmd = displayCommand(vcfInfo.actions[3].command, multiVcfContext);
+  assert.match(
+    variantqcCmd,
+    /vcf variantqc --vcf-input \/data\/first\.vcf\.gz --extra-vcf \/data\/second\.vcf\.gz --extra-vcf \/data\/third\.vcf\.gz$/,
+  );
+  const singleVcfCmd = displayCommand(vcfInfo.actions[3].command, {
+    ...multiVcfContext,
+    fieldValues: { vcf_path: "/data/only.vcf.gz" },
+  });
+  assert.match(singleVcfCmd, /vcf variantqc --vcf-input \/data\/only\.vcf\.gz$/);
+  const multilineTextCmd = displayCommand(
+    { executable: "curl", arguments: ["--data", "{{body}}"] },
+    multiVcfContext,
+  );
+  assert.equal(multilineTextCmd, "curl --data 'line1\nline2'");
+});
+
+test("WGSExtract Microarray page exposes CombinedKit v5 and all #1107 consumer formats", async (t) => {
+  const copy = await exampleBundleCopy(t);
+  const bundle = await loadLocalizedBundle("en", repoRoot, copy, copy);
+  const microarray = bundle.manifest.pages.find((page) => page.id === "microarray");
+  assert.ok(microarray, "microarray page exists");
+  const formats = microarray.sections
+    .flatMap((section) => section.controls ?? [])
+    .find((control) => control.id === "microarray_formats");
+  assert.ok(formats, "microarray_formats control exists");
+
+  const byId = new Map(formats.options.map((option) => [option.id, option]));
+  assert.equal(byId.get("combined_v3")?.title, "v3");
+  assert.equal(byId.get("combined_v3")?.group, "Combined");
+  assert.match(byId.get("combined_v3")?.groupTooltip ?? "", /CombinedKit v3.*CombinedKit v5 expands v3/);
+  assert.equal(byId.get("all")?.title, "v5");
+  assert.equal(byId.get("all")?.group, "Combined");
+  assert.equal(byId.get("all")?.selected, true);
+
+  const v5Formats = [
+    "23andme_v2", "ancestry_v2ab", "ancestry_v2cd", "ancestry_v2e",
+    "ftdna_v1_affy", "ftdna_v4", "ftdna_v2y", "ftdna_v3y", "ftdna_v4y",
+    "myheritage_v3", "tellmegen", "genera", "mthfr",
+    "meudna_v1", "meudna_v2", "selfdecode", "nucleus",
+  ];
+  for (const id of v5Formats) {
+    assert.ok(byId.has(id), `missing CombinedKit v5 format option: ${id}`);
+    assert.notEqual(byId.get(id)?.advancedOnly, true, `${id} should be visible in Basic mode`);
+  }
+  // 23andMe v1/v2 sits first on the 23andMe row; FTDNA v1 (Affy) sits first on
+  // the FamilyTreeDNA row; FTDNA Y files sit on their own Build 38 row.
+  const idsInGroup = (group) => formats.options.filter((o) => o.group === group).map((o) => o.id);
+  assert.deepEqual(idsInGroup("23andMe"), [
+    "23andme_v2", "23andme_v3", "23andme_v4", "23andme_v5", "23andme_v35", "23andme_api",
+  ]);
+  assert.deepEqual(idsInGroup("AncestryDNA"), [
+    "ancestry_v1", "ancestry_v2ab", "ancestry_v2cd", "ancestry_v2e",
+  ]);
+  assert.deepEqual(idsInGroup("FamilyTreeDNA"), [
+    "ftdna_v1_affy", "ftdna_v2", "ftdna_v3", "ftdna_v4",
+  ]);
+  assert.deepEqual(idsInGroup("FTDNA (Y only, Build 38)"), [
+    "ftdna_v2y", "ftdna_v3y", "ftdna_v4y",
+  ]);
+  assert.deepEqual(idsInGroup("MyHeritage"), [
+    "myheritage_v1", "myheritage_v2", "myheritage_v3",
+  ]);
+  for (const dropped of [
+    "23andme_v5_2025", "ancestry_v2", "ancestry_v2_2021", "ancestry_v2_2024",
+    "myheritage_gsa_2025", "myheritage_gsa_2025_609424",
+  ]) {
+    assert.ok(!byId.has(dropped), `dropped format should not appear in GUI: ${dropped}`);
+  }
 });

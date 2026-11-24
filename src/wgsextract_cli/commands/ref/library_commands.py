@@ -12,6 +12,7 @@ from wgsextract_cli.api.ref import (
     RefBootstrapParams,
     RefCaddParams,
     RefClinvarParams,
+    RefDbsnpParams,
     RefGeneMapParams,
     RefGerpParams,
     RefGnomadParams,
@@ -30,12 +31,14 @@ from wgsextract_cli.api.ref import (
 )
 from wgsextract_cli.core import (
     ancestry_reference,
+    dbsnp,
     gnomad_sv,
     read_scope,
     somalier_resources,
 )
 from wgsextract_cli.core.aadr_resources import install_aadr_2m
 from wgsextract_cli.core.annotation_resources import (
+    GNOMAD_URLS,
     build_gnomad_af,
     download_alphamissense,
     download_cadd,
@@ -66,6 +69,7 @@ from wgsextract_cli.core.ref_library.catalog import (
     get_available_genomes,
     get_genome_status,
 )
+from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.reference_assets import (
     reference_genomes_dir,
     reference_library_of,
@@ -92,14 +96,17 @@ from .core_commands import (
 _MENU_DOWNLOADS: dict[str, tuple[str, Callable[[str], bool]]] = {
     "C": ("ClinVar", download_clinvar),
     "R": ("REVEL", download_revel),
-    "P": ("PhyloP hg38 (~9.9 GB)", download_phylop),
+    "P": ("PhyloP GRCh38 (~9.9 GB)", download_phylop),
     "N": ("gnomAD", download_gnomad),
     "S": ("SpliceAI", download_spliceai),
     "A": ("AlphaMissense", download_alphamissense),
     "K": ("PharmGKB", download_pharmgkb),
-    "D": ("CADD hg38 (~88 GB)", download_cadd),
-    "E": ("GERP hg38 (~9.6 GB)", download_gerp),
-    "F": ("gnomAD v4.1 frequencies hg38 (streams ~900 GB)", build_gnomad_af),
+    "D": ("CADD GRCh38 (~88 GB)", download_cadd),
+    "E": ("GERP GRCh38 (~9.6 GB)", download_gerp),
+    "F": (
+        "gnomAD v4.1 frequencies GRCh38 (streams ~900 GB)",
+        lambda reflib: build_gnomad_af(reflib, download=True),
+    ),
 }
 
 
@@ -342,9 +349,9 @@ def cmd_library(args: argparse.Namespace) -> None:
     print("=" * 80)
     print("Select an option:")
     print(" 0) Exit")
-    print(" G) Gene Map (hg19/hg38)")
+    print(" G) Gene Map (GRCh37/GRCh38)")
     for key, (name, _) in _MENU_DOWNLOADS.items():
-        suffix = "" if key == "K" or "hg38" in name else " (hg19/hg38)"
+        suffix = "" if key == "K" or "GRCh38" in name else " (GRCh37/GRCh38)"
         print(f" {key}) {name}{suffix}")
 
     for i, g in enumerate(genomes, 1):
@@ -471,6 +478,25 @@ def run_clinvar(params: RefClinvarParams) -> None:
     _run_downloader(_library(params.ref), "ClinVar", download_clinvar)
 
 
+def run_dbsnp(params: RefDbsnpParams) -> None:
+    reflib = _library(params.ref)
+    builds = (params.build,) if params.build else ("hg38", "hg19")
+    label = f"dbSNP common rsIDs ({', '.join(builds)})"
+    if params.delete:
+        removed = library_removal.remove_dbsnp(reflib, builds)
+        current_result().add_metrics(deleted=len(removed))
+        if removed:
+            human_output(f"Deleted {label} ({len(removed)} item(s)).")
+        else:
+            human_output(f"No {label} installed to delete.")
+        return
+    if not Path(reflib).is_dir():
+        logging.info("Creating a new reference library at %s.", reflib)
+    for path in dbsnp.install_dbsnp(reflib, builds, cancel_event=cancel_event()):
+        current_result().add_output(path, "reference_resource")
+    logging.info("Installed %s.", label)
+
+
 def run_revel(params: RefRevelParams) -> None:
     _run_downloader(_library(params.ref), "REVEL", download_revel)
 
@@ -490,10 +516,27 @@ def run_gnomad(params: RefGnomadParams) -> None:
     if params.release == "4.1":
         workers = int(params.threads) if params.threads else 6
         _run_downloader(
-            reflib, "gnomAD v4.1", lambda lib: build_gnomad_af(lib, workers), "build"
+            reflib,
+            "gnomAD v4.1",
+            lambda lib: build_gnomad_af(
+                lib, workers, cancel_event=cancel_event(), download=params.download
+            ),
+            "build",
         )
-    else:
+    elif params.download:
+        verify_dependencies(["tabix"])
         _run_downloader(reflib, "gnomAD", download_gnomad)
+    else:
+        paths = [download_path(reflib, f"gnomad_{b}.vcf.bgz") for b in GNOMAD_URLS]
+        missing = [
+            str(p) for p in paths if not (p.is_file() and Path(f"{p}.tbi").is_file())
+        ]
+        if missing:
+            raise WGSExtractError(
+                f"gnomAD v2.1.1 VCF or index missing: {', '.join(missing)}. "
+                "To install the public VCFs, run: wgsextract ref gnomad --download"
+            )
+        logging.info("gnomAD v2.1.1 is already installed.")
 
 
 def _delete_resource(reflib: str, key: str, resource_name: str) -> None:
@@ -553,7 +596,7 @@ def run_bootstrap(params: RefBootstrapParams) -> None:
 
     logging.info("Starting reference library bootstrap...")
     before = file_snapshot(reflib)
-    if not download_bootstrap(reflib):
+    if not download_bootstrap(reflib, cancel_event=cancel_event()):
         raise WGSExtractError("Reference library bootstrap failed.")
     # GRCh38 microarray targets and AADR exports lift with this chain. The
     # AADR 2M panel itself is not part of the bootstrap: its server is slow,
@@ -598,6 +641,7 @@ cmd_bootstrap = cli_handler(RefBootstrapParams, run_bootstrap)
 cmd_microarray_targets = cli_handler(RefMicroarrayTargetsParams, run_microarray_targets)
 RESOURCE_COMMANDS: tuple[tuple[type[_Resource], Callable[..., None]], ...] = (
     (RefClinvarParams, run_clinvar),
+    (RefDbsnpParams, run_dbsnp),
     (RefRevelParams, run_revel),
     (RefPhylopParams, run_phylop),
     (RefGnomadParams, run_gnomad),

@@ -24,10 +24,12 @@ def get_bam_header(
 ) -> str:
     """Retrieve header using samtools view -H."""
     from wgsextract_cli.core.dependencies import get_tool_path
+    from wgsextract_cli.core.variant_files import is_vcf_path
 
     bam_path = fspath(bam_path)
     is_cram = bam_path.lower().endswith(".cram")
-    is_vcf = bam_path.lower().endswith((".vcf", ".vcf.gz", ".bgz", ".bcf"))
+    # Any .bgz here (sample.bgz, sample.gvcf.bgz) is a bgzipped VCF.
+    is_vcf = is_vcf_path(bam_path) or bam_path.lower().endswith(".bgz")
 
     if is_vcf:
         try:
@@ -120,7 +122,12 @@ def get_vcf_build(vcf_path: str) -> str | None:
             for line in res.stdout.splitlines()
             if line.lower().startswith(("##reference=", "##assembly=", "##contig="))
         )
-        return build_from_path(metadata)
+        detected = build_from_path(metadata)
+        if detected:
+            return detected
+        from wgsextract_cli.core.vcf_reference import identify_vcf_reference
+
+        return identify_vcf_reference(vcf_path, header=res.stdout).build
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError):
         logging.debug("Unable to infer VCF build from header.", exc_info=True)
     return None

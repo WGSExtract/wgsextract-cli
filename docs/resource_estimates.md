@@ -40,12 +40,15 @@ are advisory. Choose a reproducible dataset/profile before comparing hosts.
 
 `vcf impute` prints estimated memory and runtime before starting. HG002 chr20
 measurements at four threads: GLIMPSE2 phase/ligate 431–464 s and 2.2–3.1 GB
-peak RSS; Beagle 60 s and 3.4 GB. The memory preflight reserves a conservative
-4 GiB for GLIMPSE2 and 8 GiB for Beagle. Sequential chromosomes/chunks keep
-memory bounded; runtime scales with selected reference bases and thread count.
-The extrapolated whole-autosome GLIMPSE2 time is about 5.5 h at four threads,
-or 2.8 h at eight, excluding one-time panel preparation. These are not measured
-whole-genome runtimes. See [imputation](imputation.md) for accuracy and limits.
+peak RSS; Beagle 60 s and 3.4 GB, with 8 GiB reserved. GLIMPSE2's threads
+don't speed up one sample, so `vcf impute` runs `--threads` GLIMPSE2 chunks at
+once, one thread each, within 80% of the available memory (or `--memory` per
+chunk), estimating each chunk's peak from its binary reference; the preflight
+reports the peak of the largest chunks that run together. The extrapolated
+whole-autosome GLIMPSE2 time is about 5.6 h one chunk at a time and about 1 h
+with eight at once, excluding one-time panel preparation. These are not
+measured whole-genome runtimes. See [imputation](imputation.md#resources) for
+the chr20 timings, accuracy and limits.
 
 ## Lossless output profile measurements
 
@@ -254,13 +257,16 @@ SSD swap traffic must not be conflated
 ([#747](https://github.com/WGSExtract/wgsextract-cli/issues/747)).
 The read-only `estimate_resources` API does not change settings itself:
 callers supply their resolved backend allowance and sort memory.
-`--prefer-native-gpu` / config `prefer_native_gpu = true` applies only after
-normal GPU sort step-down fails, replacing CPU fallback at the risk of heavy
-swap. Explicit `--memory` is retained; default/config memory is capped at
-256M, subject to general sort limits. The manifest's
+On macOS and Linux, `--prefer-native-gpu` / config `prefer_native_gpu = true`
+can replace a RAM-budget CPU fallback after normal GPU sort step-down fails,
+at the risk of heavy swap. Explicit `--memory` is retained on an override;
+default/config memory is capped at 256M, subject to general sort limits.
+[Windows CUDA](windows.md#wgse-bwa-and-optional-nvidia-cuda) is automatic when
+RAM and commit both fit, and never bypasses either check.
+`--no-prefer-native-gpu` forces CPU on Windows. The manifest's
 `native_aligner_backend_reason`, `native_aligner_memory_estimate_bytes`,
 `native_aligner_memory_budget_bytes`, `native_aligner_sort_memory_requested`
-and `native_aligner_sort_memory_actual` explain fallback or opt-in and survive
+and `native_aligner_sort_memory_actual` explain fallback or an override and survive
 resume. The fallback estimate is the smallest considered GPU plan, not the
 selected CPU pipeline's estimate.
 For paired Metal BWA, automatic selection also tries compressed staging before
@@ -713,6 +719,17 @@ accuracy and caveats are in
 | `vcf deepvariant --ont`, Google's CPU image | Ryzen 5 5600X, 10 | 11.3 h | not recorded | from the 81.4 GB primary-only CRAM 3.0 copy: work directory not recorded, 150 GB was enough; CRAM 3.1 input also needs about 1.95x its size free for a staged CRAM 3.0 copy |
 | `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GiB, GPU 6.1 GiB | about 100 GiB temporary (full-alignment tensors, about 1 GiB per 1% of the genome) |
 | `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
+
+On native Windows, the [HG002 ONT slice](windows.md#wgse-minimap2-for-long-reads)
+covered about 1.1% of the primary reads. Scaling the time after the one-time
+index build by the read count gives **14.3 h on upstream CPU and 12.9 h on
+CUDA** at eight threads. This is sizing, not a measurement: repeat-rich
+regions and differences in chunking, I/O and compression can change the
+result. Do not scale working set or VRAM with the total number of reads:
+they depend on index and chunk sizes and concurrent processes. The slice
+projects about 170 GB of output, below the 185.5 GB actually measured above.
+Budget at least 230 GiB per run for output and staging, plus space for
+any local copy of the input.
 
 Both callers read a primary-only CRAM 3.0 copy (81.4 GB) of the realigned
 output. `vcf clair3` checks [its temporary space](#clair3s-temporary-space)

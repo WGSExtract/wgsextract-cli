@@ -1,3 +1,42 @@
+WGS Extract lineage
+===================
+
+wgsextract-cli and its desktop app continue WGS Extract, the desktop program by
+City Farmer (2018-2020) and Randy Harr (2020-2022), whose microarray generator
+grew out of Thomas Krahn's Extract23 (https://github.com/tkrahn/extract23),
+which turned a 30x whole genome into a 23andMe v3 file. Its program source
+headers read "Copyright (C) 2018-2020 City Farmer / Copyright (C) 2020-2022
+Randy Harr / License: GNU General Public License v3 or later" (release v44.2,
+https://get.wgse.io/WGSExtract-v44.2_28Feb2023_program.zip, SHA-256
+ee7b57e042fb05626a6f3c6dc791bb86857a9802d48ecdbc8d1a1c4604b52a23; development
+repository https://github.com/WGSExtract/WGSExtract-Dev).
+
+This is a rewrite, not a clean-room reimplementation. The microarray
+CombinedKit-to-template design and these modules are modified ports of WGS
+Extract v4 code, conveyed under GPL-3.0-or-later with the original copyright
+notices above:
+
+  src/wgsextract_cli/core/microarray/templates.py  from program/aconv.py and
+                                                    program/hg38tohg19.py
+  src/wgsextract_cli/core/microarray/formats.py    from program/aconv.py
+
+WGS Extract CLI contributors modified them from 2026-03-02; each module's
+docstring lists the changes and the git history holds the details. The
+corresponding source is this repository. docs/migrating-from-v4.md maps v4's
+actions to current commands and records the differences.
+
+The desktop app's renderer under gui/ is separately licensed MIT (gui/LICENSE).
+That grant covers the renderer's own code; it does not relicense GPL code from
+WGS Extract or this CLI, which stays GPL-3.0-or-later wherever it is used.
+
+WGS Extract's reference-library data (chip templates, liftover chains, BED
+files, Y trees, manuals and translations) are separate works under their own
+terms, not the program GPL. This repository does not redistribute the v4
+reference library; its differential corpus pins that archive by URL and
+SHA-256 and fetches it only on request. Source rights for the data this
+project ships are tracked in issue #864.
+
+
 Yleaf-derived Y-DNA analysis
 ==========================
 
@@ -35,6 +74,15 @@ yfull-ybrowse-positions (marker positions derived from YBrowse, CC-BY-SA
 Thomas Krahn YSEQ (2022), no CC-BY-SA version stated). Each module carries its own licence file and
 SHA-256 pins; neither licence applies to this program.
 
+`typing paraphase` invokes the optional Paraphase 3.3.1 package from
+Pacific Biosciences, licensed BSD-3-Clause-Clear:
+https://github.com/PacificBiosciences/paraphase/blob/v3.3.1/LICENSE
+The CLI's locus-name list comes from that release's public locus catalog.
+Paraphase 3.3.2 and later instead use the PacBio Software License Agreement;
+WGS Extract does not package those versions. A user-supplied executable under
+that agreement is an explicit opt-in for PacBio-instrument data only:
+https://github.com/PacificBiosciences/paraphase/blob/v4.1.0/LICENSE.md
+
 Please cite:
 Ralf A, Montiel González D, Zhong K, Kayser M. Yleaf: Software for Human
 Y-Chromosomal Haplogroup Inference from Next-Generation Sequencing Data.
@@ -47,3 +95,41 @@ verified lazy data downloads, deterministic marker presentation and result
 provenance. Prediction rules and marker/QC filtering derive from upstream.
 These modifications were made by WGS Extract contributors on 2026-11-01.
 This project is independent and is not endorsed by the Yleaf authors.
+
+Reviewed mtDNA variant table
+============================
+
+src/wgsextract_cli/assets/report/mt_variants.json is a factual table of
+mtDNA variants (positions, alleles, identifiers, classifications, review
+statuses and condition names) that scripts/build_report_mt_variants.py
+selects by rule from:
+
+- ClinVar, National Center for Biotechnology Information, U.S. National
+  Library of Medicine: the GRCh38 VCF release of 2026-11-15
+  (clinvar_20261115.vcf.gz, MD5 8aa64cd0c6b40a0fbed10f99bb51a9d7), and
+  NCBI's NC_012920.1 feature table for gene spans. NCBI places no
+  restrictions on the use or distribution of these data
+  (https://www.ncbi.nlm.nih.gov/home/about/policies/).
+- CPIC (Clinical Pharmacogenetics Implementation Consortium): the MT-RNR1
+  increased-risk alleles of McDermott JH et al., Clin Pharmacol Ther
+  2022;111(2):366-372, PMID 34032273. CPIC content is available under CC0 1.0
+  (https://github.com/cpicpgx/cpic-data/blob/5ee5faf059211ff4636573aedda0eafc94deb1fc/LICENSE.md);
+  CPIC asks for attribution. CPIC guidelines are subject to updates; see
+  https://cpicpgx.org. CPIC is a registered service mark of the U.S.
+  Department of Health & Human Services.
+
+No MITOMAP data are used. Neither source endorses WGS Extract.
+
+CPIC content
+============
+
+src/wgsextract_cli/assets/report/pgx_context_rules.json quotes recommendation
+text from the Clinical Pharmacogenetics Implementation Consortium (CPIC®)
+database, release v1.61.0, which CPIC dedicates to the public domain under
+CC0 1.0 (https://github.com/cpicpgx/cpic-data/blob/v1.61.0/LICENSE.md). The
+database itself is not distributed with WGS Extract: `report --pgx-context
+--download` fetches the SHA-256-pinned export from files.cpicpgx.org. As CPIC
+requests, the report credits CPIC (primary source www.clinpgx.org), cites each
+guideline's publication and the release, and notes that CPIC guidelines are
+updated over time. CPIC® is a registered service mark of the US Department of
+Health & Human Services; WGS Extract is not endorsed by CPIC.

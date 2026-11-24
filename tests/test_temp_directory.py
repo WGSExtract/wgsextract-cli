@@ -15,7 +15,10 @@ import psutil
 import pytest
 
 from tests.disk_volumes import GIB, Volumes
+from tests.fat_volume import exfat_volume as exfat_volume
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from wgsextract_cli.core.alignment import samtools_commands
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.temp_directory import (
     configured_temp_directory,
     run_temporary_directory,
@@ -316,31 +319,68 @@ def test_long_read_cram_realign_budgets_its_spills_and_cram_output(
 
 @needs_tools("samtools")
 @pytest.mark.parametrize("failure", [False, True], ids=["ok", "failed"])
-# sambamba sorts BAM where it is installed; samtools sorts CRAM.
 @pytest.mark.parametrize("suffix", [".bam", ".cram"])
 def test_tmp_dir_overrides_the_configured_one_for_one_run(
-    tmp_path, capsys, paired_bam, folders, failure, suffix
-):
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    paired_bam: Callable[[], tuple[str, str]],
+    folders: tuple[Path, Path],
+    monkeypatch: pytest.MonkeyPatch,
+    failure: bool,
+    suffix: str,
+) -> None:
+    # #1449: use samtools on every platform for its spill count diagnostic,
+    # which persists in the run log even when final output creation fails.
+    monkeypatch.setattr(
+        samtools_commands,
+        "get_tool_path",
+        lambda tool: None if tool == "sambamba" else get_tool_path(tool),
+    )
     ref, source = paired_bam()
     if suffix == ".cram":
         source = str(Path(source).with_suffix(".cram"))
         run_command(["samtools", "view", "-C", "-T", ref, "-o", source,
                      source[: -len(suffix)] + ".bam"])  # fmt: skip
     output, chosen = folders
+    sorted_file = output / f"sample_sorted{suffix}"
     gone = json.dumps(str(tmp_path / "gone"))
     config = tmp_path / "config.toml"
     config.write_text(f"temp_directory = {gone}\n")
     if failure:
         # The sort spills, then can't write its output.
-        (output / f"sample_sorted{suffix}").mkdir()
+        sorted_file.mkdir()
     argv = ["bam", "sort", "--input", source, "--ref", ref, "--outdir", str(output),
             "--memory", "1M", "--threads", "1", "--config", str(config)]  # fmt: skip
     assert "gone" in _failure(_wgsextract(capsys, *argv))
-    with _files_seen_under(chosen) as seen:
-        result = _wgsextract(capsys, *argv, "--tmp-dir", str(chosen))
-    assert _spills(seen[chosen]), "the sort did not spill to --tmp-dir"
-    assert result["status"] == ("failed" if failure else "ok")
-    assert (output / f"sample_sorted{suffix}").is_file() is not failure
+    log = tmp_path / "sort.log"
+    result = _wgsextract(
+        capsys, *argv, "--tmp-dir", str(chosen), "--log-file", str(log)
+    )
+    if failure:
+        assert sorted_file.name in _failure(result)
+        assert sorted_file.is_dir()
+    else:
+        assert result["status"] == "ok", result["error"]
+        assert sorted_file.is_file()
+    diagnostics = log.read_text(encoding="utf-8")
+    assert re.search(r"merging from [1-9]\d* files", diagnostics), diagnostics
+    provenance = json.loads(
+        log.with_suffix(".log.provenance.json").read_text(encoding="utf-8")
+    )
+    sorts = [
+        cmd
+        for cmd in provenance["commands"]
+        if any(
+            Path(executable).stem == "samtools" and subcommand == "sort"
+            for executable, subcommand in zip(cmd, cmd[1:], strict=False)
+        )
+    ]
+    assert len(sorts) == 1, provenance["commands"]
+    (sort_cmd,) = sorts
+    # contract: samtools uses -T as the spill directory/prefix for this run.
+    assert "-T" in sort_cmd, sort_cmd
+    prefix = Path(sort_cmd[sort_cmd.index("-T") + 1])
+    assert prefix.resolve().is_relative_to(chosen.resolve())
     # The run's workspace is removed, also after a failure, and the override
     # is not saved.
     assert list(chosen.iterdir()) == []
@@ -480,4 +520,157 @@ def test_link_new_file_publishes_once_from_a_tmp_dir_on_another_volume(
     with pytest.raises(FileExistsError):
         temp_directory.link_new_file(work / "report.html", output / "report.html")
     assert (output / "report.html").read_bytes() == b"new"
-    assert [p.name for p in output.iterdir()] == ["report.html"]
+    assert _visible(output) == ["report.html"]
+
+
+def _visible(folder: Path) -> list[str]:
+    # macOS keeps ._ metadata files on exFAT; publication locks stay, hidden.
+    return sorted(
+        p.name
+        for p in folder.iterdir()
+        if not p.name.startswith(("._", ".wgse_publish-"))
+    )
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [errno.EPERM, errno.ENOTSUP, errno.EOPNOTSUPP, errno.EXDEV],
+    ids=["EPERM", "ENOTSUP", "EOPNOTSUPP", "tmp-dir-on-another-volume"],
+)
+def test_1241_link_new_file_publishes_once_without_hard_links(
+    tmp_path, monkeypatch, refusal
+):
+    """#1241: on exFAT, FAT32 and some SMB shares link() is refused, so
+    `qc multiqc` failed with "Operation not supported"."""
+    from wgsextract_cli.core import temp_directory
+
+    work, output = tmp_path / "work", tmp_path / "out"
+    work.mkdir()
+    output.mkdir()
+    (work / "report.html").write_bytes(b"new")
+    modified = 1_700_000_000_000_000_000
+    os.utime(work / "report.html", ns=(modified, modified))
+
+    def no_hard_links(source, destination):
+        # OS boundary: a volume without hard links; from a --tmp-dir on
+        # another volume, link() is refused as cross-device first.
+        if refusal == errno.EXDEV and Path(source).parent != Path(destination).parent:
+            raise OSError(errno.EXDEV, os.strerror(errno.EXDEV), str(source))
+        code = errno.ENOTSUP if refusal == errno.EXDEV else refusal
+        raise OSError(code, os.strerror(code), str(source))
+
+    monkeypatch.setattr(os, "link", no_hard_links)
+    temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    assert (output / "report.html").stat().st_mtime_ns == modified
+    (work / "report.html").write_bytes(b"newer")
+    with pytest.raises(FileExistsError):
+        temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    assert not [p for p in output.iterdir() if p.name.endswith(".partial")]
+    assert _visible(output) == ["report.html"]
+
+
+@pytest.mark.parametrize("tmp_dir_elsewhere", [False, True], ids=["same", "across"])
+def test_1241_link_new_file_publishes_once_on_a_real_exfat_volume(
+    tmp_path, exfat_volume, tmp_dir_elsewhere
+):
+    """#1241, on a real exFAT volume rather than a refused link() call."""
+    from wgsextract_cli.core import temp_directory
+
+    work = tmp_path / "work" if tmp_dir_elsewhere else exfat_volume / "work"
+    output = exfat_volume / "out"
+    work.mkdir()
+    output.mkdir()
+    (work / "report.html").write_bytes(b"new")
+    temp_directory.link_new_file(work / "report.html", output / "report.html")
+    (work / "report.html").write_bytes(b"newer")
+    with pytest.raises(FileExistsError):
+        temp_directory.link_new_file(work / "report.html", output / "report.html")
+    assert (output / "report.html").read_bytes() == b"new"
+    assert _visible(output) == ["report.html"]
+
+
+def _while_renaming(
+    monkeypatch, other_run: Callable[[], None]
+) -> tuple[list[BaseException], list[threading.Thread]]:
+    """Start ``other_run`` in another thread just before the next rename()
+    into place and give it time to finish before renaming; returns the
+    errors it raised once that rename is done."""
+    from wgsextract_cli.core import temp_directory
+
+    real = os.rename
+    errors: list[BaseException] = []
+    threads: list[threading.Thread] = []
+
+    def run():
+        try:
+            other_run()
+        except BaseException as error:
+            errors.append(error)
+
+    def rename(source, destination):
+        monkeypatch.setattr(temp_directory.os, "rename", real)
+        other = threading.Thread(target=run)
+        other.start()
+        other.join(timeout=1)  # a run waiting on the publication lock stays alive
+        real(source, destination)
+        threads.append(other)
+
+    monkeypatch.setattr(temp_directory.os, "rename", rename)
+    return errors, threads
+
+
+def test_1241_link_new_file_fallback_does_not_overwrite_a_concurrent_link(
+    tmp_path, monkeypatch
+):
+    """PR #1320 review: one run's source can't be hard-linked (EMLINK), so
+    it publishes by check-then-rename; another run's link landing between
+    the check and the rename was silently replaced while both succeeded."""
+    from wgsextract_cli.core import temp_directory
+
+    ours, theirs, report = tmp_path / "ours", tmp_path / "theirs", tmp_path / "r"
+    ours.write_text("ours")
+    theirs.write_text("theirs")
+    real = os.link
+
+    def too_many_links(source, destination):
+        # OS boundary: only our source has reached the volume's link limit.
+        if Path(source) == ours:
+            raise OSError(errno.EMLINK, os.strerror(errno.EMLINK), str(source))
+        real(source, destination)
+
+    monkeypatch.setattr(temp_directory.os, "link", too_many_links)
+    errors, threads = _while_renaming(
+        monkeypatch, lambda: temp_directory.link_new_file(theirs, report)
+    )
+    temp_directory.link_new_file(ours, report)
+    threads[0].join()
+    assert report.read_text() == "ours"
+    assert [type(e) for e in errors] == [FileExistsError]
+
+
+def test_1241_force_replacement_is_not_lost_to_a_concurrent_fallback(
+    tmp_path, monkeypatch
+):
+    """PR #1320 review: `qc multiqc --force` replacing the report between
+    another run's check and rename on exFAT had its report silently
+    replaced, though it reported success."""
+    from wgsextract_cli.core import temp_directory
+
+    ours, theirs, report = tmp_path / "ours", tmp_path / "theirs", tmp_path / "r"
+    ours.write_text("ours")
+    theirs.write_text("forced")
+
+    def no_hard_links(source, destination):
+        raise OSError(errno.ENOTSUP, os.strerror(errno.ENOTSUP), str(source))
+
+    monkeypatch.setattr(temp_directory.os, "link", no_hard_links)
+    errors, threads = _while_renaming(
+        monkeypatch,
+        lambda: temp_directory.move_file(theirs, report, locked=True),
+    )
+    temp_directory.link_new_file(ours, report)
+    threads[0].join()
+    assert errors == []
+    assert report.read_text() == "forced"

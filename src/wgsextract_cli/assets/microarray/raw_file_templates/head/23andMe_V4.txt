@@ -1,0 +1,3 @@
+# This is a generic 23andMe-format raw data export.
+# Human reference assembly build 37; plus strand.
+# rsid	chromosome	position	genotype

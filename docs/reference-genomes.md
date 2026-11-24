@@ -69,6 +69,13 @@ shipped table with `scripts/gen_reference_ncounts.py`.
 
 Gene-name filtering (`--gene`) requires `ref gene-map` maps for hg19/hg38;
 T2T is rejected. Rebuild maps installed by older versions with `ref gene-map`.
+The same download also keeps UCSC refGene's RefSeq transcripts (primary
+contigs only) as `downloads/transcripts_<build>.bed.gz`, a BGZF BED12 with a
+tabix index whose name column is `SYMBOL|ACCESSION` and whose thick part is the
+CDS. The genome viewer shows them as the **RefSeq transcripts** track, and
+[`info gene`](variants.md#one-gene) reads a gene's exons from them; a library
+whose gene maps came from an older version gets them by running `ref gene-map`
+again.
 
 ### Offline cytobands
 
@@ -115,9 +122,15 @@ redistribution mirror is introduced.
 ## Download safety
 
 Reference HTTP downloads resume only explicit `.partial` files bound to
-their source URL by a `.partial.source` hash sidecar. Segmented downloads
-record the URL hash and per-segment progress in `.partial.segments`.
-Legacy or invalid state and changed URLs cause the download to restart.
+their source URL and to the version of the file the server named (a strong
+ETag, else a Last-Modified date at least a second older than the reply) by
+a `.partial.source` sidecar. Segmented downloads record the URL hash, that
+version and per-segment progress in `.partial.segments`. A resume asks for the rest of that version only
+(`If-Range`): a file replaced at the same URL, even by one of the same size,
+downloads again from the start instead of mixing old and new bytes. Without a
+version from the server, a partial restarts unless a pinned SHA-256 will check
+the result, and a large file is fetched over one connection. Legacy or invalid
+state and changed URLs cause the download to restart.
 Refreshing a complete file starts from zero and preserves it until replacement
 finishes and passes available checksums, then publishes atomically.
 Diagnostic URLs omit userinfo and queries, while requests keep the original

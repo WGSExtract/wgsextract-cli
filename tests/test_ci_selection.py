@@ -14,6 +14,7 @@ from scripts.ci_select_replay import failed_test_files
 from scripts.ci_select_tests import (
     CI_TESTS,
     ci_test_targets,
+    import_graph,
     os_selection,
     select_tests,
 )
@@ -87,6 +88,51 @@ def test_914_single_module_selects_transitive_and_relative_imports(
     ]
 
 
+def test_1330_harness_keeps_only_real_cli_dependencies(tmp_path: Path) -> None:
+    # Use the real harness but isolate it from unrelated core-to-API edges.
+    # Otherwise those real dependencies would mask either false edge returning.
+    harness = {
+        path: (ROOT / path).read_text(encoding="utf-8")
+        for path in (
+            "scripts/ci_select_tests.py",
+            "scripts/ci_test_tiers.py",
+            "tests/conftest.py",
+            "tests/home_isolation.py",
+            "tests/smoke_utils.py",
+        )
+    }
+    leaf = "src/wgsextract_cli/commands/leaf.py"
+    root = repository(
+        tmp_path,
+        {
+            **harness,
+            "src/wgsextract_cli/main.py": "from wgsextract_cli.commands import leaf",
+            leaf: "",
+            "tests/test_cli.py": "from tests.smoke_utils import run_cli",
+            "tests/test_unrelated.py": "import json",
+        },
+    )
+
+    graph = import_graph(root)
+    dependencies = graph.fixture_dependencies(root / "tests")
+    assert "scripts.ci_select_tests" in dependencies
+    assert "wgsextract_cli.main" not in dependencies
+    assert select_tests([leaf], repository=root) == ["tests/test_cli.py"]
+
+
+def test_1482_root_fixture_imports_apply_to_regular_tests(tmp_path: Path) -> None:
+    module = "src/wgsextract_cli/core/fixture_dependency.py"
+    root = repository(
+        tmp_path,
+        {
+            module: "VALUE = 1",
+            "conftest.py": "from wgsextract_cli.core.fixture_dependency import VALUE",
+            "tests/test_uses_fixture.py": "def test_fixture(): pass",
+        },
+    )
+    assert select_tests([module], repository=root) == ["tests/test_uses_fixture.py"]
+
+
 @pytest.mark.parametrize(
     "path",
     [
@@ -118,6 +164,15 @@ def test_914_selector_regressions_do_not_start_the_cli_matrix() -> None:
     assert not routes(paths)["cli"]
     assert set(CI_TESTS) <= set(select_tests(paths))
     assert "tests/test_table_writer.py" not in select_tests(paths)
+
+
+def test_1339_shadow_regressions_only_run_in_the_ci_policy_lane() -> None:
+    paths = sorted(
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / "tests").glob("test_ci_impact_*.py")
+    )
+    assert paths and not routes(paths)["cli"]
+    assert set(paths) <= set(ci_test_targets(paths))
 
 
 def test_914_lazy_registry_command_selects_its_tests(tmp_path: Path) -> None:
@@ -257,6 +312,19 @@ def test_914_real_lazy_command_and_startup_tests_are_selected() -> None:
     assert selected != "all"
     assert "tests/test_extract_commands.py" in selected
     assert "tests/test_cli_parser.py" in selected
+
+
+def test_1496_split_help_catalog_selects_help_contract_tests() -> None:
+    paths = ["src/wgsextract_cli/commands/_help_catalog/vcf.py"]
+    selected = select_tests(paths)
+    assert selected != "all"
+    assert {
+        "tests/test_cli_help.py",
+        "tests/test_command_needs.py",
+        "tests/test_api_cli_parity.py",
+        "tests/test_regen.py",
+    }.issubset(selected)
+    assert "tests/test_cli_help.py" in docs_test_targets(paths)
 
 
 def test_914_real_leaf_module_does_not_select_unrelated_ci_tests() -> None:

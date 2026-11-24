@@ -451,7 +451,13 @@ _EXAMPLE_PATHS = [
 
 _TYPING_PATHS = [
     (op, item)
-    for op in ("typing/cyp2d6", "typing/hla", "typing/smn", "typing/str")
+    for op in (
+        "typing/cyp2d6",
+        "typing/hla",
+        "typing/smn",
+        "typing/str",
+        "typing/target-cnv",
+    )
     for item in find(op).fields()
     if item.spec.path or item.spec.may_name_file
 ]
@@ -648,6 +654,11 @@ _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
     ("basecall", "alignment"): {"alignment": _FILE, "regions_bed": _FILE},
     ("bam/to-ubam", "r1"): {"input": None, "r1": _FILE},
     ("bam/to-ubam", "r2"): {"input": None, "r1": _FILE},
+    ("methylation/regions", "phase_blocks"): {
+        "input": _DATA + r"\haplotagged.bam",
+        "partition_hp": True,
+        "phase_blocks": _DATA + r"\phased.blocks.tsv",
+    },
     ("vcf/impute", "vcf_input"): {"input": None, "vcf_input": _FILE},
 }
 
@@ -726,8 +737,12 @@ _TABLE_HEADER = """##fileformat=VCFv4.2
 ##contig=<ID=chr2,length=1000>
 ##INFO=<ID=CLNSIG,Number=.,Type=String,Description="ClinVar significance">
 ##INFO=<ID=WGSE_CONF,Number=A,Type=String,Description="Confidence">
-##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL">
+##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Feature">
+##INFO=<ID=GNOMAD_POPMAX_AF,Number=A,Type=Float,Description="Group maximum AF">
+##INFO=<ID=GNOMAD_NHOMALT,Number=A,Type=Integer,Description="Homozygote count">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase set">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1
 """
 # (chrom, pos, id, ref, alt, gene, ClinVar, confidence)
@@ -758,11 +773,17 @@ def variant_tables(work: Path) -> dict[str, Path]:
                     ([f"CLNSIG={clnsig}"] if clnsig else [])
                     + [
                         f"WGSE_CONF={conf}",
-                        f"CSQ={alt}|missense_variant|MODERATE|{gene}",
+                        f"CSQ={alt}|missense_variant|MODERATE|{gene}|"
+                        + ("ENST4" if rsid == "rs4" else ""),
                     ]
+                    + (
+                        ["GNOMAD_POPMAX_AF=0.125", "GNOMAD_NHOMALT=0"]
+                        if rsid == "rs4"
+                        else []
+                    )
                 ),
-                "GT",
-                "0/1",
+                "GT:PS:AD" if rsid == "rs4" else "GT",
+                "0|1:350:14,6" if rsid == "rs4" else "0/1",
             ]
         )  # fmt: skip
         for chrom, pos, rsid, ref, alt, gene, clnsig, conf in _TABLE_RECORDS

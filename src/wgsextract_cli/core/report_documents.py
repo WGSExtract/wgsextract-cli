@@ -5,6 +5,12 @@ from typing import Annotated, Literal, TypedDict, cast
 
 from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument
 from wgsextract_cli.core.output_schema import Constraints
+from wgsextract_cli.core.report_mitochondrial_documents import (
+    ReportMitoResourceDocument,
+    ReportMitoSiteDocument,
+    ReportMitoTechnicalDocument,
+    ReportMitoThresholdsDocument,
+)
 
 
 class ReportAttemptDocument(TypedDict):
@@ -92,6 +98,85 @@ class ReportPgxDocument(TypedDict):
     source: Literal["PharmCAT"]
 
 
+class ReportCpicRecommendationDocument(TypedDict):
+    id: str
+    text: Annotated[str, Constraints(description="CPIC's recommendation, verbatim.")]
+    classification: Annotated[
+        str, Constraints(description="CPIC's strength: Strong, Moderate, Optional, ...")
+    ]
+    phenotypes: Annotated[
+        dict[str, str], Constraints(description="Gene -> the phenotype it is for.")
+    ]
+    implication: str
+    population: str
+    guideline: str
+    pmid: str | None
+    doi: str | None
+    url: str
+
+
+class ReportAdvisoryDocument(TypedDict):
+    status: Annotated[
+        str,
+        Constraints(
+            enum=(
+                "advisory",
+                "context_review",
+                "withheld",
+                "context_needed",
+                "insufficient_evidence",
+                "not_assessed",
+            ),
+            description="advisory: one CPIC recommendation fits the confident call; context_review: it fits the genotype but a listed medication may change the phenotype or interact; withheld: the call's alternatives (or a weak call's possible results) lead to different recommendations; context_needed: CPIC's guidance differs by patient group or indication (give population); insufficient_evidence: CPIC has no recommendation for this medication, result or population; not_assessed: a gene the guidance needs has no result.",
+        ),
+    ]
+    medication: str
+    cpic_drug: str | None
+    population: str | None
+    genes: list[str]
+    contraindication: Annotated[
+        bool,
+        Constraints(
+            description="CPIC's recommendation advises against the drug (avoid, not recommended, contraindicated, do not use)."
+        ),
+    ]
+    recommendation: ReportCpicRecommendationDocument | None
+    alternatives: Annotated[
+        list[ReportCpicRecommendationDocument],
+        Constraints(
+            description="Other CPIC recommendations the uncertainty or a listed medication's effect could lead to; not guidance for this person."
+        ),
+    ]
+    notes: list[str]
+
+
+class ReportContextGeneDocument(TypedDict):
+    gene: str
+    baseline: Annotated[
+        str, Constraints(description="The genetic result, without medications.")
+    ]
+    adjusted: Annotated[
+        str,
+        Constraints(
+            description="The phenotype with the listed medications, by a CPIC-cited rule; the baseline when no listed medication has a CPIC-stated effect."
+        ),
+    ]
+    possible: Annotated[
+        list[str],
+        Constraints(description="Phenotypes a CPIC-cited rule says may result."),
+    ]
+    unclear: bool
+    rule: str | None
+    trigger: Annotated[
+        str | None, Constraints(description="The listed medication the rule is for.")
+    ]
+    quote: Annotated[
+        str | None,
+        Constraints(description="CPIC's statement the rule rests on, verbatim."),
+    ]
+    cpic_recommendation: str | None
+
+
 class ReportFactDocument(TypedDict):
     name: str
     label: str
@@ -115,9 +200,12 @@ ReportFindingSection = Literal[
     "lineage",
     "pharmacogenomics",
     "carrier_screening",
+    "repeat_expansions",
     "clinvar",
+    "mitochondrial",
     "acmg_research",
     "structural_variants",
+    "medication_review",
 ]
 
 
@@ -149,14 +237,16 @@ class ReportFindingRequired(TypedDict):
             enum=(
                 "Technical result, not diagnosis.",
                 "Research use only; not a diagnosis.",
+                "Not a prescription; review with a clinician.",
             ),
-            description="Research use only for acmg_research findings.",
+            description="Research use only for acmg_research findings; not a prescription for medication_review findings.",
         ),
     ]
 
 
 class ReportFindingDocument(ReportFindingRequired, total=False):
     pgx: ReportPgxDocument
+    advisory: ReportAdvisoryDocument
 
 
 class ReportGeneListRequired(TypedDict):
@@ -408,6 +498,32 @@ class ReportSvDocument(ReportSectionDocument, ReportSvFields):
     pass
 
 
+class ReportMitochondrialFields(TypedDict, total=False):
+    advisory: Annotated[
+        str,
+        Constraints(
+            description="Educational note for clinician review, shown at the top of the section; not a prescribing instruction."
+        ),
+    ]
+    technical: ReportMitoTechnicalDocument
+    thresholds: ReportMitoThresholdsDocument
+    resource: ReportMitoResourceDocument
+    sites: Annotated[
+        list[ReportMitoSiteDocument],
+        Constraints(
+            description="Every reviewed variant, with what the reads show there; not_detected and not_assessed are distinct."
+        ),
+    ]
+    counts: Annotated[
+        dict[str, NonnegativeCount],
+        Constraints(description="Reviewed variants by state."),
+    ]
+
+
+class ReportMitochondrialDocument(ReportSectionDocument, ReportMitochondrialFields):
+    pass
+
+
 class ReportMicroarrayFileDocument(TypedDict):
     file: str | None
     role: str
@@ -428,6 +544,52 @@ class ReportMicroarrayFields(TypedDict, total=False):
 
 class ReportMicroarrayDocument(ReportMicroarrayRequired, ReportMicroarrayFields):
     pass
+
+
+class ReportCpicReleaseDocument(TypedDict):
+    release: str
+    published: str
+    sha256: str
+    url: str
+    license: str
+    attribution: str
+
+
+class ReportContextRulesDocument(TypedDict):
+    version: str
+    sha256: str
+    checked_against_cpic: str
+
+
+class ReportContextMedicationDocument(TypedDict):
+    name: str
+    population: str | None
+    cpic_drug: Annotated[
+        str | None, Constraints(description="CPIC's drug id; null when not in CPIC.")
+    ]
+
+
+class ReportPgxContextDocument(TypedDict):
+    sha256: Annotated[
+        str,
+        Constraints(
+            description="SHA-256 of the effective medication list (names and populations), not of the file."
+        ),
+    ]
+    medications: list[ReportContextMedicationDocument]
+
+
+class ReportMedicationReviewDocument(ReportSectionDocument):
+    disclaimer: str
+    cpic: ReportCpicReleaseDocument
+    rules: ReportContextRulesDocument
+    context: ReportPgxContextDocument
+    genes: Annotated[
+        list[ReportContextGeneDocument],
+        Constraints(
+            description="Each gene the listed medications' CPIC guidance uses: its genetic (baseline) and medication-adjusted phenotype."
+        ),
+    ]
 
 
 class ReportSectionsRequired(TypedDict):
@@ -453,6 +615,19 @@ class ReportSectionsDocument(
 ):
     ancestry: ReportAncestryDocument
     carrier_screening: ReportSectionDocument
+    medication_review: Annotated[
+        ReportMedicationReviewDocument,
+        Constraints(
+            description="CPIC guidance for the medications in --pgx-context, gated on the pharmacogenomic calls' evidence; not a prescription. Present only with --pgx-context."
+        ),
+    ]
+    mitochondrial: Annotated[
+        ReportMitochondrialDocument,
+        Constraints(
+            description="mtDNA heteroplasmy evidence (lineage mt-haplogroup --contamination) at reviewed disease and MT-RNR1 aminoglycoside-risk variants."
+        ),
+    ]
+    repeat_expansions: ReportSectionDocument
 
 
 class ReportSampleDocument(TypedDict):

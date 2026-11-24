@@ -23,7 +23,6 @@ from wgsextract_cli.api.vcf import (
 from wgsextract_cli.core import read_scope, ultima
 from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.alignment.metadata import get_bam_header
-from wgsextract_cli.core.builds import is_hg37_build, is_hg38_build, ploidy_for_build
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
     get_tool_version,
@@ -36,12 +35,13 @@ from wgsextract_cli.core.mimalloc import bcftools_environment
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.region_selection import Intervals
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
 )
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.sample_ploidy import sex_samples_args
+from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
 from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
@@ -141,6 +141,7 @@ class CallerSetup:
     ref: str
     lib: ReferenceLibrary
     platform: str | None
+    intervals: Intervals | None = None
 
 
 def caller_setup(
@@ -152,6 +153,7 @@ def caller_setup(
     region: str | None,
     qc_min_depth: float | None,
     allow_reference_subset: bool = False,
+    resolve_regions: Callable[[str, str, str], Intervals] | None = None,
 ) -> CallerSetup:
     """Resolve threads, output folder and reference FASTA for a BAM/CRAM caller,
     and warn about alignment problems and low depth."""
@@ -178,8 +180,11 @@ def caller_setup(
         raise WGSExtractError(
             LOG_MESSAGES["ref_required_for"].format(task="variant calling")
         )
+    from wgsextract_cli.core.artifact_checks import require_consumable
     from wgsextract_cli.core.calling_reference import validate_calling_reference
 
+    # A region is read through the index; whole-file calling streams the reads.
+    require_consumable([("input", input_file)], need_index=["input"] * bool(region))
     validate_calling_reference(
         input_file, resolved_ref, allow_reference_subset=allow_reference_subset
     )
@@ -201,15 +206,21 @@ def caller_setup(
         )
     current_result().set_reference(resolved_ref, lib.build)
     warn_about_alignment(input_file, resolved_ref)
+    intervals = (
+        resolve_regions(input_file, resolved_ref, region)
+        if resolve_regions is not None and region is not None
+        else None
+    )
     warn_low_depth(
         input_file,
-        region_targets(region),
+        region_targets(region, intervals=intervals),
         outdir=outdir,
         ref=resolved_ref,
         min_depth=qc_min_depth,
         region=region,
+        intervals=intervals,
     )
-    return CallerSetup(thread_count, outdir, resolved_ref, lib, platform)
+    return CallerSetup(thread_count, outdir, resolved_ref, lib, platform, intervals)
 
 
 class CallerParams(Protocol):
@@ -230,7 +241,10 @@ class CallerParams(Protocol):
 
 
 def setup_caller(
-    params: CallerParams, *, allow_reference_subset: bool = False
+    params: CallerParams,
+    *,
+    allow_reference_subset: bool = False,
+    resolve_regions: Callable[[str, str, str], Intervals] | None = None,
 ) -> CallerSetup:
     """``caller_setup`` for a BAM/CRAM caller's Params."""
     return caller_setup(
@@ -241,54 +255,32 @@ def setup_caller(
         region=params.region,
         qc_min_depth=params.qc_min_depth,
         allow_reference_subset=allow_reference_subset,
-    )
-
-
-def _ploidy_args(args: argparse.Namespace, lib: ReferenceLibrary) -> list[str]:
-    return ploidy_args(
-        getattr(args, "ploidy", None), getattr(args, "ploidy_file", None), lib
-    )
-
-
-def ploidy_args(
-    ploidy: str | None, ploidy_file: str | None, lib: ReferenceLibrary
-) -> list[str]:
-    """bcftools call's ploidy options: the explicit choice, else the library's
-    ploidy file, else the built-in table for GRCh37/GRCh38."""
-    if not ploidy and not ploidy_file:
-        ploidy_file = lib.ploidy_file
-    if ploidy_file:
-        verify_paths_exist({"--ploidy-file": ploidy_file})
-        return ["--ploidy-file", ploidy_file]
-    if ploidy:
-        return ["--ploidy", ploidy]
-    # bcftools' predefined GRCh37/GRCh38 ploidy covers both X and chrX naming.
-    # T2T's sex-chromosome coordinates differ, so it needs a ploidy file.
-    if lib.build and (is_hg37_build(lib.build) or is_hg38_build(lib.build)):
-        return ["--ploidy", ploidy_for_build(lib.build)]
-    raise WGSExtractError(
-        "Ploidy (--ploidy or --ploidy-file) is required and could not be "
-        f"auto-resolved from --ref (reference build: {lib.build or 'unknown'})."
+        resolve_regions=resolve_regions,
     )
 
 
 @contextmanager
-def plain_reference(ref: str, outdir: str) -> Iterator[str]:
+def plain_reference(
+    ref: str, outdir: str, *, compressed: bool | None = None
+) -> Iterator[str]:
     """
     Yield an uncompressed, faidx-indexed FASTA for tools that cannot read .fa.gz.
 
     Uses the uncompressed sibling (ref.fa next to ref.fa.gz) when present, indexing
     it if needed; otherwise decompresses into a temporary directory under outdir
-    that is removed on exit.
+    that is removed on exit. When compression was verified by the caller,
+    use that exact FASTA instead of trusting an unverified sibling.
     """
-    if not ref.lower().endswith(".gz"):
+    if not (ref.lower().endswith(".gz") if compressed is None else compressed):
         yield ref
         return
-    sibling = ref[:-3]
+    sibling = ref[:-3] if compressed is None else None
     # A server job may read only its allowed folders; the sibling or its
     # index can be a link elsewhere.
-    if Path(sibling).is_file() and all(
-        read_scope.may_follow(p) for p in (sibling, f"{sibling}.fai")
+    if (
+        sibling is not None
+        and Path(sibling).is_file()
+        and all(read_scope.may_follow(p) for p in (sibling, f"{sibling}.fai"))
     ):
         if not Path(sibling + ".fai").is_file():
             try:
@@ -301,7 +293,7 @@ def plain_reference(ref: str, outdir: str) -> Iterator[str]:
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(outdir), prefix=".wgse_ref_"
     ) as tmp:
-        target = str(Path(tmp, Path(sibling).name))
+        target = str(Path(tmp, Path(sibling).name if sibling else "reference.fa"))
         logging.info(f"Decompressing reference for this tool to {target}...")
         try:
             with gzip.open(ref, "rb") as src, open(target, "wb") as dst:

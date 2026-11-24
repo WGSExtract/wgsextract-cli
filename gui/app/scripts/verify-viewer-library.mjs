@@ -80,6 +80,82 @@ async function checkDrawing(target, name) {
     }).length);
     assert.ok(canvases >= 2, "Actual indexed track and sequence/ruler must draw.");
 }
+/**
+ * #1161: a personal report's findings and an mtDNA haplogroup's variants each open the viewer at
+ * their row. Only the CLI run is replaced, by a report-shaped result document naming the real BAM;
+ * the table, the track check, the viewer and its byte grants are the real app's.
+ */
+async function verifyResultRows() {
+    current = "result-rows";
+    const bam = path.resolve(values.fixtures, "reads.bam");
+    const [contig, span] = values.locus.split(":");
+    const position = Number(span.split("-")[0]) + 50;
+    const raw = {
+        schema: "wgsextract.result/1", command: "report", status: "ok", exit_code: 0, error: null,
+        inputs: [{ path: bam, kind: "bam", role: "input", exists: true }],
+        outputs: [], metrics: { findings: 2 }, warnings: [], manifest: null,
+        details: {
+            haplogrep: { Haplogroup: "H1a", Found_Polys: "73G 263G" },
+            schema: "wgsextract.report/1",
+            sections: {
+                lineage: { title: "Lineage", findings: [{ label: "mtDNA haplogroup", value: "H1a", variant: null }] },
+                // An evidence VCF on hg38: the fixture reference's build can't be confirmed as hg38.
+                acmg_research: { title: "ACMG", build: "hg38", findings: [{ label: "DEMO2", value: "Likely pathogenic",
+                    variant: { chrom: contig, pos: position, ref: "C", alt: "T" } }] },
+                clinvar: { title: "ClinVar", findings: [{ label: "DEMO1", value: "Pathogenic",
+                    // The other spelling of the reference's contig.
+                    variant: { chrom: contig.startsWith("chr") ? contig.slice(3) : `chr${contig}`, pos: position, ref: "A", alt: "G" } }] },
+            },
+        },
+    };
+    const { parseResultDocument } = await import("../dist/shared/result-document.js");
+    await page.route("**/api/run/stream", (route) => route.fulfill({
+        status: 200, contentType: "application/x-ndjson; charset=utf-8",
+        body: [{ type: "start", command: "wgsextract report" },
+            { type: "complete", result: { exitCode: 0, command: "wgsextract report", stderr: "", resultDocument: parseResultDocument(raw, "wgsextract.result/1") } }]
+            .map((event) => JSON.stringify(event)).join("\n") + "\n",
+    }));
+    try {
+        await page.locator('[data-page-id="workflows"]').click();
+        const section = page.locator('[data-section-toggle="workflows/personal-report"]');
+        if (await section.getAttribute("aria-expanded") === "false") await section.click();
+        await page.locator('[data-action-id="report"]').click();
+        const finding = page.locator(".result-viewer-rows [data-result-viewer]:not([data-viewer-build])").first();
+        await finding.waitFor({ timeout: 30_000 });
+        assert.equal(await finding.getAttribute("data-result-viewer"), bam);
+        const disabled = page.locator(".result-viewer-rows button[disabled]");
+        assert.equal(await disabled.count(), 1, "Only the finding without a position is disabled.");
+        assert.match(await disabled.getAttribute("title"), /No single genome position/);
+        await finding.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(out, "library-result-rows.png"), fullPage: true });
+        await page.locator(".result-viewer-rows").first().screenshot({ path: path.join(out, "library-result-rows-table.png") });
+        await finding.click();
+        const viewer = page.frameLocator(".genome-viewer-shell iframe");
+        await checkDrawing(viewer, "reads.bam");
+        assert.equal(await viewer.locator('[data-locus] [name="locus"]').inputValue(), `${contig}:${position}-${position}`);
+        await page.screenshot({ path: path.join(out, "library-result-row-locus.png"), fullPage: true });
+        await page.getByRole("button", { name: "Back to WGS Extract", exact: true }).click();
+        await page.locator(".result-viewer-rows [data-viewer-build='hg38']").click();
+        await viewer.getByRole("alert").filter({ hasText: "different genome build" }).waitFor();
+        assert.equal(await viewer.locator("[data-igv]").isVisible(), false, "A finding on another build never opens at the same numbers.");
+        // Adding a track keeps the file and position, so it keeps the build too.
+        await viewer.locator('[name="extra-tracks"]').fill(path.resolve(values.fixtures, "panels.bed"));
+        const reopened = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/viewer/open");
+        await viewer.getByRole("button", { name: "Open library file", exact: true }).click();
+        assert.deepEqual(await (await reopened).json(), { problem: "buildMismatch" });
+        await page.getByRole("button", { name: "Back to WGS Extract", exact: true }).click();
+        // rCRS positions never land on a reference without an rCRS mitochondrion: an explanation, not a view.
+        await page.locator(".result-viewer-rows [data-viewer-locus='rCRS:263-263']").click();
+        await viewer.getByRole("alert").filter({ hasText: /Position not found|rCRS/ }).waitFor();
+        assert.equal(await viewer.locator("[data-igv]").isVisible(), false);
+        await page.screenshot({ path: path.join(out, "library-result-row-mito.png"), fullPage: true });
+        await page.getByRole("button", { name: "Back to WGS Extract", exact: true }).click();
+        proofs.push({ case: "result-rows", finding: `${raw.details.sections.clinvar.findings[0].variant.chrom}:${position}`, opened: `${contig}:${position}-${position}` });
+    } finally {
+        await page.unroute("**/api/run/stream");
+    }
+}
+
 try {
     await page.goto(new URL("/viewer", url).href);
     const cases = [
@@ -101,6 +177,15 @@ try {
         await Promise.all(byteReads);
         proofs.push({ case: label, reference: lastGrant.files.reference.name, totalBytes: byteLog.filter((read) => read.case === label).reduce((sum, read) => sum + read.bytes, 0) });
     }
+    // #1161: a result row may spell its contig as chr1 or 1; it opens in the reference's own spelling.
+    current = "contig-alias";
+    const aliased = values.locus.startsWith("chr") ? values.locus.slice(3) : `chr${values.locus}`;
+    await page.locator('[name="library-path"]').fill(path.resolve(values.fixtures, "reads.bam"));
+    await page.locator('[data-library] [name="locus"]').fill(aliased);
+    await page.getByRole("button", { name: "Open library file", exact: true }).click();
+    await checkDrawing(page, "reads.bam");
+    assert.equal(await page.locator('[data-locus] [name="locus"]').inputValue(), values.locus);
+    proofs.push({ case: "contig-alias", requested: aliased, opened: values.locus });
     assert.ok(proofs.find((proof) => proof.case === "large-bam").totalBytes < 16 * 1024 * 1024, "A large BAM locus must read bounded blocks and indexes.");
     assert.ok(byteLog.some((read) => read.status === 206), "Actual igv range requests must receive 206.");
     assert.ok(byteLog.every((read) => [200, 206].includes(read.status)));
@@ -212,7 +297,7 @@ try {
             await page.getByRole("button", { name: "Open library file", exact: true }).click();
             await checkDrawing(page, "reads.bam");
             await page.locator("[data-cytoband-status]").filter({ hasText: "Cytoband resource cytobands_hg38.tsv is not installed" }).waitFor();
-            assert.match(await page.locator("[data-cytoband-status]").innerText(), /wgsextract ref cytobands --build hg38 --download/);
+            assert.match(await page.locator("[data-cytoband-status]").innerText(), /Reference Data/);
             assert.equal(await ideogram.count(), 0);
             await page.locator('[data-locus] [name="locus"]').fill(values["next-locus"]);
             await page.getByRole("button", { name: "Go", exact: true }).click();
@@ -248,7 +333,7 @@ try {
             await page.getByRole("button", { name: "Open library file", exact: true }).click();
             await checkDrawing(page, "reads.bam");
             await page.locator("[data-gene-status]").filter({ hasText: "Gene-map genes_hg38.tsv is not installed" }).waitFor();
-            assert.match(await page.locator("[data-gene-status]").innerText(), /wgsextract ref gene-map/);
+            assert.match(await page.locator("[data-gene-status]").innerText(), /Reference Data/);
             assert.equal(await page.locator(".igv-track-label").filter({ hasText: "RefSeq gene spans" }).count(), 0);
             await page.screenshot({ path: path.join(out, "library-gene-missing.png"), fullPage: true });
             await page.locator('[data-locus] [name="locus"]').fill("REFGENE_DEMO");
@@ -304,6 +389,7 @@ try {
         proofs.push({ case: "extracted-region-result", locus: values.locus, reference: lastGrant.files.reference.name });
         await page.getByRole("button", { name: "Back to WGS Extract", exact: true }).click();
         assert.equal(await resultLink.evaluate((element) => element === document.activeElement), true, "Returning restores focus to the result action.");
+        await verifyResultRows();
     } else {
         assert.deepEqual(actionRequests, [], "The standalone checker must not run commands in the connected app.");
     }

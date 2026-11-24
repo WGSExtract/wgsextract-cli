@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from tests.disk_volumes import GIB, Volumes
+from tests.fake_tool_launchers import expose_tool_fakes
 from tests.fake_tools import (
     FakeClair3,
     FakeDocker,
@@ -30,7 +31,7 @@ from tests.htslib_helpers import (
 )
 from wgsextract_cli.cli.parser import build_parser
 from wgsextract_cli.cli.platform_support import verify_platform_support
-from wgsextract_cli.commands.vcf import clair3
+from wgsextract_cli.commands.vcf import clair3, clair3_models
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.resource_estimates import estimate_clair3
 from wgsextract_cli.core.utils import (
@@ -59,18 +60,26 @@ def linux_x86(monkeypatch):
     monkeypatch.setattr(platform, "machine", lambda: "x86_64")
 
 
-@pytest.fixture
-def fake_clair3(request, tmp_path, monkeypatch) -> FakeClair3:
-    """Clair3 (2.0.5, or the version given by indirect parametrization) on PATH
-    with an empty bundled models folder, and no clair3_model in config.toml."""
-    require_bare_name_fakes()
+def _clair3_on_path(tmp_path, monkeypatch, version="2.0.5") -> FakeClair3:
+    """Clair3 on PATH with empty bundled models and no configured model."""
     bindir = tmp_path / "clair3" / "bin"
-    version = getattr(request, "param", "2.0.5")
     fake = FakeClair3(bindir, shutil.which("bcftools") or "bcftools", version)
-    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    expose_tool_fakes(monkeypatch, bindir, "run_clair3.sh")
     monkeypatch.delitem(clair3.settings, "clair3_model", raising=False)
     clear_tool_caches()
     return fake
+
+
+@pytest.fixture
+def clair3_on_path(tmp_path, monkeypatch) -> FakeClair3:
+    """A launcher and model directory that tests can discover without calling."""
+    return _clair3_on_path(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def fake_clair3(request, tmp_path, monkeypatch) -> FakeClair3:
+    require_bare_name_fakes()
+    return _clair3_on_path(tmp_path, monkeypatch, getattr(request, "param", "2.0.5"))
 
 
 @pytest.mark.parametrize(
@@ -104,11 +113,11 @@ def test_only_read_group_and_program_lines_are_metadata():
 
 
 def test_model_precedence_cli_then_config_then_metadata(
-    tmp_path, monkeypatch, fake_clair3
+    tmp_path, monkeypatch, clair3_on_path
 ):
     for name in ("cli", "config"):
         make_model(tmp_path, name)
-    make_model(fake_clair3.models, "r1041_e82_400bps_sup_v500", b"corrupt")
+    make_model(clair3_on_path.models, "r1041_e82_400bps_sup_v500", b"corrupt")
 
     pick = clair3.select_model
     monkeypatch.setitem(clair3.settings, "clair3_model", str(tmp_path / "config"))
@@ -132,19 +141,19 @@ def test_model_precedence_cli_then_config_then_metadata(
         ),
     ],
 )
-def test_unknown_or_mixed_basecaller_requires_model(fake_clair3, header, reason):
+def test_unknown_or_mixed_basecaller_requires_model(clair3_on_path, header, reason):
     with pytest.raises(WGSExtractError, match=f"{reason}.*--model"):
         clair3.select_model(None, header)
 
 
-def test_refusal_lists_only_bundled_ont_models(fake_clair3):
+def test_refusal_lists_only_bundled_ont_models(clair3_on_path):
     for name in ("hifi_revio", "r1041_e82_400bps_sup_v520_with_mv", "ont"):
-        make_model(fake_clair3.models, name)
+        make_model(clair3_on_path.models, name)
     with pytest.raises(WGSExtractError, match=r"Bundled ONT models: ont\.$"):
         clair3.select_model(None, "")
 
 
-def test_missing_pinned_model_names_its_download(fake_clair3):
+def test_missing_pinned_model_names_its_download(clair3_on_path):
     with pytest.raises(
         WGSExtractError, match="clair3_models_rerio_pytorch/r1041_e82_400bps_sup_v420"
     ):
@@ -192,7 +201,7 @@ def test_model_checksums_are_verified(tmp_path, monkeypatch, caplog):
             "files": dict.fromkeys(clair3.MODEL_FILES, good),
         }
     }
-    monkeypatch.setattr(clair3, "pinned_models", lambda: pins)
+    monkeypatch.setattr(clair3_models, "pinned_models", lambda: pins)
 
     clair3.verify_model(make_model(tmp_path / "ok", "pinned"))
     with pytest.raises(WGSExtractError, match="pinned SHA-256.*example.org/pinned"):

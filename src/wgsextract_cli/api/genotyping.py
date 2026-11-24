@@ -10,9 +10,16 @@ Each writes ``<input stem>.*`` files in ``outdir``, else beside the input:
 * ``smn``: SMN1/SMN2 copy number and SMA carrier status with
   SMNCopyNumberCaller (``.smn.tsv``/``.json``), from the optional ``smn``
   environment. A screening estimate, not a diagnosis.
+* ``target_cnv``: screen short-read WGS for copy number over BED intervals
+  (``.target-cnv.tsv``). Uses an indexed matching FASTA, with an offline
+  baseline and callability mask for GRCh37, GRCh38 and T2T-CHM13v2.0.
+* ``paraphase``: copy number and haplotypes for long-read paralog loci
+  (``.paraphase.tsv``/``.json`` and raw files), using the opt-in ``paraphase``
+  environment. PacBio HiFi or experimental, unvalidated ONT.
 * ``hla``: HLA class I and II alleles with T1K (``.t1k_genotype.tsv``,
   ``.t1k_allele.tsv``/``.vcf``), from the optional ``t1k`` environment.
-* ``repeats`` (``typing str``): disease repeat expansions (``.str.tsv``), with
+* ``repeats`` (``typing str``): disease repeat expansions (``.str.tsv`` or
+  ``.str.parquet``, also in ``details.repeat_calls`` in the result), with
   ExpansionHunter for short reads (``.str.vcf``/``.json``, optional
   ``expansionhunter`` environment) or LongTR for Nanopore and PacBio reads
   (``.str.vcf.gz``, ``longtr`` environment; STRkit's ``.str.vcf`` and
@@ -31,6 +38,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from wgsextract_cli.core.results import CommandResult
+from wgsextract_cli.core.table_writer import FORMATS, table_format_type
 
 from ._network import DownloadParams
 from ._params import Params, param
@@ -80,6 +88,73 @@ class TypingSmnParams(_TypingParams):
     ``median_depth`` and ``coverage_mad``."""
 
     COMMAND = "typing smn"
+
+
+@dataclass(frozen=True, kw_only=True)
+class TypingTargetCnvParams(_TypingParams):
+    """Estimate copy-number classes (0, 1, 2, 3+) with heuristic confidence
+    from GC-matched autosomal depth in short-read whole-genome sequencing.
+    Masked targets require a specialist, except whole curated deletion loci
+    with clear depth evidence. This is a screen, not a diagnosis."""
+
+    COMMAND = "typing target-cnv"
+
+    input: Path = input_param("Indexed short-read WGS BAM or CRAM.")
+    bed: Path = param(
+        help="Target intervals in a BED (0-based, end-exclusive; optional name in column 4).",
+        path="file",
+        metavar="BED",
+        required_message="--bed (target intervals) is required.",
+    )
+    download: bool = param(
+        False,
+        help="Use exact GIAB v3.5 masks, downloading missing public BEDs from "
+        "NCBI into the reference library. No sample data is sent.",
+        action="store_true",
+        writes=True,
+        safe_value=False,
+    )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        if self.download:
+            from wgsextract_cli.commands.genotyping.target_cnv_data import (
+                mask_cache_paths,
+            )
+
+            for path in mask_cache_paths():
+                yield "ref", path
+
+    def write_folders(self) -> Iterator[Path]:
+        if self.download:
+            from wgsextract_cli.commands.genotyping.target_cnv_data import mask_cache
+
+            yield mask_cache()
+
+
+@dataclass(frozen=True, kw_only=True)
+class TypingParaphaseParams(_TypingParams):
+    """Type paralogous loci from an indexed long-read BAM or CRAM, with
+    the matching indexed FASTA. Reports locus copy number, gene-specific
+    calls and explicit no-calls. ONT is experimental and unvalidated."""
+
+    COMMAND = "typing paraphase"
+
+    input: Path = input_param("Indexed PacBio HiFi or ONT whole-genome BAM or CRAM.")
+    genes: str | None = param(
+        None,
+        metavar="LOCI",
+        help="Comma-separated Paraphase locus names, e.g. SMN1,PMS2,STRC. "
+        "Default: all loci supported by the engine for this reference build.",
+    )
+    pacbio_licensed_executable: Path | None = param(
+        None,
+        path="file",
+        metavar="PATH",
+        local_only=True,
+        help="Opt in to a local Paraphase >=3.3.2 executable under the PacBio "
+        "Software License Agreement. Every read group must be PL:PACBIO. "
+        "Default: Paraphase 3.3.1 (BSD-3-Clause-Clear) from its Pixi environment.",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -134,7 +209,8 @@ class TypingStrParams(_TypingParams):
     those outside the normal range, with ExpansionHunter for short reads and
     LongTR (or STRkit) for Nanopore and PacBio; not a diagnosis. Metrics:
     ``sex``, ``repeat_caller``, ``disease_repeats``, ``flagged_repeats`` and
-    ``unconfirmed_repeats``;
+    ``unconfirmed_repeats`` and ``normal_repeats``. The result's
+    ``details.repeat_calls`` holds the same per-locus rows as the summary table;
     each flagged repeat is a ``repeat_outside_normal_range`` warning
     (``repeat_unconfirmed`` for a low-support-only finding or an unresolved
     all-weak or incomplete call,
@@ -157,6 +233,21 @@ class TypingStrParams(_TypingParams):
         "LongTR and STRkit.",
         metavar="FILE",
         path="file",
+    )
+    loci: str | None = param(
+        None,
+        help="Only size these comma-separated, case-sensitive catalog locus IDs "
+        "(example: HTT,FMR1,AR). Targeted files get a separate prefix. "
+        "Default: the entire catalog.",
+        metavar="ID[,ID...]",
+    )
+    table_format: str = param(
+        "tsv",
+        help="Repeat summary table format: tsv or parquet (needs pyarrow). "
+        "Default: tsv.",
+        flags=("--format",),
+        choices=FORMATS,
+        cli_type=table_format_type(),
     )
     sex: str | None = param(
         None,
@@ -193,6 +284,34 @@ def smn(
     return execute(params, run_smn, progress=progress, cancel=cancel, check=check)
 
 
+def target_cnv(
+    params: TypingTargetCnvParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Screen BED targets for short-read copy number (see ``TypingTargetCnvParams``)."""
+    from wgsextract_cli.commands.genotyping.target_cnv import run_target_cnv
+
+    return execute(
+        params, run_target_cnv, progress=progress, cancel=cancel, check=check
+    )
+
+
+def paraphase(
+    params: TypingParaphaseParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Type long-read paralogs (see ``TypingParaphaseParams``)."""
+    from wgsextract_cli.commands.genotyping.paraphase import run_paraphase
+
+    return execute(params, run_paraphase, progress=progress, cancel=cancel, check=check)
+
+
 def hla(
     params: TypingHlaParams,
     *,
@@ -223,10 +342,14 @@ def repeats(
 __all__ = [
     "TypingCyp2d6Params",
     "TypingHlaParams",
+    "TypingParaphaseParams",
     "TypingSmnParams",
     "TypingStrParams",
+    "TypingTargetCnvParams",
     "cyp2d6",
     "hla",
+    "paraphase",
     "repeats",
     "smn",
+    "target_cnv",
 ]

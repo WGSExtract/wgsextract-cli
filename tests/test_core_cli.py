@@ -321,7 +321,7 @@ def test_config_load_errors_are_one_line_without_traceback(tmp_path, capsys, com
 def test_startup_selects_alternate_config_before_validating_default(
     tmp_path, monkeypatch
 ):
-    from tests.smoke_utils import isolate_home
+    from tests.home_isolation import isolate_home
 
     home = tmp_path / "home"
     isolate_home(monkeypatch, home)
@@ -362,7 +362,7 @@ def test_startup_selects_alternate_config_before_validating_default(
 def test_1214_cli_rejects_malformed_toml(
     tmp_path, monkeypatch, explicit, content, location
 ):
-    from tests.smoke_utils import isolate_home
+    from tests.home_isolation import isolate_home
 
     home = tmp_path / "home"
     isolate_home(monkeypatch, home)

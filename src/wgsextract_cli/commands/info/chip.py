@@ -5,6 +5,7 @@ from typing import Any
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.info import ChipParams
+from wgsextract_cli.core.builds import display_build
 from wgsextract_cli.core.microarray.revisions import (
     Detection,
     Revision,
@@ -118,7 +119,7 @@ def _render(detection: Detection) -> str:
         for name, value in (
             ("vendor", export.vendor),
             ("chip", export.declared_chip),
-            ("build", export.declared_build),
+            ("build", display_build(export.declared_build) or export.declared_build),
             ("exported", export.export_month),
         )
         if value
@@ -142,8 +143,8 @@ def _render(detection: Detection) -> str:
         f"Match:       {match}",
         f"Confidence:  {detection.confidence:.3f}"
         + (" (ambiguous: next candidate is as close)" if detection.ambiguous else ""),
-        f"Build:       {revision.build} (revision); "
-        f"{export.declared_build or 'not declared'} (file)",
+        f"Build:       {display_build(revision.build) or revision.build} (revision); "
+        f"{(display_build(export.declared_build) or export.declared_build) if export.declared_build else 'not declared'} (file)",
         f"Template:    {_template_text(revision)}",
     ]
     if best.match != "exact" and revision.markers != fp.markers:

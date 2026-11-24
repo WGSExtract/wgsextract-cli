@@ -66,14 +66,24 @@ so it needs no samtools or other analysis tools, even for a BAM or CRAM `--input
 | Lineage | `lineage y-haplogroup`, `lineage mt-haplogroup` | the Y and mtDNA haplogroups, with tree links (YFull, FTDNA). Y-DNA is not asked for when the recorded sex is Female. |
 | Ancestry proportions | `qc ancestry` | the K=7 and K=12 reference proportions with their 95% intervals and the reference populations that carry each component most, worded as reference proportions, not ethnicities ([ancestry.md](ancestry.md)) |
 | Pharmacogenomics | `vcf pharmcat`, `typing cyp2d6` (Cyrius), `typing hla` (T1K) | one per PharmCAT gene (diplotype and phenotype); the CYP2D6 diplotype; the HLA-A and HLA-B alleles |
+| Medication review (only with `--pgx-context`) | the pharmacogenomics runs above, the CPIC database | for each listed medication, CPIC's guidance or why none is given; each gene's genetic and medication-adjusted phenotype. See [below](#medication-review-cpic-not-a-prescription) |
 | Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
+| Repeat Expansions | `typing str` (ExpansionHunter, LongTR or STRkit) | Flagged and unconfirmed repeat sizes, counts of flagged, unconfirmed and normal calls, and caller and coverage caveats |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
+| Mitochondrial DNA: heteroplasmy at reviewed variants | `lineage mt-haplogroup --contamination` on a BAM or CRAM (mutserve) | each reviewed mtDNA variant (ClinVar expert-panel pathogenic SNVs, CPIC's MT-RNR1 aminoglycoside-risk alleles) found homoplasmic, heteroplasmic or with weak evidence, with its level; every reviewed variant's state in `sites`. See [below](#mitochondrial-dna-heteroplasmy-at-reviewed-variants) |
 | Automated ACMG classes (research only) | `vcf acmg`, only when it ran | the carried P/LP calls in a gene of the gene list, from fastVEP's automated classes; counts of the carried alleles' classes. See [below](#automated-acmg-classes-research-only) |
 | Rare structural variants | `vcf sv-freq` | each carried PASS SV whose matching gnomAD SV has AF below 0.1% (`--rare-af`), labelled "rare (AF < 0.001)", rarest first (up to 100; the rest in `sv_freq.tsv`), and counts of common, low-frequency, rare and novel SVs. Confidence is `not_assessed`: the frequency comes from the gnomAD match, not the call's read support |
 | Microarray export | `microarray` | none: the files produced, with sites, called sites and no-call rate |
 
 Warnings the source runs recorded (low coverage, high no-call rates, ...) are
 shown with their section.
+
+Repeat Expansions uses the latest successful `typing str` result for this
+sample. It does not run a repeat caller or read the alignment. A targeted
+`--loci` run only describes the selected loci; counts say nothing about the
+rest of the catalog. A locus can be both unconfirmed and flagged when clipped
+reads also suggest an expansion. Older manifests may report a flagged finding
+but lack its structured sizes, coverage or the normal count.
 
 PharmCAT alternatives stay together as one **ambiguous** gene finding, rather
 than multiple ordinary genotypes. The JSON finding's `pgx` object records
@@ -93,6 +103,78 @@ inputs. All requested outside-call files and their fingerprints are recorded
 as `pharmcat_outside_call` inputs in the result manifest, together with the
 merged `pharmcat_outside_calls` output. Repeatable merging still rejects
 duplicate genes.
+
+### Medication review (CPIC; not a prescription)
+
+`--pgx-context FILE` reviews the medications a person takes or is
+considering against [CPIC](https://cpicpgx.org) guidance. The file is local
+TOML and is never uploaded:
+
+```toml
+# CPIC's generic names (or drug ids such as "RxNorm:2670"); population is
+# CPIC's patient group or indication where its guidance depends on it.
+medications = ["codeine", "paroxetine", { name = "clopidogrel", population = "NVI" }]
+```
+
+```sh
+wgsextract report --genome HG002 --pgx-context medications.toml --download
+```
+
+The guidance comes from CPIC's database export, release v1.61.0 (CC0 1.0),
+pinned by SHA-256 and fetched from `files.cpicpgx.org` into
+`<reference library>/report/cpic` the first time, only with `--download`;
+without it the report stops and names the data. It is checked against its
+pin on every use, so a changed pin is never satisfied by an older copy.
+
+Each medication gets one finding per gene combination CPIC's guidance uses.
+Its `advisory.status` says how far the evidence goes:
+
+| Status | Meaning |
+| --- | --- |
+| `advisory` | One CPIC recommendation fits the confident call; it is quoted verbatim with CPIC's strength, the guideline, its PMID and the release. `contraindication` is true when it advises against the drug (avoid, not recommended, contraindicated, do not use). |
+| `context_review` | It fits the genotype, but another listed medication may change the phenotype (below), or the recommendation says to avoid inhibitors of the gene and another listed medication inhibits it. `alternatives` holds the recommendations the change could lead to; the HTML and Markdown show them too, marked as not guidance for this person. |
+| `withheld` | The call is weak (`low` or `not_assessed` evidence, a no-call) or ambiguous, and its possible results lead to different recommendations. Nothing is recommended. |
+| `context_needed` | CPIC's guidance differs by patient group or indication (clopidogrel, carbamazepine, phenytoin, ...); add `population`. |
+| `insufficient_evidence` | No CPIC recommendation applies: the drug isn't in CPIC, its gene pairs carry no prescribing guidance (CPIC level C/D), its guidance is an algorithm outside the recommendation table (warfarin), CPIC has none for this result, or none for the given population. |
+| `not_assessed` | A gene the guidance needs has no result; run `vcf pharmcat` (with the CYP2D6 or HLA outside calls). |
+
+The gate uses the evidence of the calls the guidance rests on, from the
+pharmacogenomics section before ambiguity lowers its label: a call needs
+`high` or `moderate` evidence to narrow CPIC's recommendations. A weak call
+counts as any of its possible results, so guidance is given only when CPIC
+has a recommendation for every possible result and it is the same for all of
+them; an ambiguous confident call
+counts as its alternatives, so phenotype-consistent alternatives give guidance
+and conflicting ones do not. Missing or partial reference evidence, unresolved
+Cyrius calls, the combined CYP2D6+CYP2D7 copy number and ambiguous PharmCAT
+alternatives therefore never become a single actionable result. A gene PharmCAT took from an outside call rests on that
+caller's finding in this report (Cyrius for CYP2D6, T1K for HLA): with none it
+is `not_assessed` (`outside_call_unverified`), and an outside call that differs
+from that caller's newest call (a resolved Cyrius diplotype, or T1K's alleles
+at PharmCAT's two-field resolution) is `low` (`outside_call_mismatch`).
+
+**Medication-adjusted phenotype.** A listed medication changes a phenotype
+only through a rule in `assets/report/pgx_context_rules.json` (version
+2026.11.1) that quotes CPIC; a rule applies only while the loaded CPIC release
+still carries its quote for the same drug, gene and phenotype. The one rule so
+far is paroxetine's CYP2D6 autoinhibition (CPIC SSRI guideline, PMID
+37032427): a Normal Metabolizer may convert to an Intermediate or Poor
+Metabolizer and an Intermediate to a Poor one, dose-dependently; the effect in
+a Poor Metabolizer is minimal and in an Ultrarapid Metabolizer unclear. The
+section's `genes` list, and a finding per gene, give the genetic (`baseline`)
+and `adjusted` phenotype, the rule, the medication that triggers it, CPIC's
+quote and its recommendation id. A gene no listed medication affects is
+reported unchanged. Other interactions, doses and health factors are not
+assessed.
+
+The section has the disclaimer "not a prescription": every finding says to
+review it with a clinician, and nothing should be started, stopped or changed
+without professional review. The report's manifest records the context file
+(`pgx_context` input) and CPIC export (`cpic_data` input) with their
+fingerprints, and the metrics `cpic_release`, `cpic_sha256`,
+`pgx_rules_version`, `pgx_rules_sha256` and `pgx_context_sha256` (a digest of
+the effective medication list); the JSON keeps the effective list. The review
+is rebuilt on every run, so a changed list or CPIC release always shows.
 
 ### ClinVar gene list
 
@@ -199,6 +281,80 @@ no status. If the run's confidence table is missing, its manifest lists only
 the first 1,000 calls; the section then warns (`calls_truncated`) and gives
 only biallelic statuses, which more calls can't change.
 
+### Mitochondrial DNA: heteroplasmy at reviewed variants
+
+> **Educational, for review with a clinician; not a prescribing
+> instruction.** Confirm any detected variant in an accredited clinical
+> laboratory before acting on it.
+
+This section reads the mutserve calls and per-position read table that
+`lineage mt-haplogroup --contamination` keeps for a BAM or CRAM
+([lineage.md](lineage.md#mtdna-heteroplasmy-evidence)). Without them (no run,
+a run without `--contamination`, or a VCF input) the section is **not run**
+and names the command. It keeps three things apart:
+
+- **Technical support** (`technical`): mutserve's version and settings, the
+  mtDNA reference the reads were called against (rCRS or CHM13v2.0's chrM,
+  with contig and MD5), median depth, the share of positions with 100 or more
+  reads, the counts of homoplasmies and heteroplasmies, and haplocheck's
+  contamination status.
+- **Reviewed disease variants** (`group` `disease`): the mtDNA SNVs that
+  ClinVar classifies Pathogenic with expert-panel review (ClinGen's
+  Mitochondrial Disease Variant Curation Expert Panel) and no conflicting
+  classifications.
+- **MT-RNR1 aminoglycoside-risk alleles** (`group` `aminoglycoside`):
+  m.1095T>C, m.1494C>T and m.1555A>G, which CPIC classes as "increased risk of
+  aminoglycoside-induced hearing loss" (McDermott et al., *Clin Pharmacol
+  Ther* 2022;111(2):366-372, PMID 34032273), with ClinVar's record for each.
+  CPIC found no heteroplasmy level at which aminoglycosides become safe and
+  treats a detected variant at any level like a homoplasmic one, so a
+  supported heteroplasmic call is reported as risk evidence; it does not need
+  100% ALT reads.
+
+The reviewed variants are `src/wgsextract_cli/assets/report/mt_variants.json`,
+bundled with the package (the report makes no network request).
+`scripts/build_report_mt_variants.py` rebuilds it by that rule from a pinned
+ClinVar GRCh38 VCF release (2026-11-15; its URL, `fileDate` and NCBI MD5 are
+recorded, with each variant's Variation ID, classification, review status and
+conditions) and CPIC's Table 1. MITOMAP is not used. ClinVar's data carry no
+NCBI use restrictions; CPIC's content is CC0 1.0 (see NOTICE). The section's
+`resource` repeats the release, MD5, selection rule and citation.
+
+Each reviewed variant gets one state (`sites`), from the evidence at its rCRS
+position (a CHM13 run's evidence is read at the matching CHM13 position):
+
+| State | Meaning |
+| --- | --- |
+| `homoplasmic` | mutserve called the ALT at 95% or more |
+| `heteroplasmic` | mutserve called it at 10% to 95% |
+| `weak_evidence` | a call below 10%, or ALT reads at 1% or more on a strand that mutserve didn't call (`strand_bias` when only one strand carries them, `mt_not_called` otherwise) |
+| `not_detected` | 100 or more reads, none (under 1% on each strand) with the ALT |
+| `not_assessed` | fewer than 100 reads, no reads, an unconfirmed reference, a reference base or call that disagrees with the read table, or missing evidence (see `reasons`) |
+
+The thresholds follow gnomAD's mtDNA release (Laricchia et al., *Genome Res*
+2022;32:569-582, PMID 35074858): it reports heteroplasmy from 10%, calls
+95-100% homoplasmic, and treats a site without a call as reference only
+above 100x. In their dataset, the authors estimated that misaligned nuclear
+copies of mtDNA (NUMTs) accounted for at least 43% of 1-5% calls and 1% of
+5-10% calls. Those estimates are not universal error rates, and this report
+retains lower calls as weak evidence. With 100 reads, a 10%
+heteroplasmy leaves no ALT read with probability 0.9^100 (under 3 in 100,000),
+so **not detected rules out heteroplasmy of 10% or more, not lower levels**.
+1% is the level mutserve calls from in this run. These are technical limits:
+levels are measured in the sequenced sample (usually blood) and can differ in
+other tissues and over time, and NUMTs, contamination and low mtDNA copy
+number can all imitate low-level heteroplasmy. **Not assessed is unknown, never
+a negative.** The section warns `mt_reference_unconfirmed` (no variant
+assessed) when the run's mtDNA reference wasn't confirmed as the rCRS or
+CHM13v2.0's chrM, and `mt_evidence_missing` when a kept file is missing or
+unreadable.
+
+Detected and weak-evidence variants are findings. Their `variant` gives the
+level as `alt_fraction` and `homoplasmic` or `heteroplasmic` as `zygosity`,
+with no genotype: a mixture is not a diploid genotype. `clinical_evidence`
+holds the ClinVar Variation ID and review status; the region is the position
+in the evidence file. A finding's note gives the clinician-review context.
+
 ### Automated ACMG classes (research only)
 
 > **Research use only; not a diagnosis.** These classes are computed
@@ -245,7 +401,9 @@ reason codes. The JSON document explains each code in `confidence_reasons`.
   allele balance, mapping quality and strand bias.
 - **PharmCAT**: the weakest label among the gene's labelled calls in the
   run's confidence table. A gene with no labelled calls (a reference `*1/*1`
-  rests on coverage alone) is `not_assessed`.
+  rests on coverage alone) is `not_assessed`, and so is a gene judged only
+  from a manifest that lists some of the calls (`calls_truncated`, when the
+  confidence table is missing).
 - **HLA-A and HLA-B (T1K)**: `low` when `typing hla` made no confident call;
   `high` when T1K's quality is above 0 for each allele (its own threshold) and
   the names it tied agree; `moderate` when the T1K genotypes file is missing;
@@ -265,6 +423,12 @@ reason codes. The JSON document explains each code in `confidence_reasons`.
   input's aligner isn't bwa-like (`aligner_not_calibrated`), or coverage is
   uneven (MAD above 0.11); `moderate` when the depth is unknown; otherwise
   `high`.
+- **Mitochondrial heteroplasmy**: `high` for a homoplasmic or heteroplasmic
+  call, or a supported negative, at 100 or more reads; `low` for weak
+  evidence or under 100 reads (`mt_low_depth`). Haplocheck contamination
+  makes a heteroplasmic call `low` and a homoplasmic one `moderate`
+  (`mt_contamination`); `qc contamination` makes either at most `moderate`
+  (`sample_contaminated`). See [above](#mitochondrial-dna-heteroplasmy-at-reviewed-variants).
 - **Haplogroups**: the caller's quality score (Yleaf QC-score, Haplogrep
   3 quality): `high` from 0.9, `moderate` from 0.7, `low` below 0.7. A run that
   warned of low coverage is `low`.
@@ -371,7 +535,9 @@ gives the selected run's `command`, `status`, `finished` and `manifest`, and
 `latest_attempt`: `null` when it is the newest run of its step, otherwise
 the newer failed or cancelled attempt with the same four fields. The overview
 adds `facts` and `qc`, ClinVar adds `gene_list`, `build`, `counts`, `genes`
-and `all_calls`, and the microarray section adds `files` and `metrics`.
+and `all_calls`, the mitochondrial section adds `advisory`, `technical`,
+`thresholds`, `resource`, `sites` and `counts`, and the microarray section
+adds `files` and `metrics`.
 
 The findings table has one row per finding, with the variant's columns, the
 label and its reasons, the evidence file and region, and the disclaimer. Its
@@ -394,6 +560,8 @@ existing helper paths. `context.py` collects manifests and workspace evidence
 and provides shared finding/confidence support. `overview.py` builds sample,
 lineage, ancestry and microarray summaries; `genotyping.py` builds PGx and
 carrier sections; `clinical.py` handles ClinVar and per-gene call interpretation;
+`mitochondrial.py` reads mtDNA heteroplasmy evidence through
+`core/mt_heteroplasmy.py`;
 `variant_sections.py` handles automated ACMG and structural-variant evidence.
 `rendering.py` formats the offline HTML/Markdown documents and evidence links.
 Confidence and clinical rules remain independent of presentation.

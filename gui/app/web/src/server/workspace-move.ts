@@ -1,13 +1,21 @@
-import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, rmdir, statfs, symlink, utimes } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rename, rm, rmdir, statfs, utimes } from "node:fs/promises";
 import path from "node:path";
 import { configEditorControls } from "../../../shared/rendering.js";
 import { parseConfigToml as parseToml, serializeConfigToml as serializeToml } from "./config-toml.js";
 import type { BundleManifest, ControlSpec } from "../../../shared/types.js";
 import { isSameOrInsidePath, relocatePath } from "../../../shared/workspace-paths.js";
-import { bundleStatePath, writeFileAtomically } from "./config-store.js";
+import { writeFileAtomically } from "./atomic-file.js";
+import { bundleStatePath } from "./bundle-state.js";
 import { errnoCode, HttpError } from "./errors.js";
 import { configPath, expandWorkspaceToken } from "./paths.js";
-import { defaultUsersWorkspaceRoot, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
+import { withSettingsFileLock } from "./settings-lock.js";
+import { relocateSettingsFile, relocateStrings, restoreRewrittenFile, type RewrittenFile } from "./settings-relocation.js";
+import { assertSettingsFileUnlocked, withWorkspaceMove, workspaceActivityDirectory } from "./workspace-activity.js";
+import { createLink, type FolderMove, type PlannedLink, planLink, planLinks, type RelinkedLink, relinkMovedFolder, restoreLinks } from "./workspace-links.js";
+import type { MovedConfigPath } from "./workspace-location.js";
+import { refuseLinkedMoveFolders } from "./workspace-move-guard.js";
+import { assertCurrentUsersWorkspace, defaultUsersWorkspaceRoot, recordWorkspaceMove, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
 
 /** What to move: the users workspace to `folder` (null: its default location), or with `setting`, that setting's folder. */
 export interface WorkspaceMoveTarget {
@@ -20,6 +28,7 @@ export interface WorkspaceMoveRequest extends WorkspaceMoveTarget {
     sourceRoot: string;
     bundleRoot: string;
     onProgress: (percent: number) => void | Promise<void>;
+    beforeMove?: () => Promise<void>;
     signal: AbortSignal;
 }
 
@@ -29,6 +38,11 @@ export interface WorkspaceMoveRequest extends WorkspaceMoveTarget {
  * failure or cancelled copy loses nothing. Folders the user set elsewhere stay where they are.
  */
 export async function moveWorkspace(request: WorkspaceMoveRequest): Promise<void> {
+    await withWorkspaceMove(() => moveWorkspaceNow(request));
+}
+
+async function moveWorkspaceNow(request: WorkspaceMoveRequest) {
+    await assertCurrentUsersWorkspace(request.manifest, request.bundleRoot);
     if (request.setting) {
         await moveSettingFolder(request, request.setting);
         return;
@@ -42,12 +56,13 @@ export async function moveWorkspace(request: WorkspaceMoveRequest): Promise<void
     if (!target || path.relative(from, bundleRoot) === "") {
         throw new HttpError(400, "This bundle has no users workspace to move.");
     }
-    const save = () => saveUsersWorkspace(manifest, folder == null ? null : target);
+    await prepareMove(request, [from, folder ?? target, target]);
     if (path.relative(from, target) === "") {
-        await save();
+        await saveUsersWorkspace(manifest, folder == null ? null : target);
         return;
     }
-    await moveFolderAndPaths(request, from, target, save);
+    await moveFolderAndPaths(request, from, target, (movedConfigs) =>
+        recordWorkspaceMove(manifest, folder == null ? null : target, movedConfigs));
 }
 
 /** Moves what one path setting names to `folder`, then saves the setting; a missing or empty one only saves it. */
@@ -66,20 +81,32 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
     if (!settingsFile) {
         throw new HttpError(400, `${control.label ?? control.id} does not declare a settings file.`);
     }
-    const values = await readSettings(settingsFile);
+    await assertSettingsFileUnlocked(settingsFile);
+    const values = parseToml(await readSettingsText(settingsFile) ?? "");
     const current = typeof values[setting.key] === "string" ? expandWorkspaceToken(String(values[setting.key]), bundleRoot) : "";
     const target = path.resolve(expandedFolder);
+    await prepareMove(request, [...(path.isAbsolute(current) ? [current] : []), expandedFolder, target]);
     const save = async () => {
         const latestFile = (await configFiles(manifest, bundleRoot)).get(control.id);
         if (!latestFile) {
             throw new HttpError(400, `${control.label ?? control.id} does not declare a settings file.`);
         }
-        const latest = await readSettings(latestFile);
-        if (setting.key === "mygenomes_library") {
-            delete latest.dataset_library;
-            delete latest.genome_library;
-        }
-        await writeFileAtomically(latestFile, serializeToml({ ...latest, [setting.key]: target }));
+        await withSettingsFileLock(latestFile, async (file) => {
+            const previous = await readSettingsText(file);
+            const latest = parseToml(previous ?? "");
+            if (setting.key === "mygenomes_library") {
+                delete latest.dataset_library;
+                delete latest.genome_library;
+            }
+            await writeFileAtomically(file, serializeToml({ ...latest, [setting.key]: target }));
+            try {
+                await recordWorkspaceMove(manifest);
+            } catch (error) {
+                if (previous === null) await rm(file, { force: true });
+                else await writeFileAtomically(file, previous);
+                throw error;
+            }
+        });
     };
     if (!current || !path.isAbsolute(current) || path.relative(current, target) === "" || (await isEmptyOrMissing(current))) {
         await save();
@@ -89,37 +116,106 @@ async function moveSettingFolder(request: WorkspaceMoveRequest, setting: { contr
 }
 
 /** Moves `from` to `to`, then rewrites saved paths into it and runs `save`; puts everything back if a step fails. */
-async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, to: string, save: () => Promise<void>) {
+async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, to: string, save: (movedConfigs: readonly MovedConfigPath[]) => Promise<void>) {
     const { manifest, sourceRoot, bundleRoot, onProgress, signal } = request;
-    const settingsFiles = [...(await configFiles(manifest, bundleRoot)).values()];
+    const settingsFiles = new Set((await configFiles(manifest, bundleRoot)).values());
+    for (const control of configEditorControls(manifest)) {
+        const declared = settingsFileOf(control, undefined, bundleRoot);
+        if (declared) settingsFiles.add(declared);
+    }
+    for (const file of settingsFiles) await assertSettingsFileUnlocked(file);
     if (request.setting) {
         await assertMovableSettingFolder(from, [usersWorkspaceFor(bundleRoot), sourceRoot, bundleRoot, ...settingsFiles]);
     }
-    await assertUsableTarget(to, from, [sourceRoot, bundleRoot]);
+    const coordination = await existingRealPath(workspaceActivityDirectory());
+    if (isSameOrInsidePath(await existingRealPath(from), coordination)) {
+        throw new HttpError(400, "workspaceMoveProtectedFolder");
+    }
+    await assertUsableTarget(to, from, [sourceRoot, bundleRoot, coordination]);
+    const move: FolderMove = { from, fromReal: await existingRealPath(from), to };
+    const movedConfigs = new Map<string, string>();
+    const copiedConfigs = new Set<string>();
+    for (const settingsFile of settingsFiles) {
+        const relocated = relocatePath(settingsFile, from, to);
+        if (relocated !== settingsFile) {
+            const parent = await existingRealPath(path.dirname(settingsFile));
+            const canonical = path.join(parent, path.basename(settingsFile));
+            movedConfigs.set(settingsFile, relocated);
+            // A directory link may lead out of the workspace. Its target is not
+            // copied, so keep that file and redirect only the moved link's path.
+            if (isSameOrInsidePath(move.fromReal, canonical)) {
+                movedConfigs.set(canonical, relocated);
+                copiedConfigs.add(canonical);
+            }
+            // A file symlink also has an independently usable config path.
+            // Retire its real target only if that file was copied with it.
+            const realFile = await existingRealPath(settingsFile);
+            const realDestination = relocatePath(realFile, move.fromReal, to);
+            if (realDestination !== realFile) {
+                movedConfigs.set(realFile, realDestination);
+                copiedConfigs.add(realFile);
+            }
+        }
+    }
+    // Planned while what the links lead to is still in place.
+    const links = await lstat(from).then((info) => info.isDirectory(), () => false) ? await planLinks(move, signal) : new Map<string, PlannedLink>();
     await mkdir(path.dirname(to), { recursive: true });
     await rmdir(to).catch(ignoreMissing);
     const renamed = await renameIfSameVolume(from, to);
     if (!renamed) {
-        await copyFolder(from, to, onProgress, signal);
+        await copyFolder(move, links, onProgress, signal);
     }
     const rewritten: RewrittenFile[] = [];
+    const relinked: RelinkedLink[] = [];
+    const retiredConfigs: MovedConfigPath[] = [];
     try {
+        // A copy made its links point at the new place already; a renamed folder's still hold what they did.
+        if (renamed) {
+            await relinkMovedFolder(move, links.values(), relinked, signal);
+        }
+        const rewrittenSettings = new Set<string>();
         for (const settingsFile of settingsFiles) {
             // A settings file in the moved folder moved with it.
-            await relocateSettingsFile(relocatePath(settingsFile, from, to), from, to, rewritten);
+            const file = await existingRealPath(relocatePath(settingsFile, from, to));
+            if (rewrittenSettings.has(file)) continue;
+            rewrittenSettings.add(file);
+            await relocateSettingsFile(file, from, to, rewritten);
         }
         await relocateBundleState(bundleRoot, from, to, rewritten);
-        await save();
+        signal.throwIfAborted();
+        if (!renamed) {
+            // An open Windows handle can prevent removing the old tree. Retire config
+            // names before committing, so it can never stay writable as a second config.
+            for (const previous of copiedConfigs) {
+                const retired = `${previous}.moved-${randomUUID()}`;
+                try {
+                    await rename(previous, retired);
+                    retiredConfigs.push([previous, retired]);
+                } catch (error) {
+                    ignoreMissing(error);
+                }
+            }
+        }
+        signal.throwIfAborted();
+        await save([...movedConfigs]);
     }
     catch (error) {
+        // Roll back as much as possible; a failed step must not replace the move's own error.
+        const attempt = (step: string, undo: () => Promise<unknown>) => undo().catch((rollbackError: unknown) => {
+            console.warn(`Could not roll back ${step}: ${String(rollbackError)}`);
+        });
+        for (const [previous, retired] of retiredConfigs) {
+            await attempt(`retired config ${previous}`, () => rename(retired, previous));
+        }
         for (const file of rewritten) {
-            await writeFileAtomically(file.filePath, file.text).catch(() => undefined);
+            await attempt("a rewritten settings file", () => restoreRewrittenFile(file));
         }
         if (renamed) {
-            await rename(to, from);
+            await attempt("moved links", () => restoreLinks(move, relinked));
+            await attempt(`folder ${to} to ${from}`, () => rename(to, from));
         }
         else {
-            await rm(to, { recursive: true, force: true });
+            await attempt(`copied folder ${to}`, () => rm(to, { recursive: true, force: true }));
         }
         throw error;
     }
@@ -129,6 +225,16 @@ async function moveFolderAndPaths(request: WorkspaceMoveRequest, from: string, t
         });
     }
     await onProgress(100);
+}
+
+async function prepareMove(request: WorkspaceMoveRequest, folders: string[]) {
+    const paths = [...new Set(folders)];
+    await refuseLinkedMoveFolders(...paths);
+    if (request.beforeMove) {
+        await request.beforeMove();
+        // An action being stopped may have changed a folder after the first check.
+        await refuseLinkedMoveFolders(...paths);
+    }
 }
 
 async function assertMovableSettingFolder(from: string, protectedPaths: string[]) {
@@ -219,11 +325,13 @@ async function renameIfSameVolume(from: string, to: string) {
 }
 
 /** Copies through a staging folder renamed into place at the end, so the target is never partly there. */
-async function copyFolder(from: string, to: string, onProgress: WorkspaceMoveRequest["onProgress"], signal: AbortSignal) {
+async function copyFolder(move: FolderMove, links: Map<string, PlannedLink>, onProgress: WorkspaceMoveRequest["onProgress"], signal: AbortSignal) {
+    const { fromReal, to } = move;
     // Unique, so no folder already there is ever taken over or deleted.
     const staging = await mkdtemp(path.join(path.dirname(to), `.${path.basename(to)}.moving-`));
     try {
-        const files = await listEntries(from);
+        // Read at its real path, as the OS finds it, even where its spelling has a `..` after a link.
+        const files = await listEntries(fromReal);
         const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
         const volume = await statfs(staging);
         const availableBytes = Number(volume.bavail) * Number(volume.bsize);
@@ -234,7 +342,7 @@ async function copyFolder(from: string, to: string, onProgress: WorkspaceMoveReq
         let reportedPercent = 0;
         for (const file of files) {
             signal.throwIfAborted();
-            await copyEntry(from, staging, file);
+            await copyEntry(move, links, staging, file);
             copiedBytes += file.size;
             const percent = totalBytes ? Math.floor(copiedBytes / totalBytes * 99) : 99;
             if (percent > reportedPercent) {
@@ -276,8 +384,8 @@ async function listEntries(root: string, relative = ""): Promise<CarriedEntry[]>
     return files;
 }
 
-async function copyEntry(fromRoot: string, toRoot: string, { relative, directory }: CarriedEntry) {
-    const from = path.join(fromRoot, relative);
+async function copyEntry(move: FolderMove, links: Map<string, PlannedLink>, toRoot: string, { relative, directory }: CarriedEntry) {
+    const from = path.join(move.fromReal, relative);
     const to = path.join(toRoot, relative);
     if (directory) {
         await mkdir(to, { recursive: true });
@@ -286,36 +394,20 @@ async function copyEntry(fromRoot: string, toRoot: string, { relative, directory
     await mkdir(path.dirname(to), { recursive: true });
     const info = await lstat(from);
     if (info.isSymbolicLink()) {
-        await symlink(await readlink(from), to);
+        // Links are recreated, never followed, so nothing outside the folder is pulled into the move.
+        const link = links.get(relative) ?? await planLink(move, relative, await readlink(from));
+        await createLink(link.moved, to, link.directory, path.join(move.to, relative));
         return;
     }
     await copyFile(from, to);
     await utimes(to, info.atime, info.mtime);
 }
 
-/** A file's text from before it was rewritten, to put back if the move fails. */
-interface RewrittenFile {
-    filePath: string;
-    text: string;
-}
-
-async function readSettings(filePath: string): Promise<Record<string, unknown>> {
-    const text = await readFile(filePath, "utf8").catch((error: unknown) => {
-        ignoreMissing(error);
-        return "";
-    });
-    return parseToml(text);
-}
-
-async function relocateSettingsFile(filePath: string, from: string, to: string, rewritten: RewrittenFile[]) {
-    const text = await readFile(filePath, "utf8").catch((error: unknown) => {
+function readSettingsText(filePath: string): Promise<string | null> {
+    return readFile(filePath, "utf8").catch((error: unknown) => {
         ignoreMissing(error);
         return null;
     });
-    if (text != null) {
-        rewritten.push({ filePath, text });
-        await writeFileAtomically(filePath, serializeToml(relocateStrings(parseToml(text), from, to)));
-    }
 }
 
 async function readBundleState(bundleRoot: string): Promise<Record<string, unknown> | null> {
@@ -337,17 +429,4 @@ async function relocateBundleState(bundleRoot: string, from: string, to: string,
         const relocated = relocateStrings(JSON.parse(text) as unknown, from, to);
         await writeFileAtomically(statePath, `${JSON.stringify(relocated, null, 2)}\n`);
     }
-}
-
-function relocateStrings(value: unknown, from: string, to: string): unknown {
-    if (typeof value === "string") {
-        return relocatePath(value, from, to);
-    }
-    if (Array.isArray(value)) {
-        return value.map((item) => relocateStrings(item, from, to));
-    }
-    if (value != null && typeof value === "object") {
-        return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, relocateStrings(item, from, to)]));
-    }
-    return value;
 }

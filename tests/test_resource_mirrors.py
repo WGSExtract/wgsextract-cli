@@ -4,6 +4,10 @@ import gzip
 import hashlib
 import json
 import logging
+import os
+import signal
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from urllib.request import urlopen
@@ -15,6 +19,7 @@ from scripts import mirror_download_resources as publisher
 from scripts import mirror_resource_transfer as transfer
 from tests.htslib_helpers import needs_tools
 from tests.http_server import RangeServer
+from wgsextract_cli import api
 from wgsextract_cli.core import gnomad_af, resource_mirrors
 from wgsextract_cli.core.ref_library.downloads import download_file
 
@@ -270,8 +275,10 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
     vcf = (
         "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
         '##INFO=<ID=AF_joint,Number=A,Type=Float,Description="AF">\n'
+        '##INFO=<ID=AF_grpmax_joint,Number=A,Type=Float,Description="grpmax AF">\n'
+        '##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="homozygotes">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
-        "chr1\t100\t.\tA\tG\t.\tPASS\tAF_joint=0.25\n"
+        "chr1\t100\t.\tA\tG\t.\tPASS\tAF_joint=0.25;AF_grpmax_joint=0.5;nhomalt_joint=1\n"
         "chr1\t200\t.\tC\tT\t.\tPASS\tAF_joint=0.5\n"
     )
     data = gzip.compress(vcf.encode())
@@ -280,15 +287,124 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
         source.files["mirror-1"] = b"broken"
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", entry["upstream_url"])
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
-    assert gnomad_af.build_gnomad_af(str(tmp_path / "library"), workers=1, attempts=1)
+    assert gnomad_af.build_gnomad_af(
+        str(tmp_path / "library"), workers=1, attempts=1, download=True
+    )
     table = tmp_path / "library/downloads/gnomad_hg38.tsv.gz"
     with gzip.open(table, "rt") as output:
         assert output.read().splitlines()[-2:] == [
-            "chr1\t100\tA\tG\t0.25",
-            "chr1\t200\tC\tT\t0.5",
+            "chr1\t100\tA\tG\t0.25\t0.5\t1",
+            "chr1\t200\tC\tT\t0.5\t.\t.",
         ]
     assert ("upstream" in source.paths) is corrupt_second_part
     assert table.with_suffix(table.suffix + ".tbi").is_file()
+
+
+@needs_tools("bcftools", "bgzip")
+@pytest.mark.parametrize("stall", ["body", "headers", "mirror", "segmented-mirror"])
+def test_1213_cancelled_gnomad_disconnects_stalled_download(
+    source, mirror_catalog, tmp_path, monkeypatch, stall
+):
+    from wgsextract_cli.core.ref_library import segmented
+
+    data = b"a" * (2 << 20)
+    entry = mirror_catalog(source, data, allowed=stall.endswith("mirror"))
+    path = "mirror-0" if stall.endswith("mirror") else "upstream"
+    if stall == "segmented-mirror":
+        from wgsextract_cli.core.ref_library.segmented import ranged_revision
+
+        source.etags = True
+        monkeypatch.setattr(segmented, "ranged_revision", ranged_revision)
+        monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", len(data))
+    started, release, disconnected = (
+        threading.Event(),
+        threading.Event(),
+        threading.Event(),
+    )
+    cancel = api.CancelToken()
+    source.body_pauses[path] = (None if stall == "headers" else 1, started, release)
+    source.body_disconnects[path] = disconnected
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", entry["upstream_url"])
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
+    result = []
+
+    def build():
+        result.append(
+            api.ref.gnomad(
+                api.RefGnomadParams(
+                    ref=tmp_path, release="4.1", threads=1, download=True
+                ),
+                cancel=cancel,
+                check=False,
+            )
+        )
+
+    worker = threading.Thread(target=build, daemon=True)
+    worker.start()
+    try:
+        assert started.wait(5), "gnomAD did not begin streaming"
+        cancel.cancel()
+        worker.join(3)
+        assert not worker.is_alive(), "cancelled gnomAD stream did not return promptly"
+        assert result[0].exit_code == 130
+        assert disconnected.wait(1), "client did not shut down the stalled response"
+        assert source.get_paths == [path]
+        assert not [file for file in tmp_path.rglob("*.gz*") if file.is_file()]
+        if stall.endswith("mirror"):
+            assert list(tmp_path.rglob("part0000.partial*"))
+    finally:
+        release.set()
+        worker.join(5)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX SIGTERM")
+@needs_tools("bcftools", "bgzip", "tabix")
+def test_1213_cli_sigterm_disconnects_gnomad(source, tmp_path):
+    source.files["upstream"] = b"a" * (2 << 20)
+    started, release, disconnected = (
+        threading.Event(),
+        threading.Event(),
+        threading.Event(),
+    )
+    source.body_pauses["upstream"] = (None, started, release)
+    source.body_disconnects["upstream"] = disconnected
+    script = (
+        "import sys; from wgsextract_cli.core import gnomad_af; "
+        "from wgsextract_cli.main import main; "
+        "gnomad_af.GNOMAD_V4_URL = sys.argv[1]; "
+        "gnomad_af.GNOMAD_V4_CONTIGS = ['chr1']; main(sys.argv[2:])"
+    )
+    with subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            script,
+            source.url_for("upstream"),
+            "ref",
+            "gnomad",
+            "--release",
+            "4.1",
+            "--download",
+            "--threads",
+            "1",
+            "--ref",
+            str(tmp_path),
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    ) as cli:
+        try:
+            assert started.wait(10), (
+                f"gnomAD did not request the VCF (exit {cli.poll()})"
+            )
+            cli.send_signal(signal.SIGTERM)
+            assert cli.wait(timeout=4) == 128 + signal.SIGTERM
+            assert disconnected.wait(1), "CLI left the stalled response open"
+            assert source.get_paths == ["upstream"]
+        finally:
+            release.set()
+            if cli.poll() is None:
+                cli.kill()
 
 
 def test_1046_pr_code_only_edits_probe_no_unrelated_hosts():
