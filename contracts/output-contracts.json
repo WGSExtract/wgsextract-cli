@@ -66,6 +66,21 @@
       "schema": "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
       "tier": "experimental",
       "docs": "docs/server.md"
+    },
+    "wgsextract.methylation-regions-hp/1": {
+      "schema": "src/wgsextract_cli/assets/schemas/wgsextract.methylation-regions-hp.1.schema.json",
+      "tier": "experimental",
+      "docs": "docs/ont.md"
+    },
+    "wgsextract.paraphase/1": {
+      "schema": "src/wgsextract_cli/assets/schemas/wgsextract.paraphase.1.schema.json",
+      "tier": "stable",
+      "docs": "docs/variants.md#long-read-paralog-typing",
+      "fields": {
+        "loci[].total_cn": {"tier": "experimental", "scientific": true, "meaning": "Paralog-family copy number as reported by Paraphase; null does not mean zero."},
+        "loci[].call_status": {"meaning": "Whether the engine reported a copy-number call, a partial SMN call, or no call."},
+        "loci[].gene_fields": {"tier": "experimental", "scientific": true, "note": "Upstream locus-specific values can differ by locus and engine version."}
+      }
     }
   },
   "roles": {
@@ -79,7 +94,15 @@
     "variant_table": {"tier": "experimental", "meaning": "A TSV or Parquet export of VCF records and their annotations."},
     "variant_database": {"tier": "experimental", "meaning": "The SQLite export of a variant table."},
     "pharmcat_reference_evidence": {"tier": "experimental", "meaning": "The local report of supplemental evidence at absent PharmCAT definitions."},
-    "aadr": {"tier": "experimental", "meaning": "An AADR research-panel export."}
+    "aadr": {"tier": "experimental", "meaning": "An AADR research-panel export."},
+    "phase_blocks": {"tier": "experimental", "meaning": "The input or output table of phased variant block bounds."},
+    "methylation_regions_haplotypes": {"tier": "experimental", "meaning": "Regional CpG summaries and phase-aware HP1 minus HP2 differences."},
+    "paraphase_calls_json": {"tier": "experimental", "meaning": "Normalized per-locus Paraphase copy-number calls and run metadata (wgsextract.paraphase/1)."},
+    "paraphase_calls_tsv": {"tier": "experimental", "meaning": "Tabular per-locus Paraphase copy-number calls."},
+    "paraphase_raw_json": {"tier": "experimental", "meaning": "Unmodified report produced by the selected Paraphase engine."},
+    "paraphase_vcf": {"tier": "experimental", "meaning": "Paraphase's unmodified VCF for one locus."},
+    "paraphase_bam": {"tier": "experimental", "meaning": "Paraphase's haplotagged, locally realigned reads."},
+    "paraphase_bam_index": {"tier": "experimental", "meaning": "Index of the Paraphase BAM."}
   },
   "approved_breaks": []
 }

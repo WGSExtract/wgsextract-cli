@@ -276,6 +276,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `mod_tags_partial`, `mod_models_differ` | `bam merge` | Only some runs carry MM/ML tags (`inputs` lists those without), or the runs' basecalls name different modified-base models (`models`). |
 | `few_modification_tags`, `opposite_strand_modifications`, `pacbio_5hmc_limited`, `unknown_platform` | `methylation` | The input's MM/ML modification tags are sparse, strand-mixed, or from a platform with limited calls. |
 | `genotype_ambiguous`, `high_copy_number`, `no_call` | `typing` | A star-allele or HLA call is ambiguous, has extra copies, or failed (`gene`). For CYP2D6, an ambiguous call (`filter`, `call_info`, `candidates`) or Cyrius's `LowQ_high_CN` (about 6 or more CYP2D6 copies; `cyp2d6_cyp2d7_copies`) writes no PharmCAT outside call. |
+| `paraphase_ont_experimental` | `typing paraphase` | The input read groups are ONT; these calls are experimental and unvalidated. |
 | `repeat_outside_normal_range` | `typing repeats` | A repeat length is outside its normal range (`locus`). |
 | `repeat_unconfirmed`, `repeat_unavailable` | `typing str` | A low-support allele alone changes the grade, all called alleles have low support, or missing expected copies leave the call unresolved; the build's catalog lacks the repeat (NOTCH2NLC on hg19) (`locus`). |
 | `repeat_clipped_reads` | `typing str` | Reads clipped at an unclassified locus may indicate an unsized expansion; the locus has no disease thresholds (`locus`). |
@@ -427,6 +428,10 @@ Other commands' metrics:
   combined CYP2D6+CYP2D7 copy number; one diplotype per HLA gene, flagged repeats, SMN1/SMN2 copy numbers with
   `sma_carrier` and `sma_affected`); `repair` the records read and
   repaired.
+- `vcf prepare` records `records_in`, `records_out`, the input's
+  compression and index state and the number of `repairs`, with one
+  `vcf_prepare_*` warning per repair
+  ([variants.md](variants.md#preparing-a-vcf-from-a-provider)).
 - `microarray` on hg38 input records how the hg38-to-hg19 liftover placed the
   CombinedKit's sites: `liftover_lifted`, and the no-calls by reason,
   `liftover_unmapped`, `liftover_alt_contig`, `liftover_ambiguous` (more than

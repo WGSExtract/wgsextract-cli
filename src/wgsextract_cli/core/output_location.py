@@ -10,12 +10,13 @@ outputs go beside it.
 Only an index that must sit beside its file (.bai, .crai, .tbi, ...) is ever
 written in the lab's folder, unless the user points output_directory there."""
 
+import stat
 from collections.abc import Iterable
 from os import PathLike, fspath
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
-from wgsextract_cli.core.paths import absolute_path, expand_path
+from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
 
 OUTPUT_FOLDER = "wgse"
 # Commands whose outputs belong beside the files they describe, as an index
@@ -145,3 +146,30 @@ def _flatten(values: Iterable[object]) -> Iterable[str | PathLike[str]]:
             yield from _flatten(value)
         elif isinstance(value, (str, PathLike)) and fspath(value):
             yield value
+
+
+def single_output_path(
+    input_path: PathInput, output: PathInput | None, outdir: PathInput | None, name: str
+) -> str:
+    """``output``, else ``<outdir>/<name>`` (outdir defaults to the input's
+    folder), refusing a path that is the input itself or not a regular file."""
+    from wgsextract_cli.core.utils import WGSExtractError
+
+    if output:
+        target = absolute_path(expand_path(fspath(output)))
+    else:
+        folder = expand_path(fspath(outdir)) if outdir else None
+        parent = folder or absolute_path(expand_path(fspath(input_path))).parent
+        target = absolute_path(Path(parent, name))
+    try:
+        aliases_input = target.samefile(expand_path(fspath(input_path)))
+    except FileNotFoundError:
+        aliases_input = False
+    if aliases_input:
+        raise WGSExtractError(f"Output {target} would overwrite the input.")
+    try:
+        if not stat.S_ISREG(target.lstat().st_mode):
+            raise WGSExtractError(f"Output {target} is not a regular file.")
+    except FileNotFoundError:
+        pass
+    return str(target)
