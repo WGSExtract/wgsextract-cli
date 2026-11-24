@@ -58,6 +58,26 @@ def test_cancelled_main_run_does_not_replace_last_conclusive_failure() -> None:
     assert api.retried == []
 
 
+def test_1492_nonlead_shard_matches_a_serial_red_main_failure() -> None:
+    api = ReplayGitHub()
+    api.run.update(
+        name="PR area checks / synchronize / ready",
+        path=".github/workflows/pr_ci.yml",
+    )
+    api.jobs[1][0]["name"] = "windows / test-windows / shard-2"
+    api.annotation_text = ""
+    api.evidence_text = "error: tools could not be loaded during collection"
+    api.main = dict(
+        api.run, id=200, name="CI Windows", head_branch="main", event="push"
+    )
+    api.main_by_workflow["windows_ci.yml"] = api.main
+    api.main_jobs = copy.deepcopy(api.jobs[1])
+    api.main_jobs[0]["name"] = "test-windows / all"
+    assert Observer(api).process(api.run, rerun_tests=True) == 2
+    assert api.retried == []
+    assert "ci-red-main" in api.labels
+
+
 def test_fork_recovery_cannot_create_global_flake_exemptions() -> None:
     api = ReplayGitHub()
     api.run.update(run_attempt=2, conclusion="success")
