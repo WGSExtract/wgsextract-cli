@@ -150,22 +150,34 @@ def listen():
 
 heartbeats = queue.Queue()
 threading.Thread(target=listen, daemon=True).start()
-groups = set()
+observed = {}
 
 def posix_processes():
-    rows = subprocess.check_output(["ps", "-axo", "pid=,ppid=,pgid=,stat="], text=True)
-    return [row.split() for row in rows.splitlines()]
+    rows = subprocess.check_output(["ps", "-axo", "pid=,ppid=,pgid=,stat=,lstart="], text=True)
+    return {int(pid): (int(parent), int(group), state, started)
+            for pid, parent, group, state, started in
+            (row.split(maxsplit=4) for row in rows.splitlines())}
 
-def track_posix_groups():
-    remaining = [tuple(map(int, row[:3])) for row in posix_processes()]
-    descendants = {child.pid}
+def active_posix_groups():
+    processes = posix_processes()
+    # A descendant that changed groups or was reparented is still ours only
+    # while its PID identifies the same live process.
+    descendants = {
+        pid for pid, (_, _, state, started) in processes.items()
+        if not state.startswith("Z") and observed.get(pid) == started
+    }
+    if child.poll() is None and child.pid in processes:
+        descendants.add(child.pid)
     while True:
-        discovered = [(pid, pgid) for pid, parent, pgid in remaining
-                      if parent in descendants and pid not in descendants]
+        discovered = {pid for pid, (parent, _, state, _) in processes.items()
+                      if parent in descendants and pid not in descendants
+                      and not state.startswith("Z")}
         if not discovered:
             break
-        descendants.update(pid for pid, _ in discovered)
-        groups.update(pgid for _, pgid in discovered)
+        descendants.update(discovered)
+    observed.clear()
+    observed.update({pid: processes[pid][3] for pid in descendants})
+    return {processes[pid][1] for pid in descendants}
 
 try:
     if cancel.exists():
@@ -182,14 +194,12 @@ try:
     if job is not None:
         job.assign(child.pid)
         assigned = True
-    else:
-        groups.add(child.pid)
     with child.stdin:
         child.stdin.write("exec(" + repr(request["script"]) + ")\n")
     last_seen = time.monotonic()
     while child.poll() is None:
         if job is None:
-            track_posix_groups()
+            active_posix_groups()
         try:
             if heartbeats.get(timeout=1) != "alive\n":
                 raise ValueError("Controller disconnected")
@@ -210,26 +220,17 @@ finally:
         job.stop()
     if child is not None:
         if job is None:
-            tracked = False
-            try:
-                track_posix_groups()
-                tracked = True
-            finally:
-                for sig in (signal.SIGTERM, signal.SIGKILL):
-                    # Darwin may report EPERM for an unreaped zombie leader.
-                    child.poll()
-                    for group in tuple(groups):
-                        try:
-                            os.killpg(group, sig)
-                        except ProcessLookupError:
-                            groups.remove(group)
-                    if not groups:
-                        break
-                    time.sleep(1)
-            if not tracked or any(
-                int(pgid) in groups and not state.startswith("Z")
-                for _, _, pgid, state in posix_processes()
-            ):
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                groups = active_posix_groups()
+                if not groups:
+                    break
+                for group in groups:
+                    try:
+                        os.killpg(group, sig)
+                    except ProcessLookupError:
+                        pass
+                time.sleep(1)
+            if active_posix_groups():
                 raise ValueError("POSIX process-group termination not confirmed")
         child.wait()
     done.touch()
