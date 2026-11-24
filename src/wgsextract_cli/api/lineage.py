@@ -1,5 +1,5 @@
-"""``lineage``: mtDNA haplogroups (Haplogrep 3), Y haplogroups (native Yleaf)
-and Y-STR repeat counts."""
+"""``lineage``: mtDNA haplogroups (Haplogrep 3), Y haplogroups (native Yleaf),
+Y-STR repeat counts and candidate private Y SNVs."""
 
 from __future__ import annotations
 
@@ -178,6 +178,49 @@ class YStrParams(Params):
     )
 
 
+@dataclass(frozen=True, kw_only=True)
+class YPrivateParams(DownloadParams):
+    """List candidate private (novel) Y SNVs: called chrY SNVs, inside the
+    bundled Poz callable mask, that are in no installed marker set (the
+    YBrowse snapshot on GRCh38, the YFull YTree positions on GRCh38 and T2T)
+    and pass strict allele-fraction, read and quality gates. Outputs go to
+    ``y_private/``. They are candidates to confirm, not proven private SNPs."""
+
+    COMMAND = "lineage y-private"
+
+    input: Path = input_param(
+        "Indexed BAM or CRAM, or a single-sample VCF/BCF with FORMAT/AD.", _REQUIRED
+    )
+    ref: Path | None = ref_param()
+    outdir: Path | None = outdir_param()
+    build: str | None = param(
+        None,
+        help="Y build of a VCF whose header has no chrY length: hg38 or t2t.",
+        choices=("hg38", "t2t"),
+    )
+    min_af: float = param(
+        0.9,
+        help="Lowest share of reads (FORMAT/AD) carrying the ALT allele "
+        "(default: 0.9).",
+        minimum=0,
+    )
+    min_alt_reads: int = param(
+        10, help="Fewest reads carrying the ALT allele (default: 10).", minimum=1
+    )
+    min_qual: float = param(30.0, help="Lowest variant QUAL (default: 30).", minimum=0)
+    min_mapq: int = param(
+        20,
+        help="BAM/CRAM: lowest read mapping quality counted (default: 20).",
+        minimum=0,
+    )
+    base_quality: int = param(
+        20,
+        help="BAM/CRAM: lowest base quality counted (default: 20).",
+        minimum=0,
+    )
+    qc_min_depth: float | None = depth_param()
+
+
 def mt_haplogroup(
     params: MtHaplogroupParams,
     *,
@@ -228,3 +271,20 @@ def y_str(
     from wgsextract_cli.commands._lineage_ystr import run_y_str
 
     return execute(params, run_y_str, progress=progress, cancel=cancel, check=check)
+
+
+def y_private(
+    params: YPrivateParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Candidate private Y SNVs; ``metrics`` holds ``y_private_candidates``,
+    ``y_called_snvs`` and ``y_known_snvs``. ``details`` states the
+    ``definition``, the ``marker_sets`` used, the ``callable_mask``, the
+    ``filters`` and the ``counts`` at each step, and lists the
+    ``candidates``."""
+    from wgsextract_cli.commands._lineage_yprivate import run_y_private
+
+    return execute(params, run_y_private, progress=progress, cancel=cancel, check=check)
