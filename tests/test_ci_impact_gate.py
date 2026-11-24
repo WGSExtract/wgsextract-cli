@@ -16,6 +16,7 @@ from scripts.ci_impact_backstop import (
     failing_targets,
     first_bad,
     green_nightly,
+    investigate,
     line_detection,
     replay,
     verified_omission,
@@ -542,3 +543,92 @@ def test_1452_backstop_scores_reproducible_files_only_for_the_exact_pr_receipt(
     assert report["failing_files"] == [a, b]
     assert (report["line_caught"], report["symbol_caught"]) == (1, 2)
     assert report["line_missed_files"] == [b]
+
+
+def test_1452_backstop_preserves_confirmed_witness_when_attribution_times_out(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            [
+                "git",
+                "-c",
+                "core.hooksPath=",
+                "-c",
+                "commit.gpgsign=false",
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.test",
+                *args,
+            ],
+            cwd=tmp_path,
+            text=True,
+        ).strip()
+
+    git("init", "-qb", "main")
+    for name in ("pixi.lock", "pixi.toml", "pyproject.toml"):
+        (tmp_path / name).touch()
+    test = "tests/test_branch.py"
+    source = tmp_path / test
+    source.parent.mkdir()
+    source.write_text("def test_branch():\n    assert True\n")
+    git("add", ".")
+    git("commit", "-qm", "Green nightly")
+    baseline = git("rev-parse", "HEAD")
+    source.write_text("def test_branch():\n    assert False\n")
+    git("commit", "-qam", "Reproducible failure")
+    head = git("rev-parse", "HEAD")
+
+    class RunServer(GitHub):
+        def request(self, method: str, path: str, data: object = None) -> object:
+            if "event=schedule&branch=main" in path:
+                return {
+                    "workflow_runs": [
+                        {"id": 10, "head_sha": baseline, "event": "schedule"}
+                    ]
+                }
+            if "event=workflow_dispatch&branch=main" in path:
+                return {"workflow_runs": []}
+            if "/actions/runs/10/jobs?" in path:
+                return {
+                    "jobs": [
+                        {
+                            "name": "test-ubuntu / all",
+                            "steps": [
+                                {"name": "Run Tests", "conclusion": "success"},
+                            ],
+                        }
+                    ]
+                }
+            if path.endswith(f"commits/{head}/pulls"):
+                raise TimeoutError("attribution API timed out")
+            raise AssertionError(path)
+
+    monkeypatch.chdir(tmp_path)
+    nightly = Path("out/nightly.xml")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-q",
+            "--basetemp=out/pytest",
+            f"--junitxml={nightly}",
+            test,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    witness = Path("out/replay/witnesses.jsonl")
+    with pytest.raises(TimeoutError, match="attribution API"):
+        investigate(
+            RunServer("owner/repo"),
+            nightly,
+            11,
+            witness.with_name("report.json"),
+            witnesses=witness,
+        )
+    assert json.loads(witness.read_text()) == [head, test]

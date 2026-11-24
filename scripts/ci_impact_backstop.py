@@ -405,19 +405,19 @@ def investigate(
             print(f"{test}: {bad or 'unattributed'} ({why})")
             if not bad:
                 continue
+            if witnesses is not None and (bad, test) not in confirmed:
+                try:
+                    with witnesses.open("a", encoding="utf-8") as stream:
+                        print(json.dumps([bad, test]), file=stream)
+                    confirmed.add((bad, test))
+                except OSError as error:
+                    print(f"Could not save an advisory line recall witness: {error}")
             miss = attribution(gh, root, bad, test)
             if miss and not any(
                 r["test"] == test and r["commit"] == bad for r in reports
             ):
                 reports.append(miss)
                 output.write_text(json.dumps(reports) + "\n", encoding="utf-8")
-            if witnesses is not None:
-                confirmed.add((bad, test))
-    if witnesses is not None and confirmed:
-        witnesses.write_text(
-            "".join(json.dumps(pair) + "\n" for pair in sorted(confirmed)),
-            encoding="utf-8",
-        )
 
 
 def score_line_recall(

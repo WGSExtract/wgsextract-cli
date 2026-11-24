@@ -17,7 +17,8 @@ from typing import Any, Literal, TypedDict
 
 from scripts.ci_impact_diff import ImpactDiff, git_blob, impact_diff
 from scripts.ci_impact_import_smoke import smoke_package
-from scripts.ci_impact_observations import SCHEMA, SOURCE
+from scripts.ci_impact_observations import SCHEMA
+from scripts.ci_impact_observations import SOURCE as SOURCE
 from scripts.ci_impact_results import file_results
 from scripts.ci_impact_scopes import (
     ChangedScopes,
