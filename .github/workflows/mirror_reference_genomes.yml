@@ -153,7 +153,7 @@ jobs:
       - uses: ./.github/actions/setup-pixi
       - name: Prepare indexes for the pinned hs38 FASTA
         shell: bash
-        run: bash scripts/ci_hs38.sh
+        run: bash scripts/ci_hs38.sh build
       - name: Publish the index bundle
         env:
           GH_TOKEN: ${{ github.token }}

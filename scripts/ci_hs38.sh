@@ -16,13 +16,36 @@ build_indexes() {
     gzip -n > "$stage/hs38-indexes.tar.gz"
 }
 
+install_reference() {
+  local stage=$1 genomes=$2 fasta_url=$3 fasta_sha256=$4 indexes_url=$5 indexes_sha256=$6
+  mkdir -p "$stage"
+  download_verified "$fasta_url" "$fasta_sha256" "$stage/hs38.fa.gz"
+  download_verified "$indexes_url" "$indexes_sha256" "$stage/hs38-indexes.tar.gz"
+  tar -xzf "$stage/hs38-indexes.tar.gz" -C "$stage" hs38.dict hs38.fa.gz.fai hs38.fa.gz.gzi
+  mkdir -p "$genomes"
+  mv "$stage"/hs38.{dict,fa.gz,fa.gz.fai,fa.gz.gzi} "$genomes/"
+}
+
 main() {
   local releases=https://github.com/WGSExtract/wgsextract-cli/releases/download
   local stage=out/ci-hs38
-  mkdir -p "$stage"
-  download_verified "$releases/v0.1.0/hs38.fa.gz" \
-    3006daf69d79db2ec6796937975015986f2114d1da145e5a838304945fe34d57 "$stage/hs38.fa.gz"
-  build_indexes "$stage"
+  local fasta_url=$releases/v0.1.0/hs38.fa.gz
+  local fasta_sha256=3006daf69d79db2ec6796937975015986f2114d1da145e5a838304945fe34d57
+  case ${1-} in
+    build)
+      mkdir -p "$stage"
+      download_verified "$fasta_url" "$fasta_sha256" "$stage/hs38.fa.gz"
+      build_indexes "$stage"
+      ;;
+    install)
+      install_reference "$stage" reference/genomes "$fasta_url" "$fasta_sha256" \
+        "$releases/ci-hs38-1/hs38-indexes.tar.gz" 97c192453124d26b6f458db7256ab6e85bf50584441ca18d749f306735cbef79
+      ;;
+    *)
+      echo "Usage: $0 {build|install}" >&2
+      return 2
+      ;;
+  esac
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then

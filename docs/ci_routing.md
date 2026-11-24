@@ -241,7 +241,7 @@ just certify-setup -e default -e dev -e vep-rs --reference
 Repeated `-e` replaces the default environment list. `--reference` retains the
 bootstrap release archive after verifying its pinned SHA-256, safely extracts
 missing support files, fetches the pinned liftOver chain (with the same mirror
-fallback as CI), and invokes CI's normal hs38 catalog installer. It then
+fallback as CI), and prepares hs38 with the catalog installer. It then
 validates all reference bytes, including the catalog-pinned full genome.
 This can download several GiB; run under the resource coordinator on shared
 hosts. Existing conflicting bootstrap files are not overwritten: the refusal
@@ -992,7 +992,7 @@ publish exact hit/miss and key in each job summary.
 | Pixi | Many overlapping default/dev/optional environment sets (~8 GB in the sampled inventory) | Four CLI OS/architecture sets (~5.4 GB) + Linux lint (~0.1 GB) |
 | npm | actions/setup-node could save PR-scoped duplicates | One download cache per OS/arch and package-lock hash (~0.1 GB total) |
 | Cargo | Registry downloads plus a second Windows Tauri cache including `target/` | Shared registry/git downloads per OS/arch and Cargo.lock hash (~0.1 GB); no target cache |
-| hs38 reference | Automatic writes on PRs | One main-owned verified public reference (~0.8 GB), read-only on PRs |
+| hs38 reference | One main-owned Actions cache (~0.8 GB), keyed to the genome catalog | Not cached; CI downloads the pinned FASTA and prebuilt indexes from GitHub Releases |
 | liftOver chain | A new run-id key on each download | One checksum key (<0.001 GB), main-only writes |
 | apt | PR cold misses could save duplicates | Main-only writes (~0.1–0.3 GB) |
 | PharmCAT reference | Up to two infrequently reused ~1 GB OS-specific entries | Not cached; leave space for the common tool environments |
@@ -1003,6 +1003,19 @@ caches and lockfile rollover. This is a size plan, not an asserted measured
 post-deployment size. Old keys age out after seven days unused; no active caches
 are deleted by this PR. Monitor the API inventory after main seeds the new keys;
 old and new keys can temporarily coexist.
+
+The shared OS suite downloads `hs38.fa.gz` from `v0.1.0` and its samtools
+dictionary, `.fai` and `.gzi` from `ci-hs38-1`. It verifies both SHA-256 pins
+in `scripts/ci_hs38.sh` before installing the files beside the bootstrap's
+support data, then uses the indexes to read a region before running tests.
+Updates to the installer invalidate passed-test hashes. CI does not rebuild
+indexes or fall back to upstream mirrors.
+To refresh the indexes, dispatch **Mirror reference genomes** with `ci_hs38`
+enabled and a new `ci-hs38-N` release tag. The hosted job builds against the
+pinned FASTA and publishes just the index bundle. Update the tag and archive
+SHA-256 together; retain the old release for older CI revisions. Once this
+change lands and older runs have finished, obsolete `hs38-v1-*` Actions
+entries can be deleted without removing any other cache family.
 
 Only each OS matrix job seeds its CLI Pixi cache; other jobs restore that same
 set and install any missing optional environments without saving duplicate sets.
