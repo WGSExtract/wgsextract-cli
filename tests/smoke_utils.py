@@ -3,11 +3,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from glob import glob
 from pathlib import Path
 
 from tests.home_isolation import isolated_home_env, state_directory_setting
 from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.utils import run_command
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -183,87 +183,100 @@ def assert_log_contains(stderr: str, pattern: str) -> None:
 
 
 def ensure_fake_data(fake_dir: str, coverage: float = 10.0) -> None:
-    """Ensures that fake test data is generated in the specified directory."""
-    required_files = [
-        os.path.join(fake_dir, "fake.bam"),
-        os.path.join(fake_dir, "fake_ref.fa"),
-        os.path.join(fake_dir, "fake.vcf.gz"),
+    """Generate the shared synthetic inputs, or complete an existing dataset."""
+    directory = Path(fake_dir).resolve()
+    bam = directory / "fake.bam"
+    ref = directory / "fake_ref.fa"
+    vcf = directory / "fake.vcf.gz"
+    cram = directory / "fake.cram"
+    indexes = {
+        bam: (".bai", ["samtools", "index", "-o"]),
+        ref: (".fai", ["samtools", "faidx", "--fai-idx"]),
+        vcf: (".tbi", ["bcftools", "index", "--tbi", "--output"]),
+    }
+    required = [
+        *indexes,
+        *(Path(f"{path}{suffix}") for path, (suffix, _) in indexes.items()),
+        cram,
+        Path(f"{cram}.crai"),
     ]
-    required_index_files = [
-        os.path.join(fake_dir, "fake.bam.bai"),
-        os.path.join(fake_dir, "fake_ref.fa.fai"),
-        os.path.join(fake_dir, "fake.vcf.gz.tbi"),
-    ]
-    if all(os.path.exists(path) for path in required_files + required_index_files):
+    lock = Path(f"{directory}.lock")
+    # Do not accept files still being written by another test worker or session.
+    if all(path.is_file() for path in required) and not lock.exists():
         return
 
-    os.makedirs(fake_dir, exist_ok=True)
-    # Test workers and concurrent sessions share this directory.
-    with build_lock(os.path.normpath(fake_dir) + ".lock"):
-        _generate_fake_data(fake_dir, required_files + required_index_files, coverage)
-
-
-def _generate_fake_data(
-    fake_dir: str, required: list[str], coverage: float = 10.0
-) -> None:
-
-    def normalize_fake_data_names() -> None:
-        ref_candidates = glob(os.path.join(fake_dir, "fake_ref_hg38_*.fa"))
-        if ref_candidates and not os.path.exists(os.path.join(fake_dir, "fake_ref.fa")):
-            shutil.copy(ref_candidates[0], os.path.join(fake_dir, "fake_ref.fa"))
-
-        vcf_candidates = glob(os.path.join(fake_dir, "fake_*.vcf.gz"))
-        if vcf_candidates and not os.path.exists(os.path.join(fake_dir, "fake.vcf.gz")):
-            shutil.copy(vcf_candidates[0], os.path.join(fake_dir, "fake.vcf.gz"))
-            tabix_path = vcf_candidates[0] + ".tbi"
-            if os.path.exists(tabix_path):
-                shutil.copy(tabix_path, os.path.join(fake_dir, "fake.vcf.gz.tbi"))
-
-    def repair_fake_data_indexes() -> None:
-        bam_path = os.path.join(fake_dir, "fake.bam")
-        if (
-            os.path.exists(bam_path)
-            and not os.path.exists(bam_path + ".bai")
-            and check_tool("samtools")
-        ):
-            subprocess.run(["samtools", "index", bam_path], check=True)
-
-        ref_path = os.path.join(fake_dir, "fake_ref.fa")
-        if (
-            os.path.exists(ref_path)
-            and not os.path.exists(ref_path + ".fai")
-            and check_tool("samtools")
-        ):
-            subprocess.run(["samtools", "faidx", ref_path], check=True)
-
-        vcf_path = os.path.join(fake_dir, "fake.vcf.gz")
-        if (
-            os.path.exists(vcf_path)
-            and not os.path.exists(vcf_path + ".tbi")
-            and check_tool("tabix")
-        ):
-            subprocess.run(["tabix", "-p", "vcf", vcf_path], check=True)
-
-    normalize_fake_data_names()
-    repair_fake_data_indexes()
-
-    if not all(os.path.exists(path) for path in required):
-        # Callers may isolate the home without a config (the e2e suites), which
-        # would record this run in the checkout's state/ (#979).
-        with tempfile.TemporaryDirectory(
-            dir=Path(fake_dir).resolve().parent
-        ) as scratch:
-            config = Path(scratch) / "config.toml"
-            config.write_text(state_directory_setting(Path(scratch)))
-            rc, stdout, stderr = run_cli(
-                ["--config", str(config), "qc", "fake-data", "--outdir", fake_dir]
-                + ["--build", "hg38", "--seed", "42", "--coverage", str(coverage)]
-                + ["--type", "all", "--ref", fake_dir]
+    directory.mkdir(parents=True, exist_ok=True)
+    with build_lock(str(lock)):
+        if all(path.is_file() for path in required):
+            return
+        # Stage repairs so an interrupted builder cannot leave partial files
+        # that the next worker would accept as complete.
+        with tempfile.TemporaryDirectory(dir=directory.parent) as scratch:
+            staging = Path(scratch)
+            _normalize_fake_data_names(ref, vcf, staging)
+            if not all(path.is_file() for path in indexes):
+                # Rebuild the base files together so the VCF describes the BAM's reads.
+                _generate_fake_data(directory, coverage)
+                _normalize_fake_data_names(ref, vcf, staging)
+            for path, (suffix, command) in indexes.items():
+                index = Path(f"{path}{suffix}")
+                if path.is_file() and not index.is_file():
+                    staged_index = staging / index.name
+                    run_command([*command, staged_index, path])
+                    staged_index.replace(index)
+            _repair_fake_cram(cram, bam, ref, staging)
+        if missing := [path.name for path in required if not path.is_file()]:
+            raise RuntimeError(
+                f"Incomplete fake data in {directory}: {', '.join(missing)}"
             )
-        if rc != 0:
-            raise RuntimeError(f"qc fake-data failed ({rc}):\n{stdout}\n{stderr}")
-        normalize_fake_data_names()
-        repair_fake_data_indexes()
+
+
+def _normalize_fake_data_names(ref: Path, vcf: Path, staging: Path) -> None:
+    for path, pattern, suffix in (
+        (ref, "fake_ref_hg38_*.fa", ".fai"),
+        (vcf, "fake_*.vcf.gz", ".tbi"),
+    ):
+        if path.is_file():
+            continue
+        candidate = next(path.parent.glob(pattern), None)
+        if candidate is not None:
+            staged = staging / path.name
+            shutil.copy(candidate, staged)
+            Path(f"{path}{suffix}").unlink(missing_ok=True)
+            staged.replace(path)
+
+
+def _generate_fake_data(directory: Path, coverage: float) -> None:
+    # Callers may isolate the home without a config (the e2e suites), which
+    # would record this run in the checkout's state/ (#979).
+    with tempfile.TemporaryDirectory(dir=directory.parent) as scratch:
+        config = Path(scratch) / "config.toml"
+        config.write_text(state_directory_setting(Path(scratch)))
+        fake_dir = str(directory)
+        rc, stdout, stderr = run_cli(
+            ["--config", str(config), "qc", "fake-data", "--outdir", fake_dir]
+            + ["--build", "hg38", "--seed", "42", "--coverage", str(coverage)]
+            + ["--type", "all", "--ref", fake_dir]
+        )
+    if rc != 0:
+        raise RuntimeError(f"qc fake-data failed ({rc}):\n{stdout}\n{stderr}")
+
+
+def _repair_fake_cram(cram: Path, bam: Path, ref: Path, staging: Path) -> None:
+    index = Path(f"{cram}.crai")
+    needs_cram = not cram.is_file()
+    if not needs_cram and index.is_file():
+        return
+    source = cram
+    if needs_cram:
+        source = staging / cram.name
+        run_command(["samtools", "view", "-C", "-T", ref, "-o", source, bam])
+    staged_index = staging / index.name
+    run_command(["samtools", "index", "-o", staged_index, source])
+    if needs_cram:
+        index.unlink(missing_ok=True)
+        source.replace(cram)
+    staged_index.replace(index)
 
 
 def setup_test_reference(tmp_path: str, ref_src: str) -> tuple[str, str]:

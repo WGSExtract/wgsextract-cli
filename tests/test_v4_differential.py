@@ -500,17 +500,15 @@ def test_public_corpus_runs_tools_resolved_to_wrapper_commands(tmp_path, monkeyp
     assert digest == hashlib.sha256(direct.encode()).hexdigest()
 
 
-def test_synthetic_corpus_fails_when_a_completed_fix_did_not_run(tmp_path, monkeypatch):
+def test_synthetic_corpus_fails_when_a_completed_fix_did_not_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """#1375 review: a skipped completed-fix regression fails the run even
     when every comparison case passes."""
     from scripts import v4_differential_corpus as corpus
 
-    tests = tmp_path / "test_evidence.py"
-    tests.write_text(
-        "import pytest\n\n"
-        "def test_case_passes():\n    pass\n\n"
-        "def test_fix_is_skipped():\n    pytest.skip('not run here')\n"
-    )
+    # #1515: node IDs stay in the checkout so pytest does not scan shared temp directories.
+    tests = "tests/fixtures/v4_differential/pytest_evidence.py"
     record = tmp_path / "corpus.json"
     record.write_text(
         json.dumps(

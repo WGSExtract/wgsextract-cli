@@ -34,10 +34,10 @@ def test_shadow_reports_source_scans_and_base_only_failures(
     _git(tmp_path, "config", "user.email", "test@example.test")
     _git(tmp_path, "config", "user.name", "Test")
     _git(tmp_path, "config", "commit.gpgsign", "false")
+    _git(tmp_path, "config", "core.autocrlf", "false")
     cmd_path = "src/wgsextract_cli/commands/writer.py"
     fixture_files = {
         cmd_path: "def write(path):\n    path.write_text('ok\\n')\n",
-        "pixi.lock": "lock\n",
         "tests/test_text_newlines.py": "def test_newline():\n    assert False\n",
         "tests/test_command_needs.py": "def test_needs():\n    pass\n",
         "tests/test_writer.py": "def test_writer():\n    pass\n",
@@ -48,6 +48,8 @@ def test_shadow_reports_source_scans_and_base_only_failures(
         target = tmp_path / file
         target.parent.mkdir(exist_ok=True, parents=True)
         target.write_text(contents)
+    # #1515: the observation hash describes the Git blob, not host text newlines.
+    (tmp_path / "pixi.lock").write_bytes(b"lock\n")
     _git(tmp_path, "add", ".")
     _git(tmp_path, "commit", "-m", "Common base")
     _git(tmp_path, "switch", "-c", "pr")
@@ -147,6 +149,7 @@ def test_shadow_reports_source_scans_and_base_only_failures(
     report = json.loads((output / "report.json").read_text())
     assert report["tested_base"] == base
     assert report["pr_head"] == pr_head
+    assert report["observation_gap"] is None, report["observation_gap"]
     if gate_receipt is None:
         assert report["comparable"]
     else:

@@ -692,6 +692,19 @@ Long reads work the same way with `wgse-minimap2` 0.4.0 or later (minimap2
   that extra RAM wouldn't fit, it runs on the CPU. On a Mac, `wgse-minimap2`
   still runs on the CPU.
 
+Those gains are for mapping slices from an existing index, not for a
+whole-genome `realign` pipeline. They exclude input decoding, methylation-tag
+preservation, sorting and output encoding; the 21.4 h whole-genome CPU run
+is not a measured CUDA baseline. Whole-genome RTX 3090 qualification is still
+pending in
+[#1122 (Linux CUDA long-read alignment)](https://github.com/WGSExtract/wgsextract-cli/issues/1122).
+The [native backend notes](../native/README.md#ont-chaining-and-qualification-scope)
+record a newer 93,328-read HG002 ONT CPU profile: sorting and chaining took
+about 64% of CPU time, dual-affine gap alignment 18.3%. Its native CPU records
+matched upstream 2.31 exactly. Real CUDA kernel and synthetic-genome
+failure/fallback tests also passed on the RTX 3090. These checks do not replace
+the still-missing whole-genome CUDA timing and memory measurement.
+
 On Linux ARM64 (for example Graviton, Ampere or Cobalt), the linux-aarch64
 `wgse-bwa` package has no GPU backend; its CPU backend runs bwa's steps with
 the same exact NEON replacements as on a Mac, and `align` and `realign` run it
