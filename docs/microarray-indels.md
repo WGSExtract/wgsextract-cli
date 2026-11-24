@@ -12,9 +12,9 @@ person's `II`, `DD` or `DI` call:
 
 ```sh
 wgsextract microarray --input sample.bam --ref reference \
-  --formats 23andme_v5_2025,ancestry_v2_2024 \
-  --indel-manifest 23andme_v5_2025=exact-chip-build37.csv \
-  --indel-manifest ancestry_v2_2024=another-exact-chip-build37.csv.zip \
+  --formats 23andme_v5,ancestry_v2cd \
+  --indel-manifest 23andme_v5=exact-chip-build37.csv \
+  --indel-manifest ancestry_v2cd=another-exact-chip-build37.csv.zip \
   --region chr20 --outdir out/indels
 ```
 
@@ -82,9 +82,9 @@ The public Illumina
 provide real sequence contexts for 10,118 I/D probes. A research audit of
 GSA-24v3-0 A1 (archive SHA256
 `35036a85eb79db22bec068ef69caba68f8ba9cdd1b1eef0e3f901b259e3b49af`)
-found strict marker/coordinate overlaps with the existing 23andMe, Ancestry and
-MyHeritage templates: 1,643 with `23andMe_V5_2025`, 3,520 with
-`Ancestry_V2_2024`, and 448 with `MyHeritage_GSA_2025`, before reference-context
+found strict marker/coordinate overlaps with audited 23andMe, Ancestry and
+MyHeritage exports (1,643 on a 2025 23andMe v5 export, 3,520 on a 2024 Ancestry
+v2d export, and 448 on a 2025 MyHeritage GSA export), before reference-context
 verification. That is evidence for a conservative subset, **not** proof
 that this generic manifest describes all customized vendor probes/revisions.
 In particular, its probe ordering did not reproduce every tested Ancestry

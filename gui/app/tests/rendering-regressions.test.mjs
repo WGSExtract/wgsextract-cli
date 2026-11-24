@@ -79,9 +79,9 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
   const args = wgsCommand("microarray", "microarray-generate", {
     microarray_min_gq: "20", microarray_min_dp: "5",
     aadr_sample_id: "research_sample", aadr_sex: "U",
-    indel_format: "myheritage_gsa_2025", indel_manifest: "manifests/matching chip.csv",
+    indel_format: "myheritage_v3", indel_manifest: "manifests/matching chip.csv",
   }, {
-    microarray_formats: ["myheritage_gsa_2025", "aadr_1240k", "aadr_ho"],
+    microarray_formats: ["myheritage_v3", "aadr_1240k", "aadr_ho"],
     microarray_strand_ambiguous: ["no-call"], microarray_resolve_rsids: ["--resolve-rsids"],
     microarray_absent_no_call: ["--no-assume-hom-ref"],
     microarray_exclude_filtered: ["--exclude-filtered"], microarray_call_reasons: ["--call-reasons"],
@@ -120,14 +120,14 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
     assert.ok(!wgsCommand("microarray", "microarray-generate").includes("aadr_2m"));
   });
   assert.deepEqual(args.slice(3), [
-    "--formats", "aadr_1240k,aadr_ho,myheritage_gsa_2025",
+    "--formats", "aadr_1240k,aadr_ho,myheritage_v3",
     "--ref", "ref.fa",
     "--min-gq", "20", "--min-dp", "5", "--strand-ambiguous", "no-call",
     "--resolve-rsids", "--no-assume-hom-ref", "--exclude-filtered", "--call-reasons",
     "--aadr-sample-id", "research_sample", "--aadr-sex", "U",
-    "--indel-manifest", "myheritage_gsa_2025=manifests/matching chip.csv",
+    "--indel-manifest", "myheritage_v3=manifests/matching chip.csv",
   ]);
-  assert.ok(!wgsCommand("microarray", "microarray-generate", { indel_format: "myheritage_gsa_2025" }).includes("--indel-manifest"));
+  assert.ok(!wgsCommand("microarray", "microarray-generate", { indel_format: "myheritage_v3" }).includes("--indel-manifest"));
   assert.ok(!wgsCommand("microarray", "microarray-generate", { indel_manifest: "chip.csv" }).includes("--indel-manifest"));
 });
 
