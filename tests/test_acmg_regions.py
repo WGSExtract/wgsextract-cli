@@ -1,6 +1,8 @@
 """Use real fastVEP to verify that region tracks change ACMG evidence."""
 
 import json
+import shutil
+from types import SimpleNamespace
 
 import pytest
 
@@ -90,12 +92,14 @@ def test_1458_bp3_and_region_flags_reach_fastvep(
 
 @needs_fastvep
 def test_1458_restoring_the_same_track_does_not_stream_gnomad_again(
-    publishers, library
+    publishers, library, monkeypatch
 ):
     api.ref.acmg_data(_params(library))
     data = library[0] / "downloads" / "acmg" / "sa"
     index = data / "gnomad_lcr.bed.gz.tbi"
     index.unlink()
+    # A track-index repair fits, but rebuilding all of the gnomAD work does not.
+    monkeypatch.setattr(shutil, "disk_usage", lambda _: SimpleNamespace(free=2_000_000))
     publishers.requests.clear()
     api.ref.acmg_data(_params(library))
     assert index.is_file()

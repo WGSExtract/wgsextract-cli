@@ -23,7 +23,7 @@ from wgsextract_cli.core.utils import (
     WGSExtractError,
 )
 
-from .acmg_regions import REGION_FLAGS, region_tracks
+from .acmg_regions import REGION_FLAGS, region_name, region_tracks, verified_region_bed
 
 # The sources vcf acmg can read per run, at only the input's sites.
 PER_RUN = ("gnomad", "spliceai")
@@ -341,6 +341,7 @@ class Step:
     stream: int | None = 0  # bytes read and not kept (gnomAD)
     database: int = 0
     temp: int = 0
+    repair_index: bool = False
 
 
 @dataclass
@@ -419,6 +420,13 @@ def make_plan(
     )
     built = _built(plan.sa_dir, manifest)
     regions = region_tracks(plan.sa_dir, manifest)
+    repair = {
+        flag: digest
+        for flag in REGION_FLAGS
+        if flag not in regions
+        and (digest := verified_region_bed(plan.sa_dir, manifest, flag))
+    }
+    rebuild_regions = regions | repair
 
     def size(url: str) -> int | None:
         return _remote_size(url) if probe else None
@@ -443,6 +451,17 @@ def make_plan(
                 source.key not in REGION_FLAGS or source.key in regions
             ):
                 plan.done.append(source.key)
+            elif source.key in repair:
+                # Only a staged replacement index, not a new mask or joint VCF.
+                plan.steps.append(
+                    Step(
+                        source.key,
+                        source.key,
+                        database=1_000_000,
+                        temp=(plan.sa_dir / region_name(source.key)).stat().st_size,
+                        repair_index=True,
+                    )
+                )
             else:
                 plan.steps.append(
                     Step(
@@ -459,8 +478,9 @@ def make_plan(
             if name in built and (
                 source.key != "gnomad"
                 or (
-                    len(regions) == len(REGION_FLAGS)
-                    and manifest["databases"][name].get("region_tracks") == regions
+                    len(rebuild_regions) == len(REGION_FLAGS)
+                    and manifest["databases"][name].get("region_tracks")
+                    == rebuild_regions
                 )
             ):
                 plan.done.append(name)

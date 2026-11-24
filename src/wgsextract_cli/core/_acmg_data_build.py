@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http.client import HTTPException
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from wgsextract_cli.core import read_scope
@@ -25,9 +26,10 @@ from wgsextract_cli.core.acmg_manifest import (
 from wgsextract_cli.core.acmg_regions import (
     REGION_FLAGS,
     region_bed,
-    region_name,
+    region_outputs,
     region_tracks,
     repeatmasker_bed,
+    verified_region_bed,
 )
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
@@ -326,7 +328,10 @@ class _Build:
     def run(self, step: Step) -> None:
         if self.cancel and self.cancel.is_set():
             raise WGSExtractError("Cancelled.")
-        getattr(self, f"step_{step.source}")(step)
+        if step.source in REGION_FLAGS:
+            self.build_region_track(step)
+        else:
+            getattr(self, f"step_{step.source}")(step)
 
     def step_gff3(self, step: Step) -> None:
         base = _acmg_data_plan.ENSEMBL.format(release=self.plan.release)
@@ -454,16 +459,11 @@ class _Build:
 
     def step_repeatmasker(self, step: Step) -> None:
         source = self.fetch_track(step)
-        bed = self.staging / "repeatmasker.bed"
-        bed.parent.mkdir(parents=True, exist_ok=True)
-        repeatmasker_bed(source, bed, CHROMOSOMES)
-        self.database(step, bed, keep_input=False)
-
-    def step_lcr(self, step: Step) -> None:
-        self.build_region_track(step)
-
-    def step_segdup(self, step: Step) -> None:
-        self.build_region_track(step)
+        self.staging.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=self.staging) as work:
+            bed = Path(work) / "repeatmasker.bed"
+            repeatmasker_bed(source, bed, CHROMOSOMES)
+            self.database(step, bed, keep_input=False)
 
     def fetch_track(self, step: Step) -> Path:
         url = source_url(step.source)
@@ -475,22 +475,37 @@ class _Build:
         return dest
 
     def build_region_track(self, step: Step) -> None:
-        source = self.fetch_track(step)
-        packed = self.staging / region_name(step.source)
-        bed = packed.with_suffix("")
-        bed.parent.mkdir(parents=True, exist_ok=True)
-        region_bed(source, bed, step.source, CHROMOSOMES)
-        for command in (
-            ["bgzip", "-f", str(bed)],
-            ["tabix", "-f", "-p", "bed", str(packed)],
-        ):
-            exe = get_tool_path(command[0])
-            run_tool([exe or command[0], *command[1:]], self.cancel)
-        index = packed.with_name(packed.name + ".tbi")
-        main, tbi = self.plan.sa_dir / packed.name, self.plan.sa_dir / index.name
-        packed.replace(main)
-        index.replace(tbi)
-        self.on_output(main)
+        main, tbi = region_outputs(self.plan.sa_dir, step.source)
+        digest = (
+            verified_region_bed(self.plan.sa_dir, self.manifest, step.source)
+            if step.repair_index
+            else None
+        )
+        if step.repair_index and not digest:
+            raise WGSExtractError(f"{main} changed during repair; rerun the build.")
+        self.staging.mkdir(parents=True, exist_ok=True)
+        tabix = get_tool_path("tabix") or "tabix"
+        with TemporaryDirectory(dir=self.staging) as work:
+            packed = Path(work) / main.name
+            index = Path(work) / tbi.name
+            if digest:
+                shutil.copyfile(main, packed)
+                if _sha256(packed, self.cancel) != digest:
+                    raise WGSExtractError(
+                        f"{main} changed during repair; rerun the build."
+                    )
+            else:
+                source = self.fetch_track(step)
+                bed = packed.with_suffix("")
+                region_bed(source, bed, step.source, CHROMOSOMES)
+                bgzip = get_tool_path("bgzip") or "bgzip"
+                run_tool([bgzip, "-f", str(bed)], self.cancel)
+            run_tool([tabix, "-p", "bed", str(packed)], self.cancel)
+            if not digest:
+                digest = _sha256(packed, self.cancel)
+                packed.replace(main)
+                self.on_output(main)
+            index.replace(tbi)
         self.on_output(tbi)
         self.record_database(
             step,
@@ -499,7 +514,7 @@ class _Build:
                 "files": [main.name, tbi.name],
                 "bytes": main.stat().st_size,
                 "index_bytes": tbi.stat().st_size,
-                "sha256": _sha256(main, self.cancel),
+                "sha256": digest,
                 "built": _now(),
             },
         )

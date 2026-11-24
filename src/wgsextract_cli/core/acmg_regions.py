@@ -1,6 +1,7 @@
 """GRCh38 interval tracks used by fastVEP's research ACMG classifier."""
 
 import gzip
+import hashlib
 from collections.abc import Iterator
 from itertools import chain
 from pathlib import Path
@@ -99,6 +100,34 @@ def region_tracks(folder: Path, manifest: dict[str, Any]) -> dict[str, str]:
 
 def region_name(flag: str) -> str:
     return f"gnomad_{flag}.bed.gz"
+
+
+def region_outputs(folder: Path, flag: str) -> tuple[Path, Path]:
+    bed = folder / region_name(flag)
+    index = bed.with_name(bed.name + ".tbi")
+    for path in (bed, index):
+        if not read_scope.may_follow(path):
+            raise WGSExtractError(f"{path} leads outside the folders this run may use.")
+    return bed, index
+
+
+def verified_region_bed(
+    folder: Path, manifest: dict[str, Any], flag: str
+) -> str | None:
+    """Verify a retained track before repairing its index without a download."""
+    entry = manifest.get("databases", {}).get(flag, {})
+    bed = folder / region_name(flag)
+    if not read_scope.may_follow(bed) or not bed.is_file():
+        return None
+    expected = entry.get("sha256")
+    if entry.get("file") != bed.name or bed.stat().st_size != entry.get("bytes"):
+        return None
+    digest = hashlib.sha256()
+    with bed.open("rb") as source:
+        while chunk := source.read(1024 * 1024):
+            digest.update(chunk)
+    actual = digest.hexdigest()
+    return actual if actual == expected else None
 
 
 def flags_at_sites(
