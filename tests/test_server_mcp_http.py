@@ -14,7 +14,7 @@ import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import psutil
 import pytest
@@ -54,11 +54,25 @@ class Served:
 
 
 @contextlib.contextmanager
-def _serve(*args: str) -> Iterator[Served]:
+def _serve(
+    *args: str,
+    cancel_grace_seconds: float | None = None,
+    stderr: IO[str] | int = subprocess.DEVNULL,
+) -> Iterator[Served]:
+    command = get_cli_command()
+    if cancel_grace_seconds is not None:
+        # Scale the clock boundary without replacing the worker or process kill.
+        command = [
+            sys.executable,
+            "-c",
+            "from wgsextract_cli.server import jobs; "
+            f"jobs.CANCEL_GRACE_SECONDS = {cancel_grace_seconds!r}; "
+            "from wgsextract_cli.main import main; main()",
+        ]
     proc = subprocess.Popen(
-        [*get_cli_command(), "serve", "--mcp-transport", "http", "--ready-json", *args],
+        [*command, "serve", "--mcp-transport", "http", "--ready-json", *args],
         stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
+        stderr=stderr,
         text=True,
     )
     try:
@@ -283,12 +297,25 @@ def test_cancelling_an_mcp_http_call_stops_its_job(
                 tasks.cancel_scope.cancel()
             await _all_cancelled(session, pids)
             jobs = await session.call_tool("list_jobs", {})
-            assert [j["status"] for j in jobs.structured_content["jobs"]] == [
-                "cancelled"
-            ]
+            (job,) = jobs.structured_content["jobs"]
+            assert job["status"] == "cancelled"
+            status = await session.call_tool("job_status", {"job_id": job["id"]})
+            assert status.structured_content["exit_code"] == 130
 
-    with _serve("--allow", str(work), "--allow", str(FAKE_DIR)) as served:
+    log = tmp_path / "server.log"
+    with (
+        log.open("w", encoding="utf-8") as stderr,
+        _serve(
+            "--allow",
+            str(work),
+            "--allow",
+            str(FAKE_DIR),
+            cancel_grace_seconds=1.0,
+            stderr=stderr,
+        ) as served,
+    ):
         anyio.run(cancel, served)
+    assert "killing its worker" in log.read_text(encoding="utf-8")
 
 
 def test_mcp_http_without_the_sdk_says_how_to_get_it(work):
