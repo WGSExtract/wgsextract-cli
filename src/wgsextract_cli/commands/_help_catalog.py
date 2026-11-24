@@ -341,6 +341,19 @@ COMMAND_HELP: dict[str, CommandHelp] = {
         "wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg "
         "--sa-dir acmg_sa --gff3 Homo_sapiens.GRCh38.116.gff3.gz",
     ),
+    "vcf info": _h(
+        "Prints a VCF summary (reference model/build, samples, format, record counts); "
+        "writes no files unless --card is set.",
+        f"wgsextract vcf info {_VCF_IN}",
+    ),
+    "vcf variantqc": _h(
+        "<stem>.variantqc.html interactive VariantQC report from DISCVRSeq.",
+        f"wgsextract vcf variantqc {_VCF_IN}",
+    ),
+    "vcf granite-qc": _h(
+        "<stem>.granite_qc.json quality metrics report from granite qcVCF.",
+        f"wgsextract vcf granite-qc {_VCF_IN}",
+    ),
     "vcf chain-annotate": _h(
         "chain_annotated.vcf.gz (+ index), chain_annotate.steps.json; "
         "with --to-table, chain_annotated_variants.tsv (or .parquet) and .sqlite.",
@@ -459,6 +472,13 @@ COMMAND_HELP: dict[str, CommandHelp] = {
     "ref clinvar": _h(
         f"{_LIBRARY}: ClinVar VCFs for hg19 and hg38.",
         "wgsextract ref clinvar",
+    ),
+    "ref dbsnp": _h(
+        f"{_LIBRARY}/downloads/dbsnp_common_<build>.vcf.gz (+ .tbi) and "
+        "dbsnp_common_<build>.rsid.sqlite (~37M common human rsIDs; --delete removes them).",
+        "wgsextract ref dbsnp",
+        "wgsextract ref dbsnp --build hg38",
+        "wgsextract ref dbsnp --delete",
     ),
     "ref gnomad": _h(
         f"{_LIBRARY}: gnomAD allele-frequency files.",
