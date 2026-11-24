@@ -41,7 +41,7 @@ export async function prepareBundleWorkspace(manifest: BundleManifest, sourceRoo
         await assertAdoptableWorkspaceRoot(workspaceRoot);
     }
     const usersRoot = explicitUsersRoot ? path.resolve(explicitUsersRoot) : explicitWorkspaceRoot ? workspaceRoot : await claimUsersWorkspaceRoot(manifest) ?? workspaceRoot;
-    registerUsersWorkspace(workspaceRoot, usersRoot);
+    registerUsersWorkspace(workspaceRoot, usersRoot, !explicitWorkspaceRoot && !explicitUsersRoot);
     const generatedNames = bootstrappedWorkspaceEntryNames(manifest, workspaceRoot);
     const sourceEntries = (await readdir(sourceRoot, { withFileTypes: true })).filter((entry) => !entry.name.startsWith(".") && !generatedNames.has(entry.name));
     const sourceNames = new Set(sourceEntries.map((entry) => entry.name));

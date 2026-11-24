@@ -33,7 +33,16 @@ from wgsextract_cli.api._params import with_config_defaults
 from wgsextract_cli.core.file_lock import exclusive_lock
 from wgsextract_cli.core.reference_assets import reference_genomes_dir
 from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.workspace_activity import WorkspaceLease, hold_workspace
 
+from .job_paths import (
+    INPUT_NAMES,
+    beside_folder,
+    beside_path,
+    first_input,
+    folder_key,
+    is_local_folder,
+)
 from .operations import (
     Operation,
     RequestError,
@@ -181,6 +190,7 @@ class JobManager:
         self._workers: dict[str, subprocess.Popen[str]] = {}
         # Folders each queued or running job writes in, for _pump.
         self._writes: dict[str, frozenset[str]] = {}
+        self._workspace_leases: dict[str, WorkspaceLease] = {}
         self._cancelling: set[str] = set()
         # Finished jobs whose record or summary is not saved yet (a full
         # disk), in order: kept in memory and retried, never evicted.
@@ -347,6 +357,24 @@ class JobManager:
         card: bool | None = None,
         job_id: str | None = None,
     ) -> Job:
+        try:
+            workspace = hold_workspace()
+        except WGSExtractError as error:
+            raise RequestError(409, "workspace_busy", str(error)) from error
+        with workspace.cleanup:
+            return self._submit(
+                op, params, card=card, job_id=job_id, workspace=workspace
+            )
+
+    def _submit(
+        self,
+        op: Operation,
+        params: Mapping[str, Any],
+        *,
+        card: bool | None,
+        job_id: str | None,
+        workspace: WorkspaceLease,
+    ) -> Job:
         if job_id is not None:
             self.check_job_id(job_id)
         effective = op.request_values(
@@ -369,7 +397,7 @@ class JobManager:
             in_working_folder = not (job.params.get("outdir") or self.default_outdir)
         else:
             in_working_folder = (
-                not names & set(_INPUT_NAMES)
+                not names & set(INPUT_NAMES)
                 and not op.params.WRITES_BESIDE
                 and not self._output_folder(op, job)
             )
@@ -394,6 +422,9 @@ class JobManager:
                 del self._writes[job.id]
                 raise
             self._event(job, "status", status="queued")
+            self._workspace_leases[job.id] = WorkspaceLease(
+                workspace.name, workspace.cleanup.pop_all()
+            )
             if op.kind == "query":
                 self._start(job)
             else:
@@ -493,10 +524,10 @@ class JobManager:
         beside a path, its outdir, else that path's folder."""
         folder = job.params.get("outdir")
         if not folder and op.params.WRITES_BESIDE:
-            folder = _beside_folder(op, job.params)
+            folder = beside_folder(op, job.params)
         elif not folder:
-            folder = self.default_outdir or os.path.dirname(_first_input(job.params))
-        return _folder_key(folder) if folder else ""
+            folder = self.default_outdir or os.path.dirname(first_input(job.params))
+        return folder_key(folder) if folder else ""
 
     def _write_folders(self, op: Operation, job: Job) -> frozenset[str]:
         """Every folder a job may write in: its output folder, the folders of
@@ -508,31 +539,32 @@ class JobManager:
         except RequestError:
             params = None
         if params is not None:
-            folders.update(_folder_key(os.fspath(f)) for f in params.write_folders())
+            folders.update(folder_key(os.fspath(f)) for f in params.write_folders())
         if op.params.WRITES_BESIDE and not job.params.get("outdir"):
             # A library folder given as the FASTA: it resolves to one in its
             # reference genomes folder.
-            beside = _beside_path(op, job.params)
-            if _is_local_folder(beside):
-                folders.add(_folder_key(reference_genomes_dir(beside)))
+            beside = beside_path(op, job.params)
+            if is_local_folder(beside):
+                folders.add(folder_key(reference_genomes_dir(beside)))
         for item in op.fields():
             value = job.params.get(item.name)
             if not isinstance(value, str) or not value:
                 continue
             if item.spec.may_name_file and os.path.dirname(value):
-                folders.add(_folder_key(os.path.dirname(value)))
+                folders.add(folder_key(os.path.dirname(value)))
             elif (
-                item.name in _INPUT_NAMES
+                item.name in INPUT_NAMES
                 and not is_network_path(value)
                 and os.path.isdir(value)
             ):
-                folders.add(_folder_key(value))
+                folders.add(folder_key(value))
         return frozenset(folders)
 
     def _start(self, job: Job) -> bool:
         """Start a job's worker; False if it could not start (job failed)."""
         request = {
             "op": job.op,
+            "workspace_lease": self._workspace_leases[job.id].name,
             "params": job.params,
             "config": str(self.config_path) if self.config_path else None,
             "debug": self.debug,
@@ -700,11 +732,16 @@ class JobManager:
                 "message": error,
             }
         self._writes.pop(job.id, None)
-        self._event(job, "status", status=status)
-        # The job is over whether or not it can be recorded yet: its slot and
-        # folders are free already.
-        self._unsaved[job.id] = None
-        self._save_finished()
+        try:
+            self._event(job, "status", status=status)
+            # The job is over whether or not it can be recorded yet: its slot and
+            # folders are free already.
+            self._unsaved[job.id] = None
+            self._save_finished()
+        finally:
+            workspace = self._workspace_leases.pop(job.id, None)
+            if workspace is not None:
+                workspace.cleanup.close()
 
     def _save_finished(self) -> None:
         """Record finished jobs not yet saved; those saved may be evicted."""
@@ -744,55 +781,3 @@ def write_private_json(path: Path, data: Mapping[str, Any]) -> None:
     finally:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(temporary)
-
-
-# In precedence order: a trio's proband overrides its other inputs.
-_INPUT_NAMES = ("proband", "vcf_input", "input", "inputs", "r1")
-
-
-def _folder_key(folder: str) -> str:
-    folder = os.path.expanduser(folder)
-    # Requests were checked, but never open a network path (see PathGuard).
-    if not is_network_path(folder):
-        folder = os.path.realpath(folder)
-    return os.path.normcase(folder)
-
-
-def _beside_folder(op: Operation, params: Mapping[str, Any]) -> str:
-    """The folder an operation writes in beside its ``WRITES_BESIDE`` path:
-    the path's own when it is a folder."""
-    value = _beside_path(op, params)
-    return value if _is_local_folder(value) else os.path.dirname(value)
-
-
-def _beside_path(op: Operation, params: Mapping[str, Any]) -> str:
-    """An operation's ``WRITES_BESIDE`` path: the request's, else the
-    configured one."""
-    from wgsextract_cli.core.config import settings
-
-    name = op.params.WRITES_BESIDE
-    value = params.get(name)
-    if not value:
-        item = next((f for f in op.fields() if f.name == name), None)
-        key = item.spec.config_key if item else None
-        value = settings.get(key) if key else None
-    return value if isinstance(value, str) else ""
-
-
-def _is_local_folder(value: str) -> bool:
-    return (
-        bool(value)
-        and not is_network_path(value)
-        and os.path.isdir(os.path.expanduser(value))
-    )
-
-
-def _first_input(params: Mapping[str, Any]) -> str:
-    """The input a job's outputs go beside when it names no folder."""
-    for name in _INPUT_NAMES:
-        value = params.get(name)
-        if isinstance(value, list) and value:
-            value = value[0]
-        if isinstance(value, str) and value:
-            return value
-    return ""

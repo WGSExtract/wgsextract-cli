@@ -469,11 +469,16 @@ class _Stderr:
 
     def _drain(self, stream: IO[str] | None) -> None:
         if stream is not None:
-            for line in stream:
-                self.lines.append(line.rstrip())
+            with stream:
+                for line in stream:
+                    self.lines.append(line.rstrip())
+
+    def join(self) -> None:
+        # A wrapper's descendants can keep the stderr pipe open after it exits.
+        self._thread.join(timeout=5)
 
     def tail(self) -> str:
-        self._thread.join(timeout=5)
+        self.join()
         return "\n".join(self.lines)
 
 
@@ -481,7 +486,12 @@ def _start(
     command: Sequence[str], **kwargs: Any
 ) -> tuple[subprocess.Popen[str], _Stderr]:
     process = popen(command, stderr=subprocess.PIPE, text=True, **kwargs)
-    return process, _Stderr(process)
+    try:
+        return process, _Stderr(process)
+    except BaseException:
+        with process:
+            process.kill()
+        raise
 
 
 def label_vcf(
@@ -559,7 +569,9 @@ def label_vcf(
         ):
             raise reader_error() from error
         raise
-    reader.stdout.close()
+    finally:
+        reader_errors.join()
+        reader.stdout.close()
     if out_vcf is not None:
         ensure_vcf_indexed(out_vcf)
     return summary
@@ -589,7 +601,9 @@ def _write_bgzipped(
     finally:
         with contextlib.suppress(OSError):
             writer.stdin.close()
-        if writer.wait() != 0 or stopped:
+        status = writer.wait()
+        writer_errors.join()
+        if status != 0 or stopped:
             raise _OutputError(
                 f"bgzip failed writing {out_vcf}: {writer_errors.tail()}"
             )
