@@ -4,23 +4,36 @@ from pathlib import Path
 
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.bgzf import is_bgzf
+from wgsextract_cli.core.builds import build_from_path, canonical_build
 from wgsextract_cli.core.ref_library.assets import (
+    fasta_index_build,
     header_sequences,
     read_fai_lengths,
     sequence_dictionary,
+    sequence_signature,
 )
+from wgsextract_cli.core.ref_library.models import identify_reference, sequence_lengths
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
 def validate_calling_reference(
-    alignment: str, fasta: str, *, allow_reference_subset: bool = False
-) -> None:
+    alignment: str,
+    fasta: str,
+    *,
+    allow_reference_subset: bool = False,
+    check_assembly: bool = False,
+    assembly: str | None = None,
+) -> str | None:
     """Require every input SQ to exist with the same name and length.
 
     An alignment may contain a subset of the reference dictionary. Sequence
     content is checked only where both dictionaries provide an M5 checksum.
+    With check_assembly, also compare their known builds and any explicit
+    assembly, even if the alignment only covers part of the reference.
+    Return the FASTA's build when confirmed by its sequence metadata.
     """
-    sequences = header_sequences(get_bam_header(alignment))
+    header = get_bam_header(alignment)
+    sequences = header_sequences(header)
     if not sequences:
         raise WGSExtractError(
             f"Cannot validate {alignment}: alignment header has no @SQ."
@@ -41,6 +54,9 @@ def validate_calling_reference(
             f"Cannot validate reference {fasta} for {alignment}: "
             "no FASTA .fai/.dict sequence metadata available."
         )
+    reference_build = fasta_index_build(fasta, lengths=lengths)
+    if check_assembly:
+        _validate_assembly(alignment, header, fasta, reference_build, assembly)
     if allow_reference_subset and not any(row["SN"] in lengths for row in sequences):
         raise WGSExtractError(
             f"Incompatible calling reference {fasta}: no input contigs match."
@@ -81,3 +97,35 @@ def validate_calling_reference(
             + "; ".join(problems[:5])
             + ". Use the FASTA used to align this input (same build and contig names).",
         )
+    return reference_build
+
+
+def _validate_assembly(
+    alignment: str,
+    header: str,
+    fasta: str,
+    reference: str | None,
+    assembly: str | None,
+) -> None:
+    """Compare each known build independently; neither names nor counts qualify."""
+    model = identify_reference(header, sequence_signature(sequence_lengths(header)))
+    aligned = (
+        canonical_build(model.name)
+        if model and model.evidence in {"signature", "chr1 length"}
+        else None
+    )
+    requested = build_from_path(assembly) if assembly else None
+    if len({aligned, reference, requested} - {None}) <= 1:
+        return
+    sources = []
+    if aligned:
+        sources.append(f"alignment header is {aligned}")
+    if reference:
+        sources.append(f"--ref is {reference}")
+    if assembly:
+        sources.append(f"--assembly is {assembly}")
+    raise WGSExtractError(
+        f"Incompatible calling reference {fasta} for {alignment}: "
+        + ", ".join(sources)
+        + ". Use the FASTA used to align this input and a matching assembly."
+    )

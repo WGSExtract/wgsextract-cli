@@ -156,7 +156,7 @@ def test_1052_1060_gui_default_vcf_call_uses_real_tools_offline(
     types = next(c for c in section["controls"] if c["id"] == "vcf_call_types")
     action = next(a for a in section["actions"] if a["id"] == "vcf-call")
     sequence = "ACGT" * 250
-    ref = write_fasta(tmp_path / "fake_hg38.fa", {"chr1": sequence})
+    ref = write_fasta(tmp_path / "fake_hg38.fa", {"chr1": sequence}, assembly="GRCh38")
     read = sequence[:39] + "G" + sequence[40:100]
     bam = sam_to_bam(
         [
