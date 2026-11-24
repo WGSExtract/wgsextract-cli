@@ -1,10 +1,12 @@
 """Issue #1290: gene and BED panels slice VCF records offline."""
 
 import csv
+import gc
 import gzip
 import hashlib
 import json
 import sqlite3
+import warnings
 from contextlib import closing
 from pathlib import Path
 
@@ -133,6 +135,40 @@ def test_1290_table_keeps_provenance_and_annotations_when_sliced(
     )
     assert metadata["annotations"] == "clinvar"
     assert result.metrics["rows"] == len(expected)
+
+
+@pytest.mark.parametrize("broken_index", [False, True], ids=["success", "read-error"])
+def test_1473_vcf_table_api_does_not_leak_a_pipe(
+    tmp_path: Path, broken_index: bool
+) -> None:
+    plain = tmp_path / "sample.vcf"
+    plain.write_bytes(_FIXTURE.read_bytes())
+    vcf = Path(bgzip_index(plain))
+    out = tmp_path / "out"
+    if broken_index:
+        Path(f"{vcf}.tbi").write_text("not a tabix index", encoding="utf-8")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ResourceWarning)
+        result = api.vcf.table(
+            api.VcfTableParams(input=vcf, outdir=out, region="chr1:100-100"),
+            check=False,
+        )
+        gc.collect()
+
+    assert not [w.message for w in caught if issubclass(w.category, ResourceWarning)]
+    table = out / "sample_variants.tsv"
+    if broken_index:
+        assert result.exit_code == 1
+        assert result.error is not None
+        assert "bcftools failed reading" in result.error.message
+        assert "index" in result.error.message
+        assert not table.exists()
+    else:
+        assert result.exit_code == 0
+        with table.open(encoding="utf-8", newline="") as stream:
+            assert [row["pos"] for row in csv.DictReader(stream, delimiter="\t")] == [
+                "100"
+            ]
 
 
 @pytest.mark.parametrize("command", ["filter", "table"])

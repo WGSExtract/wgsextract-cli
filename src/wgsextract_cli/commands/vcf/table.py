@@ -8,10 +8,11 @@ import os
 import re
 import sqlite3
 import subprocess
-from collections import deque
+import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
+from typing import IO
 
 from wgsextract_cli.api.vcf import VcfTableParams
 from wgsextract_cli.core import acmg
@@ -21,8 +22,8 @@ from wgsextract_cli.core.builds import (
     build_from_reference_header,
 )
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.execution_context import context_thread
 from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.process_registry import terminate_trees
 from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.results import (
     current_result,
@@ -198,45 +199,47 @@ def _select_sample(vcf: str, requested: str | None) -> tuple[list[str], str | No
 class _VcfStream:
     """``bcftools view`` of the input as text: its parsed header and data lines.
 
-    stderr is drained by a thread, so a chatty bcftools can't stall stdout.
+    Spool stderr separately so it can't block stdout or outlive the stream.
     """
 
-    def __init__(self, command: list[str]) -> None:
+    def __init__(self, command: list[str], errors: IO[bytes]) -> None:
         self.command = command
-        self.proc = popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
-        assert self.proc.stdout is not None and self.proc.stderr is not None
+        self.errors = errors
+        self.proc = popen(command, stdout=subprocess.PIPE, stderr=errors, text=True)
+        assert self.proc.stdout is not None
         self.stdout = self.proc.stdout
-        self._stderr: deque[str] = deque(maxlen=20)
-        stderr = self.proc.stderr
-        self._drain = context_thread(
-            target=lambda: self._stderr.extend(stderr), daemon=True
-        )
-        self._drain.start()
+        try:
+            self.header = self._read_header()
+        except BaseException:
+            self.close()
+            raise
+
+    def _read_header(self) -> VcfHeader:
         lines = []
         for line in self.stdout:
             lines.append(line)
             if line.startswith("#CHROM"):
-                break
-        else:
-            self.check()  # no #CHROM line: bcftools failed or this isn't a VCF
-            raise WGSExtractError(f"{command[-1]} has no #CHROM header line.")
-        self.header = parse_header(lines)
+                return parse_header(lines)
+        self.check()  # no #CHROM line: bcftools failed or this isn't a VCF
+        raise WGSExtractError(f"{self.command[-1]} has no #CHROM header line.")
 
     def check(self) -> None:
         if self.proc.wait() != 0:
-            self._drain.join(timeout=5)
-            detail = "".join(self._stderr).strip()
+            end = self.errors.seek(0, os.SEEK_END)
+            self.errors.seek(max(0, end - 8192))
+            tail = self.errors.read(8192).decode(errors="replace").splitlines()
+            detail = "\n".join(tail[-20:]).strip()
             raise WGSExtractError(
                 f"bcftools failed reading {self.command[-1]}: {detail}"
             )
 
     def close(self) -> None:
-        if self.proc.poll() is None:
-            self.proc.kill()
-        self.proc.wait()
-        self.stdout.close()
+        try:
+            if self.proc.poll() is None:
+                terminate_trees([self.proc])
+            self.proc.wait()
+        finally:
+            self.stdout.close()
 
 
 def _write_tables(
@@ -317,7 +320,8 @@ def run_table(params: VcfTableParams) -> None:
             command += scope.args(work)
         elif params.region:
             command += ["-r", params.region]
-        stream = _VcfStream([*command, input_vcf])
+        errors = stack.enter_context(tempfile.TemporaryFile(dir=outdir))
+        stream = _VcfStream([*command, input_vcf], errors)
         stack.callback(stream.close)
         header = stream.header
         build = (scope.build if scope else None) or _reference_build(header)
