@@ -189,7 +189,7 @@ more than five). Use `gh pr checks "$PR" --json bucket,name,workflow,link` with
 and passing `changes` job from the **same run**, with draft-fast absent
 or skipped there and no failing, pending, cancelled or unknown checks. On PRs,
 `required` consumes the existing area-gate verdict, so auto-merge cannot bypass
-a failing selected OS, smoke or Install Lab job. The area gate runs only
+a failing selected OS job. The area gate runs only
 after all area-selected checks finish on a non-draft, non-label event.
 Area checks are evaluated only from that selected run; cancelled/failed older
 draft runs cannot block it. For every other Actions workflow represented in the
@@ -210,7 +210,8 @@ head SHA immediately before merging; use `--match-head-commit` with that SHA.
 Recheck review threads separately.
 This is PR validation before enqueueing, not a gate for merge-group commits:
 the queue retests only its smaller `required` set and skips the PR-only area gate.
-Documentation-only PRs deliberately skip the OS matrix and Install Lab.
+Documentation-only PRs deliberately skip the OS matrix. Install Lab and
+package/benchmark smoke gate releases, not PRs.
 
 Repeat until complete or blocked:
 

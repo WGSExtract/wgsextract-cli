@@ -1,44 +1,9 @@
 name: GUI Tauri installer
 
 # Builds the app's Windows NSIS installer and runs it through install, bundle
-# setup, uninstall hooks, and cleanup. Slow, so it only runs when packaging
-# inputs change.
+# setup, uninstall hooks, and cleanup. Run at release preflight or on demand.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    branches: [ main ]
-    paths:
-      - ".github/workflows/gui-tauri-installer.yml"
-      - ".github/workflows/gui-build.yml"
-      - ".github/actions/rust-cache/**"
-      - ".github/actions/setup-gui/**"
-      - ".github/actions/download-cache/**"
-      - "gui/examples/**"
-      - "gui/app/**"
-      - "gui/resources/**"
-      - "gui/scripts/validate-windows-tauri-lifecycle.ps1"
-      - "gui/scripts/windows-process-cleanup.ps1"
-      - "gui/scripts/windows-admin-task-broker.ps1"
-      - "gui/tools/packaging/windows/**"
-      - "gui/tools/tasks.py"
-      - "packaging/**"
-      - "pixi.toml"
-      - "pixi.lock"
-      - "pyproject.toml"
-      - "install.sh"
-      - "install_windows.bat"
-      - "!**/*.md"
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - "**/*.md"
-  schedule:
-    - cron: "31 6 * * *"
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -49,7 +14,6 @@ defaults:
 
 jobs:
   windows:
-    if: ${{ github.event.pull_request.draft != true }}
     name: Windows installer lifecycle
     runs-on: windows-latest
     timeout-minutes: 45
@@ -69,17 +33,16 @@ jobs:
         shell: pwsh
         run: python tools/tasks.py package tauri
 
-      # A release PR pins the bundle to a tag that only exists once it merges;
-      # until then, set up the CLI from the commit under test.
+      # The candidate release is still a draft; install from the commit under test.
       - name: Use this commit's CLI if the pinned release isn't published
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          SHA: ${{ github.sha }}
         run: |
           $tag = (Get-Content examples/WGSExtract/scripts/wgsextract-release-tag.txt -TotalCount 1).Trim()
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -ne 0) {
+          $draft = gh release view $tag --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft 2>$null
+          if ($LASTEXITCODE -ne 0 -or $draft -eq "true") {
             Write-Host "$tag isn't published yet; setup installs the CLI from $env:SHA."
             "WGSEXTRACT_REF=$env:SHA" >> $env:GITHUB_ENV
           }

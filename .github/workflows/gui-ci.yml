@@ -4,21 +4,6 @@ name: GUI CI
 # (or its build inputs) change. CI Ubuntu, which lints every workflow,
 # skips app-only changes, so this lints the app's workflows.
 on:
-  push:
-    branches: [ main ]
-    paths:
-      - "gui/**"
-      - "scripts/gen_server_openapi.py"
-      - "src/wgsextract_cli/server/http_api.py"
-      - "src/wgsextract_cli/server/transport*.py"
-      - "src/wgsextract_cli/core/output_schema.py"
-      - ".github/workflows/gui-*.yml"
-      - ".github/actions/**"
-      - "!gui/mockups/**"
-      - "!gui/site_src/**"
-      - "!gui/site/**"
-      - "!gui/scripts/*site*.py"
-      - "!**/*.md"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     branches: [ main ]
@@ -40,7 +25,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: gui-ci-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  group: gui-ci-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

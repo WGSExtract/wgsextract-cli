@@ -30,11 +30,13 @@ The current selector remains authoritative during shadow mode. Once enabled
 for a lane, the decisive selector reports unmatched inputs and runs the full
 lane only for named universal scopes. CI-only edits still run
 policy/routing/readiness tests, with one-OS smoke for changed matrix workflows.
-Before narrowing main pushes to the merge queue's selection and passed-test
-cache rules, establish the daily full latest-main backstop, cache refresh and
-miss attribution. Keep other platform lanes, required checks, merged-tree
-guards and certification intact. Add a selector regression for each confirmed
-miss.
+Ready PRs run the selected OS and area checks; merge groups retain the smaller
+Ubuntu/Windows gate. Main pushes run security and repository automation only;
+nightly runs the four full OS suites, refreshes the cache, and reports red main
+and selector misses. Install Lab, package/benchmark smoke, and the other heavy
+checks in [Releasing](docs/releasing.md) run on demand and gate publication,
+not PRs. Keep merged-tree guards and certification intact. Add a selector
+regression for each confirmed miss.
 
 - **Always** run `pixi run ruff check --fix {file_path}` and `pixi run ruff format {file_path}` after editing a Python file in this directory.
 - **Always** run `pixi run mypy {file_path}` (or `pixi run mypy src/wgsextract_cli`) to check for type errors before concluding a task.
@@ -130,7 +132,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 ## Docs fast path
 
-- **Scope:** owner-account agents may push commits changing only hand-written Markdown prose directly to `main`, without a PR, review or queue. Generated/test-checked references (including API/command docs, site CLI cards, the help index and CLI snapshot), `AGENTS.md` and other policy files are excluded, as are code, workflow, config and asset files. Policy changes still need a PR and owner direction.
+- **Scope:** owner-account agents may push commits changing only hand-written Markdown prose directly to `main`, without a PR, review or queue. Generated/test-checked references (including API/command docs, site CLI cards and the help index), `AGENTS.md` and other policy files are excluded, as are code, workflow, config and asset files. Policy changes still need a PR and owner direction.
 - **Before pushing:** fetch and rebase on the latest `origin/main`, then run `python scripts/validate_site_sources.py` and `pixi run pre-commit run gitleaks --files ...` for all changed files. Fast-forward push only (`git push origin HEAD:main`); never force. If main advances, rebase and repeat the checks.
 - **Batching:** batch prose edits; check that the merge queue is empty before pushing and do not push while it has entries, because each main push rebuilds queued groups.
 - Keep `(AI):` on GitHub comments; add no AI brand trailers to commits.
@@ -158,4 +160,4 @@ For collaborator PRs, the limits above override the steps below.
 - Push follow-up commits and wait for CI to rerun. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`), not the whole run or a new push.
 - Don't update a branch just because it's BEHIND main. Update it only when it's DIRTY (conflicts) or main changed the same area (generated files, the help budget); the merge queue tests it against the latest main anyway.
 - Auto-merge never enqueues a DIRTY PR. The *Auto-merge conflict watch* workflow (`scripts/ci_auto_merge_watch.py`) labels such PRs `auto-merge-blocked` and comments once after each main push; merge main, resolve the conflicts and push, and the label clears itself.
-- Once passable, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA`, not a direct merge. Passable means every check passes or is validly skipped by routing, selection or certification (including selected macOS, Windows, ARM64, smoke and Install Lab jobs feeding `required`), no material threads are unresolved, and local checks pass. The queue retests the smaller `required` set against latest main, not the PR-only readiness gate; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.
+- Once passable, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA`, not a direct merge. Passable means every check passes or is validly skipped by routing, selection or certification (including selected macOS, Windows and ARM64 jobs feeding `required`), no material threads are unresolved, and local checks pass. The queue retests the smaller `required` set against latest main, not the PR-only readiness gate; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.
