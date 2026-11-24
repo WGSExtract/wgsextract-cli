@@ -129,10 +129,10 @@ Available formats:
     23andme_v2 (also v1: same markers), 23andme_v3, 23andme_v4 (v4a-c),
     23andme_v5, 23andme_v3+v5, 23andme_api
   AncestryDNA:
-    ancestry_v1, ancestry_v2ab (v2a and v2b merged; ancestry_v2 is v2a alone),
-    ancestry_v2cd (v2c and v2d merged), ancestry_v2e (2026: no Y or MT)
+    ancestry_v1, ancestry_v2ab (v2a and v2b merged; alias: ancestry_v2),
+    ancestry_v2cd (v2c and v2d merged), ancestry_v2e
   Family Tree DNA:
-    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2, ftdna_v3, ftdna_v4
+    ftdna_v1 (Affymetrix, NCBI36 positions), ftdna_v2 (v2a-d), ftdna_v3, ftdna_v4
     ftdna_v2y, ftdna_v3y, ftdna_v4y (the separate Y files, GRCh38 positions)
   Living DNA:
     ldna_v1, ldna_v2
@@ -141,9 +141,6 @@ Available formats:
   Other vendors:
     tellmegen, genera, mthfr (MTHFR Genetics), meudna_v1, meudna_v2,
     selfdecode, nucleus
-  Earlier IDs naming a date or size (ancestry_v2_2021, ancestry_v2_2024,
-  23andme_v5_2025, myheritage_gsa_2025, myheritage_gsa_2025_609424) are
-  accepted: they are exact sub-minor export layouts of v2d, v5 and v2.
   AADR v66.p1 (GRCh37 outputs, PLINK .bed/.bim/.fam AND EIGENSTRAT .geno/.snp/.ind):
     aadr_1240k, aadr_ho, aadr_1240k+ho (HO is a subset of 1240K in this release)
     aadr_2m (opt-in; first run 'ref aadr --install'; v66.p1 genetic distances

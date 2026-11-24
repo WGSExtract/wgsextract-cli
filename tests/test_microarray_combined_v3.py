@@ -88,3 +88,84 @@ def test_combined_v3_resolve_rsids_and_offline_chain_lookup(tmp_path):
         "rsKept\t1\t200\tCC",
     ]
     assert (tally.sites, tally.called, tally.het) == (2, 1, 0)
+
+
+def test_format_aliases_and_removed_or_internal_formats_in_v04_templates():
+    import pytest
+
+    from wgsextract_cli.core.microarray.templates import (
+        _PACKAGED_TEMPLATES,
+        template_rows,
+    )
+    from wgsextract_cli.core.utils import UsageError
+
+    assert resolve_format_key("ancestry_v2") == "Ancestry_V2ab"
+    assert resolve_format_key("Ancestry_V2") == "Ancestry_V2ab"
+    assert resolve_format_key("23andme_v4") == "23andMe_V4"
+    assert resolve_format_key("ftdna_v2") == "FTDNA_V2"
+
+    for rejected in (
+        "23andme_v5_2025",
+        "ancestry_v2_2021",
+        "ancestry_v2_2024",
+        "myheritage_gsa_2025",
+        "myheritage_gsa_2025_609424",
+        "23andMe_V4_v3",
+        "FTDNA_V2_v3",
+    ):
+        with pytest.raises(UsageError):
+            resolve_format_key(rejected)
+
+    # Merged 23andMe_V4 (v4a-c) and FTDNA_V2 (v2a-d) expand their frozen v3 deltas.
+    v4_merged = sum(
+        1
+        for _ in template_rows(
+            "23andMe_V4", str(_PACKAGED_TEMPLATES / "body/23andMe_V4.txt.gz")
+        )
+    )
+    v4_frozen = sum(
+        1
+        for _ in template_rows(
+            "23andMe_V4_v3",
+            str(_PACKAGED_TEMPLATES / "body/23andMe_V4_v3.txt.delta.gz"),
+        )
+    )
+    f2_merged = sum(
+        1
+        for _ in template_rows(
+            "FTDNA_V2", str(_PACKAGED_TEMPLATES / "body/FTDNA_V2.csv.gz")
+        )
+    )
+    f2_frozen = sum(
+        1
+        for _ in template_rows(
+            "FTDNA_V2_v3", str(_PACKAGED_TEMPLATES / "body/FTDNA_V2_v3.csv.delta.gz")
+        )
+    )
+    assert v4_merged > v4_frozen == 601_885
+    assert f2_merged > f2_frozen == 720_449
+
+
+def test_stale_v03_delta_falls_through_to_packaged_templates(tmp_path):
+    """An un-upgraded v0.3.0 library whose delta references a dropped base
+    falls back cleanly to the CLI's packaged template instead of crashing."""
+    import gzip
+
+    from wgsextract_cli.core.microarray.formats import get_template_format
+    from wgsextract_cli.core.microarray.templates import (
+        _PACKAGED_TEMPLATES,
+        _resolve_templates_for_format,
+    )
+
+    body = tmp_path / "microarray/raw_file_templates/body"
+    body.mkdir(parents=True)
+    with gzip.open(body / "Ancestry_V2cd.txt.delta.gz", "wt") as handle:
+        handle.write("#base\tAncestry_V2_2021\n=1\n")
+
+    fmt = get_template_format("Ancestry_V2cd")
+    assert fmt is not None
+    root, paths = _resolve_templates_for_format(
+        [str(tmp_path), str(_PACKAGED_TEMPLATES)], "Ancestry_V2cd", fmt
+    )
+    assert root == str(_PACKAGED_TEMPLATES)
+    assert paths == [str(_PACKAGED_TEMPLATES / "body/Ancestry_V2cd.txt.gz")]

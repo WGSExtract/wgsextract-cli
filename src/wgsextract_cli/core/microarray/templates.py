@@ -33,6 +33,7 @@ from wgsextract_cli.core.microarray.formats import (
     COMBINED_V3_FORMAT,
     COMBINED_V3_TEMPLATES,
     TemplateFormat,
+    is_superseded_classic_body,
 )
 
 # Re-exported: most callers find template formats here.
@@ -325,6 +326,41 @@ def lift_to_grch37(
     return _chrom_from_liftover(hit.chrom), str(hit.position + 1), hit.strand == "-"
 
 
+def _valid_delta_chain(path: str) -> bool:
+    """Whether a delta body's #base chain resolves to an installed base."""
+    current = path
+    for _ in range(_MAX_DELTA_DEPTH):
+        if not current.endswith(DELTA_SUFFIX):
+            return Path(current).exists()
+        try:
+            with gzip.open(current, "rt") as f:
+                header = f.readline().rstrip("\n").split("\t")
+        except OSError:
+            return False
+        info = get_template_format(header[-1]) if len(header) == 2 else None
+        if header[0] != "#base" or info is None or info["parts"] != 1:
+            return False
+        current = str(_delta_base_path(current, header[1], info))
+    return not current.endswith(DELTA_SUFFIX) and Path(current).exists()
+
+
+def _select_template_root(
+    roots: list[str], format_name: str, fmt_info: TemplateFormat
+) -> tuple[str, list[str]] | None:
+    """Pick the first root whose body files exist, have valid delta bases, and
+    are not superseded by a newer packaged body in a later root."""
+    fallback: tuple[str, list[str]] | None = None
+    for root in roots:
+        bodies = _template_body_paths(root, format_name, fmt_info)
+        if not all(Path(p).exists() and _valid_delta_chain(p) for p in bodies):
+            continue
+        if any(is_superseded_classic_body(format_name, p) for p in bodies):
+            fallback = fallback or (root, bodies)
+            continue
+        return root, bodies
+    return fallback
+
+
 def _resolve_templates_for_format(
     templates_dir: TemplateSearchInput, format_name: str, fmt_info: TemplateFormat
 ) -> tuple[str, list[str]]:
@@ -334,16 +370,18 @@ def _resolve_templates_for_format(
             f"Microarray templates not found near {templates_dir!r}; "
             f"cannot generate {format_name} output."
         )
-
-    first_missing: str | None = None
-    for templates_root in roots:
-        body_templates = _template_body_paths(templates_root, format_name, fmt_info)
-        missing = [path for path in body_templates if not Path(path).exists()]
-        if not missing:
-            return templates_root, body_templates
-        if first_missing is None:
-            first_missing = missing[0]
-
+    selected = _select_template_root(roots, format_name, fmt_info)
+    if selected is not None:
+        return selected
+    first_missing = next(
+        (
+            path
+            for root in roots
+            for path in _template_body_paths(root, format_name, fmt_info)
+            if not Path(path).exists()
+        ),
+        _template_body_paths(roots[0], format_name, fmt_info)[0],
+    )
     raise WGSExtractError(f"Template body not found: {first_missing}")
 
 

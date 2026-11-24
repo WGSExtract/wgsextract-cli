@@ -238,7 +238,7 @@ class BundleSandbox:
             "microarray_call_reasons": "--call-reasons",
             "aadr_sample_id": "research_sample",
             "aadr_sex": "U",
-            "indel_format": "myheritage_gsa_2025",
+            "indel_format": "myheritage_v3",
             "indel_manifest": self._file("manifests/matching chip.csv"),
             "extract_formats": "fasta,bam,vcf",
             "extract_poz": "--poz",

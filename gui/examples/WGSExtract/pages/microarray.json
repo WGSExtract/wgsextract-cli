@@ -166,15 +166,13 @@
               "title": "options.microarray.formats.v1-v2.title",
               "group": "23andMe",
               "category": "options.microarray.formats.category.consumer",
-              "categoryTooltip": "options.microarray.formats.category.consumer.tooltip",
-              "advancedOnly": true
+              "categoryTooltip": "options.microarray.formats.category.consumer.tooltip"
             },
             {
               "id": "23andme_v3",
               "title": "options.microarray.formats.v3.title",
               "group": "23andMe",
-              "category": "options.microarray.formats.category.consumer",
-              "categoryTooltip": "options.microarray.formats.category.consumer.tooltip"
+              "category": "options.microarray.formats.category.consumer"
             },
             {
               "id": "23andme_v4",
@@ -188,13 +186,6 @@
               "group": "23andMe",
               "category": "options.microarray.formats.category.consumer",
               "selected": true
-            },
-            {
-              "id": "23andme_v5_2025",
-              "title": "options.microarray.formats.v5-2025.title",
-              "group": "23andMe",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
             },
             {
               "id": "23andme_v35",
@@ -212,12 +203,6 @@
             {
               "id": "ancestry_v1",
               "title": "options.microarray.formats.v1.title",
-              "group": "AncestryDNA",
-              "category": "options.microarray.formats.category.consumer"
-            },
-            {
-              "id": "ancestry_v2",
-              "title": "options.microarray.formats.v2.title",
               "group": "AncestryDNA",
               "category": "options.microarray.formats.category.consumer"
             },
@@ -240,25 +225,10 @@
               "category": "options.microarray.formats.category.consumer"
             },
             {
-              "id": "ancestry_v2_2021",
-              "title": "options.microarray.formats.ancestry-v2-2021.title",
-              "group": "AncestryDNA",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
-            },
-            {
-              "id": "ancestry_v2_2024",
-              "title": "options.microarray.formats.ancestry-v2-2024.title",
-              "group": "AncestryDNA",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
-            },
-            {
               "id": "ftdna_v1_affy",
               "title": "options.microarray.formats.v1-affy.title",
               "group": "FamilyTreeDNA",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
+              "category": "options.microarray.formats.category.consumer"
             },
             {
               "id": "ftdna_v2",
@@ -281,19 +251,19 @@
             {
               "id": "ftdna_v2y",
               "title": "options.microarray.formats.v2y.title",
-              "group": "FamilyTreeDNA",
+              "group": "options.microarray.formats.group.ftdna-y",
               "category": "options.microarray.formats.category.consumer"
             },
             {
               "id": "ftdna_v3y",
               "title": "options.microarray.formats.v3y.title",
-              "group": "FamilyTreeDNA",
+              "group": "options.microarray.formats.group.ftdna-y",
               "category": "options.microarray.formats.category.consumer"
             },
             {
               "id": "ftdna_v4y",
               "title": "options.microarray.formats.v4y.title",
-              "group": "FamilyTreeDNA",
+              "group": "options.microarray.formats.group.ftdna-y",
               "category": "options.microarray.formats.category.consumer"
             },
             {
@@ -325,20 +295,6 @@
               "title": "options.microarray.formats.v3.title",
               "group": "MyHeritage",
               "category": "options.microarray.formats.category.consumer"
-            },
-            {
-              "id": "myheritage_gsa_2025",
-              "title": "options.microarray.formats.myheritage-gsa-2025.title",
-              "group": "MyHeritage",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
-            },
-            {
-              "id": "myheritage_gsa_2025_609424",
-              "title": "options.microarray.formats.myheritage-gsa-2025-609424.title",
-              "group": "MyHeritage",
-              "category": "options.microarray.formats.category.consumer",
-              "advancedOnly": true
             },
             {
               "id": "tellmegen",

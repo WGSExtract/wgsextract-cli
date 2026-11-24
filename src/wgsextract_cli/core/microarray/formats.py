@@ -5,6 +5,8 @@ The original format table is ported from WGS Extract v4 ``program/aconv.py``
 later), extended by WGS Extract CLI contributors from 2026-03-02; see NOTICE.
 """
 
+import hashlib
+from pathlib import Path
 from typing import TypedDict
 
 from wgsextract_cli.core.utils import UsageError
@@ -26,18 +28,23 @@ _TEMPLATE_FORMATS: dict[str, TemplateFormat] = {
     # v1 and v2 chips share one marker list (see assets/microarray).
     "23andMe_V2": {"suffix": ".txt", "parts": 1},
     "23andMe_V3": {"suffix": ".txt", "parts": 1},
-    "23andMe_V4": {"suffix": ".txt", "parts": 2},
+    # Merged v4a-c template; frozen v0.2.0 v4a body stays as 23andMe_V4_v3 for
+    # CombinedKit v3.
+    "23andMe_V4": {"suffix": ".txt", "parts": 1},
+    "23andMe_V4_v3": {"suffix": ".txt", "parts": 1},
     "23andMe_V5": {"suffix": ".txt", "parts": 2},
-    "23andMe_V5_2025": {"suffix": ".txt", "parts": 1},
     "Ancestry_V1": {"suffix": ".txt", "parts": 4},
+    # Classic v0.2.0 v2a body kept for frozen CombinedKit v3; --formats
+    # ancestry_v2 aliases to Ancestry_V2ab.
     "Ancestry_V2": {"suffix": ".txt", "parts": 5},
-    "Ancestry_V2_2021": {"suffix": ".txt", "parts": 1},
-    "Ancestry_V2_2024": {"suffix": ".txt", "parts": 1},
     "Ancestry_V2ab": {"suffix": ".txt", "parts": 1},
     "Ancestry_V2cd": {"suffix": ".txt", "parts": 1},
     "Ancestry_V2e": {"suffix": ".txt", "parts": 1},
     "FTDNA_V1_Affy": {"suffix": ".csv", "parts": 1, "build": "NCBI36"},
+    # Merged v2a-d template; frozen v0.2.0 v2d body stays as FTDNA_V2_v3 for
+    # CombinedKit v3.
     "FTDNA_V2": {"suffix": ".csv", "parts": 1},
+    "FTDNA_V2_v3": {"suffix": ".csv", "parts": 1},
     "FTDNA_V3": {"suffix": ".csv", "parts": 3},
     "FTDNA_V4": {"suffix": ".csv", "parts": 1},
     # FTDNA delivers its Y-chromosome files separately, on GRCh38.
@@ -46,8 +53,6 @@ _TEMPLATE_FORMATS: dict[str, TemplateFormat] = {
     "FTDNA_V4Y": {"suffix": ".csv", "parts": 1, "build": "GRCh38"},
     "MyHeritage_V1": {"suffix": ".csv", "parts": 1},
     "MyHeritage_V2": {"suffix": ".csv", "parts": 1},
-    "MyHeritage_GSA_2025": {"suffix": ".csv", "parts": 1},
-    "MyHeritage_GSA_2025_609424": {"suffix": ".csv", "parts": 1},
     "MyHeritage_V3": {"suffix": ".csv", "parts": 1},
     "23andMe_SNPs_API": {"suffix": ".txt", "parts": 1},
     "23andMe_V35": {"suffix": ".txt", "parts": 1},
@@ -62,6 +67,10 @@ _TEMPLATE_FORMATS: dict[str, TemplateFormat] = {
     "SelfDecode_V1": {"suffix": ".txt", "parts": 1},
 }
 
+# Internal frozen v0.2.0 templates kept solely so CombinedKit v3 stays frozen
+# and CombinedKit v5 stays a strict superset of v3; not user-selectable IDs.
+_INTERNAL_ONLY_FORMATS = frozenset({"23andMe_V4_v3", "FTDNA_V2_v3"})
+
 FORMAT_ALIASES = {
     # 23andMe's v1 and v2 chips export the same marker list.
     "23andme_v1": "23andMe_V2",
@@ -69,17 +78,15 @@ FORMAT_ALIASES = {
     "23andme_v3": "23andMe_V3",
     "23andme_v4": "23andMe_V4",
     "23andme_v5": "23andMe_V5",
-    "23andme_v5_2025": "23andMe_V5_2025",
     "23andme_v3+v5": "23andMe_V35",
     "23andme_v3_v5": "23andMe_V35",
     "23andme_v35": "23andMe_V35",
     "23andme_api": "23andMe_SNPs_API",
     "ancestry_v1": "Ancestry_V1",
-    "ancestry_v2": "Ancestry_V2",
-    "ancestry_v2_2021": "Ancestry_V2_2021",
-    "ancestry_v2_2024": "Ancestry_V2_2024",
     # Letter-named variants (h600.org's "Microarray File Formats"); similar
     # minor variants are merged into one template, e.g. v2a and v2b.
+    # ancestry_v2 aliases to Ancestry_V2ab (classic v2a stays frozen for v3).
+    "ancestry_v2": "Ancestry_V2ab",
     "ancestry_v2ab": "Ancestry_V2ab",
     "ancestry_v2cd": "Ancestry_V2cd",
     "ancestry_v2e": "Ancestry_V2e",
@@ -102,8 +109,6 @@ FORMAT_ALIASES = {
     "livingdna_v2": "LDNA_V2",
     "myheritage_v1": "MyHeritage_V1",
     "myheritage_v2": "MyHeritage_V2",
-    "myheritage_gsa_2025": "MyHeritage_GSA_2025",
-    "myheritage_gsa_2025_609424": "MyHeritage_GSA_2025_609424",
     "myheritage_v3": "MyHeritage_V3",
     "nucleus": "Nucleus_V1",
     "nucleus_v1": "Nucleus_V1",
@@ -125,17 +130,18 @@ COMBINED_V3_FORMAT = "CombinedKit_v3"
 """Canonical format name for the classic 14-template WGS Extract CombinedKit v3."""
 
 # The 14 classic WGS Extract v4 templates that make up CombinedKit v3 (in
-# precedence order for a site's marker ID). CombinedKit v5 (all) expands this
-# set with the newer vendor layouts.
+# precedence order for a site's marker ID). Frozen on the v0.2.0 classic
+# templates (23andMe_V4_v3, Ancestry_V2, FTDNA_V2_v3). CombinedKit v5 (all)
+# expands this set with the merged and newer vendor layouts.
 COMBINED_V3_TEMPLATES: tuple[str, ...] = (
     "23andMe_V3",
     "23andMe_V35",
-    "23andMe_V4",
+    "23andMe_V4_v3",
     "23andMe_V5",
     "23andMe_SNPs_API",
     "Ancestry_V1",
     "Ancestry_V2",
-    "FTDNA_V2",
+    "FTDNA_V2_v3",
     "FTDNA_V3",
     "LDNA_V1",
     "LDNA_V2",
@@ -156,7 +162,12 @@ def resolve_format_key(format_key: str) -> str | None:
     if normalized in {"combined_v3", "combinedkit_v3"}:
         return COMBINED_V3_FORMAT
     name = FORMAT_ALIASES.get(normalized) or next(
-        (known for known in _TEMPLATE_FORMATS if known.lower() == normalized), None
+        (
+            known
+            for known in _TEMPLATE_FORMATS
+            if known not in _INTERNAL_ONLY_FORMATS and known.lower() == normalized
+        ),
+        None,
     )
     if name is None:
         raise UsageError(
@@ -169,3 +180,28 @@ def resolve_format_key(format_key: str) -> str | None:
 def get_template_format(format_name: str) -> TemplateFormat | None:
     """Returns metadata for known microarray formats."""
     return _TEMPLATE_FORMATS.get(format_name)
+
+
+# Classic v0.2.0/v0.3.0 FTDNA_V2.csv (v2d only); superseded by merged v2a-d
+# FTDNA_V2.csv.gz in v0.4.0/CLI assets when both are on the search path.
+_CLASSIC_FTDNA_V2_SIZE = 20_772_237
+_CLASSIC_FTDNA_V2_SHA256 = (
+    "44cdd8245f5d9373f0fb149cdc7298805fdef6086b029a745de32c2852100083"
+)
+
+
+def is_superseded_classic_body(format_name: str, path: str) -> bool:
+    """Whether path is the classic v0.2.0/v0.3.0 FTDNA_V2.csv body that should
+    yield to a newer merged FTDNA_V2.csv.gz in a later template root."""
+    if format_name != "FTDNA_V2" or not path.endswith(".csv"):
+        return False
+    try:
+        candidate = Path(path)
+        if candidate.stat().st_size != _CLASSIC_FTDNA_V2_SIZE:
+            return False
+        return (
+            hashlib.sha256(candidate.read_bytes()).hexdigest()
+            == _CLASSIC_FTDNA_V2_SHA256
+        )
+    except OSError:
+        return False
