@@ -383,10 +383,12 @@ identical decoded BAM records: 99.81% mapped and 99.12% properly paired.
 
 ### wgse-minimap2 for long reads
 
-When `wgse-minimap2.exe` is on `PATH`, `align` and `realign` use it instead
-of stock minimap2 with `native_aligners = "auto"`. The Windows x86-64 build
-is a [separate Windows Tools package](../packaging/windows/README.md#wgse-minimap2-windows-x86-64),
-not a requirement for using minimap2.
+The default Pixi environment on Windows x86-64 includes `wgse-minimap2` from
+[`windows-tools-13`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/windows-tools-13).
+With `native_aligners = "auto"`, `align` and `realign` use it instead of
+stock minimap2 for long reads. No manual PATH or configuration changes are
+needed. Run `pixi run wgsextract deps check --tool wgse-minimap2` to see the
+installed path.
 
 The `map-ont`, `map-hifi` and `map-pb` presets can run their gap fills on
 CUDA. Check the driver, device and device-memory preflight with

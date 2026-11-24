@@ -81,7 +81,7 @@ def test_summary_lists_called_genes_and_preserves_unknown(tmp_path):
         "Ultrarapid Metabolizer",
     )
     assert unknown.status == "no_call"
-    assert unknown.alternatives == [{"diplotype": "Unknown/Unknown", "phenotype": "-"}]
+    assert unknown.alternatives == [{"diplotype": "Unknown/Unknown", "phenotype": "-", "lookup_keys": []}]  # fmt: skip
 
 
 def test_843_haploid_pharmcat_summary_keeps_a_known_g6pd_call(tmp_path):
@@ -154,9 +154,9 @@ if (here / "exit").exists():
 (out / f"{bf}.report.html").write_text("<html></html>")
 if (here / "omit-phenotypes").exists():
     sys.exit(0)
-genes = {"CYP2C19": {
-    "recommendationDiplotypes": [{"allele1": {"name": "*1"}, "allele2": {
-        "name": "*17"}, "phenotypes": ["Rapid Metabolizer"]}]}}
+genes = {"CYP2C19": {"callSource": "MATCHER", "recommendationDiplotypes": [{
+    "allele1": {"name": "*1"}, "allele2": {"name": "*17"},
+    "phenotypes": ["Rapid Metabolizer"], "lookupKey": ["Rapid Metabolizer"]}]}}
 if outside.exists():
     for line in outside.read_text().splitlines():
         gene, genotype = line.split("\\t")[:2]

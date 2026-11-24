@@ -137,7 +137,7 @@ class TestMicroarrayRealData:
         vendor_files = {
             "23andme_v2": f"{output_prefix}_23andMe_V2.txt",
             "23andme_v3": f"{output_prefix}_23andMe_V3.txt",
-            "ancestry_v2": f"{output_prefix}_Ancestry_V2.txt",
+            "ancestry_v2": f"{output_prefix}_Ancestry_V2ab.txt",
             "myheritage_v2": f"{output_prefix}_MyHeritage_V2.csv",
         }
 
