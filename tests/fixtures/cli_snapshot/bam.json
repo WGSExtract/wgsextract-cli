@@ -1,0 +1,432 @@
+{
+ "help": "usage: wgsextract bam [-h] <command> ...\n\npositional arguments:\n  <command>\n    sort      Sort alignments by genomic coordinates. Required by almost all downstream tools\n              (like variant callers) to function correctly.\n    index     Create a random-access index (.bai/.crai) for your file. This allows tools to jump\n              to specific regions instantly without reading the whole file.\n    unindex   Remove the index file associated with your BAM/CRAM. Use this to force a re-indexing\n              or to clean up workspace.\n    unsort    Mark the file as 'unsorted' in the header. Rarely needed, but useful if a tool\n              requires a specific header state for processing.\n    to-cram   Convert BAM to the modern CRAM format. Highly recommended for long-term storage as\n              it is ~30-50% smaller than BAM without losing data.\n    to-bam    Convert a CRAM file back to the traditional BAM format. Useful if you need to use an\n              older tool that doesn't support CRAM.\n    unalign   Extract raw reads from a BAM/CRAM back into FASTQ format. Use this if you want to\n              re-align your data to a different reference genome.\n    identify  Analyze your BAM header to determine exactly which reference genome was used for the\n              original alignment. It reads only the header; 'info' shows the same MD5 signature\n              along with its other checks.\n    merge     Merge several coordinate-sorted BAM/CRAM files (e.g. per-lane files) aligned to the\n              same reference into one indexed file.\n    to-ubam   Convert an aligned BAM/CRAM or FASTQ reads into a queryname-sorted unaligned BAM\n              (uBAM) for GATK pipelines.\n\noptions:\n  -h, --help  show this help message and exit\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n",
+ "namespaces": {},
+ "parser": {
+  "actions": [
+   {
+    "choices": null,
+    "class": "_HelpAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help",
+    "exclusive_group": null,
+    "help": "show this help message and exit",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "-h",
+     "--help"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "sort",
+     "index",
+     "unindex",
+     "unsort",
+     "to-cram",
+     "to-bam",
+     "unalign",
+     "identify",
+     "merge",
+     "to-ubam"
+    ],
+    "help": [
+     [
+      "sort",
+      "Sort alignments by genomic coordinates. Required by almost all downstream tools (like variant callers) to function correctly."
+     ],
+     [
+      "index",
+      "Create a random-access index (.bai/.crai) for your file. This allows tools to jump to specific regions instantly without reading the whole file."
+     ],
+     [
+      "unindex",
+      "Remove the index file associated with your BAM/CRAM. Use this to force a re-indexing or to clean up workspace."
+     ],
+     [
+      "unsort",
+      "Mark the file as 'unsorted' in the header. Rarely needed, but useful if a tool requires a specific header state for processing."
+     ],
+     [
+      "to-cram",
+      "Convert BAM to the modern CRAM format. Highly recommended for long-term storage as it is ~30-50%% smaller than BAM without losing data."
+     ],
+     [
+      "to-bam",
+      "Convert a CRAM file back to the traditional BAM format. Useful if you need to use an older tool that doesn't support CRAM."
+     ],
+     [
+      "unalign",
+      "Extract raw reads from a BAM/CRAM back into FASTQ format. Use this if you want to re-align your data to a different reference genome."
+     ],
+     [
+      "identify",
+      "Analyze your BAM header to determine exactly which reference genome was used for the original alignment. It reads only the header; 'info' shows the same MD5 signature along with its other checks."
+     ],
+     [
+      "merge",
+      "Merge several coordinate-sorted BAM/CRAM files (e.g. per-lane files) aligned to the same reference into one indexed file."
+     ],
+     [
+      "to-ubam",
+      "Convert an aligned BAM/CRAM or FASTQ reads into a queryname-sorted unaligned BAM (uBAM) for GATK pipelines."
+     ]
+    ],
+    "required": true,
+    "subparsers": "bam_cmd"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "input",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--input",
+     "-i"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "outdir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--outdir",
+     "-o"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "genome",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--genome"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "ref",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ref"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "threads",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "N|auto",
+    "nargs": null,
+    "option_strings": [
+     "--threads",
+     "-t"
+    ],
+    "required": false,
+    "type": "_thread_count_arg"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "memory",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--memory",
+     "-m"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "tmp_dir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "DIRECTORY",
+    "nargs": null,
+    "option_strings": [
+     "--tmp-dir"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "json",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--json"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "card",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--card",
+     "--no-card"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "quiet",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--quiet"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "debug",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--debug"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "log_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--log-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "keep_awake",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--keep-awake",
+     "--no-keep-awake"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "atomic_output",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--atomic-output",
+     "--no-atomic-output"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "config_path",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--config"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_result_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--result-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_parent_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--parent-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_root_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--root-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_run_step",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "STEP",
+    "nargs": null,
+    "option_strings": [
+     "--run-step"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "parent_pid",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--parent-pid"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_HelpAllAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help_all",
+    "exclusive_group": null,
+    "help": "Show this help with the advanced options too, and exit.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--help-all"
+    ],
+    "required": false,
+    "type": null
+   }
+  ],
+  "defaults": {
+   "_command": "bam"
+  },
+  "description": null,
+  "formatter_class": "HelpFormatter",
+  "prog": "wgsextract bam"
+ }
+}

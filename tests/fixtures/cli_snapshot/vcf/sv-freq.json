@@ -1,0 +1,540 @@
+{
+ "help": "usage: wgsextract vcf sv-freq [-h] [--vcf-input VCF_INPUT] [--gnomad-sv-file GNOMAD_SV_FILE]\n                              [--gnomad-lr-file GNOMAD_LR_FILE] [--min-overlap MIN_OVERLAP]\n                              [--max-distance MAX_DISTANCE]\n                              [--min-size-similarity MIN_SIZE_SIMILARITY] [--common-af COMMON_AF]\n                              [--rare-af RARE_AF]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --gnomad-sv-file GNOMAD_SV_FILE\n                        gnomAD-SV table (default: the library's, from 'ref gnomad-sv').\n  --gnomad-lr-file GNOMAD_LR_FILE\n                        gnomAD-LR table (default: the library's; GRCh38).\n  --min-overlap MIN_OVERLAP\n                        Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5).\n  --max-distance MAX_DISTANCE\n                        Maximum insertion breakpoint distance, bp (default 500).\n  --min-size-similarity MIN_SIZE_SIMILARITY\n                        Minimum insertion size similarity (default 0.5).\n  --common-af COMMON_AF\n                        AF from which an SV is common (default 0.01).\n  --rare-af RARE_AF     AF below which an SV is rare (default 0.001).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract vcf sv-freq --vcf-input sniffles.vcf.gz\n\noutputs (in the output directory unless noted):\n  sv_freq_annotated.vcf.gz (+ .tbi) and sv_freq.tsv.\n\nneeds:\n  bcftools, bgzip, tabix; depending on options and inputs, also: samtools;\n  minutes on a 30x genome.\n",
+ "namespaces": {
+  "vcf sv-freq --vcf-input sv.vcf.gz --min-overlap 0.7": {
+   "_command": "vcf sv-freq",
+   "_explicit_dests": [
+    "min_overlap",
+    "vcf_input"
+   ],
+   "_one_vcf_input": true,
+   "atomic_output": false,
+   "command": "vcf",
+   "common_af": 0.01,
+   "debug": false,
+   "full_help": false,
+   "func": "cmd_sv_freq",
+   "genome": null,
+   "gnomad_lr_file": null,
+   "gnomad_sv_file": null,
+   "input": null,
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "max_distance": 500,
+   "memory": null,
+   "min_overlap": 0.7,
+   "min_size_similarity": 0.5,
+   "outdir": null,
+   "parent_pid": null,
+   "quiet": false,
+   "rare_af": 0.001,
+   "ref": null,
+   "threads": null,
+   "tmp_dir": null,
+   "vcf_cmd": "sv-freq",
+   "vcf_input": "sv.vcf.gz"
+  }
+ },
+ "parser": {
+  "actions": [
+   {
+    "choices": null,
+    "class": "_HelpAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help",
+    "exclusive_group": null,
+    "help": "show this help message and exit",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "-h",
+     "--help"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "input",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--input",
+     "-i"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "outdir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--outdir",
+     "-o"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "genome",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--genome"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "ref",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ref"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "threads",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "N|auto",
+    "nargs": null,
+    "option_strings": [
+     "--threads",
+     "-t"
+    ],
+    "required": false,
+    "type": "_thread_count_arg"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "memory",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--memory",
+     "-m"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "tmp_dir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "DIRECTORY",
+    "nargs": null,
+    "option_strings": [
+     "--tmp-dir"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "json",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--json"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "card",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--card",
+     "--no-card"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "quiet",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--quiet"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "debug",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--debug"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "log_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--log-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "keep_awake",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--keep-awake",
+     "--no-keep-awake"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "atomic_output",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--atomic-output",
+     "--no-atomic-output"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "config_path",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--config"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_result_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--result-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_parent_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--parent-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_root_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--root-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_run_step",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "STEP",
+    "nargs": null,
+    "option_strings": [
+     "--run-step"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "parent_pid",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--parent-pid"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "vcf_input",
+    "exclusive_group": null,
+    "help": "Optional override for VCF input file.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--vcf-input"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "gnomad_sv_file",
+    "exclusive_group": null,
+    "help": "gnomAD-SV table (default: the library's, from 'ref gnomad-sv').",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--gnomad-sv-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "gnomad_lr_file",
+    "exclusive_group": null,
+    "help": "gnomAD-LR table (default: the library's; GRCh38).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--gnomad-lr-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 0.5,
+    "dest": "min_overlap",
+    "exclusive_group": null,
+    "help": "Minimum reciprocal overlap for same-type DEL/DUP/INV (default 0.5).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--min-overlap"
+    ],
+    "required": false,
+    "type": "float"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 500,
+    "dest": "max_distance",
+    "exclusive_group": null,
+    "help": "Maximum insertion breakpoint distance, bp (default 500).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--max-distance"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 0.5,
+    "dest": "min_size_similarity",
+    "exclusive_group": null,
+    "help": "Minimum insertion size similarity (default 0.5).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--min-size-similarity"
+    ],
+    "required": false,
+    "type": "float"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 0.01,
+    "dest": "common_af",
+    "exclusive_group": null,
+    "help": "AF from which an SV is common (default 0.01).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--common-af"
+    ],
+    "required": false,
+    "type": "float"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 0.001,
+    "dest": "rare_af",
+    "exclusive_group": null,
+    "help": "AF below which an SV is rare (default 0.001).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--rare-af"
+    ],
+    "required": false,
+    "type": "float"
+   },
+   {
+    "choices": null,
+    "class": "_HelpAllAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help_all",
+    "exclusive_group": null,
+    "help": "Show this help with the advanced options too, and exit.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--help-all"
+    ],
+    "required": false,
+    "type": null
+   }
+  ],
+  "defaults": {
+   "_command": "vcf sv-freq",
+   "_one_vcf_input": true,
+   "func": "cmd_sv_freq"
+  },
+  "description": null,
+  "formatter_class": "HelpFormatter",
+  "prog": "wgsextract vcf sv-freq"
+ }
+}

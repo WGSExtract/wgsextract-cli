@@ -40,7 +40,8 @@ DOCS_TEST_TARGETS = (
 DOCS_TEST_MODULES = frozenset(
     target for target in DOCS_TEST_TARGETS if "::" not in target
 )
-GENERATED_DOCS = frozenset(
+CLI_SNAPSHOT_FILES = "tests/fixtures/cli_snapshot/*.json"
+_GENERATED_DOCS = frozenset(
     {
         "docs/api.md",
         "docs/commands.md",
@@ -48,7 +49,6 @@ GENERATED_DOCS = frozenset(
         # Hand-written generator input also requires configuration freshness.
         "docs/data/configuration-guide.md",
         "site_src/cli.md",
-        "tests/fixtures/api_cli_snapshot.json",
         "src/wgsextract_cli/assets/cli/help-index.json",
     }
 )
@@ -68,7 +68,7 @@ DOCS_TARGET_INPUTS = {
     "tests/test_api_cli_parity.py": (
         "src/wgsextract_cli/**",
         "tests/cli_snapshot.py",
-        "tests/fixtures/api_cli_snapshot.json",
+        CLI_SNAPSHOT_FILES,
     ),
     "tests/test_cli_help.py": (
         "src/wgsextract_cli/**",
@@ -143,6 +143,10 @@ DOCS_ONLY_SCRIPTS = frozenset(
 )
 
 
+def generated_docs_path(path: str) -> bool:
+    return path in _GENERATED_DOCS or fnmatch.fnmatchcase(path, CLI_SNAPSHOT_FILES)
+
+
 def docs_test_targets(
     paths: list[str], *, cli: bool = False, repository: Path = ROOT
 ) -> list[str]:
@@ -152,7 +156,8 @@ def docs_test_targets(
     selected = set()
     inputs = test_inputs(repository)
     for path in paths:
-        if path.endswith(".md") and path not in GENERATED_DOCS:
+        generated = generated_docs_path(path)
+        if path.endswith(".md") and not generated:
             continue
         # Literal reads complement the declared transitive inputs. Inferred
         # fixture globs (e.g. f"scripts/{generator}") are too broad for this lane.
@@ -161,7 +166,7 @@ def docs_test_targets(
             module = target.split("::")[0]
             # Routing/policy fixtures mention arbitrary paths rather than reading them.
             discovered = (
-                path not in GENERATED_DOCS
+                not generated
                 and module in readers
                 and module
                 not in {
