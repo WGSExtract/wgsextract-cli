@@ -62,7 +62,7 @@
 {"path":"vep verify","tier":"core","summary":"Check your existing VEP cache for missing files or corruption.","key_flags":["--engine","--species","--assembly","--vep-version","--vep-cache"]},
 {"path":"vep delete","tier":"core","summary":"Delete one release and assembly of your VEP cache.","key_flags":["--engine","--species","--assembly","--vep-version","--vep-cache"]},
 {"path":"vep run","tier":"core","summary":"Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl).","key_flags":["--engine","--vep-cache","--assembly","--force","--preset","--format","--region"]},
-{"path":"report","tier":"core","summary":"Summarise a sample's results in one local HTML report.","key_flags":["--no-download","--workspace","--results","--format","--gene-list"]},
+{"path":"report","tier":"core","summary":"Summarise a sample's results in one local HTML report.","key_flags":["--no-download","--workspace","--results","--format","--gene-list","--pgx-context"]},
 {"path":"ref aadr","tier":"setup","summary":"Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.","key_flags":["--install","--delete"]},
 {"path":"ref ybrowse","tier":"setup","summary":"Explicitly install a verified, sites-only GRCh38 yBrowse snapshot.","key_flags":["--install","--delete","--snapshot"]},
 {"path":"ref somalier","tier":"setup","summary":"Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches for qc relate.","key_flags":["--install","--delete"]},

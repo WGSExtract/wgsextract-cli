@@ -54,6 +54,20 @@ def report_schema() -> dict[str, object]:
         report.ReportPgxAlternativeDocument: Shape(
             "reportPgxAlternative", additional=False
         ),
+        report.ReportAdvisoryDocument: Shape("reportAdvisory", additional=False),
+        report.ReportCpicRecommendationDocument: Shape(
+            "reportCpicRecommendation", additional=False
+        ),
+        report.ReportMedicationReviewDocument: Shape("reportMedicationReview"),
+        report.ReportCpicReleaseDocument: Shape("reportCpicRelease", additional=False),
+        report.ReportContextRulesDocument: Shape(
+            "reportContextRules", additional=False
+        ),
+        report.ReportPgxContextDocument: Shape("reportPgxContext", additional=False),
+        report.ReportContextMedicationDocument: Shape(
+            "reportContextMedication", additional=False
+        ),
+        report.ReportContextGeneDocument: Shape("reportContextGene", additional=False),
         report.ReportFactDocument: Shape("fact"),
         report.ReportMetricDocument: Shape("metric"),
     }

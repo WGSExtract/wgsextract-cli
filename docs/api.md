@@ -2029,7 +2029,7 @@ chains require `download`; lifting sample coordinates stays local.
 | `aadr_sex` | `str` | `'U'` | `--aadr-sex` | AADR metadata sex only; does not change genotype calling (default: U) One of: `U`, `M`, `F` |
 | `parallel` | `bool \| None` | `None` | `--parallel` | Call chromosomes in parallel workers (default: on with --threads above 1; calls are identical to one stream) |
 | `ref_vcf_tab` | `Path \| None` | `None` | `--ref-vcf-tab` | Master tabulated list of all consumer microarray SNPs (auto-resolved from --ref if possible) |
-| `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | File defining ploidy per chromosome (auto-resolved from --ref if possible) |
+| `ploidy_file` | `Path \| None` | `None` | `--ploidy-file` | Ploidy file for calling a BAM or CRAM (default: the reference library's, else the GRCh37 or GRCh38 preset). Other builds need one, except CHM13, which uses its own PAR ploidy and doesn't take one. |
 | `sample` | `str \| None` | `None` | `--sample` | Sample to use from a multi-sample VCF (e.g. a joint-called nf-core/sarek VCF); required when the VCF has more than one |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Chromosomal region (e.g. chrM, chrY:10000-20000) |
 | `qc_min_depth` | `float \| None` | `None` | `--qc-min-depth` | Warn below this mean depth for this run; 0 disables (default: config qc_min_diploid_depth 15, or qc_min_haploid_depth 3 for chrY/mtDNA) |
@@ -2837,9 +2837,10 @@ all-weak or incomplete call,
 The report summarises what earlier runs left in the sample folder (their
 result manifests and the sample workspace): overview and QC, lineage,
 pharmacogenomics, ClinVar pathogenic calls in the ACMG SF genes (or another
-gene list) and the microarray export. It runs no analysis; its only network
+gene list), the microarray export and, with `pgx_context`, CPIC guidance
+for the medications a person lists. It runs no analysis; its only network
 use, only with `download` permission, is fetching a missing built-in gene
-list into the reference library:
+list or the pinned CPIC database release into the reference library:
 
 ```python
 res = api.report.build(api.ReportParams(workspace=Path("HG002")))
@@ -2871,6 +2872,7 @@ plus a findings table, from the result manifests in its folder.
 | `results` | `tuple[Path, ...]` | `[]` | `--results` | Also read result manifests from this folder (repeatable); only runs on this sample's files are used. The --outdir is always read. |
 | `table_format` | `str` | `'tsv'` | `--format` | Format of the findings table, <sample>_personal_report_findings.tsv or .parquet (needs pyarrow) (default: tsv) One of: `tsv`, `parquet` |
 | `gene_list` | `str \| None` | `None` (config `report_gene_list`) | `--gene-list` | Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2; missing lists need --download), or a TSV (column gene; optional hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3) |
+| `pgx_context` | `Path \| None` | `None` | `--pgx-context` | Review these medications against CPIC guidance: a local TOML file listing them (see docs/personal-report.md); it is never uploaded. The pinned CPIC database release needs --download the first time. |
 
 ## `api.sample`
 

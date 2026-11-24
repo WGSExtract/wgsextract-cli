@@ -59,7 +59,9 @@ jobs:
       linux_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_x64 || 'false' }}
       linux_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_arm64 || 'false' }}
       macos_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.macos_arm64 || 'false' }}
-      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.windows_x64 || 'false' }}
+      # The Windows imputation lane includes a fresh locked install, not just
+      # testing the already-provisioned tool validated by local certification.
+      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && (steps.diff.outputs.windows_smoke == 'true' || (steps.diff.outputs.windows_tests != 'all' && !contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py'))) && steps.cert.outputs.windows_x64 || 'false' }}
       generic: ${{ steps.cert.outputs.generic }}
     steps:
       - name: Check out the trusted base verifier

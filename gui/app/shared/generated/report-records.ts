@@ -29,6 +29,7 @@ export interface ReportSectionsDocument {
     acmg_research?: ReportAcmgDocument;
     ancestry?: ReportAncestryDocument;
     carrier_screening?: ReportSectionDocument;
+    medication_review?: ReportMedicationReviewDocument;
     repeat_expansions?: ReportSectionDocument;
 }
 
@@ -46,7 +47,7 @@ export interface ReportOverviewDocument {
 }
 
 export interface ReportFindingDocument {
-    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "repeat_expansions" | "clinvar" | "acmg_research" | "structural_variants";
+    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "repeat_expansions" | "clinvar" | "acmg_research" | "structural_variants" | "medication_review";
     label: string;
     value: string;
     detail: string | null;
@@ -58,8 +59,9 @@ export interface ReportFindingDocument {
     evidence: ReportEvidenceDocument;
     variant: ReportVariantDocument | null;
     links: (ReportLinkDocument)[];
-    disclaimer: (string) & ("Technical result, not diagnosis." | "Research use only; not a diagnosis.");
+    disclaimer: (string) & ("Technical result, not diagnosis." | "Research use only; not a diagnosis." | "Not a prescription; review with a clinician.");
     pgx?: ReportPgxDocument;
+    advisory?: ReportAdvisoryDocument;
 }
 
 export interface ReportEvidenceDocument {
@@ -109,6 +111,31 @@ export interface ReportPgxDocument {
 export interface ReportPgxAlternativeDocument {
     diplotype: string;
     phenotype: string;
+}
+
+export interface ReportAdvisoryDocument {
+    status: (string) & ("advisory" | "context_review" | "withheld" | "context_needed" | "insufficient_evidence" | "not_assessed");
+    medication: string;
+    cpic_drug: string | null;
+    population: string | null;
+    genes: (string)[];
+    contraindication: boolean;
+    recommendation: ReportCpicRecommendationDocument | null;
+    alternatives: (ReportCpicRecommendationDocument)[];
+    notes: (string)[];
+}
+
+export interface ReportCpicRecommendationDocument {
+    id: string;
+    text: string;
+    classification: string;
+    phenotypes: Record<string, string>;
+    implication: string;
+    population: string;
+    guideline: string;
+    pmid: string | null;
+    doi: string | null;
+    url: string;
 }
 
 export interface ReportMissingDocument {
@@ -310,4 +337,58 @@ export interface ReportAncestryComponentDocument {
     lower: number;
     upper: number;
     reference_populations: string;
+}
+
+export interface ReportMedicationReviewDocument {
+    title: string;
+    status: "ok" | "not_run" | "failed";
+    summary: string;
+    findings: (ReportFindingDocument)[];
+    missing: (ReportMissingDocument)[];
+    warnings: (ReportWarningDocument)[];
+    sources: (ReportSourceDocument)[];
+    error?: string;
+    disclaimer: string;
+    cpic: ReportCpicReleaseDocument;
+    rules: ReportContextRulesDocument;
+    context: ReportPgxContextDocument;
+    genes: (ReportContextGeneDocument)[];
+}
+
+export interface ReportCpicReleaseDocument {
+    release: string;
+    published: string;
+    sha256: string;
+    url: string;
+    license: string;
+    attribution: string;
+}
+
+export interface ReportContextRulesDocument {
+    version: string;
+    sha256: string;
+    checked_against_cpic: string;
+}
+
+export interface ReportPgxContextDocument {
+    sha256: string;
+    medications: (ReportContextMedicationDocument)[];
+}
+
+export interface ReportContextMedicationDocument {
+    name: string;
+    population: string | null;
+    cpic_drug: string | null;
+}
+
+export interface ReportContextGeneDocument {
+    gene: string;
+    baseline: string;
+    adjusted: string;
+    possible: (string)[];
+    unclear: boolean;
+    rule: string | null;
+    trigger: string | null;
+    quote: string | null;
+    cpic_recommendation: string | null;
 }
