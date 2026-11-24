@@ -55,7 +55,8 @@ class FakeActions:
         self.calls.append(path)
         if path == "graphql":
             current = self.snapshots[min(self.polls, len(self.snapshots) - 1)]
-            pulls = {"nodes": current["priority"], "pageInfo": {"hasNextPage": False}}
+            nodes = [pr for pr in current["pulls"] if "priority" in pr["labels"]]
+            pulls = {"nodes": nodes, "pageInfo": {"hasNextPage": False}}
             return {"data": {"repository": {"pullRequests": pulls}}}
         if "status=queued" in path:
             self.polls += 1
@@ -69,12 +70,12 @@ class FakeActions:
 
 def snapshot(
     *entries: tuple[dict[str, Any], str, list[dict[str, Any]]],
-    priority: tuple[dict[str, Any], ...] = (),
+    pulls: tuple[dict[str, Any], ...] = (),
 ) -> Any:
     return {
         "runs": [{**r, "status": status} for r, status, _ in entries],
         "jobs": {r["id"]: job_list for r, _, job_list in entries},
-        "priority": priority,
+        "pulls": pulls,
     }
 
 
@@ -84,9 +85,11 @@ def priority_pr(
     draft: bool = False,
     queued: bool = False,
     head_repository: str = REPO,
+    labels: tuple[str, ...] = ("priority",),
 ) -> dict[str, Any]:
     return {
         "number": number,
+        "labels": labels,
         "isDraft": draft,
         "headRefName": "contributor/topic",
         "headRefOid": "a" * 40,
@@ -164,7 +167,7 @@ def test_priority_pr_bypasses_runner_and_matrix_pressure(capsys: Any) -> None:
         snapshot(
             (run(2, "merge_group"), "queued", jobs("queued")),
             (area(3), "in_progress", jobs("in_progress")),
-            priority=(priority_pr(1, draft=True),),
+            pulls=(priority_pr(1, draft=True),),
         )
     )
     code, report, _ = invoke(fake, "--pr", "1", "--max-ready", "0", capsys=capsys)
@@ -181,7 +184,7 @@ def test_agent_yields_to_priority_ready_run_below_capacity(
     status: str, job_statuses: list[str], capsys: Any
 ) -> None:
     fake = FakeActions(
-        snapshot((area(1), status, jobs(*job_statuses)), priority=(priority_pr(1),))
+        snapshot((area(1), status, jobs(*job_statuses)), pulls=(priority_pr(1),))
     )
     code, report, _ = invoke(fake, "--pr", "2", capsys=capsys)
     assert code == ci_capacity.HOLD
@@ -200,10 +203,10 @@ def test_agent_yields_to_priority_fork_run_without_pr_metadata(capsys: Any) -> N
         "head_branch": pull["headRefName"],
     }
     fake = FakeActions(
-        snapshot((run_without_pr, "queued", []), priority=(pull,)),
+        snapshot((run_without_pr, "queued", []), pulls=(pull,)),
         snapshot(
             ({**run_without_pr, "head_repository": {"full_name": REPO}}, "queued", []),
-            priority=(pull,),
+            pulls=(pull,),
         ),
     )
     code, report, err = invoke(fake, "--wait", "--interval", "0.01", capsys=capsys)
@@ -213,10 +216,33 @@ def test_agent_yields_to_priority_fork_run_without_pr_metadata(capsys: Any) -> N
 
 
 def test_agent_yields_to_priority_merge_entry_even_without_ci(capsys: Any) -> None:
-    fake = FakeActions(snapshot(priority=(priority_pr(1, queued=True),)))
+    fake = FakeActions(snapshot(pulls=(priority_pr(1, queued=True),)))
     code, report, _ = invoke(fake, "--pr", "2", capsys=capsys)
     assert code == ci_capacity.HOLD
     assert report["priority_queued"] == [1]
+
+
+@pytest.mark.parametrize("companion_label", ["hands-off", "land-asap"])
+def test_collaborator_action_labels_do_not_change_capacity_admission(
+    companion_label: str, capsys: Any
+) -> None:
+    fake = FakeActions(
+        snapshot(
+            (area(1), "pending", []),
+            (area(2), "queued", jobs("queued")),
+            pulls=(
+                priority_pr(1, labels=("priority", companion_label)),
+                priority_pr(2, labels=(companion_label,)),
+            ),
+        )
+    )
+    code, report, _ = invoke(fake, "--pr", "1", capsys=capsys)
+    assert code == ci_capacity.OK
+    assert report["priority_bypass"] == 1
+
+    code, report, _ = invoke(fake, "--pr", "2", capsys=capsys)
+    assert code == ci_capacity.HOLD
+    assert report["priority_ready"] == [1]
 
 
 def test_agent_does_not_yield_to_stale_ready_run_of_redrafted_priority_pr(
@@ -226,7 +252,7 @@ def test_agent_does_not_yield_to_stale_ready_run_of_redrafted_priority_pr(
         snapshot(
             (area(1), "in_progress", jobs("in_progress")),
             (area(2, "draft"), "queued", jobs("queued")),
-            priority=(priority_pr(1, draft=True), priority_pr(2)),
+            pulls=(priority_pr(1, draft=True), priority_pr(2)),
         )
     )
     code, report, _ = invoke(fake, capsys=capsys)

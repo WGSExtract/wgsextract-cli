@@ -1057,6 +1057,25 @@ PR at a time and starts the next check only once the previous PR's ready run
 is visible; concurrent supervisors can overshoot `--max-ready` by at most one
 run each.
 
+#### Fast path for collaborators
+
+- **`priority`** is added when a human collaborator with write, maintain, or
+  admin access opens or reopens a PR, except for the agent account (`theontho`).
+  You can remove it. With it, you can ready your PR without waiting for agent
+  capacity; agents yield while your ready CI or merge queue entry is pending.
+- Add **`hands-off`** if you want to handle everything yourself, including
+  CI reruns. Add **`land-asap`** when you're done: owner-account agents may
+  rerun cancelled or lost-runner jobs and enqueue your ready PR at the front once
+  checks pass. `hands-off` takes precedence. Without `land-asap`, agents may
+  only move your existing queue entry after you enable auto-merge or enqueue
+  the PR yourself. Agents never push to, ready, or review-fix your PR.
+
+To skip the hosted macOS lane, usually the slowest, run `just certify-setup`
+and then `just certify` on your own Mac on the exact pushed PR head. See
+[Writer self-certification](#writer-self-certification) for setup and reference
+requirements. Batch review fixes into one push to avoid rerunning the full
+selected matrix after each fix.
+
 ## Cache plan
 
 An API sample on 2026-11-13 reported **9.67 GB / 18 entries**; the immediately

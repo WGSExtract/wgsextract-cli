@@ -11,11 +11,12 @@ Use this skill when the user wants an autonomous PR babysitter: watch GitHub CI 
 
 The loop is intentionally conservative. Prefer stopping and reporting over guessing on risky, destructive, security-sensitive, or product-significant changes.
 
-For human collaborator `priority` PRs, these exceptions override the steps
-below: never mark them ready, enqueue them, push to them, or fix their review
-feedback. You may rerun cancelled or lost-runner jobs. Only an owner-account
-agent may move a passing priority PR's queue entry to the front, and only
-after the author enabled auto-merge or personally enqueued the PR.
+For human collaborator PRs, the **Collaborator PRs** section of `AGENTS.md`
+overrides the steps below. Never ready, push to, or review-fix their PRs.
+`hands-off` forbids all action. `land-asap` authorizes owner-account agents
+to rerun lost or cancelled jobs and enqueue a passing PR at the front.
+Without that label, only move a passing PR's existing queue entry after the
+author enabled auto-merge or enqueued it themselves.
 
 ## Requirements
 

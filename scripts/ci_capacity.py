@@ -3,7 +3,8 @@
 
 Read-only: inspects this repository's pull requests, workflow runs and jobs
 through `gh api`. Exit 0 means a PR may be marked ready; exit 3 means hold.
-Pass --pr for a priority PR to bypass the gate. Otherwise hold while a
+Pass --pr for a priority PR to bypass the gate (hands-off and land-asap
+labels do not change capacity admission). Otherwise hold while a
 priority PR has an active ready run or is in the merge queue, while any
 merge_group job waits for a runner, or while more than --max-ready ready-PR
 area matrices are in flight.
