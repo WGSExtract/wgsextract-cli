@@ -100,11 +100,14 @@ def test_benchmark_accepts_real_coverage_dataset_tags() -> None:
         ("GRCh38", "GRCh38"),
         ("hs38DH", "GRCh38"),
         ("hs38d1", "GRCh38"),
-        ("t2t", "GRCh38"),
+        # #1334: T2T's PARs aren't GRCh38's, so it gets no preset.
+        ("t2t", None),
     ],
 )
-def test_benchmark_ploidy_for_build_aliases(build: str, expected_ploidy: str) -> None:
-    assert benchmark.ploidy_for_build(build) == expected_ploidy
+def test_benchmark_ploidy_preset_aliases(
+    build: str, expected_ploidy: str | None
+) -> None:
+    assert benchmark.ploidy_preset(build) == expected_ploidy
 
 
 def test_benchmark_download_rejects_non_http_url(tmp_path: Path, monkeypatch) -> None:
