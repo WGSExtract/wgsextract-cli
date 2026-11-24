@@ -25,9 +25,9 @@ from scripts.ci_select_tests import (  # noqa: E402
 from scripts.ci_test_dependencies import (  # noqa: E402
     DOCS_ONLY_SCRIPTS,
     DOCS_TEST_MODULES,
-    GENERATED_DOCS,
     ROOT,
     docs_test_targets,
+    generated_docs_path,
     test_inputs,
 )
 from scripts.ci_test_tiers import SINGLE_OS_MODULES  # noqa: E402
@@ -91,7 +91,7 @@ def queue_windows_required(paths: list[str]) -> bool:
     return any(
         not path.endswith(".md")
         and not ci_path(path)
-        and path not in GENERATED_DOCS
+        and not generated_docs_path(path)
         and path not in DOCS_ONLY_SCRIPTS
         and path not in DOCS_TEST_MODULES
         for path in paths
@@ -130,7 +130,7 @@ def routes(
     for path in paths:
         if ci_path(path):
             continue
-        if path.endswith(".md") or path in GENERATED_DOCS:
+        if path.endswith(".md") or generated_docs_path(path):
             continue
         docs_python = (
             path in DOCS_ONLY_SCRIPTS

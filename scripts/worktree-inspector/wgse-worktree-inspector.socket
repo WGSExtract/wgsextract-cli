@@ -1,0 +1,10 @@
+[Unit]
+Description=WGS Extract worktree inspector socket
+
+[Socket]
+ListenStream=/run/wgse-worktree-inspector.sock
+SocketMode=0600
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

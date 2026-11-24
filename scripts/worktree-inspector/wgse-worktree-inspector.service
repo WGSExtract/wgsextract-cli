@@ -1,0 +1,27 @@
+[Unit]
+Description=WGS Extract read-only worktree activity inspector
+Requires=wgse-worktree-inspector.socket
+
+[Service]
+ExecStart=/usr/bin/python3 -I -B /usr/local/lib/wgse-worktree-inspector/inspector.py --config /etc/wgse-worktree-inspector/config.toml
+User=root
+Group=root
+WorkingDirectory=/
+CapabilityBoundingSet=CAP_SYS_PTRACE CAP_DAC_READ_SEARCH
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+ProtectProc=default
+ProcSubset=all
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+SystemCallFilter=~@debug @mount @reboot @swap
+SystemCallArchitectures=native
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+MemoryMax=128M
+TasksMax=1
