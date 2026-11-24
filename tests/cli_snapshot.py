@@ -55,6 +55,8 @@ MIGRATED = (
     ("vcf", "clair3"),
     ("vcf", "phase"),
     ("vcf", "impute"),
+    ("cohort",),
+    ("cohort", "summarize"),
     ("lineage", "mt-haplogroup"),
     ("lineage", "y-haplogroup"),
     ("lineage", "y-str"),
