@@ -18,12 +18,14 @@ from wgsextract_cli.core.report_documents import (
     ReportFindingDocument,
     ReportMitochondrialDocument,
     ReportMitochondrialFields,
+    ReportVariantDocument,
+    ReportWarningDocument,
+)
+from wgsextract_cli.core.report_mitochondrial_documents import (
     ReportMitoResourceDocument,
     ReportMitoSiteDocument,
     ReportMitoTechnicalDocument,
     ReportMitoThresholdsDocument,
-    ReportVariantDocument,
-    ReportWarningDocument,
 )
 
 from .context import (

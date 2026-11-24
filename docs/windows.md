@@ -381,6 +381,43 @@ with automatic CUDA and 344 s with forced CPU. Both runs used
 `windows-tools-12`, 16 threads, and fresh output directories. Both produced
 identical decoded BAM records: 99.81% mapped and 99.12% properly paired.
 
+### wgse-minimap2 for long reads
+
+The default Pixi environment on Windows x86-64 includes `wgse-minimap2` from
+[`windows-tools-13`](https://github.com/WGSExtract/wgsextract-cli/releases/tag/windows-tools-13).
+With `native_aligners = "auto"`, `align` and `realign` use it instead of
+stock minimap2 for long reads. No manual PATH or configuration changes are
+needed. Run `pixi run wgsextract deps check --tool wgse-minimap2` to see the
+installed path.
+
+The `map-ont`, `map-hifi` and `map-pb` presets can run their gap fills on
+CUDA. Check the driver, device and device-memory preflight with
+`wgse-minimap2 capabilities --json`. The CLI also checks available RAM and
+Windows commit; it uses the native CPU backend if CUDA is unavailable, the
+memory checks fail, or you pass `--no-prefer-native-gpu` (or set
+`prefer_native_gpu = false`). A failed or timed-out GPU batch is recomputed
+on the CPU. `--native-aligners off` uses stock minimap2. Short reads stay on
+the CPU. The CPU backend does not need the NVIDIA driver or CUDA Toolkit.
+
+On Seraph (Ryzen 9 9900X3D, RTX 5080), eight-thread `realign` to hs38
+produced the same 118,687 decoded records with upstream minimap2 2.31 and
+automatic CUDA; both retained all 86,935 primary read payloads including
+MM/ML. The test read 23 windows of 1.5 Mb from the public HG002 ONT CRAM
+(chr1–22 and X, BED start 20,000,000) and wrote indexed CRAMs with
+`--chunk-size 512M --memory 256M`. Outputs and temporary files were on a
+trusted ReFS Dev Drive with the Defender filter attached.
+
+| Backend | Wall | Peak working set (process tree) | Peak VRAM above idle | Peak run-directory disk |
+| --- | ---: | ---: | ---: | ---: |
+| Upstream CPU | 612 s | 11.8 GiB | 0 MiB | 9.63 GiB |
+| Automatic CUDA | 539 s | 12.9 GiB | 925 MiB | 9.77 GiB |
+
+This is one run per backend, not a whole-genome timing. The CUDA run was 12%
+shorter; its index build was also faster (29 s vs 47 s), and both runs
+spent time encoding and merging CRAM. WDDM VRAM is measured device-wide
+above idle. See [whole-genome sizing](resource_estimates.md#whole-genome-ont-requirements)
+for the projection and storage caveats.
+
 ## Upgrading from a WSL or MSYS2 setup
 
 Older Windows installs used a `tool_runtime` setting (`windows`, `pacman`,

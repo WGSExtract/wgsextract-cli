@@ -720,6 +720,17 @@ accuracy and caveats are in
 | `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GiB, GPU 6.1 GiB | about 100 GiB temporary (full-alignment tensors, about 1 GiB per 1% of the genome) |
 | `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
 
+On native Windows, the [HG002 ONT slice](windows.md#wgse-minimap2-for-long-reads)
+covered about 1.1% of the primary reads. Scaling the time after the one-time
+index build by the read count gives **14.3 h on upstream CPU and 12.9 h on
+CUDA** at eight threads. This is sizing, not a measurement: repeat-rich
+regions and differences in chunking, I/O and compression can change the
+result. Do not scale working set or VRAM with the total number of reads:
+they depend on index and chunk sizes and concurrent processes. The slice
+projects about 170 GB of output, below the 185.5 GB actually measured above.
+Budget at least 230 GiB per run for output and staging, plus space for
+any local copy of the input.
+
 Both callers read a primary-only CRAM 3.0 copy (81.4 GB) of the realigned
 output. `vcf clair3` checks [its temporary space](#clair3s-temporary-space)
 before it starts. The realign preflight first budgeted the output at 1.7x

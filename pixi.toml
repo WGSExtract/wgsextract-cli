@@ -25,6 +25,10 @@ curl = ">=8.21,<9"
 [target.win-64.activation.env]
 PYTHONUTF8 = "1"
 
+# Standalone Java 17 runtime for Java tools built for Java 17 (e.g. DISCVRSeq VariantQC).
+[feature.java17.dependencies]
+openjdk = "17.*"
+
 # GATK4's Bioconda package requires Python 3.10, so it gets its own environment;
 # the CLI runs `gatk` through it automatically. GATK 4.6 is built for Java 17.
 [feature.gatk.dependencies]
@@ -124,6 +128,7 @@ minimap2 = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/downlo
 samblaster = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-9/samblaster-0.1.26-wgse_2.conda", sha256 = "195387af307f978dee16cac77ad332c7943a118a6c2c66c20d3fa5afd27b1003" }
 samtools = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-10/samtools-1.24-wgse_4.conda", sha256 = "91d89b823a9f91359d2e7f10897b482f502bce9699dae5a11792a55bfc7ae851" }
 wgse-bwa = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-12/wgse-bwa-0.14.1-win64_wgse_0.conda", sha256 = "3ea3b80a46b2fc6c59539a9a07604709c2de9d465889fb287871e22a12b9fde0" }
+wgse-minimap2 = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/windows-tools-13/wgse-minimap2-0.4.1-win64_wgse_0.conda", sha256 = "fc58634d78c57b6851192918f3bb511ee3dc219317ad46316e00014684dddfab" }
 # windows-tools-end
 
 # FreeBayes' only osx-arm64 build pins htslib 1.21, which conflicts with the
@@ -384,6 +389,23 @@ smncopynumbercaller = "==1.1.2"
 numpy = ">=2"
 pysam = ">=0.23"
 
+# granite-suite (`granite qcVCF`) for VCF quality control (`vcf granite-qc`).
+# Needs pysam and pytabix (Unix only; no native Windows builds).
+[feature.granite]
+platforms = ["linux-64", "linux-aarch64", "osx-64", "osx-arm64"]
+
+[feature.granite.dependencies]
+python = "3.11.*"
+numpy = ">=1.26.4,<2.0.0"
+h5py = ">=3.11.0,<4.0.0"
+matplotlib = ">=3.9.0,<4.0.0"
+bitarray = ">=2.9.2,<3.0.0"
+pysam = ">=0.22.1,<0.23.0"
+pytabix = ">=0.1,<0.2"
+
+[feature.granite.pypi-dependencies]
+granite-suite = "==0.5.1"
+
 # Optional report aggregation; never installed by command invocation.
 [feature.multiqc.pypi-dependencies]
 multiqc = ">=1.32,<2"
@@ -473,6 +495,7 @@ multiqc = { features = ["standard-platforms", "multiqc"], solve-group = "default
 parquet = { features = ["standard-platforms", "bio-tools", "pysam", "parquet"], solve-group = "default" }
 mcp = { features = ["standard-platforms", "bio-tools", "pysam", "mcp"], solve-group = "default" }
 gatk = { features = ["standard-platforms", "gatk"], no-default-feature = true }
+java17 = { features = ["standard-platforms", "java17"], no-default-feature = true }
 freebayes = { features = ["standard-platforms", "freebayes"], no-default-feature = true }
 bwa-mem3 = { features = ["standard-platforms", "bwa-mem3"], no-default-feature = true }
 t1k = { features = ["standard-platforms", "t1k"], no-default-feature = true }
@@ -493,6 +516,7 @@ fastvep = { features = ["standard-platforms", "fastvep"], no-default-feature = t
 phasing = { features = ["standard-platforms", "phasing"], no-default-feature = true }
 smn = { features = ["standard-platforms", "smn"], no-default-feature = true }
 imputation = { features = ["standard-platforms", "imputation"], no-default-feature = true }
+granite = { features = ["standard-platforms", "granite"], no-default-feature = true }
 
 [pypi-dependencies]
 # pysam is platform-specific (no native Windows build); see feature.pysam.

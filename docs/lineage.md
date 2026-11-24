@@ -170,14 +170,16 @@ Set the library separately (`wgsextract config` shows its config path):
 reference_library = "/path/to/reference-library"
 ```
 
-The explicit download pins compressed SHA-256
-`b7984349c575c3d582933993a92770d6143603d3b895d3a0612340b167f37b62`
+The explicit download fetches the daily-updated `snps_hg38.vcf.gz` snapshot
 from <https://ybrowse.org/gbrowse2/gff/snps_hg38.vcf.gz>.
-The mutable URL's changed hash fails without replacing installed data.
-`--snapshot` deliberately selects a local VCF or VCF.gz replacement: GRCh38 Y
-length, copyright, annotation header and sorted coordinates are verified, and
-its hash is recorded. Only SNP sites/annotations are installed, never sample
-columns. No dataset is bundled or redistributed by these commands.
+Because upstream refreshes this file daily, downloads are validated by transfer
+completeness (`Content-Length` and gzip stream integrity), GRCh38 Y length,
+copyright, annotation headers, and sorted coordinates rather than a fixed
+upstream hash; any truncated or invalid download fails without replacing
+installed data. `--snapshot` selects a local VCF or VCF.gz instead of
+downloading. In both cases the snapshot's SHA-256 and prepared file checksums
+are recorded in `manifest.json`. Only SNP sites/annotations are installed, never
+sample columns. No dataset is bundled or redistributed by these commands.
 Since bootstrap v0.2.0, `ref bootstrap` includes no YBrowse files; old
 `snps_*.vcf.gz` bootstrap files are unused and safe to delete.
 

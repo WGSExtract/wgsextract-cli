@@ -45,6 +45,10 @@ on:
       smoke-only:
         type: boolean
         default: false
+      main-backstop-candidate:
+        description: The Ubuntu caller requested observation collection and failure replay for a full main run.
+        type: boolean
+        default: false
       queue-dedupe:
         description: >-
           On a main push, skip test files the passing merge group already ran
@@ -79,11 +83,19 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.matrix) }}
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: ${{ inputs.timeout-minutes }}
+    # Per-test contexts use the slower C tracer and need more time.
+    timeout-minutes: ${{ inputs.main-backstop-candidate && 80 || inputs.timeout-minutes }}
     steps:
+      - name: Verify the full backstop ref
+        id: backstop
+        if: inputs.os == 'ubuntu' && inputs.main-backstop-candidate
+        shell: bash
+        run: |
+          # Actions expression comparisons ignore case; require the exact branch.
+          if [ "$GITHUB_REF" = refs/heads/main ]; then echo "trusted=true" >> "$GITHUB_OUTPUT"; fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: ${{ inputs.os == 'ubuntu' && (github.event_name == 'pull_request' || github.event_name == 'schedule') && 128 || 1 }}
+          fetch-depth: ${{ ((inputs.os == 'ubuntu' && github.event_name == 'pull_request') || steps.backstop.outputs.trusted == 'true') && 128 || 1 }}
           persist-credentials: false
       - name: Verify native runner architecture
         if: inputs.os == 'linux-arm64'
@@ -266,6 +278,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
+          TRUSTED_FULL_MAIN: ${{ steps.backstop.outputs.trusted }}
           TEST_SELECTION: ${{ github.event_name == 'pull_request' && inputs.tests || 'all' }}
           TIER: ${{ matrix.tier }}
           SHARD: ${{ matrix.shard }}
@@ -283,7 +296,7 @@ jobs:
           if [ "$EVENT" != pull_request ] && [ "$EVENT" != merge_group ]; then
             args+=(--cov=wgsextract_cli --cov-report=xml:out/coverage.xml)
           fi
-          if [ "$OS" = ubuntu ] && [ "$EVENT" = schedule ]; then
+          if [ "$TRUSTED_FULL_MAIN" = true ]; then
             args+=(--cov-context=test --cov-config=.github/coverage-impact.ini)
           fi
           cache=(--cache-job "os=$OS tier=$TIER shard=$SHARD skip-independent=$SKIP_INDEPENDENT")
@@ -320,7 +333,9 @@ jobs:
               mode=$(jq -r .mode out/test-selection-gate.json)
               if [ "$mode" = universal-full ]; then
                 cache=()
-              elif [ "$mode" != symbol ]; then
+              elif [ "$mode" = symbol ]; then
+                echo "Linux symbol gate mode: symbol."
+              else
                 echo "::warning::Linux symbol gate did not activate: $mode; retained current selection."
               fi
             else
@@ -381,9 +396,9 @@ jobs:
             out/e2e-fake.xml
             out/pure-move-collection.log
             out/test-scope.json
-      - name: Export scheduled Linux test observations
+      - name: Export Linux test observations
         id: impact-map
-        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.regular-pytest.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.regular-pytest.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 3
         run: >-
@@ -392,13 +407,50 @@ jobs:
           --output out/test-impact-map/linux.json.gz
           --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
       - name: Save main's Linux observation map
-        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.impact-map.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.impact-map.outcome == 'success' }}
         continue-on-error: true
         timeout-minutes: 2
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: out/test-impact-map/linux.json.gz
           key: ci-impact-v2-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Export advisory Linux line observations
+        id: line-map
+        if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.impact-map.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_lines
+          --coverage-file out/.coverage --output out/test-impact-map/lines.json.gz
+          --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT"
+      - name: Save main's advisory Linux line map
+        if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.line-map.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-impact-map/lines.json.gz
+          key: ci-impact-lines-v1-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Archive the advisory Linux line map
+        if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.line-map.outcome == 'success' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-line-impact-map
+          path: out/test-impact-map/lines.json.gz
+          compression-level: 0 # Already gzipped.
+          retention-days: 7
+          overwrite: true
+      - name: Restore main's advisory Linux line map
+        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: out/test-impact-map/lines.json.gz
+          key: ci-impact-lines-v1-linux-x64-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ci-impact-lines-v1-linux-x64-
       - name: Compare shadow selection with regular Linux pytest
         if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'pull_request' }}
         continue-on-error: true
@@ -410,6 +462,7 @@ jobs:
         run: |
           pixi run -e dev --no-install python -m scripts.ci_impact_shadow \
             --observations out/test-impact-map/linux.json.gz --junit out/pytest.xml \
+            --line-map out/test-impact-map/lines.json.gz \
             --output out/test-selection-shadow.json --summary "$GITHUB_STEP_SUMMARY" \
             --gate-decision out/test-selection-gate.json \
             --selection "$TEST_SELECTION" --outcome "$TEST_OUTCOME" \
@@ -424,8 +477,9 @@ jobs:
           name: test-selection-shadow
           path: out/test-selection-shadow.json
           if-no-files-found: ignore
+          overwrite: true
       - name: Attribute failed daily Linux tests
-        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && github.ref == 'refs/heads/main' && steps.regular-pytest.outcome == 'failure' }}
+        if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.regular-pytest.outcome == 'failure' }}
         continue-on-error: true
         timeout-minutes: 18
         env:
@@ -434,11 +488,32 @@ jobs:
           pixi run -e dev --no-install python -m scripts.ci_impact_backstop
           --repository "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID"
           --junit out/pytest.xml --report out/selector-misses/report.json
-      - name: Upload scheduled selector miss receipts
-        if: ${{ !cancelled() && inputs.os == 'ubuntu' && github.event_name == 'schedule' && steps.regular-pytest.outcome == 'failure' }}
+          --witnesses out/selector-misses/witnesses.jsonl
+      - name: Upload Linux selector miss receipts
+        if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.regular-pytest.outcome == 'failure' }}
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: linux-selector-misses
           path: out/selector-misses/report.json
           if-no-files-found: ignore
+      - name: Score advisory Linux line recall
+        if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.regular-pytest.outcome == 'failure' && hashFiles('out/selector-misses/witnesses.jsonl') != '' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_backstop
+          --repository "$GITHUB_REPOSITORY" --run "$GITHUB_RUN_ID"
+          --witnesses out/selector-misses/witnesses.jsonl
+          --report out/selector-line-recall/report.json --summary "$GITHUB_STEP_SUMMARY"
+      - name: Upload advisory Linux line recall
+        if: ${{ !cancelled() && steps.backstop.outputs.trusted == 'true' && steps.regular-pytest.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-selector-line-recall
+          path: out/selector-line-recall/report.json
+          if-no-files-found: ignore
+          overwrite: true

@@ -5,6 +5,12 @@ from typing import Annotated, Literal, TypedDict, cast
 
 from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument
 from wgsextract_cli.core.output_schema import Constraints
+from wgsextract_cli.core.report_mitochondrial_documents import (
+    ReportMitoResourceDocument,
+    ReportMitoSiteDocument,
+    ReportMitoTechnicalDocument,
+    ReportMitoThresholdsDocument,
+)
 
 
 class ReportAttemptDocument(TypedDict):
@@ -92,6 +98,85 @@ class ReportPgxDocument(TypedDict):
     source: Literal["PharmCAT"]
 
 
+class ReportCpicRecommendationDocument(TypedDict):
+    id: str
+    text: Annotated[str, Constraints(description="CPIC's recommendation, verbatim.")]
+    classification: Annotated[
+        str, Constraints(description="CPIC's strength: Strong, Moderate, Optional, ...")
+    ]
+    phenotypes: Annotated[
+        dict[str, str], Constraints(description="Gene -> the phenotype it is for.")
+    ]
+    implication: str
+    population: str
+    guideline: str
+    pmid: str | None
+    doi: str | None
+    url: str
+
+
+class ReportAdvisoryDocument(TypedDict):
+    status: Annotated[
+        str,
+        Constraints(
+            enum=(
+                "advisory",
+                "context_review",
+                "withheld",
+                "context_needed",
+                "insufficient_evidence",
+                "not_assessed",
+            ),
+            description="advisory: one CPIC recommendation fits the confident call; context_review: it fits the genotype but a listed medication may change the phenotype or interact; withheld: the call's alternatives (or a weak call's possible results) lead to different recommendations; context_needed: CPIC's guidance differs by patient group or indication (give population); insufficient_evidence: CPIC has no recommendation for this medication, result or population; not_assessed: a gene the guidance needs has no result.",
+        ),
+    ]
+    medication: str
+    cpic_drug: str | None
+    population: str | None
+    genes: list[str]
+    contraindication: Annotated[
+        bool,
+        Constraints(
+            description="CPIC's recommendation advises against the drug (avoid, not recommended, contraindicated, do not use)."
+        ),
+    ]
+    recommendation: ReportCpicRecommendationDocument | None
+    alternatives: Annotated[
+        list[ReportCpicRecommendationDocument],
+        Constraints(
+            description="Other CPIC recommendations the uncertainty or a listed medication's effect could lead to; not guidance for this person."
+        ),
+    ]
+    notes: list[str]
+
+
+class ReportContextGeneDocument(TypedDict):
+    gene: str
+    baseline: Annotated[
+        str, Constraints(description="The genetic result, without medications.")
+    ]
+    adjusted: Annotated[
+        str,
+        Constraints(
+            description="The phenotype with the listed medications, by a CPIC-cited rule; the baseline when no listed medication has a CPIC-stated effect."
+        ),
+    ]
+    possible: Annotated[
+        list[str],
+        Constraints(description="Phenotypes a CPIC-cited rule says may result."),
+    ]
+    unclear: bool
+    rule: str | None
+    trigger: Annotated[
+        str | None, Constraints(description="The listed medication the rule is for.")
+    ]
+    quote: Annotated[
+        str | None,
+        Constraints(description="CPIC's statement the rule rests on, verbatim."),
+    ]
+    cpic_recommendation: str | None
+
+
 class ReportFactDocument(TypedDict):
     name: str
     label: str
@@ -120,6 +205,7 @@ ReportFindingSection = Literal[
     "mitochondrial",
     "acmg_research",
     "structural_variants",
+    "medication_review",
 ]
 
 
@@ -151,14 +237,16 @@ class ReportFindingRequired(TypedDict):
             enum=(
                 "Technical result, not diagnosis.",
                 "Research use only; not a diagnosis.",
+                "Not a prescription; review with a clinician.",
             ),
-            description="Research use only for acmg_research findings.",
+            description="Research use only for acmg_research findings; not a prescription for medication_review findings.",
         ),
     ]
 
 
 class ReportFindingDocument(ReportFindingRequired, total=False):
     pgx: ReportPgxDocument
+    advisory: ReportAdvisoryDocument
 
 
 class ReportGeneListRequired(TypedDict):
@@ -410,129 +498,6 @@ class ReportSvDocument(ReportSectionDocument, ReportSvFields):
     pass
 
 
-Fraction = Annotated[float, Constraints(minimum=0, maximum=1)]
-MitoState = Annotated[
-    str,
-    Constraints(
-        enum=(
-            "homoplasmic",
-            "heteroplasmic",
-            "weak_evidence",
-            "not_detected",
-            "not_assessed",
-        ),
-        description="homoplasmic: mutserve called the ALT at 95% or more; heteroplasmic: a call at 10-95%; weak_evidence: a call below 10%, or ALT reads (1% or more on a strand) mutserve didn't call; not_detected: no ALT read at 100x or more (a supported negative for heteroplasmy of 10% or more); not_assessed: no or too few reads, an unconfirmed reference or conflicting evidence (see reasons).",
-    ),
-]
-
-
-class ReportMitoSiteDocument(TypedDict):
-    group: Annotated[
-        str,
-        Constraints(
-            enum=("disease", "aminoglycoside"),
-            description="disease: a ClinVar expert-panel pathogenic SNV; aminoglycoside: a CPIC MT-RNR1 increased-risk allele.",
-        ),
-    ]
-    gene: str
-    hgvs: Annotated[str, Constraints(description="On the rCRS, e.g. m.1555A>G.")]
-    pos: Annotated[int, Constraints(minimum=1, description="rCRS position.")]
-    ref: str
-    alt: str
-    state: MitoState
-    level: Annotated[
-        float | None,
-        Constraints(
-            minimum=0,
-            maximum=1,
-            description="The ALT's share of reads: mutserve's level for a call, else the read fraction; null when not measured.",
-        ),
-    ]
-    depth: Annotated[int | None, Constraints(minimum=0)]
-    depth_fwd: Annotated[int | None, Constraints(minimum=0)]
-    depth_rev: Annotated[int | None, Constraints(minimum=0)]
-    level_fwd: Annotated[float | None, Constraints(minimum=0, maximum=1)]
-    level_rev: Annotated[float | None, Constraints(minimum=0, maximum=1)]
-    confidence: Annotated[
-        str, Constraints(enum=("high", "moderate", "low", "not_assessed"))
-    ]
-    reasons: list[str]
-    clinvar_id: Annotated[str, Constraints(description="ClinVar Variation ID.")]
-    clinvar_classification: str
-    clinvar_review_status: str
-    clinvar_stars: Annotated[int | None, Constraints(minimum=0, maximum=4)]
-    conditions: list[str]
-    cpic_phenotype: Annotated[
-        str | None,
-        Constraints(description="CPIC's phenotype for an aminoglycoside allele."),
-    ]
-    cpic_evidence: Annotated[
-        str | None,
-        Constraints(description="CPIC's level of evidence for the allele."),
-    ]
-
-
-class ReportMitoTechnicalDocument(TypedDict):
-    caller: str
-    version: str | None
-    settings: Annotated[str, Constraints(description="mutserve's call settings.")]
-    mt_reference: Annotated[
-        str | None,
-        Constraints(
-            description="The mtDNA reference the reads were called against: rCRS or CHM13v2.0's chrM; null when unconfirmed (reviewed variants are then not assessed)."
-        ),
-    ]
-    contig: str | None
-    reference_md5: str | None
-    median_depth: float | None
-    min_depth_fraction: Annotated[
-        float | None,
-        Constraints(
-            minimum=0,
-            maximum=1,
-            description="Share of mtDNA positions with at least 100 reads.",
-        ),
-    ]
-    homoplasmies: Annotated[int | None, Constraints(minimum=0)]
-    heteroplasmies: Annotated[int | None, Constraints(minimum=0)]
-    contamination: Annotated[
-        str | None,
-        Constraints(description="haplocheck's contamination status (YES, NO, ND)."),
-    ]
-    calls: Annotated[
-        str | None,
-        Constraints(description="mutserve's VCF, relative to the folder."),
-    ]
-    site_evidence: Annotated[
-        str | None,
-        Constraints(
-            description="mutserve's per-position read table, relative to the folder."
-        ),
-    ]
-
-
-class ReportMitoThresholdsDocument(TypedDict):
-    homoplasmic: Fraction
-    supported_heteroplasmy: Fraction
-    weak_evidence: Fraction
-    min_depth: Annotated[int, Constraints(minimum=1)]
-
-
-class ReportMitoResourceDocument(TypedDict):
-    id: str
-    name: str
-    clinvar_release: str
-    clinvar_url: str
-    clinvar_md5: str
-    clinvar_selection: str
-    cpic_citation: str
-    cpic_url: str
-    heteroplasmy_basis: Annotated[
-        str, Constraints(description="CPIC's position on heteroplasmy levels.")
-    ]
-    variants: Annotated[int, Constraints(minimum=1)]
-
-
 class ReportMitochondrialFields(TypedDict, total=False):
     advisory: Annotated[
         str,
@@ -581,6 +546,52 @@ class ReportMicroarrayDocument(ReportMicroarrayRequired, ReportMicroarrayFields)
     pass
 
 
+class ReportCpicReleaseDocument(TypedDict):
+    release: str
+    published: str
+    sha256: str
+    url: str
+    license: str
+    attribution: str
+
+
+class ReportContextRulesDocument(TypedDict):
+    version: str
+    sha256: str
+    checked_against_cpic: str
+
+
+class ReportContextMedicationDocument(TypedDict):
+    name: str
+    population: str | None
+    cpic_drug: Annotated[
+        str | None, Constraints(description="CPIC's drug id; null when not in CPIC.")
+    ]
+
+
+class ReportPgxContextDocument(TypedDict):
+    sha256: Annotated[
+        str,
+        Constraints(
+            description="SHA-256 of the effective medication list (names and populations), not of the file."
+        ),
+    ]
+    medications: list[ReportContextMedicationDocument]
+
+
+class ReportMedicationReviewDocument(ReportSectionDocument):
+    disclaimer: str
+    cpic: ReportCpicReleaseDocument
+    rules: ReportContextRulesDocument
+    context: ReportPgxContextDocument
+    genes: Annotated[
+        list[ReportContextGeneDocument],
+        Constraints(
+            description="Each gene the listed medications' CPIC guidance uses: its genetic (baseline) and medication-adjusted phenotype."
+        ),
+    ]
+
+
 class ReportSectionsRequired(TypedDict):
     overview: ReportOverviewDocument
     lineage: ReportSectionDocument
@@ -604,6 +615,12 @@ class ReportSectionsDocument(
 ):
     ancestry: ReportAncestryDocument
     carrier_screening: ReportSectionDocument
+    medication_review: Annotated[
+        ReportMedicationReviewDocument,
+        Constraints(
+            description="CPIC guidance for the medications in --pgx-context, gated on the pharmacogenomic calls' evidence; not a prescription. Present only with --pgx-context."
+        ),
+    ]
     mitochondrial: Annotated[
         ReportMitochondrialDocument,
         Constraints(

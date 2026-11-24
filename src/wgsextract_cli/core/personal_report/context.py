@@ -32,6 +32,7 @@ from wgsextract_cli.core.report_documents import (
 from wgsextract_cli.core.sample_workspace import SampleWorkspace
 from wgsextract_cli.core.utils import UsageError
 
+from .pgx_state import PgxGene
 from .rendering import (
     NEWER_ATTEMPT_FAILED,
     NOT_DIAGNOSIS,
@@ -67,6 +68,14 @@ REASONS = {
     "calibrated on (bwa-like)",
     "below_target_depth": "median depth is below the ~30x the caller is calibrated on",
     **mt_heteroplasmy.REASONS,
+    "outside_call_unverified": "PharmCAT took this gene from an outside call "
+    "whose caller's run isn't in this report, so its evidence wasn't assessed",
+    "outside_call_mismatch": "PharmCAT's outside call differs from the newest "
+    "call of the caller that makes it; rerun vcf pharmcat with its current call",
+    "alternatives_differ": "the call's alternatives (or a weak call's possible "
+    "results) lead to different CPIC recommendations, or CPIC has none for some",
+    "calls_truncated": "only some of the run's labelled calls are listed (its "
+    "confidence table is missing), so unlisted calls may be weaker",
 }
 SECTIONS = {
     "overview": "Sample overview",
@@ -79,6 +88,7 @@ SECTIONS = {
     "mitochondrial": "Mitochondrial DNA: heteroplasmy at reviewed variants",
     "acmg_research": "Automated ACMG classes in {gene_list} genes (research only)",
     "structural_variants": "Rare structural variants",
+    "medication_review": "Medication review (CPIC guidance; not a prescription)",
     "microarray": "Microarray export",
 }
 _ALIGNMENT_SUFFIXES = (".bam", ".cram")
@@ -360,6 +370,8 @@ class _Context:
     # A selected run's manifest -> the newer attempt that failed (or was
     # cancelled) after it.
     superseded: dict[str, Source] = field(default_factory=dict)
+    # Each PharmCAT gene's result and evidence, from the pharmacogenomics section.
+    pgx_genes: dict[str, PgxGene] = field(default_factory=dict)
 
     def latest(self, match: Callable[[Source], bool]) -> Source | None:
         """:func:`latest` of this sample's runs, remembering the newest

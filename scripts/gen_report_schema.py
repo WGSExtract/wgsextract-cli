@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from wgsextract_cli.core import report_documents as report  # noqa: E402
+from wgsextract_cli.core import report_mitochondrial_documents as mito  # noqa: E402
 from wgsextract_cli.core.clinical_evidence import ClinicalEvidenceDocument  # noqa: E402
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
 
@@ -40,16 +41,14 @@ def report_schema() -> dict[str, object]:
         report.ReportSvDocument: Shape("reportSv"),
         report.ReportSvThresholdsDocument: Shape("reportSvThresholds"),
         report.ReportMitochondrialDocument: Shape("reportMitochondrial"),
-        report.ReportMitoSiteDocument: Shape("reportMitoSite", additional=False),
-        report.ReportMitoTechnicalDocument: Shape(
+        mito.ReportMitoSiteDocument: Shape("reportMitoSite", additional=False),
+        mito.ReportMitoTechnicalDocument: Shape(
             "reportMitoTechnical", additional=False
         ),
-        report.ReportMitoThresholdsDocument: Shape(
+        mito.ReportMitoThresholdsDocument: Shape(
             "reportMitoThresholds", additional=False
         ),
-        report.ReportMitoResourceDocument: Shape(
-            "reportMitoResource", additional=False
-        ),
+        mito.ReportMitoResourceDocument: Shape("reportMitoResource", additional=False),
         report.ReportMicroarrayDocument: Shape("reportMicroarray"),
         report.ReportMicroarrayFileDocument: Shape("reportMicroarrayFile"),
         report.ReportAttemptDocument: Shape("reportAttempt", additional=False),
@@ -65,6 +64,20 @@ def report_schema() -> dict[str, object]:
         report.ReportPgxAlternativeDocument: Shape(
             "reportPgxAlternative", additional=False
         ),
+        report.ReportAdvisoryDocument: Shape("reportAdvisory", additional=False),
+        report.ReportCpicRecommendationDocument: Shape(
+            "reportCpicRecommendation", additional=False
+        ),
+        report.ReportMedicationReviewDocument: Shape("reportMedicationReview"),
+        report.ReportCpicReleaseDocument: Shape("reportCpicRelease", additional=False),
+        report.ReportContextRulesDocument: Shape(
+            "reportContextRules", additional=False
+        ),
+        report.ReportPgxContextDocument: Shape("reportPgxContext", additional=False),
+        report.ReportContextMedicationDocument: Shape(
+            "reportContextMedication", additional=False
+        ),
+        report.ReportContextGeneDocument: Shape("reportContextGene", additional=False),
         report.ReportFactDocument: Shape("fact"),
         report.ReportMetricDocument: Shape("metric"),
     }

@@ -13,10 +13,10 @@ from tests.test_github_actions_policy import (
     WORKFLOWS as WORKFLOWS,
 )
 from tests.test_github_actions_policy import (
-    draft_concurrency_group as draft_concurrency_group,
+    event_path_filters as event_path_filters,
 )
 from tests.test_github_actions_policy import (
-    event_path_filters as event_path_filters,
+    matches_workflow_condition as matches_workflow_condition,
 )
 from tests.test_github_actions_policy import (
     top_level_conjuncts as top_level_conjuncts,
@@ -24,9 +24,127 @@ from tests.test_github_actions_policy import (
 from tests.test_github_actions_policy import (
     triggered_workflows as triggered_workflows,
 )
-from tests.test_github_actions_policy import (
-    workflow_concurrency as workflow_concurrency,
-)
+
+
+def workflow_concurrency(workflow: Path) -> dict[str, str]:
+    """Read workflow-level concurrency without assuming a YAML indent width."""
+    lines = workflow.read_text().splitlines()
+    start = next(
+        (
+            index
+            for index, line in enumerate(lines)
+            if re.fullmatch(r"concurrency:\s*(?:#.*)?", line)
+        ),
+        None,
+    )
+    if start is None:
+        return {}
+    fields: dict[str, str] = {}
+    field_indent = None
+    folded_key = None
+    for line in lines[start + 1 :]:
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        indent = len(line) - len(line.lstrip())
+        if not indent:
+            break
+        if field_indent is None:
+            field_indent = indent
+        if indent > field_indent and folded_key is not None:
+            fields[folded_key] = f"{fields[folded_key]} {line.strip()}".lstrip()
+            continue
+        key, separator, value = line.strip().partition(":")
+        if separator:
+            folded_key = key if value.strip() == ">-" else None
+            fields[key] = "" if folded_key else value.strip()
+    return fields
+
+
+def draft_concurrency_group(workflow: Path, *, draft: bool, action: str) -> str:
+    """Render the draft-dependent expression; keep identical PR context opaque."""
+    return render_concurrency_group(
+        workflow_concurrency(workflow)["group"],
+        {"github.event.pull_request.draft": draft, "github.event.action": action},
+    )
+
+
+def render_concurrency_group(
+    group: str, values: dict[str, str | bool | tuple[str, ...]]
+) -> str:
+    def render(expression: re.Match[str]) -> str:
+        source = expression[1]
+        if not any(name in source for name in values):
+            return expression[0]
+        for name, context_value in values.items():
+            source = source.replace(name, repr(context_value))
+        tree = ast.parse(
+            source.replace("&&", " and ").replace("||", " or ").strip(), mode="eval"
+        )
+
+        def value(node: ast.AST) -> object:
+            if isinstance(node, ast.Constant):
+                return node.value
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "contains"
+                and len(node.args) == 2
+                and not node.keywords
+            ):
+                labels, label = node.args
+                if isinstance(labels, ast.Tuple):
+                    return str(value(label)).casefold() in {
+                        str(value(item)).casefold() for item in labels.elts
+                    }
+            if isinstance(node, ast.BoolOp):
+                result = value(node.values[0])
+                for child in node.values[1:]:
+                    if (isinstance(node.op, ast.And) and not result) or (
+                        isinstance(node.op, ast.Or) and result
+                    ):
+                        return result
+                    result = value(child)
+                return result
+            if isinstance(node, ast.Compare) and len(node.ops) == 1:
+                left, right = value(node.left), value(node.comparators[0])
+                if isinstance(node.ops[0], ast.NotEq):
+                    return left != right
+                if isinstance(node.ops[0], ast.Eq):
+                    return left == right
+            raise AssertionError(f"Unsupported concurrency expression: {source}")
+
+        return str(value(tree.body))
+
+    return re.sub(r"\$\{\{(.*?)\}\}", render, group)
+
+
+def test_1488_noop_pr_runs_do_not_queue_behind_failure_observers() -> None:
+    concurrency = workflow_concurrency(WORKFLOWS / "rerun_lost_runners.yml")
+
+    def group(event: str, run_id: str, *labels: str) -> str:
+        return render_concurrency_group(
+            concurrency["group"],
+            {
+                "github.event_name": event,
+                "github.run_id": run_id,
+                "github.event.pull_request.labels.*.name": labels,
+            },
+        )
+
+    # contract: serialize shared state updates, not PR runs without ci-red-main.
+    observations = group("workflow_run", "1")
+    assert group("workflow_run", "2") == observations
+    assert group("pull_request_target", "3", "bug", "ci-red-main") == observations
+    weekly = group("schedule", "4")
+    assert group("schedule", "5") == weekly
+    no_op_runs = {
+        group("pull_request_target", "6"),
+        group("pull_request_target", "7"),
+        group("pull_request_target", "8", "ci-red-main-related"),
+    }
+    assert len(no_op_runs | {observations, weekly}) == 5
+    assert concurrency["queue"] == "max"
+    assert concurrency["cancel-in-progress"] == "false"
 
 
 def test_1237_gui_upload_requires_the_build_matrix_signed_updater_targets() -> None:
@@ -148,7 +266,7 @@ def test_nightly_reuses_green_main_except_for_linux_shadow_observations(
     assert f"workflow: {workflow}" in source
     jobs = re.split(r"^  ([\w-]+):\s*\n", source.split("\njobs:\n", 1)[1], flags=re.M)
     for name, body in zip(jobs[1::2], jobs[2::2], strict=True):
-        if name == "nightly":
+        if name == "nightly" or (workflow == "ubuntu_ci.yml" and name == "test-ubuntu"):
             continue
         assert "needs: nightly" in body
         gate = re.search(r"\(([^()\n]*needs\.nightly\.result[^()\n]*)\)", body)
@@ -160,31 +278,81 @@ def test_nightly_reuses_green_main_except_for_linux_shadow_observations(
             ("schedule", "failure", "true", True),
             ("push", "success", "true", False),
             ("push", "skipped", "", True),
+            ("workflow_dispatch", "success", "true", False),
+            ("workflow_dispatch", "skipped", "", True),
         ]:
-            # contract: the #1339 full daily Ubuntu run must seed fresh observations.
-            if event == "schedule" and (workflow, name) == (
-                "ubuntu_ci.yml",
-                "test-ubuntu",
-            ):
-                run = True
-            expression = (
-                gate[1]
-                .replace("needs.nightly.result", repr(result))
-                .replace("needs.nightly.outputs.skip", repr(skip))
-                .replace("github.event_name", repr(event))
-            )
-            tree = ast.parse(expression.replace("||", " or "), mode="eval").body
-            assert isinstance(tree, ast.BoolOp) and isinstance(tree.op, ast.Or)
-            decisions = []
-            for compare in tree.values:
-                assert isinstance(compare, ast.Compare)
-                op = compare.ops[0]
-                assert isinstance(op, (ast.Eq, ast.NotEq))
-                equal = ast.literal_eval(compare.left) == ast.literal_eval(
-                    compare.comparators[0]
+            assert (
+                matches_workflow_condition(
+                    gate[1],
+                    {
+                        "needs.nightly.result": result,
+                        "needs.nightly.outputs.skip": skip,
+                    },
                 )
-                decisions.append(equal if isinstance(op, ast.Eq) else not equal)
-            assert any(decisions) is run, (workflow, name, event, result, skip)
+                is run
+            ), (
+                workflow,
+                name,
+                event,
+                result,
+                skip,
+            )
+
+
+def test_1464_ubuntu_dispatch_reaches_the_full_backstop_through_reusable_calls() -> (
+    None
+):
+    guard = (WORKFLOWS / "nightly_guard.yml").read_text()
+    assert (
+        "if: github.event_name == 'schedule' || inputs.main-backstop-candidate" in guard
+    )
+    ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
+    backstop = ubuntu.split("\n  test-ubuntu:\n", 1)[1].split("\n  optional-tools:", 1)[
+        0
+    ]
+    # A slow, failed or skipped guard cannot prevent a trusted full pytest run.
+    assert "needs.nightly" not in backstop and "needs: nightly" not in backstop
+    assert "main-backstop-candidate: *main-backstop-candidate" in backstop
+    suite = (WORKFLOWS / "os_tests.yml").read_text()
+    assert (
+        "timeout-minutes: ${{ inputs.main-backstop-candidate && 80 || inputs.timeout-minutes }}"
+        in suite
+    )
+    assert "TRUSTED_FULL_MAIN: ${{ steps.backstop.outputs.trusted }}" in suite
+    assert (
+        'if [ "$TRUSTED_FULL_MAIN" = true ]; then\n            args+=(--cov-context=test'
+        in suite
+    )
+    for name in ("macos_ci.yml", "windows_ci.yml", "linux_arm64.yml", "cli_smoke.yml"):
+        assert "main-backstop-candidate:" not in (WORKFLOWS / name).read_text()
+
+
+def test_1452_only_trusted_full_ubuntu_coverage_can_seed_the_line_cache() -> None:
+    suite = (WORKFLOWS / "os_tests.yml").read_text()
+    steps = dict(
+        re.findall(
+            r"^      - name: ([^\n]+)\n(.*?)(?=^      - name: |\Z)", suite, re.M | re.S
+        )
+    )
+    export = steps["Export advisory Linux line observations"]
+    for name in (
+        "Export advisory Linux line observations",
+        "Save main's advisory Linux line map",
+        "Archive the advisory Linux line map",
+    ):
+        assert "steps.backstop.outputs.trusted == 'true'" in steps[name]
+        assert "continue-on-error: true" in steps[name]
+    assert "steps.impact-map.outcome == 'success'" in export
+    assert "--coverage-file out/.coverage" in export
+    assert "--line-map" not in steps["Run Tests"]
+    assert "--line-map" in steps["Compare shadow selection with regular Linux pytest"]
+    assert (
+        "overwrite: true"
+        in steps["Upload advisory Linux selection and outcome receipt"]
+    )
+    assert suite.index("Upload Linux selector miss receipts") < suite.index(
+        "Score advisory Linux line recall"
+    )
 
 
 def test_1045_move_import_collection_cannot_be_skipped_by_writer_certificates() -> None:

@@ -713,3 +713,37 @@ def test_a_delta_templates_bases_are_among_its_freshness_inputs():
     # V2ab is stored against V2cd, itself against V2_2021.
     assert "Ancestry_V2cd.txt.delta.gz" in names
     assert "Ancestry_V2_2021.txt.gz" in names
+
+
+def test_delta_template_resolves_base_in_reference_library_bootstrap(tmp_path):
+    from wgsextract_cli.core.microarray.templates import template_resource_paths
+
+    templates = tmp_path / "microarray/raw_file_templates"
+    body = templates / "body"
+    head = templates / "head"
+    body.mkdir(parents=True)
+    head.mkdir(parents=True)
+    (head / "Ancestry_V2cd.txt").write_text(
+        "rsid\tchromosome\tposition\tallele1\tallele2\n"
+    )
+    with gzip.open(body / "Ancestry_V2_2021.txt.gz", "wt") as handle:
+        handle.write("rsLocalBase\t1\t100\nrsSkipped\t1\t150\n")
+    with gzip.open(body / "Ancestry_V2cd.txt.delta.gz", "wt") as handle:
+        handle.write("#base\tAncestry_V2_2021\n=1\n+rsLocalDelta\t1\t200\n")
+
+    out = tmp_path / "out.txt"
+    kit = _kit(
+        tmp_path / "kit.txt",
+        [("rsLocalBase", "1", "100", "AG"), ("rsLocalDelta", "1", "200", "CT")],
+    )
+    convert_to_vendor_format("Ancestry_V2cd", kit, str(out), str(tmp_path))
+
+    lines = out.read_text().splitlines()
+    assert lines == [
+        "rsid\tchromosome\tposition\tallele1\tallele2",
+        "rsLocalBase\t1\t100\tA\tG",
+        "rsLocalDelta\t1\t200\tC\tT",
+    ]
+    assert body / "Ancestry_V2_2021.txt.gz" in template_resource_paths(
+        str(tmp_path), "Ancestry_V2cd"
+    )

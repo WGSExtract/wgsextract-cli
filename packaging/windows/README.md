@@ -154,6 +154,15 @@ supported NVIDIA GPU and driver; no CUDA Toolkit installation is needed.
 documents automatic CUDA selection, how to force CPU, and how to override
 the packaged build.
 
+### wgse-minimap2 (Windows x86-64)
+
+The `wgse-minimap2` recipe uses the same clang-cl, VS 2022 and
+CUDA 13.5 toolchain as `wgse-bwa`. The GPU is not needed to build, install or
+use its CPU backend. Build it by replacing `wgse-bwa` with `wgse-minimap2`
+in the `rattler-build` command above. The default win-64 Pixi environment
+pins `wgse-minimap2` from `windows-tools-13`, without changing the other tool
+pins. See [Windows alignment](../../docs/windows.md#wgse-minimap2-for-long-reads).
+
 ### GATK kernels
 
 GKL is a separate Windows-only dependency of the `gatk` feature. Its
@@ -212,7 +221,7 @@ repository root:
 $env:MSYS2_ROOT = "C:\msys64"   # where MSYS2 is
 $env:PATH = "$env:MSYS2_ROOT\ucrt64\bin;$env:MSYS2_ROOT\usr\bin;$env:PATH"
 $recipes = Get-ChildItem packaging/windows/recipes -Directory |
-    Where-Object { $_.Name -ne 'wgse-bwa' } |
+    Where-Object { $_.Name -notin 'wgse-bwa', 'wgse-minimap2' } |
     ForEach-Object { '--recipe'; $_.FullName }
 pixi exec --spec rattler-build==0.77.0 rattler-build build `
     @recipes --output-dir out/conda --target-platform win-64
@@ -220,6 +229,6 @@ pixi exec --spec rattler-build==0.77.0 rattler-build build `
 
 An MSYS2 recipe is `recipe.yaml` (source URL and SHA-256, patches, tests)
 plus `build.sh`, which sources [recipes/env.sh](recipes/env.sh) for the shared
-flags. `wgse-bwa` instead uses `build.cmd`. To change a patch, unpack the source
+flags. `wgse-bwa` and `wgse-minimap2` instead use `build.cmd`. To change a patch, unpack the source
 into a git repository, apply the patch, edit, and regenerate it with `git diff`
 (some upstream files are CRLF; `.gitattributes` keeps patches byte-exact).

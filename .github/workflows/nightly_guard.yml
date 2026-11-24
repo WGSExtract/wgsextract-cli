@@ -6,6 +6,10 @@ on:
       workflow:
         type: string
         required: true
+      main-backstop-candidate:
+        description: Also check a potential manual Ubuntu backstop on main.
+        type: boolean
+        default: false
     outputs:
       skip:
         value: ${{ jobs.check.outputs.skip }}
@@ -16,7 +20,7 @@ permissions:
 
 jobs:
   check:
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || inputs.main-backstop-candidate
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
@@ -29,4 +33,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           WORKFLOW: ${{ inputs.workflow }}
-        run: python3 scripts/ci_nightly.py --repository "$GITHUB_REPOSITORY" --workflow "$WORKFLOW" --sha "$GITHUB_SHA" --output "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          # Actions expression comparisons ignore case; Git refs do not.
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" != refs/heads/main ]]; then exit 0; fi
+          python3 scripts/ci_nightly.py --repository "$GITHUB_REPOSITORY" --workflow "$WORKFLOW" --sha "$GITHUB_SHA" --output "$GITHUB_OUTPUT"

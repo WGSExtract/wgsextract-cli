@@ -18,6 +18,7 @@ from wgsextract_cli.core.report_documents import (
     ReportFactDocument,
     ReportFindingDocument,
     ReportLinkDocument,
+    ReportMedicationReviewDocument,
     ReportMetricDocument,
     ReportMicroarrayDocument,
     ReportMissingDocument,
@@ -37,6 +38,7 @@ RenderedSection = (
     | ReportAncestryDocument
     | ReportSvDocument
     | ReportMicroarrayDocument
+    | ReportMedicationReviewDocument
     | ReportMitochondrialDocument
 )
 
@@ -281,6 +283,11 @@ def _html_section_body(
                 f'<p class="muted">Every classified allele: '
                 f"{_link(section['all_calls'], _href(section['all_calls'], base))}</p>"
             )
+    elif name == "medication_review":
+        section = sections["medication_review"]
+        out.extend(
+            f'<p class="muted">{_h(line)}</p>' for line in _review_notes(section)
+        )
     elif name == "ancestry" and sections["ancestry"]["components"]:
         section = sections["ancestry"]
         out.append(f'<p class="muted">{_h(section["note"])}</p>')
@@ -411,6 +418,22 @@ def _mito_table(
             ]
         )
     return head, rows
+
+
+def _review_notes(section: ReportMedicationReviewDocument) -> list[str]:
+    """The medications reviewed and the CPIC release and rules behind it."""
+    cpic, rules = section["cpic"], section["rules"]
+    medications = ", ".join(
+        m["name"] + (f" ({m['population']})" if m["population"] else "")
+        for m in section["context"]["medications"]
+    )
+    return [
+        f"Medications listed: {medications}.",
+        f"Source: CPIC® database {cpic['release']} ({cpic['published']}, "
+        f"{cpic['license']}); {cpic['attribution']}",
+        f"Medication-effect rules {rules['version']}, checked against CPIC "
+        f"{rules['checked_against_cpic']}.",
+    ]
 
 
 def _acmg_notes(section: ReportAcmgDocument) -> list[str]:
@@ -671,6 +694,9 @@ def render_markdown(report: ReportDocument, base: str = ".") -> str:
                 out.append(
                     f"Every classified allele: {_md_link(section['all_calls'], href)}"
                 )
+        if name == "medication_review":
+            section = sections["medication_review"]
+            out += ["", *(_md(line) for line in _review_notes(section))]
         if name == "ancestry" and sections["ancestry"]["components"]:
             section = sections["ancestry"]
             out += ["", f"_{_md(section['note'])}_"]

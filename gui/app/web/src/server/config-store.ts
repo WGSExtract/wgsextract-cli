@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { allControls, configEditorControls, persistsFieldValue } from "../../../shared/rendering.js";
+import { allControls, configEditorControls, firstPathValue, persistsFieldValue, splitPathList } from "../../../shared/rendering.js";
 import type { BundleManifest, ConfigSetting, ControlSpec, StringMap, ValueMap } from "../../../shared/types.js";
 import { writeFileAtomically } from "./atomic-file.js";
 import type { BundleState } from "./bundle-state.js";
@@ -8,6 +8,7 @@ import { parseConfigToml as parseToml, readOptionalFlatToml, serializeConfigToml
 import { errnoCode } from "./errors.js";
 import { configPath, expandWorkspaceToken, isPreviousConfigPath } from "./paths.js";
 import { withSettingsFileLock } from "./settings-lock.js";
+import { withWorkspaceUse } from "./workspace-activity.js";
 
 export function initialConfigFilePaths(manifest: BundleManifest, bundleState: Pick<BundleState, "configFilePaths">, bundleRoot: string): StringMap {
     return Object.fromEntries(configEditorControls(manifest).flatMap((control) => {
@@ -76,6 +77,16 @@ export function initialFieldValues(manifest: BundleManifest, configValues: Value
                 values[setting.id] = value;
         }
     }
+    // Preserve persisted multi-file lists when config.toml holds their matching primary (first) file.
+    for (const control of allControls(manifest).filter((candidate) => candidate.kind === "path" && candidate.multiple === true)) {
+        const persisted = bundleState.fieldValues?.[control.id];
+        if (splitPathList(persisted).length > 1) {
+            const current = String(values[control.id] ?? "").trim();
+            if (!current || firstPathValue(persisted) === current) {
+                values[control.id] = persisted;
+            }
+        }
+    }
     return values;
 }
 export function initialCheckedOptions(manifest: BundleManifest, configValues: ValueMap, bundleState: Pick<BundleState, "checkedOptions">): Record<string, string[]> {
@@ -126,6 +137,9 @@ export async function loadConfig(control: ControlSpec, requestedPath: string | u
     };
 }
 export async function saveConfig(control: ControlSpec, requestedPath: string | undefined, values: Readonly<Record<string, unknown>>, bundleRoot: string) {
+    return withWorkspaceUse(() => saveConfigNow(control, requestedPath, values, bundleRoot));
+}
+async function saveConfigNow(control: ControlSpec, requestedPath: string | undefined, values: Readonly<Record<string, unknown>>, bundleRoot: string) {
     const filePath = configPath(control, requestedPath, bundleRoot);
     const byKey: Record<string, unknown> = {};
     for (const setting of control.settings ?? []) {

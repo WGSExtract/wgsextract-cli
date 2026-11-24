@@ -42,6 +42,7 @@ from wgsextract_cli import __version__ as __version__
 from wgsextract_cli.core import acmg as acmg
 from wgsextract_cli.core import clinical_evidence as clinical_evidence
 from wgsextract_cli.core import contamination as contamination
+from wgsextract_cli.core import cpic_data as cpic_data
 from wgsextract_cli.core import gene_lists as gene_lists
 from wgsextract_cli.core import read_scope as read_scope
 from wgsextract_cli.core import variant_confidence as variant_confidence
@@ -49,7 +50,9 @@ from wgsextract_cli.core.builds import build_from_chr1_length as build_from_chr1
 from wgsextract_cli.core.builds import canonical_build as canonical_build
 from wgsextract_cli.core.builds import is_hg37_build as is_hg37_build
 from wgsextract_cli.core.builds import is_hg38_build as is_hg38_build
+from wgsextract_cli.core.cpic_data import CpicData as CpicData
 from wgsextract_cli.core.multiqc import find_documents as find_documents
+from wgsextract_cli.core.pgx_context import PgxContext as PgxContext
 from wgsextract_cli.core.ref_library.models import sequence_lengths as sequence_lengths
 from wgsextract_cli.core.reference_assets import input_stem as input_stem
 from wgsextract_cli.core.report_documents import (
@@ -75,6 +78,9 @@ from wgsextract_cli.core.report_documents import (
 )
 from wgsextract_cli.core.report_documents import (
     ReportLinkDocument as ReportLinkDocument,
+)
+from wgsextract_cli.core.report_documents import (
+    ReportMedicationReviewDocument as ReportMedicationReviewDocument,
 )
 from wgsextract_cli.core.report_documents import (
     ReportMetricDocument as ReportMetricDocument,
@@ -274,6 +280,8 @@ from .genotyping import (
 from .genotyping import (
     repeat_expansions,
 )
+from .medication_review import load_rules as load_rules
+from .medication_review import medication_review as medication_review
 from .mitochondrial import mitochondrial as mitochondrial
 from .overview import (
     _INFO_FACTS as _INFO_FACTS,
@@ -338,8 +346,9 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column(
         "section",
         TEXT,
-        "Report section: lineage, pharmacogenomics, carrier_screening, repeat_expansions, clinvar, "
-        "mitochondrial, acmg_research or structural_variants.",
+        "Report section: lineage, pharmacogenomics, medication_review, "
+        "carrier_screening, repeat_expansions, clinvar, mitochondrial, "
+        "acmg_research or structural_variants.",
     ),
     Column("label", TEXT, "What the finding is, e.g. 'BRCA2 Pathogenic'."),
     Column("value", TEXT, "The result: haplogroup, diplotype or ClinVar class."),
@@ -371,7 +380,8 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column(
         "disclaimer",
         TEXT,
-        "Technical result, not diagnosis (research use only for acmg_research).",
+        "Technical result, not diagnosis (research use only for acmg_research; "
+        "not a prescription for medication_review).",
     ),
     Column("clinvar_id", TEXT, "ClinVar resource record identity."),
     Column("clinvar_review_status", TEXT, "CLNREVSTAT assertion review status."),
@@ -443,11 +453,15 @@ def build_report(
     results: Iterable[Path] = (),
     sources: list[Source] | None = None,
     gene_list: str | Path | None = None,
+    pgx_context: PgxContext | None = None,
+    cpic: CpicData | None = None,
 ) -> ReportDocument:
     """The report document (``wgsextract.report/1``) of the sample in ``folder``.
 
     ``gene_list`` is a built-in list's id or a TSV or BED file (core/gene_lists.py);
-    by default the newest ACMG SF list."""
+    by default the newest ACMG SF list. ``pgx_context`` (the person's listed
+    medications) adds the medication review, from ``cpic`` (default: the
+    pinned CPIC release in the reference library, which may need --download)."""
     gene_lists.describe(gene_list)
     folder = Path(os.path.abspath(folder))
     if sources is None:
@@ -470,11 +484,19 @@ def build_report(
     # Opt-in research: shown only when `vcf acmg` ran, never asked for.
     if research is not None:
         research_section["acmg_research"] = research
+    pharmacogenomics = _pharmacogenomics(ctx)
+    review: dict[str, ReportMedicationReviewDocument] = {}
+    # Opt-in: only for medications the person lists (--pgx-context).
+    if pgx_context is not None:
+        review["medication_review"] = medication_review(
+            ctx, pgx_context, cpic or cpic_data.load(), load_rules()
+        )
     sections = ReportSectionsDocument(
         overview=_overview(ctx),
         lineage=_lineage(ctx),
         ancestry=_ancestry(ctx),
-        pharmacogenomics=_pharmacogenomics(ctx),
+        pharmacogenomics=pharmacogenomics,
+        **review,  # type: ignore[typeddict-item]
         carrier_screening=_carrier_screening(ctx),
         repeat_expansions=repeat_expansions(ctx),
         clinvar=_clinvar(ctx),

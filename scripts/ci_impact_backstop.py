@@ -1,4 +1,4 @@
-"""Attribute daily Linux failures to verified symbol-selection omissions."""
+"""Attribute daily Linux failures and score advisory line selections."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -98,17 +98,51 @@ def verified_omission(
     )
 
 
+def line_detection(
+    receipt: dict[str, Any], tree: str, head: str, test: str, run: int, attempt: int
+) -> dict[str, bool] | None:
+    if not (
+        receipt.get("schema") == 1
+        and receipt.get("run_id") == run
+        and attempt > 0
+        and receipt.get("attempt") == attempt
+        and receipt.get("pr_head") == head
+        and receipt.get("tested_git_tree") == tree
+        and receipt.get("run_outcome") in ("success", "failure")
+        and receipt.get("gate_mode") == "symbol"
+    ):
+        return None
+    variants = receipt.get("variants")
+    line = variants.get("line") if isinstance(variants, dict) else None
+    if not isinstance(line, dict) or line.get("status") != "eligible":
+        return None
+    selected, omitted = line.get("selected"), line.get("omitted")
+    effective = receipt.get("effective_selected")
+    if not (
+        isinstance(selected, list)
+        and isinstance(omitted, list)
+        and isinstance(effective, list)
+        and (test in selected) != (test in omitted)
+    ):
+        return None
+    return {"line_caught": test in selected, "symbol_caught": test in effective}
+
+
 def git(root: Path, *args: str) -> str:
     return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
 
 
 def green_nightly(gh: GitHub, root: Path, run: int, head: str) -> str | None:
-    runs = gh.api(
-        "GET",
-        "actions/workflows/ubuntu_ci.yml/runs?event=schedule&branch=main&per_page=15",
-    )
+    runs = [
+        candidate
+        for event in ("schedule", "workflow_dispatch")
+        for candidate in gh.api(
+            "GET",
+            f"actions/workflows/ubuntu_ci.yml/runs?event={event}&branch=main&per_page=15",
+        )["workflow_runs"]
+    ]
     ancestry = set(git(root, "rev-list", "--first-parent", head).splitlines())
-    for candidate in runs["workflow_runs"]:
+    for candidate in sorted(runs, key=lambda row: row["id"], reverse=True):
         sha = candidate["head_sha"]
         if candidate["id"] >= run or sha not in ancestry or sha == head:
             continue
@@ -116,9 +150,19 @@ def green_nightly(gh: GitHub, root: Path, run: int, head: str) -> str | None:
             f"actions/runs/{int(candidate['id'])}/jobs?filter=latest", "jobs"
         )
         for job in jobs:
-            if job["name"] == "test-ubuntu / all" and any(
-                step["name"] == "Run Tests" and step["conclusion"] == "success"
+            passed = {
+                step["name"]
                 for step in job.get("steps", ())
+                if step["conclusion"] == "success"
+            }
+            if (
+                job["name"] == "test-ubuntu / all"
+                and "Run Tests" in passed
+                and (
+                    candidate["event"] == "schedule"
+                    # Older dispatches ran pytest but did not collect observations.
+                    or "Export Linux test observations" in passed
+                )
             ):
                 return str(sha)
     return None
@@ -220,9 +264,9 @@ def receipt_from_run(gh: GitHub, run: int) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def attribution(
-    gh: GitHub, root: Path, commit: str, test: str
-) -> dict[str, Any] | None:
+def matching_receipts(
+    gh: GitHub, root: Path, commit: str, *, include_failures: bool = False
+) -> Iterator[tuple[int, str, str, dict[str, Any], dict[str, Any]]]:
     pulls = gh.api("GET", f"commits/{commit}/pulls")
     matching = [
         pr
@@ -234,18 +278,21 @@ def attribution(
         and pr["head"]["repo"]["full_name"] == gh.repository
     ]
     if len(matching) != 1:
-        return None
+        return
     pr = matching[0]
     head = pr["head"]["sha"]
     if not SHA.fullmatch(head):
-        return None
+        return
     tree = git(root, "rev-parse", f"{commit}^{{tree}}")
     runs = gh.api(
         "GET",
         f"actions/workflows/pr_ci.yml/runs?head_sha={head}&event=pull_request&status=completed&per_page=15",
     )
     for run in runs["workflow_runs"]:
-        if run["head_sha"] != head or run["conclusion"] != "success":
+        if run["head_sha"] != head or not (
+            run["conclusion"] == "success"
+            or (include_failures and run["conclusion"] == "failure")
+        ):
             continue
         run_id = int(run["id"])
         try:
@@ -257,19 +304,70 @@ def attribution(
             zipfile.BadZipFile,
         ):
             continue
+        yield int(pr["number"]), tree, head, run, receipt
+
+
+def attribution(
+    gh: GitHub, root: Path, commit: str, test: str
+) -> dict[str, Any] | None:
+    for pr, tree, head, run, receipt in matching_receipts(gh, root, commit):
+        run_id = int(run["id"])
         if verified_omission(receipt, tree, head, test, run_id):
             return {
-                "pr": int(pr["number"]),
+                "pr": pr,
                 "commit": commit,
                 "test": test,
-                "rule": "symbol-no-matching-edge",
                 "pr_run": run_id,
+                "rule": "symbol-no-matching-edge",
                 "rule_reasons": receipt["rule_reasons"],
             }
     return None
 
 
-def investigate(gh: GitHub, junit: Path, run: int, output: Path) -> None:
+def write_line_recall(
+    output: Path, run: int, detections: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    reports: dict[int, dict[str, Any]] = {}
+    for detection in detections:
+        report = reports.setdefault(
+            detection["pr_run"],
+            {
+                **{
+                    k: detection[k]
+                    for k in ("pr", "pr_run", "commit", "tested_git_tree")
+                },
+                "line_caught": 0,
+                "symbol_caught": 0,
+                "failing_files": [],
+                "line_missed_files": [],
+                "symbol_missed_files": [],
+            },
+        )
+        test = detection["test"]
+        if test in report["failing_files"]:
+            continue
+        report["failing_files"].append(test)
+        for arm in ("line", "symbol"):
+            if detection[f"{arm}_caught"]:
+                report[f"{arm}_caught"] += 1
+            else:
+                report[f"{arm}_missed_files"].append(test)
+    rows = list(reports.values())
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(
+        json.dumps({"nightly_run": run, "reports": rows}) + "\n", encoding="utf-8"
+    )
+    return rows
+
+
+def investigate(
+    gh: GitHub,
+    junit: Path,
+    run: int,
+    output: Path,
+    *,
+    witnesses: Path | None = None,
+) -> None:
     root = Path.cwd().resolve()
     output = output.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -291,6 +389,7 @@ def investigate(gh: GitHub, junit: Path, run: int, output: Path) -> None:
         print("Nightly replay exceeds the automatic attribution budget.")
         return
     reports: list[dict[str, Any]] = []
+    confirmed: set[tuple[str, str]] = set()
     for test, nodes in sorted(failed.items()):
         for node, signature in sorted(nodes.items()):
 
@@ -304,10 +403,73 @@ def investigate(gh: GitHub, junit: Path, run: int, output: Path) -> None:
                 continue
             bad, why = first_bad(commits, runner)
             print(f"{test}: {bad or 'unattributed'} ({why})")
-            if bad and (miss := attribution(gh, root, bad, test)):
-                if not any(r["test"] == test and r["commit"] == bad for r in reports):
-                    reports.append(miss)
-                    output.write_text(json.dumps(reports) + "\n", encoding="utf-8")
+            if not bad:
+                continue
+            if witnesses is not None and (bad, test) not in confirmed:
+                try:
+                    with witnesses.open("a", encoding="utf-8") as stream:
+                        print(json.dumps([bad, test]), file=stream)
+                    confirmed.add((bad, test))
+                except OSError as error:
+                    print(f"Could not save an advisory line recall witness: {error}")
+            miss = attribution(gh, root, bad, test)
+            if miss and not any(
+                r["test"] == test and r["commit"] == bad for r in reports
+            ):
+                reports.append(miss)
+                output.write_text(json.dumps(reports) + "\n", encoding="utf-8")
+
+
+def score_line_recall(
+    gh: GitHub, witnesses: Path, run: int, output: Path, summary: Path | None
+) -> None:
+    root = Path.cwd().resolve()
+    detections: list[dict[str, Any]] = []
+    if not witnesses.is_file():
+        return
+    by_commit: dict[str, set[str]] = {}
+    for record in witnesses.read_text(encoding="utf-8").splitlines():
+        commit, test = json.loads(record)
+        if SHA.fullmatch(commit) and TEST.fullmatch(test):
+            by_commit.setdefault(commit, set()).add(test)
+    rows = []
+    for commit, remaining in sorted(by_commit.items()):
+        for pr, tree, head, pr_run, receipt in matching_receipts(
+            gh, root, commit, include_failures=True
+        ):
+            run_id, attempt = int(pr_run["id"]), int(pr_run["run_attempt"])
+            for test in sorted(remaining):
+                result = line_detection(receipt, tree, head, test, run_id, attempt)
+                if result is None:
+                    continue
+                detections.append(
+                    {
+                        "pr": pr,
+                        "pr_run": run_id,
+                        "commit": commit,
+                        "test": test,
+                        "tested_git_tree": tree,
+                        **result,
+                    }
+                )
+                remaining.remove(test)
+            if detections:
+                rows = write_line_recall(output, run, detections)
+            if not remaining:
+                break
+    if rows and summary is not None:
+        with summary.open("a", encoding="utf-8") as stream:
+            print(
+                "\n### Linux selector recall (reproducible nightly failures)\n",
+                file=stream,
+            )
+            print("| PR run | Symbol | Line shadow |\n|---|---:|---:|", file=stream)
+            for row in rows:
+                total = len(row["failing_files"])
+                print(
+                    f"| {row['pr_run']} | {row['symbol_caught']}/{total} | {row['line_caught']}/{total} |",
+                    file=stream,
+                )
 
 
 def publish(gh: GitHub, run: int, report: Path) -> None:
@@ -345,12 +507,22 @@ def main() -> None:
     parser.add_argument("--run", type=int, required=True)
     parser.add_argument("--report", type=Path, required=True)
     parser.add_argument("--junit", type=Path)
+    parser.add_argument("--witnesses", type=Path)
+    parser.add_argument("--summary", type=Path)
     args = parser.parse_args()
     gh = GitHub(args.repository)
-    if args.junit is None:
-        publish(gh, args.run, args.report)
+    if args.junit is not None:
+        investigate(
+            gh,
+            args.junit,
+            args.run,
+            args.report,
+            witnesses=args.witnesses,
+        )
+    elif args.witnesses is not None:
+        score_line_recall(gh, args.witnesses, args.run, args.report, args.summary)
     else:
-        investigate(gh, args.junit, args.run, args.report)
+        publish(gh, args.run, args.report)
 
 
 if __name__ == "__main__":

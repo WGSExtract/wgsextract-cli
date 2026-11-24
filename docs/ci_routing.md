@@ -160,16 +160,17 @@ Thus a CLI edit unrelated to setup and the parser contract runs **zero** OS-inst
 and **zero** Ubuntu app-bundle checks rather than four installer steps and one
 app-bundle check. `run-install-lab` remains an explicit full-platform override.
 
-The four full OS workflows and CLI smoke call `nightly_guard.yml`. Its only
-runner is a small Ubuntu API check, allocated only on `schedule`; PRs,
-pushes and dispatches skip it without a runner. A scheduled workflow skips its
-expensive jobs only if its own successful **push** run exists for the exact
-current main SHA in this repository. A different SHA, a failed/cancelled run,
-a PR/nightly success, missing evidence or an API error retains full coverage.
+The four full OS workflows and CLI smoke call `nightly_guard.yml`. Its small
+Ubuntu API check runs on a schedule or on a full manual Ubuntu run on `main`;
+PRs, pushes and other dispatches skip it without a runner. The check lets
+those workflows skip expensive jobs only if their own successful **push**
+run exists for the exact current main SHA in this repository. A different SHA,
+a failed/cancelled run, a PR/nightly success, missing evidence or an API error
+retains full coverage.
 Failure or timeout of the guard runner itself also runs coverage; a skip
 requires both a successful guard and its explicit `skip=true` output.
-Manual dispatch always runs. Regular Ubuntu pytest also always runs on
-schedule: its daily full-suite backstop must not reuse a green main push.
+Regular Ubuntu pytest always runs on schedule or on a full manual Ubuntu
+run on `main`: the backstop must not reuse a green main push.
 The `required` queue summary now directly depends on Windows as well as Ubuntu;
 it cannot pass while code-selected Windows failed or was cancelled.
 Queue Windows selection uses changed code/runtime-input paths, independently
@@ -415,7 +416,7 @@ without reusing a prior push's pass. It refreshes the existing test-result
 cache ([#915 (passed-test cache)](https://github.com/WGSExtract/wgsextract-cli/issues/915)).
 Main pushes can avoid repeating that exact SHA's queue passes, but not the
 files the queue skipped. Keep test-selection receipts for the tested trees.
-If nightly fails, rerun only the failing tests on
+If the backstop fails, rerun only the failing tests on
 first-parent main trees since the last comparable full pass to locate the
 first reproducibly bad commit. Do not infer a miss from timing or from a
 single failure: distinguish omissions from flakes, runner failures and
@@ -707,6 +708,11 @@ prose filters. Relevant app/native
 merges still run the matching workflows. Coalescing limits each workflow's
 main-push backlog to its newest run; it does not promise a fixed saving in
 runner-minutes or a measured queue-wait target.
+
+Workflow completions and PR events carrying `ci-red-main` share the observer
+queue so they cannot update quarantine state concurrently. Other PR events do
+no work and use a separate group per run, so a full observer queue cannot
+block their startup. The weekly rollup keeps its own group.
 
 The failure observer treats a cancelled superseded main run as obsolete:
 no retry, red-main update or flake exemption from its partial passes.
@@ -1051,8 +1057,8 @@ normalized PR/main job names; historical shard failures remain historical data.
 ### Reading the Linux shadow report
 
 On ready PRs that run regular Ubuntu x64 pytest on a hosted runner, the
-`test-selection-shadow` artifact records four advisory selections: decisive,
-tight, symbol and widely-called helpers. The job summary shows the current
+`test-selection-shadow` artifact records advisory selections: decisive,
+tight, symbol, widely-called helpers and line. The job summary shows the current
 selection, per-candidate files and timing estimates, and omitted observed
 failures. The artifact contains the full file sets, rule reasons, exact tested
 merge tree and parents, and the regular pytest receipt. Separate generic,
@@ -1070,6 +1076,23 @@ explicitly. Test-minute estimates sum recorded pytest durations; they omit
 unmeasured files and are not wall-clock predictions. Python tracing does not
 measure external tools or every file reader, so an unmatched input is a
 measurement gap to investigate, not permission to change CI selection.
+
+The line shadow uses a separate `linux-line-impact-map` artifact and read-only
+cache. It reuses the C-tracer contexts from the same successful scheduled or
+trusted full manual Ubuntu run; it adds no tracing to PRs. The gzip payload
+contains tracked package paths, positive line offsets, and integer IDs into a
+test-file table. It contains no source text or parameterized test names.
+
+The line map must match the symbol map's run and attempt, be no more than
+48 hours old, and match the tested base's tracked source, test and other
+input fingerprints (including fixtures outside `tests/`). The initial
+shadow only narrows a modification to one existing function body when every
+edited preimage line has attributed callers. Changed test files and independent
+routes such as contract tests remain selected. Insertions without a preimage,
+mixed input changes, and missing or incompatible evidence retain the enforced
+selection with a reason. Tests that cover the same lines are not interchangeable.
+The line arm imputes missing per-file durations with the longest measured
+file and uses that same estimate for its comparison with the enforced set.
 
 Every candidate includes the newline source scanner for changed package Python,
 and the tool-contract scanner for command or CLI Python changes. The historical
@@ -1091,19 +1114,28 @@ for newly started runs; rerun a job to apply it to an in-flight PR. A missing,
 stale (over 48 hours), incompatible or unavailable map retains the existing
 input and emits a warning. With a usable ancestor map, the gate adds tests
 introduced or changed since recording and observed users of intervening
-source changes; changed test helper inputs retain the existing selection.
+source changes. For an unobserved Python module, it also follows the static
+import closure at the map commit and tested base, so tests of newly added
+and deleted modules can still be selected. If an intervening module has no
+resolvable test importers, or the drift includes an unobserved package
+initializer, non-Python source, unresolved dynamic imports, interpreter
+configuration changes or changed test harness inputs, the gate keeps the
+legacy selection.
 The gate's own PR runs the same planner against
-its synthetic merge tree even if regular hosted pytest was certified. All
-four advisory reports remain available and distinguish legacy-selected,
+its synthetic merge tree even if regular hosted pytest was certified. The
+advisory reports remain available and distinguish legacy-selected,
 enforced and actually observed files.
 
 Ubuntu pushes use the exact-SHA merge-group complement instead of symbol
-selection. A scheduled Ubuntu run never skips from either result cache and
-refreshes main's cache after a full regular run. Where the suite provides
-pytest node IDs, the failure replay
-reruns only those cases, otherwise a collection error replays its one test
-module. It checks first-parent trees in order since the last verified
-passing daily run, requires a clean baseline and repeats the first matching
+selection. If the cron run is delayed or missing, run
+`gh workflow run ubuntu_ci.yml --ref main` (leave `optional-tools-only` off).
+Both triggers run the full regular suite without skipping from either result
+cache. A passing run refreshes main's test cache and exports the Linux
+observation map. Dispatches on other refs cannot publish that map.
+Where the suite provides pytest node IDs, the failure replay reruns only those
+cases; a collection error instead replays its one test module. It checks
+first-parent trees in order since the last verified passing scheduled or full
+manual run on `main`, requires a clean baseline and repeats the first matching
 failure signature.
 It will not automatically attribute skipped cases, a dependency-lock
 change, unobserved trees or an unrelated shared-base failure. To open a
@@ -1111,3 +1143,10 @@ change, unobserved trees or an unrelated shared-base failure. To open a
 records an enforced symbol omission on the identical Git tree; the legacy
 selection must have included the test. Logs explain unverified outcomes and
 the stable case marker deduplicates a confirmed miss across nights.
+
+When nightly replay finds a reproducible failure on the exact Git tree from
+an eligible line-shadow receipt, `linux-selector-line-recall` and the nightly
+job summary compare how many failing test files the symbol and line sets
+included. A file with multiple failing cases counts once. No matched
+failures means recall is unavailable, not 100%. This score is advisory and
+does not publish issues or affect any gate.
