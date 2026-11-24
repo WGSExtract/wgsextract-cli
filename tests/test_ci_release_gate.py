@@ -9,7 +9,11 @@ from typing import Any
 import pytest
 
 from scripts import ci_release_gate as gate
-from tests.test_github_actions_policy import WORKFLOWS, event_path_filters
+from tests.test_github_actions_policy import (
+    WORKFLOWS,
+    event_path_filters,
+    matches_workflow_condition,
+)
 
 REPO = "WGSExtract/wgsextract-cli"
 TAG = "v1.2.3"
@@ -27,14 +31,37 @@ def test_release_gates_never_start_on_pr_queue_push_or_schedule(name: str) -> No
     )
 
 
-def test_failed_preflight_cannot_reach_the_publication_job() -> None:
+@pytest.mark.parametrize(
+    ("preflight_result", "cancelled", "allowed"),
+    [
+        ("success", False, True),
+        ("failure", False, False),
+        ("skipped", False, False),
+        ("success", True, False),
+    ],
+)
+def test_existing_tag_can_publish_only_after_green_preflight(
+    preflight_result: str, cancelled: bool, allowed: bool
+) -> None:
     source = (WORKFLOWS / "release.yml").read_text()
     preflight, publish = source.split("\n  preflight:\n", 1)[1].split(
         "\n  publish:\n", 1
     )
     assert "actions: write" in preflight and "contents: write" not in preflight
     assert "needs: [resolve, preflight]" in publish
-    assert not re.search(r"^    if:", publish, re.M)  # implicit success() gate
+    condition = re.search(r"^    if: \$\{\{ (.+) \}\}", publish, re.M)
+    assert condition is not None
+    assert (
+        matches_workflow_condition(
+            condition[1],
+            {
+                "cancelled()": cancelled,
+                "needs.resolve.result": "success",
+                "needs.preflight.result": preflight_result,
+            },
+        )
+        is allowed
+    )
     assert "gh release create" not in source.split("\n  publish:\n", 1)[0]
     assert "artifact-ids: ${{ needs.preflight.outputs.gui_artifact }}" in publish
     assert event_path_filters(WORKFLOWS / "release.yml", "push") == {

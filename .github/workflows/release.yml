@@ -210,6 +210,8 @@ jobs:
 
   publish:
     needs: [resolve, preflight]
+    # A retry can skip the upstream tag job; still require actual green preflight.
+    if: ${{ !cancelled() && needs.resolve.result == 'success' && needs.preflight.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
