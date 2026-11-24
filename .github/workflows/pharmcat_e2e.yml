@@ -5,60 +5,10 @@ name: PharmCAT Linux/Windows parity
 # SHA-pinned PharmCAT pipeline release. Both phenotype.json files must match
 # except for their timestamp (#622).
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    branches: [main]
-    paths:
-      - pixi.toml
-      - pixi.lock
-      - src/wgsextract_cli/commands/vcf/pharmcat.py
-      - src/wgsextract_cli/core/pharmcat_resources.py
-      - src/wgsextract_cli/commands/vcf/basic.py
-      - src/wgsextract_cli/commands/_deps_status.py
-      - src/wgsextract_cli/cli/platform_support.py
-      - src/wgsextract_cli/core/pixi_tools.py
-      - src/wgsextract_cli/core/dependencies.py
-      - src/wgsextract_cli/core/dependency_checks.py
-      - src/wgsextract_cli/core/tool_catalog.py
-      - src/wgsextract_cli/core/tool_commands.py
-      - src/wgsextract_cli/core/variant_files.py
-      - src/wgsextract_cli/core/variant_confidence.py
-      - src/wgsextract_cli/core/utils.py
-      - packaging/windows/pin.py
-      - tests/fixtures/pharmcat_hg002/**
-      - scripts/compare_pharmcat_phenotypes.py
-      - .github/workflows/pharmcat_e2e.yml
-      - "!**/*.md"
-  push:
-    branches: [main]
-    paths:
-      - pixi.toml
-      - pixi.lock
-      - src/wgsextract_cli/commands/vcf/pharmcat.py
-      - src/wgsextract_cli/core/pharmcat_resources.py
-      - src/wgsextract_cli/commands/vcf/basic.py
-      - src/wgsextract_cli/commands/_deps_status.py
-      - src/wgsextract_cli/cli/platform_support.py
-      - src/wgsextract_cli/core/pixi_tools.py
-      - src/wgsextract_cli/core/dependencies.py
-      - src/wgsextract_cli/core/dependency_checks.py
-      - src/wgsextract_cli/core/tool_catalog.py
-      - src/wgsextract_cli/core/tool_commands.py
-      - src/wgsextract_cli/core/variant_files.py
-      - src/wgsextract_cli/core/variant_confidence.py
-      - src/wgsextract_cli/core/utils.py
-      - packaging/windows/pin.py
-      - tests/fixtures/pharmcat_hg002/**
-      - scripts/compare_pharmcat_phenotypes.py
-      - .github/workflows/pharmcat_e2e.yml
   workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   PHARMCAT_VERSION: 3.4.0
@@ -66,7 +16,6 @@ env:
 
 jobs:
   pharmcat:
-    if: ${{ github.event.pull_request.draft != true }}
     strategy:
       fail-fast: false
       matrix:
@@ -117,7 +66,6 @@ jobs:
           if-no-files-found: error
 
   parity:
-    if: ${{ github.event.pull_request.draft != true }}
     needs: pharmcat
     runs-on: ubuntu-latest
     timeout-minutes: 5

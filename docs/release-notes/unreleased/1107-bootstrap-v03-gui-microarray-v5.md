@@ -6,7 +6,3 @@
 ## New
 
 - `wgsextract microarray --formats combined_v3` writes `<sample>_CombinedKit_v3.txt` (the frozen classic 14-template CombinedKit v3 subset) alongside CombinedKit v5 (`--formats all` / `combined_v5`), so users can generate either or both combined kits.
-
-## Desktop app
-
-- The Microarray page keeps **CombinedKit v3** (`v3`) alongside **CombinedKit v5** (`v5`, expanding v3) under **WGSE → Combined**, places `23andMe v1/v2` before `v3` on the 23andMe row, places `FTDNA v1 (Affy)` before `v2` on the FamilyTreeDNA row, puts FTDNA's GRCh38 Y files (`v2y`, `v3y`, `v4y`) on a dedicated **FTDNA (Y only, Build 38)** row, exposes the CombinedKit v5 consumer formats (`ancestry_v2ab`, `ancestry_v2cd`, `ancestry_v2e`, `ftdna_v4`, `myheritage_v3`, `tellmegen`, `genera`, `mthfr`, `meudna_v1`, `meudna_v2`, `selfdecode`, `nucleus`), and removes the dropped minor date/size variants and standalone `ancestry_v2`.

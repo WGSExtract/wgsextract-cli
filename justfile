@@ -41,7 +41,7 @@ run *args:
 help:
     pixi run wgsextract --help
 
-# Regenerate the API snapshot, API docs, command docs and site command cards
+# Regenerate the committed references and schemas
 regen:
     pixi run python scripts/regen.py
 

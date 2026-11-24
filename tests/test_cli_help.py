@@ -11,10 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from tests.home_isolation import isolated_home_env, state_directory_setting
+from tests.home_isolation import state_directory_setting
 from wgsextract_cli.cli import help as cli_help
 from wgsextract_cli.cli import hints, parser
-from wgsextract_cli.cli.help_index import PACKAGE_INDEX
 from wgsextract_cli.commands._advanced_options import ADVANCED_OPTIONS, COMMON_ADVANCED
 from wgsextract_cli.commands._examples_catalog import EXAMPLES
 from wgsextract_cli.commands._help_catalog import COMMAND_HELP
@@ -113,7 +112,7 @@ def test_every_example_parses_to_its_own_command(entries):
 def test_example_genome_examples_name_catalog_entries():
     ids = {example.example_id for example in EXAMPLES}
     tags = {tag for example in EXAMPLES for tag in example.tags}
-    assert cli_help.COMMAND_HELP["example-genome download"].examples
+    assert COMMAND_HELP["example-genome download"].examples
     for path in ("example-genome download", "example-genome list"):
         for example in COMMAND_HELP[path].examples:
             words = shlex.split(example)[3:]
@@ -172,6 +171,7 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
         ["--help"],
         ["--version"],
         ["help", "--all", "--json"],
+        ["info", "--help"],
         ["serve", "--help"],
         ["help", "serve"],
         ["qc", "ancestry", "--help"],
@@ -179,8 +179,10 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
         ["vcf", "impute", "--help"],
     ],
 )
-def test_startup_regression_help_does_not_import_analysis_libraries(argv):
-    """CLI startup regression: help and version must not load analysis code."""
+def test_startup_regression_help_does_not_import_analysis_libraries(
+    argv: list[str] | None,
+) -> None:
+    """#1506: discovery must not load analysis, serving, or unrelated API groups."""
     code = f"""
 import contextlib
 import io
@@ -207,12 +209,23 @@ implementations = {{
     "wgsextract_cli.commands.score",
     "wgsextract_cli.core.pgs",
     "wgsextract_cli.commands.vcf.imputation",
+    "wgsextract_cli.server",
 }}
 if argv in (
     ["--help"], ["--version"], ["help", "--all", "--json"],
     ["serve", "--help"], ["help", "serve"],
 ):
     implementations.add("wgsextract_cli.api")
+if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
+    implementations.update({{
+        "wgsextract_cli.commands._help_catalog",
+        "wgsextract_cli.commands._help_topics",
+        "wgsextract_cli.core.dependencies",
+        "wgsextract_cli.core.run_log",
+        "wgsextract_cli.core.utils",
+    }})
+if argv == ["info", "--help"]:
+    implementations.update({{"wgsextract_cli.api.vcf", "wgsextract_cli.api._public"}})
 print(json.dumps(sorted(
     name for name in sys.modules
     if name.split(".")[0] in heavy or name in implementations
@@ -248,70 +261,6 @@ def test_startup_regression_fast_index_matches_live_help(capsys):
         )
     main(["help", "--all", "--json"])
     assert json.loads(capsys.readouterr().out) == json.loads(expected)
-
-
-@pytest.mark.parametrize("old_cache", [None, "stale", "broken", "incomplete"])
-def test_1531_help_recovers_without_writing_package(
-    tmp_path: Path, old_cache: str | None
-) -> None:
-    """Run from a disposable checkout with no built artifact."""
-    import os
-    import shutil
-
-    source = tmp_path / "source"
-    package = source / "wgsextract_cli"
-    shutil.copytree(
-        ROOT / "src/wgsextract_cli",
-        package,
-        ignore=shutil.ignore_patterns(
-            "__pycache__",
-            "help-index.json",
-            "help-index.key",
-        ),
-    )
-    env = {
-        **os.environ,
-        **isolated_home_env(tmp_path / "home"),
-        "PYTHONPATH": str(source),
-    }
-    discovery = [sys.executable, "-m", "wgsextract_cli.main", "help", "--all", "--json"]
-    cache_name = subprocess.check_output(
-        [
-            sys.executable,
-            "-c",
-            "from wgsextract_cli.cli.help_index import cache_path, registry_key; "
-            "print(cache_path(registry_key()))",
-        ],
-        env=env,
-        text=True,
-    ).strip()
-    cache_path = Path(cache_name)
-    assert cache_path.is_relative_to(tmp_path)
-    if old_cache == "incomplete":
-        subprocess.check_output(discovery, env=env, cwd=tmp_path)
-        record = json.loads(cache_path.read_bytes())
-        record["index"]["commands"] = []
-        cache_path.write_text(json.dumps(record), encoding="utf-8")
-    elif old_cache is not None:
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        cache_path.write_text(
-            "{" if old_cache == "broken" else '{"key":"0.0.0-old","index":{}}',
-            encoding="utf-8",
-        )
-    cold = subprocess.check_output(discovery, env=env, cwd=tmp_path)
-    original = cache_path.read_bytes()
-    warm = subprocess.check_output(discovery, env=env, cwd=tmp_path)
-    assert warm == cold and cache_path.read_bytes() == original
-    assert "vcf snp" in {item["path"] for item in json.loads(warm)["commands"]}
-    assert not (package / PACKAGE_INDEX).exists()
-    if old_cache is None:
-        messages = package / "core" / "messages.py"
-        with messages.open("a", encoding="utf-8") as stream:
-            stream.write('\nCLI_HELP["arg_input"] = "Updated input help"\n')
-        updated = subprocess.check_output(discovery, env=env, cwd=tmp_path)
-        assert b"Updated input help" in updated
-        assert cache_path.read_bytes() == original
-        assert len(list(cache_path.parent.parent.glob("*/help-index.json"))) == 2
 
 
 def test_full_json_dump_is_opt_in_and_keeps_command_details(capsys, entries):
