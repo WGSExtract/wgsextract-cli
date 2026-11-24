@@ -3,6 +3,7 @@ import logging
 import os
 import subprocess
 import tempfile
+from functools import lru_cache
 from os import fspath
 from pathlib import Path
 
@@ -14,6 +15,7 @@ from wgsextract_cli.api.qc import (
     MultiqcParams,
     QcVcfParams,
 )
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
@@ -28,6 +30,7 @@ from wgsextract_cli.core.temp_directory import (
     move_file,
     scratch_parent,
 )
+from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     get_resource_threads,
@@ -41,6 +44,36 @@ from ..vcf.basic import vcf_input_handler
 # The MultiQC modules `qc multiqc` runs: FastQC reports, `bcftools stats` from
 # `qc vcf`, and custom content (the WGS Extract metrics).
 MULTIQC_MODULES = ("fastqc", "bcftools", "custom_content")
+_OPTIONAL_MULTIQC_FLAGS = ("--no-version-check", "--no-ai")
+
+
+@lru_cache(maxsize=8)
+def _supported_multiqc_flags(tool_cmd: str | None) -> tuple[str, ...]:
+    """Return optional offline flags accepted by the resolved MultiQC binary.
+
+    Older MultiQC versions (for example v1.15) do not recognize
+    ``--no-version-check`` or ``--no-ai`` even though they honor
+    ``no_version_check: true`` via ``--cl-config``. When no concrete binary can
+    be probed (for example in stubbed unit tests), keep all optional flags.
+    """
+    if not tool_cmd:
+        return _OPTIONAL_MULTIQC_FLAGS
+    try:
+        res = subprocess.run(
+            [*_tool_command_parts(tool_cmd), "--help"],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return _OPTIONAL_MULTIQC_FLAGS
+    combined = f"{res.stdout}\n{res.stderr}"
+    if res.returncode != 0 or "--no-megaqc-upload" not in combined:
+        return _OPTIONAL_MULTIQC_FLAGS
+    return tuple(flag for flag in _OPTIONAL_MULTIQC_FLAGS if flag in combined)
 
 
 def run_fastp(params: FastpParams) -> None:
@@ -335,17 +368,25 @@ def _multiqc_report(params: MultiqcParams) -> int:
         ) as work:
             metrics = Path(work, "wgsextract_metrics")
             multiqc.write_custom_content(multiqc.custom_content(documents), metrics)
-            # Home-directory MultiQC configuration can otherwise enable AI uploads.
+            # Home-directory MultiQC configuration can otherwise enable version
+            # checks or AI uploads; setting no_version_check here also keeps
+            # older MultiQC releases (e.g. v1.15) offline without CLI flags.
             config = json.dumps(
                 {
                     "ai_summary": False,
                     "ai_summary_full": False,
+                    "no_version_check": True,
                     "output_fn_name": report.name,
                 }
             )
+            multiqc_cmd = get_tool_path("multiqc")
+            extra_flags = _supported_multiqc_flags(multiqc_cmd)
+            multiqc_argv = (
+                _tool_command_parts(multiqc_cmd) if multiqc_cmd else ["multiqc"]
+            )
             run_command(
                 [
-                    "multiqc",
+                    *multiqc_argv,
                     *(
                         arg
                         for module in MULTIQC_MODULES
@@ -353,8 +394,7 @@ def _multiqc_report(params: MultiqcParams) -> int:
                     ),
                     "--no-data-dir",
                     "--no-megaqc-upload",
-                    "--no-version-check",
-                    "--no-ai",
+                    *extra_flags,
                     "--cl-config",
                     config,
                     "--filename",

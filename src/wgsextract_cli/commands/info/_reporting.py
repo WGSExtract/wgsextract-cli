@@ -273,6 +273,6 @@ def _record_long_read_qc(lengths: dict[str, Any] | None) -> None:
 
 
 def reference_model_name(described: str) -> str:
-    """The model in a `ReferenceModel.describe()` line: "hg38 (Chr), rCRS, 195
-    SNs" and "Cat_Fca126, , 71 SNs" (no chr1, so no naming) alike."""
-    return described.split(",", 1)[0].split(" (", 1)[0]
+    """The model in a `ReferenceModel.describe()` line: "hs38 [1K38h] (Chr),
+    rCRS, 195 SNs" and "Cat_Fca126 [Cat], , 71 SNs" alike."""
+    return described.split(",", 1)[0].split(" (", 1)[0].split(" [", 1)[0]
