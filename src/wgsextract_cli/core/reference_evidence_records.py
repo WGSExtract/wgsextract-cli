@@ -68,6 +68,11 @@ class State(enum.Enum):
 
 
 _RANK = {state: rank for rank, state in enumerate(State)}
+_STRICT_RANK = {
+    **_RANK,
+    State.VARIANT: _RANK[State.FILTERED],
+    State.FILTERED: _RANK[State.VARIANT],
+}
 Classified = tuple[str, int, int, State]  # a record's bases and their state
 
 
@@ -205,9 +210,11 @@ def _sweep(
     order: Mapping[str, int],
     *,
     missing_state: State = State.UNCOVERED,
+    check_variant_quality: bool = False,
 ) -> Iterator[Span]:
     """Resolve overlapping records base by base, highest-ranked state first.
     Records arrive sorted, so only the few overlapping the cursor are held."""
+    rank_state = (_STRICT_RANK if check_variant_quality else _RANK).__getitem__
     pending = next(records, None)
     active: list[tuple[str, int, State]] = []
     for contig, first, last in wanted:
@@ -226,7 +233,7 @@ def _sweep(
             if pending is not None and pending[0] == contig:
                 upcoming = min(upcoming, pending[1])
             if active:
-                state = min((a[2] for a in active), key=_RANK.__getitem__)
+                state = min((a[2] for a in active), key=rank_state)
                 stop = min(min(a[1] for a in active), upcoming - 1)
             else:
                 state, stop = missing_state, upcoming - 1

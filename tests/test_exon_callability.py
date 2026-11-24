@@ -448,6 +448,33 @@ def test_1357_multisample_gvcf_does_not_silently_assess_first_sample(
 
 
 @needs_htslib
+def test_1357_passing_alt_does_not_mask_overlapping_filtered_alt(
+    tmp_path: Path,
+) -> None:
+    gvcf = tmp_path / "overlap.g.vcf"
+    text = _GQ_GVCF.replace(
+        "##GVCFBlock",
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="DP">\n'
+        '##FILTER=<ID=Fail,Description="Failed">\n##GVCFBlock',
+    ).replace(
+        "END=1000\tGT:GQ:MIN_DP\t0/0:50:30",
+        "END=499\tGT:GQ:MIN_DP\t0/0:50:30\n"
+        "chr7\t500\t.\tA\tG,<NON_REF>\t50\tPASS\t.\tGT:GQ:DP\t0/1:50:30\n"
+        "chr7\t500\t.\tA\tT,<NON_REF>\t50\tFail\t.\tGT:GQ:DP\t0/1:50:30\n"
+        "chr7\t501\t.\tA\t<NON_REF>\t.\t.\tEND=1000\tGT:GQ:MIN_DP\t0/0:50:30",
+    )
+    gvcf.write_text(text, encoding="utf-8", newline="\n")
+    api.vcf.callability(
+        api.VcfCallabilityParams(
+            vcf_input=Path(bgzip_index(gvcf)), exons=_model(tmp_path / "exons.tsv"),
+            gene_list=str(_genes(tmp_path)), outdir=tmp_path,
+        )
+    )  # fmt: skip
+    exon = _exons(tmp_path)[("GENEE", 1)]
+    assert (exon["status"], exon["filtered_bases"]) == ("partial", "1")
+
+
+@needs_htslib
 def test_1177_low_genotype_quality_blocks_are_not_read(tmp_path: Path) -> None:
     """A GQ gVCF (GATK-style blocks): depth 30 everywhere, but GQ 5 from 1001."""
     gvcf = tmp_path / "sample.g.vcf"

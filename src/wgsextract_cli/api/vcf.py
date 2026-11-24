@@ -154,7 +154,8 @@ def callability(
     check: bool = True,
 ) -> CommandResult:
     """Classify the gene list's coding exons from the gVCF: outputs
-    ``exon_callability`` (the per-gene JSON document, also ``details``) and
+    ``exon_callability`` (the per-gene JSON document; ``details`` holds its
+    summary and provenance) and
     ``exon_callability_table`` (one row per exon); genes per state are
     metrics."""
     from wgsextract_cli.commands.vcf.callability import run_callability

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from wgsextract_cli.core.reference_evidence_records import (
     _RANK,
+    _STRICT_RANK,
     Classified,
     Interval,
     Span,
@@ -59,6 +60,7 @@ def classify_spans(
         ),
         order,
         missing_state=missing_state,
+        check_variant_quality=check_variant_quality,
     )
 
 
@@ -147,6 +149,7 @@ def classified_records(
             )
         return
     references = (State.CALLABLE_REFERENCE, State.LOW_QUALITY_REFERENCE)
+    rank_state = (_STRICT_RANK if check_variant_quality else _RANK).__getitem__
     pending = next(records, None)
     # Keep only overlapping records. Evaluate their tails after later anchors
     # arrive, so block splitting and overlapping calls cannot change evidence.
@@ -193,7 +196,7 @@ def classified_records(
             )
             stop = min(stop, boundary + 1) if cursor <= boundary else stop
         if active:
-            state = min((state for _, state, _ in active), key=_RANK.__getitem__)
+            state = min((state for _, state, _ in active), key=rank_state)
             if shadow and cursor > anchor_end:
                 depths = [d for _, s, d in active if s in references]
                 if cursor <= anchor_end + CLAIR3_DELETION_SPAN and any(
