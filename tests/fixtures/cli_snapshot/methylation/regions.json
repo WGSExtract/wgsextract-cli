@@ -1,0 +1,602 @@
+{
+ "help": "usage: wgsextract methylation regions [-h] --build {hg38,t2t} --preset {promoters,cpg-islands}\n                                      [--upstream UPSTREAM] [--downstream DOWNSTREAM]\n                                      [--min-valid-calls MIN_VALID_CALLS] [--min-cpgs MIN_CPGS]\n                                      [--partition-hp] [--phase-blocks PHASE_BLOCKS] [--5hmc]\n                                      [--download] [--format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --build {hg38,t2t}    Assembly of both input and FASTA.\n  --preset {promoters,cpg-islands}\n                        RefSeq promoters or UCSC masked CpG islands.\n  --upstream UPSTREAM   Promoter bases upstream of the TSS (default: 2000).\n  --downstream DOWNSTREAM\n                        Promoter bases on the transcribed side (default: 500).\n  --min-valid-calls MIN_VALID_CALLS\n                        Minimum valid calls per CpG (default: 5).\n  --min-cpgs MIN_CPGS   Minimum qualifying CpGs per region (default: 3).\n  --partition-hp        Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS).\n  --phase-blocks PHASE_BLOCKS\n                        Matching phased.blocks.tsv from vcf phase; require region containment in\n                        one block.\n  --5hmc                Also report 5hmC: declares the input was generated with a 5hmC-capable\n                        model.\n  --download            Fetch the missing pinned hg38 CpG island table from UCSC. No sample data\n                        is sent.\n  --format {tsv,parquet}\n                        Output table: tsv (default) or parquet (needs pyarrow).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa --build hg38 --preset promoters\n  wgsextract methylation regions -i haplotagged.bam --ref hg38.fa --build hg38 --preset promoters --partition-hp --phase-blocks phased.blocks.tsv\n\noutputs (in the output directory unless noted):\n  <input stem>.<build>.<preset>.methylation.tsv (or .parquet) and its run\n  manifest. With --partition-hp, writes .methylation.hp.tsv (or .parquet)\n  instead.\n\nneeds:\n  samtools; depending on options and inputs, also: modkit, curl; minutes on a\n  30x genome.\n",
+ "namespaces": {
+  "methylation regions -i x.bedmethyl.gz --ref r.fa --build hg38 --preset cpg-islands --download --format parquet": {
+   "_command": "methylation regions",
+   "_explicit_dests": [
+    "build",
+    "download",
+    "input",
+    "preset",
+    "ref",
+    "table_format"
+   ],
+   "atomic_output": false,
+   "build": "hg38",
+   "command": "methylation",
+   "debug": false,
+   "download": true,
+   "downstream": 500,
+   "full_help": false,
+   "func": "run_regions",
+   "genome": null,
+   "hydroxymethyl": false,
+   "input": "x.bedmethyl.gz",
+   "json": false,
+   "keep_awake": false,
+   "log_dir": null,
+   "log_file": null,
+   "memory": null,
+   "methylation_cmd": "regions",
+   "min_cpgs": 3,
+   "min_valid_calls": 5,
+   "outdir": null,
+   "parent_pid": null,
+   "partition_hp": false,
+   "phase_blocks": null,
+   "preset": "cpg-islands",
+   "quiet": false,
+   "ref": "r.fa",
+   "table_format": "parquet",
+   "threads": null,
+   "tmp_dir": null,
+   "upstream": 2000
+  }
+ },
+ "parser": {
+  "actions": [
+   {
+    "choices": null,
+    "class": "_HelpAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help",
+    "exclusive_group": null,
+    "help": "show this help message and exit",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "-h",
+     "--help"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "input",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--input",
+     "-i"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "outdir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--outdir",
+     "-o"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "genome",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--genome"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "ref",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--ref"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "threads",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "N|auto",
+    "nargs": null,
+    "option_strings": [
+     "--threads",
+     "-t"
+    ],
+    "required": false,
+    "type": "_thread_count_arg"
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "memory",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--memory",
+     "-m"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "tmp_dir",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "DIRECTORY",
+    "nargs": null,
+    "option_strings": [
+     "--tmp-dir"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "json",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--json"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "card",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--card",
+     "--no-card"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "quiet",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--quiet"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStoreTrue",
+    "const": true,
+    "default": "==SUPPRESS==",
+    "dest": "debug",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--debug"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "log_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--log-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "keep_awake",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--keep-awake",
+     "--no-keep-awake"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalBoolean",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "atomic_output",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--atomic-output",
+     "--no-atomic-output"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "config_path",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "FILE",
+    "nargs": null,
+    "option_strings": [
+     "--config"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_result_file",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "PATH",
+    "nargs": null,
+    "option_strings": [
+     "--result-file"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_parent_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--parent-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_root_run",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "ID",
+    "nargs": null,
+    "option_strings": [
+     "--root-run"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "_run_step",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": "STEP",
+    "nargs": null,
+    "option_strings": [
+     "--run-step"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_GlobalStore",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "parent_pid",
+    "exclusive_group": null,
+    "help": "==SUPPRESS==",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--parent-pid"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": [
+     "hg38",
+     "t2t"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "build",
+    "exclusive_group": null,
+    "help": "Assembly of both input and FASTA.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--build"
+    ],
+    "required": true,
+    "type": null
+   },
+   {
+    "choices": [
+     "promoters",
+     "cpg-islands"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "preset",
+    "exclusive_group": null,
+    "help": "RefSeq promoters or UCSC masked CpG islands.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--preset"
+    ],
+    "required": true,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 2000,
+    "dest": "upstream",
+    "exclusive_group": null,
+    "help": "Promoter bases upstream of the TSS (default: 2000).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--upstream"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 500,
+    "dest": "downstream",
+    "exclusive_group": null,
+    "help": "Promoter bases on the transcribed side (default: 500).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--downstream"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 5,
+    "dest": "min_valid_calls",
+    "exclusive_group": null,
+    "help": "Minimum valid calls per CpG (default: 5).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--min-valid-calls"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": 3,
+    "dest": "min_cpgs",
+    "exclusive_group": null,
+    "help": "Minimum qualifying CpGs per region (default: 3).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--min-cpgs"
+    ],
+    "required": false,
+    "type": "int"
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "partition_hp",
+    "exclusive_group": null,
+    "help": "Split CpG calls from HP-tagged BAM/CRAM (needs modkit on Linux or macOS).",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--partition-hp"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreAction",
+    "const": null,
+    "default": null,
+    "dest": "phase_blocks",
+    "exclusive_group": null,
+    "help": "Matching phased.blocks.tsv from vcf phase; require region containment in one block.",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--phase-blocks"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "hydroxymethyl",
+    "exclusive_group": null,
+    "help": "Also report 5hmC: declares the input was generated with a 5hmC-capable model.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--5hmc"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": null,
+    "class": "_StoreTrueAction",
+    "const": true,
+    "default": false,
+    "dest": "download",
+    "exclusive_group": null,
+    "help": "Fetch the missing pinned hg38 CpG island table from UCSC. No sample data is sent.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--download"
+    ],
+    "required": false,
+    "type": null
+   },
+   {
+    "choices": [
+     "tsv",
+     "parquet"
+    ],
+    "class": "_StoreAction",
+    "const": null,
+    "default": "tsv",
+    "dest": "table_format",
+    "exclusive_group": null,
+    "help": "Output table: tsv (default) or parquet (needs pyarrow).",
+    "metavar": null,
+    "nargs": null,
+    "option_strings": [
+     "--format"
+    ],
+    "required": false,
+    "type": "table_format_type.<locals>.table_format"
+   },
+   {
+    "choices": null,
+    "class": "_HelpAllAction",
+    "const": null,
+    "default": "==SUPPRESS==",
+    "dest": "help_all",
+    "exclusive_group": null,
+    "help": "Show this help with the advanced options too, and exit.",
+    "metavar": null,
+    "nargs": 0,
+    "option_strings": [
+     "--help-all"
+    ],
+    "required": false,
+    "type": null
+   }
+  ],
+  "defaults": {
+   "_command": "methylation regions",
+   "func": "run_regions"
+  },
+  "description": null,
+  "formatter_class": "HelpFormatter",
+  "prog": "wgsextract methylation regions"
+ }
+}

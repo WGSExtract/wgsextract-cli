@@ -11,9 +11,9 @@ from importlib.util import resolve_name
 from pathlib import Path
 
 from scripts.ci_test_dependencies import (
-    GENERATED_DOCS,
     ROOT,
     docs_test_targets,
+    generated_docs_path,
     test_inputs,
 )
 
@@ -427,9 +427,7 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
     direct_closures = context.direct_closures
     closures = context.closures
     for path in paths:
-        if path.endswith(".md") and path not in GENERATED_DOCS:
-            continue
-        if path in GENERATED_DOCS:
+        if path.endswith(".md") or generated_docs_path(path):
             continue
         if ci_path(path):
             selected.update(test for test in CI_TESTS if test in tests)
