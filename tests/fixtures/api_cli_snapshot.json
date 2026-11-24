@@ -36543,7 +36543,7 @@
    }
   },
   "report": {
-   "help": "usage: wgsextract report [-h] [--download | --no-download] [--workspace DIR] [--results DIR]\n                         [--format {tsv,parquet}] [--gene-list LIST]\n\nSummarise a sample's results (overview, QC, lineage, pharmacogenomics including HLA, ClinVar\npathogenic calls in ACMG SF genes with carrier status, microarray files) as a local HTML, Markdown\nand JSON report with confidence-labelled findings. Reads earlier runs' result manifests and runs\nno analysis; its only network call downloads a built-in gene list once. Technical results, not\ndiagnosis.\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --workspace DIR       Sample folder whose results are reported (default: the --genome folder,\n                        else the --input's folder).\n  --results DIR         Also read result manifests from this folder (repeatable); only runs on\n                        this sample's files are used. The --outdir is always read.\n  --format {tsv,parquet}\n                        Format of the findings table, <sample>_personal_report_findings.tsv or\n                        .parquet (needs pyarrow) (default: tsv)\n  --gene-list LIST      Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2;\n                        missing lists need --download), or a TSV (column gene; optional\n                        hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene\n                        symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3)\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract report --genome HG002\n  wgsextract report --input sample.cram\n  wgsextract report --genome HG002 --gene-list acmg-sf-3.2\n  wgsextract report --genome HG002 --gene-list my_genes.bed\n  wgsextract report --workspace HG002 --results ~/wgs-out/HG002 --format parquet\n\noutputs (in the output directory unless noted):\n  <sample>_personal_report.html, .md and .json and\n  <sample>_personal_report_findings.tsv (or .parquet with --format parquet) in\n  the sample folder (or --outdir); evidence links are relative to the sample\n  folder.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; seconds from\n  existing results.\n",
+   "help": "usage: wgsextract report [-h] [--download | --no-download] [--workspace DIR] [--results DIR]\n                         [--format {tsv,parquet}] [--gene-list LIST] [--pgx-context FILE]\n\nSummarise a sample's results (overview, QC, lineage, pharmacogenomics including HLA, ClinVar\npathogenic calls in ACMG SF genes with carrier status, microarray files) as a local HTML, Markdown\nand JSON report with confidence-labelled findings. Reads earlier runs' result manifests and runs\nno analysis; its only network call downloads a built-in gene list once. Technical results, not\ndiagnosis.\n\noptions:\n  -h, --help            show this help message and exit\n  --download, --no-download\n                        Allow missing public reference/model downloads; no sample files or\n                        genotypes are uploaded. Hosts and request data: docs/privacy.md. Default:\n                        config allow_reference_downloads, else off.\n  --workspace DIR       Sample folder whose results are reported (default: the --genome folder,\n                        else the --input's folder).\n  --results DIR         Also read result manifests from this folder (repeatable); only runs on\n                        this sample's files are used. The --outdir is always read.\n  --format {tsv,parquet}\n                        Format of the findings table, <sample>_personal_report_findings.tsv or\n                        .parquet (needs pyarrow) (default: tsv)\n  --gene-list LIST      Genes for the ClinVar section: a built-in list (acmg-sf-3.3, acmg-sf-3.2;\n                        missing lists need --download), or a TSV (column gene; optional\n                        hg19_/hg38_ or build-free chrom, start, end spans) or BED file (gene\n                        symbol in column 4) (default: config report_gene_list, else acmg-sf-3.3)\n  --pgx-context FILE    Review these medications against CPIC guidance: a local TOML file listing\n                        them (see docs/personal-report.md); it is never uploaded. The pinned CPIC\n                        database release needs --download the first time.\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nexamples:\n  wgsextract report --genome HG002\n  wgsextract report --input sample.cram\n  wgsextract report --genome HG002 --gene-list acmg-sf-3.2\n  wgsextract report --genome HG002 --gene-list my_genes.bed\n  wgsextract report --workspace HG002 --results ~/wgs-out/HG002 --format parquet\n\noutputs (in the output directory unless noted):\n  <sample>_personal_report.html, .md and .json and\n  <sample>_personal_report_findings.tsv (or .parquet with --format parquet) in\n  the sample folder (or --outdir); evidence links are relative to the sample\n  folder.\n\nneeds:\n  no external tools; depending on options and inputs, also: curl; seconds from\n  existing results.\n",
    "parser": {
     "actions": [
      {
@@ -36970,6 +36970,22 @@
       "nargs": null,
       "option_strings": [
        "--gene-list"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_StoreAction",
+      "const": null,
+      "default": null,
+      "dest": "pgx_context",
+      "exclusive_group": null,
+      "help": "Review these medications against CPIC guidance: a local TOML file listing them (see docs/personal-report.md); it is never uploaded. The pinned CPIC database release needs --download the first time.",
+      "metavar": "FILE",
+      "nargs": null,
+      "option_strings": [
+       "--pgx-context"
       ],
       "required": false,
       "type": null
@@ -60329,6 +60345,7 @@
    "memory": null,
    "outdir": null,
    "parent_pid": null,
+   "pgx_context": null,
    "quiet": false,
    "ref": null,
    "results": [
@@ -60363,6 +60380,7 @@
    "memory": null,
    "outdir": "out",
    "parent_pid": null,
+   "pgx_context": null,
    "quiet": false,
    "ref": null,
    "results": [],
