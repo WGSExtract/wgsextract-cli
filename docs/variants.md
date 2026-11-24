@@ -168,6 +168,39 @@ BED file. Text ranges use 1-based inclusive coordinates and accept thousands
 separators, as in `chr1:1,000-2,000`. If a comma could separate a whole contig
 name rather than group digits, use a BED file to make the selection explicit.
 
+## Preparing a VCF from a provider
+
+VCFs from sequencing services often stop other tools: plain gzip instead of
+BGZF, no or a stale index, unsorted records, `1` where the reference says
+`chr1`, or records on contigs and INFO/FORMAT/FILTER IDs the header never
+declares. `vcf prepare` reads the VCF once, repairs what it finds and writes
+`<stem>_prepared.vcf.gz` with a `.tbi` (`.csi` for contigs over 512 Mb). It
+never changes the input, and checks the prepared record count before
+publishing, so no record is lost.
+
+- `--ref` names, orders and sizes the contigs as the reference does and
+  counts records whose REF differs from it (kept unchanged). A VCF whose
+  contig lengths or positions show another build is refused.
+- `--normalize` (needs `--ref`) splits multiallelic records
+  (`bcftools norm -m -any`, the original in INFO/`OLD_MULTIALLELIC`) and
+  left-aligns indels (the original in INFO/`OLD_VARIANT`). Records on
+  contigs the reference lacks are split too, but neither REF-checked nor
+  left-aligned.
+- Undeclared IDs are declared as `Type=String` so their values stay exactly
+  as written. Legacy FTDNA FILTER expressions such as `DP=1` are refused with
+  a pointer to [`repair ftdna-vcf`](ftdna-vcf-repair.md).
+- An already valid VCF is copied and indexed with no repairs; running it
+  again on its own output repairs nothing.
+
+Each repair is a `vcf_prepare_*` warning in the result manifest with its
+counts: `recompressed`, `index_rebuilt`, `contigs_renamed`,
+`contigs_declared`, `contig_lengths_added`, `contigs_reordered`,
+`ids_declared`, `sorted`, `multiallelics_split` and `left_aligned`. Findings
+it leaves alone are `ref_mismatch`, `not_left_aligned`,
+`contigs_not_in_reference` and `contig_lengths_unknown`. The metrics give
+`records_in`, `records_out`, `input_compression`, `input_index` and the
+number of `repairs`.
+
 ## Structural variants
 
 `vcf sv` defaults to Delly 2 (`delly sr`); `vcf cnv` uses `delly cnv`,

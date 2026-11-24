@@ -50,6 +50,7 @@
 {"path":"vcf annotate","tier":"core","summary":"Add external metadata (like population frequencies or disease risk) to your VCF file.","key_flags":["--vcf-input","--ann-vcf","--cols"]},
 {"path":"vcf filter","tier":"core","summary":"Filter your results.","key_flags":["--vcf-input","--gene","--genes","--gene-file","--preset","--bed","--pad-kb","--region","--expr","--exclude-near-gaps"]},
 {"path":"vcf table","tier":"core","summary":"Export variants and their annotations (gene, consequence, ClinVar, gnomAD, genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and an SQLite database to query.","key_flags":["--vcf-input","--gene","--genes","--gene-file","--preset","--bed","--pad-kb","--region","--sample","--all-alleles","--pharmcat-json","--no-sqlite","--format"]},
+{"path":"vcf prepare","tier":"core","summary":"Repair a VCF from a sequencing service so other tools accept it: BGZF compression, sorting, contig names and header lines, and a fresh index; optionally split multiallelics and left-align indels.","key_flags":["--vcf-input","--output","--normalize"]},
 {"path":"vcf clinvar","tier":"core","summary":"Annotate VCF with ClinVar pathogenicity data.","key_flags":["--vcf-input","--clinvar-file"]},
 {"path":"vcf revel","tier":"core","summary":"Annotate VCF with REVEL pathogenicity scores.","key_flags":["--vcf-input","--revel-file","--min-score"]},
 {"path":"vcf gnomad","tier":"core","summary":"Annotate VCF with gnomAD population frequencies.","key_flags":["--vcf-input","--gnomad-file","--max-af"]},

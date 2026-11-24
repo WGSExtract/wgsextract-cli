@@ -78,6 +78,7 @@ Pick the line that matches your file and run its commands in order. Each command
 
 ::: card
 ### A VCF (from a provider or another pipeline)
+- `vcf prepare`: fix its compression, sorting, contig names and index
 - `vcf clinvar`: add ClinVar clinical significance
 - `vcf filter`: keep a gene, region or quality range
 - `vep run`: predict each variant's effect on genes

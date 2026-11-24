@@ -69,6 +69,7 @@ CLI_HELP = {
     "cmd_phase": "Phase a sample's heterozygous calls with its reads (WhatsHap, or LongPhase for Nanopore and PacBio), and optionally tag the reads by haplotype. Optional; Linux and macOS, install with `pixi install -e phasing`.",
     "cmd_annotate": "Add external metadata (like population frequencies or disease risk) to your VCF file.",
     "cmd_filter": "Filter your results. Use this to focus on specific genes of interest or to remove low-quality 'noisy' variant calls.",
+    "cmd_vcf-prepare": "Repair a VCF from a sequencing service so other tools accept it: BGZF compression, sorting, contig names and header lines, and a fresh index; optionally split multiallelics and left-align indels. Reports every change.",
     "cmd_vcf-to-fasta": "Build your personal consensus genome: the reference FASTA with your variants applied (heterozygous SNVs as IUPAC codes by default), and N where a gVCF has no call.",
     "cmd_trio": "Analyze inheritance patterns. Compares a child's VCF with their parents to identify de novo (new) mutations or inherited conditions.",
     "cmd_analyze": "Comprehensive genomic analysis combining multiple tools into a single workflow.",
