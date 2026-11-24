@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from wgsextract_cli.core import roh_document  # noqa: E402
+from wgsextract_cli.core import paraphase_document, roh_document  # noqa: E402
 from wgsextract_cli.core.output_schema import Shape, output_schema  # noqa: E402
 from wgsextract_cli.core.panel_spec import panel_schema  # noqa: E402
 from wgsextract_cli.core.release_recheck import recheck_schema  # noqa: E402
@@ -43,6 +43,7 @@ RESULT_OUTPUT = (
 )
 SCHEMAS = ROOT / "src/wgsextract_cli/assets/schemas"
 ROH_OUTPUT = SCHEMAS / "wgsextract.roh.1.schema.json"
+PARAPHASE_OUTPUT = SCHEMAS / "wgsextract.paraphase.1.schema.json"
 # An input format, not an output: the research panel files `panel check` reads.
 PANEL_INPUT = SCHEMAS / "wgsextract.panel.1.schema.json"
 
@@ -107,6 +108,18 @@ def documents() -> dict[Path, dict[str, object]]:
         ROH_OUTPUT: roh_schema(),
         SCHEMAS / "wgsextract.recheck.1.schema.json": recheck_schema(),
         SCHEMAS / "wgsextract.delta.1.schema.json": delta_schema(),
+        PARAPHASE_OUTPUT: output_schema(
+            paraphase_document.ParaphaseDocument,
+            shapes={
+                paraphase_document.ParaphaseDocument: Shape(
+                    "document", additional=False
+                ),
+                paraphase_document.LocusCall: Shape("locus", additional=False),
+            },
+            schema_id="urn:wgsextract:schema:paraphase:1",
+            title=paraphase_document.SCHEMA_ID,
+            description="Normalized copy number and haplotype calls from typing paraphase.",
+        ),
         PANEL_INPUT: panel_schema(),
     }
 

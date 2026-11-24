@@ -7,6 +7,7 @@ from wgsextract_cli.api.deps import (
     DepsCheckParams,
     DepsInstallParams,
     DepsListParams,
+    DepsReadyParams,
     DepsUninstallParams,
 )
 from wgsextract_cli.core import optional_tools
@@ -104,6 +105,60 @@ def run_list(params: DepsListParams) -> None:
     """``deps list``: the report ``deps check`` prints, without failing when a
     mandatory tool is missing."""
     _report()
+
+
+def run_ready(params: DepsReadyParams) -> None:
+    """``deps ready``: each prerequisite of a command line and whether it
+    can run here offline; fails (exit 3) when it can't."""
+    import shlex
+
+    from wgsextract_cli.core.readiness import inspect_command
+
+    argv = list(params.command_line)
+    if argv[:1] == ["--"]:
+        argv = argv[1:]
+    report = inspect_command(argv)
+    details = report.as_dict()
+    current_result().set_details(details)
+    human_output(f"Readiness: wgsextract {shlex.join(details['command_line'])}")
+    host = details["host"]
+    human_output(f"Host: {host['os']} {host['machine']}\n")
+    for item in details["items"]:
+        version = f" [{item['version']}]" if item["version"] else ""
+        note = "" if item["required"] else " (advisory)"
+        human_output(
+            f"{item['status']:<12} {item['kind']:<10} {item['name']}{version}{note}"
+        )
+        if item["detail"]:
+            human_output(f"{'':<24}{item['detail']}")
+        licence = (item["evidence"].get("terms") or {}).get("licence")
+        if licence:
+            human_output(f"{'':<24}licence: {licence}")
+        if item["status"] in ("missing", "stale", "incompatible") and (
+            item["fix_arguments"] or item["fix_text"]
+        ):
+            fix = (
+                f"wgsextract {shlex.join(item['fix_arguments'])}"
+                if item["fix_arguments"]
+                else item["fix_text"]
+            )
+            human_output(f"{'':<24}fix: {fix}")
+    human_output("")
+    for notice in details["notices"]:
+        human_output(notice)
+    if details["ready"]:
+        human_output(
+            "Ready to run offline"
+            + (
+                " (some items are unverified)."
+                if details["status"] == "ready_unverified"
+                else "."
+            )
+        )
+        return
+    raise MissingDependencyError(
+        "Not ready to run offline; blocked by: " + ", ".join(details["blocking"])
+    )
 
 
 def run_install(params: DepsInstallParams) -> None:
