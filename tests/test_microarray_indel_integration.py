@@ -17,16 +17,16 @@ probe_inputs = indel_fixtures.probe_inputs
 @pytest.mark.parametrize(
     ("formats", "entries", "message"),
     [
-        ("23andme_v5_2025", ["bad"], "FORMAT=PATH"),
-        ("all", ["23andme_v5_2025={path}"], "selected"),
+        ("23andme_v4", ["bad"], "FORMAT=PATH"),
+        ("all", ["23andme_v4={path}"], "selected"),
         ("ftdna_v2", ["ftdna_v2={path}"], "No verified"),
         ("23andme_v5", ["unknown={path}"], "Unknown microarray format"),
         (
-            "23andme_v5_2025",
-            ["23andme_v5_2025={path}", "23andMe-V5-2025={path}"],
+            "23andme_v4",
+            ["23andme_v4={path}", "23andMe-V4={path}"],
             "Duplicate",
         ),
-        ("23andme_v5_2025", ["23andme_v5_2025={path}.missing"], "not found"),
+        ("23andme_v4", ["23andme_v4={path}.missing"], "not found"),
     ],
 )
 def test_manifest_bindings_reject_unsupported_or_ambiguous_requests(
@@ -45,19 +45,19 @@ def test_manifest_bindings_reject_unsupported_or_ambiguous_requests(
     ("fmt", "suffix", "body", "expected"),
     [
         (
-            "23andMe_V5_2025",
+            "23andMe_V4",
             ".txt",
             "rs1\t1\t700\nrs2\t1\t701\nrs20\t1\t702\nrs3\t1\t703\n",
             "rs1\t1\t700\tDI\nrs2\t1\t701\t--\nrs20\t1\t702\t--\nrs3\t1\t703\tGG\n",
         ),
         (
-            "Ancestry_V2_2024",
+            "Ancestry_V2cd",
             ".txt",
             "rs1\t1\t700\nrs2\t1\t701\nrs20\t1\t702\nrs3\t1\t703\n",
             "rs1\t1\t700\tD\tI\nrs2\t1\t701\t0\t0\nrs20\t1\t702\t0\t0\nrs3\t1\t703\tG\tG\n",
         ),
         (
-            "MyHeritage_GSA_2025",
+            "MyHeritage_V3",
             ".csv",
             '"rs1","1","700",\n"rs2","1","701",\n"rs20","1","702",\n"rs3","1","703",\n',
             '"rs1","1","700","DI"\n"rs2","1","701","--"\n"rs20","1","702","--"\n"rs3","1","703","GG"\n',
@@ -135,7 +135,7 @@ def test_cli_indel_opt_in_preserves_combinedkit_and_honors_masks(
         "--region",
         "chr1:650-780",
         "--formats",
-        "23andme_v5_2025",
+        "23andme_v4",
         *options,
     ]
     before, after = tmp_path / "before", tmp_path / "after"
@@ -145,11 +145,11 @@ def test_cli_indel_opt_in_preserves_combinedkit_and_honors_masks(
         "--outdir",
         str(after),
         "--indel-manifest",
-        "23andme_v5_2025=" + manifest,
+        "23andme_v4=" + manifest,
     )
     combined = next(before.glob("*CombinedKit.txt"))
     assert (after / combined.name).read_bytes() == combined.read_bytes()
     assert not list(before.glob("Indels_*"))
-    exported = next(after.glob("*23andMe_V5_2025.txt")).read_text()
+    exported = next(after.glob("*23andMe_V4.txt")).read_text()
     assert exported.rstrip().endswith("rsProbe\t1\t700\t" + expected)
     assert list(after.glob("Indels_*/summary.json"))
