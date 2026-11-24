@@ -252,6 +252,7 @@ def test_chain_fails_instead_of_copying_unannotated_input(tmp_path, scenario):
 
     class Lib:
         clinvar_vcf = None if scenario == "all_skipped" else "present"
+        fasta = None
 
         def __init__(self, *_a, **_k):
             pass
