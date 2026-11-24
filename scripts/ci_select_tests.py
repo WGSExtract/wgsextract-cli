@@ -29,6 +29,7 @@ CI_TESTS = (
     "tests/test_workflow_readiness.py",
     "tests/test_workflow_paths.py",
     "tests/test_python_size.py",
+    "tests/test_mypy_policy.py",
     "tests/test_ci_certify.py",
     "tests/test_ci_certify_remote.py",
     "tests/test_ci_scheduling.py",
