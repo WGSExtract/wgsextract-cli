@@ -56,8 +56,11 @@ against (CHM13v2.0 positions for a CHM13 alignment). `details.heteroplasmy`
 records mutserve's version and settings and that reference (`origin` `rCRS`,
 `CHM13v2.0's chrM`, or null when unconfirmed, with its contig and MD5); the
 metrics add `mt_median_depth`, `mt_min_depth_fraction` (positions with 100 or
-more reads), `mt_homoplasmies` and `mt_heteroplasmies`. A VCF input keeps
-nothing: its levels come from another caller. See
+more reads), `mt_homoplasmies` and `mt_heteroplasmies`. If mutserve's read
+table is missing or unreadable, lineage keeps the calls and their counts and
+warns (`mt_evidence_missing`); the report does not assess the reviewed sites
+without read evidence. A VCF input keeps nothing: its levels come from
+another caller. See
 [personal-report.md](personal-report.md#mitochondrial-dna-heteroplasmy-at-reviewed-variants)
 for how the report reads them.
 

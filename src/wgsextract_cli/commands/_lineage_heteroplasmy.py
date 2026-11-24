@@ -10,6 +10,7 @@ and settings, and core/mt_heteroplasmy.py reads them.
 
 from __future__ import annotations
 
+import csv
 import gzip
 import shutil
 from pathlib import Path
@@ -63,21 +64,35 @@ def keep(
     (added after the haplogroup report, which names the run's manifest)."""
     calls_out, raw_out = outdir / CALLS, outdir / SITE_EVIDENCE
     move_file(tmp / calls, calls_out)
-    # mtime 0: the same table compresses to the same bytes.
-    with (
-        (tmp / raw_name(calls)).open("rb") as source,
-        gzip.GzipFile(raw_out, "wb", mtime=0) as target,
-    ):
-        shutil.copyfileobj(source, target)
-    summary = mt.depth_summary(mt.read_reads(raw_out), LENGTH)
     counts = mt.count_calls(mt.read_calls(calls_out))
     known = origin if origin in mt.ASSESSABLE_ORIGINS else None
     metrics: dict[str, Scalar] = {
-        "mt_median_depth": summary["median_depth"],
-        "mt_min_depth_fraction": round(summary["min_depth_fraction"], 4),
         "mt_homoplasmies": counts["homoplasmies"],
         "mt_heteroplasmies": counts["heteroplasmies"],
     }
+    outputs = [(calls_out, mt.CALLS_ROLE)]
+    raw_source, compressed = tmp / raw_name(calls), tmp / SITE_EVIDENCE
+    try:
+        summary = mt.depth_summary(mt.read_reads(raw_source), LENGTH)
+        # mtime 0: the same table compresses to the same bytes.
+        with (
+            raw_source.open("rb") as source,
+            gzip.GzipFile(compressed, "wb", mtime=0) as target,
+        ):
+            shutil.copyfileobj(source, target)
+    except (OSError, ValueError, KeyError, OverflowError, csv.Error):
+        current_result().warn(
+            "mt_evidence_missing",
+            "mutserve's per-position read table is missing or unreadable; "
+            "kept the calls, but reviewed variants cannot be assessed.",
+        )
+    else:
+        move_file(compressed, raw_out)
+        outputs.append((raw_out, mt.SITE_EVIDENCE_ROLE))
+        metrics.update(
+            mt_median_depth=summary["median_depth"],
+            mt_min_depth_fraction=round(summary["min_depth_fraction"], 4),
+        )
     current_result().add_metrics(**metrics)
     sequence = fasta_mito(fasta, contig)
     details: dict[str, object] = {
@@ -92,4 +107,4 @@ def keep(
         },
         **metrics,
     }
-    return details, [(calls_out, mt.CALLS_ROLE), (raw_out, mt.SITE_EVIDENCE_ROLE)]
+    return details, outputs

@@ -218,8 +218,19 @@ def read_reads(path: Path) -> dict[int, Reads]:
     """mutserve's raw table (``--write-raw``) by position; ValueError for a
     row that can't be read."""
     reads: dict[int, Reads] = {}
-    with _opener(path)(path, "rt", encoding="utf-8", newline="") as stream:
-        for row in csv.DictReader(stream, delimiter="\t"):
+    with (
+        gzip.open(path, "rt", encoding="utf-8", newline="")
+        if path.suffix == ".gz"
+        else path.open(encoding="utf-8", newline="")
+    ) as stream:
+        reader = csv.DictReader(stream, delimiter="\t")
+        required = {"POS", "REF", "COV-FWD", "COV-REV"}
+        required.update(f"%{base}" for base in "ACGTDNacgtdn")
+        if not required.issubset(reader.fieldnames or ()):
+            raise ValueError(
+                "mutserve's per-position read table lacks required columns"
+            )
+        for row in reader:
             fwd, rev = _depth(row, "COV-FWD"), _depth(row, "COV-REV")
             reads[int(row["POS"])] = Reads(
                 ref=row["REF"],

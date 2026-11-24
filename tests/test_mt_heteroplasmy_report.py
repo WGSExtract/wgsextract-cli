@@ -46,8 +46,9 @@ def _sites(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 @needs_htslib
 @needs_tools("haplogrep3", "java", "haplocheck")
+@pytest.mark.parametrize("raw_state", ["normal", "missing_raw", "empty_raw"])
 def test_1175_report_keeps_mutserve_levels_at_reviewed_variants(
-    tmp_path, mini_tree, blocked_network
+    tmp_path, mini_tree, blocked_network, monkeypatch, raw_state
 ):
     folder = tmp_path / "kit"
     folder.mkdir()
@@ -62,12 +63,38 @@ def test_1175_report_keeps_mutserve_levels_at_reviewed_variants(
         *_reads(1494, 20),  # covered, too few reads to rule out
     ]
     bam = sam_to_bam(["@SQ\tSN:chrM\tLN:16569", *reads], folder / "kit.bam")
+    if raw_state != "normal":
+        original_open = Path.open
+        empty_table = tmp_path / "empty.txt"
+        empty_table.touch()
+
+        def without_raw_table(path, *args, **kwargs):
+            if path.name == "heteroplasmies_raw.txt":
+                if raw_state == "missing_raw":
+                    raise FileNotFoundError(path)
+                return original_open(empty_table, *args, **kwargs)
+            return original_open(path, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "open", without_raw_table)
+
     result = api.lineage.mt_haplogroup(
         api.MtHaplogroupParams(
             input=Path(bam), ref=ref, outdir=folder, contamination=True
         )
     )
     kept = {o.role: Path(o.path).name for o in result.outputs}
+    if raw_state != "normal":
+        # An unusable raw table must not turn a completed lineage run into a failure.
+        assert {"haplogroup_report", "heteroplasmy_calls"} <= kept.keys()
+        assert "heteroplasmy_site_evidence" not in kept
+        assert "mt_median_depth" not in result.metrics
+        assert result.metrics["mt_heteroplasmies"] >= 1
+        assert {w.code for w in result.warnings} >= {"mt_evidence_missing"}
+        report = pr.build_report(folder)
+        section = report["sections"]["mitochondrial"]
+        assert {w["code"] for w in section["warnings"]} >= {"mt_evidence_missing"}
+        assert _sites(report)["m.1555A>G"]["state"] == "not_assessed"
+        return
     assert {"heteroplasmy_calls", "heteroplasmy_site_evidence"} <= kept.keys()
     # The haplogroup report still names the run's manifest.
     assert (folder / f"{kept['haplogroup_report']}.manifest.json").is_file()
@@ -191,6 +218,54 @@ def _mutserve_run(
 
 def _call(pos: int, ref: str, alt: str, gt: str, level: float, depth: int) -> str:
     return f"chrM\t{pos}\t.\t{ref}\t{alt}\t.\tPASS\t.\tGT:AF:DP\t{gt}:{level}:{depth}\n"
+
+
+@pytest.mark.parametrize(
+    ("input_name", "contamination", "has_evidence", "status"),
+    [
+        ("kit.cram", False, False, "not_run"),
+        ("kit.vcf.gz", True, False, "not_run"),
+        ("kit.cram", True, False, "failed"),
+        ("kit.cram", False, True, "ok"),
+    ],
+)
+def test_1175_only_failed_heteroplasmy_attempts_affect_the_section(
+    tmp_path, input_name, contamination, has_evidence, status
+):
+    if has_evidence:
+        _mutserve_run(tmp_path)
+    sample = tmp_path / input_name
+    sample.touch()
+    failed = tmp_path / "failed.manifest.json"
+    failed.write_text(
+        json.dumps(
+            {
+                "schema": "wgsextract.result/1",
+                "command": MT,
+                "status": "failed",
+                "inputs": [{"path": str(sample), "role": "input"}],
+                "outputs": [
+                    {
+                        "path": str(tmp_path / "missing.vcf.gz"),
+                        "role": "heteroplasmy_calls",
+                    },
+                ],
+                "error": {"message": "haplogroup analysis failed"},
+                "provenance": {
+                    "finished": "2026-01-02T00:00:00+00:00",
+                    "params": {"contamination": contamination},
+                },
+                "manifest": str(failed),
+            }
+        )
+    )
+    report = pr.build_report(tmp_path, results=[failed])
+    section = report["sections"]["mitochondrial"]
+    assert section["status"] == status
+    if status == "failed":
+        assert section["sources"][0]["manifest"] == failed.name
+    elif has_evidence:
+        assert section["sources"][0]["latest_attempt"] is None
 
 
 def test_1175_an_unconfirmed_mt_reference_assesses_nothing(tmp_path):

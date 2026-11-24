@@ -468,7 +468,11 @@ def _finding(
 
 
 def _section(
-    name: str, sources: Sequence[Source | None], ctx: _Context
+    name: str,
+    sources: Sequence[Source | None],
+    ctx: _Context,
+    *,
+    newer_attempt_matches: Callable[[Source], bool] | None = None,
 ) -> ReportSectionDocument:
     used = [s for s in sources if s is not None]
     failed = [s for s in used if s.status != "ok"]
@@ -483,6 +487,12 @@ def _section(
     )
     for s in used:
         newer = ctx.superseded.get(_key(s.manifest))
+        if (
+            newer is not None
+            and newer_attempt_matches
+            and not newer_attempt_matches(newer)
+        ):
+            newer = None
         section["sources"].append(
             ReportSourceDocument(
                 command=s.command,

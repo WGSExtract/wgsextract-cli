@@ -64,8 +64,19 @@ _BASIS = "mutserve level, depth and strand support at the reviewed variant"
 def _heteroplasmy_run(source: Source) -> bool:
     if source.command != MT_COMMAND:
         return False
-    return source.status != "ok" or any(
-        record.get("role") == mt.CALLS_ROLE for record in source.records("outputs")
+    roles = (mt.CALLS_ROLE, mt.SITE_EVIDENCE_ROLE)
+    if source.status == "ok":
+        return "heteroplasmy" in source.details or any(
+            record.get("role") in roles for record in source.records("outputs")
+        )
+    provenance = source.document.get("provenance")
+    params = provenance.get("params") if isinstance(provenance, Mapping) else None
+    if not isinstance(params, Mapping) or "contamination" not in params:
+        return source.output(*roles) is not None
+    return params.get("contamination") is True and any(
+        record.get("role") == "input"
+        and str(record.get("path", "")).lower().endswith((".bam", ".cram"))
+        for record in source.records("inputs")
     )
 
 
@@ -191,7 +202,9 @@ def _warn_unassessed(
                 "on an alignment to hg38, hs37d5 or CHM13v2.0.",
             )
         )
-    elif evidence is None:
+    elif evidence is None and not any(
+        warning["code"] == "mt_evidence_missing" for warning in section["warnings"]
+    ):
         section["warnings"].append(
             ReportWarningDocument(
                 code="mt_evidence_missing",
@@ -205,7 +218,9 @@ def _warn_unassessed(
 def mitochondrial(ctx: _Context) -> ReportMitochondrialDocument:
     source = ctx.latest(_heteroplasmy_run)
     section: ReportMitochondrialDocument = {
-        **_section("mitochondrial", [source], ctx),
+        **_section(
+            "mitochondrial", [source], ctx, newer_attempt_matches=_heteroplasmy_run
+        ),
         **ReportMitochondrialFields(),
     }
     if source is None or source.status != "ok":
