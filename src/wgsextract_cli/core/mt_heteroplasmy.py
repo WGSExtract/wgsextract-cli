@@ -207,7 +207,7 @@ def _fractions(
     for base in "ACGTDN":
         column = f"%{base if strand == 'fwd' else base.lower()}"
         value = _number(row.get(column))
-        valid = value is not None and math.isfinite(value) and 0 <= value <= 1
+        valid = value is not None and 0 <= value <= 1
         if depth and not valid:
             raise ValueError(f"position {row.get('POS')}: unreadable {column}")
         fractions[base] = value if valid and value is not None else 0.0
@@ -269,9 +269,10 @@ def _mixture(genotype: str) -> bool:
 
 def _number(value: object) -> float | None:
     try:
-        return float(str(value).replace(",", "."))
+        number = float(str(value).replace(",", "."))
     except (TypeError, ValueError):
         return None
+    return number if math.isfinite(number) else None
 
 
 def _whole(value: object) -> int | None:

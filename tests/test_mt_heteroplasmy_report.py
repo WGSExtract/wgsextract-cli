@@ -123,6 +123,12 @@ def test_1175_report_keeps_mutserve_levels_at_reviewed_variants(
     assert "aminoglycoside" in mtrnr1["value"]
     variant = mtrnr1["variant"]
     assert (variant["genotype"], variant["zygosity"]) == (None, "heteroplasmic")
+    assert (variant["chrom"], mtrnr1["evidence"]["region"]) == ("rCRS", "chrM:1555")
+    assert mtrnr1["evidence"]["file"] == kept["heteroplasmy_calls"]
+    assert (
+        findings["MT-ND4 m.11778G>A"]["evidence"]["file"]
+        == kept["heteroplasmy_site_evidence"]
+    )
     assert variant["clinical_evidence"]["id"] == risk["clinvar_id"] == "9628"
     assert section["resource"]["clinvar_release"] == "2026-11-15"
     assert "PMID 34032273" in section["resource"]["cpic_citation"]
@@ -328,6 +334,25 @@ def test_1175_two_alts_at_one_site_keep_their_own_levels(tmp_path):
         (sites[v]["state"], sites[v]["level"]) for v in ("m.8993T>G", "m.8993T>C")
     ]
     assert levels == [("heteroplasmic", 0.7), ("heteroplasmic", 0.3)]
+
+
+def test_1175_nonfinite_vcf_numbers_fall_back_to_the_read_table(tmp_path):
+    _mutserve_run(
+        tmp_path,
+        calls=("chrM\t1555\t.\tA\tG\t.\tPASS\t.\tGT:AF:DP\t0/1:NaN:Infinity\n",),
+        raw=(_raw_row(1555, "A", 500, 500, "G", 0.3),),
+    )
+    report = pr.build_report(tmp_path)
+    site = _sites(report)["m.1555A>G"]
+    assert (site["state"], site["level"], site["depth"]) == ("heteroplasmic", 0.3, 1000)
+    json.dumps(report, allow_nan=False)
+
+
+def test_1175_uncalled_weak_signal_links_to_the_read_table(tmp_path):
+    _mutserve_run(tmp_path, raw=(_raw_row(1555, "A", 500, 500, "G", 0.03),))
+    (finding,) = pr.build_report(tmp_path)["sections"]["mitochondrial"]["findings"]
+    assert "mt_not_called" in finding["confidence_reasons"]
+    assert finding["evidence"]["file"] == "mutserve_heteroplasmies.raw.txt.gz"
 
 
 def test_1175_an_unreadable_base_fraction_is_not_a_negative(tmp_path):

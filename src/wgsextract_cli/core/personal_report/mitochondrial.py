@@ -253,6 +253,7 @@ def mitochondrial(ctx: _Context) -> ReportMitochondrialDocument:
         if found.state not in (*mt.DETECTED, mt.WEAK):
             continue
         clinvar = variant["clinvar"]
+        raw_only = "mt_not_called" in reasons or "strand_bias" in reasons
         findings.append(
             _finding(
                 "mitochondrial",
@@ -264,11 +265,11 @@ def mitochondrial(ctx: _Context) -> ReportMitochondrialDocument:
                 confidence=label,
                 reasons=reasons,
                 basis=_BASIS,
-                evidence=technical["calls"],
+                evidence=technical["site_evidence" if raw_only else "calls"],
                 region=f"{contig}:{mt.evidence_position(int(variant['pos']), origin)}",
                 manifest=ctx.rel(source.manifest),
                 variant=ReportVariantDocument(
-                    chrom=contig if origin == mt.RCRS else "rCRS",
+                    chrom="rCRS",
                     pos=int(variant["pos"]),
                     ref=variant["ref"],
                     alt=variant["alt"],
