@@ -118,6 +118,7 @@ fn handle_native_picker_request<R: tauri::Runtime>(
             "Choose file"
         });
     let default_path = values.get("defaultPath").map(String::as_str).unwrap_or("");
+    let multiple = values.get("multiple").map(String::as_str) == Some("true");
     if !valid_dialog_options(title, default_path) {
         write_json_response(
             &mut stream,
@@ -129,6 +130,46 @@ fn handle_native_picker_request<R: tauri::Runtime>(
     let mut dialog = app.dialog().file().set_title(title);
     if !default_path.is_empty() {
         dialog = dialog.set_directory(default_path);
+    }
+    if kind == "file" && multiple {
+        match dialog.blocking_pick_files() {
+            Some(files) => {
+                let mut paths = Vec::with_capacity(files.len());
+                for file in files {
+                    match file.into_path() {
+                        Ok(path) => paths.push(child_process_path(&path)),
+                        Err(error) => {
+                            write_json_response(
+                                &mut stream,
+                                400,
+                                serde_json::json!({"error": error.to_string()}),
+                            );
+                            return;
+                        }
+                    }
+                }
+                if paths.is_empty() {
+                    write_json_response(
+                        &mut stream,
+                        200,
+                        serde_json::json!({"kind": kind, "cancelled": true}),
+                    );
+                } else {
+                    let joined = paths.join("\n");
+                    write_json_response(
+                        &mut stream,
+                        200,
+                        serde_json::json!({"path": joined, "paths": paths, "kind": kind, "cancelled": false}),
+                    );
+                }
+            }
+            None => write_json_response(
+                &mut stream,
+                200,
+                serde_json::json!({"kind": kind, "cancelled": true}),
+            ),
+        }
+        return;
     }
     // Blocking picks are fine here: this runs on a per-request thread, never the main thread.
     let picked = match kind {

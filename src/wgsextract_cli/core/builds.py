@@ -1,7 +1,7 @@
 import re
 
-HG37_BUILD_ALIASES = {"hg19", "hg37", "grch37", "hs37", "hs37d5"}
-HG38_BUILD_ALIASES = {"hg38", "grch38", "hs38", "hs38dh", "hs38d1", "hs38d1v0"}
+HG37_BUILD_ALIASES = {"37", "hg19", "hg37", "grch37", "hs37", "hs37d5"}
+HG38_BUILD_ALIASES = {"38", "hg38", "grch38", "hs38", "hs38dh", "hs38d1", "hs38d1v0"}
 T2T_BUILD_ALIASES = {
     "t2t",
     "t2tv20",
@@ -11,6 +11,37 @@ T2T_BUILD_ALIASES = {
     "chm13v2",
     "chm13v2.0",
 }
+_HG37_EXTRA_MODELS = {
+    "hg19p13",
+    "hg19p13a",
+    "hg19p13n",
+    "hg37w",
+    "grch37-",
+    "grch37p13",
+    "hs37-",
+    "hs37a",
+    "hs37n",
+}
+_HG38_EXTRA_MODELS = {
+    "hg38p12",
+    "grch38-",
+    "grch38p13",
+    "hs38a",
+    "thgyseqp",
+}
+_T2T_EXTRA_MODELS = {
+    "t2t chm13",
+    "t2t-chm13",
+    "t2t-chm13v2.0",
+    "t2tv20a",
+    "t2tv11",
+    "t2tv10",
+    "t2tv09",
+    "hppv11",
+    "hppv1",
+}
+T2T_PR1_ALIASES = {"pr1", "t2t pr1", "thg1243v3", "hg01243v3"}
+T2T_HG002_ALIASES = {"hg002", "t2t hg002", "thgv27", "thgv20", "hg002xy"}
 
 # Build-name tokens, including catalog variants, in preference order.
 BUILD_PATH_TOKENS = {
@@ -83,16 +114,22 @@ def _build_key(build: str) -> str:
 
 
 def is_hg37_build(build: str) -> bool:
-    return _build_key(build) in HG37_BUILD_ALIASES
+    key = _build_key(build)
+    return key in HG37_BUILD_ALIASES or key in _HG37_EXTRA_MODELS
 
 
 def is_hg38_build(build: str) -> bool:
     key = _build_key(build)
-    return key in HG38_BUILD_ALIASES or key.startswith("hs38d1")
+    return (
+        key in HG38_BUILD_ALIASES
+        or key in _HG38_EXTRA_MODELS
+        or key.startswith("hs38d1")
+    )
 
 
 def is_t2t_build(build: str) -> bool:
-    return _build_key(build) in T2T_BUILD_ALIASES
+    key = _build_key(build)
+    return key in T2T_BUILD_ALIASES or key in _T2T_EXTRA_MODELS
 
 
 def canonical_build(build: str | None) -> str | None:
@@ -106,6 +143,43 @@ def canonical_build(build: str | None) -> str | None:
     if is_t2t_build(build):
         return "t2t"
     return None
+
+
+def display_build(build: str | None) -> str | None:
+    """User-facing Major Build name: GRCh37, GRCh38, T2T CHM13, T2T HG002, or T2T PR1.
+
+    Each Major Build (37, 38, CHM13, HG002, PR1) corresponds to distinct primary
+    chromosome lengths.
+    """
+    if not build:
+        return None
+    key = _build_key(build)
+    if key in T2T_PR1_ALIASES:
+        return "T2T PR1"
+    if key in T2T_HG002_ALIASES:
+        return "T2T HG002"
+    canonical = canonical_build(build)
+    if canonical == "hg19":
+        return "GRCh37"
+    if canonical == "hg38":
+        return "GRCh38"
+    if canonical == "t2t":
+        return "T2T CHM13"
+    return build
+
+
+def compact_build(build: str | None) -> str | None:
+    """Short Major Build token for Build columns: 37, 38, CHM13, HG002, or PR1."""
+    shown = display_build(build)
+    if shown is None:
+        return None
+    return {
+        "GRCh37": "37",
+        "GRCh38": "38",
+        "T2T CHM13": "CHM13",
+        "T2T HG002": "HG002",
+        "T2T PR1": "PR1",
+    }.get(shown, shown)
 
 
 def ploidy_preset(build: str | None) -> str | None:

@@ -6,6 +6,7 @@ from wgsextract_cli.api.sample import (
     SampleUnsetParams,
 )
 from wgsextract_cli.cli.registration.sample import register as register
+from wgsextract_cli.core.builds import display_build
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.sample_types import OverrideChanges
 from wgsextract_cli.core.sample_workspace import (
@@ -54,9 +55,14 @@ def _report(params: SampleShowParams | SampleSetParams | SampleUnsetParams) -> N
                 )
                 + (f"; {fact['at'][:10]}" if fact.get("at") else "")
             )
+            shown = (
+                display_build(str(fact["value"])) or str(fact["value"])
+                if name == "build"
+                else _value(fact["value"])
+            )
             human_output(
                 f"  {FACTS[name].name.replace('_', ' ').capitalize():<{_LABEL_WIDTH}}"
-                f"{_value(fact['value'])}  ({source})"
+                f"{shown}  ({source})"
             )
         if not effective:
             human_output("  nothing recorded; run 'wgsextract info' to detect it.")
