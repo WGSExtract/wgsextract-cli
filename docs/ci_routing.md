@@ -57,9 +57,7 @@ use no runner. Every PR workflow includes `ready_for_review`.
 The shared `os_tests.yml` suite also gates its matrix job on the inherited
 draft payload, in addition to the PR area's gates on its OS callers.
 Workflows with cancelling concurrency retain a runner-free `converted_to_draft`
-event in the same concurrency group to cancel in-flight ready runs. Pushes, schedules,
-manual dispatches, workflow calls and merge groups retain their existing gates.
-Install Lab shares the code-validation run and is cancelled with it on redrafting.
+event in the same concurrency group to cancel in-flight ready runs.
 
 Draft-payload events other than `converted_to_draft` use a separate `-draft`
 concurrency group. GitHub may deliver a draft `synchronize` event after
@@ -92,11 +90,11 @@ adds fatal-error Ruff checks without imposing unrelated root formatting.
 | Generated API/command reference only | Its freshness check in the cheap docs lane | 1–3 |
 | CLI source/tests | Affected test files on four OSes, input-selected freshness, CodeQL | Depends on graph reachability; full-suite fallback remains |
 | `.github/**`, `scripts/ci_*.py` | actionlint and CI policy/routing/readiness; one-OS smoke for changed matrix workflow | Small checks, not the full CLI matrix |
-| Installer, packaging, Pixi lock/manifest, CLI entry points | Above plus Install Lab and applicable package checks | ~125; no intended coverage reduction |
-| Native source only | Native build/ctest/package workflows and CLI help smoke | Native build cost + <1; removes ~125 of unrelated checks |
+| Installer, packaging, Pixi lock/manifest, CLI entry points | Affected OS suites include setup and bundle checks; Install Lab is release-only | Depends on graph reachability |
+| Native source only | CLI help smoke and affected test files; release-only native builds are deferred | <1 for CLI help smoke plus affected tests |
 | Site Markdown only | Site-source validation, plus command freshness for generated CLI cards | <1–3 |
 | Site code/assets or `gui/mockups/` | Pages checks plus pytest for referenced inputs | Usually 1–3; non-light test inputs select the matrix |
-| App source | Existing GUI checks; app packaging also selects Install Lab | Depends on the app area |
+| App source | Applicable GUI CI and GUI developer setup; installer/distribution checks are release-only | Depends on the app area |
 
 These are estimates from the pre-routing workflow medians, not billing claims.
 Native build/package time depends on architecture and CUDA compilation; routing
@@ -115,12 +113,11 @@ no optional-tool runner. Merge groups use the diff's affected tests for this lan
 not the full OS safety selection, so docs-only and GUI-only queue entries do not
 allocate an optional runner. Changes to this workflow, its PR caller/router,
 runner, Ubuntu CI or the shared Pixi setup also exercise the integrations themselves. Drafts allocate no
-runner. Main/nightly Ubuntu runs retain all five suites, subject to the existing
-exact-head nightly guard. Manual dispatch of `optional_tools.yml` validates just
+runner. Nightly Ubuntu runs retain all five suites. Manual dispatch of `optional_tools.yml` validates just
 this small lane on a branch.
 Before the new workflow reaches main, dispatch the existing `ubuntu_ci.yml`
 with `optional-tools-only=true` on the branch instead. This explicit manual
-override skips its normal jobs; default dispatches, PRs, main and schedules
+override skips its normal jobs; default dispatches, PRs and schedules
 retain their existing coverage.
 
 The existing pinned Pixi action installs `dev verifybamid2 freebayes longtr modkit expansionhunter`
@@ -142,7 +139,7 @@ warm-cache cost. Large Clair3/model-backed native DeepVariant integrations and
 real-data suites requiring external inputs remain separate follow-ups, not silent
 new downloads.
 
-### Setup-heavy checks and repeated nightly coverage (#1045)
+### Setup checks on PRs and the daily backstop
 
 PR installer checks and the Ubuntu app-bundle command test run only when the
 complete diff touches their setup inputs: installers, packaging, GUI files,
@@ -152,27 +149,19 @@ can invalidate the app's bundled command lines.
 The bundle check also retains its affected `test_cli_parser.py` trigger:
 API wrappers and command-registry dependencies outside `cli/` can change the
 bundled command contract even when installer setup is unrelated.
-The same routing bit gates both macOS Install Lab jobs; Linux and Windows
-Install Lab selection is unchanged. The Tauri installer keeps its input path
-filter, including its Rust cache/build wrappers and root packaging/manifests.
-Main and scheduled runs retain those checks whenever their workflow runs.
 Thus a CLI edit unrelated to setup and the parser contract runs **zero** OS-installer steps
 and **zero** Ubuntu app-bundle checks rather than four installer steps and one
-app-bundle check. `run-install-lab` remains an explicit full-platform override.
+app-bundle check. Install Lab and the Tauri installer lifecycle suite are
+separate release gates; no PR label schedules them.
 
-The four full OS workflows and CLI smoke call `nightly_guard.yml`. Its small
-Ubuntu API check runs on a schedule or on a full manual Ubuntu run on `main`;
-PRs, pushes and other dispatches skip that API check. A full macOS or Windows
-dispatch (or an opted-in balanced Ubuntu dispatch) uses the same runner only
-to plan shards. The check lets
-those workflows skip expensive jobs only if their own successful **push**
-run exists for the exact current main SHA in this repository. A different SHA,
-a failed/cancelled run, a PR/nightly success, missing evidence or an API error
-retains full coverage.
-Failure or timeout of the guard runner itself also runs coverage; a skip
-requires both a successful guard and its explicit `skip=true` output.
-Regular Ubuntu pytest always runs on schedule or on a full manual Ubuntu
-run on `main`: the default observation backstop must not reuse a green main push.
+The four OS workflows run daily on the latest `main`: Ubuntu at 08:23 UTC,
+Windows at 08:41, macOS at 08:47 and Linux ARM64 at 08:53. Each also supports
+`workflow_dispatch` for on-demand validation. `nightly_guard.yml` now plans
+duration shards for Windows, macOS and opt-in balanced Ubuntu dispatches. A
+missing plan falls back to the normal full suite. Scheduled runs never skip
+coverage because the SHA previously passed. Ubuntu's default serial, uncached
+run still refreshes the passed-test cache and selector observation map;
+scheduled failures keep the existing red-main issue and miss attribution.
 The `required` queue summary now directly depends on Windows as well as Ubuntu;
 it cannot pass while code-selected Windows failed or was cancelled.
 Queue Windows selection uses changed code/runtime-input paths, independently
@@ -308,10 +297,8 @@ Generic classification rejects uncertain imports/fixtures, subprocess/tool use,
 platform branches, concrete pathlib operations, permissions, signals, symlinks
 and line-ending behavior. Currently no existing module is proven generic under
 these deliberately strict rules; modules remain platform-sensitive until proven.
-Uncertified generic tests run once on Ubuntu; main retains full coverage.
-Nightly may reuse successful exact-HEAD main evidence as described below.
-Gitleaks, CodeQL, Install Lab, native/app builds and package/benchmark smoke stay
-hosted when routed. Merge groups never consume attestations. `required` and the
+Uncertified generic tests run once on Ubuntu; nightly retains full coverage.
+Gitleaks, CodeQL and the release-only jobs stay hosted. Merge groups never consume attestations. `required` and the
 ready-gate accept certified skips only after successful routing, and the landing
 validator relies on the current ready run rather than treating status contexts as
 standalone workflow runs. Failed/pending certificates allow hosted fallback.
@@ -408,8 +395,7 @@ regressions to native OS smoke jobs even without a product-code change.
 Optional-tool integrations also stay hosted: an OS
 certificate does not prove that the five separate optional environments and
 their no-skips tests ran. Windows imputation selections still run their
-hosted fresh locked install. Install Lab and merged-tree import checks still run
-when routed.
+hosted fresh locked install. Merged-tree import checks still run when routed.
 Sparse selected PRs save less.
 
 ### Decisive test selection rollout
@@ -611,8 +597,7 @@ Each `os_tests.yml` matrix job keeps one manifest of passed hashes:
 
 | Event | Reads | Records after a passing run |
 |---|---|---|
-| Main push (Ubuntu, Windows) | the files its merge group executed at this exact SHA, if one passed `required` | `test-pass-v1-<os>-<label>-main-<run>` |
-| Main push (macOS, ARM64), nightly, manual dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
+| Nightly or manual full dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
 | Ready PR push or `ready_for_review` | latest `-main-` and this PR's latest `-pr-` manifest | `test-pass-v1-<os>-<label>-pr-<run>` |
 | Merge group | latest `-main-` manifest | the files it executed (not its cache skips), as artifact `test-pass-queue-<os>-<label>` |
 | Other refs | nothing (runs uncached) | nothing |
@@ -626,18 +611,15 @@ and eight trees' names (tens of KB each), so they cannot crowd out Pixi caches.
 
 **Security.** GitHub scopes caches by ref: a PR run writes only to
 `refs/pull/<n>/merge`, readable by later runs of that PR alone, and can read the
-base branch's (main's) caches. Only `push`, `schedule` and `workflow_dispatch`
+base branch's (main's) caches. Only `schedule` and `workflow_dispatch`
 runs can write main's scope. A PR therefore cannot poison what main or other
 PRs read; at most it can skip its own tests, which its own workflow edits could
-do anyway. Merge groups read only main's manifest (owner decision,
-2026-11-15): a skipped file's every tracked input matches a tree that passed
-on main. The queue plus the matching main push cover the full regular test
-scope for that SHA: main still runs files the queue skipped as cached, so an
-undeclared input the hash misses can fail the very next main run. The daily
-Ubuntu backstop does not reuse even successful exact-SHA push evidence.
+do anyway. Merge groups read only main's manifest: every tracked input for
+a skipped file matches a tree that passed on main. Nightly reruns the full
+suite, including tests skipped by the queue's cache, at the latest main SHA.
 
 Each test job's summary lists the cache-skipped files, where they passed
-(`main`, `pr` or `merge-group-<run>`) and their hashes. Each job's
+(`main` or `pr`) and their hashes. Each job's
 `tests-<os>-<label>` artifact also holds `test-scope.json`: the files selected
 for that job and, for each cache skip, where it passed. To estimate savings, run
 `pixi run python scripts/ci_cache_replay.py --limit 60 --junit <main pytest.xml...>`;
@@ -648,61 +630,25 @@ also run both site builders and the app's site-source validator, without
 deployment permissions. The secret scan remains on **all ready PRs and queue groups**,
 including docs: routing must not hide a secret in prose.
 
-### Main pushes after the merge queue
+### Main pushes, nightly and release gates
 
-The queue lands the exact commit its merge group tested, so a main push usually
-has the same SHA as a merge-group run that already passed. On 2026-11-21, 37 of
-38 main SHAs did, and their CI Ubuntu and Windows runs took about 2,180
-runner-minutes a day (#1373, merge-queue starvation). Main therefore doesn't
-rerun what the queue just ran:
+A push to `main` starts gitleaks and the auto-merge conflict watch. CodeQL
+retains its Markdown exclusion; Release, Pages and Copilot setup retain
+their path filters. No OS suite reruns on push. The queue still validates
+merged-tree Ubuntu and code-selected Windows against main's verified passed
+hashes. The full, uncached latest-main suites run nightly instead.
 
-- A merge group's Ubuntu and Windows test jobs use their passing pytest JUnit
-  report to record the dependency hashes of files they **executed** without
-  failures or skips. Cache skips and uncollected files aren't reported as
-  passes. The jobs upload `test-pass-queue-<os>-<label>` (seven days).
-- On a push to main, `scripts/ci_merge_group_passes.py` looks for a `pr_ci.yml`
-  `merge_group` run in this repository whose head SHA is the pushed SHA, whose
-  branch is under `gh-readonly-queue/main/` and whose latest `required` job
-  succeeded. It downloads that run's manifest for the same OS and label.
-- Regular main pytest starts from the full selection, not the PR symbol
-  selection. It reads only the exact-SHA queue manifest, never main's previous
-  passes. A file is skipped only if its exact dependency hash, which includes
-  the runner image, passed in that group. Main therefore runs the files the
-  queue skipped as cached, plus any without verified matching evidence. It
-  updates main's manifest as before; cache skips carry the identical hash the
-  queue passed.
+Install Lab, Linux/macOS aligners and DeepVariant, macOS Clair3, GUI Tauri
+installer, GUI distribution, PharmCAT end-to-end, Windows GKL/GATK, and CLI
+package/benchmark smoke run on dispatch only. The release workflow dispatches
+them for the exact candidate and blocks publication on failure. There is no
+weekly or nightly run of these suites. GUI CI and GUI developer setup still
+run on matching PRs and their existing schedule, not on pushes. See
+[Releasing](releasing.md) for the release checklist.
 
-If no passing merge group matches, or anything is uncertain (an API error, a
-missing, expired or unreadable artifact), the manifest is not written and main
-runs the full suite. The lookup fails open to more coverage, never less.
-macOS and ARM64 don't run in the queue, so their main pushes keep the full
-suite. Nightly, manual dispatch and other jobs in these workflows (lint,
-imputation, ONT, optional tools, the e2e and Windows end-to-end steps) are
-unchanged. Main's non-gating line coverage report covers only the files main
-ran.
-
-### Main-push prose filters
-
-The four OS trigger wrappers (CI Ubuntu, macOS, Windows and ARM64), CLI smoke, Linux aligners/DeepVariant,
-GATK/GKL on Windows, GUI Tauri installer and CodeQL use
-`paths-ignore: ["**/*.md"]` on main pushes, with no generated-reference or
-changelog exceptions. Mixed Markdown/code pushes still run normally.
-`os_tests.yml` is reusable-only; it inherits the filtered wrappers' invocation
-and cannot start independently on a push or PR.
-Generated references legitimately change with code inputs; the PR/merge-queue
-docs or CLI lane already checked freshness before `required` passed.
-The secret scan and the auto-merge conflict watch (below) remain unfiltered
-on every main push; Pages retains its existing site-source filters.
-
-Install Lab, GUI distribution/CI/developer setup and macOS aligners/DeepVariant
-retain the area-scoped main-push filters from #904 (main-push coalescing),
-including the final `!**/*.md` exclusion. Their PR triggers use the same
-Markdown exclusion (Install Lab is invoked through PR area routing).
-A Markdown-only main push therefore starts only gitleaks and the conflict
-watch, plus Pages for site sources; none of these six workflows or the OS
-suite starts.
-See AGENTS.md, "Docs fast path", for the narrower direct-push permission:
-policy files and generated/test-checked references still require PRs.
+Markdown-only main pushes therefore start the secret scan and conflict watch,
+plus Pages for site sources. See AGENTS.md, "Docs fast path", for the narrower
+direct-push permission: policy files and generated references still require PRs.
 
 All standalone `pull_request` workflows exclude prose-only Markdown diffs
 through ordered path exclusions or exact non-Markdown includes (Developer
@@ -711,47 +657,9 @@ freshness, gitleaks and `required`, including generated-reference checks.
 Mixed diffs still select the union of applicable code areas. PR event types
 and job-level draft gates are managed separately by #910 (draft PR CI gating).
 
-Merge-group routing, nightly schedules, reusable calls, releases and manual
-dispatches retain their coverage. Install Lab can be
-forced on any PR with the `run-install-lab` label. Normal PR runs read this routing
-label live from GitHub, rather than from a possibly delayed event payload.
-Adding or removing labels does not start or cancel PR area checks: a skipped label
-suite can shadow the passing `required` check and block the merge queue.
-To apply a routing-label change immediately, toggle the PR to draft and then
-ready (`gh pr ready --undo PR`, then `gh pr ready PR`); otherwise the next push
-uses the current labels. The new ready run validates the complete diff, not just
-Install Lab. Other labels do not affect routing.
-The landing validator scopes area checks to the selected ready run.
-Its nightly run includes the former weekly negative controls and pinned-release
-scenarios.
-
-### Main-push concurrency and macOS capacity
-
-Main pushes coalesce pending main-push runs independently in Install Lab, GUI
-distribution, the four CLI OS workflows, CLI package/benchmark smoke, macOS
-Aligners, macOS DeepVariant, GUI CI and GUI developer setup. A started main
-run always finishes (`cancel-in-progress: false` for push events); GitHub
-replaces an older pending run with the newest pending push. PRs still cancel
-superseded commits. Other main-push workflows with concurrency follow the
-same non-cancelling policy. The OS and macOS-capacity workflow groups
-separate push, PR, nightly and manual events. Nightly/manual runs keep unique
-run-ID groups and are not cancelled by pushes. Reusable workflows use literal
-workflow-specific prefixes, not the caller's `github.workflow`; tagged GUI
-distribution calls also keep unique, non-cancelling groups, including a release
-caller with a push event. Release publishing and `app_run` artifact selection
-are unchanged.
-Main-push retries (`run_attempt > 1`) also use independent run-ID groups:
-rerunning an old commit cannot cancel the newest first-attempt main push.
-
-The eight workflows previously submitted **13–14 macOS jobs per main merge**:
-CI macOS 3, smoke 2, Install Lab 2–3 (one extra if it builds the tree app),
-GUI distribution 2, and one each for Aligners, DeepVariant, GUI CI and GUI
-developer setup. A CLI-only merge outside installer/packaging paths now submits
-**2** (one CI macOS plus one combined smoke); Markdown-only submits **0** macOS jobs after the
-prose filters. Relevant app/native
-merges still run the matching workflows. Coalescing limits each workflow's
-main-push backlog to its newest run; it does not promise a fixed saving in
-runner-minutes or a measured queue-wait target.
+Adding or removing labels does not start or cancel PR area checks. The landing
+validator scopes area checks to the selected ready run. PR runs still cancel
+superseded commits; nightly and manual runs are independent of new pushes.
 
 Workflow completions and PR events carrying `ci-red-main` share the observer
 queue so they cannot update quarantine state concurrently. Other PR events do
@@ -814,11 +722,9 @@ available for local diagnosis:
   ONT and Windows vep-rs checks retain their environments when affected.
 
 Both tiers run together within the affected files on CLI-routed PRs; an empty selection
-passes without testing unrelated files. Non-prose main pushes and their
-matching merge groups together retain full coverage. Merge-queue Ubuntu and
-code-selected Windows skip only cache hits from main. Daily Ubuntu regular
-pytest is uncached; other nightly jobs retain their exact-SHA guard. ARM64
-runs its selection in one job. No slow suite is demoted to nightly-only coverage.
+passes without testing unrelated files. Merge-queue Ubuntu and code-selected
+Windows skip only cache hits from main. All nightly regular pytest runs are
+uncached. ARM64 runs its selection in one job.
 Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
 modules whose import closure includes command/tool behavior remain cross-platform.
 Ordinary local pytest still collects everything. `--ci-tier` and
@@ -887,18 +793,14 @@ minutes, until cold lockfile-change runs establish a safe tighter budget.
 
 Per-test timing XML and the slowest 60 durations remain available on **every**
 run, separately named by OS. Non-gating line coverage is collected on
-main, nightly and manual runs, not PRs; each report covers the all-tier suite.
+nightly and manual runs, not PRs; each report covers the all-tier suite.
 It uses coverage's `sysmon` core (Python 3.12+ `sys.monitoring`): the default C
 tracer added 35–55% to a sampled subset's time locally, sysmon about 5%.
 
 `CLI package and benchmark smoke` runs the existing package-smoke and real-data
 smoke benchmark commands sequentially in one job on each of the three x64 OSes.
-It has the same CLI-PR routing, non-Markdown main coverage and nightly coverage. Neither
-command has been removed. Steps stop at the first failure, preserving the
-failure observer's per-job attribution (a later flaky test must not hide a
-package regression). The failure observer
-watches direct smoke runs and compares routed PR smoke failures with that
-workflow's main run, as it does for the OS workflows.
+It runs at release preflight and on demand. Steps stop at the first failure
+so the run retains the original cause.
 `tests/test_smoke_real_full.py` follows the benchmark in that same job: its
 real-data fixture discovers the benchmark's prepared HG00096 inputs. Moving
 the benchmark without this suite would silently skip six previously passing
@@ -949,17 +851,15 @@ required check as passing.
 
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
-| Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks, and the area gate covering selected macOS, Windows, ARM64, package smoke and Install Lab jobs | separate CodeQL, GUI and native workflows |
+| Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks, and the area gate covering selected macOS, Windows and ARM64 jobs | separate CodeQL and GUI workflows; release gates do not run |
 | Merge-queue group | full Ubuntu CLI suite and, for code changes, full Windows suite (less test files cached as passed on main), plus ancillary required checks selected by the group's diff | macOS/ARM64, package smoke and Install Lab not run |
 
 On PRs, `required` waits for the existing `ready-gate` verdict and requires it
 to succeed, so enabling auto-merge cannot bypass a failing selected OS job.
 Routing/selection skips and valid self-certifications remain accepted by that
 gate. The area gate does not depend on `required`, avoiding a dependency cycle.
-Merge groups skip the area gate and retain the same smaller required set;
-main pushes run selected workflows in full (Ubuntu and Windows tests minus the
-files their merge group verified at that SHA). Nightly runs cover all paths;
-except for regular Ubuntu pytest, they may reuse an exact-SHA main push pass.
+Merge groups skip the area gate and retain the same smaller required set.
+Nightly OS runs cover all paths without reusing a pass on the same SHA.
 A job-level `needs:` summary in one workflow, rather than polling the
 checks API, reports exactly once per run with no extra permissions or timeout.
 The queue's `merge_group` events ignore `paths:` filters, so routing uses the
@@ -1170,9 +1070,8 @@ Windows); ARM64's single job is
 `native-arm64 / native`. Each job uploads `tests-<os>-<label>`. The workflow has
 no concurrency group of its own, so the OS calls in one run never cancel each
 other.
-Smoke contexts change from `smoke (OS, package)` / `smoke (OS, benchmark)` to
-`smoke (OS)` (prefixed `smoke / ` in PR area checks). The reusable caller IDs,
-`required` and `Ready PR area checks` names and dependencies are unchanged.
+The release-only package and benchmark workflow keeps its `smoke (OS)` jobs.
+The `required` and `Ready PR area checks` names are unchanged.
 Failure observation, red-main matching and flake-ledger retries use normalized
 PR/main job names, including the shard label.
 

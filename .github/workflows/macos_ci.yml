@@ -1,11 +1,7 @@
 name: CI macOS
 
-# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix.
+# pr_ci.yml selects PRs; nightly is the full backstop.
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - "**/*.md"
   workflow_call:
     inputs:
       tests:
@@ -23,7 +19,7 @@ on:
         type: string
         default: "[]"
   schedule:
-    - cron: "11 6 * * *"
+    - cron: "47 8 * * *"
   workflow_dispatch:
 
 permissions:
@@ -31,18 +27,17 @@ permissions:
   actions: read
 
 concurrency:
-  group: ci-macos-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  group: ci-macos-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   nightly:
     uses: ./.github/workflows/nightly_guard.yml
     with:
-      workflow: macos_ci.yml
       shard-os: macos
   test-macos:
     needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && inputs.tests != '[]' }}
+    if: ${{ !cancelled() && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: macos

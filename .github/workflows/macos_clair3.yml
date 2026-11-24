@@ -2,22 +2,6 @@ name: macOS Clair3
 
 # Caller code only: no model conversion, packaging, or redistribution.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    branches: [main]
-    paths:
-      - native/clair3/**
-      - packaging/wgse-clair3/**
-      - .github/workflows/macos_clair3.yml
-      - .github/actions/setup-pixi/**
-      - "!**/*.md"
-  push:
-    branches: [main]
-    paths:
-      - native/clair3/**
-      - packaging/wgse-clair3/**
-      - .github/workflows/macos_clair3.yml
-      - "!**/*.md"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -28,13 +12,8 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
   build:
-    if: ${{ github.event.pull_request.draft != true }}
     runs-on: macos-15
     timeout-minutes: 30
     steps:
