@@ -125,7 +125,7 @@
 {"path":"vcf spliceai","tier":"advanced","summary":"Annotate VCF with SpliceAI splicing scores.","key_flags":["--vcf-input","--spliceai-file"]},
 {"path":"vcf alphamissense","tier":"advanced","summary":"Annotate VCF with AlphaMissense pathogenicity scores.","key_flags":["--vcf-input","--am-file","--min-score"]},
 {"path":"vcf acmg","tier":"advanced","summary":"Research-only ACMG/AMP classes with fastVEP (opt-in).","key_flags":["--vcf-input","--research-acmg","--sa-dir","--gff3","--site-data"]},
-{"path":"vcf pharmcat","tier":"advanced","summary":"Call star-allele diplotypes and drug-response phenotypes (CYP2C19, CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.","key_flags":["--no-download","--vcf-input","--pharmcat-dir","--absent-to-ref","--outside-call"]},
+{"path":"vcf pharmcat","tier":"advanced","summary":"Call star-allele diplotypes and drug-response phenotypes (CYP2C19, CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.","key_flags":["--no-download","--vcf-input","--pharmcat-dir","--absent-to-ref","--alignment","--alignment-reference","--outside-call"]},
 {"path":"vcf chain-annotate","tier":"advanced","summary":"Sequentially apply multiple annotations to a single VCF.","key_flags":["--vcf-input","--annotations","--keep-intermediates","--region","--bed","--no-resume","--force-steps","--to-table","--table-format"]},
 {"path":"bam sort","tier":"advanced","summary":"Sort alignments by genomic coordinates.","key_flags":["--region","--gene"]},
 {"path":"bam index","tier":"advanced","summary":"Create a random-access index (.bai/.crai) for your file.","key_flags":[]},

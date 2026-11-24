@@ -1,6 +1,7 @@
 """Focused server_paths schema regressions."""
 
 import typing
+from pathlib import Path
 
 import pytest
 
@@ -481,13 +482,52 @@ def test_1293_methylation_regions_server_cannot_download_or_follow_an_external_i
     assert refused.value.code == "path_not_allowed"
 
 
+@pytest.mark.parametrize(
+    ("name", "role"),
+    [
+        ("reads.bam.bai", "alignment_index"),
+        ("reads.csi", "alignment_index"),
+        ("ref.fa.gz.fai", "alignment_reference_index"),
+        ("ref.fa.gz.gzi", "alignment_reference_index"),
+        ("ref.dict", "alignment_reference_dictionary"),
+    ],
+)
+def test_1477_server_rejects_external_pharmcat_alignment_sidecars(
+    tmp_path: Path, name: str, role: str
+) -> None:
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    outside = tmp_path / "outside"
+    outside.touch()
+    try:
+        (allowed / name).symlink_to(outside)
+    except OSError:
+        pytest.skip("can't create symlinks here")
+    op = find("vcf/pharmcat")
+    params = params_from_json(
+        op,
+        {
+            "vcf_input": str(allowed / "sample.vcf"),
+            "alignment": str(allowed / "reads.bam"),
+            "alignment_reference": str(allowed / "ref.fa.gz"),
+        },
+    )
+    with pytest.raises(RequestError, match=role) as refused:
+        PathGuard([str(allowed)]).check(params)
+    assert refused.value.code == "path_not_allowed"
+
+
 @pytest.mark.parametrize(("op", "field"), _EVERY_PATH, ids=map("-".join, _EVERY_PATH))
-def test_every_path_of_every_operation_must_be_inside_an_allowed_folder(op, field):
+def test_every_path_of_every_operation_must_be_inside_an_allowed_folder(
+    op: str, field: str
+) -> None:
     # #351 phase 2: the typed API brought 88 operations to the server with no
     # server code each. Whatever an operation is, a file it names outside the
     # allowed folders is refused before it runs.
     guard = PathGuard([_DATA], allow_destructive=True, pathmod=_RecordingFlavour())
     body = {**_base_request(op), **_COMPANIONS.get((op, field), {})}
+    if (op, field) == ("vcf/pharmcat", "alignment_reference"):
+        body["alignment"] = _DATA + r"\sample.bam"
     guard.check(params_from_json(find(op), body))
     item = next(f for f in find(op).fields() if f.name == field)
     outside = {**body, field: _path_value(item, r"E:\elsewhere\x.vcf.gz")}
