@@ -422,6 +422,7 @@ def derive(
 
 def _validate(directory: Path) -> dict[str, object]:
     manifest = json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
+    counts = manifest["counts"]
     if (
         manifest["schema"] != 1
         or manifest["assembly"] != "GRCh37"
@@ -429,7 +430,13 @@ def _validate(directory: Path) -> dict[str, object]:
         or manifest["copyright"] != COPYRIGHT
         or manifest["sites_only"] is not True
         or not isinstance(manifest["source_sha256"], str)
+        or not isinstance(manifest["attribution"], str)
+        or not isinstance(manifest["liftover"]["name"], str)
         or not isinstance(manifest["liftover"]["sha256"], str)
+        or not isinstance(counts, dict)
+        or any(
+            type(counts.get(key)) is not int or counts[key] < 0 for key in COUNT_KEYS
+        )
     ):
         raise ValueError("unsupported manifest")
     if any(

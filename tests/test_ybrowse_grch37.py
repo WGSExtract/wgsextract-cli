@@ -115,6 +115,19 @@ def test_issue_1186_grch37_install_lifts_checks_and_counts_every_allele(tmp_path
             "--ref", str(library),
         )  # fmt: skip
     assert ybrowse_grch37.installed_grch37(library)[0] == directory
+    # A missing provenance field is diagnosed as an invalid resource and
+    # re-deriving the same snapshot repairs it in place.
+    manifest_path = directory / "manifest.json"
+    incomplete = json.loads(manifest_path.read_text(encoding="utf-8"))
+    del incomplete["liftover"]["name"]
+    manifest_path.write_text(json.dumps(incomplete), encoding="utf-8")
+    with pytest.raises(WGSExtractError, match="Invalid GRCh37 yBrowse resource"):
+        ybrowse_grch37.installed_grch37(library)
+    run_wgsextract(
+        "ref", "ybrowse", "--install", "--grch37",
+        "--chain", str(tmp_path / "test.chain"), "--ref", str(library),
+    )  # fmt: skip
+    assert ybrowse_grch37.installed_grch37(library) == (directory, manifest)
     # A different GRCh38 snapshot leaves the lifted sites stale until re-derived.
     ybrowse.install_snapshot(library, mini_snapshot(tmp_path / "new.vcf", ROWS[:2]))
     with pytest.raises(WGSExtractError, match="no longer installed.*--grch37"):
