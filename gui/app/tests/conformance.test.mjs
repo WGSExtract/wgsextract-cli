@@ -21,7 +21,7 @@ function assertWgsExtractReleaseCompatible(tag, pages) {
   const [major, minor, patch] = match.slice(1).map(Number);
   const supportsNewFeatures = major > 0 || minor > 6 || (minor === 6 && patch >= 4);
   const newFormats = new Set([
-    "myheritage_gsa_2025", "myheritage_gsa_2025_609424", "ancestry_v2_2021", "ancestry_v2_2024",
+    "ancestry_v2ab", "ancestry_v2cd", "ancestry_v2e", "myheritage_v3",
     "aadr_1240k", "aadr_ho", "aadr_1240k_ho", "aadr_2m",
   ]);
   const newSettings = new Set(["atomic_outputs", "keep_awake", "temp_directory", "log_dir"]);
@@ -545,12 +545,16 @@ test("WGSExtract Microarray page exposes CombinedKit v5 and all #1107 consumer f
   assert.ok(formats, "microarray_formats control exists");
 
   const byId = new Map(formats.options.map((option) => [option.id, option]));
+  assert.equal(byId.get("combined_v3")?.title, "v3");
+  assert.equal(byId.get("combined_v3")?.group, "Combined");
+  assert.match(byId.get("combined_v3")?.groupTooltip ?? "", /CombinedKit v3.*CombinedKit v5 expands v3/);
   assert.equal(byId.get("all")?.title, "v5");
-  assert.match(byId.get("all")?.groupTooltip ?? "", /CombinedKit v5 expands CombinedKit v3/);
+  assert.equal(byId.get("all")?.group, "Combined");
+  assert.equal(byId.get("all")?.selected, true);
 
   const v5Formats = [
-    "ancestry_v2ab", "ancestry_v2cd", "ancestry_v2e",
-    "ftdna_v4", "ftdna_v2y", "ftdna_v3y", "ftdna_v4y",
+    "23andme_v2", "ancestry_v2ab", "ancestry_v2cd", "ancestry_v2e",
+    "ftdna_v1_affy", "ftdna_v4", "ftdna_v2y", "ftdna_v3y", "ftdna_v4y",
     "myheritage_v3", "tellmegen", "genera", "mthfr",
     "meudna_v1", "meudna_v2", "selfdecode", "nucleus",
   ];
@@ -558,7 +562,28 @@ test("WGSExtract Microarray page exposes CombinedKit v5 and all #1107 consumer f
     assert.ok(byId.has(id), `missing CombinedKit v5 format option: ${id}`);
     assert.notEqual(byId.get(id)?.advancedOnly, true, `${id} should be visible in Basic mode`);
   }
-  for (const id of ["23andme_v2", "23andme_v5_2025", "ftdna_v1_affy"]) {
-    assert.equal(byId.get(id)?.advancedOnly, true, `${id} should be an advanced option`);
+  // 23andMe v1/v2 sits first on the 23andMe row; FTDNA v1 (Affy) sits first on
+  // the FamilyTreeDNA row; FTDNA Y files sit on their own Build 38 row.
+  const idsInGroup = (group) => formats.options.filter((o) => o.group === group).map((o) => o.id);
+  assert.deepEqual(idsInGroup("23andMe"), [
+    "23andme_v2", "23andme_v3", "23andme_v4", "23andme_v5", "23andme_v35", "23andme_api",
+  ]);
+  assert.deepEqual(idsInGroup("AncestryDNA"), [
+    "ancestry_v1", "ancestry_v2ab", "ancestry_v2cd", "ancestry_v2e",
+  ]);
+  assert.deepEqual(idsInGroup("FamilyTreeDNA"), [
+    "ftdna_v1_affy", "ftdna_v2", "ftdna_v3", "ftdna_v4",
+  ]);
+  assert.deepEqual(idsInGroup("FTDNA (Y only, Build 38)"), [
+    "ftdna_v2y", "ftdna_v3y", "ftdna_v4y",
+  ]);
+  assert.deepEqual(idsInGroup("MyHeritage"), [
+    "myheritage_v1", "myheritage_v2", "myheritage_v3",
+  ]);
+  for (const dropped of [
+    "23andme_v5_2025", "ancestry_v2", "ancestry_v2_2021", "ancestry_v2_2024",
+    "myheritage_gsa_2025", "myheritage_gsa_2025_609424",
+  ]) {
+    assert.ok(!byId.has(dropped), `dropped format should not appear in GUI: ${dropped}`);
   }
 });

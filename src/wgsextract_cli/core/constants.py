@@ -316,9 +316,11 @@ REF_GENOME_FILENAMES = {
 # Reference library bootstrap, built by scripts/build_reference_bootstrap.py.
 # Since v0.2.0 it carries no YBrowse data (#509); `ref ybrowse --install` fetches it.
 # Since v0.3.0 it expands CombinedKit v3 with the CombinedKit v5 microarray templates (#1107).
-BOOTSTRAP_VERSION = "0.3.0"
+# v0.4.0 updates 23andMe v4 (v4a-c) and FTDNA v2 (v2a-d), drops minor date/size variants,
+# and keeps CombinedKit v3 frozen via 23andMe_V4_v3 / FTDNA_V2_v3 deltas.
+BOOTSTRAP_VERSION = "0.4.0"
 BOOTSTRAP_URL = f"https://github.com/WGSExtract/wgsextract-cli/releases/download/reference-bootstrap-v{BOOTSTRAP_VERSION}/wgsextract-reference-bootstrap-{BOOTSTRAP_VERSION}.tar.gz"
-BOOTSTRAP_SHA256 = "d6f656f6ac833a77a31eaa957f930023e5054980087305a9655dd0ea07cd49f7"
+BOOTSTRAP_SHA256 = "32d7fc08ec4b727a27d2f4bf5f2129451873afeae44c116535c696639018130c"
 BOOTSTRAP_FILENAME = "wgsextract-reference-bootstrap.tar.gz"
 
 # Delly mappability map files `ref status` reports (Delly 2 no longer needs them).

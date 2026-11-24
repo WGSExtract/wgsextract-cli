@@ -35,7 +35,7 @@ from wgsextract_cli.core.microarray.templates import (
     _PACKAGED_TEMPLATES,
     _chrom_for_liftover,
     _resolve_templates_roots,
-    _template_body_paths,
+    _select_template_root,
     chr_to_int,
     delta_bases,
     get_template_format,
@@ -102,13 +102,13 @@ _FORMATS = [
     "23andMe_V3",
     "23andMe_V35",
     "23andMe_V4",
+    "23andMe_V4_v3",
     "23andMe_V5",
-    "23andMe_V5_2025",
     "23andMe_SNPs_API",
     "Ancestry_V1",
     "Ancestry_V2",
-    "Ancestry_V2_2024",
     "FTDNA_V2",
+    "FTDNA_V2_v3",
     "FTDNA_V3",
     "LDNA_V1",
     "LDNA_V2",
@@ -116,9 +116,6 @@ _FORMATS = [
     "MyHeritage_V2",
     "Nucleus_V1",
     "FTDNA_V1_Affy",
-    "Ancestry_V2_2021",
-    "MyHeritage_GSA_2025",
-    "MyHeritage_GSA_2025_609424",
 ]
 _FORMATS += [
     "Ancestry_V2ab",
@@ -191,17 +188,15 @@ def _template_paths(
     roots: list[str], formats: Sequence[str] = ()
 ) -> Iterator[tuple[str, str | None, list[str]]]:
     """(format, the build of its positions when not GRCh37, body paths) of each
-    template found (of formats, by default every chip's), from the first root
-    holding all of its parts."""
+    template found (of formats, by default every chip's), from the first usable
+    root holding all of its parts."""
     for name in formats or _FORMATS:
         fmt = get_template_format(name)
         if not fmt:
             continue
-        for root in roots:
-            paths = _template_body_paths(root, name, fmt)
-            if all(Path(p).exists() for p in paths):
-                yield name, fmt.get("build"), paths
-                break
+        selected = _select_template_root(roots, name, fmt)
+        if selected is not None:
+            yield name, fmt.get("build"), selected[1]
 
 
 def collect_template_markers(
@@ -414,6 +409,17 @@ def chain_to_grch37(reflib_dir: str, build: str, search: Sequence[str] = ()) -> 
     if build not in _CHAINS_TO_GRCH37:
         raise WGSExtractError(f"No chain from {build} to GRCh37 for the chip markers.")
     return _chain(reflib_dir, _CHAINS_TO_GRCH37[build], search)
+
+
+def installed_lifted_chain(
+    reflib_dir: str | None, build: str, search: Sequence[str] = ()
+) -> str | None:
+    """An already-installed chain from ``build`` to GRCh37, without downloading."""
+    source = _CHAINS_TO_GRCH37.get(build)
+    if source is None:
+        return None
+    dirs = [*search, *([reflib_dir] if reflib_dir else [])]
+    return _installed_chain(reflib_dir or "", source, dirs) if dirs else None
 
 
 def lifted_chain(
