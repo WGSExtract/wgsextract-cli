@@ -489,10 +489,12 @@ run. The private JSON report in `out/worktree-cleanup/` records skips, removals
 and errors.
 
 Dirty, locked, detached, active or linked worktrees are left alone. Tracked
-files must also match the exact committed Git blobs byte for byte, without
-relying on Git's cached file metadata. This can retain checkouts with locally
-converted line endings, smudge filters, or submodules, even if Git reports
-them clean. Activity is checked through Linux `/proc` across process UIDs.
+files must also match the exact committed Git blobs byte for byte, except that
+files up to 1 MiB explicitly marked `text eol=crlf` may match after converting
+uniform CRLF endings back to LF. This check does not rely on Git's cached file
+metadata. Other line-ending changes, smudge filters, and submodules can retain
+a checkout even if Git reports it clean. Activity is checked through Linux
+`/proc` across process UIDs.
 If Linux hides or denies
 inspection of a process, the run reports the error and does not remove
 unverified worktrees. Use the optional inspector below when unprivileged
