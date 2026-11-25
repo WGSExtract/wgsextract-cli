@@ -46,6 +46,7 @@ CI_TESTS = (
     "tests/test_ci_release_gate.py",
     "tests/test_ci_capacity.py",
     "tests/test_ci_cache_prune.py",
+    "tests/test_ci_efficiency_report.py",
 )
 SMOKE_TESTS = ("tests/test_microarray_vendor_formats.py", "tests/test_table_writer.py")
 REMOTE_CERTIFICATION_TEST = "tests/test_ci_certify_remote.py"
