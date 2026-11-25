@@ -28,7 +28,7 @@ export interface GenePrerequisitesCallbacks {
     onPending: (pending: PendingGenePrerequisites | null) => void;
     onInstallStart: (title: string) => void;
     onInstallOutput: (text: string) => void;
-    onInstallEnd: (succeeded: boolean) => void;
+    onInstallEnd: (succeeded: boolean, error?: string) => void;
     onProblem: (problem: GenePageProblem) => void;
     onReady: (inputs: GenePageInputs) => void | Promise<void>;
 }
@@ -144,6 +144,7 @@ export function createGenePrerequisitesController(callbacks: GenePrerequisitesCa
                     title,
                     command: { executable: state.manifest?.prerequisites?.command.executable ?? "", arguments: item.installArguments },
                 };
+                let sawOutput = false;
                 const exitCode = await streamCommand(
                     installAction,
                     emptyContext,
@@ -153,13 +154,20 @@ export function createGenePrerequisitesController(callbacks: GenePrerequisitesCa
                     {
                         signal: controller.signal,
                         onOutput: (text) => {
+                            sawOutput = true;
                             if (isCurrent(controller)) callbacks.onInstallOutput(text);
                         },
                     },
                 );
                 if (!isCurrent(controller)) return;
                 if (exitCode !== 0) {
-                    callbacks.onInstallEnd(false);
+                    const detail = exitCode == null
+                        ? (state.labels.terminalProcessErrorSummary ?? "Installation failed before the command completed.")
+                        : formatLabel(state.labels.terminalExitCodeTitleFormat, { code: exitCode });
+                    if (!sawOutput) {
+                        callbacks.onInstallOutput(`${detail}\n`);
+                    }
+                    callbacks.onInstallEnd(false, detail);
                     return;
                 }
             }

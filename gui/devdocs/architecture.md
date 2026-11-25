@@ -65,7 +65,7 @@ the user's behalf. GUI network activity is strictly classified into four tiers:
 
 | Tier | Policy | Examples |
 | --- | --- | --- |
-| **1. Automatic update / catalog metadata checks** | Allowed by default in desktop builds for user convenience, **always opt-out via Settings** (a single toggle / offline preference that silences all background checks). Read-only metadata only; never downloads large assets automatically and never transmits sample data. Must disclose IP/HTTP-header visibility in [GUI Privacy](../docs/privacy.md). | App self-update check on launch (PR #1548); planned update notifications for Reference Data, Reference Genomes, and Tools catalogs. |
+| **1. Automatic update / catalog metadata checks** | Allowed by default in desktop builds for user convenience, **always opt-out via Settings** (a single toggle / offline preference that silences all background checks). Read-only metadata only; never downloads large assets automatically and never transmits sample data. Must disclose IP/HTTP-header visibility in [GUI Privacy](../docs/privacy.md). | App self-update check on launch (#1548, startup update checks and privacy mode); planned update notifications for Reference Data, Reference Genomes, and Tools catalogs. |
 | **2. Interactive missing-prerequisite offers** | Never downloads silently. Before running an action (or opening the Gene Page), the GUI checks local prerequisites offline (`wgsextract ref needs`), stops if required public data is missing, and offers **Cancel / Continue / Install and Continue**. Downloading occurs only on click, via the CLI's explicit install command. | Missing CRAM reference genome; missing RefSeq `gene-map` on Gene Page; missing annotation database for a VCF annotation action. |
 | **3. Explicit management & help actions** | Runs only when the user clicks an explicit button or link. | **Run Setup**, **Install / Download** on Reference Data / Reference Genomes / Tools, confirmed **Look up sizes**, **Open GitHub issue** (redacted & confirmed), clicking rendered documentation links (`https://wgse.bio/...`). |
 | **4. Sample-derived network operations** | **Never default-on** in Basic or Advanced mode. Always requires explicit per-action user confirmation naming the destination host and the sample-derived data (paths/byte ranges) that will be transmitted. | Remote Genome Viewer (**Connect and view remote file**); remote alignment URLs (`realign --input https://...`); any future remote variant/position query. |
@@ -75,7 +75,7 @@ the user's behalf. GUI network activity is strictly classified into four tiers:
 1. **Never bypass Layer 1 silently:** The GUI must never inject `--download` or
    flip `allow_reference_downloads = true` without explicit user consent.
 2. **One kill switch for background checks:** As update checks expand from the
-   app itself (PR #1548) to Reference Data, Reference Genomes, and Tools, every
+   app itself (#1548, startup update checks and privacy mode) to Reference Data, Reference Genomes, and Tools, every
    automatic check must obey the same user-facing Settings toggle (and remain
    strictly metadata-only — notifying the user with a badge/button rather than
    auto-downloading multi-gigabyte files).

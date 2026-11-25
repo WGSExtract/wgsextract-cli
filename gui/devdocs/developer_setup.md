@@ -190,7 +190,7 @@ It uses your normal users workspace and settings. The repository's
 pane (`wgsextract-gui-dev` on Windows, `wgsextract-gui-dev-posix` elsewhere).
 For a fork, push to your fork and open a PR against `WGSExtract/wgsextract-cli`.
 The repository's pre-commit hooks (installed by the root's developer setup,
-`devdocs/developer_setup.md`) scan staged changes for secrets and run `make lint`
+`docs/developer_setup.md`) scan staged changes for secrets and run `make lint`
 when `gui/` changes; CI (`.github/workflows/gui-*.yml`) runs lint and tests on
 every platform. Run `make build-tauri` after changing the Tauri shell or
 packaging. `make tauri` runs the desktop UI.

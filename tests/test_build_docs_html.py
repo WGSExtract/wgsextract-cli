@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from scripts.build_docs_html import build_docs_html, github_slug
@@ -102,3 +103,28 @@ def test_build_docs_html_renders_cli_and_gui_docs_with_rewritten_links(
     assert 'id="privacy-and-network-boundary"' in app_arch_html
     assert 'href="../docs/privacy.html"' in app_arch_html
     assert 'href="../../docs/privacy.html"' in app_arch_html
+
+    # Every relative link to a rendered doc or doc image must resolve to a generated file.
+    missing_targets: list[str] = []
+    for html_file in written:
+        content = html_file.read_text(encoding="utf-8")
+        for attr in re.findall(r'(?:href|src)="([^"]+)"', content):
+            if attr.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            target_part = attr.split("#", 1)[0]
+            if not target_part or target_part.endswith("assets/site.css"):
+                continue
+            # Top-level landing pages (index.html, install.html, etc.) are built by build_site.py.
+            resolved = (html_file.parent / target_part).resolve()
+            rel = resolved.relative_to(tmp_path.resolve()).as_posix()
+            if "/" not in rel or rel in {
+                "app/index.html",
+                "app/architecture.html",
+                "app/wgsextract.html",
+                "app/docs.html",
+                "app/whats-different.html",
+            }:
+                continue
+            if not resolved.is_file():
+                missing_targets.append(f"{html_file.relative_to(tmp_path)} -> {attr}")
+    assert missing_targets == []

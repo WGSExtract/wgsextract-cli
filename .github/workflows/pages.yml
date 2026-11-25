@@ -20,6 +20,7 @@ on:
       - "gui/docs/**"
       - "gui/devdocs/**"
       - "gui/site_src/**"
+      - "gui/site/assets/**"
       - "gui/scripts/build_site.py"
       - "gui/scripts/site_*.py"
       - "gui/scripts/validate_site_sources.py"
@@ -115,13 +116,14 @@ jobs:
           fi
           echo "set=true" >> "$GITHUB_OUTPUT"
 
-      - if: steps.key.outputs.set
+      - if: steps.key.outputs.set == 'true'
         name: Checkout repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           path: repo
+          persist-credentials: false
 
-      - if: steps.key.outputs.set
+      - if: steps.key.outputs.set == 'true'
         name: Checkout wgsextract.github.io
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -129,7 +131,7 @@ jobs:
           path: main-site
           ssh-key: ${{ secrets.MAIN_SITE_DEPLOY_KEY }}
 
-      - if: steps.key.outputs.set
+      - if: steps.key.outputs.set == 'true'
         name: Build and sync HTML into wgsextract-cli/
         run: |
           cd repo
@@ -142,7 +144,7 @@ jobs:
           python3 scripts/build_docs_html.py
           cd ..
           mkdir -p main-site/wgsextract-cli
-          rsync -a --delete --exclude='.nojekyll' --exclude='app/mockups/' repo/site/ main-site/wgsextract-cli/
+          rsync -a --delete --exclude='.nojekyll' --exclude='/app/mockups/' repo/site/ main-site/wgsextract-cli/
           cd main-site
           git add -A wgsextract-cli
           if git diff --cached --quiet; then

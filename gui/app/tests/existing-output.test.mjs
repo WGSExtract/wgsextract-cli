@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, rm, unlink, utimes, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -160,17 +161,75 @@ test("output-only commands return kind=already-run when fresh, and kind=none whe
   const indexAction = { id: "bam-index", title: "Index", command: { executable: "tool", arguments: ["bam", "index", "--input", "{{bam_path}}"] } };
   assert.equal((await findExistingOutput(baseManifest, indexAction, ctx, root, new ResultPaths())).kind, "none");
 
-  // actionWithForce appends --force only to CLI commands that accept it.
+  // actionWithForce appends --force for force commands and --restart for step workflows.
   const vepAction = { id: "vep-run", title: "VEP", command: { executable: "tool", arguments: ["vep", "run", "--input", "{{bam_path}}"] } };
   const forcedVep = await actionWithForce(vepAction, ctx, root);
   assert.deepEqual(forcedVep.command.optionalArguments, [["--force"]]);
+  const realignAction = {
+    id: "realign",
+    title: "Realign",
+    command: { executable: "tool", arguments: ["realign", "--input", "{{bam_path}}"] },
+    serverOperation: { operation: "realign", parameters: {} },
+  };
+  const forcedRealign = await actionWithForce(realignAction, ctx, root);
+  assert.deepEqual(forcedRealign.command.optionalArguments, [["--restart"]]);
+  assert.equal(forcedRealign.serverOperation.parameters.restart, true);
+  assert.equal(forcedRealign.serverOperation.parameters.force, undefined);
   const forcedMt = await actionWithForce(mtAction, ctx, root);
   assert.equal(forcedMt, mtAction);
 });
 
+test("findExistingOutput rejects untrusted manifests pointing outside outdir and matches prior --no-resume runs", async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "wgse-existing-containment-"));
+  t.after(async () => rm(root, { recursive: true, force: true }));
+  const inputDir = path.join(root, "sample");
+  const outdir = path.join(inputDir, "wgse");
+  await mkdir(outdir, { recursive: true });
+  const bam = path.join(inputDir, "s.bam");
+  const outsideFile = path.join(root, "outside.html");
+  await writeFile(bam, "bam");
+  await writeFile(outsideFile, "<html>outside</html>");
+  const now = new Date(Date.now() + 10_000);
+  await utimes(outsideFile, now, now);
+
+  // Crafted manifest pointing outside outdir must be rejected and never remembered in ResultPaths.
+  await writeFile(path.join(outdir, "crafted.manifest.json"), JSON.stringify({
+    schema: "wgsextract.result/1",
+    command: "report",
+    status: "ok",
+    exit_code: 0,
+    inputs: [{ path: bam, role: "input", size_bytes: 3 }],
+    outputs: [{ path: outsideFile, role: "report_html", exists: true }],
+    provenance: { argv: ["report", "--input", bam] },
+  }));
+  const reportAction = { id: "report", title: "Report", openOutput: ["report_html"], command: { executable: "tool", arguments: ["report", "--input", "{{bam_path}}"] } };
+  const ctx = { fieldValues: { bam_path: bam }, checkedOptions: {}, configValues: {}, rowValues: {} };
+  const resultPaths = new ResultPaths();
+  assert.equal((await findExistingOutput(baseManifest, reportAction, ctx, root, resultPaths)).kind, "none");
+  assert.equal(resultPaths.has(outsideFile), false);
+
+  // Prior run recorded with --no-resume matches an ordinary rerun check.
+  const localReport = path.join(outdir, "report.html");
+  await writeFile(localReport, "<html>ok</html>");
+  await utimes(localReport, now, now);
+  await writeFile(path.join(outdir, "good.manifest.json"), JSON.stringify({
+    schema: "wgsextract.result/1",
+    command: "report",
+    status: "ok",
+    exit_code: 0,
+    inputs: [{ path: bam, role: "input", size_bytes: 3 }],
+    outputs: [{ path: "report.html", role: "report_html", exists: true }],
+    provenance: { argv: ["report", "--input", bam, "--no-resume"] },
+  }));
+  const matched = await findExistingOutput(baseManifest, reportAction, ctx, root, resultPaths);
+  assert.equal(matched.kind, "display");
+  assert.equal(path.basename(matched.openPath), "report.html");
+  assert.equal(resultPaths.has(matched.openPath), true);
+});
+
 test("client opens cached HTML directly for display actions and prompts before force-rerunning output-only actions", async (t) => {
   const requests = [];
-  let serverResponse = { kind: "display", openPath: "/out/report.html" };
+  let serverResponse = { kind: "display", openPath: "/out/report.html", outputs: ["report.html"] };
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (url, init) => {
     const body = JSON.parse(init?.body ?? "{}");
@@ -194,10 +253,12 @@ test("client opens cached HTML directly for display actions and prompts before f
   const ref = { pageID: "workflows", sectionID: "reports", actionID: "report" };
   const action = { id: "report", title: "Report", openOutput: ["report_html"], command: { executable: "tool", arguments: ["report", "--input", "{{bam_path}}"] } };
 
-  // Display reuse opens the report without running /api/run/stream.
+  // Display reuse opens the report without running /api/run/stream and keeps Force Run Again available.
   await runAction(action, ctx, ref);
   assert.deepEqual(requests.map((r) => r.url), ["/api/existing-output", "/api/result/open"]);
   assert.equal(requests[1].body.path, "/out/report.html");
+  assert.ok(state.pendingAlreadyRun, "openOutput-only reuse still offers Force Run Again");
+  cancelPendingAlreadyRun();
   assert.equal(state.pendingAlreadyRun, null);
 
   // Output-only reuse opens the already-run pop-up; Cancel keeps it from running; Force Run Again runs with force=true.

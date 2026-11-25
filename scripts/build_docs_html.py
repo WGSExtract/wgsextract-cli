@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import html
 import os
+import posixpath
 import re
 import shutil
 from dataclasses import dataclass
@@ -395,12 +396,16 @@ class DocMarkdownRenderer:
 
         if repo_rel in self.doc_map:
             target = self.doc_map[repo_rel]
-            rel = os.path.relpath(str(target), str(self.entry.out_rel.parent))
-            return PurePosixPath(rel.replace(os.sep, "/")).as_posix() + suffix, False
+            rel = posixpath.relpath(
+                target.as_posix(), self.entry.out_rel.parent.as_posix()
+            )
+            return rel + suffix, False
         if repo_rel in self.asset_map:
             target = self.asset_map[repo_rel]
-            rel = os.path.relpath(str(target), str(self.entry.out_rel.parent))
-            return PurePosixPath(rel.replace(os.sep, "/")).as_posix() + suffix, False
+            rel = posixpath.relpath(
+                target.as_posix(), self.entry.out_rel.parent.as_posix()
+            )
+            return rel + suffix, False
         if resolved.is_dir():
             return f"{GITHUB_URL}/tree/main/{repo_rel.as_posix()}{suffix}", True
         if resolved.exists():
@@ -464,8 +469,7 @@ class DocMarkdownRenderer:
 
 
 def rel_from(out_rel: PurePosixPath, target_rel: str) -> str:
-    rel = os.path.relpath(target_rel, str(out_rel.parent))
-    return PurePosixPath(rel.replace(os.sep, "/")).as_posix()
+    return posixpath.relpath(target_rel, out_rel.parent.as_posix())
 
 
 def render_doc_page(
@@ -486,11 +490,7 @@ def render_doc_page(
 
     nav_links: list[str] = []
     for href, label in nav_items:
-        target = (
-            PurePosixPath(os.path.normpath(f"{site_prefix}/{href}")).as_posix()
-            if site_prefix
-            else href
-        )
+        target = posixpath.normpath(f"{site_prefix}/{href}") if site_prefix else href
         link_href = rel_from(entry.out_rel, target)
         active = ' class="active"' if label == "Docs" else ""
         nav_links.append(
@@ -564,6 +564,8 @@ def escape_attr(value: str) -> str:
 def build_docs_html(
     root: Path = ROOT, output_dir: Path = DEFAULT_OUTPUT_DIR
 ) -> list[Path]:
+    root = root.resolve()
+    output_dir = output_dir.resolve()
     entries = collect_docs(root)
     doc_map = {entry.repo_rel: entry.out_rel for entry in entries}
     asset_map = copy_doc_assets(root, output_dir)
@@ -575,7 +577,11 @@ def build_docs_html(
         body_html = renderer.render()
         out_path = output_dir / entry.out_rel
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(render_doc_page(entry, body_html, title), encoding="utf-8")
+        out_path.write_text(
+            render_doc_page(entry, body_html, title),
+            encoding="utf-8",
+            newline="\n",
+        )
         written.append(out_path)
     return written
 

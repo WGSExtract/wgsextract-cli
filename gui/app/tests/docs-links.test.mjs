@@ -34,6 +34,12 @@ test("renderTextWithDocLinks escapes HTML and linkifies wgse.bio URLs and repo d
         rendered,
         /<a class="doc-link" href="https:\/\/wgse\.bio\/wgsextract-cli\/app\/docs\/settings\.html" target="_blank" rel="noopener noreferrer">https:\/\/wgse\.bio\/wgsextract-cli\/app\/docs\/settings\.html<\/a>\)\./,
     );
+    // Backticks and braces terminate URLs cleanly without leaking into href.
+    const wrapped = renderTextWithDocLinks("JSON: {\"url\": `https://wgse.bio/wgsextract-cli/docs/privacy.html`}");
+    assert.match(
+        wrapped,
+        /`<a class="doc-link" href="https:\/\/wgse\.bio\/wgsextract-cli\/docs\/privacy\.html" target="_blank" rel="noopener noreferrer">https:\/\/wgse\.bio\/wgsextract-cli\/docs\/privacy\.html<\/a>`\}/,
+    );
 });
 
 test("GUI error surfaces render clickable doc links for CLI and GUI doc references", async () => {

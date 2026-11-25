@@ -132,9 +132,11 @@ export function openGenePage(opener: HTMLElement) {
             installLog.textContent += chunk;
             installLog.scrollTop = installLog.scrollHeight;
         },
-        onInstallEnd: (succeeded) => {
+        onInstallEnd: (succeeded, error) => {
             if (succeeded) {
                 installPanel.hidden = true;
+            } else if (error) {
+                status.textContent = error;
             }
         },
         onProblem: (result) => problem(result),

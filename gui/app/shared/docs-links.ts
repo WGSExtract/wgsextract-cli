@@ -51,7 +51,7 @@ export function docUrl(docPath: string, fragment?: string): string {
 }
 
 // Matches either an explicit wgse.bio URL or a bare repo doc reference (docs/*.md, gui/docs/*.md, gui/devdocs/*.md).
-const docLinkPattern = /(?:https:\/\/wgse\.bio\/[^\s<>()'"\]]+|(?<![A-Za-z0-9_./:-])(?:gui\/(?:docs|devdocs)|docs)\/[A-Za-z0-9_./-]+\.md(?:#[A-Za-z0-9_-]+)?)/g;
+const docLinkPattern = /(?:https:\/\/wgse\.bio\/[^\s<>()'"`{}\]]+|(?<![A-Za-z0-9_./:-])(?:gui\/(?:docs|devdocs)|docs)\/[A-Za-z0-9_./-]+\.md(?:#[A-Za-z0-9_-]+)?)/g;
 
 function trimTrailingPunctuation(raw: string): { core: string; trailing: string } {
     let end = raw.length;

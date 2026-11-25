@@ -82,7 +82,7 @@ function flushTerminalOutput() {
     if (lineEnd > 0) {
         tail.before(terminalSpan("terminal-chunk", combined.slice(0, lineEnd)));
     }
-    tail.innerHTML = renderTextWithDocLinks(combined.slice(lineEnd));
+    setTerminalContent(tail as HTMLElement, combined.slice(lineEnd));
     trimRenderedScrollback(pre, text.length);
     if (pinnedToBottom) {
         log.scrollTop = log.scrollHeight;
@@ -108,9 +108,17 @@ function trimRenderedScrollback(pre: HTMLElement, addedChars: number) {
     renderedCharCounts.set(pre, count);
 }
 
+function setTerminalContent(node: HTMLElement, text: string) {
+    if (text.includes("wgse.bio") || text.includes("docs/")) {
+        node.innerHTML = renderTextWithDocLinks(text);
+    } else {
+        node.textContent = text;
+    }
+}
+
 function terminalSpan(className: string, text: string) {
     const span = document.createElement("span");
     span.className = className;
-    span.innerHTML = renderTextWithDocLinks(text);
+    setTerminalContent(span, text);
     return span;
 }

@@ -8,7 +8,7 @@ import { state } from "./state.js";
 
 export type ExistingOutputCheck =
     | { kind: "none" }
-    | { kind: "display"; cardPath?: string; openPath?: string }
+    | { kind: "display"; cardPath?: string; openPath?: string; outputs?: string[]; finishedAt?: string }
     | { kind: "already-run"; outputs: string[]; finishedAt?: string };
 
 /**

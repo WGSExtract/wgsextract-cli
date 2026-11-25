@@ -58,6 +58,9 @@ export async function runAction(
                     appendTerminal("error", state.labels.terminalProcessErrorTitle, errorMessage(error));
                     scheduleRender();
                 });
+                if (!existing.cardPath) {
+                    holdBackAlreadyRun(action, context, reference, existing.outputs ?? [existing.openPath], existing.finishedAt);
+                }
             }
             return;
         }
