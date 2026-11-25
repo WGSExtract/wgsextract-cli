@@ -88,7 +88,7 @@ adds fatal-error Ruff checks without imposing unrelated root formatting.
 | Any draft PR | No validation; API-only review request for eligible collaborators | 0 validation minutes |
 | Hand-written Markdown, including `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, native READMEs | Only site-source validation if a site source changes; otherwise no docs job | <1 (previously ~125) |
 | Generated API/command reference only | Its freshness check in the cheap docs lane | 1–3 |
-| CLI source/tests | Affected test files on four OSes, input-selected freshness, CodeQL | Depends on graph reachability; full-suite fallback remains |
+| CLI source/tests | Affected test files on four OSes (fast tier for broad fallback), input-selected freshness, CodeQL | Exact-head certification can replace hosted tests |
 | `.github/**`, `scripts/ci_*.py` | actionlint and CI policy/routing/readiness; one-OS smoke for changed matrix workflow | Small checks, not the full CLI matrix |
 | Installer, packaging, Pixi lock/manifest, CLI entry points | Affected OS suites include setup and bundle checks; Install Lab is release-only | Depends on graph reachability |
 | Native source only | CLI help smoke and affected test files; release-only native builds are deferred | <1 for CLI help smoke plus affected tests |
@@ -107,13 +107,12 @@ after deployment.
 ### Cheap optional-tool integrations (#1199)
 
 `optional_tools.yml` runs exactly one Ubuntu x64 job for selected contamination,
-FreeBayes, LongTR, modkit and ExpansionHunter-dependent tests. The PR router intersects the static
-import graph's affected test files with these suites; unrelated changes allocate
-no optional-tool runner. Merge groups use the diff's affected tests for this lane,
-not the full OS safety selection, so docs-only and GUI-only queue entries do not
-allocate an optional runner. Changes to this workflow, its PR caller/router,
-runner, Ubuntu CI or the shared Pixi setup also exercise the integrations themselves. Drafts allocate no
-runner. Nightly Ubuntu runs retain all five suites. Manual dispatch of `optional_tools.yml` validates just
+FreeBayes, LongTR, modkit and ExpansionHunter-dependent tests. The PR router intersects the known
+affected test files with these suites; an uncertain fallback alone does not
+allocate an optional-tool runner. Changes to this workflow, its PR caller/router,
+runner, Ubuntu CI or the shared Pixi setup also select the integrations.
+Drafts and merge groups do not run this lane. Nightly and release Ubuntu run all
+five suites. Manual dispatch of `optional_tools.yml` validates just
 this small lane on a branch.
 Before the new workflow reaches main, dispatch the existing `ubuntu_ci.yml`
 with `optional-tools-only=true` on the branch instead. This explicit manual
@@ -124,11 +123,10 @@ The existing pinned Pixi action installs `dev verifybamid2 freebayes longtr modk
 under the separate lockfile-keyed `optional-tools` cache family, seeded only from
 main. Fixtures are synthetic: no reference bootstrap, full genome or sample
 download is needed. Every selected tool must resolve before pytest; every JUnit
-report must contain executed tests and zero skips/errors/failures. This lane does
-not reuse passed-test hashes or platform certification, so a green OS suite with
-optional-tool skips cannot substitute for real integration coverage. Both the PR
-area verdict and merge-queue `required` check depend on it. The Ubuntu caller
-delegates PR/queue coverage to the router, preventing duplicate Linux jobs.
+report must contain executed tests and zero skips/errors/failures. With complete
+certification, the Linux x64 attestation covers the same no-skips command and
+optional environments; regular pytest with skipped tools does not count. This
+lane never reuses passed-test hashes.
 
 FreeBayes runs its six caller cases, LongTR its tiny repeat suite, and modkit its
 two BAM/CRAM parity cases. ExpansionHunter's prefix-gated hg19 catalog regression
@@ -162,11 +160,9 @@ missing plan falls back to the normal full suite. Scheduled runs never skip
 coverage because the SHA previously passed. Ubuntu's default serial, uncached
 run still refreshes the passed-test cache and selector observation map;
 scheduled failures keep the existing red-main issue and miss attribution.
-The `required` queue summary now directly depends on Windows as well as Ubuntu;
-it cannot pass while code-selected Windows failed or was cancelled.
-Queue Windows selection uses changed code/runtime-input paths, independently
-of whether PR selection discovers consumers. A new unreferenced CLI module
-therefore still receives the full Windows queue safety net.
+The queue requires its routed smoke matrix, including Windows for CLI runtime
+changes even when PR selection discovers no consumers. It uses the merged tree
+and does not reuse passed-test hashes or writer attestations.
 
 ### Conservative pure-move PR selection (#1045)
 
@@ -298,10 +294,16 @@ platform branches, concrete pathlib operations, permissions, signals, symlinks
 and line-ending behavior. Currently no existing module is proven generic under
 these deliberately strict rules; modules remain platform-sensitive until proven.
 Uncertified generic tests run once on Ubuntu; nightly retains full coverage.
-Gitleaks, CodeQL and the release-only jobs stay hosted. Merge groups never consume attestations. `required` and the
-ready-gate accept certified skips only after successful routing, and the landing
-validator relies on the current ready run rather than treating status contexts as
-standalone workflow runs. Failed/pending certificates allow hosted fallback.
+When `local-ci/generic` and every routed platform status pass on the exact
+head, the PR area workflow skips its hosted test suites. Ubuntu tests require
+both `local-ci/linux-x64` and `local-ci/generic`; each other OS can still use
+its own attestation when certification is partial. Missing, failed or pending
+attestations fall back to hosted checks for the missing layers. Linux x64
+is also required when optional-tool tests are routed. Non-test gates still run
+as configured: routing, lint, type checks, site/contract checks, gitleaks and
+CodeQL. Separate GUI and security workflows are not replaced by CLI statuses.
+The `required` and ready-gate verdicts still require successful routing and
+hosted gates. Merge groups never consume attestations.
 Setup refusals, missing inputs and interruptions clear pending attestations with
 `error` (“Not certified … hosted CI covers this SHA”), not `failure`. Only a
 test runner report containing failed tests produces `failure`. Landing still
@@ -392,10 +394,11 @@ Windows x64, macOS ARM64 and Linux ARM64 statuses can replace their routed
 suite or workflow-only smoke, not a different platform or the package and
 real-data benchmark smoke. Edits to remote certification route its supervisor
 regressions to native OS smoke jobs even without a product-code change.
-Optional-tool integrations also stay hosted: an OS
-certificate does not prove that the five separate optional environments and
-their no-skips tests ran. Windows imputation selections still run their
-hosted fresh locked install. Merged-tree import checks still run when routed.
+Linux x64 certification requires the locked environments for affected optional
+integrations, in addition to the normal platform inputs. The fresh Windows
+imputation install stays hosted when affected, even with a passing certificate;
+certification validates tests against the environment already on its host.
+Pure moves still run hosted merged-tree import and collection guards.
 Sparse selected PRs save less.
 
 ### Decisive test selection rollout
@@ -476,8 +479,10 @@ modules used as helpers; their literal file inputs propagate to importers.
 
 Tests are selected when they reach a changed Python module, directly change,
 or read a changed path/glob recorded by `test_inputs`. Changes to conftest,
-helpers, shared fixtures, the dependency manifests/lockfile and unknown paths
-select `all`. Deleted Python modules also fail open. Eager package
+helpers, shared fixtures, the dependency manifests/lockfile, deleted modules and
+unknown paths trigger broad fallback. On ready PRs this means the fast tier
+plus known affected tests; diagnostic and local certification selection can
+still request the full suite. Eager package
 initializers can legitimately connect many tests: this selector does not
 pretend a lazy runtime dispatch is narrower than the static graph.
 The current shared fixture helper imports the typed API, whose eager package
@@ -501,17 +506,16 @@ real-data suites remain exclusively in their dedicated steps.
 Non-Markdown `.github/**` and `scripts/ci_*.py` changes select actionlint and the CI
 policy/routing/readiness regressions, not the CLI matrix or Install Lab.
 `ci_tests` includes their actual transitive script/action readers as well as
-the baseline policy checks; the CI job executes that complete selection.
+the baseline policy checks; the CI job executes that complete selection on
+four pytest workers and reports the slowest tests.
 Changing an OS matrix workflow additionally exercises **only that OS** in
 one lightweight smoke job; changing shared `os_tests.yml` exercises all four
 OS smoke jobs. Mixed product/CI changes union their coverage. Declared docs
 freshness modules join a product selection before the docs lane is suppressed.
 Extra generated-genome, imputation, ONT and Windows vep-rs checks run only
-when their test files are affected. Merge-queue Ubuntu and code-selected
-Windows run the full suite minus files the test cache already saw pass on main.
-The queue plus main together run the full suite at every main SHA: a main
-push runs only the files its merge group left to it (see "Main pushes after
-the merge queue" below). Nightly and manual runs retain full-suite coverage.
+when their test files are affected. The queue instead runs import and test
+collection plus a bounded smoke cross-section on affected CLI areas. Nightly,
+manual and release candidate runs retain full-suite coverage.
 
 The selector gives tests the transitive dependencies of their `conftest.py`
 files. Keep shared home/config isolation in `tests/home_isolation.py` without
@@ -600,7 +604,6 @@ Each `os_tests.yml` matrix job keeps one manifest of passed hashes:
 |---|---|---|
 | Nightly or manual full dispatch on main | nothing (runs the full suite) | `test-pass-v1-<os>-<label>-main-<run>` |
 | Ready PR push or `ready_for_review` | latest `-main-` and this PR's latest `-pr-` manifest | `test-pass-v1-<os>-<label>-pr-<run>` |
-| Merge group | latest `-main-` manifest | the files it executed (not its cache skips), as artifact `test-pass-queue-<os>-<label>` |
 | Other refs | nothing (runs uncached) | nothing |
 
 A lookup is exact set membership, so a stale, corrupt, evicted or missing
@@ -615,9 +618,9 @@ and eight trees' names (tens of KB each), so they cannot crowd out Pixi caches.
 base branch's (main's) caches. Only `schedule` and `workflow_dispatch`
 runs can write main's scope. A PR therefore cannot poison what main or other
 PRs read; at most it can skip its own tests, which its own workflow edits could
-do anyway. Merge groups read only main's manifest: every tracked input for
-a skipped file matches a tree that passed on main. Nightly reruns the full
-suite, including tests skipped by the queue's cache, at the latest main SHA.
+do anyway. The merge-queue smoke does not read or write these caches.
+Nightly reruns the full suite, including tests not selected before merge,
+at the latest main SHA.
 
 Each test job's summary lists the cache-skipped files, where they passed
 (`main` or `pr`) and their hashes. Each job's
@@ -635,15 +638,15 @@ including docs: routing must not hide a secret in prose.
 
 A push to `main` starts gitleaks and the auto-merge conflict watch. CodeQL
 retains its Markdown exclusion; Release, Pages and Copilot setup retain
-their path filters. No OS suite reruns on push. The queue still validates
-merged-tree Ubuntu and code-selected Windows against main's verified passed
-hashes. The full, uncached latest-main suites run nightly instead.
+their path filters. No OS suite reruns on push. The full, uncached latest-main
+OS suites run nightly. The release workflow also dispatches the four full OS
+suites for the exact tag and blocks publication on failure.
 
 Install Lab, Linux/macOS aligners and DeepVariant, macOS Clair3, GUI Tauri
 installer, GUI distribution, PharmCAT end-to-end, Windows GKL/GATK, and CLI
 package/benchmark smoke run on dispatch only. The release workflow dispatches
 them for the exact candidate and blocks publication on failure. There is no
-weekly or nightly run of these suites. GUI CI and GUI developer setup still
+weekly or nightly run of those separate release-only suites. GUI CI and GUI developer setup still
 run on matching PRs and their existing schedule, not on pushes. See
 [Releasing](releasing.md) for the release checklist.
 
@@ -722,10 +725,23 @@ available for local diagnosis:
   OS (after the all-tier suite). Separately configured imputation,
   ONT and Windows vep-rs checks retain their environments when affected.
 
-Both tiers run together within the affected files on CLI-routed PRs; an empty selection
-passes without testing unrelated files. Merge-queue Ubuntu and code-selected
-Windows skip only cache hits from main. All nightly regular pytest runs are
-uncached. ARM64 runs its selection in one job.
+**Hosted fast tier:** new or unclassified tests stay eligible. In broad ready
+fallbacks, the router excludes only the modules explicitly listed in
+`NIGHTLY_ONLY_MODULES`. The initial list uses the November 11–25, 2026
+inventory: each module had at least 100 reports, over 1.5 aggregate test-hours
+and zero failures. Keep security, authorization, integrity and recent-failure
+regressions eligible. A known affected test or a direct edit runs even if the
+module is listed as nightly-only. Review the list against fresh inventory
+before extending it; remove a module if it starts catching regressions.
+
+**Queue smoke tier:** the router selects the areas and rechecks a small fixed
+cross-section on the merged tree, including path authorization, HTTP guards,
+output contracts and native Windows text behavior. It imports the CLI and
+collects the regular suite, then executes the cross-section without a pass
+cache. The smoke job has a 10-minute budget; full suites run nightly and
+before release.
+
+Nightly regular pytest runs are uncached. ARM64 runs its selection in one job.
 Only the statically proven generic set is Ubuntu-x64-only in CI. Genotyping
 modules whose import closure includes command/tool behavior remain cross-platform.
 Ordinary local pytest still collects everything. `--ci-tier` and
@@ -767,8 +783,8 @@ The lead job keeps the `all` label, seeds shared caches, and runs one-off
 checks; ARM64 retains `native`. The other jobs use `shard-2` and `shard-3`.
 Passed-test manifests keep `test-pass-v1-<os>-<label>` keys, but a module's
 hash does not depend on its duration bin. Sharded lanes consume passing hashes
-from all main labels when skipping cached work. Exact-SHA queue
-receipts, cache trust boundaries and required checks are unchanged.
+from all main labels when skipping cached work. Queue smoke does not use
+the shard planner or store exact-SHA pass receipts.
 
 Timeouts use recent successful hosted job timings (November 16, 2026), rounded
 up from 1.4 times the larger combined main/PR duration. Combined shard time is
@@ -853,7 +869,7 @@ required check as passing.
 | Event | Jobs `required` waits for | Not required |
 |---|---|---|
 | Ready pull request | routing, documentation freshness, changed Python lint, CI policy, selected CI Ubuntu checks, secret scan, native CLI smoke, Pages checks, and the area gate covering selected macOS, Windows and ARM64 jobs | separate CodeQL and GUI workflows; release gates do not run |
-| Merge-queue group | full Ubuntu CLI suite and, for code changes, full Windows suite (less test files cached as passed on main), plus ancillary required checks selected by the group's diff | macOS/ARM64, package smoke and Install Lab not run |
+| Merge-queue group | affected lint/type checks and policy checks, CLI import/collection and bounded Ubuntu/Windows smoke where routed, secret scan and existing lightweight area gates | full OS suites run nightly and on release candidates |
 
 On PRs, `required` waits for the existing `ready-gate` verdict and requires it
 to succeed, so enabling auto-merge cannot bypass a failing selected OS job.
@@ -1148,14 +1164,14 @@ and deleted modules can still be selected. If an intervening module has no
 resolvable test importers, or the drift includes an unobserved package
 initializer, non-Python source, unresolved dynamic imports, interpreter
 configuration changes or changed test harness inputs, the gate keeps the
-legacy selection.
+legacy selection. A universal scope on a ready PR exercises the routed fast
+fallback without cached passes (`universal-fast`); nightly still runs all tests.
 The gate's own PR runs the same planner against
 its synthetic merge tree even if regular hosted pytest was certified. The
 advisory reports remain available and distinguish legacy-selected,
 enforced and actually observed files.
 
-Ubuntu pushes use the exact-SHA merge-group complement instead of symbol
-selection. If the cron run is delayed or missing, run
+Main pushes do not run the OS pytest suite. If the cron run is delayed or missing, run
 `gh workflow run ubuntu_ci.yml --ref main` (leave `optional-tools-only` off).
 Both triggers run the full regular suite without skipping from either result
 cache. A passing run refreshes main's test cache and exports the Linux

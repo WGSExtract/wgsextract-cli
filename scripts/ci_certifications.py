@@ -13,6 +13,23 @@ from typing import Any
 PLATFORMS = ("linux-x64", "linux-arm64", "macos-arm64", "macos-x64", "windows-x64")
 CONTEXTS = {f"local-ci/{name}" for name in (*PLATFORMS, "generic")}
 WRITERS = {"write", "maintain", "admin"}
+ROUTED_PLATFORMS = {
+    "ubuntu": "linux-x64",
+    "macos": "macos-arm64",
+    "windows": "windows-x64",
+    "arm64": "linux-arm64",
+}
+
+
+def required_layers(
+    lanes: dict[str, list[str] | str], *, optional_tools: bool
+) -> set[str]:
+    """Generic plus every routed host; optional tools are certified on Linux x64."""
+    required = {"generic"}
+    required.update(ROUTED_PLATFORMS[lane] for lane, tests in lanes.items() if tests)
+    if optional_tools:
+        required.add("linux-x64")
+    return required
 
 
 class CertificationTestFailure(subprocess.CalledProcessError):
