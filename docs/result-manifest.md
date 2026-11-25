@@ -28,8 +28,8 @@ parser still treats external/compact documents as unvalidated input.
   `<vcf>_<sample>_microarray.manifest.json`, with a `sample` metric, for a
   sample chosen from a multi-sample VCF). `vcf trio` always writes
   `trio.manifest.json`, whichever modes ran.
-  Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`)
-  and deletions (`ref library --delete`, `vep delete`, `--delete` options)
+  Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`,
+  `report-delta`, and `ref recheck` without `--save-answers`) and deletions (`ref library --delete`, `vep delete`, `--delete` options)
   write no file, except `info --format`, whose manifest is named after the first table
   (`<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
@@ -95,6 +95,7 @@ parser still treats external/compact documents as unvalidated input.
 | `inputs`, `outputs` | File records: `path` (absolute), `kind` (`bam`, `cram`, `vcf`, `fasta`, `fastq`, `tsv`, `json`, `directory`, ...), `role` (what the file is to this command, e.g. `input`, `snps`, `mt_bam`, `haplogroup_report`), `exists`, `size_bytes`, `mtime` (UTC ISO 8601), `fingerprint`, `index` (the `.bai`/`.crai`/`.csi`/`.tbi`/`.fai` beside it, if any) and per-file `metrics`. |
 | `metrics` | Flat headline numbers and labels, e.g. `variants`, `haplogroup`, `sex`, `avg_depth`. |
 | `warnings` | Structured warnings: `code`, `message` and scalar `details`. |
+| `resources` | The public data resources the run used (ClinVar, a gene list, ...): `id`, `name`, `role`, `build`, the exact `release` (or `null` when the resource doesn't say) and `release_basis`, `path`, `fingerprint`, and the source's `source_url`, `licence`, `licence_url` and `attribution`. See [recheck-and-delta.md](recheck-and-delta.md). |
 | `details` | The command-specific structured result, or `null`. |
 | `manifest` | Absolute path of the manifest file this run wrote, or `null` (including when writing it failed). |
 | `run` | This run's place in its workflow: `id`, `root`, `parent`, `step` and `children`. See [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
@@ -181,7 +182,12 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   journal's `reason`. A reused step names the run that did its work in the
   earlier run, and so do the artifacts of the files it wrote. A step done inside the workflow's own process names the
   workflow's run. A step whose command failed is listed with its `run`,
-  whose own failed manifest names this run as its `parent`.
+  whose own failed manifest names this run as its `parent`; one whose
+  command never started or left no result has `run: null`. A step
+  interrupted by cancelling the run is `cancelled`, like the run.
+  `vcf chain-annotate` lists each annotator it ran or reused (`step` is
+  the annotation, such as `clinvar`), since their manifests are removed
+  with the intermediates.
 - **`artifact`.** A BAM, CRAM, VCF or BCF in `inputs` or `outputs` has an
   `artifact` record. Other files have none.
 
@@ -197,16 +203,19 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   | `index` | `path` and `state`: `ready`, `missing`, `stale` or `mismatched`; `null` for an uncompressed VCF. `stale`: older than the file and pointing at compressed blocks the file no longer has, as after the file was rewritten. An older index whose blocks are all in the file is `ready`, since downloads and copies often leave the index the older file. A CRAM index (`.crai`) isn't read: only its presence is checked. `mismatched`: another sequence dictionary, blocks that aren't the file's, or an unreadable index. Every index a reader may pick is checked (htslib picks a `.csi` before a `.bai` or `.tbi`), and the first unusable one is reported. |
   | `producer` | `run`, `root`, `command` and `step` of the run that wrote it. |
   | `sources` | The files it was made from: `path`, `role`, `fingerprint`, `producer` (run), `lifecycle` and `retained`. |
+  | `called_from` | For a VCF or BCF: the reads (as `sources` entries) wgsextract called it from, directly or through filters and annotations that kept its samples, so its sample columns are those reads' `@RG SM`. It names the reads only when its samples are among their `@RG SM` (for a CRAM, whose header isn't read, when no other VCF went into it). Empty when nothing vouches for that: an external VCF, one whose samples were renamed, or one another VCF without `called_from` and with the same samples went into (`vcf phase` of an external VCF, or an external VCF annotated from recorded calls). |
 
   The facts come from the file itself: its header (read without running a
   tool; a CRAM's header isn't read, so its assembly and samples are
   unknown), its index and its fingerprint. A producer is taken from the
   manifest beside the file only while that manifest still lists the same
-  fingerprint. A copied, edited or third-party file is `external`, and
-  nothing about its history is assumed. An output's `sources` are the
-  run's BAM/CRAM/VCF/BCF inputs, unless the command names them. `vcf call
-  --merge` names the reads and its per-type VCFs, which it deletes after
-  merging. They stay in `sources` with `lifecycle: temp` and `retained:
+  fingerprint and names a well-formed producer (one recorded as unknown
+  stays unknown). A server job reads only manifests and indexes in the folders
+  it may use, and so do the steps it starts. A copied, edited or third-party
+  file is `external`, and nothing about its history is assumed. An output's
+  `sources` are the run's BAM/CRAM/VCF/BCF inputs, unless the command names
+  them. `vcf call --merge` names the reads and its per-type VCFs, which it
+  deletes after merging. They stay in `sources` with `lifecycle: temp` and `retained:
   false`, and they are not listed in `outputs`. `analyze`'s findings name
   only the VCF they were found in.
 - **Consumers refuse unusable inputs before they run.** The error's
@@ -218,7 +227,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   | `reference_mismatch` | the same | Same build, but the contig names, lengths or MD5s differ from the reference. |
   | `index_stale`, `index_mismatch` | the same | The BAM/CRAM index is `stale` or `mismatched`. A `mismatched` VCF index is refused too. A missing or older VCF index is rebuilt, as before. |
   | `index_missing` | BAM/CRAM variant callers with `--region` | The region is read through the index. Calling the whole file still streams an unindexed BAM. |
-  | `sample_mismatch` | `analyze comprehensive --input BAM --vcf-inputs VCF` | A VCF that wgsextract called from a BAM or CRAM (`recorded`, with the reads among its `sources`) names none of the reads' samples. For any other VCF, whose sample may only be named differently (an `external` VCF, or one filtered or annotated from it), this is a warning with the same code, and the run continues. Recorded producers are read only from manifests a server job may read. |
+  | `sample_mismatch` | `analyze comprehensive --input BAM --vcf-inputs VCF` | A VCF that wgsextract called from a BAM or CRAM, or filtered or annotated from such calls (`recorded`, with a `called_from`), names none of the reads' samples. For any other VCF, whose sample may only be named differently (an `external` VCF, or one filtered or annotated from it), this is a warning with the same code, and the run continues. Recorded producers are read only from manifests a server job may read. |
 
   Nothing in this pilot reaches the network or installs anything. Other
   commands record artifacts but don't check them yet.
@@ -251,8 +260,9 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `parabricks_low_memory` | `align`/`realign`/`vcf gatk` with `--gpu` | The GPU had too little free memory for the tool's default mode, so it ran with its low-memory option (`tool`, `option`, `gpu_free_gib`). |
 | `parabricks_host_memory` | `--gpu` commands | Less RAM is available than the Parabricks tool needs for a whole genome, though the computer has its minimum (`tool`, `needed_gib`, `available_gib`); the run continues and may be killed partway. |
 | `parabricks_memory` | `--gpu` commands with `--no-gpu-memory-check` | The GPU or host memory is below what the tool needs (`tool`); the run continues and may fail. |
-| `no_variants`, `no_reads`, `nothing_annotated` | variant calling, alignment, extraction, annotation | An output is empty. |
+| `no_variants`, `no_reads`, `nothing_annotated` | variant calling, alignment, extraction, annotation | An output is empty. `vcf chain-annotate` still writes an indexed, header-only VCF. |
 | `low_confidence_findings` | `vcf clinvar`, `vcf gnomad --max-af`, `vcf pharmcat`, `analyze` | Some reported calls are low confidence (`count`, `total`, `output`, top `reasons`); see [variant-confidence.md](variant-confidence.md). |
+| `alignment_sample_unverified` | `vcf pharmcat --alignment` | The BAM/CRAM has no read-group sample names to compare with the VCF. Confirm the files are from the same sample. |
 | `unconfirmed_clinical_findings` | `vcf clinvar`, `analyze` | The sample carries ClinVar pathogenic/likely pathogenic calls (`count`): a technical screen to confirm with an accredited laboratory, not a diagnosis. |
 | `confidence_first_sample_only` | confidence labelling | A multi-sample VCF was judged by its first sample (`sample`). |
 | `sample_female` | Y extraction | Female sample; Y outputs will be empty or noise. |
@@ -262,6 +272,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |
 | `panel_contigs_not_in_vcf` | `vcf filter` and `vcf table` panel selection | Panel intervals on contigs absent from the VCF were omitted. |
+| `bed_contigs_not_in_vcf` | `vcf chain-annotate --bed` | BED intervals on contigs absent from the VCF were omitted (`contigs`, `path`). |
 | `gvcf_reference_missing`, `inconclusive_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; missing, partial or unassessed parental genotypes prevent inheritance classification. Inconclusive candidates are written separately (`count`, `mode`) and included in the personal report's overview warnings. |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |
@@ -286,7 +297,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `step_failed` | `benchmark` | A benchmark step failed (`step`, `log`). |
 | `cache_path_too_long` | `microarray` on Windows | The reference library path (`path`, `length`) is too deep for its derived caches to fit the 260-character `MAX_PATH`, so the run is uncached; keep the library path at most `limit` characters. |
 | `unsigned` | `sign verify` | The checksum manifest has no signature; only hashes were checked. |
-| `sample_mismatch` | `analyze comprehensive` | A VCF not called from reads by wgsextract names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
+| `sample_mismatch` | `analyze comprehensive` | A VCF without a `called_from` names none of the reads' samples (`path`); see [Run lineage and artifacts](#run-lineage-and-artifacts-pilot). |
 | `ystr_unverified_convention` | `lineage y-str` | Markers use a repeat-count convention the panel has not verified. |
 | `known_markers_partial` | `lineage y-private` on T2T | Only the YFull YTree positions are known markers there (the YBrowse snapshot is GRCh38-only), so SNPs YBrowse names but YFull's tree doesn't place can be candidates (`build`). |
 | `y_private_excess` | `lineage y-private` | More candidate private Y SNVs (`count`) than expected (`threshold`): suspect contamination, a mismatched reference, poor data or a marker set that misses the lineage. |
@@ -395,6 +406,10 @@ With `--reference-evidence gvcf` the gVCF is an output with role
 
 Other commands' metrics:
 
+- `vcf pharmcat` records the source, callability thresholds, and counts of
+  absent definitions filled or left missing in
+  `details.pharmcat_reference_evidence`. The `pharmcat_reference_evidence`
+  output also lists the definitions it couldn't fill.
 - `bam` subcommands that write a BAM/CRAM record its `records` as `align` does
   (an unsorted or unaligned BAM has no index to count from, so it has none);
   `bam merge` adds `merged_inputs`, `read_groups` and, for indexed inputs,

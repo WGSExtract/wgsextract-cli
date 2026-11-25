@@ -20,9 +20,14 @@ from wgsextract_cli.api.vcf import (
     VcfSnpParams,
     _VcfFileParams,
 )
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core import read_scope, ultima
 from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.sequencing import (
+    input_platform,
+    warn_mixed_platforms,
+)
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import (
     get_tool_version,
@@ -30,7 +35,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.genotype_qc import region_targets, warn_low_depth
-from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES as SHARED_LOG_MESSAGES
 from wgsextract_cli.core.mimalloc import bcftools_environment
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
@@ -42,7 +47,6 @@ from wgsextract_cli.core.resource_estimates import (
 )
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
-from wgsextract_cli.core.sequencing import input_platform, warn_mixed_platforms
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -93,7 +97,7 @@ def require_vcf_input(params: _VcfFileParams) -> str:
     """The VCF an operation reads: ``vcf_input``, else ``input``."""
     chosen = params.vcf_input or params.input
     if not chosen:
-        raise UsageError(LOG_MESSAGES["input_required"])
+        raise UsageError(SHARED_LOG_MESSAGES["input_required"])
     return os.fspath(chosen)
 
 
@@ -158,7 +162,7 @@ def caller_setup(
     """Resolve threads, output folder and reference FASTA for a BAM/CRAM caller,
     and warn about alignment problems and low depth."""
     if not input_file:
-        raise UsageError(LOG_MESSAGES["input_required"])
+        raise UsageError(SHARED_LOG_MESSAGES["input_required"])
 
     logging.debug(f"Input file: {str(absolute_path(input_file))}")
     thread_count = get_resource_threads(threads, stage="calling")
@@ -178,16 +182,17 @@ def caller_setup(
     verify_paths_exist(paths_to_check)
     if not resolved_ref or not Path(resolved_ref).is_file():
         raise WGSExtractError(
-            LOG_MESSAGES["ref_required_for"].format(task="variant calling")
+            SHARED_LOG_MESSAGES["ref_required_for"].format(task="variant calling")
         )
     from wgsextract_cli.core.artifact_checks import require_consumable
     from wgsextract_cli.core.calling_reference import validate_calling_reference
 
     # A region is read through the index; whole-file calling streams the reads.
     require_consumable([("input", input_file)], need_index=["input"] * bool(region))
-    validate_calling_reference(
+    reference_build = validate_calling_reference(
         input_file, resolved_ref, allow_reference_subset=allow_reference_subset
     )
+    lib.set_validated_fasta_build(reference_build)
     platform = input_platform(input_file, resolved_ref)
     warn_mixed_platforms(
         input_file,
@@ -202,7 +207,7 @@ def caller_setup(
 
     if not resolved_ref or not Path(resolved_ref).is_file():
         raise WGSExtractError(
-            LOG_MESSAGES["ref_required_for"].format(task="variant calling")
+            SHARED_LOG_MESSAGES["ref_required_for"].format(task="variant calling")
         )
     current_result().set_reference(resolved_ref, lib.build)
     warn_about_alignment(input_file, resolved_ref)
@@ -260,22 +265,30 @@ def setup_caller(
 
 
 @contextmanager
-def plain_reference(ref: str, outdir: str) -> Iterator[str]:
+def plain_reference(
+    ref: str,
+    outdir: str,
+    *,
+    compressed: bool | None = None,
+    reuse_sibling: bool = True,
+) -> Iterator[str]:
     """
     Yield an uncompressed, faidx-indexed FASTA for tools that cannot read .fa.gz.
 
-    Uses the uncompressed sibling (ref.fa next to ref.fa.gz) when present, indexing
-    it if needed; otherwise decompresses into a temporary directory under outdir
-    that is removed on exit.
+    The uncompressed sibling can be reused only when compression was inferred
+    from the suffix and the caller has opted into reuse. Otherwise decompress
+    the exact FASTA into a temporary directory under outdir, removed on exit.
     """
-    if not ref.lower().endswith(".gz"):
+    if not (ref.lower().endswith(".gz") if compressed is None else compressed):
         yield ref
         return
-    sibling = ref[:-3]
+    sibling = ref[:-3] if compressed is None and reuse_sibling else None
     # A server job may read only its allowed folders; the sibling or its
     # index can be a link elsewhere.
-    if Path(sibling).is_file() and all(
-        read_scope.may_follow(p) for p in (sibling, f"{sibling}.fai")
+    if (
+        sibling is not None
+        and Path(sibling).is_file()
+        and all(read_scope.may_follow(p) for p in (sibling, f"{sibling}.fai"))
     ):
         if not Path(sibling + ".fai").is_file():
             try:
@@ -288,7 +301,7 @@ def plain_reference(ref: str, outdir: str) -> Iterator[str]:
     with tempfile.TemporaryDirectory(
         dir=scratch_parent(outdir), prefix=".wgse_ref_"
     ) as tmp:
-        target = str(Path(tmp, Path(sibling).name))
+        target = str(Path(tmp, Path(sibling).name if sibling else "reference.fa"))
         logging.info(f"Decompressing reference for this tool to {target}...")
         try:
             with gzip.open(ref, "rb") as src, open(target, "wb") as dst:

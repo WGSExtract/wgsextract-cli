@@ -1,0 +1,2 @@
+0	100	0	0	0	chr1	1020	1029	0	+	(TG)n	Simple_repeat	Simple_repeat	0	9	0	1
+0	100	0	0	0	chr1	1046	1055	0	+	AluSx	SINE	Alu	0	9	0	2

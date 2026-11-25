@@ -458,6 +458,18 @@ def _index_test_query(vcf: str, position: int = 50000) -> str:
 
 
 @needs_htslib
+def test_issue_1519_vcf_index_does_not_suggest_sorting_a_gzip_file(tmp_path):
+    vcf = tmp_path / "ordinary.vcf.gz"
+    _write_index_test_vcf(vcf, 100, 200)
+    vcf.write_bytes(gzip.compress(vcf.with_suffix("").read_bytes()))
+
+    with pytest.raises(WGSExtractError, match="not BGZF") as exc:
+        ensure_vcf_indexed(vcf)
+
+    assert "coordinate-sorted" not in str(exc.value)
+
+
+@needs_htslib
 @pytest.mark.parametrize("stale", ["csi", "tbi", "both", "short-name-csi"])
 def test_1231_refreshes_coexisting_indexes_after_vcf_rewrite(rewritten_vcf, stale):
     vcf = rewritten_vcf

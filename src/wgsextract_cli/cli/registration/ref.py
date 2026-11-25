@@ -31,6 +31,7 @@ from wgsextract_cli.api.ref import (
     RefMicroarrayTargetsParams,
     RefPharmgkbParams,
     RefPhylopParams,
+    RefRecheckParams,
     RefRevelParams,
     RefSomalierParams,
     RefSpliceaiParams,
@@ -40,8 +41,61 @@ from wgsextract_cli.api.ref import (
     RefYbrowseParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    _SAM,
+    DOWNLOAD,
+    HOURS,
+    MINUTES,
+    REFERENCE,
+    SECONDS,
+    _n,
+)
+from wgsextract_cli.commands._messages.ref import CLI_HELP
 from wgsextract_cli.core.utils import UsageError
+
+NEEDS = {
+    "ref download": _n(DOWNLOAD, optional="curl"),
+    "ref index": _n(HOURS, *_SAM, optional="bwa bwa-mem2 curl", scale=REFERENCE),
+    "ref count-ns": _n(MINUTES, scale=REFERENCE),
+    "ref dense-sa": _n(MINUTES, scale=REFERENCE),
+    "ref verify": _n(MINUTES, *_SAM, scale=REFERENCE),
+    "ref library": _n(
+        DOWNLOAD, "bcftools", "bgzip", "curl", "htsfile", "samtools", "tabix"
+    ),
+    "ref status": _n(SECONDS, scale=""),
+    "ref needs": _n(SECONDS, optional="bcftools tabix", scale=""),
+    "ref recheck": _n(SECONDS, scale=""),
+    "ref test-genome": _n(DOWNLOAD, optional="curl"),
+    "ref bootstrap": _n(DOWNLOAD, optional="curl"),
+    "ref aadr": _n(DOWNLOAD, optional="curl"),
+    "ref acmg-data": _n(DOWNLOAD, "bcftools", "bgzip", "fastvep", "tabix"),
+    "ref somalier": _n(DOWNLOAD, optional="curl"),
+    "ref ancestry": _n(DOWNLOAD, optional="curl"),
+    "ref gnomad-sv": _n(DOWNLOAD, "bcftools", "bgzip", "tabix", optional="curl"),
+    "ref imputation": _n(
+        DOWNLOAD,
+        "bcftools",
+        "GLIMPSE2_chunk",
+        "GLIMPSE2_phase",
+        "GLIMPSE2_split_reference",
+        "tabix",
+    ),  # fmt: skip
+    "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix", optional="bcftools samtools"),
+    "ref microarray-targets": _n(MINUTES),
+    "ref gene-map": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref cytobands": _n(DOWNLOAD, optional="curl"),
+    "ref clinvar": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref dbsnp": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref revel": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref phylop": _n(DOWNLOAD, optional="curl"),
+    "ref gnomad": _n(DOWNLOAD, optional="bcftools bgzip curl tabix"),
+    "ref spliceai": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref alphamissense": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref pharmgkb": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref cadd": _n(DOWNLOAD, optional="curl"),
+    "ref gerp": _n(DOWNLOAD, optional="curl"),
+}
+
 
 cmd_aadr = command_handler("wgsextract_cli.commands.ref.library_commands", "cmd_aadr")
 cmd_acmg_data = command_handler(
@@ -81,6 +135,9 @@ cmd_microarray_targets = command_handler(
 )
 cmd_ref_needs = command_handler("wgsextract_cli.commands.ref.needs", "cmd_ref_needs")
 cmd_ref_status = command_handler("wgsextract_cli.commands.ref.status", "cmd_ref_status")
+cmd_recheck = command_handler(
+    "wgsextract_cli.commands.ref.recheck", "run_recheck", RefRecheckParams
+)
 cmd_test_genome = command_handler(
     "wgsextract_cli.commands.ref.mini_genome", "cmd_test_genome"
 )
@@ -290,6 +347,12 @@ def register(
         help="Emit a compact values JSON object for GUI data-source consumers.",
     )
     add(
+        "recheck",
+        RefRecheckParams,
+        cmd_recheck,
+        "Compare the resource releases result manifests recorded with the newest: from --answers FILE, or ask NCBI with --online. Downloads and reruns nothing.",
+    )
+    add(
         "test-genome",
         RefTestGenomeParams,
         cmd_test_genome,
@@ -332,7 +395,8 @@ def register(
         "acmg-data",
         RefAcmgDataParams,
         cmd_acmg_data,
-        "Download vcf acmg's 8 sources and the GFF3, check them and build fastVEP's databases.",
+        "Prepare fastVEP's ACMG databases, region tracks and Ensembl GFF3; "
+        "fetch public sources only with --download.",
     )
     add(
         "microarray-targets",

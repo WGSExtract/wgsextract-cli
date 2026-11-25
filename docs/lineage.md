@@ -37,6 +37,33 @@ reference-only calls (all-sites VCF or gVCF); a variants-only VCF is refused
 with instructions to use the alignment or call all sites. Simply rotating
 variant positions would lose sample alleles at reference-difference sites.
 
+### mtDNA heteroplasmy evidence
+
+On a BAM or CRAM, `--contamination` calls chrM with mutserve (bundled with
+haplocheck; level 1%, mapping quality 30, base quality 20, deletions) and keeps
+its output for `wgsextract report`:
+
+- `mutserve_heteroplasmies.vcf.gz` (role `heteroplasmy_calls`): each call with
+  its heteroplasmy level (`FORMAT/AF`) and depth. A mixture is written as
+  `0/1` or `1/0`; read it as a level, not a diploid genotype.
+- `mutserve_heteroplasmies.raw.txt.gz` (role `heteroplasmy_site_evidence`):
+  mutserve's per-position table (`--write-raw`), with the depth and each
+  base's fraction on each strand, so the report can tell a covered site
+  without the variant from one with too few reads.
+
+Both are in the coordinates of the mtDNA reference the reads were called
+against (CHM13v2.0 positions for a CHM13 alignment). `details.heteroplasmy`
+records mutserve's version and settings and that reference (`origin` `rCRS`,
+`CHM13v2.0's chrM`, or null when unconfirmed, with its contig and MD5); the
+metrics add `mt_median_depth`, `mt_min_depth_fraction` (positions with 100 or
+more reads), `mt_homoplasmies` and `mt_heteroplasmies`. If mutserve's read
+table is missing or unreadable, lineage keeps the calls and their counts and
+warns (`mt_evidence_missing`); the report does not assess the reviewed sites
+without read evidence. A VCF input keeps nothing: its levels come from
+another caller. See
+[personal-report.md](personal-report.md#mitochondrial-dna-heteroplasmy-at-reviewed-variants)
+for how the report reads them.
+
 ## Y haplogroups and STRs
 
 `lineage y-haplogroup` uses native code derived from
@@ -176,7 +203,7 @@ coordinates ignore the contig.
 `_unmapped_R2.fastq.gz`, `_unmapped_SE.fastq.gz` (unpaired) and
 `_unmapped_singletons.fastq.gz` (absent mates). Without it, only BAM is written.
 
-## Opt-in yBrowse Y SNP calling (GRCh38 only)
+## Opt-in yBrowse Y SNP calling (GRCh38, and GRCh37 lifted locally)
 
 ```bash
 # --ref here names the reference library, not the FASTA.
@@ -225,7 +252,51 @@ uncovered sites stay missing, not ancestral. AA annotations are retained:
 GRCh38 REF may be derived, so GT=1 need not mean derived.
 HG is a marker annotation, **not a sample haplogroup prediction**.
 Non-SNP/symbolic alleles are omitted and counted. `chrY`/`Y` is adapted;
-GRCh37 and T2T are unsupported. Without `--ybrowse`, extraction is unchanged.
+T2T is unsupported. Without `--ybrowse`, extraction is unchanged.
+
+### GRCh37
+
+YBrowse's own `snps_hg19.vcf.gz` (last changed 2017) is not used: its
+positions are GRCh38 positions under a GRCh37 header, and its REF column was
+read from GRCh37 at those wrong positions. Instead, `--grch37` lifts the
+installed GRCh38 snapshot to GRCh37 on your computer:
+
+```bash
+# Ensembl's pinned GRCh38->GRCh37 chain is fetched only with --download.
+wgsextract ref ybrowse --install --grch37 --download --ref /path/to/reference-library
+# Or lift with a chain you already have.
+wgsextract ref ybrowse --install --grch37 --chain /path/to/GRCh38_to_GRCh37.chain.gz --ref /path/to/reference-library
+wgsextract extract ydna-vcf --ybrowse --input sample.b37.bam --ref /path/to/hs37d5.fa.gz --outdir results
+```
+
+- **Chain.** Ensembl's
+  [`GRCh38_to_GRCh37.chain.gz`](https://ftp.ensembl.org/pub/assembly_mapping/homo_sapiens/GRCh38_to_GRCh37.chain.gz)
+  (730 KB, SHA-256 `6bee5bfd…92b1`), saved in the library's `ybrowse/` folder.
+  Ensembl
+  [places no restrictions](https://www.ensembl.org/info/about/legal/disclaimer.html)
+  on its data. Without `--download` or `--chain`, a missing chain stops the
+  command and names it; nothing is fetched. UCSC's `hg38ToHg19` chain is not
+  used by default because its terms are non-commercial only; you can still give
+  it with `--chain`.
+- **Reference check.** Each placed allele is checked against an indexed GRCh37
+  FASTA: the one `--ref` names, else the one in the library's genomes folder
+  (chrY/Y length 59,373,566). Both `Y` and `chrY` naming work, and so do
+  hs37d5's N-masked PARs.
+- **What is kept.** A site is kept only when the chain places it exactly once,
+  on Y. A reverse-strand placement complements its alleles and AA. If GRCh37
+  has the GRCh38 ALT, REF and ALT swap and AA stays. Sites placed more than
+  once, two GRCh38 sites landing on one GRCh37 position, GRCh37 N bases and
+  sites where neither allele matches are dropped, never guessed. The counts are
+  in the resource's `manifest.json` and the VCF header
+  (`##ybrowse_liftover_counts`), with the chain's name and SHA-256.
+- **Staying current.** Re-installing the GRCh38 snapshot makes the GRCh37 sites
+  stale: `extract` stops and asks you to rerun `--grch37`.
+
+With the 2026-11-21 snapshot, the lift places 98.2% of the GRCh38 SNP alleles
+on GRCh37 (3,002,196 of 3,056,218). On HG002, GRCh37 and GRCh38 targeted calls
+agree at over 99.9% of the markers called in both builds. The output is a
+marker-annotated VCF, not a haplogroup claim, and it is not meant to match the
+v4 GRCh37 output, which came from YBrowse's GRCh37 file.
 
 ## Data licences
 
@@ -239,6 +310,7 @@ and fetched into the library when explicitly requested/authorized, not bundled.
 | `yfull-ybrowse-positions` | Same, unless `--pos-file` is given; `lineage y-private` | CC-BY-SA (version unspecified), Thomas Krahn YSEQ (2022) |
 | Yleaf data `v4.1.6` | Y-haplogroup QC tables and other trees | GPL-3.0-or-later, Yleaf |
 | YBrowse SNP VCF | `ref ybrowse --install`, `extract ydna-vcf --ybrowse`, `lineage y-private` on GRCh38 | CC-BY-SA, Thomas Krahn YSEQ; downloaded on request, not redistributed or in bootstrap since v0.2.0 |
+| Ensembl GRCh38->GRCh37 chain | `ref ybrowse --install --grch37 --download` | Ensembl data, no restrictions on access or use; downloaded on request, not redistributed |
 
 YFull modules print a licence notice on first download; see
 [tree data](../src/wgsextract_cli/ydna/yleaf_native/README.md#trees).

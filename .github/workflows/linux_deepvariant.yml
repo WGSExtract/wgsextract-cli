@@ -9,24 +9,6 @@ name: Linux DeepVariant
 # tag such as linux-deepvariant-1.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    branches: [ main ]
-    paths:
-      - native/deepvariant/**
-      - native/tests/seeded_random.sh
-      - packaging/wgse-deepvariant/**
-      - .github/workflows/linux_deepvariant.yml
-      - .github/actions/setup-pixi/**
-      - .github/actions/compiler-cache/**
-      - .github/actions/apt-install/**
-      - "!**/*.md"
-  push:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
-  schedule:
-    - cron: "47 6 * * *"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -37,18 +19,12 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  # A newer push supersedes a PR's build; a release run is never cancelled.
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 env:
   # The image docs/deepvariant-arm64.md checks the Linux ARM64 build's models against.
   DEEPVARIANT_IMAGE: google/deepvariant:1.10.0@sha256:962e5a83b1d76aae6990625d47102785f791603f2138aa1fa9aa4fb6a2eecbe6
 
 jobs:
   weights:
-    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -68,7 +44,6 @@ jobs:
           if-no-files-found: error
 
   build:
-    if: ${{ github.event.pull_request.draft != true }}
     needs: weights
     runs-on: ubuntu-latest
     timeout-minutes: 120

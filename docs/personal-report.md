@@ -70,6 +70,8 @@ so it needs no samtools or other analysis tools, even for a BAM or CRAM `--input
 | Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
 | Repeat Expansions | `typing str` (ExpansionHunter, LongTR or STRkit) | Flagged and unconfirmed repeat sizes, counts of flagged, unconfirmed and normal calls, and caller and coverage caveats |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
+| Exon callability | `vcf callability` | none: per gene of its gene list, whether every coding exon was read (callable, partial, not readable, not run) and what the ClinVar section's silence means: reported, not reported (every coding exon read; never a negative result), not readable or not run, with the exons not read. See [exon-callability.md](exon-callability.md) |
+| Mitochondrial DNA: heteroplasmy at reviewed variants | `lineage mt-haplogroup --contamination` on a BAM or CRAM (mutserve) | each reviewed mtDNA variant (ClinVar expert-panel pathogenic SNVs, CPIC's MT-RNR1 aminoglycoside-risk alleles) found homoplasmic, heteroplasmic or with weak evidence, with its level; every reviewed variant's state in `sites`. See [below](#mitochondrial-dna-heteroplasmy-at-reviewed-variants) |
 | Automated ACMG classes (research only) | `vcf acmg`, only when it ran | the carried P/LP calls in a gene of the gene list, from fastVEP's automated classes; counts of the carried alleles' classes. See [below](#automated-acmg-classes-research-only) |
 | Rare structural variants | `vcf sv-freq` | each carried PASS SV whose matching gnomAD SV has AF below 0.1% (`--rare-af`), labelled "rare (AF < 0.001)", rarest first (up to 100; the rest in `sv_freq.tsv`), and counts of common, low-frequency, rare and novel SVs. Confidence is `not_assessed`: the frequency comes from the gnomAD match, not the call's read support |
 | Microarray export | `microarray` | none: the files produced, with sites, called sites and no-call rate |
@@ -280,6 +282,80 @@ no status. If the run's confidence table is missing, its manifest lists only
 the first 1,000 calls; the section then warns (`calls_truncated`) and gives
 only biallelic statuses, which more calls can't change.
 
+### Mitochondrial DNA: heteroplasmy at reviewed variants
+
+> **Educational, for review with a clinician; not a prescribing
+> instruction.** Confirm any detected variant in an accredited clinical
+> laboratory before acting on it.
+
+This section reads the mutserve calls and per-position read table that
+`lineage mt-haplogroup --contamination` keeps for a BAM or CRAM
+([lineage.md](lineage.md#mtdna-heteroplasmy-evidence)). Without them (no run,
+a run without `--contamination`, or a VCF input) the section is **not run**
+and names the command. It keeps three things apart:
+
+- **Technical support** (`technical`): mutserve's version and settings, the
+  mtDNA reference the reads were called against (rCRS or CHM13v2.0's chrM,
+  with contig and MD5), median depth, the share of positions with 100 or more
+  reads, the counts of homoplasmies and heteroplasmies, and haplocheck's
+  contamination status.
+- **Reviewed disease variants** (`group` `disease`): the mtDNA SNVs that
+  ClinVar classifies Pathogenic with expert-panel review (ClinGen's
+  Mitochondrial Disease Variant Curation Expert Panel) and no conflicting
+  classifications.
+- **MT-RNR1 aminoglycoside-risk alleles** (`group` `aminoglycoside`):
+  m.1095T>C, m.1494C>T and m.1555A>G, which CPIC classes as "increased risk of
+  aminoglycoside-induced hearing loss" (McDermott et al., *Clin Pharmacol
+  Ther* 2022;111(2):366-372, PMID 34032273), with ClinVar's record for each.
+  CPIC found no heteroplasmy level at which aminoglycosides become safe and
+  treats a detected variant at any level like a homoplasmic one, so a
+  supported heteroplasmic call is reported as risk evidence; it does not need
+  100% ALT reads.
+
+The reviewed variants are `src/wgsextract_cli/assets/report/mt_variants.json`,
+bundled with the package (the report makes no network request).
+`scripts/build_report_mt_variants.py` rebuilds it by that rule from a pinned
+ClinVar GRCh38 VCF release (2026-11-15; its URL, `fileDate` and NCBI MD5 are
+recorded, with each variant's Variation ID, classification, review status and
+conditions) and CPIC's Table 1. MITOMAP is not used. ClinVar's data carry no
+NCBI use restrictions; CPIC's content is CC0 1.0 (see NOTICE). The section's
+`resource` repeats the release, MD5, selection rule and citation.
+
+Each reviewed variant gets one state (`sites`), from the evidence at its rCRS
+position (a CHM13 run's evidence is read at the matching CHM13 position):
+
+| State | Meaning |
+| --- | --- |
+| `homoplasmic` | mutserve called the ALT at 95% or more |
+| `heteroplasmic` | mutserve called it at 10% to 95% |
+| `weak_evidence` | a call below 10%, or ALT reads at 1% or more on a strand that mutserve didn't call (`strand_bias` when only one strand carries them, `mt_not_called` otherwise) |
+| `not_detected` | 100 or more reads, none (under 1% on each strand) with the ALT |
+| `not_assessed` | fewer than 100 reads, no reads, an unconfirmed reference, a reference base or call that disagrees with the read table, or missing evidence (see `reasons`) |
+
+The thresholds follow gnomAD's mtDNA release (Laricchia et al., *Genome Res*
+2022;32:569-582, PMID 35074858): it reports heteroplasmy from 10%, calls
+95-100% homoplasmic, and treats a site without a call as reference only
+above 100x. In their dataset, the authors estimated that misaligned nuclear
+copies of mtDNA (NUMTs) accounted for at least 43% of 1-5% calls and 1% of
+5-10% calls. Those estimates are not universal error rates, and this report
+retains lower calls as weak evidence. With 100 reads, a 10%
+heteroplasmy leaves no ALT read with probability 0.9^100 (under 3 in 100,000),
+so **not detected rules out heteroplasmy of 10% or more, not lower levels**.
+1% is the level mutserve calls from in this run. These are technical limits:
+levels are measured in the sequenced sample (usually blood) and can differ in
+other tissues and over time, and NUMTs, contamination and low mtDNA copy
+number can all imitate low-level heteroplasmy. **Not assessed is unknown, never
+a negative.** The section warns `mt_reference_unconfirmed` (no variant
+assessed) when the run's mtDNA reference wasn't confirmed as the rCRS or
+CHM13v2.0's chrM, and `mt_evidence_missing` when a kept file is missing or
+unreadable.
+
+Detected and weak-evidence variants are findings. Their `variant` gives the
+level as `alt_fraction` and `homoplasmic` or `heteroplasmic` as `zygosity`,
+with no genotype: a mixture is not a diploid genotype. `clinical_evidence`
+holds the ClinVar Variation ID and review status; the region is the position
+in the evidence file. A finding's note gives the clinician-review context.
+
 ### Automated ACMG classes (research only)
 
 > **Research use only; not a diagnosis.** These classes are computed
@@ -348,6 +424,12 @@ reason codes. The JSON document explains each code in `confidence_reasons`.
   input's aligner isn't bwa-like (`aligner_not_calibrated`), or coverage is
   uneven (MAD above 0.11); `moderate` when the depth is unknown; otherwise
   `high`.
+- **Mitochondrial heteroplasmy**: `high` for a homoplasmic or heteroplasmic
+  call, or a supported negative, at 100 or more reads; `low` for weak
+  evidence or under 100 reads (`mt_low_depth`). Haplocheck contamination
+  makes a heteroplasmic call `low` and a homoplasmic one `moderate`
+  (`mt_contamination`); `qc contamination` makes either at most `moderate`
+  (`sample_contaminated`). See [above](#mitochondrial-dna-heteroplasmy-at-reviewed-variants).
 - **Haplogroups**: the caller's quality score (Yleaf QC-score, Haplogrep
   3 quality): `high` from 0.9, `moderate` from 0.7, `low` below 0.7. A run that
   warned of low coverage is `low`.
@@ -454,7 +536,12 @@ gives the selected run's `command`, `status`, `finished` and `manifest`, and
 `latest_attempt`: `null` when it is the newest run of its step, otherwise
 the newer failed or cancelled attempt with the same four fields. The overview
 adds `facts` and `qc`, ClinVar adds `gene_list`, `build`, `counts`, `genes`
-and `all_calls`, and the microarray section adds `files` and `metrics`.
+and `all_calls`, exon callability adds `gene_list`, `build`, `exon_model`,
+`scope`, `thresholds`, `counts`, `genes` (each with its `state`, `result` and
+`result_text`), `all_exons`, `evidence`, `unassessed_variant_classes` and
+`note`, the mitochondrial section adds `advisory`, `technical`,
+`thresholds`, `resource`, `sites` and `counts`, and the microarray section
+adds `files` and `metrics`.
 
 The findings table has one row per finding, with the variant's columns, the
 label and its reasons, the evidence file and region, and the disclaimer. Its
@@ -462,7 +549,10 @@ columns are described in the Parquet footer like the other tables
 ([parquet.md](parquet.md)).
 
 The report's result manifest records the source manifests as inputs (role
-`manifest`), the four documents as outputs (`report_html`, `report_markdown`,
+`manifest`), the resource releases its sections rest on (`resources`: the
+source runs' ClinVar release and the gene list; see
+[recheck-and-delta.md](recheck-and-delta.md), which also covers `ref recheck`
+and comparing two reports with `report-delta`), the four documents as outputs (`report_html`, `report_markdown`,
 `report_json`, `findings_table`), the metrics `findings`,
 `findings_<label>` and `section_<name>` (each section's status), and a
 `section_failed` warning for each failed section and a `newer_attempt_failed`
@@ -477,6 +567,10 @@ existing helper paths. `context.py` collects manifests and workspace evidence
 and provides shared finding/confidence support. `overview.py` builds sample,
 lineage, ancestry and microarray summaries; `genotyping.py` builds PGx and
 carrier sections; `clinical.py` handles ClinVar and per-gene call interpretation;
+`callability.py` reads `vcf callability` and combines it with the ClinVar section;
+`callability_rendering.py` formats the exon-by-gene table and evidence links;
+`mitochondrial.py` reads mtDNA heteroplasmy evidence through
+`core/mt_heteroplasmy.py`;
 `variant_sections.py` handles automated ACMG and structural-variant evidence.
 `rendering.py` formats the offline HTML/Markdown documents and evidence links.
 Confidence and clinical rules remain independent of presentation.

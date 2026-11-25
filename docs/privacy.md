@@ -1,5 +1,12 @@
 # Privacy and network access
 
+> **Scope:** This document covers **WGS Extract CLI** (the command-line
+> back-end, Python API and local server). For the desktop app's privacy model —
+> including automatic update checks, interactive missing-data install prompts,
+> and how the GUI sits atop the strictly offline CLI — see
+> [Desktop App Privacy and network access](../gui/docs/privacy.md) and
+> [GUI Architecture — Privacy and network boundary](../gui/devdocs/architecture.md#privacy-and-network-boundary).
+
 Ordinary analysis, inspection and reporting stay on this computer. Defaults
 must not attempt a connection, even when a reference, tree, gene list or
 model is missing. There is no telemetry, usage reporting or background CLI
@@ -91,6 +98,7 @@ queries. The separate `vep download` command fetches public data only.
 | `lineage y-haplogroup --download` | GitHub WGSExtract releases/CDN; configured custom-tree host | Tree ID/version and selected reference build/table; custom-tree URL, not sample markers/calls |
 | `report --download` | GitHub WGSExtract releases/CDN | Selected public gene-list filename/version, not findings |
 | `report --pgx-context FILE --download` | `files.cpicpgx.org` | The pinned CPIC database release filename (`cpic_db_dump-v1.61.0.sql.gz`), not the medication list, findings or genotypes; the medication file is read locally only |
+| `ref recheck --online` | `ftp.ncbi.nlm.nih.gov` (ClinVar's weekly release listing for the recorded build) | A plain GET of the public listing URL; no sample name, paths, positions, genotypes or findings. Without `--online` (or with `--answers FILE`) nothing is contacted; see [recheck-and-delta.md](recheck-and-delta.md) |
 | `score pgs --download` | `www.pgscatalog.org`, `ftp.ebi.ac.uk`, GitHub WGSExtract releases/CDN | PGS ID, coordinate build, public scoring weights and calibration/ancestry asset names, not sample scores or genotypes |
 | `basecall --download` | Oxford Nanopore's Dorado model distribution | Model/modification names and POD5 chemistry metadata used to select a model. No signal/read files are uploaded. For offline use pass a local `--model` directory without `--modified-bases`. |
 | `methylation regions --download` | `hgdownload.soe.ucsc.edu` | Pinned public hg38 `cpgIslandExt` filename; no sample positions or calls. The flag is local-only, and the server can read an allowed, preinstalled table. |

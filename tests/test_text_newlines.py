@@ -4,12 +4,17 @@ Python's text mode writes \\r\\n on Windows unless `newline=` says otherwise, so
 the same command made different files there: microarray kits with \\r\\n headers
 over \\n genotype rows, and region and target lists that htslib tools read. Every
 text-mode write in the package must pass `newline=` (normally "\\n").
+The generators run by scripts/regen.py must explicitly choose LF to avoid
+Windows-only diffs.
 """
 
 import ast
 from pathlib import Path
 
-PACKAGE = Path(__file__).resolve().parents[1] / "src" / "wgsextract_cli"
+from scripts.regen import GENERATOR_COMMANDS
+
+ROOT = Path(__file__).resolve().parents[1]
+PACKAGE = ROOT / "src" / "wgsextract_cli"
 WRITE_MODES = {"w", "a", "x", "w+", "a+", "x+", "r+", "wt", "at", "xt"}
 
 
@@ -26,12 +31,22 @@ def _mode(call: ast.Call, position: int) -> str | None:
     return None
 
 
-def _text_writes_without_newline(tree: ast.AST) -> list[int]:
+def _text_writes_without_newline(
+    tree: ast.AST, *, require_lf: bool = False
+) -> list[int]:
     lines = []
     for call in ast.walk(tree):
         if not isinstance(call, ast.Call):
             continue
-        if any(keyword.arg == "newline" for keyword in call.keywords):
+        if any(
+            keyword.arg == "newline"
+            and (
+                not require_lf
+                or isinstance(keyword.value, ast.Constant)
+                and keyword.value.value == "\n"
+            )
+            for keyword in call.keywords
+        ):
             continue
         func = call.func
         name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
@@ -61,6 +76,19 @@ def test_text_writes_choose_their_line_endings() -> None:
     assert not offenders, (
         "text-mode writes without newline= (they write \\r\\n on Windows):\n"
         + "\n".join(offenders)
+    )
+
+
+def test_1469_regeneration_writes_lf() -> None:
+    offenders: list[str] = []
+    for source, *_ in GENERATOR_COMMANDS:
+        tree = ast.parse((ROOT / source).read_text(encoding="utf-8"), source)
+        offenders.extend(
+            f"{source}:{line}"
+            for line in _text_writes_without_newline(tree, require_lf=True)
+        )
+    assert not offenders, 'generated text writes must use newline="\\n":\n' + "\n".join(
+        offenders
     )
 
 

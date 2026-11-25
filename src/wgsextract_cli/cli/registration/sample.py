@@ -9,7 +9,17 @@ from wgsextract_cli.api.sample import (
     SampleUnsetParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    INSTANT,
+    _n,
+)
+from wgsextract_cli.commands._messages.sample import CLI_HELP
+
+NEEDS = {
+    "sample show": _n(INSTANT),
+    "sample set": _n(INSTANT),
+    "sample unset": _n(INSTANT),
+}
 
 
 def register(

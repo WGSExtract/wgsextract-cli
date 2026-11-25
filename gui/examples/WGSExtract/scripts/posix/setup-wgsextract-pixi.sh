@@ -149,6 +149,12 @@ log "Delegating WGS Extract CLI install to upstream install.sh..."
 mkdir -p "$BIN_DIR"
 sh "$installer"
 
+# Save activation once for desktop calls. An older or externally managed
+# runtime can still run through the existing offline Pixi path.
+WGSEXTRACT_APP_DIR="$APP_DIR" sh "$script_dir/run-wgsextract-env.sh" \
+  --cache-activation ||
+  log "Could not cache CLI activation; commands will continue to run through Pixi."
+
 # Once the runtime is installed in the app's data folder, the one an earlier
 # version installed in the workspace is unused: remove it. Its Pixi, cache and
 # environments are all inside it.

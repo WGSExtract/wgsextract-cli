@@ -28,7 +28,6 @@ jobs:
       actions: read
       contents: read
       statuses: read
-      pull-requests: read
     outputs:
       cli: ${{ steps.diff.outputs.cli }}
       docs: ${{ steps.diff.outputs.docs }}
@@ -36,7 +35,6 @@ jobs:
       site_validation: ${{ steps.diff.outputs.site_validation }}
       native: ${{ steps.diff.outputs.native }}
       site: ${{ steps.diff.outputs.site }}
-      install: ${{ steps.diff.outputs.install }}
       fast: ${{ steps.diff.outputs.fast }}
       draft_cli: ${{ steps.diff.outputs.draft_cli }}
       python_files: ${{ steps.diff.outputs.python_files }}
@@ -55,6 +53,9 @@ jobs:
       macos_smoke: ${{ steps.diff.outputs.macos_smoke }}
       windows_smoke: ${{ steps.diff.outputs.windows_smoke }}
       arm64_smoke: ${{ steps.diff.outputs.arm64_smoke }}
+      ubuntu_matrix: ${{ steps.linux-shards.outputs.ubuntu || (fromJSON(steps.shards.outputs.ubuntu || '[]')[1].label != 'shard-2' && steps.shards.outputs.ubuntu) || '' }}
+      macos_matrix: ${{ steps.shards.outputs.macos }}
+      windows_matrix: ${{ steps.shards.outputs.windows }}
       generic_tests: ${{ steps.diff.outputs.generic_tests }}
       # Certificates do not yet include move imports/full collection.
       linux_x64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.linux_x64 || 'false' }}
@@ -62,7 +63,7 @@ jobs:
       macos_arm64: ${{ steps.diff.outputs.move_modules == '[]' && steps.cert.outputs.macos_arm64 || 'false' }}
       # The Windows imputation lane includes a fresh locked install, not just
       # testing the already-provisioned tool validated by local certification.
-      windows_x64: ${{ steps.diff.outputs.move_modules == '[]' && (steps.diff.outputs.windows_smoke == 'true' || (steps.diff.outputs.windows_tests != 'all' && !contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py'))) && steps.cert.outputs.windows_x64 || 'false' }}
+      windows_x64: &windows-certified ${{ steps.diff.outputs.move_modules == '[]' && (steps.diff.outputs.windows_smoke == 'true' || (steps.diff.outputs.windows_tests != 'all' && !contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py'))) && steps.cert.outputs.windows_x64 || 'false' }}
       generic: ${{ steps.cert.outputs.generic }}
     steps:
       - name: Check out the trusted base verifier
@@ -93,20 +94,80 @@ jobs:
         env:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.sha }}
           HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
           DRAFT: ${{ github.event.pull_request.draft }}
           FULL_SUITE: ${{ github.event_name == 'merge_group' }}
         run: |
           set -euo pipefail
           flags=()
-          if [ -n "$PR_NUMBER" ]; then
-            force_install=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq 'any(.labels[]; .name == "run-install-lab")')
-            if [ "$force_install" = true ]; then flags+=(--force-install-lab); fi
-          fi
           if [ "$DRAFT" = true ]; then flags+=(--draft); fi
           if [ "${FULL_SUITE:-false}" = true ]; then flags+=(--full-suite); fi
           python3 scripts/ci_changes.py --base "$BASE" --head "$HEAD" "${flags[@]}" --output "$GITHUB_OUTPUT" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Size the hosted pytest matrices
+        id: shards
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UBUNTU: ${{ steps.diff.outputs.ubuntu_smoke != 'true' && (steps.cert.outputs.linux_x64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.ubuntu_tests || '[]' }}
+          MACOS: ${{ steps.diff.outputs.macos_smoke != 'true' && (steps.cert.outputs.macos_arm64 != 'true' || steps.diff.outputs.move_modules != '[]') && steps.diff.outputs.macos_tests || '[]' }}
+          WINDOWS: ${{ steps.diff.outputs.windows_smoke != 'true' && steps.diff.outputs.windows_tests || '[]' }}
+          WINDOWS_CERTIFIED: *windows-certified
+        run: |
+          mkdir -p out/shard-timings
+          for lane in ubuntu macos windows; do
+            : > "out/shard-timings/$lane.outputs"
+          done
+          if [ "$UBUNTU" != '[]' ]; then
+            timeout 45 python3 -m scripts.ci_test_shards --os ubuntu --selection "$UBUNTU" \
+              --save-timings out/shard-timings/ubuntu.json \
+              --pull-request --skip-independent --repository "$GITHUB_REPOSITORY" --output-name ubuntu --github-output out/shard-timings/ubuntu.outputs &
+          fi
+          if [ "$MACOS" != '[]' ]; then
+            timeout 45 python3 -m scripts.ci_test_shards --os macos --selection "$MACOS" \
+              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name macos --github-output out/shard-timings/macos.outputs &
+          fi
+          if [ "$WINDOWS" != '[]' ] && [ "$WINDOWS_CERTIFIED" != true ]; then
+            timeout 45 python3 -m scripts.ci_test_shards --os windows --selection "$WINDOWS" \
+              --skip-independent --repository "$GITHUB_REPOSITORY" --output-name windows --github-output out/shard-timings/windows.outputs &
+          fi
+          wait
+          cat out/shard-timings/{ubuntu,macos,windows}.outputs >> "$GITHUB_OUTPUT"
+      - name: Set up the locked Python for the Linux shard selector
+        id: shard-selector-setup
+        if: fromJSON(steps.shards.outputs.ubuntu || '[]')[1].label == 'shard-2'
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/setup-pixi
+        with:
+          environments: dev
+          writer: "false"
+      - name: Fetch trusted Linux observations for the shard planner
+        if: steps.shard-selector-setup.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          pixi run -e dev --no-install python -m scripts.ci_impact_fetch
+          --repository "$GITHUB_REPOSITORY" --base HEAD^1
+          --output out/test-impact-map/linux.json.gz
+      - name: Finalize the Linux pytest plan from one selector decision
+        id: linux-shards
+        if: steps.shard-selector-setup.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          TEST_SELECTION: ${{ steps.diff.outputs.ubuntu_tests }}
+          SYMBOL_DISABLED: ${{ vars.CI_DISABLE_SYMBOL_SELECTION }}
+        run: |
+          flags=()
+          if [ "$SYMBOL_DISABLED" = true ]; then flags+=(--disable-symbol-selection); fi
+          timeout 90 pixi run -e dev --no-install python -m scripts.ci_test_shards \
+            --os ubuntu --selection "$TEST_SELECTION" \
+            --linux-observations out/test-impact-map/linux.json.gz "${flags[@]}" \
+            --pull-request --skip-independent --timings out/shard-timings/ubuntu.json \
+            --output-name ubuntu --github-output "$GITHUB_OUTPUT"
       - name: Prepare selector activation canary
         id: selector-setup
         if: github.event_name == 'pull_request' && contains(fromJSON(steps.diff.outputs.python_files), 'scripts/ci_impact_gate.py')
@@ -241,7 +302,7 @@ jobs:
           python-version: "3.13"
       - name: Install only Python documentation test dependencies
         if: needs.changes.outputs.docs_tests != '[]'
-        run: python -m pip install --quiet -e . pytest jsonschema
+        run: python -m pip install --quiet -e . pytest jsonschema 'markdown-it-py>=3,<5'
       - name: Run input-selected documentation tests
         if: needs.changes.outputs.docs_tests != '[]'
         env:
@@ -302,6 +363,7 @@ jobs:
     uses: ./.github/workflows/ubuntu_ci.yml
     with:
       tests: ${{ needs.changes.outputs.ubuntu_tests }}
+      matrix: ${{ needs.changes.outputs.ubuntu_matrix }}
       smoke-only: ${{ needs.changes.outputs.ubuntu_smoke == 'true' }}
       platform-certified: ${{ needs.changes.outputs.linux_x64 == 'true' }}
       generic-certified: ${{ needs.changes.outputs.generic == 'true' }}
@@ -313,6 +375,7 @@ jobs:
     uses: ./.github/workflows/macos_ci.yml
     with:
       tests: ${{ needs.changes.outputs.macos_tests }}
+      matrix: ${{ needs.changes.outputs.macos_matrix }}
       smoke-only: ${{ needs.changes.outputs.macos_smoke == 'true' }}
       setup-checks: ${{ needs.changes.outputs.setup_checks == 'true' }}
       move-modules: ${{ needs.changes.outputs.move_modules }}
@@ -322,6 +385,7 @@ jobs:
     uses: ./.github/workflows/windows_ci.yml
     with:
       tests: ${{ needs.changes.outputs.windows_tests }}
+      matrix: ${{ needs.changes.outputs.windows_matrix }}
       smoke-only: ${{ needs.changes.outputs.windows_smoke == 'true' }}
       setup-checks: ${{ needs.changes.outputs.setup_checks == 'true' }}
       move-modules: ${{ needs.changes.outputs.move_modules }}
@@ -359,13 +423,9 @@ jobs:
         env:
           CI_TESTS: ${{ needs.changes.outputs.ci_tests }}
         run: |
-          python -m pip install --quiet -e . pytest pytest-xdist jsonschema coverage
+          python -m pip install --quiet -e . pytest pytest-xdist jsonschema coverage 'markdown-it-py>=3,<5'
           mkdir -p out
           python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", *json.loads(os.environ["CI_TESTS"]), "--basetemp=out/ci-policy"], check=True)'
-  smoke:
-    needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.cli == 'true' && github.event_name != 'merge_group'
-    uses: ./.github/workflows/cli_smoke.yml
   generic:
     needs: changes
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.changes.outputs.generic != 'true' && needs.changes.outputs.generic_tests != '[]'
@@ -381,13 +441,6 @@ jobs:
           TEST_SELECTION: ${{ needs.changes.outputs.generic_tests }}
         run: pixi run python scripts/ci_run_tests.py --selection "$TEST_SELECTION"
         shell: bash
-  install:
-    needs: changes
-    if: github.event.pull_request.draft != true && needs.changes.outputs.install == 'true' && github.event_name != 'merge_group'
-    uses: ./.github/workflows/install_lab.yml
-    with:
-      macos: ${{ needs.changes.outputs.setup_checks == 'true' }}
-
   # The secret scan covers every ready PR and queue group, docs-only ones included.
   gitleaks:
     if: ${{ github.event.pull_request.draft != true }}
@@ -422,6 +475,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+      - run: python -m pip install --quiet -e . 'markdown-it-py>=3,<5'
       - run: |
           python3 scripts/validate_site_sources.py
           python3 scripts/build_site.py
@@ -431,7 +488,7 @@ jobs:
 
   ready-gate:
     name: Ready PR area checks
-    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, optional-tools, ubuntu, macos, windows, arm64, smoke, install, native-smoke, pages]
+    needs: [changes, draft-fast, docs, python-lint, ci-policy, generic, optional-tools, ubuntu, macos, windows, arm64, native-smoke, pages]
     if: >-
       ${{
         !cancelled() &&

@@ -161,7 +161,8 @@ removed field gets a new schema version.
 with NO_COLOR, output has no colour, and 'Next:' hints appear only on a
 terminal. --quiet hides informational logs. Exit codes are stable
 ('wgsextract help exit-codes'). A mistyped command or option exits 2 with a
-suggestion. Python callers can use the typed API (docs/api.md).
+suggestion. Python callers can use the typed API:
+https://wgsextract.github.io/wgsextract-cli/api.html
 """,
     ),
 }

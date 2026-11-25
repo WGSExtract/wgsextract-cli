@@ -42,10 +42,9 @@ EXTENSIONS = {
         ".raml",
         ".xml",
     },
-    "rust": {".rs"},
     "actions": set(),
 }
-LANGUAGES = ("python", "javascript-typescript", "rust", "actions")
+LANGUAGES = ("python", "javascript-typescript", "actions")
 # The workflow, its scope rules and repository CI setup affect every language.
 ALL_LANGUAGE_INPUTS = (".github/", "scripts/ci_codeql_scope.py")
 
@@ -63,11 +62,6 @@ def languages(paths: list[str], crate_roots: set[PurePosixPath]) -> list[str]:
         )
         if pure.name in {"action.yml", "action.yaml"}:
             selected.add("actions")
-        # Rust extraction reads manifests and anything a crate may embed.
-        if pure.name in {"Cargo.toml", "Cargo.lock"} or any(
-            pure.is_relative_to(root) for root in crate_roots
-        ):
-            selected.add("rust")
     return [language for language in LANGUAGES if language in selected]
 
 

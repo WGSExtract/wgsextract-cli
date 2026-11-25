@@ -12,6 +12,11 @@
 # left, so no later step runs beside setup: the app's Uninstall stops every
 # process under the runtime folder, a running install included (#448).
 
+install_mini_genome_ploidy() {
+    # Staged only in the lab user's library for current-tree app tests.
+    mkdir -p "$1/reference" && cp "$2/hg19-mini.ploidy.txt" "$1/reference/ploidy.txt"
+}
+
 now_ms() {
     # BSD date has no %N.
     if [ "$(uname -s)" = Darwin ]; then

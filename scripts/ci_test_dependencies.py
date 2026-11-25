@@ -19,12 +19,12 @@ ROOT = Path(__file__).resolve().parents[1]
 Value: TypeAlias = Path | str | None
 IGNORED = {".git", ".pixi", "out", "tmp", "scratch", "__pycache__", "node_modules"}
 DOCS_TEST_TARGETS = (
-    "tests/test_api.py::test_api_docs_are_up_to_date",
-    "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
-    "tests/test_api_cli_parity.py",
+    "tests/test_site_references.py",
     "tests/test_cli_help.py",
+    "tests/test_help_index.py",
     # Real Git/generator checks need only the same Python deps as freshness tests.
     "tests/test_regen.py",
+    "tests/test_text_newlines.py",
     "tests/test_bump_version.py",
     "tests/test_release_notes.py",
     "tests/test_build_mockup_previews.py",
@@ -41,48 +41,44 @@ DOCS_TEST_MODULES = frozenset(
 )
 GENERATED_DOCS = frozenset(
     {
-        "docs/api.md",
-        "docs/commands.md",
-        "docs/configuration.md",
-        # Hand-written generator input also requires configuration freshness.
+        # Hand-written inputs to the generated site references.
         "docs/data/configuration-guide.md",
+        "site_src/api.md",
         "site_src/cli.md",
-        "tests/fixtures/api_cli_snapshot.json",
-        "src/wgsextract_cli/assets/cli/help-index.json",
+        "site_src/commands.md",
+        "site_src/configuration.md",
+        "site_src/reference.md",
     }
 )
 DOCS_TARGET_INPUTS = {
-    "tests/test_api.py::test_api_docs_are_up_to_date": (
-        "src/wgsextract_cli/api/**",
+    "tests/test_site_references.py": (
+        "src/wgsextract_cli/**",
+        "scripts/build_site.py",
         "scripts/gen_api_docs.py",
-        "docs/api.md",
-    ),
-    "tests/test_core_cli.py::test_configuration_docs_are_up_to_date": (
-        "src/wgsextract_cli/core/config.py",
-        "src/wgsextract_cli/core/settings_schema.py",
         "scripts/gen_config_docs.py",
-        "docs/configuration.md",
+        "scripts/site_references.py",
+        "scripts/validate_site_sources.py",
         "docs/data/configuration-guide.md",
-    ),
-    "tests/test_api_cli_parity.py": (
-        "src/wgsextract_cli/**",
-        "tests/cli_snapshot.py",
-        "tests/fixtures/api_cli_snapshot.json",
-    ),
-    "tests/test_cli_help.py": (
-        "src/wgsextract_cli/**",
-        "scripts/gen_command_docs.py",
-        "docs/commands.md",
+        "site_src/api.md",
         "site_src/cli.md",
+        "site_src/commands.md",
+        "site_src/configuration.md",
+        "site_src/reference.md",
     ),
+    "tests/test_cli_help.py": ("src/wgsextract_cli/**",),
+    "tests/test_help_index.py": ("src/wgsextract_cli/**",),
     "tests/test_regen.py": (
         "scripts/regen*",
-        "scripts/gen_api_docs.py",
-        "scripts/gen_command_docs.py",
-        "scripts/gen_config_docs.py",
-        "docs/data/configuration-guide.md",
-        "tests/cli_snapshot.py",
+        "src/wgsextract_cli/cli/help_index.py",
+        "scripts/gen_server_openapi.py",
         "justfile",
+    ),
+    "tests/test_text_newlines.py": (
+        "scripts/regen.py",
+        "scripts/gen_output_schemas.py",
+        "scripts/gen_report_schema.py",
+        "scripts/gen_server_contracts.py",
+        "scripts/gen_server_openapi.py",
     ),
     "tests/test_bump_version.py": (
         "scripts/bump_version*",
@@ -119,8 +115,9 @@ for _target in ("tests/test_workflow_readiness.py", "tests/test_workflow_paths.p
 DOCS_ONLY_SCRIPTS = frozenset(
     {
         "scripts/gen_api_docs.py",
-        "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
+        "scripts/site_references.py",
+        "scripts/build_site.py",
         "scripts/regen.py",
         "scripts/bump_version.py",
         "gui/scripts/bump-wgsextract-cli.py",
@@ -143,7 +140,8 @@ def docs_test_targets(
     selected = set()
     inputs = test_inputs(repository)
     for path in paths:
-        if path.endswith(".md") and path not in GENERATED_DOCS:
+        generated = path in GENERATED_DOCS
+        if path.endswith(".md") and not generated:
             continue
         # Literal reads complement the declared transitive inputs. Inferred
         # fixture globs (e.g. f"scripts/{generator}") are too broad for this lane.
@@ -152,7 +150,7 @@ def docs_test_targets(
             module = target.split("::")[0]
             # Routing/policy fixtures mention arbitrary paths rather than reading them.
             discovered = (
-                path not in GENERATED_DOCS
+                not generated
                 and module in readers
                 and module
                 not in {

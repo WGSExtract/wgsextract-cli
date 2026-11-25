@@ -796,6 +796,9 @@ for task in sys.stdin.read().split():
         continue
     ran.append(task)
     command = [task if a == "{}" else a for a in args]
+    # GNU parallel inside the Linux image cannot launch commands this large.
+    if len(" ".join(command).encode()) >= 131_072:
+        sys.exit("parallel: Error: Command line too long")
     code = subprocess.run(command, stdin=subprocess.DEVNULL).returncode
     if joblog:
         with open(joblog, "a") as out:

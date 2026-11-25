@@ -12,12 +12,14 @@ from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfClair3Params
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core.alignment.cram_staging import (
     needs_cram30,
     stage_cram30,
     staging_bytes,
 )
 from wgsextract_cli.core.alignment.metadata import get_bam_header
+from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
@@ -39,7 +41,6 @@ from wgsextract_cli.core.genotype_qc import (
     covered_depths,
     region_targets,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.parabricks import gpu_memory, verify_gpu_docker
 from wgsextract_cli.core.paths import absolute_path
@@ -55,7 +56,6 @@ from wgsextract_cli.core.resource_estimates import (
     report_resources,
 )
 from wgsextract_cli.core.results import warn
-from wgsextract_cli.core.samtools_commands import alignment_index
 from wgsextract_cli.core.space_free_paths import (
     READS_INDEXES,
     REFERENCE_INDEXES,
@@ -584,7 +584,7 @@ def _run_clair3(
     out_vcf = str(Path(outdir, "clair3.vcf.gz"))
     logging.info(LOG_MESSAGES["vcf_calling_clair3"].format(output=out_vcf))
     with (
-        plain_reference(ref, outdir) as use_ref,
+        plain_reference(ref, outdir, reuse_sibling=False) as use_ref,
         scratch_directory(outdir, ".wgse_clair3_") as work,
     ):
         bed, intervals = None, None

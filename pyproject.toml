@@ -1,10 +1,17 @@
 [build-system]
-requires = ["hatchling"]
+requires = [
+    "hatchling",
+    # The artifact hook imports the CLI's operation catalog.
+    "platformdirs",
+    "pyliftover",
+    "tomli; python_version < '3.11'",
+    "tomli-w",
+]
 build-backend = "hatchling.build"
 
 [project]
 name = "wgsextract-cli"
-version = "0.8.9"
+version = "0.8.10"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,6 +25,7 @@ dependencies = [
     "tomli; python_version < '3.11'", # TOML parser for Python < 3.11
     "tomli-w",       # TOML writer
     "numpy>=1.24",   # qc ancestry: projection onto the reference allele frequencies
+    "backports.zstd>=1.0; python_version < '3.14'",  # FASTQ archives: stdlib Zstandard on 3.14+
 ]
 
 [project.optional-dependencies]
@@ -89,8 +97,15 @@ relative_files = true
 core = "sysmon"
 disable_warnings = ["no-sysmon"]
 
+[tool.hatch.build]
+exclude = ["/src/wgsextract_cli/assets/cli/help-index.json", "/src/wgsextract_cli/assets/cli/help-index.key"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/wgsextract_cli"]
+
+[tool.hatch.build.hooks.custom]
+path = "scripts/build_package_artifacts.py"
+dependencies = ["platformdirs", "pyliftover", "tomli-w", "tomli; python_version < '3.11'"]
 
 [tool.pytest.ini_options]
 pythonpath = [".", "src", "tests"]

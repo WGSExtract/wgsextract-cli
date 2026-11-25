@@ -1,18 +1,14 @@
-name: Reuse green main for nightly
+name: Plan full OS test shards
 
 on:
   workflow_call:
     inputs:
-      workflow:
-        type: string
+      shard-os:
         required: true
-      main-backstop-candidate:
-        description: Also check a potential manual Ubuntu backstop on main.
-        type: boolean
-        default: false
+        type: string
     outputs:
-      skip:
-        value: ${{ jobs.check.outputs.skip }}
+      matrix:
+        value: ${{ jobs.check.outputs.matrix }}
 
 permissions:
   contents: read
@@ -20,21 +16,24 @@ permissions:
 
 jobs:
   check:
-    if: github.event_name == 'schedule' || inputs.main-backstop-candidate
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:
-      skip: ${{ steps.main.outputs.skip }}
+      matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - id: main
+      - name: Size the full hosted pytest matrix
+        id: shards
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-          WORKFLOW: ${{ inputs.workflow }}
-        shell: bash
+          SHARD_OS: ${{ inputs.shard-os }}
         run: |
-          # Actions expression comparisons ignore case; Git refs do not.
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch && "$GITHUB_REF" != refs/heads/main ]]; then exit 0; fi
-          python3 scripts/ci_nightly.py --repository "$GITHUB_REPOSITORY" --workflow "$WORKFLOW" --sha "$GITHUB_SHA" --output "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF" != refs/heads/main ]; then exit 0; fi
+          flags=()
+          if [ "$SHARD_OS" != ubuntu ]; then flags+=(--skip-independent); fi
+          timeout 45 python3 -m scripts.ci_test_shards --os "$SHARD_OS" "${flags[@]}" \
+            --repository "$GITHUB_REPOSITORY" --github-output "$GITHUB_OUTPUT"

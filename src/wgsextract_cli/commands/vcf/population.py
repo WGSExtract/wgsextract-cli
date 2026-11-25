@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfGnomadParams, VcfPhylopParams
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core import variant_confidence
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -15,7 +16,6 @@ from wgsextract_cli.core.gnomad_af import (
     GNOMAD_V4_REBUILD,
     gnomad_table_header,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -166,7 +166,8 @@ def run_gnomad(params: VcfGnomadParams) -> None:
     gnomad_file = require_annotation_file(
         resource(params, "gnomad_file", lib.gnomad_vcf),
         "vcf_gnomad_missing",
-        "gnomad --download",
+        "gnomad",
+        install_args="--download",
     )
     logging.info(f"Using gnomAD file: {gnomad_file}")
 

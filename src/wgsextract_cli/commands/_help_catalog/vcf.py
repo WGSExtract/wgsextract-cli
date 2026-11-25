@@ -82,6 +82,14 @@ ENTRIES: dict[str, CommandHelp] = {
         f"wgsextract vcf table {_VCF_IN} --preset acmg-sf --region chr17",
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --format parquet",
     ),
+    "vcf callability": _h(
+        "exon_callability.json (per gene: callable, partial, not readable or not "
+        "run, with the sources and thresholds) and exon_callability.tsv (one row "
+        "per coding exon).",
+        "wgsextract vcf callability --vcf-input snps.vcf.gz",
+        "wgsextract vcf callability --vcf-input bcftools.g.vcf.gz --flank 10",
+        "wgsextract vcf callability --vcf-input snps.vcf.gz --gene-list my_genes.tsv",
+    ),
     "vcf clinvar": _h(
         "clinvar_annotated.vcf.gz and clinvar_pathogenic.vcf.gz (+ .tbi).",
         f"wgsextract vcf clinvar {_VCF_IN}",
@@ -150,7 +158,8 @@ ENTRIES: dict[str, CommandHelp] = {
         "--region chr22:19000000-20000000 --threads 4 --to-table",
     ),
     "vcf pharmcat": _h(
-        "<stem>.report.html and <stem>.phenotype.json from PharmCAT.",
+        "<stem>.report.html and <stem>.phenotype.json from PharmCAT. With supplemental "
+        "reference evidence, also <stem>.reference-evidence.json.",
         f"wgsextract vcf pharmcat {_VCF_IN}",
     ),
     "vcf trio": _h(

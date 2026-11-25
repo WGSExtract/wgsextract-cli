@@ -12,6 +12,7 @@ import os
 import shutil
 import stat
 import warnings
+from io import IOBase
 from pathlib import Path
 
 import pytest
@@ -170,6 +171,19 @@ def test_acmg_classes_go_into_the_vep_rs_vcf_with_the_disclaimer(tmp_path):
     assert summary["transcript_choice"].get("other_transcript", 0) == 0
     assert summary["sources_not_used"] == ["repeatmasker"]
     assert "BP3" in summary["criteria_not_evaluated"]
+    assert summary["gnomad_region_flags_not_evaluated"] == {
+        "lcr": ["1"],
+        "segdup": ["1"],
+    }
+    assert (
+        result.details["gnomad_region_flags_not_evaluated"]
+        == summary["gnomad_region_flags_not_evaluated"]
+    )
+    assert 'GnomadRegionFlagsNotEvaluated="lcr:1;segdup:1"' in text
+    assert "ACMG_GNOMAD_REGION=" not in text
+    assert {"acmg_bp3_not_evaluated", "acmg_gnomad_region_flags_not_evaluated"} <= {
+        w.code for w in result.warnings
+    }
     assert {o.role for o in result.outputs} >= {"annotated_vcf", "acmg_summary"}
     assert "acmg_research_only" in {w.code for w in result.warnings}
     assert result.metrics["acmg_b"] == 1
@@ -313,7 +327,12 @@ def test_acmg_reports_fastveps_own_error_when_it_cannot_start(tmp_path):
         result = api.vcf.acmg(params, check=False)
         gc.collect()
     # #1473: stopping before setup completes must still close both stderr pipes.
-    assert not [w.message for w in caught if issubclass(w.category, ResourceWarning)]
+    # #1517: collection can also finalize sockets left by other tests in this worker.
+    assert not [
+        w.message
+        for w in caught
+        if issubclass(w.category, ResourceWarning) and isinstance(w.source, IOBase)
+    ]
     assert result.error is not None
     assert "fastVEP failed before reading the input" in result.error.message
 

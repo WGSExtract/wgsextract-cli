@@ -1,7 +1,7 @@
 """Examples and outputs for every runnable command (the help contract).
 
 Each command's ``--help`` ends with these, ``wgsextract help <command> --json``
-and docs/commands.md publish them, and tests/test_cli_help.py checks that
+and the published command reference display them. The help tests check that
 every runnable command has an entry and that every example parses.
 
 ``outputs`` names the files a command writes, which go to the output
@@ -47,9 +47,11 @@ def _build_catalog() -> dict[str, CommandHelp]:
         deps,
         example_genome,
         extract,
+        fastq,
         help,
         info,
         lineage,
+        lookup,
         methylation,
         microarray,
         panel,
@@ -59,6 +61,7 @@ def _build_catalog() -> dict[str, CommandHelp]:
         ref,
         repair,
         report,
+        report_delta,
         report_issue,
         sample,
         score,
@@ -90,11 +93,14 @@ def _build_catalog() -> dict[str, CommandHelp]:
         deps,
         panel,
         report,
+        lookup,
+        report_delta,
         report_issue,
         serve,
         example_genome,
         bam,
         qc,
+        fastq,
         repair,
         analyze,
         typing,

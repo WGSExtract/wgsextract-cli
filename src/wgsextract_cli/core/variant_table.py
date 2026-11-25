@@ -27,17 +27,26 @@ from __future__ import annotations
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from typing import TypeVar
 from urllib.parse import unquote
 
 from wgsextract_cli.core import acmg
 from wgsextract_cli.core import clinical_evidence as ce
+from wgsextract_cli.core import variant_scores as scores
 from wgsextract_cli.core._variant_table_fields import csq_frequency as _csq_frequency
 from wgsextract_cli.core._variant_table_fields import fraction as _fraction
 from wgsextract_cli.core._variant_table_fields import per_allele as _per_allele
 from wgsextract_cli.core._variant_table_fields import to_float as _to_float
 from wgsextract_cli.core._variant_table_fields import to_int as _to_int
 from wgsextract_cli.core._variant_table_fields import value as _value
+from wgsextract_cli.core.csq_alleles import (
+    allele_entries,
+    csq_entries,
+    csq_for_allele,
+    for_allele,
+    split_origin,
+)
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
@@ -214,6 +223,19 @@ COLUMNS: tuple[Column, ...] = (
         "has (gnomAD and 1000 Genomes in Ensembl VEP's cache; 1000 Genomes only "
         "in a vep-rs cache from `vep download`).",
     ),
+    Column(
+        "ad_ref",
+        INTEGER,
+        "The sample's reads supporting REF (FORMAT/AD); empty when AD is "
+        "missing or incomplete.",
+    ),
+    Column(
+        "ad_alt",
+        INTEGER,
+        "The sample's reads supporting this ALT (FORMAT/AD); empty when AD is "
+        "missing or incomplete.",
+    ),
+    *scores.SCORE_COLUMNS,
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
@@ -284,6 +306,7 @@ class VcfHeader:
     ann_fields: list[str] | None = None
     samples: list[str] = field(default_factory=list)
     lines: list[str] = field(default_factory=list)
+    info_formats: dict[str, list[str]] = field(default_factory=dict)
 
     @property
     def annotations(self) -> list[str]:
@@ -302,6 +325,10 @@ class VcfHeader:
             ("acmg", (acmg.CLASS,)),
         ):
             if any(key in self.info_number for key in keys):
+                found.append(name)
+        csq = set(self.csq_fields or ())
+        for name, score_keys in scores.ANNOTATIONS:
+            if any(key in self.info_number or key in csq for key in score_keys):
                 found.append(name)
         return found
 
@@ -340,6 +367,8 @@ def parse_header(lines: Iterable[str]) -> VcfHeader:
             header.csq_fields = _subfield_names(description)
         elif key == "ANN":
             header.ann_fields = _subfield_names(description)
+        elif _FORMAT_LIST.search(description):
+            header.info_formats[key] = _subfield_names(description)
     return header
 
 
@@ -405,30 +434,6 @@ def _transcript_id(
     return None
 
 
-# Ensembl VEP's test for a structural-variant ALT (<DEL>, breakends), which it
-# names differently; <*> doesn't match it (Parser/VCF.pm, release 113).
-_SV_ALT = re.compile(r"[<\[\]][^*]+[>\]\[]|^\.\w+|\w+\.$")
-_BASES = re.compile(r"[ACGT]+")
-
-
-def vep_allele(ref: str, alts: Sequence[str], alt: str) -> str:
-    """How VEP names ``alt`` in CSQ, following its VCF parser: an indel record
-    loses its shared padding base ('-' when nothing is left). A multi-allelic
-    record is trimmed when every allele without a '*' (spanning deletions,
-    ``<*>``) starts with the same base, and those '*' alleles keep theirs."""
-    if not _BASES.fullmatch(ref + "".join(alts)) and _SV_ALT.search(",".join(alts)):
-        return alt
-    if all(len(a) == len(ref) for a in alts):
-        return alt
-    if len(alts) > 1:
-        first_bases = {a[:1] for a in (ref, *alts) if "*" not in a}
-        if len(first_bases) != 1 or "*" in alt:
-            return alt
-    elif ref[:1] != alt[:1]:
-        return alt
-    return alt[1:] or "-"
-
-
 def _severity(consequence: str) -> int:
     return min(
         (_SEVERITY.get(term, _UNRANKED) for term in consequence.split("&")),
@@ -454,78 +459,6 @@ def pick_csq(entries: Sequence[Mapping[str, str]]) -> Mapping[str, str] | None:
             _severity(e.get("Consequence", "")),
         ),
     )
-
-
-def csq_entries(raw: str | None, names: Sequence[str]) -> list[dict[str, str]]:
-    if not raw:
-        return []
-    return [
-        dict(zip(names, entry.split("|"), strict=False)) for entry in raw.split(",")
-    ]
-
-
-def _for_allele(
-    entries: list[dict[str, str]],
-    allele_key: str,
-    candidates: Sequence[str],
-    alt_index: int,
-    n_alts: int,
-    *,
-    split: bool = False,
-) -> list[dict[str, str]]:
-    """The entries describing one ALT. ``candidates`` are its possible
-    spellings, most specific first: the first that matches anything wins, so
-    VEP's trimmed spelling of one insertion can't also pick up another's.
-
-    A record split from a multi-allelic one (``split``: ``vcf clinvar``/
-    ``gnomad`` split them) may keep every original allele's entries, so it is
-    matched by its original ALLELE_NUM (``alt_index``) or spelling, never
-    given entries just because they all name one allele."""
-    if not entries:
-        return []
-    if "ALLELE_NUM" in entries[0] and (
-        n_alts > 1 or (split and {e.get("ALLELE_NUM") for e in entries} != {"1"})
-    ):
-        return [e for e in entries if e.get("ALLELE_NUM") == str(alt_index)]
-    if n_alts == 1 and not split and len({e.get(allele_key) for e in entries}) == 1:
-        return entries
-    for spelling in dict.fromkeys(candidates):
-        matches = [e for e in entries if e.get(allele_key) == spelling]
-        if matches:
-            return matches
-    return []
-
-
-def csq_for_allele(
-    entries: list[dict[str, str]],
-    ref: str,
-    alts: Sequence[str],
-    alt_index: int,
-    origin: tuple[str, list[str], int] | None = None,
-) -> list[dict[str, str]]:
-    """The CSQ entries of ALT number ``alt_index`` (1-based) of a record;
-    ``origin`` is :func:`split_origin` of its INFO, for a record split from a
-    multi-allelic one. ``pick_csq`` of them is the variant table's choice."""
-    alt = alts[alt_index - 1]
-    spellings: tuple[str, ...] = (vep_allele(ref, alts, alt), alt)
-    index, n_alts = alt_index, len(alts)
-    split = origin is not None and n_alts == 1
-    if origin is not None and split:
-        o_ref, o_alts, index = origin
-        o_alt = o_alts[index - 1]
-        spellings = (vep_allele(o_ref, o_alts, o_alt), *spellings, o_alt)
-    return _for_allele(entries, "Allele", spellings, index, n_alts, split=split)
-
-
-def split_origin(raw: str | None) -> tuple[str, list[str], int] | None:
-    """REF, ALTs and this ALT's 1-based index of the record a biallelic one
-    was split from (bcftools norm ``--old-rec-tag``: CHR|POS|REF|ALT|IDX)."""
-    parts = (raw or "").split("|")
-    if len(parts) != 5 or not parts[4].isdigit():
-        return None
-    alts = parts[3].split(",")
-    index = int(parts[4])
-    return (parts[2], alts, index) if 1 <= index <= len(alts) else None
 
 
 def zygosity(gt: str | None, alt_index: int) -> str | None:
@@ -614,6 +547,10 @@ def variant_rows(
     numbers = header.info_number
     csq_names = header.csq_fields or []
     ann_names = header.ann_fields or []
+    scored = bool(scores.NAMES & set(header.annotations))
+    csq_scores = scores.CsqScores.of(header.csq_fields)
+    pipe_formats = {**scores.PIPE_FORMATS, **header.info_formats}
+    unscored = (None,) * len(scores.SCORE_COLUMNS)
     pharmcat = pharmcat or {}
     for line in records:
         fields = line.rstrip("\r\n").split("\t")
@@ -623,6 +560,7 @@ def variant_rows(
         alts = alt_text.split(",")
         if all(a in _NON_VARIANT_ALTS for a in alts):
             continue
+        variant_alts = sum(a not in _NON_VARIANT_ALTS for a in alts) if scored else 0
         info = _info(info_text)
         gt = sample_depth = gq = gp = phase_set = ad_total = None
         sample: dict[str, str] = {}
@@ -671,6 +609,7 @@ def variant_rows(
             if carried_only and zyg is not None and zyg not in CARRIED:
                 continue
             ann_spellings: tuple[str, ...] = (alt,)
+            pipe_spellings = ann_spellings
             index, n_alts = alt_index, len(alts)
             alt_fraction: float | None
             if ad_total and len(ad) == n_alts + 1 and ad[alt_index] <= ad_total:
@@ -681,10 +620,17 @@ def variant_rows(
                 )
             split = origin is not None and n_alts == 1
             if origin is not None and split:
-                o_ref, o_alts, index = origin
-                ann_spellings = (alt, o_alts[index - 1])
-            csq = pick_csq(csq_for_allele(csq_all, ref, alts, alt_index, origin))
-            ann_matches = _for_allele(
+                _, o_alts, index = origin
+                original_alt = o_alts[index - 1]
+                ann_spellings = (alt, original_alt)
+                if scored:
+                    # The normalized spelling can name another ALT's retained entries.
+                    pipe_spellings = (
+                        (original_alt,) if alt in o_alts else (original_alt, alt)
+                    )
+            csq_matches = csq_for_allele(csq_all, ref, alts, alt_index, origin)
+            csq = pick_csq(csq_matches)
+            ann_matches = for_allele(
                 ann_all, "Allele", ann_spellings, index, n_alts, split=split
             )
             # SnpEff lists an allele's effects most severe first.
@@ -768,4 +714,30 @@ def variant_rows(
                 ),
                 _csq_frequency(csq, "AF"),
                 _csq_frequency(csq, "MAX_AF"),
+                # A record split from a multi-ALT one keeps REF and its own ALT.
+                ad[0] if len(ad) == n_alts + 1 else None,
+                ad[alt_index] if len(ad) == n_alts + 1 else None,
+                *(
+                    scores.allele_scores(
+                        csq_scores,
+                        info,
+                        numbers,
+                        alt_index,
+                        variant_alts,
+                        csq,
+                        csq_matches,
+                        partial(
+                            allele_entries,
+                            info,
+                            pipe_formats,
+                            pipe_spellings,
+                            refreshed=(scores.SPLICEAI, alt)
+                            if split and scores.SPLICEAI_MATCH in info
+                            else None,
+                        ),
+                        gene,
+                    )
+                    if scored
+                    else unscored
+                ),
             )

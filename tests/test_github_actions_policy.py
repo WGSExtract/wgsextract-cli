@@ -415,28 +415,13 @@ def matches_workflow_condition(condition: str, values: dict[str, str | bool]) ->
     return bool(matches(tree.body))
 
 
-CLI_PUSH_WORKFLOWS = {
-    "ubuntu_ci.yml",
-    "macos_ci.yml",
-    "windows_ci.yml",
-    "linux_arm64.yml",
-}
-HEAVY_PUSH_WORKFLOWS = CLI_PUSH_WORKFLOWS | {
-    "cli_smoke.yml",
-    "linux_aligners.yml",
-    "linux_deepvariant.yml",
-    "gatk_windows.yml",
-    "gkl_windows.yml",
-    "gui-tauri-installer.yml",
+MAIN_PUSH_WORKFLOWS = {
+    "gitleaks.yml",
     "codeql.yml",
-}
-AREA_PUSH_WORKFLOWS = {
-    "install_lab.yml",
-    "gui-distribution.yml",
-    "gui-ci.yml",
-    "gui-dev-setup.yml",
-    "macos_aligners.yml",
-    "macos_deepvariant.yml",
+    "auto_merge_watch.yml",
+    "release.yml",
+    "pages.yml",
+    "copilot-setup-steps.yml",
 }
 
 
@@ -521,7 +506,15 @@ def event_path_filters(workflow: Path, event: str) -> dict[str, list[str]] | Non
         r"^(?:on|'on'|\"on\"):(?P<value>[^\n]*)$", workflow.read_text(), re.MULTILINE
     )
     assert on is not None, f"Unsupported event syntax in {workflow.name}"
-    filter_keys = {"branches", "branches-ignore", "paths", "paths-ignore", "types"}
+    filter_keys = {
+        "branches",
+        "branches-ignore",
+        "paths",
+        "paths-ignore",
+        "tags",
+        "tags-ignore",
+        "types",
+    }
 
     def filters_from(value: object) -> dict[str, list[str]]:
         if value is None:
@@ -603,6 +596,8 @@ def triggered_workflows(
             types = push.get("types", ["opened", "synchronize", "reopened"])
             if action not in types:
                 continue
+        if event == "push" and tags_only(push):
+            continue
         assert not ("paths" in push and "paths-ignore" in push), workflow.name
         if "branches" in push and not github_paths_select(["main"], push["branches"]):
             continue
@@ -619,6 +614,45 @@ def triggered_workflows(
             continue
         selected.add(workflow.name)
     return selected
+
+
+def tags_only(filters: dict[str, list[str]]) -> bool:
+    return bool(
+        {"tags", "tags-ignore"} & filters.keys()
+        and not {"branches", "branches-ignore"} & filters.keys()
+    )
+
+
+def test_main_branch_push_allowlist_is_independent_of_changed_paths() -> None:
+    def allows_main(workflow: Path) -> bool:
+        filters = event_path_filters(workflow, "push")
+        if filters is None or tags_only(filters):
+            return False
+        return github_paths_select(["main"], filters.get("branches", ["**"])) and not (
+            github_paths_select(["main"], filters.get("branches-ignore", []))
+        )
+
+    assert {
+        workflow.name for workflow in WORKFLOWS.glob("*.yml") if allows_main(workflow)
+    } == MAIN_PUSH_WORKFLOWS
+
+
+@pytest.mark.parametrize(
+    ("action", "relabels"),
+    [
+        ("opened", True),
+        ("reopened", True),
+        ("ready_for_review", True),
+        ("converted_to_draft", True),
+        ("synchronize", False),
+        ("unlabeled", False),
+    ],
+)
+def test_collaborator_priority_is_restored_only_on_pr_lifecycle_events(
+    action: str, relabels: bool
+) -> None:
+    workflows = triggered_workflows([], "pull_request_target", action=action)
+    assert ("priority_collaborator_prs.yml" in workflows) is relabels
 
 
 QUEUE = "gh-readonly-queue/main/pr-"
@@ -734,3 +768,9 @@ def test_1373_queue_cleanup_has_write_access_alone_and_cannot_gate_required() ->
     for job in jobs:
         needs = re.search(r"^    needs: (.+)$", job, re.M)
         assert needs is None or "cancel-stale-queue" not in needs[1]
+
+
+def test_1545_area_required_cannot_release_dependent_runner_jobs() -> None:
+    source = (WORKFLOWS / "pr_ci.yml").read_text()
+    needs = re.findall(r"^    needs:\s*([^\n]*(?:\n      [^\n]*)*)", source, re.M)
+    assert all(not re.search(r"(?<![\w-])required(?![\w-])", entry) for entry in needs)

@@ -22,7 +22,7 @@ def test_1373_symbol_gate_cannot_hide_cache_skips_from_main() -> None:
     # contract: the PR selector cannot narrow the queue/main complement.
     assert "github.event_name == 'pull_request' && inputs.tests || 'all'" in step
     pr_gate = step.split(
-        'if [ "$OS" = ubuntu ] && [ "$EVENT" = pull_request ]; then', 1
+        'elif [ "$OS" = ubuntu ] && [ "$EVENT" = pull_request ]; then', 1
     )
     assert "-m scripts.ci_impact_gate" not in pr_gate[0]
     assert "-m scripts.ci_impact_gate" in pr_gate[1]
@@ -35,24 +35,30 @@ def test_1373_symbol_gate_cannot_hide_cache_skips_from_main() -> None:
 
 
 @pytest.mark.parametrize(
-    ("os_name", "event", "fetches"),
+    ("os_name", "event", "jobs", "fetches"),
     [
-        ("ubuntu", "pull_request", True),
-        ("ubuntu", "merge_group", True),
-        ("ubuntu", "push", False),
-        ("ubuntu", "schedule", False),
-        ("windows", "pull_request", False),
+        ("ubuntu", "pull_request", "1", True),
+        ("ubuntu", "pull_request", "2", False),
+        ("ubuntu", "merge_group", "1", True),
+        ("ubuntu", "push", "1", False),
+        ("ubuntu", "schedule", "1", False),
+        ("windows", "pull_request", "1", False),
     ],
 )
 def test_1482_map_reads_are_limited_to_linux_pr_and_queue(
-    os_name: str, event: str, fetches: bool
+    os_name: str, event: str, jobs: str, fetches: bool
 ) -> None:
     step = suite_step("Fetch main's Linux observation artifact")
     condition = re.search(r"if: (.+)", step)
     assert condition is not None
     assert (
         matches_workflow_condition(
-            condition[1], {"inputs.os": os_name, "github.event_name": event}
+            condition[1].replace("strategy.job-total == 1", "single-job"),
+            {
+                "inputs.os": os_name,
+                "github.event_name": event,
+                "single-job": jobs == "1",
+            },
         )
         is fetches
     )
@@ -61,7 +67,9 @@ def test_1482_map_reads_are_limited_to_linux_pr_and_queue(
 def test_1373_daily_linux_backstop_cannot_reuse_push_coverage() -> None:
     ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
     assert re.search(r'^  schedule:\n    - cron: "\d+ \d+ \* \* \*"', ubuntu, re.M)
-    suite = ubuntu.split("\n  test-ubuntu:\n", 1)[1].split("\n  optional-tools:", 1)[0]
+    suite = ubuntu.split("\n  test-ubuntu:\n", 1)[1].split(
+        "\n  test-ubuntu-balanced:", 1
+    )[0]
     # contract: latest-main regular pytest bypasses green-push reuse, and its
     # uncached pass refreshes cache while a failure retains replay evidence.
     assert "needs: nightly" not in suite
@@ -75,7 +83,7 @@ def test_1373_daily_linux_backstop_cannot_reuse_push_coverage() -> None:
         "--cache-record out/test-cache/main/passed.json"
         in main.split("\n          else", 1)[0]
     )
-    assert "out/test-cache/main.updated" in suite_step("Save test hashes that passed")
+    assert "out/test-cache/main*.updated" in suite_step("Save test hashes that passed")
     replay = suite_step("Attribute failed daily Linux tests")
     assert "steps.backstop.outputs.trusted == 'true'" in replay
     assert "steps.regular-pytest.outcome == 'failure'" in replay
@@ -103,30 +111,36 @@ def test_1373_queue_dedupe_is_limited_to_suites_the_queue_runs() -> None:
 
 
 @pytest.mark.parametrize(
-    ("event", "ref", "optional_only", "trusted"),
+    ("event", "ref", "optional_only", "balanced", "trusted"),
     [
-        ("schedule", "refs/heads/main", False, True),
-        ("workflow_dispatch", "refs/heads/main", False, True),
-        ("workflow_dispatch", "refs/heads/main", True, False),
-        ("workflow_dispatch", "refs/heads/topic", False, False),
-        ("workflow_dispatch", "refs/tags/main", False, False),
-        ("push", "refs/heads/main", False, False),
-        ("pull_request", "refs/pull/1464/merge", False, False),
-        ("merge_group", "refs/heads/gh-readonly-queue/main/pr-1464", False, False),
+        ("schedule", "refs/heads/main", False, False, True),
+        ("workflow_dispatch", "refs/heads/main", False, False, True),
+        ("workflow_dispatch", "refs/heads/main", False, True, False),
+        ("workflow_dispatch", "refs/heads/main", True, False, False),
+        ("workflow_dispatch", "refs/heads/topic", False, False, False),
+        ("workflow_dispatch", "refs/tags/main", False, False, False),
+        ("push", "refs/heads/main", False, False, False),
+        ("pull_request", "refs/pull/1464/merge", False, False, False),
+        (
+            "merge_group",
+            "refs/heads/gh-readonly-queue/main/pr-1464",
+            False,
+            False,
+            False,
+        ),
     ],
 )
 def test_1464_only_full_ubuntu_main_runs_publish_observations(
-    event: str, ref: str, optional_only: bool, trusted: bool
+    event: str, ref: str, optional_only: bool, balanced: bool, trusted: bool
 ) -> None:
     ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
-    gate = re.search(
-        r"main-backstop-candidate: &main-backstop-candidate \$\{\{ (.+) \}\}", ubuntu
-    )
+    gate = re.search(r"main-backstop-candidate: \$\{\{ (.+) \}\}", ubuntu)
     assert gate is not None
     inputs: dict[str, str | bool] = {
         "github.event_name": event,
         "github.ref": ref,
         "inputs.optional-tools-only": optional_only,
+        "inputs.balanced-full-suite": balanced,
     }
     assert matches_workflow_condition(gate[1], inputs) is trusted
 

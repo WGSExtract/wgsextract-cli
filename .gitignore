@@ -51,6 +51,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+/src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json
 .Python
 .pixi
 develop-eggs/
@@ -171,6 +172,7 @@ venv.bak/
 
 # Generated HTML; site_src and hand-maintained site assets remain tracked.
 /site/*.html
+/site/docs/
 # The desktop app's site, copied from gui/site by pages.yml.
 /site/app/
 /site_build
@@ -199,3 +201,8 @@ cython_debug/
 
 # Personal, uncommitted settings (e.g. .claude/settings.local.json)
 *.local.json
+
+# Local opt-in copy of the scheduled worktree cleanup plan.
+/.herdr/automations/stale-worktrees.luau
+/src/wgsextract_cli/assets/cli/help-index.json
+/src/wgsextract_cli/assets/cli/help-index.key

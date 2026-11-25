@@ -9,13 +9,17 @@ from pathlib import Path
 
 from wgsextract_cli.api._params import Params, param
 from wgsextract_cli.api._shared import (
+    check_confidence,
+    confidence_depth_param,
+    confidence_gq_param,
     memory_param,
     optional_input_param,
     outdir_param,
     ref_param,
     threads_param,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.vcf import CLI_HELP
+from wgsextract_cli.core.messages import CLI_HELP as SHARED_CLI_HELP
 from wgsextract_cli.core.panel_presets import PRESETS
 from wgsextract_cli.core.paths import append_suffix
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
@@ -37,7 +41,7 @@ class VcfInfoParams(_VcfFileParams):
 
     COMMAND = "vcf info"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
 
 
@@ -47,7 +51,7 @@ class VcfVariantQcParams(_VcfFileParams):
 
     COMMAND = "vcf variantqc"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     extra_vcf: tuple[Path, ...] | None = param(
         None,
         help="Additional VCF file(s) to analyze together in the same VariantQC report (repeat flag for multiple).",
@@ -78,7 +82,7 @@ class VcfGraniteQcParams(_VcfFileParams):
 
     COMMAND = "vcf granite-qc"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     pedigree: Path | None = param(
         None,
         help="Optional granite pedigree JSON file (auto-generated from VCF samples if omitted).",
@@ -109,7 +113,7 @@ class VcfAnnotateParams(_VcfFileParams):
 
     COMMAND = "vcf annotate"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
     ann_vcf: Path | None = param(
         None,
@@ -195,7 +199,7 @@ class VcfFilterParams(_VcfSliceParams):
 
     COMMAND = "vcf filter"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     expr: str | None = param(
         None, help="bcftools filter expression (e.g. 'QUAL>30')", expression=True
     )
@@ -213,7 +217,7 @@ class VcfTableParams(_VcfSliceParams):
 
     COMMAND = "vcf table"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     sample: str | None = param(
         None, help="Sample whose genotypes to use (default: the first)."
     )
@@ -243,13 +247,60 @@ class VcfTableParams(_VcfSliceParams):
 
 
 @dataclass(frozen=True, kw_only=True)
+class VcfCallabilityParams(_VcfFileParams):
+    """Which coding exons of a gene list the sample's reference evidence (a
+    gVCF) could read, as ``exon_callability.tsv`` (one row per exon) and
+    ``exon_callability.json`` (per gene, with the sources and thresholds).
+    The input is a gVCF, or a VCF whose caller also wrote one
+    (``--reference-evidence gvcf``). A technical result, not a clinical test:
+    see docs/exon-callability.md."""
+
+    COMMAND = "vcf callability"
+
+    vcf_input: Path | None = _vcf_input_param(
+        "Input gVCF, or a VCF whose caller wrote one (--reference-evidence gvcf)."
+    )
+    gene_list: str | None = param(
+        None,
+        help="Genes to assess: a built-in list (acmg-sf-3.3, acmg-sf-3.2), or a "
+        "TSV (column gene) or BED file (gene symbol in column 4) (default: "
+        "config report_gene_list, else acmg-sf-3.3)",
+        metavar="LIST",
+        config_key="report_gene_list",
+        may_name_file=True,
+    )
+    exons: Path | None = param(
+        None,
+        help="Exon model TSV for other genes or builds (format: "
+        "docs/exon-callability.md) (default: the bundled hg19/hg38 MANE or "
+        "RefSeq Select coding exons of the built-in lists' genes)",
+        metavar="FILE",
+        path="file",
+    )
+    flank: int = param(
+        2,
+        help="Intronic bases assessed on each side of a coding exon, 0-50 "
+        "(default 2: the splice-site dinucleotides)",
+        minimum=0,
+    )
+    confidence_depth: tuple[float, float] | None = confidence_depth_param()
+    confidence_gq: tuple[float, float] | None = confidence_gq_param()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not 0 <= self.flank <= 50:
+            raise UsageError("--flank must be between 0 and 50.")
+        check_confidence(self)
+
+
+@dataclass(frozen=True, kw_only=True)
 class VcfToFastaParams(_VcfFileParams):
     """The reference with the VCF's variants applied, as
     ``<stem>_consensus.fa.gz`` (and optionally a liftover chain)."""
 
     COMMAND = "vcf to-fasta"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
     threads: int | None = threads_param()
     region: str | None = _region_param(
@@ -302,7 +353,7 @@ class VcfPrepareParams(_VcfFileParams):
 
     COMMAND = "vcf prepare"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
     threads: int | None = threads_param()
     output: Path | None = param(
@@ -339,7 +390,7 @@ class VcfTrioParams(_VcfFileParams):
 
     COMMAND = "vcf trio"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
     threads: int | None = threads_param()
     mother: Path | None = _resource_param(CLI_HELP["arg_mother"], "mother_vcf_path")
@@ -442,7 +493,7 @@ class VcfImputeParams(Params):
         from wgsextract_cli.api._params import with_config_defaults
         from wgsextract_cli.api._ref_library import _library_named
         from wgsextract_cli.core import imputation_panel
-        from wgsextract_cli.core.reference_assets import (
+        from wgsextract_cli.core.ref_library.assets import (
             resolve_reference_library,
         )
 

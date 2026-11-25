@@ -54,7 +54,7 @@ def test_929_result_contract_changes_select_freshness(path: str) -> None:
     "path",
     [
         "scripts/server_transport_typescript.py",
-        "gui/app/shared/generated/server-transport.ts",
+        "scripts/gen_server_openapi.py",
         "gui/app/shared/generated/result-records.ts",
         "gui/app/shared/generated/report-records.ts",
     ],
@@ -139,7 +139,6 @@ def test_1482_root_fixture_imports_apply_to_regular_tests(tmp_path: Path) -> Non
         "tests/conftest.py",
         "tests/htslib_helpers.py",
         "tests/fixtures/sample.bam",
-        "tests/cli_snapshot.py",
         "pyproject.toml",
         "pixi.toml",
         "pixi.lock",
@@ -321,7 +320,6 @@ def test_1496_split_help_catalog_selects_help_contract_tests() -> None:
     assert {
         "tests/test_cli_help.py",
         "tests/test_command_needs.py",
-        "tests/test_api_cli_parity.py",
         "tests/test_regen.py",
     }.issubset(selected)
     assert "tests/test_cli_help.py" in docs_test_targets(paths)
@@ -356,20 +354,17 @@ def test_914_transitive_docs_reader_has_an_executable_lane() -> None:
 
 
 def test_914_mixed_product_and_generated_docs_cannot_skip_freshness() -> None:
-    selected = select_tests(["tests/test_table_writer.py", "docs/api.md"])
+    selected = select_tests(["tests/test_table_writer.py", "site_src/api.md"])
     assert "tests/test_table_writer.py" in selected
-    assert "tests/test_api.py" in selected
+    assert "tests/test_site_references.py" in selected
 
 
 def test_1132_config_guide_changes_run_generated_reference_freshness() -> None:
     paths = ["docs/data/configuration-guide.md"]
     assert routes(paths)["docs"]
     assert not routes(paths)["cli"]
-    assert docs_test_targets(paths) == [
-        "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
-        "tests/test_regen.py",
-    ]
-    assert "tests/test_core_cli.py" in select_tests(paths)
+    assert docs_test_targets(paths) == ["tests/test_site_references.py"]
+    assert select_tests(paths) == ["tests/test_site_references.py"]
 
 
 def test_914_ci_observer_change_keeps_its_actual_readers() -> None:

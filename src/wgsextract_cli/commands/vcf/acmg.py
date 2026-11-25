@@ -31,7 +31,9 @@ from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.vcf import VcfAcmgParams
 from wgsextract_cli.core import acmg_data, acmg_sites, read_scope
 from wgsextract_cli.core.acmg import DISCLAIMER
+from wgsextract_cli.core.acmg_regions import region_tracks
 from wgsextract_cli.core.builds import canonical_build
+from wgsextract_cli.core.csq_alleles import csq_entries, csq_for_allele, split_origin
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -51,15 +53,10 @@ from wgsextract_cli.core.variant_files import (
     publish_indexed_vcf,
     vcf_index_chromosomes,
 )
-from wgsextract_cli.core.variant_table import (
-    csq_entries,
-    csq_for_allele,
-    parse_header,
-    pick_csq,
-    split_origin,
-)
+from wgsextract_cli.core.variant_table import parse_header, pick_csq
 
 from ._acmg_fastvep import _FastVep
+from ._acmg_region_note import REGION_HEADER, REGION_INFO, RegionNotes, region_coverage
 from .annotation_helpers import annotation_context, resource
 from .basic import vcf_input_handler
 
@@ -84,6 +81,10 @@ OPTIONAL_SOURCES = {"RepeatMasker repeat intervals": "repeatmasker"}
 NOT_EVALUATED = ("PS3", "BS3", "PS4", "PP1", "PP4")
 # The criteria each optional source drives, unevaluated when it isn't loaded.
 OPTIONAL_CRITERIA = {"repeatmasker": ("BP3",)}
+_REGION_CRITERIA = "BA1,BS1,BS2,PM2_Supporting"
+_REGION_SCOPE = (
+    "Matched gnomAD alleles only; PM2_Supporting has no region veto when unmatched"
+)
 # The files fastVEP 0.5 loads from --sa-dir.
 _DB_SUFFIXES = (".osa", ".osa2", ".osi", ".oga")
 # Leading length-prefixed strings of each v1 header, and which is the assembly.
@@ -91,7 +92,7 @@ _V1_HEADERS = {b"FSTSA_01": (5, 4), b"FSTSI_01": (4, 3), b"FSTGA_01": (4, 3)}
 _V2_CHUNK = re.compile(r"^fastsa/([^/]+)/\d+/")
 _NUCLEAR = {str(n) for n in range(1, 23)} | {"X", "Y"}
 _TAGS = ("ACMG_CLASS", "ACMG_CRITERIA", "ACMG_TRANSCRIPT")
-_OURS = tuple(f"##INFO=<ID={tag}," for tag in _TAGS) + ("##WGSE_ACMG=",)
+_OURS = tuple(f"##INFO=<ID={tag}," for tag in (*_TAGS, REGION_INFO)) + ("##WGSE_ACMG=",)
 # Printed once fastVEP has loaded its databases and checked them, before it
 # reads a record (we always pass --pick-order).
 _MISSING = re.compile(r"sources the classifier reads are not loaded: (.+?)\.?$")
@@ -106,6 +107,7 @@ _HEADER = (
     'the ACMG/AMP criteria fastVEP found met, joined by &">',
     '##INFO=<ID=ACMG_TRANSCRIPT,Number=A,Type=String,Description="The '
     'transcript fastVEP classified the allele on">',
+    REGION_HEADER,
 )
 _UNSAFE = re.compile(r"[,;=\s]")
 
@@ -363,11 +365,21 @@ def _classify(
 
 def _without_ours(info: str) -> str:
     """INFO without the ACMG_* fields of an earlier ``vcf acmg`` run."""
-    kept = [kv for kv in info.split(";") if kv.partition("=")[0] not in _TAGS]
+    kept = [
+        kv
+        for kv in info.split(";")
+        if kv.partition("=")[0] not in (*_TAGS, REGION_INFO)
+    ]
     return ";".join(kept) if kept and info != "." else "."
 
 
-def _merge(source: IO[str], fastvep: IO[str], sink: IO[str], meta: list[str]) -> _Tally:
+def _merge(
+    source: IO[str],
+    fastvep: IO[str],
+    sink: IO[str],
+    meta: list[str],
+    region_notes: RegionNotes,
+) -> _Tally:
     """Copy the input VCF to ``sink`` with fastVEP's classes added, replacing
     those of an earlier run. fastVEP writes the records in input order; one
     it skipped stays unclassified."""
@@ -412,6 +424,8 @@ def _merge(source: IO[str], fastvep: IO[str], sink: IO[str], meta: list[str]) ->
             added = ";".join(
                 f"{tag}={','.join(v)}" for tag, v in zip(_TAGS, values, strict=True)
             )
+            if region := region_notes.at(fields[0], fields[1]):
+                added += f";{REGION_INFO}={region}"
             fields[7] = added if fields[7] in ("", ".") else f"{fields[7]};{added}"
         sink.write("\t".join(fields) + "\n")
     if pending is not None:
@@ -459,7 +473,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
     if not sa_path or not sa_path.is_dir():
         raise UsageError(
             "vcf acmg needs the folder of fastVEP databases that 'wgsextract ref "
-            "acmg-data' builds (--sa-dir, or acmg_sa_dir in config.toml)"
+            "acmg-data --download' builds (--sa-dir, or acmg_sa_dir in config.toml)"
             + (f"; {sa_path} is not a folder." if sa_path else ".")
         )
     sa_dir = str(sa_path)
@@ -472,7 +486,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
     if not gff3:
         raise UsageError(
             "vcf acmg needs an Ensembl GRCh38 GFF3 (--gff3, or acmg_gff3 in "
-            "config.toml), such as the one 'wgsextract ref acmg-data' fetches: "
+            "config.toml), such as the one 'wgsextract ref acmg-data --download' fetches: "
             "Homo_sapiens.GRCh38.116.gff3.gz from "
             "https://ftp.ensembl.org/pub/release-116/gff3/homo_sapiens/."
         )
@@ -489,6 +503,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
     _require_library_sources(databases, params.site_data)
     threads = int(get_resource_threads(params.threads))
     wanted, left_out = _per_run_plan(databases, contigs, params.site_data, sa_dir)
+    library_manifest = acmg_data.load_manifest(sa_dir)
     result = current_result()
     with (
         tempfile.TemporaryDirectory(
@@ -506,6 +521,31 @@ def run_acmg(params: VcfAcmgParams) -> None:
             databases = _databases(run_sa)
         inventory = _inventory(databases)
         skipped = _unclassifiable(databases, contigs)
+        classified = [c for c in contigs if c not in skipped]
+        region_flags_missing, matching = region_coverage(
+            (
+                (db.path, db.chromosomes or ())
+                for db in databases
+                if db.source.lower() == "gnomad"
+            ),
+            site_dbs,
+            library_manifest,
+            classified,
+            region_tracks(Path(sa_dir), library_manifest),
+        )
+        region_notes = RegionNotes(Path(sa_dir), matching)
+        if region_flags_missing:
+            warn(
+                "acmg_gnomad_region_flags_not_evaluated",
+                "The gnomAD region veto was not evaluated where these flags are "
+                "missing. Other population checks still run. To add them, use "
+                "`wgsextract ref acmg-data --download` for the affected chromosomes.",
+                criteria=_REGION_CRITERIA,
+                **{
+                    flag: ",".join(chroms)
+                    for flag, chroms in region_flags_missing.items()
+                },
+            )
         _require_spliceai_coverage(databases, contigs)
         if skipped:
             warn(
@@ -529,15 +569,14 @@ def run_acmg(params: VcfAcmgParams) -> None:
         if skipped:
             # In the index's order, which is the file's: fastVEP's records must
             # come in the input's order.
-            strip[-1:-1] = ["-r", ",".join(c for c in contigs if c not in skipped)]
+            strip[-1:-1] = ["-r", ",".join(classified)]
         per_run = sorted({db.source for db in site_dbs})
-        meta = [
+        orientation = (
             f'##WGSE_ACMG=<Disclaimer="{DISCLAIMER}",Tool="fastVEP {version}",'
             f'PickOrder="{PICK_ORDER}",GFF3="{Path(gff3).name}",'
             f'Databases="{Path(sa_dir).name}"'
             + (f',PerRun="{",".join(per_run)}"' if per_run else "")
-            + ">"
-        ]
+        )
         env = {**os.environ, "RAYON_NUM_THREADS": str(threads)}
         logging.info("Classifying %s with fastVEP %s (research only)...", vcf, version)
         partial = Path(stage, ACMG_ANNOTATED)
@@ -545,6 +584,33 @@ def run_acmg(params: VcfAcmgParams) -> None:
         try:
             run.require_ready()
             unused = _check_setup(run.setup, contigs)
+            if "repeatmasker" in unused:
+                warn(
+                    "acmg_bp3_not_evaluated",
+                    "BP3 was not evaluated: RepeatMasker is missing. Build it "
+                    "with `wgsextract ref acmg-data --download`.",
+                    criterion="BP3",
+                    source="repeatmasker",
+                )
+            criteria_not_evaluated = [
+                *NOT_EVALUATED,
+                *(c for source in sorted(unused) for c in OPTIONAL_CRITERIA[source]),
+            ]
+            absent_flags = ";".join(
+                f"{flag}:{','.join(chroms)}"
+                for flag, chroms in region_flags_missing.items()
+            )
+            meta = [
+                orientation
+                + f',CriteriaNotEvaluated="{",".join(criteria_not_evaluated)}"'
+                + f',GnomadRegionFlagsScope="{_REGION_SCOPE}"'
+                + (
+                    f',GnomadRegionFlagsNotEvaluated="{absent_flags}"'
+                    if absent_flags
+                    else ""
+                )
+                + ">"
+            ]
             view = popen(
                 ["bcftools", "view", "--no-version", vcf],
                 stdout=subprocess.PIPE,
@@ -562,7 +628,9 @@ def run_acmg(params: VcfAcmgParams) -> None:
                 run.others.append(bgzip)
                 assert view.stdout is not None and bgzip.stdin is not None
                 try:
-                    tally = _merge(view.stdout, run.stdout, bgzip.stdin, meta)
+                    tally = _merge(
+                        view.stdout, run.stdout, bgzip.stdin, meta, region_notes
+                    )
                 except Exception:
                     run.check_exited()
                     raise
@@ -588,9 +656,7 @@ def run_acmg(params: VcfAcmgParams) -> None:
             # Where `ref acmg-data` built them: each source's release and terms.
             "sources": {
                 key: {k: info.get(k, "") for k in ("label", "release", "url", "terms")}
-                for key, info in (
-                    acmg_data.load_manifest(sa_dir).get("sources") or {}
-                ).items()
+                for key, info in (library_manifest.get("sources") or {}).items()
             },
         },
         "site_data": {
@@ -600,10 +666,9 @@ def run_acmg(params: VcfAcmgParams) -> None:
         },
         "sources_required": sorted(REQUIRED_SOURCES.values()),
         "sources_not_used": sorted(unused),
-        "criteria_not_evaluated": [
-            *NOT_EVALUATED,
-            *(c for source in sorted(unused) for c in OPTIONAL_CRITERIA[source]),
-        ],
+        "criteria_not_evaluated": criteria_not_evaluated,
+        "gnomad_region_flags_not_evaluated": region_flags_missing,
+        "gnomad_region_flags_scope": _REGION_SCOPE,
         "contigs_not_classified": skipped,
         "records": tally.records,
         "classes": dict(tally.classes.most_common()),
@@ -611,6 +676,13 @@ def run_acmg(params: VcfAcmgParams) -> None:
         "transcript_choice": dict(tally.transcripts.most_common()),
     }
     summary_path.write_text(json.dumps(summary, indent=1) + "\n", newline="\n")
+    result.set_details(
+        {
+            "criteria_not_evaluated": criteria_not_evaluated,
+            "gnomad_region_flags_not_evaluated": region_flags_missing,
+            "gnomad_region_flags_scope": _REGION_SCOPE,
+        }
+    )
     result.add_output(out_vcf, "annotated_vcf", metrics={"variants": tally.records})
     result.add_output(summary_path, "acmg_summary")
     result.add_metrics(
@@ -655,7 +727,7 @@ def _require_library_sources(databases: list[_Database], mode: str) -> None:
         raise WGSExtractError(
             "vcf acmg refused: databases lack "
             + ", ".join(missing)
-            + "; build the library with `wgsextract ref acmg-data`, or explicitly "
+            + "; build the library with `wgsextract ref acmg-data --download`, or explicitly "
             "opt in to --site-data per-run for gnomAD/SpliceAI (input-derived "
             "variant positions are sent to Google Cloud Storage and Ensembl)."
         )
@@ -673,7 +745,7 @@ def _require_spliceai_coverage(databases: list[_Database], contigs: list[str]) -
         raise WGSExtractError(
             "vcf acmg refused: SpliceAI holds nothing of "
             + ", ".join(missing)
-            + ". Build the library databases with `wgsextract ref acmg-data`, "
+            + ". Build the library databases with `wgsextract ref acmg-data --download`, "
             "or explicitly opt in with --site-data per-run (input-derived variant "
             "positions are sent to Google Cloud Storage and Ensembl)."
         )

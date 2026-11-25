@@ -30,7 +30,9 @@ export interface ReportSectionsDocument {
     ancestry?: ReportAncestryDocument;
     carrier_screening?: ReportSectionDocument;
     medication_review?: ReportMedicationReviewDocument;
+    mitochondrial?: ReportMitochondrialDocument;
     repeat_expansions?: ReportSectionDocument;
+    exon_callability?: ReportCallabilityDocument;
 }
 
 export interface ReportOverviewDocument {
@@ -47,7 +49,7 @@ export interface ReportOverviewDocument {
 }
 
 export interface ReportFindingDocument {
-    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "repeat_expansions" | "clinvar" | "acmg_research" | "structural_variants" | "medication_review";
+    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "repeat_expansions" | "clinvar" | "mitochondrial" | "acmg_research" | "structural_variants" | "medication_review";
     label: string;
     value: string;
     detail: string | null;
@@ -391,4 +393,118 @@ export interface ReportContextGeneDocument {
     trigger: string | null;
     quote: string | null;
     cpic_recommendation: string | null;
+}
+
+export interface ReportMitochondrialDocument {
+    title: string;
+    status: "ok" | "not_run" | "failed";
+    summary: string;
+    findings: (ReportFindingDocument)[];
+    missing: (ReportMissingDocument)[];
+    warnings: (ReportWarningDocument)[];
+    sources: (ReportSourceDocument)[];
+    error?: string;
+    advisory?: string;
+    technical?: ReportMitoTechnicalDocument;
+    thresholds?: ReportMitoThresholdsDocument;
+    resource?: ReportMitoResourceDocument;
+    sites?: (ReportMitoSiteDocument)[];
+    counts?: Record<string, number>;
+}
+
+export interface ReportMitoTechnicalDocument {
+    caller: string;
+    version: string | null;
+    settings: string;
+    mt_reference: string | null;
+    contig: string | null;
+    reference_md5: string | null;
+    median_depth: number | null;
+    min_depth_fraction: number | null;
+    homoplasmies: number | null;
+    heteroplasmies: number | null;
+    contamination: string | null;
+    calls: string | null;
+    site_evidence: string | null;
+}
+
+export interface ReportMitoThresholdsDocument {
+    homoplasmic: number;
+    supported_heteroplasmy: number;
+    weak_evidence: number;
+    min_depth: number;
+}
+
+export interface ReportMitoResourceDocument {
+    id: string;
+    name: string;
+    clinvar_release: string;
+    clinvar_url: string;
+    clinvar_md5: string;
+    clinvar_selection: string;
+    cpic_citation: string;
+    cpic_url: string;
+    heteroplasmy_basis: string;
+    variants: number;
+}
+
+export interface ReportMitoSiteDocument {
+    group: (string) & ("disease" | "aminoglycoside");
+    gene: string;
+    hgvs: string;
+    pos: number;
+    ref: string;
+    alt: string;
+    state: (string) & ("homoplasmic" | "heteroplasmic" | "weak_evidence" | "not_detected" | "not_assessed");
+    level: number | null;
+    depth: number | null;
+    depth_fwd: number | null;
+    depth_rev: number | null;
+    level_fwd: number | null;
+    level_rev: number | null;
+    confidence: (string) & ("high" | "moderate" | "low" | "not_assessed");
+    reasons: (string)[];
+    clinvar_id: string;
+    clinvar_classification: string;
+    clinvar_review_status: string;
+    clinvar_stars: number | null;
+    conditions: (string)[];
+    cpic_phenotype: string | null;
+    cpic_evidence: string | null;
+}
+
+export interface ReportCallabilityDocument {
+    title: string;
+    status: "ok" | "not_run" | "failed";
+    summary: string;
+    findings: (ReportFindingDocument)[];
+    missing: (ReportMissingDocument)[];
+    warnings: (ReportWarningDocument)[];
+    sources: (ReportSourceDocument)[];
+    error?: string;
+    gene_list?: ReportGeneListDocument;
+    build?: (string | null) & ("hg19" | "hg38" | null);
+    exon_model?: string;
+    scope?: string;
+    thresholds?: Record<string, unknown>;
+    counts?: Record<string, number>;
+    genes?: (ReportCallabilityGeneDocument)[];
+    all_exons?: string | null;
+    evidence?: string | null;
+    unassessed_variant_classes?: Record<string, string>;
+    note?: string;
+}
+
+export interface ReportCallabilityGeneDocument {
+    gene: string;
+    transcript: string | null;
+    state: (string) & ("callable" | "partial" | "not_readable" | "not_run");
+    result: (string) & ("reported" | "not_reported" | "not_readable" | "not_run");
+    result_text: string;
+    coding_exons: number;
+    exons_callable: number;
+    exons_not_callable: string;
+    bases: number;
+    readable_bases: number;
+    reasons: (string)[];
 }

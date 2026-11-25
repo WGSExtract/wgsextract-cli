@@ -24,8 +24,7 @@ from wgsextract_cli.core.config import mygenomes_library, settings
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.mini_genome import status as test_genome_status
 from wgsextract_cli.core.paths import absolute_path, expand_path
-from wgsextract_cli.core.ref_library.layout import download_dirs
-from wgsextract_cli.core.reference_assets import (
+from wgsextract_cli.core.ref_library.assets import (
     build_hint,
     default_reference_library,
     find_annotation_resource,
@@ -35,6 +34,7 @@ from wgsextract_cli.core.reference_assets import (
     reference_genomes_dir,
     reference_library_of,
 )
+from wgsextract_cli.core.ref_library.layout import download_dirs
 from wgsextract_cli.core.reference_processing import bootstrap_has_support_assets
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, human_output
@@ -135,6 +135,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
             for source, build in gnomad_sv.CATALOGUES
         },
         "ybrowse": _ybrowse_status(reflib),
+        "ybrowseGrch37": _ybrowse_status(reflib, "hg19"),
         "geneMap": {
             "installed": are_gene_maps_installed(reflib),
         },
@@ -199,6 +200,9 @@ def ref_status_values(status: dict[str, Any]) -> dict[str, str]:
             for key, value in status["gnomadSv"].items()
         },
         "library.ybrowseInstalled": _json_bool(status["ybrowse"]["installed"]),
+        "library.ybrowseGrch37Installed": _json_bool(
+            status["ybrowseGrch37"]["installed"]
+        ),
         **{
             f"library.{key}Installed": _json_bool(
                 any(entry["installed"] for entry in builds.values())
@@ -242,6 +246,7 @@ def print_ref_status(status: dict[str, Any]) -> None:
     ]
     human_output(f"gnomAD SV tables: {', '.join(sv_tables) or 'not installed'}")
     human_output(f"yBrowse GRCh38: {_path_status(status['ybrowse'])}")
+    human_output(f"yBrowse GRCh37 (lifted): {_path_status(status['ybrowseGrch37'])}")
     human_output(f"Microarray targets: {_path_status(status['annotationVcf'])}")
     human_output(f"Test genome: {status['testGenome']['status']}")
     human_output()
@@ -267,9 +272,19 @@ def print_ref_status(status: dict[str, Any]) -> None:
             if acmg["installed"]
             else f"unusable: {acmg['problem']}"
             if acmg.get("problem")
-            else "not installed ('wgsextract ref acmg-data')"
+            else "not installed ('wgsextract ref acmg-data --download')"
         )
     )
+    if "repeatMasker" in acmg:
+        human_output(
+            "  RepeatMasker (BP3): "
+            + ("built" if acmg["repeatMasker"] else "not built")
+        )
+        tracks = ", ".join(acmg["gnomadRegionTracks"]) or "none"
+        flagged = _chromosome_span(acmg["gnomadRegionFlagChromosomes"])
+        human_output(
+            f"  gnomAD region tracks: {tracks}; flagged library coverage: {flagged}"
+        )
     vep = status["vepCache"]
     versions = ", ".join(vep["versions"]) or "missing"
     human_output(
@@ -366,19 +381,15 @@ def _chromosome_span(chromosomes: list[str]) -> str:
     return ", ".join(chromosomes) or "no chromosome"
 
 
-def _ybrowse_status(reflib: str) -> dict[str, Any]:
+def _ybrowse_status(reflib: str, build: str = "hg38") -> dict[str, Any]:
     """The snapshot ``current.json`` points at, unverified (``ref ybrowse``
     and the commands that read it check its hashes)."""
-    root = Path(reflib, "ybrowse", "hg38")
-    version: object = None
-    with contextlib.suppress(OSError, ValueError, TypeError, KeyError):
-        version = json.loads((root / "current.json").read_text(encoding="utf-8"))[
-            "version"
-        ]
-    if isinstance(version, str) and re.fullmatch(r"[a-f0-9]{64}", version):
-        directory = root / version
-        if (directory / "manifest.json").is_file():
-            return {"installed": True, "file": str(directory)}
+    from wgsextract_cli.core.ybrowse import current_version
+
+    root = Path(reflib, "ybrowse", build)
+    version = current_version(root)
+    if version and (root / version / "manifest.json").is_file():
+        return {"installed": True, "file": str(root / version)}
     return {"installed": False, "file": ""}
 
 

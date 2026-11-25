@@ -35,7 +35,7 @@ function wgsCommand(pageID, actionID, fieldValues = {}, checkedOptions = {}) {
 
 test("WGSExtract new options do not change default argv or selected formats", () => {
   assert.deepEqual(wgsCommand("microarray", "microarray-generate"), [
-    "microarray", "--input", "sample.bam", "--formats", "23andme_v35,23andme_v5,all", "--ref", "ref.fa",
+    "microarray", "--input", "sample.bam", "--formats", "23andme_v35,23andme_v5,all",
   ]);
   for (const [page, action, flag] of [
     ["extract", "region-y", "--poz"], ["extract", "region-y", "--ybrowse"],
@@ -106,7 +106,7 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
     assert.deepEqual(wgsCommand("microarray", "microarray-generate", {}, {
       microarray_formats: ["aadr_2m"],
     }), [
-      "microarray", "--input", "sample.bam", "--formats", "aadr_2m", "--ref", "ref.fa",
+      "microarray", "--input", "sample.bam", "--formats", "aadr_2m",
     ]);
     const library = wgsPages.find((item) => item.id === "library");
     const libraryActions = library.sections.flatMap((section) => [
@@ -121,7 +121,6 @@ test("WGSExtract opt-in policies render flags and preserve manifest paths with s
   });
   assert.deepEqual(args.slice(3), [
     "--formats", "aadr_1240k,aadr_ho,myheritage_v3",
-    "--ref", "ref.fa",
     "--min-gq", "20", "--min-dp", "5", "--strand-ambiguous", "no-call",
     "--resolve-rsids", "--no-assume-hom-ref", "--exclude-filtered", "--call-reasons",
     "--aadr-sample-id", "research_sample", "--aadr-sex", "U",

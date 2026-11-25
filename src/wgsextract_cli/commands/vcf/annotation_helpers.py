@@ -9,10 +9,11 @@ from pathlib import Path
 
 from wgsextract_cli.api._params import param_fields
 from wgsextract_cli.api.vcf import _VcfFileParams
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
+from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import (
     vcf_record_count,
     warn_if_nothing_annotated,
@@ -87,13 +88,17 @@ def resource(params: _VcfFileParams, field: str, default: str | None) -> str | N
     return path
 
 
-def require_annotation_file(file_path: str | None, message_key: str, ann: str) -> str:
+def require_annotation_file(
+    file_path: str | None, message_key: str, resource_id: str, *, install_args: str = ""
+) -> str:
     """Return the resolved annotation resource or raise with a fix-it hint."""
     if not file_path:
-        msg = LOG_MESSAGES.get(message_key, f"Missing data file for {ann}")
+        msg = LOG_MESSAGES.get(message_key, f"Missing data file for {resource_id}")
+        install = " ".join(part for part in (resource_id, install_args) if part)
         raise WGSExtractError(
-            f"REQUIRED DATA MISSING: {msg}\nTo fix this, run: wgsextract ref {ann}"
+            f"REQUIRED DATA MISSING: {msg}\nTo fix this, run: wgsextract ref {install}"
         )
+    resource_releases.record(resource_id, file_path)
     return str(file_path)
 
 
@@ -273,6 +278,7 @@ def annotate_vcf(
     compose_thresholds: Thresholds | None = None,
     annotation_source: str | None = None,
     keep_existing: bool = False,
+    mark_matches: str | None = None,
 ) -> str:
     """Refresh imported INFO fields, except when merging passes of one annotator.
 
@@ -290,6 +296,9 @@ def annotate_vcf(
         dir=scratch_parent(outdir), prefix=".wgse_annotate_"
     ) as work:
         cmd = ["bcftools", "annotate", "-a", annotation, "-c", columns]
+        if mark_matches:
+            cmd += ["--mark-sites", f"+{mark_matches}"]
+            remove = (*remove, f"INFO/{mark_matches}")
         # No resource value can apply to gVCF reference blocks, and looking up
         # every resource line under their END spans makes whole genomes ~25x
         # slower; pass those records through untouched.

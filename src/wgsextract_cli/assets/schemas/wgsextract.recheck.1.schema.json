@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:wgsextract:schema:recheck:1",
+  "title": "wgsextract.recheck/1",
+  "description": "Recorded resource releases compared with the newest ones (ref recheck's details). See docs/recheck-and-delta.md.",
+  "type": "object",
+  "properties": {
+    "schema": {
+      "const": "wgsextract.recheck/1"
+    },
+    "manifests": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "unrecorded_manifests": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Manifests written before releases were recorded: their resources are unknown."
+    },
+    "answers": {
+      "$ref": "#/$defs/answers"
+    },
+    "resources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/resource"
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      }
+    },
+    "note": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema",
+    "manifests",
+    "unrecorded_manifests",
+    "answers",
+    "resources",
+    "counts",
+    "note"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "answers": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "answers_file",
+            "online"
+          ]
+        },
+        "path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The answers file read."
+        },
+        "sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "SHA-256 of the answers file read."
+        },
+        "retrieved": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When the answers were looked up (ISO 8601)."
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "contacted": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Public URLs queried (online only); each request carried no sample data."
+        }
+      },
+      "required": [
+        "mode",
+        "path",
+        "sha256",
+        "retrieved",
+        "source",
+        "contacted"
+      ],
+      "additionalProperties": false
+    },
+    "resource": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "build": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "used_release": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The release the runs recorded; null when unrecorded."
+        },
+        "release_basis": {
+          "type": "string"
+        },
+        "latest_release": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The newest release the answers name, or null."
+        },
+        "status": {
+          "enum": [
+            "up_to_date",
+            "newer_available",
+            "different_release",
+            "unknown",
+            "lookup_error"
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "installed": {
+          "enum": [
+            "same",
+            "changed",
+            "missing",
+            "unknown"
+          ],
+          "description": "Whether the file at the recorded path is still the one the runs used (by fingerprint)."
+        },
+        "installed_release": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "used_by": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/use"
+          }
+        },
+        "next_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "licence": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "licence_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "attribution": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "build",
+        "used_release",
+        "release_basis",
+        "latest_release",
+        "status",
+        "reason",
+        "installed",
+        "installed_release",
+        "used_by",
+        "next_step",
+        "source_url",
+        "licence",
+        "licence_url",
+        "attribution"
+      ],
+      "additionalProperties": false
+    },
+    "use": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "manifest": {
+          "type": "string"
+        },
+        "finished": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "command",
+        "manifest",
+        "finished"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

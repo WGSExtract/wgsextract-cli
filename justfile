@@ -41,7 +41,7 @@ run *args:
 help:
     pixi run wgsextract --help
 
-# Regenerate the API snapshot, API docs, command docs and site command cards
+# Regenerate the committed references and schemas
 regen:
     pixi run python scripts/regen.py
 
@@ -124,7 +124,7 @@ deps:
 clean:
     pixi run clean
 
-# WGS Extract app (gui/); see gui/docs/developer_setup.md
+# WGS Extract app (gui/); see gui/devdocs/developer_setup.md
 
 # Set up the app's toolchain (uv, Node, Rust) and locked dependencies
 [unix]

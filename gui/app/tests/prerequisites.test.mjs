@@ -127,7 +127,7 @@ test("WGSExtract checks its wgsextract actions with `ref needs`, and Unalign thr
   assert.equal(bundle.manifest.prerequisites.kindLabels.genome, "%{name} reference genome");
 });
 
-test("WGSExtract's Microarray leaves --ref out until a genome is chosen, so it runs with one installed after the page loaded", async (t) => {
+test("WGSExtract's Microarray omits --ref so the CLI always resolves the reference genome from the BAM/CRAM", async (t) => {
   const workspace = await exampleBundleCopy(t);
   const bundle = await loadLocalizedBundle("en", repoRoot, workspace, workspace);
   const actions = bundle.manifest.pages.flatMap((page) => page.sections ?? []).flatMap((section) => section.actions ?? []);
@@ -135,12 +135,10 @@ test("WGSExtract's Microarray leaves --ref out until a genome is chosen, so it r
   const { calls, runProcess } = fakeProcesses({ current: [] });
   const fields = { bam_path: cram, microarray_formats: "23andme_v5" };
 
-  await missingPrerequisites(bundle.manifest, generate, { ...context, fieldValues: { ...fields, ref_fasta: "" }, bundleRootPath: workspace }, workspace, runProcess);
   await missingPrerequisites(bundle.manifest, generate, { ...context, fieldValues: { ...fields, ref_fasta: "/ref/hs37d5.fa.gz" }, bundleRootPath: workspace }, workspace, runProcess);
 
-  const [unchosen, chosen] = calls.map((call) => call.slice(1));
-  assert.equal(unchosen.includes("--ref"), false);
-  assert.deepEqual(chosen.slice(chosen.indexOf("--ref"), chosen.indexOf("--ref") + 2), ["--ref", "/ref/hs37d5.fa.gz"]);
+  const [checked] = calls.map((call) => call.slice(1));
+  assert.equal(checked.includes("--ref"), false);
 });
 
 /**

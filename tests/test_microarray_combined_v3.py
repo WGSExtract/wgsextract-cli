@@ -1,26 +1,68 @@
 """Tests for keeping CombinedKit v3 alongside CombinedKit v5."""
 
+import gzip
+from collections.abc import Collection
+from pathlib import Path
+
+import pytest
+
 from wgsextract_cli.core.microarray.combined_v3 import convert_to_combined_v3
 from wgsextract_cli.core.microarray.formats import (
     COMBINED_V3_FORMAT,
+    COMBINED_V3_TEMPLATES,
+    get_template_format,
     resolve_format_key,
 )
 from wgsextract_cli.core.microarray.identity import MicroarrayIdentity, load_rsid_map
 from wgsextract_cli.core.microarray.targets import installed_lifted_chain
 from wgsextract_cli.core.microarray.templates import template_resource_paths
+from wgsextract_cli.core.utils import UsageError, WGSExtractError
+
+_HG18_CHAIN = "chain 1000 chr3 2000000 + 999000 1000000 chr3 2000000 + 1000000 1001000 1\n1000\n\n"
+
+
+def _install_classic_v3_templates(
+    root: Path,
+    body_overrides: dict[str, str] | None = None,
+    *,
+    skip: Collection[str] = (),
+) -> str:
+    """Install minimal valid stubs for all 14 classic CombinedKit v3 templates
+    plus a synthetic hg18ToHg19 chain; return the chain path."""
+    overrides = body_overrides or {}
+    head = root / "microarray/raw_file_templates/head"
+    body = root / "microarray/raw_file_templates/body"
+    head.mkdir(parents=True, exist_ok=True)
+    body.mkdir(parents=True, exist_ok=True)
+    for name in COMBINED_V3_TEMPLATES:
+        if name in skip:
+            continue
+        fmt = get_template_format(name)
+        assert fmt is not None
+        suffix = fmt["suffix"]
+        parts = int(fmt.get("parts", 1))
+        (head / f"{name}{suffix}").write_text("# header\n")
+        content = overrides.get(name, "")
+        if parts > 1:
+            (body / f"{name}_1{suffix}").write_text(content)
+            for idx in range(2, parts + 1):
+                (body / f"{name}_{idx}{suffix}").write_text("")
+        else:
+            (body / f"{name}{suffix}").write_text(content)
+    chain = root / "hg18ToHg19.over.chain.gz"
+    chain.write_bytes(gzip.compress(_HG18_CHAIN.encode()))
+    return str(chain)
 
 
 def test_combined_v3_filters_combinedkit_v5_to_classic_templates(tmp_path):
     assert resolve_format_key("combined_v3") == COMBINED_V3_FORMAT
     assert resolve_format_key("combined_v5") is None
 
-    templates = tmp_path / "microarray/raw_file_templates"
-    body = templates / "body"
-    head = templates / "head"
-    body.mkdir(parents=True)
-    head.mkdir(parents=True)
-    (head / "23andMe_V3.txt").write_text("# header\n")
-    (body / "23andMe_V3.txt").write_text("rsV3Name\t1\t100\nrsShared\t1\t200\n")
+    chain = _install_classic_v3_templates(
+        tmp_path,
+        {"23andMe_V3": "rsV3Name\t1\t100\nrsShared\t1\t200\n"},
+    )
+    body = tmp_path / "microarray/raw_file_templates/body"
     (body / "MyHeritage_V3.csv").write_text("rsV5Only\t1\t300\n")
 
     kit_v5 = tmp_path / "sample_CombinedKit.txt"
@@ -31,7 +73,7 @@ def test_combined_v3_filters_combinedkit_v5_to_classic_templates(tmp_path):
         "rsV5Only\t1\t300\tTT\n"
     )
     out_v3 = tmp_path / "sample_CombinedKit_v3.txt"
-    tally = convert_to_combined_v3(str(kit_v5), str(out_v3), str(tmp_path))
+    tally = convert_to_combined_v3(str(kit_v5), str(out_v3), str(tmp_path), chain)
 
     assert out_v3.read_text().splitlines() == [
         "# rsid\tchromosome\tposition\tgenotype",
@@ -46,7 +88,11 @@ def test_combined_v3_filters_combinedkit_v5_to_classic_templates(tmp_path):
     # CHM13 rejected_ids masks a v3 rsID even when the v5 row was called.
     out_masked = tmp_path / "sample_CombinedKit_v3_masked.txt"
     masked_tally = convert_to_combined_v3(
-        str(kit_v5), str(out_masked), str(tmp_path), rejected_ids={"rsV3Name"}
+        str(kit_v5),
+        str(out_masked),
+        str(tmp_path),
+        chain,
+        rejected_ids={"rsV3Name"},
     )
     assert out_masked.read_text().splitlines() == [
         "# rsid\tchromosome\tposition\tgenotype",
@@ -64,10 +110,10 @@ def test_combined_v3_resolve_rsids_and_offline_chain_lookup(tmp_path):
     retired = next(
         rsid for rsid, entry in load_rsid_map().items() if entry.current is None
     )
-    templates = tmp_path / "microarray/raw_file_templates"
-    body = templates / "body"
-    body.mkdir(parents=True)
-    (body / "23andMe_V3.txt").write_text(f"{retired}\t1\t100\nrsKept\t1\t200\n")
+    chain = _install_classic_v3_templates(
+        tmp_path,
+        {"23andMe_V3": f"{retired}\t1\t100\nrsKept\t1\t200\n"},
+    )
 
     kit_v5 = tmp_path / "sample_CombinedKit.txt"
     kit_v5.write_text(
@@ -80,6 +126,7 @@ def test_combined_v3_resolve_rsids_and_offline_chain_lookup(tmp_path):
         str(kit_v5),
         str(out_v3),
         str(tmp_path),
+        chain,
         identity=MicroarrayIdentity(resolve_rsids=True),
     )
     assert out_v3.read_text().splitlines() == [
@@ -91,13 +138,10 @@ def test_combined_v3_resolve_rsids_and_offline_chain_lookup(tmp_path):
 
 
 def test_format_aliases_and_removed_or_internal_formats_in_v04_templates():
-    import pytest
-
     from wgsextract_cli.core.microarray.templates import (
         _PACKAGED_TEMPLATES,
         template_rows,
     )
-    from wgsextract_cli.core.utils import UsageError
 
     assert resolve_format_key("ancestry_v2") == "Ancestry_V2ab"
     assert resolve_format_key("Ancestry_V2") == "Ancestry_V2ab"
@@ -149,9 +193,6 @@ def test_format_aliases_and_removed_or_internal_formats_in_v04_templates():
 def test_stale_v03_delta_falls_through_to_packaged_templates(tmp_path):
     """An un-upgraded v0.3.0 library whose delta references a dropped base
     falls back cleanly to the CLI's packaged template instead of crashing."""
-    import gzip
-
-    from wgsextract_cli.core.microarray.formats import get_template_format
     from wgsextract_cli.core.microarray.templates import (
         _PACKAGED_TEMPLATES,
         _resolve_templates_for_format,
@@ -174,18 +215,10 @@ def test_stale_v03_delta_falls_through_to_packaged_templates(tmp_path):
 def test_combined_v3_requires_hg18_chain_when_affy_template_present(tmp_path):
     """PR #1490 review: never silently drop FTDNA_V1_Affy markers from CombinedKit v3
     when the Affy template is installed without hg18ToHg19.over.chain.gz."""
-    import pytest
-
-    from wgsextract_cli.core.utils import WGSExtractError
-
-    body = tmp_path / "microarray/raw_file_templates/body"
-    head = tmp_path / "microarray/raw_file_templates/head"
-    body.mkdir(parents=True)
-    head.mkdir(parents=True)
-    (head / "23andMe_V3.txt").write_text("# header\n")
-    (body / "23andMe_V3.txt").write_text("rs1\t1\t100\n")
-    (head / "FTDNA_V1_Affy.csv").write_text("RSID,CHROMOSOME,POSITION,RESULT\n")
-    (body / "FTDNA_V1_Affy.csv").write_text('"rs2","1","200"\n')
+    _install_classic_v3_templates(
+        tmp_path,
+        {"23andMe_V3": "rs1\t1\t100\n", "FTDNA_V1_Affy": '"rs2","1","200"\n'},
+    )
 
     kit_v5 = tmp_path / "sample_CombinedKit.txt"
     kit_v5.write_text("# rsid\tchromosome\tposition\tgenotype\nrs1\t1\t100\tAA\n")
@@ -193,4 +226,21 @@ def test_combined_v3_requires_hg18_chain_when_affy_template_present(tmp_path):
 
     with pytest.raises(WGSExtractError, match="hg18ToHg19.over.chain.gz"):
         convert_to_combined_v3(str(kit_v5), str(out_v3), str(tmp_path), lift_chain=None)
+    assert not out_v3.exists()
+
+
+def test_combined_v3_rejects_incomplete_template_installation(tmp_path):
+    """PR #1490 review: fail loudly instead of publishing a partial CombinedKit v3
+    when any classic template is missing from the installation."""
+    chain = _install_classic_v3_templates(
+        tmp_path,
+        {"23andMe_V3": "rs1\t1\t100\n"},
+        skip={"LDNA_V2"},
+    )
+    kit_v5 = tmp_path / "sample_CombinedKit.txt"
+    kit_v5.write_text("# rsid\tchromosome\tposition\tgenotype\nrs1\t1\t100\tAA\n")
+    out_v3 = tmp_path / "sample_CombinedKit_v3.txt"
+
+    with pytest.raises(WGSExtractError, match=r"LDNA_V2.*ref bootstrap"):
+        convert_to_combined_v3(str(kit_v5), str(out_v3), str(tmp_path), chain)
     assert not out_v3.exists()

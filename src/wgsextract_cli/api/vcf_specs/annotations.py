@@ -12,11 +12,13 @@ from wgsextract_cli.api._shared import (
     check_confidence,
     confidence_depth_param,
     confidence_gq_param,
+    dry_run_param,
     force_steps_param,
     ref_param,
     restart_param,
     threads_param,
 )
+from wgsextract_cli.core.paths import absolute_path, append_suffix
 from wgsextract_cli.core.utils import UsageError
 
 from .shared import (
@@ -358,8 +360,21 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
     absent_to_ref: bool = param(
         False,
         help="Treat positions absent from the VCF as reference. Only for a "
-        "whole-genome VCF that lists variants only (not a gVCF).",
+        "whole-genome variants-only VCF. Incompatible with --alignment.",
         action="store_true",
+    )
+    alignment: Path | None = param(
+        None,
+        help="Indexed BAM/CRAM of the same sample, for reference evidence at absent "
+        "PharmCAT sites. Overrides any companion gVCF.",
+        path="file",
+        metavar="BAM/CRAM",
+    )
+    alignment_reference: Path | None = param(
+        None,
+        help="Indexed GRCh38 FASTA used to align --alignment (default: PharmCAT's FASTA).",
+        path="file",
+        metavar="FASTA",
     )
     outside_call: tuple[Path, ...] | None = param(
         None,
@@ -375,6 +390,37 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
     def __post_init__(self) -> None:
         super().__post_init__()
         check_confidence(self)
+        if self.alignment is not None and self.absent_to_ref:
+            raise UsageError("--alignment and --absent-to-ref cannot be used together.")
+        if self.alignment_reference is not None and self.alignment is None:
+            raise UsageError("--alignment-reference requires --alignment.")
+        if self.alignment is not None and "##idx##" in str(self.alignment):
+            raise UsageError(
+                "--alignment requires a BAM/CRAM path without an inline index."
+            )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core.alignment.samtools_commands import (
+            alignment_index_candidates,
+        )
+        from wgsextract_cli.core.ref_library.assets import reference_dict_path
+
+        yield from super().implied_paths()
+        if self.alignment is not None:
+            path = self.alignment
+            if ".." in path.parts:
+                path = absolute_path(path)
+                yield "alignment", path
+            for index in alignment_index_candidates(path):
+                yield "alignment_index", index
+        if self.alignment_reference is not None:
+            path = self.alignment_reference
+            if ".." in path.parts:
+                path = absolute_path(path)
+                yield "alignment_reference", path
+            for suffix in (".fai", ".gzi"):
+                yield "alignment_reference_index", append_suffix(path, suffix)
+            yield "alignment_reference_dictionary", Path(reference_dict_path(path))
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -389,7 +435,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
     threads: int | None = threads_param()
     annotations: str = param(
         "clinvar,revel,phylop,gnomad,vep",
-        help="Comma-separated list of annotations to apply in order (default: "
+        help="Comma-separated list of distinct annotations to apply in order (default: "
         "clinvar,revel,phylop,gnomad,vep).",
     )
     keep_intermediates: bool = param(
@@ -402,7 +448,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
     )
     bed: Path | None = param(
         None,
-        help="Only annotate regions in this 0-based BED or BED.gz file.",
+        help="Only annotate regions in this 0-based BED or BED.gz file; clip to known contig lengths.",
         path="file",
     )
     restart: bool = restart_param(aliases=("--restart",))
@@ -413,6 +459,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
         ),
         aliases=("--force-steps",),
     )  # fmt: skip
+    dry_run: bool = dry_run_param()
     to_table: bool = param(
         False,
         help="Also export a variant table and SQLite database.",

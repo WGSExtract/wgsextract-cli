@@ -42,7 +42,7 @@ def _install_fasta(
     the M5 checksums of the alignment file ``like``, or ``m5`` for every
     sequence (a different genome's sequences)."""
     from wgsextract_cli.core.alignment.metadata import get_bam_header
-    from wgsextract_cli.core.reference_assets import (
+    from wgsextract_cli.core.ref_library.assets import (
         header_sequences,
         reference_dict_path,
     )
@@ -329,3 +329,56 @@ def test_report_json_prints_only_the_missing_list(tmp_path, library, capsys):
 
     report = json.loads(capsys.readouterr().out)
     assert [m["id"] for m in report["missing"]] == ["hs37d5"]
+
+
+def _install_transcripts(library: Path, build: str = "hg38") -> None:
+    target = library / "ref"
+    target.mkdir(parents=True, exist_ok=True)
+    (target / f"transcripts_{build}.bed.gz").write_bytes(b"")
+    (target / f"transcripts_{build}.bed.gz.tbi").write_bytes(b"")
+
+
+def test_info_gene_reports_missing_gene_map_and_cram_reference_only(
+    tmp_path, library, capsys
+):
+    # Default hg38 gene query needs the RefSeq gene map transcripts in reference data.
+    missing = _needs(capsys, library, "info", "gene", "--gene", "BRCA1")
+    assert [(m["kind"], m["id"]) for m in missing] == [("annotation", "gene-map")]
+    assert missing[0]["installArguments"] == ["ref", "gene-map"]
+
+    # T2T has no refGene transcript models, so gene-map is not required.
+    assert (
+        _needs(capsys, library, "info", "gene", "--gene", "BRCA1", "--build", "t2t")
+        == []
+    )
+
+    # Unannotated VCF does not trigger VCF-annotation prerequisites (only gene-map).
+    vcf = _vcf(tmp_path)
+    vcf_missing = _needs(
+        capsys, library, "info", "gene", "--gene", "BRCA1", "--vcf-input", vcf
+    )
+    assert [m["id"] for m in vcf_missing] == ["gene-map"]
+
+    # Once hg38 transcript models exist, info gene with the VCF needs nothing.
+    _install_transcripts(library, "hg38")
+    assert (
+        _needs(capsys, library, "info", "gene", "--gene", "BRCA1", "--vcf-input", vcf)
+        == []
+    )
+
+    # A CRAM input needs both its reference genome and its build's gene map.
+    cram = _cram(tmp_path, HS37D5_LIKE)
+    cram_missing = _needs(
+        capsys, library, "info", "gene", "--gene", "BRCA1", "--input", cram
+    )
+    assert [(m["kind"], m["id"]) for m in cram_missing] == [
+        ("genome", "hs37d5"),
+        ("annotation", "gene-map"),
+    ]
+
+    _install_fasta(library, "hs37d5.fa.gz", HS37D5_LIKE, like=cram)
+    _install_transcripts(library, "hg19")
+    assert (
+        _needs(capsys, library, "info", "gene", "--gene", "BRCA1", "--input", cram)
+        == []
+    )

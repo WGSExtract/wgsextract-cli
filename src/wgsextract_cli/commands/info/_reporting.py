@@ -4,17 +4,17 @@ import csv
 import io
 from typing import Any
 
+from wgsextract_cli.commands._messages.info import SYSTEM_MESSAGES
 from wgsextract_cli.core import sample_workspace
-from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
-from wgsextract_cli.core.messages import SYSTEM_MESSAGES
-from wgsextract_cli.core.ref_library.models import sequence_lengths
-from wgsextract_cli.core.results import current_result, human_output, warn
-from wgsextract_cli.core.sample_types import is_platform
-from wgsextract_cli.core.sequencing import (
+from wgsextract_cli.core.alignment.sequencing import (
     mixed_platforms_message,
     platform_from_metadata,
     read_group_platforms,
 )
+from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
+from wgsextract_cli.core.ref_library.models import sequence_lengths
+from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.sample_types import is_platform
 from wgsextract_cli.core.ultima import read_groups
 
 from .metrics import (

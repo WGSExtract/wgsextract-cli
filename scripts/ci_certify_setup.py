@@ -74,7 +74,7 @@ def prepare_reference() -> None:
         BOOTSTRAP_URL,
     )
     from wgsextract_cli.core.microarray.targets import HG19_TO_HG38_CHAIN
-    from wgsextract_cli.core.reference_assets import resolve_reference_library
+    from wgsextract_cli.core.ref_library.assets import resolve_reference_library
     from wgsextract_cli.core.reference_processing import (
         extract_archive_keep_existing,
         normalize_bootstrap_layout,

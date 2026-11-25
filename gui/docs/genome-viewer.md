@@ -8,8 +8,7 @@ Remote viewing requires the explicit connection and transfer consent below.
 ## Open a local file
 
 After choosing an indexed BAM/CRAM or bgzip VCF/gVCF on a tool page, choose
-**Viewer** in the BAM page's **Info Commands** section (or **View reads** beside
-the path). You can also open **Genome viewer**, enter the full path under
+**Viewer** in the BAM page's **Info Commands** section. You can also open **Genome viewer**, enter the full path under
 **Local file path**, and choose **Open library file**.
 Files do not need to be inside the **My Genomes** folder; any indexed local
 BAM/CRAM/VCF (and matching index) on this computer can be opened directly.

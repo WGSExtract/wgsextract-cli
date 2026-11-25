@@ -17,6 +17,15 @@ ENTRIES: dict[str, CommandHelp] = {
         "Prints the reference library's status; writes no files.",
         "wgsextract ref status",
     ),
+    "ref recheck": _h(
+        "Prints each recorded resource release, the newest and its status; "
+        "writes no files except the --save-answers file. With --json, the "
+        "result's details are the wgsextract.recheck/1 document.",
+        "wgsextract ref recheck HG002/HG002_personal_report.manifest.json "
+        "--answers answers.json",
+        "wgsextract ref recheck HG002/HG002_personal_report.manifest.json "
+        "--online --save-answers answers.json",
+    ),
     "ref test-genome": _h(
         "In the dataset library: wgsextract-benchmark-hg19-mini/ with its "
         "genome-config.toml, and the verified zip in .downloads (--delete "
@@ -119,9 +128,9 @@ ENTRIES: dict[str, CommandHelp] = {
     "ref acmg-data": _h(
         f"{_LIBRARY}: downloads/acmg/ holds the Ensembl GFF3, the downloads in "
         "sources/ and fastVEP's databases with acmg_data.json in sa/ (or "
-        "--sa-dir); --dry-run prints the plan and sizes only.",
+        "--sa-dir); --dry-run shows the plan, and only --download contacts publishers.",
         "wgsextract ref acmg-data --dry-run",
-        "wgsextract ref acmg-data --chromosomes chr22",
+        "wgsextract ref acmg-data --download --chromosomes chr22",
     ),
     "ref aadr": _h(
         f"{_LIBRARY}: the AADR 2M SNP panel (--delete removes it).",

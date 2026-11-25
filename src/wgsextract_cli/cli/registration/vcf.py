@@ -10,6 +10,7 @@ from wgsextract_cli.api.vcf import (
     VcfAlphamissenseParams,
     VcfAnnotateParams,
     VcfCaddParams,
+    VcfCallabilityParams,
     VcfCallParams,
     VcfChainAnnotateParams,
     VcfClair3Params,
@@ -42,8 +43,78 @@ from wgsextract_cli.api.vcf import (
     _VcfFileParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    _CALL,
+    _VCF,
+    HOURS,
+    MINUTES,
+    SECONDS,
+    _n,
+)
+from wgsextract_cli.commands._messages.vcf import CLI_HELP
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.messages import CLI_HELP
+
+NEEDS = {
+    "vcf snp": _n(HOURS, *_CALL),
+    "vcf indel": _n(HOURS, *_CALL),
+    "vcf call": _n(HOURS, *_CALL, optional="delly pbsv sambamba sniffles"),
+    "vcf info": _n(SECONDS, "bcftools", optional="htsfile samtools tabix"),
+    "vcf variantqc": _n(MINUTES, optional="bcftools discvrseq java17 samtools"),
+    "vcf granite-qc": _n(MINUTES, "bcftools", optional="granite samtools"),
+    "vcf annotate": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf filter": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf table": _n(MINUTES, "bcftools", optional="bgzip tabix"),
+    "vcf callability": _n(SECONDS, "bcftools", optional="curl"),
+    "vcf clinvar": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf revel": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
+    "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf prepare": _n(MINUTES, *_VCF),
+    "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
+    "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
+    "vcf cnv": _n(HOURS, "bcftools", "delly", "samtools", "tabix"),
+    "vcf sv": _n(HOURS, *_CALL, optional="delly pbsv sambamba sniffles"),
+    "vcf freebayes": _n(HOURS, "bcftools", "freebayes", "samtools", "tabix"),
+    "vcf gatk": _n(HOURS, "gatk", "samtools", "tabix", optional="bcftools"),
+    "vcf deepvariant": _n(
+        HOURS,
+        "samtools",
+        "tabix",
+        optional="bcftools docker run_deepvariant wgse-deepvariant sambamba",
+    ),
+    "vcf clair3": _n(
+        HOURS,
+        "bcftools",
+        "samtools",
+        "tabix",
+        optional="docker run_clair3.sh sambamba wgse-clair3",
+    ),
+    "vcf impute": _n(
+        HOURS,
+        "bcftools",
+        "bgzip",
+        "samtools",
+        "tabix",
+        optional="GLIMPSE2_ligate GLIMPSE2_phase",
+    ),  # fmt: skip
+    "vcf phase": _n(
+        HOURS, "bcftools", "samtools", "tabix", optional="longphase whatshap"
+    ),
+    "vcf phylop": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
+    "vcf cadd": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf acmg": _n(
+        MINUTES, "bcftools", "bgzip", "tabix", "fastvep", optional="samtools"
+    ),
+    "vcf gerp": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
+    "vcf spliceai": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf alphamissense": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf pharmcat": _n(
+        MINUTES, "bcftools", "pharmcat", "samtools", "tabix", optional="bgzip curl"
+    ),
+    "vcf chain-annotate": _n(MINUTES, *_VCF, optional="bgzip samtools vep vep-rs"),
+}
+
 
 cmd_alphamissense = command_handler(
     "wgsextract_cli.commands.vcf.splicing", "cmd_alphamissense"
@@ -59,6 +130,9 @@ cmd_clinvar = command_handler(
     "wgsextract_cli.commands.vcf.clinvar_revel", "cmd_clinvar"
 )
 cmd_call = command_handler("wgsextract_cli.commands.vcf.call", "cmd_call")
+cmd_callability = command_handler(
+    "wgsextract_cli.commands.vcf.callability", "cmd_callability"
+)
 cmd_cnv = command_handler("wgsextract_cli.commands.vcf.structural", "cmd_cnv")
 cmd_deepvariant = command_handler(
     "wgsextract_cli.commands.vcf.deepvariant", "cmd_deepvariant"
@@ -155,6 +229,15 @@ def register(
         "Export variants and their annotations (gene, consequence, ClinVar, gnomAD, genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and an SQLite database to query.",
         VcfTableParams,
         cmd_table,
+    )
+    _add_vcf_command(
+        vcf_subs,
+        base_parser,
+        "callability",
+        "Which coding exons of a gene list (ACMG SF by default) the sample's gVCF "
+        "could read: callable, partial, not readable, specialist or not run.",
+        VcfCallabilityParams,
+        cmd_callability,
     )
     _add_vcf_command(
         vcf_subs,

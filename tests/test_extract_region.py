@@ -37,13 +37,12 @@ def _with_alt(seq: str) -> str:
 
 @pytest.fixture(scope="module")
 def genome(tmp_path_factory):
-    """A reference (under an hg38 folder, so autosome calling gets GRCh38
-    ploidy) and male and female BAMs; the male has no chr7 reads. Reads are named
-    <contig>_<start>."""
+    """A reference with a declared assembly and male and female BAMs; the
+    male has no chr7 reads. Reads are named <contig>_<start>."""
     root = tmp_path_factory.mktemp("region")
     rng = random.Random(11)
     seqs = {c: "".join(rng.choice("ACGT") for _ in range(1000)) for c in CONTIGS}
-    ref = write_fasta(root / "hg38" / "ref.fa", seqs)
+    ref = write_fasta(root / "hg38" / "ref.fa", seqs, assembly="GRCh38")
 
     def reads(contig):
         alt = _with_alt(seqs[contig])

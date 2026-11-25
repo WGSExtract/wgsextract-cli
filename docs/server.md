@@ -5,12 +5,13 @@ same computer: desktop apps, scripts and AI agents. It speaks either a small
 HTTP/JSON API or the [Model Context Protocol](https://modelcontextprotocol.io)
 (MCP), on stdio or over streamable HTTP.
 
-Both are generated from the [typed Python API](api.md): the same `*Params`
+Both are generated from the [typed Python API](https://wgsextract.github.io/wgsextract-cli/api.html): the same `*Params`
 fields, defaults, config.toml settings, result manifests and error kinds as
 the CLI. So an operation joins the server as soon as its command moves onto
 the API. Today they are `info`, `info calculate-coverage`,
 `info coverage-sample`, `info chip`, `vcf snp`, `vcf indel`, the three
-`lineage` commands, `microarray`, `report` and `sample show`/`set`/`unset`.
+`lineage` commands, `microarray`, `report`, [`lookup`](lookup.md) and
+`sample show`/`set`/`unset`.
 
 ```console
 $ wgsextract serve --allow ~/wgs
@@ -62,7 +63,9 @@ you start yourself:
   an allowed folder that points outside it is refused. That holds for the
   paths a request names; the files a command finds inside a named folder (a
   reference library's genomes, a model folder's weights, a checkpoint's
-  files) aren't checked one by one.
+  files) aren't generally checked one by one. The yBrowse installer checks
+  the paths it derives for snapshots, the liftover chain and its staging
+  files, and the reference FASTA and its indexes.
   The guard limits what a client can name. It is not a sandbox against other
   programs running as you, which can change the allowed folders (for example
   retarget a symlink) whatever the server does.
@@ -376,7 +379,7 @@ example:
 ```
 
 Tools are named after the operations, with `_` between words: `info`,
-`info_chip`, `sample_show`, and with `--allow-jobs` also `vcf_snp`,
+`info_chip`, `lookup`, `sample_show`, and with `--allow-jobs` also `vcf_snp`,
 `lineage_mt_haplogroup` and the others. Each tool's input schema is its
 Params' JSON Schema. These tools are always offered:
 

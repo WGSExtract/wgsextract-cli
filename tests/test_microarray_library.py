@@ -42,7 +42,7 @@ def _library(root: Path) -> tuple[Path, str]:
         seq[pos - 1] = "A"
     genomes = root / "genomes"
     genomes.mkdir(parents=True)
-    fasta = write_fasta(genomes / "hg19.fa", {"chr1": "".join(seq)})
+    fasta = write_fasta(genomes / "hg19.fa", {"chr1": "".join(seq)}, assembly="GRCh37")
     templates = root / "microarray" / "raw_file_templates"
     (templates / "head").mkdir(parents=True)
     (templates / "body").mkdir()
@@ -133,7 +133,9 @@ def test_1052_microarray_chain_download_needs_consent_and_then_reuses_cache(
     library = tmp_path / "reference"
     _, sequence = _library(library)
     _shadow_packaged_bodies(library)
-    fasta = write_fasta(library / "genomes" / "hs38.fa", {"chr1": sequence})
+    fasta = write_fasta(
+        library / "genomes" / "hs38.fa", {"chr1": sequence}, assembly="GRCh38"
+    )
     bam = _sample_bam(tmp_path, sequence)
     _identity_chain(library / "microarray" / "hg38ToHg19.over.chain.gz")
     chain = tmp_path / "chain.gz"
@@ -191,7 +193,9 @@ def test_ref_outside_the_library_still_finds_the_library_liftover_chain(
     _identity_chain(library / "hg19ToHg38.over.chain.gz")
     _identity_chain(library / "microarray" / "hg38ToHg19.over.chain.gz")
     (tmp_path / "elsewhere").mkdir()
-    fasta = write_fasta(tmp_path / "elsewhere" / "hs38.fa", {"chr1": seq})
+    fasta = write_fasta(
+        tmp_path / "elsewhere" / "hs38.fa", {"chr1": seq}, assembly="GRCh38"
+    )
     bam = _sample_bam(tmp_path, seq)
     config = tmp_path / "config.toml"
     config.write_text(
@@ -297,7 +301,9 @@ def test_a_missing_liftover_chain_names_the_directories_searched(
     _, seq = _library(library)
     _identity_chain(library / "hg19ToHg38.over.chain.gz")
     (tmp_path / "elsewhere").mkdir()
-    fasta = write_fasta(tmp_path / "elsewhere" / "hs38.fa", {"chr1": seq})
+    fasta = write_fasta(
+        tmp_path / "elsewhere" / "hs38.fa", {"chr1": seq}, assembly="GRCh38"
+    )
     bam = _sample_bam(tmp_path, seq)
     config = tmp_path / "config.toml"
     config.write_text(
@@ -336,7 +342,7 @@ def test_files_beside_an_outside_fasta_come_before_the_library(
     _shadow_packaged_bodies(elsewhere)
     _identity_chain(elsewhere / "hg19ToHg38.over.chain.gz")
     _identity_chain(elsewhere / "microarray" / "hg38ToHg19.over.chain.gz")
-    fasta = write_fasta(elsewhere / "hs38.fa", {"chr1": seq})
+    fasta = write_fasta(elsewhere / "hs38.fa", {"chr1": seq}, assembly="GRCh38")
     bam = _sample_bam(tmp_path, seq)
     config = tmp_path / "config.toml"
     config.write_text(

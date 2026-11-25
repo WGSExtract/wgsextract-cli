@@ -1,7 +1,7 @@
 [workspace]
 requires-pixi = ">=0.82.0"
 name = "wgsextract-cli"
-version = "0.8.9"
+version = "0.8.10"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 authors = ["WGS Extract Contributors"]
 channels = ["conda-forge", "bioconda"]
@@ -45,7 +45,7 @@ gkl = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download/wi
 
 # PharmCAT's pipeline is a release download the user extracts (see
 # `vcf pharmcat`); it needs Python with these packages, Java 17 and
-# bcftools/bgzip 1.18. On Windows, bcftools and htslib are the Windows Tools
+# bcftools/bgzip 1.18 or later. On Windows, bcftools and htslib are the Windows Tools
 # builds the default environment uses (pin.py keeps both blocks in step).
 [feature.pharmcat]
 platforms = ["linux-64", "osx-64", "osx-arm64", "win-64"]
@@ -58,7 +58,7 @@ packaging = ">=24.1"
 openjdk = "17.*"
 
 [feature.pharmcat.target.unix.dependencies]
-bcftools = ">=1.18"
+bcftools = "==1.24"
 htslib = ">=1.18"
 
 [feature.pharmcat.target.osx.dependencies]
@@ -73,7 +73,9 @@ htslib = { url = "https://github.com/WGSExtract/wgsextract-cli/releases/download
 
 [feature.bio-tools.target.unix.dependencies]
 samtools = ">=1.24,<2"
-bcftools = ">=1.24,<2"
+# 1.25 changes INFO/MQ from Integer to Float; keep the qualified version
+# on all platforms until the new output is qualified (#1555).
+bcftools = "==1.24"
 htslib = ">=1.24,<2"
 bwa = ">=0.7.19,<0.8"
 # bwa-mem2 aligns short reads in about 3/4 of bwa's time, with the same output.
@@ -96,10 +98,6 @@ wget = ">=1.25,<2"
 # Only Linux uses sambamba (macOS sorts with samtools); its osx-arm64 build
 # segfaults even on --version.
 sambamba = ">=1.0.1,<2"
-
-[feature.bio-tools.target.linux-aarch64.dependencies]
-# Match the qualified x64 calling version; do not introduce architecture drift.
-bcftools = "==1.24"
 
 [feature.bio-tools.target.osx.dependencies]
 # bcftools loads CBLAS through GSL. OpenMP-backed BLAS can abort on stale PID
@@ -480,7 +478,6 @@ test-smells = { cmd = "python scripts/test_smells.py", description = "Advisory: 
 package-smoke = "python scripts/package_smoke.py"
 jscpd = "npx --yes jscpd@5.4.2 src/wgsextract_cli --reporters console,json --output out/jscpd --min-lines 5 --min-tokens 50 --ignore '**/__pycache__/**' --ignore '**/.mypy_cache/**'"
 site-build = "python scripts/build_site.py"
-gen-command-docs = { cmd = "python scripts/gen_command_docs.py", description = "Regenerate docs/commands.md and the site CLI page's command cards from the command metadata." }
 stats = "python scripts/project_stats.py"
 stats-report = "python scripts/project_stats.py out/project_stats.txt"
 benchmark-dataset = { cmd = "python scripts/build_benchmark_dataset.py", description = "Rebuild the release-backed hg19 mini-genome benchmark dataset archive." }

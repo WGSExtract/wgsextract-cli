@@ -11,6 +11,13 @@ Use this skill when the user wants an autonomous PR babysitter: watch GitHub CI 
 
 The loop is intentionally conservative. Prefer stopping and reporting over guessing on risky, destructive, security-sensitive, or product-significant changes.
 
+For human collaborator PRs, the **Collaborator PRs** section of `AGENTS.md`
+overrides the steps below. Never ready, push to, or review-fix their PRs.
+`hands-off` forbids all action. `land-asap` authorizes owner-account agents
+to rerun lost or cancelled jobs and enqueue a passing PR at the front.
+Without that label, only move a passing PR's existing queue entry after the
+author enabled auto-merge or enqueued it themselves.
+
 ## Requirements
 
 - Work inside the PR branch checkout.
@@ -68,8 +75,11 @@ For an existing draft, obtain authorization before marking ready. Readiness
 starts area-selected full CI; do not land using the old draft-run checks.
 Certify macOS (and Windows where a host exists) on the exact head before
 ready. Immediately before `gh pr ready`, run `python scripts/ci_capacity.py
---wait` in a background watcher and proceed only on exit 0 (3 = hold:
-merge-queue jobs wait for runners or too many ready matrices are in flight).
+--wait --pr N` in a background watcher and proceed only on exit 0.
+Priority PRs skip this gate. Other PRs reserve capacity while a priority PR's
+CI can still schedule jobs or its queue entry still needs checks, even if no
+job is queued yet. Any merge-group job waiting for a runner also blocks
+admission, in addition to the usual capacity limits.
 Admit one PR at a time per supervisor: start the next check only after the
 previously admitted PR's ready area run is visible.
 
@@ -181,7 +191,7 @@ more than five). Use `gh pr checks "$PR" --json bucket,name,workflow,link` with
 and passing `changes` job from the **same run**, with draft-fast absent
 or skipped there and no failing, pending, cancelled or unknown checks. On PRs,
 `required` consumes the existing area-gate verdict, so auto-merge cannot bypass
-a failing selected OS, smoke or Install Lab job. The area gate runs only
+a failing selected OS job. The area gate runs only
 after all area-selected checks finish on a non-draft, non-label event.
 Area checks are evaluated only from that selected run; cancelled/failed older
 draft runs cannot block it. For every other Actions workflow represented in the
@@ -202,7 +212,8 @@ head SHA immediately before merging; use `--match-head-commit` with that SHA.
 Recheck review threads separately.
 This is PR validation before enqueueing, not a gate for merge-group commits:
 the queue retests only its smaller `required` set and skips the PR-only area gate.
-Documentation-only PRs deliberately skip the OS matrix and Install Lab.
+Documentation-only PRs deliberately skip the OS matrix. Install Lab and
+package/benchmark smoke gate releases, not PRs.
 
 Repeat until complete or blocked:
 

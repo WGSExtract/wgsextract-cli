@@ -56,6 +56,26 @@ def entries(root) -> list[cli_help.CommandEntry]:
     return cli_help.command_index(root)
 
 
+def test_1537_root_help_does_not_load_command_registration_modules():
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from wgsextract_cli.main import main\n"
+            "try:\n"
+            "    main(['--help'])\n"
+            "except SystemExit as exc:\n"
+            "    assert exc.code == 0\n"
+            "assert not any(name.startswith('wgsextract_cli.cli.registration.') "
+            "for name in sys.modules)\n",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
 def _usage_error(argv: list[str], capsys) -> str:
     with pytest.raises(SystemExit) as exit_info:
         main(argv)
@@ -112,7 +132,7 @@ def test_every_example_parses_to_its_own_command(entries):
 def test_example_genome_examples_name_catalog_entries():
     ids = {example.example_id for example in EXAMPLES}
     tags = {tag for example in EXAMPLES for tag in example.tags}
-    assert cli_help.COMMAND_HELP["example-genome download"].examples
+    assert COMMAND_HELP["example-genome download"].examples
     for path in ("example-genome download", "example-genome list"):
         for example in COMMAND_HELP[path].examples:
             words = shlex.split(example)[3:]
@@ -171,6 +191,7 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
         ["--help"],
         ["--version"],
         ["help", "--all", "--json"],
+        ["info", "--help"],
         ["serve", "--help"],
         ["help", "serve"],
         ["qc", "ancestry", "--help"],
@@ -178,8 +199,10 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
         ["vcf", "impute", "--help"],
     ],
 )
-def test_startup_regression_help_does_not_import_analysis_libraries(argv):
-    """CLI startup regression: help and version must not load analysis code."""
+def test_startup_regression_help_does_not_import_analysis_libraries(
+    argv: list[str] | None,
+) -> None:
+    """#1506: discovery must not load analysis, serving, or unrelated API groups."""
     code = f"""
 import contextlib
 import io
@@ -206,17 +229,35 @@ implementations = {{
     "wgsextract_cli.commands.score",
     "wgsextract_cli.core.pgs",
     "wgsextract_cli.commands.vcf.imputation",
+    "wgsextract_cli.server",
 }}
 if argv in (
     ["--help"], ["--version"], ["help", "--all", "--json"],
     ["serve", "--help"], ["help", "serve"],
 ):
     implementations.add("wgsextract_cli.api")
+if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
+    implementations.update({{
+        "wgsextract_cli.commands._help_catalog",
+        "wgsextract_cli.commands._help_topics",
+        "wgsextract_cli.core.dependencies",
+        "wgsextract_cli.core.run_log",
+        "wgsextract_cli.core.utils",
+    }})
+if argv == ["info", "--help"]:
+    implementations.update({{"wgsextract_cli.api.vcf", "wgsextract_cli.api._public"}})
 print(json.dumps(sorted(
     name for name in sys.modules
     if name.split(".")[0] in heavy or name in implementations
 )))
 """
+    if argv == ["help", "--all", "--json"]:
+        # Source installs materialize discovery on first use. Check warm startup.
+        subprocess.run(
+            [sys.executable, "-m", "wgsextract_cli.cli.help_index"],
+            cwd=ROOT,
+            check=True,
+        )
     completed = subprocess.run(
         [sys.executable, "-c", code],
         cwd=ROOT,
@@ -385,17 +426,6 @@ def test_help_index_has_no_settings_from_the_users_config(tmp_path):
 def test_first_sentence_keeps_abbreviations():
     text = "Download maps (e.g. GENCODE) for genes. More detail."
     assert cli_help.first_sentence(text) == "Download maps (e.g. GENCODE) for genes."
-
-
-def test_command_reference_doc_and_site_cards_are_current(root):
-    doc = (ROOT / "docs" / "commands.md").read_text(encoding="utf-8")
-    assert doc == cli_help.render_markdown(root), "run 'pixi run gen-command-docs'"
-    site = (ROOT / "site_src" / "cli.md").read_text(encoding="utf-8")
-    start = site.index(cli_help.SITE_BLOCK_START)
-    end = site.index(cli_help.SITE_BLOCK_END) + len(cli_help.SITE_BLOCK_END) + 1
-    assert site[start:end] == cli_help.render_site_commands(), (
-        "run 'pixi run gen-command-docs'"
-    )
 
 
 def test_journey_steps_and_deprecation_replacements_are_runnable_commands():

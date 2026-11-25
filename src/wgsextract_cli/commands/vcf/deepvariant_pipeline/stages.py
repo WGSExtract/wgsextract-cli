@@ -27,7 +27,7 @@ from wgsextract_cli.core.containers import (
     host_path,
     run_container,
 )
-from wgsextract_cli.core.reference_assets import read_fai_lengths
+from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.reference_evidence import POLICY_HEADER_KEY, Provenance
 from wgsextract_cli.core.resource_estimates import (
     PostprocessPlan,
@@ -36,6 +36,7 @@ from wgsextract_cli.core.steps import Decision, Step, StepJournal
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
+from ..caller_ploidy import PloidyInterval, write_intervals
 from ..reference_evidence import publish_gvcf
 from .models import _container_regions, _dv_env
 from .resources import _postprocess_args
@@ -45,6 +46,24 @@ _OOM_ERROR = (
     "so the run was stopped rather than left waiting on the killed worker. "
     "Free memory (close other jobs) or lower --threads, then rerun."
 )
+
+
+def _calling_region(
+    region: str | None, ploidy: list[PloidyInterval], work: Path, native: bool
+) -> tuple[str | None, str | None]:
+    """Keep ploidy exclusions off the command line, including on decoy-rich references."""
+    included = [interval for interval in ploidy if interval.ploidy]
+    if not included:
+        raise WGSExtractError("The sex/ploidy policy excludes every requested base.")
+    if len(included) == len(ploidy):
+        return region, None
+    bed = write_intervals(work.parent / ".deepvariant.policy" / "regions.bed", included)
+    # Google's caller splits --regions on whitespace even when the shell
+    # argument is quoted. A relative path keeps whitespace out of the value.
+    directory = (
+        str(Path(bed).parent) if not native and any(c.isspace() for c in bed) else None
+    )
+    return bed, directory
 
 
 def _docker_args(
@@ -60,8 +79,11 @@ def _docker_args(
     postprocess: PostprocessPlan | None,
     threads: int,
     gvcf: str | None = None,
+    region_directory: str | None = None,
 ) -> list[str]:
     """run_deepvariant's options, with the paths an image sees."""
+    if region:
+        region = Path(region).name if region_directory else _container_regions(region)
     args = [
         "--model_type", model_type,
         "--ref", host_path(ref),
@@ -70,7 +92,7 @@ def _docker_args(
         *(["--output_gvcf", host_path(gvcf)] if gvcf else []),
         "--num_shards", str(shards),
         "--intermediate_results_dir", host_path(str(work)),
-        *(["--regions", _container_regions(region)] if region else []),
+        *(["--regions", region] if region else []),
     ]  # fmt: skip
     if checkpoint:
         args += ["--customized_model", host_path(checkpoint)]
@@ -221,6 +243,7 @@ class _Launcher:
         gpu_check: Callable[[], None] | None = None,
         preflight: Callable[[], None] | None = None,
         cram_reference: tuple[str, str] | None = None,
+        working_directory: str | None = None,
     ):
         self.local = local
         self.image = image
@@ -232,6 +255,7 @@ class _Launcher:
         # A check before the first stage that runs.
         self.preflight = preflight
         self.cram_reference = cram_reference
+        self.working_directory = working_directory
 
     def ready(self) -> None:
         """Run the preflight check once, before a stage runs."""
@@ -242,6 +266,8 @@ class _Launcher:
     def launcher(self) -> str:
         if self.cram_reference and self.local:
             return str(Path(self.local).resolve())
+        if self.working_directory and self.local and Path(self.local).is_file():
+            return host_path(self.local)
         return str(self.local) if not self.image else f"{_DV_BIN}/run_deepvariant"
 
     def __call__(
@@ -267,6 +293,10 @@ class _Launcher:
             )
             with reference as cache:
                 env = _dv_env()
+                if self.working_directory and "PATH" in env:
+                    env["PATH"] = os.pathsep.join(
+                        host_path(p) for p in env["PATH"].split(os.pathsep)
+                    )
                 if cache is not None:
                     # The native reader ignores --ref for decoding (#1061).
                     # A relative cache path avoids interpreting ':' and '%s'
@@ -277,7 +307,7 @@ class _Launcher:
                     env=env,
                     stdin=subprocess.DEVNULL,
                     capture_output=capture,
-                    cwd=self.work if cache is not None else None,
+                    cwd=self.work if cache is not None else self.working_directory,
                 )
             return (result.stdout or "") if capture else ""
         if not capture:
@@ -303,6 +333,8 @@ class _Launcher:
             "oom_error": None if capture else _OOM_ERROR,
             "capture_output": capture,
         }
+        if self.working_directory:
+            options["working_directory"] = self.working_directory
         if self.arm64:
             # Bypass community entrypoints that auto-select INT8/BF16.
             result = run_container(

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/build-viewer-assets.mjs",
+    "build": "node scripts/build-server-contracts.mjs && tsc -p tsconfig.json && node scripts/build-viewer-assets.mjs",
     "check": "npm run build",
     "test": "npm run build && node scripts/run-node-tests.mjs",
     "tauri": "cd web/packagers/tauri && tauri",
@@ -21,11 +21,11 @@
     "dup:ci": "cd .. && npx --prefix app jscpd --config .jscpd.json --reporters console ."
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.12.4",
+    "@tauri-apps/cli": "^2.12.6",
     "@types/node": "^26.6.6",
     "bootstrap-icons": "^1.13.2",
-    "jscpd": "^5.4.2",
-    "playwright": "^1.64.1",
+    "jscpd": "^5.4.3",
+    "playwright": "^1.65.1",
     "typescript": "^7.0.2"
   },
   "overrides": {

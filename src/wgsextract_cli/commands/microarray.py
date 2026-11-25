@@ -14,6 +14,7 @@ from pyliftover import LiftOver
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.cli.registration.microarray import register as register
+from wgsextract_cli.commands._messages.microarray import LOG_MESSAGES
 from wgsextract_cli.core.aadr_resources import AADR_2M_FILENAME, require_aadr_2m
 from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.builds import (
@@ -31,7 +32,7 @@ from wgsextract_cli.core.genotype_qc import (
     warn_about_genotypes,
     warn_low_depth,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES as SHARED_LOG_MESSAGES
 from wgsextract_cli.core.microarray.aadr import (
     aadr_chain,
     aadr_panel,
@@ -70,7 +71,7 @@ from wgsextract_cli.core.microarray.templates import (
     get_template_format,
 )
 from wgsextract_cli.core.paths import absolute_path
-from wgsextract_cli.core.reference_assets import input_stem, resolve_reference_library
+from wgsextract_cli.core.ref_library.assets import input_stem, resolve_reference_library
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
 from wgsextract_cli.core.results import FileRecord, current_result
 from wgsextract_cli.core.sample_ploidy import ploidy_args, sex_samples_args
@@ -343,7 +344,7 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
             "no vendor or mitochondrial strand is inferred."
         )
     if not params.input:
-        raise UsageError(LOG_MESSAGES["input_required"])
+        raise UsageError(SHARED_LOG_MESSAGES["input_required"])
     input_path = str(params.input)
     verify_paths_exist({"--input": input_path})
     indel_bindings = indel_manifest_bindings(params)
@@ -408,7 +409,9 @@ def _run(params: MicroarrayParams, cleanup: contextlib.ExitStack) -> None:
         logging.debug(f"Resolved Liftover Chain: {lib.liftover_chain}")
 
     if not ref_fasta or not Path(ref_fasta).is_file():
-        message = LOG_MESSAGES["ref_required_for"].format(task="microarray generation")
+        message = SHARED_LOG_MESSAGES["ref_required_for"].format(
+            task="microarray generation"
+        )
         raise WGSExtractError(message)
     current_result().set_reference(ref_fasta, lib.build)
     if indel_bindings and not (

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from importlib import import_module
+from types import ModuleType
 
 
 @dataclass(frozen=True)
@@ -10,14 +11,15 @@ class CommandRegistration:
     module: str
     name: str
 
+    def load(self) -> ModuleType:
+        return import_module(f"wgsextract_cli.cli.registration.{self.module}")
+
     def register(
         self,
         subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
         base_parser: argparse.ArgumentParser,
     ) -> None:
-        import_module(f"wgsextract_cli.cli.registration.{self.module}").register(
-            subparsers, base_parser
-        )
+        self.load().register(subparsers, base_parser)
 
 
 COMMAND_MODULES = tuple(
@@ -28,6 +30,7 @@ COMMAND_MODULES = tuple(
             "genotyping": "typing",
             "pet": "pet-align",
             "report_issue": "report-issue",
+            "report_delta": "report-delta",
         }.get(name, name),
     )
     for name in (
@@ -35,6 +38,7 @@ COMMAND_MODULES = tuple(
         "deps",
         "examples",
         "bam",
+        "fastq",
         "benchmark",
         "extract",
         "microarray",
@@ -56,6 +60,8 @@ COMMAND_MODULES = tuple(
         "genotyping",
         "methylation",
         "report",
+        "lookup",
+        "report_delta",
         "report_issue",
         "panel",
         "serve",
@@ -149,6 +155,9 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier("help", SETUP, "List every command, or explain one: 'help vcf snp'."),
     CommandTier("bam", ADVANCED, "Sort, index, convert and merge BAM/CRAM files."),
     CommandTier("qc", ADVANCED, "Read and VCF quality reports; fake test data."),
+    CommandTier(
+        "fastq", ADVANCED, "Archive and restore FASTQ reads without changing bytes."
+    ),
     CommandTier("cohort", ADVANCED, "Summarize variants across a local cohort."),
     CommandTier("repair", ADVANCED, "Fix FTDNA BAM/VCF formatting problems."),
     CommandTier(
@@ -181,6 +190,16 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier(
         "score", ADVANCED, "Research-only polygenic scores from local genotypes."
     ),
+    CommandTier(
+        "lookup",
+        ADVANCED,
+        "Genotype and evidence at an rsID, locus or gene.",
+    ),
+    CommandTier(
+        "report-delta",
+        ADVANCED,
+        "What changed between two reports: findings, releases.",
+    ),
     CommandTier("benchmark", ADVANCED, "Time the main workflows on test data."),
     CommandTier(
         "serve", ADVANCED, "Local HTTP/JSON and MCP server for apps and AI agents."
@@ -202,6 +221,7 @@ ADVANCED_SUBCOMMANDS = frozenset(
         "vcf cnv",
         "vcf sv",
         "vcf trio",
+        "vcf callability",
         "vcf pharmcat",
         "vcf to-fasta",
         "vcf chain-annotate",
@@ -250,7 +270,7 @@ _THEN_VARIANTS = (
 )
 
 # The documentation's "start from what you have" paths: generated into
-# docs/commands.md and the site's CLI page. Steps are core or setup commands.
+# the site's command reference and CLI page. Steps are core or setup commands.
 JOURNEYS: tuple[Journey, ...] = (
     Journey(
         "Nothing yet (a first run)",

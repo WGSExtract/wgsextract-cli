@@ -6,12 +6,6 @@ import pytest
 
 from scripts.ci_changes import routes
 from tests.test_github_actions_policy import (
-    AREA_PUSH_WORKFLOWS as AREA_PUSH_WORKFLOWS,
-)
-from tests.test_github_actions_policy import (
-    HEAVY_PUSH_WORKFLOWS as HEAVY_PUSH_WORKFLOWS,
-)
-from tests.test_github_actions_policy import (
     event_path_filters as event_path_filters,
 )
 from tests.test_github_actions_policy import (
@@ -62,10 +56,7 @@ EVERY_MAIN_PUSH = {"gitleaks.yml", "auto_merge_watch.yml"}
 @pytest.mark.parametrize(
     "paths",
     [
-        ["README.md"],
-        ["docs/developer_setup.md", "native/README.md"],
         [".github/copilot-instructions.md", "gui/AGENTS.md"],
-        ["docs/nested/new-prose.md"],
         ["native/deepvariant/README.md", "gui/app/README.md", "packaging/README.md"],
     ],
 )
@@ -74,21 +65,34 @@ def test_docs_fast_path_909_does_not_start_heavy_push_ci(paths: list[str]) -> No
     assert triggered == EVERY_MAIN_PUSH
 
 
-def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose() -> None:
-    triggered = triggered_workflows(["site_src/new-guide.md"])
+@pytest.mark.parametrize(
+    "paths",
+    [
+        ["README.md"],
+        ["docs/developer_setup.md", "native/README.md"],
+        ["docs/nested/new-prose.md"],
+        ["gui/docs/settings.md"],
+        ["gui/devdocs/architecture.md"],
+        ["site_src/new-guide.md"],
+    ],
+)
+def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose(
+    paths: list[str],
+) -> None:
+    triggered = triggered_workflows(paths)
     assert triggered == EVERY_MAIN_PUSH | {"pages.yml"}
 
 
 @pytest.mark.parametrize(
     "reference",
     [
-        "docs/api.md",
-        "docs/commands.md",
+        "site_src/api.md",
+        "site_src/commands.md",
         "site_src/cli.md",
         "site_src/index.md",
         "site_src/install.md",
         "gui/site_src/index.md",
-        "gui/docs/distribution.md",
+        "gui/devdocs/distribution.md",
         "gui/docs/CHANGELOG.md",
     ],
 )
@@ -96,8 +100,7 @@ def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
     reference: str,
 ) -> None:
     triggered = triggered_workflows([reference])
-    assert not triggered & (HEAVY_PUSH_WORKFLOWS | AREA_PUSH_WORKFLOWS)
-    assert "gitleaks.yml" in triggered
+    assert EVERY_MAIN_PUSH <= triggered <= EVERY_MAIN_PUSH | {"pages.yml"}
     assert triggered_workflows([reference], "pull_request") == {"pr_ci.yml"}
     assert not routes([reference])["cli"]
 
@@ -107,8 +110,7 @@ def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
 )
 def test_docs_fast_path_909_does_not_hide_mixed_code_pushes(code: str) -> None:
     triggered = triggered_workflows(["README.md", code])
-    assert HEAVY_PUSH_WORKFLOWS | {"gitleaks.yml"} <= triggered
-    assert "os_tests.yml" not in triggered
+    assert triggered == EVERY_MAIN_PUSH | {"codeql.yml", "pages.yml"}
 
 
 def test_github_path_filters_reinclude_only_matching_files_in_order() -> None:
@@ -191,11 +193,11 @@ def test_docs_fast_path_909_pr_prose_runs_only_area_checks(paths: list[str]) -> 
     assert selected["docs"] == any(
         path.startswith(("site_src/", "gui/site_src/")) for path in paths
     )
-    assert not any(selected[area] for area in ("cli", "native", "install"))
+    assert not any(selected[area] for area in ("cli", "native"))
 
 
 @pytest.mark.parametrize(
-    "reference", ["docs/api.md", "docs/commands.md", "site_src/cli.md"]
+    "reference", ["site_src/api.md", "site_src/commands.md", "site_src/cli.md"]
 )
 def test_docs_fast_path_909_pr_generated_docs_keep_freshness_checks(
     reference: str,
@@ -204,13 +206,36 @@ def test_docs_fast_path_909_pr_generated_docs_keep_freshness_checks(
     assert routes([reference])["docs"]
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/wgsextract_cli/api/_params.py",
+        "src/wgsextract_cli/commands/registry.py",
+        "src/wgsextract_cli/core/settings_schema.py",
+        "docs/data/configuration-guide.md",
+    ],
+)
+def test_1531_generated_reference_inputs_trigger_pages_deployment(path: str) -> None:
+    assert "pages.yml" in triggered_workflows([path])
+
+
 def test_docs_fast_path_909_pr_code_still_runs_external_workflows() -> None:
     assert {
         "codeql.yml",
         "gui-ci.yml",
         "gui-dev-setup.yml",
-        "gui-distribution.yml",
-        "gui-tauri-installer.yml",
     } <= triggered_workflows(
         ["README.md", "gui/app/web/packagers/tauri/src/main.rs"], "pull_request"
     )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "scripts/gen_server_openapi.py",
+        "src/wgsextract_cli/server/http_api.py",
+        "src/wgsextract_cli/server/transport.py",
+    ],
+)
+def test_1537_server_transport_inputs_trigger_gui_type_build(path: str) -> None:
+    assert "gui-ci.yml" in triggered_workflows([path], "pull_request")

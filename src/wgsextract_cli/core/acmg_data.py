@@ -28,13 +28,7 @@ from ._acmg_data_build import (
     build as build,
 )
 from ._acmg_data_build import (
-    run_tool as run_tool,
-)
-from ._acmg_data_build import (
     sa_build as sa_build,
-)
-from ._acmg_data_build import (
-    stream_reduced as stream_reduced,
 )
 from ._acmg_data_plan import (
     ASSEMBLY as ASSEMBLY,
@@ -158,4 +152,13 @@ from ._acmg_data_sources import (
 )
 from ._acmg_data_sources import (
     tabix_contigs as tabix_contigs,
+)
+from ._acmg_data_tools import (
+    add_region_flags as add_region_flags,
+)
+from ._acmg_data_tools import (
+    run_tool as run_tool,
+)
+from ._acmg_data_tools import (
+    stream_reduced as stream_reduced,
 )

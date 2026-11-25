@@ -252,6 +252,7 @@ def test_chain_fails_instead_of_copying_unannotated_input(tmp_path, scenario):
 
     class Lib:
         clinvar_vcf = None if scenario == "all_skipped" else "present"
+        fasta = None
 
         def __init__(self, *_a, **_k):
             pass
@@ -1173,7 +1174,7 @@ def test_ensure_bgzf_raises_on_tool_failure(tmp_path_factory):
 def test_ploidy_falls_back_to_reference_build(build, expected):
     from wgsextract_cli.core.sample_ploidy import ploidy_args
 
-    lib = argparse.Namespace(ploidy_file=None, build=build)
+    lib = argparse.Namespace(ploidy_file=None, build=build, confirmed_build=build)
     assert ploidy_args(None, None, lib) == expected  # type: ignore[arg-type]
 
 
@@ -1181,7 +1182,7 @@ def test_ploidy_falls_back_to_reference_build(build, expected):
 def test_ploidy_requires_explicit_value_without_known_build(build):
     from wgsextract_cli.core.sample_ploidy import ploidy_args
 
-    lib = argparse.Namespace(ploidy_file=None, build=build)
+    lib = argparse.Namespace(ploidy_file=None, build=build, confirmed_build=build)
     with pytest.raises(WGSExtractError, match="Ploidy"):
         ploidy_args(None, None, lib)  # type: ignore[arg-type]
 

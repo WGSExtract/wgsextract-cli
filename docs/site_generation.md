@@ -12,17 +12,27 @@ Common acronyms are defined once in `site_src/abbr.toml`. The generator adds mat
 
 The site Markdown files use YAML-compatible front matter. Run `pixi run lint` before committing; it validates Python, site front matter, and `site_src/abbr.toml`, and the same site-source check runs from pre-commit and CI.
 
-Detailed guides live in `docs/`, indexed by task in [docs/README.md](README.md).
-They are repository Markdown, not generated site pages: adding one needs a
-link in that index, not a generator registration. Link it from the relevant
-`site_src/` page with its GitHub URL. New website pages instead need front
-matter with an `output` name and, when appropriate, an entry in `NAV_ITEMS`
-in `scripts/build_site.py`.
+Detailed guides live in `docs/` (CLI back-end), `gui/docs/` (desktop app user
+docs), and `gui/devdocs/` (desktop app developer docs). `scripts/build_docs_html.py`
+renders `README.md`, `docs/**/*.md`, `gui/README.md`, `gui/docs/**/*.md`, and
+`gui/devdocs/**/*.md` into static HTML under `site/docs/` and `site/app/docs/`
+(plus `site/app/devdocs/`), rewriting relative `.md` links to `.html` with
+GitHub-compatible heading anchors. Both CLI and GUI error messages use
+`https://wgse.bio/wgsextract-cli/...` short URLs (`src/wgsextract_cli/core/docs_links.py`
+and `gui/app/shared/docs-links.ts`) pointing to these rendered pages.
 
-`docs/configuration.md` is generated too: edit the schema for setting rows,
-or `docs/data/configuration-guide.md` for its hand-written usage guide, then
-run `pixi run python scripts/gen_config_docs.py`. That fragment's links are
-relative to its own directory; the generator rebases them to `docs/`.
+New website landing pages in `site_src/` still need front matter with an `output`
+name and, when appropriate, an entry in `NAV_ITEMS` in `scripts/build_site.py`.
+
+The site build generates the command, Python API and configuration references,
+plus the CLI landing page's command cards. Edit the command registry and help
+catalog, API docstrings and parameter definitions, or the config schema and its
+hand-written guide (`docs/data/configuration-guide.md`). Do not commit generated
+reference pages. The configuration guide's links are relative to its own
+directory; the build links to their published GitHub pages.
+
+Run `pixi run -e dev python scripts/validate_site_sources.py --generated` to render
+and validate the generated pages without writing HTML.
 
 ## Hand-maintained files in `site/`
 
@@ -35,4 +45,7 @@ The generator only writes `site/*.html`. These files are maintained by hand and 
 
 ## Deployment
 
-`.github/workflows/pages.yml` runs `scripts/build_site.py` on every push to `main` that touches `site/`, `site_src/`, or the generator, then publishes `site/`. The deployed HTML is always rebuilt from `site_src/`. Run `pixi run site-build` after editing `site_src/` for a current local preview; commit only the source and hand-maintained assets.
+`.github/workflows/pages.yml` rebuilds and publishes `site/` when site sources,
+the generators, or reference inputs (including CLI source) change on `main`.
+Run `pixi run site-build` for a local preview; commit only the source and
+hand-maintained assets.

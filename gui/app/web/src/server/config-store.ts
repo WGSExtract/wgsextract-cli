@@ -92,19 +92,26 @@ export function initialFieldValues(manifest: BundleManifest, configValues: Value
 export function initialCheckedOptions(manifest: BundleManifest, configValues: ValueMap, bundleState: Pick<BundleState, "checkedOptions">): Record<string, string[]> {
     const values: Record<string, string[]> = {};
     for (const control of allControls(manifest).filter((candidate) => candidate.kind === "checkboxGroup")) {
+        const declared = control.options ?? [];
+        const validOptionIDs = new Set(declared.map((option) => option.id));
+        const defaults = declared.filter((option) => option.selected).map((option) => option.id);
+        const filterValid = (items: string[]) => {
+            const filtered = validOptionIDs.size > 0 ? items.filter((id) => validOptionIDs.has(id)) : items;
+            return items.length > 0 && filtered.length === 0 ? defaults : filtered;
+        };
         const binding = configSettingBindings(manifest, control.id)[0];
         if (binding) {
             const configValue = configValues[`${binding.control.id}.${binding.setting.id}`] ?? binding.setting.value ?? "";
-            values[control.id] = String(configValue)
+            values[control.id] = filterValid(String(configValue)
                 .split(",")
                 .map((item) => item.trim())
-                .filter(Boolean);
+                .filter(Boolean));
         }
         else if (bundleState.checkedOptions?.[control.id]) {
-            values[control.id] = bundleState.checkedOptions[control.id] ?? [];
+            values[control.id] = filterValid(bundleState.checkedOptions[control.id] ?? []);
         }
         else {
-            values[control.id] = (control.options ?? []).filter((option) => option.selected).map((option) => option.id);
+            values[control.id] = defaults;
         }
     }
     return values;

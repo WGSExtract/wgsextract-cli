@@ -18,7 +18,6 @@ from scripts.ci_changes import setup_checks as setup_checks
 from scripts.ci_changes import site_validation as site_validation
 from scripts.ci_codeql_scope import EXTENSIONS as EXTENSIONS
 from scripts.ci_codeql_scope import LANGUAGES as LANGUAGES
-from scripts.ci_codeql_scope import languages as codeql_languages
 from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
 from scripts.ci_select_tests import ci_test_targets as ci_test_targets
@@ -26,7 +25,7 @@ from scripts.ci_select_tests import os_selection
 from scripts.ci_select_tests import select_tests as select_tests
 from scripts.ci_test_dependencies import DOCS_ONLY_SCRIPTS as DOCS_ONLY_SCRIPTS
 from scripts.ci_test_dependencies import DOCS_TEST_TARGETS as DOCS_TEST_TARGETS
-from scripts.ci_test_dependencies import GENERATED_DOCS as GENERATED_DOCS
+from scripts.ci_test_dependencies import GENERATED_DOCS
 from scripts.ci_test_dependencies import docs_test_targets as docs_test_targets
 from scripts.ci_test_dependencies import test_inputs as referenced_inputs
 from scripts.pr_checks_ready import checks_ready as checks_ready
@@ -40,35 +39,31 @@ from scripts.pr_checks_ready import latest_ready_run as latest_ready_run
             ["AGENTS.md", "native/README.md", ".github/copilot-instructions.md"],
             set(),
         ),
-        (["docs/api.md", "docs/commands.md"], {"docs"}),
+        (["site_src/api.md", "site_src/commands.md"], {"docs"}),
         (["native/bwa/bwa.c"], {"native"}),
         # Mockup changes also feed the cross-platform review-server regressions.
         (["gui/mockups/index.html", "site_src/index.md"], {"site", "cli"}),
         (["gui/scripts/site_layout.py"], {"site", "cli"}),
         (["gui/app/shared/config.ts"], set()),
         (["src/wgsextract_cli/commands/info.py"], {"cli"}),
-        (["pixi.lock"], {"cli", "install"}),
-        (["scripts/installlab/lab.py"], {"cli", "install"}),
+        (["pixi.lock"], {"cli"}),
+        (["scripts/installlab/lab.py"], {"cli"}),
         ([".github/actions/download-cache/action.yml"], {"docs"}),
-        (["install.sh"], {"cli", "install"}),
-        (["uninstall.sh"], {"cli", "install"}),
-        (["uninstall_windows.bat"], {"cli", "install"}),
-        (["scripts/bootstrap_windows_prereqs.ps1"], {"cli", "install"}),
-        (["src/wgsextract_cli/main.py"], {"cli", "install"}),
-        (["gui/app/web/packagers/tauri/Cargo.lock"], {"install"}),
+        (["install.sh"], {"cli"}),
+        (["uninstall.sh"], {"cli"}),
+        (["uninstall_windows.bat"], {"cli"}),
+        (["scripts/bootstrap_windows_prereqs.ps1"], {"cli"}),
+        (["src/wgsextract_cli/main.py"], {"cli"}),
+        (["gui/app/web/packagers/tauri/Cargo.lock"], set()),
         (
             ["native/bwa/bwa.c", "src/wgsextract_cli/main.py"],
-            {"native", "cli", "install"},
+            {"native", "cli"},
         ),
         (["unknown/new-config"], {"cli"}),
     ],
 )
 def test_757_routes_isolated_and_mixed_prs(paths: list[str], enabled: set[str]) -> None:
     assert {key for key, value in routes(paths).items() if value} == enabled
-
-
-def test_757_label_forces_install_lab_on_a_docs_pr() -> None:
-    assert routes(["README.md"], force_install_lab=True)["install"]
 
 
 def test_1495_remote_supervisor_change_runs_native_smoke_not_product_suite() -> None:
@@ -80,7 +75,7 @@ def test_1495_remote_supervisor_change_runs_native_smoke_not_product_suite() -> 
         assert lanes[platform] == ["tests/test_ci_certify_remote.py"]
 
 
-def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() -> None:
+def test_release_only_lanes_are_not_exported_by_the_pr_router() -> None:
     script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
     output = subprocess.check_output(
         [
@@ -90,7 +85,6 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
             "HEAD",
             "--head",
             "HEAD",
-            "--force-install-lab",
         ],
         text=True,
     )
@@ -101,12 +95,11 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
         "site_validation": "false",
         "native": "false",
         "site": "false",
-        "install": "true",
         "fast": "false",
         "draft_cli": "false",
         "python_files": "[]",
         "routed": "true",
-        "setup_checks": "true",
+        "setup_checks": "false",
         "move_modules": "[]",
         "optional_tests": "[]",
         "tests": "[]",
@@ -135,6 +128,10 @@ def test_954_install_override_on_an_empty_diff_does_not_select_the_cli_matrix() 
         ("tests/test_contamination.py", "tests/test_contamination.py"),
         ("src/wgsextract_cli/commands/vcf/callers.py", "tests/test_vcf_callers.py"),
         ("tests/test_methylation.py", "tests/test_methylation.py"),
+        (
+            "src/wgsextract_cli/commands/methylation_hp.py",
+            "tests/test_methylation_regions.py",
+        ),
     ],
 )
 def test_1199_optional_tools_follow_affected_test_imports(
@@ -216,18 +213,14 @@ def test_1199_queue_full_os_suite_keeps_optional_tools_diff_routed(
 @pytest.mark.skipif(
     not sys.platform.startswith("linux"), reason="workflow steps run in Linux bash"
 )
-@pytest.mark.parametrize("live_label", ["true", "false", "api-error"])
-def test_954_routing_reads_live_install_label_and_fails_closed(
-    tmp_path: Path, live_label: str
+def test_release_only_install_lab_no_longer_needs_a_live_label_lookup(
+    tmp_path: Path,
 ) -> None:
     root = Path(__file__).resolve().parents[1]
     command = workflow_shell("Route the complete PR diff")
     # GitHub's API is the network boundary; git diff and routing run for real.
     gh = tmp_path / "gh"
-    gh.write_text(
-        "#!/bin/sh\n"
-        + ("exit 1\n" if live_label == "api-error" else f"echo {live_label}\n")
-    )
+    gh.write_text("#!/bin/sh\nexit 1\n")
     gh.chmod(0o755)
     output = tmp_path / "output"
     environment = {
@@ -250,14 +243,10 @@ def test_954_routing_reads_live_install_label_and_fails_closed(
         text=True,
         check=False,
     )
-    if live_label == "api-error":
-        assert result.returncode != 0
-        assert not output.exists()
-    else:
-        assert result.returncode == 0, result.stderr
-        selected = dict(line.split("=", 1) for line in output.read_text().splitlines())
-        assert selected["install"] == live_label
-        assert selected["routed"] == "true"
+    assert result.returncode == 0, result.stderr
+    selected = dict(line.split("=", 1) for line in output.read_text().splitlines())
+    assert "install" not in selected
+    assert selected["routed"] == "true"
 
 
 @pytest.mark.parametrize(
@@ -269,16 +258,9 @@ def test_763_drafts_defer_heavy_checks_until_ready(paths: list[str]) -> None:
     draft = routes(paths, draft=True)
     assert draft["docs"] == (bool(docs_test_targets(paths)) or site_validation(paths))
     assert draft["draft_cli"] == ready["cli"]
-    assert draft["fast"] == any(
-        ready[area] for area in ("cli", "native", "site", "install")
-    )
-    assert not any(draft[key] for key in ("cli", "native", "site", "install"))
+    assert draft["fast"] == any(ready[area] for area in ("cli", "native", "site"))
+    assert not any(draft[key] for key in ("cli", "native", "site"))
     assert not ready["fast"]
-
-
-def test_763_install_override_cannot_start_heavy_checks_on_a_draft() -> None:
-    assert not routes(["install.sh"], draft=True, force_install_lab=True)["install"]
-    assert not any(routes([], draft=True, force_install_lab=True).values())
 
 
 @pytest.mark.parametrize(
@@ -483,40 +465,35 @@ def test_913_prose_skips_python_tests_and_only_validates_site_sources(
 ) -> None:
     for draft in (False, True):
         selected = routes(paths, draft=draft)
-        assert not any(
-            selected[area] for area in ("cli", "native", "site", "install", "fast")
-        )
+        assert not any(selected[area] for area in ("cli", "native", "site", "fast"))
         assert selected["docs"] == validate
         assert site_validation(paths) == validate
         assert docs_test_targets(paths) == []
 
 
+# Generators that write references also run the regen and LF line-ending checks.
+_REGEN_TESTS = ["tests/test_regen.py", "tests/test_text_newlines.py"]
+
+
 @pytest.mark.parametrize(
     ("path", "targets"),
     [
-        ("docs/api.md", ["tests/test_api.py::test_api_docs_are_up_to_date"]),
-        ("docs/commands.md", ["tests/test_cli_help.py"]),
-        ("site_src/cli.md", ["tests/test_cli_help.py"]),
-        ("scripts/regen.py", ["tests/test_regen.py"]),
+        ("site_src/api.md", ["tests/test_site_references.py"]),
+        ("site_src/commands.md", ["tests/test_site_references.py"]),
+        ("site_src/cli.md", ["tests/test_site_references.py"]),
+        ("scripts/regen.py", _REGEN_TESTS),
         ("scripts/bump_version.py", ["tests/test_bump_version.py"]),
         (
             "scripts/gen_api_docs.py",
-            ["tests/test_api.py::test_api_docs_are_up_to_date", "tests/test_regen.py"],
+            ["tests/test_site_references.py"],
         ),
         (
-            "scripts/gen_command_docs.py",
-            ["tests/test_cli_help.py", "tests/test_regen.py"],
-        ),
-        (
-            "docs/configuration.md",
-            ["tests/test_core_cli.py::test_configuration_docs_are_up_to_date"],
+            "docs/data/configuration-guide.md",
+            ["tests/test_site_references.py"],
         ),
         (
             "scripts/gen_config_docs.py",
-            [
-                "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
-                "tests/test_regen.py",
-            ],
+            ["tests/test_site_references.py"],
         ),
         (
             "scripts/ci_changes.py",
@@ -533,7 +510,6 @@ def test_913_prose_skips_python_tests_and_only_validates_site_sources(
             "scripts/build_mockup_previews.py",
             ["tests/test_build_mockup_previews.py"],
         ),
-        ("tests/fixtures/api_cli_snapshot.json", ["tests/test_api_cli_parity.py"]),
     ],
 )
 def test_913_light_checks_run_only_for_their_own_inputs(
@@ -549,12 +525,18 @@ def test_913_light_checks_run_only_for_their_own_inputs(
     assert docs_test_targets([path]) == targets
 
 
+def test_1531_help_cache_source_runs_product_tests() -> None:
+    paths = ["src/wgsextract_cli/cli/help_index.py"]
+    assert routes(paths)["cli"]
+    assert "tests/test_help_index.py" in docs_test_targets(paths)
+
+
 @pytest.mark.parametrize(
     "paths",
     [
         ["src/wgsextract_cli/commands/info.py"],
-        ["src/wgsextract_cli/api/__init__.py", "docs/api.md"],
-        ["src/wgsextract_cli/cli/help.py", "docs/commands.md", "site_src/cli.md"],
+        ["src/wgsextract_cli/api/__init__.py", "site_src/api.md"],
+        ["src/wgsextract_cli/cli/help.py", "site_src/commands.md", "site_src/cli.md"],
     ],
 )
 def test_913_cli_lane_owns_freshness_without_duplicate_docs_pytest(
@@ -724,17 +706,16 @@ def codeql_scope(repo: Path, *args: str) -> list[str]:
         ({"src/pkg/mod.py": "x = 2\n"}, ["python"]),
         ({"docs/guide.md": "changed\n"}, []),
         ({"tests/fixtures/data.json": "{}\n"}, ["javascript-typescript"]),
-        ({"crate/src/main.rs": "fn main() {}\n"}, ["rust"]),
-        # Non-Rust crate inputs (configs, icons) may change what Rust embeds.
-        ({"crate/tauri.conf.json": "{}\n"}, ["javascript-typescript", "rust"]),
-        ({"crate/icons/icon.png": "png\n"}, ["rust"]),
+        # Rust is not scanned by CodeQL (owner decision, 2026-11-24).
+        ({"crate/src/main.rs": "fn main() {}\n"}, []),
+        ({"crate/tauri.conf.json": "{}\n"}, ["javascript-typescript"]),
         (
             {"tools/check/action.yml": "runs: {}\n"},
             ["javascript-typescript", "actions"],
         ),
         (
             {".github/codeql/config.txt": "x\n"},
-            ["python", "javascript-typescript", "rust", "actions"],
+            ["python", "javascript-typescript", "actions"],
         ),
     ],
 )
@@ -774,13 +755,10 @@ def test_1373_codeql_pr_analyzes_only_the_languages_it_touches(
     assert codeql_scope(tmp_path, "--all") == [
         "python",
         "javascript-typescript",
-        "rust",
         "actions",
     ]
 
 
-def test_1373_root_level_crate_treats_every_file_as_rust_input() -> None:
+def test_codeql_languages_match_extractor_table() -> None:
     assert set(LANGUAGES) == set(EXTENSIONS)
-    root = {PurePosixPath(".")}
-    assert codeql_languages(["assets/logo.png"], root) == ["rust"]
-    assert codeql_languages(["assets/logo.png"], {PurePosixPath("crate")}) == []
+    assert "rust" not in LANGUAGES

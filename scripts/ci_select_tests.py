@@ -23,11 +23,13 @@ CI_TESTS = (
     "tests/test_ci_required.py",
     "tests/test_ci_selection.py",
     "tests/test_github_actions_policy.py",
+    "tests/test_ci_installlab_apt.py",
     "tests/test_ci_codeql_scope_policy.py",
     "tests/test_ci_main_dedupe_policy.py",
     "tests/test_workflow_readiness.py",
     "tests/test_workflow_paths.py",
     "tests/test_python_size.py",
+    "tests/test_mypy_policy.py",
     "tests/test_ci_certify.py",
     "tests/test_ci_certify_remote.py",
     "tests/test_ci_scheduling.py",
@@ -38,9 +40,9 @@ CI_TESTS = (
     "tests/test_ci_impact_wide.py",
     "tests/test_ci_impact_gate.py",
     "tests/test_ci_impact_fetch.py",
-    "tests/test_ci_nightly.py",
     "tests/test_ci_auto_merge_watch.py",
     "tests/test_ci_release_latest.py",
+    "tests/test_ci_release_gate.py",
     "tests/test_ci_capacity.py",
     "tests/test_ci_cache_prune.py",
 )
@@ -425,9 +427,7 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
     direct_closures = context.direct_closures
     closures = context.closures
     for path in paths:
-        if path.endswith(".md") and path not in GENERATED_DOCS:
-            continue
-        if path in GENERATED_DOCS:
+        if path.endswith(".md") or path in GENERATED_DOCS:
             continue
         if ci_path(path):
             selected.update(test for test in CI_TESTS if test in tests)

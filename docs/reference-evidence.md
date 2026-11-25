@@ -242,8 +242,8 @@ A command given a variant VCF finds its gVCF through the
 manifest in the VCF's folder, or one its [sample workspace](sample-workspace.md)
 recorded, that lists the VCF and a `reference_evidence` output, both
 unchanged since (same recorded fingerprint; a manifest without fingerprints
-isn't trusted), the gVCF indexed. Without one, the
-command works as before.
+isn't trusted), the gVCF indexed. A server job follows only manifests and
+files inside the folders it allows. Without one, the command works as before.
 
 - `score pgs` counts a scoring site the VCF doesn't list as homozygous
   reference only where the gVCF calls it `callable_reference` (an indexed
@@ -256,7 +256,9 @@ command works as before.
   reference genotype only where every base of it is `callable_reference`
   with one ploidy; otherwise it is passed as a no-call (so `--absent-to-ref`
   can't make it reference) with the state as its `PGX_STATE`. See
-  [variant-confidence.md](variant-confidence.md).
+  [variant-confidence.md](variant-confidence.md). An explicit BAM/CRAM
+  can replace this evidence for a variants-only input; see
+  [Pharmacogenomics and repeat typing](variants.md#pharmacogenomics-and-repeat-typing).
 - `vcf clinvar`, `vcf gnomad --max-af` and `analyze` add the gVCF's state at
   the sites they checked to their confidence details
   (`details.confidence[].reference_evidence`): at the calls they labelled
@@ -268,6 +270,11 @@ command works as before.
   `reference_evidence_unassessed_sites` warning. A site's state is
   `callable_reference` only when every base of it is. See
   [variant-confidence.md](variant-confidence.md#reference-evidence-at-the-sites-checked).
+- `vcf callability` classifies every base of a gene list's coding exons and
+  calls an exon callable only when every base is `callable_reference` or a
+  call, outside known short-read limitations; the report then tells genes
+  with nothing reported from genes it could not read. See
+  [exon-callability.md](exon-callability.md).
 - The ancestry projection (`qc ancestry` on a VCF, and `score pgs`'s PCA
   projection) fills an ancestry site the VCF doesn't list as hom-ref only
   where the gVCF calls it `callable_reference`, instead of assuming every

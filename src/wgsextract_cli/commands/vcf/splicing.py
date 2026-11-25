@@ -6,18 +6,19 @@ from wgsextract_cli.api.vcf import (
     VcfPharmgkbParams,
     VcfSpliceaiParams,
 )
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.builds import is_hg38_build
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.pharmgkb import INFO_HEADER as PHARMGKB_INFO_HEADER
 from wgsextract_cli.core.pharmgkb import table_provenance
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.variant_files import ensure_vcf_prepared, is_vcf_path
+from wgsextract_cli.core.variant_scores import SPLICEAI_MATCH
 
 from .annotation_helpers import (
     annotate_vcf,
@@ -57,6 +58,7 @@ def run_spliceai(params: VcfSpliceaiParams) -> None:
         threads=params.threads,
         reference=lib.fasta,
         annotation_source=spliceai_file,
+        mark_matches=SPLICEAI_MATCH,
     )
     record_annotated(ann_out)
     logging.info(LOG_MESSAGES["vcf_spliceai_done"].format(output=ann_out))
