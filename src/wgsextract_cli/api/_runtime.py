@@ -466,6 +466,7 @@ def _prepare(params: Params, result: CommandResult) -> Path | None:
     from wgsextract_cli.cli.dispatch import (
         INPUT_ARGS,
         checks_alignment_input,
+        input_role,
         reports_status,
     )
 
@@ -476,14 +477,10 @@ def _prepare(params: Params, result: CommandResult) -> Path | None:
     if isinstance(input_path, str) and is_url(input_path):
         check_public(input_path)  # Before a secret in it is recorded.
         result.add_input(input_path, "input")
-    for name, role in INPUT_ARGS.items():
+    for name in () if params.PRIVATE_PROVENANCE else INPUT_ARGS:
         path = getattr(params, name, None)
-        if (
-            not params.PRIVATE_PROVENANCE
-            and isinstance(path, Path)
-            and path.expanduser().exists()
-        ):
-            result.add_input(path.expanduser(), role)
+        if isinstance(path, Path) and path.expanduser().exists():
+            result.add_input(path.expanduser(), input_role(params.COMMAND, name))
     if isinstance(input_path, Path):
         input_path = input_path.expanduser()
         if input_path.suffix.lower() in {".bam", ".cram"} and checks_alignment_input(

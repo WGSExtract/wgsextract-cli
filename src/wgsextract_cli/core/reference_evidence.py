@@ -58,6 +58,9 @@ from wgsextract_cli.core.reference_evidence_records import (
     GQ as GQ,
 )
 from wgsextract_cli.core.reference_evidence_records import (
+    HEADER_KEY as HEADER_KEY,
+)
+from wgsextract_cli.core.reference_evidence_records import (
     Classified as Classified,
 )
 from wgsextract_cli.core.reference_evidence_records import (
@@ -70,6 +73,9 @@ from wgsextract_cli.core.reference_evidence_records import (
     State as State,
 )
 from wgsextract_cli.core.reference_evidence_records import count_bases as count_bases
+from wgsextract_cli.core.reference_evidence_records import (
+    header_declares_gvcf as header_declares_gvcf,
+)
 from wgsextract_cli.core.reference_evidence_records import record_state as record_state
 from wgsextract_cli.core.reference_evidence_records import (
     reference_depth as reference_depth,
@@ -80,7 +86,6 @@ from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
 from wgsextract_cli.core.variant_confidence import Thresholds
 
 SCHEMA = "wgsextract.reference_evidence/1"
-HEADER_KEY = "wgseReferenceEvidence"
 POLICY_HEADER_KEY = "wgsePloidyPolicy"
 # Blocks below the first band would be written one record per base.
 BCFTOOLS_BANDS = "0,5,10,20"
@@ -93,14 +98,6 @@ GATK_BANDS = "10,20,30,60"
 GATK_MIN_MAPPING_QUALITY = 20
 # Clair3's --min_mq default (shared/param_p.py, param_f.py).
 CLAIR3_MIN_MAPPING_QUALITY = 5
-
-
-def header_declares_gvcf(header: str) -> bool:
-    """Recognize WGS Extract evidence and GATK-style reference confidence bands."""
-    return any(
-        line.startswith((f"##{HEADER_KEY}=", "##GVCFBlock"))
-        for line in header.splitlines()
-    )
 
 
 @dataclass(frozen=True)
@@ -356,6 +353,7 @@ class ReferenceEvidence:
     known_lengths: Mapping[str, int] = field(default_factory=dict, repr=False)
     header_text: InitVar[str | None] = None
     allow_region_files: bool = True
+    check_variant_quality: bool = False
     lengths: dict[str, int] = field(init=False)
     provenance: Provenance | None = field(init=False)
     quality_model: str = field(init=False)
@@ -428,6 +426,7 @@ class ReferenceEvidence:
                 if (alias := match_chromosome_name(contig, lengths))
             },
             allow_region_files=self.allow_region_files,
+            check_variant_quality=self.check_variant_quality,
         )
         renamed = normalize_vcf_chromosomes(self.path, list(lengths), str(work))
         split = work / "evidence.split.vcf.gz"
@@ -477,7 +476,10 @@ class ReferenceEvidence:
         )
         ensure_vcf_indexed(str(output))
         result = ReferenceEvidence(
-            str(output), lengths, allow_region_files=self.allow_region_files
+            str(output),
+            lengths,
+            allow_region_files=self.allow_region_files,
+            check_variant_quality=self.check_variant_quality,
         )
         if self.provenance:
 
@@ -572,6 +574,7 @@ class ReferenceEvidence:
                 missing_state=State.UNCOVERED
                 if stream_complete
                 else State.NOT_ASSESSED,
+                check_variant_quality=self.check_variant_quality,
             )
         )
         spans: Iterator[Span] = observed
@@ -627,6 +630,7 @@ class ReferenceEvidence:
                         record_ploidy=self.provenance.record_ploidy
                         if self.provenance
                         else None,
+                        check_variant_quality=self.check_variant_quality,
                     )
                 finally:
                     process.stdout.close()

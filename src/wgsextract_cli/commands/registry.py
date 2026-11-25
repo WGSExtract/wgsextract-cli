@@ -38,6 +38,7 @@ COMMAND_MODULES = tuple(
         "deps",
         "examples",
         "bam",
+        "fastq",
         "benchmark",
         "extract",
         "microarray",
@@ -154,6 +155,9 @@ COMMAND_TIERS: tuple[CommandTier, ...] = (
     CommandTier("help", SETUP, "List every command, or explain one: 'help vcf snp'."),
     CommandTier("bam", ADVANCED, "Sort, index, convert and merge BAM/CRAM files."),
     CommandTier("qc", ADVANCED, "Read and VCF quality reports; fake test data."),
+    CommandTier(
+        "fastq", ADVANCED, "Archive and restore FASTQ reads without changing bytes."
+    ),
     CommandTier("cohort", ADVANCED, "Summarize variants across a local cohort."),
     CommandTier("repair", ADVANCED, "Fix FTDNA BAM/VCF formatting problems."),
     CommandTier(
@@ -217,6 +221,7 @@ ADVANCED_SUBCOMMANDS = frozenset(
         "vcf cnv",
         "vcf sv",
         "vcf trio",
+        "vcf callability",
         "vcf pharmcat",
         "vcf to-fasta",
         "vcf chain-annotate",

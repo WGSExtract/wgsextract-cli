@@ -85,6 +85,9 @@ def card_path(
     card = stem.with_name(stem.name + CARD_SUFFIX)
     if not (may_follow(card) and may_follow(manifest)):
         return None
+    if _is_result_data(result, card) or _is_result_data(result, manifest):
+        logging.warning("Skipping result card: its path or manifest names a data file.")
+        return None
     # Pinned: once the card is an output, it mustn't become the manifest's namesake.
     result.set_manifest_stem(stem)
     return card
@@ -120,8 +123,30 @@ def publish(result: CommandResult, card: Path | None) -> Path | None:
         manifest = result.write_manifest()
     if manifest is not None and not manifest.name.endswith(FAILED_MANIFEST):
         stem = manifest.name.removesuffix(MANIFEST_SUFFIX)
-        manifest.with_name(f"{stem}.failed{CARD_SUFFIX}").unlink(missing_ok=True)
+        old_card = manifest.with_name(f"{stem}.failed{CARD_SUFFIX}")
+        if not _is_result_data(result, old_card):
+            old_card.unlink(missing_ok=True)
     return manifest
+
+
+def _is_result_data(result: CommandResult, path: Path) -> bool:
+    try:
+        if not path.exists() and not path.is_symlink():
+            return False
+        resolved = path.resolve()
+        for record in (*result.inputs, *result.outputs):
+            if "://" in record.path:
+                continue
+            candidate = Path(record.path)
+            if candidate.resolve() == resolved:
+                return True
+            with contextlib.suppress(OSError):
+                if candidate.samefile(path):
+                    return True
+    except (OSError, RuntimeError):
+        # If identity cannot be established, leave the potentially aliased file alone.
+        return True
+    return False
 
 
 def write_card(result: CommandResult, path: Path) -> None:

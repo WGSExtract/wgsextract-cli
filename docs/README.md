@@ -31,6 +31,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | Guide | Task |
 | --- | --- |
 | [Commands](https://wgsextract.github.io/wgsextract-cli/commands.html) | Find a command starting from your input |
+| [FASTQ archives](fastq-archive.md) | Compress and restore reads offline without changing FASTQ bytes |
 | [Microarray](microarray.md) | Export consumer files with explicit call/identity policies |
 | [Microarray indels](microarray-indels.md) | Supply sequence-defined insertion/deletion probes |
 | [CHM13 microarrays](microarray-chm13.md) | Project qualified CHM13 input to hg19/rCRS |
@@ -49,6 +50,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [ONT/PacBio](ont.md) | Align, basecall, call, phase and read methylation |
 | [DeepVariant ARM64](deepvariant-arm64.md) | Build and validate the native CPU image |
 | [VEP engines](vep-engines.md) | Annotate with vep-rs or Ensembl VEP |
+| [Exon callability](exon-callability.md) | See which coding exons a gVCF read, and what an unreported gene means |
 | [SV frequencies](sv-frequency.md) | Match structural variants to population frequencies |
 | [ACMG](acmg.md) | Use research-only classification with fastVEP |
 | [Research panels](panel.md) | Write and check a research panel file of genes, filters, sites and haplotypes |
