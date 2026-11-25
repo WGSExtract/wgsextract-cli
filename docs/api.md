@@ -317,7 +317,7 @@ metric counts them).
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
-| `ybrowse` | `bool` | `False` | `--ybrowse` | Call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads). |
+| `ybrowse` | `bool` | `False` | `--ybrowse` | Call installed, allele-annotated yBrowse SNP targets (GRCh38, or GRCh37 after ref ybrowse --grch37; no downloads). |
 
 ### `api.extract.y_mt_extract(YMtExtractParams)`
 
@@ -416,7 +416,7 @@ are mismapped.
 | `formats` | `str \| None` | `None` | `--formats` | Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf. |
 | `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T). |
 | `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
-| `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
+| `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38, or GRCh37 after ref ybrowse --grch37; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
 
 ## `api.bam`
 
@@ -2225,12 +2225,15 @@ CLI: `wgsextract ref ybrowse`.
 Install the snapshot; output role `reference_resource`.
 
 `RefYbrowseParams`: Install a verified, sites-only GRCh38 yBrowse snapshot into the
-library, or delete the installed snapshots.
+library, or delete the installed snapshots; `grch37` lifts it to GRCh37.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed yBrowse snapshots |
 | `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz) instead of downloading from ybrowse.org. |
+| `grch37` | `bool` | `False` | `--grch37` | Lift the installed GRCh38 sites to GRCh37 with Ensembl's chain, checked against the GRCh37 FASTA --ref names or the library's. |
+| `chain` | `Path \| None` | `None` | `--chain` | With --grch37, lift with this chain. |
+| `download` | `bool` | `False` | `--download` | With --grch37, download Ensembl's pinned chain (730 KB) if missing. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.download(RefDownloadParams)`
