@@ -18,7 +18,6 @@ from scripts.ci_changes import setup_checks as setup_checks
 from scripts.ci_changes import site_validation as site_validation
 from scripts.ci_codeql_scope import EXTENSIONS as EXTENSIONS
 from scripts.ci_codeql_scope import LANGUAGES as LANGUAGES
-from scripts.ci_codeql_scope import languages as codeql_languages
 from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
 from scripts.ci_select_tests import ci_test_targets as ci_test_targets
@@ -707,17 +706,16 @@ def codeql_scope(repo: Path, *args: str) -> list[str]:
         ({"src/pkg/mod.py": "x = 2\n"}, ["python"]),
         ({"docs/guide.md": "changed\n"}, []),
         ({"tests/fixtures/data.json": "{}\n"}, ["javascript-typescript"]),
-        ({"crate/src/main.rs": "fn main() {}\n"}, ["rust"]),
-        # Non-Rust crate inputs (configs, icons) may change what Rust embeds.
-        ({"crate/tauri.conf.json": "{}\n"}, ["javascript-typescript", "rust"]),
-        ({"crate/icons/icon.png": "png\n"}, ["rust"]),
+        # Rust is not scanned by CodeQL (owner decision, 2026-11-24).
+        ({"crate/src/main.rs": "fn main() {}\n"}, []),
+        ({"crate/tauri.conf.json": "{}\n"}, ["javascript-typescript"]),
         (
             {"tools/check/action.yml": "runs: {}\n"},
             ["javascript-typescript", "actions"],
         ),
         (
             {".github/codeql/config.txt": "x\n"},
-            ["python", "javascript-typescript", "rust", "actions"],
+            ["python", "javascript-typescript", "actions"],
         ),
     ],
 )
@@ -757,13 +755,10 @@ def test_1373_codeql_pr_analyzes_only_the_languages_it_touches(
     assert codeql_scope(tmp_path, "--all") == [
         "python",
         "javascript-typescript",
-        "rust",
         "actions",
     ]
 
 
-def test_1373_root_level_crate_treats_every_file_as_rust_input() -> None:
+def test_codeql_languages_match_extractor_table() -> None:
     assert set(LANGUAGES) == set(EXTENSIONS)
-    root = {PurePosixPath(".")}
-    assert codeql_languages(["assets/logo.png"], root) == ["rust"]
-    assert codeql_languages(["assets/logo.png"], {PurePosixPath("crate")}) == []
+    assert "rust" not in LANGUAGES
