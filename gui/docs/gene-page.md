@@ -57,7 +57,12 @@ command that provides it:
 | Research-only ACMG classes | `wgsextract vcf acmg --vcf-input VCF` |
 | A VCF | `wgsextract vcf call --input BAM` |
 
-The page never runs these itself: downloads happen only when you run them.
+When required reference files are missing (such as **Gene Maps** from
+`wgsextract ref gene-map` or the CRAM reference genome), **Show gene** stops
+before running and offers **Cancel**, **Continue** (if you installed them
+elsewhere), or **Install and Continue** — matching other desktop commands.
+Missing VCF annotation columns (VEP, ClinVar, gnomAD, ACMG) are listed under
+**Missing data** without blocking the page or prompting to download anything.
 T2T references have gene spans but no transcript models.
 
 ## Checking it

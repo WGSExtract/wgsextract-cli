@@ -77,7 +77,18 @@
 <li><code>app/web/packagers/tauri</code> supplies the Rust desktop shell. Installers take their app name and version from the embedded bundle; the WGSExtract app's version is the release tag of the CLI it bundles.</li>
 </ul>
 <p>Tagged releases build on Windows, macOS, and Linux with a signed Tauri updater feed. macOS has separate signed, notarized Apple Silicon and Intel builds, not a universal DMG. Windows and Linux packages are x64; native ARM64 packaging for those platforms is still a follow-up.</p>
-<p><a href="https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/distribution.md">Distribution details</a> cover packaging, signing, updates, and uninstall hooks. Earlier SwiftUI, Sparkle, and Electron implementations are not part of the current app.</p>
+<p><a href="devdocs/distribution.html">Distribution details</a> cover packaging, signing, updates, and uninstall hooks. Earlier SwiftUI, Sparkle, and Electron implementations are not part of the current app.</p>
+</div>
+</section>
+<section>
+<div class="wrap">
+<h2>Privacy and network boundary</h2>
+<p>WGS Extract separates two different user needs across two layers:</p>
+<ul>
+<li><strong>CLI back-end (<code>wgsextract</code>):</strong> Strictly offline by default. Ordinary analysis, inspection, and reporting commands never initiate network traffic, never check for updates, and never install tools or reference files silently. Network access happens only through explicit install/download subcommands or explicit opt-in flags (<code>--download</code>, <code>--online</code>, <code>--remote-sizes</code>, or <code>allow_reference_downloads = true</code>).</li>
+<li><strong>Desktop GUI front-end:</strong> Acts as an interactive assistant on the user's behalf across four transparent tiers: (1) lightweight, opt-out automatic update/catalog checks in Settings (no sample data; IP/header visibility disclosed), (2) interactive <strong>Cancel / Continue / Install and Continue</strong> prompts for missing public reference data, (3) user-clicked Setup, Install, Download, and documentation links, and (4) explicit per-action opt-in for any sample-derived remote feature such as the remote Genome Viewer.</li>
+</ul>
+<p>Read the full contract in <a href="devdocs/architecture.html#privacy-and-network-boundary">GUI Architecture (privacy boundary)</a> and the user-facing <a href="docs/privacy.html">Desktop App Privacy guide</a>.</p>
 </div>
 </section>
 <section>
@@ -87,7 +98,7 @@
 make run      # Web UI in a browser
 make tauri    # desktop app in dev mode
 make package  # installers for this host</code></pre>
-<p>On Windows, use <code>powershell -ExecutionPolicy Bypass -File .\make.ps1 &lt;target&gt;</code> with the same target names. Setup never elevates or installs system packages; see <a href="https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/developer_setup.md">developer setup</a> for OS prerequisites.</p>
+<p>On Windows, use <code>powershell -ExecutionPolicy Bypass -File .\make.ps1 &lt;target&gt;</code> with the same target names. Setup never elevates or installs system packages; see <a href="devdocs/developer_setup.html">developer setup</a> for OS prerequisites.</p>
 </div>
 </section>
 <section>

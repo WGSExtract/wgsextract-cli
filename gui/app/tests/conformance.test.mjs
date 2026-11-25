@@ -383,17 +383,13 @@ test("WGSExtract exposes My Genomes and reference genome library controls in Typ
     .actions.find((action) => action.id === "microarray-generate");
   assert.equal(microarrayAction.command.executable, "{{bundleRoot}}/scripts/run-wgsextract.sh");
   assert.deepEqual(microarrayAction.command.arguments.slice(0, 3), ["microarray", "--input", "{{bam_path}}"]);
-  // Left out until a genome is chosen: the CLI then uses the installed one matching the input.
-  assert.deepEqual(microarrayAction.command.optionalArguments[0], ["--ref", "{{ref_fasta}}"]);
+  // Reference genome is automatically resolved from the BAM/CRAM header, so Microarray has no ref_fasta selector or --ref flag.
+  assert.equal(microarrayAction.command.optionalArguments.some((args) => args.includes("--ref")), false);
   const microarrayRefControl = bundle.manifest.pages
     .find((page) => page.id === "microarray")
     .sections.find((section) => section.id === "microarray-inputs")
     .controls.find((control) => control.id === "ref_fasta");
-  assert.equal(microarrayRefControl.kind, "dropdown");
-  assert.equal(microarrayRefControl.emptyText, "None loaded. See Reference Genomes page to add.");
-  // The library folder, like the other reference dropdowns: the selected FASTA
-  // is not a library, so with it the list emptied once a genome was chosen.
-  assert.deepEqual(microarrayRefControl.dataSource.optionalArguments, [["--ref", "{{ref_path}}"]]);
+  assert.equal(microarrayRefControl, undefined);
   assert.equal(
     conditionMatches(microarrayAction.disabledWhen[0], {
       fieldValues: { bam_path: "sample.cram.crai" },

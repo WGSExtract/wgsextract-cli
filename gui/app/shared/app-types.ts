@@ -223,6 +223,15 @@ export interface PendingPrerequisites {
     stillMissing: boolean;
 }
 
+/** An output-only action held back because its permanent outputs are already newer than its inputs. */
+export interface PendingAlreadyRun {
+    action: ActionSpec;
+    reference: ActionReference;
+    context: CommandContext;
+    outputs: string[];
+    finishedAt?: string;
+}
+
 export interface WebUIState {
     manifest: BundleManifest | null;
     applicationName: string;
@@ -290,6 +299,7 @@ export interface WebUIState {
     isSidebarVisible: boolean;
     pendingConfirmation: PendingConfirmation | null;
     pendingPrerequisites: PendingPrerequisites | null;
+    pendingAlreadyRun: PendingAlreadyRun | null;
     /** Set while an action's prerequisites are checked before it runs. */
     checkingPrerequisites: boolean;
     activeTerminalID?: string;

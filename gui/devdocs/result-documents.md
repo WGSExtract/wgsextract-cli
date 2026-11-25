@@ -46,7 +46,7 @@ record; optional historical report fields remain optional.
   none. Use 1-based inclusive coordinates. The viewer ignores invalid loci,
   gene symbols and rsIDs and opens the first chromosome instead. This link
   does not grant filesystem access: the existing My Genomes and reference
-  library guards still apply. See [Genome viewer](genome-viewer.md).
+  library guards still apply. See [Genome viewer](../docs/genome-viewer.md).
 - A result card is shown only when a document listed it and its name ends in `.card.html`. The app reads it as text and shows it in a frame sandboxed without scripts, forms, popups or navigation.
 
 ## Showing an analysis result

@@ -1,6 +1,6 @@
 import { interpolate, renderedCommand } from "../../../shared/rendering.js";
 import type { ResultDocumentSpec } from "../../../shared/result-document.js";
-import type { ActionSpec, BundleManifest, CommandContext, MissingPrerequisite, RunProcess } from "../../../shared/types.js";
+import type { ActionSpec, BundleManifest, CommandContext, MissingPrerequisite, RunProcess, StringMap } from "../../../shared/types.js";
 import { contextWithFileState, runAction, type ActionEmit, type ActionRunResult } from "./action-runner.js";
 import { errorMessage } from "./errors.js";
 import { bundleEnvironment } from "./paths.js";
@@ -10,7 +10,7 @@ import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform
 const checkTimeoutMs = 60_000;
 
 /**
- * What `action` needs that isn't installed, from the bundle's prerequisite check (docs/prerequisites.md).
+ * What `action` needs that isn't installed, from the bundle's prerequisite check (devdocs/prerequisites.md).
  * An action the check doesn't cover, or a check that fails, needs nothing: the action then runs and reports any
  * problem itself, as it did before the check existed.
  */
@@ -20,9 +20,10 @@ export async function missingPrerequisites(
     context: CommandContext,
     bundleRoot: string,
     runProcess: RunProcess,
+    extraEnv?: StringMap,
 ): Promise<MissingPrerequisite[]> {
     try {
-        return await checkPrerequisites(manifest, action, context, bundleRoot, runProcess);
+        return await checkPrerequisites(manifest, action, context, bundleRoot, runProcess, extraEnv);
     }
     catch (error) {
         console.warn(`[wgsextract-gui] Prerequisite check for action ${action.id ?? action.title ?? ""} failed; running it anyway: ${errorMessage(error)}`);
@@ -37,6 +38,7 @@ async function checkPrerequisites(
     context: CommandContext,
     bundleRoot: string,
     runProcess: RunProcess,
+    extraEnv?: StringMap,
 ): Promise<MissingPrerequisite[]> {
     const spec = manifest.prerequisites;
     if (!spec || (!action.command && !action.prerequisiteArguments)) {
@@ -51,7 +53,7 @@ async function checkPrerequisites(
     const executable = await scriptPath(check.executable, bundleRoot);
     const result = await runProcess(executable, [...(check.arguments ?? []), ...commandLine], {
         cwd: bundleRoot,
-        env: { ...process.env, ...bundleEnvironment(bundleRoot) },
+        env: { ...process.env, ...bundleEnvironment(bundleRoot), ...extraEnv },
         timeoutMs: checkTimeoutMs,
     });
     if (result.exitCode !== 0) {
@@ -76,12 +78,13 @@ export async function installPrerequisite(
     runProcess: RunProcess,
     emit: ActionEmit,
     resultSpecFor: (installAction: ActionSpec) => ResultDocumentSpec | undefined,
+    extraEnv?: StringMap,
 ): Promise<ActionRunResult> {
     const spec = manifest.prerequisites;
     if (!spec) {
         throw new Error("This bundle declares no prerequisite check.");
     }
-    const missing = await checkPrerequisites(manifest, action, context, bundleRoot, runProcess);
+    const missing = await checkPrerequisites(manifest, action, context, bundleRoot, runProcess, extraEnv);
     const item = missing.find((candidate) => candidate.id === id);
     if (!item) {
         const now = new Date().toISOString();
@@ -97,7 +100,7 @@ export async function installPrerequisite(
         title: item.name,
         command: { executable: spec.command.executable, arguments: item.installArguments },
     };
-    return runAction(installAction, context, signal, bundleRoot, runProcess, emit, resultSpecFor(installAction));
+    return runAction(installAction, context, signal, bundleRoot, runProcess, emit, resultSpecFor(installAction), extraEnv);
 }
 
 /** The command line the check is given for `action`, or null when the check doesn't cover it. */

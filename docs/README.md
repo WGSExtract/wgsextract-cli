@@ -1,8 +1,16 @@
-# Documentation by task
+# WGS Extract CLI documentation
+
+> **Scope:** This `docs/` folder documents **WGS Extract CLI** — the command-line
+> back-end, Python API and local server.
+>
+> Looking for the desktop app (GUI front-end)? See the
+> **[desktop app user guides](../gui/docs/README.md)**
+> ([rendered web docs](https://wgse.bio/wgsextract-cli/app/docs/index.html)) or the
+> [desktop app developer docs](../gui/devdocs/README.md).
 
 Start with the [README quick start](../README.md#quick-start), the
-[documentation site](https://wgsextract.github.io/wgsextract-cli/), or
-`wgsextract help --all`. This index lists every top-level guide; the
+[CLI documentation site](https://wgse.bio/wgsextract-cli/), or
+`wgsextract help --all`. This index lists every top-level CLI guide; the
 [command reference](commands.md), [API](api.md) and
 [configuration reference](configuration.md) are generated from their sources.
 
@@ -93,4 +101,6 @@ Release notes: [unreleased](release-notes/unreleased/README.md),
 Documentation inputs under `data/` include the
 [configuration guide source](data/configuration-guide.md) (rendered into
 `configuration.md`) and the [ONT HG002 manifest](data/ont_hg002_manifest.json).
-Desktop app documentation starts at [gui/README.md](../gui/README.md).
+Desktop app user guides start at [gui/docs/README.md](../gui/docs/README.md);
+developer documentation is in [gui/devdocs/README.md](../gui/devdocs/README.md)
+and [gui/README.md](../gui/README.md).

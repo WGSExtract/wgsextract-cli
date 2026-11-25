@@ -12,12 +12,17 @@ Common acronyms are defined once in `site_src/abbr.toml`. The generator adds mat
 
 The site Markdown files use YAML-compatible front matter. Run `pixi run lint` before committing; it validates Python, site front matter, and `site_src/abbr.toml`, and the same site-source check runs from pre-commit and CI.
 
-Detailed guides live in `docs/`, indexed by task in [docs/README.md](README.md).
-They are repository Markdown, not generated site pages: adding one needs a
-link in that index, not a generator registration. Link it from the relevant
-`site_src/` page with its GitHub URL. New website pages instead need front
-matter with an `output` name and, when appropriate, an entry in `NAV_ITEMS`
-in `scripts/build_site.py`.
+Detailed guides live in `docs/` (CLI back-end), `gui/docs/` (desktop app user
+docs), and `gui/devdocs/` (desktop app developer docs). `scripts/build_docs_html.py`
+renders `README.md`, `docs/**/*.md`, `gui/README.md`, `gui/docs/**/*.md`, and
+`gui/devdocs/**/*.md` into static HTML under `site/docs/` and `site/app/docs/`
+(plus `site/app/devdocs/`), rewriting relative `.md` links to `.html` with
+GitHub-compatible heading anchors. Both CLI and GUI error messages use
+`https://wgse.bio/wgsextract-cli/...` short URLs (`src/wgsextract_cli/core/docs_links.py`
+and `gui/app/shared/docs-links.ts`) pointing to these rendered pages.
+
+New website landing pages in `site_src/` still need front matter with an `output`
+name and, when appropriate, an entry in `NAV_ITEMS` in `scripts/build_site.py`.
 
 `docs/configuration.md` is generated too: edit the schema for setting rows,
 or `docs/data/configuration-guide.md` for its hand-written usage guide, then

@@ -9,6 +9,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import quote
 
+from wgsextract_cli.core.docs_links import doc_url
 from wgsextract_cli.core.report_documents import (
     ReportAcmgDocument,
     ReportAncestryDocument,
@@ -202,9 +203,13 @@ def render_html(report: ReportDocument, base: str = ".") -> str:
                 section["sources"], lambda text, f: _link(text, _href(f, base))
             )
             out.append(f'<p class="muted">Sources: {links}</p>')
+    guide_href = doc_url(report["guide"])
+    conf_href = doc_url("docs/variant-confidence.md")
     out.append(
-        f'<p class="muted">Confidence labels: {_h(report["guide"])} and '
-        "docs/variant-confidence.md in WGS Extract.</p></body></html>"
+        f'<p class="muted">Confidence labels: '
+        f'<a href="{_h(guide_href)}" target="_blank" rel="noopener noreferrer">{_h(report["guide"])}</a> and '
+        f'<a href="{_h(conf_href)}" target="_blank" rel="noopener noreferrer">docs/variant-confidence.md</a> '
+        "in WGS Extract.</p></body></html>"
     )
     return "\n".join(out) + "\n"
 

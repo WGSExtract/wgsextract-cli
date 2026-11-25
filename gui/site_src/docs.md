@@ -5,20 +5,30 @@ description: 'Documentation map for WGS Extract GUI: the app, bundles, distribut
 eyebrow: 'Documentation'
 heading: 'Where to go next.'
 lede: 'Start with v0.8.10 downloads or one-command developer setup. Workflow details, distribution, and schemas live close to the code.'
-actions: 'Open README|https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/README.md|primary; GUI Architecture|architecture.html'
+actions: 'User Documentation|docs/index.html|primary; Developer Docs|devdocs/index.html; GUI Architecture|architecture.html'
 footer_title: 'Documentation map'
-footer_text: 'Product docs stay short; detailed engineering notes stay close to the code.'
+footer_text: 'End-user guides live in gui/docs/; developer and bundle docs live in gui/devdocs/.'
 ---
 
 ::: section
 ::: wrap
 ::: grid two
 ::: card
-{{ kicker: Product }}
-### README
-The top-level README describes the app, setup, common commands, bundles, config, and distribution packaging.
+{{ kicker: End users }}
+### User Documentation
+Guides for Basic and Advanced mode, Reference Data, Reference Genomes, Tools, Settings, Privacy, the built-in Genome Viewer, and the Gene Page.
 
-{{ link: Open README|https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/README.md|inline-link }}
+{{ link: Open User Docs|docs/index.html|inline-link }}
+{{ link: Privacy & network access|docs/privacy.html|inline-link }}
+:::
+
+::: card
+{{ kicker: Product }}
+### Developer README
+The `gui/README.md` describes the app layout, setup, common commands, bundles, workspaces, and distribution packaging.
+
+{{ link: Open gui/README|readme.html|inline-link }}
+{{ link: Developer Docs Index|devdocs/index.html|inline-link }}
 :::
 
 ::: card
@@ -28,7 +38,7 @@ Clone the repo and run `make setup` on Linux/macOS, or `powershell -ExecutionPol
 
 Setup prepares missing user-level uv, Node, and Rust tools, locked dependencies, hooks, and a real Web UI smoke check. It never elevates or installs system packages; the guide lists manual desktop prerequisites. No sibling WGSExtract CLI checkout or genome download is needed for UI development: start with `examples/GitHelper`.
 
-{{ link: Open developer setup|https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/developer_setup.md|inline-link }}
+{{ link: Open developer setup|devdocs/developer_setup.html|inline-link }}
 :::
 
 ::: card
@@ -37,7 +47,7 @@ Setup prepares missing user-level uv, Node, and Rust tools, locked dependencies,
 Each WGSExtract CLI release carries the app's installers and the CLI it bundles, with one set of release notes. App releases up to v0.6.6 stay on the former gui-for-cli repository. The changelog tracks the move to one Tauri app, native Windows setup, macOS notarization, and bundle improvements.
 
 {{ link: Open releases|https://github.com/WGSExtract/wgsextract-cli/releases|inline-link }}
-{{ link: Open changelog|https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/CHANGELOG.md|inline-link }}
+{{ link: Open changelog|docs/CHANGELOG.html|inline-link }}
 :::
 
 ::: card
@@ -46,15 +56,15 @@ Each WGSExtract CLI release carries the app's installers and the CLI it bundles,
 Nanopore handling in existing actions, Clair3 and methylation controls, plus opt-in MultiQC, expanded microarray/AADR exports, targeted Y analysis, and resource requirements. See what is in the app and what is still CLI only.
 
 {{ link: WGSExtract workflows|wgsextract.html|inline-link }}
-{{ link: Post-v0.6.3 feature details|https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/wgsextract-post-v063.md|inline-link }}
+{{ link: Post-v0.6.3 feature details|devdocs/wgsextract-post-v063.html|inline-link }}
 :::
 
 ::: card
 {{ kicker: Schemas }}
 ### Bundle schemas
-`manifest.json` and page files are described by JSON Schemas in `docs/schema/`.
+`manifest.json` and page files are described by JSON Schemas in `gui/devdocs/schema/`.
 
-{{ link: Open schemas|https://github.com/WGSExtract/wgsextract-cli/tree/main/gui/docs/schema|inline-link }}
+{{ link: Open schemas on GitHub|https://github.com/WGSExtract/wgsextract-cli/tree/main/gui/devdocs/schema|inline-link }}
 :::
 
 ::: card
@@ -70,7 +80,7 @@ The SwiftUI app, Swift CLI, prototype renderers, and benchmark reports live on t
 ### Packaging
 Signing, notarization, Tauri packages for each OS, release artifacts, self-updates, and embedded bundle defaults.
 
-{{ link: Open distribution doc|https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/distribution.md|inline-link }}
+{{ link: Open distribution doc|devdocs/distribution.html|inline-link }}
 :::
 :::
 :::
@@ -90,6 +100,6 @@ open site/index.html
 
 The dependency-free generator writes HTML to `site/` for GitHub Pages. Commit regenerated HTML alongside source changes; `make site` is also available.
 
-{{ link: Site generation guide|https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/site_generation.md|inline-link }}
+{{ link: Site generation guide|devdocs/site_generation.html|inline-link }}
 :::
 :::

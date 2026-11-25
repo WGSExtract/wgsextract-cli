@@ -135,7 +135,7 @@ The macOS release builds natively on an Apple Silicon runner and an Intel runner
 `scripts/bump-wgsextract-cli.py vX.Y.Z` points the WGSExtract bundle at another
 wgsextract-cli release: the tag setup installs, the bundle version that names the
 installers, and the tests that pin both. Release assembly updates the
-[changelog](CHANGELOG.md); see [the release process](../../docs/releasing.md).
+[changelog](../docs/CHANGELOG.md); see [the release process](../../docs/releasing.md).
 The bump script changes nothing if any file can't be updated.
 The root's `scripts/bump_version.py X.Y.Z` runs it
 with the CLI's own version bump, since the app and the CLI it bundles ship in

@@ -16,6 +16,7 @@ import { lastResultDocumentPaths, rememberLastResultDocument } from "./last-resu
 import { openResultPath, ResultPaths, systemOpener } from "./result-paths.js";
 import { readResultCard } from "./result-card.js";
 import { installPrerequisite, missingPrerequisites } from "./prerequisites.js";
+import { actionWithForce, findExistingOutput } from "./existing-output.js";
 import { multiPathControlsFromManifest } from "../../../shared/rendering.js";
 import { resultDocumentSpecFor } from "../../../shared/result-document.js";
 import type { JobServer } from "./job-server.js";
@@ -36,7 +37,7 @@ import { isViewerBuild } from "../../../shared/viewer-rows.js";
 import { lookupViewerRsid } from "./viewer-rsids.js";
 import { RemoteViewerConnection } from "./remote-viewer-connection.js";
 import { RemoteViewer } from "./remote-viewer.js";
-import { openGenePage } from "./gene-page.js";
+import { genePagePrerequisites, installGenePagePrerequisite, openGenePage } from "./gene-page.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
 
@@ -250,17 +251,46 @@ export function createRequestHandler(context: RequestHandlerContext) {
                 response.off("close", close);
             }
         },
+        "/api/gene/prerequisites": async (request, response) => {
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            json(response, await genePagePrerequisites(body, context));
+        },
+        "/api/gene/prerequisites/install/stream": async (request, response) => {
+            requireViewerLoopback(request);
+            const body = await readBody(request, context);
+            const id = requiredString(body, "id");
+            await streamNDJSON(
+                response,
+                (emit, signal) => installGenePagePrerequisite(
+                    body, id, context, signal,
+                    (event: ActionEvent) => {
+                        if (event.type === "complete") {
+                            resultPaths.remember(event.result.resultDocument, context.bundleRoot);
+                        }
+                        return emit(event);
+                    },
+                    (installAction) => resultDocumentSpecFor(context.manifest, installAction),
+                ),
+                (error) => ({ type: "error", error }),
+            );
+        },
         "/api/datasource": jsonRoute(context, async (body) => {
             const location = parseManifestLocation(body.source);
             const payload = await runDataSource(resolveDataSource(context.manifest, location), commandContext(body, context), context.bundleRoot, context.runProcess);
             rememberDynamicActions(context, location, payload);
             return payload;
         }),
+        "/api/existing-output": jsonRoute(context, async (body) => {
+            const action = resolveActionReference(context.manifest, parseActionReference(body.action), context.dynamicActions);
+            return findExistingOutput(context.manifest, action, commandContext(body, context), context.bundleRoot, resultPaths);
+        }),
         "/api/run/stream": async (request, response) => {
             const body = await readBody(request, context);
-            const action = resolveActionReference(context.manifest, parseActionReference(body.action), context.dynamicActions);
+            const resolvedAction = resolveActionReference(context.manifest, parseActionReference(body.action), context.dynamicActions);
             const { bundleRoot } = context;
             const actionContext = { ...commandContext(body, context), lastResultDocumentPaths: await lastResultDocumentPaths(bundleRoot) };
+            const action = body.force === true ? await actionWithForce(resolvedAction, actionContext, bundleRoot) : resolvedAction;
             const resultSpec = resultDocumentSpecFor(context.manifest, action);
             await streamNDJSON(
                 response,

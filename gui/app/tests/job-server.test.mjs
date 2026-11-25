@@ -13,7 +13,7 @@ const { createJobServer } = await import("../dist/web/src/server/job-server.js")
 const { runActionPreferringServer } = await import("../dist/web/src/server/job-server-action.js");
 const { startJob } = await import("../dist/web/src/server/job-server-client.js");
 
-// A job server speaking the protocol in docs/job-server.md. `slow` runs until cancelled;
+// A job server speaking the protocol in devdocs/job-server.md. `slow` runs until cancelled;
 // `quick` finishes at once and logs the parameters it received, `noisy` the same with a 2 MiB log;
 // anything else is refused. With --parent-pid PID it writes its own PID to server.pid and
 // exits when PID does; with --refuse it prints an error line instead of starting.

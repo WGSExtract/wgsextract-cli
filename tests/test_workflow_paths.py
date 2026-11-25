@@ -56,10 +56,7 @@ EVERY_MAIN_PUSH = {"gitleaks.yml", "auto_merge_watch.yml"}
 @pytest.mark.parametrize(
     "paths",
     [
-        ["README.md"],
-        ["docs/developer_setup.md", "native/README.md"],
         [".github/copilot-instructions.md", "gui/AGENTS.md"],
-        ["docs/nested/new-prose.md"],
         ["native/deepvariant/README.md", "gui/app/README.md", "packaging/README.md"],
     ],
 )
@@ -68,8 +65,21 @@ def test_docs_fast_path_909_does_not_start_heavy_push_ci(paths: list[str]) -> No
     assert triggered == EVERY_MAIN_PUSH
 
 
-def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose() -> None:
-    triggered = triggered_workflows(["site_src/new-guide.md"])
+@pytest.mark.parametrize(
+    "paths",
+    [
+        ["README.md"],
+        ["docs/developer_setup.md", "native/README.md"],
+        ["docs/nested/new-prose.md"],
+        ["gui/docs/settings.md"],
+        ["gui/devdocs/architecture.md"],
+        ["site_src/new-guide.md"],
+    ],
+)
+def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose(
+    paths: list[str],
+) -> None:
+    triggered = triggered_workflows(paths)
     assert triggered == EVERY_MAIN_PUSH | {"pages.yml"}
 
 
@@ -82,7 +92,7 @@ def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose() -> None:
         "site_src/index.md",
         "site_src/install.md",
         "gui/site_src/index.md",
-        "gui/docs/distribution.md",
+        "gui/devdocs/distribution.md",
         "gui/docs/CHANGELOG.md",
     ],
 )
@@ -100,7 +110,7 @@ def test_docs_fast_path_909_generated_markdown_never_starts_heavy_suites(
 )
 def test_docs_fast_path_909_does_not_hide_mixed_code_pushes(code: str) -> None:
     triggered = triggered_workflows(["README.md", code])
-    assert triggered == EVERY_MAIN_PUSH | {"codeql.yml"}
+    assert triggered == EVERY_MAIN_PUSH | {"codeql.yml", "pages.yml"}
 
 
 def test_github_path_filters_reinclude_only_matching_files_in_order() -> None:

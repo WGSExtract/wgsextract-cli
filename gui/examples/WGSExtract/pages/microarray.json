@@ -20,32 +20,6 @@
           "tooltip": "controls.microarray.microarray-inputs.bam_path.tooltip"
         },
         {
-          "id": "ref_fasta",
-          "label": "controls.microarray.microarray-inputs.ref_fasta.label",
-          "kind": "dropdown",
-          "tooltip": "controls.microarray.microarray-inputs.ref_fasta.tooltip",
-          "dataSource": {
-            "path": "scripts/run-wgsextract.sh",
-            "arguments": [
-              "--json",
-              "ref",
-              "library",
-              "--list"
-            ],
-            "optionalArguments": [
-              [
-                "--ref",
-                "{{ref_path}}"
-              ]
-            ],
-            "transform": {
-              "module": "transforms/reference-genomes.mjs",
-              "export": "options"
-            }
-          },
-          "emptyText": "controls.reference-genome.emptyText"
-        },
-        {
           "id": "out_dir",
           "label": "controls.microarray.microarray-inputs.out_dir.label",
           "kind": "path",
@@ -394,10 +368,6 @@
               "{{microarray_formats}}"
             ],
             "optionalArguments": [
-              [
-                "--ref",
-                "{{ref_fasta}}"
-              ],
               [
                 "{{microarray_download}}"
               ],

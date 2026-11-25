@@ -10,9 +10,15 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "README.md"
+      - "docs/**"
       - "site/**"
       - "site_src/**"
       - "scripts/build_site.py"
+      - "scripts/build_docs_html.py"
+      - "gui/README.md"
+      - "gui/docs/**"
+      - "gui/devdocs/**"
       - "gui/site_src/**"
       - "gui/scripts/build_site.py"
       - "gui/scripts/site_*.py"
@@ -56,6 +62,9 @@ jobs:
           cp -R gui/site site/app
           rm -f site/app/.nojekyll
 
+      - name: Render Markdown documentation to HTML
+        run: python3 scripts/build_docs_html.py
+
       # Static files as they are. Without serve.py, notes stay in the browser;
       # _pages.json lists the committed feedback files for the pages to show,
       # and version.js the commit, shown in the mockups index footer.
@@ -81,3 +90,66 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  # Mirror the rendered CLI and app HTML into WGSExtract/wgsextract.github.io
+  # under wgsextract-cli/ (CLI docs) and wgsextract-cli/app/ (app docs), so
+  # wgse.bio and wgsextract.github.io can serve them directly without project
+  # Pages once project Pages on this repository is turned off.
+  sync-main-site:
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: main-site
+    permissions:
+      contents: read
+    steps:
+      - name: Is the deploy key set?
+        id: key
+        env:
+          DEPLOY_KEY: ${{ secrets.MAIN_SITE_DEPLOY_KEY }}
+        run: |
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::warning::MAIN_SITE_DEPLOY_KEY isn't set in the main-site environment, so wgsextract.github.io/wgsextract-cli was not updated."
+            exit 0
+          fi
+          echo "set=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.key.outputs.set
+        name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+
+      - if: steps.key.outputs.set
+        name: Checkout wgsextract.github.io
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: WGSExtract/wgsextract.github.io
+          path: main-site
+          ssh-key: ${{ secrets.MAIN_SITE_DEPLOY_KEY }}
+
+      - if: steps.key.outputs.set
+        name: Build and sync HTML into wgsextract-cli/
+        run: |
+          cd repo
+          python3 scripts/build_site.py
+          python3 gui/scripts/validate_site_sources.py
+          python3 gui/scripts/build_site.py
+          rm -rf site/app
+          cp -R gui/site site/app
+          rm -f site/app/.nojekyll
+          python3 scripts/build_docs_html.py
+          cd ..
+          mkdir -p main-site/wgsextract-cli
+          rsync -a --delete --exclude='.nojekyll' --exclude='app/mockups/' repo/site/ main-site/wgsextract-cli/
+          cd main-site
+          git add -A wgsextract-cli
+          if git diff --cached --quiet; then
+            echo "No rendered documentation changes to publish."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qm "docs: sync rendered CLI and app HTML from wgsextract-cli"
+          git push origin HEAD

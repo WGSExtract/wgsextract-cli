@@ -153,7 +153,7 @@ or [open an issue](https://github.com/WGSExtract/wgsextract-cli/issues/new/choos
 
 Start with [developer setup](docs/developer_setup.md) for the setup scripts,
 Pixi environments, tests and contribution workflow.
-The desktop app has its [own setup guide](gui/docs/developer_setup.md).
+The desktop app has its [user documentation](gui/docs/README.md) and [developer setup guide](gui/devdocs/developer_setup.md).
 See [releasing](docs/releasing.md) for coordinated CLI/app releases.
 
 ## Data licences

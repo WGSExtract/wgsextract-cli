@@ -1,5 +1,5 @@
+import { renderTextWithDocLinks } from "../../../shared/docs-links.js";
 import type { TerminalEntry } from "../../../shared/types.js";
-import { escapeHTML } from "./dom.js";
 import { nextFrame } from "./rerender.js";
 import { state } from "./state.js";
 
@@ -30,8 +30,8 @@ export function renderTerminalText(entry: TerminalEntry | undefined): string {
     }
     return [
         entry.truncated ? `<span class="terminal-notice">${truncatedNotice}</span>` : "",
-        ...chunks.map((chunk) => `<span class="terminal-chunk">${escapeHTML(chunk)}</span>`),
-        `<span class="terminal-tail">${escapeHTML(entry.body.slice(lineEnd))}</span>`,
+        ...chunks.map((chunk) => `<span class="terminal-chunk">${renderTextWithDocLinks(chunk)}</span>`),
+        `<span class="terminal-tail">${renderTextWithDocLinks(entry.body.slice(lineEnd))}</span>`,
     ].join("");
 }
 
@@ -82,7 +82,7 @@ function flushTerminalOutput() {
     if (lineEnd > 0) {
         tail.before(terminalSpan("terminal-chunk", combined.slice(0, lineEnd)));
     }
-    tail.textContent = combined.slice(lineEnd);
+    tail.innerHTML = renderTextWithDocLinks(combined.slice(lineEnd));
     trimRenderedScrollback(pre, text.length);
     if (pinnedToBottom) {
         log.scrollTop = log.scrollHeight;
@@ -111,6 +111,6 @@ function trimRenderedScrollback(pre: HTMLElement, addedChars: number) {
 function terminalSpan(className: string, text: string) {
     const span = document.createElement("span");
     span.className = className;
-    span.textContent = text;
+    span.innerHTML = renderTextWithDocLinks(text);
     return span;
 }
