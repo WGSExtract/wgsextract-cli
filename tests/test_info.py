@@ -11,6 +11,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 from tests.htslib_helpers import needs_tools, sam_to_bam
+from wgsextract_cli.commands.info import cache as info_cache
 from wgsextract_cli.commands.info import coverage, metrics, render, runner
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.results import CommandResult, collecting
@@ -182,7 +183,7 @@ def test_1215_info_recomputes_metrics_for_same_size_and_mtime_bam(tmp_path):
 
 
 def test_1215_cached_info_returns_no_metrics_for_a_missing_input(tmp_path):
-    assert metrics.cached_info(str(tmp_path / "missing.bam")) is None
+    assert info_cache.cached_info(str(tmp_path / "missing.bam")) is None
 
 
 @pytest.mark.parametrize("payload", ['{"filename": "x", "avg_read_len": 99}', "{bad"])

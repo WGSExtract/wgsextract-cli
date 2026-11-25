@@ -1,8 +1,6 @@
 import csv
-import json
 import logging
 import math
-import os
 import re
 import subprocess
 import tempfile
@@ -11,18 +9,15 @@ from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
 from wgsextract_cli.commands._messages.info import LOG_MESSAGES
-from wgsextract_cli.core import read_scope, sample_workspace
+from wgsextract_cli.commands.info.cache import cached_info
+from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.alignment.sequencing import platform_from_metadata
-from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.constants import SEQUENCERS
-from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import n_count_paths
-from wgsextract_cli.core.results import fingerprint
 from wgsextract_cli.core.sample_types import is_observed_sex
 from wgsextract_cli.core.sample_workspace import Confidence
 from wgsextract_cli.core.ultima import is_ultima_header
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
-from wgsextract_cli.core.variant_files import calculate_bam_md5
 
 ULTIMA_SEQUENCER = "Ultima Genomics UG 100"
 
@@ -413,16 +408,66 @@ def infer_sex_call(
     auto = sum(d for d, _ in autosomes) / len(autosomes)
     x, x_breadth = depths["X"]
     y, _ = depths["Y"]
+    assembly = "CHM13v2.0" if contigs["X"][1] == 154259566 else "GRCh37/38"
+    if auto < 3:
+        return _low_pass_sex_call(alignment, contigs, reference, assembly)
     if (
-        auto < 3
-        or min(b for _, b in autosomes) < 0.5
+        min(b for _, b in autosomes) < 0.5
         or x_breadth < 0.3
         or any(not 0.7 <= d / auto <= 1.3 for d, _ in autosomes)
     ):
         return unknown
-    x_ratio, y_ratio = x / auto, y / auto
-    assembly = "CHM13v2.0" if contigs["X"][1] == 154259566 else "GRCh37/38"
-    method = f"{assembly} sampled non-PAR depth / autosomal depth (screening)"
+    return _dosage_call(
+        x / auto,
+        y / auto,
+        f"{assembly} sampled non-PAR depth / autosomal depth (screening)",
+    )
+
+
+# Reads per 50 kb window: ~0.03x at 150 bp, still about 300 non-PAR Y reads for
+# a typical male across the sampled windows. Long reads, fewer per window, need
+# more depth (about 2.5x at 15 kb).
+LOW_PASS_MIN_READS = 10
+
+
+def _low_pass_sex_call(
+    alignment: str,
+    contigs: dict[str, tuple[str, int]],
+    reference: str | None,
+    assembly: str,
+) -> SexCall:
+    """Below 3x, five 10 kb windows hold too few reads to measure breadth or
+    dosage, so count reads in many more windows. Low-pass WGS fills nearly
+    every window; capture-only data leaves most of them empty."""
+    from wgsextract_cli.core.sex_inference import sampled_read_density
+
+    logging.info("Low coverage: counting reads in more windows to infer sex...")
+    try:
+        density = sampled_read_density(alignment, contigs, reference=reference)
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError) as e:
+        logging.warning(f"Could not measure sex-chromosome read density: {e}")
+        return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
+    if any(c not in density for c in ("7", "19", "X", "Y")):
+        return SexCall("Unknown", SEX_SAMPLING_INCOMPLETE, "low")
+    auto = (density["7"].reads + density["19"].reads) / 2
+    if (
+        auto < LOW_PASS_MIN_READS
+        or any(density[c].occupied < 0.8 for c in ("7", "19", "X"))
+        # Whole-genome reads measured 0.93-0.99, an exome 0.09-0.14
+        or any(density[c].spread < 0.7 for c in ("7", "19", "X"))
+        or any(not 0.7 <= density[c].reads / auto <= 1.3 for c in ("7", "19"))
+    ):
+        return SexCall("Unknown", "insufficient non-PAR depth or assay scope", "low")
+    return _dosage_call(
+        density["X"].reads / auto,
+        density["Y"].reads / auto,
+        f"{assembly} sampled non-PAR read density / autosomal density "
+        "(low-pass screening)",
+    )
+
+
+def _dosage_call(x_ratio: float, y_ratio: float, method: str) -> SexCall:
+    """Sex from non-PAR X and Y dosage relative to the autosomes."""
     if 0.35 <= x_ratio <= 0.65 and 0.1 <= y_ratio <= 0.8:
         return SexCall("Male", method, "medium")
     if 0.8 <= x_ratio <= 1.2 and y_ratio < 0.05:
@@ -442,86 +487,6 @@ def record_sex(input_path: str, call: SexCall) -> None:
                 method=call.method,
                 confidence=call.confidence,
             )
-
-
-def input_signature(path: str) -> dict[str, int | str] | None:
-    """Local identity and a bounded content check, even for whole-genome files.
-
-    The sampled digest is not a full integrity check. On Windows, ctime
-    records creation, not edits, so a change outside the samples that also
-    preserves size and mtime can go undetected.
-    """
-    try:
-        st = os.stat(path)
-    except OSError:
-        return None
-    content = fingerprint(path)
-    if content is None:
-        return None
-    return {
-        "size": st.st_size,
-        "mtime_ns": st.st_mtime_ns,
-        "ctime_ns": st.st_ctime_ns,
-        "device": st.st_dev,
-        "inode": st.st_ino,
-        "fingerprint": content,
-    }
-
-
-def info_cache_path(
-    input_path: str | os.PathLike[str], outdir: str | os.PathLike[str]
-) -> Path:
-    """``<outdir>/manifests/<input_name>.wgse_info.json``."""
-    from wgsextract_cli.core.results import manifest_dir_for
-
-    return manifest_dir_for(outdir) / f"{Path(input_path).name}.wgse_info.json"
-
-
-def cached_info(
-    input_path: str, outdir: str | None = None, key: str = "gender"
-) -> dict[str, Any] | None:
-    """`info`'s cached metrics for this very file, if a cache with `key` exists
-    in the output folder's ``manifests/`` subfolder (or a legacy beside-file cache)."""
-    name = f"{Path(input_path).name}.wgse_info.json"
-    this_file = input_signature(input_path)
-    if this_file is None:
-        return None
-    signature = calculate_bam_md5(input_path, None)
-    folders = [
-        folder
-        for folder in (
-            outdir,
-            output_directory([input_path]),
-            str(absolute_path(input_path).parent),
-        )
-        if folder
-    ]
-    candidates = [
-        *(info_cache_path(input_path, folder) for folder in folders),
-        *(Path(folder, name) for folder in folders),
-    ]
-    seen: set[Path] = set()
-    for candidate in candidates:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        if not read_scope.may_follow(candidate):
-            continue
-        try:
-            with open(candidate) as f:
-                info = json.load(f)
-        except (OSError, ValueError):
-            continue
-        # The header signature is shared by every sample on that reference, so
-        # the cache must also be from this very file.
-        if (
-            isinstance(info, dict)
-            and info.get("md5_signature") == signature
-            and info.get("input_signature") == this_file
-            and info.get(key)
-        ):
-            return info
-    return None
 
 
 def sample_sex(

@@ -16,7 +16,8 @@ import pytest
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.commands.genotyping import common, hla, repeats
-from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION, input_signature
+from wgsextract_cli.commands.info.cache import input_signature
+from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.personal_report import build_report
 from wgsextract_cli.core.pixi_tools import _join_command, pixi_env_prefix

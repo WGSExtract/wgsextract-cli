@@ -51,6 +51,7 @@ from ._reporting import reference_model_name as reference_model_name
 from ._tables import CHROMOSOME_TABLE as CHROMOSOME_TABLE
 from ._tables import QC_TABLE as QC_TABLE
 from ._tables import _export_tables
+from .cache import info_cache_path, input_signature
 from .metrics import (
     DEPTH_COUNTED,
     DEPTH_SAMPLED,
@@ -63,7 +64,6 @@ from .metrics import (
     generate_chrom_table,
     get_file_stats,
     infer_sex_call,
-    input_signature,
     is_long_read_library,
     long_read_lengths,
     long_read_mapped_pct,
@@ -562,8 +562,6 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             )
             current_result().add_output(bins_path, "coverage_bins")
         return
-
-    from .metrics import info_cache_path
 
     json_cache = str(info_cache_path(input_file, outdir))
     table_stem = Path(outdir, Path(input_file).name + region_file_tag(region))
