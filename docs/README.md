@@ -49,6 +49,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [ONT/PacBio](ont.md) | Align, basecall, call, phase and read methylation |
 | [DeepVariant ARM64](deepvariant-arm64.md) | Build and validate the native CPU image |
 | [VEP engines](vep-engines.md) | Annotate with vep-rs or Ensembl VEP |
+| [Exon callability](exon-callability.md) | See which coding exons a gVCF read, and what an unreported gene means |
 | [SV frequencies](sv-frequency.md) | Match structural variants to population frequencies |
 | [ACMG](acmg.md) | Use research-only classification with fastVEP |
 | [Research panels](panel.md) | Write and check a research panel file of genes, filters, sites and haplotypes |

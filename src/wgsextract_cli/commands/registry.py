@@ -221,6 +221,7 @@ ADVANCED_SUBCOMMANDS = frozenset(
         "vcf cnv",
         "vcf sv",
         "vcf trio",
+        "vcf callability",
         "vcf pharmcat",
         "vcf to-fasta",
         "vcf chain-annotate",

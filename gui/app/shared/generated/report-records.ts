@@ -32,6 +32,7 @@ export interface ReportSectionsDocument {
     medication_review?: ReportMedicationReviewDocument;
     mitochondrial?: ReportMitochondrialDocument;
     repeat_expansions?: ReportSectionDocument;
+    exon_callability?: ReportCallabilityDocument;
 }
 
 export interface ReportOverviewDocument {
@@ -470,4 +471,40 @@ export interface ReportMitoSiteDocument {
     conditions: (string)[];
     cpic_phenotype: string | null;
     cpic_evidence: string | null;
+}
+
+export interface ReportCallabilityDocument {
+    title: string;
+    status: "ok" | "not_run" | "failed";
+    summary: string;
+    findings: (ReportFindingDocument)[];
+    missing: (ReportMissingDocument)[];
+    warnings: (ReportWarningDocument)[];
+    sources: (ReportSourceDocument)[];
+    error?: string;
+    gene_list?: ReportGeneListDocument;
+    build?: (string | null) & ("hg19" | "hg38" | null);
+    exon_model?: string;
+    scope?: string;
+    thresholds?: Record<string, unknown>;
+    counts?: Record<string, number>;
+    genes?: (ReportCallabilityGeneDocument)[];
+    all_exons?: string | null;
+    evidence?: string | null;
+    unassessed_variant_classes?: Record<string, string>;
+    note?: string;
+}
+
+export interface ReportCallabilityGeneDocument {
+    gene: string;
+    transcript: string | null;
+    state: (string) & ("callable" | "partial" | "not_readable" | "not_run");
+    result: (string) & ("reported" | "not_reported" | "not_readable" | "not_run");
+    result_text: string;
+    coding_exons: number;
+    exons_callable: number;
+    exons_not_callable: string;
+    bases: number;
+    readable_bases: number;
+    reasons: (string)[];
 }

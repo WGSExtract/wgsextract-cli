@@ -21,20 +21,18 @@ def _recorded_file(
     from wgsextract_cli.core import read_scope
     from wgsextract_cli.core.results import fingerprint
 
-    recorded = Path(str(record.get("path") or ""))
-    place = recorded
-    original = document.get("manifest")
-    if not recorded.is_file() and isinstance(original, str):
+    place = Path(str(record.get("path") or ""))
+    if not (read_scope.may_follow(place) and place.is_file()) and isinstance(
+        original := document.get("manifest"), str
+    ):
         try:
-            place = manifest.parent / recorded.relative_to(Path(original).parent)
+            place = manifest.parent / place.relative_to(Path(original).parent)
         except ValueError:
             return None
     expected = record.get("fingerprint")
-    if not expected or not read_scope.may_follow(place):
+    if not (expected and read_scope.may_follow(place) and place.is_file()):
         return None
-    if not place.is_file() or fingerprint(place) != expected:
-        return None
-    return place
+    return place if fingerprint(place) == expected else None
 
 
 def companion(vcf: PathInput) -> str | None:

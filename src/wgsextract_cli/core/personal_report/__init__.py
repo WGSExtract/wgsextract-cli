@@ -109,6 +109,7 @@ from wgsextract_cli.core.table_writer import Value as Value
 from wgsextract_cli.core.utils import UsageError as UsageError
 
 from . import acmg_calls as acmg_calls
+from .callability import _exon_callability as _exon_callability
 from .clinical import (
     GENE_STATUS as GENE_STATUS,
 )
@@ -491,6 +492,7 @@ def build_report(
         review["medication_review"] = medication_review(
             ctx, pgx_context, cpic or cpic_data.load(), load_rules()
         )
+    clinvar = _clinvar(ctx)
     sections = ReportSectionsDocument(
         overview=_overview(ctx),
         lineage=_lineage(ctx),
@@ -499,7 +501,8 @@ def build_report(
         **review,  # type: ignore[typeddict-item]
         carrier_screening=_carrier_screening(ctx),
         repeat_expansions=repeat_expansions(ctx),
-        clinvar=_clinvar(ctx),
+        clinvar=clinvar,
+        exon_callability=_exon_callability(ctx, clinvar),
         mitochondrial=mitochondrial(ctx),
         **research_section,
         structural_variants=_structural_variants(ctx),

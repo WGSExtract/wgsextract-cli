@@ -7,6 +7,7 @@ from pathlib import Path
 
 from wgsextract_cli.core.reference_evidence_records import (
     _RANK,
+    _STRICT_RANK,
     Classified,
     Interval,
     Span,
@@ -43,14 +44,23 @@ def classify_spans(
     deletion_shadow: bool = False,
     record_ploidy: Callable[[str, int, int], int | None] | None = None,
     missing_state: State = State.UNCOVERED,
+    check_variant_quality: bool = False,
 ) -> Iterator[Span]:
     """Resolve sorted records, including overlaps and caller-specific shadows."""
     order = {contig: index for index, (contig, _, _) in enumerate(wanted)}
     yield from _sweep(
         _merge(wanted, order),
-        classified_records(records, model, thresholds, deletion_shadow, record_ploidy),
+        classified_records(
+            records,
+            model,
+            thresholds,
+            deletion_shadow,
+            record_ploidy,
+            check_variant_quality=check_variant_quality,
+        ),
         order,
         missing_state=missing_state,
+        check_variant_quality=check_variant_quality,
     )
 
 
@@ -113,6 +123,8 @@ def classified_records(
     thresholds: Thresholds,
     deletion_shadow: bool,
     record_ploidy: Callable[[str, int, int], int | None] | None = None,
+    *,
+    check_variant_quality: bool = False,
 ) -> Iterator[Classified]:
     """Each record's bases (contig, start, end) and state. With
     ``deletion_shadow`` (Clair3), reference bases directly after a no-call or
@@ -132,10 +144,12 @@ def classified_records(
                     record_ploidy(fields[0], int(fields[1]), _record_end(fields))
                     if record_ploidy
                     else None,
+                    check_variant_quality=check_variant_quality,
                 ),
             )
         return
     references = (State.CALLABLE_REFERENCE, State.LOW_QUALITY_REFERENCE)
+    rank_state = (_STRICT_RANK if check_variant_quality else _RANK).__getitem__
     pending = next(records, None)
     # Keep only overlapping records. Evaluate their tails after later anchors
     # arrive, so block splitting and overlapping calls cannot change evidence.
@@ -153,6 +167,7 @@ def classified_records(
                 model,
                 thresholds,
                 record_ploidy(contig, cursor, end) if record_ploidy else None,
+                check_variant_quality=check_variant_quality,
             )
             info = _info(pending[7])
             depth = (
@@ -181,7 +196,7 @@ def classified_records(
             )
             stop = min(stop, boundary + 1) if cursor <= boundary else stop
         if active:
-            state = min((state for _, state, _ in active), key=_RANK.__getitem__)
+            state = min((state for _, state, _ in active), key=rank_state)
             if shadow and cursor > anchor_end:
                 depths = [d for _, s, d in active if s in references]
                 if cursor <= anchor_end + CLAIR3_DELETION_SPAN and any(
