@@ -337,6 +337,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -1020,6 +1036,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -1384,6 +1416,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -1790,6 +1838,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -2374,6 +2438,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -2738,6 +2818,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -3121,6 +3217,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -3486,6 +3598,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -3947,6 +4075,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -4354,6 +4498,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -4752,6 +4912,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -5198,6 +5374,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -5672,6 +5864,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -6127,6 +6335,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -6501,6 +6725,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -6866,6 +7106,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -7385,6 +7641,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -8048,6 +8320,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -8412,6 +8700,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -8942,6 +9246,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -9306,6 +9626,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -9723,6 +10059,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -10087,6 +10439,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -10600,6 +10968,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -11064,6 +11448,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -11428,6 +11828,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -11861,6 +12277,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -12268,6 +12700,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -12633,6 +13081,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -13016,6 +13480,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -13381,6 +13861,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -13852,6 +14348,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -14233,6 +14745,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -14626,6 +15154,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -15044,6 +15588,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -15425,6 +15985,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -15895,6 +16471,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -16394,6 +16986,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -16775,6 +17383,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -17185,6 +17809,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -17676,6 +18316,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -18288,6 +18944,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -18794,6 +19466,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -19252,6 +19940,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -19839,6 +20543,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -20203,6 +20923,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -20666,6 +21402,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -21225,6 +21977,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -21948,6 +22716,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -22450,6 +23234,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -22814,6 +23614,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -23266,6 +24082,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -23666,6 +24498,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -24174,6 +25022,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -24571,6 +25435,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -24986,6 +25866,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -25376,6 +26272,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -25741,6 +26653,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -26197,6 +27125,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -26764,6 +27708,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -27146,6 +28106,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -28100,6 +29076,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -28464,6 +29456,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -28879,6 +29887,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -29260,6 +30284,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -29675,6 +30715,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -30040,6 +31096,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -30442,6 +31514,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -30816,6 +31904,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -31181,6 +32285,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -31596,6 +32716,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -31977,6 +33113,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -32370,6 +33522,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -32779,6 +33947,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -33232,6 +34416,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -33654,6 +34854,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -34055,6 +35271,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -34502,6 +35734,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -34883,6 +36131,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -35285,6 +36549,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -35650,6 +36930,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -36065,6 +37361,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -36446,6 +37758,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -36894,6 +38222,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -37259,6 +38603,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -37708,6 +39068,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -38072,6 +39448,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -38471,6 +39863,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -38852,6 +40260,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -39348,6 +40772,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -39712,6 +41152,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -40278,6 +41734,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -40642,6 +42114,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -41062,6 +42550,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -41561,6 +43065,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -41925,6 +43445,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -42299,6 +43835,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -42715,6 +44267,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -43080,6 +44648,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -43726,6 +45310,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -44090,6 +45690,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -44522,6 +46138,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -44945,6 +46577,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -45048,7 +46696,7 @@
    }
   },
   "vcf chain-annotate": {
-   "help": "usage: wgsextract vcf chain-annotate [-h] [--vcf-input VCF_INPUT] [--annotations ANNOTATIONS]\n                                     [--keep-intermediates] [-r REGION] [--bed BED] [--force]\n                                     [--force-step STEP] [--dry-run] [--to-table]\n                                     [--table-format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --annotations ANNOTATIONS\n                        Comma-separated list of distinct annotations to apply in order (default:\n                        clinvar,revel,phylop,gnomad,vep).\n  --keep-intermediates  Keep intermediate VCFs after success so later runs can reuse them.\n  -r, --region REGION   Only annotate this region (e.g. chr22:1000-2000) or comma-separated\n                        regions.\n  --bed BED             Only annotate regions in this 0-based BED or BED.gz file; clip to known\n                        contig lengths.\n  --to-table            Also export a variant table and SQLite database.\n  --table-format {tsv,parquet}\n                        Format with --to-table (default: tsv).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume, --restart\n                        Rerun every step, ignoring the steps an earlier run completed.\n  --force-step, --force-steps STEP\n                        Rerun STEP and the steps that use its outputs (repeatable). Steps: select,\n                        clinvar, revel, phylop, cadd, gerp, gnomad, spliceai, alphamissense,\n                        pharmgkb, vep, trim.\n  --dry-run             Print which steps would run or be skipped, and why, then exit.\n\nexamples:\n  wgsextract vcf chain-annotate --vcf-input sample.vcf.gz --annotations clinvar,gnomad --region chr22:19000000-20000000 --threads 4 --to-table\n\noutputs (in the output directory unless noted):\n  chain_annotated.vcf.gz (+ index), chain_annotate.steps.json; with --to-\n  table, chain_annotated_variants.tsv (or .parquet) and .sqlite.\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: bgzip, samtools,\n  vep, vep-rs; minutes on a 30x genome.\n",
+   "help": "usage: wgsextract vcf chain-annotate [-h] [--vcf-input VCF_INPUT] [--annotations ANNOTATIONS]\n                                     [--keep-intermediates] [-r REGION] [--bed BED] [--force]\n                                     [--force-step STEP] [--to-table]\n                                     [--table-format {tsv,parquet}]\n\noptions:\n  -h, --help            show this help message and exit\n  --vcf-input VCF_INPUT\n                        Optional override for VCF input file.\n  --annotations ANNOTATIONS\n                        Comma-separated list of annotations to apply in order (default:\n                        clinvar,revel,phylop,gnomad,vep).\n  --keep-intermediates  Keep intermediate VCFs after success so later runs can reuse them.\n  -r, --region REGION   Only annotate this region (e.g. chr22:1000-2000) or comma-separated\n                        regions.\n  --bed BED             Only annotate regions in this 0-based BED or BED.gz file.\n  --to-table            Also export a variant table and SQLite database.\n  --table-format {tsv,parquet}\n                        Format with --to-table (default: tsv).\n\nglobal options:\n  -i/--input, -o/--outdir, --genome, --ref, -t/--threads, -m/--memory, --json, --quiet, --debug,\n  --config and the other global options are accepted before or after the command; 'wgsextract\n  --help' lists them all.\n\nresuming:\n  Completed steps are recorded in <output>.steps.json and skipped when a rerun's inputs,\n  settings and tools are unchanged.\n\n  --force, --no-resume, --restart\n                        Rerun every step, ignoring the steps an earlier run completed.\n  --force-step, --force-steps STEP\n                        Rerun STEP and the steps that use its outputs (repeatable). Steps: select,\n                        clinvar, revel, phylop, cadd, gerp, gnomad, spliceai, alphamissense,\n                        pharmgkb, vep, trim.\n\nexamples:\n  wgsextract vcf chain-annotate --vcf-input sample.vcf.gz --annotations clinvar,gnomad --region chr22:19000000-20000000 --threads 4 --to-table\n\noutputs (in the output directory unless noted):\n  chain_annotated.vcf.gz (+ index), chain_annotate.steps.json; with --to-\n  table, chain_annotated_variants.tsv (or .parquet) and .sqlite.\n\nneeds:\n  bcftools, tabix; depending on options and inputs, also: bgzip, samtools,\n  vep, vep-rs; minutes on a 30x genome.\n",
    "parser": {
     "actions": [
      {
@@ -45384,6 +47032,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -45418,7 +47082,7 @@
       "default": "clinvar,revel,phylop,gnomad,vep",
       "dest": "annotations",
       "exclusive_group": null,
-      "help": "Comma-separated list of distinct annotations to apply in order (default: clinvar,revel,phylop,gnomad,vep).",
+      "help": "Comma-separated list of annotations to apply in order (default: clinvar,revel,phylop,gnomad,vep).",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -45467,7 +47131,7 @@
       "default": null,
       "dest": "bed",
       "exclusive_group": null,
-      "help": "Only annotate regions in this 0-based BED or BED.gz file; clip to known contig lengths.",
+      "help": "Only annotate regions in this 0-based BED or BED.gz file.",
       "metavar": null,
       "nargs": null,
       "option_strings": [
@@ -45520,22 +47184,6 @@
       "option_strings": [
        "--force-step",
        "--force-steps"
-      ],
-      "required": false,
-      "type": null
-     },
-     {
-      "choices": null,
-      "class": "_StoreTrueAction",
-      "const": true,
-      "default": false,
-      "dest": "dry_run",
-      "exclusive_group": null,
-      "help": "Print which steps would run or be skipped, and why, then exit.",
-      "metavar": null,
-      "nargs": 0,
-      "option_strings": [
-       "--dry-run"
       ],
       "required": false,
       "type": null
@@ -45930,6 +47578,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -46413,6 +48077,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -46858,6 +48538,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -47289,6 +48985,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -47929,6 +49641,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -48471,6 +50199,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -48869,6 +50613,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -49384,6 +51144,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -49798,6 +51574,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -50268,6 +52060,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -50697,6 +52505,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -51208,6 +53032,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -51743,6 +53583,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -52141,6 +53997,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -52608,6 +54480,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -53031,6 +54919,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -53445,6 +55349,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -53965,6 +55885,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -54363,6 +56299,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -54879,6 +56831,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -55373,6 +57341,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -55975,6 +57959,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -56479,6 +58479,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -57028,6 +59044,22 @@
       "class": "_GlobalStore",
       "const": null,
       "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
       "dest": "parent_pid",
       "exclusive_group": null,
       "help": "==SUPPRESS==",
@@ -57392,6 +59424,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -57889,6 +59937,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -58511,6 +60575,22 @@
       "nargs": null,
       "option_strings": [
        "--run-step"
+      ],
+      "required": false,
+      "type": null
+     },
+     {
+      "choices": null,
+      "class": "_GlobalStore",
+      "const": null,
+      "default": "==SUPPRESS==",
+      "dest": "_read_scope",
+      "exclusive_group": null,
+      "help": "==SUPPRESS==",
+      "metavar": "JSON",
+      "nargs": null,
+      "option_strings": [
+       "--read-scope"
       ],
       "required": false,
       "type": null
@@ -63126,7 +65206,6 @@
    "bed": null,
    "command": "vcf",
    "debug": false,
-   "dry_run": false,
    "force_steps": null,
    "full_help": false,
    "func": "cmd_chain_annotate",
@@ -63163,7 +65242,6 @@
    "bed": null,
    "command": "vcf",
    "debug": false,
-   "dry_run": false,
    "force_steps": null,
    "full_help": false,
    "func": "cmd_chain_annotate",

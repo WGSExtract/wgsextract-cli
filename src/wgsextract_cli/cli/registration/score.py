@@ -5,6 +5,14 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.score import ScorePgsParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    MINUTES,
+    _n,
+)
+
+NEEDS = {
+    "score pgs": _n(MINUTES, "bcftools", optional="plink2 curl"),
+}
 
 
 def register(

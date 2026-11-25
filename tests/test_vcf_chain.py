@@ -8,8 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, reference_for_vcf
-from tests.smoke_utils import run_cli, state_directory_setting
+from tests.smoke_utils import run_cli
 from tests.test_vcf_annotations import (
     REVEL_HEADER,
     SAMPLE_ROWS,
@@ -325,7 +326,9 @@ def test_1475_dry_run_plans_without_touching_existing_chain(
     ]
     assert not result["outputs"]
     plan = Path(result["manifest"])
-    assert json.loads(plan.read_text())["details"] == result["details"]
+    manifest = json.loads(plan.read_text())
+    assert manifest["details"] == result["details"]
+    assert not manifest["run"].get("children")
     assert not list(out.glob("*_variants.*"))
     assert all(path.read_bytes() == data for path, data in previous.items())
 

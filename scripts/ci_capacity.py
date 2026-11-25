@@ -4,10 +4,9 @@
 Read-only: inspects this repository's pull requests, workflow runs and jobs
 through `gh api`. Exit 0 means a PR may be marked ready; exit 3 means hold.
 Pass --pr for a priority PR to bypass the gate (hands-off and land-asap
-labels do not change capacity admission). Otherwise hold while a
-priority PR has an active PR workflow run or is in the merge queue, while any
-merge_group job waits for a runner, or while more than --max-ready ready-PR
-area matrices are in flight.
+labels do not change capacity admission). Otherwise reserve capacity for
+priority PRs that may still need a runner, any queued merge_group job, and
+hold while more than --max-ready ready-PR area matrices are in flight.
 """
 
 from __future__ import annotations
@@ -28,6 +27,7 @@ ERROR = 1
 HOLD = 3
 AREA_WORKFLOW = ".github/workflows/pr_ci.yml"
 ACTIVE_RUN_STATUSES = ("queued", "in_progress")
+UNSTARTED_RUN_STATUSES = ("pending", "requested", "waiting")
 PAGE = 100
 MAX_PAGES = 20
 # A run without jobs this old is a ghost that never started (seen 11 days stuck).
@@ -62,7 +62,7 @@ def priority_pulls(repository: str, api: Api) -> Iterator[dict[str, Any]]:
             nodes {
               number headRefName headRefOid
               headRepository { nameWithOwner }
-              mergeQueueEntry { id }
+              mergeQueueEntry { state }
             }
             pageInfo { hasNextPage endCursor }
           }
@@ -91,16 +91,25 @@ class Capacity:
     priority_bypass: int | None = None
     priority_ci: list[int] = field(default_factory=list)
     priority_queued: list[int] = field(default_factory=list)
+    priority_waiting: list[int] = field(default_factory=list)
+    priority_ci_reserved: list[int] = field(default_factory=list)
+    priority_queue_reserved: list[int] = field(default_factory=list)
 
     @property
     def reasons(self) -> list[str]:
         reasons = []
-        if self.priority_ci:
-            numbers = ", ".join(f"#{number}" for number in self.priority_ci)
-            reasons.append(f"priority PR(s) {numbers} with active CI")
-        if self.priority_queued:
-            numbers = ", ".join(f"#{number}" for number in self.priority_queued)
-            reasons.append(f"priority PR(s) {numbers} in the merge queue")
+        if self.priority_waiting:
+            numbers = ", ".join(f"#{number}" for number in self.priority_waiting)
+            reasons.append(f"priority PR(s) {numbers} with jobs waiting for a runner")
+        future = sorted(set(self.priority_ci_reserved) - set(self.priority_waiting))
+        if future:
+            numbers = ", ".join(f"#{number}" for number in future)
+            reasons.append(
+                f"priority PR(s) {numbers} with CI that can need more runners"
+            )
+        if self.priority_queue_reserved:
+            numbers = ", ".join(f"#{number}" for number in self.priority_queue_reserved)
+            reasons.append(f"priority PR(s) {numbers} still need merge queue checks")
         if self.merge_group_queued:
             reasons.append(
                 f"{self.merge_group_queued} merge_group job(s) waiting for a runner"
@@ -136,6 +145,18 @@ def is_ready_matrix(run: dict[str, Any]) -> bool:
     return str(run.get("path", "")).split("@")[0] == AREA_WORKFLOW and str(
         run.get("display_title", "")
     ).endswith("/ ready")
+
+
+def final_area_check_running(run: dict[str, Any], jobs: list[dict[str, Any]]) -> bool:
+    if not is_ready_matrix(run) or run.get("status") != "in_progress":
+        return False
+    # `required` is the terminal gate of pr_ci.yml. Other workflows and
+    # earlier area jobs can still fan out even if nothing is queued yet.
+    return [
+        (job.get("name"), job.get("status"))
+        for job in jobs
+        if job.get("status") != "completed"
+    ] == [("required", "in_progress")]
 
 
 def is_ghost(run: dict[str, Any], jobs: list[dict[str, Any]], now: datetime) -> bool:
@@ -179,9 +200,18 @@ def measure(
             return capacity
         priority[number] = pull
     capacity.priority_queued = sorted(
-        number for number, pull in priority.items() if pull["mergeQueueEntry"]
+        number
+        for number, pull in priority.items()
+        if pull["mergeQueueEntry"] is not None
     )
+    capacity.priority_queue_reserved = [
+        number
+        for number in capacity.priority_queued
+        if priority[number]["mergeQueueEntry"].get("state") != "MERGEABLE"
+    ]
     priority_ci: set[int] = set()
+    priority_waiting: set[int] = set()
+    priority_ci_reserved: set[int] = set()
     checked = now()
     waiting: Counter[str] = Counter()
     runs = {
@@ -192,15 +222,19 @@ def measure(
         )
     }
     if priority:
-        # A replacement PR run can be pending while workflow concurrency
-        # cancels its predecessor, before GitHub queues it for a runner.
-        for run in pages(
-            api,
-            f"repos/{repository}/actions/runs?status=pending&event=pull_request",
-            "workflow_runs",
-        ):
-            if run.get("event") == "pull_request" and not is_ghost(run, [], checked):
-                priority_ci.update(run_pr_numbers(run, priority) & priority.keys())
+        # A replacement run may appear before GitHub schedules any of its jobs.
+        for status in UNSTARTED_RUN_STATUSES:
+            for run in pages(
+                api,
+                f"repos/{repository}/actions/runs?status={status}&event=pull_request",
+                "workflow_runs",
+            ):
+                if run.get("event") == "pull_request" and not is_ghost(
+                    run, [], checked
+                ):
+                    numbers = run_pr_numbers(run, priority) & priority.keys()
+                    priority_ci.update(numbers)
+                    priority_ci_reserved.update(numbers)
     for run_id, run in sorted(runs.items()):
         jobs = pages(
             api, f"repos/{repository}/actions/runs/{run_id}/jobs?filter=latest", "jobs"
@@ -216,12 +250,19 @@ def measure(
             capacity.merge_group_in_progress += running
         if run.get("event") == "pull_request" and not is_ghost(run, jobs, checked):
             numbers = run_pr_numbers(run, priority)
-            priority_ci.update(numbers & priority.keys())
+            priority_numbers = numbers & priority.keys()
+            priority_ci.update(priority_numbers)
+            if queued:
+                priority_waiting.update(priority_numbers)
+            if priority_numbers and not final_area_check_running(run, jobs):
+                priority_ci_reserved.update(priority_numbers)
             if is_ready_matrix(run) and (queued or running or not jobs):
                 capacity.ready_matrices.append(
                     {"run": run_id, "prs": sorted(numbers), "url": run.get("html_url")}
                 )
     capacity.priority_ci = sorted(priority_ci)
+    capacity.priority_waiting = sorted(priority_waiting)
+    capacity.priority_ci_reserved = sorted(priority_ci_reserved)
     capacity.waiting_for_runner = dict(sorted(waiting.items()))
     return capacity
 

@@ -10,9 +10,8 @@ from typing import Any, TypeVar, cast, overload
 
 from platformdirs import user_config_dir
 
-from wgsextract_cli.core.atomic_output import atomic_write
+from wgsextract_cli.core.errors import WGSExtractError
 from wgsextract_cli.core.execution_context import ConfigState, bound, current
-from wgsextract_cli.core.file_lock import shared_file_lock
 from wgsextract_cli.core.paths import expand_path, windows_local_app_dir
 from wgsextract_cli.core.settings_schema import (
     DEV_SETTINGS,
@@ -32,7 +31,6 @@ from wgsextract_cli.core.users_workspace import (
     existing_mygenomes_library,
     users_workspace,
 )
-from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.core.workspace_activity import relocated_config_path, workspace_use
 
 # For Python < 3.11, use tomli
@@ -207,7 +205,11 @@ def set_config_path(path: str | os.PathLike[str] | None) -> None:
 
 
 def config_args(*, keep_awake: bool | None = None) -> list[str]:
-    """Forward the config file and sleep override without changing default argv."""
+    """What a wgsextract subprocess inherits: the config file, the sleep
+    override, the temporary folder and the folders it may read (a server
+    job's), without changing default argv."""
+    from wgsextract_cli.core import read_scope
+
     selected = _state().path
     args = ["--config", str(selected)] if selected else []
     if keep_awake or (keep_awake is False and settings.get("keep_awake", False)):
@@ -220,7 +222,7 @@ def config_args(*, keep_awake: bool | None = None) -> list[str]:
     temporary = configured_temp_directory()
     if temporary:
         args += ["--tmp-dir", temporary]
-    return args
+    return args + read_scope.child_args()
 
 
 def legacy_config_paths() -> list[Path]:
@@ -356,10 +358,16 @@ settings: MutableMapping[str, Any] = _Settings()
 
 def reload_settings() -> None:
     """Re-load configuration from disk and drop results derived from it."""
-    from wgsextract_cli.core.dependencies import clear_tool_caches
-
     _load()
-    clear_tool_caches()
+    # There is nothing to invalidate in a subsystem we haven't used yet.
+    if "wgsextract_cli.core.dependencies" in sys.modules:
+        from wgsextract_cli.core.dependencies import clear_tool_caches
+
+        clear_tool_caches()
+    elif "wgsextract_cli.core.remote_input" in sys.modules:
+        from wgsextract_cli.core.remote_input import clear_remote_input_cache
+
+        clear_remote_input_cache()
 
 
 def _load() -> None:
@@ -524,6 +532,9 @@ def _apply_config_updates(config: dict[str, Any], updates: dict[str, Any]) -> No
 def save_config(updates: dict[str, Any]) -> None:
     """Save configuration updates to the config.toml file."""
     import tomli_w
+
+    from wgsextract_cli.core.atomic_output import atomic_write
+    from wgsextract_cli.core.file_lock import shared_file_lock
 
     with _load_lock:
         state = _state()

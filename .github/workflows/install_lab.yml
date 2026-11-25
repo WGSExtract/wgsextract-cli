@@ -6,55 +6,14 @@ name: Install Lab
 # real user doesn't have one.
 #
 # Every passing run is also corrupted (lab.py mutate) and must then fail, and
-# the nightly run adds negative controls (sabotaged installs that must fail) and
-# the app as users get it, setting up the CLI release it pins.
+# manual runs add negative controls (sabotaged installs that must fail) and,
+# for published apps, set up the CLI release the app pins.
 
 # A dispatch with app_release is named after it, so app_release_watch.yml can
 # see which releases have had a full run; otherwise the event's default name.
 run-name: "${{ inputs.app_release && format('Install Lab: app {0}', inputs.app_release) || '' }}"
 
-# PR area checks selects installer/packaging changes or run-install-lab.
 on:
-  workflow_call:
-    inputs:
-      macos:
-        type: boolean
-        default: true
-      app_run:
-        type: string
-        default: ""
-      app_release:
-        type: string
-        default: ""
-      no_apt_cache:
-        type: boolean
-        default: false
-  push:
-    branches: [ main ]
-    paths:
-      - ".github/actions/**"
-      - ".github/workflows/install_lab.yml"
-      - ".github/workflows/gui-build.yml"
-      - "packaging/**"
-      - "scripts/installlab/**"
-      - "src/wgsextract_cli/cli/**"
-      - "src/wgsextract_cli/main.py"
-      - "src/wgsextract_cli/__main__.py"
-      - "gui/app/web/packagers/**"
-      - "gui/tools/packaging/**"
-      - "gui/examples/WGSExtract/**"
-      - "gui/tools/tasks.py"
-      - "pixi.toml"
-      - "pixi.lock"
-      - "pyproject.toml"
-      - "install.sh"
-      - "install_windows.bat"
-      - "uninstall.sh"
-      - "uninstall_windows.bat"
-      - "scripts/bootstrap_windows_prereqs.ps1"
-      - "!**/*.md"
-  schedule:
-    - cron: "17 6 * * *"
   workflow_dispatch:
     inputs:
       app_run:
@@ -67,25 +26,21 @@ on:
           A WGS Extract app release tag to test instead of the latest release
           (app_release_watch.yml sets it)
         required: false
+      candidate:
+        description: Test the GUI run against the candidate tree before its pinned CLI is public.
+        type: boolean
+        default: false
       no_apt_cache:
         description: Test container prerequisites against today's Ubuntu mirrors without the apt cache
         type: boolean
         default: false
 
 permissions:
+  actions: read
   contents: read
 
 env:
   APP_RUN: ${{ inputs.app_run }}
-  # `tree`: current app/CLI/plan. `pinned` (nightly): released app/CLI and its
-  # trusted tag's plan/step expectations; scientific checks stay current.
-  EXTENDED_SCENARIOS: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-
-# Coalesce main pushes and PRs independently; never cancel nightly/manual runs.
-# A literal prefix avoids sharing the reusable caller's github.workflow group.
-concurrency:
-  group: install-lab-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   linux:
@@ -134,7 +89,6 @@ jobs:
           path: out/installlab-apt/ubuntu-24.04-amd64/linux
           key: ${{ steps.apt-restore.outputs.cache-primary-key }}
       - name: Every sabotaged install must fail
-        if: env.EXTENDED_SCENARIOS == 'true'
         run: python3 scripts/installlab/lab.py selftest linux ${{ inputs.no_apt_cache && '--no-apt-cache' || '' }}
       - name: Upload evidence
         if: always()
@@ -174,8 +128,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           APP_RELEASE: ${{ inputs.app_release }}
+          CANDIDATE: ${{ inputs.candidate }}
           OLD_REPO: WGSExtract/gui-for-cli
         run: |
+          if [ "$CANDIDATE" = true ] && [ -z "$APP_RUN" ]; then
+            echo "::error::Candidate validation requires a GUI distribution run ID."
+            exit 1
+          fi
           repo=$GITHUB_REPOSITORY
           release=
           if [ -z "$APP_RUN" ]; then
@@ -234,7 +193,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cli: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["tree", "pinned"]' || '["tree"]') }}
+        cli: ${{ fromJSON(inputs.candidate && '["tree"]' || '["tree", "pinned"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -324,7 +283,6 @@ jobs:
           retention-days: 14
 
   macos:
-    if: github.event_name != 'pull_request' || inputs.macos
     runs-on: macos-latest
     timeout-minutes: 150
     steps:
@@ -345,7 +303,6 @@ jobs:
       - name: Every corruption of the evidence must fail the oracle
         run: pixi run python scripts/installlab/lab.py mutate out/installlab/ci-macos/results
       - name: Every sabotaged install must fail
-        if: env.EXTENDED_SCENARIOS == 'true'
         run: pixi run python scripts/installlab/lab.py selftest host
       - name: Upload evidence
         if: always()
@@ -360,13 +317,13 @@ jobs:
 
   macos-app:
     needs: [app-source, app-build]
-    if: ${{ !cancelled() && needs.app-source.result == 'success' && (github.event_name != 'pull_request' || inputs.macos) }}
+    if: ${{ !cancelled() && needs.app-source.result == 'success' }}
     runs-on: macos-latest
     timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
-        cli: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["tree", "pinned"]' || '["tree"]') }}
+        cli: ${{ fromJSON(inputs.candidate && '["tree"]' || '["tree", "pinned"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -504,9 +461,8 @@ jobs:
             !out/installlab/**/*.guard
           retention-days: 14
 
-  # Weekly: each sabotaged install, on its own fresh runner, must fail.
+  # Each sabotaged install, on its own fresh runner, must fail.
   windows-sabotage:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 150
     strategy:
@@ -538,7 +494,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cli: ${{ fromJSON((github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '["tree", "pinned"]' || '["tree"]') }}
+        cli: ${{ fromJSON(inputs.candidate && '["tree"]' || '["tree", "pinned"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -617,7 +573,7 @@ jobs:
       - name: Set up Pixi
         uses: ./.github/actions/setup-pixi
       - name: Check out the pinned app's plan and step expectations
-        if: env.EXTENDED_SCENARIOS == 'true' && needs.app-source.result == 'success'
+        if: ${{ !inputs.candidate && needs.app-source.result == 'success' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ needs.app-source.outputs.repo }}
@@ -637,7 +593,12 @@ jobs:
           EXPECTED: >-
             install-lab-windows
             install-lab-windows-app-tree
-            ${{ env.EXTENDED_SCENARIOS == 'true' && 'install-lab-windows-app-pinned install-lab-windows-sabotage-noop-installer install-lab-windows-sabotage-fake-launcher install-lab-windows-sabotage-break-samtools install-lab-windows-sabotage-leftover install-lab-windows-sabotage-skip-uninstall' || '' }}
+            ${{ !inputs.candidate && 'install-lab-windows-app-pinned' || '' }}
+            install-lab-windows-sabotage-noop-installer
+            install-lab-windows-sabotage-fake-launcher
+            install-lab-windows-sabotage-break-samtools
+            install-lab-windows-sabotage-leftover
+            install-lab-windows-sabotage-skip-uninstall
         run: |
           status=0
           read -r -a expected <<< "$EXPECTED"

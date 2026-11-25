@@ -6,11 +6,12 @@ import sys
 from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
 
 from wgsextract_cli import __version__
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams, VcfTableParams
 from wgsextract_cli.core._confidence_rules import thresholds_from
-from wgsextract_cli.core.artifacts import lineage_args
+from wgsextract_cli.core.artifacts import ChildRun, ended_as, lineage_args
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -204,6 +205,33 @@ def _invoke_annotation(command: list[str], ann: str, step: str, output: str) -> 
         raise WGSExtractError(f"{step} '{ann}' did not produce {output}.")
 
 
+def _record_step_run(
+    ann: str,
+    result_file: Path,
+    reason: str,
+    outcome: Literal["ok", "failed", "cancelled"],
+) -> ChildRun:
+    try:
+        document = json.loads(result_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        document = None
+    result_file.unlink(missing_ok=True)
+    if (
+        outcome != "ok"
+        and isinstance(document, dict)
+        and document.get("status") == "ok"
+    ):
+        # The annotator exited successfully but its expected output is missing.
+        document["status"] = outcome
+    return current_result().run.add_child(
+        ann,
+        document,
+        command=" ".join(_step_command(ann)),
+        reason=reason,
+        outcome=outcome,
+    )
+
+
 def _run_annotation(
     journal: StepJournal,
     step: Step,
@@ -214,7 +242,9 @@ def _run_annotation(
     args: list[str],
 ) -> None:
     decision = journal.decide(step)
-    if decision.run and not journal.dry_run:
+    if journal.dry_run:
+        return
+    if decision.run:
         if absolute_path(output) == absolute_path(source):
             raise UsageError(f"Annotation step '{ann}' would overwrite its input.")
         with journal.running(decision) as handle:
@@ -222,11 +252,26 @@ def _run_annotation(
             Path(output).unlink(missing_ok=True)
             for index in vcf_indexes(output):
                 index.unlink()
-            _invoke_annotation(args, ann, label, output)
+            result_file = Path(output).parent / "step.result.json"
+            result_file.unlink(missing_ok=True)
+            try:
+                _invoke_annotation(
+                    [*args, "--result-file", str(result_file)], ann, label, output
+                )
+            except BaseException as error:
+                _record_step_run(ann, result_file, decision.reason, ended_as(error))
+                raise
+            child = _record_step_run(ann, result_file, decision.reason, "ok")
+            handle.metrics["result_runs"] = [
+                {"run": child.run, "command": child.command}
+            ]
             for index in vcf_indexes(output):
                 handle.add_output(index)
-    if not journal.dry_run:
-        _forward_step_warnings(label, ann, str(Path(output).parent))
+    else:
+        current_result().run.record_step(
+            ann, decision.metrics, decision.reason, "reused"
+        )
+    _forward_step_warnings(label, ann, str(Path(output).parent))
 
 
 def _scope_step(

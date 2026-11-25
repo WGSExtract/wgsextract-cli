@@ -20,6 +20,7 @@ from wgsextract_cli.api.vcf import (
     VcfSnpParams,
     _VcfFileParams,
 )
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core import read_scope, ultima
 from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.alignment.metadata import get_bam_header
@@ -34,7 +35,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.genotype_qc import region_targets, warn_low_depth
-from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES as SHARED_LOG_MESSAGES
 from wgsextract_cli.core.mimalloc import bcftools_environment
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
@@ -96,7 +97,7 @@ def require_vcf_input(params: _VcfFileParams) -> str:
     """The VCF an operation reads: ``vcf_input``, else ``input``."""
     chosen = params.vcf_input or params.input
     if not chosen:
-        raise UsageError(LOG_MESSAGES["input_required"])
+        raise UsageError(SHARED_LOG_MESSAGES["input_required"])
     return os.fspath(chosen)
 
 
@@ -161,7 +162,7 @@ def caller_setup(
     """Resolve threads, output folder and reference FASTA for a BAM/CRAM caller,
     and warn about alignment problems and low depth."""
     if not input_file:
-        raise UsageError(LOG_MESSAGES["input_required"])
+        raise UsageError(SHARED_LOG_MESSAGES["input_required"])
 
     logging.debug(f"Input file: {str(absolute_path(input_file))}")
     thread_count = get_resource_threads(threads, stage="calling")
@@ -181,7 +182,7 @@ def caller_setup(
     verify_paths_exist(paths_to_check)
     if not resolved_ref or not Path(resolved_ref).is_file():
         raise WGSExtractError(
-            LOG_MESSAGES["ref_required_for"].format(task="variant calling")
+            SHARED_LOG_MESSAGES["ref_required_for"].format(task="variant calling")
         )
     from wgsextract_cli.core.artifact_checks import require_consumable
     from wgsextract_cli.core.calling_reference import validate_calling_reference
@@ -206,7 +207,7 @@ def caller_setup(
 
     if not resolved_ref or not Path(resolved_ref).is_file():
         raise WGSExtractError(
-            LOG_MESSAGES["ref_required_for"].format(task="variant calling")
+            SHARED_LOG_MESSAGES["ref_required_for"].format(task="variant calling")
         )
     current_result().set_reference(resolved_ref, lib.build)
     warn_about_alignment(input_file, resolved_ref)

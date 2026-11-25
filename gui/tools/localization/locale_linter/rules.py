@@ -17,7 +17,7 @@ def lint_locale(
     locale_code: str,
     requires_builtin: bool,
 ) -> LocaleReport:
-    findings = common_file_findings(target)
+    findings = common_file_findings(target, requires_builtin=requires_builtin)
     source_keys = {entry.key for entry in source.entries}
     target_keys = {entry.key for entry in target.entries}
     builtin_set = set(BUILTIN_REQUIRED_KEYS) if requires_builtin else set()
@@ -139,7 +139,7 @@ def lint_locale(
 
 
 def lint_source(source: ParsedFile, requires_builtin: bool) -> list[Finding]:
-    findings = common_file_findings(source)
+    findings = common_file_findings(source, requires_builtin=requires_builtin)
     keys = {entry.key for entry in source.entries}
     if requires_builtin:
         for required in BUILTIN_REQUIRED_KEYS:
@@ -173,7 +173,7 @@ def lint_source(source: ParsedFile, requires_builtin: bool) -> list[Finding]:
     return findings
 
 
-def common_file_findings(parsed: ParsedFile) -> list[Finding]:
+def common_file_findings(parsed: ParsedFile, *, requires_builtin: bool) -> list[Finding]:
     findings: list[Finding] = []
     for line, message in parsed.parse_errors:
         findings.append(Finding("error", "parse-error", line, None, message))
@@ -187,6 +187,34 @@ def common_file_findings(parsed: ParsedFile) -> list[Finding]:
                 f"Duplicate key (previously defined on line {prev_line})",
             )
         )
+    if requires_builtin:
+        findings.extend(builtin_layout_findings(parsed))
+    return findings
+
+
+def builtin_layout_findings(parsed: ParsedFile) -> list[Finding]:
+    findings = [
+        Finding(
+            "error",
+            "builtin-multiline",
+            entry.line,
+            entry.key,
+            r"Keep each built-in entry on one line; use \n for line breaks",
+        )
+        for entry in parsed.entries
+        if entry.multiline
+    ]
+    for previous, entry in zip(parsed.entries, parsed.entries[1:]):
+        if previous.key > entry.key:
+            findings.append(
+                Finding(
+                    "error",
+                    "builtin-key-order",
+                    entry.line,
+                    entry.key,
+                    f"Sort built-in keys in case-sensitive order; move this before {previous.key!r}",
+                )
+            )
     return findings
 
 

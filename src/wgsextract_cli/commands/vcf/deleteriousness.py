@@ -3,12 +3,12 @@ import tempfile
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfCaddParams, VcfGerpParams
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.variant_files import (

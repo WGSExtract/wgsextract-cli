@@ -12,6 +12,7 @@ from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfClair3Params
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core.alignment.cram_staging import (
     needs_cram30,
     stage_cram30,
@@ -40,7 +41,6 @@ from wgsextract_cli.core.genotype_qc import (
     covered_depths,
     region_targets,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.parabricks import gpu_memory, verify_gpu_docker
 from wgsextract_cli.core.paths import absolute_path

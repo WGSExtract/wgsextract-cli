@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from wgsextract_cli.commands._messages.align import LOG_MESSAGES
 from wgsextract_cli.core import ultima
 from wgsextract_cli.core.alignment.fastq import (
     check_primary_reads,
@@ -32,7 +33,6 @@ from wgsextract_cli.core.atomic_output import (
 )
 from wgsextract_cli.core.chunked_alignment import ChunkedAlignment
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_aligners import (
     AlignerCommand,
     find_native_aligner,

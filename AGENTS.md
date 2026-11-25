@@ -30,11 +30,13 @@ The current selector remains authoritative during shadow mode. Once enabled
 for a lane, the decisive selector reports unmatched inputs and runs the full
 lane only for named universal scopes. CI-only edits still run
 policy/routing/readiness tests, with one-OS smoke for changed matrix workflows.
-Before narrowing main pushes to the merge queue's selection and passed-test
-cache rules, establish the daily full latest-main backstop, cache refresh and
-miss attribution. Keep other platform lanes, required checks, merged-tree
-guards and certification intact. Add a selector regression for each confirmed
-miss.
+Ready PRs run the selected OS and area checks; merge groups retain the smaller
+Ubuntu/Windows gate. Main pushes run security and repository automation only;
+nightly runs the four full OS suites, refreshes the cache, and reports red main
+and selector misses. Install Lab, package/benchmark smoke, and the other heavy
+checks in [Releasing](docs/releasing.md) run on demand and gate publication,
+not PRs. Keep merged-tree guards and certification intact. Add a selector
+regression for each confirmed miss.
 
 - **Always** run `pixi run ruff check --fix {file_path}` and `pixi run ruff format {file_path}` after editing a Python file in this directory.
 - **Always** run `pixi run mypy {file_path}` (or `pixi run mypy src/wgsextract_cli`) to check for type errors before concluding a task.
@@ -92,7 +94,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - Implement only after the issue's author, or an owner, explicitly approves (for example "go ahead"). Then remove `research-done` and continue as normal work.
 - **Execution.**
   - Each issue gets its own branch and worktree. Implementer sub-agents get complete context.
-  - User-facing changes add their release notes as a fragment, `docs/release-notes/unreleased/NUMBER-slug.md` (format in that folder's README; `python scripts/release_notes.py check`), never in a shared notes file, so PRs don't conflict over them.
+  - User-facing changes add release-note fragments, never edits to a shared notes file: `docs/release-notes/unreleased/NUMBER-slug.md` for the CLI and `gui/docs/changelog/unreleased/NUMBER-slug.md` for the app. See each folder's README; `python scripts/release_notes.py check` validates both.
   - Open PRs as drafts (`gh pr create --draft`) once the branch passes the local gate. Drafts run no CI. The gate: run an independent review agent, fix its findings, run `pixi run lint`, the routing/lint tests (`tests/test_ci_changes.py`, `tests/test_github_actions_policy.py`), relevant local tests/type checks, documentation checks if docs changed (the `DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` and `scripts/validate_site_sources.py`), and the secret scan (`pixi run pre-commit run gitleaks --all-files`). Self-review the diff against AGENTS.md.
   - **Copilot reviews the draft, before readiness**, so the ready-time matrix runs once instead of once per review round. Ruleset `15885247` reviews a PR when it is opened, drafts included, but not on later pushes (`review_draft_pull_requests=true`, `review_on_push=false`; checked 2026-11-21). After pushing changes to a draft, request a fresh review with `gh pr edit N --add-reviewer @copilot`. Fix or decline all its threads in one batch (see Babysitting), then certify that head and mark it ready. Don't change repository settings yourself.
     - If Copilot's review fails to start (it posts "couldn't run its full agentic review because it didn't start before the timeout", usually from a hosted-runner backlog), don't wait or keep re-requesting: once the independent local review is clean and the head is certified, mark it ready and say in the ready note that the Copilot review couldn't start.
@@ -130,14 +132,14 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 ## Docs fast path
 
-- **Scope:** owner-account agents may push commits changing only hand-written Markdown prose directly to `main`, without a PR, review or queue. Generated/test-checked references (including API/command docs, site CLI cards, the help index and CLI snapshot), `AGENTS.md` and other policy files are excluded, as are code, workflow, config and asset files. Policy changes still need a PR and owner direction.
+- **Scope:** owner-account agents may push commits changing only hand-written Markdown prose directly to `main`, without a PR, review or queue. Generated/test-checked references (including API/command docs, site CLI cards and the help index), `AGENTS.md` and other policy files are excluded, as are code, workflow, config and asset files. Policy changes still need a PR and owner direction.
 - **Before pushing:** fetch and rebase on the latest `origin/main`, then run `python scripts/validate_site_sources.py` and `pixi run pre-commit run gitleaks --files ...` for all changed files. Fast-forward push only (`git push origin HEAD:main`); never force. If main advances, rebase and repeat the checks.
 - **Batching:** batch prose edits; check that the merge queue is empty before pushing and do not push while it has entries, because each main push rebuilds queued groups.
 - Keep `(AI):` on GitHub comments; add no AI brand trailers to commits.
 
 ## Collaborator PRs
 
-- **`priority`** is added to PRs from humans with write, maintain, or admin access, except the agent account (`theontho`), when opened, reopened, marked ready, or converted to draft. Authors can remove it until the next such event; pushes do not restore it. Priority PRs skip the agent capacity gate; agents yield while these PRs have pending draft or ready CI or a merge queue entry. Agents never push to, ready, review-fix, or enqueue a collaborator's PR on their own.
+- **`priority`** is added to PRs from humans with write, maintain, or admin access, except the agent account (`theontho`), when opened, reopened, marked ready, or converted to draft. Authors can remove it until the next such event; pushes do not restore it. Priority PRs skip the agent capacity gate. Agents reserve capacity while a priority PR's CI can still schedule jobs or its queue entry still needs checks, and while any merge-group job is waiting for a runner. Agents never push to, ready, review-fix, or enqueue a collaborator's PR on their own.
 - **`hands-off`** tells agents and the coordinator to take no action on the PR, not even reruns. It overrides `land-asap` but does not remove runner priority.
 - **`land-asap`** tells agents the author is done: an owner-account agent may rerun cancelled or lost-runner jobs and enqueue a ready PR at the front once all merge checks pass. Without this label, agents may only move a passing PR's existing entry to the front, after the author enables auto-merge or enqueues it themselves.
 
@@ -158,4 +160,4 @@ For collaborator PRs, the limits above override the steps below.
 - Push follow-up commits and wait for CI to rerun. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`), not the whole run or a new push.
 - Don't update a branch just because it's BEHIND main. Update it only when it's DIRTY (conflicts) or main changed the same area (generated files, the help budget); the merge queue tests it against the latest main anyway.
 - Auto-merge never enqueues a DIRTY PR. The *Auto-merge conflict watch* workflow (`scripts/ci_auto_merge_watch.py`) labels such PRs `auto-merge-blocked` and comments once after each main push; merge main, resolve the conflicts and push, and the label clears itself.
-- Once passable, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA`, not a direct merge. Passable means every check passes or is validly skipped by routing, selection or certification (including selected macOS, Windows, ARM64, smoke and Install Lab jobs feeding `required`), no material threads are unresolved, and local checks pass. The queue retests the smaller `required` set against latest main, not the PR-only readiness gate; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.
+- Once passable, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA`, not a direct merge. Passable means every check passes or is validly skipped by routing, selection or certification (including selected macOS, Windows and ARM64 jobs feeding `required`), no material threads are unresolved, and local checks pass. The queue retests the smaller `required` set against latest main, not the PR-only readiness gate; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.
