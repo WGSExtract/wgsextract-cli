@@ -686,9 +686,9 @@ verdict, and closing an old red-main issue does not certify the pending SHA.
 
 A ready PR analyzes only the CodeQL languages whose files it changes
 (`scripts/ci_codeql_scope.py`): Python for `.py`/`.pyi`, JavaScript/TypeScript
-for the extractor's file types (including JSON, YAML, HTML and XML), Rust for
-`.rs`, `Cargo.toml`/`Cargo.lock` or any file in a crate directory, and Actions
-for `action.yml`. Changes under `.github/` or to the scope script analyze every
+for the extractor's file types (including JSON, YAML, HTML and XML), and
+Actions for `action.yml`. Rust is not scanned (owner decision 2026-11-24: about
+52 runner-hours a week with no findings). Changes under `.github/` or to the scope script analyze every
 language. Main pushes and the nightly schedule always analyze every language.
 
 GitHub's CodeQL check turns `neutral` ("N configurations not found") and
