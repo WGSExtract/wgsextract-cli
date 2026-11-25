@@ -25,8 +25,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: windows-arm64-qualification-${{ github.ref }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  cancel-in-progress: true
+  group: windows-arm64-qualification-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   calling-control:

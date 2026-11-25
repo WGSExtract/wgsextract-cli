@@ -399,6 +399,43 @@ def test_1045_queue_smoke_is_required_instead_of_the_pr_windows_suite() -> None:
     assert needs is not None and "queue-smoke" in needs[1]
 
 
+@pytest.mark.parametrize(
+    "workflow",
+    [
+        p
+        for p in sorted(WORKFLOWS.glob("*.yml"))
+        if event_path_filters(p, "pull_request") is not None
+    ],
+    ids=lambda p: p.name,
+)
+def test_1554_superseded_runs_cancel_only_for_the_same_pr(workflow: Path) -> None:
+    concurrency = workflow_concurrency(workflow)
+    assert (
+        concurrency["cancel-in-progress"]
+        == "${{ github.event_name == 'pull_request' }}"
+    )
+
+    def group(event: str, *, run_id: int, pr: int = 1554) -> str:
+        rendered = render_concurrency_group(
+            concurrency["group"],
+            {
+                "github.event_name": event,
+                "github.event.pull_request.number": str(pr),
+                "github.event.pull_request.draft": False,
+                "github.event.action": "synchronize",
+                "github.run_id": str(run_id),
+            },
+        )
+        return rendered
+
+    pr_group = group("pull_request", run_id=101)
+    assert pr_group == group("pull_request", run_id=102)
+    assert pr_group != group("pull_request", run_id=101, pr=1555)
+    for event in ("merge_group", "push", "schedule", "release", "workflow_dispatch"):
+        assert group(event, run_id=101) != group(event, run_id=102)
+        assert group(event, run_id=101) != pr_group
+
+
 def test_923_fork_code_cannot_write_certification_outputs() -> None:
     source = (WORKFLOWS / "pr_ci.yml").read_text()
     before_route = source.split("      - name: Route the complete PR diff", 1)[0]

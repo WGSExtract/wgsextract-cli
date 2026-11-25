@@ -12,7 +12,7 @@ on:
       - .github/actions/setup-pixi/**
       - "!**/*.md"
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
       - .github/workflows/copilot-setup-steps.yml
       - .github/actions/apt-install/**
@@ -20,6 +20,10 @@ on:
       - .github/actions/setup-gui/**
       - .github/actions/setup-pixi/**
       - "!**/*.md"
+
+concurrency:
+  group: copilot-setup-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   WGSEXTRACT_TOOL_RUNTIME: native
