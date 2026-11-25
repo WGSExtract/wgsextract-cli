@@ -16,7 +16,29 @@ from wgsextract_cli.api.bam import (
     BamUnsortParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    _SAM,
+    HOURS,
+    INSTANT,
+    MINUTES,
+    SECONDS,
+    _n,
+)
+from wgsextract_cli.commands._messages.bam import CLI_HELP
+
+NEEDS = {
+    "bam sort": _n(HOURS, *_SAM, optional="bcftools sambamba"),
+    "bam index": _n(MINUTES, *_SAM, optional="sambamba"),
+    "bam unindex": _n(INSTANT, *_SAM),
+    "bam unsort": _n(HOURS, *_SAM, optional="bcftools"),
+    "bam to-cram": _n(MINUTES, *_SAM, optional="bcftools sambamba"),
+    "bam to-bam": _n(HOURS, *_SAM, optional="bcftools sambamba"),
+    "bam unalign": _n(HOURS, *_SAM, optional="bcftools"),
+    "bam identify": _n(SECONDS, *_SAM, optional="bcftools", scale=""),
+    "bam merge": _n(HOURS, *_SAM, optional="bcftools"),
+    "bam to-ubam": _n(HOURS, *_SAM, optional="bcftools"),
+}
+
 
 cmd_identify = command_handler("wgsextract_cli.commands.bam", "cmd_identify")
 cmd_index = command_handler("wgsextract_cli.commands.bam", "cmd_index")

@@ -548,7 +548,14 @@ def _response(description: str, schema: str) -> dict[str, Any]:
 
 
 def _errors(*codes: int) -> dict[str, Any]:
-    return {str(code): _response(HTTPStatus(code).phrase, "Error") for code in codes}
+    # Python 3.13 renamed the HTTP 413 phrase. Keep the published OpenAPI
+    # description identical across the Python versions that build or serve it.
+    return {
+        str(code): _response(
+            "Content Too Large" if code == 413 else HTTPStatus(code).phrase, "Error"
+        )
+        for code in codes
+    }
 
 
 _WAIT = {

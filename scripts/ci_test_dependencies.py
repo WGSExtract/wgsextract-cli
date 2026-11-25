@@ -72,6 +72,7 @@ DOCS_TARGET_INPUTS = {
     "tests/test_regen.py": (
         "scripts/regen*",
         "scripts/gen_command_docs.py",
+        "scripts/gen_server_openapi.py",
         "justfile",
     ),
     "tests/test_text_newlines.py": (
@@ -80,6 +81,7 @@ DOCS_TARGET_INPUTS = {
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
+        "scripts/gen_server_openapi.py",
     ),
     "tests/test_bump_version.py": (
         "scripts/bump_version*",

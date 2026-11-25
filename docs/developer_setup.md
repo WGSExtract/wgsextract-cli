@@ -188,6 +188,8 @@ When you add or rename a command:
 - Register its parser in `src/wgsextract_cli/cli/registration/`, keeping
   execution imports inside handlers. `cli/_lazy.py` defers loading command
   implementations until execution; help must not import scientific libraries.
+  Add its required/optional external tools and runtime to `NEEDS` in the
+  same registration module.
 - Run `pixi run gen-command-docs` to regenerate the bundled
   `assets/cli/help-index.json` used for fast, configuration-independent discovery.
   Run `pixi run site-build` to preview the automatically generated command
@@ -195,6 +197,10 @@ When you add or rename a command:
 
 `tests/test_cli_help.py` checks the bundled index; `tests/test_site_references.py`
 builds the site and checks the published references.
+
+Keep command-specific messages with the code that uses them. If registration
+and implementation both need the same strings, use the group's lightweight
+module under `src/wgsextract_cli/commands/_messages/`.
 
 ### Benchmark fixture ploidy
 
@@ -207,6 +213,10 @@ declared/observed sex or weaken normal Unknown-sex refusal. Full-reference
 `real-1x`/`real-30x` runs retain build-specific ploidy.
 
 ### VCF API specifications
+
+For any typed command, re-export its `Params` from the API group's module
+under `src/wgsextract_cli/api/_exports/`. This keeps `api.SomeParams`
+available to both Python callers and type checkers.
 
 `api/vcf.py` remains the public import and dispatch facade. Its parameter
 declarations live in `api/vcf_specs/`: shared field helpers, calling, file
@@ -292,9 +302,13 @@ the same typed Params definitions as per-command CLI help, not the compact
 help index, so their invocation schemas remain complete.
 
 Server response envelopes are writer-used TypedDicts in `server/transport.py`.
-`scripts/gen_server_contracts.py` generates the committed response JSON Schema
-bundle, OpenAPI 3.1 document and raw GUI TypeScript transport declarations;
-`--check` detects drift, and `just regen` updates all three. Keep GUI presentation
+`scripts/gen_server_contracts.py --check` checks the committed response JSON
+Schema bundle and result/report writer types. OpenAPI 3.1 and the GUI transport
+types are not committed. CLI developer setup builds OpenAPI under
+`out/contracts/` and `just regen` rebuilds both. The GUI build regenerates the
+transport declarations from OpenAPI before compiling. Wheel and sdist builds
+include the generated JSON under the CLI's schema assets. `wgsextract serve --openapi`
+generates the same default document without reading a file. Keep GUI presentation
 types and tolerant parsing adapters handwritten: they are not wire documents.
 Loaded result/report documents remain opaque in the server spec until their
 own writer models drive their public schemas; a schema ID check is not full

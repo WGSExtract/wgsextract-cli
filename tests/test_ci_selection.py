@@ -54,7 +54,7 @@ def test_929_result_contract_changes_select_freshness(path: str) -> None:
     "path",
     [
         "scripts/server_transport_typescript.py",
-        "gui/app/shared/generated/server-transport.ts",
+        "scripts/gen_server_openapi.py",
         "gui/app/shared/generated/result-records.ts",
         "gui/app/shared/generated/report-records.ts",
     ],

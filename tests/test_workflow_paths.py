@@ -220,3 +220,15 @@ def test_docs_fast_path_909_pr_code_still_runs_external_workflows() -> None:
     } <= triggered_workflows(
         ["README.md", "gui/app/web/packagers/tauri/src/main.rs"], "pull_request"
     )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "scripts/gen_server_openapi.py",
+        "src/wgsextract_cli/server/http_api.py",
+        "src/wgsextract_cli/server/transport.py",
+    ],
+)
+def test_1537_server_transport_inputs_trigger_gui_type_build(path: str) -> None:
+    assert "gui-ci.yml" in triggered_workflows([path], "pull_request")
