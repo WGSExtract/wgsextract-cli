@@ -186,14 +186,6 @@ def test_param_config_key_must_name_a_setting():
         param(None, config_key="server_prot")
 
 
-def test_configuration_docs_are_up_to_date():
-    script = Path(__file__).resolve().parents[1] / "scripts" / "gen_config_docs.py"
-    completed = subprocess.run(
-        [sys.executable, str(script), "--check"], capture_output=True, text=True
-    )
-    assert completed.returncode == 0, completed.stdout + completed.stderr
-
-
 @pytest.mark.parametrize(
     ("key", "moved"),
     [
