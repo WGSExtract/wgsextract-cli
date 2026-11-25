@@ -1,6 +1,7 @@
 """The generated-reference conflict workflow uses real Git and generators."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -8,9 +9,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import isolated_home_env
+
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED = (
-    "src/wgsextract_cli/assets/cli/help-index.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json",
@@ -52,7 +54,6 @@ def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
 def regen_repo(tmp_path: Path) -> Path:
     for relative in (
         "scripts/regen.py",
-        "scripts/gen_command_docs.py",
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
@@ -90,6 +91,7 @@ def resolve(repo: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "scripts/regen.py", "--resolve"],
         cwd=repo,
+        env={**os.environ, **isolated_home_env(repo / "home")},
         capture_output=True,
         text=True,
     )
@@ -120,7 +122,8 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
 
     # #1471: regenerate to LF even if the existing files use CRLF.
     crlf_artifacts = [
-        regen_repo / "src/wgsextract_cli/assets/cli/help-index.json",
+        regen_repo
+        / "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     ]
     for path in crlf_artifacts:
         path.write_text(
@@ -137,6 +140,9 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     staged = git(regen_repo, "diff", "--cached", "--name-only").stdout.splitlines()
     assert set(staged) == set(GENERATED)
     assert not git(regen_repo, "diff", "--name-only").stdout
+    [cache] = (regen_repo / "home").rglob("help-index.json")
+    index = json.loads(cache.read_bytes())["index"]
+    assert any(item["path"] == "vcf snp" for item in index["commands"])
     document = json.loads(
         (regen_repo / "out/contracts/wgsextract.server.openapi.json").read_text(
             encoding="utf-8"
@@ -147,7 +153,6 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
         regen_repo / "gui/app/shared/generated/server-transport.ts"
     ).read_text(encoding="utf-8")
     for generator in (
-        "gen_command_docs.py",
         "gen_output_schemas.py",
         "gen_report_schema.py",
         "gen_server_contracts.py",
@@ -161,12 +166,15 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
         assert checked.returncode == 0, checked.stderr
 
 
+@pytest.mark.parametrize(
+    "retired", ["docs/commands.md", "src/wgsextract_cli/assets/cli/help-index.json"]
+)
 def test_1531_regen_resolve_deletes_retired_reference_from_older_branch(
     regen_repo: Path,
+    retired: str,
 ) -> None:
-    retired = "docs/commands.md"
     old_reference = regen_repo / retired
-    old_reference.parent.mkdir(exist_ok=True)
+    old_reference.parent.mkdir(parents=True, exist_ok=True)
     old_reference.write_text("before\n", encoding="utf-8")
     git(regen_repo, "add", retired)
     git(regen_repo, "commit", "-m", "Original reference")

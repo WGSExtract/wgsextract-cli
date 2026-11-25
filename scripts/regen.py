@@ -1,4 +1,4 @@
-"""Regenerate committed CLI references; --resolve also stages merge resolutions."""
+"""Regenerate tracked outputs and warm CLI help; --resolve stages merge resolutions."""
 
 from __future__ import annotations
 
@@ -9,14 +9,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR_COMMANDS = (
-    ("scripts/gen_command_docs.py",),
     ("scripts/gen_output_schemas.py",),
     ("scripts/gen_report_schema.py",),
     ("scripts/gen_server_contracts.py",),
     ("scripts/gen_server_openapi.py", "--gui"),
 )
 GENERATED = (
-    "src/wgsextract_cli/assets/cli/help-index.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json",
@@ -35,6 +33,7 @@ RETIRED_GENERATED = (
     "docs/api.md",
     "docs/commands.md",
     "docs/configuration.md",
+    "src/wgsextract_cli/assets/cli/help-index.json",
 )
 
 
@@ -58,6 +57,9 @@ def main() -> None:
             )
     for command in GENERATOR_COMMANDS:
         subprocess.run([sys.executable, *command], cwd=ROOT, check=True)
+    subprocess.run(
+        [sys.executable, "-m", "wgsextract_cli.cli.help_index"], cwd=ROOT, check=True
+    )
     if args.resolve:
         for path in retired:
             (ROOT / path).unlink(missing_ok=True)

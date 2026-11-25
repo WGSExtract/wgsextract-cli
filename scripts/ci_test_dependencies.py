@@ -21,6 +21,7 @@ IGNORED = {".git", ".pixi", "out", "tmp", "scratch", "__pycache__", "node_module
 DOCS_TEST_TARGETS = (
     "tests/test_site_references.py",
     "tests/test_cli_help.py",
+    "tests/test_help_index.py",
     # Real Git/generator checks need only the same Python deps as freshness tests.
     "tests/test_regen.py",
     "tests/test_text_newlines.py",
@@ -47,7 +48,6 @@ GENERATED_DOCS = frozenset(
         "site_src/commands.md",
         "site_src/configuration.md",
         "site_src/reference.md",
-        "src/wgsextract_cli/assets/cli/help-index.json",
     }
 )
 DOCS_TARGET_INPUTS = {
@@ -65,19 +65,16 @@ DOCS_TARGET_INPUTS = {
         "site_src/configuration.md",
         "site_src/reference.md",
     ),
-    "tests/test_cli_help.py": (
-        "src/wgsextract_cli/**",
-        "scripts/gen_command_docs.py",
-    ),
+    "tests/test_cli_help.py": ("src/wgsextract_cli/**",),
+    "tests/test_help_index.py": ("src/wgsextract_cli/**",),
     "tests/test_regen.py": (
         "scripts/regen*",
-        "scripts/gen_command_docs.py",
+        "src/wgsextract_cli/cli/help_index.py",
         "scripts/gen_server_openapi.py",
         "justfile",
     ),
     "tests/test_text_newlines.py": (
         "scripts/regen.py",
-        "scripts/gen_command_docs.py",
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
@@ -118,7 +115,6 @@ for _target in ("tests/test_workflow_readiness.py", "tests/test_workflow_paths.p
 DOCS_ONLY_SCRIPTS = frozenset(
     {
         "scripts/gen_api_docs.py",
-        "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
         "scripts/site_references.py",
         "scripts/build_site.py",

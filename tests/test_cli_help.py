@@ -251,6 +251,13 @@ print(json.dumps(sorted(
     if name.split(".")[0] in heavy or name in implementations
 )))
 """
+    if argv == ["help", "--all", "--json"]:
+        # Source installs materialize discovery on first use. Check warm startup.
+        subprocess.run(
+            [sys.executable, "-m", "wgsextract_cli.cli.help_index"],
+            cwd=ROOT,
+            check=True,
+        )
     completed = subprocess.run(
         [sys.executable, "-c", code],
         cwd=ROOT,

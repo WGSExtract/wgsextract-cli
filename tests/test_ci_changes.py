@@ -488,7 +488,6 @@ _REGEN_TESTS = ["tests/test_regen.py", "tests/test_text_newlines.py"]
             "scripts/gen_api_docs.py",
             ["tests/test_site_references.py"],
         ),
-        ("scripts/gen_command_docs.py", ["tests/test_cli_help.py", *_REGEN_TESTS]),
         (
             "docs/data/configuration-guide.md",
             ["tests/test_site_references.py"],
@@ -525,6 +524,12 @@ def test_913_light_checks_run_only_for_their_own_inputs(
         assert not selected["cli"]
         assert selected["docs"]
     assert docs_test_targets([path]) == targets
+
+
+def test_1531_help_cache_source_runs_product_tests() -> None:
+    paths = ["src/wgsextract_cli/cli/help_index.py"]
+    assert routes(paths)["cli"]
+    assert "tests/test_help_index.py" in docs_test_targets(paths)
 
 
 @pytest.mark.parametrize(

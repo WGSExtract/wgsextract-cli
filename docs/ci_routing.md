@@ -543,7 +543,8 @@ test-input reads, selects each target independently:
 
 - `tests/test_site_references.py` (generated command, API and configuration
   reference pages and CLI cards);
-- `tests/test_cli_help.py` (the bundled discovery index and help topics/examples);
+- `tests/test_cli_help.py` and `tests/test_help_index.py` (help topics/examples
+  and the compact discovery cache);
 - `tests/test_bump_version.py` (CLI/app site sources, version/distribution docs);
 - `tests/test_regen.py` (real Git conflicts and regeneration/freshness checks,
   without bioinformatics tools);
