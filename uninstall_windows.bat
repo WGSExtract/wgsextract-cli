@@ -185,7 +185,6 @@ if exist "%SCRIPT_DIR%tmp\.managed-help-cache" (
     if errorlevel 1 exit /b 1
     del /q "%SCRIPT_DIR%tmp\.managed-help-cache"
     if exist "%SCRIPT_DIR%tmp\.managed-help-cache" exit /b 1
-    rmdir "%SCRIPT_DIR%tmp\cache" 2>nul
 )
 
 if "%REMOVE_PIXI%"=="1" (
