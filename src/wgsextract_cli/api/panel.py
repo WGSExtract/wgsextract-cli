@@ -16,8 +16,10 @@ or JSON) and resolve its genes, without sample data::
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from wgsextract_cli.core.panel import BUILDS
 from wgsextract_cli.core.panel_presets import PRESETS
@@ -216,6 +218,46 @@ class PanelAuditParams(PanelCheckParams):
     )
     outdir: Path | None = outdir_param()
 
+    def _calibration_override(self) -> bool:
+        return self.null_sets is not None or self.seed is not None or self.download
+
+    def requests_calibration(self, spec: Mapping[str, Any]) -> bool:
+        return not self.no_calibration and (
+            "calibration" in spec or self._calibration_override()
+        )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        yield from super().implied_paths()
+        if self.exons is not None or self.no_calibration:
+            return
+        from wgsextract_cli.core.panel_reference import (
+            mane_model_path,
+            mane_staging_paths,
+        )
+        from wgsextract_cli.core.panel_spec import read_panel
+
+        # The server checks the panel path before inspecting its calibration opt-in.
+        panel = self.panel.expanduser()
+        try:
+            spec = read_panel(panel).document if panel.is_file() else None
+        except UsageError:
+            spec = None  # The worker reports the panel read error.
+        if not self.requests_calibration(spec or {}):
+            return
+        path = mane_model_path(self.ref)
+        yield "ref", path.parent
+        yield "ref", path
+        if self.download:
+            for staging_path in mane_staging_paths(path):
+                yield "ref", staging_path
+
+    def write_folders(self) -> Iterator[Path]:
+        yield from super().write_folders()
+        if self.download and self.exons is None:
+            from wgsextract_cli.core.panel_reference import mane_model_path
+
+            yield mane_model_path(self.ref).parent
+
     def __post_init__(self) -> None:
         super().__post_init__()
         if not self.research_panel:
@@ -224,9 +266,7 @@ class PanelAuditParams(PanelCheckParams):
             raise UsageError("--null-sets must be at most 100,000.")
         if self.seed is not None and self.seed > 2**53:
             raise UsageError("--seed must be at most 2**53.")
-        if self.no_calibration and (
-            self.null_sets is not None or self.seed is not None or self.download
-        ):
+        if self.no_calibration and self._calibration_override():
             raise UsageError(
                 "--no-calibration cannot be used with --null-sets, --seed or --download."
             )

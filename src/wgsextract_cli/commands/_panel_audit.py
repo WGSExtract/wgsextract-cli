@@ -229,7 +229,7 @@ def _run(
     }
     calibrator = None
     exon_model = None
-    if _panel_calibration.requests_calibration(params, spec):
+    if params.requests_calibration(spec):
         calibrator, exon_model = _panel_calibration.prepare(
             params,
             source,

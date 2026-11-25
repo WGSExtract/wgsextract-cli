@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterator
 from pathlib import Path
 
 from wgsextract_cli.core.network_policy import require_download
@@ -20,10 +21,26 @@ MANE_URL = (
 MANE_SHA256 = "8d5b02c3fcc267d5b7bc420dfc0f67feb9c239c58c703230e6fa72462ed61ad0"
 
 
+def mane_model_path(ref: Path | None) -> Path:
+    """Resolve the model's location without reading or downloading it."""
+    root = resolve_reference_library(library_roots(ref).resource_root(FOLDER))
+    return Path(root, FOLDER, MANE_NAME)
+
+
+def mane_staging_paths(path: Path) -> Iterator[Path]:
+    """Files the direct downloader may use beside the model."""
+    for suffix in (
+        ".partial",
+        ".partial.source",
+        ".partial.segments",
+        ".partial.segments.tmp",
+    ):
+        yield path.with_name(path.name + suffix)
+
+
 def mane_model(ref: Path | None) -> Path:
     """Get the verified MANE data; no network without download consent."""
-    root = resolve_reference_library(library_roots(ref).resource_root(FOLDER))
-    path = Path(root, FOLDER, MANE_NAME)
+    path = mane_model_path(ref)
     if not path.is_file():
         require_download(f"{MANE_NAME} at {path} (GRCh38 MANE Select exon model)")
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -32,6 +49,8 @@ def mane_model(ref: Path | None) -> Path:
             str(path),
             expected_sha256=MANE_SHA256,
             resolve_release_digest=False,
+            use_cache=False,
+            use_mirrors=False,
         ):
             raise WGSExtractError(
                 f"Could not download the public MANE model {MANE_NAME}."

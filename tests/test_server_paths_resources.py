@@ -184,6 +184,71 @@ def test_732_omitted_imputation_ref_cannot_escape_allowed_roots(
 
 
 @pytest.mark.parametrize(
+    "activation", ["panel", "home_relative_panel", "null_sets", "download"]
+)
+def test_1287_audit_guards_the_implicit_calibration_model(
+    tmp_path, monkeypatch, activation
+):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    panel = allowed / "research.toml"
+    panel.write_text(
+        "[calibration]\n" if activation in {"panel", "home_relative_panel"} else ""
+    )
+    reference = tmp_path / "outside"
+    monkeypatch.setitem(settings, "reference_library", str(reference))
+    request: dict[str, str | int | bool] = {
+        "panel": str(panel),
+        "vcf_input": str(allowed / "sample.vcf"),
+        "research_panel": True,
+    }
+    if activation == "null_sets":
+        request["null_sets"] = 100
+    if activation == "download":
+        request["download"] = True
+    if activation == "home_relative_panel":
+        monkeypatch.setenv("HOME", str(allowed))
+        monkeypatch.setenv("USERPROFILE", str(allowed))
+        request["panel"] = "~/research.toml"
+
+    op = find("panel/audit")
+    with pytest.raises(RequestError) as error:
+        PathGuard([allowed]).check(params_from_json(op, request))
+    assert error.value.code == "path_not_allowed"
+    assert not reference.exists()
+    PathGuard([allowed, reference]).check(params_from_json(op, request))
+    PathGuard([allowed]).check(
+        params_from_json(op, {**request, "exons": str(allowed / "model.tsv")})
+    )
+
+
+def test_1287_audit_download_cannot_follow_an_escaping_partial(tmp_path, monkeypatch):
+    from wgsextract_cli.core.panel_reference import MANE_NAME
+
+    allowed = tmp_path / "allowed"
+    folder = allowed / "panel"
+    folder.mkdir(parents=True)
+    monkeypatch.setitem(settings, "reference_library", str(allowed))
+    outside = tmp_path / "existing"
+    outside.touch()
+    try:
+        (folder / f"{MANE_NAME}.partial.source").symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    op = find("panel/audit")
+    request = {
+        "panel": str(allowed / "research.toml"),
+        "vcf_input": str(allowed / "sample.vcf"),
+        "research_panel": True,
+    }
+    guard = PathGuard([allowed])
+    guard.check(params_from_json(op, request))
+    with pytest.raises(RequestError) as error:
+        guard.check(params_from_json(op, {**request, "download": True}))
+    assert error.value.code == "path_not_allowed"
+
+
+@pytest.mark.parametrize(
     "relative_path",
     [
         "ybrowse/hg19",

@@ -588,6 +588,122 @@ def test_1287_null_counts_callable_cds_and_excludes_duplicated_controls(
 
 
 @needs_htslib
+@pytest.mark.parametrize(
+    ("sex", "nonpar_gt"), [("XY", "1"), ("XY", "1/1"), ("XX", "1/1"), ("", "1/1")]
+)
+def test_1287_null_matches_x_controls_and_counts_haploid_evidence(
+    tmp_path: Path, sex: str, nonpar_gt: str
+) -> None:
+    from wgsextract_cli.core.reference_evidence import Provenance
+
+    panel, _, gvcf = _audit_inputs(tmp_path, phase_set="1")
+    spec = json.loads(panel.read_text(encoding="utf-8"))
+    del spec["sites"], spec["haplotypes"]
+    spec["groups"] = [
+        {"id": "x", "genes": ["PLCXD1", "G6PD"]},
+        {"id": "boundary", "genes": ["XG"]},
+    ]
+    _write(tmp_path, spec, ".json")
+    header, remaining = gvcf.read_text(encoding="utf-8").split("#CHROM", 1)
+    columns = "#CHROM" + remaining.splitlines()[0] + "\n"
+    # Use the same annotated variants in the VCF and the reference evidence.
+    header += "##contig=<ID=chrX,length=156040895>\n"
+    policy = Provenance(
+        "bcftools",
+        "1.23",
+        "gq",
+        ploidy="chrX:2781480-155701382=1" if sex == "XY" else "",
+        sex=sex,
+    )
+    header += policy.header() + "\n"
+    coding = [
+        ("PLCXD1", 276360, ["1/1"]),
+        ("GTPBP6", 304760, ["1/1"]),
+        ("XG", 2781475, []),
+        ("MECP2", 154021580, ["1/1"]),
+        ("G6PD", 154531390, [nonpar_gt, "0/1"]),
+    ]
+    variants = []
+    blocks = []
+    for gene, start, calls in coding:
+        for pos, gt in enumerate(calls, start):
+            variants.append(
+                f"chrX\t{pos}\t.\tA\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|{gene}"
+                f"\tGT:DP:GQ:AD\t{gt}:30:60:{'15,15' if gt == '0/1' else '0,30'}\n"
+            )
+        # DP 6 is below the diploid floor but above the biological haploid
+        # floor. The diploid-encoded block must still contribute all its bases.
+        depth = 6 if sex == "XY" and gene in {"MECP2", "G6PD"} else 30
+        blocks.append(
+            f"chrX\t{start + len(calls)}\t.\tA\t<NON_REF>\t.\tPASS\tEND={start + 9}"
+            f"\tGT:DP:GQ:MIN_DP\t0/0:{depth}:60:{depth}\n"
+        )
+    vcf = tmp_path / "x-calls.vcf"
+    vcf.write_text(
+        "".join(
+            line
+            for line in header.splitlines(keepends=True)
+            if not line.startswith("##ALT=")
+        )
+        + columns
+        + "".join(variants),
+        encoding="utf-8",
+    )
+    gvcf.write_text(
+        header
+        + columns
+        + "".join(sorted(variants + blocks, key=lambda row: int(row.split("\t")[1]))),
+        encoding="utf-8",
+    )
+    model = tmp_path / "x-exons.tsv"
+    model.write_text(
+        "#contig\tchrX\t156040895\n"
+        "gene\ttranscript\ttag\tstrand\texon\texons\tchrom\tstart\tend\tcds_start\tcds_end\tlimitations\n"
+        + "".join(
+            f"{gene}\tNM_{gene}\tMANE Select\t+\t1\t1\tchrX\t{start}\t{start + 9}\t"
+            f"{start}\t{start + 9}\t\n"
+            for gene, start, _ in coding
+        ),
+        encoding="utf-8",
+    )
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=Path(bgzip_index(vcf)),
+            gvcf=gvcf,
+            exons=model,
+            research_panel=True,
+            null_sets=100,
+        )
+    )
+    report = next(o for o in result.outputs if o.role == "panel_audit")
+    groups = json.loads(Path(report.path).read_text(encoding="utf-8"))["groups"]
+    null, boundary = (group["calibration"] for group in groups)
+    if not sex:
+        assert null["reason"] == "no_eligible_target_genes"
+        assert null["excluded_targets"] == {
+            "PLCXD1": "chromosome_out_of_scope",
+            "G6PD": "chromosome_out_of_scope",
+        }
+        return
+    assert null["observed_matched_bp"] == null["null_mean_matched_bp"] == 20
+    strata = {
+        row["chromosome_class"]: (row["target_genes"], row["control_genes"])
+        for row in null["strata"]
+    }
+    if sex == "XY":
+        assert strata == {"X_diploid": (1, 1), "X_haploid": (1, 1)}
+        assert null["observed_allele_copies"] == 3
+        assert null["null_histogram"] == {"3": 100}
+        assert boundary["excluded_targets"] == {"XG": "mixed_x_ploidy"}
+    else:
+        assert strata == {"X_diploid": (2, 2)}
+        assert null["observed_allele_copies"] == 5
+        assert null["null_histogram"] == {"4": 100}
+        assert boundary["observed_matched_bp"] == 10
+
+
+@needs_htslib
 @pytest.mark.parametrize("end", [11796331, 248956422])
 def test_1287_only_incomplete_called_regions_block_null_calibration(
     tmp_path: Path,
