@@ -8,6 +8,7 @@ import re
 import statistics
 from collections import Counter, defaultdict
 from collections.abc import Iterable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Any, cast
 from urllib.parse import urlencode
@@ -332,13 +333,9 @@ def prior_area_runs(api: GitHub, pr: Row, lower: datetime) -> list[Row]:
     ]
 
 
-def rerun_jobs(api: GitHub, run: Row) -> None:
+def rest_jobs(api: GitHub, run: Row) -> list[Row]:
     path = f"actions/runs/{run['id']}"
-    run["attempts"] = [
-        api.api("GET", f"{path}/attempts/{attempt}")
-        for attempt in range(1, run["run_attempt"])
-    ] + [dict(run, created_at=run["run_started_at"])]
-    run["jobs"] = [
+    return [
         {
             "name": job["name"],
             "detailsUrl": job["html_url"],
@@ -352,15 +349,31 @@ def rerun_jobs(api: GitHub, run: Row) -> None:
     ]
 
 
+def rerun_jobs(api: GitHub, run: Row) -> None:
+    path = f"actions/runs/{run['id']}"
+    run["attempts"] = [
+        api.api("GET", f"{path}/attempts/{attempt}")
+        for attempt in range(1, run["run_attempt"])
+    ] + [dict(run, created_at=run["run_started_at"] or run["updated_at"])]
+    run["jobs"] = rest_jobs(api, run)
+
+
 def collect(api: GitHub, start: datetime, end: datetime) -> tuple[list[Row], list[Row]]:
     # Workflows starting the previous day may have jobs finishing in the week.
     lower = start - timedelta(days=1)
-    runs_by_id = {
-        run["id"]: run
-        for run in api.runs_between(lower, end)
-        if lower <= stamp(run["created_at"]) < end
-        and run["path"].startswith(".github/workflows/")
-    }
+    days = [lower + timedelta(days=day) for day in range((end - lower).days)]
+
+    def day_runs(day: datetime) -> list[Row]:
+        return api.runs_between(day, day + timedelta(days=1))
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        runs_by_id = {
+            run["id"]: run
+            for batch in pool.map(day_runs, days)
+            for run in batch
+            if lower <= stamp(run["created_at"]) < end
+            and run["path"].startswith(".github/workflows/")
+        }
     heads: dict[tuple[str, str], set[str]] = defaultdict(set)
     for run in runs_by_id.values():
         if run["event"] == "pull_request":
@@ -417,14 +430,18 @@ def collect(api: GitHub, start: datetime, end: datetime) -> tuple[list[Row], lis
     suite_ids = list(suites)
     for offset in range(0, len(suite_ids), 30):
         response = graphql(api, CHECKS, ids=suite_ids[offset : offset + 30])
-        if any(suite is None for suite in response["nodes"]):
-            raise RuntimeError("Missing Actions check suite in weekly report")
-        for suite in response["nodes"]:
-            checks = suite["checkRuns"]
-            if checks["pageInfo"]["hasNextPage"]:
-                raise RuntimeError(f"Too many jobs in check suite {suite['id']}")
-            for run in suites[suite["id"]]:
-                run["jobs"] = checks["nodes"]
+        for suite_id, suite in zip(
+            suite_ids[offset : offset + 30], response["nodes"], strict=True
+        ):
+            checks = suite["checkRuns"] if suite else None
+            for run in suites[suite_id]:
+                # Large suites and inaccessible GraphQL nodes use paginated
+                # Actions jobs, without truncating the runner-hour totals.
+                run["jobs"] = (
+                    checks["nodes"]
+                    if checks and not checks["pageInfo"]["hasNextPage"]
+                    else rest_jobs(api, run)
+                )
     return prs, runs
 
 
