@@ -5,6 +5,31 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Unreleased changes are tracked in [fragments](changelog/unreleased/README.md).
 
+## [0.8.10] - 2026-11-24
+
+### Added
+- The Microarray page keeps **CombinedKit v3** alongside **CombinedKit v5** (expanding v3), places `23andMe v1/v2` before `v3` and `FTDNA v1 (Affy)` before `v2` on their main rows, puts FTDNA's GRCh38 Y formats (`v2y`, `v3y`, `v4y`) on a dedicated **FTDNA (Y only, Build 38)** row, exposes the consumer vendor formats from [#1107 (Microarray: letter-named vendor variants and CombinedKit v5)](https://github.com/WGSExtract/wgsextract-cli/pull/1107) (AncestryDNA `v2ab`, `v2cd`, `v2e`; FamilyTreeDNA `v4`; MyHeritage `v3`; `tellmeGen`, `Genera`, `MTHFR Genetics`, `meuDNA` `v1`/`v2`, `SelfDecode`, and `Nucleus`), and removes the dropped minor date/size variants and standalone `ancestry_v2`.
+- A result's findings (Personal Report) and mtDNA haplogroup variants are listed under it, each with **Show in viewer** at its own position on the sample's BAM, CRAM or VCF. The viewer opens a row's contig in the matched reference's spelling (`chr1` or `1`, `chrM` or `MT`), opens ClinVar and ACMG findings only on a reference of their evidence's build, and opens Haplogrep's rCRS positions only on a mitochondrion whose sequence is the rCRS (not hg19's Yoruba or T2T's CHM13 chrM). A row without a single position, or whose sample file is missing, unindexed or outside My Genomes, shows a disabled link with the reason; `POST /api/viewer/check` checks the file without granting any bytes ([#1161, viewer links from result tables](https://github.com/WGSExtract/wgsextract-cli/issues/1161)).
+- A **Gene page** in the WGSExtract sidebar: enter a gene symbol to see its RefSeq transcripts and exons, your variants in it (consequence, ClinVar, gnomAD, research-only ACMG; filters for rare and damaging, ClinVar P/LP and ACMG P/LP; **Export TSV**) and read depth over each exon against a callable threshold, all from `wgsextract info gene` on this computer. Missing data names the command that provides it; **Open in genome viewer** shows the gene with the new **RefSeq transcripts** track ([gene-page.md](https://github.com/WGSExtract/wgsextract-cli/blob/v0.8.10/gui/docs/gene-page.md), [#1166, offline gene page](https://github.com/WGSExtract/wgsextract-cli/issues/1166)).
+- VCF Info, VariantQC, Granite-QC, and multi-VCF picker actions, provenance tooltips on Reference Data/Genomes/Tools tables, and genome viewer rsID and annotation tracks ([#1463, VCF Info/QC/Viewer tools](https://github.com/WGSExtract/wgsextract-cli/pull/1463)).
+
+### Changed
+- Bump the bundled WGSExtract CLI installer target to `v0.8.10` ([release notes](https://github.com/WGSExtract/wgsextract-cli/releases/tag/v0.8.10)).
+
+### Fixed
+- The genome viewer's file endpoints answer a `HEAD` without a `Range` with `200` and the file's full size for files over 32 MiB too, instead of `416`; whole-file `GET`s keep their 32 MiB limit ([#1227](https://github.com/WGSExtract/wgsextract-cli/issues/1227)).
+- Two settings saves at once, from two windows or from the app and the CLI, no longer lose one of the changes: each save takes a lock the CLI shares and merges into the file as it is ([#1230, lost concurrent settings saves](https://github.com/WGSExtract/wgsextract-cli/issues/1230)).
+- A run, setup or workspace move whose window disconnected before its progress stream began no longer starts, instead of running (and holding the workspace) with nobody listening; a progress write waiting on a stalled window always settles when the stream is cancelled ([#1234, backpressured progress on disconnect](https://github.com/WGSExtract/wgsextract-cli/issues/1234)).
+- Moving the users workspace or a library folder keeps the symbolic links in it working, on the same disk or to another one. A link to a file inside the moved folder now points at that file's new place (a relative link stays relative), instead of at the old folder; a link to something outside the folder still points there, and is moved as a link, never copied in. Windows folder links fall back to junctions when symbolic links aren't allowed ([#1239, links broken by a move](https://github.com/WGSExtract/wgsextract-cli/issues/1239)).
+- Moving the users workspace or a folder named in Settings now asks you to
+  retry if a command or save is still running, instead of risking lost changes
+  or output in the old folder. A refused move does not interrupt the steps
+  of an already-running CLI workflow.
+  ([#1322, workspace move coordination](https://github.com/WGSExtract/wgsextract-cli/issues/1322))
+- Settings refuses a move if the user's workspace, the library folder being moved, or the chosen destination is itself a symbolic link or Windows junction. The error names the link and its target; nothing is moved or changed. To relocate a linked folder, move its target manually and update the setting. For a linked destination, select the actual folder instead of its link. Links inside the folder being moved are unaffected ([#1340, moving a linked folder](https://github.com/WGSExtract/wgsextract-cli/issues/1340)).
+- The next job starts a fresh local job server after all running processes are stopped
+  ([#1459, job server restart](https://github.com/WGSExtract/wgsextract-cli/issues/1459)).
+
 ## [0.8.9] - 2026-11-21
 
 ### Added

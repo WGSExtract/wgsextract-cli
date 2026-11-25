@@ -1,6 +1,7 @@
 """The generated-reference conflict workflow uses real Git and generators."""
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -8,14 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from wgsextract_cli.cli.help import SITE_BLOCK_END, SITE_BLOCK_START
+from tests.home_isolation import isolated_home_env
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED = (
-    "docs/api.md",
-    "docs/commands.md",
-    "src/wgsextract_cli/assets/cli/help-index.json",
-    "docs/configuration.md",
     "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.steps.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.result.1.schema.json",
@@ -27,8 +24,6 @@ GENERATED = (
     "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
-    "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json",
-    "gui/app/shared/generated/server-transport.ts",
     "gui/app/shared/generated/result-records.ts",
     "gui/app/shared/generated/report-records.ts",
 )
@@ -59,13 +54,10 @@ def git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProce
 def regen_repo(tmp_path: Path) -> Path:
     for relative in (
         "scripts/regen.py",
-        "scripts/gen_api_docs.py",
-        "scripts/gen_command_docs.py",
-        "scripts/gen_config_docs.py",
-        "docs/data/configuration-guide.md",
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
+        "scripts/gen_server_openapi.py",
         "scripts/json_lines.py",
         "scripts/server_transport_typescript.py",
         "site_src/cli.md",
@@ -77,15 +69,6 @@ def regen_repo(tmp_path: Path) -> Path:
         target = tmp_path / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text("base\n", encoding="utf-8")
-    # Stale generated cards, but preserve the handwritten source around them.
-    site = tmp_path / "site_src/cli.md"
-    text = site.read_text(encoding="utf-8")
-    start = text.index(SITE_BLOCK_START)
-    end = text.index(SITE_BLOCK_END)
-    site.write_text(
-        text[:start] + SITE_BLOCK_START + "\nstale\n" + text[end:],
-        encoding="utf-8",
-    )
     git(tmp_path, "init", "--initial-branch=base")
     git(tmp_path, "add", ".")
     git(tmp_path, "commit", "-m", "base")
@@ -108,6 +91,7 @@ def resolve(repo: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, "scripts/regen.py", "--resolve"],
         cwd=repo,
+        env={**os.environ, **isolated_home_env(repo / "home")},
         capture_output=True,
         text=True,
     )
@@ -138,8 +122,8 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
 
     # #1471: regenerate to LF even if the existing files use CRLF.
     crlf_artifacts = [
-        regen_repo / "docs/configuration.md",
-        regen_repo / "docs/commands.md",
+        regen_repo
+        / "src/wgsextract_cli/assets/schemas/wgsextract.sample.1.schema.json",
     ]
     for path in crlf_artifacts:
         path.write_text(
@@ -154,20 +138,21 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
         assert b"\r" not in output and output.count(b"\n") > 1
     assert not git(regen_repo, "diff", "--name-only", "--diff-filter=U").stdout
     staged = git(regen_repo, "diff", "--cached", "--name-only").stdout.splitlines()
-    assert set(staged) == {*GENERATED, "site_src/cli.md"}
+    assert set(staged) == set(GENERATED)
     assert not git(regen_repo, "diff", "--name-only").stdout
-    assert "MicroarrayParams" in (regen_repo / "docs/api.md").read_text(
-        encoding="utf-8"
+    [cache] = (regen_repo / "home").rglob("help-index.json")
+    index = json.loads(cache.read_bytes())["index"]
+    assert any(item["path"] == "vcf snp" for item in index["commands"])
+    document = json.loads(
+        (regen_repo / "out/contracts/wgsextract.server.openapi.json").read_text(
+            encoding="utf-8"
+        )
     )
-    for name in ("docs/commands.md", "site_src/cli.md"):
-        assert "microarray" in (regen_repo / name).read_text(encoding="utf-8")
-    assert "server_max_jobs" in (regen_repo / "docs/configuration.md").read_text(
-        encoding="utf-8"
-    )
+    assert "/v1/ops/microarray" in document["paths"]
+    assert "export interface Job {" in (
+        regen_repo / "gui/app/shared/generated/server-transport.ts"
+    ).read_text(encoding="utf-8")
     for generator in (
-        "gen_api_docs.py",
-        "gen_command_docs.py",
-        "gen_config_docs.py",
         "gen_output_schemas.py",
         "gen_report_schema.py",
         "gen_server_contracts.py",
@@ -181,18 +166,46 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
         assert checked.returncode == 0, checked.stderr
 
 
-def test_989_stale_compact_openapi_reports_readable_field_diff(
+@pytest.mark.parametrize(
+    "retired", ["docs/commands.md", "src/wgsextract_cli/assets/cli/help-index.json"]
+)
+def test_1531_regen_resolve_deletes_retired_reference_from_older_branch(
+    regen_repo: Path,
+    retired: str,
+) -> None:
+    old_reference = regen_repo / retired
+    old_reference.parent.mkdir(parents=True, exist_ok=True)
+    old_reference.write_text("before\n", encoding="utf-8")
+    git(regen_repo, "add", retired)
+    git(regen_repo, "commit", "-m", "Original reference")
+    git(regen_repo, "switch", "-c", "prior")
+    old_reference.write_text("prior change\n", encoding="utf-8")
+    git(regen_repo, "commit", "-am", "Update original reference")
+    git(regen_repo, "switch", "base")
+    git(regen_repo, "rm", retired)
+    git(regen_repo, "commit", "-m", "Retire original reference")
+    assert git(regen_repo, "merge", "--no-commit", "prior", check=False).returncode == 1
+
+    result = resolve(regen_repo)
+
+    assert result.returncode == 0, result.stderr
+    assert not old_reference.exists()
+    assert not git(regen_repo, "diff", "--name-only", "--diff-filter=U").stdout
+
+
+def test_989_stale_server_response_schema_reports_readable_field_diff(
     regen_repo: Path,
 ) -> None:
     regenerated = resolve(regen_repo)
     assert regenerated.returncode == 0, regenerated.stderr
     path = (
-        regen_repo / "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+        regen_repo
+        / "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json"
     )
     document = json.loads(path.read_text(encoding="utf-8"))
-    document["info"]["version"] = "stale-version"
+    document["$id"] = "stale-schema-id"
     path.write_text(
-        json.dumps(document, separators=(",", ":")) + "\n", encoding="utf-8"
+        json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
     checked = subprocess.run(
@@ -204,13 +217,10 @@ def test_989_stale_compact_openapi_reports_readable_field_diff(
 
     assert checked.returncode == 1
     assert (
-        "committed/src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+        "committed/src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json"
         in checked.stderr
     )
-    assert '-    "version": "stale-version",' in checked.stderr
-    assert '+    "version":' in checked.stderr
+    assert '-  "$id": "stale-schema-id",' in checked.stderr
+    assert '+  "$id": "urn:wgsextract:server:responses:1",' in checked.stderr
     assert len(checked.stderr) < 5000
-    assert (
-        json.loads(path.read_text(encoding="utf-8"))["info"]["version"]
-        == "stale-version"
-    )
+    assert json.loads(path.read_text(encoding="utf-8"))["$id"] == "stale-schema-id"

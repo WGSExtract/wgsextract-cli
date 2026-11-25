@@ -18,7 +18,6 @@ from scripts.ci_changes import setup_checks as setup_checks
 from scripts.ci_changes import site_validation as site_validation
 from scripts.ci_codeql_scope import EXTENSIONS as EXTENSIONS
 from scripts.ci_codeql_scope import LANGUAGES as LANGUAGES
-from scripts.ci_codeql_scope import languages as codeql_languages
 from scripts.ci_optional_tools import routed_suites as routed_suites
 from scripts.ci_select_tests import ci_path as ci_path
 from scripts.ci_select_tests import ci_test_targets as ci_test_targets
@@ -40,7 +39,7 @@ from scripts.pr_checks_ready import latest_ready_run as latest_ready_run
             ["AGENTS.md", "native/README.md", ".github/copilot-instructions.md"],
             set(),
         ),
-        (["docs/api.md", "docs/commands.md"], {"docs"}),
+        (["site_src/api.md", "site_src/commands.md"], {"docs"}),
         (["native/bwa/bwa.c"], {"native"}),
         # Mockup changes also feed the cross-platform review-server regressions.
         (["gui/mockups/index.html", "site_src/index.md"], {"site", "cli"}),
@@ -479,26 +478,22 @@ _REGEN_TESTS = ["tests/test_regen.py", "tests/test_text_newlines.py"]
 @pytest.mark.parametrize(
     ("path", "targets"),
     [
-        ("docs/api.md", ["tests/test_api.py::test_api_docs_are_up_to_date"]),
-        ("docs/commands.md", ["tests/test_cli_help.py"]),
-        ("site_src/cli.md", ["tests/test_cli_help.py"]),
+        ("site_src/api.md", ["tests/test_site_references.py"]),
+        ("site_src/commands.md", ["tests/test_site_references.py"]),
+        ("site_src/cli.md", ["tests/test_site_references.py"]),
         ("scripts/regen.py", _REGEN_TESTS),
         ("scripts/bump_version.py", ["tests/test_bump_version.py"]),
         (
             "scripts/gen_api_docs.py",
-            ["tests/test_api.py::test_api_docs_are_up_to_date", *_REGEN_TESTS],
+            ["tests/test_site_references.py"],
         ),
-        ("scripts/gen_command_docs.py", ["tests/test_cli_help.py", *_REGEN_TESTS]),
         (
-            "docs/configuration.md",
-            ["tests/test_core_cli.py::test_configuration_docs_are_up_to_date"],
+            "docs/data/configuration-guide.md",
+            ["tests/test_site_references.py"],
         ),
         (
             "scripts/gen_config_docs.py",
-            [
-                "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
-                *_REGEN_TESTS,
-            ],
+            ["tests/test_site_references.py"],
         ),
         (
             "scripts/ci_changes.py",
@@ -530,12 +525,18 @@ def test_913_light_checks_run_only_for_their_own_inputs(
     assert docs_test_targets([path]) == targets
 
 
+def test_1531_help_cache_source_runs_product_tests() -> None:
+    paths = ["src/wgsextract_cli/cli/help_index.py"]
+    assert routes(paths)["cli"]
+    assert "tests/test_help_index.py" in docs_test_targets(paths)
+
+
 @pytest.mark.parametrize(
     "paths",
     [
         ["src/wgsextract_cli/commands/info.py"],
-        ["src/wgsextract_cli/api/__init__.py", "docs/api.md"],
-        ["src/wgsextract_cli/cli/help.py", "docs/commands.md", "site_src/cli.md"],
+        ["src/wgsextract_cli/api/__init__.py", "site_src/api.md"],
+        ["src/wgsextract_cli/cli/help.py", "site_src/commands.md", "site_src/cli.md"],
     ],
 )
 def test_913_cli_lane_owns_freshness_without_duplicate_docs_pytest(
@@ -705,17 +706,16 @@ def codeql_scope(repo: Path, *args: str) -> list[str]:
         ({"src/pkg/mod.py": "x = 2\n"}, ["python"]),
         ({"docs/guide.md": "changed\n"}, []),
         ({"tests/fixtures/data.json": "{}\n"}, ["javascript-typescript"]),
-        ({"crate/src/main.rs": "fn main() {}\n"}, ["rust"]),
-        # Non-Rust crate inputs (configs, icons) may change what Rust embeds.
-        ({"crate/tauri.conf.json": "{}\n"}, ["javascript-typescript", "rust"]),
-        ({"crate/icons/icon.png": "png\n"}, ["rust"]),
+        # Rust is not scanned by CodeQL (owner decision, 2026-11-24).
+        ({"crate/src/main.rs": "fn main() {}\n"}, []),
+        ({"crate/tauri.conf.json": "{}\n"}, ["javascript-typescript"]),
         (
             {"tools/check/action.yml": "runs: {}\n"},
             ["javascript-typescript", "actions"],
         ),
         (
             {".github/codeql/config.txt": "x\n"},
-            ["python", "javascript-typescript", "rust", "actions"],
+            ["python", "javascript-typescript", "actions"],
         ),
     ],
 )
@@ -755,13 +755,10 @@ def test_1373_codeql_pr_analyzes_only_the_languages_it_touches(
     assert codeql_scope(tmp_path, "--all") == [
         "python",
         "javascript-typescript",
-        "rust",
         "actions",
     ]
 
 
-def test_1373_root_level_crate_treats_every_file_as_rust_input() -> None:
+def test_codeql_languages_match_extractor_table() -> None:
     assert set(LANGUAGES) == set(EXTENSIONS)
-    root = {PurePosixPath(".")}
-    assert codeql_languages(["assets/logo.png"], root) == ["rust"]
-    assert codeql_languages(["assets/logo.png"], {PurePosixPath("crate")}) == []
+    assert "rust" not in LANGUAGES

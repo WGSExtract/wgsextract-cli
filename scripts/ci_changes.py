@@ -49,6 +49,9 @@ INSTALL_FILES = {
     "uninstall.sh",
     "uninstall_windows.bat",
     "scripts/bootstrap_windows_prereqs.ps1",
+    "scripts/build_package_artifacts.py",
+    "scripts/gen_server_openapi.py",
+    "scripts/package_smoke.py",
     "src/wgsextract_cli/main.py",
     "src/wgsextract_cli/__main__.py",
     "gui/tools/tasks.py",
@@ -135,10 +138,6 @@ def routes(
         )
         # Non-Markdown test inputs still take precedence over area exclusions.
         uncovered = readers - DOCS_TEST_MODULES
-        if path == "scripts/gen_api_docs.py":
-            uncovered.discard("tests/test_api.py")
-        if path == "scripts/gen_config_docs.py":
-            uncovered.discard("tests/test_core_cli.py")
         if uncovered or (path.endswith(".py") and not docs_python):
             result["cli"] = True
         if (

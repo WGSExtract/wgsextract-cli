@@ -5,7 +5,18 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.microarray import MicroarrayParams
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    MINUTES,
+    _n,
+)
+from wgsextract_cli.commands._messages.microarray import CLI_HELP
+
+NEEDS = {
+    "microarray": _n(
+        MINUTES, "bcftools", "bgzip", "samtools", "tabix", optional="curl"
+    ),
+}
+
 
 run = command_handler("wgsextract_cli.commands.microarray", "run")
 

@@ -151,6 +151,12 @@ if "%SKIP_PIXI_INSTALL%"=="0" (
 
 if "%SKIP_CHECKS%"=="0" (
     echo Checking the installed tools...
+    if not exist "%SCRIPT_DIR%tmp" mkdir "%SCRIPT_DIR%tmp"
+    if errorlevel 1 exit /b 1
+    type nul > "%SCRIPT_DIR%tmp\.managed-help-cache"
+    if errorlevel 1 exit /b 1
+    pixi run wgsextract help --all --json >nul
+    if errorlevel 1 exit /b 1
     pixi run wgsextract deps check
     if errorlevel 1 exit /b 1
 ) else (

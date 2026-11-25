@@ -11,6 +11,7 @@ from typing import IO
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfCnvParams, VcfSvParams
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core.alignment.cram_staging import stage_bam
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.alignment.sequencing import (
@@ -23,7 +24,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES as SHARED_LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count, warn_if_no_variants
 from wgsextract_cli.core.pixi_tools import pixi_install_command
 from wgsextract_cli.core.ref_library.resolver import (
@@ -145,7 +146,7 @@ def mixed_call_region(input_file: str, ref: str | None, region: str) -> str:
     ).fasta
     if not resolved or not Path(resolved).is_file():
         raise WGSExtractError(
-            LOG_MESSAGES["ref_required_for"].format(task="variant calling")
+            SHARED_LOG_MESSAGES["ref_required_for"].format(task="variant calling")
         )
     intervals = _calling_intervals(input_file, resolved, region)
     # bcftools treats every comma as a region separator, including digit grouping.

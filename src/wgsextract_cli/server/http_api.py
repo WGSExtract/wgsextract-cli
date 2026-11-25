@@ -548,7 +548,14 @@ def _response(description: str, schema: str) -> dict[str, Any]:
 
 
 def _errors(*codes: int) -> dict[str, Any]:
-    return {str(code): _response(HTTPStatus(code).phrase, "Error") for code in codes}
+    # Python 3.13 renamed the HTTP 413 phrase. Keep the published OpenAPI
+    # description identical across the Python versions that build or serve it.
+    return {
+        str(code): _response(
+            "Content Too Large" if code == 413 else HTTPStatus(code).phrase, "Error"
+        )
+        for code in codes
+    }
 
 
 _WAIT = {
@@ -779,7 +786,8 @@ def openapi_document(
         "info": {
             "title": "WGS Extract",
             "version": __version__,
-            "description": "The typed WGS Extract API (docs/api.md) over local "
+            "description": "The [typed WGS Extract API]"
+            "(https://wgsextract.github.io/wgsextract-cli/api.html) over local "
             "HTTP: operations run as jobs. See docs/server.md.",
         },
         "servers": [{"url": server_url}],

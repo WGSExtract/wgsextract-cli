@@ -1,4 +1,4 @@
-"""Regenerate the checked-in HTTP response schemas and OpenAPI document."""
+"""Regenerate the checked-in HTTP response and result/report writer contracts."""
 
 from __future__ import annotations
 
@@ -11,14 +11,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from json_lines import dump_lines  # noqa: E402
 from server_transport_typescript import (  # noqa: E402
     report_typescript,
     result_typescript,
-    typescript,
 )
 
-from wgsextract_cli.server.http_api import openapi_document  # noqa: E402
 from wgsextract_cli.server.transport_schema import response_schemas  # noqa: E402
 
 SCHEMAS = ROOT / "src/wgsextract_cli/assets/schemas"
@@ -47,31 +44,18 @@ def contract_diff(path: Path, actual: str, expected: str) -> str:
 
 
 def artifacts() -> dict[Path, str]:
-    documents = {
-        SCHEMAS / "wgsextract.server.responses.1.schema.json": {
-            "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "urn:wgsextract:server:responses:1",
-            "$defs": response_schemas(ref_prefix="#/$defs/"),
-        },
-        SCHEMAS / "wgsextract.server.openapi.json": openapi_document(),
+    responses = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": "urn:wgsextract:server:responses:1",
+        "$defs": response_schemas(ref_prefix="#/$defs/"),
     }
-    result = {}
-    for path, document in documents.items():
-        if path.name.endswith(".openapi.json"):
-            # Indented, every operation's input schema makes this about 900 KB,
-            # over check-added-large-files' 500 KB cap for newly added files.
-            # Compact JSON with one operation and one schema per line stays
-            # about half that, and PRs that change different operations or
-            # schemas merge cleanly (#1416).
-            result[path] = dump_lines(
-                document, expand=(("paths",), ("components", "schemas"))
-            )
-        else:
-            result[path] = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
-    result[ROOT / "gui/app/shared/generated/server-transport.ts"] = typescript()
-    result[ROOT / "gui/app/shared/generated/result-records.ts"] = result_typescript()
-    result[ROOT / "gui/app/shared/generated/report-records.ts"] = report_typescript()
-    return result
+    return {
+        SCHEMAS / "wgsextract.server.responses.1.schema.json": (
+            json.dumps(responses, indent=2, ensure_ascii=False) + "\n"
+        ),
+        ROOT / "gui/app/shared/generated/result-records.ts": result_typescript(),
+        ROOT / "gui/app/shared/generated/report-records.ts": report_typescript(),
+    }
 
 
 def main() -> None:

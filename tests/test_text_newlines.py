@@ -11,7 +11,7 @@ Windows-only diffs.
 import ast
 from pathlib import Path
 
-from scripts.regen import GENERATOR_SCRIPTS
+from scripts.regen import GENERATOR_COMMANDS
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src" / "wgsextract_cli"
@@ -81,7 +81,7 @@ def test_text_writes_choose_their_line_endings() -> None:
 
 def test_1469_regeneration_writes_lf() -> None:
     offenders: list[str] = []
-    for source in GENERATOR_SCRIPTS:
+    for source, *_ in GENERATOR_COMMANDS:
         tree = ast.parse((ROOT / source).read_text(encoding="utf-8"), source)
         offenders.extend(
             f"{source}:{line}"

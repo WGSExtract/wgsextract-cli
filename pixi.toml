@@ -1,7 +1,7 @@
 [workspace]
 requires-pixi = ">=0.82.0"
 name = "wgsextract-cli"
-version = "0.8.9"
+version = "0.8.10"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 authors = ["WGS Extract Contributors"]
 channels = ["conda-forge", "bioconda"]
@@ -480,7 +480,6 @@ test-smells = { cmd = "python scripts/test_smells.py", description = "Advisory: 
 package-smoke = "python scripts/package_smoke.py"
 jscpd = "npx --yes jscpd@5.4.2 src/wgsextract_cli --reporters console,json --output out/jscpd --min-lines 5 --min-tokens 50 --ignore '**/__pycache__/**' --ignore '**/.mypy_cache/**'"
 site-build = "python scripts/build_site.py"
-gen-command-docs = { cmd = "python scripts/gen_command_docs.py", description = "Regenerate docs/commands.md and the site CLI page's command cards from the command metadata." }
 stats = "python scripts/project_stats.py"
 stats-report = "python scripts/project_stats.py out/project_stats.txt"
 benchmark-dataset = { cmd = "python scripts/build_benchmark_dataset.py", description = "Rebuild the release-backed hg19 mini-genome benchmark dataset archive." }

@@ -188,11 +188,24 @@ When you add or rename a command:
 - Register its parser in `src/wgsextract_cli/cli/registration/`, keeping
   execution imports inside handlers. `cli/_lazy.py` defers loading command
   implementations until execution; help must not import scientific libraries.
-- Run `pixi run gen-command-docs` to regenerate `docs/commands.md` and the
-  command cards on the site's CLI page (`site_src/cli.md`), plus the bundled
-  `assets/cli/help-index.json` used for fast, configuration-independent discovery.
+  Add its required/optional external tools and runtime to `NEEDS` in the
+  same registration module.
+- Run `pixi run site-build` to preview the automatically generated command
+  reference and the cards on the site's CLI page.
 
-`tests/test_cli_help.py` fails until all three are done.
+The compact help index is not committed. `just regen` and developer setup warm
+it, and the first `help --all --json` after `pixi install` also builds it if
+needed. Managed installs keep it in the installation's writable cache so
+uninstall removes it; other installs use the platform's per-user cache.
+The cache expires when the package version or parser and registry sources
+change.
+
+`tests/test_help_index.py` checks cache behavior; `tests/test_site_references.py`
+builds the site and checks the published references.
+
+Keep command-specific messages with the code that uses them. If registration
+and implementation both need the same strings, use the group's lightweight
+module under `src/wgsextract_cli/commands/_messages/`.
 
 ### Benchmark fixture ploidy
 
@@ -206,6 +219,10 @@ declared/observed sex or weaken normal Unknown-sex refusal. Full-reference
 
 ### VCF API specifications
 
+For any typed command, re-export its `Params` from the API group's module
+under `src/wgsextract_cli/api/_exports/`. This keeps `api.SomeParams`
+available to both Python callers and type checkers.
+
 `api/vcf.py` remains the public import and dispatch facade. Its parameter
 declarations live in `api/vcf_specs/`: shared field helpers, calling, file
 operations and annotations. Update the responsible specification module when
@@ -217,8 +234,12 @@ reference stable without duplicating parameter descriptions beside their handler
 ### Generated references and parallel PRs
 
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
-help. It updates `docs/api.md`, `docs/commands.md`, the bundled compact
-discovery index, and the generated command cards in `site_src/cli.md`.
+help. It warms the compact discovery cache.
+The [site build](site_generation.md) generates the public references and CLI
+cards separately; they are not committed.
+If a branch still tracks a retired generated reference, `just regen-resolve`
+stages its deletion after you resolve source conflicts. In `site_src/cli.md`,
+keep the `<!-- command cards -->` placeholder, not the old generated cards.
 It also generates the public sample-workspace JSON Schema from the output
 types in `core/sample_document.py`. Output types use `TypedDict`, dataclasses and
 `Annotated` constraints; `core/output_schema.py` rejects unsupported annotations.
@@ -286,9 +307,13 @@ the same typed Params definitions as per-command CLI help, not the compact
 help index, so their invocation schemas remain complete.
 
 Server response envelopes are writer-used TypedDicts in `server/transport.py`.
-`scripts/gen_server_contracts.py` generates the committed response JSON Schema
-bundle, OpenAPI 3.1 document and raw GUI TypeScript transport declarations;
-`--check` detects drift, and `just regen` updates all three. Keep GUI presentation
+`scripts/gen_server_contracts.py --check` checks the committed response JSON
+Schema bundle and result/report writer types. OpenAPI 3.1 and the GUI transport
+types are not committed. CLI developer setup builds OpenAPI under
+`out/contracts/` and `just regen` rebuilds both. The GUI build regenerates the
+transport declarations from OpenAPI before compiling. Wheel and sdist builds
+include the generated JSON under the CLI's schema assets. `wgsextract serve --openapi`
+generates the same default document without reading a file. Keep GUI presentation
 types and tolerant parsing adapters handwritten: they are not wire documents.
 Loaded result/report documents remain opaque in the server spec until their
 own writer models drive their public schemas; a schema ID check is not full

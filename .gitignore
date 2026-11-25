@@ -51,6 +51,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+/src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json
 .Python
 .pixi
 develop-eggs/
@@ -202,3 +203,5 @@ cython_debug/
 
 # Local opt-in copy of the scheduled worktree cleanup plan.
 /.herdr/automations/stale-worktrees.luau
+/src/wgsextract_cli/assets/cli/help-index.json
+/src/wgsextract_cli/assets/cli/help-index.key

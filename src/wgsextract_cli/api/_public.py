@@ -1,385 +1,53 @@
 """The public API's flat namespace, loaded only when callers request it."""
 
-import wgsextract_cli.api.align as align
-import wgsextract_cli.api.analyze as analyze
-import wgsextract_cli.api.bam as bam
-import wgsextract_cli.api.benchmark as benchmark
-import wgsextract_cli.api.cohort as cohort
-import wgsextract_cli.api.deps as deps
-import wgsextract_cli.api.examples as examples
-import wgsextract_cli.api.extract as extract
-import wgsextract_cli.api.genotyping as genotyping
-import wgsextract_cli.api.info as info
-import wgsextract_cli.api.lineage as lineage
-import wgsextract_cli.api.lookup as lookup
-import wgsextract_cli.api.methylation as methylation
-import wgsextract_cli.api.microarray as microarray
-import wgsextract_cli.api.panel as panel
-import wgsextract_cli.api.pet as pet
-import wgsextract_cli.api.qc as qc
-import wgsextract_cli.api.ref as ref
-import wgsextract_cli.api.repair as repair
-import wgsextract_cli.api.report as report
-import wgsextract_cli.api.sample as sample
-import wgsextract_cli.api.score as score
-import wgsextract_cli.api.sign as sign
-import wgsextract_cli.api.support as support
-import wgsextract_cli.api.vcf as vcf
-import wgsextract_cli.api.vep as vep
-from wgsextract_cli.core.results import (
-    CommandResult as Result,
-)
-from wgsextract_cli.core.results import (
-    FileRecord,
-    ResultWarning,
-)
-from wgsextract_cli.core.utils import (
-    MissingDependencyError,
-    UsageError,
-    WGSExtractError,
-)
+from functools import cache as _cache
 
-from ._params import Params, json_schema
-from ._runtime import (
-    Cancelled,
-    CancelToken,
-    CommandFailed,
-    ProgressCallback,
-    ProgressEvent,
-    scoped_config,
-    use_config,
-)
-from .align import AlignParams, BasecallParams, RealignParams
-from .analyze import AnalyzeBatchGenParams, AnalyzeComprehensiveParams
-from .bam import (
-    BamIdentifyParams,
-    BamIndexParams,
-    BamMergeParams,
-    BamSortParams,
-    BamToBamParams,
-    BamToCramParams,
-    BamToUbamParams,
-    BamUnalignParams,
-    BamUnindexParams,
-    BamUnsortParams,
-)
-from .benchmark import BenchmarkParams
-from .cohort import CohortSummarizeParams as CohortSummarizeParams
-from .deps import (
-    DepsCheckParams,
-    DepsInstallParams,
-    DepsListParams,
-    DepsUninstallParams,
-)
-from .examples import ExampleGenomeDownloadParams, ExampleGenomeListParams
-from .extract import (
-    BamSubsetParams,
-    CustomParams,
-    ExtractRegionParams,
-    MitoFastaParams,
-    MitoVcfParams,
-    MtBamParams,
-    UnmappedParams,
-    YdnaBamParams,
-    YdnaVcfParams,
-    YMtExtractParams,
-)
-from .genotyping import (
-    TypingCyp2d6Params,
-    TypingHlaParams,
-    TypingParaphaseParams,
-    TypingSmnParams,
-    TypingStrParams,
-    TypingTargetCnvParams,
-)
-from .info import (
-    CalculateCoverageParams,
-    ChipParams,
-    CoverageSampleParams,
-    InfoGeneParams,
-    InfoParams,
-)
-from .lineage import MtHaplogroupParams, YHaplogroupParams, YPrivateParams, YStrParams
-from .lookup import LookupParams
-from .methylation import MethylationPileupParams, MethylationRegionsParams
-from .microarray import MicroarrayParams
-from .panel import PanelBedParams, PanelCheckParams
-from .pet import PetAlignParams
-from .qc import (
-    FakeDataParams,
-    FastpParams,
-    FastqcParams,
-    MultiqcMetricsParams,
-    MultiqcParams,
-    QcAncestryParams,
-    QcContaminationParams,
-    QcRohParams,
-    QcVcfParams,
-    RelateParams,
-)
-from .ref import (
-    RefAadrParams,
-    RefAcmgDataParams,
-    RefAlphamissenseParams,
-    RefAncestryParams,
-    RefBootstrapParams,
-    RefCaddParams,
-    RefClinvarParams,
-    RefCountNsParams,
-    RefCytobandsParams,
-    RefDbsnpParams,
-    RefDenseSaParams,
-    RefDownloadParams,
-    RefGeneMapParams,
-    RefGerpParams,
-    RefGnomadParams,
-    RefGnomadSvParams,
-    RefImputationParams,
-    RefIndexParams,
-    RefLibraryDeleteParams,
-    RefLibraryListParams,
-    RefLibraryParams,
-    RefMicroarrayTargetsParams,
-    RefPharmgkbParams,
-    RefPhylopParams,
-    RefRecheckParams,
-    RefRevelParams,
-    RefSomalierParams,
-    RefSpliceaiParams,
-    RefStatusParams,
-    RefTestGenomeParams,
-    RefVerifyParams,
-    RefYbrowseParams,
-)
-from .repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
-from .report import ReportDeltaParams, ReportParams
-from .sample import SampleSetParams, SampleShowParams, SampleUnsetParams
-from .score import ScorePgsParams
-from .sign import SignCreateParams, SignVerifyParams
-from .support import IssueReport, ReportIssueParams
-from .vcf import (
-    VcfAcmgParams,
-    VcfAlphamissenseParams,
-    VcfAnnotateParams,
-    VcfCaddParams,
-    VcfCallParams,
-    VcfChainAnnotateParams,
-    VcfClair3Params,
-    VcfClinvarParams,
-    VcfCnvParams,
-    VcfDeepvariantParams,
-    VcfFilterParams,
-    VcfFreebayesParams,
-    VcfGatkParams,
-    VcfGerpParams,
-    VcfGnomadParams,
-    VcfGraniteQcParams,
-    VcfImputeParams,
-    VcfIndelParams,
-    VcfInfoParams,
-    VcfPharmcatParams,
-    VcfPharmgkbParams,
-    VcfPhaseParams,
-    VcfPhylopParams,
-    VcfPrepareParams,
-    VcfRevelParams,
-    VcfSnpParams,
-    VcfSpliceaiParams,
-    VcfSvFreqParams,
-    VcfSvParams,
-    VcfTableParams,
-    VcfToFastaParams,
-    VcfTrioParams,
-    VcfVariantQcParams,
-)
-from .vep import VepDeleteParams, VepDownloadParams, VepRunParams, VepVerifyParams
+from wgsextract_cli.core.results import CommandResult as _CommandResult
+from wgsextract_cli.core.results import FileRecord as FileRecord
+from wgsextract_cli.core.results import ResultWarning as ResultWarning
+from wgsextract_cli.core.utils import MissingDependencyError as MissingDependencyError
+from wgsextract_cli.core.utils import UsageError as UsageError
+from wgsextract_cli.core.utils import WGSExtractError as WGSExtractError
 
-__all__ = [
-    "AlignParams",
-    "AnalyzeBatchGenParams",
-    "AnalyzeComprehensiveParams",
-    "BasecallParams",
-    "BamIdentifyParams",
-    "BamIndexParams",
-    "BamMergeParams",
-    "BamSortParams",
-    "BamSubsetParams",
-    "BamToBamParams",
-    "BamToCramParams",
-    "BamToUbamParams",
-    "BamUnalignParams",
-    "BamUnindexParams",
-    "BamUnsortParams",
-    "BenchmarkParams",
-    "CalculateCoverageParams",
-    "CancelToken",
-    "Cancelled",
-    "ChipParams",
-    "CohortSummarizeParams",
-    "CommandFailed",
-    "CoverageSampleParams",
-    "CustomParams",
-    "DepsCheckParams",
-    "DepsInstallParams",
-    "DepsListParams",
-    "DepsUninstallParams",
-    "ExampleGenomeDownloadParams",
-    "ExampleGenomeListParams",
-    "ExtractRegionParams",
-    "FakeDataParams",
-    "FastpParams",
-    "FastqcParams",
-    "FileRecord",
-    "InfoGeneParams",
-    "InfoParams",
-    "IssueReport",
-    "LookupParams",
-    "MethylationPileupParams",
-    "MethylationRegionsParams",
-    "MicroarrayParams",
-    "MissingDependencyError",
-    "MitoFastaParams",
-    "MitoVcfParams",
-    "MtBamParams",
-    "MtHaplogroupParams",
-    "PanelBedParams",
-    "PanelCheckParams",
-    "MultiqcMetricsParams",
-    "MultiqcParams",
-    "Params",
-    "PetAlignParams",
-    "ProgressCallback",
-    "ProgressEvent",
-    "QcAncestryParams",
-    "QcContaminationParams",
-    "QcRohParams",
-    "QcVcfParams",
-    "RealignParams",
-    "RelateParams",
-    "RefAadrParams",
-    "RefAcmgDataParams",
-    "RefAlphamissenseParams",
-    "RefBootstrapParams",
-    "RefCaddParams",
-    "RefClinvarParams",
-    "RefCountNsParams",
-    "RefCytobandsParams",
-    "RefDbsnpParams",
-    "RefDenseSaParams",
-    "RefDownloadParams",
-    "RefGeneMapParams",
-    "RefGerpParams",
-    "RefGnomadParams",
-    "RefGnomadSvParams",
-    "RefIndexParams",
-    "RefLibraryDeleteParams",
-    "RefLibraryListParams",
-    "RefLibraryParams",
-    "RefMicroarrayTargetsParams",
-    "RefPharmgkbParams",
-    "RefPhylopParams",
-    "RefRecheckParams",
-    "RefRevelParams",
-    "RefAncestryParams",
-    "RefImputationParams",
-    "RefSomalierParams",
-    "RefSpliceaiParams",
-    "RefStatusParams",
-    "RefTestGenomeParams",
-    "RefVerifyParams",
-    "RefYbrowseParams",
-    "RepairFtdnaBamParams",
-    "RepairFtdnaVcfParams",
-    "ReportDeltaParams",
-    "ReportIssueParams",
-    "ReportParams",
-    "Result",
-    "ResultWarning",
-    "SampleSetParams",
-    "SampleShowParams",
-    "SampleUnsetParams",
-    "ScorePgsParams",
-    "SignCreateParams",
-    "SignVerifyParams",
-    "UnmappedParams",
-    "TypingCyp2d6Params",
-    "TypingSmnParams",
-    "TypingHlaParams",
-    "TypingParaphaseParams",
-    "TypingStrParams",
-    "TypingTargetCnvParams",
-    "UsageError",
-    "VcfAcmgParams",
-    "VcfAlphamissenseParams",
-    "VcfAnnotateParams",
-    "VcfCaddParams",
-    "VcfCallParams",
-    "VcfChainAnnotateParams",
-    "VcfClair3Params",
-    "VcfClinvarParams",
-    "VcfCnvParams",
-    "VcfDeepvariantParams",
-    "VcfFilterParams",
-    "VcfFreebayesParams",
-    "VcfGatkParams",
-    "VcfGerpParams",
-    "VcfGnomadParams",
-    "VcfSvFreqParams",
-    "VcfIndelParams",
-    "VcfPharmcatParams",
-    "VcfPharmgkbParams",
-    "VcfImputeParams",
-    "VcfPhaseParams",
-    "VcfPhylopParams",
-    "VcfPrepareParams",
-    "VcfRevelParams",
-    "VcfSnpParams",
-    "VcfSpliceaiParams",
-    "VcfSvParams",
-    "VcfGraniteQcParams",
-    "VcfInfoParams",
-    "VcfTableParams",
-    "VcfToFastaParams",
-    "VcfVariantQcParams",
-    "VcfTrioParams",
-    "VepDeleteParams",
-    "VepDownloadParams",
-    "VepRunParams",
-    "VepVerifyParams",
-    "WGSExtractError",
-    "YHaplogroupParams",
-    "YMtExtractParams",
-    "YPrivateParams",
-    "YStrParams",
-    "YdnaBamParams",
-    "YdnaVcfParams",
-    "align",
-    "analyze",
-    "bam",
-    "benchmark",
-    "cohort",
-    "deps",
-    "examples",
-    "extract",
-    "genotyping",
-    "info",
-    "json_schema",
-    "lineage",
-    "lookup",
-    "methylation",
-    "microarray",
-    "panel",
-    "pet",
-    "qc",
-    "ref",
-    "repair",
-    "report",
-    "sample",
-    "scoped_config",
-    "score",
-    "sign",
-    "support",
-    "use_config",
-    "vcf",
-    "vep",
-]
+from ._exports.align import *  # noqa: F403
+from ._exports.analyze import *  # noqa: F403
+from ._exports.bam import *  # noqa: F403
+from ._exports.benchmark import *  # noqa: F403
+from ._exports.cohort import *  # noqa: F403
+from ._exports.deps import *  # noqa: F403
+from ._exports.examples import *  # noqa: F403
+from ._exports.extract import *  # noqa: F403
+from ._exports.genotyping import *  # noqa: F403
+from ._exports.info import *  # noqa: F403
+from ._exports.lineage import *  # noqa: F403
+from ._exports.lookup import *  # noqa: F403
+from ._exports.methylation import *  # noqa: F403
+from ._exports.microarray import *  # noqa: F403
+from ._exports.panel import *  # noqa: F403
+from ._exports.pet import *  # noqa: F403
+from ._exports.qc import *  # noqa: F403
+from ._exports.ref import *  # noqa: F403
+from ._exports.repair import *  # noqa: F403
+from ._exports.report import *  # noqa: F403
+from ._exports.sample import *  # noqa: F403
+from ._exports.score import *  # noqa: F403
+from ._exports.sign import *  # noqa: F403
+from ._exports.support import *  # noqa: F403
+from ._exports.vcf import *  # noqa: F403
+from ._exports.vep import *  # noqa: F403
+from ._params import Params as Params
+from ._params import json_schema as json_schema
+from ._runtime import Cancelled as Cancelled
+from ._runtime import CancelToken as CancelToken
+from ._runtime import CommandFailed as CommandFailed
+from ._runtime import ProgressCallback as ProgressCallback
+from ._runtime import ProgressEvent as ProgressEvent
+from ._runtime import scoped_config as scoped_config
+from ._runtime import use_config as use_config
+
+Result = _CommandResult
+
+
+@_cache
+def _exported_names() -> list[str]:
+    return sorted(name for name in globals() if not name.startswith("_"))

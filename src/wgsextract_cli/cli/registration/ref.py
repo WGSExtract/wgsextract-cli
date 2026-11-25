@@ -41,8 +41,61 @@ from wgsextract_cli.api.ref import (
     RefYbrowseParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    _SAM,
+    DOWNLOAD,
+    HOURS,
+    MINUTES,
+    REFERENCE,
+    SECONDS,
+    _n,
+)
+from wgsextract_cli.commands._messages.ref import CLI_HELP
 from wgsextract_cli.core.utils import UsageError
+
+NEEDS = {
+    "ref download": _n(DOWNLOAD, optional="curl"),
+    "ref index": _n(HOURS, *_SAM, optional="bwa bwa-mem2 curl", scale=REFERENCE),
+    "ref count-ns": _n(MINUTES, scale=REFERENCE),
+    "ref dense-sa": _n(MINUTES, scale=REFERENCE),
+    "ref verify": _n(MINUTES, *_SAM, scale=REFERENCE),
+    "ref library": _n(
+        DOWNLOAD, "bcftools", "bgzip", "curl", "htsfile", "samtools", "tabix"
+    ),
+    "ref status": _n(SECONDS, scale=""),
+    "ref needs": _n(SECONDS, optional="bcftools tabix", scale=""),
+    "ref recheck": _n(SECONDS, scale=""),
+    "ref test-genome": _n(DOWNLOAD, optional="curl"),
+    "ref bootstrap": _n(DOWNLOAD, optional="curl"),
+    "ref aadr": _n(DOWNLOAD, optional="curl"),
+    "ref acmg-data": _n(DOWNLOAD, "bcftools", "bgzip", "fastvep", "tabix"),
+    "ref somalier": _n(DOWNLOAD, optional="curl"),
+    "ref ancestry": _n(DOWNLOAD, optional="curl"),
+    "ref gnomad-sv": _n(DOWNLOAD, "bcftools", "bgzip", "tabix", optional="curl"),
+    "ref imputation": _n(
+        DOWNLOAD,
+        "bcftools",
+        "GLIMPSE2_chunk",
+        "GLIMPSE2_phase",
+        "GLIMPSE2_split_reference",
+        "tabix",
+    ),  # fmt: skip
+    "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix", optional="bcftools samtools"),
+    "ref microarray-targets": _n(MINUTES),
+    "ref gene-map": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref cytobands": _n(DOWNLOAD, optional="curl"),
+    "ref clinvar": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref dbsnp": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref revel": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref phylop": _n(DOWNLOAD, optional="curl"),
+    "ref gnomad": _n(DOWNLOAD, optional="bcftools bgzip curl tabix"),
+    "ref spliceai": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref alphamissense": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref pharmgkb": _n(DOWNLOAD, optional="bgzip curl tabix"),
+    "ref cadd": _n(DOWNLOAD, optional="curl"),
+    "ref gerp": _n(DOWNLOAD, optional="curl"),
+}
+
 
 cmd_aadr = command_handler("wgsextract_cli.commands.ref.library_commands", "cmd_aadr")
 cmd_acmg_data = command_handler(
