@@ -17,6 +17,7 @@ from ._exports.cohort import *  # noqa: F403
 from ._exports.deps import *  # noqa: F403
 from ._exports.examples import *  # noqa: F403
 from ._exports.extract import *  # noqa: F403
+from ._exports.fastq import *  # noqa: F403
 from ._exports.genotyping import *  # noqa: F403
 from ._exports.info import *  # noqa: F403
 from ._exports.lineage import *  # noqa: F403

@@ -70,6 +70,7 @@ so it needs no samtools or other analysis tools, even for a BAM or CRAM `--input
 | Carrier screening by copy number | `typing smn` (SMNCopyNumberCaller) | SMA carrier status from the SMN1 copy number, with SMN2 and g.27134T>G; two SMN1 copies carry the silent (2+0) carrier caveat |
 | Repeat Expansions | `typing str` (ExpansionHunter, LongTR or STRkit) | Flagged and unconfirmed repeat sizes, counts of flagged, unconfirmed and normal calls, and caller and coverage caveats |
 | ClinVar | `vcf clinvar` | each carried ClinVar pathogenic or likely-pathogenic call in a gene of the gene list (default ACMG SF v3.3), and per gene the calls by zygosity, with recessive genes marked carrier or (possibly) biallelic |
+| Exon callability | `vcf callability` | none: per gene of its gene list, whether every coding exon was read (callable, partial, not readable, not run) and what the ClinVar section's silence means: reported, not reported (every coding exon read; never a negative result), not readable or not run, with the exons not read. See [exon-callability.md](exon-callability.md) |
 | Mitochondrial DNA: heteroplasmy at reviewed variants | `lineage mt-haplogroup --contamination` on a BAM or CRAM (mutserve) | each reviewed mtDNA variant (ClinVar expert-panel pathogenic SNVs, CPIC's MT-RNR1 aminoglycoside-risk alleles) found homoplasmic, heteroplasmic or with weak evidence, with its level; every reviewed variant's state in `sites`. See [below](#mitochondrial-dna-heteroplasmy-at-reviewed-variants) |
 | Automated ACMG classes (research only) | `vcf acmg`, only when it ran | the carried P/LP calls in a gene of the gene list, from fastVEP's automated classes; counts of the carried alleles' classes. See [below](#automated-acmg-classes-research-only) |
 | Rare structural variants | `vcf sv-freq` | each carried PASS SV whose matching gnomAD SV has AF below 0.1% (`--rare-af`), labelled "rare (AF < 0.001)", rarest first (up to 100; the rest in `sv_freq.tsv`), and counts of common, low-frequency, rare and novel SVs. Confidence is `not_assessed`: the frequency comes from the gnomAD match, not the call's read support |
@@ -535,7 +536,10 @@ gives the selected run's `command`, `status`, `finished` and `manifest`, and
 `latest_attempt`: `null` when it is the newest run of its step, otherwise
 the newer failed or cancelled attempt with the same four fields. The overview
 adds `facts` and `qc`, ClinVar adds `gene_list`, `build`, `counts`, `genes`
-and `all_calls`, the mitochondrial section adds `advisory`, `technical`,
+and `all_calls`, exon callability adds `gene_list`, `build`, `exon_model`,
+`scope`, `thresholds`, `counts`, `genes` (each with its `state`, `result` and
+`result_text`), `all_exons`, `evidence`, `unassessed_variant_classes` and
+`note`, the mitochondrial section adds `advisory`, `technical`,
 `thresholds`, `resource`, `sites` and `counts`, and the microarray section
 adds `files` and `metrics`.
 
@@ -563,6 +567,8 @@ existing helper paths. `context.py` collects manifests and workspace evidence
 and provides shared finding/confidence support. `overview.py` builds sample,
 lineage, ancestry and microarray summaries; `genotyping.py` builds PGx and
 carrier sections; `clinical.py` handles ClinVar and per-gene call interpretation;
+`callability.py` reads `vcf callability` and combines it with the ClinVar section;
+`callability_rendering.py` formats the exon-by-gene table and evidence links;
 `mitochondrial.py` reads mtDNA heteroplasmy evidence through
 `core/mt_heteroplasmy.py`;
 `variant_sections.py` handles automated ACMG and structural-variant evidence.

@@ -1,4 +1,4 @@
-"""`ref acmg-data` (issue 629): the eight sources of `vcf acmg` and the
+"""`ref acmg-data`: the sources of `vcf acmg` and the
 Ensembl GFF3, fetched from a local server standing in for their publishers
 (the network is the boundary), checked, and built into fastVEP databases by
 the real fastVEP and bcftools. The sources are the one-gene fixtures of
@@ -35,17 +35,7 @@ GENE = Path(__file__).parent / "fixtures" / "vep_rs"
 needs_fastvep = needs_tools("fastvep")
 pytestmark = needs_htslib
 
-GNOMAD = """##fileformat=VCFv4.2
-##contig=<ID=chr1,length=248956422>
-##INFO=<ID=AC_joint,Number=A,Type=Integer,Description="ac">
-##INFO=<ID=AN_joint,Number=1,Type=Integer,Description="an">
-##INFO=<ID=AF_joint,Number=A,Type=Float,Description="af">
-##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="hom">
-##INFO=<ID=AC_genomes,Number=A,Type=Integer,Description="not kept">
-#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO
-chr1\t1150\t.\tT\tA\t.\tPASS\tAF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000;AC_genomes=1
-chr1\t1668\t.\tGA\tG\t.\tPASS\tAF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000
-"""
+GNOMAD = (FIXTURES / "gnomad_joint.vcf").read_text()
 # A one-base deletion in the AAAAAA at 1669-1674, written right-shifted:
 # gnomAD has it left-aligned, at 1668.
 SHIFTED_DELETION = "1\t1673\t.\tAA\tA\t50\tPASS\t.\tGT\t0/1\n"
@@ -127,6 +117,9 @@ def publishers(tmp_path, monkeypatch):
         "gnomad/chr1.vcf.bgz.tbi": Path(f"{gnomad_vcf}.tbi").read_bytes(),
         "spliceai.vcf.gz": spliceai.read_bytes(),
         "spliceai.vcf.gz.tbi": Path(f"{spliceai}.tbi").read_bytes(),
+        "rmsk.txt.gz": gzip.compress((FIXTURES / "rmsk.txt").read_bytes(), mtime=0),
+        "lcr.txt": (FIXTURES / "lcr.txt").read_bytes(),
+        "segdup.bed": (FIXTURES / "segdup.bed").read_bytes(),
     }
     with serving(None, files) as server:
         server.etags = True
@@ -144,6 +137,9 @@ def publishers(tmp_path, monkeypatch):
             "PHYLOP_DIR": "phylop/",
             "GNOMAD_URL": "gnomad/{chrom}.vcf.bgz",
             "SPLICEAI_URL": "spliceai.vcf.gz",
+            "REPEATMASKER_URL": "rmsk.txt.gz",
+            "LCR_URL": "lcr.txt",
+            "SEGDUP_URL": "segdup.bed",
         }.items():
             monkeypatch.setattr(_acmg_data_plan, name, server.url_for(path))
         yield server
@@ -171,7 +167,13 @@ def library(tmp_path):
 def _params(library, **extra) -> RefAcmgDataParams:
     lib, spliceai = library
     return RefAcmgDataParams(
-        **{"ref": lib, "chromosomes": "chr1", "spliceai_file": spliceai, "threads": 2}
+        **{
+            "ref": lib,
+            "chromosomes": "chr1",
+            "spliceai_file": spliceai,
+            "threads": 2,
+            "download": True,
+        }
         | extra
     )
 
@@ -225,7 +227,7 @@ def test_builds_every_database_vcf_acmg_then_finds_in_the_library(
     result = api.ref.acmg_data(_params(library))
 
     manifest = _manifest(library)
-    built = {e["source"] for e in manifest["databases"].values() if e.get("records")}
+    built = {e["source"] for e in manifest["databases"].values()}
     assert built == {s.key for s in acmg_data.SOURCES}
     clinvar = manifest["sources"]["clinvar"]
     assert clinvar["release"] == "20261108"
@@ -238,6 +240,9 @@ def test_builds_every_database_vcf_acmg_then_finds_in_the_library(
     assert not (_sa(library) / ".building").exists()
     status = api.ref.status(RefStatusParams(ref=lib)).details["acmgData"]
     assert status["installed"] and status["chromosomes"] == ["chr1"]
+    assert status["repeatMasker"]
+    assert status["gnomadRegionTracks"] == ["lcr", "segdup"]
+    assert status["gnomadRegionFlagChromosomes"] == ["chr1"]
 
     # vcf acmg reads the library's databases and GFF3 without being told.
     vcf = _bgzf(_write(tmp_path / "in_vep.vcf", (FIXTURES / "in_vep.vcf").read_text()))
@@ -266,7 +271,7 @@ def test_a_failed_source_is_reported_and_a_rerun_builds_only_it(publishers, libr
     with pytest.raises(api.CommandFailed, match="phylop_chr1"):
         api.ref.acmg_data(_params(library))
     built = _manifest(library)["databases"]
-    assert "phylop_chr1" not in built and len(built) == 7
+    assert "phylop_chr1" not in built and "gnomad_chr1" in built
 
     phylop = publishers.files["phylop/chr1.phyloP100way.wigFix.gz"]
     publishers.files["phylop/md5sum.txt"] = (
@@ -301,7 +306,9 @@ def test_dry_run_shows_terms_and_sizes_and_writes_nothing(publishers, library):
     assert not (library[0] / "downloads" / "acmg").exists()
     assert _gets(publishers) == 0
     assert result.details["needed_bytes"] > 0
-    assert len(result.details["to_build"]) == 9  # 8 databases and the GFF3
+    assert {"repeatmasker", "lcr", "segdup"} <= {
+        step["name"] for step in result.details["to_build"]
+    }
     assert "non-commercial" in result.text and "Illumina" in result.text
 
 

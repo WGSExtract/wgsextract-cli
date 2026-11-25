@@ -41,6 +41,7 @@ from typing import IO, Any
 import numpy as np
 
 from wgsextract_cli.core import acmg_data, read_scope, tabix_sites
+from wgsextract_cli.core.acmg_regions import region_tracks
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
@@ -265,7 +266,12 @@ class SiteDatabase:
 
 
 def _key(
-    source: str, chromosome: str, file: TabixFile, sites: np.ndarray, version: str
+    source: str,
+    chromosome: str,
+    file: TabixFile,
+    sites: np.ndarray,
+    version: str,
+    tracks: dict[str, str],
 ) -> str:
     digest = hashlib.sha256()
     identity = {
@@ -280,6 +286,7 @@ def _key(
         "keep": acmg_data.GNOMAD_KEEP if source == "gnomad" else "",
         "chunk_bits": acmg_data.BY_KEY[source].chunk_bits,
         "fastvep": version,
+        **({"region_tracks": tracks} if tracks else {}),
     }
     digest.update(json.dumps(identity, sort_keys=True).encode())
     digest.update(np.ascontiguousarray(sites, dtype=np.int64).tobytes())
@@ -326,6 +333,8 @@ def _build(
     cancel: CancelEvent | None,
     version: str,
     before: tuple[int, int],
+    sa_dir: Path | None,
+    tracks: dict[str, str],
 ) -> SiteDatabase:
     """Read the records at ``sites`` and build their database into ``entry``
     (staged beside it); ``before`` is what had been read of ``file`` (bytes,
@@ -333,7 +342,16 @@ def _build(
     stage = Path(tempfile.mkdtemp(dir=entry.parent, prefix=f".{entry.name}."))
     try:
         meta = _fill(
-            stage, source, chromosome, file, contig, sites, connections, cancel
+            stage,
+            source,
+            chromosome,
+            file,
+            contig,
+            sites,
+            connections,
+            cancel,
+            sa_dir,
+            tracks,
         )
         meta.update(
             fastvep=version,
@@ -364,6 +382,8 @@ def _fill(
     sites: np.ndarray,
     connections: int,
     cancel: CancelEvent | None,
+    sa_dir: Path | None,
+    tracks: dict[str, str],
 ) -> dict[str, Any]:
     """Write the records at ``sites`` and build their database in ``stage``;
     returns what it holds."""
@@ -428,6 +448,10 @@ def _fill(
         )
     if not count:
         raise _NoRecords
+    if sa_dir is not None and tracks:
+        records_vcf = acmg_data.add_region_flags(
+            records_vcf, sa_dir, tracks, chromosome, cancel
+        )
     fastvep = get_tool_path("fastvep") or "fastvep"
     built, records = acmg_data.sa_build(
         fastvep, source, records_vcf, stage / "build", name, cancel
@@ -445,6 +469,7 @@ def _fill(
         "files": files,
         "location": file.location,
         "release": release,
+        **({"region_tracks": tracks} if tracks else {}),
         "etag": file.source.etag,
         "last_modified": file.source.last_modified,
         "size_bytes": file.source.size,
@@ -521,6 +546,11 @@ def _source_databases(
 ) -> list[SiteDatabase]:
     found = []
     opened: dict[str, TabixFile] = {}
+    tracks = (
+        region_tracks(sa_dir, acmg_data.load_manifest(sa_dir))
+        if source == "gnomad" and contigs and sa_dir is not None
+        else {}
+    )
     for contig in contigs:
         spans = sites.get(contig)
         if spans is None or not len(spans):
@@ -535,7 +565,7 @@ def _source_databases(
                 f"{where} is missing."
             ) from e
         opened[where] = file
-        key = _key(source, chromosome, file, spans, version)
+        key = _key(source, chromosome, file, spans, version, tracks)
         entry = cache / f"{source}_{chromosome}_{key[:24]}"
         database = _cached(entry)
         if database is not None:
@@ -555,6 +585,7 @@ def _source_databases(
             database = _build(
                 source, chromosome, file, remote, spans, entry,
                 tabix_sites.connections(where, connections), cancel, version, before,
+                sa_dir, tracks,
             )  # fmt: skip
         except _NoRecords as e:
             raise WGSExtractError(
@@ -646,6 +677,6 @@ def summary(databases: list[SiteDatabase]) -> dict[str, Any]:
             key: db.meta.get(key)
             for key in ("location", "release", "etag", "last_modified", "size_bytes", "sites",
                         "records", "first_record_added", "bytes_read", "requests",
-                        "seconds", "built")
+                        "seconds", "built", "region_tracks")
         } | {"cached": db.cached, "folder": str(db.folder)}  # fmt: skip
     return dict(by_source)

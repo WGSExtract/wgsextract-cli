@@ -13,6 +13,7 @@ from wgsextract_cli.core.report_documents import (
     ReportAcmgDocument,
     ReportAncestryDocument,
     ReportAttemptDocument,
+    ReportCallabilityDocument,
     ReportClinvarDocument,
     ReportDocument,
     ReportFactDocument,
@@ -31,9 +32,12 @@ from wgsextract_cli.core.report_documents import (
     section_items,
 )
 
+from .callability_rendering import callability_html, callability_markdown
+
 RenderedSection = (
     ReportOverviewDocument
     | ReportClinvarDocument
+    | ReportCallabilityDocument
     | ReportAcmgDocument
     | ReportAncestryDocument
     | ReportSvDocument
@@ -258,6 +262,12 @@ def _html_section_body(
                     + "</td></tr>"
                 )
             out.append("</table>")
+    elif name == "exon_callability":
+        out.extend(
+            callability_html(
+                sections["exon_callability"], _h, lambda f: _link(f, _href(f, base))
+            )
+        )
     elif name == "mitochondrial" and sections["mitochondrial"].get("sites"):
         section = sections["mitochondrial"]
         out.append(f'<p class="disclaimer"><b>{_h(section.get("advisory"))}</b></p>')
@@ -676,6 +686,14 @@ def render_markdown(report: ReportDocument, base: str = ".") -> str:
                         )
                         + " |"
                     )
+        if name == "exon_callability":
+            out.extend(
+                callability_markdown(
+                    sections["exon_callability"],
+                    _md,
+                    lambda f: _md_link(f, _href(f, base)),
+                )
+            )
         if name == "mitochondrial" and sections["mitochondrial"].get("sites"):
             section = sections["mitochondrial"]
             out += ["", f"> **{_md(section.get('advisory'))}**", ""]

@@ -100,6 +100,7 @@ from .vcf_specs.annotations import VcfSpliceaiParams as VcfSpliceaiParams
 from .vcf_specs.annotations import VcfSvFreqParams as VcfSvFreqParams
 from .vcf_specs.files import HAPLOTYPES as HAPLOTYPES
 from .vcf_specs.files import VcfAnnotateParams as VcfAnnotateParams
+from .vcf_specs.files import VcfCallabilityParams as VcfCallabilityParams
 from .vcf_specs.files import VcfFilterParams as VcfFilterParams
 from .vcf_specs.files import VcfGraniteQcParams as VcfGraniteQcParams
 from .vcf_specs.files import VcfInfoParams as VcfInfoParams
@@ -143,6 +144,25 @@ def filter(
     from wgsextract_cli.commands.vcf.filter_trio import run_filter
 
     return execute(params, run_filter, progress=progress, cancel=cancel, check=check)
+
+
+def callability(
+    params: VcfCallabilityParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Classify the gene list's coding exons from the gVCF: outputs
+    ``exon_callability`` (the per-gene JSON document; ``details`` holds its
+    summary and provenance) and
+    ``exon_callability_table`` (one row per exon); genes per state are
+    metrics."""
+    from wgsextract_cli.commands.vcf.callability import run_callability
+
+    return execute(
+        params, run_callability, progress=progress, cancel=cancel, check=check
+    )
 
 
 def table(

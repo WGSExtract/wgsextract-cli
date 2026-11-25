@@ -87,6 +87,7 @@ SECTIONS = {
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
     "mitochondrial": "Mitochondrial DNA: heteroplasmy at reviewed variants",
     "acmg_research": "Automated ACMG classes in {gene_list} genes (research only)",
+    "exon_callability": "Exon callability of {gene_list} genes",
     "structural_variants": "Rare structural variants",
     "medication_review": "Medication review (CPIC guidance; not a prescription)",
     "microarray": "Microarray export",

@@ -39,7 +39,7 @@ Stability: the names exported here and the group modules (``api.extract``,
 ``api.lineage``, ``api.methylation``, ``api.microarray``, ``api.panel``, ``api.ref``,
 ``api.repair``, ``api.genotyping``, ``api.report``, ``api.lookup``, ``api.sample``,
 ``api.support``, ``api.pet``, ``api.analyze``, ``api.sign``, ``api.deps``,
-``api.examples``, ``api.vep``, ``api.benchmark``, ``api.score``) follow
+``api.examples``, ``api.vep``, ``api.benchmark``, ``api.score``, ``api.fastq``) follow
 semantic versioning from the 1.0 release; adding fields with defaults is not
 a breaking change.
 Modules whose names start with ``_`` are private and may change at any time.

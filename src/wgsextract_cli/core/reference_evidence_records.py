@@ -40,11 +40,24 @@ def bcftools_gvcf_header(header: str) -> bool:
     return False
 
 
+HEADER_KEY = "wgseReferenceEvidence"
+
+
+def header_declares_gvcf(header: str) -> bool:
+    """Recognize WGS Extract evidence and GATK-style reference confidence bands."""
+    return any(
+        line.startswith((f"##{HEADER_KEY}=", "##GVCFBlock"))
+        for line in header.splitlines()
+    )
+
+
 class State(enum.Enum):
     """A base's evidence state, from the strongest claim against reference
     to the weakest. Where records overlap, the earlier state wins."""
 
     EXCLUDED_BY_POLICY = "excluded_by_policy"
+    # A resolved call must not mask a different unreliable call at the same base.
+    LOW_QUALITY_VARIANT = "low_quality_variant"
     VARIANT = "variant"
     FILTERED = "filtered"
     NO_CALL = "no_call"
@@ -55,6 +68,12 @@ class State(enum.Enum):
 
 
 _RANK = {state: rank for rank, state in enumerate(State)}
+_STRICT_RANK = {
+    **_RANK,
+    State.FILTERED: _RANK[State.VARIANT],
+    State.NO_CALL: _RANK[State.FILTERED],
+    State.VARIANT: _RANK[State.NO_CALL],
+}
 Classified = tuple[str, int, int, State]  # a record's bases and their state
 
 
@@ -123,6 +142,8 @@ def record_state(
     model: str,
     thresholds: Thresholds,
     ploidy: int | None = None,
+    *,
+    check_variant_quality: bool = False,
 ) -> State:
     """The state of the bases one gVCF record covers (its first sample)."""
     values = _sample(fields)
@@ -131,7 +152,23 @@ def record_state(
     alleles = re.split(r"[/|]", values.get("GT", "."))
     alts = fields[4].split(",")
     carried = [a for a in alleles if a.isdigit() and a != "0" and int(a) <= len(alts)]
+    scale = 0.5 if (ploidy if ploidy is not None else len(alleles)) == 1 else 1.0
     if any(alts[int(a) - 1] not in SYMBOLIC_REFERENCE_ALTS for a in carried):
+        if not check_variant_quality:
+            return State.VARIANT
+        depth, gq = _int(values.get("DP")), _float(values.get("GQ"))
+        if (
+            depth is None
+            or depth == 0
+            or depth < thresholds.min_depth * scale
+            or (model == GQ and (gq is None or gq < thresholds.min_gq))
+            or any(a not in carried and a != "0" for a in alleles)
+            or any(
+                re.fullmatch(r"[ACGT]+", allele, re.IGNORECASE) is None
+                for allele in (fields[3], *(alts[int(a) - 1] for a in carried))
+            )
+        ):
+            return State.LOW_QUALITY_VARIANT
         return State.VARIANT
     if carried or any(a != "0" for a in alleles):
         return State.NO_CALL
@@ -142,7 +179,6 @@ def record_state(
     depth = reference_depth(info, values, block=block)
     if depth == 0:
         return State.UNCOVERED
-    scale = 0.5 if (ploidy if ploidy is not None else len(alleles)) == 1 else 1.0
     if depth is None or depth < thresholds.min_depth * scale:
         return State.LOW_QUALITY_REFERENCE
     if model == GQ:
@@ -175,9 +211,11 @@ def _sweep(
     order: Mapping[str, int],
     *,
     missing_state: State = State.UNCOVERED,
+    check_variant_quality: bool = False,
 ) -> Iterator[Span]:
     """Resolve overlapping records base by base, highest-ranked state first.
     Records arrive sorted, so only the few overlapping the cursor are held."""
+    rank_state = (_STRICT_RANK if check_variant_quality else _RANK).__getitem__
     pending = next(records, None)
     active: list[tuple[str, int, State]] = []
     for contig, first, last in wanted:
@@ -196,7 +234,7 @@ def _sweep(
             if pending is not None and pending[0] == contig:
                 upcoming = min(upcoming, pending[1])
             if active:
-                state = min((a[2] for a in active), key=_RANK.__getitem__)
+                state = min((a[2] for a in active), key=rank_state)
                 stop = min(min(a[1] for a in active), upcoming - 1)
             else:
                 state, stop = missing_state, upcoming - 1
