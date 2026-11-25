@@ -610,10 +610,17 @@ def workflow_shell(step_name: str) -> str:
 
 
 @LINUX_BASH
-def test_914_ci_policy_creates_out_on_a_fresh_checkout(tmp_path: Path) -> None:
+def test_1551_ci_policy_runs_selected_tests_on_workers_in_a_fresh_checkout(
+    tmp_path: Path,
+) -> None:
     test = tmp_path / "tests" / "test_policy_input.py"
     test.parent.mkdir()
-    test.write_text("def test_temp_input(tmp_path):\n assert tmp_path.is_dir()\n")
+    test.write_text(
+        "import os\n"
+        "def test_temp_input(tmp_path):\n"
+        " assert os.environ.get('PYTEST_XDIST_WORKER')\n"
+        " assert tmp_path.is_dir()\n"
+    )
     script = workflow_shell("Run affected CI policy and routing tests")
     # The Python environment is already installed; exercise local bootstrap,
     # not the package-install network boundary.

@@ -506,7 +506,8 @@ real-data suites remain exclusively in their dedicated steps.
 Non-Markdown `.github/**` and `scripts/ci_*.py` changes select actionlint and the CI
 policy/routing/readiness regressions, not the CLI matrix or Install Lab.
 `ci_tests` includes their actual transitive script/action readers as well as
-the baseline policy checks; the CI job executes that complete selection.
+the baseline policy checks; the CI job executes that complete selection on
+four pytest workers and reports the slowest tests.
 Changing an OS matrix workflow additionally exercises **only that OS** in
 one lightweight smoke job; changing shared `os_tests.yml` exercises all four
 OS smoke jobs. Mixed product/CI changes union their coverage. Declared docs

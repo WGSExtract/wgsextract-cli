@@ -442,7 +442,7 @@ jobs:
         run: |
           python -m pip install --quiet -e . pytest pytest-xdist jsonschema coverage 'markdown-it-py>=3,<5'
           mkdir -p out
-          python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", *json.loads(os.environ["CI_TESTS"]), "--basetemp=out/ci-policy"], check=True)'
+          python -c 'import json, os, subprocess, sys; subprocess.run([sys.executable, "-m", "pytest", "-q", "-n", "4", "--durations=15", *json.loads(os.environ["CI_TESTS"]), "--basetemp=out/ci-policy"], check=True)'
   generic:
     needs: changes
     if: github.event_name == 'pull_request' && github.event.pull_request.draft != true && needs.changes.outputs.test_certified != 'true' && needs.changes.outputs.generic_tests != '[]'
