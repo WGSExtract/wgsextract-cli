@@ -182,6 +182,32 @@ class PanelAuditParams(PanelCheckParams):
         path="file",
         metavar="FILE",
     )
+    null_sets: int | None = param(
+        None,
+        help="Run calibration with this many null sets (100 to 100,000).",
+        flags=("--null-sets",),
+        minimum=100,
+    )
+    seed: int | None = param(
+        None,
+        help="Reproducible seed for null calibration.",
+        flags=("--seed",),
+        minimum=0,
+    )
+    no_calibration: bool = param(
+        False,
+        help="Skip null calibration, even if the panel requests it.",
+        flags=("--no-calibration",),
+        action="store_true",
+    )
+    download: bool = param(
+        False,
+        help="Allow fetching the missing pinned public GRCh38 exon model from "
+        "WGSExtract's GitHub release; sends no sample data.",
+        flags=("--download",),
+        action="store_true",
+    )
+    ref: Path | None = ref_param(local_only=True)
     table_format: str = param(
         "tsv",
         help="Audit table format (default: tsv)",
@@ -194,6 +220,16 @@ class PanelAuditParams(PanelCheckParams):
         super().__post_init__()
         if not self.research_panel:
             raise UsageError("Give --research-panel to acknowledge research-only use.")
+        if self.null_sets is not None and self.null_sets > 100000:
+            raise UsageError("--null-sets must be at most 100,000.")
+        if self.seed is not None and self.seed > 2**53:
+            raise UsageError("--seed must be at most 2**53.")
+        if self.no_calibration and (
+            self.null_sets is not None or self.seed is not None or self.download
+        ):
+            raise UsageError(
+                "--no-calibration cannot be used with --null-sets, --seed or --download."
+            )
 
 
 def audit(

@@ -18,6 +18,8 @@ from wgsextract_cli.core.variant_confidence import Thresholds
 Interval = tuple[int, int]
 _AUTOSOMES = frozenset(str(i) for i in range(1, 23))
 _CALLABLE = {State.CALLABLE_REFERENCE, State.VARIANT}
+_GRCH38_X_PAR = ((10_001, 2_781_479), (155_701_383, 156_030_895))
+_MAX_LENGTH_IMBALANCE = 0.20
 NOTE = (
     "Compares this panel's filtered coding variant load with coding-length-matched "
     "genes in the same genome. Not evidence for disease association."
@@ -27,6 +29,7 @@ NOTE = (
 @dataclass(frozen=True)
 class Opportunity:
     chrom: str
+    chrom_class: str
     coding_bp: int
     segments: tuple[Interval, ...]
     matched_bp: int
@@ -59,13 +62,13 @@ def opportunities(
     reference: ReferenceEvidence | None,
     thresholds: Thresholds,
     *,
-    include_x: bool = False,
+    sex: str | None = None,
 ) -> tuple[dict[str, Opportunity], dict[str, str]]:
     """Choose one MANE transcript per gene and count the union of coding
     bases. Masked candidate genes are excluded by CDS, not genomic span."""
-    genes: dict[str, tuple[str, tuple[Interval, ...], int]] = {}
+    genes: dict[str, tuple[str, str, tuple[Interval, ...], int]] = {}
     excluded: dict[str, str] = {}
-    allowed = _AUTOSOMES | {"X"} if include_x else _AUTOSOMES
+    allowed = _AUTOSOMES | {"X"} if sex in {"F", "M", "XX", "XY"} else _AUTOSOMES
     for gene, exons in model.genes.items():
         chroms = {e.chrom for e in exons}
         if len(chroms) != 1 or any(e.tag != "MANE Select" for e in exons):
@@ -95,22 +98,26 @@ def opportunities(
         if 2 * dup_bp >= _bases(merged):
             excluded[gene] = "segmental_duplication"
             continue
-        genes[gene] = chrom, merged, dup_bp
+        chrom_class = _chromosome_class(contig_key(chrom), merged, sex)
+        if chrom_class is None:
+            excluded[gene] = "mixed_x_ploidy"
+            continue
+        genes[gene] = chrom, chrom_class, merged, dup_bp
 
     called: dict[str, list[Span]] = defaultdict(list)
     ends: dict[str, list[int]] = defaultdict(list)
     if reference is not None:
         regions = (
             (names[chrom], start, end)
-            for chrom, coding, _ in genes.values()
+            for chrom, _, coding, _ in genes.values()
             for start, end in coding
         )
-        for span in reference.spans(thresholds, regions):
+        for span in reference.spans(thresholds, regions, dense=True):
             if span.state in _CALLABLE:
                 called[span.contig].append(span)
                 ends[span.contig].append(span.end)
     result: dict[str, Opportunity] = {}
-    for gene, (chrom, cds, dup_bp) in genes.items():
+    for gene, (chrom, chrom_class, cds, dup_bp) in genes.items():
         if reference is None:
             compatible = cds
         else:
@@ -119,7 +126,12 @@ def opportunities(
             excluded[gene] = "no_callable_cds"
             continue
         result[gene] = Opportunity(
-            contig_key(chrom), _bases(cds), compatible, _bases(compatible), dup_bp
+            contig_key(chrom),
+            chrom_class,
+            _bases(cds),
+            compatible,
+            _bases(compatible),
+            dup_bp,
         )
     return result, excluded
 
@@ -137,8 +149,22 @@ def _intersect(
     return _merge(parts)
 
 
-def _class(chrom: str) -> str:
-    return "autosomal" if chrom in _AUTOSOMES else chrom
+def _chromosome_class(
+    chrom: str, cds: Sequence[Interval], sex: str | None
+) -> str | None:
+    if chrom != "X":
+        return "autosomal"
+    if sex not in {"M", "XY"}:
+        return "X_diploid"
+    bases = _bases(cds)
+    par = sum(
+        max(0, min(end, high) - max(start, low) + 1)
+        for start, end in cds
+        for low, high in _GRCH38_X_PAR
+    )
+    if par == bases:
+        return "X_diploid"
+    return "X_haploid" if par == 0 else None
 
 
 def matched_null(
@@ -160,7 +186,7 @@ def matched_null(
     control: dict[str, list[tuple[int, str]]] = defaultdict(list)
     for gene, opportunity in opportunities.items():
         if gene not in panel_genes:
-            control[_class(opportunity.chrom)].append((opportunity.matched_bp, gene))
+            control[opportunity.chrom_class].append((opportunity.matched_bp, gene))
     target_bins: Counter[tuple[str, int]] = Counter()
     control_bins: dict[tuple[str, int], list[str]] = defaultdict(list)
     limits: dict[str, list[int]] = {}
@@ -170,18 +196,29 @@ def matched_null(
         limits[chrom_class] = cuts
         for bp, gene in genes:
             control_bins[chrom_class, bisect_right(cuts, bp)].append(gene)
+    outside = []
     for gene in targets:
         opportunity = opportunities[gene]
-        chrom_class = _class(opportunity.chrom)
+        chrom_class = opportunity.chrom_class
         bin_ = bisect_right(limits.get(chrom_class, ()), opportunity.matched_bp)
-        target_bins[chrom_class, bin_] += 1
+        key = (chrom_class, bin_)
+        target_bins[key] += 1
+        eligible = control_bins[key]
+        if eligible and not (
+            opportunities[eligible[0]].matched_bp
+            <= opportunity.matched_bp
+            <= opportunities[eligible[-1]].matched_bp
+        ):
+            outside.append(gene)
     counts = [allele_counts.get(gene, 0) for gene in targets]
     observed = sum(counts)
+    observed_bp = sum(opportunities[gene].matched_bp for gene in targets)
     document: dict[str, Any] = {
         "basis": basis,
         "note": NOTE,
         "observed_allele_copies": observed,
         "observed_qualifying_genes": sum(bool(count) for count in counts),
+        "observed_matched_bp": observed_bp,
         "target_genes": len(targets),
         "control_genes": sum(map(len, control.values())),
         "requested_null_sets": null_sets,
@@ -207,15 +244,41 @@ def matched_null(
             if not targets
             else "insufficient_matched_controls",
         }
+    if outside:
+        return {
+            **document,
+            "state": "unavailable",
+            "reason": "outside_control_cds_range",
+            "unmatched_targets": sorted(outside),
+        }
     pools = [
-        ([allele_counts.get(gene, 0) for gene in control_bins[key]], size)
+        (
+            [
+                (allele_counts.get(gene, 0), opportunities[gene].matched_bp)
+                for gene in control_bins[key]
+            ],
+            size,
+        )
         for key, size in sorted(target_bins.items())
     ]
+    mean_bp = sum(size * fmean(bp for _, bp in pool) for pool, size in pools)
+    if abs(mean_bp - observed_bp) > observed_bp * _MAX_LENGTH_IMBALANCE:
+        return {
+            **document,
+            "state": "unavailable",
+            "reason": "coding_length_imbalance",
+            "expected_control_cds_bp": mean_bp,
+        }
     rng = random.Random(seed)
-    draws = [
-        sum(sum(rng.sample(pool, size)) for pool, size in pools)
-        for _ in range(null_sets)
-    ]
+    draws = []
+    null_bp = 0
+    for _ in range(null_sets):
+        copies = 0
+        for pool, size in pools:
+            for count, bp in rng.sample(pool, size):
+                copies += count
+                null_bp += bp
+        draws.append(copies)
     histogram = Counter(draws)
     mean = fmean(draws)
     less = sum(n for copies, n in histogram.items() if copies < observed)
@@ -224,6 +287,7 @@ def matched_null(
         "state": "calibrated",
         "null_sets": null_sets,
         "null_mean": mean,
+        "null_mean_matched_bp": null_bp / null_sets,
         "null_sd": pstdev(draws),
         "null_histogram": dict(sorted(histogram.items())),
         "upper_tail_p": (1 + null_sets - less) / (null_sets + 1),

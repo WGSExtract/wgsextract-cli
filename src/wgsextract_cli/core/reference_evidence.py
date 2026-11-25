@@ -531,13 +531,16 @@ class ReferenceEvidence:
         records: Iterator[list[str]] | None = None,
         ploidy: int | None = None,
         stream_complete: bool = False,
+        dense: bool = False,
     ) -> Iterator[Span]:
         """Every base of ``regions`` (default: every contig) in its state, as
         maximal spans in contig order. Bases no record covers are uncovered
         where the caller assessed them and not assessed elsewhere.
         ``records`` supplies a sorted, already-open single-sample stream;
         missing records remain not assessed unless ``stream_complete`` covers
-        every requested interval. ``ploidy`` overrides GT encoding."""
+        every requested interval. ``ploidy`` overrides GT encoding.
+        ``dense`` reads one region per requested contig instead of making
+        individual indexed seeks for a whole-genome region set."""
         order = {name: index for index, name in enumerate(self.lengths)}
         requested = (
             regions
@@ -556,7 +559,7 @@ class ReferenceEvidence:
             return
         assessed = self.assessed()
         observed = (
-            self._observed(wanted, thresholds, order)
+            self._observed(wanted, thresholds, order, dense=dense)
             if records is None
             else classify_spans(
                 records,
@@ -599,21 +602,28 @@ class ReferenceEvidence:
         wanted: list[Interval],
         thresholds: Thresholds,
         order: Mapping[str, int],
+        *,
+        dense: bool = False,
     ) -> Iterator[Span]:
         """Spans of ``wanted`` from the records alone (absent: uncovered)."""
         with tempfile.TemporaryDirectory(prefix="wgse_evidence_") as work:
-            regions = Path(work, "regions.tsv")
-            queried = self._query_intervals(wanted, thresholds, order, regions)
-            regions.write_text(
-                "".join(f"{c}\t{s}\t{e}\n" for c, s, e in queried),
-                encoding="utf-8",
-                newline="\n",
-            )
+            if dense:
+                contigs = ",".join(dict.fromkeys(c for c, _, _ in wanted))
+                query = ["-r", contigs]
+            else:
+                regions = Path(work, "regions.tsv")
+                queried = self._query_intervals(wanted, thresholds, order, regions)
+                regions.write_text(
+                    "".join(f"{c}\t{s}\t{e}\n" for c, s, e in queried),
+                    encoding="utf-8",
+                    newline="\n",
+                )
+                query = ["-R", str(regions)]
             with open(
                 Path(work, "stderr.txt"), "w+", encoding="utf-8", newline="\n"
             ) as errors:
                 process = popen(
-                    ["bcftools", "view", "-H", "-R", str(regions), self.path],
+                    ["bcftools", "view", "-H", *query, self.path],
                     stdout=subprocess.PIPE,
                     stderr=errors,
                     text=True,
@@ -632,6 +642,10 @@ class ReferenceEvidence:
                         else None,
                         check_variant_quality=self.check_variant_quality,
                     )
+                    if dense:
+                        # The sweep can finish before the final contig does.
+                        for _ in process.stdout:
+                            pass
                 finally:
                     process.stdout.close()
                     code = process.wait()

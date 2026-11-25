@@ -1,6 +1,7 @@
 """``panel check`` and the ``wgsextract.panel/1`` research panel format (#1287)."""
 
 import copy
+import gzip
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -441,6 +442,168 @@ def test_1287_audit_requires_explicit_research_opt_in() -> None:
 
     with pytest.raises(UsageError, match="--research-panel"):
         api.PanelAuditParams(panel=Path("panel.toml"), vcf_input=Path("sample.vcf.gz"))
+
+
+@needs_htslib
+def test_1287_null_counts_callable_cds_and_excludes_duplicated_controls(
+    tmp_path: Path,
+) -> None:
+    panel, vcf, gvcf = _audit_inputs(tmp_path, phase_set="1")
+    header = ""
+    observed = []
+    with gzip.open(vcf, "rt") as stream:
+        for line in stream:
+            if line.startswith("#"):
+                header += line
+            else:
+                observed.append(line)
+    control = [
+        "chr1\t923930\t.\tC\tG\t50\tPASS\tCSQ=G|stop_gained|HIGH|SAMD11\tGT:DP:GQ\t1/1:30:60\n",
+        "chr1\t944210\t.\tA\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|NOC2L\tGT:DP:GQ\t1/1:30:60\n",
+    ]
+    counts = tmp_path / "combined.vcf"
+    counts.write_text(header + "".join(control + observed), encoding="utf-8")
+    indexed = Path(bgzip_index(counts))
+    gheader = gvcf.read_text(encoding="utf-8").split("#CHROM")[0]
+    blocks = [
+        (923931, 923939, 30, 60),
+        (944211, 944219, 30, 60),
+        (1013500, 1013509, 30, 60),
+        (1020125, 1020134, 2, 3),
+        (11796325, 11796330, 30, 60),
+    ]
+    grows = (
+        control
+        + observed[:4]
+        + [
+            f"chr1\t{start}\t.\tA\t<NON_REF>\t.\tPASS\tEND={end}\tGT:DP:GQ:MIN_DP\t0/0:{dp}:{gq}:{dp}\n"
+            for start, end, dp, gq in blocks
+        ]
+    )
+    gvcf.write_text(
+        gheader
+        + "#CHROM"
+        + header.split("#CHROM")[1]
+        + "".join(sorted(grows, key=lambda row: int(row.split("\t")[1]))),
+        encoding="utf-8",
+    )
+    model = tmp_path / "exons.tsv"
+    model.write_text(
+        "#contig\tchr1\t248956422\n"
+        "gene\ttranscript\ttag\tstrand\texon\texons\tchrom\tstart\tend\tcds_start\tcds_end\tlimitations\n"
+        + "".join(
+            f"{gene}\tNM_{gene}\tMANE Select\t+\t1\t1\tchr1\t{start}\t{start + 9}\t"
+            f"{start}\t{start + 9}\t{mask}\n"
+            for gene, start, mask in (
+                ("MTHFR", 11796321, ""),
+                ("NOC2L", 944210, ""),
+                ("ISG15", 1013500, ""),
+                ("AGRN", 1020125, ""),
+                ("SAMD11", 923930, "segmental_duplication:923930-923934"),
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    def audit(
+        directory: str, reference: Path | None
+    ) -> tuple[dict[str, Any], set[str]]:
+        result = api.panel.audit(
+            api.PanelAuditParams(
+                panel=panel,
+                vcf_input=indexed,
+                gvcf=reference,
+                exons=model,
+                research_panel=True,
+                null_sets=100,
+                seed=7,
+                outdir=tmp_path / directory,
+            )
+        )
+        report = next(o for o in result.outputs if o.role == "panel_audit")
+        return json.loads(Path(report.path).read_text(encoding="utf-8")), {
+            warning.code for warning in result.warnings
+        }
+
+    calibrated, warnings = audit("first", gvcf)
+    repeated, _ = audit("repeat", gvcf)
+    null = calibrated["groups"][0]["calibration"]
+    assert repeated["groups"][0]["calibration"] == null
+    assert null["basis"] == "callable_cds_bp"
+    assert null["observed_allele_copies"] == 2
+    assert null["observed_matched_bp"] == null["null_mean_matched_bp"] == 10
+    assert null["control_genes"] == 2
+    histogram = null["null_histogram"]
+    assert set(histogram) == {"0", "2"} and sum(histogram.values()) == 100
+    assert null["upper_tail_p"] == pytest.approx((histogram["2"] + 1) / 101)
+    assert "panel_calibration_underpowered" in warnings
+    assert calibrated["calibration_universe"]["segmental_duplication_exclusions"] == [
+        "SAMD11"
+    ]
+    fallback, _ = audit("fallback", None)
+    assert fallback["groups"][0]["calibration"]["basis"] == "cds_bp"
+    assert fallback["groups"][0]["calibration"]["control_genes"] == 3
+    model.write_text(
+        model.read_text(encoding="utf-8").replace("11796330", "11796420"),
+        encoding="utf-8",
+    )
+    unmatched, warnings = audit("outside-support", None)
+    null = unmatched["groups"][0]["calibration"]
+    assert null["reason"] == "outside_control_cds_range"
+    assert null["unmatched_targets"] == ["MTHFR"]
+    assert "upper_tail_p" not in null
+    assert "panel_calibration_underpowered" in warnings
+
+
+@needs_htslib
+def test_1287_regional_vcf_cannot_be_calibrated_against_genome_wide_controls(
+    tmp_path: Path,
+) -> None:
+    from wgsextract_cli.core.reference_evidence import Provenance
+
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    with gzip.open(vcf, "rt", encoding="utf-8") as stream:
+        header, body = stream.read().split("#CHROM", 1)
+    policy = Provenance("bcftools", "1.23", "gq", region="chr1:11796321-11796331")
+    restricted = tmp_path / "restricted.vcf"
+    restricted.write_text(
+        header + policy.header() + "\n#CHROM" + body, encoding="utf-8"
+    )
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=restricted,
+            research_panel=True,
+            null_sets=100,
+            outdir=tmp_path / "regional",
+        ),
+        check=False,
+    )
+    assert result.exit_code == 2
+    assert result.error and "chr1:11796321-11796331" in result.error.message
+    assert not result.outputs
+
+
+@needs_htslib
+def test_1287_missing_mane_reference_requires_explicit_download(tmp_path: Path) -> None:
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    library = tmp_path / "library"
+    library.mkdir()
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=vcf,
+            ref=library,
+            research_panel=True,
+            null_sets=100,
+            outdir=tmp_path / "local",
+        ),
+        check=False,
+    )
+    assert result.exit_code == 2
+    assert result.error and "mane-grch38-v1.tsv.gz" in result.error.message
+    assert "--download" in result.error.message
+    assert not list(library.iterdir())
 
 
 def test_panel_bed_accepts_hgnc_ids(tmp_path):

@@ -1,0 +1,191 @@
+"""Run optional callable-CDS calibration for ``panel audit``."""
+
+from __future__ import annotations
+
+import json
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
+
+from wgsextract_cli.api.panel import PanelAuditParams
+from wgsextract_cli.core import exon_callability as ec
+from wgsextract_cli.core import panel_audit as audit
+from wgsextract_cli.core import panel_calibration as calibration
+from wgsextract_cli.core.lookup.genotypes import VcfSource
+from wgsextract_cli.core.panel_reference import mane_model
+from wgsextract_cli.core.reference_evidence import ReferenceEvidence
+from wgsextract_cli.core.results import current_result, warn
+from wgsextract_cli.core.utils import UsageError
+from wgsextract_cli.core.variant_confidence import Thresholds
+
+
+def requests_calibration(params: PanelAuditParams, spec: Mapping[str, Any]) -> bool:
+    return not params.no_calibration and (
+        "calibration" in spec
+        or params.null_sets is not None
+        or params.seed is not None
+        or params.download
+    )
+
+
+@dataclass
+class Calibrator:
+    opportunities: dict[str, calibration.Opportunity]
+    excluded: dict[str, str]
+    filters: dict[str, Mapping[str, Any]]
+    filter_keys: dict[str, str]
+    counts: dict[str, Counter[str]]
+    basis: str
+    thresholds: dict[str, object] | None
+
+    def record(self, allele: audit.Allele) -> None:
+        matched = self.opportunities.get(allele.gene)
+        chrom, pos, ref = allele.get("chrom"), allele.get("pos"), allele.get("ref")
+        if (
+            matched is None
+            or not isinstance(chrom, str)
+            or not isinstance(pos, int)
+            or not isinstance(ref, str)
+            or not matched.covers(chrom, pos, pos + len(ref) - 1)
+        ):
+            return
+        for key, filters in self.filters.items():
+            if audit.assess(allele, filters)[0] is audit.Decision.QUALIFYING:
+                self.counts[key][allele.gene] += len(allele.copies)
+
+    def finish(
+        self,
+        groups: Sequence[dict[str, Any]],
+        settings: Mapping[str, Any],
+    ) -> dict[str, object]:
+        all_symbols = {
+            gene["symbol"].upper()
+            for group in groups
+            for gene in group["genes"]
+            if gene.get("symbol")
+        }
+        for group in groups:
+            target = sorted(
+                g["symbol"].upper()
+                for g in group["genes"]
+                if g.get("symbol") and g["symbol"].upper() in self.opportunities
+            )
+            excluded = {}
+            for gene in group["genes"]:
+                symbol = str(gene.get("symbol", "")).upper()
+                if symbol:
+                    if (opportunity := self.opportunities.get(symbol)) is not None:
+                        gene["matched_cds_bp"] = opportunity.matched_bp
+                        continue
+                    excluded[gene["given"]] = self.excluded.get(symbol, "no_exon_model")
+                else:
+                    excluded[gene["given"]] = str(gene["status"])
+            stats = calibration.matched_null(
+                target,
+                all_symbols,
+                self.opportunities,
+                self.counts[self.filter_keys[group["id"]]],
+                bins=settings["bins"],
+                null_sets=settings["null_sets"],
+                seed=settings["seed"],
+                basis=self.basis,
+            )
+            group["calibration"] = {**stats, "excluded_targets": excluded}
+            if stats.get("underpowered") or stats["state"] != "calibrated":
+                warn(
+                    "panel_calibration_underpowered",
+                    f"Group {group['id']} has too little matched coding evidence "
+                    "for a well-powered null comparison.",
+                    group=group["id"],
+                    target_genes=len(target),
+                    reason=stats.get("reason"),
+                )
+        return {
+            "basis": self.basis,
+            "thresholds": self.thresholds,
+            "candidate_genes": len(self.opportunities),
+            "excluded_gene_counts": dict(
+                sorted(Counter(self.excluded.values()).items())
+            ),
+            "segmental_duplication_exclusions": sorted(
+                gene
+                for gene, reason in self.excluded.items()
+                if reason == "segmental_duplication"
+            ),
+        }
+
+
+def prepare(
+    params: PanelAuditParams,
+    source: VcfSource,
+    build: str,
+    groups: Sequence[dict[str, Any]],
+    evidence: ReferenceEvidence | None,
+    thresholds: Thresholds,
+) -> tuple[Calibrator, ec.ExonModel]:
+    if build != "GRCh38":
+        raise UsageError(
+            "MANE Select null calibration requires GRCh38; use --no-calibration."
+        )
+    if not groups:
+        raise UsageError("Null calibration needs at least one gene group.")
+    if source.provenance and source.provenance.region:
+        raise UsageError(
+            "Null calibration needs a whole-genome variant call set, but the VCF "
+            f"records calling region {source.provenance.region!r}. Use --no-calibration."
+        )
+    model_path = params.exons or mane_model(params.ref)
+    model = ec.load_model(model_path)
+    current_result().add_input(model_path, "calibration_exon_model")
+    input_names = ec.contig_names(model, source.lengths)
+    names = input_names
+    if evidence is not None:
+        names = {
+            chrom: name
+            for chrom, name in ec.contig_names(model, evidence.lengths).items()
+            if chrom in input_names
+        }
+    else:
+        warn(
+            "panel_calibration_nominal_cds",
+            "No gVCF is available; null matching uses model CDS length, not measured callability.",
+        )
+    provenance = (
+        evidence.provenance if evidence and evidence.provenance else source.provenance
+    )
+    opportunities, excluded = calibration.opportunities(
+        model,
+        names,
+        evidence,
+        thresholds,
+        sex=provenance.sex if provenance else None,
+    )
+    filters: dict[str, Mapping[str, Any]] = {}
+    filter_keys = {}
+    for group in groups:
+        key = json.dumps(group["filters"], sort_keys=True)
+        filters[key] = group["filters"]
+        filter_keys[group["id"]] = key
+    calibrator = Calibrator(
+        opportunities,
+        excluded,
+        filters,
+        filter_keys,
+        {key: Counter() for key in filters},
+        "callable_cds_bp" if evidence else "cds_bp",
+        {
+            "min_depth": thresholds.min_depth,
+            "min_gq": thresholds.min_gq,
+            "quality_model": evidence.quality_model,
+        }
+        if evidence
+        else None,
+    )
+    if evidence:
+        current_result().add_metrics(
+            calibration_min_depth=thresholds.min_depth,
+            calibration_min_gq=thresholds.min_gq,
+            calibration_quality_model=evidence.quality_model,
+        )
+    return calibrator, model
