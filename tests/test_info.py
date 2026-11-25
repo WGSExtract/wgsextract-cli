@@ -198,6 +198,20 @@ def test_info_legacy_or_corrupt_cache_is_recomputed(info_env, payload):
     assert "Avg Read Length             150 bp" in output
 
 
+def test_info_reuses_a_cache_an_earlier_release_wrote_beside_the_input(info_env):
+    """PR #1581 review: without --outdir, only the new WGSEv6/manifests/ was
+    searched, so an earlier release's cache beside the input was ignored."""
+    sample, calls = info_env
+    _run_info(sample, "info")
+    cache = sample.parent / "manifests" / f"{sample.name}.wgse_info.json"
+    cache.rename(sample.parent / cache.name)
+
+    output = _run_cli("info", "--input", str(sample))
+
+    assert calls["run_body_sample"] == 1
+    assert "Avg Read Length             150 bp" in output
+
+
 def test_cached_reference_from_older_detection_is_recomputed(info_env):
     # #77: a cache whose read metrics are valid but whose reference
     # classification came from older, wrong detection.

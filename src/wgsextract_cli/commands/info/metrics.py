@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
 from wgsextract_cli.commands._messages.info import LOG_MESSAGES
-from wgsextract_cli.core import sample_workspace
+from wgsextract_cli.core import read_scope, sample_workspace
 from wgsextract_cli.core.alignment.sequencing import platform_from_metadata
 from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.constants import SEQUENCERS
@@ -505,6 +505,8 @@ def cached_info(
         if candidate in seen:
             continue
         seen.add(candidate)
+        if not read_scope.may_follow(candidate):
+            continue
         try:
             with open(candidate) as f:
                 info = json.load(f)

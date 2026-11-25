@@ -312,25 +312,22 @@ def recorded_producer(record: FileRecord) -> _Recorded | None:
         return None
     own = manifest_path_for(record.path)
     legacy_own = Path(record.path).parent / own.name
-    candidates: list[Path] = [own]
-    seen: set[Path] = {own}
-    for folder in (own.parent, Path(record.path).parent):
+    # Both exact names first, so a crowded folder can't push them out.
+    candidates: list[Path] = [own, legacy_own]
+    others: list[Path] = []
+    for folder in (own.parent, legacy_own.parent):
         try:
-            found = sorted(
-                p
-                for p in folder.glob(f"*{MANIFEST_SUFFIX}")
-                if p not in seen and not p.name.endswith(f".failed{MANIFEST_SUFFIX}")
+            others.extend(
+                sorted(
+                    p
+                    for p in folder.glob(f"*{MANIFEST_SUFFIX}")
+                    if p not in candidates
+                    and not p.name.endswith(f".failed{MANIFEST_SUFFIX}")
+                )
             )
         except OSError:
-            found = []
-        if folder == Path(record.path).parent and legacy_own in found:
-            found.remove(legacy_own)
-            found.insert(0, legacy_own)
-        for p in found:
-            if len(candidates) >= _MANIFEST_SCAN_LIMIT + 1:
-                break
-            seen.add(p)
-            candidates.append(p)
+            pass
+    candidates.extend(others[:_MANIFEST_SCAN_LIMIT])
 
     for manifest in candidates:
         # A server job reads only the folders it allows, manifests included;

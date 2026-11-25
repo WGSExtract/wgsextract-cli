@@ -87,7 +87,9 @@ def _load_cache(path: str, signature: dict[str, int | str] | None) -> dict[str, 
 
     Caches written before input signatures were recorded are treated as stale.
     """
-    if signature is None:
+    from wgsextract_cli.core import read_scope
+
+    if signature is None or not read_scope.may_follow(path):
         return {}
     try:
         with open(path) as f:
@@ -111,8 +113,12 @@ def _load_cache(path: str, signature: dict[str, int | str] | None) -> dict[str, 
 
 
 def _save_cache(path: str, data: dict[str, Any]) -> bool:
+    from wgsextract_cli.core import read_scope
     from wgsextract_cli.core.results import MANIFESTS_DIR
 
+    if not read_scope.may_follow(path):
+        logging.debug(f"Not writing metrics cache {path}: outside the allowed folders")
+        return False
     try:
         cache_path = Path(path)
         if (
@@ -564,10 +570,14 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     signature = input_signature(input_file)
     cache = cache and signature is not None
     data = _load_cache(json_cache, signature)
-    if not data:
-        legacy_cache = str(Path(outdir, f"{Path(input_file).name}.wgse_info.json"))
-        if legacy_cache != json_cache:
-            data = _load_cache(legacy_cache, signature)
+    # Earlier releases cached beside the output folder's files, or beside the
+    # input when there was no --outdir.
+    for folder in (outdir, str(absolute_path(input_file).parent)):
+        if data:
+            break
+        data = _load_cache(
+            str(Path(folder, f"{Path(input_file).name}.wgse_info.json")), signature
+        )
     call = data.get("sex_call")
     sex_unavailable = (
         isinstance(call, list)

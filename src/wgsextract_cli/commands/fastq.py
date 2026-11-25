@@ -24,7 +24,6 @@ from wgsextract_cli.core.result_card import CARD_SUFFIX
 from wgsextract_cli.core.results import (
     MANIFEST_SUFFIX,
     current_result,
-    manifest_path_for,
 )
 
 if TYPE_CHECKING:
@@ -54,7 +53,7 @@ def _aliases(first: Path, second: Path) -> bool:
 
 
 def _validate_manifest(sources: tuple[Path, ...], outputs: tuple[Path, ...]) -> None:
-    manifest = manifest_path_for(outputs[0])
+    manifest = current_result().manifest_path_for_output(outputs[0])
     stem = manifest.name.removesuffix(MANIFEST_SUFFIX)
     card_dir = outputs[0].parent
     sidecars = (

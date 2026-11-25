@@ -23,7 +23,7 @@ from wgsextract_cli.core.ref_library.assets import (
     reference_dict_path,
 )
 from wgsextract_cli.core.ref_library.layout import download_dirs
-from wgsextract_cli.core.results import manifest_path_for
+from wgsextract_cli.core.results import MANIFEST_SUFFIX, manifest_path_for
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
 _INDEXES = (".tbi", ".csi")
@@ -38,14 +38,21 @@ _RESOURCE_EXTENSIONS = {
 }
 
 
+def _manifests(path: Path) -> list[Path]:
+    """``path``'s run manifest in its folder's ``manifests/`` and, as earlier
+    releases wrote it, beside it. A ``manifests/`` that is a link isn't
+    followed: deleting through it could reach outside the library."""
+    manifest = manifest_path_for(path)
+    legacy = path.with_name(manifest.name)
+    return [legacy] if manifest.parent.is_symlink() else [manifest, legacy]
+
+
 def _with_sidecars(path: Path) -> Iterator[Path]:
-    """``path``, its indexes, its run manifest (in ``manifests/`` or legacy beside it) and download leftovers."""
+    """``path``, its indexes, its run manifests and download leftovers."""
     yield path
     for suffix in (*_INDEXES, *_DOWNLOAD_LEFTOVERS):
         yield Path(f"{path}{suffix}")
-    manifest = manifest_path_for(path)
-    yield manifest
-    yield path.with_name(manifest.name)
+    yield from _manifests(path)
 
 
 def aadr_paths(reflib: str) -> list[Path]:
@@ -94,8 +101,7 @@ def dbsnp_paths(reflib: str, builds: Iterable[str] = ("hg38", "hg19")) -> list[P
                     Path(f"{sqlite_db}-journal"),
                     Path(f"{sqlite_db}-wal"),
                     Path(f"{sqlite_db}-shm"),
-                    manifest_path_for(sqlite_db),
-                    sqlite_db.with_name(manifest_path_for(sqlite_db).name),
+                    *_manifests(sqlite_db),
                 )
             )
     return paths
@@ -177,17 +183,17 @@ def genome_paths(fasta: Path) -> list[Path]:
         Path(reference_dict_path(fasta)),
     ]
     name = escape(fasta.name)
-    manifests = [
-        candidate
-        for target in made
-        for m in (manifest_path_for(target),)
-        for candidate in (m, target.with_name(m.name))
-    ]
+    arrays = sorted(
+        p
+        for p in fasta.parent.glob(f"{name}.wgse-sa*")
+        if not p.name.endswith(MANIFEST_SUFFIX)
+    )
     return list(
         dict.fromkeys(
             [
                 *made,
-                *manifests,
+                *(m for target in (*made, *arrays) for m in _manifests(target)),
+                *arrays,
                 *sorted(fasta.parent.glob(f"{name}.wgse-sa*")),
                 *_staging_folders(fasta),
             ]

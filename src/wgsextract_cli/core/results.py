@@ -412,6 +412,14 @@ class CommandResult:
             return manifest_dir_for(self._manifest_dir)
         return manifest_dir_for(default_base)
 
+    def manifest_path_for_output(self, output: str | os.PathLike[str]) -> Path:
+        """Where this run publishes the manifest named after ``output``:
+        :func:`manifest_path_for`, redirected to the output directory's
+        ``manifests/`` when ``output`` sits in a lab input folder."""
+        output = Path(output).expanduser().absolute()
+        name = manifest_path_for(output).name
+        return self._resolve_manifest_dir(output.parent) / name
+
     def expect_output(self, output: str | os.PathLike[str]) -> None:
         """The run will write ``output``. If it fails before registering any
         output, its manifest is ``<outdir>/manifests/<output>.failed.manifest.json``
@@ -452,8 +460,7 @@ class CommandResult:
             )
         for record in self.outputs:
             if record.kind != "directory":
-                path = manifest_path_for(record.path)
-                return self._resolve_manifest_dir(Path(record.path).parent) / path.name
+                return self.manifest_path_for_output(record.path)
         for record in self.outputs:
             base = Path(record.path)
             return self._resolve_manifest_dir(base) / (base.name + MANIFEST_SUFFIX)
