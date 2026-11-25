@@ -8,7 +8,7 @@ from pathlib import Path
 from scripts.ci_test_dependencies import ROOT
 
 
-def run_router(root: Path, base: str, *args: str) -> str:
+def stage_router(root: Path) -> Path:
     scripts = root / "scripts"
     scripts.mkdir(exist_ok=True)
     for name in (
@@ -22,10 +22,15 @@ def run_router(root: Path, base: str, *args: str) -> str:
     ):
         path = f"{name}.py"
         shutil.copyfile(ROOT / "scripts" / path, scripts / path)
+    return scripts / "ci_changes.py"
+
+
+def run_router(root: Path, base: str, *args: str) -> str:
+    script = stage_router(root)
     return subprocess.check_output(
         [
             sys.executable,
-            str(scripts / "ci_changes.py"),
+            str(script),
             "--base",
             base,
             "--head",
