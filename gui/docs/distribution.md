@@ -173,9 +173,14 @@ When updater signing is configured, Tauri emits `.sig` files next to the macOS
 renames the macOS archive to `<App>_<arch>.app.tar.gz` so the feed can tell
 architectures apart. Release publishing replaces spaces with dots in asset names.
 
-The app includes a **Check for Updates...** menu item in the **File** menu. It
-checks the configured endpoint, prompts before installing, verifies the Tauri
-signature, installs the update, and restarts the app.
+The app checks the configured endpoint when it starts, unless the user turns on
+**Privacy mode** (Settings, Standard UI Options), and shows an update button in
+the sidebar when a newer release is available. A startup check that fails (when
+offline, say) leaves nothing on screen. `GFC_TAURI_AUTO_UPDATE=0` turns the
+startup check off for tests that must stay offline. The app also includes a
+**Check for Updates...** menu item in the **File** menu. It checks the
+configured endpoint, prompts before installing, verifies the Tauri signature,
+installs the update, and restarts the app.
 
 ### GitHub Release feed generation
 

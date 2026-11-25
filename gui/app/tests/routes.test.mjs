@@ -832,3 +832,31 @@ test("the prerequisite routes check the referenced action and install only what 
     ["tool", ["install", "hs37d5"]],
   ]);
 });
+
+test("Privacy mode is an app-wide setting: another bundle or a reset bundle state never turns it off", async (t) => {
+  const { baseURL, tempRoot } = await withTestServer(t);
+  const settingsPath = path.join(tempRoot, "data", "test.app", "settings.json");
+  await mkdir(path.dirname(settingsPath), { recursive: true });
+  await writeFile(settingsPath, JSON.stringify({ usersWorkspaces: { "test-bundle": "/kept" } }));
+
+  assert.equal((await apiFetch(baseURL, "/api/privacy-mode", { body: { enabled: "yes" } })).status, 400);
+  const saved = await apiFetch(baseURL, "/api/privacy-mode", { body: { enabled: true } });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(await saved.json(), { privacyMode: true });
+  assert.deepEqual(JSON.parse(await readFile(settingsPath, "utf8")), { usersWorkspaces: { "test-bundle": "/kept" }, privacyMode: true });
+
+  // A bundle that has never saved any state (another bundle, or one whose state.json was reset) still sees it on.
+  const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
+  const otherBundle = path.join(tempRoot, "other-bundle");
+  await mkdir(otherBundle);
+  await writeFile(path.join(otherBundle, "manifest.json"), JSON.stringify({
+    id: "other-bundle",
+    displayName: "Other Bundle",
+    summary: "Another bundle.",
+    pages: [{ id: "main", title: "Main", summary: "Main page.", sections: [{ id: "main" }] }],
+  }));
+  assert.equal((await loadLocalizedBundle(undefined, path.resolve(".."), otherBundle, otherBundle)).privacyMode, true);
+
+  await apiFetch(baseURL, "/api/privacy-mode", { body: { enabled: false } });
+  assert.equal((await loadLocalizedBundle(undefined, path.resolve(".."), otherBundle, otherBundle)).privacyMode, false);
+});

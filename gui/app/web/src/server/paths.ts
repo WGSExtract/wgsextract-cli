@@ -58,10 +58,17 @@ export function applicationSupportDirectory() {
     }
     return process.env.XDG_DATA_HOME || path.join(homedir(), ".local", "share");
 }
-/** The app's own data folder's name: it holds settings.json and the CLI runtime that setup installs. */
+/** The installed app's data folder's name: it holds settings.json and the CLI runtime that setup installs. */
 export const defaultAppDataName = "WGSExtract-gui";
+/**
+ * The data folder of a development run: a server started from a checkout (make run, npm run dev, a test) rather
+ * than by the installed app, which always names its folder (main.rs). It keeps its own runtime, bundle workspace
+ * and settings, so a checkout never overwrites the installed app's copy of the bundle or its CLI. Both use the
+ * default users workspace (the reference library and genomes) unless one of them is moved in Settings.
+ */
+export const devAppDataName = "WGSExtract-gui-dev";
 export function appSupportContainerName() {
-    return safePathComponent(process.env.WGSEXTRACT_GUI_APP_DATA_NAME || defaultAppDataName);
+    return safePathComponent(process.env.WGSEXTRACT_GUI_APP_DATA_NAME || devAppDataName);
 }
 export function appSupportDirectory() {
     return path.join(applicationSupportDirectory(), appSupportContainerName());

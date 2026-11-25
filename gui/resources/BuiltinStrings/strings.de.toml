@@ -53,6 +53,10 @@
 "app.prerequisites.message" = "Dieser Befehl benötigt Daten oder Werkzeuge, die noch nicht installiert sind:"  # i18n-source-hash:93ca8e45
 "app.prerequisites.stillMissing" = "Es ist noch immer nicht installiert. Installieren Sie es hier oder selbst und klicken Sie erneut auf Fortfahren."  # i18n-source-hash:09498e32
 "app.prerequisites.title" = "Etwas, das dieser Befehl benötigt, fehlt"  # i18n-source-hash:560fc1a9
+"app.privacyMode.badge.title" = "DATENSCHUTZ"  # i18n-source-hash:2f158034
+"app.privacyMode.badge.tooltip" = "Der Datenschutzmodus ist aktiv: Die App sucht beim Start nicht nach Updates. Schalten Sie ihn unter „Standardoptionen der Oberfläche“ auf der Seite „Einstellungen“ aus."  # i18n-source-hash:40463462
+"app.privacyMode.label" = "Datenschutzmodus"  # i18n-source-hash:c2540489
+"app.privacyMode.tooltip" = "Beendet die automatischen Netzwerkzugriffe der App. Ist er aktiv, sucht die App beim Start nicht auf GitHub nach Updates; prüfen Sie selbst über File > Check for Updates..."  # i18n-source-hash:de492a08
 "app.refresh.warning.format" = "Warnung beim Aktualisieren: %{error}"  # i18n-source-hash:8e6c1f82
 "app.refreshing.title" = "Wird aktualisiert..."  # i18n-source-hash:5b7bdb61
 "app.result.card.close.title" = "Schließen"  # i18n-source-hash:bbfa773e

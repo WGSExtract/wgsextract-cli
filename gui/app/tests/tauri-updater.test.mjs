@@ -121,8 +121,11 @@ test("does not invoke install without both updater resources", async () => {
   assert.equal(state.update.status, "idle");
 });
 
-test("#1052 startup stays offline while subscribing to local updater progress", async () => {
+test("#1052 Privacy mode keeps startup offline while subscribing to local updater progress", async () => {
   resetState();
+  // The desktop shell asks for the startup check; Privacy mode overrides it.
+  state.autoUpdate = true;
+  state.privacyMode = true;
   let progressHandler;
   const originalSetTimeout = globalThis.window.setTimeout;
   let scheduled = 0;
@@ -148,7 +151,7 @@ test("#1052 startup stays offline while subscribing to local updater progress", 
 
     assert.equal(state.update.supported, true);
     assert.equal(typeof progressHandler, "function");
-    assert.equal(scheduled, 0, "startup must not schedule an update server request");
+    assert.equal(scheduled, 0, "Privacy mode must not schedule an update server request");
     assert.equal(state.update.checked, false);
 
     progressHandler({
@@ -181,4 +184,67 @@ test("#1052 startup stays offline while subscribing to local updater progress", 
   } finally {
     globalThis.window.setTimeout = originalSetTimeout;
   }
+});
+
+/** Each startup test needs its own module instance: initializeTauriUpdater runs once per page. */
+async function freshUpdater(tag) {
+  return import(`../dist/web/src/client/tauri-updater.js?${tag}`);
+}
+
+async function runStartup(tag, invoke) {
+  const originalSetTimeout = globalThis.window.setTimeout;
+  const pending = [];
+  globalThis.window.setTimeout = (callback) => { pending.push(callback); return 0; };
+  setTauriMock(invoke);
+  try {
+    const updater = await freshUpdater(tag);
+    updater.initializeTauriUpdater();
+    await new Promise((resolve) => setImmediate(resolve));
+    for (const callback of pending.splice(0)) {
+      callback();
+    }
+    for (let turn = 0; turn < 5; turn++) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    return pending;
+  } finally {
+    globalThis.window.setTimeout = originalSetTimeout;
+  }
+}
+
+test("an installed app checks for updates at startup unless Privacy mode is on (0.8.9 never offered 0.8.10)", async () => {
+  resetState();
+  state.autoUpdate = true;
+  const commands = [];
+  await runStartup("startup-check", async (command) => {
+    commands.push(command);
+    return { currentVersion: "0.8.9", availableVersion: "0.8.10", updateRid: 3, body: "" };
+  });
+
+  assert.deepEqual(commands, ["gfc_update_check"]);
+  assert.equal(state.update.status, "available");
+  assert.equal(state.update.availableVersion, "0.8.10");
+  assert.equal(state.update.popoverVisible, true);
+});
+
+test("a failed startup update check leaves no error button behind", async () => {
+  resetState();
+  state.autoUpdate = true;
+  await runStartup("startup-offline", async () => {
+    throw new Error("error sending request for url");
+  });
+
+  assert.equal(state.update.status, "idle");
+  assert.equal(state.update.popoverVisible, false);
+});
+
+test("a check the user asked for still reports its failure", async () => {
+  resetState();
+  setTauriMock(async () => {
+    throw new Error("error sending request for url");
+  });
+  await checkForUpdates({ revealOnAvailable: true });
+
+  assert.equal(state.update.status, "error");
+  assert.equal(state.update.message, "error sending request for url");
 });

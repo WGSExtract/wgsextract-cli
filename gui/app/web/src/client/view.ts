@@ -32,8 +32,17 @@ export function renderBundleHeader() {
       ${icon}
       <h1>${escapeHTML(manifest.displayName)}${renderTooltip(manifest.summary)}</h1>
       ${appVersion ? `<p class="app-version" data-app-version>${escapeHTML(appVersionLabel)} ${escapeHTML(appVersion)}</p>` : ""}
+      ${renderPrivacyModeBadge()}
     </header>
   `;
+}
+/** A red badge, shown while Privacy mode is on, so the user knows the app won't check for updates. */
+function renderPrivacyModeBadge() {
+    if (!state.privacyMode) {
+        return "";
+    }
+    const tooltip = state.labels.privacyModeBadgeTooltip ?? "";
+    return `<p class="privacy-mode-badge" data-privacy-mode-badge role="status" title="${escapeAttribute(tooltip)}">${escapeHTML(state.labels.privacyModeBadgeTitle ?? "PRIVACY")}</p>`;
 }
 /** The Basic / Advanced switch at the top of the sidebar: a radio group, so exactly one mode is on. */
 export function renderUIModeSwitch() {

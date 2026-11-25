@@ -170,6 +170,10 @@ export function renderStandardOptionsAccessory() {
             <option value="sfPro" ${state.webUIFont === "sfPro" ? "selected" : ""}>${escapeHTML(state.labels.webUIFontSFProLabel ?? "SF Pro when available")}</option>
           </select>
         </label>
+        <label class="form-row" title="${escapeAttribute(state.labels.privacyModeTooltip ?? "")}">
+          <span class="row-label">${escapeHTML(state.labels.privacyModeLabel ?? "Privacy mode")}</span>
+          <input type="checkbox" data-privacy-mode-toggle ${state.privacyMode ? "checked" : ""} aria-label="${escapeAttribute(state.labels.privacyModeLabel ?? "Privacy mode")}">
+        </label>
       </div>
     </section>
   `;

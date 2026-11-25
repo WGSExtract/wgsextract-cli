@@ -49,7 +49,7 @@ export async function main(argv = process.argv.slice(2), platform = os.platform(
     throw new Error("Usage: node scripts/run-tauri.mjs <tauri args...>");
   }
 
-  await prepareBranding();
+  await prepareBranding({ development: argv[0] === "dev" });
   try {
     await run(process.execPath, [tauriScript, ...argv, "-c", generatedConfigPath], {
       cwd: tauriDir,
@@ -60,7 +60,7 @@ export async function main(argv = process.argv.slice(2), platform = os.platform(
   }
 }
 
-async function prepareBranding() {
+async function prepareBranding({ development = false } = {}) {
   const baseConfigPath = path.join(tauriDir, "tauri.conf.json");
   const baseConfig = JSON.parse(await readFile(baseConfigPath, "utf8"));
   const bundlePath = resolveEmbeddedBundlePath();
@@ -70,7 +70,7 @@ async function prepareBranding() {
     process.env.TAURI_PRODUCT_SUFFIX,
   );
   const appVersion = resolveAppVersion(bundleMetadata, baseConfig.version);
-  const appIdentifier = resolveAppIdentifier(baseConfig.identifier);
+  const appIdentifier = devAppIdentifier(resolveAppIdentifier(baseConfig.identifier), development);
 
   await mkdir(path.dirname(generatedConfigPath), { recursive: true });
   await rm(generatedBundlePath, { recursive: true, force: true });
@@ -272,6 +272,14 @@ function resolveAppVersion(bundleMetadata, defaultVersion) {
     || devConfig.packaging?.app_version
     || bundleMetadata.version
     || defaultVersion;
+}
+
+/**
+ * `tauri dev` runs under its own identifier, so its webview data and logs stay apart from the installed app's
+ * (and both can run at once); its backend data folder is apart too (main.rs's APP_DATA_NAME).
+ */
+export function devAppIdentifier(identifier, development) {
+  return development ? `${identifier}.dev` : identifier;
 }
 
 function resolveAppIdentifier(defaultIdentifier) {

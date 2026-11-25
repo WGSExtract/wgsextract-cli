@@ -243,6 +243,20 @@ button:disabled {
   line-height: 1.2;
 }
 
+.privacy-mode-badge {
+  margin: 0;
+  padding: 2px 10px;
+  border-radius: 999px;
+  /* The light theme's --danger in both themes: the dark theme's is too pale for white text. */
+  background: #d92d20;
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  cursor: help;
+}
+
 .bundle-icon,
 .bundle-emoji {
   width: 72px;
