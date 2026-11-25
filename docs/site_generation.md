@@ -44,3 +44,7 @@ The generator only writes `site/*.html`. These files are maintained by hand and 
 the generators, or reference inputs (including CLI source) change on `main`.
 Run `pixi run site-build` for a local preview; commit only the source and
 hand-maintained assets.
+
+The deploy job waits for the build job and verifies its exact artifact is visible
+before publishing. A full workflow rerun gives its new artifact a different
+name; rerunning just a failed deploy uses the successful build's original artifact.
