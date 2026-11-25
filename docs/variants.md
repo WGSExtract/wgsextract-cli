@@ -48,6 +48,9 @@ they do not change output.
 
 ## Trios
 
+For set comparisons across callers or family members instead of an inheritance
+analysis, see [Compare local VCFs](variant-comparison.md).
+
 `vcf trio` accepts the proband's and parents' VCFs or BAM/CRAMs.
 `--proband` wins; otherwise normal `--vcf-input`/`--input` selection applies,
 including explicit `--input` over a configured VCF.

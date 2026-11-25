@@ -82,6 +82,12 @@ ENTRIES: dict[str, CommandHelp] = {
         f"wgsextract vcf table {_VCF_IN} --preset acmg-sf --region chr17",
         "wgsextract vcf table --vcf-input clinvar_annotated.vcf.gz --format parquet",
     ),
+    "vcf compare": _h(
+        "compare.summary.json and compare.summary.tsv (or .parquet); "
+        "optional compare.variants table and indexed compare.anchor.vcf.gz.",
+        "wgsextract vcf compare --callset a=caller-a.vcf.gz --callset b=caller-b.vcf.gz --ref GRCh38.fa",
+        "wgsextract vcf compare --mode unique --callset child=child.vcf.gz --callset parent=parent.g.vcf.gz --include child --exclude parent --reference-evidence gvcf --emit-vcf",
+    ),
     "vcf callability": _h(
         "exon_callability.json (per gene: callable, partial, not readable or not "
         "run, with the sources and thresholds) and exon_callability.tsv (one row "

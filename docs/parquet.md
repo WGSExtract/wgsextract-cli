@@ -7,6 +7,7 @@ same columns, types and provenance in both formats.
 | Command | Table | TSV (default) | With `--format parquet` |
 | --- | --- | --- | --- |
 | `vcf table` | One row per variant allele ([docs](variant-table.md)) | `<stem>_variants.tsv` | `<stem>_variants.parquet`, in place of the TSV. The SQLite database is unchanged. |
+| `vcf compare` | Pairwise allele concordance, N-way support, and optional per-allele states ([docs](variant-comparison.md)) | `compare.summary.tsv`, `compare.support.tsv`, optional `compare.variants.tsv` | The requested tables as `.parquet`; `compare.summary.json` is unchanged. |
 | `methylation pileup` | Per-modification summary | `<stem>.<context>.methylation.tsv` | `<stem>.<context>.methylation.parquet` |
 | `methylation pileup` | Every site in modkit's bedMethyl | Not written: `.bedmethyl.gz` is the source | `<stem>.<context>.bedmethyl.parquet`, besides the bedMethyl |
 | `methylation regions` | RefSeq promoters or UCSC CpG islands | `<stem>.<build>.<preset>.methylation.tsv` | `<stem>.<build>.<preset>.methylation.parquet` |

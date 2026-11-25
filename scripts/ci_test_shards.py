@@ -362,6 +362,7 @@ def main() -> None:
                 observations=args.linux_observations,
                 legacy=args.selection,
                 disabled=args.disable_symbol_selection,
+                ready_tier=args.pull_request,
             )
             selection = decision["selection"]
             shards = plan(
