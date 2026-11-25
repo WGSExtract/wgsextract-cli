@@ -15,8 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.commands._messages.align import CLI_HELP
 from wgsextract_cli.core.alignment.profiles import OUTPUT_PROFILES
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.messages import CLI_HELP as SHARED_CLI_HELP
 from wgsextract_cli.core.native_aligners import SETTINGS as NATIVE_ALIGNER_SETTINGS
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
@@ -133,7 +134,7 @@ class AlignParams(Params):
 
     r1: Path | None = param(
         None,
-        help=CLI_HELP["arg_r1"],
+        help=SHARED_CLI_HELP["arg_r1"],
         doc=(
             "Read 1 FASTQ (or FASTA of long reads), or a BAM/CRAM of long reads "
             "(PacBio is detected) or of Ultima reads. Short reads in a BAM/CRAM "
@@ -142,7 +143,10 @@ class AlignParams(Params):
         path="file",
     )
     r2: Path | None = param(
-        None, help=CLI_HELP["arg_r2"], doc="Read 2 FASTQ, for pairs.", path="file"
+        None,
+        help=SHARED_CLI_HELP["arg_r2"],
+        doc="Read 2 FASTQ, for pairs.",
+        path="file",
     )
     preset: str | None = param(
         None,
@@ -228,13 +232,13 @@ class RealignParams(Params):
 
     r1: Path | None = param(
         None,
-        help=CLI_HELP["arg_r1"],
+        help=SHARED_CLI_HELP["arg_r1"],
         doc="Read 1 FASTQ already extracted from the input, to align instead "
         "of extracting it.",
         path="file",
     )
     r2: Path | None = param(
-        None, help=CLI_HELP["arg_r2"], doc="Read 2 FASTQ, with r1.", path="file"
+        None, help=SHARED_CLI_HELP["arg_r2"], doc="Read 2 FASTQ, with r1.", path="file"
     )
     aligner: str = param(
         "auto",

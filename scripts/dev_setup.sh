@@ -81,6 +81,7 @@ step "Checking the CLI and its tools"
 pixi run wgsextract --version
 pixi run wgsextract help --all --json >/dev/null
 pixi run wgsextract deps check
+pixi run --no-install python scripts/gen_server_openapi.py
 
 if [ "$RUN_TESTS" -eq 1 ]; then
     step "Running the quick smoke tests"

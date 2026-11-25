@@ -11,7 +11,22 @@ from wgsextract_cli.api.info import (
     InfoParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    _SAM,
+    MINUTES,
+    SECONDS,
+    _n,
+)
+from wgsextract_cli.commands._messages.info import CLI_HELP
+
+NEEDS = {
+    "info": _n(SECONDS, *_SAM, optional="bcftools"),
+    "info calculate-coverage": _n(MINUTES, *_SAM, optional="bcftools"),
+    "info coverage-sample": _n(MINUTES, *_SAM, optional="bcftools"),
+    "info gene": _n(SECONDS, *_SAM, optional="bcftools tabix", scale=" for a gene"),
+    "info chip": _n(SECONDS, scale=" for a raw-data file"),
+}
+
 
 run = command_handler("wgsextract_cli.commands.info.runner", "run")
 chip_handler = command_handler("wgsextract_cli.commands.info.chip", "run")

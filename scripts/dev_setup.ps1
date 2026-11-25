@@ -68,6 +68,7 @@ Step "Checking the CLI and its tools"
 Invoke-Checked pixi @("run", "wgsextract", "--version")
 Invoke-Checked pixi @("run", "wgsextract", "help", "--all", "--json") | Out-Null
 Invoke-Checked pixi @("run", "wgsextract", "deps", "check")
+Invoke-Checked pixi @("run", "--no-install", "python", "scripts/gen_server_openapi.py")
 
 if (-not $SkipTests) {
     Step "Running the quick smoke tests"

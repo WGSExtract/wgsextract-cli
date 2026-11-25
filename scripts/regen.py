@@ -8,13 +8,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-GENERATOR_SCRIPTS = (
-    "scripts/gen_api_docs.py",
-    "scripts/gen_command_docs.py",
-    "scripts/gen_config_docs.py",
-    "scripts/gen_output_schemas.py",
-    "scripts/gen_report_schema.py",
-    "scripts/gen_server_contracts.py",
+GENERATOR_COMMANDS = (
+    ("scripts/gen_api_docs.py",),
+    ("scripts/gen_command_docs.py",),
+    ("scripts/gen_config_docs.py",),
+    ("scripts/gen_output_schemas.py",),
+    ("scripts/gen_report_schema.py",),
+    ("scripts/gen_server_contracts.py",),
+    ("scripts/gen_server_openapi.py", "--gui"),
 )
 GENERATED = (
     "docs/api.md",
@@ -31,8 +32,6 @@ GENERATED = (
     "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
-    "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json",
-    "gui/app/shared/generated/server-transport.ts",
     "gui/app/shared/generated/result-records.ts",
     "gui/app/shared/generated/report-records.ts",
 )
@@ -52,8 +51,8 @@ def main() -> None:
                 "resolve and stage source conflicts first: "
                 + ", ".join(sorted(sources))
             )
-    for script in GENERATOR_SCRIPTS:
-        subprocess.run([sys.executable, script], cwd=ROOT, check=True)
+    for command in GENERATOR_COMMANDS:
+        subprocess.run([sys.executable, *command], cwd=ROOT, check=True)
     subprocess.run(
         [sys.executable, "-m", "wgsextract_cli.cli.help_index"], cwd=ROOT, check=True
     )

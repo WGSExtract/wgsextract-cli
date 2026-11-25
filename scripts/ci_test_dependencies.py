@@ -73,6 +73,7 @@ DOCS_TARGET_INPUTS = {
         "scripts/gen_api_docs.py",
         "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
+        "scripts/gen_server_openapi.py",
         "docs/data/configuration-guide.md",
         "justfile",
     ),
@@ -82,6 +83,7 @@ DOCS_TARGET_INPUTS = {
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
+        "scripts/gen_server_openapi.py",
     ),
     "tests/test_bump_version.py": (
         "scripts/bump_version*",

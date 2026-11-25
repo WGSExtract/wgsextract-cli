@@ -31,6 +31,7 @@ examples/*/config.toml
 tests/conformance/*/settings/
 
 # TypeScript build outputs and dependencies
+/app/shared/generated/server-transport.ts
 app/dist/
 app/web/vendor/igv/igv.min.js
 app/.cache/
