@@ -7,7 +7,7 @@ from pathlib import Path
 from wgsextract_cli.api._runtime import CancelToken
 from wgsextract_cli.commands._command_needs import COMMAND_NEEDS, HOURS, MINUTES
 from wgsextract_cli.commands.registry import DEPRECATED
-from wgsextract_cli.core import execution_context, live_status
+from wgsextract_cli.core import execution_context, live_status, read_scope
 from wgsextract_cli.core.genome_library import apply_genome_selection
 from wgsextract_cli.core.keep_awake import keep_awake
 from wgsextract_cli.core.last_run import LogTail, record_last_run
@@ -111,6 +111,7 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
         collecting(result, as_json=as_json),
         execution_context.bound(cancel=cancel),
         output_publication_scope(),
+        read_scope.from_argument(getattr(args, "_read_scope", None)),
     ):
         try:
             with (

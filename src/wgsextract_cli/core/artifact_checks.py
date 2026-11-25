@@ -92,10 +92,11 @@ def require_consumable(
 def _sample_mismatch(
     role: str, path: str, samples: Sequence[str], reads: set[str]
 ) -> None:
-    """Refuse a VCF wgsextract called from reads, whose sample column is
-    their @RG SM, naming another sample than these reads; only warn for any
-    other VCF (external, or derived from a VCF), whose sample may just be
-    named differently (a lab ID, a caller that names it after the file)."""
+    """Refuse a VCF wgsextract called from reads (``called_from``: directly,
+    or filtered or annotated from such calls with their samples kept), whose
+    sample column is their @RG SM, naming another sample than these reads;
+    only warn for any other VCF, whose sample may just be named differently
+    (a lab ID, a caller that names it after the file)."""
     from wgsextract_cli.core.results import FileRecord, warn
 
     message = (
@@ -103,7 +104,7 @@ def _sample_mismatch(
         f"are {', '.join(sorted(reads))}"
     )
     recorded = recorded_producer(FileRecord.describe(path, role))
-    if recorded is not None and recorded.from_reads:
+    if recorded is not None and recorded.called_from:
         raise ArtifactIncompatible(
             "sample_mismatch",
             message + ": they were called from another individual's reads. "

@@ -768,3 +768,9 @@ def test_1373_queue_cleanup_has_write_access_alone_and_cannot_gate_required() ->
     for job in jobs:
         needs = re.search(r"^    needs: (.+)$", job, re.M)
         assert needs is None or "cancel-stale-queue" not in needs[1]
+
+
+def test_1545_area_required_cannot_release_dependent_runner_jobs() -> None:
+    source = (WORKFLOWS / "pr_ci.yml").read_text()
+    needs = re.findall(r"^    needs:\s*([^\n]*(?:\n      [^\n]*)*)", source, re.M)
+    assert all(not re.search(r"(?<![\w-])required(?![\w-])", entry) for entry in needs)

@@ -24,6 +24,7 @@ class FakeGitHub(GitHub):
         self.comments: dict[int, list[str]] = {}
         self.timeline: dict[int, list[dict[str, Any]]] = {}
         self.listings = 0
+        self.comment_failures = 0
         self.label_failures = 0
         self.create_failures = 0
 
@@ -91,6 +92,13 @@ class FakeGitHub(GitHub):
             return []
         if method == "POST" and parts[2] == "comments":
             assert data is not None
+            if self.comment_failures:
+                self.comment_failures -= 1
+                raise subprocess.CalledProcessError(
+                    1,
+                    ["gh", "api", "--method", method, prefix + path, "--input", "-"],
+                    stderr="gh: Resource not accessible by integration (HTTP 403)",
+                )
             self.comments.setdefault(number, []).append(data["body"])
             self.timeline.setdefault(number, []).append(
                 {
@@ -272,6 +280,25 @@ def test_1281_failed_label_is_retried_without_a_second_comment() -> None:
     assert watch(github, sleep=no_sleep) == {1205: "flagged"}
     assert github.labels(1205) == {LABEL}
     assert len(github.comments[1205]) == 1
+
+
+def test_1546_comment_403_names_endpoint_and_does_not_stop_other_prs(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    github = FakeGitHub()
+    github.add(1357, "CONFLICTING")
+    github.add(1430, "CONFLICTING")
+    github.comment_failures = 1
+
+    assert watch(github, sleep=no_sleep) == {1357: "failed", 1430: "flagged"}
+    assert github.labels(1357) == set()
+    assert github.labels(1430) == {LABEL}
+    assert set(github.comments) == {1430}
+    error = capsys.readouterr().err
+    assert "issues/1357/comments" in error
+    assert "HTTP 403" in error
+
+    assert watch(github, sleep=no_sleep) == {1357: "flagged"}
 
 
 def test_1281_a_new_conflict_after_a_fix_is_announced_again() -> None:
