@@ -612,3 +612,26 @@ def test_949_required_waits_for_area_gate_without_a_dependency_cycle() -> None:
     assert {"macos", "windows", "arm64"} <= set(area_needs[1].split(", "))
     assert not {"smoke", "install"} & set(area_needs[1].split(", "))
     assert "EVENT_NAME: ${{ github.event_name }}" in required
+
+
+def test_optional_tools_run_only_for_uncertified_pull_requests() -> None:
+    pr = (WORKFLOWS / "pr_ci.yml").read_text()
+    optional_pr = pr.split("\n  optional-tools:\n", 1)[1].split("\n  ubuntu:", 1)[0]
+    assert "github.event_name == 'pull_request'" in optional_pr
+    assert "needs.changes.outputs.test_certified != 'true'" in optional_pr
+
+
+def test_queue_smoke_cannot_invoke_the_hosted_pr_os_suites() -> None:
+    pr = (WORKFLOWS / "pr_ci.yml").read_text()
+    for lane in ("windows", "macos", "arm64"):
+        condition = pr.split(f"\n  {lane}:\n", 1)[1].splitlines()[1]
+        assert "'pull_request'" in condition or "!= 'merge_group'" in condition
+    queue = pr.split("\n  queue-smoke:\n", 1)[1].split("\n  #", 1)[0]
+    assert "fromJSON(needs.changes.outputs.queue_runners)" in queue
+    assert "--collect-only" in queue
+    assert "timeout-minutes: 10" in queue
+    assert "environments: dev fastvep" in queue
+    assert 'get_tool_path("fastvep")' in queue
+    ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
+    lint = ubuntu.split("\n  lint:\n", 1)[1].split("\n  test-ubuntu:\n", 1)[0]
+    assert "mypy" in lint and "certified" not in lint
