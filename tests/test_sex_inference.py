@@ -246,6 +246,16 @@ def test_issue_856_header_only_policy_keeps_no_scan_unknown_unrecorded(
             },
             "Unknown",
         ),
+        # Narrow targets every 10 kb fill every window but cover few bases
+        (
+            {
+                "x_spacing": 10_000,
+                "y_spacing": 0,
+                "auto_spacing": 10_000,
+                "stacked": 50,
+            },
+            "Unknown",
+        ),
     ],
 )
 def test_low_pass_cram_sex_below_3x_regressed_by_891(

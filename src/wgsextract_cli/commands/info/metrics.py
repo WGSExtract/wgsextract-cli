@@ -449,16 +449,18 @@ def _low_pass_sex_call(
         return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
     if any(c not in density for c in ("7", "19", "X", "Y")):
         return SexCall("Unknown", SEX_SAMPLING_INCOMPLETE, "low")
-    auto = (density["7"][0] + density["19"][0]) / 2
+    auto = (density["7"].reads + density["19"].reads) / 2
     if (
         auto < LOW_PASS_MIN_READS
-        or any(density[c][1] < 0.8 for c in ("7", "19", "X"))
-        or any(not 0.7 <= density[c][0] / auto <= 1.3 for c in ("7", "19"))
+        or any(density[c].occupied < 0.8 for c in ("7", "19", "X"))
+        # Whole-genome reads measured 0.93-0.99, an exome 0.09-0.14
+        or any(density[c].spread < 0.7 for c in ("7", "19", "X"))
+        or any(not 0.7 <= density[c].reads / auto <= 1.3 for c in ("7", "19"))
     ):
         return SexCall("Unknown", "insufficient non-PAR depth or assay scope", "low")
     return _dosage_call(
-        density["X"][0] / auto,
-        density["Y"][0] / auto,
+        density["X"].reads / auto,
+        density["Y"].reads / auto,
         f"{assembly} sampled non-PAR read density / autosomal density "
         "(low-pass screening)",
     )

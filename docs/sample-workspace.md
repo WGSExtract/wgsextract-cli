@@ -185,7 +185,10 @@ in one indexed `samtools bedcov` pass (a CRAM is still not decoded whole). Each
 chromosome's density is the mean reads per window without its top and bottom
 tenth. This screen requires at least 10 autosomal reads per window, reads in at
 least 80% of the chr7, chr19 and X windows (capture-only data leaves most
-empty), and agreement between chr7 and chr19. Long reads are fewer per window,
+empty), covered bases in those windows at least 70% of what randomly placed
+reads at that depth would cover (1 - e^-depth; reads piled on narrow targets
+cover far less, however evenly the targets are spaced), and agreement between
+chr7 and chr19. Long reads are fewer per window,
 so long-read genomes need about 2.5x (at 15 kb reads) to pass it.
 In both screens, X/autosome 0.35–0.65 with Y/autosome 0.1–0.8 supports `Male`; X/autosome
 0.8–1.2 with Y/autosome below 0.05 supports `Female`. These deliberately

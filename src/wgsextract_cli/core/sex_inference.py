@@ -4,8 +4,10 @@ These screening thresholds are not validated diagnostic accuracy estimates.
 Targeted assays and atypical dosage should remain Unknown.
 """
 
+import math
 import tempfile
 from pathlib import Path
+from typing import NamedTuple
 
 from wgsextract_cli.core.utils import run_command
 
@@ -123,6 +125,14 @@ def sampled_depth(
     return evidence
 
 
+class ReadDensity(NamedTuple):
+    """Low-pass evidence for one chromosome's sampled windows."""
+
+    reads: float  # trimmed mean reads per window
+    occupied: float  # fraction of windows holding any read
+    spread: float  # covered bases / those expected of randomly placed reads
+
+
 def _trimmed_mean(values: list[int]) -> float:
     """Mean without the top and bottom tenth: capture targets, repeats and
     assembly gaps make outlier windows."""
@@ -134,14 +144,16 @@ def _trimmed_mean(values: list[int]) -> float:
 
 def sampled_read_density(
     alignment: str, contigs: dict[str, tuple[str, int]], *, reference: str | None = None
-) -> dict[str, tuple[float, float]]:
-    """Reads per window (trimmed mean) and the fraction of windows holding any
-    read, over many distributed 50 kb windows: for depths too low for
+) -> dict[str, ReadDensity]:
+    """Read density over many distributed 50 kb windows, for depths too low for
     `sampled_depth`'s five 10 kb windows.
 
     One indexed ``samtools bedcov`` pass reads every window, with
     `sampled_depth`'s read filters (MAPQ below 20, unmapped, secondary,
     supplementary, duplicate and QC-failed reads are excluded) and assemblies.
+    `spread` compares each window's covered bases with the Poisson expectation
+    for its depth, 1 - e^-depth: near 1 for whole-genome reads, far below it
+    when reads pile onto narrow targets, however evenly the targets are spaced.
     """
     intervals = _sampling_intervals(contigs)
     if not intervals:
@@ -159,6 +171,8 @@ def sampled_read_density(
                 "samtools",
                 "bedcov",
                 "-c",
+                "-d",
+                "1",
                 "-Q",
                 "20",
                 # bedcov already drops UNMAP,SECONDARY,QCFAIL,DUP reads
@@ -170,12 +184,23 @@ def sampled_read_density(
             ],
             capture_output=True,
         )
-    counts: dict[str, list[int]] = {}
+    # Columns after the BED's four: summed depth, bases at depth >= 1, reads.
+    windows: dict[str, list[tuple[int, int, int, int]]] = {}
     for line in result.stdout.splitlines():
         row = line.split("\t")
-        if len(row) >= 6:
-            counts.setdefault(row[3], []).append(int(row[-1]))
-    return {
-        chrom: (_trimmed_mean(reads), sum(n > 0 for n in reads) / len(reads))
-        for chrom, reads in counts.items()
-    }
+        if len(row) >= 7:
+            width = int(row[2]) - int(row[1])
+            windows.setdefault(row[3], []).append(
+                (width, int(row[4]), int(row[5]), int(row[6]))
+            )
+    evidence: dict[str, ReadDensity] = {}
+    for chrom, rows in windows.items():
+        reads = [n for *_, n in rows]
+        expected = sum(w * (1 - math.exp(-depth / w)) for w, depth, *_ in rows if w)
+        covered = sum(bases for _, _, bases, _ in rows)
+        evidence[chrom] = ReadDensity(
+            _trimmed_mean(reads),
+            sum(n > 0 for n in reads) / len(reads),
+            covered / expected if expected else 0.0,
+        )
+    return evidence
