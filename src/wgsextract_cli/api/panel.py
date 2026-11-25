@@ -16,8 +16,10 @@ or JSON) and resolve its genes, without sample data::
 
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from wgsextract_cli.core.panel import BUILDS
 from wgsextract_cli.core.panel_presets import PRESETS
@@ -222,6 +224,63 @@ class PanelAuditParams(PanelCheckParams):
     )
     outdir: Path | None = outdir_param()
 
+    def _calibration_override(self) -> bool:
+        return (
+            self.null_sets is not None
+            or self.seed is not None
+            or self.download
+            or self.gnomad_expected
+        )
+
+    def requests_calibration(self, spec: Mapping[str, Any]) -> bool:
+        return not self.no_calibration and (
+            "calibration" in spec or self._calibration_override()
+        )
+
+    def requests_expected_counts(self, settings: object) -> bool:
+        match_on = settings.get("match_on") if isinstance(settings, Mapping) else None
+        return self.gnomad_expected or (
+            isinstance(match_on, list) and "gnomad_expected_syn" in match_on
+        )
+
+    def _reference_paths(self) -> Iterator[Path]:
+        if self.no_calibration:
+            return
+        from wgsextract_cli.core.panel_reference import (
+            EXPECTED_NAME,
+            MANE_NAME,
+            panel_asset_path,
+        )
+        from wgsextract_cli.core.panel_spec import read_panel
+
+        # The server checks the panel path before inspecting its calibration opt-in.
+        panel = self.panel.expanduser()
+        try:
+            spec = read_panel(panel).document if panel.is_file() else None
+        except UsageError:
+            spec = None  # The worker reports the panel read error.
+        if self.requests_calibration(spec or {}):
+            if self.exons is None:
+                yield panel_asset_path(self.ref, MANE_NAME)
+            if self.requests_expected_counts((spec or {}).get("calibration")):
+                yield panel_asset_path(self.ref, EXPECTED_NAME)
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        yield from super().implied_paths()
+        from wgsextract_cli.core.panel_reference import panel_staging_paths
+
+        for path in self._reference_paths():
+            yield "ref", path.parent
+            yield "ref", path
+            if self.download:
+                for staging_path in panel_staging_paths(path):
+                    yield "ref", staging_path
+
+    def write_folders(self) -> Iterator[Path]:
+        yield from super().write_folders()
+        if self.download:
+            yield from dict.fromkeys(path.parent for path in self._reference_paths())
+
     def __post_init__(self) -> None:
         super().__post_init__()
         if not self.research_panel:
@@ -230,12 +289,7 @@ class PanelAuditParams(PanelCheckParams):
             raise UsageError("--null-sets must be at most 100,000.")
         if self.seed is not None and self.seed > 2**53:
             raise UsageError("--seed must be at most 2**53.")
-        if self.no_calibration and (
-            self.null_sets is not None
-            or self.seed is not None
-            or self.download
-            or self.gnomad_expected
-        ):
+        if self.no_calibration and self._calibration_override():
             raise UsageError(
                 "--no-calibration cannot be used with --null-sets, --seed, --gnomad-expected or --download."
             )

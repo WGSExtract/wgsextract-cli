@@ -230,8 +230,9 @@ def _run(
     calibrator = None
     exon_model = None
     settings = details["calibration"]
-    if _panel_calibration.requests_calibration(params, spec):
-        if params.gnomad_expected and "gnomad_expected_syn" not in settings["match_on"]:
+    if params.requests_calibration(spec):
+        use_expected_counts = params.requests_expected_counts(settings)
+        if use_expected_counts and "gnomad_expected_syn" not in settings["match_on"]:
             settings["match_on"] = [*settings["match_on"], "gnomad_expected_syn"]
         calibrator, exon_model = _panel_calibration.prepare(
             params,
@@ -240,7 +241,7 @@ def _run(
             details["groups"],
             reference.reader if reference else None,
             thresholds,
-            use_expected_counts="gnomad_expected_syn" in settings["match_on"],
+            use_expected_counts=use_expected_counts,
         )
     callable_genes, model = _callability(
         params,

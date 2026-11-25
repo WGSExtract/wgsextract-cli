@@ -212,10 +212,14 @@ segmental duplications, and all panel genes from the control pool. Controls
 are drawn without replacement within quantile bins of coding length and the
 same chromosome class. ChrX is included only when the input declares known
 sex in its calling policy. Missing opportunity or too few matched genes
-does not produce a null statistic. For XY samples, pseudoautosomal and
-non-pseudoautosomal genes are matched separately. The audit withholds the
-statistic if a target length lies outside its chromosome class's control range or the
-expected control total differs by more than 20% from the target total.
+does not produce a null statistic. ChrY is excluded from calibration. For XY
+samples, pseudoautosomal and non-pseudoautosomal X genes are matched separately;
+genes whose CDS crosses both are excluded. In haploid X regions, `1` and `1/1`
+each count as one ALT copy. Heterozygous and partial calls contribute no copies
+to calibration; this does not change the ordinary audit counts. The audit
+withholds the statistic if a target length lies outside its chromosome class's
+control range or the expected control total differs by more than 20% from the
+target total.
 
 The report shows observed copies and genes, the null allele-count histogram
 and matched lengths, mean, population standard deviation, percentile

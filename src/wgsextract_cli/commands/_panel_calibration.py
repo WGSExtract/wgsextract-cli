@@ -26,16 +26,6 @@ from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.variant_confidence import Thresholds
 
 
-def requests_calibration(params: PanelAuditParams, spec: Mapping[str, Any]) -> bool:
-    return not params.no_calibration and (
-        "calibration" in spec
-        or params.null_sets is not None
-        or params.seed is not None
-        or params.download
-        or params.gnomad_expected
-    )
-
-
 def _require_complete_calls(source: VcfSource, sex: str | None) -> None:
     region = source.provenance.region if source.provenance else None
     if not region:
@@ -79,9 +69,15 @@ class Calibrator:
             or not matched.covers(chrom, pos, pos + len(ref) - 1)
         ):
             return
+        copies = len(allele.copies)
+        if matched.chrom_class == "X_haploid":
+            # Only a complete, unambiguous call can represent one haploid copy.
+            if not allele.complete or copies != allele.ploidy:
+                return
+            copies = 1
         for key, filters in self.filters.items():
             if audit.assess(allele, filters)[0] is audit.Decision.QUALIFYING:
-                self.counts[key][allele.gene] += len(allele.copies)
+                self.counts[key][allele.gene] += copies
 
     def finish(
         self,

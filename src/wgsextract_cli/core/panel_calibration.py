@@ -13,12 +13,13 @@ from typing import Any
 from wgsextract_cli.core import exon_callability as ec
 from wgsextract_cli.core.lookup.identifiers import contig_key
 from wgsextract_cli.core.reference_evidence import ReferenceEvidence, Span, State
+from wgsextract_cli.core.sex_inference import nonpar_bounds
 from wgsextract_cli.core.variant_confidence import Thresholds
 
 Interval = tuple[int, int]
 _AUTOSOMES = frozenset(str(i) for i in range(1, 23))
 _CALLABLE = {State.CALLABLE_REFERENCE, State.VARIANT}
-_GRCH38_X_PAR = ((10_001, 2_781_479), (155_701_383, 156_030_895))
+_GRCH38_X_LENGTH = 156_040_895
 _MAX_LENGTH_IMBALANCE = 0.20
 EXPECTED_BINS = 4
 NOTE = (
@@ -159,11 +160,16 @@ def _chromosome_class(
         return "autosomal"
     if sex not in {"M", "XY"}:
         return "X_diploid"
+    nonpar = nonpar_bounds("X", _GRCH38_X_LENGTH)
+    assert nonpar is not None
+    left, right = nonpar
+    # PARs flank the shared non-PAR interval, excluding the 10 kb end gaps.
+    par_intervals = ((10_001, left), (right + 1, _GRCH38_X_LENGTH - 10_000))
     bases = _bases(cds)
     par = sum(
         max(0, min(end, high) - max(start, low) + 1)
         for start, end in cds
-        for low, high in _GRCH38_X_PAR
+        for low, high in par_intervals
     )
     if par == bases:
         return "X_diploid"
