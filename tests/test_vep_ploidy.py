@@ -67,13 +67,13 @@ def test_1244_bam_of_a_build_without_a_ploidy_preset_is_refused(
     assert "--ploidy-file" in failure.message
     assert f"reference build: {build}" in failure.message
     assert fake_vep() == []
-    assert not (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
+    assert not (tmp_path / "WGSEv6" / "s_vep.vcf.gz").exists()
 
     ploidy = tmp_path / "ploidy.txt"
     ploidy.write_text("* * * M 2\n* * * F 2\n")
     api.vep.run(replace(params, ploidy_file=ploidy))
     assert len(fake_vep()) == 1
-    assert (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
+    assert (tmp_path / "WGSEv6" / "s_vep.vcf.gz").exists()
 
 
 @pytest.mark.parametrize("shown_by", ["header", "reference"])
@@ -125,7 +125,7 @@ def test_1346_cached_contig_count_does_not_choose_ploidy_or_override_assembly(
     api.vep.run(replace(params, vep_assembly="GRCh38", ploidy="2"))
 
     assert len(fake_vep()) == 1
-    assert (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
+    assert (tmp_path / "WGSEv6" / "s_vep.vcf.gz").exists()
 
 
 def test_1346_vep_refuses_a_filename_only_preset_until_assembly_is_given(
@@ -146,10 +146,10 @@ def test_1346_vep_refuses_a_filename_only_preset_until_assembly_is_given(
     assert result.status == "failed"
     assert "not confirmed" in failure.message
     assert "--assembly" in failure.message and "--ploidy-file" in failure.message
-    assert not (tmp_path / "wgse" / "s_vep.vcf.gz").exists()
+    assert not (tmp_path / "WGSEv6" / "s_vep.vcf.gz").exists()
 
     api.vep.run(replace(params, vep_assembly="GRCh38"))
-    assert [row[1] for row in vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")] == [
+    assert [row[1] for row in vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz")] == [
         "101", "301",
     ]  # fmt: skip
 
@@ -257,7 +257,7 @@ def test_1435_vep_detects_an_unindexed_gzip_reference_by_signature(
 
     if case == "matching_cache":
         assert result.status == "ok", result.error
-        assert [row[1] for row in vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")] == [
+        assert [row[1] for row in vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz")] == [
             "101", "301",
         ]  # fmt: skip
         [args] = fake_vep()
@@ -300,5 +300,5 @@ def test_1244_unknown_build_bam_uses_the_library_ploidy_file(
         )
     )
 
-    calls = vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")
+    calls = vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz")
     assert [(c[1], c[4]) for c in calls] == [("101", "1"), ("301", "1")]

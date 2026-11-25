@@ -32,7 +32,7 @@ identically.
   current app does not change them; keep them until you have checked the new
   outputs.
 - **Write new outputs to a separate folder.** By default each command writes
-  to a `wgse/` folder beside its input; set another with `--outdir` (or the
+  to a `WGSEv6/` folder beside its input; set another with `--outdir` (or the
   Advanced-mode Output Directory). Don't point it at v4's output folder: file
   names differ and you would mix results from two programs.
 - **Don't reuse v4's `reference/` folder as the reference library.** Its

@@ -96,13 +96,15 @@ def render(guide: Path) -> str:
         "`--config PATH` to select the other explicitly. Opening the desktop "
         "app does not change this precedence or erase saved advanced settings.",
         "",
-        "Without output_directory, a command writes to a `wgse/` folder beside "
+        "Without output_directory, a command writes to a `WGSEv6/` folder beside "
         "its input from the lab (a BAM or CRAM, else FASTQs, else a VCF, else "
-        "a raw microarray file), or beside an input already in a `wgse/` "
+        "a raw microarray file), or beside an input already in a `WGSEv6/` "
         "folder. The folder of the lab's original files stays untouched: only "
         "indexes that must sit beside their files are written there, and "
         "writing a BAM, CRAM, FASTQ, VCF or microarray file into it warns "
-        "(`primary_overwrite`).",
+        "(`primary_overwrite`). Machine-readable manifests (`*.manifest.json`) "
+        "and info caches (`*.wgse_info.json`) go into a `manifests/` "
+        "subfolder inside the output directory.",
         "",
         "Every value is checked when the file loads: a value of the wrong type, "
         "outside its range or not one of its choices stops the run with an "

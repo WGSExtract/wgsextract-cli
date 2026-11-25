@@ -345,7 +345,52 @@
           "visibleWhen": [
             {
               "placeholder": "bam_path.isSorted",
-              "equals": "false"
+              "notEquals": "true"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "bam",
+              "sort",
+              "--input",
+              "{{bam_path}}"
+            ],
+            "optionalArguments": [
+              [
+                "--outdir",
+                "{{out_dir}}"
+              ],
+              [
+                "--region",
+                "{{bam_region}}"
+              ],
+              [
+                "--gene",
+                "{{bam_gene}}"
+              ]
+            ]
+          }
+        },
+        {
+          "id": "bam-sort-done",
+          "title": "actions.info-bam.bam-commands.bam-sort.title",
+          "tooltip": "actions.info-bam.bam-commands.bam-sort.tooltip",
+          "disabledTooltip": "actions.info-bam.bam-commands.bam-sort.alreadySortedTooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "uiMode",
+              "equals": "basic"
+            },
+            {
+              "placeholder": "bam_path.isSorted",
+              "equals": "true"
+            }
+          ],
+          "disabledWhen": [
+            {
+              "placeholder": "bam_path.isSorted",
+              "equals": "true"
             }
           ],
           "command": {
@@ -376,6 +421,7 @@
           "id": "bam-unsort",
           "title": "actions.info-bam.bam-commands.bam-unsort.title",
           "role": "destructive",
+          "advancedOnly": true,
           "tooltip": "actions.info-bam.bam-commands.bam-unsort.tooltip",
           "visibleWhen": [
             {
@@ -401,7 +447,38 @@
           "visibleWhen": [
             {
               "placeholder": "bam_path.isIndexed",
-              "equals": "false"
+              "notEquals": "true"
+            }
+          ],
+          "command": {
+            "executable": "{{bundleRoot}}/scripts/run-wgsextract.sh",
+            "arguments": [
+              "bam",
+              "index",
+              "--input",
+              "{{bam_path}}"
+            ]
+          }
+        },
+        {
+          "id": "bam-index-done",
+          "title": "actions.info-bam.bam-commands.bam-index.title",
+          "tooltip": "actions.info-bam.bam-commands.bam-index.tooltip",
+          "disabledTooltip": "actions.info-bam.bam-commands.bam-index.alreadyIndexedTooltip",
+          "visibleWhen": [
+            {
+              "placeholder": "uiMode",
+              "equals": "basic"
+            },
+            {
+              "placeholder": "bam_path.isIndexed",
+              "equals": "true"
+            }
+          ],
+          "disabledWhen": [
+            {
+              "placeholder": "bam_path.isIndexed",
+              "equals": "true"
             }
           ],
           "command": {
@@ -418,6 +495,7 @@
           "id": "bam-unindex",
           "title": "actions.info-bam.bam-commands.bam-unindex.title",
           "role": "destructive",
+          "advancedOnly": true,
           "tooltip": "actions.info-bam.bam-commands.bam-unindex.tooltip",
           "visibleWhen": [
             {

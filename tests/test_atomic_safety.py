@@ -277,9 +277,10 @@ def test_atomic_singleton_extraction_failure_preserves_previous_fastqs(
     assert all(path.read_bytes() == b"previous FASTQs" for path in previous)
     assert {p.name for p in outdir.iterdir()} == {
         "in_unmapped.bam",
-        "in_unmapped.bam.manifest.json",
+        "manifests",
         *(p.name for p in previous),
     }
+    assert (outdir / "manifests" / "in_unmapped.bam.manifest.json").is_file()
 
 
 def test_live_builder_is_not_evicted_by_a_wait_timeout(tmp_path):

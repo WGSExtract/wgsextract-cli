@@ -202,7 +202,7 @@ def test_1185_uninterpretable_filter_is_not_guessed_into_a_declared_id(
     if suffix == ".vcf.gz":
         src = Path(bgzip_index(src))
     run_wgsextract("repair", "ftdna-vcf", "--input", str(src))
-    out = tmp_path / "wgse" / "kit_repaired.vcf"
+    out = tmp_path / "WGSEv6" / "kit_repaired.vcf"
     assert _filters(out) == ["101 PASS 7 1", "105 FTDNA_UNKNOWN 2 1"]
     assert out.read_text().splitlines()[:7] == _VCF.splitlines()[:7]
 
@@ -408,7 +408,7 @@ def test_repair_cram_finds_the_reference_beside_it(tmp_path, monkeypatch):
     (tmp_path / "library").mkdir()
     monkeypatch.setitem(settings, "reference_library", str(tmp_path / "library"))
     run_wgsextract("repair", "ftdna-bam", "--input", cram)
-    assert _records(str(kit / "wgse" / "bigy_repaired.bam"))[0][0] == "FTDNA:read:7"
+    assert _records(str(kit / "WGSEv6" / "bigy_repaired.bam"))[0][0] == "FTDNA:read:7"
 
 
 _CORPUS = Path(__file__).parent / "fixtures" / "ftdna_vcf" / "legacy_filters.vcf"

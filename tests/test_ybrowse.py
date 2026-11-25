@@ -388,7 +388,9 @@ def test_issue_1374_par_masked_reference_n_sites_are_excluded_and_counted(
         w for w in result.warnings if w.code == "ybrowse_reference_n_sites_excluded"
     ]
     assert warning.details["sites"] == 2
-    manifest = json.loads(next(output.parent.glob("*.manifest.json")).read_text())
+    manifest = json.loads(
+        next(output.parent.glob("manifests/*.manifest.json")).read_text()
+    )
     assert manifest["metrics"]["ybrowse_excluded_reference_n_sites"] == 2
 
 

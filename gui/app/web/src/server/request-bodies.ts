@@ -1,4 +1,5 @@
 import type { ActionReference, CommandContext, Labels, LooseRecord, ManifestLocation, PrimitiveValue, StringMap, ValueMap } from "../../../shared/types.js";
+import { normalizeUIMode } from "../../../shared/ui-mode.js";
 import { HttpError } from "./errors.js";
 
 export type PrecheckTarget = ({ kind: "action" } & ActionReference) | { kind: "setup" };
@@ -73,6 +74,7 @@ export function parsePrecheckTarget(value: unknown): PrecheckTarget {
 export function parseCommandContext(value: unknown): CommandContext {
     const record = value == null ? {} : requestObject(value, "context");
     return {
+        ...(record.uiMode != null ? { uiMode: normalizeUIMode(record.uiMode) } : {}),
         fieldValues: valueMap(record.fieldValues, "context.fieldValues"),
         checkedOptions: stringMap(record.checkedOptions, "context.checkedOptions"),
         configValues: valueMap(record.configValues, "context.configValues"),

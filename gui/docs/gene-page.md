@@ -34,7 +34,7 @@ Enter a gene symbol or alias (NCBI RefSeq, such as `BRCA1`) and, optionally:
   export apply the same rules. **Where each annotation comes from** lists the
   VCF header lines (tool versions, the files annotated from) behind each column.
 - **Export TSV** writes the shown rows with `info gene --export` as
-  `<vcf stem>_<GENE>_<filter>_variants.tsv`, in the `wgse/` folder beside your
+  `<vcf stem>_<GENE>_<filter>_variants.tsv`, in the `WGSEv6/` folder beside your
   files or your output folder, and **Show in folder** reveals it.
 - **Open in genome viewer** opens the [genome viewer](genome-viewer.md) at the
   gene with your reads or variants, its gene span and the RefSeq transcripts

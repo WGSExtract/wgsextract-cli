@@ -35,7 +35,7 @@ def test_1238_ensembl_raw_release_override_still_uses_local_cache(
     [args] = fake_vep()
     # contract: annotation must not send sample-derived queries to Ensembl.
     assert "--offline" in args and "--database" not in args
-    assert vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz") == [
+    assert vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz") == [
         ("1", "10", "A", "G", "0/1")
     ]
 

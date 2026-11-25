@@ -230,11 +230,13 @@ class Oracle:
 
     def _info(self) -> None:
         info = json.loads(
-            self.output("info", "HG00096.hg19-mini.bam.wgse_info.json").read_text()
+            self.output(
+                "info", "manifests", "HG00096.hg19-mini.bam.wgse_info.json"
+            ).read_text()
         )
         cram = json.loads(
             self.output(
-                "info_cram", "HG00096.hg19-mini.cram.wgse_info.json"
+                "info_cram", "manifests", "HG00096.hg19-mini.cram.wgse_info.json"
             ).read_text()
         )
         chr20 = next(

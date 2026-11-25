@@ -276,9 +276,8 @@ def _record_genome(final_path: str, before: dict[str, tuple[int, int]]) -> None:
     result = current_result()
     result.add_output(final_path, "reference")
     result.set_reference(final_path)
-    result.set_manifest_stem(
-        str(manifest_path_for(final_path)).removesuffix(MANIFEST_SUFFIX)
-    )
+    name = manifest_path_for(final_path).name.removesuffix(MANIFEST_SUFFIX)
+    result.set_manifest_stem(Path(final_path).parent / name)
 
 
 _LIBRARY_DEPS = ["curl", "samtools", "bcftools", "tabix", "bgzip", "htsfile"]

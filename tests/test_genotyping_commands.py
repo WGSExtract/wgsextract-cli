@@ -16,7 +16,8 @@ import pytest
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
 from wgsextract_cli import api
 from wgsextract_cli.commands.genotyping import common, hla, repeats
-from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION, input_signature
+from wgsextract_cli.commands.info.cache import input_signature
+from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.personal_report import build_report
 from wgsextract_cli.core.pixi_tools import _join_command, pixi_env_prefix
@@ -279,7 +280,7 @@ def test_hla_extracts_mhc_pairs_and_writes_pharmcat_calls(
         "NA12878.t1k_allele.tsv",
         "NA12878.t1k_allele.vcf",
         "NA12878.hla.pharmcat.tsv",
-        "NA12878.t1k_genotype.tsv.manifest.json",
+        "manifests",
     }  # T1K's other files go with the work directory
     assert (out / "NA12878.t1k_genotype.tsv").read_text() == T1K_GENOTYPE
     assert (out / "NA12878.hla.pharmcat.tsv").read_text() == (
@@ -410,7 +411,7 @@ def test_hla_extraction_uses_hg19_mhc_and_numeric_names(tmp_path, hla_setup):
     run_wgsextract("typing", "hla", "-i", path, "--hla-index", str(hla_setup.index))
     names, _ = json.loads(hla_setup.reads.read_text())
     assert names == ["in"]
-    assert (tmp_path / "wgse" / "s.hla.pharmcat.tsv").exists()
+    assert (tmp_path / "WGSEv6" / "s.hla.pharmcat.tsv").exists()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="T1K is not supported on Windows")
@@ -660,7 +661,7 @@ def test_cyp2d6_runs_cyrius_on_the_input_and_writes_the_pharmcat_call(
         "NA12878.cyrius.tsv",
         "NA12878.cyrius.json",
         "NA12878.cyp2d6.pharmcat.tsv",
-        "NA12878.cyrius.tsv.manifest.json",
+        "manifests",
     }
     assert (out / "NA12878.cyp2d6.pharmcat.tsv").read_text() == "CYP2D6\t*1/*2x2\n"
     assert "CYP2D6: *1/*2x2, resolved" in caplog.text
@@ -692,7 +693,7 @@ def test_cyp2d6_writes_only_calls_cyrius_stands_behind(
     tmp_path, cyrius, caplog, result, pharmcat, warning
 ):
     path = bam(tmp_path / "NA12878.bam", pair("p", "chr22", 42_127_000))
-    stale = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
+    stale = tmp_path / "WGSEv6" / "NA12878.cyp2d6.pharmcat.tsv"
     stale.parent.mkdir()
     stale.write_text("CYP2D6\t*1/*1\n")
     cyrius.set_result(**result)
@@ -747,15 +748,17 @@ def test_cyp2d6_ambiguous_cyrius_pick_is_unresolved_not_exported(
     cyrius.set_result(**fields)
     main(["typing", "cyp2d6", "-i", path, "--config", str(tmp_path / "config.toml")])
 
-    pharmcat = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
+    pharmcat = tmp_path / "WGSEv6" / "NA12878.cyp2d6.pharmcat.tsv"
     assert (pharmcat.read_text() if pharmcat.exists() else None) == outside_call
     assert (
-        (tmp_path / "wgse" / "NA12878.cyrius.tsv")
+        (tmp_path / "WGSEv6" / "NA12878.cyrius.tsv")
         .read_text()
         .endswith("NA12878\t*1/*4\tPASS\n")
     )
     manifest = json.loads(
-        (tmp_path / "wgse" / "NA12878.cyrius.tsv.manifest.json").read_text()
+        (
+            tmp_path / "WGSEv6" / "manifests" / "NA12878.cyrius.tsv.manifest.json"
+        ).read_text()
     )
     metrics = manifest["metrics"]
     assert metrics["cyp2d6_call_status"] == status
@@ -781,7 +784,7 @@ def test_cyp2d6_names_three_copies_as_pharmcat_does(tmp_path, cyrius):
     path = bam(tmp_path / "NA12878.bam", pair("p", "chr22", 42_127_000))
     cyrius.set_result(Genotype="*1/*2x3", Filter="PASS", Total_CN=4)
     run_wgsextract("typing", "cyp2d6", "-i", path)
-    pharmcat = tmp_path / "wgse" / "NA12878.cyp2d6.pharmcat.tsv"
+    pharmcat = tmp_path / "WGSEv6" / "NA12878.cyp2d6.pharmcat.tsv"
     assert pharmcat.read_text(encoding="utf-8") == "CYP2D6\t*1/*2x≥3\n"
 
 
@@ -864,7 +867,7 @@ def test_cyp2d6_realigns_alt_contig_reads_to_primary_chr22(tmp_path, cyrius):
     assert all(int(r[4]) > 0 for r in seen if r[0] != "norm")
     [command] = cyrius.calls("cyrius")
     assert "-r" not in command
-    assert (tmp_path / "in" / "wgse" / "s.cyp2d6.pharmcat.tsv").read_text() == (
+    assert (tmp_path / "in" / "WGSEv6" / "s.cyp2d6.pharmcat.tsv").read_text() == (
         "CYP2D6\t*1/*2x2\n"
     )
 
@@ -1423,7 +1426,7 @@ def test_smn_reports_copy_numbers_and_says_it_is_not_a_diagnosis(tmp_path, smn, 
     assert outputs(out) == {
         "NA12878.smn.tsv",
         "NA12878.smn.json",
-        "NA12878.smn.tsv.manifest.json",
+        "manifests",
     }
     assert {o["role"] for o in result.to_dict()["outputs"]} == {
         "smn_calls",

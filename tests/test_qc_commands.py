@@ -63,7 +63,7 @@ def test_fastp_rejects_a_file_with_no_reads(tmp_path):
 def test_fastp_single_end_writes_to_wgse_beside_its_input(tmp_path):
     r1 = _fastq(tmp_path / "sample.fq", NAMES, 1)
     run_wgsextract("qc", "fastp", "--r1", r1)
-    out = tmp_path / "wgse"
+    out = tmp_path / "WGSEv6"
     assert _names(out / "sample_fp_1.fastq.gz") == NAMES
     assert not (out / "sample_fp_2.fastq.gz").exists()
     assert (out / "sample_fastp.json").is_file()
@@ -86,8 +86,8 @@ def test_1087_cli_fastp_ignores_an_unread_global_input_when_placing_outputs(
     main(["--config", str(config), "--json", "qc", "fastp", "--r1", r1])
 
     assert json.loads(capsys.readouterr().out)["status"] == "ok"
-    assert _names(current / "wgse" / "sample_fp_1.fastq.gz") == NAMES
-    assert not (prior / "wgse").exists()
+    assert _names(current / "WGSEv6" / "sample_fp_1.fastq.gz") == NAMES
+    assert not (prior / "WGSEv6").exists()
 
 
 def test_fastp_requires_r1():
@@ -104,7 +104,7 @@ def test_fastp_reports_a_missing_r2(tmp_path):
 @needs_tools("fastp")
 def test_fastp_failure_is_reported(tmp_path):
     r1 = _fastq(tmp_path / "sample.fq", NAMES, 1)
-    (tmp_path / "wgse" / "sample_fp_1.fastq.gz").mkdir(
+    (tmp_path / "WGSEv6" / "sample_fp_1.fastq.gz").mkdir(
         parents=True
     )  # fastp can't open its output
     with pytest.raises(WGSExtractError, match="fastp failed"):
@@ -440,7 +440,7 @@ def test_vcf_qc_failure_leaves_no_partial_report(tmp_path):
     with pytest.raises(WGSExtractError):
         run_wgsextract("qc", "vcf", "--input", str(bad))
     assert not (tmp_path / "bad.vcf.vcfstats.txt").exists()
-    assert not (tmp_path / "wgse" / "bad.vcf.vcfstats.txt").exists()
+    assert not (tmp_path / "WGSEv6" / "bad.vcf.vcfstats.txt").exists()
 
 
 @needs_tools("fastqc")

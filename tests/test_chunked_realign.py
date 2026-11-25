@@ -641,10 +641,10 @@ def test_a_url_realigns_in_chunks_like_the_local_file(tmp_path, ont, source):
     assert _records(str(work / "x_aligned.bam"), ont["ref"]) == _records(
         str(tmp_path / "local" / "x_aligned.bam"), ont["ref"]
     )
-    manifest = json.loads((work / "x_aligned.bam.manifest.json").read_text())
+    manifest = json.loads((work / "manifests/x_aligned.bam.manifest.json").read_text())
     assert [i["path"] for i in manifest["inputs"] if i["role"] == "input"] == [url]
     assert sorted(p.name for p in work.iterdir() if not p.name.startswith(".x_")) == [
-        "x_aligned.bam", "x_aligned.bam.bai", "x_aligned.bam.manifest.json",
+        "manifests", "x_aligned.bam", "x_aligned.bam.bai",
         "x_aligned.bam.steps.json",
     ]  # fmt: skip
 

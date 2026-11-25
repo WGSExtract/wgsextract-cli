@@ -7,6 +7,7 @@ import type { LooseRecord, StringMap, ValueMap } from "./value-types.js";
 
 export interface CommandContext {
     setupReady?: boolean;
+    uiMode?: UIMode;
     fieldValues?: ValueMap;
     checkedOptions?: StringMap;
     configValues?: ValueMap;

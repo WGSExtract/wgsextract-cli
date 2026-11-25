@@ -78,15 +78,14 @@ export async function findExistingOutput(
     if (!realOutdir) {
         return { kind: "none" };
     }
-    const entries = await listManifestFiles(realOutdir);
-    if (!entries.length) {
+    const manifestPaths = await listManifestFiles(realOutdir);
+    if (!manifestPaths.length) {
         return { kind: "none" };
     }
 
     let best: CandidateMatch | undefined;
-    for (const fileName of entries) {
-        const manifestPath = path.join(realOutdir, fileName);
-        const candidate = await evaluateManifest(manifestPath, realOutdir, entries, args, action, spec.format, bundleRoot, configured.configFile);
+    for (const manifestPath of manifestPaths) {
+        const candidate = await evaluateManifest(manifestPath, realOutdir, manifestPaths, args, action, spec.format, bundleRoot, configured.configFile);
         if (candidate && (!best || candidate.timestampMs > best.timestampMs)) {
             best = candidate;
         }
@@ -253,10 +252,9 @@ async function checkFreshnessAndContainment(
     }
     // Aggregating commands (personal report, MultiQC) combine prior outputs/manifests in outdir.
     if (aggregatingCommands.has(doc.command)) {
-        const selfName = path.basename(manifestPath);
-        for (const other of allManifestFiles) {
-            if (other === selfName) continue;
-            const info = await safeStat(path.join(realOutdir, other));
+        for (const otherPath of allManifestFiles) {
+            if (otherPath === manifestPath) continue;
+            const info = await safeStat(otherPath);
             if (info && info.mtimeMs > minOutputMtimeMs) {
                 return { fresh: false, timestampMs: 0 };
             }
@@ -296,15 +294,23 @@ async function loadConfiguredSettings(
 }
 
 async function listManifestFiles(outdir: string): Promise<string[]> {
-    try {
-        const entries = await readdir(outdir);
-        return entries.filter((name) => name.endsWith(manifestSuffix) && !name.endsWith(failedManifestSuffix));
-    } catch (error) {
-        if (["ENOENT", "ENOTDIR"].includes(errnoCode(error) ?? "")) {
-            return [];
+    const folders = [path.join(outdir, "manifests"), outdir];
+    const results: string[] = [];
+    for (const folder of folders) {
+        try {
+            const entries = await readdir(folder);
+            for (const name of entries) {
+                if (name.endsWith(manifestSuffix) && !name.endsWith(failedManifestSuffix)) {
+                    results.push(path.join(folder, name));
+                }
+            }
+        } catch (error) {
+            if (!["ENOENT", "ENOTDIR"].includes(errnoCode(error) ?? "")) {
+                throw error;
+            }
         }
-        throw error;
     }
+    return results;
 }
 
 async function safeRealpath(filePath: string): Promise<string | undefined> {

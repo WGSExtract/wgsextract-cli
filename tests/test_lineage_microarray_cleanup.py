@@ -19,6 +19,7 @@ from wgsextract_cli.commands import (
     lineage,
     microarray,
 )
+from wgsextract_cli.commands.info import cache as info_cache
 from wgsextract_cli.commands.info import metrics
 from wgsextract_cli.core import variant_files
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -309,7 +310,7 @@ def test_y_haplogroup_refuses_a_female_sample_before_yleaf(tmp_path):
 def _info_cache(
     bam: str, call: str, size_delta: int = 0, md5: str | None = None
 ) -> None:
-    signature = metrics.input_signature(bam)
+    signature = info_cache.input_signature(bam)
     assert signature is not None
     signature["size"] = Path(bam).stat().st_size + size_delta
     Path(f"{bam}.wgse_info.json").write_text(

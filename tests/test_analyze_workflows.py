@@ -457,9 +457,11 @@ def test_no_annotation_data_skips_discovery_instead_of_reporting_zero(
     out = tmp_path / "out"
     run = fake.run("--vcf-inputs", vcf, "--outdir", str(out))
     assert run.code == 0 and fake.calls == []
-    # Nothing but the step journal and its hidden lock.
-    shown = [p.name for p in out.iterdir() if not p.name.startswith(".")]
-    assert shown == ["analyze.manifest.json"]
+    # Nothing but the manifests folder and hidden files.
+    assert [p.name for p in out.iterdir() if not p.name.startswith(".")] == [
+        "manifests"
+    ]
+    assert [p.name for p in (out / "manifests").iterdir()] == ["analyze.manifest.json"]
     assert "TOTAL SIGNIFICANT VARIANTS FOUND: 0" in capsys.readouterr().out
 
 
@@ -1164,7 +1166,8 @@ def test_batch_sample_names_stay_inside_outdir_and_blank_names_differ(
     run = fake.run("--batch", str(batch), "--outdir", str(out))
     assert run.code == 1 and "../escape" in run.error
     assert not (tmp_path / "escape").exists()
-    assert sorted(p.name for p in out.iterdir() if p.is_dir()) == ["sample2", "sample3"]
+    dirs = [p.name for p in out.iterdir() if p.is_dir() and p.name != "manifests"]
+    assert sorted(dirs) == ["sample2", "sample3"]
 
 
 def test_batch_gen_refuses_two_alignments_with_one_sample_name(tmp_path: Path) -> None:

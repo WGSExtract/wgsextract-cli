@@ -438,8 +438,11 @@ def delete(reflib: str | None, cat: Catalogue) -> list[Path]:
         Path(f"{table}.tbi"),
         _marker(table),
         table.parent / f".{cat.table}.parts",
-        table.parent / f"{stem}.tsv.manifest.json",
+        table.parent / f"{stem}.tsv.manifest.json",  # as earlier releases wrote it
     ]
+    # Not through a linked manifests/ folder, which could lead outside the library.
+    if not (manifests := table.parent / "manifests").is_symlink():
+        paths.append(manifests / f"{stem}.tsv.manifest.json")
     return [p for p in paths if p.exists()]
 
 

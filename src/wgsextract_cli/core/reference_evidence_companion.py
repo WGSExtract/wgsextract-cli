@@ -19,14 +19,16 @@ def _recorded_file(
     it unchanged since; without one the file can't be trusted to be the
     run's."""
     from wgsextract_cli.core import read_scope
-    from wgsextract_cli.core.results import fingerprint
+    from wgsextract_cli.core.results import fingerprint, manifest_base_dir
 
     place = Path(str(record.get("path") or ""))
     if not (read_scope.may_follow(place) and place.is_file()) and isinstance(
         original := document.get("manifest"), str
     ):
         try:
-            place = manifest.parent / place.relative_to(Path(original).parent)
+            place = manifest_base_dir(manifest) / place.relative_to(
+                manifest_base_dir(original)
+            )
         except ValueError:
             return None
     expected = record.get("fingerprint")
@@ -44,15 +46,20 @@ def companion(vcf: PathInput) -> str | None:
     indexed. Of several such runs the newest wins. A server job follows only
     manifests and files inside its allowed folders (``read_scope``)."""
     from wgsextract_cli.core import read_scope, sample_workspace
-    from wgsextract_cli.core.results import MANIFEST_SUFFIX
+    from wgsextract_cli.core.results import MANIFEST_SUFFIX, manifest_dir_for
 
     given = Path(vcf).expanduser().absolute()
     path = given.resolve()
     if not path.is_file():
         return None
+    search_folders = {
+        candidate
+        for parent in {given.parent, path.parent}
+        for candidate in (manifest_dir_for(parent), parent)
+    }
     candidates = {
         manifest
-        for folder in {given.parent, path.parent}
+        for folder in search_folders
         for manifest in folder.glob(f"*{MANIFEST_SUFFIX}")
     }
     workspace = sample_workspace.workspace_for(given)

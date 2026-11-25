@@ -87,7 +87,7 @@ def test_1182_bam_to_vcf_to_analyze_links_runs_sources_and_indexes(
     code, stderr = _call_snps(sample, calls)
     assert code == 0, stderr
 
-    producer = _manifest(calls / "snps.vcf.manifest.json")
+    producer = _manifest(calls / "manifests" / "snps.vcf.manifest.json")
     run = producer["run"]
     assert run["root"] == run["id"] and run["parent"] is None
     bam = producer["inputs"][0]
@@ -109,7 +109,7 @@ def test_1182_bam_to_vcf_to_analyze_links_runs_sources_and_indexes(
     argv = _analyze(config, calls / "snps.vcf.gz", analysis)
     code, _, stderr = run_cli(argv)
     assert code == 0, stderr
-    parent = _manifest(analysis / "analyze.manifest.json")
+    parent = _manifest(analysis / "manifests" / "analyze.manifest.json")
     # The input VCF links back to the run that called it.
     vcf_input = parent["inputs"][0]["artifact"]
     assert vcf_input["origin"] == "recorded"
@@ -140,7 +140,7 @@ def test_1182_bam_to_vcf_to_analyze_links_runs_sources_and_indexes(
     # Resumed: every step is reused and still names the run that did it.
     code, _, stderr = run_cli(argv)
     assert code == 0, stderr
-    resumed = _manifest(analysis / "analyze.manifest.json")
+    resumed = _manifest(analysis / "manifests" / "analyze.manifest.json")
     assert resumed["run"]["id"] != parent["run"]["id"]
     reused = {c["step"]: c for c in resumed["run"]["children"]}
     assert {c["status"] for c in reused.values()} == {"reused"}
@@ -168,7 +168,7 @@ def test_1182_resuming_a_journal_without_lineage_never_credits_the_resuming_run(
     argv = _analyze(config, calls / "snps.vcf.gz", analysis)
     code, _, stderr = run_cli(argv)
     assert code == 0, stderr
-    earlier = _manifest(analysis / "analyze.manifest.json")["run"]
+    earlier = _manifest(analysis / "manifests" / "analyze.manifest.json")["run"]
     earlier_runs = {earlier["id"]} | {c["run"] for c in earlier["children"]}
     # A journal written before run lineage: no step names who wrote its files.
     for journal in analysis.glob("*.steps.json"):
@@ -181,7 +181,7 @@ def test_1182_resuming_a_journal_without_lineage_never_credits_the_resuming_run(
 
     code, _, stderr = run_cli(argv)
     assert code == 0, stderr
-    resumed = _manifest(analysis / "analyze.manifest.json")
+    resumed = _manifest(analysis / "manifests" / "analyze.manifest.json")
     assert {c["status"] for c in resumed["run"]["children"]} == {"reused"}
     written = [r["artifact"] for r in resumed["outputs"] if r.get("artifact")]
     assert written
@@ -203,7 +203,7 @@ def test_1182_failed_child_run_is_attributed_in_both_manifests(
     analysis = tmp_path / "analysis"
     code, _, _ = run_cli(_analyze(config, calls / "snps.vcf.gz", analysis))
     assert code == 1
-    parent = _manifest(analysis / "analyze.manifest.json")
+    parent = _manifest(analysis / "manifests" / "analyze.manifest.json")
     failed = [c for c in parent["run"]["children"] if c["status"] == "failed"]
     assert len(failed) == 1 and failed[0]["run"]
     # chain-annotate, the step's command, ran vcf clinvar, which failed.
@@ -226,7 +226,7 @@ def test_1182_merge_keeps_discarded_parts_as_temp_sources_not_outputs(
         "--ref", sample.ref, "--outdir", str(out), "--ploidy", "2", "--threads", "1",
     ])  # fmt: skip
     assert code == 0, stderr
-    document = _manifest(out / "variants.vcf.manifest.json")
+    document = _manifest(out / "manifests" / "variants.vcf.manifest.json")
     assert not (out / "snps.vcf.gz").exists()
     assert {r["role"] for r in document["outputs"] if r.get("artifact")} == {
         "merged_variants"
@@ -318,7 +318,7 @@ def test_1182_an_index_older_than_its_downloaded_bam_is_still_used(
     os.utime(sample.bam, (index.stat().st_mtime + 10,) * 2)
     code, stderr = _call_snps(sample, tmp_path / "out", "--region", "chr1:500-2500")
     assert code == 0, stderr
-    document = _manifest(tmp_path / "out" / "snps.vcf.manifest.json")
+    document = _manifest(tmp_path / "out" / "manifests" / "snps.vcf.manifest.json")
     assert document["inputs"][0]["artifact"]["index"]["state"] == "ready"
 
 
@@ -328,7 +328,7 @@ def test_1182_unindexed_bam_still_calls_the_whole_file(tmp_path: Path) -> None:
     Path(f"{sample.bam}.bai").unlink()
     code, stderr = _call_snps(sample, tmp_path / "out")
     assert code == 0, stderr
-    document = _manifest(tmp_path / "out" / "snps.vcf.manifest.json")
+    document = _manifest(tmp_path / "out" / "manifests" / "snps.vcf.manifest.json")
     assert document["inputs"][0]["artifact"]["index"] == {
         "path": None,
         "state": "missing",
@@ -393,7 +393,10 @@ def test_1182_api_result_carries_the_run_and_artifacts_of_its_manifest(
     snps = _output(document, "snps")["artifact"]
     assert snps["producer"]["run"] == result.run.id == result.run.root
     assert snps["index"]["state"] == "ready"
-    assert _manifest(out / "snps.vcf.manifest.json")["run"] == document["run"]
+    assert (
+        _manifest(out / "manifests" / "snps.vcf.manifest.json")["run"]
+        == document["run"]
+    )
 
 
 @needs_htslib
@@ -534,7 +537,7 @@ def test_1182_vcf_call_outputs_share_one_manifest_but_keep_their_producer(
         "--threads", "1",
     ])  # fmt: skip
     assert code == 0, stderr
-    assert not (calls / "indels.vcf.manifest.json").exists()
+    assert not (calls / "manifests" / "indels.vcf.manifest.json").exists()
     other = _bam(tmp_path / "other.bam", 3000, sample="NA12878")
     code, stdout, _ = run_cli([
         "--json", "analyze", "comprehensive", "--input", other,
@@ -576,12 +579,13 @@ def _calls_with_manifest_outside(tmp_path: Path, sample: Any, allowed: Path) -> 
     vcf = allowed / "snps.vcf.gz"
     shutil.copyfile(calls / "snps.vcf.gz", vcf)
     shutil.copyfile(calls / "snps.vcf.gz.tbi", f"{vcf}.tbi")
-    manifest = json.loads((calls / "snps.vcf.manifest.json").read_text())
+    manifest = json.loads((calls / "manifests" / "snps.vcf.manifest.json").read_text())
     for record in manifest["outputs"]:
         record["path"] = record["path"].replace(str(calls), str(allowed))
     outside = tmp_path / "outside.manifest.json"
     outside.write_text(json.dumps(manifest))
-    (allowed / "snps.vcf.manifest.json").symlink_to(outside)
+    (allowed / "manifests").mkdir(exist_ok=True)
+    (allowed / "manifests" / "snps.vcf.manifest.json").symlink_to(outside)
     return vcf
 
 

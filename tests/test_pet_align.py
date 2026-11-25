@@ -97,13 +97,13 @@ def test_species_reference_comes_from_the_library(tmp_path):
     fasta = f"{plain}.gz"
     _align(reads, library, species="cat")
 
-    bam = tmp_path / "wgse" / "rex_R1_cat.bam"
+    bam = tmp_path / "WGSEv6" / "rex_R1_cat.bam"
     rg = "@RG\\tID:rex_R1\\tSM:rex\\tLB:rex\\tPL:ILLUMINA"
     # contract: bwa's -K batch size keeps alignments the same whatever -t
     bwa = f"CL:bwa mem -K 100000000 -t 2 -R {rg} {fasta} {reads}"
     assert any(bwa in line for line in _programs(bam))
     assert Path(f"{fasta}.bwt").is_file()  # indexed in the library
-    assert (tmp_path / "wgse" / "rex_R1_cat.vcf.gz.csi").is_file()
+    assert (tmp_path / "WGSEv6" / "rex_R1_cat.vcf.gz.csi").is_file()
 
 
 @needs_pet_tools
@@ -123,7 +123,7 @@ def test_bwa_mem2_aligns_when_the_reference_has_its_index(
 
     _align(reads, ref, memory=memory)
 
-    programs = _programs(tmp_path / "wgse" / "rex_R1_dog.bam")
+    programs = _programs(tmp_path / "WGSEv6" / "rex_R1_dog.bam")
     # The Windows launcher re-executes a CPU-specific build, which names CL.
     (aligner,) = [line for line in programs if "\tPN:bwa-mem2\t" in line]
     assert " mem -K 100000000 " in aligner
@@ -177,9 +177,9 @@ def test_failed_vcf_indexing_removes_the_vcf_and_its_partial_index(tmp_path, req
     with pytest.raises(api.CommandFailed, match="Variant calling error"):
         _align(reads, ref, outdir=out)
     assert sorted(p.name for p in out.iterdir()) == [
+        "manifests",
         "rex_R1_dog.bam",
         "rex_R1_dog.bam.bai",
-        "rex_R1_dog.bam.manifest.json",
     ]
 
 
@@ -194,7 +194,7 @@ def test_failed_variant_calling_leaves_no_partial_vcf(tmp_path):
     ):
         _align(reads, ref, outdir=out)
     assert sorted(p.name for p in out.iterdir()) == [
+        "manifests",
         "rex_R1_dog.bam",
         "rex_R1_dog.bam.bai",
-        "rex_R1_dog.bam.manifest.json",
     ]

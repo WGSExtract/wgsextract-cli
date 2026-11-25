@@ -32,7 +32,7 @@ _TABLES = (
 @dataclass(frozen=True, kw_only=True)
 class InfoParams(Params):
     """Identify the reference build, file integrity and sequencing metrics of a
-    BAM/CRAM. Metrics are cached next to the outputs as
+    BAM/CRAM. Metrics are cached in the output folder's ``manifests/`` as
     ``<input>.wgse_info.json``."""
 
     COMMAND = "info"
@@ -50,8 +50,8 @@ class InfoParams(Params):
     table_format: str | None = table_format_param(_TABLES)
     cache: bool = param(
         True,
-        help="Save the metrics as <input>.wgse_info.json for later runs (default: on)",
-        doc="Save the metrics as ``<input>.wgse_info.json`` for later runs; an "
+        help="Save the metrics as manifests/<input>.wgse_info.json for later runs (default: on)",
+        doc="Save the metrics as ``manifests/<input>.wgse_info.json`` for later runs; an "
         "existing cache is read either way.",
         action="boolean_optional",
         safe_value=False,

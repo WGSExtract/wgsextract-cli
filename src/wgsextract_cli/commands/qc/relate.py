@@ -568,11 +568,8 @@ def _recorded_sex(item: Input) -> str | None:
     cached call is used."""
     if item.kind != "alignment":
         return None
-    from wgsextract_cli.commands.info.metrics import (
-        SEX_INFERENCE_VERSION,
-        cached_info,
-        sample_sex,
-    )
+    from wgsextract_cli.commands.info.cache import cached_info
+    from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION, sample_sex
 
     if item.path.lower().endswith(".cram"):
         fact = sample_workspace.known("sex", item.path)

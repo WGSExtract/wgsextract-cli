@@ -599,8 +599,8 @@ def test_y_haplogroup_from_cram_decodes_with_the_reference(tmp_path, native_tabl
     run_wgsextract(
         "lineage", "y-haplogroup", "--input", bam, "--ref", str(ref),
     )  # fmt: skip
-    bam_prediction = (tmp_path / "wgse" / "yleaf/hg_prediction.hg").read_text()
-    assert _y_rows(tmp_path / "wgse", "fmf") == []
+    bam_prediction = (tmp_path / "WGSEv6" / "yleaf/hg_prediction.hg").read_text()
+    assert _y_rows(tmp_path / "WGSEv6", "fmf") == []
 
     from wgsextract_cli.core.utils import run_command
 
@@ -610,8 +610,10 @@ def test_y_haplogroup_from_cram_decodes_with_the_reference(tmp_path, native_tabl
     run_wgsextract(
         "lineage", "y-haplogroup", "--input", cram, "--ref", str(ref),
     )  # fmt: skip
-    assert (tmp_path / "wgse" / "yleaf/hg_prediction.hg").read_text() == bam_prediction
-    assert _y_rows(tmp_path / "wgse", "fmf") == []
+    assert (
+        tmp_path / "WGSEv6" / "yleaf/hg_prediction.hg"
+    ).read_text() == bam_prediction
+    assert _y_rows(tmp_path / "WGSEv6", "fmf") == []
 
 
 def test_y_haplogroup_from_cram_without_a_reference_fails(
@@ -1229,7 +1231,10 @@ def test_contamination_check_reports_haplocheck_status(tmp_path, mini_tree):
         assert "haplocheck_no_html" not in warned
     assert roles == expected
     written = sorted(p.name for p in (tmp_path / "o").iterdir())
-    assert written == sorted([*roles, "haplogrep_results.txt.manifest.json"])
+    assert written == sorted([*roles, "manifests"])
+    assert (
+        tmp_path / "o" / "manifests" / "haplogrep_results.txt.manifest.json"
+    ).is_file()
 
 
 @needs_haplogrep3
