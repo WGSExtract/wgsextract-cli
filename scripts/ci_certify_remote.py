@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import signal
 import subprocess
@@ -139,6 +140,23 @@ def remote_layer(
     return f"{host.alias} sha256:{digest}", str(log)
 
 
+def acquire_host_lock(alias: str) -> None:
+    subprocess.run(
+        [
+            "agent-coord",
+            "lock",
+            alias,
+            "--reason",
+            "remote certification",
+            "--pid",
+            str(os.getpid()),
+        ],
+        check=True,
+        start_new_session=sys.platform != "win32",
+        creationflags=LOCK_CREATION_FLAGS,
+    )
+
+
 @contextmanager
 def available_host(hosts: list[RemoteHost]) -> Iterator[RemoteHost]:
     refused = []
@@ -159,18 +177,7 @@ def available_host(hosts: list[RemoteHost]) -> Iterator[RemoteHost]:
                 previous = signal.signal(signal.SIGTERM, defer)
                 previous_int = signal.signal(signal.SIGINT, defer)
                 try:
-                    subprocess.run(
-                        [
-                            "agent-coord",
-                            "lock",
-                            host.alias,
-                            "--reason",
-                            "remote certification",
-                        ],
-                        check=True,
-                        start_new_session=sys.platform != "win32",
-                        creationflags=LOCK_CREATION_FLAGS,
-                    )
+                    acquire_host_lock(host.alias)
                     locked = True
                 finally:
                     signal.signal(signal.SIGINT, previous_int)
