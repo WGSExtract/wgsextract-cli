@@ -225,6 +225,25 @@ test("findExistingOutput rejects untrusted manifests pointing outside outdir and
   assert.equal(matched.kind, "display");
   assert.equal(path.basename(matched.openPath), "report.html");
   assert.equal(resultPaths.has(matched.openPath), true);
+
+  // Modifying config.toml after the cached output invalidates reuse (e.g., changed scientific defaults).
+  const cfgPath = path.join(root, "config.toml");
+  await writeFile(cfgPath, "microarray_min_dp = 10\n");
+  const later = new Date(Date.now() + 20_000);
+  await utimes(cfgPath, later, later);
+  const cfgManifest = {
+    ...baseManifest,
+    pages: [{
+      id: "settings",
+      title: "Settings",
+      sections: [{
+        id: "settings-paths",
+        title: "Settings",
+        controls: [{ id: "wgs_settings", kind: "configEditor", configFile: { path: cfgPath, format: "toml" } }],
+      }],
+    }],
+  };
+  assert.equal((await findExistingOutput(cfgManifest, reportAction, ctx, root, resultPaths)).kind, "none");
 });
 
 test("client opens cached HTML directly for display actions and prompts before force-rerunning output-only actions", async (t) => {
@@ -282,5 +301,43 @@ test("client opens cached HTML directly for display actions and prompts before f
   assert.equal(state.pendingAlreadyRun, null);
   const streamReq = requests.find((r) => r.url === "/api/run/stream");
   assert.ok(streamReq, "Force Run Again submits /api/run/stream");
+  assert.equal(streamReq.body.force, true);
+});
+
+test("Force Run Again preserves skipExistingCheck and forceRerun across prerequisite prompts", async (t) => {
+  const { continuePendingPrerequisites } = await import("../dist/web/src/client/operations-prerequisites-dialog.js");
+  const requests = [];
+  let missingCalls = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init) => {
+    const body = JSON.parse(init?.body ?? "{}");
+    requests.push({ url, body });
+    if (url === "/api/prerequisites") {
+      missingCalls += 1;
+      return new Response(JSON.stringify({
+        missing: missingCalls === 1 ? [{ id: "hs38", kind: "reference", name: "hs38" }] : [],
+      }));
+    }
+    if (url === "/api/run/stream") {
+      const lines = [{ type: "start", command: "tool" }, { type: "complete", result: { exitCode: 0, command: "tool" } }];
+      return new Response(lines.map((line) => JSON.stringify(line)).join("\n"));
+    }
+    throw new Error(`Unexpected URL: ${url}`);
+  };
+  t.after(() => { globalThis.fetch = originalFetch; });
+
+  const prereqManifest = { ...baseManifest, prerequisites: { command: { executable: "tool", arguments: ["ref", "needs"] } } };
+  Object.assign(state, createInitialState(), { manifest: prereqManifest, labels: englishLabels });
+  const ctx = { fieldValues: { bam_path: "/data/s.bam" }, checkedOptions: {}, configValues: {}, rowValues: {} };
+  const ref = { pageID: "extract", sectionID: "regions", actionID: "region-mt" };
+  const extract = { id: "region-mt", title: "Extract MT", command: { executable: "tool", arguments: ["extract", "region", "--input", "{{bam_path}}"] } };
+
+  await runAction(extract, ctx, ref, { skipExistingCheck: true, forceRerun: true });
+  assert.equal(state.pendingPrerequisites?.skipExistingCheck, true);
+  assert.equal(state.pendingPrerequisites?.forceRerun, true);
+  await continuePendingPrerequisites();
+  assert.equal(requests.some((r) => r.url === "/api/existing-output"), false);
+  const streamReq = requests.find((r) => r.url === "/api/run/stream");
+  assert.ok(streamReq, "Continue after prerequisites still runs /api/run/stream");
   assert.equal(streamReq.body.force, true);
 });

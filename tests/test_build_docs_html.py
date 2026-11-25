@@ -60,6 +60,10 @@ def test_github_slug_matches_markdown_heading_anchors() -> None:
     )
     assert github_slug("What's new in `v0.8`?", counts) == "whats-new-in-v08"
     assert (
+        github_slug("DeepVariant `postprocess_variants`", counts)
+        == "deepvariant-postprocess_variants"
+    )
+    assert (
         github_slug("Privacy and network access", counts)
         == "privacy-and-network-access-1"
     )
@@ -103,6 +107,18 @@ def test_build_docs_html_renders_cli_and_gui_docs_with_rewritten_links(
     assert 'id="privacy-and-network-boundary"' in app_arch_html
     assert 'href="../docs/privacy.html"' in app_arch_html
     assert 'href="../../docs/privacy.html"' in app_arch_html
+
+    dv_arm64_html = (tmp_path / "docs/deepvariant-arm64.html").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        'href="resource_estimates.html#deepvariant-postprocess_variants"'
+        in dv_arm64_html
+    )
+    res_est_html = (tmp_path / "docs/resource_estimates.html").read_text(
+        encoding="utf-8"
+    )
+    assert 'id="deepvariant-postprocess_variants"' in res_est_html
 
     # Every relative link to a rendered doc or doc image must resolve to a generated file.
     missing_targets: list[str] = []

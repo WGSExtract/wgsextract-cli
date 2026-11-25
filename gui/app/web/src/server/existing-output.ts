@@ -68,7 +68,8 @@ export async function findExistingOutput(
         return { kind: "none" };
     }
     const parsed = parseArgs(args, 0, bundleRoot);
-    const configuredOutdir = parsed.explicitOutdir ? undefined : await configuredOutputDirectory(manifest, bundleRoot);
+    const configured = await loadConfiguredSettings(manifest, bundleRoot);
+    const configuredOutdir = parsed.explicitOutdir ? undefined : configured.outputDirectory;
     const outdir = resolveOutputDirectory(args, parsed.explicitOutdir, configuredOutdir, parsed.inputPaths, bundleRoot);
     if (!outdir) {
         return { kind: "none" };
@@ -85,7 +86,7 @@ export async function findExistingOutput(
     let best: CandidateMatch | undefined;
     for (const fileName of entries) {
         const manifestPath = path.join(realOutdir, fileName);
-        const candidate = await evaluateManifest(manifestPath, realOutdir, entries, args, action, spec.format, bundleRoot);
+        const candidate = await evaluateManifest(manifestPath, realOutdir, entries, args, action, spec.format, bundleRoot, configured.configFile);
         if (candidate && (!best || candidate.timestampMs > best.timestampMs)) {
             best = candidate;
         }
@@ -105,6 +106,7 @@ async function evaluateManifest(
     action: ActionSpec,
     format: "wgsextract.result/1",
     bundleRoot: string,
+    configFile: string | undefined,
 ): Promise<CandidateMatch | undefined> {
     let raw: unknown;
     try {
@@ -131,7 +133,7 @@ async function evaluateManifest(
     if (!optionsMatch(current, doc.raw, cmdWords, bundleRoot)) {
         return undefined;
     }
-    const checked = await checkFreshnessAndContainment(doc, recordedInputs, realOutdir, allManifestFiles, manifestPath);
+    const checked = await checkFreshnessAndContainment(doc, recordedInputs, realOutdir, allManifestFiles, manifestPath, configFile);
     if (!checked.fresh || !checked.validatedDocument) {
         return undefined;
     }
@@ -208,8 +210,16 @@ async function checkFreshnessAndContainment(
     realOutdir: string,
     allManifestFiles: string[],
     manifestPath: string,
+    configFile: string | undefined,
 ): Promise<{ fresh: boolean; timestampMs: number; validatedDocument?: ResultDocument }> {
     let maxInputMtimeMs = 0;
+    if (configFile) {
+        // Editing config.toml (e.g., microarray_min_dp or confidence_min_depth) invalidates older runs.
+        const cfgInfo = await safeStat(configFile);
+        if (cfgInfo && cfgInfo.mtimeMs > maxInputMtimeMs) {
+            maxInputMtimeMs = cfgInfo.mtimeMs;
+        }
+    }
     for (const input of recordedInputs) {
         if (input.path.includes("://")) continue;
         const info = await safeStat(input.path);
@@ -265,20 +275,24 @@ function isContainedInDirectory(candidatePath: string, parentDir: string): boole
     return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-async function configuredOutputDirectory(manifest: BundleManifest, bundleRoot: string): Promise<string | undefined> {
+async function loadConfiguredSettings(
+    manifest: BundleManifest,
+    bundleRoot: string,
+): Promise<{ outputDirectory?: string; configFile?: string }> {
     try {
         const control = findConfigEditorControl(manifest, "wgs_settings");
         const saved = await loadBundleState(bundleRoot);
         const file = configPath(control, saved.configFilePaths.wgs_settings, bundleRoot);
         const values = parseConfigToml(await readFile(file, "utf8"));
         const raw = values.output_directory;
-        if (typeof raw === "string" && raw.trim()) {
-            return resolveUserPath(raw.trim(), usersWorkspaceFor(bundleRoot));
-        }
+        const outputDirectory = typeof raw === "string" && raw.trim()
+            ? resolveUserPath(raw.trim(), usersWorkspaceFor(bundleRoot))
+            : undefined;
+        return { ...(outputDirectory ? { outputDirectory } : {}), configFile: file };
     } catch {
         // Non-WGSExtract bundles or missing config.toml simply use default output locations.
+        return {};
     }
-    return undefined;
 }
 
 async function listManifestFiles(outdir: string): Promise<string[]> {

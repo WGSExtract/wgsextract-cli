@@ -71,7 +71,10 @@ export async function runAction(
     }
     // Without a check the tab opens at once, as it always has.
     const checked = options.prerequisitesChecked || !state.manifest?.prerequisites;
-    if (!checked && !(await prerequisitesInstalled(action, context, reference))) {
+    if (!checked && !(await prerequisitesInstalled(action, context, reference, {
+        ...(options.skipExistingCheck ? { skipExistingCheck: true } : {}),
+        ...(options.forceRerun ? { forceRerun: true } : {}),
+    }))) {
         return;
     }
     if (action.viewerInput) {

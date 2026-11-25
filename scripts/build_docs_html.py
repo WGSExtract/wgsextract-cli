@@ -149,7 +149,8 @@ def copy_doc_assets(root: Path, output_dir: Path) -> dict[PurePosixPath, PurePos
 def github_slug(heading_text: str, counts: dict[str, int]) -> str:
     plain = re.sub(r"`([^`]+)`", r"\1", heading_text)
     plain = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", plain)
-    plain = re.sub(r"[*_~]", "", plain)
+    plain = re.sub(r"[*~]", "", plain)
+    plain = re.sub(r"(?<!\w)_+|_+(?!\w)", "", plain)
     slug = re.sub(r"[^\w\s-]", "", plain.lower(), flags=re.UNICODE).strip()
     slug = re.sub(r"\s+", "-", slug)
     if not slug:

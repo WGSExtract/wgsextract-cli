@@ -221,6 +221,9 @@ export interface PendingPrerequisites {
     missing: MissingPrerequisite[];
     /** Set when the user said it was installed, or an install finished, and it still isn't. */
     stillMissing: boolean;
+    /** Preserved from Force Run Again so Continue / Install and Continue still forces execution. */
+    skipExistingCheck?: boolean;
+    forceRerun?: boolean;
 }
 
 /** An output-only action held back because its permanent outputs are already newer than its inputs. */

@@ -97,7 +97,6 @@ jobs:
   # wgse.bio and wgsextract.github.io can serve them directly without project
   # Pages once project Pages on this repository is turned off.
   sync-main-site:
-    needs: deploy
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
