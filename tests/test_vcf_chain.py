@@ -1,14 +1,16 @@
 """Targeted annotation chains and step resume (issue #1291)."""
 
 import gzip
+import hashlib
 import json
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, reference_for_vcf
-from tests.smoke_utils import run_cli, state_directory_setting
+from tests.smoke_utils import run_cli
 from tests.test_vcf_annotations import (
     REVEL_HEADER,
     SAMPLE_ROWS,
@@ -59,6 +61,22 @@ def chain_case(tmp_path: Path) -> ChainCase:
     args = ["--json", "--config", str(config), "--ref", str(ref),
             "vcf", "chain-annotate", "--input", sample]  # fmt: skip
     return args, revel, sample
+
+
+@pytest.fixture
+def revel_chain(tmp_path: Path) -> list[str]:
+    revel = tmp_path / "revel.tsv.gz"
+    _tsv(revel, REVEL_HEADER, ["1 100 100 A G 0.9", "2 100 100 A G 0.8"])
+    config = tmp_path / "revel.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + f"revel_tsv_path = {json.dumps(str(revel))}\n",
+        encoding="utf-8",
+    )
+    return [
+        "--json", "--config", str(config), "--ref", str(tmp_path),
+        "vcf", "chain-annotate", "--annotations", "revel", "--threads", "1",
+    ]  # fmt: skip
 
 
 def test_1291_targeted_chain_matches_full_chain_then_slice(
@@ -125,24 +143,250 @@ def test_1291_targeted_chain_matches_full_chain_then_slice(
     assert retained.read_bytes() == before
 
 
-@pytest.mark.parametrize("region", ["chr1:800-900", "chrNotPresent"])
-def test_1291_empty_scope_writes_an_indexed_vcf_and_table(
-    tmp_path: Path, chain_case: ChainCase, region: str
+def test_1475_empty_scope_warns_and_writes_an_indexed_vcf_and_table(
+    tmp_path: Path, chain_case: ChainCase
 ) -> None:
     args, revel, _ = chain_case
     _tsv(revel, REVEL_HEADER, ["1 100 100 C T 0.9"])
     out = tmp_path / "empty"
     code, stdout, errors = run_cli([
         *args, "--annotations", "clinvar,revel", "--outdir", str(out),
-        "--region", region, "--to-table",
+        "--region", "chr1:800-900", "--to-table",
     ])  # fmt: skip
     assert code == 0, (stdout, errors)
     result = json.loads(stdout)
     roles = {item["role"]: Path(item["path"]) for item in result["outputs"]}
     assert _query(roles["annotated_vcf"]) == []
+    assert "no_variants" in {warning["code"] for warning in result["warnings"]}
     assert Path(str(roles["annotated_vcf"]) + ".tbi").is_file()
     assert "clinvar_significance" in roles["variant_table"].read_text().splitlines()[0]
     assert roles["variant_database"].is_file()
+
+
+def test_1475_duplicate_annotators_are_refused(
+    tmp_path: Path, chain_case: ChainCase
+) -> None:
+    args, _, _ = chain_case
+    out = tmp_path / "duplicate"
+    code, _, errors = run_cli([
+        *args, "--annotations", "clinvar, CLINVAR ", "--outdir", str(out),
+    ])  # fmt: skip
+    assert code == 2, errors
+    assert "--annotations" in errors and "clinvar more than once" in errors
+    assert not (out / "chain_annotated.vcf.gz").exists()
+
+
+@pytest.mark.parametrize(
+    ("region", "message"),
+    [
+        ("chrNotPresent", "unknown VCF contig"),
+        ("chr1:1001-", "out of bounds"),
+        ("1:999-1001", "out of bounds"),
+    ],
+)
+def test_1475_invalid_regions_are_refused(
+    tmp_path: Path, chain_case: ChainCase, region: str, message: str
+) -> None:
+    args, _, _ = chain_case
+    out = tmp_path / "invalid-region"
+    code, _, errors = run_cli([
+        *args, "--annotations", "clinvar", "--outdir", str(out), "--region", region,
+    ])  # fmt: skip
+    assert code == 2, errors
+    assert region in errors and message in errors
+    assert not (out / "chain_annotated.vcf.gz").exists()
+
+
+def test_1475_contig_length_before_id_still_bounds_regions(
+    tmp_path: Path, revel_chain: list[str]
+) -> None:
+    sample = tmp_path / "reordered.vcf"
+    sample.write_text(
+        '##fileformat=VCFv4.2\n##contig=<length=100, Description="reference, segment", ID=chr1>\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\tlast_base\tA\tG\t.\tPASS\t.\n",
+        encoding="utf-8",
+    )
+    code, _, errors = run_cli(
+        [*revel_chain, "--input", str(sample), "--region", "chr1:101"]
+    )
+    assert code == 2, errors
+    assert "out of bounds" in errors and "100 bp" in errors
+
+
+def test_1475_whole_contig_keeps_the_telomeric_breakend(
+    tmp_path: Path, revel_chain: list[str]
+) -> None:
+    sample = _sample(
+        tmp_path,
+        ["100 last_base A G . PASS . GT 0/1", "101 telomere A A. . PASS . GT 0/1"],
+        length=100,
+    )
+    out = tmp_path / "telomere"
+    code, stdout, errors = run_cli([
+        *revel_chain, "--input", sample, "--outdir", str(out), "--region", "chr1",
+    ])  # fmt: skip
+    assert code == 0, (stdout, errors)
+    assert _query(out / "chain_annotated.vcf.gz", "%ID\n") == ["last_base", "telomere"]
+    assert json.loads(stdout)["metrics"]["region_bases"] == 100
+
+
+def test_1475_unindexed_vcf_can_target_a_contig_omitted_from_its_header(
+    tmp_path: Path, revel_chain: list[str]
+) -> None:
+    sample = tmp_path / "partial.vcf"
+    sample.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=100>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\tdeclared\tA\tG\t.\tPASS\t.\n"
+        "chr2\t100\tundeclared\tA\tG\t.\tPASS\t.\n",
+        encoding="utf-8",
+    )
+    out = tmp_path / "partial"
+    code, stdout, errors = run_cli([
+        *revel_chain, "--input", str(sample), "--outdir", str(out), "--region", "chr2",
+    ])  # fmt: skip
+    assert code == 0, (stdout, errors)
+    assert _query(out / "chain_annotated.vcf.gz", "%ID:%REVEL\n") == ["undeclared:0.8"]
+    assert json.loads(stdout)["metrics"]["region_bases"] is None
+
+
+def test_1475_bed_reports_the_clipped_union_and_source_digest(
+    tmp_path: Path, chain_case: ChainCase
+) -> None:
+    args, _, _ = chain_case
+    bed = tmp_path / "clipped.bed.gz"
+    with gzip.open(bed, "wt", encoding="utf-8") as stream:
+        stream.write("# Région\n1\t99\t100\nchr1\t98\t100\n")
+    with gzip.open(bed, "at", encoding="utf-8") as stream:
+        stream.write("2\t99\t1030\nchr2\t1000\t1100\n")
+    out = tmp_path / "clipped"
+    code, stdout, errors = run_cli([
+        *args, "--annotations", "clinvar", "--outdir", str(out), "--bed", str(bed),
+    ])  # fmt: skip
+    assert code == 0, (stdout, errors)
+    assert _query(out / "chain_annotated.vcf.gz", "%CHROM:%POS\n") == [
+        "chr1:100",
+        "chr2:100",
+    ]
+    result = json.loads(Path(json.loads(stdout)["manifest"]).read_text())
+    counts = {"region_intervals": 2, "region_bases": 903}
+    for key, value in counts.items():
+        assert result["metrics"][key] == result["provenance"]["params"][key] == value
+    expected = hashlib.sha256(bed.read_bytes()).hexdigest()
+    assert Path(result["provenance"]["params"]["bed"]) == bed
+    assert result["provenance"]["params"]["bed_sha256"] == expected
+
+
+def test_1475_absent_bed_contigs_warn_without_widening_scope(
+    tmp_path: Path, chain_case: ChainCase
+) -> None:
+    args, _, _ = chain_case
+    bed = tmp_path / "absent.bed"
+    bed.write_text("chrNotPresent\t0\t100\n")
+    out = tmp_path / "absent"
+    code, stdout, errors = run_cli([
+        *args, "--annotations", "clinvar", "--outdir", str(out), "--bed", str(bed),
+    ])  # fmt: skip
+    assert code == 0, (stdout, errors)
+    warnings = {
+        warning["code"]: warning["details"]
+        for warning in json.loads(stdout)["warnings"]
+    }
+    assert warnings["bed_contigs_not_in_vcf"]["contigs"] == "chrNotPresent"
+    assert _query(out / "chain_annotated.vcf.gz") == []
+
+
+def test_1475_dry_run_plans_without_touching_existing_chain(
+    tmp_path: Path, chain_case: ChainCase
+) -> None:
+    args, revel, _ = chain_case
+    _tsv(revel, REVEL_HEADER, ["1 100 100 C T 0.9"])
+    out = tmp_path / "dry-run"
+    invocation = [
+        *args, "--annotations", "clinvar,revel", "--outdir", str(out),
+        "--region", "chr1:99-101", "--keep-intermediates",
+    ]  # fmt: skip
+    code, stdout, errors = run_cli(invocation)
+    assert code == 0, (stdout, errors)
+    previous = {p: p.read_bytes() for p in out.rglob("*") if p.is_file()}
+
+    options = ["--dry-run", "--force-step", "revel", "--to-table"]
+    code, stdout, errors = run_cli([*invocation, *options])
+    assert code == 0, (stdout, errors)
+    result = json.loads(stdout)
+    assert result["details"]["dry_run"] is True
+    assert [(step["step"], step["action"]) for step in result["details"]["steps"]] == [
+        ("select", "skip"),
+        ("clinvar:1", "skip"),
+        ("revel:2", "run"),
+        ("trim", "run"),
+        ("publish", "run"),
+        ("table", "run"),
+    ]
+    assert not result["outputs"]
+    plan = Path(result["manifest"])
+    manifest = json.loads(plan.read_text())
+    assert manifest["details"] == result["details"]
+    assert not manifest["run"].get("children")
+    assert not list(out.glob("*_variants.*"))
+    assert all(path.read_bytes() == data for path, data in previous.items())
+
+    code, stdout, errors = run_cli([*invocation[1:], *options])
+    assert code == 0, errors
+    assert "vcf chain-annotate plan" in stdout and "revel:2" in stdout
+
+
+def test_1475_dry_run_manifest_cannot_replace_the_bed_input(
+    tmp_path: Path, chain_case: ChainCase
+) -> None:
+    args, _, _ = chain_case
+    bed = tmp_path / "chain_annotate.plan.manifest.json"
+    bed.write_bytes(b"chr1\t99\t100\n")
+    code, _, errors = run_cli([
+        *args, "--annotations", "clinvar", "--outdir", str(tmp_path), "--bed", str(bed),
+        "--dry-run",
+    ])  # fmt: skip
+    assert code == 2, errors
+    assert "dry-run manifest would overwrite an input" in errors
+    assert bed.read_bytes() == b"chr1\t99\t100\n"
+
+
+def test_1475_failed_forced_rebuild_preserves_the_published_vcf_and_resumes(
+    tmp_path: Path, chain_case: ChainCase
+) -> None:
+    args, revel, _ = chain_case
+    _tsv(revel, REVEL_HEADER, ["1 100 100 C T 0.9"])
+    out = tmp_path / "forced"
+    invocation = [
+        *args, "--annotations", "clinvar,revel", "--outdir", str(out),
+        "--keep-intermediates",
+    ]  # fmt: skip
+    code, stdout, errors = run_cli(invocation)
+    assert code == 0, (stdout, errors)
+    published = out / "chain_annotated.vcf.gz"
+    successful = [
+        published,
+        Path(f"{published}.tbi"),
+        Path(json.loads(stdout)["manifest"]),
+    ]
+    previous = {path: path.read_bytes() for path in successful}
+    data = revel.read_bytes()
+    revel.write_text("not gzip", encoding="utf-8")
+    code, _, errors = run_cli([*invocation, "--force-step", "revel"])
+    assert code != 0
+    assert "Annotation step 'revel' failed" in errors
+    assert all(path.read_bytes() == contents for path, contents in previous.items())
+
+    revel.write_bytes(data)
+    code, stdout, errors = run_cli(invocation)
+    assert code == 0, (stdout, errors)
+    steps = json.loads(stdout)["details"]["steps"]
+    assert [(step["step"], step["action"]) for step in steps] == [
+        ("clinvar:1", "skip"),
+        ("revel:2", "run"),
+    ]
+    assert "snv:Pathogenic:0.9" in _query(published, "%ID:%CLNSIG:%REVEL\n")
 
 
 def test_1291_empty_target_keeps_the_bigwig_annotation_header(
