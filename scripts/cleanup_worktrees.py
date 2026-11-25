@@ -41,7 +41,7 @@ else:
         return module
 
     inventory_files = load_helper(
-        "inventory", "468ad3e0149a7374a699e3d687bd40fcc1915e6dc0efc410a68312ab76f66f3c"
+        "inventory", "967c7b2030819307b7ce46ace00e38a094df515972aaba80892b14e7dd8c1655"
     )
     activity = load_helper(
         "activity", "2700ae87bfa047a1668db32a7a592beaf0b3d67013594420400eb31bda1125d1"
@@ -320,9 +320,28 @@ def inspected_paths(root: Path, paths: set[Path]) -> set[Path]:
     return blocked
 
 
+def explicit_crlf_checkout(path: Path, relative: Path) -> bool:
+    name = str(relative)
+    entries = git(path, "check-attr", "--cached", "-z", "--all", "--", name).split(
+        "\0"
+    )[:-1]
+    attributes = {}
+    for reported, attribute, setting in zip(
+        entries[::3], entries[1::3], entries[2::3], strict=True
+    ):
+        if reported != name:
+            raise CleanupError("Git returned attributes for an unexpected path")
+        attributes[attribute] = setting
+    return (
+        attributes.get("text") == "set"
+        and attributes.get("eol") == "crlf"
+        and not attributes.keys() & {"filter", "ident", "working-tree-encoding"}
+    )
+
+
 def tracked_content_matches(path: Path, head: str, tracked: set[Path]) -> bool:
     # Git status and worktree remove both trust cached index stat data. Hash
-    # the raw checkout bytes against the exact commit instead of running filters.
+    # the checkout bytes against the exact commit instead of trusting filters.
     seen = set()
     for record in git(path, "ls-tree", "-r", "-z", "--full-tree", head).split("\0")[
         :-1
@@ -335,7 +354,14 @@ def tracked_content_matches(path: Path, head: str, tracked: set[Path]) -> bool:
             or relative not in tracked
             or relative.is_absolute()
             or ".." in relative.parts
-            or not inventory_files.matches_tracked_blob(path, relative, mode, oid)
+        ):
+            return False
+        if not inventory_files.matches_tracked_blob(path, relative, mode, oid) and not (
+            mode in {"100644", "100755"}
+            and explicit_crlf_checkout(path, relative)
+            and inventory_files.matches_tracked_blob(
+                path, relative, mode, oid, crlf=True
+            )
         ):
             return False
         seen.add(relative)

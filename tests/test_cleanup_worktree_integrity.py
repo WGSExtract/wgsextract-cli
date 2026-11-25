@@ -269,3 +269,35 @@ def test_1393_keeps_same_size_tracked_edit_hidden_by_git_stat_cache(
     assert run.returncode == 0, run.stderr
     assert result(repo, path)["reason"] == "tracked-content-unverified"
     assert source.read_text() == edited
+
+
+@pytest.mark.parametrize("case", ["git-checkout", "mixed-endings", "explicit-filter"])
+def test_1393_verifies_only_unambiguous_git_crlf_checkouts(
+    repo: Path, github: Callable[..., None], case: str
+) -> None:
+    extra = " filter=unspecified" if case == "explicit-filter" else ""
+    (repo / ".gitattributes").write_text(f"*.cmd text eol=crlf{extra}\n")
+    expected = b"echo first\r\necho second\r\n"
+    (repo / "demo.cmd").write_bytes(expected)
+    git(repo, "add", ".gitattributes", "demo.cmd")
+    git(repo, "commit", "-m", "Track a Windows command with CRLF checkout")
+    path = topic(repo)
+    command = path / "demo.cmd"
+    assert command.read_bytes() == expected
+    if case == "mixed-endings":
+        expected = b"echo first\necho second\r\n"
+        command.write_bytes(expected)
+    github([pull(path)])
+
+    run = cleanup(repo, "--github", "--apply")
+
+    assert run.returncode == 0, run.stderr
+    if case == "git-checkout":
+        assert result(repo, path)["reason"] == "removed"
+        assert not path.exists()
+    else:
+        assert result(repo, path)["reason"] in {
+            "dirty-or-untracked",
+            "tracked-content-unverified",
+        }
+        assert command.read_bytes() == expected

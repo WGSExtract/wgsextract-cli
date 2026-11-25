@@ -10,6 +10,12 @@ import time
 from pathlib import Path
 from typing import Any
 
+FULL_OS_GATES = (
+    "ubuntu_ci.yml",
+    "windows_ci.yml",
+    "macos_ci.yml",
+    "linux_arm64.yml",
+)
 BUILD_GATES = (
     "linux_aligners.yml",
     "macos_aligners.yml",
@@ -102,7 +108,8 @@ def preflight(repository: str, tag: str, sha: str) -> tuple[int, int]:
         raise ValueError("Expected a release tag and its full commit SHA")
     gui_id = dispatch(repository, tag, GUI, tag=tag, candidate=True)
     pending = {
-        workflow: dispatch(repository, tag, workflow) for workflow in BUILD_GATES
+        workflow: dispatch(repository, tag, workflow)
+        for workflow in (*FULL_OS_GATES, *BUILD_GATES)
     }
     pending[GUI] = gui_id
     gui_attempt: int | None = None
