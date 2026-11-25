@@ -57,7 +57,7 @@ class FactSpec:
 FACTS: dict[str, FactSpec] = {
     spec.name: spec
     for spec in (
-        FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 6),
+        FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 7),
         FactSpec(
             "platform",
             "Sequencing platform, from read groups, read names or a bounded FASTQ sample.",

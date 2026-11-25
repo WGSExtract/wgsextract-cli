@@ -30,7 +30,32 @@ from scripts.ci_test_dependencies import docs_test_targets as docs_test_targets
 from scripts.ci_test_dependencies import test_inputs as referenced_inputs
 from scripts.pr_checks_ready import checks_ready as checks_ready
 from scripts.pr_checks_ready import latest_ready_run as latest_ready_run
-from tests.ci_routing_helpers import run_router
+from tests.ci_routing_helpers import run_router, stage_router
+
+
+@pytest.fixture
+def empty_routing_checkout(tmp_path: Path) -> Path:
+    root = tmp_path / "checkout"
+    root.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=CI",
+            "-c",
+            "user.email=ci@example.invalid",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "base",
+            "--allow-empty",
+        ],
+        cwd=root,
+        check=True,
+    )
+    return root
 
 
 @pytest.mark.parametrize(
@@ -76,19 +101,10 @@ def test_1495_remote_supervisor_change_runs_native_smoke_not_product_suite() -> 
         assert lanes[platform] == ["tests/test_ci_certify_remote.py"]
 
 
-def test_release_only_lanes_are_not_exported_by_the_pr_router() -> None:
-    script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
-    output = subprocess.check_output(
-        [
-            sys.executable,
-            str(script),
-            "--base",
-            "HEAD",
-            "--head",
-            "HEAD",
-        ],
-        text=True,
-    )
+def test_release_only_lanes_are_not_exported_by_the_pr_router(
+    empty_routing_checkout: Path,
+) -> None:
+    output = run_router(empty_routing_checkout, "HEAD")
     assert dict(line.split("=") for line in output.splitlines()) == {
         "cli": "false",
         "docs": "false",
@@ -216,8 +232,9 @@ def test_queue_routes_runtime_to_smoke_without_full_or_optional_suites(
 )
 def test_release_only_install_lab_no_longer_needs_a_live_label_lookup(
     tmp_path: Path,
+    empty_routing_checkout: Path,
 ) -> None:
-    root = Path(__file__).resolve().parents[1]
+    stage_router(empty_routing_checkout)
     command = workflow_shell("Route the complete PR diff")
     # GitHub's API is the network boundary; git diff and routing run for real.
     gh = tmp_path / "gh"
@@ -243,7 +260,7 @@ def test_release_only_install_lab_no_longer_needs_a_live_label_lookup(
     }
     result = subprocess.run(
         ["bash", "-c", command],
-        cwd=root,
+        cwd=empty_routing_checkout,
         env=environment,
         capture_output=True,
         text=True,
@@ -435,20 +452,7 @@ def test_757_diff_routes_both_sides_of_a_cross_area_rename(
     (tmp_path / "native").mkdir()
     git("mv", "source.py", "native/source.py")
     git("commit", "--quiet", "-m", "move")
-    script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
-    output = subprocess.check_output(
-        [
-            sys.executable,
-            str(script),
-            "--base",
-            base,
-            "--head",
-            "HEAD",
-            *(["--draft"] if draft else []),
-        ],
-        cwd=tmp_path,
-        text=True,
-    )
+    output = run_router(tmp_path, base, *(["--draft"] if draft else []))
     selected = dict(line.split("=", 1) for line in output.splitlines())
     assert selected["fast"] == str(draft).lower()
     assert selected["docs"] == "false"
@@ -632,12 +636,13 @@ def test_1551_ci_policy_runs_selected_tests_on_workers_in_a_fresh_checkout(
 @LINUX_BASH
 @pytest.mark.parametrize("base", ["HEAD", "not-a-git-revision"])
 def test_802_router_exception_cannot_be_hidden_by_the_summary_pipeline(
-    tmp_path: Path, base: str
+    tmp_path: Path, empty_routing_checkout: Path, base: str
 ) -> None:
+    stage_router(empty_routing_checkout)
     output = tmp_path / "outputs"
     result = subprocess.run(
         ["bash", "-c", workflow_shell("Route the complete PR diff")],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=empty_routing_checkout,
         env={
             **os.environ,
             "BASE": base,
