@@ -131,13 +131,25 @@ def junit(data: bytes, tests: set[str]) -> tuple[tuple[Case, ...], int]:
 
 
 def artifact_rows(api: GitHub, start: datetime, end: datetime) -> list[Row]:
-    # Artifact IDs and creation timestamps are not in the same order.
-    seen = {
-        row["id"]: row
-        for name in ARTIFACT_OS
-        for row in api.pages(f"actions/artifacts?name={name}", "artifacts")
-        if row["name"] == name and start <= stamp(row["created_at"]) < end
-    }
+    seen: dict[int, Row] = {}
+    # The registry lists recent uploads first, not strictly by creation time.
+    # Inspect whole pages and leave two days of overlap before stopping.
+    cutoff = start - timedelta(days=2)
+    for name in ARTIFACT_OS:
+        for page in range(1, 101):
+            batch = api.api(
+                "GET", f"actions/artifacts?name={name}&per_page=100&page={page}"
+            )["artifacts"]
+            dated = [(stamp(row["created_at"]), row) for row in batch]
+            for created, row in dated:
+                if row["name"] == name and start <= created < end:
+                    seen[row["id"]] = row
+            if len(batch) < 100 or all(created < cutoff for created, _ in dated):
+                break
+        else:
+            raise ValueError(
+                f"Artifact history for {name} did not reach the report cutoff"
+            )
     return list(seen.values())
 
 

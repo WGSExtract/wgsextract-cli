@@ -16,7 +16,7 @@ import pytest
 from scripts.ci_efficiency_report import stamp
 from scripts.ci_github import GitHub
 from scripts.ci_test_usefulness import summarize
-from scripts.ci_test_usefulness_inputs import Case, Report, junit
+from scripts.ci_test_usefulness_inputs import Case, Report, artifact_rows, junit
 from scripts.ci_test_usefulness_report import measure, publish
 
 REPOSITORY = "owner/repo"
@@ -65,7 +65,12 @@ class FixtureGitHub(GitHub):
         name = query.get("name", [""])[0]
         if method == "GET":
             if url.path == "actions/artifacts":
-                return {"artifacts": [a for a in self.artifacts if a["name"] == name]}
+                start = (int(query.get("page", ["1"])[0]) - 1) * 100
+                return {
+                    "artifacts": [a for a in self.artifacts if a["name"] == name][
+                        start : start + 100
+                    ]
+                }
             if url.path == "actions/workflows/ubuntu_ci.yml/runs":
                 status = query.get("status", [""])[0]
                 return {
@@ -204,6 +209,7 @@ def test_weekly_review_links_cost_and_candidates_to_observed_code_changes(
         "test_same": "",
         "test_variant": "",
         "test_flake": "",
+        "test_removed": "",
     }
     for hour in range(1, 16):
         api.run(
@@ -267,9 +273,37 @@ def test_weekly_review_links_cost_and_candidates_to_observed_code_changes(
     assert tests["test_flake"]["same_sha_failure_then_pass_runs"] == []
     move = body.split("### Move to nightly")[1].split("###")[0]
     assert "test_slow_duplicate" in move and "test_flake" not in move
+    assert "test_removed" not in move and tests["test_removed"]["passes"] == 16
     assert f"/commit/{changed}" in move
     assert "Parametrize" in body and "review removing" in body
     assert "16 JUnit artifacts" in body and "/actions/runs/90" in body
+
+
+def test_artifact_discovery_needs_only_recent_history() -> None:
+    class HistoricArtifacts(FixtureGitHub):
+        def api(
+            self, method: str, path: str, data: dict[str, Any] | None = None
+        ) -> Any:
+            query = parse_qs(urlsplit(path).query)
+            if query.get("page") == ["3"]:
+                raise AssertionError("Long-expired history should not be queried")
+            return super().api(method, path, data)
+
+    api = HistoricArtifacts()
+    for index in range(200):
+        api.artifacts.append(
+            {
+                "id": index,
+                "name": "tests-ubuntu-all",
+                "created_at": "2026-11-18T10:00:00Z"
+                if index == 99
+                else "2026-10-01T10:00:00Z",
+            }
+        )
+    rows = artifact_rows(
+        api, stamp("2026-11-16T00:00:00Z"), stamp("2026-11-23T00:00:00Z")
+    )
+    assert [row["id"] for row in rows] == [99]
 
 
 def test_junit_skips_and_teardown_errors_are_not_successes() -> None:

@@ -96,7 +96,8 @@ prioritizing failed runs and comparisons at the same SHA, and reports what
 it left out. It includes all available scheduled nightly JUnit artifacts.
 Times are summed JUnit durations, not saved runner wall time.
 
-- **Move to nightly** needs no recorded failures, at least 15 pre-merge
+- **Move to nightly** needs a test function still present in the checkout,
+  no recorded failures, at least 15 pre-merge
   passes across five runs, and at least 120 seconds on OS/suite combinations
   where the same case also passed at night.
 - **Possible flakes** failed before passing at the same tested SHA, stage,

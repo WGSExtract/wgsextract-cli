@@ -177,6 +177,18 @@ def definitions(
     }
 
 
+def current_moves(root: Path, tests: dict[str, TestStats]) -> set[str]:
+    candidates: dict[str, list[str]] = defaultdict(list)
+    for node, row in tests.items():
+        if row.move:
+            candidates[node.partition("::")[0]].append(node)
+    moves: set[str] = set()
+    for file, nodes in candidates.items():
+        names = definitions(root, file)
+        moves.update(node for node in nodes if node.split("[", 1)[0] in names)
+    return moves
+
+
 @dataclass(frozen=True)
 class Pair:
     left: str
@@ -260,6 +272,7 @@ def render(
     tests: dict[str, TestStats],
     changes: dict[str, Change],
     pairs: list[Pair],
+    moves: set[str],
 ) -> str:
     reports = evidence.reports
     coverage = evidence.coverage
@@ -321,7 +334,7 @@ def render(
             f"No recorded failures, ≥{MIN_PREMERGE_PASSES} pre-merge passes across "
             f"≥{MIN_PREMERGE_RUNS} runs and ≥{MIN_PREMERGE_SECONDS} pre-merge test seconds "
             "on OS/suite combinations where this same case also passed at night. "
-            "Verify the PR gate still covers the fast path before moving."
+            "The test function still exists. Verify current parameter IDs and PR gate coverage before moving."
         ),
         [
             f"- {inline(node)}: **{row.nightly_savings:.0f}s** pre-merge overlap "
@@ -331,7 +344,7 @@ def render(
             for node, row in sorted(
                 tests.items(), key=lambda item: (-item[1].nightly_savings, item[0])
             )
-            if row.move
+            if node in moves
         ],
     )
     section(

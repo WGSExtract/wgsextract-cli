@@ -15,6 +15,7 @@ from scripts.ci_merge_group_passes import gh_api
 from scripts.ci_test_usefulness import (
     MARKER,
     TITLE,
+    current_moves,
     data_rows,
     duplicates,
     git,
@@ -89,6 +90,7 @@ def measure(
     evidence = collect(api, start, end, now, tests, download)
     rows = summarize(evidence.reports)
     pairs = duplicates(root, rows)
+    moves = current_moves(root, rows)
     coverage = evidence.coverage
     changes = source_changes(root, set().union(*coverage.values()))
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -111,10 +113,13 @@ def measure(
         "artifacts_without_junit": evidence.without_junit,
         "unmapped_junit_records": evidence.unmapped,
         "tests": data_rows(rows),
+        "move_to_nightly": sorted(moves),
         "similar_tests": [asdict(pair) for pair in pairs],
     }
     output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    return render(api.repository, run_id, start, end, evidence, rows, changes, pairs)
+    return render(
+        api.repository, run_id, start, end, evidence, rows, changes, pairs, moves
+    )
 
 
 def main() -> None:
