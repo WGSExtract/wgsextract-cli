@@ -191,11 +191,13 @@ def watch(
                 label_exists = True
             if flag(github, pr):
                 actions[pr.number] = "flagged"
-        except (subprocess.CalledProcessError, RuntimeError) as error:
-            print(
-                f"#{pr.number}: {getattr(error, 'stderr', '') or error}",
-                file=sys.stderr,
-            )
+        except subprocess.CalledProcessError as error:
+            # gh passes the body over stdin; its argv identifies the endpoint.
+            detail = (error.stderr or "").strip() or str(error)
+            print(f"#{pr.number}: {error.cmd}: {detail}", file=sys.stderr)
+            actions[pr.number] = "failed"
+        except RuntimeError as error:
+            print(f"#{pr.number}: {error}", file=sys.stderr)
             actions[pr.number] = "failed"
     return actions
 
