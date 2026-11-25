@@ -81,10 +81,14 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--selection", default="all")
+    parser.add_argument("--output", type=Path, default=Path("out/optional-tools"))
     args = parser.parse_args()
-    out = Path("out/optional-tools")
+    out = args.output
     out.mkdir(parents=True, exist_ok=True)
-    for test in selected_suites(args.selection):
+    tests = selected_suites(args.selection)
+    for test in tests:
+        (out / f"{Path(test).stem}.xml").unlink(missing_ok=True)
+    for test in tests:
         tool, expression = SUITES[test]
         command = get_tool_path(tool)
         if not command:

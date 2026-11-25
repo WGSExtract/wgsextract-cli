@@ -475,12 +475,13 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup-pixi
         with:
-          environments: dev
+          environments: dev fastvep
       - name: Import the CLI and collect the tests on the merged tree
         shell: bash
         run: |
           mkdir -p out
           pixi run -e dev --no-install wgsextract --help
+          pixi run -e dev --no-install python -c 'from wgsextract_cli.core.dependencies import get_tool_path; assert get_tool_path("fastvep"), "Required queue smoke tool fastvep is missing"'
           pixi run -e dev --no-install test-ci --collect-only -n 0 --junitxml=out/queue-collection.xml >out/queue-collection.txt || { tail -100 out/queue-collection.txt; exit 1; }
       - name: Execute the bounded cross-platform smoke suite
         shell: bash

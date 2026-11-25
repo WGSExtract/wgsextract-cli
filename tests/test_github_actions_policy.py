@@ -170,6 +170,8 @@ def test_queue_smoke_cannot_invoke_the_hosted_pr_os_suites() -> None:
     assert "fromJSON(needs.changes.outputs.queue_runners)" in queue
     assert "--collect-only" in queue
     assert "timeout-minutes: 10" in queue
+    assert "environments: dev fastvep" in queue
+    assert 'get_tool_path("fastvep")' in queue
     ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
     lint = ubuntu.split("\n  lint:\n", 1)[1].split("\n  test-ubuntu:\n", 1)[0]
     assert "mypy" in lint and "certified" not in lint

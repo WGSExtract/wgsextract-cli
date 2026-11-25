@@ -32,7 +32,7 @@ from scripts.ci_changes import (  # noqa: E402
     setup_checks,
     site_validation,
 )
-from scripts.ci_optional_tools import SUITES  # noqa: E402
+from scripts.ci_optional_tools import SUITES, selected_suites  # noqa: E402
 from scripts.ci_select_tests import ci_test_targets, os_selection, select_tests  # noqa: E402
 
 
@@ -125,6 +125,24 @@ def run_layer(
         stream.write(f"{sha} {name} {platform.node()}\n")
         for index, command in enumerate(commands):
             xml = directory / f"tests-{index}.xml"
+            optional_reports: list[Path] = []
+            if command[:5] == [
+                "pixi",
+                "run",
+                "--no-install",
+                "python",
+                "scripts/ci_optional_tools.py",
+            ]:
+                reports = directory / f"optional-{index}"
+                optional_reports = [
+                    reports / f"{Path(test).stem}.xml"
+                    for test in selected_suites(
+                        command[command.index("--selection") + 1]
+                    )
+                ]
+                for report in optional_reports:
+                    report.unlink(missing_ok=True)
+                command = [*command, "--output", str(reports)]
             pytest_command = (
                 command[1:3] == ["-m", "pytest"]
                 or command[:4]
@@ -208,15 +226,19 @@ def run_layer(
                         check=True,
                     )
             except subprocess.CalledProcessError as error:
-                if pytest_command and xml.is_file():
-                    if any(
-                        case.find("failure") is not None
-                        for case in ET.parse(xml).iter("testcase")
-                    ):
-                        raise CertificationTestFailure(
-                            error.returncode, error.cmd
-                        ) from error
+                failed_reports = [*optional_reports, *([xml] if pytest_command else [])]
+                if any(
+                    case.find("failure") is not None
+                    for report in failed_reports
+                    if report.is_file()
+                    for case in ET.parse(report).iter("testcase")
+                ):
+                    raise CertificationTestFailure(
+                        error.returncode, error.cmd
+                    ) from error
                 raise
+            for report in optional_reports:
+                count += sum(1 for _ in ET.parse(report).iter("testcase"))
             if xml.exists():
                 cases = list(ET.parse(xml).iter("testcase"))
                 count += sum(case.find("skipped") is None for case in cases)

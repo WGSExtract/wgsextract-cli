@@ -686,6 +686,52 @@ def test_951_only_executed_test_failures_post_failure(
     assert states == ["pending", expected]
 
 
+@pytest.mark.parametrize("source", ["assert False", "raise SystemExit(2)"])
+def test_optional_certification_uses_fresh_test_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    (scripts / "ci_optional_tools.py").write_text(
+        "import sys\nfrom pathlib import Path\n"
+        "out = Path(sys.argv[sys.argv.index('--output') + 1])\n"
+        "assert not (out / 'test_contamination.xml').exists()\n"
+        + (
+            "out.mkdir(parents=True, exist_ok=True)\n"
+            "(out / 'test_contamination.xml').write_text("
+            "'<testsuite><testcase><failure/></testcase></testsuite>')\n"
+            if source == "assert False"
+            else ""
+        )
+        + source
+    )
+    stale = Path("out/certify/optional/linux-x64/optional-0/test_contamination.xml")
+    stale.parent.mkdir(parents=True)
+    stale.write_text("<testsuite><testcase><failure/></testcase></testsuite>")
+    command = [
+        "pixi",
+        "run",
+        "--no-install",
+        "python",
+        "scripts/ci_optional_tools.py",
+        "--selection",
+        '["tests/test_contamination.py"]',
+    ]
+    # Use the active test interpreter at the process boundary.
+    run = subprocess.run
+
+    def invoke(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[Any]:
+        return run([sys.executable, *args[4:]], **kwargs)
+
+    monkeypatch.setattr(subprocess, "run", invoke)
+    with pytest.raises(subprocess.CalledProcessError) as caught:
+        run_layer("linux-x64", [command], "optional", 1)
+    assert isinstance(caught.value, CertificationTestFailure) == (
+        source == "assert False"
+    )
+
+
 def test_certify_keeps_windows_test_paths_under_the_tool_path_limit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

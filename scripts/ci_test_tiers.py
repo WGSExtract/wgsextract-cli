@@ -65,7 +65,7 @@ NIGHTLY_ONLY_MODULES = frozenset(
 )
 
 # Merged-tree cross-section; tests for the full affected surface run before
-# enqueueing (hosted or certified). These need only the dev environment.
+# enqueueing (hosted or certified). The offline ACMG tests also need fastVEP.
 QUEUE_SMOKE_TESTS = (
     "tests/test_acmg_site_safety.py",
     "tests/test_microarray_vendor_formats.py",
