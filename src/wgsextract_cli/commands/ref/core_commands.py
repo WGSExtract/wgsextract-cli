@@ -17,6 +17,7 @@ from wgsextract_cli.api.ref import (
     RefLibraryListParams,
     RefVerifyParams,
 )
+from wgsextract_cli.commands._messages.ref import LOG_MESSAGES
 from wgsextract_cli.core import bwa_mem2
 from wgsextract_cli.core.annotation_resources import genome_bytes
 from wgsextract_cli.core.bgzf import open_decompressed
@@ -28,7 +29,6 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.download_progress import format_bytes, redact_urls
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import (
     fasta_prefix,

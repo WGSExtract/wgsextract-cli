@@ -29,6 +29,7 @@ from wgsextract_cli.api.ref import (
     RefYbrowseParams,
     _Resource,
 )
+from wgsextract_cli.commands._messages.ref import LOG_MESSAGES
 from wgsextract_cli.core import (
     ancestry_reference,
     dbsnp,
@@ -59,7 +60,6 @@ from wgsextract_cli.core.gene_map import (
     delete_gene_maps,
     download_gene_maps,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
 
 # Module level so the per-command dependency scan sees the chain download
 # (curl, optionally) that `ref bootstrap` and `ref aadr` make.

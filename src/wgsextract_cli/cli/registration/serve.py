@@ -3,6 +3,15 @@ from __future__ import annotations
 import argparse
 
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    SECONDS,
+    _n,
+)
+
+NEEDS = {
+    "serve": _n(SECONDS, scale=" to start; runs until stopped"),
+}
+
 
 run = command_handler("wgsextract_cli.commands.serve", "run")
 MCP_TRANSPORTS = ("stdio", "http")

@@ -10,6 +10,7 @@ from typing import Any
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.lineage import MtHaplogroupParams
 from wgsextract_cli.cli.registration.lineage import register as register
+from wgsextract_cli.commands._messages.lineage import LOG_MESSAGES, SYSTEM_MESSAGES
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -21,7 +22,6 @@ from wgsextract_cli.core.haplogrep_trees import (
     ensure_tree,
     write_config,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES, SYSTEM_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.mitochondrial import (

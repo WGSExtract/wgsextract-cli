@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.extract import CLI_HELP
+from wgsextract_cli.core.messages import CLI_HELP as SHARED_CLI_HELP
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.y_contigs import Y_SCOPES
@@ -93,7 +94,7 @@ class BamSubsetParams(_ExtractParams):
     )
     region: str | None = param(
         None,
-        help=CLI_HELP["arg_region"],
+        help=SHARED_CLI_HELP["arg_region"],
         flags=("-r", "--region"),
         may_name_file=True,
     )
@@ -176,7 +177,7 @@ class CustomParams(_ExtractParams):
 
     region: str | None = param(
         None,
-        help=CLI_HELP["arg_region"],
+        help=SHARED_CLI_HELP["arg_region"],
         flags=("-r", "--region"),
         doc="Region (chrY:10000-20000), comma-separated regions, or a BED file.",
         may_name_file=True,

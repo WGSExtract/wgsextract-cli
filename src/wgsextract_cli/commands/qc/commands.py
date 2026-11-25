@@ -15,6 +15,7 @@ from wgsextract_cli.api.qc import (
     MultiqcParams,
     QcVcfParams,
 )
+from wgsextract_cli.commands._messages.qc import LOG_MESSAGES
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -22,7 +23,6 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.genome_library import pair_stem
 from wgsextract_cli.core.imputed_vcf import describe, imputation_info
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path, java_local_path
 from wgsextract_cli.core.results import Scalar, current_result, warn
 from wgsextract_cli.core.temp_directory import (
