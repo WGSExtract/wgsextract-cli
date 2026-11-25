@@ -33,6 +33,7 @@ import json
 import re
 import urllib.parse
 import urllib.request
+from bisect import bisect_left, bisect_right
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -100,9 +101,13 @@ COLUMNS = ("gene", "transcript", "tag", "strand", "exon", "exons", "chrom",
 Interval = tuple[int, int]
 
 
-def fetch(url: str, sha256: str, cache: Path) -> Path:
+def fetch(url: str, sha256: str, cache: Path, *, download: bool = True) -> Path:
     path = cache / url.rsplit("/", 1)[1]
     if not path.exists():
+        if not download:
+            raise SystemExit(
+                f"{path} is missing; rerun with --download to fetch {url}."
+            )
         print(f"downloading {url}")
         partial = path.with_suffix(path.suffix + ".part")
         urllib.request.urlretrieve(url, partial)
@@ -140,7 +145,7 @@ class Transcript:
 
 
 def transcripts(
-    gff: Path, symbols: set[str], tag: str
+    gff: Path, symbols: set[str], tag: str, *, exclude_y: bool = False
 ) -> tuple[dict[str, Transcript], dict[str, int]]:
     """Each symbol's ``tag`` transcript on the primary chromosomes, and the
     chromosomes' lengths."""
@@ -152,6 +157,8 @@ def transcripts(
         for line in stream:
             cols = line.rstrip("\n").split("\t")
             if len(cols) < 9 or (chrom := _chromosome(cols[0])) is None:
+                continue
+            if exclude_y and chrom == "chrY":
                 continue
             if cols[2] == "region":
                 # The first region row is the whole chromosome; later ones
@@ -215,6 +222,10 @@ def intervals(
 def rows(
     found: dict[str, Transcript], limits: dict[str, dict[str, list[Interval]]]
 ) -> list[tuple[object, ...]]:
+    indexed = {
+        kind: {chrom: _IntervalIndex(spans) for chrom, spans in by_chrom.items()}
+        for kind, by_chrom in limits.items()
+    }
     out: list[tuple[object, ...]] = []
     for t in sorted(found.values(), key=lambda t: t.gene):
         for number, (start, end) in sorted(t.exons.items()):
@@ -228,9 +239,9 @@ def rows(
             low, high = start - MAX_FLANK, end + MAX_FLANK
             near = sorted(
                 f"{kind}:{max(s, low)}-{min(e, high)}"
-                for kind, by_chrom in limits.items()
-                for s, e in by_chrom.get(t.chrom, ())
-                if s <= high and e >= low
+                for kind, by_chrom in indexed.items()
+                if (index := by_chrom.get(t.chrom)) is not None
+                for s, e in index.overlap(low, high)
             )
             out.append((t.gene, t.accession, "", t.strand, number, len(t.exons),
                         t.chrom, start, end, cds_start or "", cds_end or "",
@@ -238,17 +249,35 @@ def rows(
     return out
 
 
-def write(build: str, table: list[tuple[object, ...]], lengths: dict[str, int],
+class _IntervalIndex:
+    def __init__(self, spans: Iterable[Interval]) -> None:
+        self.spans = sorted(spans)
+        self.starts = [start for start, _ in self.spans]
+        self.max_ends: list[int] = []
+        high = 0
+        for _, end in self.spans:
+            high = max(high, end)
+            self.max_ends.append(high)
+
+    def overlap(self, start: int, end: int) -> Iterable[Interval]:
+        left = bisect_left(self.max_ends, start)
+        right = bisect_right(self.starts, end)
+        return (span for span in self.spans[left:right] if span[1] >= start)
+
+
+def write(path: Path, table: list[tuple[object, ...]], lengths: dict[str, int],
           notes: list[str]) -> None:  # fmt: skip
     chroms = sorted({str(r[6]) for r in table}, key=lambda c: (len(c), c))
     header = [f"# {note}" for note in notes]
     header += [f"#contig\t{c}\t{lengths[c]}" for c in chroms]
     header.append("\t".join(COLUMNS))
     body = [*header, *("\t".join(map(str, r)) for r in table)]
-    path = OUT / f"exons_{build}.tsv.gz"
-    # mtime=0: the same input gives the same bytes.
-    with gzip.GzipFile(path, "wb", compresslevel=9, mtime=0) as out:
-        out.write(("\n".join(body) + "\n").encode())
+    with path.open("wb") as raw:
+        filename = path.name.removesuffix(".gz")
+        with gzip.GzipFile(
+            filename, "wb", fileobj=raw, compresslevel=9, mtime=0
+        ) as out:
+            out.write(("\n".join(body) + "\n").encode())
     print(f"{path}: {len(table)} exons, {path.stat().st_size} bytes")
 
 
@@ -257,27 +286,57 @@ def main() -> None:
     parser.add_argument(
         "--cache", type=Path, default=ROOT / "tmp" / "report-exon-sources"
     )
+    parser.add_argument(
+        "--genome-wide-mane",
+        type=Path,
+        metavar="TSV.GZ",
+        help="Write the MANE Select asset for autosomes and chrX to this path.",
+    )
+    parser.add_argument(
+        "--download",
+        action="store_true",
+        help="Fetch missing pinned NCBI and GIAB public inputs for --genome-wide-mane.",
+    )
     args = parser.parse_args()
     args.cache.mkdir(parents=True, exist_ok=True)
-    lists = json.loads((OUT / "gene_lists.json").read_text(encoding="utf-8"))
-    symbols = {g for meta in lists["lists"].values() for g in meta["genes"]}
-    for build, src in SOURCES.items():
+    genome_wide = args.genome_wide_mane is not None
+    builds: tuple[str, ...]
+    if genome_wide:
+        symbols = _mane_symbols()
+        builds = ("hg38",)
+    else:
+        lists = json.loads((OUT / "gene_lists.json").read_text(encoding="utf-8"))
+        symbols = {g for meta in lists["lists"].values() for g in meta["genes"]}
+        builds = tuple(SOURCES)
+    download = args.download or not genome_wide
+    for build in builds:
+        src = SOURCES[build]
         url, sha = src["gff"]
         tag = src["tag"]
-        found, lengths = transcripts(fetch(url, sha, args.cache), symbols, tag)
+        found, lengths = transcripts(
+            fetch(url, sha, args.cache, download=download),
+            symbols,
+            tag,
+            exclude_y=genome_wide,
+        )
         windows = [
             (t.chrom, s - MAX_FLANK, e + MAX_FLANK)
             for t in found.values()
             for s, e in t.exons.values()
         ]
-        limits = {
-            kind: intervals(fetch(u, h, args.cache), windows)
-            for kind, (u, h) in src["limitations"].items()
-        }
+        limits = {}
+        for kind, (u, h) in src["limitations"].items():
+            bed = fetch(u, h, args.cache, download=download)
+            regions = ((chrom, 1, size) for chrom, size in lengths.items())
+            limits[kind] = intervals(bed, regions if genome_wide else windows)
         table = [(*r[:2], tag, *r[3:]) for r in rows(found, limits)]
+        selection = (
+            f"autosomal and chrX genes with a {tag} transcript"
+            if genome_wide
+            else f"each built-in report gene list gene's {tag} transcript"
+        )
         notes = [
-            f"Exons of each built-in report gene list gene's {tag} transcript, from "
-            f"{src['annotation']}; public domain.",
+            f"Exons of {selection}, from {src['annotation']}; public domain.",
             f"Source: {url} (sha256 {sha}).",
             "limitations: GIAB genome stratifications v3.6 low_mappability "
             "(lowmappabilityall) and segmental_duplication (segdups) intervals "
@@ -286,7 +345,24 @@ def main() -> None:
             "Coordinates are 1-based, inclusive; cds_start/cds_end are empty for an "
             "untranslated exon. Built by scripts/build_report_exons.py.",
         ]
-        write(build, table, lengths, notes)
+        path = args.genome_wide_mane or OUT / f"exons_{build}.tsv.gz"
+        write(path, table, lengths, notes)
+
+
+def _mane_symbols() -> set[str]:
+    path = OUT.parent / "panel" / "genes_hg38.tsv.gz"
+    with gzip.open(path, "rt") as stream:
+        fields = (
+            line.rstrip("\n").split("\t") for line in stream if not line.startswith("#")
+        )
+        columns = next(fields)
+        return {
+            row["symbol"]
+            for values in fields
+            if (row := dict(zip(columns, values, strict=True)))["cds_basis"]
+            == "mane_select"
+            and row["chrom"] != "chrY"
+        }
 
 
 if __name__ == "__main__":
