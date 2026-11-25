@@ -337,7 +337,7 @@ jobs:
           # queue skipped using older caches, so use only the exact-SHA complement.
           if [ -n "$SHARD_SELECTION" ]; then
             TEST_SELECTION="$SHARD_SELECTION"
-            if [ "$SHARD_GATE" = universal-full ]; then cache=(); fi
+            if [ "$SHARD_GATE" = universal-full ] || [ "$SHARD_GATE" = universal-fast ]; then cache=(); fi
             if [ -n "$SHARD_GATE" ] && [ "$SHARD_COUNT" = 1 ]; then
               mkdir -p out
               jq -n --arg mode "$SHARD_GATE" --arg selection "$TEST_SELECTION" \
@@ -348,13 +348,13 @@ jobs:
             flags=()
             if [ "$SYMBOL_DISABLED" = true ]; then flags+=(--disabled); fi
             if timeout 90 pixi run -e dev --no-install python -m scripts.ci_impact_gate \
-              --event "$EVENT" --base HEAD^1 --legacy "$TEST_SELECTION" \
+              --event "$EVENT" --base HEAD^1 --legacy "$TEST_SELECTION" --ready-tier \
               --observations out/test-impact-map/linux.json.gz \
               --output out/test-selection-gate.json "${flags[@]}" \
               && selected=$(jq -ce '.selection | if type=="string" and .=="all" or type=="array" then . else error("invalid selector output") end' out/test-selection-gate.json); then
               if [ "$selected" = '"all"' ]; then TEST_SELECTION=all; else TEST_SELECTION="$selected"; fi
               mode=$(jq -r .mode out/test-selection-gate.json)
-              if [ "$mode" = universal-full ]; then
+              if [ "$mode" = universal-full ] || [ "$mode" = universal-fast ]; then
                 cache=()
               elif [ "$mode" = symbol ]; then
                 echo "Linux symbol gate mode: symbol."

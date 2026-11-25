@@ -106,6 +106,10 @@ def test_release_only_lanes_are_not_exported_by_the_pr_router() -> None:
         "ci": "false",
         "ci_tests": "[]",
         "generic_tests": "[]",
+        "queue_runners": "[]",
+        "queue_tests": "[]",
+        "required_layers": '["generic"]',
+        "test_certified": "false",
         "ubuntu_tests": "[]",
         "macos_tests": "[]",
         "windows_tests": "[]",
@@ -163,15 +167,15 @@ def test_1199_optional_caller_and_router_changes_exercise_integrations(
 
 
 @pytest.mark.parametrize(
-    ("changed", "contamination"),
+    ("changed", "runtime"),
     [
         ("README.md", False),
         ("gui/app/shared/config.ts", False),
         ("src/wgsextract_cli/core/contamination.py", True),
     ],
 )
-def test_1199_queue_full_os_suite_keeps_optional_tools_diff_routed(
-    tmp_path: Path, changed: str, contamination: bool
+def test_queue_routes_runtime_to_smoke_without_full_or_optional_suites(
+    tmp_path: Path, changed: str, runtime: bool
 ) -> None:
     def git(*args: str) -> str:
         return subprocess.check_output(
@@ -197,17 +201,23 @@ def test_1199_queue_full_os_suite_keeps_optional_tools_diff_routed(
             base,
             "--head",
             "HEAD",
-            "--full-suite",
+            "--queue",
+            "--certified",
+            "linux-x64",
+            "generic",
         ],
         cwd=tmp_path,
         text=True,
     )
     selected = dict(line.split("=", 1) for line in output.splitlines())
-    assert selected["ubuntu_tests"] == "all"
-    optional = json.loads(selected["optional_tests"])
-    assert ("tests/test_contamination.py" in optional) is contamination
-    if not contamination:
-        assert optional == []
+    assert json.loads(selected["queue_runners"]) == (
+        ["ubuntu-latest", "windows-latest"] if runtime else []
+    )
+    for lane in ("ubuntu", "windows", "optional"):
+        assert json.loads(selected[f"{lane}_tests"]) == []
+    assert selected["test_certified"] == "false"
+    tests = json.loads(selected["queue_tests"])
+    assert ("tests/test_server_paths.py" in tests) is runtime
 
 
 @pytest.mark.skipif(
@@ -233,7 +243,12 @@ def test_release_only_install_lab_no_longer_needs_a_live_label_lookup(
         "GITHUB_OUTPUT": str(output),
         "GITHUB_STEP_SUMMARY": str(tmp_path / "summary"),
         "DRAFT": "false",
-        "FULL_SUITE": "false",
+        "EVENT_NAME": "pull_request",
+        "CERT_GENERIC": "false",
+        "CERT_UBUNTU": "false",
+        "CERT_MACOS": "false",
+        "CERT_WINDOWS": "false",
+        "CERT_ARM64": "false",
     }
     result = subprocess.run(
         ["bash", "-c", command],
@@ -595,10 +610,17 @@ def workflow_shell(step_name: str) -> str:
 
 
 @LINUX_BASH
-def test_914_ci_policy_creates_out_on_a_fresh_checkout(tmp_path: Path) -> None:
+def test_1551_ci_policy_runs_selected_tests_on_workers_in_a_fresh_checkout(
+    tmp_path: Path,
+) -> None:
     test = tmp_path / "tests" / "test_policy_input.py"
     test.parent.mkdir()
-    test.write_text("def test_temp_input(tmp_path):\n assert tmp_path.is_dir()\n")
+    test.write_text(
+        "import os\n"
+        "def test_temp_input(tmp_path):\n"
+        " assert os.environ.get('PYTEST_XDIST_WORKER')\n"
+        " assert tmp_path.is_dir()\n"
+    )
     script = workflow_shell("Run affected CI policy and routing tests")
     # The Python environment is already installed; exercise local bootstrap,
     # not the package-install network boundary.

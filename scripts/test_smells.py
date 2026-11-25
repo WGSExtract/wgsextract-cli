@@ -3,7 +3,8 @@
 
 Untracked test files count as wholly added.
 
-Advisory only: always exits 0. See "Write tests" in docs/developer_setup.md.
+Advisory by default; --check fails on findings. See "Write tests" in
+docs/developer_setup.md.
 
   TS001  monkeypatching a private project internal (a ``_name``)
   TS002  asserting a whole tool argv list
@@ -20,6 +21,7 @@ import io
 import re
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -62,8 +64,14 @@ def _git(*args: str, cwd: Path) -> str:
     ).stdout
 
 
-def added_lines(base: str, root: Path) -> dict[Path, set[int] | None]:
-    """Map changed test files to their added lines; ``None`` means every line."""
+@dataclass
+class ChangedLines:
+    added: set[int] = field(default_factory=set)
+    after_removed_contract: set[int] = field(default_factory=set)
+
+
+def changed_lines(base: str, root: Path) -> dict[Path, ChangedLines | None]:
+    """Map changed test files to affected lines; ``None`` means every line."""
     merge_base = _git("merge-base", base, "HEAD", cwd=root).strip()
     diff = _git(
         *("diff", "--no-color", "--no-ext-diff"),
@@ -71,20 +79,28 @@ def added_lines(base: str, root: Path) -> dict[Path, set[int] | None]:
         *(merge_base, "--", "tests/*.py"),
         cwd=root,
     )
-    added: dict[Path, set[int] | None] = {}
-    current: set[int] = set()
+    changed: dict[Path, ChangedLines | None] = {}
+    current = ChangedLines()
+    after_hunk = 0
     for line in diff.splitlines():
         if line.startswith("+++ b/"):
-            current = set()
-            added[root / line[6:]] = current
+            current = ChangedLines()
+            changed[root / line[6:]] = current
         elif match := HUNK_RE.match(line):
             start, count = int(match[1]), int(match[2] or 1)
-            current.update(range(start, start + count))
+            current.added.update(range(start, start + count))
+            after_hunk = start + max(count, 1)
+        elif line.startswith("-") and not line.startswith("--- "):
+            # Only a final removed comment can have exempted the next old line.
+            if line[1:].lstrip().startswith("# contract:"):
+                current.after_removed_contract.add(after_hunk)
+            else:
+                current.after_removed_contract.discard(after_hunk)
     untracked = _git(
         "ls-files", "--others", "--exclude-standard", "--", "tests/*.py", cwd=root
     )
-    added.update((root / name, None) for name in untracked.splitlines())
-    return added
+    changed.update((root / name, None) for name in untracked.splitlines())
+    return changed
 
 
 def _project_aliases(tree: ast.Module) -> set[str]:
@@ -145,7 +161,16 @@ def _asserts_argv(stmt: ast.stmt) -> bool:
     if isinstance(stmt, ast.Assert):
         return any(
             isinstance(node, ast.Compare)
-            and any(_is_argv(side) for side in (node.left, *node.comparators))
+            and any(
+                isinstance(op, (ast.Eq, ast.NotEq))
+                and (_is_argv(left) or _is_argv(right))
+                for left, op, right in zip(
+                    (node.left, *node.comparators[:-1]),
+                    node.ops,
+                    node.comparators,
+                    strict=True,
+                )
+            )
             for node in ast.walk(stmt.test)
         )
     if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
@@ -162,14 +187,14 @@ def _span(node: ast.stmt | ast.expr) -> range:
     return range(node.lineno, (node.end_lineno or node.lineno) + 1)
 
 
-def smells(path: Path, lines: set[int] | None) -> list[tuple[int, str, str]]:
+def smells(path: Path, lines: ChangedLines | None) -> list[tuple[int, str, str]]:
     source = path.read_text(encoding="utf-8")
     text = source.splitlines()
     tree = ast.parse(source)
     project = _project_aliases(tree)
 
     def is_added(node: ast.stmt | ast.expr) -> bool:
-        return lines is None or any(n in lines for n in _span(node))
+        return lines is None or any(n in lines.added for n in _span(node))
 
     def has_contract(stmt: ast.stmt) -> bool:
         own = text[stmt.lineno - 1 : stmt.end_lineno]
@@ -183,7 +208,17 @@ def smells(path: Path, lines: set[int] | None) -> list[tuple[int, str, str]]:
                 found.append(
                     (node.lineno, "TS001", f"patches private internal {target}")
                 )
-        elif isinstance(node, ast.stmt) and is_added(node) and _asserts_argv(node):
+        elif (
+            isinstance(node, ast.stmt)
+            and (
+                is_added(node)
+                or (
+                    lines is not None
+                    and any(n in lines.after_removed_contract for n in _span(node))
+                )
+            )
+            and _asserts_argv(node)
+        ):
             if not has_contract(node):
                 found.append((node.lineno, "TS002", "asserts a whole tool argv"))
     return sorted(found)
@@ -195,17 +230,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--github", action="store_true", help="print GitHub Actions annotations"
     )
+    parser.add_argument("--check", action="store_true", help="fail on findings")
     parser.add_argument("--root", type=Path, default=ROOT, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
-    # A path the console can't encode must not crash an advisory check.
+    # A path the console can't encode must not crash the check.
     if isinstance(sys.stdout, io.TextIOWrapper):
         sys.stdout.reconfigure(errors="backslashreplace")
     try:
-        changed = added_lines(args.base, args.root)
+        changed = changed_lines(args.base, args.root)
     except subprocess.CalledProcessError as exc:
-        print(f"test-smells: skipped, git failed: {exc.stderr.strip()}")
-        return 0
+        print(
+            f"test-smells: could not determine changed test lines: {exc.stderr.strip()}"
+        )
+        return int(args.check)
     total = 0
+    annotation = "error" if args.check else "warning"
     for path, lines in sorted(changed.items()):
         rel = path.relative_to(args.root).as_posix()
         try:
@@ -216,15 +255,15 @@ def main(argv: list[str] | None = None) -> int:
         for line, code, message in found:
             total += 1
             if args.github:
-                print(f"::warning file={rel},line={line},title={code}::{message}")
+                print(f"::{annotation} file={rel},line={line},title={code}::{message}")
             else:
                 print(f"{rel}:{line}: {code} {message}")
     if total:
         print(
-            f"test-smells: {total} advisory finding(s); "
+            f"test-smells: {total} finding(s); "
             "see 'Write tests' in docs/developer_setup.md"
         )
-    return 0
+    return int(args.check and total > 0)
 
 
 if __name__ == "__main__":
