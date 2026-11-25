@@ -538,3 +538,22 @@ test("uninstall runs no steps from, and deletes nothing of, a folder that isn't 
   assert.match(result.stdout, /setup never ran/);
   assert.equal(await readFile(path.join(users, "keep.txt"), "utf8"), "mine");
 });
+
+test("a development run keeps its own users workspace, and records it for the CLI it runs", async (t) => {
+  const { root, source } = await fixture(t);
+  // The fixture names its own data folder; a development run uses the checkout's (paths.ts's devAppDataName).
+  process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "WGSExtract-gui-dev";
+  const installedUsers = path.join(root, "visible-workspace");
+  await mkdir(installedUsers);
+  await writeFile(path.join(installedUsers, ".users-workspace"), "WGS Extract users workspace\n");
+
+  const bundle = await prepareBundleWorkspace(manifest, source);
+
+  const developmentUsers = path.join(root, "visible-workspace-dev");
+  assert.equal(usersWorkspaceFor(bundle), developmentUsers);
+  assert.equal(path.basename(path.dirname(path.dirname(bundle))), "WGSExtract-gui-dev");
+  // The CLI reads this record from the folder in WGSEXTRACT_GUI_APP_DATA; without it, it assumes ~/visible-workspace.
+  const settings = JSON.parse(await readFile(appSettingsPath(), "utf8"));
+  assert.equal(settings.defaultUsersWorkspaceRoots[manifest.id], developmentUsers);
+  assert.deepEqual(await readdir(installedUsers), [".users-workspace"]);
+});

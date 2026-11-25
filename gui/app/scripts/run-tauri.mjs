@@ -49,7 +49,7 @@ export async function main(argv = process.argv.slice(2), platform = os.platform(
     throw new Error("Usage: node scripts/run-tauri.mjs <tauri args...>");
   }
 
-  await prepareBranding({ development: argv[0] === "dev" });
+  await prepareBranding({ development: isDevelopmentBuild(argv) });
   try {
     await run(process.execPath, [tauriScript, ...argv, "-c", generatedConfigPath], {
       cwd: tauriDir,
@@ -275,8 +275,16 @@ function resolveAppVersion(bundleMetadata, defaultVersion) {
 }
 
 /**
- * `tauri dev` runs under its own identifier, so its webview data and logs stay apart from the installed app's
- * (and both can run at once); its backend data folder is apart too (main.rs's APP_DATA_NAME).
+ * Debug builds (`tauri dev`, `tauri build --debug`) are development runs: main.rs gives them the development data
+ * folder, so they need the development identifier too, or their webview data and logs would be the installed app's.
+ */
+export function isDevelopmentBuild(argv) {
+  return argv[0] === "dev" || (argv[0] === "build" && argv.includes("--debug"));
+}
+
+/**
+ * A development run's identifier, so its webview data and logs stay apart from the installed app's (and both can
+ * run at once); its backend data folder is apart too (main.rs's APP_DATA_NAME).
  */
 export function devAppIdentifier(identifier, development) {
   return development ? `${identifier}.dev` : identifier;

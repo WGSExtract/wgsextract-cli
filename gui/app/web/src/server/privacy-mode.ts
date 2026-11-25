@@ -1,6 +1,5 @@
 import { HttpError } from "./errors.js";
-import { withSettingsFileLock } from "./settings-lock.js";
-import { appSettingsPath, readAppSettings, writeAppSettings } from "./workspace-location.js";
+import { readAppSettings, updateAppSettings } from "./workspace-location.js";
 
 /**
  * Privacy mode stops the app's automatic network activity (the startup update check). It is an app-wide setting
@@ -18,8 +17,6 @@ export async function savePrivacyMode(body: Record<string, unknown>): Promise<{ 
     if (typeof enabled !== "boolean") {
         throw new HttpError(400, "enabled must be a boolean");
     }
-    await withSettingsFileLock(appSettingsPath(), async () => {
-        await writeAppSettings({ ...await readAppSettings(), [privacyModeKey]: enabled });
-    });
+    await updateAppSettings((settings) => ({ ...settings, [privacyModeKey]: enabled }));
     return { privacyMode: enabled };
 }

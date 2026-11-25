@@ -248,3 +248,25 @@ test("a check the user asked for still reports its failure", async () => {
   assert.equal(state.update.status, "error");
   assert.equal(state.update.message, "error sending request for url");
 });
+
+test("turning on Privacy mode before the delayed startup check fires cancels it", async () => {
+  resetState();
+  state.autoUpdate = true;
+  const originalSetTimeout = globalThis.window.setTimeout;
+  const pending = [];
+  globalThis.window.setTimeout = (callback) => { pending.push(callback); return 0; };
+  let invoked = false;
+  setTauriMock(async () => { invoked = true; return {}; });
+  try {
+    const updater = await freshUpdater("startup-privacy-later");
+    updater.initializeTauriUpdater();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(pending.length, 1);
+    state.privacyMode = true;
+    pending[0]();
+    await new Promise((resolve) => setImmediate(resolve));
+  } finally {
+    globalThis.window.setTimeout = originalSetTimeout;
+  }
+  assert.equal(invoked, false);
+});

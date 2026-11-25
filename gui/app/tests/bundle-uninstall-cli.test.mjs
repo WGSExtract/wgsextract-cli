@@ -95,18 +95,24 @@ test("--remove-app-data deletes the hidden bundle workspace after successful ste
   await stat(path.join(kept.workspace, "manifest.json"));
 });
 
-test("the Windows uninstaller, which names no data folder, uninstalls the installed app's, not a development run's", { skip: process.platform === "win32" }, async (t) => {
-  const paths = await fixture(t, '#!/bin/sh\nrm -rf "$WGSEXTRACT_GUI_BUNDLE_WORKSPACE/runtime"\n');
-  const installed = paths.workspace.replace(`${path.sep}test.app${path.sep}`, `${path.sep}WGSExtract-gui${path.sep}`);
-  await setUp({ ...paths, workspace: installed });
-  await mkdir(path.join(installed, "runtime"));
-  const env = { ...process.env, HOME: paths.root, XDG_DATA_HOME: path.join(paths.root, "data"), WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE: paths.result };
+test("the Windows uninstaller, which names no data folder, removes the installed app's, never a development run's", async (t) => {
+  // No uninstall steps run here (no bundle workspace), so this needs no shell and runs on every platform.
+  const paths = await fixture(t, "#!/bin/sh\n");
+  const data = path.dirname(path.dirname(path.dirname(paths.workspace)));
+  const installed = path.join(data, "WGSExtract-gui");
+  const development = path.join(data, "WGSExtract-gui-dev");
+  for (const folder of [installed, development]) {
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, "settings.json"), "{}\n");
+  }
+  const env = { ...process.env, HOME: paths.root, USERPROFILE: paths.root, LOCALAPPDATA: data, XDG_DATA_HOME: data, WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE: paths.result };
   delete env.WGSEXTRACT_GUI_APP_DATA_NAME;
 
   const { code, stdout } = await new Promise((resolve) => {
-    execFile(process.execPath, [cli, paths.bundle], { env }, (error, out) => resolve({ code: error ? error.code : 0, stdout: out }));
+    execFile(process.execPath, [cli, "--remove-app-data", paths.bundle], { env }, (error, out) => resolve({ code: error ? error.code : 0, stdout: out }));
   });
 
   assert.equal(code, 0, stdout);
-  await assert.rejects(stat(path.join(installed, "runtime")), { code: "ENOENT" });
+  await assert.rejects(stat(installed), { code: "ENOENT" });
+  assert.equal((await stat(path.join(development, "settings.json"))).isFile(), true);
 });

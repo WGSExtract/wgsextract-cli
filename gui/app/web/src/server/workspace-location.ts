@@ -5,6 +5,7 @@ import type { BundleManifest } from "../../../shared/types.js";
 import { writeFileAtomically } from "./atomic-file.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { applicationSupportDirectory, appSupportContainerName, appSupportDirectory, defaultAppDataName, safePathComponent } from "./paths.js";
+import { withSettingsFileLock } from "./settings-lock.js";
 
 export const workspaceSentinelFileName = ".bundle-workspace";
 export const workspaceSentinelContents = "WGS Extract GUI workspace\n";
@@ -79,9 +80,26 @@ export async function readAppSettings(): Promise<Record<string, unknown>> {
 }
 
 /** Saves the app-wide settings. The only record of where a moved users workspace is: never left half-written. */
-export async function writeAppSettings(settings: Record<string, unknown>) {
+async function writeAppSettings(settings: Record<string, unknown>) {
     await mkdir(appSupportDirectory(), { recursive: true });
     await writeFileAtomically(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+/**
+ * One read-modify-write of the app settings under the settings file lock. Every writer goes through here, so none
+ * writes back an older snapshot over another's change (a bundle load turning Privacy mode off, say). `change`
+ * returns the settings to write, or null to leave the file as it is; either way the settings in force are returned.
+ */
+export async function updateAppSettings(change: (settings: Record<string, unknown>) => Record<string, unknown> | null): Promise<Record<string, unknown>> {
+    return withSettingsFileLock(appSettingsPath(), async () => {
+        const current = await readAppSettings();
+        const next = change(current);
+        if (next === null) {
+            return current;
+        }
+        await writeAppSettings(next);
+        return next;
+    });
 }
 
 export type MovedConfigPath = readonly [from: string, to: string];
@@ -103,7 +121,7 @@ export function withMovedConfigPaths(settings: Record<string, unknown>, paths: r
 }
 
 export async function saveMovedConfigPath(from: string, to: string) {
-    await writeAppSettings(withMovedConfigPaths(await readAppSettings(), [[from, to]]));
+    await updateAppSettings((settings) => withMovedConfigPaths(settings, [[from, to]]));
 }
 
 /** One bundle's entry of a map in the app settings, keyed by bundle ID. */

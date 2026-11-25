@@ -63,8 +63,8 @@ export const defaultAppDataName = "WGSExtract-gui";
 /**
  * The data folder of a development run: a server started from a checkout (make run, npm run dev, a test) rather
  * than by the installed app, which always names its folder (main.rs). It keeps its own runtime, bundle workspace
- * and settings, so a checkout never overwrites the installed app's copy of the bundle or its CLI. Both use the
- * default users workspace (the reference library and genomes) unless one of them is moved in Settings.
+ * and settings, so a checkout never overwrites the installed app's copy of the bundle or its CLI, and its own users
+ * workspace (~/wgs-extract-dev; users-workspace.ts), so it never shares the installed app's libraries or outputs.
  */
 export const devAppDataName = "WGSExtract-gui-dev";
 export function appSupportContainerName() {

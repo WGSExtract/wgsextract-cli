@@ -58,6 +58,10 @@ async function initializeTauriUpdaterWhenReady() {
     if (state.autoUpdate && !state.privacyMode) {
         const delay = Math.max(0, Number(state.autoUpdateDelaySeconds) || 0);
         window.setTimeout(() => {
+            // Privacy mode may have been turned on while the check waited.
+            if (state.privacyMode) {
+                return;
+            }
             void checkForUpdates({
                 revealOnAvailable: true,
                 autoDownloadAndInstall: Boolean(state.autoAcceptUpdate),

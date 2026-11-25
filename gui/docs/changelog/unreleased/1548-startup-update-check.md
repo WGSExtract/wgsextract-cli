@@ -13,4 +13,4 @@
 - Running the app from a source checkout (`make run`, `make tauri`,
   `npm run dev`) keeps its own data folder, `WGSExtract-gui-dev`, so it no
   longer replaces the installed app's copy of the bundle or its CLI runtime.
-  Both use the default users workspace unless it is moved in one of them.
+  It also keeps its own users workspace, `~/wgs-extract-dev`.
