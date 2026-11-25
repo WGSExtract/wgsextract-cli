@@ -1,6 +1,7 @@
 """``panel check`` and the ``wgsextract.panel/1`` research panel format (#1287)."""
 
 import copy
+import gzip
 import json
 import sys
 from collections.abc import Callable
@@ -11,6 +12,7 @@ import jsonschema
 import pytest
 import tomli_w
 
+from tests.htslib_helpers import bgzip_index, needs_htslib
 from wgsextract_cli import api
 from wgsextract_cli.core.errors import CodedError
 
@@ -240,6 +242,231 @@ def test_the_cli_fails_an_invalid_panel_with_its_problems(tmp_path):
         run_wgsextract("panel", "check", "--panel", str(path))
     run_wgsextract("panel", "check", "--panel", str(FIXTURES / "research_panel.toml"))
     assert not [p for p in tmp_path.iterdir() if p != path]
+
+
+def _audit_inputs(tmp_path: Path, *, phase_set: str) -> tuple[Path, Path, Path]:
+    panel = {
+        "schema": "wgsextract.panel/1",
+        "id": "test-panel",
+        "name": "Synthetic assay",
+        "version": "1",
+        "build": "GRCh38",
+        "defaults": {
+            "max_af": 0.01,
+            "qualify": [
+                {"impacts": ["HIGH"]},
+                {"impacts": ["MODERATE"], "min_revel": 0.5, "min_cadd_phred": 20},
+            ],
+        },
+        "groups": [{"id": "group", "genes": ["MTHFR"], "recessive": ["MTHFR"]}],
+        "sites": [
+            {"id": "reference", "locus": "GRCh38:chr1:11796325:G>A"},
+            {"id": "gap", "locus": "GRCh38:chr1:11796340:G>A"},
+            {"id": "low", "locus": "GRCh38:chr1:11796335:C>A"},
+        ],
+        "haplotypes": [
+            {
+                "id": "phase",
+                "gene": "MTHFR",
+                "sites": ["GRCh38:chr1:11796321:G", "GRCh38:chr1:11796322:C"],
+                "alleles": {"left": ["A", "C"], "right": ["G", "T"]},
+            }
+        ],
+    }
+    header = """##fileformat=VCFv4.2
+##contig=<ID=chr1,length=248956422>
+##INFO=<ID=CSQ,Number=.,Type=String,Description="Format: Allele|Consequence|IMPACT|SYMBOL">
+##INFO=<ID=GNOMAD_AF,Number=A,Type=Float,Description="Frequency">
+##INFO=<ID=REVEL,Number=A,Type=Float,Description="REVEL">
+##INFO=<ID=CADD_PHRED,Number=A,Type=Float,Description="CADD">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase Set">
+"""
+    columns = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tTEST\n"
+    records = [
+        "11796321 . G A 50 PASS CSQ=A|stop_gained|HIGH|MTHFR;GNOMAD_AF=nan GT:DP:GQ:AD:PS 1|0:30:60:15,15:1",
+        "11796322 . C T 50 PASS CSQ=T|missense_variant|MODERATE|MTHFR;REVEL=0.9;CADD_PHRED=25;GNOMAD_AF=0.001 GT:DP:GQ:AD:PS "
+        + f"0|1:30:60:15,15:{phase_set}",
+        "11796323 . A T 50 PASS CSQ=T|missense_variant|MODERATE|MTHFR;CADD_PHRED=25 GT:DP:GQ 1/1:30:60",
+        "11796324 . C T 50 PASS CSQ=T|missense_variant|MODERATE|MTHFR;CADD_PHRED=1 GT:DP:GQ 1/1:30:60",
+        "11796331 . G T 50 PASS CSQ=T|stop_gained|HIGH|MTHFR;GNOMAD_AF=0.1 GT:DP:GQ 1/1:30:60",
+    ]
+    calls = "".join("chr1\t" + record.replace(" ", "\t") + "\n" for record in records)
+    vcf = tmp_path / "audit.vcf"
+    vcf.write_text(header + columns + calls, encoding="utf-8")
+    gvcf = tmp_path / "audit.g.vcf"
+    gvcf.write_text(
+        header
+        + '##ALT=<ID=NON_REF,Description="Any ALT">\n'
+        + '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+        + columns
+        + "chr1\t11796325\t.\tG\t<NON_REF>\t.\tPASS\tEND=11796330\tGT:DP:GQ:MIN_DP\t0/0:30:60:30\n"
+        + "chr1\t11796335\t.\tC\tA,<NON_REF>\t.\tPASS\t.\tGT:DP:GQ:AD\t0/1:2:5:1,1,0\n",
+        encoding="utf-8",
+    )
+    return _write(tmp_path, panel, ".json"), Path(bgzip_index(vcf)), gvcf
+
+
+@needs_htslib
+@pytest.mark.parametrize("phase_set", ["1", "2"])
+def test_1287_audit_distinguishes_mixed_scores_reference_and_phase(
+    tmp_path: Path, phase_set: str
+) -> None:
+    panel, vcf, gvcf = _audit_inputs(tmp_path, phase_set=phase_set)
+    table_format = "tsv" if phase_set == "1" else "parquet"
+    pq = pytest.importorskip("pyarrow.parquet") if table_format == "parquet" else None
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=vcf,
+            gvcf=gvcf,
+            research_panel=True,
+            table_format=table_format,
+        )
+    )
+    report = next(o for o in result.outputs if o.role == "panel_audit")
+    table = next(o for o in result.outputs if o.role == "panel_audit_table")
+    details = json.loads(Path(report.path).read_text(encoding="utf-8"))
+    assert details["research_only"] and "not a diagnosis" in details["disclaimer"]
+    (gene,) = details["groups"][0]["genes"]
+    assert [a["pos"] for a in gene["qualifying"]] == [11796321, 11796322]
+    assert gene["qualifying"][0]["missing"] == ["gnomad_af"]
+    assert gene["qualifying"][0]["gnomad_af"] is None
+    assert [a["pos"] for a in gene["unscored"]] == [11796323]
+    assert gene["qualifying_allele_copies"] == 2
+    assert gene["phase"] == ("trans" if phase_set == "1" else "unknown")
+    reference, gap, low = details["sites"]
+    assert (
+        reference["status"],
+        reference["genotype"],
+        reference["query_allele_copies"],
+    ) == (
+        "confident_reference",
+        "0/0",
+        0,
+    )
+    assert gap["status"] == "not_assessed" and gap["genotype"] is None
+    assert low["status"] == "weak_evidence"
+    (watch,) = details["haplotypes"]
+    assert watch["status"] == ("called" if phase_set == "1" else "ambiguous_phase")
+    assert watch.get("diplotype", watch.get("candidates")) == (
+        ["left", "right"] if phase_set == "1" else [["left", "right"]]
+    )
+    assert table.metrics["rows"] == 3
+    if pq:
+        audited = pq.read_table(table.path)
+        assert audited.schema.metadata[b"research_only"] == b"true"
+        assert audited["decision"].to_pylist() == [
+            "qualifying",
+            "qualifying",
+            "unscored",
+        ]
+
+
+@needs_htslib
+def test_1287_audit_never_overwrites_its_panel(tmp_path: Path) -> None:
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    original = panel.read_bytes()
+    panel = panel.rename(tmp_path / "audit.panel_audit.json")
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=vcf,
+            research_panel=True,
+            outdir=tmp_path,
+        ),
+        check=False,
+    )
+    assert result.exit_code == 2
+    assert panel.read_bytes() == original
+    assert not panel.with_suffix(".tsv").exists()
+
+
+@needs_htslib
+def test_1287_one_complete_unphased_heterozygote_is_one_copy(tmp_path: Path) -> None:
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    document = json.loads(panel.read_text(encoding="utf-8"))
+    document["defaults"]["qualify"] = [{"impacts": ["HIGH"]}]
+    del document["sites"], document["haplotypes"]
+    _write(tmp_path, document, ".json")
+    sample = tmp_path / "unphased.vcf"
+    with gzip.open(vcf, "rt", encoding="utf-8") as stream:
+        sample.write_text(stream.read().replace("1|0:30:", "1/0:30:"), encoding="utf-8")
+    result = api.panel.audit(
+        api.PanelAuditParams(panel=panel, vcf_input=sample, research_panel=True)
+    )
+    report = next(o for o in result.outputs if o.role == "panel_audit")
+    details = json.loads(Path(report.path).read_text(encoding="utf-8"))
+    (gene,) = details["groups"][0]["genes"]
+    assert gene["qualifying_allele_copies"] == 1 and gene["phase"] is None
+    assert gene["biallelic_state"] == "one_copy"
+
+
+@needs_htslib
+def test_1287_split_multiallelic_watch_preserves_both_alleles(tmp_path: Path) -> None:
+    from wgsextract_cli.core.utils import run_command
+
+    panel, _, _ = _audit_inputs(tmp_path, phase_set="1")
+    document = json.loads(panel.read_text(encoding="utf-8"))
+    document["sites"] = [{"id": "target", "locus": "GRCh38:chr1:11796321:G>A"}]
+    del document["haplotypes"]
+    panel = _write(tmp_path, document, ".json")
+    raw = tmp_path / "multi.vcf"
+    raw.write_text(
+        """##fileformat=VCFv4.2
+##contig=<ID=chr1,length=248956422>
+##INFO=<ID=CSQ,Number=A,Type=String,Description="Format: Allele|Consequence|IMPACT|SYMBOL">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">
+##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tTEST
+chr1\t11796321\t.\tG\tA,T\t50\tPASS\tCSQ=A|stop_gained|HIGH|MTHFR,T|stop_gained|HIGH|MTHFR\tGT:DP:GQ:AD\t1/2:40:60:0,20,20
+""",
+        encoding="utf-8",
+    )
+    split = tmp_path / "split.vcf.gz"
+    run_command(
+        [
+            "bcftools",
+            "norm",
+            "-m",
+            "-any",
+            "--keep-sum",
+            "AD",
+            "--old-rec-tag",
+            "OLD_MULTIALLELIC",
+            "-Oz",
+            "-o",
+            str(split),
+            str(raw),
+        ]
+    )
+    run_command(["bcftools", "index", str(split)])
+    result = api.panel.audit(
+        api.PanelAuditParams(panel=panel, vcf_input=split, research_panel=True)
+    )
+    report = next(o for o in result.outputs if o.role == "panel_audit")
+    details = json.loads(Path(report.path).read_text(encoding="utf-8"))
+    (watch,) = details["sites"]
+    assert (watch["status"], watch["genotype"], watch["query_allele_copies"]) == (
+        "confident_call",
+        "1/2",
+        1,
+    )
+    (gene,) = details["groups"][0]["genes"]
+    assert gene["phase"] == "trans"
+
+
+def test_1287_audit_requires_explicit_research_opt_in() -> None:
+    from wgsextract_cli.core.utils import UsageError
+
+    with pytest.raises(UsageError, match="--research-panel"):
+        api.PanelAuditParams(panel=Path("panel.toml"), vcf_input=Path("sample.vcf.gz"))
 
 
 def test_panel_bed_accepts_hgnc_ids(tmp_path):

@@ -28,7 +28,14 @@ from ._params import Params, param
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import outdir_param, ref_param
 
-__all__ = ["PanelBedParams", "PanelCheckParams", "bed", "check"]
+__all__ = [
+    "PanelAuditParams",
+    "PanelBedParams",
+    "PanelCheckParams",
+    "audit",
+    "bed",
+    "check",
+]
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -140,4 +147,65 @@ def check(
 
     return execute(
         params, run_panel_check, progress=progress, cancel=cancel, check=check
+    )
+
+
+@dataclass(frozen=True, kw_only=True)
+class PanelAuditParams(PanelCheckParams):
+    """Apply an opt-in research panel to one annotated genome, offline."""
+
+    COMMAND = "panel audit"
+
+    vcf_input: Path = param(
+        help="Local single-sample annotated VCF, gVCF or BCF",
+        flags=("--vcf-input",),
+        path="file",
+        metavar="VCF",
+    )
+    research_panel: bool = param(
+        False,
+        help="Acknowledge that results are for research only, not a diagnosis.",
+        flags=("--research-panel",),
+        action="store_true",
+    )
+    gvcf: Path | None = param(
+        None,
+        help="Local gVCF of the same sample (default: input or companion gVCF)",
+        flags=("--gvcf",),
+        path="file",
+        metavar="GVCF",
+    )
+    exons: Path | None = param(
+        None,
+        help="Local exon model like `vcf callability --exons`",
+        flags=("--exons",),
+        path="file",
+        metavar="FILE",
+    )
+    table_format: str = param(
+        "tsv",
+        help="Audit table format (default: tsv)",
+        flags=("--format",),
+        choices=("tsv", "parquet"),
+    )
+    outdir: Path | None = outdir_param()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not self.research_panel:
+            raise UsageError("Give --research-panel to acknowledge research-only use.")
+
+
+def audit(
+    params: PanelAuditParams,
+    *,
+    progress: ProgressCallback | None = None,
+    cancel: CancelToken | None = None,
+    check: bool = True,
+) -> CommandResult:
+    """Write research-only panel audit JSON and a variant table."""
+    from wgsextract_cli.commands._panel_audit import run_panel_audit
+
+    return execute(
+        params, run_panel_audit, progress=progress, cancel=cancel, check=check
     )

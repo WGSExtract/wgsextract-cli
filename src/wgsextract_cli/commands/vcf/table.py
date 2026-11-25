@@ -196,7 +196,7 @@ def _select_sample(vcf: str, requested: str | None) -> tuple[list[str], str | No
     return samples, (samples[0] if samples else None)
 
 
-class _VcfStream:
+class VcfStream:
     """``bcftools view`` of the input as text: its parsed header and data lines.
 
     Spool stderr separately so it can't block stdout or outlive the stream.
@@ -243,7 +243,7 @@ class _VcfStream:
 
 
 def _write_tables(
-    stream: _VcfStream,
+    stream: VcfStream,
     rows: Iterable[Row],
     table_path: str,
     table_format: str,
@@ -321,7 +321,7 @@ def run_table(params: VcfTableParams) -> None:
         elif params.region:
             command += ["-r", params.region]
         errors = stack.enter_context(tempfile.TemporaryFile(dir=outdir))
-        stream = _VcfStream([*command, input_vcf], errors)
+        stream = VcfStream([*command, input_vcf], errors)
         stack.callback(stream.close)
         header = stream.header
         build = (scope.build if scope else None) or _reference_build(header)

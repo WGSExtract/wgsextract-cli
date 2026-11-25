@@ -201,8 +201,11 @@ def _fail(
     )
 
 
-def run_panel_check(params: PanelCheckParams) -> None:
-    path = Path(params.panel).expanduser()
+def inspect_panel(
+    path: Path, requested_build: str | None
+) -> tuple[Mapping[str, Any], panel.Annotations, dict[str, Any]]:
+    """Validate and resolve a panel for either check or audit."""
+    path = path.expanduser()
     result = current_result()
     result.add_input(path, "panel")
     parsed = panel_spec.read_panel(path)
@@ -220,7 +223,7 @@ def run_panel_check(params: PanelCheckParams) -> None:
     if problems or document is None:
         _fail(details, problems, path)
     declared = document.get("build")
-    build = params.build or panel_spec.PANEL_BUILDS.get(declared or "", "hg38")
+    build = requested_build or panel_spec.PANEL_BUILDS.get(declared or "", "hg38")
     notes = panel.load_annotations(build)
     same_build = declared is None or panel_spec.PANEL_BUILDS[declared] == build
     if not same_build and (document.get("sites") or document.get("haplotypes")):
@@ -250,7 +253,14 @@ def run_panel_check(params: PanelCheckParams) -> None:
         _fail(details, problems, path)
     details["valid"] = True
     details["problems"] = []
+    return document, notes, details
+
+
+def run_panel_check(params: PanelCheckParams) -> None:
+    document, notes, details = inspect_panel(params.panel, params.build)
+    result = current_result()
     result.set_details(details)
+    groups = details["groups"]
     genes = sum(g["resolved"] for g in groups)
     unresolved = sum(
         1 for g in groups for gene in g["genes"] if gene.get("symbol") is None
@@ -266,8 +276,8 @@ def run_panel_check(params: PanelCheckParams) -> None:
         f"{document['name']} ({document['id']} {document['version']}): a valid "
         f"{panel_spec.SCHEMA_ID} research panel."
     )
-    human_output(f"SHA-256: {parsed.sha256}")
-    human_output(f"Genes resolved in {build} ({notes.source}):")
+    human_output(f"SHA-256: {details['panel']['sha256']}")
+    human_output(f"Genes resolved in {details['build']} ({notes.source}):")
     for group in groups:
         missing = [g["given"] for g in group["genes"] if g.get("symbol") is None]
         line = (
@@ -280,7 +290,7 @@ def run_panel_check(params: PanelCheckParams) -> None:
     if details["sites"] or details["haplotypes"]:
         human_output(
             f"{len(details['sites'])} site(s) and {len(details['haplotypes'])} "
-            f"haplotype(s) on {declared}."
+            f"haplotype(s) on {document['build']}."
         )
 
 
