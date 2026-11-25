@@ -436,6 +436,8 @@ readiness/path-filter siblings. Original modules retain shared helper owners;
 all siblings stay in the CI-only and documentation selections, so splitting
 tests never removes their checks from readiness or certification.
 
+- **Extend a test module and reuse its fixtures first.** Add a test file only for a new feature area.
+- **Keep parametrization to about five cases per test.** Use more only when the cases are the scientific contract, such as expected coordinates for each reference build.
 - **Assert observable behaviour.** That means:
   - output files and their content
   - exit codes 0/1/2/3
@@ -447,9 +449,10 @@ tests never removes their checks from readiness or certification.
 - **Assert argv only where the flags are the scientific contract.** For example, a caller's ploidy or a minimum mapping quality. Assert just those flags, with a `# contract: <why>` comment.
 - **Check message codes or key facts, not whole prose.** Help text is checked once, by the generated-help and doc tests.
 - **Name the bug in each regression test** (`#123` or a short description), and check the symptom the user saw.
+- **Keep the PR fast tier small.** Reserve it for regressions that guard security, data correctness, or code changed in roughly the last 30 days. Put other regressions in the nightly tier. CI marks whole modules in `NIGHTLY_ONLY_MODULES` in `scripts/ci_test_tiers.py`; don't move a shared module out of the fast tier if it contains tests that need to stay there. Directly affected tests still run on the relevant PR.
 - **Don't restate constants, defaults or re-exports.**
 
-`pixi run test-smells` lists private-internal patches and whole-argv asserts in test lines you added since `origin/main`. CI shows the same list as warnings on the PR. It is advisory and never fails.
+`pixi run test-smells --check` fails on private-internal patches or whole-argv asserts on added or changed lines under `tests/`, compared with the merge base with `origin/main`. Without `--check` it only reports findings. PR lint runs in blocking mode on the PR's changes; it ignores untouched files and existing findings on untouched lines.
 
 ## Make a change with an AI agent
 
