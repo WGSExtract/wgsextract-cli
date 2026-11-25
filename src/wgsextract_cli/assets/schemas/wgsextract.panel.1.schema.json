@@ -310,6 +310,12 @@
         "match_on": {
           "type": "array",
           "items": {
+            "enum": [
+              "callable_cds_bp",
+              "gnomad_expected_syn"
+            ]
+          },
+          "contains": {
             "const": "callable_cds_bp"
           },
           "minItems": 1,

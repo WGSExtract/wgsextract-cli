@@ -20,6 +20,7 @@ _AUTOSOMES = frozenset(str(i) for i in range(1, 23))
 _CALLABLE = {State.CALLABLE_REFERENCE, State.VARIANT}
 _GRCH38_X_PAR = ((10_001, 2_781_479), (155_701_383, 156_030_895))
 _MAX_LENGTH_IMBALANCE = 0.20
+EXPECTED_BINS = 4
 NOTE = (
     "Compares this panel's filtered coding variant load with coding-length-matched "
     "genes in the same genome. Not evidence for disease association."
@@ -30,6 +31,7 @@ NOTE = (
 class Opportunity:
     chrom: str
     chrom_class: str
+    transcript: str
     coding_bp: int
     segments: tuple[Interval, ...]
     matched_bp: int
@@ -128,6 +130,7 @@ def opportunities(
         result[gene] = Opportunity(
             contig_key(chrom),
             chrom_class,
+            model.genes[gene][0].transcript,
             _bases(cds),
             compatible,
             _bases(compatible),
@@ -167,6 +170,11 @@ def _chromosome_class(
     return "X_haploid" if par == 0 else None
 
 
+def _near_range(value: float, bounds: tuple[float, float]) -> bool:
+    delta = value * _MAX_LENGTH_IMBALANCE
+    return bounds[0] - delta <= value <= bounds[1] + delta
+
+
 def matched_null(
     targets: Sequence[str],
     panel_genes: set[str],
@@ -177,6 +185,8 @@ def matched_null(
     null_sets: int,
     seed: int,
     basis: str,
+    expected_syn: Mapping[str, float] | None = None,
+    match_expected: bool = True,
 ) -> dict[str, Any]:
     """Sample an equal number of genes in each target bin without replacement.
 
@@ -187,29 +197,68 @@ def matched_null(
     for gene, opportunity in opportunities.items():
         if gene not in panel_genes:
             control[opportunity.chrom_class].append((opportunity.matched_bp, gene))
-    target_bins: Counter[tuple[str, int]] = Counter()
-    control_bins: dict[tuple[str, int], list[str]] = defaultdict(list)
+    cds_bins: dict[tuple[str, int], list[str]] = defaultdict(list)
     limits: dict[str, list[int]] = {}
     for chrom_class, genes in control.items():
         genes.sort()
         cuts = sorted({genes[len(genes) * n // bins][0] for n in range(1, bins)})
         limits[chrom_class] = cuts
         for bp, gene in genes:
-            control_bins[chrom_class, bisect_right(cuts, bp)].append(gene)
+            cds_bins[chrom_class, bisect_right(cuts, bp)].append(gene)
+    syn_limits: dict[tuple[str, int], list[float]] = {}
+    if expected_syn is not None and match_expected:
+        for key, genes_in_bin in cds_bins.items():
+            values = sorted(expected_syn[gene] for gene in genes_in_bin)
+            syn_limits[key] = sorted(
+                {
+                    values[len(values) * i // EXPECTED_BINS]
+                    for i in range(1, EXPECTED_BINS)
+                }
+            )
+
+    def stratum(key: tuple[str, int], gene: str) -> tuple[str, int, int]:
+        sub_bin = (
+            bisect_right(syn_limits.get(key, ()), expected_syn[gene])
+            if expected_syn is not None and match_expected
+            else 0
+        )
+        return key[0], key[1], sub_bin
+
+    target_bins: Counter[tuple[str, int, int]] = Counter()
+    control_bins: dict[tuple[str, int, int], list[str]] = defaultdict(list)
+    for key, genes_in_bin in cds_bins.items():
+        for gene in genes_in_bin:
+            control_bins[stratum(key, gene)].append(gene)
+    joint_ranges = {}
+    if expected_syn is not None and match_expected:
+        for bin_key, pool_genes in control_bins.items():
+            lengths = [opportunities[gene].matched_bp for gene in pool_genes]
+            expectations = [expected_syn[gene] for gene in pool_genes]
+            joint_ranges[bin_key] = (
+                (min(lengths), max(lengths)),
+                (min(expectations), max(expectations)),
+            )
     outside = []
+    outside_syn = []
+    outside_joint_cds = []
     for gene in targets:
         opportunity = opportunities[gene]
         chrom_class = opportunity.chrom_class
         bin_ = bisect_right(limits.get(chrom_class, ()), opportunity.matched_bp)
         key = (chrom_class, bin_)
-        target_bins[key] += 1
-        eligible = control_bins[key]
+        bin_key = stratum(key, gene)
+        target_bins[bin_key] += 1
+        eligible = control.get(chrom_class, ())
         if eligible and not (
-            opportunities[eligible[0]].matched_bp
-            <= opportunity.matched_bp
-            <= opportunities[eligible[-1]].matched_bp
+            eligible[0][0] <= opportunity.matched_bp <= eligible[-1][0]
         ):
             outside.append(gene)
+        if expected_syn is not None and bin_key in joint_ranges:
+            length_range, syn_range = joint_ranges[bin_key]
+            if not _near_range(opportunity.matched_bp, length_range):
+                outside_joint_cds.append(gene)
+            if not _near_range(expected_syn[gene], syn_range):
+                outside_syn.append(gene)
     counts = [allele_counts.get(gene, 0) for gene in targets]
     observed = sum(counts)
     observed_bp = sum(opportunities[gene].matched_bp for gene in targets)
@@ -228,12 +277,22 @@ def matched_null(
             {
                 "chromosome_class": key[0],
                 "bin": key[1],
+                **(
+                    {"expected_syn_bin": key[2]}
+                    if expected_syn is not None and match_expected
+                    else {}
+                ),
                 "target_genes": count,
                 "control_genes": len(control_bins[key]),
             }
             for key, count in sorted(target_bins.items())
         ],
     }
+    observed_syn = (
+        None if expected_syn is None else sum(expected_syn[g] for g in targets)
+    )
+    if observed_syn is not None:
+        document["observed_expected_syn"] = observed_syn
     if not targets or any(
         count > len(control_bins[key]) for key, count in target_bins.items()
     ):
@@ -251,17 +310,25 @@ def matched_null(
             "reason": "outside_control_cds_range",
             "unmatched_targets": sorted(outside),
         }
-    pools = [
-        (
-            [
-                (allele_counts.get(gene, 0), opportunities[gene].matched_bp)
-                for gene in control_bins[key]
-            ],
-            size,
-        )
-        for key, size in sorted(target_bins.items())
-    ]
-    mean_bp = sum(size * fmean(bp for _, bp in pool) for pool, size in pools)
+    if outside_syn:
+        return {
+            **document,
+            "state": "unavailable",
+            "reason": "outside_control_expected_syn_range",
+            "unmatched_targets": sorted(outside_syn),
+        }
+    if outside_joint_cds:
+        return {
+            **document,
+            "state": "unavailable",
+            "reason": "outside_joint_cds_range",
+            "unmatched_targets": sorted(outside_joint_cds),
+        }
+    pools = [(control_bins[key], size) for key, size in sorted(target_bins.items())]
+    mean_bp = sum(
+        size * fmean(opportunities[gene].matched_bp for gene in pool)
+        for pool, size in pools
+    )
     if abs(mean_bp - observed_bp) > observed_bp * _MAX_LENGTH_IMBALANCE:
         return {
             **document,
@@ -269,15 +336,29 @@ def matched_null(
             "reason": "coding_length_imbalance",
             "expected_control_cds_bp": mean_bp,
         }
+    if expected_syn is not None and observed_syn is not None and match_expected:
+        mean_syn = sum(
+            size * fmean(expected_syn[gene] for gene in pool) for pool, size in pools
+        )
+        if abs(mean_syn - observed_syn) > observed_syn * _MAX_LENGTH_IMBALANCE:
+            return {
+                **document,
+                "state": "unavailable",
+                "reason": "expected_syn_imbalance",
+                "expected_control_syn": mean_syn,
+            }
     rng = random.Random(seed)
     draws = []
     null_bp = 0
+    null_syn = 0.0
     for _ in range(null_sets):
         copies = 0
         for pool, size in pools:
-            for count, bp in rng.sample(pool, size):
-                copies += count
-                null_bp += bp
+            for gene in rng.sample(pool, size):
+                copies += allele_counts.get(gene, 0)
+                null_bp += opportunities[gene].matched_bp
+                if expected_syn is not None:
+                    null_syn += expected_syn[gene]
         draws.append(copies)
     histogram = Counter(draws)
     mean = fmean(draws)
@@ -288,6 +369,11 @@ def matched_null(
         "null_sets": null_sets,
         "null_mean": mean,
         "null_mean_matched_bp": null_bp / null_sets,
+        **(
+            {"null_mean_expected_syn": null_syn / null_sets}
+            if expected_syn is not None
+            else {}
+        ),
         "null_sd": pstdev(draws),
         "null_histogram": dict(sorted(histogram.items())),
         "upper_tail_p": (1 + null_sets - less) / (null_sets + 1),

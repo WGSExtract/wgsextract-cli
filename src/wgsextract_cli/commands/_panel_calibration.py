@@ -13,7 +13,11 @@ from wgsextract_cli.core import exon_callability as ec
 from wgsextract_cli.core import panel_audit as audit
 from wgsextract_cli.core import panel_calibration as calibration
 from wgsextract_cli.core.lookup.genotypes import VcfSource
-from wgsextract_cli.core.panel_reference import mane_model
+from wgsextract_cli.core.panel_reference import (
+    EXPECTED_SHA256,
+    expected_syn,
+    mane_model,
+)
 from wgsextract_cli.core.reference_evidence import ReferenceEvidence
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import UsageError
@@ -26,6 +30,7 @@ def requests_calibration(params: PanelAuditParams, spec: Mapping[str, Any]) -> b
         or params.null_sets is not None
         or params.seed is not None
         or params.download
+        or params.gnomad_expected
     )
 
 
@@ -38,6 +43,7 @@ class Calibrator:
     counts: dict[str, Counter[str]]
     basis: str
     thresholds: dict[str, object] | None
+    expected_counts: dict[str, float] | None
 
     def record(self, allele: audit.Allele) -> None:
         matched = self.opportunities.get(allele.gene)
@@ -65,6 +71,17 @@ class Calibrator:
             for gene in group["genes"]
             if gene.get("symbol")
         }
+        common = (
+            {gene: self.opportunities[gene] for gene in self.expected_counts}
+            if self.expected_counts is not None
+            else {}
+        )
+        kwargs = {
+            "bins": settings["bins"],
+            "null_sets": settings["null_sets"],
+            "seed": settings["seed"],
+            "basis": self.basis,
+        }
         for group in groups:
             target = sorted(
                 g["symbol"].upper()
@@ -81,15 +98,9 @@ class Calibrator:
                     excluded[gene["given"]] = self.excluded.get(symbol, "no_exon_model")
                 else:
                     excluded[gene["given"]] = str(gene["status"])
+            counts = self.counts[self.filter_keys[group["id"]]]
             stats = calibration.matched_null(
-                target,
-                all_symbols,
-                self.opportunities,
-                self.counts[self.filter_keys[group["id"]]],
-                bins=settings["bins"],
-                null_sets=settings["null_sets"],
-                seed=settings["seed"],
-                basis=self.basis,
+                target, all_symbols, self.opportunities, counts, **kwargs
             )
             group["calibration"] = {**stats, "excluded_targets": excluded}
             if stats.get("underpowered") or stats["state"] != "calibrated":
@@ -101,6 +112,50 @@ class Calibrator:
                     target_genes=len(target),
                     reason=stats.get("reason"),
                 )
+            if self.expected_counts is not None:
+                covered = [gene for gene in target if gene in common]
+                baseline = calibration.matched_null(
+                    covered,
+                    all_symbols,
+                    common,
+                    counts,
+                    expected_syn=self.expected_counts,
+                    match_expected=False,
+                    **kwargs,
+                )
+                joint = calibration.matched_null(
+                    covered,
+                    all_symbols,
+                    common,
+                    counts,
+                    expected_syn=self.expected_counts,
+                    **kwargs,
+                )
+                base_low = baseline.get(
+                    "underpowered", baseline["state"] != "calibrated"
+                )
+                joint_low = joint.get("underpowered", joint["state"] != "calibrated")
+                group["calibration"]["expected_count_comparison"] = {
+                    "missing_target_expected_count": sorted(
+                        set(target) - common.keys()
+                    ),
+                    "cds_only_on_common_genes": baseline,
+                    "cds_and_expected_syn": joint,
+                    "underpowered": {
+                        "cds_only": base_low,
+                        "cds_and_expected_syn": joint_low,
+                    },
+                }
+                if joint_low:
+                    warn(
+                        "panel_expected_count_underpowered",
+                        f"Group {group['id']} has too little matched evidence for "
+                        "the joint CDS and gnomAD expected-count comparison.",
+                        group=group["id"],
+                        target_genes=len(covered),
+                        cds_only_underpowered=base_low,
+                        reason=joint.get("reason"),
+                    )
         return {
             "basis": self.basis,
             "thresholds": self.thresholds,
@@ -113,6 +168,20 @@ class Calibrator:
                 for gene, reason in self.excluded.items()
                 if reason == "segmental_duplication"
             ),
+            **(
+                {
+                    "expected_syn": {
+                        "source": "gnomAD v4.1 constraint, MANE Select, syn.exp",
+                        "license": "CC0 1.0",
+                        "sha256": EXPECTED_SHA256,
+                        "bins_per_cds_stratum": calibration.EXPECTED_BINS,
+                        "genes_with_counts": len(common),
+                        "genes_without_counts": len(self.opportunities) - len(common),
+                    }
+                }
+                if self.expected_counts is not None
+                else {}
+            ),
         }
 
 
@@ -123,6 +192,8 @@ def prepare(
     groups: Sequence[dict[str, Any]],
     evidence: ReferenceEvidence | None,
     thresholds: Thresholds,
+    *,
+    use_expected_counts: bool,
 ) -> tuple[Calibrator, ec.ExonModel]:
     if build != "GRCh38":
         raise UsageError(
@@ -136,8 +207,12 @@ def prepare(
             f"records calling region {source.provenance.region!r}. Use --no-calibration."
         )
     model_path = params.exons or mane_model(params.ref)
-    model = ec.load_model(model_path)
     current_result().add_input(model_path, "calibration_exon_model")
+    expected_by_transcript: dict[str, float] | None = None
+    if use_expected_counts:
+        expected_path, expected_by_transcript = expected_syn(params.ref)
+        current_result().add_input(expected_path, "calibration_expected_counts")
+    model = ec.load_model(model_path)
     input_names = ec.contig_names(model, source.lengths)
     names = input_names
     if evidence is not None:
@@ -180,6 +255,13 @@ def prepare(
             "quality_model": evidence.quality_model,
         }
         if evidence
+        else None,
+        {
+            gene: expected_by_transcript[opp.transcript]
+            for gene, opp in opportunities.items()
+            if opp.transcript in expected_by_transcript
+        }
+        if expected_by_transcript is not None
         else None,
     )
     if evidence:

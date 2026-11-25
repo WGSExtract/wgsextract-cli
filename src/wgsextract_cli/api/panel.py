@@ -200,9 +200,15 @@ class PanelAuditParams(PanelCheckParams):
         flags=("--no-calibration",),
         action="store_true",
     )
+    gnomad_expected: bool = param(
+        False,
+        help="Compare the CDS null with one also matched on gnomAD v4.1 expected synonymous counts.",
+        flags=("--gnomad-expected",),
+        action="store_true",
+    )
     download: bool = param(
         False,
-        help="Allow fetching the missing pinned public GRCh38 exon model from "
+        help="Allow fetching missing pinned public calibration data from "
         "WGSExtract's GitHub release; sends no sample data.",
         flags=("--download",),
         action="store_true",
@@ -225,10 +231,13 @@ class PanelAuditParams(PanelCheckParams):
         if self.seed is not None and self.seed > 2**53:
             raise UsageError("--seed must be at most 2**53.")
         if self.no_calibration and (
-            self.null_sets is not None or self.seed is not None or self.download
+            self.null_sets is not None
+            or self.seed is not None
+            or self.download
+            or self.gnomad_expected
         ):
             raise UsageError(
-                "--no-calibration cannot be used with --null-sets, --seed or --download."
+                "--no-calibration cannot be used with --null-sets, --seed, --gnomad-expected or --download."
             )
 
 
