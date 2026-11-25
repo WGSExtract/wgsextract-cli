@@ -85,6 +85,39 @@ CLI Python retains root Ruff/format rules and
 the existing strict CLI mypy gate; GUI Python retains its own compile gate and
 adds fatal-error Ruff checks without imposing unrelated root formatting.
 
+## Weekly test-usefulness review
+
+The Monday workflow reads existing hosted PR, merge-queue and nightly JUnit
+artifacts from the previous completed UTC week. It does not rerun or edit
+tests. It updates or reopens one bot-owned `efficiency` issue and attaches a JSON file
+with pass/fail/skip counts, cumulative and median test time, and source
+change dates. Missing or overwritten artifacts, fork runs and tests removed
+from the current checkout limit the sample. The report samples at most 40
+pre-merge artifacts per OS and stage,
+prioritizing failed runs and comparisons at the same SHA, and reports what
+it left out. It includes all available scheduled nightly JUnit artifacts.
+Times are summed JUnit durations, not saved runner wall time.
+
+- **Move to nightly** needs a test function still present in the checkout,
+  no recorded failures, at least 15 pre-merge
+  passes across five runs, and at least 120 seconds on OS/suite combinations
+  where the same case also passed at night.
+- **Possible flakes** failed before passing at the same tested SHA, stage,
+  OS and suite. Tool or runner failures can also produce this signal.
+  PR comparisons are separate: the same PR head can run against a
+  different base, so it does not establish an unchanged checkout.
+- **Merge or delete** suggestions use same-scope test bodies with the same
+  signatures and marks, at least five shared passing runs and no observed
+  failures. Identical bodies are deletion candidates; a one-literal
+  difference suggests parametrization. Check intent and fixtures first.
+
+Source dates come from the newest available Linux nightly coverage map from
+the last seven days and the main branch's Git history. The map attributes executed
+source files to **test modules**, not to individual cases. A missing
+attribution is unknown, not evidence that the test covers nothing.
+
+## PR check routing
+
 | PR changes | Checks selected (in addition to routing and the secret scan) | Estimated runner-minutes/push |
 |---|---|---|
 | Any draft PR | No validation; API-only review request for eligible collaborators | 0 validation minutes |

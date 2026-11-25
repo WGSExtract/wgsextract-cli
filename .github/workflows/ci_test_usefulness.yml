@@ -1,0 +1,66 @@
+name: Weekly test-usefulness review
+
+on:
+  schedule:
+    - cron: "43 6 * * 1"
+
+permissions: {}
+
+concurrency:
+  group: weekly-test-usefulness
+  cancel-in-progress: false
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      report: ${{ steps.report.outputs.body }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # Dates of covered source files, including older commits.
+          persist-credentials: false
+      - name: Review the previous UTC week
+        id: report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out
+          python3 -m scripts.ci_test_usefulness_report --repository "$GITHUB_REPOSITORY" \
+            measure --run-id "$GITHUB_RUN_ID" --output out/weekly-test-usefulness.json > out/weekly-test-usefulness.md
+          {
+            echo 'body<<REPORT_EOF'
+            cat out/weekly-test-usefulness.md
+            echo 'REPORT_EOF'
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: weekly-test-usefulness
+          path: out/weekly-test-usefulness.json
+          if-no-files-found: error
+          overwrite: true
+
+  publish:
+    needs: measure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Create or update one efficiency issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ needs.measure.outputs.report }}
+        run: |
+          mkdir -p out
+          printf '%s\n' "$REPORT" > out/weekly-test-usefulness.md
+          python3 -m scripts.ci_test_usefulness_report --repository "$GITHUB_REPOSITORY" \
+            publish --body out/weekly-test-usefulness.md
