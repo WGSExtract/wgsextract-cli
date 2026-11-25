@@ -43,9 +43,6 @@ def test_worker(request):
     )
     (pytester.path / "out").mkdir()
     result = pytester.runpytest_subprocess(
-        "--disable-plugin-autoload",
-        "-p",
-        "xdist.plugin",
         "-n",
         "2",
         "--dist",
