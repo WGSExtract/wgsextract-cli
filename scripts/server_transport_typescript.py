@@ -1,4 +1,4 @@
-"""Emit raw server transport and canonical result/report writer contracts."""
+"""Emit canonical result/report writer contracts."""
 
 from __future__ import annotations
 
@@ -32,7 +32,6 @@ from wgsextract_cli.core.results import (
     ResultError,
     ResultWarning,
 )
-from wgsextract_cli.server import transport
 
 
 class _Keys(Protocol):
@@ -137,16 +136,6 @@ def typescript_records(
             lines.append(f"    {key}{optional}: {describe(tp)};")
         lines.extend(["}", ""])
     return "\n".join(lines)
-
-
-def typescript() -> str:
-    return typescript_records(
-        {
-            model: name
-            for name, model in vars(transport).items()
-            if is_typeddict(model) and not name.endswith("Required")
-        }
-    )
 
 
 def result_typescript() -> str:

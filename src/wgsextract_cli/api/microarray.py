@@ -7,7 +7,8 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.microarray import CLI_HELP
+from wgsextract_cli.core.messages import CLI_HELP as SHARED_CLI_HELP
 from wgsextract_cli.core.microarray.quirks import MODES
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
@@ -165,7 +166,7 @@ class MicroarrayParams(DownloadParams):
         "nf-core/sarek VCF); required when the VCF has more than one",
     )
     region: str | None = param(
-        None, help=CLI_HELP["arg_region"], flags=("-r", "--region")
+        None, help=SHARED_CLI_HELP["arg_region"], flags=("-r", "--region")
     )
     qc_min_depth: float | None = depth_param()
 

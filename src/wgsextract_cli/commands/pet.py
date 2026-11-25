@@ -7,6 +7,7 @@ from pathlib import Path
 
 from wgsextract_cli.api.pet import PetAlignParams
 from wgsextract_cli.cli.registration.pet import register as register
+from wgsextract_cli.commands._messages.pet import LOG_MESSAGES
 from wgsextract_cli.core.alignment.memory import check_mapping_memory
 from wgsextract_cli.core.alignment.read_counts import fastq_input_reads
 from wgsextract_cli.core.alignment.samtools_commands import (
@@ -18,7 +19,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.genome_library import pair_stem
-from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES as SHARED_LOG_MESSAGES
 from wgsextract_cli.core.output_checks import warn_if_no_variants
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import is_fasta_path, reference_genomes_dir
@@ -83,7 +84,7 @@ def run(job: PetJob) -> None:
     )
 
     if not job.ref:
-        raise UsageError(LOG_MESSAGES["ref_required"])
+        raise UsageError(SHARED_LOG_MESSAGES["ref_required"])
     # A FASTA path is used as given; anything else is a reference library.
     if is_fasta_path(job.ref):
         ref_file = job.ref
