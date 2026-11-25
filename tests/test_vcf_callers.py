@@ -297,8 +297,9 @@ def test_gatk_cuts_a_regional_cram_to_a_bam_it_can_read(genome, gatk, tmp_path, 
     assert sorted(p.name for p in outdir.iterdir()) == [
         "gatk.vcf.gz",
         "gatk.vcf.gz.tbi",
-        "gatk.vcf.manifest.json",
+        "manifests",
     ]
+    assert (outdir / "manifests" / "gatk.vcf.manifest.json").is_file()
     assert list((tmp_path / "systemp").iterdir()) == []
 
 

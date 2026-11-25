@@ -39,11 +39,13 @@ _RESOURCE_EXTENSIONS = {
 
 
 def _with_sidecars(path: Path) -> Iterator[Path]:
-    """``path``, its indexes, its run manifest and download leftovers."""
+    """``path``, its indexes, its run manifest (in ``manifests/`` or legacy beside it) and download leftovers."""
     yield path
     for suffix in (*_INDEXES, *_DOWNLOAD_LEFTOVERS):
         yield Path(f"{path}{suffix}")
-    yield manifest_path_for(path)
+    manifest = manifest_path_for(path)
+    yield manifest
+    yield path.with_name(manifest.name)
 
 
 def aadr_paths(reflib: str) -> list[Path]:
@@ -93,6 +95,7 @@ def dbsnp_paths(reflib: str, builds: Iterable[str] = ("hg38", "hg19")) -> list[P
                     Path(f"{sqlite_db}-wal"),
                     Path(f"{sqlite_db}-shm"),
                     manifest_path_for(sqlite_db),
+                    sqlite_db.with_name(manifest_path_for(sqlite_db).name),
                 )
             )
     return paths
@@ -174,11 +177,17 @@ def genome_paths(fasta: Path) -> list[Path]:
         Path(reference_dict_path(fasta)),
     ]
     name = escape(fasta.name)
+    manifests = [
+        candidate
+        for target in made
+        for m in (manifest_path_for(target),)
+        for candidate in (m, target.with_name(m.name))
+    ]
     return list(
         dict.fromkeys(
             [
                 *made,
-                *map(manifest_path_for, made),
+                *manifests,
                 *sorted(fasta.parent.glob(f"{name}.wgse-sa*")),
                 *_staging_folders(fasta),
             ]

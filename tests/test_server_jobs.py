@@ -164,7 +164,7 @@ def test_1087_inferred_and_explicit_wgse_outputs_share_a_job_lock(
         status, second = client.request(
             "POST",
             "/ops/info/calculate-coverage",
-            {**params, "outdir": str(bam.parent / "wgse")},
+            {**params, "outdir": str(bam.parent / "WGSEv6")},
         )
         assert status == 202, second
         assert (first["status"], second["status"]) == ("running", "queued")
@@ -612,7 +612,7 @@ def test_a_trio_saving_beside_its_proband_waits_for_that_folder(
     # its child ran alongside a job writing the same folder.
     bam, ref = fake_data
     with _serve(tmp_path, [work, FAKE_DIR], max_jobs=2) as client:
-        busy = {"input": str(bam), "ref": str(ref), "outdir": str(work / "wgse")}
+        busy = {"input": str(bam), "ref": str(ref), "outdir": str(work / "WGSEv6")}
         first = client.request("POST", "/ops/info/calculate-coverage", busy)[1]
         family = {r: str(work / f"{r}.vcf.gz") for r in ("proband", "mother", "father")}
         status, trio = client.request("POST", "/ops/vcf/trio", family)
@@ -649,7 +649,7 @@ def test_a_phase_job_saving_beside_its_reads_waits_for_that_folder(
     calls = calls_dir / "calls.vcf.gz"
     calls.write_bytes(b"")
     with _serve(tmp_path, [work, calls_dir, FAKE_DIR], max_jobs=2) as client:
-        busy = {"input": str(bam), "ref": str(ref), "outdir": str(work / "wgse")}
+        busy = {"input": str(bam), "ref": str(ref), "outdir": str(work / "WGSEv6")}
         first = client.request("POST", "/ops/info/calculate-coverage", busy)[1]
         status, phase = client.request(
             "POST",

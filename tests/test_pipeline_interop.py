@@ -130,7 +130,9 @@ def test_joint_vcf_needs_a_sample_and_exports_only_that_sample(tmp_path, library
     }
     assert not list(outdir.glob("Sample_*"))
     manifest = json.loads(
-        (outdir / "joint_germline_P2_N_microarray.manifest.json").read_text()
+        (
+            outdir / "manifests" / "joint_germline_P2_N_microarray.manifest.json"
+        ).read_text()
     )
     assert manifest["metrics"]["sample"] == "P2_N"
 

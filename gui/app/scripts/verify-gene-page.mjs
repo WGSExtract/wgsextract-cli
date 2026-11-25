@@ -145,9 +145,9 @@ try {
     await page.screenshot({ path: path.join(output, "gene-page.png"), fullPage: true });
     await page.locator("[data-gene-export]").click();
     await page.locator("[data-gene-export-status]").filter({ hasText: "Saved 1 rows" }).waitFor({ timeout: 120_000 });
-    proof.export = (await readdir(path.join(library, "wgse"))).filter((name) => name.endsWith("_variants.tsv"));
+    proof.export = (await readdir(path.join(library, "WGSEv6"))).filter((name) => name.endsWith("_variants.tsv"));
     assert.deepEqual(proof.export, ["sample_BRCA1_clinvar-plp_variants.tsv"]);
-    assert.ok((await stat(path.join(library, "wgse", proof.export[0]))).size > 0);
+    assert.ok((await stat(path.join(library, "WGSEv6", proof.export[0]))).size > 0);
     assert.deepEqual(proof, { ...proof, exonRows: 3, belowRows: 2, variants: 3, clinvarRows: 1, notices: [] });
 
     await page.locator("[data-gene-viewer]").click();

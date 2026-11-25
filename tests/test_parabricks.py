@@ -581,7 +581,7 @@ def test_gpu_deepvariant_writes_the_gvcf_in_the_same_run_863(tmp_path, gpu):
     assert gvcf.metrics["region"] == "chr1:1000-1100"
     # Nothing of pbrun's run is left beside them.
     left = os.listdir(tmp_path / "out")
-    assert sorted(n for n in left if not n.endswith(".manifest.json")) == [
+    assert sorted(n for n in left if n != "manifests" and not n.endswith(".manifest.json")) == [
         "deepvariant.g.vcf.gz", "deepvariant.g.vcf.gz.tbi",
         "deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi",
     ]  # fmt: skip

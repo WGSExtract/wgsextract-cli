@@ -14,7 +14,7 @@ import numpy as np
 import pytest
 
 from wgsextract_cli import api
-from wgsextract_cli.core import ancestry_reference, pgs_reference
+from wgsextract_cli.core import ancestry_reference, pgs_reference, results
 from wgsextract_cli.core.pgs import CURATED
 from wgsextract_cli.main import main
 
@@ -58,7 +58,7 @@ def test_617_missing_site_is_unmatched_never_hom_ref(tmp_path: Path) -> None:
     }
     output = next(Path(f.path) for f in result.outputs if f.role == "pgs")
     assert json.loads(output.read_text())["score_sum"] == pytest.approx(1.0)
-    manifest = json.loads(Path(str(output) + ".manifest.json").read_text())
+    manifest = json.loads(results.manifest_path_for(output).read_text())
     assert manifest["metrics"]["variants_matched"] == 2
     table = next(Path(f.path) for f in result.outputs if f.role == "pgs_table")
     with table.open() as stream:

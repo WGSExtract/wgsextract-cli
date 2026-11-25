@@ -297,7 +297,7 @@ def test_1219_single_vcf_input_wins_over_genome_discovery(
             capture_output=True,
         ).stdout
         assert positions.splitlines() == [expected_pos]
-        manifest = json.loads(next(out.glob("*.manifest.json")).read_text())
+        manifest = json.loads(next(out.glob("manifests/*.manifest.json")).read_text())
         assert manifest["inputs"] == result["inputs"]
     elif command[1] == "table":
         table = next(out.glob("*.tsv")).read_text()

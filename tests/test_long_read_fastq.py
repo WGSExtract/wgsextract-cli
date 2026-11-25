@@ -482,7 +482,7 @@ def test_1070_long_fastq_maps_with_detected_preset_and_manifest(
         ("chr1", "2101"),
         ("chr1", "4101"),
     ]
-    manifest = json.loads(next(out.glob("*.manifest.json")).read_text())
+    manifest = json.loads(next(out.glob("manifests/*.manifest.json")).read_text())
     detection = manifest["provenance"]["params"]["platform_detection"][str(reads)]
     if tags == "native":
         assert detection["statistics"] is None

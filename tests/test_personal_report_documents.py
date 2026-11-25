@@ -69,9 +69,11 @@ def test_text_from_results_is_shown_as_text_in_html_and_markdown(sample):
     rows.append(HOSTILE)
     table = sample / "clinvar_pathogenic.confidence.tsv"
     table.write_text(TSV_HEADER + "\t".join(map(str, rows)) + "\n")
-    haplogrep = json.loads((sample / "haplogrep.manifest.json").read_text())
+    haplogrep = json.loads(
+        (sample / "manifests" / "haplogrep.manifest.json").read_text()
+    )
     haplogrep["metrics"]["haplogroup"] = HOSTILE
-    (sample / "haplogrep.manifest.json").write_text(json.dumps(haplogrep))
+    (sample / "manifests" / "haplogrep.manifest.json").write_text(json.dumps(haplogrep))
     report = pr.build_report(sample)
     (clinvar,) = report["sections"]["clinvar"]["findings"]
     assert {clinvar["variant"][k] for k in ("ref", "alt", "genotype", "zygosity")} == {
@@ -154,7 +156,9 @@ def test_cli_writes_offline_self_contained_documents(sample, monkeypatch):
     rows = [r for r in rows if not r.startswith("#")]
     assert len(rows) == 1 + len(pr.findings(document))
 
-    manifest = json.loads((sample / "HG002_personal_report.manifest.json").read_text())
+    manifest = json.loads(
+        (sample / "manifests" / "HG002_personal_report.manifest.json").read_text()
+    )
     assert manifest["status"] == "ok"
     assert {o["role"] for o in manifest["outputs"]} == {
         "report_html",

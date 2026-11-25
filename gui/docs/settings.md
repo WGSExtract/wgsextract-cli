@@ -89,7 +89,7 @@ shared `config.toml` directly (see the CLI
 [Configuration reference](https://wgse.bio/wgsextract-cli/configuration.html) for every key):
 
 - **Folder paths** (changing any folder asks **Move / Change Setting Only / Cancel**):
-  - **Output Directory** (`output_directory`) — Advanced-only override; ignored in Basic mode so Basic runs always use the `wgse/` folder beside each input.
+  - **Output Directory** (`output_directory`) — Advanced-only override; ignored in Basic mode so Basic runs always use the `WGSEv6/` folder beside each input.
   - **My Genomes Library** (`mygenomes_library`)
   - **Reference Data Library** (`reference_library`)
   - **Reference Genome Library** (`reference_genome_library`)

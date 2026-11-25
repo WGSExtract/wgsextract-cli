@@ -74,6 +74,7 @@ from wgsextract_cli.core.tool_versions import tool_version, tools_in_command
 SCHEMA_ID: Final = "wgsextract.result/1"
 SCHEMA_RESOURCE = "assets/schemas/wgsextract.result.1.schema.json"
 MANIFEST_SUFFIX = ".manifest.json"
+MANIFESTS_DIR: Final = "manifests"
 
 EXIT_OK = 0
 EXIT_FAILURE = 1
@@ -85,15 +86,34 @@ _COMPRESSION_SUFFIXES = (".gz", ".bgz", ".zst", ".bz2", ".xz")
 _SECRET_NAME = re.compile(r"token|secret|password|passwd|credential|api[_-]?key", re.I)
 
 
-def manifest_path_for(output: str | os.PathLike[str]) -> Path:
-    """``<output>.manifest.json`` minus a compression suffix:
-    ``s_MT.vcf.gz`` -> ``s_MT.vcf.manifest.json``. The type extension stays, so
-    outputs differing only in type (``s_MT.fasta``) get their own manifest."""
+def manifest_dir_for(folder: str | os.PathLike[str]) -> Path:
+    """The ``manifests/`` folder inside the output folder ``folder``. It nests
+    even when ``folder`` is itself named ``manifests``: that is then a folder
+    the user chose for outputs, and its manifests go in its own subfolder."""
+    return Path(folder) / MANIFESTS_DIR
+
+
+def manifest_base_dir(manifest: str | os.PathLike[str]) -> Path:
+    """The output folder a manifest describes: its parent's parent when it
+    lives in a ``manifests/`` subfolder, otherwise its parent."""
+    parent = Path(manifest).parent
+    return parent.parent if parent.name == MANIFESTS_DIR else parent
+
+
+def manifest_path_for(
+    output: str | os.PathLike[str],
+    outdir: str | os.PathLike[str] | None = None,
+) -> Path:
+    """``<outdir>/manifests/<output>.manifest.json`` minus a compression suffix:
+    ``out/s_MT.vcf.gz`` -> ``out/manifests/s_MT.vcf.manifest.json``. The type
+    extension stays, so outputs differing only in type (``s_MT.fasta``) get
+    their own manifest."""
     path = Path(output)
     name = path.name
     if path.suffix.lower() in _COMPRESSION_SUFFIXES:
         name = name[: -len(path.suffix)]
-    return path.with_name(name + MANIFEST_SUFFIX)
+    base = Path(outdir) if outdir is not None else path.parent
+    return manifest_dir_for(base) / (name + MANIFEST_SUFFIX)
 
 
 @dataclass
@@ -244,6 +264,7 @@ class CommandResult:
         self._tools: set[str] = set()
         self._tool_versions: dict[str, str] = {}
         self._manifest_stem: Path | None = None
+        self._manifest_dir: Path | None = None
         self._failed_attempt: Path | None = None
         self._clock = time.monotonic()
         self._text_lock = threading.RLock()
@@ -369,18 +390,40 @@ class CommandResult:
         )
 
     def set_manifest_stem(self, stem: str | os.PathLike[str]) -> None:
-        """Name the manifest ``<stem>.manifest.json`` instead of after an output."""
+        """Name the manifest ``<stem>.manifest.json`` inside ``manifests/`` instead of after an output."""
         self._manifest_stem = Path(stem).expanduser().absolute()
+
+    def set_manifest_dir(self, outdir: str | os.PathLike[str] | None) -> None:
+        """Output directory whose ``manifests/`` folder receives this run's manifest
+        whenever an output (such as an index) lands in a source/lab folder."""
+        self._manifest_dir = Path(outdir).expanduser().absolute() if outdir else None
+
+    def _lab_input_folders(self) -> set[Path]:
+        from wgsextract_cli.core.output_location import primary_rank
+
+        return {
+            Path(record.path).expanduser().absolute().parent
+            for record in self.inputs
+            if "://" not in record.path and primary_rank(record.path) is not None
+        }
+
+    def _resolve_manifest_dir(self, default_base: Path) -> Path:
+        if self._manifest_dir is not None and default_base in self._lab_input_folders():
+            return manifest_dir_for(self._manifest_dir)
+        return manifest_dir_for(default_base)
 
     def expect_output(self, output: str | os.PathLike[str]) -> None:
         """The run will write ``output``. If it fails before registering any
-        output, its manifest is ``<output>.failed.manifest.json`` (named as
-        :func:`manifest_path_for` does), so the failed attempt is on record
+        output, its manifest is ``<outdir>/manifests/<output>.failed.manifest.json``
+        (named as :func:`manifest_path_for` does), so the failed attempt is on record
         without replacing an earlier run's manifest; the next manifest written
         under the output's own name removes it."""
-        path = manifest_path_for(Path(output).expanduser().absolute())
-        stem = path.name.removesuffix(MANIFEST_SUFFIX)
-        self._failed_attempt = path.with_name(f"{stem}.failed{MANIFEST_SUFFIX}")
+        output = Path(output).expanduser().absolute()
+        stem = manifest_path_for(output).name.removesuffix(MANIFEST_SUFFIX)
+        self._failed_attempt = (
+            self._resolve_manifest_dir(output.parent)
+            / f"{stem}.failed{MANIFEST_SUFFIX}"
+        )
 
     def record_tool_command(self, command: Sequence[str]) -> None:
         tools = tools_in_command(command)
@@ -404,12 +447,16 @@ class CommandResult:
     def manifest_path(self) -> Path | None:
         if self._manifest_stem is not None:
             stem = self._manifest_stem
-            return stem.with_name(stem.name + MANIFEST_SUFFIX)
+            return self._resolve_manifest_dir(stem.parent) / (
+                stem.name + MANIFEST_SUFFIX
+            )
         for record in self.outputs:
             if record.kind != "directory":
-                return manifest_path_for(record.path)
+                path = manifest_path_for(record.path)
+                return self._resolve_manifest_dir(Path(record.path).parent) / path.name
         for record in self.outputs:
-            return Path(record.path, Path(record.path).name + MANIFEST_SUFFIX)
+            base = Path(record.path)
+            return self._resolve_manifest_dir(base) / (base.name + MANIFEST_SUFFIX)
         return self._failed_attempt if self.status != "ok" else None
 
     def finalize(self, *, probe_tools: bool = True) -> None:
@@ -440,13 +487,28 @@ class CommandResult:
         return json.dumps(self.to_dict(), indent=2) + "\n"
 
     def write_manifest(self) -> Path | None:
-        """Write the manifest atomically next to the outputs; None if it has none."""
+        """Write the manifest atomically in ``<outdir>/manifests/``; None if it has none."""
+        from wgsextract_cli.core import read_scope
         from wgsextract_cli.core.atomic_output import atomic_output
         from wgsextract_cli.core.run_log import is_run_log_path
 
         path = self.manifest_path()
-        if path is None or not path.parent.is_dir():
+        if path is None:
             return None
+        base = manifest_base_dir(path)
+        if not base.is_dir():
+            if (
+                self._manifest_dir is not None
+                and base == self._manifest_dir
+                and bool(self.outputs)
+                and read_scope.may_follow(path)
+            ):
+                base.mkdir(parents=True, exist_ok=True)
+            else:
+                return None
+        if not read_scope.may_follow(path):
+            return None
+        path.parent.mkdir(parents=True, exist_ok=True)
         if is_run_log_path(path):
             raise FileExistsError(f"{path} is this run's log file; not replacing it.")
         previous, self.manifest = self.manifest, str(path)

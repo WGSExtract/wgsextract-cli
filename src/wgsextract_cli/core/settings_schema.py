@@ -129,8 +129,8 @@ class Settings:
     )
     output_directory: str | None = setting(
         None,
-        "Default output directory (default: wgse/ beside the primary input BAM, "
-        "CRAM, FASTQ, VCF or microarray file, or that folder if already wgse/)",
+        "Default output directory (default: WGSEv6/ beside the primary input BAM, "
+        "CRAM, FASTQ, VCF or microarray file, or that folder if already WGSEv6/)",
         path=True,
     )
     temp_directory: str | None = setting(

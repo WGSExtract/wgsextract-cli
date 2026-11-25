@@ -300,7 +300,8 @@ export function resolveOutputDirectory(
     if (args[0] === "sign" && args[1] === "create") {
         return parent;
     }
-    return path.basename(parent).toLowerCase() === "wgse" ? parent : path.join(parent, "wgse");
+    // `wgse` is the output folder of releases up to v0.8.8.
+    return ["wgsev6", "wgse"].includes(path.basename(parent).toLowerCase()) ? parent : path.join(parent, "WGSEv6");
 }
 
 function choosePrimaryInput(paths: string[]): string | undefined {

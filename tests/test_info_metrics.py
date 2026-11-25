@@ -120,7 +120,7 @@ def test_fast_info_reports_reads_and_file_state(genome, tmp_path):
     assert _field(text, "MD5 Signature") == calculate_bam_md5(bam)
     # Fast mode doesn't count reads per contig, so it states no sex.
     assert "Bio Gender" not in text
-    assert json.loads((tmp_path / "m.bam.wgse_info.json").read_text())[
+    assert json.loads((tmp_path / "manifests" / "m.bam.wgse_info.json").read_text())[
         "avg_read_len"
     ] == pytest.approx(50)
 
@@ -287,7 +287,7 @@ def test_sample_sex_ignores_the_cache_of_a_replaced_file(genome, tmp_path):
 def test_info_cache_from_an_older_infer_sex_is_recomputed(genome, tmp_path):
     bam = _sample(genome, tmp_path / "m.bam", MALE)
     _info(bam, "--detailed")
-    cache = Path(f"{bam}.wgse_info.json")
+    cache = Path(bam).parent / "manifests" / f"{Path(bam).name}.wgse_info.json"
     # As written before the version stamp, with a sex call it no longer makes
     old = json.loads(cache.read_text())
     del old["sex_inference_version"]
@@ -435,7 +435,7 @@ def test_cached_unknown_sequencer_is_redetected(tmp_path):
     bam = sam_to_bam([*header, *reads], tmp_path / "mh.bam")
     assert _field(_info(bam), "Sequencer") == "Ultima Genomics UG 100"
     # A cache from before MyHeritage's read names were known.
-    cache = tmp_path / "mh.bam.wgse_info.json"
+    cache = tmp_path / "manifests" / "mh.bam.wgse_info.json"
     data = json.loads(cache.read_text())
     data["sequencer"] = "Unknown"
     cache.write_text(json.dumps(data))
@@ -528,7 +528,9 @@ def test_info_cache_is_readable_by_other_users_pr1001(genome, tmp_path):
         _info(bam)
     finally:
         os.umask(old)
-    mode = stat.S_IMODE((tmp_path / "m.bam.wgse_info.json").stat().st_mode)
+    mode = stat.S_IMODE(
+        (tmp_path / "manifests" / "m.bam.wgse_info.json").stat().st_mode
+    )
     assert mode == 0o644
 
 
@@ -541,7 +543,7 @@ def test_cache_write_failure_is_only_a_warning(tmp_path, caplog):
 def test_cache_from_before_health_checks_gets_them_added(genome, tmp_path):
     bam = _sample(genome, tmp_path / "m.bam", MALE)
     _info(bam)
-    cache = tmp_path / "m.bam.wgse_info.json"
+    cache = tmp_path / "manifests" / "m.bam.wgse_info.json"
     data = json.loads(cache.read_text())
     del data["alignment_health"]
     cache.write_text(json.dumps(data))
@@ -559,7 +561,38 @@ def test_long_reads_are_warned_about(tmp_path, capsys):
     bam = sam_to_bam(["@SQ\tSN:chr1\tLN:1000", *reads], tmp_path / "long.bam")
     text = _info(bam, "--detailed")
     assert _field(text, "Avg Read Length") == "500 bp (SD=0 bp), Single-end"
+    assert _field(text, "Avg Insert Size") == "500 bp (SD=0 bp)"
     assert "long-read sequencer" in capsys.readouterr().err
+
+
+@needs_htslib
+def test_single_end_insert_size_uses_read_length_mean_and_sd(tmp_path):
+    lengths = (200, 300, 400)
+    reads = [
+        f"se{i}\t0\tchr1\t{1 + i * 10}\t60\t{length}M\t*\t0\t0\t{'A' * length}\t{'I' * length}"
+        for i, length in enumerate(lengths)
+    ]
+    bam = sam_to_bam(["@SQ\tSN:chr1\tLN:2000", *reads], tmp_path / "se.bam")
+    text = _info(bam)
+    # mean = 300, population SD = sqrt(((100^2 + 0 + 100^2) / 3)) ~= 81.65 -> 82 bp
+    assert _field(text, "Avg Read Length") == "300 bp (SD=82 bp), Single-end"
+    assert _field(text, "Avg Insert Size") == "300 bp (SD=82 bp)"
+
+    cache = tmp_path / "manifests" / "se.bam.wgse_info.json"
+    cached = json.loads(cache.read_text())
+    assert cached["is_paired"] is False
+    assert cached["avg_insert_size"] == pytest.approx(cached["avg_read_len"])
+    assert cached["std_insert_size"] == pytest.approx(cached["std_read_len"])
+
+    # Older single-end caches that stored 0 bp insert size are upgraded on load.
+    cached["avg_insert_size"] = 0
+    cached["std_insert_size"] = 0
+    cache.write_text(json.dumps(cached))
+    upgraded_text = _info(bam)
+    assert _field(upgraded_text, "Avg Insert Size") == "300 bp (SD=82 bp)"
+    upgraded = json.loads(cache.read_text())
+    assert upgraded["avg_insert_size"] == pytest.approx(300.0)
+    assert upgraded["std_insert_size"] == pytest.approx(cached["std_read_len"])
 
 
 # --- render -------------------------------------------------------------------

@@ -247,7 +247,8 @@ def test_fastq_archive_1432_allows_distinct_case_on_case_sensitive_storage(tmp_p
 def test_fastq_archive_1447_refuses_a_manifest_that_aliases_its_source(tmp_path):
     source = tmp_path / "r.fq"
     archive = tmp_path / "reads.wgfq"
-    manifest = tmp_path / "reads.wgfq.manifest.json"
+    manifest = tmp_path / "manifests" / "reads.wgfq.manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(R1)
     manifest.hardlink_to(source)
 
@@ -270,7 +271,8 @@ def test_fastq_restore_1447_manifest_cannot_replace_the_second_mate(tmp_path):
     r2.write_bytes(R2)
     api.fastq.archive(api.FastqArchiveParams(r1=r1, r2=r2, output=archive))
     first = tmp_path / "restored.fq"
-    second = tmp_path / "RESTORED.FQ.MANIFEST.JSON"
+    (tmp_path / "manifests").mkdir(exist_ok=True)
+    second = tmp_path / "manifests" / "RESTORED.FQ.MANIFEST.JSON"
 
     result = api.fastq.restore(
         api.FastqRestoreParams(input=archive, output=first, output_r2=second),

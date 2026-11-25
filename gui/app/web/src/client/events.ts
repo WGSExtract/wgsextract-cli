@@ -4,7 +4,7 @@ import { configValueKey, splitPathList } from "../../../shared/rendering.js";
 import { installGlobalBundleLoadHandler, loadBundleFromPicker, type Bootstrap } from "./bundle-loading.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
-import { checkedOptionsChanged, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
+import { checkedOptionsChanged, clearFileStateCache, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
 import { cancelPendingAlreadyRun, forceRunPendingAlreadyRun } from "./operations-already-run.js";
 import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
 import { bindAlreadyRunFocus } from "./view/already-run.js";
@@ -44,6 +44,7 @@ export function bindEvents(bootstrap: Bootstrap) {
     elements("[data-page-id]").forEach((button) => {
         button.addEventListener("click", async () => {
             state.activePageID = requiredDataset(button, "pageId");
+            clearFileStateCache();
             await persistAndRender();
         });
     });
@@ -459,6 +460,7 @@ async function selectUIMode(value: string) {
         return;
     }
     state.uiMode = mode;
+    clearFileStateCache();
     applyUIModeTerminalVisibility();
     await persistAndRender();
 }
@@ -471,6 +473,7 @@ async function persistAndRender(options = {}) {
 function clearDataSourcesAndRender() {
     state.dataSourcePayloads.clear();
     state.dataSourceErrors.clear();
+    clearFileStateCache();
     scheduleRender();
 }
 async function copyText(text: string) {

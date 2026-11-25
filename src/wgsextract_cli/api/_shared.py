@@ -47,7 +47,7 @@ def ref_param(*, local_only: bool = False) -> Any:
 
 
 def outdir_param(default_text: str = "the input's folder") -> Any:
-    fallback = f"wgse/ beside primary input; otherwise {default_text}"
+    fallback = f"WGSEv6/ beside primary input; otherwise {default_text}"
     if default_text == "the inputs' common folder":
         fallback = default_text
     return param(

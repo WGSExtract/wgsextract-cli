@@ -39,7 +39,7 @@ DEFAULT_CONFIG = """# WGS Extract Configuration
 # --- Path Configuration ---
 # Default input and output paths
 # input = "~/my_genome.bam"
-# outdir = "~/wgs-extract/output"  # otherwise: wgse/ beside the lab input
+# outdir = "~/wgs-extract/output"  # otherwise: WGSEv6/ beside the lab input
 
 # Path to a specific reference genome FASTA
 # ref = "~/my_genome.fa"

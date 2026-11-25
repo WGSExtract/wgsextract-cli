@@ -125,7 +125,7 @@ def test_1291_targeted_chain_matches_full_chain_then_slice(
             == full_slice
         )
         for child in ("clinvar", "revel"):
-            (manifest,) = out.glob(f"chain_step_*_{child}/*.manifest.json")
+            (manifest,) = out.glob(f"chain_step_*_{child}/manifests/*.manifest.json")
             expected = None if threads == "auto" else int(threads)
             assert (
                 json.loads(manifest.read_text())["provenance"]["params"]["threads"]
@@ -341,7 +341,8 @@ def test_1475_dry_run_manifest_cannot_replace_the_bed_input(
     tmp_path: Path, chain_case: ChainCase
 ) -> None:
     args, _, _ = chain_case
-    bed = tmp_path / "chain_annotate.plan.manifest.json"
+    bed = tmp_path / "manifests" / "chain_annotate.plan.manifest.json"
+    bed.parent.mkdir(parents=True, exist_ok=True)
     bed.write_bytes(b"chr1\t99\t100\n")
     code, _, errors = run_cli([
         *args, "--annotations", "clinvar", "--outdir", str(tmp_path), "--bed", str(bed),

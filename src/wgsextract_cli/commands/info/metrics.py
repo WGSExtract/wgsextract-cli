@@ -224,18 +224,23 @@ def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
         logging.debug(f"No reads sampled from {filepath}: {error}")
 
     avg_len = total_len / count if count > 0 else 0
-    avg_tlen = sum(tlen_values) / len(tlen_values) if len(tlen_values) > 0 else 0
     std_len = (
         math.sqrt(sum((x - avg_len) ** 2 for x in len_values) / count)
         if count > 1
         else 0
     )
-    std_tlen = (
-        math.sqrt(sum((x - avg_tlen) ** 2 for x in tlen_values) / len(tlen_values))
-        if len(tlen_values) > 1
-        else 0
-    )
     is_paired = paired_count > (count / 2) if count > 0 else False
+    # For single-end libraries, each read spans the full sequenced fragment.
+    if not is_paired:
+        avg_tlen = avg_len
+        std_tlen = std_len
+    else:
+        avg_tlen = sum(tlen_values) / len(tlen_values) if tlen_values else 0
+        std_tlen = (
+            math.sqrt(sum((x - avg_tlen) ** 2 for x in tlen_values) / len(tlen_values))
+            if len(tlen_values) > 1
+            else 0
+        )
 
     return BodySample(
         count,
@@ -463,24 +468,45 @@ def input_signature(path: str) -> dict[str, int | str] | None:
     }
 
 
+def info_cache_path(
+    input_path: str | os.PathLike[str], outdir: str | os.PathLike[str]
+) -> Path:
+    """``<outdir>/manifests/<input_name>.wgse_info.json``."""
+    from wgsextract_cli.core.results import manifest_dir_for
+
+    return manifest_dir_for(outdir) / f"{Path(input_path).name}.wgse_info.json"
+
+
 def cached_info(
     input_path: str, outdir: str | None = None, key: str = "gender"
 ) -> dict[str, Any] | None:
     """`info`'s cached metrics for this very file, if a cache with `key` exists
-    in the output folder, beside the input or in the configured output folder."""
+    in the output folder's ``manifests/`` subfolder (or a legacy beside-file cache)."""
     name = f"{Path(input_path).name}.wgse_info.json"
     this_file = input_signature(input_path)
     if this_file is None:
         return None
     signature = calculate_bam_md5(input_path, None)
-    for folder in (
-        outdir,
-        str(absolute_path(input_path).parent),
-        output_directory([input_path]),
-    ):
-        cache = str(Path(folder, name)) if folder else ""
+    folders = [
+        folder
+        for folder in (
+            outdir,
+            output_directory([input_path]),
+            str(absolute_path(input_path).parent),
+        )
+        if folder
+    ]
+    candidates = [
+        *(info_cache_path(input_path, folder) for folder in folders),
+        *(Path(folder, name) for folder in folders),
+    ]
+    seen: set[Path] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
         try:
-            with open(cache) as f:
+            with open(candidate) as f:
                 info = json.load(f)
         except (OSError, ValueError):
             continue

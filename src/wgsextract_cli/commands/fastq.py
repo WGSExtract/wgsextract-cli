@@ -56,10 +56,11 @@ def _aliases(first: Path, second: Path) -> bool:
 def _validate_manifest(sources: tuple[Path, ...], outputs: tuple[Path, ...]) -> None:
     manifest = manifest_path_for(outputs[0])
     stem = manifest.name.removesuffix(MANIFEST_SUFFIX)
+    card_dir = outputs[0].parent
     sidecars = (
         manifest,
-        manifest.with_name(stem + CARD_SUFFIX),
-        manifest.with_name(stem + ".failed" + CARD_SUFFIX),
+        card_dir / (stem + CARD_SUFFIX),
+        card_dir / (stem + ".failed" + CARD_SUFFIX),
     )
     if any(
         _aliases(sidecar, path) for sidecar in sidecars for path in sources + outputs

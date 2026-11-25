@@ -196,8 +196,9 @@ def test_scatter_gathers_shards_in_reference_order(
     assert sorted(p.name for p in output.parent.iterdir()) == [
         "gatk.vcf.gz",
         "gatk.vcf.gz.tbi",
-        "gatk.vcf.manifest.json",
+        "manifests",
     ]
+    assert (output.parent / "manifests" / "gatk.vcf.manifest.json").is_file()
     assert list(scratch.iterdir()) == []
 
 

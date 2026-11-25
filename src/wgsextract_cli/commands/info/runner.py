@@ -111,7 +111,15 @@ def _load_cache(path: str, signature: dict[str, int | str] | None) -> dict[str, 
 
 
 def _save_cache(path: str, data: dict[str, Any]) -> bool:
+    from wgsextract_cli.core.results import MANIFESTS_DIR
+
     try:
+        cache_path = Path(path)
+        if (
+            cache_path.parent.name == MANIFESTS_DIR
+            and cache_path.parent.parent.is_dir()
+        ):
+            cache_path.parent.mkdir(exist_ok=True)
         # Atomic: concurrent info calls may read the cache while one writes it.
         # Readable like the plain write it replaced: other users and tools
         # (Install Lab's oracle) read this cache.
@@ -471,8 +479,11 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     if detailed and input_file.lower().endswith(".cram") and not resolved_ref:
         raise UsageError("--ref required for detailed mode with CRAM.")
 
-    outdir = outdir_arg or str(absolute_path(input_file).parent)
-    if outdir_arg and (cache or detailed):
+    from wgsextract_cli.core.config import output_directory as configured_outdir
+
+    default_outdir = None if outdir_arg else configured_outdir([input_file])
+    outdir = outdir_arg or default_outdir or str(absolute_path(input_file).parent)
+    if (outdir_arg or default_outdir) and (cache or detailed):
         Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
 
@@ -546,11 +557,17 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             current_result().add_output(bins_path, "coverage_bins")
         return
 
-    json_cache = str(Path(outdir, f"{Path(input_file).name}.wgse_info.json"))
+    from .metrics import info_cache_path
+
+    json_cache = str(info_cache_path(input_file, outdir))
     table_stem = Path(outdir, Path(input_file).name + region_file_tag(region))
     signature = input_signature(input_file)
     cache = cache and signature is not None
     data = _load_cache(json_cache, signature)
+    if not data:
+        legacy_cache = str(Path(outdir, f"{Path(input_file).name}.wgse_info.json"))
+        if legacy_cache != json_cache:
+            data = _load_cache(legacy_cache, signature)
     call = data.get("sex_call")
     sex_unavailable = (
         isinstance(call, list)
@@ -577,6 +594,17 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     # Likewise the sequencer, from the cached first read name and the header.
     if data.get("avg_read_len"):
         data["sequencer"] = determine_sequencer(data.get("first_qname"), header)
+    # Single-end caches written before insert size fell back to read length
+    # stored 0 bp (SD=0 bp); refresh them from the cached read-length stats.
+    if (
+        data.get("avg_read_len")
+        and data.get("is_paired") is False
+        and not data.get("avg_insert_size")
+    ):
+        data["avg_insert_size"] = data["avg_read_len"]
+        data["std_insert_size"] = data.get("std_read_len", 0)
+        if cache:
+            _save_cache(json_cache, data)
 
     if data.get("avg_read_len") and "alignment_health" not in data:
         # A cache from before these checks existed.

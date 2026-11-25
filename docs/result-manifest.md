@@ -17,27 +17,29 @@ The GUI's normalized presentation types derive shared fields from it, but its
 parser still treats external/compact documents as unvalidated input.
 
 - **Manifest file.** A command that writes outputs also writes
-  `<output>.manifest.json` next to them, atomically. The name is the first
+  `manifests/<output>.manifest.json` inside the output directory, atomically
+  (never in the source/lab folder, even when an index such as `.bai` or `.tbi`
+  is written beside the lab file). The name is the first
   output file's name with any compression suffix (`.gz`, `.bgz`, `.zst`,
   `.bz2`, `.xz`) removed. The type extension stays, so outputs that differ only
   in type keep separate manifests. `sample_MT.vcf.gz` gives
-  `sample_MT.vcf.manifest.json`, `sample_MT.fasta` gives
-  `sample_MT.fasta.manifest.json`, and `sample_mtDNA.bam` gives
-  `sample_mtDNA.bam.manifest.json`. Multi-output commands such as `microarray`
-  name their manifest after the run (`<sample>_microarray.manifest.json`;
-  `<vcf>_<sample>_microarray.manifest.json`, with a `sample` metric, for a
+  `manifests/sample_MT.vcf.manifest.json`, `sample_MT.fasta` gives
+  `manifests/sample_MT.fasta.manifest.json`, and `sample_mtDNA.bam` gives
+  `manifests/sample_mtDNA.bam.manifest.json`. Multi-output commands such as `microarray`
+  name their manifest after the run (`manifests/<sample>_microarray.manifest.json`;
+  `manifests/<vcf>_<sample>_microarray.manifest.json`, with a `sample` metric, for a
   sample chosen from a multi-sample VCF). `vcf trio` always writes
-  `trio.manifest.json`, whichever modes ran.
+  `manifests/trio.manifest.json`, whichever modes ran.
   Report-only commands (`info`, `info chip`, `ref status`, `ref library --list`,
   `report-delta`, and `ref recheck` without `--save-answers`) and deletions (`ref library --delete`, `vep delete`, `--delete` options)
   write no file, except `info --format`, whose manifest is named after the first table
-  (`<input>_chromosomes.parquet.manifest.json`).
+  (`manifests/<input>_chromosomes.parquet.manifest.json`).
   A failed run that registered outputs still writes its manifest, with
   `status: "failed"`. A `vcf` annotator (`clinvar`, `gnomad`, `cadd`,
   `revel`, `phylop`, `gerp`, `spliceai`, `alphamissense`, `pharmgkb`,
   `sv-freq`) that fails before registering any output, such as on a missing
   resource file, still records the attempt, so `report` can show it: as
-  `<output>.failed.manifest.json` (`clinvar_pathogenic.vcf.failed.manifest.json`),
+  `manifests/<output>.failed.manifest.json` (`manifests/clinvar_pathogenic.vcf.failed.manifest.json`),
   leaving an earlier run's manifest in the folder as it was. The next manifest
   written under the output's own name removes it. Commands that name their
   manifest after the run, such as `vcf trio` and `analyze`, write it on failure
@@ -55,8 +57,9 @@ parser still treats external/compact documents as unvalidated input.
   desktop app. It is not listed in `--help`. Like `--json`, it writes nothing
   when argparse rejects the arguments.
 - **`--card`.** This global option (or `result_card = true` in config.toml;
-  `--no-card` overrides it) also writes `<name>.card.html` beside the
-  manifest: `sample_MT.vcf.card.html` beside `sample_MT.vcf.manifest.json`.
+  `--no-card` overrides it) also writes `<name>.card.html` in the output
+  directory (while its manifest lives in `manifests/`): `sample_MT.vcf.card.html`
+  with `manifests/sample_MT.vcf.manifest.json`.
   The card is a page to view, print to PDF or share. It shows the command,
   its status, what the command printed, metrics, warnings and output files,
   with the WGS Extract and tool versions, the input files with their size and
@@ -65,12 +68,12 @@ parser still treats external/compact documents as unvalidated input.
   URLs, the run's files, its path options as given (missing or relative too)
   and any other path that exists on the computer are cut to their names, and
   the home folder to `~`, so sharing a card doesn't reveal your folders;
-  the manifest beside it keeps the full paths. The page is self-contained: no
+  the manifest in `manifests/` keeps the full paths. The page is self-contained: no
   scripts, nothing loaded from a network. A report-only command that reads
   a sample, such as `info`, which otherwise writes no manifest, writes both
   into its output folder (with no `--outdir`, where outputs go by default:
-  `output_directory` or `wgse/` beside the input), named after its input and
-  command (`sample.bam_info.card.html` and `sample.bam_info.manifest.json`); one
+  `output_directory` or `WGSEv6/` beside the input), named after its input and
+  command (`sample.bam_info.card.html` and `manifests/sample.bam_info.manifest.json`); one
   that reads no sample, such as `ref status`, writes no card. The card is
   listed in the manifest's `outputs` with role `result_card`. A failed run's
   card shows the error. Help and settings commands (`help`, `config`, `deps`,

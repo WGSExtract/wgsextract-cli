@@ -67,7 +67,7 @@ def test_1223_same_named_vcfs_keep_their_own_results_on_resume(tmp_path: Path) -
             "--threads", "1", "--vcf-inputs", *vcfs,
         ])  # fmt: skip
         assert code == 0, stderr
-        manifest = json.loads((out / "analyze.manifest.json").read_text())
+        manifest = json.loads((out / "manifests" / "analyze.manifest.json").read_text())
         significant = [
             record
             for record in manifest["outputs"]
@@ -204,7 +204,7 @@ def test_1220_comprehensive_keeps_configured_vcf_out_of_explicit_bam_run(
         "--threads", "1", "--outdir", str(outdir), *args,
     ])  # fmt: skip
     assert code == 0, stdout + stderr
-    manifest = json.loads((outdir / "analyze.manifest.json").read_text())
+    manifest = json.loads((outdir / "manifests" / "analyze.manifest.json").read_text())
     assert {(r["role"], r["path"]) for r in manifest["inputs"]} == expected_inputs
     # #1182: an external VCF naming another sample than the reads is warned
     # about, not refused: its sample column may only be named differently.

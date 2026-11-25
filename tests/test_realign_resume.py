@@ -159,7 +159,9 @@ def test_a_run_killed_mid_step_resumes_there_with_identical_output(
     assert journal["steps"]["extract"]["status"] == "complete"
     if signal != "9":
         # A run stopped by a signal reports it in the workflow's manifest.
-        manifest = json.loads((out / "x_aligned.bam.manifest.json").read_text())
+        manifest = json.loads(
+            (out / "manifests" / "x_aligned.bam.manifest.json").read_text()
+        )
         assert manifest["status"] == "cancelled"
     assert not list(out.glob("*.steps.json.manifest.json"))
 
@@ -370,9 +372,10 @@ def test_fastqs_staged_in_the_output_survive_a_kill_and_go_after_the_resume(
     # reclaimed, is kept between runs by design (core/file_lock.py).
     guard = ".x_aligned.bam.steps.json.lock.guard"
     assert sorted(p.name for p in out.iterdir() if p.name != guard) == [
+        "manifests",
         "x_aligned.bam",
         "x_aligned.bam.bai",
-        "x_aligned.bam.manifest.json",
         "x_aligned.bam.steps.json",
     ]
+    assert (out / "manifests" / "x_aligned.bam.manifest.json").is_file()
     assert _tree(Path(source).parent) == inputs

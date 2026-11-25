@@ -62,7 +62,7 @@ def test_an_input_limits_the_report_to_that_samples_runs(tmp_path):
     assert mt["value"] == "H1a"
     assert report["sections"]["pharmacogenomics"]["status"] == "failed"
     sources = {s["manifest"] for s in report["sections"]["lineage"]["sources"]}
-    assert sources == {"Alice_haplogrep.manifest.json"}
+    assert sources == {"manifests/Alice_haplogrep.manifest.json"}
 
     with pytest.raises(UsageError, match=r"Alice\.cram.*Bob\.cram"):
         pr.build_report(folder)
@@ -180,7 +180,7 @@ def test_1221_report_distinguishes_same_named_bams_by_provenance(tmp_path, evide
     assert report["sample"]["alignment"] == "first/sample.bam"
     assert [
         source["manifest"] for source in report["sections"]["overview"]["sources"]
-    ] == [f"first/{Path(descendant['manifest']).name}"]
+    ] == [f"first/manifests/{Path(descendant['manifest']).name}"]
 
 
 @pytest.mark.parametrize("selection", [None, "sample.bam", "calls.vcf"])
@@ -240,7 +240,7 @@ def test_failed_pharmcat_and_clinvar_runs_show_their_errors(sample):
             error=f"{command} needs java",
             finished="2026-01-01T00:00:00+00:00",
         )
-    (sample / "clinvar_pathogenic.vcf.manifest.json").unlink()
+    (sample / "manifests" / "clinvar_pathogenic.vcf.manifest.json").unlink()
     sections = pr.build_report(sample)["sections"]
     assert sections["clinvar"]["status"] == "failed"
     assert "vcf clinvar needs java" in sections["clinvar"]["error"]
@@ -296,7 +296,7 @@ def test_859_newer_failed_clinvar_attempt_is_shown_beside_the_older_evidence(
         "command": "vcf clinvar",
         "status": "failed",
         "finished": "2026-01-02T00:00:00+00:00",
-        "manifest": "../newer-failure/clinvar_pathogenic.vcf.manifest.json",
+        "manifest": "../newer-failure/manifests/clinvar_pathogenic.vcf.manifest.json",
     }
     [stale] = [w for w in clinvar["warnings"] if w["code"] == "newer_attempt_failed"]
     assert "ClinVar file not found" in stale["message"]
@@ -311,7 +311,9 @@ def test_859_newer_failed_clinvar_attempt_is_shown_beside_the_older_evidence(
         assert "vcf clinvar (failed, 2026-01-02T00:00:00+00:00)" in text
         assert "vcf clinvar (ok, 2025-01-01T00:00:00+00:00)" in text
 
-    manifest = json.loads((sample / "HG002_personal_report.manifest.json").read_text())
+    manifest = json.loads(
+        (sample / "manifests" / "HG002_personal_report.manifest.json").read_text()
+    )
     assert [w["details"]["section"] for w in manifest["warnings"]
             if w["code"] == "newer_attempt_failed"] == ["clinvar"]  # fmt: skip
 
@@ -334,7 +336,7 @@ def test_859_a_rerun_that_succeeds_after_a_failure_is_not_stale(sample):
 def test_messages_from_runs_keep_paths_out_of_the_documents(sample, tmp_path):
     table = sample / "clinvar_pathogenic.confidence.tsv"
     elsewhere = tmp_path / "secret-home" / "ref" / "clinvar.vcf.gz"
-    path = sample / "clinvar_pathogenic.vcf.manifest.json"
+    path = sample / "manifests" / "clinvar_pathogenic.vcf.manifest.json"
     document = json.loads(path.read_text())
     document["warnings"] = [
         {

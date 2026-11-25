@@ -30,7 +30,7 @@ def test_repair_vcf_file_mode_defaults_to_wgse_beside_the_input(tmp_path):
 
     result = api.repair.ftdna_vcf(api.RepairFtdnaVcfParams(input=input_vcf))
 
-    assert "DP1" in (tmp_path / "wgse" / "ftdna_repaired.vcf").read_text(
+    assert "DP1" in (tmp_path / "WGSEv6" / "ftdna_repaired.vcf").read_text(
         encoding="utf-8"
     )
     assert result.metrics["repaired_records"] == 1
@@ -77,7 +77,7 @@ def test_cancelled_vcf_repair_leaves_no_partial_output(tmp_path):
 
     assert (result.status, result.exit_code) == ("cancelled", 130)
     assert not (tmp_path / "big_repaired.vcf").exists()
-    assert not (tmp_path / "wgse" / "big_repaired.vcf").exists()
+    assert not (tmp_path / "WGSEv6" / "big_repaired.vcf").exists()
 
 
 def test_repair_expands_home_in_api_paths(tmp_path, monkeypatch):

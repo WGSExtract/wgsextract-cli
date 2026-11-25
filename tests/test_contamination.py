@@ -135,7 +135,7 @@ def test_freemix_measures_a_mixture_and_is_recorded(
     )
     freemix = result.metrics["freemix"]
     assert low <= freemix <= high
-    out = folder / "wgse"
+    out = folder / "WGSEv6"
     report = out / "s.contamination.selfSM"
     assert report.is_file() and (out / "s.contamination.Ancestry").is_file()
     assert not list(folder.glob("s.contamination.*"))

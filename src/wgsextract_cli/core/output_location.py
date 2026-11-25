@@ -2,13 +2,17 @@
 
 A lab delivers primary files: a BAM or CRAM, FASTQs, VCFs or a raw microarray
 file, maybe with their indexes. The folder holding them is the lab's results
-and is treated as immutable: outputs go to a ``wgse/`` folder inside it, so the
-original folder and its ``wgse/`` together are the person's genome file set.
-An input already in a ``wgse/`` folder was made by this tool, and further
-outputs go beside it.
+and is treated as immutable: outputs go to a ``WGSEv6/`` folder inside it, so
+the original folder and its ``WGSEv6/`` together are the person's genome file
+set. An input already in a ``WGSEv6/`` folder (or the ``wgse/`` folder of
+releases up to v0.8.8) was made by this tool, and further outputs go beside it.
 
 Only an index that must sit beside its file (.bai, .crai, .tbi, ...) is ever
-written in the lab's folder, unless the user points output_directory there."""
+written in the lab's folder, unless the user points output_directory there.
+Machine-readable metadata (``*.manifest.json`` and ``*.wgse_info.json``) goes
+into a ``manifests/`` subfolder of the output directory: when a run writes an
+index into the lab's folder, its manifest goes to the output directory's
+``manifests/``. (``sign create`` writes beside its inputs by design.)"""
 
 import stat
 from collections.abc import Iterable
@@ -18,7 +22,10 @@ from zipfile import BadZipFile, ZipFile
 
 from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
 
-OUTPUT_FOLDER = "wgse"
+OUTPUT_FOLDER = "WGSEv6"
+# Folders this tool made, compared case-insensitively: ``wgse`` is the name
+# releases up to v0.8.8 used, so their outputs don't get a nested ``WGSEv6/``.
+_OUTPUT_FOLDERS = frozenset({OUTPUT_FOLDER.lower(), "wgse"})
 # Commands whose outputs belong beside the files they describe, as an index
 # does: a checksum manifest (and its signature) lists the files around it.
 BESIDE_INPUT_COMMANDS = frozenset({"sign create"})
@@ -86,14 +93,14 @@ def primary_input(values: Iterable[object]) -> Path | None:
 
 
 def default_output_directory(values: Iterable[object]) -> Path | None:
-    """``wgse/`` beside the primary input, or the input's own folder when that
-    already is a ``wgse/`` folder; None when the command reads no primary file
-    (it then keeps its own default)."""
+    """``WGSEv6/`` beside the primary input, or the input's own folder when it
+    already is an output folder (``WGSEv6/``, or an older ``wgse/``); None when
+    the command reads no primary file (it then keeps its own default)."""
     source = primary_input(values)
     if source is None:
         return None
     folder = source.parent
-    return folder if folder.name.lower() == OUTPUT_FOLDER else folder / OUTPUT_FOLDER
+    return folder if folder.name.lower() in _OUTPUT_FOLDERS else folder / OUTPUT_FOLDER
 
 
 def primary_overwrite_warning(
@@ -131,7 +138,7 @@ def make_output_folder(folder: str | PathLike[str]) -> Path | None:
 
 def remove_if_empty(folder: Path | None) -> None:
     """Remove an output folder a run created and left empty (it failed, or
-    wrote nothing), so no empty wgse/ is left beside the lab's files."""
+    wrote nothing), so no empty WGSEv6/ is left beside the lab's files."""
     if folder is None:
         return
     try:

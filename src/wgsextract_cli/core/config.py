@@ -609,7 +609,7 @@ def mygenomes_library() -> str:
 
 
 def output_directory(inputs: Iterable[object] = ()) -> str | None:
-    """config output_directory, else the wgse/ folder beside the primary
+    """config output_directory, else the WGSEv6/ folder beside the primary
     input among ``inputs`` (core/output_location.py); None when neither."""
     configured = settings.get("output_directory")
     if configured:

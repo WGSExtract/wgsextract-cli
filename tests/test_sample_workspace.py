@@ -165,7 +165,7 @@ def test_info_records_what_later_commands_read(seqs, folder):
     assert facts["sex"]["by"].endswith(" info")
 
     # Without info's own cache, the sex comes from the workspace alone.
-    (folder / "wgse" / "s.bam.wgse_info.json").unlink()
+    (folder / "WGSEv6" / "manifests" / "s.bam.wgse_info.json").unlink()
     assert metrics.sample_sex(bam) == "Male"
     first = genotype_qc.target_depths(bam, str(folder))
     with patch.object(genotype_qc, "_counted_depths", side_effect=AssertionError):
@@ -213,7 +213,9 @@ def test_typed_sample_schema_preserves_version_one_extensions(folder):
     workspace = SampleWorkspace(folder)
     workspace.set_overrides({"platform": "ont"}, reads)
     workspace.record("read_length", reads, 149.5, method="reads", confidence="high")
-    workspace.record_output(folder / "run.manifest.json", "info", "cancelled")
+    workspace.record_output(
+        folder / "manifests" / "run.manifest.json", "info", "cancelled"
+    )
     raw = sample_workspace.tomllib.loads(workspace.path.read_text())
     raw["future_top_level"] = {"nested": [1, "kept"]}
     raw["detected"]["s.bam"]["future_fact"] = {
@@ -221,22 +223,25 @@ def test_typed_sample_schema_preserves_version_one_extensions(folder):
         "value": {"future_value": True},
         "future_metadata": "kept",
     }
-    raw["outputs"]["run.manifest.json"]["future_metadata"] = "kept"
+    raw["outputs"]["manifests/run.manifest.json"]["future_metadata"] = "kept"
     schema = sample_workspace.load_schema()
     jsonschema.validate(raw, schema)
 
     workspace.path.write_text(sample_workspace.render(raw))
-    (folder / "run.manifest.json").write_text("{}")
+    (folder / "manifests").mkdir(exist_ok=True)
+    (folder / "manifests" / "run.manifest.json").write_text("{}")
     workspace.record("sex", reads, "Male", method="reads", confidence="high")
     workspace.set_overrides({"platform": "nanopore"}, reads)
-    workspace.record_output(folder / "next.manifest.json", "info", "ok")
+    workspace.record_output(folder / "manifests" / "next.manifest.json", "info", "ok")
     retained = sample_workspace.tomllib.loads(workspace.path.read_text())
     assert retained["future_top_level"] == raw["future_top_level"]
     assert (
         retained["detected"]["s.bam"]["future_fact"]
         == raw["detected"]["s.bam"]["future_fact"]
     )
-    assert retained["outputs"]["run.manifest.json"]["future_metadata"] == "kept"
+    assert (
+        retained["outputs"]["manifests/run.manifest.json"]["future_metadata"] == "kept"
+    )
     jsonschema.validate(retained, schema)
 
     raw["override"]["s.bam"]["future_override"] = "not an allowed fact"
@@ -455,7 +460,7 @@ def test_an_override_the_reads_contradict_is_warned_about(seqs, folder):
         "detected": "Female",
         "override": "Male",
     }
-    manifest = json.loads(next(out.glob("*.manifest.json")).read_text())
+    manifest = json.loads(next(out.glob("manifests/*.manifest.json")).read_text())
     assert "sex_override_differs" in {w["code"] for w in manifest["warnings"]}
 
     # Once detected, the fact is read back, not detected again, but still
