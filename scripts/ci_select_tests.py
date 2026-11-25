@@ -29,6 +29,7 @@ CI_TESTS = (
     "tests/test_workflow_readiness.py",
     "tests/test_workflow_paths.py",
     "tests/test_python_size.py",
+    "tests/test_test_smells.py",
     "tests/test_mypy_policy.py",
     "tests/test_ci_certify.py",
     "tests/test_ci_certify_remote.py",
@@ -77,7 +78,12 @@ REGISTRATION_PREFIX = APP_PREFIX + "cli.registration."
 def ci_path(path: str) -> bool:
     return not path.endswith(".md") and (
         path in CI_TESTS
-        or path in {"scripts/check_python_size.py", "scripts/python_size_baseline.json"}
+        or path
+        in {
+            "scripts/check_python_size.py",
+            "scripts/python_size_baseline.json",
+            "scripts/test_smells.py",
+        }
         or path.startswith(".github/")
         or (path.startswith("scripts/ci_") and path.endswith(".py"))
     )
@@ -409,8 +415,10 @@ def selection_context(root: Path) -> SelectionContext:
     )
 
 
-def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | str:
-    """Return sorted existing test files, or 'all' for an uncertain dependency."""
+def select_tests(
+    paths: list[str], *, repository: Path = ROOT, known_only: bool = False
+) -> list[str] | str:
+    """Return affected files, or 'all' for uncertainty unless collecting known users."""
     root = repository.resolve()
     graph = import_graph(root)
     context = selection_context(root)
@@ -431,17 +439,18 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
             continue
         if ci_path(path):
             selected.update(test for test in CI_TESTS if test in tests)
-        if path in {"pyproject.toml", "pixi.toml", "pixi.lock"}:
-            return "all"
-        if path.startswith("src/wgsextract_cli/") and not path.endswith(".py"):
-            # Runtime resource readers are not yet part of the literal-input
-            # scanner. A direct test reader must not hide indirect consumers.
-            return "all"
-        if path.startswith("tests/") and (
-            Path(path).name == "conftest.py"
-            or "helper" in path
-            or path.startswith(("tests/fixtures/", "tests/data/"))
-            or path not in tests
+        if not known_only and (
+            path in {"pyproject.toml", "pixi.toml", "pixi.lock"}
+            or (path.startswith("src/wgsextract_cli/") and not path.endswith(".py"))
+            or (
+                path.startswith("tests/")
+                and (
+                    Path(path).name == "conftest.py"
+                    or "helper" in path
+                    or path.startswith(("tests/fixtures/", "tests/data/"))
+                    or path not in tests
+                )
+            )
         ):
             return "all"
         readers = {
@@ -463,22 +472,19 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
             selected.add(path)
         if path in by_path:
             (ci_modules if ci_path(path) else changed_modules).add(by_path[path])
-        elif path.endswith(".py") and not readers and not ci_path(path):
-            return "all"
-        elif path.startswith("src/wgsextract_cli/") and path.endswith(".py"):
-            return "all"
-        elif (
-            not readers
-            and not ci_path(path)
-            and not (
-                path.endswith(".md")
-                or path.startswith(("gui/", "native/", "site/", "site_src/"))
-            )
-        ):
-            return "all"
+        elif not known_only:
+            if path.startswith("src/wgsextract_cli/") or (
+                not readers
+                and not ci_path(path)
+                and (
+                    path.endswith(".py")
+                    or not path.startswith(("gui/", "native/", "site/", "site_src/"))
+                )
+            ):
+                return "all"
     if changed_modules:
         for test, reached in closures.items():
-            if reached & graph.unsafe:
+            if not known_only and reached & graph.unsafe:
                 if CLI_MAIN in reached or CLI_PARSER in reached:
                     return "all"
                 selected.add(test)
@@ -488,6 +494,22 @@ def select_tests(paths: list[str], *, repository: Path = ROOT) -> list[str] | st
         test for test, reached in direct_closures.items() if reached & ci_modules
     )
     return sorted(selected)
+
+
+def ready_test_selection(
+    paths: list[str], selection: list[str] | str, *, repository: Path = ROOT
+) -> list[str]:
+    """Omit measured slow modules only from broad, unproven fallback coverage."""
+    if isinstance(selection, list):
+        return selection
+    from scripts.ci_test_tiers import fast_test
+
+    known = select_tests(paths, repository=repository, known_only=True)
+    assert isinstance(known, list)
+    return sorted(
+        set(known)
+        | {test for test in selection_context(repository).tests if fast_test(test)}
+    )
 
 
 def os_selection(

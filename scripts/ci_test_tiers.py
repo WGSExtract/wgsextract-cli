@@ -1,4 +1,4 @@
-"""Explicit slow-module partition; unclassified/new tests stay in the core tier."""
+"""Local test partitions and the hosted pre-merge test budget."""
 
 import ast
 import hashlib
@@ -33,6 +33,57 @@ INTEGRATION_MODULES = frozenset(
         "test_deepvariant_staging.py",
     }
 )
+
+# 2026-11-11 through 2026-11-25: at least 100 reports, >1.5 aggregate hours,
+# and no recorded failures. Authorization and integrity suites stay fast.
+NIGHTLY_ONLY_MODULES = frozenset(
+    {
+        "test_alignment_commands.py",
+        "test_analyze_batch.py",
+        "test_bwa_mem2.py",
+        "test_caller_ploidy.py",
+        "test_chunked_realign.py",
+        "test_contig_calling.py",
+        "test_lineage_haplogroups.py",
+        "test_microarray_reuse.py",
+        "test_microarray_simulation.py",
+        "test_native_aligners_gpu_memory.py",
+        "test_native_aligners_linux.py",
+        "test_native_aligners_mem3.py",
+        "test_qc_ancestry.py",
+        "test_qc_commands.py",
+        "test_realign_resume.py",
+        "test_realign_streaming.py",
+        "test_smoke_real_basics.py",
+        "test_staged_alignment.py",
+        "test_systematic_genomics.py",
+        "test_trio_vcfs.py",
+        "test_variant_confidence.py",
+        "test_vcf_annotations.py",
+        "test_vcf_call.py",
+    }
+)
+
+# Merged-tree cross-section; tests for the full affected surface run before
+# enqueueing (hosted or certified). The offline ACMG tests also need fastVEP.
+QUEUE_SMOKE_TESTS = (
+    "tests/test_acmg_site_safety.py",
+    "tests/test_microarray_vendor_formats.py",
+    "tests/test_result_manifest.py",
+    "tests/test_server_http_limits.py",
+    "tests/test_server_mcp_http.py",
+    "tests/test_server_paths.py",
+    "tests/test_server_paths_regions.py",
+    "tests/test_server_paths_resources.py",
+    "tests/test_server_paths_schema.py",
+    "tests/test_table_writer.py",
+    "tests/test_text_newlines.py",
+)
+
+
+def fast_test(path: str) -> bool:
+    return Path(path).name not in NIGHTLY_ONLY_MODULES
+
 
 SENSITIVE = re.compile(
     r"subprocess|platform|sys\.|os\.|shutil|signal|chmod|symlink|newline|"

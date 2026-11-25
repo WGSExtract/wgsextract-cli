@@ -125,15 +125,15 @@ def render_concurrency_group(
 
 
 @pytest.mark.parametrize(
-    ("selection", "certified"),
+    ("moves", "status", "certified"),
     [
-        ("all", "false"),
-        ('["tests/test_imputation.py"]', "false"),
-        ('["tests/test_microarray.py"]', "true"),
+        ("[]", "true", "true"),
+        ('["wgsextract_cli.old"]', "true", "false"),
+        ("[]", "false", "false"),
     ],
 )
 def test_1492_windows_shard_planning_uses_effective_certification(
-    selection: str, certified: str
+    moves: str, status: str, certified: str
 ) -> None:
     workflow = (WORKFLOWS / "pr_ci.yml").read_text()
     gate = re.search(r"^\s+windows_x64: &(\S+) (.+)$", workflow, re.M)
@@ -148,10 +148,8 @@ def test_1492_windows_shard_planning_uses_effective_certification(
         render_concurrency_group(
             expression,
             {
-                "steps.diff.outputs.move_modules": "[]",
-                "steps.diff.outputs.windows_smoke": "false",
-                "steps.diff.outputs.windows_tests": selection,
-                "steps.cert.outputs.windows_x64": "true",
+                "steps.diff.outputs.move_modules": moves,
+                "steps.cert.outputs.windows_x64": status,
             },
         )
         == certified
@@ -367,7 +365,19 @@ def test_1045_move_import_collection_cannot_be_skipped_by_writer_certificates() 
         output = re.search(rf"^      {platform}: (.+)$", source, re.MULTILINE)
         assert output is not None
         assert "steps.diff.outputs.move_modules == '[]' &&" in output[1]
-        assert "|| 'false'" in output[1]
+        assert (
+            render_concurrency_group(
+                output[1],
+                {
+                    "steps.diff.outputs.move_modules": '["wgsextract_cli.old"]',
+                    "steps.cert.outputs.generic": "true",
+                    f"steps.cert.outputs.{platform}": "true",
+                },
+            )
+            .split()[-1]
+            .lower()
+            == "false"
+        )
 
 
 def test_1045_bundle_compatibility_keeps_affected_parser_dependencies() -> None:
@@ -380,13 +390,13 @@ def test_1045_bundle_compatibility_keeps_affected_parser_dependencies() -> None:
     assert "contains(inputs.tests, 'tests/test_cli_parser.py')" in condition
 
 
-def test_1045_queue_windows_is_a_required_dependency_not_pr_only() -> None:
+def test_1045_queue_smoke_is_required_instead_of_the_pr_windows_suite() -> None:
     source = (WORKFLOWS / "pr_ci.yml").read_text()
     windows = source.split("\n  windows:\n", 1)[1].split("\n  arm64:", 1)[0]
-    assert "github.event_name != 'merge_group'" not in windows
+    assert "github.event_name == 'pull_request'" in windows
     required = source.split("\n  required:\n", 1)[1]
     needs = re.search(r"needs: \[([^]]+)\]", required)
-    assert needs is not None and "windows" in needs[1]
+    assert needs is not None and "queue-smoke" in needs[1]
 
 
 def test_923_fork_code_cannot_write_certification_outputs() -> None:
@@ -602,3 +612,26 @@ def test_949_required_waits_for_area_gate_without_a_dependency_cycle() -> None:
     assert {"macos", "windows", "arm64"} <= set(area_needs[1].split(", "))
     assert not {"smoke", "install"} & set(area_needs[1].split(", "))
     assert "EVENT_NAME: ${{ github.event_name }}" in required
+
+
+def test_optional_tools_run_only_for_uncertified_pull_requests() -> None:
+    pr = (WORKFLOWS / "pr_ci.yml").read_text()
+    optional_pr = pr.split("\n  optional-tools:\n", 1)[1].split("\n  ubuntu:", 1)[0]
+    assert "github.event_name == 'pull_request'" in optional_pr
+    assert "needs.changes.outputs.test_certified != 'true'" in optional_pr
+
+
+def test_queue_smoke_cannot_invoke_the_hosted_pr_os_suites() -> None:
+    pr = (WORKFLOWS / "pr_ci.yml").read_text()
+    for lane in ("windows", "macos", "arm64"):
+        condition = pr.split(f"\n  {lane}:\n", 1)[1].splitlines()[1]
+        assert "'pull_request'" in condition or "!= 'merge_group'" in condition
+    queue = pr.split("\n  queue-smoke:\n", 1)[1].split("\n  #", 1)[0]
+    assert "fromJSON(needs.changes.outputs.queue_runners)" in queue
+    assert "--collect-only" in queue
+    assert "timeout-minutes: 10" in queue
+    assert "environments: dev fastvep" in queue
+    assert 'get_tool_path("fastvep")' in queue
+    ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
+    lint = ubuntu.split("\n  lint:\n", 1)[1].split("\n  test-ubuntu:\n", 1)[0]
+    assert "mypy" in lint and "certified" not in lint

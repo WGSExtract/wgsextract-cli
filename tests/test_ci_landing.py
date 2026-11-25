@@ -493,6 +493,7 @@ def test_876_active_run_cannot_pass_with_a_failed_or_timed_out_dependency(
             "NEEDS": json.dumps(needs),
             "ROUTED": "true",
             "EVENT_NAME": "merge_group",
+            "QUEUE_RUNNERS": "[]",
         },
         capture_output=True,
         text=True,
