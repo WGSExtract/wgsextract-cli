@@ -67,8 +67,14 @@ class FixtureGitHub(GitHub):
             if url.path == "actions/artifacts":
                 return {"artifacts": [a for a in self.artifacts if a["name"] == name]}
             if url.path == "actions/workflows/ubuntu_ci.yml/runs":
+                status = query.get("status", [""])[0]
                 return {
-                    "workflow_runs": [r for r in self.runs if r["event"] == "schedule"]
+                    "workflow_runs": [
+                        r
+                        for r in self.runs
+                        if r["event"] == "schedule"
+                        and (status in ("", "completed") or r["conclusion"] == status)
+                    ]
                 }
             if url.path.startswith("actions/runs/") and url.path.endswith("/artifacts"):
                 return {
@@ -211,6 +217,8 @@ def test_weekly_review_links_cost_and_candidates_to_observed_code_changes(
             ),
         )
     api.run(16, "2026-11-22T10:00:00Z", pytest_xml(outcomes), nightly=True)
+    # Another job failed after the nightly pytest job uploaded valid coverage.
+    api.runs[-1]["conclusion"] = "failure"
     api.artifact(
         16,
         "2026-11-22T10:10:00Z",
@@ -268,13 +276,14 @@ def test_junit_skips_and_teardown_errors_are_not_successes() -> None:
     data = b"""<testsuite>
     <testcase classname="tests.test_fast.Scenarios" name="test_case[1]" time="2"/>
     <testcase classname="tests.test_fast.Scenarios" name="test_case[1]" time="1"><error/></testcase>
+    <testcase classname="test_fast" name="test_missing_tool" time="1"/>
     <testcase classname="test_fast" name="test_missing_tool" time="NaN"><skipped/></testcase>
     <testcase classname="tests.test_removed" name="test_removed"/>
     </testsuite>"""
     cases, unmapped = junit(data, {TEST_FILE})
     assert cases == (
         Case(f"{TEST_FILE}::Scenarios::test_case[1]", "fail", 3),
-        Case(f"{TEST_FILE}::test_missing_tool", "skip", 0),
+        Case(f"{TEST_FILE}::test_missing_tool", "skip", 1),
     )
     assert unmapped == 1
     with pytest.raises(ValueError, match="document type"):

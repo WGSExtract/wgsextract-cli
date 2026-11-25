@@ -272,7 +272,7 @@ def render(
         f"{len({r.artifact for r in reports}):,} JUnit artifacts from "
         f"{len({r.run for r in reports}):,} runs; **{len(tests):,}** observed test cases. "
         f"{evidence.expired:,} matching artifacts expired, {evidence.without_junit:,} with no "
-        f"recognized JUnit file, {evidence.unmapped:,} unmapped records. "
+        f"recognized JUnit file, {evidence.unmapped:,} records did not map to current test IDs. "
         f"{evidence.sampled_out:,} pre-merge artifacts left out of the sample "
         f"(up to {PREMERGE_PER_LANE} per OS and stage, with priority for failed runs and "
         "same-SHA comparisons). Counts describe this sample, not the full suite.",

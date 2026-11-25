@@ -89,8 +89,9 @@ The Monday workflow reads existing hosted PR, merge-queue and nightly JUnit
 artifacts from the previous completed UTC week. It does not rerun or edit
 tests. It updates or reopens one bot-owned `efficiency` issue and attaches a JSON file
 with pass/fail/skip counts, cumulative and median test time, and source
-change dates. Missing or overwritten artifacts and fork runs limit the
-sample. The report samples at most 40 pre-merge artifacts per OS and stage,
+change dates. Missing or overwritten artifacts, fork runs and tests removed
+from the current checkout limit the sample. The report samples at most 40
+pre-merge artifacts per OS and stage,
 prioritizing failed runs and comparisons at the same SHA, and reports what
 it left out. It includes all available scheduled nightly JUnit artifacts.
 Times are summed JUnit durations, not saved runner wall time.

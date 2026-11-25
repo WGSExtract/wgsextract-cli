@@ -47,6 +47,7 @@ OS_WORKFLOWS = {
 }
 NODE_PART = re.compile(r"\w{1,160}", re.ASCII)
 CASE_NAME = re.compile(r"(\w{1,160})(\[[^\r\n]{0,400}\])?", re.ASCII)
+OUTCOME_PRIORITY = {"fail": 0, "skip": 1, "pass": 2}
 
 
 @dataclass(frozen=True)
@@ -122,7 +123,7 @@ def junit(data: bytes, tests: set[str]) -> tuple[tuple[Case, ...], int]:
         previous = cases.get(node)
         if previous:
             # Pytest can emit separate call and teardown records for one test.
-            result = min(result, previous.result)
+            result = min(result, previous.result, key=OUTCOME_PRIORITY.__getitem__)
         cases[node] = Case(
             node, result, duration(case) + (previous.seconds if previous else 0)
         )
@@ -231,7 +232,7 @@ def load_coverage(
         {
             "event": "schedule",
             "branch": "main",
-            "status": "success",
+            "status": "completed",
             "created": f"{start:%Y-%m-%dT%H:%M:%SZ}..{end:%Y-%m-%dT%H:%M:%SZ}",
         }
     )
@@ -239,11 +240,7 @@ def load_coverage(
     candidates: list[tuple[Row, int, int, str]] = []
     for run in runs:
         run_id, attempt, sha = int(run["id"]), int(run["run_attempt"]), run["head_sha"]
-        if (
-            run.get("conclusion") != "success"
-            or stage(run, api.repository, sha) != "nightly"
-            or not SHAS.fullmatch(sha)
-        ):
+        if stage(run, api.repository, sha) != "nightly" or not SHAS.fullmatch(sha):
             continue
         name = f"linux-test-observations-{attempt}"
         candidates.extend(
