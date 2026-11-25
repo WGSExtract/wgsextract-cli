@@ -792,6 +792,59 @@ requirement](#whole-genome-host-requirement) first: for this CRAM on 7 threads,
 realign asks for about 221 GiB, 26 GiB of RAM (refusing below 11.9 GiB) and
 21 h.
 
+## Methylation regions
+
+The whole-genome site-table benchmark used **26,782,992** strand-combined
+5mC rows from the [public ONT GIAB HG002 PAW70337 SUP HP1 bedMethyl][hg002-site-table]
+(GRCh38, ONT GIAB 2025.01). Both formats contained the same rows in the same
+order: 365 MiB of BGZF or 293 MiB of Parquet. The file was already split by
+ONT; these numbers measure region summaries from a precomputed site table,
+not haplotype assignment or pileup from reads.
+
+Each row below is one local `methylation regions` run on an Apple M1 Pro
+(32 GiB, samtools 1.24, PyArrow 26.0.1 with two CPU threads). Wall time
+includes looking up reference CpGs and writing the TSV, but excludes download
+and input conversion. Peak disk is the sampled run-directory size, including
+temporary files and results, but not the existing site table or FASTA.
+
+| Preset | Input | Wall time | Peak RSS | Peak run disk | Final TSV |
+| --- | --- | ---: | ---: | ---: | ---: |
+| RefSeq promoters | BGZF | 55.7 s | 198 MiB | 98 MiB | 6.9 MiB |
+| RefSeq promoters | Parquet | 42.6 s | 511 MiB | 103 MiB | 6.9 MiB |
+| UCSC masked CpG islands | BGZF | 52.2 s | 150 MiB | 23 MiB | 3.7 MiB |
+| UCSC masked CpG islands | Parquet | 41.7 s | 483 MiB | 23 MiB | 3.7 MiB |
+
+The TSVs matched byte-for-byte across input formats (59,045 promoter rows
+and 27,949 island rows). Parquet cut elapsed time by 20–24% but raised peak
+RSS. If converting an existing BGZF file, weigh that separate cost against
+the scan time saved on repeated summaries.
+
+### Haplotype split from reads (chromosome 21)
+
+On the same Mac, a 1.55 GiB chromosome 21 slice of the
+[matching ONT haplotagged CRAM][hg002-hp-alignment] was benchmarked with
+modkit 0.6.4 and a plain chromosome 21 FASTA. The paired modkit runs used
+identical target BEDs, strand-combined CpG 5mC, 100 kb intervals, and one
+thread each for compute, I/O and compression. Only `--phased` changed.
+
+| Preset | Pooled → phased wall time | Pooled → phased peak RSS | Pooled → all three BGZF files |
+| --- | ---: | ---: | ---: |
+| Promoters | 78.5 → 103.8 s | 545 → 744 MiB | 0.75 → 1.94 MiB |
+| CpG islands | 71.2 → 83.0 s | 596 → 724 MiB | 0.61 → 1.59 MiB |
+
+The `combined` output matched the pooled bedMethyl byte-for-byte in both
+runs. End-to-end `methylation regions --partition-hp --threads 1`, including
+the phase-tag scan and region summary, took **161 s / 760 MiB peak RSS** for
+promoters and **105 s / 693 MiB** for islands. Sampled peak run disk was
+24.1 and 11.4 MiB, including the final TSVs (23.6 and 11.4 MiB).
+The TSVs still list all hg38 preset regions, including those with absent
+contigs. The CLI removes intermediate partitions; a compressed reference
+may also need a temporary uncompressed copy. Only chromosome 21 reads
+were processed, so these are not whole-genome HP estimates.
+
+[hg002-site-table]: https://ont-open-data.s3.amazonaws.com/giab_2025.01/analysis/wf-human-variation/sup/HG002/PAW70337/output/SAMPLE.wf_mods.1.bedmethyl.gz
+[hg002-hp-alignment]: https://ont-open-data.s3.amazonaws.com/giab_2025.01/analysis/wf-human-variation/sup/HG002/PAW70337/output/SAMPLE.haplotagged.cram
+
 ## Preflight behaviour
 
 The estimate rows are advisory: `preflight_resources()` guards estimation and

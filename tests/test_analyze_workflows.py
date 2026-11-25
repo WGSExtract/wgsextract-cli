@@ -105,9 +105,9 @@ if argv[0].startswith("--workspace-lease="):
     argv.pop(0)
 with open(home / "calls.jsonl", "a") as log:
     log.write(json.dumps(argv) + "\\n")
-# The real parser: a step must accept every option it is given.
+# The real CLI loads only the selected group; a step must accept every option.
 from wgsextract_cli.cli.parser import build_parser
-build_parser()[0].parse_args(argv)
+build_parser(lazy=True)[0].parse_args(argv)
 while argv[0].startswith("--"):
     argv = argv[2:] if argv[0] in ("--config", "--tmp-dir") else argv[1:]
 name = " ".join(argv[:2]) if argv[0] in ("lineage", "vcf") else argv[0]

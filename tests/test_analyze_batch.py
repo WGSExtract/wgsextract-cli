@@ -2,10 +2,12 @@ import csv
 import os
 import shutil
 import unittest
+from pathlib import Path
 
 import pytest
 
-from tests.smoke_utils import REPO_ROOT, ensure_fake_data, run_cli
+from tests.htslib_helpers import bgzip_index, sam_to_bam, write_fasta
+from tests.smoke_utils import REPO_ROOT, run_cli
 
 
 @pytest.mark.parametrize(
@@ -109,18 +111,34 @@ class TestAnalyzeBatch(unittest.TestCase):
             self.assertEqual(sampleB["input"], os.path.abspath(self.sampleB_cram))
             self.assertEqual(sampleB["vcf"], "")
 
-    def test_batch_execution_mock(self):
-        """Test that comprehensive --batch correctly iterates (mock/smoke)."""
+    def test_batch_execution_mock(self) -> None:
+        """Exercise real batch dispatch, with and without a supplied VCF."""
+        sample = Path(self.outdir) / "inputs"
+        sample.mkdir()
+        # A short synthetic chrM is ineligible for rCRS lineage calling.
+        ref = write_fasta(sample / "ref.fa", {"chr1": "ACGT" * 2500, "chrM": "A" * 500})
+        bam = sam_to_bam(
+            [
+                "@HD\tVN:1.6\tSO:coordinate",
+                "@SQ\tSN:chr1\tLN:10000",
+                "@SQ\tSN:chrM\tLN:500",
+                "@RG\tID:rg\tSM:S",
+                "r1\t0\tchr1\t100\t60\t10M\t*\t0\t0\tTACGTACGTA\tIIIIIIIIII\tRG:Z:rg",
+            ],
+            sample / "sample.bam",
+        )
+        plain = sample / "sample.vcf"
+        plain.write_text(
+            "##fileformat=VCFv4.2\n"
+            "##contig=<ID=chr1,length=10000>\n"
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+            "chr1\t101\t.\tA\tG\t50\tPASS\t.\n"
+        )
+        vcf = bgzip_index(plain)
         batch_file = os.path.join(self.outdir, "run_batch.csv")
         with open(batch_file, "w", newline="") as f:
             writer = csv.writer(f)
             writer.writerow(["name", "input", "vcf"])
-            # Use real fake data to avoid immediate exit
-            fake_dir = str(REPO_ROOT / "out" / "fake_30x")
-            ensure_fake_data(fake_dir)
-            bam = os.path.abspath(os.path.join(fake_dir, "fake.bam"))
-            vcf = os.path.abspath(os.path.join(fake_dir, "fake.vcf.gz"))
-
             writer.writerow(["Sample1", bam, vcf])
             writer.writerow(["Sample2", bam, ""])
 
@@ -132,15 +150,21 @@ class TestAnalyzeBatch(unittest.TestCase):
             batch_file,
             "--outdir",
             self.outdir,
+            "--ref",
+            str(ref),
             "--skip-calling",
             "--debug",
         ]
 
         rc, stdout, stderr = run_cli(args)
+        self.assertEqual(rc, 0, stderr)
 
         # Check logs for batch processing headers
         self.assertIn("### BATCH PROCESSING: Sample1", stdout)
         self.assertIn("### BATCH PROCESSING: Sample2", stdout)
+        before, after = stdout.split("### BATCH PROCESSING: Sample2", 1)
+        self.assertIn("Processing Input VCFs (1 files)", before)
+        self.assertNotIn("Processing Input VCFs", after)
 
         # Check that output directories were created
         self.assertTrue(os.path.exists(os.path.join(self.outdir, "Sample1")))
