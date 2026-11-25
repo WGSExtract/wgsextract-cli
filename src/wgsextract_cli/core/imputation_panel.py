@@ -21,12 +21,14 @@ import gzip
 import hashlib
 import json
 import logging
+import shlex
 import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core import runtime
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
 from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
@@ -338,11 +340,18 @@ def require(chrom: str, reflib: str | None, version: str | None) -> ChromosomePa
             f"'{install}' (about {_PANEL[chrom][0] / 1e9:.1f} GB to download)."
         )
     if version is not None and marker.get("glimpse") != version:
+        library = resolve_reference_library(reflib)
+        if runtime.is_windows_host():
+            ref_arg = "'" + library.replace("'", "''") + "'"
+            shell = " in PowerShell"
+        else:
+            ref_arg = shlex.quote(library)
+            shell = ""
         raise WGSExtractError(
             f"The {chrom} imputation panel was prepared with GLIMPSE2 "
             f"{marker.get('glimpse')}, not the installed {version}. "
-            f"Run '{install}' with the same --ref (if set) to rebuild from the "
-            "local panel without downloading."
+            f"Rebuild from the local panel without downloading by running{shell}:\n"
+            f"  {install} --ref {ref_arg}"
         )
     return ChromosomePanel(
         chrom,

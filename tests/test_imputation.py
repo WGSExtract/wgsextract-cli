@@ -582,6 +582,7 @@ def test_732_panel_retry_checks_space_for_pending_binary_chunks(
 def test_1118_glimpse_version_mismatch_explains_offline_rebuild(
     reflib: Path, panel_downloads: list[str], tmp_path: Path
 ) -> None:
+    reflib = reflib.rename(tmp_path / "custom reference library")
     marker = next(reflib.glob("imputation/*/chr20/.installed.json"))
     state = json.loads(marker.read_text())
     state["glimpse"] = "an older GLIMPSE2 build"
@@ -592,8 +593,10 @@ def test_1118_glimpse_version_mismatch_explains_offline_rebuild(
     )
     with pytest.raises(api.CommandFailed, match="without downloading") as error:
         api.vcf.impute(params)
-    assert "ref imputation --install --chromosomes chr20" in str(error.value)
-    assert "--ref" in str(error.value)
+    assert (
+        f"wgsextract ref imputation --install --chromosomes chr20 --ref '{reflib}'"
+        in str(error.value)
+    )
 
     api.ref.imputation(api.RefImputationParams(ref=reflib, chromosomes="chr20"))
     result = api.vcf.impute(params)
