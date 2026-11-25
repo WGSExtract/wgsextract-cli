@@ -8,6 +8,7 @@ import jsonschema
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, write_fasta
+from tests.test_panel_spec import _audit_inputs
 from tests.test_personal_report import (
     _acmg_run as _acmg_run,
 )
@@ -32,6 +33,7 @@ from tests.test_personal_report import (
 from tests.test_personal_report import (
     served_lists as served_lists,
 )
+from wgsextract_cli import api
 from wgsextract_cli.core import personal_report as pr
 from wgsextract_cli.core.sample_workspace import SampleWorkspace
 
@@ -43,6 +45,59 @@ def test_pgx_and_lineage_labels_come_from_the_callers_evidence(sample):
     (mt,) = sections["lineage"]["findings"]
     assert (mt["value"], mt["confidence"]) == ("H1a", "high")
     assert any("H1a" in link["url"] for link in mt["links"])
+
+
+@needs_htslib
+def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> None:
+    panel, vcf, gvcf = _audit_inputs(tmp_path, phase_set="1")
+    assert "panel_audit" not in pr.build_report(tmp_path, input_file=vcf)["sections"]
+    api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=vcf,
+            gvcf=gvcf,
+            research_panel=True,
+            outdir=tmp_path,
+        )
+    )
+    result = api.report.build(api.ReportParams(input=vcf, outdir=tmp_path))
+    outputs = {output.role: Path(output.path) for output in result.outputs}
+    report = json.loads(outputs["report_json"].read_text(encoding="utf-8"))
+    jsonschema.validate(report, pr.load_schema())
+    section = report["sections"]["panel_audit"]
+    assert section["research_only"] is True
+    (finding,) = section["findings"]
+    assert finding["value"] == "2 qualifying allele copies"
+    assert finding["evidence"]["file"] == "audit.panel_audit.json"
+    for role in ("report_html", "report_markdown", "findings_table"):
+        content = outputs[role].read_text(encoding="utf-8")
+        assert "Research use only; not a diagnosis" in content
+        assert "audit.panel_audit.json" in content
+
+
+@needs_htslib
+def test_1287_shared_panel_file_never_connects_another_samples_audit(
+    tmp_path: Path,
+) -> None:
+    alice = tmp_path / "alice"
+    bob = tmp_path / "bob"
+    shared = tmp_path / "results"
+    alice.mkdir()
+    bob.mkdir()
+    (alice / "genome-config.toml").touch()
+    alignment = _touch(alice / "alice.bam")
+    panel, calls, _ = _audit_inputs(bob, phase_set="1")
+    panel = panel.rename(alice / "shared-panel.json")
+    api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=calls,
+            research_panel=True,
+            outdir=shared,
+        )
+    )
+    report = pr.build_report(alice, input_file=alignment, results=(shared,))
+    assert "panel_audit" not in report["sections"]
 
 
 def test_cyp2d6_from_runs_before_issue_844_is_not_high_or_called_d6_copies(sample):
