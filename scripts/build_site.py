@@ -6,6 +6,7 @@ from __future__ import annotations
 import html
 import re
 import shlex
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -86,16 +87,6 @@ class Page:
     footer_link_href: str = ""
     footer_extra: str = ""
     include_auto_hero: bool = True
-
-
-def main() -> None:
-    if not SOURCE_DIR.is_dir():
-        raise SystemExit(f"Missing site source directory: {SOURCE_DIR}")
-
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    for source in sorted(SOURCE_DIR.glob("*.md")):
-        page = load_page(source)
-        (OUTPUT_DIR / page.output_name).write_text(render_page(page), encoding="utf-8")
 
 
 def load_page(source: Path) -> Page:
@@ -187,14 +178,14 @@ def parse_actions(value: str) -> tuple[tuple[str, str, str], ...]:
     return tuple(actions)
 
 
-def render_page(page: Page) -> str:
+def render_page(page: Page, *, body_html: str | None = None) -> str:
     canonical = (
         f"{BASE_URL}/"
         if page.output_name == "index.html"
         else f"{BASE_URL}/{page.output_name}"
     )
     hero = render_page_hero(page) if page.include_auto_hero else ""
-    body = render_markdown(page.body)
+    body = render_markdown(page.body) if body_html is None else body_html
     return "\n".join(
         [
             "<!doctype html>",
@@ -899,4 +890,7 @@ def indent(text: str, spaces: int) -> str:
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, str(ROOT))
+    from scripts.site_references import main
+
     main()

@@ -86,7 +86,7 @@ move your entire Users Workspace (for example, to a larger or faster SSD):
 
 In [Advanced mode](modes.md), the **Users Workspace Settings** card edits your
 shared `config.toml` directly (see the CLI
-[Configuration reference](../../docs/configuration.md) for every key):
+[Configuration reference](https://wgse.bio/wgsextract-cli/configuration.html) for every key):
 
 - **Folder paths** (changing any folder asks **Move / Change Setting Only / Cancel**):
   - **Output Directory** (`output_directory`) — Advanced-only override; ignored in Basic mode so Basic runs always use the `wgse/` folder beside each input.

@@ -536,14 +536,15 @@ fixed jobs do not scale linearly. The replay uses the current graph and
 latest PR head, not historical imports or every earlier push. Main/nightly
 misses must become selector regressions rather than suppressed failures.
 
-The lightweight documentation job installs the package, pytest and jsonschema
+The lightweight documentation job installs the package and documentation test dependencies
 **only when its selected Python tests are nonempty**, never for prose alone.
 `DOCS_TARGET_INPUTS` in `scripts/ci_test_dependencies.py`, complemented by exact
 test-input reads, selects each target independently:
 
-- `tests/test_api.py::test_api_docs_are_up_to_date` (`docs/api.md`);
-- `tests/test_cli_help.py` (`docs/commands.md`, generated site cards and help
-  topics/examples);
+- `tests/test_site_references.py` (generated command, API and configuration
+  reference pages and CLI cards);
+- `tests/test_cli_help.py` and `tests/test_help_index.py` (help topics/examples
+  and the compact discovery cache);
 - `tests/test_bump_version.py` (CLI/app site sources, version/distribution docs);
 - `tests/test_regen.py` (real Git conflicts and regeneration/freshness checks,
   without bioinformatics tools);
@@ -555,8 +556,9 @@ test-input reads, selects each target independently:
 `DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` is the available target
 inventory, not an unconditional test batch. The router outputs `docs_tests`
 and `site_validation`. Prose outside `site_src/` and `gui/site_src/` selects
-neither; site prose runs both source validators with system Python and no
-package installation. This does not build Pages for a Markdown-only PR.
+neither; ordinary site prose runs both source validators with system Python
+and no package installation. Reference page templates and the configuration
+guide also select the site generation test.
 Version/changelog prose does not run release-script tests.
 
 When the CLI lane is selected, `docs_tests` is empty: affected freshness checks
@@ -684,9 +686,9 @@ verdict, and closing an old red-main issue does not certify the pending SHA.
 
 A ready PR analyzes only the CodeQL languages whose files it changes
 (`scripts/ci_codeql_scope.py`): Python for `.py`/`.pyi`, JavaScript/TypeScript
-for the extractor's file types (including JSON, YAML, HTML and XML), Rust for
-`.rs`, `Cargo.toml`/`Cargo.lock` or any file in a crate directory, and Actions
-for `action.yml`. Changes under `.github/` or to the scope script analyze every
+for the extractor's file types (including JSON, YAML, HTML and XML), and
+Actions for `action.yml`. Rust is not scanned (owner decision 2026-11-24: about
+52 runner-hours a week with no findings). Changes under `.github/` or to the scope script analyze every
 language. Main pushes and the nightly schedule always analyze every language.
 
 GitHub's CodeQL check turns `neutral` ("N configurations not found") and

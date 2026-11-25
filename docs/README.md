@@ -11,8 +11,10 @@
 Start with the [README quick start](../README.md#quick-start), the
 [CLI documentation site](https://wgse.bio/wgsextract-cli/), or
 `wgsextract help --all`. This index lists every top-level CLI guide; the
-[command reference](commands.md), [API](api.md) and
-[configuration reference](configuration.md) are generated from their sources.
+[command reference](https://wgse.bio/wgsextract-cli/commands.html),
+[API](https://wgse.bio/wgsextract-cli/api.html) and
+[configuration reference](https://wgse.bio/wgsextract-cli/configuration.html)
+are generated from their sources.
 
 ## Set up and run
 
@@ -27,7 +29,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Hardware](hardware.md) | Choose CPU/native/GPU acceleration and align safely |
 | [Resource estimates](resource_estimates.md) | Plan RAM/disk and benchmark workflows |
 | [Apple Silicon 16 GB](apple-silicon-16gb.md) | Read constrained-memory measurements |
-| [Configuration](configuration.md) | Set paths, resources, temp placement and keep-awake |
+| [Configuration](https://wgsextract.github.io/wgsextract-cli/configuration.html) | Set paths, resources, temp placement and keep-awake |
 | [Sample workspace](sample-workspace.md) | Organise the dataset library, example genomes and sample facts |
 | [Reference genomes](reference-genomes.md) | List, install, verify and delete references; inspect source rights |
 | [Calling reference](calling-reference.md) | Choose and verify a reference for calling |
@@ -38,7 +40,7 @@ Start with the [README quick start](../README.md#quick-start), the
 
 | Guide | Task |
 | --- | --- |
-| [Commands](commands.md) | Find a command starting from your input |
+| [Commands](https://wgsextract.github.io/wgsextract-cli/commands.html) | Find a command starting from your input |
 | [Microarray](microarray.md) | Export consumer files with explicit call/identity policies |
 | [Microarray indels](microarray-indels.md) | Supply sequence-defined insertion/deletion probes |
 | [CHM13 microarrays](microarray-chm13.md) | Project qualified CHM13 input to hg19/rCRS |
@@ -74,7 +76,7 @@ Start with the [README quick start](../README.md#quick-start), the
 | Guide | Task |
 | --- | --- |
 | [Professional pipelines / MultiQC](interop.md) | Hand off BAM/CRAM, bring back VCFs and combine QC |
-| [Python API](api.md) | Call typed operations from Python |
+| [Python API](https://wgsextract.github.io/wgsextract-cli/api.html) | Call typed operations from Python |
 | [Local server](server.md) | Use HTTP/JSON or MCP with allowed-path restrictions |
 | [Result manifest](result-manifest.md) | Consume structured results, warnings and provenance |
 | [Output contracts](output-contracts.md) | Know which output fields are stable, experimental or internal |

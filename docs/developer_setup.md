@@ -190,11 +190,18 @@ When you add or rename a command:
   implementations until execution; help must not import scientific libraries.
   Add its required/optional external tools and runtime to `NEEDS` in the
   same registration module.
-- Run `pixi run gen-command-docs` to regenerate `docs/commands.md` and the
-  command cards on the site's CLI page (`site_src/cli.md`), plus the bundled
-  `assets/cli/help-index.json` used for fast, configuration-independent discovery.
+- Run `pixi run site-build` to preview the automatically generated command
+  reference and the cards on the site's CLI page.
 
-`tests/test_cli_help.py` fails until all three are done.
+The compact help index is not committed. `just regen` and developer setup warm
+it, and the first `help --all --json` after `pixi install` also builds it if
+needed. Managed installs keep it in the installation's writable cache so
+uninstall removes it; other installs use the platform's per-user cache.
+The cache expires when the package version or parser and registry sources
+change.
+
+`tests/test_help_index.py` checks cache behavior; `tests/test_site_references.py`
+builds the site and checks the published references.
 
 Keep command-specific messages with the code that uses them. If registration
 and implementation both need the same strings, use the group's lightweight
@@ -227,8 +234,12 @@ reference stable without duplicating parameter descriptions beside their handler
 ### Generated references and parallel PRs
 
 Run `just regen` (or `pixi run python scripts/regen.py`) after changing CLI/API
-help. It updates `docs/api.md`, `docs/commands.md`, the bundled compact
-discovery index, and the generated command cards in `site_src/cli.md`.
+help. It warms the compact discovery cache.
+The [site build](site_generation.md) generates the public references and CLI
+cards separately; they are not committed.
+If a branch still tracks a retired generated reference, `just regen-resolve`
+stages its deletion after you resolve source conflicts. In `site_src/cli.md`,
+keep the `<!-- command cards -->` placeholder, not the old generated cards.
 It also generates the public sample-workspace JSON Schema from the output
 types in `core/sample_document.py`. Output types use `TypedDict`, dataclasses and
 `Annotated` constraints; `core/output_schema.py` rejects unsupported annotations.

@@ -86,8 +86,8 @@ def test_docs_fast_path_909_keeps_pages_for_handwritten_site_prose(
 @pytest.mark.parametrize(
     "reference",
     [
-        "docs/api.md",
-        "docs/commands.md",
+        "site_src/api.md",
+        "site_src/commands.md",
         "site_src/cli.md",
         "site_src/index.md",
         "site_src/install.md",
@@ -197,13 +197,26 @@ def test_docs_fast_path_909_pr_prose_runs_only_area_checks(paths: list[str]) -> 
 
 
 @pytest.mark.parametrize(
-    "reference", ["docs/api.md", "docs/commands.md", "site_src/cli.md"]
+    "reference", ["site_src/api.md", "site_src/commands.md", "site_src/cli.md"]
 )
 def test_docs_fast_path_909_pr_generated_docs_keep_freshness_checks(
     reference: str,
 ) -> None:
     assert "pr_ci.yml" in triggered_workflows([reference], "pull_request")
     assert routes([reference])["docs"]
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/wgsextract_cli/api/_params.py",
+        "src/wgsextract_cli/commands/registry.py",
+        "src/wgsextract_cli/core/settings_schema.py",
+        "docs/data/configuration-guide.md",
+    ],
+)
+def test_1531_generated_reference_inputs_trigger_pages_deployment(path: str) -> None:
+    assert "pages.yml" in triggered_workflows([path])
 
 
 def test_docs_fast_path_909_pr_code_still_runs_external_workflows() -> None:

@@ -12,7 +12,7 @@ $ wgsextract lookup --input HG002.vcf.gz --gene APOE --json
 ```
 
 The same lookup is `api.lookup.lookup(api.LookupParams(...))` in the
-[typed API](api.md) and the read-only `lookup` operation of
+[typed API](https://wgsextract.github.io/wgsextract-cli/api.html) and the read-only `lookup` operation of
 [`wgsextract serve`](server.md): `POST /v1/ops/lookup` over HTTP and the
 `lookup` tool over MCP, offered without `--allow-jobs`. All three return the
 same `wgsextract.lookup/1` document as the result's `details`.

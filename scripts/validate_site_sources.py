@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -19,6 +20,9 @@ KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--generated", action="store_true", help="Render pages as well")
+    args = parser.parse_args()
     errors: list[str] = []
     if not SOURCE_DIR.is_dir():
         errors.append(f"Missing site source directory: {SOURCE_DIR.relative_to(ROOT)}")
@@ -33,6 +37,12 @@ def main() -> None:
             print(f"  - {error}", file=sys.stderr)
         raise SystemExit(1)
 
+    if args.generated:
+        sys.path.insert(0, str(ROOT))
+        from scripts.site_references import built_pages
+
+        for _ in built_pages():
+            pass
     print("Site source validation passed.")
 
 

@@ -64,7 +64,7 @@ case "${1:-}" in
         if [ "${1:-}" = "wgsextract" ]; then
             shift
             case "${1:-}" in
-                ""|--help|deps)
+                ""|--help|help|deps)
                     exit 0
                     ;;
             esac
