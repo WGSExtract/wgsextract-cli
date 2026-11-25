@@ -5,7 +5,7 @@ import re
 
 import pytest
 
-from tests.dependency_scan import scan, tool_vocabulary
+from tests.dependency_scan import Scan, scan_handlers, tool_vocabulary
 from wgsextract_cli.cli import help as cli_help
 from wgsextract_cli.cli import parser
 from wgsextract_cli.cli.dispatch import checks_alignment_input
@@ -26,8 +26,10 @@ def entries() -> list[cli_help.CommandEntry]:
 
 
 @pytest.fixture(scope="module")
-def scans(entries):
-    return {entry.path: scan(entry.parser._defaults["func"]) for entry in entries}
+def scans(entries: list[cli_help.CommandEntry]) -> dict[str, Scan]:
+    return scan_handlers(
+        {entry.path: entry.parser._defaults["func"] for entry in entries}
+    )
 
 
 def test_every_runnable_command_declares_its_needs(entries):

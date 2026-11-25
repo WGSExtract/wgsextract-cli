@@ -12,7 +12,7 @@ import functools
 import inspect
 import textwrap
 import types
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -166,7 +166,9 @@ def _forwarded_param(func: types.FunctionType) -> int | None:
     return None
 
 
-def _argument(node: ast.Call, target: types.FunctionType, index: int):
+def _argument(
+    node: ast.Call, target: types.FunctionType, index: int
+) -> ast.expr | None:
     if index < len(node.args):
         return node.args[index]
     definition = _definition(target)
@@ -174,17 +176,59 @@ def _argument(node: ast.Call, target: types.FunctionType, index: int):
     return next((k.value for k in node.keywords if k.arg == name), None)
 
 
-def scan(handler: Callable[..., Any]) -> Scan:
-    """Tools ``handler`` can use, in user-facing names (see ``Scan``)."""
-    result = Scan()
+def _function_scan(func: types.FunctionType) -> tuple[Scan, list[types.FunctionType]]:
+    """Direct observations and the functions this definition may invoke."""
     raw = Scan()
+    targets = [
+        cell.cell_contents
+        for cell in func.__closure__ or ()
+        if isinstance(cell.cell_contents, types.FunctionType)
+    ]
+    body = _definition(func)
+    if body is None:
+        return raw, targets
 
-    def check(expr: ast.AST, func: types.FunctionType, body: ast.AST) -> None:
+    def check(expr: ast.AST) -> None:
         defaults: set[str] = set()
         found = _strings(expr, func, body, 0, defaults)
         raw.checked |= found - defaults
         raw.optional |= defaults
 
+    scope = func.__globals__
+    for node in ast.walk(body):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            raw.mentioned.add(node.value)
+        if not isinstance(node, ast.Call):
+            continue
+        name = _call_name(node)
+        if node.args:
+            if name in CHECKS:
+                check(node.args[0])
+            elif name in PROBES | RUNNERS:
+                raw.optional |= _strings(node.args[0], func, body)
+            elif name == "print_warning":
+                raw.warning_keys |= _strings(node.args[0], func, body)
+        target = _resolve(node.func, scope)
+        if isinstance(target, types.FunctionType):
+            targets.append(target)
+            index = _forwarded_param(target)
+            if index is not None:
+                expr = _argument(node, target, index)
+                if expr is not None:
+                    check(expr)
+        for arg in node.args:
+            callback = _resolve(arg, scope)
+            if isinstance(callback, types.FunctionType):
+                targets.append(callback)
+    return raw, targets
+
+
+def _scan(
+    handler: Callable[..., Any],
+    lookup: Callable[[types.FunctionType], tuple[Scan, list[types.FunctionType]]],
+    vocab: Mapping[str, str],
+) -> Scan:
+    raw = Scan()
     seen: set[types.FunctionType] = set()
     queue: list[Any] = [handler]
     while queue:
@@ -198,46 +242,24 @@ def scan(handler: Callable[..., Any]) -> Scan:
         ):
             continue
         seen.add(func)
-        for cell in func.__closure__ or ():
-            contents = cell.cell_contents
-            if isinstance(contents, types.FunctionType):
-                queue.append(contents)
-        body = _definition(func)
-        if body is None:
-            continue
-        scope = func.__globals__
-        for node in ast.walk(body):
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                raw.mentioned.add(node.value)
-            if not isinstance(node, ast.Call):
-                continue
-            name = _call_name(node)
-            if node.args:
-                if name in CHECKS:
-                    check(node.args[0], func, body)
-                elif name in PROBES | RUNNERS:
-                    raw.optional |= _strings(node.args[0], func, body)
-                elif name == "print_warning":
-                    raw.warning_keys |= _strings(node.args[0], func, body)
-            target = _resolve(node.func, scope)
-            if isinstance(target, types.FunctionType):
-                queue.append(target)
-                index = _forwarded_param(target)
-                if index is not None:
-                    expr = _argument(node, target, index)
-                    if expr is not None:
-                        check(expr, func, body)
-            for arg in node.args:
-                callback = _resolve(arg, scope)
-                if isinstance(callback, types.FunctionType):
-                    queue.append(callback)
-    vocab = tool_vocabulary()
+        direct, targets = lookup(func)
+        raw.checked.update(direct.checked)
+        raw.optional.update(direct.optional)
+        raw.mentioned.update(direct.mentioned)
+        raw.warning_keys.update(direct.warning_keys)
+        queue.extend(targets)
 
     def names(raw_names: set[str]) -> set[str]:
         return {vocab[t] for t in raw_names if t in vocab}
 
-    result.checked = names(raw.checked)
-    result.optional = names(raw.optional) - result.checked
-    result.mentioned = names(raw.mentioned)
-    result.warning_keys = raw.warning_keys
-    return result
+    checked = names(raw.checked)
+    return Scan(
+        checked, names(raw.optional) - checked, names(raw.mentioned), raw.warning_keys
+    )
+
+
+def scan_handlers(handlers: Mapping[str, Callable[..., Any]]) -> dict[str, Scan]:
+    """Reuse direct observations, but walk each handler's dependencies independently."""
+    lookup = functools.cache(_function_scan)
+    vocab = tool_vocabulary()
+    return {path: _scan(handler, lookup, vocab) for path, handler in handlers.items()}

@@ -15,6 +15,12 @@ pytest_plugins = ["pytester"]
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture
+def pytester(pytester: pytest.Pytester) -> pytest.Pytester:
+    pytester.makeini("[pytest]\naddopts = --disable-plugin-autoload")
+    return pytester
+
+
 @pytest.fixture(autouse=True)
 def _repo_on_subprocess_path(monkeypatch: pytest.MonkeyPatch) -> None:
     # The generated conftests import `tests.*`, which the pytester subprocess
@@ -40,6 +46,8 @@ def test_worker(request):
     pytester.makepyfile(test_first=test, test_second=test)
     (pytester.path / "out").mkdir()
     result = pytester.runpytest_subprocess(
+        "-p",
+        "xdist.plugin",
         "-n",
         "2",
         "--dist",

@@ -23,6 +23,7 @@ pytestmark = [
     ),
 ]
 SAMTOOLS = shutil.which("samtools")
+BCFTOOLS = shutil.which("bcftools")
 # Selected fields of Paraphase 3.3.1's public GIAB HG002 Revio 48x trial.
 HG002 = Path(__file__).with_name("fixtures") / "paraphase_hg002.json"
 
@@ -53,9 +54,18 @@ subprocess.run([samtools, "index", bam], check=True)
 vcfs = out / (a.p + "_paraphase_vcfs")
 vcfs.mkdir()
 for gene in reports:
-    (vcfs / (a.p + "_" + gene + ".vcf")).write_text(
-        "##fileformat=VCFv4.2\\n#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\n"
-    )
+    header = "##fileformat=VCFv4.2\\n#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\n"
+    if gene == "pms2":
+        # Upstream expresses phase with one haploid sample column per haplotype.
+        header = (
+            '##fileformat=VCFv4.2\\n##contig=<ID=chr1,length=248956422>\\n'
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype per haplotype">\\n'
+            '#CHROM\\tPOS\\tID\\tREF\\tALT\\tQUAL\\tFILTER\\tINFO\\tFORMAT'
+            '\\tpms2_pms2hap1\\tpms2_pms2hap2\\tpms2_pms2clhap1\\n'
+            'chr1\\t101\\t.\\tA\\tG\\t.\\tPASS\\t.\\tGT\\t0\\t1\\t0\\n'
+            'chr1\\t102\\t.\\tA\\tC\\t.\\tPASS\\t.\\tGT\\t0\\t1\\t1\\n'
+        )
+    (vcfs / (a.p + "_" + gene + ".vcf")).write_text(header)
 """
 
 
@@ -126,13 +136,14 @@ def _run(
 
 
 @pytest.mark.parametrize(("platform", "cram"), [("PACBIO", False), ("ONT", True)])
-def test_paraphase_preserves_gene_counts_and_null_strc(
+@needs_tools("bcftools")
+def test_paraphase_preserves_gene_counts_null_strc_and_phased_alleles(
     paraphase_env: Path,
     tmp_path: Path,
     platform: str,
     cram: bool,
 ) -> None:
-    """#1285: SMN gene counts are calls; a null STRC CN is not a deletion."""
+    """#1285: Null STRC CN is not a deletion, and VCFs retain phase by haplotype."""
     bam, ref = _alignment(tmp_path, (platform,), decoy=not cram)
     if cram:
         assert SAMTOOLS is not None
@@ -173,11 +184,21 @@ def test_paraphase_preserves_gene_counts_and_null_strc(
         json.loads(artifacts["paraphase_raw_json"].read_text())["smn1"]["smn1_cn"] == 2
     )
     assert artifacts["paraphase_bam_index"].is_file()
-    assert sorted(
-        Path(f.path).name.rsplit(".", 2)[-2]
+    vcfs = {
+        Path(f.path).name.rsplit(".", 2)[-2]: Path(f.path)
         for f in result.outputs
         if f.role == "paraphase_vcf"
-    ) == ["hba", "pms2", "smn1", "strc"]
+    }
+    assert sorted(vcfs) == ["hba", "pms2", "smn1", "strc"]
+    assert BCFTOOLS is not None
+    observed = subprocess.check_output(
+        [BCFTOOLS, "query", "-f", r"%POS[\t%SAMPLE=%GT]\n", vcfs["pms2"]],
+        text=True,
+    )
+    assert observed.splitlines() == [
+        "101\tpms2_pms2hap1=0\tpms2_pms2hap2=1\tpms2_pms2clhap1=0",
+        "102\tpms2_pms2hap1=0\tpms2_pms2hap2=1\tpms2_pms2clhap1=1",
+    ]
     assert result.manifest is not None
     manifest = json.loads(Path(result.manifest).read_text())
     experimental = platform == "ONT"

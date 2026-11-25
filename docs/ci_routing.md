@@ -68,8 +68,10 @@ just area routing. Ready pushes still supersede earlier ready runs, and
 Draft summaries also use a different check name from `required`: GitHub accepts
 skipped checks as passing, so a delayed draft suite must not satisfy the ready
 run's merge requirement while its selected checks are still pending.
-Non-PR groups are unchanged. No live-state lookup runner is needed: drafts
-still allocate zero validation runners, and readiness always retains its own full run.
+Workflows triggered directly by `pull_request` key these groups on the PR number.
+Their non-PR invocations use a unique run ID and never cancel each other.
+No live-state lookup runner is needed: drafts still allocate zero validation
+runners, and readiness always retains its own full run.
 
 Test dependencies take precedence over area exclusions. The router scans the
 root test suite's imports, path literals, composed pathlib paths and directory

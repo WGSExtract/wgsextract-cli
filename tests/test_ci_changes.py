@@ -30,6 +30,7 @@ from scripts.ci_test_dependencies import docs_test_targets as docs_test_targets
 from scripts.ci_test_dependencies import test_inputs as referenced_inputs
 from scripts.pr_checks_ready import checks_ready as checks_ready
 from scripts.pr_checks_ready import latest_ready_run as latest_ready_run
+from tests.ci_routing_helpers import run_router
 
 
 @pytest.mark.parametrize(
@@ -185,29 +186,19 @@ def test_queue_routes_runtime_to_smoke_without_full_or_optional_suites(
     git("init", "--quiet")
     git("config", "user.name", "CI routing test")
     git("config", "user.email", "ci@example.invalid")
-    git("commit", "--quiet", "--allow-empty", "-m", "base")
+    consumer = tmp_path / "tests" / "test_contamination.py"
+    consumer.parent.mkdir()
+    consumer.write_text("from wgsextract_cli.core import contamination\n")
+    git("add", "tests")
+    git("commit", "--quiet", "-m", "base")
     base = git("rev-parse", "HEAD")
     path = tmp_path / changed
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("changed\n")
     git("add", changed)
     git("commit", "--quiet", "-m", "change")
-    script = Path(__file__).resolve().parents[1] / "scripts/ci_changes.py"
-    output = subprocess.check_output(
-        [
-            sys.executable,
-            str(script),
-            "--base",
-            base,
-            "--head",
-            "HEAD",
-            "--queue",
-            "--certified",
-            "linux-x64",
-            "generic",
-        ],
-        cwd=tmp_path,
-        text=True,
+    output = run_router(
+        tmp_path, base, "--queue", "--certified", "linux-x64", "generic"
     )
     selected = dict(line.split("=", 1) for line in output.splitlines())
     assert json.loads(selected["queue_runners"]) == (
