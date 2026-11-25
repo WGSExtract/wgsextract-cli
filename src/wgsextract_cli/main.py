@@ -6,17 +6,11 @@ import sys
 from collections.abc import Sequence
 from contextlib import ExitStack
 
-from .cli.bootstrap import (
-    configure_logging,
-    configure_stdio_encoding,
-    install_signal_handlers,
-    start_parent_monitor,
-)
+from .cli.bootstrap import configure_stdio_encoding
 from .cli.help import print_full_help, run_help
 from .cli.parser import build_parser, config_path_from_argv, parse_args
 from .core.config import reload_settings, set_config_path
-from .core.run_log import RunLogError, run_logging
-from .core.utils import WGSExtractError
+from .core.errors import WGSExtractError
 from .core.workspace_activity import WORKSPACE_LEASE_ARGUMENT, workspace_use
 
 __all__ = ["main"]
@@ -58,6 +52,13 @@ def _run(argv: Sequence[str] | None, workspace: ExitStack) -> None:
         # index rather than a result manifest.
         run_help(args, parser)
         return
+
+    from .cli.bootstrap import (
+        configure_logging,
+        install_signal_handlers,
+        start_parent_monitor,
+    )
+    from .core.run_log import RunLogError, run_logging
 
     configure_logging(debug=args.debug, quiet=args.quiet)
     install_signal_handlers()

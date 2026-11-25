@@ -12,6 +12,7 @@ from pathlib import Path
 
 from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api.vcf import VcfFreebayesParams, VcfGatkParams
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core import ultima
 from wgsextract_cli.core.alignment.cram_staging import (
     cram_version,
@@ -21,7 +22,6 @@ from wgsextract_cli.core.alignment.cram_staging import (
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import get_tool_version, verify_dependencies
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.native_pairhmm import (
     cuda_pairhmm_java_options,
     neon_pairhmm_command,

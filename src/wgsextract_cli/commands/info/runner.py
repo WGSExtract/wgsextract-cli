@@ -14,6 +14,7 @@ from wgsextract_cli.api.info import (
     CoverageSampleParams,
     InfoParams,
 )
+from wgsextract_cli.commands._messages.info import LOG_MESSAGES
 from wgsextract_cli.core.alignment.health import alignment_health
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.alignment.samtools_commands import alignment_index
@@ -26,7 +27,6 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import is_fasta_path
 from wgsextract_cli.core.ref_library.models import identify_reference, sequence_lengths

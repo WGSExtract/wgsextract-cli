@@ -7,7 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.info import CLI_HELP
+from wgsextract_cli.core.messages import CLI_HELP as SHARED_CLI_HELP
 from wgsextract_cli.core.results import CommandResult
 
 from ._params import Params, param
@@ -70,7 +71,7 @@ class CalculateCoverageParams(Params):
     outdir: Path | None = outdir_param()
     region: str | None = param(
         None,
-        help=CLI_HELP["arg_region"]
+        help=SHARED_CLI_HELP["arg_region"]
         + "; with --by, declare the assessed scope (all targets must fit inside it); "
         "otherwise the whole alignment header is the assessed scope",
         flags=("-r", "--region"),
@@ -144,7 +145,7 @@ class CoverageSampleParams(Params):
     ref: Path | None = ref_param()
     outdir: Path | None = outdir_param()
     region: str | None = param(
-        None, help=CLI_HELP["arg_region"], flags=("-r", "--region")
+        None, help=SHARED_CLI_HELP["arg_region"], flags=("-r", "--region")
     )
     table_format: str | None = table_format_param(_TABLES)
 

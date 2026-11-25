@@ -19,8 +19,93 @@ def notes_dir(tmp_path: Path, fragments: dict[str, str]) -> Path:
     return tmp_path
 
 
-def run(notes: Path, *args: str) -> int:
-    return main(["--notes-dir", str(notes), *args])
+def run(notes: Path, *args: str, changelog: Path | None = None) -> int:
+    desktop = ["--gui-changelog", str(changelog)] if changelog else []
+    return main(["--notes-dir", str(notes), *desktop, *args])
+
+
+def desktop_notes(root: Path, fragments: dict[str, str]) -> Path:
+    changelog = root / "gui" / "docs" / "CHANGELOG.md"
+    unreleased = changelog.parent / "changelog" / "unreleased"
+    unreleased.mkdir(parents=True)
+    (unreleased / "README.md").write_text("# How to add app notes\n")
+    for name, text in fragments.items():
+        (unreleased / name).write_text(text)
+    changelog.write_text(
+        "# Changelog\n\n## [0.8.9] - 2026-11-21\n\n### Fixed\n- Old fix.\n"
+    )
+    return changelog
+
+
+def test_1537_assembly_publishes_app_notes_in_both_places(tmp_path: Path) -> None:
+    notes = notes_dir(tmp_path / "cli", {"12-new.md": "## New\n\n- CLI feature.\n"})
+    changelog = desktop_notes(
+        tmp_path,
+        {
+            "10-fix.md": "## Fixed\n\n- App fix.\n",
+            "9-fix.md": "## Fixed\n\n- Earlier app fix.\n",
+            "14-added.md": "## Added\n\n- App feature.\n",
+        },
+    )
+    old_history = changelog.read_text().split("## [0.8.9]", 1)[1]
+
+    assert run(notes, "assemble", "0.9.0", changelog=changelog) == 0
+
+    history = changelog.read_text()
+    assert "## [0.9.0] - " in history
+    assert history.endswith(f"## [0.8.9]{old_history}")
+    assert "installer target to `v0.9.0`" in history
+    assert "### Added\n- App feature." in history
+    assert "### Fixed\n- Earlier app fix.\n- App fix." in history
+    release = (notes / "v0.9.0.md").read_text()
+    assert "## New\n\n- CLI feature." in release
+    assert "## Desktop app\n\n### Added\n\n- App feature." in release
+    assert "### Fixed\n\n- Earlier app fix.\n- App fix." in release
+    assert sorted(p.name for p in (notes / "unreleased").iterdir()) == ["README.md"]
+    assert sorted(
+        p.name for p in (changelog.parent / "changelog" / "unreleased").iterdir()
+    ) == ["README.md"]
+
+
+def test_1537_shared_app_changelog_entries_fail_before_assembly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    notes = notes_dir(tmp_path / "cli", {"12-new.md": "## New\n\n- CLI feature.\n"})
+    changelog = desktop_notes(tmp_path, {})
+    text = changelog.read_text().replace(
+        "## [0.8.9]", "## Unreleased\n\n### Added\n- Shared edit.\n\n## [0.8.9]"
+    )
+    changelog.write_text(text)
+
+    assert run(notes, "check", changelog=changelog) == 1
+    assert "shared Unreleased section" in capsys.readouterr().err
+    assert run(notes, "assemble", "0.9.0", changelog=changelog) == 1
+    assert changelog.read_text() == text
+    assert not (notes / "v0.9.0.md").exists()
+    assert (notes / "unreleased" / "12-new.md").is_file()
+
+
+def test_1537_failed_changelog_write_leaves_assembly_retryable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    notes = notes_dir(tmp_path / "cli", {})
+    changelog = desktop_notes(tmp_path, {"10-fix.md": "## Fixed\n\n- App fix.\n"})
+    before = changelog.read_bytes()
+    replace = Path.replace
+
+    def disk_error(source: Path, target: Path) -> Path:
+        if target == changelog:
+            raise PermissionError("changelog unavailable")
+        return replace(source, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", disk_error)
+        assert run(notes, "assemble", "0.9.0", changelog=changelog) == 1
+
+    assert changelog.read_bytes() == before
+    assert not (notes / "v0.9.0.md").exists()
+    assert run(notes, "assemble", "0.9.0", changelog=changelog) == 0
+    assert "- App fix." in changelog.read_text()
 
 
 def test_1281_assemble_groups_sections_and_orders_by_number(
@@ -169,6 +254,45 @@ def test_1281_previous_release_comes_from_tags_not_notes_files(
 
     assert run(notes, "assemble", "0.9.0") == 0
     assert "compare/v0.8.10...v0.9.0>" in (notes / "v0.9.0.md").read_text()
+
+
+def test_1537_late_desktop_fragment_blocks_release(
+    repository: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    notes = repository / "docs" / "release-notes"
+    changelog = desktop_notes(repository, {})
+    git(repository, "add", "-A")
+    git(repository, "commit", "-qm", "desktop base")
+    git(repository, "checkout", "-qb", "release-0.9.0")
+    assert run(notes, "assemble", "0.9.0", changelog=changelog) == 0
+    git(repository, "add", "-A")
+    git(repository, "commit", "-qm", "release")
+    late = changelog.parent / "changelog" / "unreleased" / "8-late.md"
+    late.write_text("## Fixed\n\n- Late desktop fix.\n")
+    git(repository, "add", "-A")
+    git(repository, "commit", "-qm", "late desktop fragment")
+
+    assert run(notes, "check", "--base", "main", changelog=changelog) == 1
+    assert "0 CLI and 1 GUI" in capsys.readouterr().err
+
+
+def test_1537_packaging_release_still_records_the_installer_version(
+    repository: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    notes = repository / "docs" / "release-notes"
+    changelog = desktop_notes(repository, {})
+    (notes / "unreleased" / "7-fix.md").unlink()
+    git(repository, "add", "-A")
+    git(repository, "commit", "-qm", "empty fragments")
+    git(repository, "checkout", "-qb", "release-0.9.0")
+    (repository / "pyproject.toml").write_text('[project]\nversion = "0.9.0"\n')
+    git(repository, "commit", "-qam", "bump")
+
+    assert run(notes, "check", "--base", "main", changelog=changelog) == 1
+    assert "no dated entry for 0.9.0" in capsys.readouterr().err
+    assert run(notes, "assemble", "0.9.0", changelog=changelog) == 0
+    assert "installer target to `v0.9.0`" in changelog.read_text()
+    assert run(notes, "check", "--base", "main", changelog=changelog) == 0
 
 
 def test_1281_fragment_landing_after_assembly_fails_the_release_check(

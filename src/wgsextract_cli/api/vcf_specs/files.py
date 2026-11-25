@@ -15,7 +15,8 @@ from wgsextract_cli.api._shared import (
     ref_param,
     threads_param,
 )
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.vcf import CLI_HELP
+from wgsextract_cli.core.messages import CLI_HELP as SHARED_CLI_HELP
 from wgsextract_cli.core.panel_presets import PRESETS
 from wgsextract_cli.core.paths import append_suffix
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
@@ -37,7 +38,7 @@ class VcfInfoParams(_VcfFileParams):
 
     COMMAND = "vcf info"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
 
 
@@ -47,7 +48,7 @@ class VcfVariantQcParams(_VcfFileParams):
 
     COMMAND = "vcf variantqc"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     extra_vcf: tuple[Path, ...] | None = param(
         None,
         help="Additional VCF file(s) to analyze together in the same VariantQC report (repeat flag for multiple).",
@@ -78,7 +79,7 @@ class VcfGraniteQcParams(_VcfFileParams):
 
     COMMAND = "vcf granite-qc"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     pedigree: Path | None = param(
         None,
         help="Optional granite pedigree JSON file (auto-generated from VCF samples if omitted).",
@@ -109,7 +110,7 @@ class VcfAnnotateParams(_VcfFileParams):
 
     COMMAND = "vcf annotate"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
     ann_vcf: Path | None = param(
         None,
@@ -195,7 +196,7 @@ class VcfFilterParams(_VcfSliceParams):
 
     COMMAND = "vcf filter"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     expr: str | None = param(
         None, help="bcftools filter expression (e.g. 'QUAL>30')", expression=True
     )
@@ -213,7 +214,7 @@ class VcfTableParams(_VcfSliceParams):
 
     COMMAND = "vcf table"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     sample: str | None = param(
         None, help="Sample whose genotypes to use (default: the first)."
     )
@@ -249,7 +250,7 @@ class VcfToFastaParams(_VcfFileParams):
 
     COMMAND = "vcf to-fasta"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
     threads: int | None = threads_param()
     region: str | None = _region_param(
@@ -302,7 +303,7 @@ class VcfPrepareParams(_VcfFileParams):
 
     COMMAND = "vcf prepare"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
     threads: int | None = threads_param()
     output: Path | None = param(
@@ -339,7 +340,7 @@ class VcfTrioParams(_VcfFileParams):
 
     COMMAND = "vcf trio"
 
-    vcf_input: Path | None = _vcf_input_param(CLI_HELP["arg_vcf_input"])
+    vcf_input: Path | None = _vcf_input_param(SHARED_CLI_HELP["arg_vcf_input"])
     ref: Path | None = ref_param()
     threads: int | None = threads_param()
     mother: Path | None = _resource_param(CLI_HELP["arg_mother"], "mother_vcf_path")
