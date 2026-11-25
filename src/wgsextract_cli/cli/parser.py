@@ -1,5 +1,4 @@
 import argparse
-import logging
 import sys
 import textwrap
 from collections.abc import Callable, Iterator, Sequence
@@ -8,7 +7,6 @@ from contextvars import ContextVar
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from wgsextract_cli import __version__
 from wgsextract_cli.commands.registry import (
     COMMAND_MODULES,
     COMMAND_TIERS,
@@ -19,7 +17,9 @@ from wgsextract_cli.core.messages import CLI_HELP
 from wgsextract_cli.core.resource_policy import parse_thread_count
 from wgsextract_cli.core.users_workspace import write_initial_config
 
-from .config_view import configuration_rows
+from .argv import config_path_from_argv as config_path_from_argv
+from .argv import register_version
+from .config_view import configuration_rows, configured_thread_count
 from .help import (
     advanced_note,
     apply_help_metadata,
@@ -424,12 +424,6 @@ def build_parser(
         description=CLI_HELP["description"],
         parents=[base_parser],
     )
-    try:
-        default_threads = parse_thread_count(settings.get("cpu_threads"))
-    except ValueError as e:
-        # Don't block every command (even --threads N) on a bad config value.
-        logging.warning(f"Ignoring invalid cpu_threads in {get_config_path()}: {e}")
-        default_threads = None
     parser.set_defaults(
         debug=settings.get("debug_mode", False),
         quiet=settings.get("quiet_mode", False),
@@ -437,7 +431,7 @@ def build_parser(
         outdir=settings.get("output_directory"),
         genome=None,
         ref=settings.get("reference_fasta"),
-        threads=default_threads,
+        threads=configured_thread_count(),
         memory=settings.get("memory_limit"),
         tmp_dir=settings.get("temp_directory"),
         atomic_output=settings.get("atomic_outputs", False),
@@ -447,9 +441,7 @@ def build_parser(
         keep_awake=settings.get("keep_awake", False),
         json=False,
     )
-    parser.add_argument(
-        "--version", action="version", version=f"wgsextract {__version__}"
-    )
+    register_version(parser)
     parser.add_argument(
         "--full-help",
         "--help-all",
@@ -664,22 +656,6 @@ def add_shared_arguments(
             "before or after the command; 'wgsextract --help' lists them all.",
             width=76,
         )
-
-
-def config_path_from_argv(argv: Sequence[str]) -> str | None:
-    """The --config value, read before the parser is built (it reads defaults
-    from the config). Conflicting occurrences fail later, in parse_args; the
-    last one is used until then."""
-    found = None
-    tokens = list(argv)
-    for index, token in enumerate(tokens):
-        if token == "--":
-            break
-        if token == "--config" and index + 1 < len(tokens):
-            found = tokens[index + 1]
-        elif token.startswith("--config="):
-            found = token.split("=", 1)[1]
-    return found
 
 
 def _thread_count_arg(value: str) -> int | None:

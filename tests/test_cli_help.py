@@ -244,6 +244,8 @@ if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
         "wgsextract_cli.core.run_log",
         "wgsextract_cli.core.utils",
     }})
+if argv == ["--version"]:
+    implementations.update({{"wgsextract_cli.cli.parser", "wgsextract_cli.cli.help"}})
 if argv == ["info", "--help"]:
     implementations.update({{"wgsextract_cli.api.vcf", "wgsextract_cli.api._public"}})
 print(json.dumps(sorted(
@@ -266,6 +268,26 @@ print(json.dumps(sorted(
         check=True,
     )
     assert json.loads(completed.stdout) == []
+
+
+@pytest.mark.parametrize("joined", [False, True])
+def test_1506_version_prints_with_desktop_config_and_keeps_warnings(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    caplog: pytest.LogCaptureFixture,
+    joined: bool,
+) -> None:
+    from wgsextract_cli import __version__
+
+    path = tmp_path / "desktop config.toml"
+    path.write_text('cpu_threads = "many"\n', encoding="utf-8")
+    options = [f"--config={path}"] if joined else ["--config", str(path)]
+    with pytest.raises(SystemExit) as exc:
+        main([*options, "--version"])
+    assert exc.value.code == 0
+    assert capsys.readouterr().out.strip() == f"wgsextract {__version__}"
+    assert "Ignoring invalid cpu_threads" in caplog.text
+    assert str(path) in caplog.text
 
 
 def test_startup_regression_fast_index_matches_live_help(capsys):
