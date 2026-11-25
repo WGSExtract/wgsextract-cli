@@ -575,3 +575,30 @@ def test_732_panel_retry_checks_space_for_pending_binary_chunks(
             api.RefImputationParams(ref=reflib, chromosomes="chr20", threads=2)
         )
     assert len(panel_downloads) == fetched
+
+
+@needs_htslib
+@needs_glimpse
+def test_1118_glimpse_version_mismatch_explains_offline_rebuild(
+    reflib: Path, panel_downloads: list[str], tmp_path: Path
+) -> None:
+    reflib = reflib.rename(tmp_path / "custom reference library")
+    marker = next(reflib.glob("imputation/*/chr20/.installed.json"))
+    state = json.loads(marker.read_text())
+    state["glimpse"] = "an older GLIMPSE2 build"
+    marker.write_text(json.dumps(state))
+    fetched = len(panel_downloads)
+    params = api.VcfImputeParams(
+        input=FIXTURE / "reads.bam", ref=reflib, outdir=tmp_path / "out", threads=2
+    )
+    with pytest.raises(api.CommandFailed, match="without downloading") as error:
+        api.vcf.impute(params)
+    assert (
+        f"wgsextract ref imputation --install --chromosomes chr20 --ref '{reflib}'"
+        in str(error.value)
+    )
+
+    api.ref.imputation(api.RefImputationParams(ref=reflib, chromosomes="chr20"))
+    result = api.vcf.impute(params)
+    assert any(o.role == "imputed_variants" for o in result.outputs)
+    assert len(panel_downloads) == fetched

@@ -85,6 +85,7 @@ def test_802_queue_required_summary_accepts_its_small_matrix_but_not_missing_rou
             "NEEDS": json.dumps(needs),
             "ROUTED": routed,
             "EVENT_NAME": "merge_group",
+            "QUEUE_RUNNERS": "[]",
         },
         capture_output=True,
         text=True,
@@ -93,12 +94,14 @@ def test_802_queue_required_summary_accepts_its_small_matrix_but_not_missing_rou
 
 
 @LINUX_BASH
-@pytest.mark.parametrize("conclusion", ["failure", "cancelled", "success"])
-def test_1045_queue_required_rejects_failed_windows(conclusion: str) -> None:
+@pytest.mark.parametrize("conclusion", ["failure", "cancelled", "skipped", "success"])
+def test_1045_queue_required_rejects_failed_or_skipped_routed_smoke(
+    conclusion: str,
+) -> None:
     needs = {
         "changes": {"result": "success"},
         "ubuntu": {"result": "success"},
-        "windows": {"result": conclusion},
+        "queue-smoke": {"result": conclusion},
         "ready-gate": {"result": "skipped"},
     }
     result = subprocess.run(
@@ -112,6 +115,7 @@ def test_1045_queue_required_rejects_failed_windows(conclusion: str) -> None:
             "NEEDS": json.dumps(needs),
             "ROUTED": "true",
             "EVENT_NAME": "merge_group",
+            "QUEUE_RUNNERS": '["ubuntu-latest","windows-latest"]',
         },
         capture_output=True,
         text=True,

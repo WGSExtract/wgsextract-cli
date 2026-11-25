@@ -31,6 +31,14 @@ def test_release_gates_never_start_on_pr_queue_push_or_schedule(name: str) -> No
     )
 
 
+@pytest.mark.parametrize("name", gate.FULL_OS_GATES)
+def test_release_os_lanes_can_dispatch_but_do_not_run_on_main_push(name: str) -> None:
+    workflow = WORKFLOWS / name
+    assert event_path_filters(workflow, "workflow_dispatch") is not None
+    assert event_path_filters(workflow, "schedule") is not None
+    assert event_path_filters(workflow, "push") is None
+
+
 @pytest.mark.parametrize(
     ("preflight_result", "cancelled", "allowed"),
     [
@@ -132,7 +140,7 @@ def test_candidate_requires_gui_artifacts_and_full_install_lab(
     gui_run, artifact = gate.preflight(REPO, TAG, SHA)
     assert (str(gui_run), artifact) == (api.app_input, 42)
     assert api.lab_checked
-    assert len(api.runs) == len(gate.BUILD_GATES) + 2
+    assert len(api.runs) == len(gate.FULL_OS_GATES) + len(gate.BUILD_GATES) + 2
 
 
 @pytest.mark.parametrize(
@@ -142,6 +150,7 @@ def test_candidate_requires_gui_artifacts_and_full_install_lab(
         (gate.GUI, {"path": ".github/workflows/unrelated.yml"}, "not a dispatch"),
         (gate.GUI, {"conclusion": "cancelled"}, "concluded cancelled"),
         (gate.LAB, {"conclusion": "failure"}, "concluded failure"),
+        ("windows_ci.yml", {"conclusion": "failure"}, "concluded failure"),
     ],
 )
 def test_failed_or_foreign_run_refuses_to_complete_preflight(

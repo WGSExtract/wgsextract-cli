@@ -23,6 +23,7 @@ from scripts.ci_certify import (  # noqa: E402
 )
 from scripts.ci_certify_inputs import validate_environments, validate_reference  # noqa: E402
 from scripts.ci_certify_ssh import RESULT  # noqa: E402
+from scripts.ci_changes import ready_optional_tests, setup_checks  # noqa: E402
 from scripts.ci_select_tests import select_tests  # noqa: E402
 
 
@@ -40,8 +41,12 @@ def verify_checkout(sha: str, expected_platform: str) -> str:
 def execute(sha: str, base: str, name: str, platform: str, workers: int) -> None:
     verify_checkout(sha, platform)
     paths = changed_paths(base, sha)
+    affected = select_tests(paths)
+    optional_tests = tuple(ready_optional_tests(paths, affected))
     cli, targets = selection(paths, platform)
-    environments = required_environments(name, platform, cli, targets)
+    environments = required_environments(
+        name, platform, cli, targets, optional_tests=optional_tests
+    )
     setup = ["pixi", "run", "--no-install", "python", "scripts/ci_certify_setup.py"]
     for environment in environments:
         setup += ["-e", environment]
@@ -69,9 +74,15 @@ def execute(sha: str, base: str, name: str, platform: str, workers: int) -> None
             )
     verify_checkout(sha, platform)
     commands = (
-        generic_commands(paths, select_tests(paths))
+        generic_commands(paths, affected)
         if name == "generic"
-        else platform_commands(platform, targets, not cli)
+        else platform_commands(
+            platform,
+            targets,
+            not cli,
+            optional_tests=optional_tests,
+            setup_selected=setup_checks(paths),
+        )
     )
     run_layer(name, commands, sha, workers, stream_output=True)
     verify_checkout(sha, platform)

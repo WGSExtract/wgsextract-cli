@@ -135,7 +135,9 @@ def open_parent(directory: Path, relative: Path, stack: ExitStack) -> int:
     return parent
 
 
-def matches_tracked_blob(directory: Path, relative: Path, mode: str, oid: str) -> bool:
+def matches_tracked_blob(
+    directory: Path, relative: Path, mode: str, oid: str, *, crlf: bool = False
+) -> bool:
     algorithm = {40: "sha1", 64: "sha256"}.get(len(oid))
     if algorithm is None or mode not in {"100644", "100755", "120000"}:
         return False
@@ -164,9 +166,22 @@ def matches_tracked_blob(directory: Path, relative: Path, mode: str, oid: str) -
                 handle = stack.enter_context(os.fdopen(fd, "rb"))
                 if stamp(os.fstat(handle.fileno())) != stamp(info):
                     return False
-                digest.update(f"blob {info.st_size}\0".encode("ascii"))
-                while chunk := handle.read(MAX_FILE):
-                    digest.update(chunk)
+                if crlf:
+                    data = handle.read(MAX_FILE + 1)
+                    if len(data) != info.st_size or len(data) > MAX_FILE:
+                        return False
+                    normalized = data.replace(b"\r\n", b"\n")
+                    if (
+                        b"\r\n" in normalized
+                        or normalized.replace(b"\n", b"\r\n") != data
+                    ):
+                        return False
+                    digest.update(f"blob {len(normalized)}\0".encode("ascii"))
+                    digest.update(normalized)
+                else:
+                    digest.update(f"blob {info.st_size}\0".encode("ascii"))
+                    while chunk := handle.read(MAX_FILE):
+                        digest.update(chunk)
             return (
                 stamp(os.stat(name, dir_fd=parent, follow_symlinks=False))
                 == stamp(info)

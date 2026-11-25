@@ -21,12 +21,14 @@ import gzip
 import hashlib
 import json
 import logging
+import shlex
 import shutil
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from wgsextract_cli.core import runtime
 from wgsextract_cli.core.download_progress import CancelEvent, ProgressCallback
 from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
@@ -331,16 +333,25 @@ def require(chrom: str, reflib: str | None, version: str | None) -> ChromosomePa
     must be from that GLIMPSE2."""
     base = folder(reflib) / chrom
     marker = _marker(base)
-    hint = (
-        f"Install it with 'wgsextract ref imputation --install --chromosomes "
-        f"{chrom}' (about {_PANEL[chrom][0] / 1e9:.1f} GB to download)."
-    )
+    install = f"wgsextract ref imputation --install --chromosomes {chrom}"
     if not installed(chrom, reflib) or marker is None:
-        raise WGSExtractError(f"The {chrom} imputation panel is not installed. {hint}")
+        raise WGSExtractError(
+            f"The {chrom} imputation panel is not installed. Install it with "
+            f"'{install}' (about {_PANEL[chrom][0] / 1e9:.1f} GB to download)."
+        )
     if version is not None and marker.get("glimpse") != version:
+        library = resolve_reference_library(reflib)
+        if runtime.is_windows_host():
+            ref_arg = "'" + library.replace("'", "''") + "'"
+            shell = " in PowerShell"
+        else:
+            ref_arg = shlex.quote(library)
+            shell = ""
         raise WGSExtractError(
             f"The {chrom} imputation panel was prepared with GLIMPSE2 "
-            f"{marker.get('glimpse')}, not the installed {version}. {hint}"
+            f"{marker.get('glimpse')}, not the installed {version}. "
+            f"Rebuild from the local panel without downloading by running{shell}:\n"
+            f"  {install} --ref {ref_arg}"
         )
     return ChromosomePanel(
         chrom,

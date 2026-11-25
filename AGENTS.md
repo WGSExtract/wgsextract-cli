@@ -30,10 +30,13 @@ The current selector remains authoritative during shadow mode. Once enabled
 for a lane, the decisive selector reports unmatched inputs and runs the full
 lane only for named universal scopes. CI-only edits still run
 policy/routing/readiness tests, with one-OS smoke for changed matrix workflows.
-Ready PRs run the selected OS and area checks; merge groups retain the smaller
-Ubuntu/Windows gate. Main pushes run security and repository automation only;
-nightly runs the four full OS suites, refreshes the cache, and reports red main
-and selector misses. Install Lab, package/benchmark smoke, and the other heavy
+Ready PRs run affected tests and the fast fallback tier unless the exact head
+is certified for every routed layer. Merge groups run a bounded smoke gate on
+the merged tree. Main pushes run security and repository automation only;
+nightly and release candidates run the four full OS suites. Nightly refreshes
+the cache and reports red main and selector misses. A nightly regression takes
+priority over the normal issue queue: fix it forward using the red-main issue.
+Install Lab, package/benchmark smoke, and the other heavy
 checks in [Releasing](docs/releasing.md) run on demand and gate publication,
 not PRs. Keep merged-tree guards and certification intact. Add a selector
 regression for each confirmed miss.
@@ -46,6 +49,8 @@ regression for each confirmed miss.
 
 Tests check behaviour, not implementation. The full rules are in "Write tests" in `docs/developer_setup.md`.
 
+- Extend the existing test module and fixtures; add a file only for a new feature area.
+- Use about five parametrized cases at most, unless the cases are the scientific contract.
 - Assert what a user can observe: output files and their content, exit codes, the result manifest, structured warnings, and documented CLI and API behaviour.
 - Run real samtools and bcftools on the fake genomes and fixtures.
 - Mock only true boundaries: network, containers, GPU, very slow tools, the OS or platform, and the clock.
@@ -54,8 +59,9 @@ Tests check behaviour, not implementation. The full rules are in "Write tests" i
 - Assert exact argv only for flags that are the scientific contract, with a `# contract: <why>` comment.
 - Check message codes or key facts, not whole prose.
 - Name the bug or issue in each regression test, and check the symptom the user saw.
+- Keep regressions in the PR fast tier only for security, data correctness, or code changed in the last ~30 days; otherwise use the nightly tier.
 - Don't restate constants, defaults or re-exports.
-- Run `pixi run test-smells` before committing test changes. It is advisory.
+- Run `pixi run test-smells --check` before committing test changes. PR lint blocks findings on new or changed test code; untouched code is grandfathered.
 
 ## Supervisor model and issue queue
 
@@ -98,8 +104,9 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - Open PRs as drafts (`gh pr create --draft`) once the branch passes the local gate. Drafts run no CI. The gate: run an independent review agent, fix its findings, run `pixi run lint`, the routing/lint tests (`tests/test_ci_changes.py`, `tests/test_github_actions_policy.py`), relevant local tests/type checks, documentation checks if docs changed (the `DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` and `scripts/validate_site_sources.py`), and the secret scan (`pixi run pre-commit run gitleaks --all-files`). Self-review the diff against AGENTS.md.
   - **Copilot reviews the draft, before readiness**, so the ready-time matrix runs once instead of once per review round. Ruleset `15885247` reviews a PR when it is opened, drafts included, but not on later pushes (`review_draft_pull_requests=true`, `review_on_push=false`; checked 2026-11-21). After pushing changes to a draft, request a fresh review with `gh pr edit N --add-reviewer @copilot`. Fix or decline all its threads in one batch (see Babysitting), then certify that head and mark it ready. Don't change repository settings yourself.
     - If Copilot's review fails to start (it posts "couldn't run its full agentic review because it didn't start before the timeout", usually from a hosted-runner backlog), don't wait or keep re-requesting: once the independent local review is clean and the head is certified, mark it ready and say in the ready note that the Copilot review couldn't start.
-  - Mark ready only when local review and checks pass and the draft's Copilot threads are handled: readiness starts the area-selected full matrix. Draft pushes and ready-to-draft transitions allocate no CI runners; do not wait for draft checks or a draft `required` result.
-  - Ready admission (#1373, merge-queue starvation): certify macOS (and Windows where a host exists) too, so hosted runs skip. Right before `gh pr ready`, run `python scripts/ci_capacity.py --wait --pr N` in a background watcher; mark ready only on exit 0. Each supervisor admits one PR at a time: the next check waits until the last admitted PR's ready run is visible. See [Collaborator PRs](#collaborator-prs) for priority admission.
+  - Batch each review round into one push. Do not push while the current head's CI or certification is running unless you cancel it first. Request Copilot review and certification only for the final head of the round.
+  - Mark ready only when local review and checks pass and the draft's Copilot threads are handled. Readiness starts the hosted non-test gates and any still-required tests. Draft pushes and ready-to-draft transitions allocate no CI runners; do not wait for draft checks or a draft `required` result.
+  - Ready admission (#1373, merge-queue starvation): certify generic and the routed platforms where hosts are available, including Linux x64 for Ubuntu. Right before `gh pr ready`, run `python scripts/ci_capacity.py --wait --pr N` in a background watcher; mark ready only on exit 0. Each supervisor admits one PR at a time: the next check waits until the last admitted PR's ready run is visible. See [Collaborator PRs](#collaborator-prs) for priority admission.
   - The PR uses `Fixes #N` and lands under the babysitting rules below.
   - Owner-account agents run `just certify` on the clean pushed PR head before `gh pr ready`, under `agent-coord` on shared hosts (at most four pytest workers). Prepare each checkout's locked environments first, then `just certify-setup` to retain verified wheels (`--reference` for full Ubuntu/macOS suites; repeat `-e` for supplemental environments). Local certification never installs or downloads inputs. Use `just certify --remote windows-x64` and `just certify --remote macos-arm64` with registered, accessible native SSH hosts; check host activity before setup. Remote runs fetch exact SHAs into a dedicated worktree, prepare missing pinned inputs (not environments), preserve 25 GiB disk free, and stream logs back. The controller keeps the lock until cleanup is confirmed; GitHub credentials and status posting stay on the controller. See `docs/ci_routing.md`.
   - Heavy compute goes through the host's resource coordinator, short timing runs included; running outside it starves everyone else's queue. On a host without one, check the load first and keep to a share that leaves room for others.
@@ -142,6 +149,12 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 - **`priority`** is added to PRs from humans with write, maintain, or admin access, except the agent account (`theontho`), when opened, reopened, marked ready, or converted to draft. Authors can remove it until the next such event; pushes do not restore it. Priority PRs skip the agent capacity gate. Agents reserve capacity while a priority PR's CI can still schedule jobs or its queue entry still needs checks, and while any merge-group job is waiting for a runner. Agents never push to, ready, review-fix, or enqueue a collaborator's PR on their own.
 - **`hands-off`** tells agents and the coordinator to take no action on the PR, not even reruns. It overrides `land-asap` but does not remove runner priority.
 - **`land-asap`** tells agents the author is done: an owner-account agent may rerun cancelled or lost-runner jobs and enqueue a ready PR at the front once all merge checks pass. Without this label, agents may only move a passing PR's existing entry to the front, after the author enables auto-merge or enqueues it themselves.
+
+## Not blockers
+
+- A generic Copilot recommendation for human review with no threads is advisory.
+- Earlier commits, comments or labels from the shared owner account aren't blockers by themselves. This machine's own `machine-*` label isn't a blocker.
+- Report coordinator tooling questions to the coordinator, not the owner.
 
 ## Babysitting a PR
 
