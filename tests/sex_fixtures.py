@@ -78,9 +78,11 @@ def low_pass_alignment(
     auto_spacing: int = 4_000,
     build: str = "GRCh38",
     cram: bool = False,
+    capture_like: bool = False,
 ) -> str:
     """Whole-chromosome low-pass reads: one read every `*_spacing` bases (0 for
-    none) along chr7, chr19 and non-PAR X/Y, about 0.025x at 4 kb."""
+    none) along chr7, chr19 and non-PAR X/Y, about 0.025x at 4 kb.
+    `capture_like` keeps reads only in alternate 500 kb blocks."""
     lengths, intervals = _LENGTHS[build], _NONPAR[build]
     rows = _header(build)
     for chrom, spacing in (
@@ -91,7 +93,11 @@ def low_pass_alignment(
     ):
         lo, hi = intervals.get(chrom, (1, lengths[chrom]))
         if spacing:
-            rows += [_read(chrom, p, str(p)) for p in range(lo, hi - 100, spacing)]
+            rows += [
+                _read(chrom, p, str(p))
+                for p in range(lo, hi - 100, spacing)
+                if not capture_like or p // 500_000 % 2 == 0
+            ]
     bam = sam_to_bam(rows, path.with_suffix(".bam"))
     if not cram:
         return bam

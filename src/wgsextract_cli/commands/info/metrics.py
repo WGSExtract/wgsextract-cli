@@ -424,8 +424,9 @@ def infer_sex_call(
     )
 
 
-# Reads per 50 kb window: ~0.02x at 150 bp, still about 300 non-PAR Y reads for
-# a typical male across the sampled windows.
+# Reads per 50 kb window: ~0.03x at 150 bp, still about 300 non-PAR Y reads for
+# a typical male across the sampled windows. Long reads, fewer per window, need
+# more depth (about 2.5x at 15 kb).
 LOW_PASS_MIN_READS = 10
 
 
@@ -443,7 +444,7 @@ def _low_pass_sex_call(
     logging.info("Low coverage: counting reads in more windows to infer sex...")
     try:
         density = sampled_read_density(alignment, contigs, reference=reference)
-    except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
+    except (OSError, ValueError, subprocess.SubprocessError, WGSExtractError) as e:
         logging.warning(f"Could not measure sex-chromosome read density: {e}")
         return SexCall("Unknown", SEX_MEASUREMENT_UNAVAILABLE, "low")
     if any(c not in density for c in ("7", "19", "X", "Y")):

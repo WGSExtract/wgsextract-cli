@@ -236,10 +236,20 @@ def test_issue_856_header_only_policy_keeps_no_scan_unknown_unrecorded(
         ({"x_spacing": 8_000, "y_spacing": 0}, "Unknown"),  # X0-like
         # One read per 50 kb: too few to compare dosage
         ({"x_spacing": 50_000, "y_spacing": 0, "auto_spacing": 50_000}, "Unknown"),
+        # Dense reads in half the genome: targeted, not low-pass WGS
+        (
+            {
+                "x_spacing": 1_000,
+                "y_spacing": 0,
+                "auto_spacing": 1_000,
+                "capture_like": True,
+            },
+            "Unknown",
+        ),
     ],
 )
 def test_low_pass_cram_sex_below_3x_regressed_by_891(
-    tmp_path: Path, spacing: dict[str, int], sex: str
+    tmp_path: Path, spacing: dict[str, int | bool], sex: str
 ) -> None:
     """Since #891 (sampled non-PAR depth), every CRAM below 3x was Unknown,
     so sex-dependent ploidy refused low-pass genomes."""
