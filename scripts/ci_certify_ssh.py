@@ -179,11 +179,32 @@ def active_posix_groups():
     observed.update({pid: processes[pid][3] for pid in descendants})
     return {processes[pid][1] for pid in descendants}
 
+admission = None
 try:
     if cancel.exists():
         raise ValueError("Cancelled before bootstrap")
     if shutil.disk_usage(root).free < 30 * 1024**3:
         raise ValueError("Remote setup needs 30 GiB free, preserving 25 GiB")
+    # Keep the file handle open through cleanup; never unlink a locked file.
+    admission = (control / "admission.lock").open("a+b")
+    admission.seek(0)
+    try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(admission.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(admission, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError as error:
+        raise ValueError("Another remote certification is running or cleaning up") from error
+    active = control / "active"
+    if active.exists():
+        prior = active.read_text(encoding="ascii")
+        if not re.fullmatch(r"[a-f0-9]{32}", prior) or not (control / (prior + ".done")).exists():
+            raise ValueError(f"Previous remote cleanup unconfirmed (control ID {prior})")
+    update = control / (run_id + ".active")
+    update.write_text(run_id, encoding="ascii")
+    update.replace(active)
     if os.name == "nt":
         job = WindowsJob()
     # Keep the child blocked on stdin until it is in its kill-on-close job.
@@ -234,6 +255,8 @@ finally:
                 raise ValueError("POSIX process-group termination not confirmed")
         child.wait()
     done.touch()
+    if admission is not None:
+        admission.close()
 sys.stdout.flush()
 # Don't tear down a buffered stdin reader still blocked on an open SSH pipe.
 os._exit(code)

@@ -416,8 +416,10 @@ before the controller unlocks the alias, including after a transport failure
 or SIGTERM.
 If confirmation fails, the controller skips the explicit unlock. The
 coordinator releases the lock when the controller exits, even after SIGKILL.
-Before retrying an unconfirmed run, wait for its matching control ID to have a
-`.done` marker under `~/src/wgsextract-cli/out/certify/remote-control/`.
+The worker admits only one bootstrap at a time and refuses retries until the
+previous run's cleanup is recorded. If the worker supervisor failed before
+recording cleanup, confirm the matching run and its descendants have stopped
+before removing `active` from `~/src/wgsextract-cli/out/certify/remote-control/`.
 The worker checks the native platform, clean tree and HEAD before and after
 execution. Logs stream to `out/certify/<sha>/remote-<alias>/<layer>/run.log`;
 only the controller publishes `local-ci/<platform>` and (if requested)
