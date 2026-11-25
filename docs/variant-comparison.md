@@ -60,8 +60,10 @@ does not qualify. `not_assessed` (no applicable evidence), `uncovered`,
 `low_quality_reference`, `filtered`, `no_call`, `excluded_by_policy`,
 `other_alt`, and `variant_evidence` are not callable-reference results.
 Primary ALT calls are kept if a companion disagrees; a callable reference
-conflict is warned about. gVCF callability is not proof a caller could
-detect a particular indel.
+conflict is warned about. A companion's reference block cannot establish
+strict absence when a primary ALT, filtered record, or no-call overlaps
+the span being assessed. gVCF callability is not proof a caller could detect
+a particular indel.
 
 ## Read the results
 

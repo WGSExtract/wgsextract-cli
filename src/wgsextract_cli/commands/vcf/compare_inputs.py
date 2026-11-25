@@ -276,6 +276,7 @@ def prepare(
     *,
     calls: bool,
     evidence: bool,
+    blockers_only: bool = False,
 ) -> tuple[Path, ReferenceEvidence | None, int]:
     work.mkdir()
     mapped = dictionary.mapping(source.contigs)
@@ -308,7 +309,7 @@ def prepare(
             if evidence:
                 confident, keep = _evidence_record(fields, from_bcftools)
                 found_evidence |= confident
-                if keep:
+                if keep or blockers_only:
                     evidence_file.write("\t".join(fields) + "\n")
             if calls:
                 fields[0] = mapped[name]
@@ -386,7 +387,7 @@ def prepare(
         )
         align.unlink()
     evidence_source = None
-    if found_evidence:
+    if found_evidence or blockers_only:
         sorted_evidence = work / "sorted.g.vcf.gz"
         run_command(
             [

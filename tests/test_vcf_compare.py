@@ -223,6 +223,68 @@ def test_compare_1295_concordance_counts_callable_one_sided_alleles(callsets, tm
     assert (totals["a_only_observed"], totals["a_only_callable"]) == ("6", "1")
 
 
+def test_compare_1295_companion_cannot_mask_overlapping_primary_alt(tmp_path):
+    build = "##reference=GRCh38\n"
+    a = _vcf(
+        tmp_path / "a.vcf",
+        [
+            "11\t.\tC\tG\t.\tPASS\t.\tGT\t0/1",
+            "20\t.\tAC\tA\t.\tPASS\t.\tGT\t0/1",
+            "30\t.\tA\tAT\t.\tPASS\t.\tGT\t0/1",
+            "40\t.\tA\tG\t.\tPASS\t.\tGT\t0/1",
+            "50\t.\tAC\tA\t.\tPASS\t.\tGT\t0/1",
+            "60\t.\tA\tG\t.\tPASS\t.\tGT\t0/1",
+            "70\t.\tA\tG\t.\tPASS\t.\tGT\t0/1",
+        ],
+        metadata=build,
+    )
+    b = _vcf(
+        tmp_path / "b.vcf",
+        [
+            "10\t.\tAC\tA\t.\tPASS\t.\tGT\t0/1",
+            "21\t.\tC\tG\t.\tPASS\t.\tGT\t0/1",
+            "31\t.\tC\tG\t.\tLowQual\t.\tGT\t0/1",
+            "51\t.\tC\t.\t.\tPASS\t.\tGT\t./.",
+            "58\t.\tA\t<NON_REF>\t.\tPASS\tEND=62\tGT\t./.",
+            "68\t.\tA\t.\t.\tLowQual\tEND=72\tGT\t0/0",
+        ],
+        chrom="1",
+        metadata=build,
+    )
+    g = _vcf(
+        tmp_path / "b.g.vcf",
+        ["1\t.\tA\t<NON_REF>\t.\tPASS\tEND=80\tGT:MIN_DP:GQ\t0/0:30:60"],
+        chrom="1",
+        metadata=build + "##source=HaplotypeCaller\n",
+    )
+    outdir = tmp_path / "comparison"
+    api.vcf.compare(
+        api.VcfCompareParams(
+            callset=_inputs(a, b),
+            gvcf=(f"b={g}",),
+            mode="unique",
+            include=("a",),
+            exclude=("b",),
+            reference_evidence="gvcf",
+            outdir=outdir,
+        )
+    )
+    rows = _rows(outdir / "compare.variants.tsv")
+    assert [
+        (row["pos"], row["b_state"], row["decision"])
+        for row in rows
+        if row["a_state"] == "carried"
+    ] == [
+        ("11", "variant_evidence", "inconclusive"),
+        ("20", "variant_evidence", "inconclusive"),
+        ("30", "filtered", "inconclusive"),
+        ("40", "callable_reference", "retained"),
+        ("50", "no_call", "inconclusive"),
+        ("60", "no_call", "inconclusive"),
+        ("70", "filtered", "inconclusive"),
+    ]
+
+
 def test_compare_1295_unverified_override_does_not_bypass_known_mismatch(tmp_path):
     row = ["10\t.\tA\tC\t.\tPASS\t.\tGT\t0/1"]
     a = _vcf(tmp_path / "a.vcf", row)

@@ -188,10 +188,15 @@ def _collect(
                 labeled.reference,
                 work / f"call-{index}",
                 calls=True,
-                evidence=group.strict and explicit is None,
+                evidence=group.strict,
+                blockers_only=explicit is not None,
             )
             skipped += count
+            primary = None
             if explicit:
+                if evidence is not None:
+                    primary = EvidenceCursor(evidence, thresholds)
+                    stack.callback(primary.close)
                 _, evidence, _ = prepare(
                     explicit,
                     dictionary,
@@ -213,7 +218,7 @@ def _collect(
             reader = EvidenceCursor(evidence, thresholds) if group.strict else None
             if reader is not None:
                 stack.callback(reader.close)
-            readers.append(reader)
+            readers.append((reader, primary))
             streams.append(stack.enter_context(normalized.open(encoding="utf-8")))
         variant_writer = None
         if params.emit_variants or group.include:
@@ -244,10 +249,10 @@ def _collect(
             streams, order, scope, check_reference=labeled.reference is None
         ):
             calls = []
-            for label, observation, cursor in zip(
+            for label, observation, (cursor, primary) in zip(
                 summary.labels, observations, readers, strict=True
             ):
-                call, conflict = resolve(allele, observation, cursor)
+                call, conflict = resolve(allele, observation, cursor, primary)
                 inconsistent[label] += conflict
                 calls.append(call)
             kind = variant_type(allele)
