@@ -12,6 +12,7 @@ const { createRequestHandler } = await import("../dist/web/src/server/routes.js"
 const { streamNDJSON } = await import("../dist/web/src/server/ndjson.js");
 const { takeApiToken } = await import("../dist/web/src/server/request-guard.js");
 const { recordWorkspaceMove } = await import("../dist/web/src/server/users-workspace.js");
+const { appSettingsPath } = await import("../dist/web/src/server/workspace-location.js");
 
 const apiToken = "test-token-0123456789abcdefghijklmnopqrstuvwxyz";
 
@@ -835,7 +836,7 @@ test("the prerequisite routes check the referenced action and install only what 
 
 test("Privacy mode is an app-wide setting: another bundle or a reset bundle state never turns it off", async (t) => {
   const { baseURL, tempRoot } = await withTestServer(t);
-  const settingsPath = path.join(tempRoot, "data", "test.app", "settings.json");
+  const settingsPath = appSettingsPath();
   await mkdir(path.dirname(settingsPath), { recursive: true });
   await writeFile(settingsPath, JSON.stringify({ usersWorkspaces: { "test-bundle": "/kept" } }));
 

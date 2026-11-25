@@ -157,7 +157,9 @@ export async function claimUsersWorkspaceRoot(manifest: UsersManifest): Promise<
     if (await isAdoptable(root)) {
         // The CLI the app runs reads this record; without it, it would assume the installed app's folder.
         if (!recorded && root !== cliDefaultUsersWorkspace(manifest)) {
-            await updateAppSettings((current) => bundleSetting(current, defaultsKey, manifest) ? null : withBundleSetting(current, defaultsKey, manifest, root));
+            // Another writer may have recorded one first: that record is the one in force.
+            const saved = await updateAppSettings((current) => bundleSetting(current, defaultsKey, manifest) ? null : withBundleSetting(current, defaultsKey, manifest, root));
+            return bundleSetting(saved, defaultsKey, manifest) ?? root;
         }
         return root;
     }

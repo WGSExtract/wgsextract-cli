@@ -275,11 +275,15 @@ function resolveAppVersion(bundleMetadata, defaultVersion) {
 }
 
 /**
- * Debug builds (`tauri dev`, `tauri build --debug`) are development runs: main.rs gives them the development data
- * folder, so they need the development identifier too, or their webview data and logs would be the installed app's.
+ * Debug builds (`tauri dev`, `tauri build --debug`/`-d`) are development runs: main.rs gives them the development
+ * data folder (cfg!(debug_assertions)), so they need the development identifier too, or their webview data and logs
+ * would be the installed app's. `tauri dev --release` is a release build. Arguments after `--` go to Cargo.
  */
 export function isDevelopmentBuild(argv) {
-  return argv[0] === "dev" || (argv[0] === "build" && argv.includes("--debug"));
+  const end = argv.indexOf("--");
+  const tauriArgs = end === -1 ? argv : argv.slice(0, end);
+  if (tauriArgs[0] === "dev") return !tauriArgs.includes("--release");
+  return tauriArgs[0] === "build" && (tauriArgs.includes("--debug") || tauriArgs.includes("-d"));
 }
 
 /**

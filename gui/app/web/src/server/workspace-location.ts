@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import type { BundleManifest } from "../../../shared/types.js";
 import { writeFileAtomically } from "./atomic-file.js";
@@ -66,17 +66,26 @@ export function bundleWorkspaceRoot(manifest: Pick<BundleManifest, "id">) {
     return workspaceRootIn(appDataWorkspacesDirectory(), manifest.id);
 }
 
-export async function readAppSettings(): Promise<Record<string, unknown>> {
+/** The app settings, and whether a settings file exists that could not be read as settings. */
+async function readAppSettingsFile(): Promise<{ settings: Record<string, unknown>; unreadable: boolean }> {
     try {
         const parsed: unknown = JSON.parse(await readFile(appSettingsPath(), "utf8"));
-        return parsed != null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+        if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return { settings: parsed as Record<string, unknown>, unreadable: false };
+        }
+        console.error(`Ignoring ${appSettingsPath()}: it does not hold settings`);
     }
     catch (error) {
-        if (errnoCode(error) !== "ENOENT") {
-            console.error(`Ignoring unreadable ${appSettingsPath()}: ${errorMessage(error)}`);
+        if (errnoCode(error) === "ENOENT") {
+            return { settings: {}, unreadable: false };
         }
-        return {};
+        console.error(`Ignoring unreadable ${appSettingsPath()}: ${errorMessage(error)}`);
     }
+    return { settings: {}, unreadable: true };
+}
+
+export async function readAppSettings(): Promise<Record<string, unknown>> {
+    return (await readAppSettingsFile()).settings;
 }
 
 /** Saves the app-wide settings. The only record of where a moved users workspace is: never left half-written. */
@@ -92,10 +101,16 @@ async function writeAppSettings(settings: Record<string, unknown>) {
  */
 export async function updateAppSettings(change: (settings: Record<string, unknown>) => Record<string, unknown> | null): Promise<Record<string, unknown>> {
     return withSettingsFileLock(appSettingsPath(), async () => {
-        const current = await readAppSettings();
+        const { settings: current, unreadable } = await readAppSettingsFile();
         const next = change(current);
         if (next === null) {
             return current;
+        }
+        if (unreadable) {
+            // It may still hold the only record of a moved users workspace: keep it beside the new file.
+            const kept = `${appSettingsPath()}.unreadable-${Date.now()}`;
+            await rename(appSettingsPath(), kept);
+            console.error(`Kept the unreadable app settings as ${kept}`);
         }
         await writeAppSettings(next);
         return next;

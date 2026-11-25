@@ -13,7 +13,8 @@ const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/
 const { saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { applicationSupportDirectory, normalizeContext } = await import("../dist/web/src/server/paths.js");
 const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
-const { appDataWorkspacesDirectory, appSettingsPath } = await import("../dist/web/src/server/workspace-location.js");
+const { appDataWorkspacesDirectory, appSettingsPath, updateAppSettings } = await import("../dist/web/src/server/workspace-location.js");
+const { readPrivacyMode, savePrivacyMode } = await import("../dist/web/src/server/privacy-mode.js");
 const { saveUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo } = await import("../dist/web/src/server/users-workspace.js");
 const { relocateSettingsFile, restoreRewrittenFile } = await import("../dist/web/src/server/settings-relocation.js");
 const { displayWorkspacePath, relocatePath } = await import("../dist/shared/workspace-paths.js");
@@ -556,4 +557,30 @@ test("a development run keeps its own users workspace, and records it for the CL
   const settings = JSON.parse(await readFile(appSettingsPath(), "utf8"));
   assert.equal(settings.defaultUsersWorkspaceRoots[manifest.id], developmentUsers);
   assert.deepEqual(await readdir(installedUsers), [".users-workspace"]);
+});
+
+test("app settings writers keep each other's changes, and an unreadable settings file is kept, not overwritten (#1548)", async (t) => {
+  await fixture(t);
+  const folder = path.dirname(appSettingsPath());
+  await mkdir(folder, { recursive: true });
+  await writeFile(appSettingsPath(), "{ not json");
+
+  // An unreadable file may hold the only record of a moved users workspace.
+  assert.equal(await readPrivacyMode(), false);
+  await savePrivacyMode({ enabled: true });
+  const kept = (await readdir(folder)).filter((name) => name.startsWith("settings.json.unreadable-"));
+  assert.equal(kept.length, 1);
+  assert.equal(await readFile(path.join(folder, kept[0]), "utf8"), "{ not json");
+  assert.equal(await readPrivacyMode(), true);
+
+  // Concurrent writers (a bundle load recording its users workspace while Privacy mode is toggled) lose nothing.
+  await Promise.all([
+    savePrivacyMode({ enabled: false }),
+    ...Array.from({ length: 5 }, (_, index) => updateAppSettings((current) => ({ ...current, [`writer${index}`]: index }))),
+  ]);
+  const saved = JSON.parse(await readFile(appSettingsPath(), "utf8"));
+  assert.equal(saved.privacyMode, false);
+  for (let index = 0; index < 5; index++) {
+    assert.equal(saved[`writer${index}`], index);
+  }
 });

@@ -130,8 +130,9 @@ fn main() {
             )?;
             let overlay_script = update_e2e_overlay::script(&application_name, &application_version);
             // Release builds check for updates at startup unless the user turns on Privacy mode (the
-            // page skips the check) or GFC_TAURI_AUTO_UPDATE=0 (tests that must stay offline).
-            let auto_update = env_flag_or(AUTO_UPDATE_ENV, true);
+            // page skips the check) or GFC_TAURI_AUTO_UPDATE=0 (tests that must stay offline). Debug
+            // builds check only when GFC_TAURI_AUTO_UPDATE=1 says so.
+            let auto_update = env_flag_or(AUTO_UPDATE_ENV, !cfg!(debug_assertions));
             let auto_accept_update = env_flag(AUTO_ACCEPT_UPDATE_ENV);
             let auto_update_delay_seconds =
                 env_duration_seconds(AUTO_UPDATE_DELAY_SECONDS_ENV).as_secs();
