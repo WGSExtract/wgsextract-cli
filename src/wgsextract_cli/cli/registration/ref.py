@@ -80,7 +80,7 @@ NEEDS = {
         "GLIMPSE2_split_reference",
         "tabix",
     ),  # fmt: skip
-    "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix"),
+    "ref ybrowse": _n(DOWNLOAD, "bgzip", "tabix", optional="bcftools samtools"),
     "ref microarray-targets": _n(MINUTES),
     "ref gene-map": _n(DOWNLOAD, optional="bgzip curl tabix"),
     "ref cytobands": _n(DOWNLOAD, optional="curl"),

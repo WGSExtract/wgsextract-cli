@@ -66,7 +66,7 @@
 {"path":"vep run","tier":"core","summary":"Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl).","key_flags":["--engine","--vep-cache","--assembly","--force","--preset","--format","--region"]},
 {"path":"report","tier":"core","summary":"Summarise a sample's results in one local HTML report.","key_flags":["--no-download","--workspace","--results","--format","--gene-list","--pgx-context"]},
 {"path":"ref aadr","tier":"setup","summary":"Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.","key_flags":["--install","--delete"]},
-{"path":"ref ybrowse","tier":"setup","summary":"Explicitly install a verified, sites-only GRCh38 yBrowse snapshot.","key_flags":["--install","--delete","--snapshot"]},
+{"path":"ref ybrowse","tier":"setup","summary":"Explicitly install a verified, sites-only GRCh38 yBrowse snapshot.","key_flags":["--install","--delete","--snapshot","--grch37","--chain","--download"]},
 {"path":"ref somalier","tier":"setup","summary":"Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches for qc relate.","key_flags":["--install","--delete"]},
 {"path":"ref ancestry","tier":"setup","summary":"Fetch the hash-pinned ancestry reference for qc ancestry.","key_flags":["--install","--delete"]},
 {"path":"ref gnomad-sv","tier":"setup","summary":"Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.","key_flags":["--install","--source","--build","--delete"]},
