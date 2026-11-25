@@ -28,7 +28,7 @@ import os
 import re
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
 
@@ -103,7 +103,7 @@ class RunRecord:
         step: str,
         metrics: Mapping[str, object],
         reason: str,
-        outcome: Literal["ok", "failed", "reused"],
+        outcome: Literal["ok", "failed", "cancelled", "reused"],
     ) -> None:
         """List the command runs that did workflow ``step``'s work (in
         ``metrics["result_runs"]``), now or, ``reused``, in an earlier run."""
@@ -125,6 +125,31 @@ class RunRecord:
                 )
             )
 
+    def add_child(
+        self,
+        step: str,
+        document: object,
+        *,
+        command: str,
+        reason: str,
+        outcome: Literal["ok", "failed", "cancelled"],
+    ) -> ChildRun:
+        """List the run that did ``step`` from its result ``document``; one
+        that left none (it never started, or was killed) by ``outcome``."""
+        document = document if isinstance(document, dict) else {}
+        run = document.get("run")
+        child = run.get("id") if isinstance(run, dict) else None
+        status = document.get("status")
+        record = ChildRun(
+            step=step,
+            run=child if isinstance(child, str) and _RUN_ID.fullmatch(child) else None,
+            command=str(document.get("command") or command),
+            status=status if status in ("ok", "failed", "cancelled") else outcome,
+            reason=reason,
+        )
+        self.children.append(record)
+        return record
+
     def join(self, parent: str | None, root: str | None, step: str | None) -> None:
         """Make this run the ``step`` of ``parent`` in the workflow ``root``
         (malformed ids are ignored)."""
@@ -133,6 +158,47 @@ class RunRecord:
         self.parent = parent
         self.root = root if root and _RUN_ID.fullmatch(root) else parent
         self.step = step or None
+
+
+def ended_as(error: BaseException) -> Literal["failed", "cancelled"]:
+    """How a step that raised ``error`` ended: ``cancelled`` with its run
+    (its cancel token, an interrupt or a stop signal), else ``failed``."""
+    from wgsextract_cli.core import execution_context
+
+    token = execution_context.current().cancel
+    stopped = (
+        (token is not None and token.cancelled)
+        or isinstance(error, KeyboardInterrupt)
+        or (
+            isinstance(error, SystemExit)
+            and isinstance(error.code, int)
+            and error.code > 128
+        )
+    )
+    return "cancelled" if stopped else "failed"
+
+
+def started_step(metrics: dict[str, object], command: str) -> None:
+    """List a workflow step's ``command`` as it starts, with no run until
+    its result names one (``finished_step``): one that never starts, or
+    leaves no result, isn't credited to the workflow's own run."""
+    runs = metrics.setdefault("result_runs", [])
+    if isinstance(runs, list):
+        runs.append({"run": None, "command": command})
+
+
+def finished_step(
+    metrics: dict[str, object], run: object, command: str, status: object
+) -> None:
+    """Name the run, command and status of a step's command from its result."""
+    runs = metrics.setdefault("result_runs", [])
+    assert isinstance(runs, list)
+    entry = {"run": run, "command": command, "status": status}
+    started = [r for r in runs if r.get("run") is None and "status" not in r]
+    if started:
+        started[-1].update(entry)
+    else:
+        runs.append(entry)
 
 
 def lineage_args(run: RunRecord, step: str | None = None) -> list[str]:
@@ -202,6 +268,14 @@ class ArtifactRecord:
     index: ArtifactIndex | None = None
     producer: Producer | None = None
     sources: list[SourceEdge] = field(default_factory=list)
+    called_from: Annotated[
+        list[SourceEdge],
+        Constraints(
+            description="For a VCF or BCF: the reads wgsextract called it from, "
+            "directly or through filters and annotations that kept their "
+            "samples, so its samples are those reads' @RG SM; empty when unknown."
+        ),
+    ] = field(default_factory=list)
 
 
 def _digest_kind(record: FileRecord) -> Literal["full", "sampled"] | None:
@@ -218,7 +292,7 @@ class _Recorded:
     producer: Producer
     lifecycle: Lifecycle | None
     reference: str | None
-    from_reads: bool  # made directly from a BAM/CRAM: its samples are the reads'
+    called_from: list[SourceEdge]  # see ArtifactRecord.called_from
 
 
 _MANIFEST_SCAN_LIMIT = 256
@@ -246,8 +320,9 @@ def recorded_producer(record: FileRecord) -> _Recorded | None:
     from wgsextract_cli.core import read_scope
 
     for manifest in (own, *others):
-        # A server job reads only the folders it allows, manifests included.
-        if not read_scope.may_follow(manifest):
+        # A server job reads only the folders it allows, manifests included;
+        # a FIFO or device named like a manifest would block the read.
+        if not read_scope.may_follow(manifest) or not manifest.is_file():
             continue
         if found := _producer_in(manifest, record):
             return found
@@ -255,7 +330,7 @@ def recorded_producer(record: FileRecord) -> _Recorded | None:
 
 
 def _producer_in(manifest: Path, record: FileRecord) -> _Recorded | None:
-    from wgsextract_cli.core.results import SCHEMA_ID, file_kind
+    from wgsextract_cli.core.results import SCHEMA_ID
 
     try:
         document = json.loads(manifest.read_text(encoding="utf-8"))
@@ -265,7 +340,8 @@ def _producer_in(manifest: Path, record: FileRecord) -> _Recorded | None:
         return None
     run = document.get("run")
     run = run if isinstance(run, dict) else {}
-    for output in document.get("outputs") or []:
+    outputs = document.get("outputs")
+    for output in outputs if isinstance(outputs, list) else []:
         if (
             not isinstance(output, dict)
             or output.get("path") != record.path
@@ -273,29 +349,29 @@ def _producer_in(manifest: Path, record: FileRecord) -> _Recorded | None:
         ):
             continue
         artifact = output.get("artifact")
-        artifact = artifact if isinstance(artifact, dict) else {}
-        producer = artifact.get("producer")
-        if not isinstance(producer, dict):
-            producer = {
-                "run": run.get("id"),
-                "root": run.get("root"),
-                "command": document.get("command"),
-                "step": run.get("step"),
+        if artifact is None:  # written before artifacts: by the document's run
+            artifact = {
+                "producer": {
+                    "run": run.get("id"),
+                    "root": run.get("root"),
+                    "command": document.get("command"),
+                    "step": run.get("step"),
+                }
             }
+        # An artifact without a producer is one nobody knows the history of.
+        producer = producer_from_dict(
+            artifact.get("producer") if isinstance(artifact, dict) else None
+        )
+        if producer is None:
+            continue
+        assert isinstance(artifact, dict)
+        lifecycle = artifact.get("lifecycle")
+        reference = artifact.get("reference")
         return _Recorded(
-            Producer(
-                run=producer.get("run"),
-                root=producer.get("root"),
-                command=str(producer.get("command") or ""),
-                step=producer.get("step"),
-            ),
-            artifact.get("lifecycle"),
-            artifact.get("reference"),
-            any(
-                isinstance(edge, dict)
-                and file_kind(str(edge.get("path") or "")) in ("bam", "cram")
-                for edge in artifact.get("sources") or []
-            ),
+            producer,
+            lifecycle if lifecycle in _LIFECYCLES else None,
+            reference if isinstance(reference, str) else None,
+            _edges(artifact.get("called_from")),
         )
     return None
 
@@ -320,6 +396,7 @@ def input_artifact(record: FileRecord) -> ArtifactRecord:
         samples=facts.samples,
         index=facts.index,
         producer=recorded.producer if recorded else None,
+        called_from=recorded.called_from if recorded else [],
     )
 
 
@@ -346,6 +423,50 @@ def edge(record: FileRecord, *, retained: bool = True) -> SourceEdge:
         lifecycle=artifact.lifecycle if artifact else None,
         retained=retained and (artifact.retained if artifact else True),
     )
+
+
+def _called_from(
+    record: FileRecord,
+    samples: Sequence[str],
+    sources: Sequence[SourceEdge],
+    by_path: Mapping[str, FileRecord],
+) -> list[SourceEdge]:
+    """The reads a VCF/BCF output's calls come from, when its sample columns
+    are theirs: the reads its VCF sources were called from when it keeps
+    their samples (a filtered or annotated copy), and its BAM/CRAM sources
+    when it names only their @RG SM (for a CRAM, whose header isn't read,
+    when no other VCF went into it). None when a VCF source
+    without that ancestry names its samples too: an external VCF phased
+    with the reads (``vcf phase``) or annotated from recorded calls."""
+    if record.kind not in ("vcf", "bcf") or not samples:
+        return []
+    named = set(samples)
+    reads: list[tuple[SourceEdge, ArtifactRecord]] = []
+    others: list[ArtifactRecord] = []  # VCFs that may have named its samples
+    unknown = False  # reads whose SM isn't known
+    for source in sources:
+        origin = by_path.get(source.path)
+        artifact = origin.artifact if origin else None
+        if origin is None or artifact is None:
+            continue
+        if origin.kind in ("bam", "cram"):
+            reads.append((source, artifact))
+            unknown |= origin.kind == "cram" and not artifact.samples
+        # Calls this run deleted (vcf call --merge's parts) name nothing.
+        elif artifact.retained:
+            others.append(artifact)
+    # Any VCF naming its samples may have supplied them, so each must vouch
+    # (an external VCF annotated from recorded calls naming the same sample
+    # keeps its own genotypes).
+    naming = [a for a in others if named <= set(a.samples)]
+    if any(not a.called_from for a in naming):
+        return []
+    found = {(e.path, e.fingerprint): e for a in naming for e in a.called_from}
+    sms = {sm for _, artifact in reads for sm in artifact.samples}
+    if named <= sms or (unknown and not others):
+        for source, _ in reads:
+            found.setdefault((source.path, source.fingerprint), source)
+    return list(found.values())
 
 
 def annotate(
@@ -395,6 +516,11 @@ def annotate(
         facts = file_facts(record.path, record.kind)
         declared = sources.get(record.path)
         made = producers.get(record.path, producer)
+        edges = (
+            default
+            if declared is None
+            else [edge(by_path[p]) for p in declared if p in by_path]
+        )
         record.artifact = ArtifactRecord(
             origin="this_run" if made.root == result.run.root else "recorded",
             lifecycle=lifecycles.get(record.path, "final"),
@@ -404,9 +530,8 @@ def annotate(
             samples=facts.samples,
             index=facts.index,
             producer=made,
-            sources=default
-            if declared is None
-            else [edge(by_path[p]) for p in declared if p in by_path],
+            sources=edges,
+            called_from=_called_from(record, facts.samples, edges, by_path),
         )
 
 
@@ -468,11 +593,48 @@ class Lineage:
             logging.warning("Could not describe the run's artifacts.", exc_info=True)
 
 
+_LIFECYCLES = ("final", "intermediate", "cache", "temp")
+_SOURCE_EDGE_FIELDS = frozenset(f.name for f in fields(SourceEdge))
+
+
+def _run_id(value: object) -> bool:
+    return value is None or (isinstance(value, str) and bool(_RUN_ID.fullmatch(value)))
+
+
 def producer_from_dict(value: object) -> Producer | None:
-    try:
-        return Producer(**value) if isinstance(value, dict) else None
-    except TypeError:
+    """A producer read back from a document; None for a malformed one."""
+    if not (
+        isinstance(value, dict)
+        and set(value) <= {"run", "root", "command", "step"}
+        and _run_id(value.get("run"))
+        and _run_id(value.get("root"))
+        and isinstance(value.get("command"), str)
+        and isinstance(value.get("step"), str | None)
+    ):
         return None
+    return Producer(
+        value.get("run"), value.get("root"), value["command"], value.get("step")
+    )
+
+
+def _edges(value: object) -> list[SourceEdge]:
+    """Edges read back from a document: none if any is malformed, since
+    ancestry is trusted whole or not at all."""
+    edges: list[SourceEdge] = []
+    for item in value if isinstance(value, list) else []:
+        if not (
+            isinstance(item, dict)
+            and item.keys() <= _SOURCE_EDGE_FIELDS
+            and isinstance(item.get("path"), str)
+            and isinstance(item.get("role"), str)
+            and isinstance(item.get("fingerprint"), str | None)
+            and _run_id(item.get("producer"))
+            and item.get("lifecycle") in (*_LIFECYCLES, None)
+            and isinstance(item.get("retained", True), bool)
+        ):
+            return []
+        edges.append(SourceEdge(**item))
+    return edges
 
 
 def artifact_from_dict(value: object) -> ArtifactRecord | None:
@@ -493,6 +655,7 @@ def artifact_from_dict(value: object) -> ArtifactRecord | None:
             index=ArtifactIndex(**index) if isinstance(index, dict) else None,
             producer=Producer(**producer) if isinstance(producer, dict) else None,
             sources=[SourceEdge(**e) for e in value.get("sources") or []],
+            called_from=_edges(value.get("called_from")),
         )
     except (KeyError, TypeError):
         return None
