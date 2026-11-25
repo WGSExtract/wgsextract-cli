@@ -8,25 +8,6 @@ name: macOS Aligners
 # The wgsextract CLI does not use these builds yet.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
-    branches: [ main ]
-    paths:
-      - native/**
-      - '!native/deepvariant/**'
-      - '!native/clair3/**'
-      - .github/workflows/macos_aligners.yml
-      - "!**/*.md"
-  push:
-    branches: [main]
-    paths:
-      - native/**
-      - '!native/deepvariant/**'
-      - '!native/clair3/**'
-      - .github/workflows/macos_aligners.yml
-      - "!**/*.md"
-  schedule:
-    - cron: "47 6 * * *"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -37,14 +18,8 @@ on:
 permissions:
   contents: read
 
-# Coalesce main pushes and PRs independently; preserve nightly/release dispatches.
-concurrency:
-  group: macos-aligners-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
 jobs:
   build:
-    if: ${{ github.event.pull_request.draft != true }}
     runs-on: macos-15
     timeout-minutes: 60
     steps:
