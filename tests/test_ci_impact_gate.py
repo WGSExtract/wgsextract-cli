@@ -174,7 +174,7 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
             )
 
     def run_gate(
-        *, event: str = "pull_request", disabled: bool = False
+        *, event: str = "pull_request", disabled: bool = False, ready_tier: bool = False
     ) -> GateDecision:
         return plan(
             tmp_path,
@@ -183,6 +183,7 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
             observations=map_path,
             legacy=legacy,
             disabled=disabled,
+            ready_tier=ready_tier,
         )
 
     assert run_gate()["mode"] == "legacy-observation-gap"
@@ -219,6 +220,10 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
             assert newer_test in checked["selection"]
     else:
         assert run_gate() == {"mode": "universal-full", "selection": "all"}
+        assert run_gate(ready_tier=True) == {
+            "mode": "universal-fast",
+            "selection": ["tests/test_legacy.py"],
+        }
 
 
 @pytest.mark.parametrize(

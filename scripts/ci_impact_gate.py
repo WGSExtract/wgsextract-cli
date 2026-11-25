@@ -78,6 +78,7 @@ def plan(
     observations: Path,
     legacy: str,
     disabled: bool,
+    ready_tier: bool = False,
 ) -> GateDecision:
     """The kill switch and evidence gaps use the untouched existing selection."""
     try:
@@ -108,6 +109,8 @@ def plan(
         for rules in reasons.values()
         for reason in rules
     ):
+        if ready_tier and event == "pull_request" and isinstance(selection, list):
+            return fallback("universal-fast")
         return {"mode": "universal-full", "selection": "all"}
     if unmatched or not candidates["symbol"]:
         return fallback("legacy-unmatched-or-empty")
@@ -166,6 +169,7 @@ def main() -> None:
     parser.add_argument("--legacy", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--disabled", action="store_true")
+    parser.add_argument("--ready-tier", action="store_true")
     parser.add_argument("--verify-wiring", action="store_true")
     args = parser.parse_args()
     try:
@@ -176,6 +180,7 @@ def main() -> None:
             observations=args.observations,
             legacy=args.legacy,
             disabled=args.disabled,
+            ready_tier=args.ready_tier,
         )
     except ValueError as error:
         parser.error(str(error))
@@ -183,7 +188,7 @@ def main() -> None:
     args.output.write_text(json.dumps(decision) + "\n", encoding="utf-8")
     if args.verify_wiring:
         mode = decision["mode"]
-        if mode in {"symbol", "universal-full"}:
+        if mode in {"symbol", "universal-full", "universal-fast"}:
             print(f"Verified fresh Linux selector map: {mode}.")
         else:
             print(

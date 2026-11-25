@@ -134,6 +134,9 @@ def test_1199_optional_ci_is_cached_linux_only_and_required() -> None:
     assert "scripts/ci_optional_tools.py" in source
     pr = (WORKFLOWS / "pr_ci.yml").read_text()
     assert "needs.changes.outputs.optional_tests != '[]'" in pr
+    optional_pr = pr.split("\n  optional-tools:\n", 1)[1].split("\n  ubuntu:", 1)[0]
+    assert "github.event_name == 'pull_request'" in optional_pr
+    assert "needs.changes.outputs.test_certified != 'true'" in optional_pr
     for name in ("ready-gate", "required"):
         job = pr.split(f"\n  {name}:\n", 1)[1]
         needs = re.search(r"^\s+needs: \[(.*)\]$", job, re.M)
@@ -156,6 +159,20 @@ def test_1199_optional_ci_is_cached_linux_only_and_required() -> None:
         assert "!inputs.optional-tools-only" in top_level_conjuncts(condition[1])
     for workflow in ("macos_ci.yml", "windows_ci.yml", "linux_arm64.yml"):
         assert "optional_tools.yml" not in (WORKFLOWS / workflow).read_text()
+
+
+def test_queue_smoke_cannot_invoke_the_hosted_pr_os_suites() -> None:
+    pr = (WORKFLOWS / "pr_ci.yml").read_text()
+    for lane in ("windows", "macos", "arm64"):
+        condition = pr.split(f"\n  {lane}:\n", 1)[1].splitlines()[1]
+        assert "'pull_request'" in condition or "!= 'merge_group'" in condition
+    queue = pr.split("\n  queue-smoke:\n", 1)[1].split("\n  #", 1)[0]
+    assert "fromJSON(needs.changes.outputs.queue_runners)" in queue
+    assert "--collect-only" in queue
+    assert "timeout-minutes: 10" in queue
+    ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
+    lint = ubuntu.split("\n  lint:\n", 1)[1].split("\n  test-ubuntu:\n", 1)[0]
+    assert "mypy" in lint and "certified" not in lint
 
 
 def test_1199_missing_optional_tool_fails_before_pytest(

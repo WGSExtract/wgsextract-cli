@@ -25,7 +25,14 @@ from scripts.ci_certifications import (  # noqa: E402
     publish_certification,
 )
 from scripts.ci_certify_inputs import validate_environments  # noqa: E402
-from scripts.ci_changes import documentation_targets, routes, site_validation  # noqa: E402
+from scripts.ci_changes import (  # noqa: E402
+    documentation_targets,
+    ready_optional_tests,
+    routes,
+    setup_checks,
+    site_validation,
+)
+from scripts.ci_optional_tools import SUITES  # noqa: E402
 from scripts.ci_select_tests import ci_test_targets, os_selection, select_tests  # noqa: E402
 
 
@@ -236,11 +243,26 @@ def run_layer(
 
 
 def platform_commands(
-    host: str, targets: list[str] | str, smoke: bool
+    host: str,
+    targets: list[str] | str,
+    smoke: bool,
+    *,
+    optional_tests: tuple[str, ...] = (),
+    setup_selected: bool = False,
 ) -> list[list[str]]:
     selection = targets if isinstance(targets, str) else json.dumps(targets)
     pixi = ["pixi", "run", "--no-install"]
     commands: list[list[str]] = []
+    if host == "linux-x64" and optional_tests:
+        commands.append(
+            [
+                *pixi,
+                "python",
+                "scripts/ci_optional_tools.py",
+                "--selection",
+                json.dumps(optional_tests),
+            ]
+        )
     if not targets:
         return commands
     if not smoke:
@@ -346,7 +368,9 @@ def platform_commands(
                     "-rs",
                 ]
             )
-    if host == "linux-x64" and (all_tests or "tests/test_cli_parser.py" in targets):
+    if host == "linux-x64" and (
+        setup_selected or all_tests or "tests/test_cli_parser.py" in targets
+    ):
         commands.append(
             [
                 *pixi,
@@ -479,9 +503,16 @@ def selection(paths: list[str], host: str) -> tuple[bool, list[str] | str]:
 
 
 def required_environments(
-    name: str, host: str, cli: bool, targets: list[str] | str
+    name: str,
+    host: str,
+    cli: bool,
+    targets: list[str] | str,
+    *,
+    optional_tests: tuple[str, ...] = (),
 ) -> list[str]:
     environments = ["default", "dev"]
+    if name == "linux-x64" and host == "linux-x64":
+        environments += sorted({SUITES[test][0].lower() for test in optional_tests})
     if name == "generic" or not cli or not targets:
         return environments
     environments += ["vep" if host == "linux-arm64" else "vep-rs", "fastvep"]
@@ -523,10 +554,17 @@ def main() -> None:
     subprocess.run(["git", "fetch", "origin", pr["base"]["sha"]], check=True)
     paths = changed_paths(pr["base"]["sha"], sha)
     targets = select_tests(paths)
+    optional_tests = tuple(ready_optional_tests(paths, targets))
     cli, platform_targets = selection(paths, host)
     layers = {}
     if not args.generic_only:
-        layers[host] = platform_commands(host, platform_targets, not cli)
+        layers[host] = platform_commands(
+            host,
+            platform_targets,
+            not cli,
+            optional_tests=optional_tests,
+            setup_selected=setup_checks(paths),
+        )
     if not args.platform_only:
         layers["generic"] = generic_commands(paths, targets)
     summaries = []
@@ -537,7 +575,9 @@ def main() -> None:
             commands: list[list[str]] = commands,
         ) -> tuple[str, str]:
             validate_environments(
-                required_environments(name, host, cli, platform_targets)
+                required_environments(
+                    name, host, cli, platform_targets, optional_tests=optional_tests
+                )
             )
             summary, log = run_layer(name, commands, sha, args.workers)
             validate_head(

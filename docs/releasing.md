@@ -76,6 +76,8 @@ publishes only after preflight passes.
    Release dispatches the following workflows against that tag and checks
    the returned run IDs and commit SHA. All must finish successfully:
 
+   - `ubuntu_ci.yml`, `windows_ci.yml`, `macos_ci.yml`, and `linux_arm64.yml`
+     (full test suites; these workflows also run nightly on `main`).
    - `linux_aligners.yml`, `macos_aligners.yml`, `linux_deepvariant.yml`,
      `macos_deepvariant.yml`, and `macos_clair3.yml` (build/test only; no
      native tool releases).
@@ -89,8 +91,8 @@ publishes only after preflight passes.
      publicly pinned CLI install is tested after publication (section 3).
 
    These workflows also accept manual dispatches for targeted diagnosis.
-   They do not run on PRs, in the merge queue, or on a nightly/weekly timer.
-   The separate [nightly OS suites](ci_routing.md#setup-checks-on-prs-and-the-daily-backstop)
+   The release-only checks do not run on PRs, in the merge queue, or on a
+   nightly timer. The [nightly OS suites](ci_routing.md#setup-checks-on-prs-and-the-daily-backstop)
    continue to report regressions on main.
 
    Once preflight passes, Release creates the draft, uploads the validated

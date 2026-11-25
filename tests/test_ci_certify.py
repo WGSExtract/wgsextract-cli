@@ -119,18 +119,62 @@ def test_923_merge_group_never_uses_certifications() -> None:
     assert certifications("owner/repo", {"merge_group": {"head_sha": "abc"}}) == set()
 
 
+@pytest.mark.parametrize("missing", [None, "generic", "linux-x64", "windows-x64"])
+def test_ready_certification_requires_generic_and_every_routed_os(
+    tmp_path: Path, missing: str | None
+) -> None:
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-c", "user.name=CI", "-c", "user.email=ci@example.invalid", *args],
+            cwd=tmp_path,
+            text=True,
+        ).strip()
+
+    git("init", "-q")
+    git("commit", "-qm", "base", "--allow-empty")
+    base = git("rev-parse", "HEAD")
+    workflows = tmp_path / ".github" / "workflows"
+    workflows.mkdir(parents=True)
+    for name in ("optional_tools.yml", "windows_ci.yml"):
+        (workflows / name).write_text("name: CI\n")
+    git("add", ".")
+    git("commit", "-qm", "workflow diff")
+    script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
+    layers = ["generic", "linux-x64", "windows-x64"]
+    command = [
+        sys.executable,
+        str(script),
+        "--base",
+        base,
+        "--head",
+        "HEAD",
+        "--ready",
+        "--certified",
+        *(layer for layer in layers if layer != missing),
+    ]
+    output = subprocess.check_output(command, cwd=tmp_path, text=True)
+    selected = dict(line.split("=", 1) for line in output.splitlines())
+    assert json.loads(selected["required_layers"]) == layers
+    assert (selected["test_certified"] == "true") is (missing is None)
+
+
 def test_1495_windows_cert_does_not_skip_the_pinned_fresh_install() -> None:
-    workflow = Path(".github/workflows/pr_ci.yml").read_text()
-    gate = next(line for line in workflow.splitlines() if "windows_x64:" in line)
-    assert "steps.diff.outputs.move_modules == '[]'" in gate
-    assert "steps.diff.outputs.windows_tests != 'all'" in gate
+    workflows = Path(".github/workflows")
+    pr = (workflows / "pr_ci.yml").read_text()
+    caller = pr.split("\n  windows:\n", 1)[1].split("\n\n", 1)[0]
     assert (
-        "!contains(steps.diff.outputs.windows_tests, 'tests/test_imputation.py')"
-        in gate
+        "|| contains(needs.changes.outputs.windows_tests, 'tests/test_imputation.py')"
+        in caller
     )
-    assert "&& steps.cert.outputs.windows_x64 || 'false'" in gate
-    windows = workflow.split("\n  windows:\n", 1)[1].split("\n\n", 1)[0]
-    assert "needs.changes.outputs.windows_x64 != 'true'" in windows
+    assert "platform-certified:" in caller
+    windows = (workflows / "windows_ci.yml").read_text()
+    install, suite = windows.split("\n  imputation-install:\n", 1)[1].split(
+        "\n  test-windows:\n", 1
+    )
+    assert "if: inputs.platform-certified" in install
+    assert 'install: "false"' in install
+    assert "pixi install --locked -e imputation" in install
+    assert "!inputs.platform-certified" in suite
 
 
 @pytest.mark.parametrize(
