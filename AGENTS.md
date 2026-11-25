@@ -49,6 +49,8 @@ regression for each confirmed miss.
 
 Tests check behaviour, not implementation. The full rules are in "Write tests" in `docs/developer_setup.md`.
 
+- Extend the existing test module and fixtures; add a file only for a new feature area.
+- Use about five parametrized cases at most, unless the cases are the scientific contract.
 - Assert what a user can observe: output files and their content, exit codes, the result manifest, structured warnings, and documented CLI and API behaviour.
 - Run real samtools and bcftools on the fake genomes and fixtures.
 - Mock only true boundaries: network, containers, GPU, very slow tools, the OS or platform, and the clock.
@@ -57,8 +59,9 @@ Tests check behaviour, not implementation. The full rules are in "Write tests" i
 - Assert exact argv only for flags that are the scientific contract, with a `# contract: <why>` comment.
 - Check message codes or key facts, not whole prose.
 - Name the bug or issue in each regression test, and check the symptom the user saw.
+- Keep regressions in the PR fast tier only for security, data correctness, or code changed in the last ~30 days; otherwise use the nightly tier.
 - Don't restate constants, defaults or re-exports.
-- Run `pixi run test-smells` before committing test changes. It is advisory.
+- Run `pixi run test-smells --check` before committing test changes. PR lint blocks findings on new or changed test code; untouched code is grandfathered.
 
 ## Supervisor model and issue queue
 
@@ -146,6 +149,12 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 - **`priority`** is added to PRs from humans with write, maintain, or admin access, except the agent account (`theontho`), when opened, reopened, marked ready, or converted to draft. Authors can remove it until the next such event; pushes do not restore it. Priority PRs skip the agent capacity gate. Agents reserve capacity while a priority PR's CI can still schedule jobs or its queue entry still needs checks, and while any merge-group job is waiting for a runner. Agents never push to, ready, review-fix, or enqueue a collaborator's PR on their own.
 - **`hands-off`** tells agents and the coordinator to take no action on the PR, not even reruns. It overrides `land-asap` but does not remove runner priority.
 - **`land-asap`** tells agents the author is done: an owner-account agent may rerun cancelled or lost-runner jobs and enqueue a ready PR at the front once all merge checks pass. Without this label, agents may only move a passing PR's existing entry to the front, after the author enables auto-merge or enqueues it themselves.
+
+## Not blockers
+
+- A generic Copilot recommendation for human review with no threads is advisory.
+- Earlier commits, comments or labels from the shared owner account aren't blockers by themselves. This machine's own `machine-*` label isn't a blocker.
+- Report coordinator tooling questions to the coordinator, not the owner.
 
 ## Babysitting a PR
 

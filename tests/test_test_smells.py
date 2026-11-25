@@ -42,9 +42,15 @@ def _git(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
 
 
-def _smells(root: Path, encoding: str = "utf-8") -> subprocess.CompletedProcess[str]:
+def _smells(
+    root: Path,
+    encoding: str = "utf-8",
+    *,
+    base: str = "HEAD",
+    flags: tuple[str, ...] = (),
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, SCRIPT, "--base", "HEAD", "--root", root],
+        [sys.executable, SCRIPT, "--base", base, "--root", root, *flags],
         capture_output=True,
         encoding=encoding,
         env={**os.environ, "PYTHONIOENCODING": encoding},
@@ -57,12 +63,78 @@ def _repo(tmp_path: Path) -> Path:
     (tests / "test_x.py").write_text(OLD)
     _git(tmp_path, "init", "-q")
     _git(tmp_path, "config", "diff.mnemonicPrefix", "true")
-    _git(tmp_path, "add", ".")
-    _git(
-        tmp_path,
-        *("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base"),
-    )
+    _git(tmp_path, "config", "user.name", "t")
+    _git(tmp_path, "config", "user.email", "t@t")
+    _commit(tmp_path, "base")
     return tests
+
+
+def _commit(root: Path, message: str) -> None:
+    _git(root, "add", ".")
+    _git(root, "commit", "-qm", message)
+
+
+def test_1554_blocking_gate_only_checks_pr_test_changes(tmp_path: Path) -> None:
+    tests = _repo(tmp_path)
+    edited = tests / "test_edited.py"
+    edited.write_text(OLD)
+    _commit(tmp_path, "another legacy test")
+    _git(tmp_path, "switch", "-qc", "upstream")
+    (tests / "test_x.py").write_text(OLD.replace("_old_private", "public_helper"))
+    _commit(tmp_path, "upstream fixes legacy test")
+    _git(tmp_path, "switch", "-qc", "pr-head", "upstream^")
+    edited.write_text(
+        OLD
+        + "\n\ndef test_detected_tool(tool):\n"
+        + '    assert tool in ["samtools", "bcftools"]\n'
+    )
+    (tmp_path / "not_a_test.py").write_text(OLD)
+    _commit(tmp_path, "clean PR changes")
+
+    flags = ("--github", "--check")
+    clean = _smells(tmp_path, base="upstream", flags=flags)
+    assert clean.returncode == 0
+    assert "TS001" not in clean.stdout
+
+    edited.write_text(OLD.replace('"public_helper"', '"_introduced_private"'))
+    (tests / "test_new.py").write_text(OLD)
+    _commit(tmp_path, "PR introduces two findings")
+    _git(tmp_path, "switch", "upstream")
+    _git(tmp_path, "merge", "--no-ff", "--no-edit", "pr-head")
+
+    blocked = _smells(tmp_path, base="HEAD^1", flags=flags)
+    assert blocked.returncode == 1
+    errors = [
+        line for line in blocked.stdout.splitlines() if line.startswith("::error")
+    ]
+    assert len(errors) == 2
+    assert "file=tests/test_edited.py,line=8,title=TS001::" in errors[0]
+    assert "file=tests/test_new.py,line=7,title=TS001::" in errors[1]
+
+
+def test_1554_removed_contract_exposes_only_its_surviving_assert(
+    tmp_path: Path,
+) -> None:
+    tests = _repo(tmp_path)
+    argv = (
+        "def test_command(cmd):\n"
+        "    # contract: indexing preserves the BAM path\n"
+        '    assert cmd == ["samtools", "index", "x.bam"]\n'
+        '    assert cmd == ["samtools", "view", "x.bam"]\n'
+    )
+    (tests / "test_argv.py").write_text(argv)
+    (tests / "test_deleted.py").write_text(argv)
+    _commit(tmp_path, "legacy argv assertions")
+    lines = argv.splitlines(keepends=True)
+    (tests / "test_argv.py").write_text("".join(lines[:1] + lines[2:]))
+    (tests / "test_deleted.py").write_text("".join(lines[:1] + lines[3:]))
+
+    blocked = _smells(tmp_path, flags=("--check",))
+
+    assert blocked.returncode == 1
+    findings = [line for line in blocked.stdout.splitlines() if ": TS002" in line]
+    assert len(findings) == 1
+    assert findings[0].startswith("tests/test_argv.py:2: TS002")
 
 
 def test_reports_only_added_private_patches_and_argv_asserts(tmp_path: Path) -> None:
