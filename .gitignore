@@ -51,6 +51,7 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+/src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json
 .Python
 .pixi
 develop-eggs/

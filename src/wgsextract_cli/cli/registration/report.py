@@ -5,7 +5,15 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.report import ReportParams
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    SECONDS,
+    _n,
+)
+from wgsextract_cli.commands._messages.report import CLI_HELP
+
+NEEDS = {
+    "report": _n(SECONDS, scale=" from existing results", optional="curl"),
+}
 
 
 def register(

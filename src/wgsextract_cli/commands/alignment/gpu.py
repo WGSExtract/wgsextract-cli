@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from wgsextract_cli.commands._messages.align import LOG_MESSAGES
 from wgsextract_cli.core.alignment.fastq import (
     check_primary_reads,
 )
@@ -18,7 +19,6 @@ from wgsextract_cli.core.atomic_output import (
     safe_output,
 )
 from wgsextract_cli.core.genome_library import pair_stem
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.temp_directory import configured_temp_directory
 from wgsextract_cli.core.utils import (
     UsageError,

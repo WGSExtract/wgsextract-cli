@@ -12,6 +12,7 @@ from wgsextract_cli.api._shared import (
     check_confidence,
     confidence_depth_param,
     confidence_gq_param,
+    dry_run_param,
     force_steps_param,
     ref_param,
     restart_param,
@@ -434,7 +435,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
     threads: int | None = threads_param()
     annotations: str = param(
         "clinvar,revel,phylop,gnomad,vep",
-        help="Comma-separated list of annotations to apply in order (default: "
+        help="Comma-separated list of distinct annotations to apply in order (default: "
         "clinvar,revel,phylop,gnomad,vep).",
     )
     keep_intermediates: bool = param(
@@ -447,7 +448,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
     )
     bed: Path | None = param(
         None,
-        help="Only annotate regions in this 0-based BED or BED.gz file.",
+        help="Only annotate regions in this 0-based BED or BED.gz file; clip to known contig lengths.",
         path="file",
     )
     restart: bool = restart_param(aliases=("--restart",))
@@ -458,6 +459,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
         ),
         aliases=("--force-steps",),
     )  # fmt: skip
+    dry_run: bool = dry_run_param()
     to_table: bool = param(
         False,
         help="Also export a variant table and SQLite database.",

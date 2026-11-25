@@ -8,11 +8,13 @@ FASTA) need the matching reference; the others use it only to decode a CRAM."""
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.extract import CLI_HELP
+from wgsextract_cli.core.messages import CLI_HELP as SHARED_CLI_HELP
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.y_contigs import Y_SCOPES
@@ -37,6 +39,13 @@ def _y_scope_param() -> Any:
         choices=Y_SCOPES,
         metavar="SCOPE",
     )
+
+
+def _ybrowse_paths(enabled: bool) -> Iterator[tuple[str, Path]]:
+    if enabled:
+        from wgsextract_cli.core.ref_library.assets import resolve_reference_library
+
+        yield "ybrowse", Path(resolve_reference_library()) / "ybrowse"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -85,7 +94,7 @@ class BamSubsetParams(_ExtractParams):
     )
     region: str | None = param(
         None,
-        help=CLI_HELP["arg_region"],
+        help=SHARED_CLI_HELP["arg_region"],
         flags=("-r", "--region"),
         may_name_file=True,
     )
@@ -124,10 +133,13 @@ class YdnaVcfParams(_ExtractParams):
 
     ybrowse: bool = param(
         False,
-        help="Call installed, allele-annotated yBrowse SNP targets (GRCh38 only; "
-        "no downloads).",
+        help="Call installed, allele-annotated yBrowse SNP targets (GRCh38, or "
+        "GRCh37 after ref ybrowse --grch37; no downloads).",
         action="store_true",
     )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        yield from _ybrowse_paths(self.ybrowse)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -165,7 +177,7 @@ class CustomParams(_ExtractParams):
 
     region: str | None = param(
         None,
-        help=CLI_HELP["arg_region"],
+        help=SHARED_CLI_HELP["arg_region"],
         flags=("-r", "--region"),
         doc="Region (chrY:10000-20000), comma-separated regions, or a BED file.",
         may_name_file=True,
@@ -228,10 +240,14 @@ class ExtractRegionParams(_ExtractParams):
         False,
         help="With --target y and the vcf format: call installed, allele-annotated "
         "yBrowse "
-        "SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz "
+        "SNP targets (GRCh38, or GRCh37 after ref ybrowse --grch37; no "
+        "downloads) into <input>_Y_ybrowse.vcf.gz "
         "instead.",
         action="store_true",
     )
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        yield from _ybrowse_paths(self.ybrowse)
 
     def __post_init__(self) -> None:
         super().__post_init__()

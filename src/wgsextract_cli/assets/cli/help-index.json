@@ -21,6 +21,7 @@
 {"flags":["--parent-run"],"dest":"_parent_run","type":"string","help":"==SUPPRESS=="},
 {"flags":["--root-run"],"dest":"_root_run","type":"string","help":"==SUPPRESS=="},
 {"flags":["--run-step"],"dest":"_run_step","type":"string","help":"==SUPPRESS=="},
+{"flags":["--read-scope"],"dest":"_read_scope","type":"string","help":"==SUPPRESS=="},
 {"flags":["--parent-pid"],"dest":"parent_pid","type":"integer","help":"Parent Process ID to monitor."}
 ],
 "commands":[
@@ -65,7 +66,7 @@
 {"path":"vep run","tier":"core","summary":"Variant Effect Predictor, with vep-rs (default) or Ensembl VEP (--engine ensembl).","key_flags":["--engine","--vep-cache","--assembly","--force","--preset","--format","--region"]},
 {"path":"report","tier":"core","summary":"Summarise a sample's results in one local HTML report.","key_flags":["--no-download","--workspace","--results","--format","--gene-list","--pgx-context"]},
 {"path":"ref aadr","tier":"setup","summary":"Explicitly fetch the hash-pinned CC0 AADR v66.p1 2M SNP panel.","key_flags":["--install","--delete"]},
-{"path":"ref ybrowse","tier":"setup","summary":"Explicitly install a verified, sites-only GRCh38 yBrowse snapshot.","key_flags":["--install","--delete","--snapshot"]},
+{"path":"ref ybrowse","tier":"setup","summary":"Explicitly install a verified, sites-only GRCh38 yBrowse snapshot.","key_flags":["--install","--delete","--snapshot","--grch37","--chain","--download"]},
 {"path":"ref somalier","tier":"setup","summary":"Explicitly fetch somalier's hash-pinned sites and 1000 Genomes sketches for qc relate.","key_flags":["--install","--delete"]},
 {"path":"ref ancestry","tier":"setup","summary":"Fetch the hash-pinned ancestry reference for qc ancestry.","key_flags":["--install","--delete"]},
 {"path":"ref gnomad-sv","tier":"setup","summary":"Explicitly fetch hash-pinned gnomAD SV tables for vcf sv-freq.","key_flags":["--install","--source","--build","--delete"]},
@@ -127,7 +128,7 @@
 {"path":"vcf alphamissense","tier":"advanced","summary":"Annotate VCF with AlphaMissense pathogenicity scores.","key_flags":["--vcf-input","--am-file","--min-score"]},
 {"path":"vcf acmg","tier":"advanced","summary":"Research-only ACMG/AMP classes with fastVEP (opt-in).","key_flags":["--vcf-input","--research-acmg","--sa-dir","--gff3","--site-data"]},
 {"path":"vcf pharmcat","tier":"advanced","summary":"Call star-allele diplotypes and drug-response phenotypes (CYP2C19, CYP2C9, DPYD, ...) with PharmCAT, and write its prescribing report.","key_flags":["--no-download","--vcf-input","--pharmcat-dir","--absent-to-ref","--alignment","--alignment-reference","--outside-call"]},
-{"path":"vcf chain-annotate","tier":"advanced","summary":"Sequentially apply multiple annotations to a single VCF.","key_flags":["--vcf-input","--annotations","--keep-intermediates","--region","--bed","--no-resume","--force-steps","--to-table","--table-format"]},
+{"path":"vcf chain-annotate","tier":"advanced","summary":"Sequentially apply multiple annotations to a single VCF.","key_flags":["--vcf-input","--annotations","--keep-intermediates","--region","--bed","--no-resume","--force-steps","--dry-run","--to-table","--table-format"]},
 {"path":"bam sort","tier":"advanced","summary":"Sort alignments by genomic coordinates.","key_flags":["--region","--gene"]},
 {"path":"bam index","tier":"advanced","summary":"Create a random-access index (.bai/.crai) for your file.","key_flags":[]},
 {"path":"bam unindex","tier":"advanced","summary":"Remove the index file associated with your BAM/CRAM.","key_flags":[]},

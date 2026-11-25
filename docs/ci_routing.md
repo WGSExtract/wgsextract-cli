@@ -947,10 +947,15 @@ Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait --pr N`.
 It reads PRs, workflow runs and jobs through `gh api` (read-only) and exits 0
 when admission is fine. The `priority` label, added to PRs from non-bot
 collaborators with write access other than `theontho`, lets the named PR skip
-the capacity gate. Other PRs exit 3 (hold) while a priority PR has active
-draft or ready CI or is in the merge queue, while any `merge_group` job
-is queued for a runner, or while more than `--max-ready` (default 4)
-ready-PR area matrices are in flight. `--wait` polls with
+the capacity gate. Other PRs exit 3 (hold) while a priority run can still need
+a runner, a priority queue entry is not yet `MERGEABLE`, any `merge_group` job
+is queued, or more than `--max-ready` (default 4) ready-PR area matrices are
+in flight. An empty job list or a running routing job can precede a matrix
+fan-out, so neither indicates spare capacity. Once `required` is the only
+unfinished job in a ready PR area run and already has a runner, that run no
+longer blocks admission. Unknown workflows reserve capacity until they
+complete; the coordinator can cancel unstarted agent runs, not reclaim runners
+from agent jobs already running. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
 prints the counts. The check reserves nothing, so each supervisor admits one
 PR at a time and starts the next check only once the previous PR's ready run
@@ -964,7 +969,8 @@ run each.
   added when you open, reopen, mark ready, or convert the PR to draft. You
   can remove it until the next of those events; pushes do not restore it.
   With it, you can ready your PR without waiting for agent capacity, and
-  agents yield while your draft or ready CI or merge queue entry is pending.
+  agents reserve runners while your CI can still schedule jobs or your queue
+  entry needs checks.
 - Add **`hands-off`** if you want to handle everything yourself, including
   CI reruns. Add **`land-asap`** when you're done: owner-account agents may
   rerun cancelled or lost-runner jobs and enqueue your ready PR at the front once

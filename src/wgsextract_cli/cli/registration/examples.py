@@ -8,6 +8,16 @@ from wgsextract_cli.api.examples import (
     ExampleGenomeListParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    DOWNLOAD,
+    INSTANT,
+    _n,
+)
+
+NEEDS = {
+    "example-genome list": _n(INSTANT),
+    "example-genome download": _n(DOWNLOAD, optional="curl"),
+}
 
 
 def register(

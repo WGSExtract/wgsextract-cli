@@ -23,6 +23,7 @@ from wgsextract_cli.api.align import ALIGNERS as ALIGNERS
 from wgsextract_cli.api.align import PLATFORMS as PLATFORMS
 from wgsextract_cli.api.align import AlignParams as AlignParams
 from wgsextract_cli.cli.registration.align import register as register
+from wgsextract_cli.commands._messages.align import LOG_MESSAGES as LOG_MESSAGES
 from wgsextract_cli.core import bwa_mem2 as bwa_mem2
 from wgsextract_cli.core import dense_suffix_array as dense_suffix_array
 from wgsextract_cli.core import ultima as ultima
@@ -81,7 +82,6 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies as verify_dependencies,
 )
 from wgsextract_cli.core.genome_library import pair_stem as pair_stem
-from wgsextract_cli.core.messages import LOG_MESSAGES as LOG_MESSAGES
 from wgsextract_cli.core.native_aligners import BWA_MEM3_COMPAT as BWA_MEM3_COMPAT
 from wgsextract_cli.core.native_aligners import BWA_MEM3_FAST as BWA_MEM3_FAST
 from wgsextract_cli.core.native_aligners import INSTALL_HINT as INSTALL_HINT
