@@ -6,7 +6,7 @@
 #
 # - The Ubuntu archive is reached through a list of official mirrors (apt's
 #   mirror+file method). Each is probed first, and only those that answer are
-#   used, in order, each falling through to the next. Every mirror serves the
+#   used, fastest first, each falling through to the next. Every mirror serves the
 #   same Release files signed by Ubuntu's archive key, which apt verifies;
 #   nothing here relaxes that.
 # - Connections time out and are retried, and the update and the install are
@@ -29,6 +29,7 @@ EX_TEMPFAIL=75
 KEYRING=/usr/share/keyrings/ubuntu-archive-keyring.gpg
 PROBE_SECONDS=20
 UPDATE_SECONDS=480
+DOWNLOAD_SECONDS=900
 INSTALL_SECONDS=900
 # Official mirrors outside Canonical's and Azure's networks (Fastly-backed
 # kernel.org, MIT, Berkeley): https://launchpad.net/ubuntu/+archivemirrors
@@ -69,8 +70,7 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 log=$work/apt.log
 
-# The mirrors to try, in order: the machine's own (GitHub's runners list
-# Azure's first, in /etc/apt/apt-mirrors.txt), Ubuntu's, then the fallbacks.
+# Prefer the machine's own mirrors when probe times tie.
 candidates=()
 case $(dpkg --print-architecture) in
   amd64 | i386)
@@ -94,25 +94,32 @@ outage() {
   exit "$EX_TEMPFAIL"
 }
 
-# apt retries every file on each mirror in turn, so one that hangs costs its
-# timeouts on every file: probe them all at once and keep those that answer.
-# Only reachability is tested here; apt verifies what it later fetches.
+# A reachable but slow mirror can exhaust the install deadline even without an
+# HTTP error. Probe in parallel and rank by the time to fetch the full InRelease.
 for i in "${!candidates[@]}"; do
-  timeout "$PROBE_SECONDS" /usr/lib/apt/apt-helper \
-    -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 -o Acquire::Retries=0 \
-    -o APT::Sandbox::User=root \
-    download-file "${candidates[$i]}dists/$VERSION_CODENAME/InRelease" "$work/probe-$i" \
-    > /dev/null 2>&1 &
+  (
+    start=$(date +%s%N)
+    if timeout "$PROBE_SECONDS" /usr/lib/apt/apt-helper \
+      -o Acquire::http::Timeout=10 -o Acquire::https::Timeout=10 -o Acquire::Retries=0 \
+      -o APT::Sandbox::User=root \
+      download-file "${candidates[$i]}dists/$VERSION_CODENAME/InRelease" "$work/probe-$i" \
+      > /dev/null 2>&1 && [ -s "$work/probe-$i" ]; then
+      printf '%s\t%s\n' "$(( $(date +%s%N) - start ))" "$i" > "$work/rank-$i"
+    fi
+  ) &
 done
 wait || true
 mirrors=()
 for i in "${!candidates[@]}"; do
-  if [ -s "$work/probe-$i" ]; then
-    mirrors+=("${candidates[$i]}")
-  else
+  if [ ! -f "$work/rank-$i" ]; then
     echo "Ubuntu mirror ${candidates[$i]} did not answer; skipping it."
   fi
 done
+if compgen -G "$work/rank-*" > /dev/null; then
+  while read -r _ i; do
+    mirrors+=("${candidates[$i]}")
+  done < <(sort -k1,1n -k2,2n "$work"/rank-*)
+fi
 
 mirror_list=/etc/apt/ci-ubuntu-mirrors.txt
 sources="Types: deb
@@ -255,11 +262,14 @@ if [ ${#mirrors[@]} -eq 0 ]; then
   install_from_cache "$@" && exit 0
   outage "No Ubuntu mirror answered."
 fi
-# Without priorities, apt would try them in a random order.
-for i in "${!mirrors[@]}"; do
-  printf '%s\tpriority:%d\n' "${mirrors[$i]}" "$((i + 1))"
-done > "$mirror_list"
-echo "Ubuntu mirrors, in order: ${mirrors[*]}"
+write_mirrors() {
+  # Without priorities, apt would try them in a random order.
+  for i in "${!mirrors[@]}"; do
+    printf '%s\tpriority:%d\n' "${mirrors[$i]}" "$((i + 1))"
+  done > "$mirror_list"
+  echo "Ubuntu mirrors, in order: ${mirrors[*]}"
+}
+write_mirrors
 
 apt_get "$UPDATE_SECONDS" update --error-on=any || status=$?
 if [ "$status" -ne 0 ]; then
@@ -268,10 +278,21 @@ if [ "$status" -ne 0 ]; then
   outage "apt-get update could not fetch the Ubuntu package lists."
 fi
 
-apt_get "$INSTALL_SECONDS" install -y "${install_flags[@]}" "$@" || status=$?
+# Download first: only this phase can be retried safely after a timeout.
+first_budget=$DOWNLOAD_SECONDS
+if [ "${#mirrors[@]}" -gt 1 ]; then first_budget=$((DOWNLOAD_SECONDS / 3)); fi
+apt_get "$first_budget" install -y --download-only "${install_flags[@]}" "$@" || status=$?
+if [ "$first_budget" -lt "$DOWNLOAD_SECONDS" ] && { [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; }; then
+  echo "::warning::Timed out downloading Ubuntu packages; trying the next mirror first."
+  mirrors=("${mirrors[@]:1}" "${mirrors[0]}")
+  write_mirrors
+  status=0
+  apt_get "$((DOWNLOAD_SECONDS - first_budget))" install -y --download-only "${install_flags[@]}" "$@" || status=$?
+fi
 if [ "$status" -ne 0 ]; then
   if network_failure "$status"; then outage "apt-get install could not download $*."; fi
   exit "$status"
 fi
+apt_get "$INSTALL_SECONDS" install -y --no-download "${install_flags[@]}" "$@"
 # Drop cached .debs these lists no longer offer.
 if [ -n "$cache_dir" ]; then apt-get "${apt_opts[@]}" autoclean -qq; fi
