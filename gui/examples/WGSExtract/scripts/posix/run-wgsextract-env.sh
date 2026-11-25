@@ -25,7 +25,22 @@ if [ ! -d "$app_dir" ]; then
   printf 'Run the WGS Extract setup action before running commands.\n' >&2
   exit 127
 fi
+case "$app_dir" in
+  /*) ;;
+  *) app_dir="$(CDPATH= cd "$app_dir" && pwd)" ;;
+esac
 
+# Pixi's no-install mode otherwise falls back to programs on the host's PATH.
+prefix="$app_dir/.pixi/envs/default"
+if [ ! -f "$prefix/conda-meta/pixi" ]; then
+  printf 'Error: WGS Extract CLI setup has not finished: its Pixi environment in %s is not installed.\n' "$app_dir" >&2
+  printf 'Run the WGS Extract setup action again.\n' >&2
+  exit 127
+fi
+
+export PIXI_CACHE_DIR="${PIXI_CACHE_DIR:-$runtime/.pixi/cache}"
+activation="$app_dir/.pixi/wgsextract-activation.json"
+pixi=""
 if [ -n "${PIXI:-}" ]; then
   if [ ! -x "$PIXI" ]; then
     printf 'Error: PIXI is set but is not executable: %s\n' "$PIXI" >&2
@@ -40,20 +55,26 @@ elif command -v pixi >/dev/null 2>&1; then
   pixi="$(command -v pixi)"
 elif [ -x "$HOME/.pixi/bin/pixi" ]; then
   pixi="$HOME/.pixi/bin/pixi"
-else
+fi
+
+if [ "$1" = wgsextract ] && [ -z "${PIXI:-}" ] &&
+   [ -x "$prefix/bin/python" ] && [ -f "$activation" ]; then
+  shift
+  cd "$app_dir"
+  exec "$prefix/bin/python" "$script_dir/../installed_cli.py" launch "$activation" "${pixi:--}" "$@"
+fi
+
+if [ -z "$pixi" ]; then
   printf 'Error: Pixi was not found. Run the WGS Extract setup action again.\n' >&2
   exit 127
 fi
 
-# Pixi's no-install mode otherwise falls back to programs on the host's PATH.
-if [ ! -f "$app_dir/.pixi/envs/default/conda-meta/pixi" ]; then
-  printf 'Error: WGS Extract CLI setup has not finished: its Pixi environment in %s is not installed.\n' "$app_dir" >&2
-  printf 'Run the WGS Extract setup action again.\n' >&2
-  exit 127
-fi
-
-# Match the launcher written by the installer, which keeps Pixi's package
-# cache inside the bundle runtime.
-export PIXI_CACHE_DIR="${PIXI_CACHE_DIR:-$runtime/.pixi/cache}"
 cd "$app_dir"
+if [ "$1" = --cache-activation ]; then
+  # Capture outside the activated environment: shell-hook reports the changes
+  # it makes, so invoking it inside `pixi run` would omit most of the settings.
+  "$pixi" shell-hook --json --frozen |
+    "$prefix/bin/python" "$script_dir/../installed_cli.py" capture "$activation"
+  exit $?
+fi
 exec "$pixi" run --no-install --frozen "$@"
