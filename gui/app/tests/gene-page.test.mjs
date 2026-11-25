@@ -3,9 +3,17 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { exonNumbers, filteredVariants, GeneDocumentError, geneDocument, geneExportName } from "../dist/shared/gene-page.js";
-import { openGenePage } from "../dist/web/src/server/gene-page.js";
+import { genePagePrerequisites, installGenePagePrerequisite, openGenePage } from "../dist/web/src/server/gene-page.js";
 import { ResultPaths } from "../dist/web/src/server/result-paths.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
+
+globalThis.localStorage ??= { getItem: () => null, setItem() {} };
+globalThis.window ??= { innerHeight: 900 };
+globalThis.document ??= { querySelector: () => null };
+
+const { createInitialState, state } = await import("../dist/web/src/client/state.js");
+const { createGenePrerequisitesController } = await import("../dist/web/src/client/gene-page-prerequisites.js");
+const { renderNavigation } = await import("../dist/web/src/client/view.js");
 
 /** What `wgsextract info gene --json` prints: a result document whose details are the gene page. */
 function cliResult(details, outputs = []) {
@@ -122,4 +130,115 @@ test("#1166: bad input and CLI failures are problems the page can explain", asyn
     const failed = await openGenePage({ gene: "BRCAX", vcf: f.vcf }, f.context, paths, signal);
     assert.equal(failed.problem, "geneUsage");
     assert.match(failed.message, /BRCAX: not a gene/);
+});
+
+test("gene page server checks ref needs with the selected settings and installs only server-checked items", async (t) => {
+    const geneMap = { id: "gene-map", kind: "annotation", name: "Gene Maps", installArguments: ["ref", "gene-map"] };
+    const f = await context(t, (args) => ({
+        exitCode: 0, stderr: "",
+        stdout: args[0] === "ref" && args[1] === "needs" ? `${JSON.stringify({ missing: [geneMap] })}\n` : "",
+    }));
+    f.context.manifest.prerequisites = {
+        command: { executable: "{{bundleRoot}}/scripts/run-wgsextract.sh", arguments: ["ref", "needs", "--report-json", "--"] },
+        executables: { "{{bundleRoot}}/scripts/run-wgsextract.sh": [] },
+        kindLabels: { genome: "%{name} reference genome", annotation: "%{name} annotation data" },
+    };
+
+    assert.deepEqual(await genePagePrerequisites({ gene: "BR CA1" }, f.context), { problem: "invalidGene" });
+    assert.equal(f.calls.length, 0);
+
+    const check = await genePagePrerequisites({ gene: "BRCA1", vcf: f.vcf }, f.context);
+    assert.deepEqual(check, { missing: [geneMap] });
+    assert.equal(f.calls[0].config, f.config);
+    assert.deepEqual(f.calls[0].args, ["ref", "needs", "--report-json", "--", "info", "gene", "--gene", "BRCA1", "--vcf-input", f.vcf]);
+
+    const installed = await installGenePagePrerequisite({ gene: "BRCA1", vcf: f.vcf }, "gene-map", f.context, undefined, () => {}, () => undefined);
+    assert.equal(installed.exitCode, 0);
+    assert.equal(f.calls.at(-1).config, f.config);
+    assert.deepEqual(f.calls.at(-1).args, ["ref", "gene-map"]);
+});
+
+test("gene page prerequisites controller supports Cancel, Continue (after external install), and Install and Continue", async (t) => {
+    const geneMap = { id: "gene-map", kind: "annotation", name: "Gene Maps", installArguments: ["ref", "gene-map"] };
+    const missing = { current: [geneMap] };
+    const requests = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+        const body = JSON.parse(init?.body ?? "{}");
+        requests.push({ url, body });
+        if (url === "/api/gene/prerequisites") {
+            return new Response(JSON.stringify({ missing: missing.current }));
+        }
+        if (url === "/api/gene/prerequisites/install/stream") {
+            missing.current = [];
+            const lines = [
+                { type: "start", command: "ref gene-map" },
+                { type: "output", text: "Downloading gene maps...\n" },
+                { type: "complete", result: { exitCode: 0, command: "ref gene-map" } },
+            ];
+            return new Response(lines.map((line) => JSON.stringify(line)).join("\n"));
+        }
+        throw new Error(`Unexpected URL: ${url}`);
+    };
+    t.after(() => { globalThis.fetch = originalFetch; });
+
+    Object.assign(state, createInitialState(), {
+        manifest: {
+            id: "wgs-extract", displayName: "WGS Extract", pages: [],
+            prerequisites: {
+                command: { executable: "wgsextract", arguments: ["ref", "needs", "--report-json", "--"] },
+                executables: { wgsextract: [] },
+                kindLabels: { annotation: "%{name} annotation data" },
+            },
+        },
+        labels: { ...state.labels, prerequisitesInstallTitleFormat: "Install %{name}" },
+    });
+
+    const events = [];
+    const controller = createGenePrerequisitesController({
+        onChecking: () => {},
+        onPending: (pending) => events.push({ kind: "pending", pending }),
+        onInstallStart: (title) => events.push({ kind: "installStart", title }),
+        onInstallOutput: (text) => events.push({ kind: "installOutput", text }),
+        onInstallEnd: (succeeded) => events.push({ kind: "installEnd", succeeded }),
+        onProblem: (problem) => events.push({ kind: "problem", problem }),
+        onReady: (inputs) => events.push({ kind: "ready", inputs }),
+    });
+    const asked = { gene: "BRCA1", alignment: "", vcf: "", minDepth: null };
+
+    // Hold back when missing, then Cancel.
+    await controller.run(asked);
+    assert.deepEqual(controller.pending?.missing, [geneMap]);
+    assert.equal(controller.pending?.stillMissing, false);
+    controller.cancel();
+    assert.equal(controller.pending, null);
+    assert.equal(events.some((event) => event.kind === "ready"), false);
+
+    // Continue while still missing stays open with stillMissing; Continue once installed runs.
+    await controller.run(asked);
+    await controller.continue();
+    assert.equal(controller.pending?.stillMissing, true);
+    missing.current = [];
+    await controller.continue();
+    assert.equal(controller.pending, null);
+    assert.equal(events.filter((event) => event.kind === "ready").length, 1);
+
+    // Install and Continue installs via stream and then loads the gene.
+    missing.current = [geneMap];
+    await controller.run(asked);
+    await controller.install();
+    assert.equal(controller.pending, null);
+    assert.equal(requests.some((request) => request.url === "/api/gene/prerequisites/install/stream" && request.body.id === "gene-map"), true);
+    assert.equal(events.some((event) => event.kind === "installOutput" && event.text.includes("Downloading")), true);
+    assert.equal(events.filter((event) => event.kind === "ready").length, 2);
+});
+
+test("sidebar Gene page item renders a nav icon beside its label", () => {
+    Object.assign(state, createInitialState(), {
+        manifest: { id: "wgs-extract", displayName: "WGS Extract", pages: [] },
+        labels: { ...state.labels, geneTitle: "Gene page", viewerTitle: "Genome viewer" },
+        iconMap: { bootstrap: { "gene-page": "file-earmark-medical", "genome-viewer": "search" }, emoji: { "gene-page": "🧬" } },
+    });
+    const nav = renderNavigation();
+    assert.match(nav, /data-gene-page-open><span class="nav-icon" aria-hidden="true">[\s\S]*?bi-file-earmark-medical[\s\S]*?<\/span><span>Gene page<\/span><\/button>/);
 });

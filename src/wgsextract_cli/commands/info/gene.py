@@ -16,7 +16,8 @@ from wgsextract_cli.core.gene_summary import (
     summarise_gene,
     variant_filters,
 )
-from wgsextract_cli.core.ref_library.assets import resolve_reference_library
+from wgsextract_cli.core.ref_library.assets import is_fasta_path
+from wgsextract_cli.core.ref_library.resolver import library_roots
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.table_writer import TableWriter, provenance
 from wgsextract_cli.core.variant_table import COLUMN_NAMES, COLUMNS
@@ -58,12 +59,16 @@ def _export(params: InfoGeneParams, summary: GeneSummary) -> None:
 
 
 def run_gene(params: InfoGeneParams) -> None:
+    reference = str(params.ref) if params.ref else None
+    reflib = library_roots(
+        reference if reference and not is_fasta_path(reference) else None
+    ).root
     query = GeneQuery(
         symbol=params.gene,
         alignment=str(params.input) if params.input else None,
         vcf=str(params.vcf_input) if params.vcf_input else None,
-        reference=str(params.ref) if params.ref else None,
-        reflib=resolve_reference_library(),
+        reference=reference,
+        reflib=reflib,
         build=params.build,
         sample=params.sample,
         min_depth=(

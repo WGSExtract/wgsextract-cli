@@ -83,24 +83,27 @@ test("#1090: the shipped genome bundle has a localized built-in viewer entry poi
   assert.doesNotMatch(renderNavigation(), /data-genome-viewer-open/);
 });
 
-test("#1090: a selected My Genomes alignment has a localized View reads entry without running a job", async () => {
+test("#1090: BAM/CRAM inputs omit inline View reads across pages while non-VCF pages keep it for indexed VCFs", async () => {
   const { state, createInitialState } = await import("../dist/web/src/client/state.js");
   const { renderTextControl } = await import("../dist/web/src/client/view.js");
   Object.assign(state, createInitialState(), {
     manifest: { id: "wgs-extract", pages: [] },
     labels: { viewerStrings: { viewReads: "Voir les lectures" } },
-    fieldValues: { bam_path: "/genomes/HG002.bam" },
+    fieldValues: { bam_path: "/genomes/HG002.bam", vcf_path: "/genomes/HG002.vcf.gz" },
   });
-  const rendered = renderTextControl({ id: "bam_path", kind: "path", label: "BAM" });
-  assert.match(rendered, /data-view-reads="bam_path">Voir les lectures/);
+  for (const pageID of ["microarray", "extract", "ancestry", "workflows", "info-bam"]) {
+    state.activePageID = pageID;
+    assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path", label: "BAM" }), /data-view-reads/);
+  }
+  state.activePageID = "extract";
+  const rendered = renderTextControl({ id: "vcf_path", kind: "path", label: "VCF" });
+  assert.match(rendered, /data-view-reads="vcf_path">Voir les lectures/);
   assert.doesNotMatch(rendered, /data-action-id/);
-  state.activePageID = "info-bam";
-  assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path", label: "BAM" }), /data-view-reads/);
   state.activePageID = "vcf";
-  state.fieldValues.vcf_path = "/genomes/HG002.vcf.gz";
   assert.doesNotMatch(renderTextControl({ id: "vcf_path", kind: "path", label: "VCF" }), /data-view-reads/);
-  state.fieldValues.bam_path = "/genomes/HG002.bam.bai";
-  assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path" }), /data-view-reads/);
+  state.activePageID = "extract";
+  state.fieldValues.vcf_path = "/genomes/HG002.vcf.gz.tbi";
+  assert.doesNotMatch(renderTextControl({ id: "vcf_path", kind: "path" }), /data-view-reads/);
 });
 
 test("viewer navigation copy matches available gene-map and dbSNP indexes and UI strings omit CLI commands", () => {

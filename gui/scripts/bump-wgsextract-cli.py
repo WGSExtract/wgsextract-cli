@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 TAG_FILE = ROOT / "examples/WGSExtract/scripts/wgsextract-release-tag.txt"
 # Files that name the bundled CLI release's version.
 PINNED = [
-    "docs/distribution.md",
+    "devdocs/distribution.md",
     "examples/WGSExtract/manifest.json",
     "app/tests/conformance.test.mjs",
     "tools/packaging/tests/test_embedded_branding.py",

@@ -427,7 +427,7 @@ MAIN_PUSH_WORKFLOWS = {
 
 def test_1552_pages_deploy_requires_visible_artifact_from_its_build() -> None:
     source = (WORKFLOWS / "pages.yml").read_text()
-    build, deploy = source.split("\n  deploy:\n", 1)
+    build, deploy, *_ = re.split(r"\n  [\w-]+:\n", source.split("\njobs:\n", 1)[1])
     assert deploy.startswith("    needs: build\n")
     condition = deploy.split("\n    if: ", 1)[1].splitlines()[0]
     assert set(top_level_conjuncts(condition)) == {

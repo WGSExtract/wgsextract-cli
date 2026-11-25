@@ -46,7 +46,20 @@ Tauri wraps the Web UI in a native window, bundles the Node runtime, and adds na
 
 Tagged releases build on Windows, macOS, and Linux with a signed Tauri updater feed. macOS has separate signed, notarized Apple Silicon and Intel builds, not a universal DMG. Windows and Linux packages are x64; native ARM64 packaging for those platforms is still a follow-up.
 
-[Distribution details](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/distribution.md) cover packaging, signing, updates, and uninstall hooks. Earlier SwiftUI, Sparkle, and Electron implementations are not part of the current app.
+[Distribution details](devdocs/distribution.html) cover packaging, signing, updates, and uninstall hooks. Earlier SwiftUI, Sparkle, and Electron implementations are not part of the current app.
+:::
+:::
+
+::: section
+::: wrap
+## Privacy and network boundary
+
+WGS Extract separates two different user needs across two layers:
+
+- **CLI back-end (`wgsextract`):** Strictly offline by default. Ordinary analysis, inspection, and reporting commands never initiate network traffic, never check for updates, and never install tools or reference files silently. Network access happens only through explicit install/download subcommands or explicit opt-in flags (`--download`, `--online`, `--remote-sizes`, or `allow_reference_downloads = true`).
+- **Desktop GUI front-end:** Acts as an interactive assistant on the user's behalf across four transparent tiers: (1) lightweight, opt-out automatic update/catalog checks in Settings (no sample data; IP/header visibility disclosed), (2) interactive **Cancel / Continue / Install and Continue** prompts for missing public reference data, (3) user-clicked Setup, Install, Download, and documentation links, and (4) explicit per-action opt-in for any sample-derived remote feature such as the remote Genome Viewer.
+
+Read the full contract in [GUI Architecture (privacy boundary)](devdocs/architecture.html#privacy-and-network-boundary) and the user-facing [Desktop App Privacy guide](docs/privacy.html).
 :::
 :::
 
@@ -61,7 +74,7 @@ make tauri    # desktop app in dev mode
 make package  # installers for this host
 ```
 
-On Windows, use `powershell -ExecutionPolicy Bypass -File .\make.ps1 <target>` with the same target names. Setup never elevates or installs system packages; see [developer setup](https://github.com/WGSExtract/wgsextract-cli/blob/main/gui/docs/developer_setup.md) for OS prerequisites.
+On Windows, use `powershell -ExecutionPolicy Bypass -File .\make.ps1 <target>` with the same target names. Setup never elevates or installs system packages; see [developer setup](devdocs/developer_setup.html) for OS prerequisites.
 :::
 :::
 

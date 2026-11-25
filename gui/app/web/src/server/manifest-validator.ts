@@ -15,7 +15,7 @@ import {
 import { validateAction, validateControl } from "./manifest-validator-controls.js";
 
 
-/** Checks a loaded manifest (with page files already inlined) against the rules in docs/schema. */
+/** Checks a loaded manifest (with page files already inlined) against the rules in devdocs/schema. */
 export function validateManifest(manifest: BundleManifest): void {
     requireNonEmpty(manifest.id, "id");
     if (manifest.version != null) {

@@ -221,6 +221,18 @@ export interface PendingPrerequisites {
     missing: MissingPrerequisite[];
     /** Set when the user said it was installed, or an install finished, and it still isn't. */
     stillMissing: boolean;
+    /** Preserved from Force Run Again so Continue / Install and Continue still forces execution. */
+    skipExistingCheck?: boolean;
+    forceRerun?: boolean;
+}
+
+/** An output-only action held back because its permanent outputs are already newer than its inputs. */
+export interface PendingAlreadyRun {
+    action: ActionSpec;
+    reference: ActionReference;
+    context: CommandContext;
+    outputs: string[];
+    finishedAt?: string;
 }
 
 export interface WebUIState {
@@ -290,6 +302,7 @@ export interface WebUIState {
     isSidebarVisible: boolean;
     pendingConfirmation: PendingConfirmation | null;
     pendingPrerequisites: PendingPrerequisites | null;
+    pendingAlreadyRun: PendingAlreadyRun | null;
     /** Set while an action's prerequisites are checked before it runs. */
     checkingPrerequisites: boolean;
     activeTerminalID?: string;

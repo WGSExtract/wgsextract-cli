@@ -1,6 +1,6 @@
 import type { ActionSpec } from "./types.js";
 
-/** Placeholders naming the app's saved copies of earlier runs' result documents (docs/result-documents.md). */
+/** Placeholders naming the app's saved copies of earlier runs' result documents (devdocs/result-documents.md). */
 export const lastResultDocumentPlaceholders = {
     last: "lastResultDocumentPath",
     lastFailed: "lastFailedResultDocumentPath",

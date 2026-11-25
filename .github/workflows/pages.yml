@@ -10,17 +10,24 @@ on:
   push:
     branches: ["main"]
     paths:
+      - "README.md"
+      - "docs/**"
       - "site/**"
       - "site_src/**"
       - "src/wgsextract_cli/**"
       - "docs/data/configuration-guide.md"
       - "pyproject.toml"
       - "scripts/build_site.py"
+      - "scripts/build_docs_html.py"
       - "scripts/validate_site_sources.py"
       - "scripts/site_references.py"
       - "scripts/gen_api_docs.py"
       - "scripts/gen_config_docs.py"
+      - "gui/README.md"
+      - "gui/docs/**"
+      - "gui/devdocs/**"
       - "gui/site_src/**"
+      - "gui/site/assets/**"
       - "gui/scripts/build_site.py"
       - "gui/scripts/site_*.py"
       - "gui/scripts/validate_site_sources.py"
@@ -69,6 +76,9 @@ jobs:
           rm -rf site/app
           cp -R gui/site site/app
           rm -f site/app/.nojekyll
+
+      - name: Render Markdown documentation to HTML
+        run: python3 scripts/build_docs_html.py
 
       # Static files as they are. Without serve.py, notes stay in the browser;
       # _pages.json lists the committed feedback files for the pages to show,
@@ -139,3 +149,72 @@ jobs:
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
         with:
           artifact_name: ${{ needs.build.outputs.artifact-name }}
+
+  # Mirror the rendered CLI and app HTML into WGSExtract/wgsextract.github.io
+  # under wgsextract-cli/ (CLI docs) and wgsextract-cli/app/ (app docs), so
+  # wgse.bio and wgsextract.github.io can serve them directly without project
+  # Pages once project Pages on this repository is turned off.
+  sync-main-site:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: main-site
+    permissions:
+      contents: read
+    steps:
+      - name: Is the deploy key set?
+        id: key
+        env:
+          DEPLOY_KEY: ${{ secrets.MAIN_SITE_DEPLOY_KEY }}
+        run: |
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::warning::MAIN_SITE_DEPLOY_KEY isn't set in the main-site environment, so wgsextract.github.io/wgsextract-cli was not updated."
+            exit 0
+          fi
+          echo "set=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.key.outputs.set == 'true'
+        name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+          persist-credentials: false
+
+      - if: steps.key.outputs.set == 'true'
+        name: Checkout wgsextract.github.io
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: WGSExtract/wgsextract.github.io
+          path: main-site
+          ssh-key: ${{ secrets.MAIN_SITE_DEPLOY_KEY }}
+
+      - if: steps.key.outputs.set == 'true'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - if: steps.key.outputs.set == 'true'
+        name: Build and sync HTML into wgsextract-cli/
+        run: |
+          cd repo
+          python -m pip install --quiet -e . 'markdown-it-py>=3,<5'
+          python scripts/build_site.py
+          python3 gui/scripts/validate_site_sources.py
+          python3 gui/scripts/build_site.py
+          rm -rf site/app
+          cp -R gui/site site/app
+          rm -f site/app/.nojekyll
+          python3 scripts/build_docs_html.py
+          cd ..
+          mkdir -p main-site/wgsextract-cli
+          rsync -a --delete --exclude='.nojekyll' --exclude='/app/mockups/' repo/site/ main-site/wgsextract-cli/
+          cd main-site
+          git add -A wgsextract-cli
+          if git diff --cached --quiet; then
+            echo "No rendered documentation changes to publish."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qm "docs: sync rendered CLI and app HTML from wgsextract-cli"
+          git push origin HEAD

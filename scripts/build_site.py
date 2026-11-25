@@ -217,7 +217,6 @@ def render_page(page: Page, *, body_html: str | None = None) -> str:
             '    <link rel="stylesheet" href="assets/site.css" />',
             "  </head>",
             "  <body>",
-            render_ai_written_banner(),
             render_nav(page.output_name),
             "",
             "    <main>",
@@ -230,25 +229,6 @@ def render_page(page: Page, *, body_html: str | None = None) -> str:
             "  </body>",
             "</html>",
             "",
-        ]
-    )
-
-
-def render_ai_written_banner() -> str:
-    issues_url = f"{escape_attr(GITHUB_URL)}/issues/new"
-    pulls_url = f"{escape_attr(GITHUB_URL)}/pulls"
-    tooltip_html = (
-        "I'm tired and bad at writing things, help appreciated - "
-        + f'<a href="{issues_url}" target="_blank" rel="noopener noreferrer">file an issue</a>'
-        + " or "
-        + f'<a href="{pulls_url}" target="_blank" rel="noopener noreferrer">PR on GitHub</a>.'
-    )
-    return "\n".join(
-        [
-            '    <details class="ai-written-banner">',
-            '      <summary class="ai-written-banner-text">AI written</summary>',
-            f'      <div class="ai-written-tooltip" id="ai-written-tooltip">{tooltip_html}</div>',
-            "    </details>",
         ]
     )
 

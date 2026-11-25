@@ -6,7 +6,7 @@ from __future__ import annotations
 try:
     from .site_frontmatter import load_page, parse_actions, parse_bool, parse_front_matter, require, unquote_scalar
     from .site_html import escape_attr, escape_text, render_button
-    from .site_layout import render_ai_written_banner, render_footer, render_hero, render_nav, render_page
+    from .site_layout import render_footer, render_hero, render_nav, render_page
     from .site_markdown import (
         MarkdownRenderer,
         article_with_class,
@@ -39,7 +39,7 @@ try:
 except ImportError:  # pragma: no cover - script execution path
     from site_frontmatter import load_page, parse_actions, parse_bool, parse_front_matter, require, unquote_scalar
     from site_html import escape_attr, escape_text, render_button
-    from site_layout import render_ai_written_banner, render_footer, render_hero, render_nav, render_page
+    from site_layout import render_footer, render_hero, render_nav, render_page
     from site_markdown import (
         MarkdownRenderer,
         article_with_class,

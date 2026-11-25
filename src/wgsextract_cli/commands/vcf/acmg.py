@@ -33,6 +33,7 @@ from wgsextract_cli.core import acmg_data, acmg_sites, read_scope
 from wgsextract_cli.core.acmg import DISCLAIMER
 from wgsextract_cli.core.acmg_regions import region_tracks
 from wgsextract_cli.core.builds import canonical_build
+from wgsextract_cli.core.csq_alleles import csq_entries, csq_for_allele, split_origin
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -52,13 +53,7 @@ from wgsextract_cli.core.variant_files import (
     publish_indexed_vcf,
     vcf_index_chromosomes,
 )
-from wgsextract_cli.core.variant_table import (
-    csq_entries,
-    csq_for_allele,
-    parse_header,
-    pick_csq,
-    split_origin,
-)
+from wgsextract_cli.core.variant_table import parse_header, pick_csq
 
 from ._acmg_fastvep import _FastVep
 from ._acmg_region_note import REGION_HEADER, REGION_INFO, RegionNotes, region_coverage
