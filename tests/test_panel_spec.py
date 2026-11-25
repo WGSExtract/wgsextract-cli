@@ -563,8 +563,15 @@ def test_1287_null_counts_callable_cds_and_excludes_duplicated_controls(
     fallback, _ = audit("fallback", None)
     assert fallback["groups"][0]["calibration"]["basis"] == "cds_bp"
     assert fallback["groups"][0]["calibration"]["control_genes"] == 3
+    original = model.read_text(encoding="utf-8")
     model.write_text(
-        model.read_text(encoding="utf-8").replace("11796330", "11796420"),
+        original.replace("1013509", "1013511").replace("11796330", "11796331"),
+        encoding="utf-8",
+    )
+    in_support, _ = audit("between-control-lengths", None)
+    assert in_support["groups"][0]["calibration"]["state"] == "calibrated"
+    model.write_text(
+        original.replace("11796330", "11796420"),
         encoding="utf-8",
     )
     unmatched, warnings = audit("outside-support", None)

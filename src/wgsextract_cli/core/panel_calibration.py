@@ -203,11 +203,9 @@ def matched_null(
         bin_ = bisect_right(limits.get(chrom_class, ()), opportunity.matched_bp)
         key = (chrom_class, bin_)
         target_bins[key] += 1
-        eligible = control_bins[key]
+        eligible = control.get(chrom_class, ())
         if eligible and not (
-            opportunities[eligible[0]].matched_bp
-            <= opportunity.matched_bp
-            <= opportunities[eligible[-1]].matched_bp
+            eligible[0][0] <= opportunity.matched_bp <= eligible[-1][0]
         ):
             outside.append(gene)
     counts = [allele_counts.get(gene, 0) for gene in targets]

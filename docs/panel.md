@@ -214,7 +214,7 @@ same chromosome class. ChrX is included only when the input declares known
 sex in its calling policy. Missing opportunity or too few matched genes
 does not produce a null statistic. For XY samples, pseudoautosomal and
 non-pseudoautosomal genes are matched separately. The audit withholds the
-statistic if a target length lies outside its control bin's range or the
+statistic if a target length lies outside its chromosome class's control range or the
 expected control total differs by more than 20% from the target total.
 
 The report shows observed copies and genes, the null allele-count histogram
