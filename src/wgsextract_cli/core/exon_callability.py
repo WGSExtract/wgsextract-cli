@@ -138,6 +138,7 @@ EXON_COLUMNS: tuple[Column, ...] = (
     Column(
         "limitations", TEXT, "Limitation intervals (kind:start-end), '|'-separated."
     ),
+    Column("specialist", TEXT, "Suggested caller for a known specialist locus."),
 )
 
 
@@ -397,7 +398,7 @@ class ExonResult:
         ]
         return unread + sorted({kind for kind, _, _ in self.limits})
 
-    def row(self) -> list[Value]:
+    def row(self, specialists: Mapping[str, str]) -> list[Value]:
         e = self.exon
         return [
             e.gene, e.transcript, e.number, e.count, self.chrom, self.start,
@@ -405,6 +406,7 @@ class ExonResult:
             self.readable, self.limited,
             *(self.states[state.value] for state in State),
             "|".join(f"{k}:{s}-{t}" for k, s, t in self.limits),
+            specialists.get(e.gene.upper()) if self.status == SPECIALIST else None,
         ]  # fmt: skip
 
 
@@ -480,7 +482,7 @@ class GeneResult:
             return NOT_READABLE
         return PARTIAL
 
-    def document(self) -> dict[str, Any]:
+    def document(self, specialists: Mapping[str, str]) -> dict[str, Any]:
         statuses = Counter(e.status for e in self.exons)
         not_callable = {
             status: numbers
@@ -500,6 +502,9 @@ class GeneResult:
             "coding_exons": len(self.scoped),
             "exons": {status: statuses[status] for status in EXON_STATUSES},
             "not_callable": not_callable,
+            "specialist": specialists.get(self.gene.upper())
+            if SPECIALIST in not_callable
+            else None,
             "bases": bases,
             "readable_bases": readable,
             "readable_fraction": round(readable / bases, 4) if bases else None,

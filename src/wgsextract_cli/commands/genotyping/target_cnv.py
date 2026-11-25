@@ -24,6 +24,7 @@ from wgsextract_cli.core.panel import load_annotations
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.sex_inference import nonpar_bounds
+from wgsextract_cli.core.specialist_callers import specialist_callers
 from wgsextract_cli.core.table_writer import Column, write_table
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import UsageError, run_command
@@ -37,12 +38,6 @@ MIN_BASELINE_BREADTH = 0.8
 MIN_BASELINE_WINDOWS = 20
 MIN_GC_BIN_WINDOWS = 5
 DEPTH_OPTIONS = ("-Q", "20", "-q", "20", "-s", "-G", "SUPPLEMENTARY")
-SPECIALISTS = {
-    "SMN1": "typing smn",
-    "SMN2": "typing smn",
-    "CYP2D6": "typing cyp2d6",
-    "RHD": "RHtyper (external)",
-}
 # Recurrent whole-gene deletions: GSTM1/GSTT1 (PMID 31650384),
 # UGT2B17 (PMID 18760392), RHD (PMID 32915977), and the shared
 # LCE3B/LCE3C deletion (PMIDs 21509048, 21711330). These sources describe
@@ -220,11 +215,9 @@ def _expected(t: BedTarget, aln: Alignment, sex: str) -> tuple[int | None, str]:
 
 
 def _specialist(t: BedTarget, build: str) -> str:
-    if build == "t2t":
-        return ""
     loci = load_annotations(build).loci
     return ", ".join(dict.fromkeys(
-        command for gene, command in SPECIALISTS.items()
+        command for gene, command in specialist_callers(build).items()
         if any(
             contig_key(locus.chrom) == contig_key(t.chrom)
             and locus.start < t.end and t.start < locus.end

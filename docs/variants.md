@@ -414,6 +414,9 @@ gene-specific field or haplotype was resolved.
 
 The original JSON (`<stem>.paraphase.raw.json`), haplotagged BAM and index,
 and any per-locus VCFs (`<stem>.paraphase.raw.<locus>.vcf`) are retained.
+In the 3.3.1 VCFs, each resolved haplotype has its own sample column
+with haploid genotypes. The columns preserve phase across variants;
+they are not different people or a single diploid genotype such as `0|1`.
 CYP2D6-family copy number is not a CYP2D6 star-allele call. These results
 are not a diagnosis.
 
@@ -454,9 +457,11 @@ has no primary span in the bundled GRCh38 annotations). BED labels alone do
 not qualify an interval. Relative to GC-matched diploid depth,
 ratios ≤0.15, 0.35–0.65, and 0.85–1.25 give CN 0, 1, and 2 respectively,
 with `medium` confidence and reason `masked_region_curated_call`. Other
-ratios stay withheld. On GRCh37/38, the `specialist` column recommends
-`typing smn`, `typing cyp2d6`, or external [RHtyper](https://github.com/disonchang/RHtyper)
-where applicable. A depth call does not determine RHD alleles or blood type.
+ratios stay withheld. At supported loci, the `specialist` column points to
+`typing smn`, `typing cyp2d6`, long-read `typing paraphase`, or external
+[RHtyper](https://github.com/disonchang/RHtyper). A depth call does not
+determine RHD alleles or blood type. The same recommendations appear in
+[exon callability](exon-callability.md) for known specialist exons.
 
 The existing sex check supplies the expected CN for non-PAR X and Y
 targets. Unknown sex and pseudoautosomal targets are not called; a

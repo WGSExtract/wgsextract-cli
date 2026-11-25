@@ -96,6 +96,12 @@ Bases in known short-read limitations are not counted as read.
 | `not_applicable` | ploidy 0 for this sample (`excluded_by_policy`, such as chrY in a woman); left out of every count |
 
 An exon's `reasons` list the states and limitations of its unread bases.
+The `specialist` field names a follow-up caller where one is known for
+that gene and build, such as long-read `typing paraphase --genes pms2`.
+This is the same guidance used for `specialist_caller_required` in
+[`typing target-cnv`](variants.md#target-copy-number-screening). Neither
+a copy-number screen nor a phased-allele result changes the small-variant
+callability measured from the gVCF.
 
 | Gene state | Meaning |
 | --- | --- |
@@ -149,10 +155,12 @@ differ. Contig names may differ by `chr` (and M/MT).
   document; engine and version, quality model, minimum mapping quality,
   assessed region), the thresholds, counts, and per gene its `state`,
   `reasons`, exons per status, the exon numbers not callable (most severe
-  status first), and its assessed, read and limited bases.
+  status first), its suggested `specialist` if any, and its assessed,
+  read and limited bases.
 - `exon_callability.tsv` (role `exon_callability_table`): one row per coding
   exon with its status, reasons, assessed region, bases per evidence state,
-  read and limited bases, and limitation intervals.
+  read and limited bases, limitation intervals, and the suggested
+  `specialist` on applicable exons.
 
 The result manifest records the gVCF as an input (`vcf_input` when given
 directly, `reference_evidence` when found as a companion), the

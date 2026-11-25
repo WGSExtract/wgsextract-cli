@@ -1,7 +1,6 @@
 import gzip
 import hashlib
 import io
-import itertools
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -20,13 +19,19 @@ from wgsextract_cli.core.sample_ploidy import _sex_aware
 from wgsextract_cli.core.utils import WGSExtractError
 
 
-def test_packaged_catalogue_loads_and_roundtrips_native_sites():
+def test_packaged_catalogue_loads_and_roundtrips_native_sites() -> None:
     catalogue = load_chm13_catalogue()
     mapping = catalogue.mapping
     examples = [
-        *itertools.islice(mapping.native_sites(), 0, None, 100_000),
+        next(mapping.native_sites()),
         next(mapping.native_range("chrM", 1, catalogue.contigs["chrM"].length)),
     ]
+    for chrom, contig in catalogue.contigs.items():
+        # Seek to interior samples instead of walking millions of sites.
+        for start in (1, contig.length // 3, 2 * contig.length // 3):
+            site = next(mapping.native_range(chrom, start, contig.length), None)
+            if site is not None:
+                examples.append(site)
 
     for site in examples:
         assert site.target_chrom is not None and site.target_pos is not None

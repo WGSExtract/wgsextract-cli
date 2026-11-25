@@ -18,6 +18,7 @@ from wgsextract_cli.core.builds import build_from_chr1_length, canonical_build
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.results import current_result, human_output, warn
+from wgsextract_cli.core.specialist_callers import specialist_callers
 from wgsextract_cli.core.table_writer import provenance, write_table
 from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import UsageError, run_command
@@ -119,8 +120,9 @@ def run_callability(params: VcfCallabilityParams) -> None:
         results = ec.assess(source, exons, names, thresholds, params.flank)
     if gvcf != vcf:
         result.add_input(gvcf, evidence.ROLE)
-    genes = [g.document() for g in ec.genes(symbols, model, results)]
     build = model.build or canonical_build(build_from_chr1_length(source.lengths))
+    specialists = specialist_callers(build)
+    genes = [g.document(specialists) for g in ec.genes(symbols, model, results)]
     states = {
         state: sum(g["state"] == state for g in genes) for state in ec.GENE_STATES
     }
@@ -169,7 +171,7 @@ def run_callability(params: VcfCallabilityParams) -> None:
     rows = write_table(
         table,
         ec.EXON_COLUMNS,
-        (r.row() for r in results),
+        (r.row(specialists) for r in results),
         metadata=provenance([vcf, gvcf], reference_build=build),
     )
     json_path = outdir / JSON_NAME

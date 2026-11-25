@@ -20,12 +20,14 @@ TARGETS = (
     ("1", 2_000_000, "deletion", 0),
     ("1", 2_000_100, "diploid", 10),
     ("1", 2_000_200, "duplication", 15),
+    ("1", 2_000_300, "heterozygous_deletion", 5),
     ("1", 2_001_000, "sparse_gc_control", 20),
     ("X", 20_000_000, "X_haploid", 10),
     ("Y", 7_002_000, "Y_haploid", 10),
     ("Y", 5_000_000, "Y_masked", 0),
     ("X", 2_000_000, "PAR", 20),
     ("5", 70_925_000, "custom_label", 20),
+    ("7", 5_973_398, "masked_pms2", 20),
 )
 CURATED_TARGETS = (
     ("chr1", 109_687_816, 109_693_745, "deletion_alias", 0),
@@ -191,6 +193,9 @@ def test_1285_depth_screen_gc_mask_and_inferred_sex(cnv_fixture, tmp_path):
     )
     calls = _calls(tmp_path / "xy.target-cnv.tsv")
     assert calls["deletion"]["copy_number"] == "0"
+    het = calls["heterozygous_deletion"]
+    assert (het["expected_copy_number"], het["copy_number"]) == ("2", "1")
+    assert (het["state"], het["reason"]) == ("called", "")
     assert calls["diploid"]["copy_number"] == "2"
     assert calls["duplication"]["copy_number"] == "3+"
     assert calls["duplication"]["confidence"] == "high"
@@ -203,8 +208,12 @@ def test_1285_depth_screen_gc_mask_and_inferred_sex(cnv_fixture, tmp_path):
     assert calls["custom_label"]["state"] == "specialist_caller_required"
     assert calls["custom_label"]["specialist"] == "typing smn"
     assert calls["custom_label"]["copy_number"] == ""
+    pms2 = calls["masked_pms2"]
+    assert pms2["state"] == "specialist_caller_required"
+    assert pms2["specialist"] == "typing paraphase --genes pms2"
+    assert pms2["copy_number"] == ""
     assert result.metrics["effective_sex"] == "male"
-    assert result.metrics["target_cnv_called"] == 7
+    assert result.metrics["target_cnv_called"] == 8
     assert result.metrics["target_cnv_curated_called"] == 2
     assert any(w.code == "target_cnv_screening_only" for w in result.warnings)
 

@@ -765,3 +765,36 @@ def test_1177_a_grch37_gvcf_is_assessed_with_the_hg19_model(tmp_path: Path) -> N
     counts = result.details["counts"]
     assert isinstance(counts, dict)
     assert counts["not_readable"] == 84
+
+
+@needs_htslib
+def test_1285_pms2_names_specialist_but_remains_unreadable(tmp_path: Path) -> None:
+    """A high-quality reference block does not make PMS2's paralog exon readable."""
+    gvcf = tmp_path / "pms2.g.vcf"
+    gvcf.write_text(
+        _GQ_GVCF.split("chr7\t1\t")[0].replace(
+            "##contig=<ID=chr7,length=6000>\n",
+            "##contig=<ID=chr1,length=248956422>\n"
+            "##contig=<ID=chr7,length=159345973>\n",
+        )
+        + "chr7\t5973300\t.\tA\t<NON_REF>\t.\t.\tEND=5973600\tGT:GQ:MIN_DP\t0/0:50:30\n",
+        encoding="utf-8",
+    )
+    genes = tmp_path / "genes.tsv"
+    genes.write_text("gene\nPMS2\n", encoding="utf-8")
+    api.vcf.callability(
+        api.VcfCallabilityParams(
+            vcf_input=Path(bgzip_index(gvcf)), gene_list=str(genes), outdir=tmp_path
+        )
+    )
+    rows = _exons(tmp_path)
+    exon = rows["PMS2", 15]
+    assert exon["status"] == "specialist_required"
+    assert int(exon["callable_reference_bases"]) > 0
+    assert exon["readable_bases"] == "0"
+    assert exon["specialist"] == "typing paraphase --genes pms2"
+    assert rows["PMS2", 6]["specialist"] == ""
+    gene = json.loads((tmp_path / "exon_callability.json").read_text())["genes"][0]
+    assert gene["specialist"] == exon["specialist"]
+    assert gene["state"] == "not_readable"
+    assert 15 in gene["not_callable"]["specialist_required"]

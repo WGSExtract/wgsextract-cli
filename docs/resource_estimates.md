@@ -441,7 +441,7 @@ few threads it has, so on hs38 no setting fits in less than about 12–13 GiB.
 WGSExtract does not offer minimap2's `-I` (split index): a split index of hs38
 needs `--split-prefix` and a merge pass, and maps more slowly.
 
-The native CUDA backend's published ONT/HiFi speedups are slice mapping
+The published Linux RTX 3090 ONT/HiFi speedups are slice mapping
 measurements, not whole-genome pipeline estimates. The GPU accelerates gap
 fills, not chaining, decoding, sorting or CRAM encoding. Until
 [#1122 (Linux CUDA long-read alignment)](https://github.com/WGSExtract/wgsextract-cli/issues/1122)
@@ -480,8 +480,9 @@ preflight asked for about 211 GiB of output-volume space; that was not a
 measured peak. For planning, use the current
 [host requirement](#whole-genome-host-requirement) (about 221 GiB for that
 chunked run) and the [long-read disk estimates](#long-read-disk), including
-additional sort-spill space for unchunked runs. No full CUDA realignment has
-been measured.
+additional sort-spill space for unchunked runs. The
+[full Windows CUDA realignment](#whole-genome-ont-requirements) below does
+not qualify Linux CUDA.
 
 ### Long-read disk
 
@@ -762,19 +763,28 @@ accuracy and caveats are in
 | `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GiB, GPU 6.1 GiB | about 100 GiB temporary (full-alignment tensors, about 1 GiB per 1% of the genome) |
 | `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
 
-On native Windows, the [HG002 ONT slice](windows.md#wgse-minimap2-for-long-reads)
-covered about 1.1% of the primary reads. Scaling the time after the one-time
-index build by the read count gives **14.3 h on upstream CPU and 12.9 h on
-CUDA** at eight threads. This is sizing, not a measurement: repeat-rich
-regions and differences in chunking, I/O and compression can change the
-result. Do not scale working set or VRAM with the total number of reads:
-they depend on index and chunk sizes and concurrent processes. The slice
-projects about 170 GB of output, below the 185.5 GB actually measured above.
-Budget at least 230 GiB per run for output and staging, plus space for
-any local copy of the input.
+On native Windows, [one whole-genome run per backend](https://github.com/WGSExtract/wgsextract-cli/issues/1121#issuecomment-7160085047)
+used a Ryzen 9 9900X3D, RTX 5080, local NTFS storage, eight threads, and
+`--chunk-size 512M --memory 256M --format CRAM --no-resume`. Wall time includes
+building the hs38 index and writing the CRAM and index, but excludes download
+and post-run validation.
+
+| Backend | Wall time | Peak process-tree working set | Peak device VRAM above idle | Peak run-directory disk | Final CRAM |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Upstream minimap2 2.31-r1302 | 17.66 h | 13.05 GiB | 949 MiB (incidental device usage) | 210.7 GiB | 184.21 GB |
+| CUDA `wgse-minimap2` 0.4.1 | 15.25 h | 15.61 GiB | 1,882 MiB | 211.6 GiB | 185.48 GB |
+
+CUDA cut wall time by 13.6%. Both runs took longer than projected from the
+[1.1% Windows slice](windows.md#wgse-minimap2-for-long-reads): 14.3 h CPU
+and 12.9 h CUDA. The slice also projected less output (about 170 GB).
+Working set and VRAM depend on index and chunk sizes and concurrent
+processes, not total read count. The working set is not a Windows commit
+budget. Budget at least 230 GiB per run for output and staging, plus
+about 97 GiB for a local copy of this input if needed.
 
 Both callers read a primary-only CRAM 3.0 copy (81.4 GB) of the realigned
-output. `vcf clair3` checks [its temporary space](#clair3s-temporary-space)
+output from the Apple M1 run in #431. `vcf clair3` checks
+[its temporary space](#clair3s-temporary-space)
 before it starts. The realign preflight first budgeted the output at 1.7x
 the input CRAM; this genome needed 1.79x, so it now budgets 1.8x ([long-read
 disk](#long-read-disk)). Each of these steps prints its [host
