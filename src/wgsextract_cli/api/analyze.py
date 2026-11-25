@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._messages.analyze import CLI_HELP
 from wgsextract_cli.core.results import CommandResult
 
 from ._params import Params, param

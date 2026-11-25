@@ -1,10 +1,17 @@
 [build-system]
-requires = ["hatchling"]
+requires = [
+    "hatchling",
+    # The artifact hook imports the CLI's operation catalog.
+    "platformdirs",
+    "pyliftover",
+    "tomli; python_version < '3.11'",
+    "tomli-w",
+]
 build-backend = "hatchling.build"
 
 [project]
 name = "wgsextract-cli"
-version = "0.8.9"
+version = "0.8.10"
 description = "A modern, standalone Command-Line Interface for WGS Extract."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -92,6 +99,9 @@ disable_warnings = ["no-sysmon"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wgsextract_cli"]
+
+[tool.hatch.build.hooks.custom]
+path = "scripts/build_package_artifacts.py"
 
 [tool.pytest.ini_options]
 pythonpath = [".", "src", "tests"]

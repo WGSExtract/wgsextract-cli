@@ -13,25 +13,6 @@ name: Linux Aligners
 # unavailable rather than failing.
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    branches: [ main ]
-    paths:
-      - native/**
-      - packaging/wgse-bwa/**
-      - packaging/wgse-bwa-mem3/**
-      - packaging/wgse-minimap2/**
-      - .github/workflows/linux_aligners.yml
-      - .github/actions/setup-pixi/**
-      - .github/actions/compiler-cache/**
-      - .github/actions/apt-install/**
-      - "!**/*.md"
-  push:
-    branches: [main]
-    paths-ignore:
-      - "**/*.md"
-  schedule:
-    - cron: "47 6 * * *"
   workflow_dispatch:
     inputs:
       release_tag:
@@ -44,7 +25,6 @@ permissions:
 
 jobs:
   test:
-    if: ${{ github.event.pull_request.draft != true }}
     strategy:
       fail-fast: false
       matrix:
@@ -74,7 +54,6 @@ jobs:
 
   # Build the CUDA backends and verify their fallback on a runner without a GPU.
   cuda-build:
-    if: ${{ github.event.pull_request.draft != true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -103,7 +82,6 @@ jobs:
               out/build-cuda/bwa-mem3/wgse-bwa-mem3 capabilities --json | grep -q "\"cuda_available\":false"'
 
   build:
-    if: ${{ github.event.pull_request.draft != true }}
     strategy:
       fail-fast: false
       matrix:

@@ -7,16 +7,11 @@ import sys
 from pathlib import Path
 
 import pytest
-from cli_snapshot import GOLDEN, read_snapshot, snapshot, write_snapshot
 
 from wgsextract_cli.cli.help import SITE_BLOCK_END, SITE_BLOCK_START
 
 ROOT = Path(__file__).resolve().parents[1]
-SNAPSHOT = "tests/fixtures/cli_snapshot/microarray.json"
-STALE_SNAPSHOT = "tests/fixtures/cli_snapshot/removed/command.json"
 GENERATED = (
-    SNAPSHOT,
-    STALE_SNAPSHOT,
     "docs/api.md",
     "docs/commands.md",
     "src/wgsextract_cli/assets/cli/help-index.json",
@@ -32,8 +27,6 @@ GENERATED = (
     "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
-    "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json",
-    "gui/app/shared/generated/server-transport.ts",
     "gui/app/shared/generated/result-records.ts",
     "gui/app/shared/generated/report-records.ts",
 )
@@ -71,9 +64,9 @@ def regen_repo(tmp_path: Path) -> Path:
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
+        "scripts/gen_server_openapi.py",
         "scripts/json_lines.py",
         "scripts/server_transport_typescript.py",
-        "tests/cli_snapshot.py",
         "site_src/cli.md",
     ):
         target = tmp_path / relative
@@ -98,9 +91,9 @@ def regen_repo(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def conflict(repo: Path, paths: tuple[str, ...], *, left_base: str = "base") -> None:
-    for branch, base in (("left", left_base), ("right", "base")):
-        git(repo, "switch", "-c", branch, base)
+def conflict(repo: Path, paths: tuple[str, ...]) -> None:
+    for branch in ("left", "right"):
+        git(repo, "switch", "-c", branch, "base")
         for relative in paths:
             target = repo / relative
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -140,25 +133,12 @@ def test_regen_resolve_refuses_unresolved_sources(
 def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     regen_repo: Path,
 ) -> None:
-    retired = "tests/fixtures/api_cli_snapshot.json"
-    (regen_repo / retired).write_text("old\n", encoding="utf-8")
-    git(regen_repo, "add", retired)
-    git(regen_repo, "commit", "-m", "Original snapshot")
-    git(regen_repo, "switch", "-c", "prior")
-    (regen_repo / retired).write_text("prior change\n", encoding="utf-8")
-    git(regen_repo, "commit", "-am", "Update original snapshot")
-    git(regen_repo, "switch", "base")
-    git(regen_repo, "rm", retired)
-    git(regen_repo, "commit", "-m", "Retire original snapshot")
-    conflict(regen_repo, GENERATED, left_base="prior")
-    assert retired in git(regen_repo, "diff", "--name-only", "--diff-filter=U").stdout
-    non_snapshot = regen_repo / "tests/fixtures/cli_snapshot/README.md"
-    non_snapshot.write_text("unrelated local note\n", encoding="utf-8")
+    conflict(regen_repo, GENERATED)
 
     # #1471: regenerate to LF even if the existing files use CRLF.
     crlf_artifacts = [
         regen_repo / "docs/configuration.md",
-        regen_repo / SNAPSHOT,
+        regen_repo / "docs/commands.md",
     ]
     for path in crlf_artifacts:
         path.write_text(
@@ -173,16 +153,8 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
         assert b"\r" not in output and output.count(b"\n") > 1
     assert not git(regen_repo, "diff", "--name-only", "--diff-filter=U").stdout
     staged = git(regen_repo, "diff", "--cached", "--name-only").stdout.splitlines()
-    snapshot_files = {
-        path.relative_to(GOLDEN.parent.parent.parent).as_posix()
-        for path in GOLDEN.rglob("*.json")
-    }
-    assert set(staged) == {*GENERATED, *snapshot_files, "site_src/cli.md"}
+    assert set(staged) == {*GENERATED, "site_src/cli.md"}
     assert not git(regen_repo, "diff", "--name-only").stdout
-    assert not (regen_repo / STALE_SNAPSHOT).exists()
-    assert not (regen_repo / retired).exists()
-    microarray = json.loads((regen_repo / SNAPSHOT).read_text(encoding="utf-8"))
-    assert microarray["help"]
     assert "MicroarrayParams" in (regen_repo / "docs/api.md").read_text(
         encoding="utf-8"
     )
@@ -191,6 +163,15 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     assert "server_max_jobs" in (regen_repo / "docs/configuration.md").read_text(
         encoding="utf-8"
     )
+    document = json.loads(
+        (regen_repo / "out/contracts/wgsextract.server.openapi.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "/v1/ops/microarray" in document["paths"]
+    assert "export interface Job {" in (
+        regen_repo / "gui/app/shared/generated/server-transport.ts"
+    ).read_text(encoding="utf-8")
     for generator in (
         "gen_api_docs.py",
         "gen_command_docs.py",
@@ -208,41 +189,19 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
         assert checked.returncode == 0, checked.stderr
 
 
-@pytest.mark.parametrize("first,second", [("align", "vcf snp"), ("vcf snp", "align")])
-def test_1531_independent_command_snapshots_survive_merge_queue(
-    tmp_path: Path, first: str, second: str
-) -> None:
-    expected = json.loads(json.dumps(snapshot()))
-    folder = tmp_path / "fixtures" / "cli_snapshot"
-    base = {
-        name: data for name, data in expected.items() if name not in {first, second}
-    }
-    write_snapshot(base, folder)
-    git(tmp_path, "init", "--initial-branch=base")
-    git(tmp_path, "add", ".")
-    git(tmp_path, "commit", "-m", "base")
-    for branch, command in (("first", first), ("second", second)):
-        git(tmp_path, "switch", "-c", branch, "base")
-        write_snapshot({**base, command: expected[command]}, folder)
-        git(tmp_path, "add", ".")
-        git(tmp_path, "commit", "-m", f"Add {command}")
-    git(tmp_path, "switch", "first")
-    git(tmp_path, "merge", "--no-edit", "second")
-    assert read_snapshot(folder) == expected
-
-
-def test_989_stale_compact_openapi_reports_readable_field_diff(
+def test_989_stale_server_response_schema_reports_readable_field_diff(
     regen_repo: Path,
 ) -> None:
     regenerated = resolve(regen_repo)
     assert regenerated.returncode == 0, regenerated.stderr
     path = (
-        regen_repo / "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+        regen_repo
+        / "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json"
     )
     document = json.loads(path.read_text(encoding="utf-8"))
-    document["info"]["version"] = "stale-version"
+    document["$id"] = "stale-schema-id"
     path.write_text(
-        json.dumps(document, separators=(",", ":")) + "\n", encoding="utf-8"
+        json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
     checked = subprocess.run(
@@ -254,13 +213,10 @@ def test_989_stale_compact_openapi_reports_readable_field_diff(
 
     assert checked.returncode == 1
     assert (
-        "committed/src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+        "committed/src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json"
         in checked.stderr
     )
-    assert '-    "version": "stale-version",' in checked.stderr
-    assert '+    "version":' in checked.stderr
+    assert '-  "$id": "stale-schema-id",' in checked.stderr
+    assert '+  "$id": "urn:wgsextract:server:responses:1",' in checked.stderr
     assert len(checked.stderr) < 5000
-    assert (
-        json.loads(path.read_text(encoding="utf-8"))["info"]["version"]
-        == "stale-version"
-    )
+    assert json.loads(path.read_text(encoding="utf-8"))["$id"] == "stale-schema-id"

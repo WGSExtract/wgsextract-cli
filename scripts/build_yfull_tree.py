@@ -63,7 +63,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from pyliftover import LiftOver
+from wgsextract_cli.core.y_liftover import YLiftOver, YPlacement, complement
 
 ROOT = Path(__file__).resolve().parents[1]
 TREES_JSON = ROOT / "src/wgsextract_cli/ydna/yleaf_native/trees.json"
@@ -79,7 +79,6 @@ MODULES = {"tree": "yfull-tree", "positions": "yfull-ybrowse-positions"}
 RELEASE_URL = "https://github.com/WGSExtract/wgsextract-cli/releases/download"
 ROOT_KEY = 'ROOT (Y-Chromosome "Adam")'
 BASES = frozenset("ACGT")
-COMPLEMENT = str.maketrans("ACGT", "TGCA")
 DEAMINATION = frozenset({"C->T", "G->A"})
 
 Marker = tuple[str, str, int, str, str]  # name, haplogroup, pos, anc, der
@@ -194,19 +193,17 @@ def resolve(
 
 
 def lift(markers: list[Marker], chain: Path) -> tuple[list[Marker], Counter[str]]:
-    lifter = LiftOver(str(chain))
+    lifter = YLiftOver(chain)
     lifted: list[Marker] = []
     stats: Counter[str] = Counter()
     for name, haplogroup, pos, anc, der in markers:
-        hits = lifter.convert_coordinate("chrY", pos - 1) or []
-        hits = [hit for hit in hits if hit[0] == "chrY"]
-        if len(hits) != 1:
+        placed = lifter.place(pos)
+        if not isinstance(placed, YPlacement):
             stats["unlifted"] += 1
             continue
-        _, target, strand, _ = hits[0]
-        if strand == "-":
-            anc, der = anc.translate(COMPLEMENT), der.translate(COMPLEMENT)
-        lifted.append((name, haplogroup, int(target) + 1, anc, der))
+        if placed.reverse:
+            anc, der = complement(anc), complement(der)
+        lifted.append((name, haplogroup, placed.position, anc, der))
     return lifted, stats
 
 

@@ -10,7 +10,27 @@ from wgsextract_cli.api.lineage import (
     YStrParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    _SAM,
+    MINUTES,
+    _n,
+)
+from wgsextract_cli.commands._messages.lineage import CLI_HELP
+
+NEEDS = {
+    "lineage y-haplogroup": _n(MINUTES, "bcftools", "samtools"),
+    "lineage y-private": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
+    "lineage y-str": _n(MINUTES, *_SAM, optional="bcftools"),
+    "lineage mt-haplogroup": _n(
+        MINUTES,
+        "bcftools",
+        "haplogrep3",
+        "java",
+        "samtools",
+        optional="curl haplocheck tabix",
+    ),
+}
+
 
 cmd_mtdna = command_handler("wgsextract_cli.commands.lineage", "cmd_mtdna")
 cmd_ydna = command_handler("wgsextract_cli.commands._lineage_ydna", "cmd_ydna")

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from importlib import import_module
+from types import ModuleType
 
 
 @dataclass(frozen=True)
@@ -10,14 +11,15 @@ class CommandRegistration:
     module: str
     name: str
 
+    def load(self) -> ModuleType:
+        return import_module(f"wgsextract_cli.cli.registration.{self.module}")
+
     def register(
         self,
         subparsers: argparse._SubParsersAction[argparse.ArgumentParser],
         base_parser: argparse.ArgumentParser,
     ) -> None:
-        import_module(f"wgsextract_cli.cli.registration.{self.module}").register(
-            subparsers, base_parser
-        )
+        self.load().register(subparsers, base_parser)
 
 
 COMMAND_MODULES = tuple(

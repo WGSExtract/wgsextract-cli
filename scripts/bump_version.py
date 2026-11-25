@@ -3,8 +3,7 @@
 
 Usage: python scripts/bump_version.py 0.4.4
 
-Updates pyproject.toml, pixi.toml and src/wgsextract_cli/__init__.py, the
-committed OpenAPI release version, the CLI
+Updates pyproject.toml, pixi.toml and src/wgsextract_cli/__init__.py, the CLI
 site's current-release text (site_src/), then points the desktop app's bundle
 and its site at the same CLI release with
 gui/scripts/bump-wgsextract-cli.py; release.yml compares all of them with the
@@ -13,7 +12,6 @@ vX.Y.Z tag (see docs/releasing.md).
 
 from __future__ import annotations
 
-import json
 import re
 import subprocess
 import sys
@@ -32,7 +30,6 @@ VERSIONS = [
 # versions older than the current one.
 SITE = ["site_src/index.md", "site_src/install.md"]
 GUI_BUMP = "gui/scripts/bump-wgsextract-cli.py"
-OPENAPI = "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
 
 
 def main(argv: list[str]) -> int:
@@ -66,21 +63,6 @@ def main(argv: list[str]) -> int:
                 )
                 return 1
             changes[path] = text
-    path = ROOT / OPENAPI
-    try:
-        text = path.read_text(encoding="utf-8")
-        info = json.loads(text)["info"]
-        before = json.dumps(info, separators=(",", ":"), ensure_ascii=False)
-        info["version"] = new
-        after = json.dumps(info, separators=(",", ":"), ensure_ascii=False)
-        # gen_server_contracts.py writes info compactly on its own line; edit
-        # only that, keeping the one-entry-per-line layout (#1416).
-        if text.count(before) != 1:
-            raise ValueError("no single compact info object")
-    except (OSError, ValueError, KeyError, TypeError) as e:
-        print(f"Could not update {OPENAPI} ({e}); nothing changed.", file=sys.stderr)
-        return 1
-    changes[path] = text.replace(before, after)
     # Write each to a temporary file first and rename them all into place; if
     # anything fails, put back the files already replaced.
     originals = {path: path.read_text(encoding="utf-8") for path in changes}

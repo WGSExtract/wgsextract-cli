@@ -3,13 +3,21 @@ import math
 import shutil
 from pathlib import Path
 
+from wgsextract_cli.commands._messages.info import SYSTEM_MESSAGES as INFO_MESSAGES
+from wgsextract_cli.commands._messages.lineage import (
+    SYSTEM_MESSAGES as LINEAGE_MESSAGES,
+)
+from wgsextract_cli.commands._messages.realign import (
+    SYSTEM_MESSAGES as REALIGN_MESSAGES,
+)
 from wgsextract_cli.core.alignment.cram_counts import cram_read_counts
 from wgsextract_cli.core.alignment.samtools_commands import alignment_index
-from wgsextract_cli.core.messages import SYSTEM_MESSAGES as MESSAGES
+from wgsextract_cli.core.messages import SYSTEM_MESSAGES
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.utils import run_command
 
 GB = 1024**3
+MESSAGES = SYSTEM_MESSAGES | INFO_MESSAGES | LINEAGE_MESSAGES | REALIGN_MESSAGES
 
 # A file's size alone misjudges sort and FASTQ space: CRAMs take from about 12 to
 # 50 bytes per read. Measured on a 30x MGI CRAM (680M 149 bp reads, binned
