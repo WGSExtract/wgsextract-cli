@@ -25,7 +25,7 @@ def registry_key(root: Path = PACKAGE_ROOT) -> str:
     digest = hashlib.sha256()
     files = [
         path
-        for folder in ("api", "cli", "commands/_help_catalog")
+        for folder in ("api", "cli", "commands/_help_catalog", "commands/_messages")
         for path in (root / folder).rglob("*.py")
     ]
     files.extend((root / "commands").glob("*.py"))

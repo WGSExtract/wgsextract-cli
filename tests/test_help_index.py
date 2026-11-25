@@ -75,3 +75,12 @@ def test_1531_help_recovers_without_writing_package(
         assert b"Updated input help" in updated
         assert cache_path.read_bytes() == original
         assert len(list(cache_path.parent.parent.glob("*/help-index.json"))) == 2
+        # A command-summary edit must also invalidate the already-warm index.
+        messages = package / "commands" / "_messages" / "vcf.py"
+        with messages.open("a", encoding="utf-8") as stream:
+            stream.write('\nCLI_HELP["cmd_snp"] = "Updated SNP summary"\n')
+        updated = subprocess.check_output(discovery, env=env, cwd=tmp_path)
+        commands = json.loads(updated)["commands"]
+        assert next(
+            item["summary"] for item in commands if item["path"] == "vcf snp"
+        ) == ("Updated SNP summary")
