@@ -6,6 +6,8 @@ import argparse
 import math
 import re
 import statistics
+import subprocess
+import time
 from collections import Counter, defaultdict
 from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor
@@ -51,6 +53,27 @@ query($ids:[ID!]!) {
   }}
 }
 """
+
+
+class ReportGitHub(GitHub):
+    """Retry transient reads without masking terminal API errors."""
+
+    def request(self, method: str, path: str, data: Row | None = None) -> Any:
+        for delay in (1, 2, 4, 0):
+            try:
+                return super().request(method, path, data)
+            except subprocess.CalledProcessError as error:
+                detail = (error.stderr or "").strip()
+                if not delay or not re.search(
+                    r"HTTP (429|5\d\d)|connection reset|timed? out|unexpected EOF",
+                    detail,
+                    re.I,
+                ):
+                    raise RuntimeError(
+                        f"GitHub report read failed for {path}: {detail}"
+                    ) from error
+                time.sleep(delay)
+        raise AssertionError("unreachable")
 
 
 def stamp(value: str) -> datetime:
@@ -124,8 +147,11 @@ def push_evidence(pr: Row, runs: list[Row]) -> list[tuple[datetime, str]]:
 
 def hosted_jobs(run: Row) -> Iterable[tuple[int, datetime, datetime]]:
     # Failed-jobs-only reruns clone unchanged checks with the original clock
-    # times. They did not allocate another runner for those jobs.
-    seen: set[tuple[str, datetime, datetime]] = set()
+    # times. Preserve distinct jobs within each attempt even if clocks tie.
+    seen: Counter[tuple[str, datetime, datetime, int | None]] = Counter()
+    in_attempt: Counter[tuple[int, tuple[str, datetime, datetime, int | None]]] = (
+        Counter()
+    )
     pattern = rf"/actions/runs/{run['id']}/job/\d+$"
     for job in sorted(run["jobs"], key=lambda item: item.get("attempt", 1)):
         if job["conclusion"] == "SKIPPED" or not re.search(
@@ -135,10 +161,12 @@ def hosted_jobs(run: Row) -> Iterable[tuple[int, datetime, datetime]]:
         start = when(job, "startedAt")
         end = when(job, "completedAt")
         if start is not None and end is not None and end > start:
-            key = (job["name"], start, end)
-            if key not in seen:
-                seen.add(key)
-                yield job.get("attempt", 1), start, end
+            attempt = job.get("attempt", 1)
+            key = (job["name"], start, end, job.get("runnerId"))
+            in_attempt[attempt, key] += 1
+            if in_attempt[attempt, key] > seen[key]:
+                seen[key] = in_attempt[attempt, key]
+                yield attempt, start, end
 
 
 def report(prs: list[Row], runs: list[Row], start: datetime, end: datetime) -> str:
@@ -343,6 +371,7 @@ def rest_jobs(api: GitHub, run: Row) -> list[Row]:
             "completedAt": job["completed_at"],
             "conclusion": job["conclusion"].upper() if job["conclusion"] else None,
             "attempt": job["run_attempt"],
+            "runnerId": job.get("runner_id"),
         }
         for job in api.pages(f"{path}/jobs?filter=all", "jobs")
         if job["runner_group_name"] == "GitHub Actions"
@@ -351,10 +380,16 @@ def rest_jobs(api: GitHub, run: Row) -> list[Row]:
 
 def rerun_jobs(api: GitHub, run: Row) -> None:
     path = f"actions/runs/{run['id']}"
-    run["attempts"] = [
+    attempts = [
         api.api("GET", f"{path}/attempts/{attempt}")
         for attempt in range(1, run["run_attempt"])
-    ] + [dict(run, created_at=run["run_started_at"] or run["updated_at"])]
+    ] + [run]
+    run["attempts"] = [
+        dict(attempt, created_at=attempt.get("run_started_at") or attempt["updated_at"])
+        if attempt["run_attempt"] > 1
+        else dict(attempt)
+        for attempt in attempts
+    ]
     run["jobs"] = rest_jobs(api, run)
 
 
@@ -379,8 +414,7 @@ def collect(api: GitHub, start: datetime, end: datetime) -> tuple[list[Row], lis
         if run["event"] == "pull_request":
             heads[run_key(run)].add(run["head_sha"])
 
-    prs: list[Row] = []
-    permissions: dict[str, str] = {}
+    candidates: list[Row] = []
     for page in range(1, 101):
         batch = api.api(
             "GET",
@@ -394,24 +428,7 @@ def collect(api: GitHub, start: datetime, end: datetime) -> tuple[list[Row], lis
                 closed is not None and closed < lower
             ):
                 continue
-            shas = heads[branch_key(pr["head"])]
-            pr["timeline"] = timeline(api, pr["number"])
-            previous = prior_area_runs(api, pr, lower)
-            pr["prior_runs"] = previous
-            for run in previous:
-                if run["run_attempt"] > 1 and stamp(run["updated_at"]) >= start:
-                    runs_by_id[run["id"]] = run
-            pr["recertifications"] = (
-                certifications(
-                    api,
-                    shas | {run["head_sha"] for run in previous} | {pr["head"]["sha"]},
-                    permissions,
-                    end,
-                )
-                if branch_key(pr["head"])[0] == api.repository
-                else []
-            )
-            prs.append(pr)
+            candidates.append(pr)
         if len(batch) < 100 or stamp(batch[-1]["updated_at"]) < lower:
             break
     else:
@@ -419,14 +436,49 @@ def collect(api: GitHub, start: datetime, end: datetime) -> tuple[list[Row], lis
             "PR pagination limit exceeded; refusing an incomplete report"
         )
 
+    permissions: dict[str, str] = {}
+
+    def enrich_pr(pr: Row) -> Row:
+        key = branch_key(pr["head"])
+        pr["timeline"] = timeline(api, pr["number"])
+        previous = prior_area_runs(api, pr, lower)
+        pr["prior_runs"] = previous
+        pr["recertifications"] = (
+            certifications(
+                api,
+                heads.get(key, set())
+                | {run["head_sha"] for run in previous}
+                | {pr["head"]["sha"]},
+                permissions,
+                end,
+            )
+            if key[0] == api.repository
+            else []
+        )
+        return pr
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        prs = list(pool.map(enrich_pr, candidates))
+        for pr in prs:
+            for run in pr["prior_runs"]:
+                if run["run_attempt"] > 1 and stamp(run["updated_at"]) >= start:
+                    runs_by_id[run["id"]] = run
+
     runs = list(runs_by_id.values())
     suites: dict[str, list[Row]] = defaultdict(list)
+    reruns = []
     for run in runs:
         run["jobs"] = []
         if run["run_attempt"] > 1:
-            rerun_jobs(api, run)
+            reruns.append(run)
         elif run["conclusion"] != "skipped":
             suites[run["check_suite_node_id"]].append(run)
+
+    def read_rerun(run: Row) -> None:
+        rerun_jobs(api, run)
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        list(pool.map(read_rerun, reruns))
     suite_ids = list(suites)
     for offset in range(0, len(suite_ids), 30):
         response = graphql(api, CHECKS, ids=suite_ids[offset : offset + 30])
@@ -454,7 +506,7 @@ def main() -> None:
     )
     end = midnight - timedelta(days=midnight.weekday())
     start = end - timedelta(days=7)
-    prs, runs = collect(GitHub(args.repository), start, end)
+    prs, runs = collect(ReportGitHub(args.repository), start, end)
     print(report(prs, runs, start, end))
 
 

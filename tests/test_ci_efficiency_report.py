@@ -2,7 +2,14 @@
 
 from datetime import datetime
 
-from scripts.ci_efficiency_report import Row, certifications, collect, report, stamp
+from scripts.ci_efficiency_report import (
+    Row,
+    certifications,
+    collect,
+    report,
+    rerun_jobs,
+    stamp,
+)
 from scripts.ci_github import GitHub
 
 
@@ -114,27 +121,43 @@ def test_1554_wasted_runs_count_once_and_reused_jobs_do_not_add_runner_hours() -
     new_head = "2026-11-16T02:00:00Z"
     stop = "2026-11-16T03:00:00Z"
     end = "2026-11-23T00:00:00Z"
+    cancelled = run(
+        1,
+        start,
+        stop,
+        conclusion="cancelled",
+        jobs=[
+            job(1, during, stop),
+            job(1, during, stop, job_id=2),
+            dict(job(1, during, stop, job_id=3), attempt=2),
+            dict(job(1, during, stop, job_id=4), attempt=2),
+        ],
+    )
+    cancelled["attempts"] = [
+        {
+            "created_at": start,
+            "updated_at": stop,
+            "conclusion": "cancelled",
+            "run_attempt": 1,
+        },
+        {
+            "created_at": "2026-11-16T04:00:00Z",
+            "updated_at": "2026-11-16T05:00:00Z",
+            "conclusion": "success",
+            "run_attempt": 2,
+        },
+    ]
     runs = [
-        run(
-            1,
-            start,
-            stop,
-            conclusion="cancelled",
-            jobs=[
-                job(1, during, stop),
-                job(1, during, stop, job_id=2),
-                job(1, during, during, job_id=3),
-            ],
-        ),
+        cancelled,
         run(2, new_head, stop, sha="second", jobs=[job(2, new_head, stop)]),
         run(3, prep, during, event="merge_group", jobs=[job(3, prep, during)]),
         run(4, end, end, event="schedule"),
     ]
     body = report([pr(1, opened=prep, merged=None)], runs, stamp(start), stamp(end))
     assert "1 distinct (1 cancelled, 1 superseded" in body
-    assert "| Ready PR | 3.00 | 2.00 |" in body
+    assert "| Ready PR | 5.00 | 4.00 |" in body
     assert "| Merge queue | 1.00 | 0.00 |" in body
-    assert "| Total | 4.00 | 2.00 |" in body
+    assert "| Total | 6.00 | 4.00 |" in body
     assert "no eligible merges (n=0)" in body
 
 
@@ -184,6 +207,34 @@ def test_1554_reports_prior_head_and_does_not_charge_old_attempt_for_late_rerun(
     assert "1 observed pushes after first ready" in body
     assert "1 distinct (1 cancelled, 0 superseded" in body
     assert "| Ready PR | 2.00 | 1.00 |" in body
+
+
+def test_1554_intermediate_retry_uses_its_own_start_for_weekly_cancellation() -> None:
+    opened = "2026-11-14T00:00:00Z"
+    start = "2026-11-16T00:00:00Z"
+    stopped = "2026-11-16T01:00:00Z"
+    final = "2026-11-16T02:00:00Z"
+    end = "2026-11-23T00:00:00Z"
+    original = dict(
+        run(1, opened, final, event="schedule"), run_attempt=3, run_started_at=final
+    )
+
+    class FixtureGitHub(GitHub):
+        def request(self, method: str, path: str, data: Row | None = None) -> Row:
+            if "/jobs?" in path:
+                return {"jobs": []}
+            number = int(path.rsplit("/", 1)[1])
+            return {
+                "run_attempt": number,
+                "created_at": opened,
+                "run_started_at": opened if number == 1 else start,
+                "updated_at": opened if number == 1 else stopped,
+                "conclusion": "success" if number == 1 else "cancelled",
+            }
+
+    rerun_jobs(FixtureGitHub("owner/repo"), original)
+    body = report([], [original], stamp(start), stamp(end))
+    assert "1 distinct (1 cancelled, 0 superseded" in body
 
 
 def test_1554_recertification_requires_a_writer_and_known_context() -> None:
