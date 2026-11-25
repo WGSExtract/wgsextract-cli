@@ -380,10 +380,11 @@ macOS ARM64 fallback; `just certify --remote randy-mini` still works. If
 working directory if present.
 
 The controller enforces the same clean, pushed, same-repository open-PR and
-writer checks as local certification. It holds an `agent-coord` lock named for
-the selected alias. All controllers sharing a coordinator must use the same
-alias for a machine. SSH requires a known host key and noninteractive
-authentication. SSH agent, port and environment forwarding are disabled.
+writer checks as local certification. It holds a local `agent-coord` lock named
+for the selected alias and bound to the controller PID, including for Windows
+workers. All controllers sharing a coordinator must use the same alias for a
+machine. SSH requires a known host key and noninteractive authentication.
+SSH agent, port and environment forwarding are disabled.
 Workers need neither `gh` nor a GitHub token; configure the worker checkout
 for public HTTPS, without credential-bearing remotes or extra Git hooks.
 
@@ -413,11 +414,10 @@ tests using a Windows kill-on-close Job Object or the worker's and observed
 descendants' POSIX process groups. A fresh SSH connection confirms cleanup
 before the controller unlocks the alias, including after a transport failure
 or SIGTERM.
-If that confirmation fails the lock deliberately remains held: retry once SSH
-is reachable, or confirm the matching control ID has a `.done` marker under
-`~/src/wgsextract-cli/out/certify/remote-control/` before manually unlocking.
-An abruptly killed controller (SIGKILL/power loss) likewise leaves its lock for
-recovery; never break it while the remote supervisor may still be running.
+If confirmation fails, the controller skips the explicit unlock. The
+coordinator releases the lock when the controller exits, even after SIGKILL.
+Before retrying an unconfirmed run, wait for its matching control ID to have a
+`.done` marker under `~/src/wgsextract-cli/out/certify/remote-control/`.
 The worker checks the native platform, clean tree and HEAD before and after
 execution. Logs stream to `out/certify/<sha>/remote-<alias>/<layer>/run.log`;
 only the controller publishes `local-ci/<platform>` and (if requested)

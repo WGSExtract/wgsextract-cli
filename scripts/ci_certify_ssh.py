@@ -260,7 +260,7 @@ print("stopped")
 
 
 class RemoteStillRunning(ValueError):
-    """Keep the coordinator lock when remote termination cannot be confirmed."""
+    """Remote termination was not confirmed; do not unlock explicitly."""
 
 
 def ssh_command(host: RemoteHost) -> list[str]:
@@ -437,7 +437,7 @@ def stream_remote(host: RemoteHost, script: str, log: Path) -> tuple[int, str]:
                     raise ValueError("Missing remote cancellation acknowledgement")
         except BaseException as error:
             raise RemoteStillRunning(
-                f"Remote stop unconfirmed; {host.alias} lock retained. "
+                f"Remote stop unconfirmed; {host.alias} lock held until controller exit. "
                 f"Control ID {run_id}; see docs/ci_routing.md"
             ) from error
         finally:
