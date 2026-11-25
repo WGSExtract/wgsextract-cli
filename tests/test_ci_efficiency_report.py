@@ -1,6 +1,8 @@
 """Fixture-backed regressions for the weekly CI report (#1554)."""
 
-from scripts.ci_efficiency_report import Row, certifications, report, stamp
+from datetime import datetime
+
+from scripts.ci_efficiency_report import Row, certifications, collect, report, stamp
 from scripts.ci_github import GitHub
 
 
@@ -219,3 +221,55 @@ def test_1554_recertification_requires_a_writer_and_known_context() -> None:
         {},
         stamp("2026-11-23T00:00:00Z"),
     ) == ["2026-11-17T02:00:00Z"]
+
+
+def test_1554_large_check_suite_uses_paginated_runner_jobs() -> None:
+    start = stamp("2026-11-16T00:00:00Z")
+    stop = "2026-11-16T01:00:00Z"
+    end = stamp("2026-11-23T00:00:00Z")
+    fixture_run = dict(
+        run(1, start.isoformat(), stop, event="schedule"),
+        run_attempt=1,
+        check_suite_node_id="suite",
+    )
+
+    class FixtureGitHub(GitHub):
+        def runs_between(self, lower: datetime, upper: datetime) -> list[Row]:
+            return [fixture_run] if lower == start else []
+
+        def request(
+            self, method: str, path: str, data: Row | None = None
+        ) -> Row | list[Row]:
+            if path == "graphql":
+                return {
+                    "data": {
+                        "nodes": [
+                            {
+                                "checkRuns": {
+                                    "pageInfo": {"hasNextPage": True},
+                                    "nodes": [],
+                                }
+                            }
+                        ]
+                    }
+                }
+            if "/pulls?" in path:
+                return []
+            hosted = {
+                "name": "Linux tests",
+                "html_url": job(1, start.isoformat(), stop)["detailsUrl"],
+                "started_at": start.isoformat(),
+                "completed_at": stop,
+                "conclusion": "success",
+                "runner_group_name": "GitHub Actions",
+                "run_attempt": 1,
+            }
+            return {
+                "jobs": [
+                    hosted,
+                    dict(hosted, name="Local", runner_group_name="Self-hosted"),
+                ]
+            }
+
+    prs, runs = collect(FixtureGitHub("owner/repo"), start, end)
+    assert "| Scheduled | 1.00 | 0.00 |" in report(prs, runs, start, end)
