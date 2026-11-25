@@ -218,28 +218,55 @@ def run_imputation(params: RefImputationParams) -> None:
 
 
 def run_ybrowse(params: RefYbrowseParams) -> None:
-    from wgsextract_cli.core.ybrowse import install_snapshot
+    from wgsextract_cli.core.ybrowse import install_snapshot, require_allowed_paths
 
     library = Path(_library(params.ref))
     if params.delete:
+        paths = library_removal.ybrowse_paths(str(library))
+        require_allowed_paths([library / "ybrowse", *paths])
         _delete(
             "yBrowse snapshots",
-            library_removal.ybrowse_paths(str(library)),
+            paths,
             [library / "ybrowse"],
         )
         return
-    verify_dependencies(["bgzip", "tabix"])
-    installed = install_snapshot(library, params.snapshot)
-    _record_installed(installed)
-    logging.info("Installed sites-only GRCh38 yBrowse resource: %s", installed)
-
-
-def _record_installed(path: Path) -> None:
-    """Record an installed file, or every file of an installed directory."""
-    if not path.is_dir():
-        current_result().add_output(path, "reference_resource")
+    if (params.chain or params.download) and not params.grch37:
+        raise UsageError("--chain and --download apply only with --grch37.")
+    if not params.grch37:
+        verify_dependencies(["bgzip", "tabix"])
+        installed = install_snapshot(library, params.snapshot)
+        _record_ybrowse_snapshot(installed)
+        logging.info("Installed sites-only GRCh38 yBrowse resource: %s", installed)
         return
-    record_changed_files(path, {}, "reference_resource")
+    from wgsextract_cli.core import ybrowse_grch37
+
+    verify_dependencies(["bgzip", "tabix", "bcftools", "samtools"])
+    chain, provenance = ybrowse_grch37.lift_chain(
+        library, params.chain, params.download
+    )
+    ref = params.ref if params.ref and params.ref.is_file() else None
+    fasta = ybrowse_grch37.grch37_fasta(library, ref)
+    if params.snapshot:
+        installed = install_snapshot(library, params.snapshot)
+        _record_ybrowse_snapshot(installed)
+    derived = ybrowse_grch37.derive(library, fasta, chain, provenance)
+    _record_ybrowse_snapshot(derived)
+    if chain == ybrowse_grch37.library_chain(library):
+        current_result().add_output(chain, "reference_resource")
+    logging.info(
+        "Installed sites-only GRCh37 yBrowse resource, lifted with %s and checked "
+        "against %s: %s",
+        chain.name,
+        fasta,
+        derived,
+    )
+
+
+def _record_ybrowse_snapshot(path: Path) -> None:
+    from wgsextract_cli.core.ybrowse import RESOURCE_FILES
+
+    for name in ("manifest.json", *RESOURCE_FILES):
+        current_result().add_output(path / name, "reference_resource")
     current_result().set_manifest_stem(path)
 
 
