@@ -13,6 +13,7 @@ from pathlib import Path
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scripts.ci_certifications import PLATFORMS, required_layers  # noqa: E402
 from scripts.ci_moves import select_moves  # noqa: E402
 from scripts.ci_optional_tools import routed_suites  # noqa: E402
 from scripts.ci_select_tests import (  # noqa: E402
@@ -20,6 +21,7 @@ from scripts.ci_select_tests import (  # noqa: E402
     ci_path,
     ci_test_targets,
     os_selection,
+    ready_test_selection,
     select_tests,
 )
 from scripts.ci_test_dependencies import (  # noqa: E402
@@ -30,7 +32,7 @@ from scripts.ci_test_dependencies import (  # noqa: E402
     docs_test_targets,
     test_inputs,
 )
-from scripts.ci_test_tiers import SINGLE_OS_MODULES  # noqa: E402
+from scripts.ci_test_tiers import QUEUE_SMOKE_TESTS, SINGLE_OS_MODULES  # noqa: E402
 
 SITE_PREFIXES = ("site/", "site_src/", "gui/site_src/", "gui/mockups/")
 SITE_SCRIPTS = (
@@ -89,7 +91,26 @@ def queue_windows_required(paths: list[str]) -> bool:
         and path not in GENERATED_DOCS
         and path not in DOCS_ONLY_SCRIPTS
         and path not in DOCS_TEST_MODULES
+        and not path.startswith(("gui/", "native/", "site/", "site_src/"))
         for path in paths
+    )
+
+
+def queue_runners(
+    paths: list[str], lanes: dict[str, list[str] | str], *, cli: bool
+) -> list[str]:
+    """Keep the queue's broad merge checks to Linux and relevant Windows code."""
+    runtime = cli or queue_windows_required(paths)
+    return [
+        runner
+        for lane, runner in (("ubuntu", "ubuntu-latest"), ("windows", "windows-latest"))
+        if runtime or lanes[lane]
+    ]
+
+
+def ready_optional_tests(paths: list[str], affected: list[str] | str) -> list[str]:
+    return routed_suites(
+        paths, select_tests(paths, known_only=True) if affected == "all" else affected
     )
 
 
@@ -187,7 +208,12 @@ def main() -> None:
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)
     parser.add_argument("--draft", action="store_true")
-    parser.add_argument("--full-suite", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--ready", action="store_true")
+    mode.add_argument("--queue", action="store_true")
+    parser.add_argument(
+        "--certified", nargs="*", choices=(*PLATFORMS, "generic"), default=[]
+    )
     parser.add_argument(
         "--print-tests",
         action="store_true",
@@ -208,14 +234,13 @@ def main() -> None:
     )
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
     selected = routes(paths, draft=args.draft)
-    queue_windows = queue_windows_required(paths)
     affected_tests = select_tests(paths)
-    tests = "all" if args.full_suite else affected_tests
-    moves = None if args.full_suite else select_moves(args.base, args.head)
+    tests = affected_tests
+    moves = None if args.queue else select_moves(args.base, args.head)
     if moves is not None:
         tests = moves.tests
-    if args.full_suite:
-        selected["cli"] = True
+    if args.ready:
+        tests = ready_test_selection(paths, tests)
     if args.print_tests:
         print(tests if isinstance(tests, str) else json.dumps(tests))
         return
@@ -223,11 +248,14 @@ def main() -> None:
     output = "".join(f"{key}={str(value).lower()}\n" for key, value in selected.items())
     output += f"setup_checks={str(setup_checks(paths)).lower()}\n"
     output += "move_modules=" + json.dumps(moves.modules if moves else []) + "\n"
-    output += (
-        "optional_tests="
-        + json.dumps([] if args.draft else routed_suites(paths, affected_tests))
-        + "\n"
-    )
+    optional = []
+    if not args.draft and not args.queue:
+        optional = (
+            ready_optional_tests(paths, affected_tests)
+            if args.ready
+            else routed_suites(paths, affected_tests)
+        )
+    output += f"optional_tests={json.dumps(optional)}\n"
     output += (
         "docs_tests="
         + json.dumps(
@@ -258,11 +286,19 @@ def main() -> None:
         )
         + "\n"
     )
-    for os, targets in os_selection(paths, tests, cli=selected["cli"]).items():
+    lanes = os_selection(paths, tests, cli=selected["cli"])
+    runners = queue_runners(paths, lanes, cli=selected["cli"]) if args.queue else []
+    output += f"queue_runners={json.dumps(runners)}\n"
+    output += f"queue_tests={json.dumps(QUEUE_SMOKE_TESTS if runners else [])}\n"
+    coverage = required_layers(lanes, optional_tools=bool(optional))
+    certified = set(args.certified) if args.ready and moves is None else set()
+    output += f"test_certified={str(coverage <= certified).lower()}\n"
+    output += f"required_layers={json.dumps(sorted(coverage))}\n"
+    for os, targets in lanes.items():
         if moves is not None and targets == []:
             # Import/collection validation still needs a runner when no test imports it.
             targets = list(SMOKE_TESTS)
-        if args.full_suite and os == "windows" and not queue_windows:
+        if args.queue:
             targets = []
         output += (
             f"{os}_tests="

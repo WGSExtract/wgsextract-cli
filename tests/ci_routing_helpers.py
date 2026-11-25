@@ -12,6 +12,7 @@ def run_router(root: Path, base: str, *args: str) -> str:
     scripts = root / "scripts"
     scripts.mkdir(exist_ok=True)
     for name in (
+        "ci_certifications",
         "ci_changes",
         "ci_moves",
         "ci_optional_tools",

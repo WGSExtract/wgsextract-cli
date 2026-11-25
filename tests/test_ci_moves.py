@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -148,7 +149,7 @@ def test_1045_import_only_change_without_a_move_keeps_normal_selection(
 
 
 @pytest.mark.parametrize("docs_only", [True, False])
-def test_1045_queue_runs_full_windows_for_code_but_not_prose(
+def test_1045_queue_smokes_windows_for_code_but_not_prose(
     tmp_path: Path, docs_only: bool
 ) -> None:
     root, base = moved_repository(tmp_path)
@@ -165,10 +166,13 @@ def test_1045_queue_runs_full_windows_for_code_but_not_prose(
         (root / "README.md").write_text("Documentation\n")
     git(root, "add", ".")
     git(root, "commit", "-qm", "queue group")
-    output = run_router(root, base, "--full-suite")
+    output = run_router(root, base, "--queue")
     selected = dict(line.split("=", 1) for line in output.splitlines())
-    assert selected["windows_tests"] == ("[]" if docs_only else "all")
-    assert selected["ubuntu_tests"] == "all"
+    assert selected["windows_tests"] == "[]"
+    assert selected["ubuntu_tests"] == "[]"
+    assert json.loads(selected["queue_runners"]) == (
+        [] if docs_only else ["ubuntu-latest", "windows-latest"]
+    )
     assert selected["move_modules"] == "[]"
 
 

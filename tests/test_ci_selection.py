@@ -16,6 +16,7 @@ from scripts.ci_select_tests import (
     ci_test_targets,
     import_graph,
     os_selection,
+    ready_test_selection,
     select_tests,
 )
 from scripts.ci_test_dependencies import ROOT, docs_test_targets
@@ -70,6 +71,32 @@ def repository(tmp_path: Path, files: dict[str, str]) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     return tmp_path
+
+
+def test_ready_fast_fallback_keeps_affected_nightly_tests_and_safety_tests(
+    tmp_path: Path,
+) -> None:
+    changed = "src/wgsextract_cli/core/changed.py"
+    nightly = "tests/test_contig_calling.py"
+    unaffected = "tests/test_realign_resume.py"
+    security = "tests/test_server_paths.py"
+    recent_failure = "tests/test_result_manifest.py"
+    root = repository(
+        tmp_path,
+        {
+            changed: "VALUE = 1",
+            nightly: "from wgsextract_cli.core.changed import VALUE",
+            unaffected: "import json",
+            security: "import json",
+            recent_failure: "import json",
+        },
+    )
+    assert ready_test_selection(
+        ["pixi.lock", changed], "all", repository=root
+    ) == sorted([nightly, security, recent_failure])
+    assert ready_test_selection([unaffected], [unaffected], repository=root) == [
+        unaffected
+    ]
 
 
 def test_914_single_module_selects_transitive_and_relative_imports(
@@ -450,4 +477,4 @@ def test_923_local_selector_cli_prints_only_diff_selection(tmp_path: Path) -> No
     git("add", ".")
     git("commit", "--quiet", "-m", "prose")
     assert json.loads(run_router(tmp_path, base, "--print-tests")) == []
-    assert run_router(tmp_path, base, "--print-tests", "--full-suite").strip() == "all"
+    assert json.loads(run_router(tmp_path, base, "--print-tests", "--ready")) == []

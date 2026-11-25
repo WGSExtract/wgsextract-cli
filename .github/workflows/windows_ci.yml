@@ -13,6 +13,9 @@ on:
       smoke-only:
         type: boolean
         default: false
+      platform-certified:
+        type: boolean
+        default: false
       setup-checks:
         type: boolean
         default: true
@@ -36,9 +39,22 @@ jobs:
     uses: ./.github/workflows/nightly_guard.yml
     with:
       shard-os: windows
+  imputation-install:
+    # A local certificate can prove the tests, not a first-time locked install.
+    if: inputs.platform-certified && !inputs.smoke-only && contains(inputs.tests, 'tests/test_imputation.py')
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          install: "false"
+      - run: pixi install --locked -e imputation
   test-windows:
     needs: nightly
-    if: ${{ !cancelled() && inputs.tests != '[]' }}
+    if: ${{ !cancelled() && !inputs.platform-certified && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: windows
