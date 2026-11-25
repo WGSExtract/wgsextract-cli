@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, sam_to_bam
 from wgsextract_cli.commands.info import coverage, metrics, render, runner
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -476,7 +477,9 @@ def test_1087_cli_info_no_cache_does_not_create_an_output_folder(
     tiny_bam: Path, tmp_path: Path
 ) -> None:
     config = tmp_path / "config.toml"
-    config.touch()
+    # #1580: this child uses an explicit config and cannot inherit pytest's
+    # in-process state isolation.
+    config.write_text(state_directory_setting(tmp_path), encoding="utf-8")
     # #1506: check a fresh process so test imports don't mask startup costs.
     code = """
 import sys
@@ -505,6 +508,8 @@ assert not (loaded := download_modules & sys.modules.keys()), sorted(loaded)
     )
     assert json.loads(result.stdout)["status"] == "ok"
     assert not (tmp_path / "wgse").exists()
+    record = json.loads((tmp_path / "state" / "last-run.json").read_text("utf-8"))
+    assert record["result"]["command"] == "info"
 
 
 def _stat(name, length, mapped):
