@@ -62,12 +62,17 @@ left out of its key. You can therefore resume with a different `--threads`.
 `vcf chain-annotate` keeps intermediate VCFs on failure and removes them
 after success unless you pass `--keep-intermediates`. Rerun after a failure
 with the same output folder to reuse completed annotations. Use
-`--force-step clinvar` to rerun every ClinVar step and the steps that depend
+`--force-step clinvar` to rerun ClinVar and the steps that depend
 on it, or `--force` (`--restart`) to rerun the chain. With `--region` or
 `--bed`, the chain reads only relevant contigs for steps that can move a
 variant during normalization or compose one from neighboring records. It
 then trims to the requested intervals, so those variants are not lost at
 interval boundaries.
+
+Use `--dry-run` to see which steps would run or be reused, including
+publication and any requested table export. It writes the plan to
+`chain_annotate.plan.manifest.json` without running the steps or changing
+the resume journal or the published outputs.
 
 With `--tmp-dir` or `temp_directory`, a failed `realign` retains completed
 FASTQs in its run workspace. Rerunning the same command reuses those files
@@ -225,7 +230,7 @@ realign plan (sample_hg19_aligned.bam.steps.json):
 The plan is also in the run's [result manifest](result-manifest.md) as
 `details.steps`, along with the metrics `steps_run` and `steps_skipped`.
 Library users see each decision as a `step` progress event (see the
-[API](api.md)).
+[API](https://wgsextract.github.io/wgsextract-cli/api.html)).
 
 ## One run at a time
 

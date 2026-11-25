@@ -1,7 +1,7 @@
 # Running commands
 
 Start with the [README quick start](../README.md#quick-start).
-For every command and its outputs, use the generated [command reference](commands.md).
+For every command and its outputs, use the generated [command reference](https://wgsextract.github.io/wgsextract-cli/commands.html).
 
 ## Finding a command
 
@@ -24,7 +24,7 @@ For agents, navigate **index → command**. `help --all --json` is the compact
 `wgsextract.help-index/1` index: paths, summaries, tiers and key flags.
 `help <command> --json` is `wgsextract.help/1`: typed options, choices,
 defaults, examples and outputs, plus an `input_schema` for commands on the
-[typed API](api.md). Index flags are discovery hints, not complete invocations.
+[typed API](https://wgsextract.github.io/wgsextract-cli/api.html). Index flags are discovery hints, not complete invocations.
 `help --all --json --full` opts into the complete schema dump.
 Fields may be added within a schema version; renaming or removing one requires
 a new version.
@@ -70,7 +70,7 @@ The typed `wgsextract_cli.api` returns a `Result`; migration includes `info`,
 Outputs use the full input stem: `HG002.chr20.bam` produces
 `HG002.chr20_sorted.bam` and `HG002.chr20_coverage.tsv`.
 Use `--outdir`, configured `outdir`, or the `--genome` folder; see
-[configuration](configuration.md) for the default `wgse/` output folder.
+[configuration](https://wgsextract.github.io/wgsextract-cli/configuration.html) for the default `wgse/` output folder.
 Detected sample sex, platform, build and depth are fingerprint-bound facts in
 [`wgsextract.sample.toml`](sample-workspace.md), reused rather than redetected.
 Correct them with, for example, `wgsextract sample set --genome ID --sex Female`.
@@ -222,4 +222,4 @@ The browser opens only after yes or `--open`; `--print` never opens it;
 (`--max-url-length`); log tail, then warnings, settings and tool versions are
 shortened with an omission notice so you can paste from the saved file.
 Review before submitting. Python callers use
-`api.support.build_issue_report(api.ReportIssueParams(...))`; see [API](api.md).
+`api.support.build_issue_report(api.ReportIssueParams(...))`; see [API](https://wgsextract.github.io/wgsextract-cli/api.html).

@@ -269,7 +269,7 @@ _THEN_VARIANTS = (
 )
 
 # The documentation's "start from what you have" paths: generated into
-# docs/commands.md and the site's CLI page. Steps are core or setup commands.
+# the site's command reference and CLI page. Steps are core or setup commands.
 JOURNEYS: tuple[Journey, ...] = (
     Journey(
         "Nothing yet (a first run)",

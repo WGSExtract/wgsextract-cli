@@ -180,6 +180,13 @@ if "%REMOVE_PIXI_CACHE%"=="1" (
     echo Keeping Pixi cache.
 )
 
+if exist "%SCRIPT_DIR%tmp\.managed-help-cache" (
+    call :remove_dir "%SCRIPT_DIR%tmp\cache\cli"
+    if errorlevel 1 exit /b 1
+    del /q "%SCRIPT_DIR%tmp\.managed-help-cache"
+    if exist "%SCRIPT_DIR%tmp\.managed-help-cache" exit /b 1
+)
+
 if "%REMOVE_PIXI%"=="1" (
     rem PIXI_HOME may name any folder, shared with other files: remove it whole
     rem only if it holds nothing but Pixi's own, and otherwise only pixi.exe.

@@ -88,12 +88,29 @@ def main() -> int:
     if wheel is None or sdist is None:
         print(f"Expected a wheel and an sdist in {DIST_DIR}", file=sys.stderr)
         return 1
+    index = "wgsextract_cli/assets/cli/help-index.json"
+    key = "wgsextract_cli/assets/cli/help-index.key"
+    with zipfile.ZipFile(wheel) as wheel_zip, tarfile.open(sdist) as sdist_tar:
+        prefix = sdist.name.removesuffix(".tar.gz")
+        for name in (index, key):
+            source = sdist_tar.extractfile(f"{prefix}/src/{name}")
+            assert source is not None
+            with source:
+                assert source.read() == wheel_zip.read(name)
+        record = json.loads(wheel_zip.read(index))
+        assert record["key"] == wheel_zip.read(key).decode("ascii").strip()
 
     _run([uv, "venv", str(VENV_DIR), "--clear"])
     _run([uv, "pip", "install", "--python", str(_venv_python()), str(wheel)])
     launcher = _wgsextract_launcher()
     _run([str(launcher), "--help"], quiet=True)
     check_openapi(wheel, sdist, launcher)
+    document = json.loads(
+        subprocess.check_output([str(launcher), "help", "--all", "--json"])
+    )
+    assert document == record["index"]
+    assert document["schema"] == "wgsextract.help-index/1"
+    assert any(item["path"] == "vcf snp" for item in document["commands"])
     return 0
 
 

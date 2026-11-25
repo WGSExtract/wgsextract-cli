@@ -138,10 +138,6 @@ def routes(
         )
         # Non-Markdown test inputs still take precedence over area exclusions.
         uncovered = readers - DOCS_TEST_MODULES
-        if path == "scripts/gen_api_docs.py":
-            uncovered.discard("tests/test_api.py")
-        if path == "scripts/gen_config_docs.py":
-            uncovered.discard("tests/test_core_cli.py")
         if uncovered or (path.endswith(".py") and not docs_python):
             result["cli"] = True
         if (
