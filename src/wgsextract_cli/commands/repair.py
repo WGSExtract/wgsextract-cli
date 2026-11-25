@@ -15,8 +15,8 @@ from wgsextract_cli.api._cli import cli_handler
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
 from wgsextract_cli.cli.registration.repair import register as register
+from wgsextract_cli.commands._messages.repair import LOG_MESSAGES
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_location import single_output_path
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.ref_library.assets import input_stem

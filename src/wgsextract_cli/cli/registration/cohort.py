@@ -5,6 +5,14 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.cohort import CohortSummarizeParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    MINUTES,
+    _n,
+)
+
+NEEDS = {
+    "cohort summarize": _n(MINUTES, "bcftools"),
+}
 
 
 def register(

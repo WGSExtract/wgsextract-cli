@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-import tomllib
-
 from wgsextract_cli.core.utils import UsageError
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 _KEYS = {"name", "population"}
 

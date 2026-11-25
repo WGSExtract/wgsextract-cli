@@ -56,6 +56,26 @@ def entries(root) -> list[cli_help.CommandEntry]:
     return cli_help.command_index(root)
 
 
+def test_1537_root_help_does_not_load_command_registration_modules():
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; from wgsextract_cli.main import main\n"
+            "try:\n"
+            "    main(['--help'])\n"
+            "except SystemExit as exc:\n"
+            "    assert exc.code == 0\n"
+            "assert not any(name.startswith('wgsextract_cli.cli.registration.') "
+            "for name in sys.modules)\n",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
 def _usage_error(argv: list[str], capsys) -> str:
     with pytest.raises(SystemExit) as exit_info:
         main(argv)
