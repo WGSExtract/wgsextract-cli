@@ -17,7 +17,7 @@ audit deliberately excludes restricted or unclear third-party data.
 `wgsextract ref library --list` shows every catalog row (one per source) with
 its state in your library: installed (with its `.fai`), unindexed, incomplete
 (a `.partial` download) or missing, and its size on disk. `--json` prints it as
-the result manifest's `details` (fields in [api.md](api.md), `library_list`).
+the result manifest's `details` (fields in [api.md](https://wgsextract.github.io/wgsextract-cli/api.html), `library_list`).
 
 `--remote-sizes` also looks up each genome's download size from its source
 (HTTP `HEAD`, FTP `SIZE`; each network wait times out after 4 s, and the
@@ -164,7 +164,7 @@ counts stay, since the library bootstrap ships them for every catalog genome.
 Only files in the genomes folder itself are deleted; a link there is removed,
 not what it points to. While another run builds its bwa index or dense
 suffix array, the delete is refused. With `--json`, the result's `details`
-lists the deleted paths and the bytes freed (fields in [api.md](api.md),
+lists the deleted paths and the bytes freed (fields in [api.md](https://wgsextract.github.io/wgsextract-cli/api.html),
 `library_delete`).
 
 ## How a copy is made and checked

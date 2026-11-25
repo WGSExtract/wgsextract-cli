@@ -1,7 +1,7 @@
 name: CodeQL
 
-# Advanced setup so Rust (the desktop app's Tauri shell) is scanned; the
-# default setup can't enable it.
+# Advanced setup with per-language scoping. Rust (the desktop app's Tauri shell)
+# is not scanned: owner decision 2026-11-24, ~52 runner-hours/week with no findings.
 
 on:
   push:
@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [python, actions, javascript-typescript, rust]
+        language: [python, actions, javascript-typescript]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -12,6 +12,16 @@ footer_link_text: 'Back home'
 footer_link_href: 'index.html'
 ---
 
+::: section id=cli-references
+::: wrap
+## CLI references
+
+- [Commands](commands.html): options, requirements, outputs and examples.
+- [Python API](api.html): typed parameters, functions and results.
+- [Configuration](configuration.html): `config.toml` settings and defaults.
+:::
+:::
+
 ::: section id=glossary
 ::: wrap
 ::: section-head

@@ -111,7 +111,7 @@ large jobs can take hours and hundreds of gigabytes of working space.
 See [resource estimates](docs/resource_estimates.md) before starting.
 
 Find the next command with `wgsextract help --all` or the
-[command reference](docs/commands.md).
+[command reference](https://wgsextract.github.io/wgsextract-cli/commands.html).
 For scripts and agents, use `wgsextract help --all --json` for the compact
 index, then `wgsextract help <command> --json` for required arguments,
 options, examples and typed input schemas. Key flags in the index are hints,
@@ -126,19 +126,19 @@ See [running commands](docs/usage.md) for option placement, progress and logging
 
 | Task | Guide |
 | :--- | :--- |
-| Choose a workflow or find a command | [Command reference](docs/commands.md), [workflow recipes](https://wgsextract.github.io/wgsextract-cli/workflows.html) |
+| Choose a workflow or find a command | [Command reference](https://wgsextract.github.io/wgsextract-cli/commands.html), [workflow recipes](https://wgsextract.github.io/wgsextract-cli/workflows.html) |
 | Export consumer chips or AADR panels | [Microarray rules and formats](docs/microarray.md), [AADR](docs/aadr.md) |
 | Extract Y/mtDNA or find haplogroups | [Lineage and yBrowse](docs/lineage.md) |
 | Call variants, annotate or type pharmacogenes | [Variant workflows](docs/variants.md), [confidence and accuracy](docs/variant-confidence.md) |
 | Work with Nanopore or PacBio | [Long-read support](docs/ont.md) |
 | Choose hardware and plan disk/RAM | [Hardware and acceleration](docs/hardware.md), [resource estimates](docs/resource_estimates.md) |
-| Configure paths, resources or keep-awake | [Configuration](docs/configuration.md) |
+| Configure paths, resources or keep-awake | [Configuration](https://wgsextract.github.io/wgsextract-cli/configuration.html) |
 | Organise samples or download example genomes | [Dataset library and sample workspace](docs/sample-workspace.md#dataset-library) |
 | Install and verify reference genomes | [Reference genomes](docs/reference-genomes.md) |
 | Resume an interrupted workflow | [Step journals](docs/step-resume.md) |
 | Combine pipeline outputs or MultiQC reports | [Professional pipeline interoperability](docs/interop.md) |
 | Read a local personal report | [Personal report](docs/personal-report.md), [genotype QC](docs/genotype-qc.md) |
-| Integrate from Python, HTTP or MCP | [Typed Python API](docs/api.md), [local server](docs/server.md) |
+| Integrate from Python, HTTP or MCP | [Typed Python API](https://wgsextract.github.io/wgsextract-cli/api.html), [local server](docs/server.md) |
 | Browse every guide | [Documentation index](docs/README.md) |
 
 ## Reporting a problem
