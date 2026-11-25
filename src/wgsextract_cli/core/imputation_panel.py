@@ -331,16 +331,18 @@ def require(chrom: str, reflib: str | None, version: str | None) -> ChromosomePa
     must be from that GLIMPSE2."""
     base = folder(reflib) / chrom
     marker = _marker(base)
-    hint = (
-        f"Install it with 'wgsextract ref imputation --install --chromosomes "
-        f"{chrom}' (about {_PANEL[chrom][0] / 1e9:.1f} GB to download)."
-    )
+    install = f"wgsextract ref imputation --install --chromosomes {chrom}"
     if not installed(chrom, reflib) or marker is None:
-        raise WGSExtractError(f"The {chrom} imputation panel is not installed. {hint}")
+        raise WGSExtractError(
+            f"The {chrom} imputation panel is not installed. Install it with "
+            f"'{install}' (about {_PANEL[chrom][0] / 1e9:.1f} GB to download)."
+        )
     if version is not None and marker.get("glimpse") != version:
         raise WGSExtractError(
             f"The {chrom} imputation panel was prepared with GLIMPSE2 "
-            f"{marker.get('glimpse')}, not the installed {version}. {hint}"
+            f"{marker.get('glimpse')}, not the installed {version}. "
+            f"Run '{install}' with the same --ref (if set) to rebuild from the "
+            "local panel without downloading."
         )
     return ChromosomePanel(
         chrom,
