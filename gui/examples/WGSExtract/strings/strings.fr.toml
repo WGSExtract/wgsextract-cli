@@ -107,8 +107,6 @@
 "sections.microarray.refinements.title" = "Réglages supplémentaires"  # i18n-source-hash:dd769654
 "controls.microarray.microarray-inputs.bam_path.label" = "Entrée BAM/CRAM"  # i18n-source-hash:d5294c18
 "controls.microarray.microarray-inputs.bam_path.tooltip" = "Fichier BAM ou CRAM d’entrée."  # i18n-source-hash:1165be08
-"controls.microarray.microarray-inputs.ref_fasta.label" = "Génome de référence"  # i18n-source-hash:4ff94bd8
-"controls.microarray.microarray-inputs.ref_fasta.tooltip" = "FASTA du génome de référence téléchargé, issu de la bibliothèque de génomes de référence, utilisé pour génotyper le BAM/CRAM."  # i18n-source-hash:41ec5480
 "controls.microarray.microarray-inputs.out_dir.label" = "Répertoire de sortie"  # i18n-source-hash:772dbe47
 "controls.microarray.microarray-inputs.out_dir.tooltip" = "Répertoire où les fichiers de kit microarray générés seront écrits."  # i18n-source-hash:b6d2a02d
 "sections.microarray.microarray-formats.title" = "Générer les formats cibles de puces"  # i18n-source-hash:90fd5cda

@@ -167,7 +167,7 @@ arguments stay strings; do not convert native Windows paths to POSIX spelling.
 
 ### The desktop app
 
-The WGS Extract desktop app is in `gui/`. It has its own toolchain (uv, Node and Rust) and setup; see [gui/docs/developer_setup.md](../gui/docs/developer_setup.md). From the repository root:
+The WGS Extract desktop app is in `gui/`. It has its own toolchain (uv, Node and Rust) and setup; see [gui/devdocs/developer_setup.md](../gui/devdocs/developer_setup.md). From the repository root:
 
 ```bash
 just gui-setup        # install uv, Node and Rust if missing, and the app's locked dependencies

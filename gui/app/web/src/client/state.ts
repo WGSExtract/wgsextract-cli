@@ -70,6 +70,7 @@ export function createInitialState(): WebUIState {
         isSidebarVisible: localStorage.getItem("wgsextractGui.sidebarVisible") !== "false",
         pendingConfirmation: null,
         pendingPrerequisites: null,
+        pendingAlreadyRun: null,
         checkingPrerequisites: false,
         sidebarWidth: Number(localStorage.getItem("wgsextractGui.sidebarWidth")) || 220,
         terminalHeight: Number(localStorage.getItem("wgsextractGui.terminalHeight")) ||

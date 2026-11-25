@@ -15,7 +15,7 @@ from scripts.server_transport_typescript import (
     result_typescript,
     typescript_records,
 )
-from tests.test_server import _serve
+from tests.test_server import Mcp, _serve
 from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.server.http_api import openapi_document
 from wgsextract_cli.server.jobs import Job
@@ -219,6 +219,50 @@ def test_1023_variant_pages_with_acmg_classes_carry_the_research_disclaimer(
             status, body = client.request("GET", f"/variants?path={table}&{query}")
             assert status == 200
             assert "disclaimer" not in body
+
+
+def test_1284_variant_pages_return_in_silico_score_columns(tmp_path: Path) -> None:
+    """Issue 1284: projected scores remain typed, and missing scores stay absent."""
+    table = tmp_path / "sample_variants.tsv"
+    table.write_text(
+        "chrom\tpos\trevel\talphamissense_class\tcadd_phred\tspliceai_max\tgerp\n"
+        "chr1\t100\t0.93\tlikely_pathogenic\t30.0\t0.95\t-1.0\n"
+        "chr1\t200\t\t\t\t\t\n",
+        encoding="utf-8",
+    )
+    columns = [
+        "pos",
+        "revel",
+        "alphamissense_class",
+        "cadd_phred",
+        "spliceai_max",
+        "gerp",
+    ]
+    with _serve(tmp_path, [tmp_path]) as client:
+        status, body = client.request(
+            "GET", f"/variants?path={table}&columns={','.join(columns)}"
+        )
+    assert status == 200
+    validate(body, "VariantPage")
+    expected = [
+        {
+            "pos": 100,
+            "revel": 0.93,
+            "alphamissense_class": "likely_pathogenic",
+            "cadd_phred": 30.0,
+            "spliceai_max": 0.95,
+            "gerp": -1.0,
+        },
+        {"pos": 200},
+    ]
+    assert body["rows"] == expected
+
+    mcp = Mcp("--allow", str(tmp_path))
+    try:
+        result = mcp.call("query_variants", path=str(table), columns=columns)
+        assert result["structuredContent"]["rows"] == expected
+    finally:
+        assert mcp.close() == 0
 
 
 def test_1289_variant_pages_return_read_phase_and_gnomad_columns(

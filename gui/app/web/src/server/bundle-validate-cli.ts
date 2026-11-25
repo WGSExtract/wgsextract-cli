@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Loads each bundle the way the app does and reports whether it is valid: manifest and page rules
- * (docs/schema), setup tool version files, and per-platform script folders. Accepts bundle folders,
+ * (devdocs/schema), setup tool version files, and per-platform script folders. Accepts bundle folders,
  * manifest.json files, and bundle archives. Exits 1 if any bundle is invalid.
  *
  * Usage: bundle-validate-cli.js [--quiet] <bundle>...

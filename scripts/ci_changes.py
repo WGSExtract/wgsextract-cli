@@ -37,6 +37,7 @@ from scripts.ci_test_tiers import QUEUE_SMOKE_TESTS, SINGLE_OS_MODULES  # noqa: 
 SITE_PREFIXES = ("site/", "site_src/", "gui/site_src/", "gui/mockups/")
 SITE_SCRIPTS = (
     "scripts/build_site.py",
+    "scripts/build_docs_html.py",
     "scripts/validate_site_sources.py",
     "scripts/build_mockup_previews.py",
     "gui/scripts/build_site.py",

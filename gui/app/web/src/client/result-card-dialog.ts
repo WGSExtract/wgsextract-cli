@@ -20,7 +20,7 @@ let request = 0;
  * Like the genome viewer it is a sibling of #app, so the app's renders don't reload it. The card
  * is static HTML: its frame is sandboxed without scripts, forms, popups or navigation.
  */
-export async function openResultCard(filePath: string, labels: Labels) {
+export async function openResultCard(filePath: string, labels: Labels, options: { onRerun?: () => void } = {}) {
     const ticket = ++request;
     let card: ResultCard;
     try {
@@ -37,14 +37,14 @@ export async function openResultCard(filePath: string, labels: Labels) {
         return;
     }
     closeResultCard();
-    showCard(card, labels);
+    showCard(card, labels, options.onRerun);
 }
 
 export function closeResultCard() {
     open?.close();
 }
 
-function showCard(card: ResultCard, labels: Labels) {
+function showCard(card: ResultCard, labels: Labels, onRerun?: () => void) {
     const app = document.querySelector<HTMLElement>("#app");
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     // A render while the card is open replaces the opener; this finds its replacement.
@@ -66,10 +66,20 @@ function showCard(card: ResultCard, labels: Labels) {
     source.textContent = formatLabel(labels.resultCardSourceFormat ?? "Shown from %{file}", { file: card.name });
     source.title = card.path;
     heading.append(title, source);
+    const actions = element("div", "result-card-actions");
+    let rerun: HTMLElement | undefined;
+    if (onRerun) {
+        rerun = element("button", "secondary-button compact");
+        rerun.setAttribute("type", "button");
+        rerun.dataset.resultCardRerun = "";
+        rerun.textContent = labels.resultCardRerunTitle ?? "Force Run Again";
+        actions.append(rerun);
+    }
     const close = element("button", "action-button primary compact");
     close.setAttribute("type", "button");
     close.textContent = labels.resultCardCloseTitle ?? "Close";
-    header.append(heading, close);
+    actions.append(close);
+    header.append(heading, actions);
 
     const frame = element("iframe", "result-card-frame");
     frame.title = card.name;
@@ -82,16 +92,34 @@ function showCard(card: ResultCard, labels: Labels) {
     dialog.append(header, frame);
     backdrop.append(dialog);
 
-    // Focus moves between Close and the card's own controls (its Metrics summary), and wraps at
+    const headerButtons = rerun ? [rerun, close] : [close];
+    // Focus moves between header buttons and the card's own controls (its Metrics summary), and wraps at
     // either end; with the card focused, the arrow keys scroll it. Escape closes from both.
     const onKey = (event: KeyboardEvent) => {
         if (event.key === "Escape") {
             event.preventDefault();
             finish();
         }
-        else if (event.key === "Tab" && (event.shiftKey || document.activeElement !== close)) {
-            event.preventDefault();
-            (event.shiftKey ? lastCardStop() ?? frame : close).focus();
+        else if (event.key === "Tab") {
+            const index = headerButtons.indexOf(document.activeElement as HTMLElement);
+            if (event.shiftKey) {
+                if (index > 0) {
+                    event.preventDefault();
+                    headerButtons[index - 1]?.focus();
+                }
+                else {
+                    event.preventDefault();
+                    (lastCardStop() ?? frame).focus();
+                }
+            }
+            else if (index >= 0 && index < headerButtons.length - 1) {
+                event.preventDefault();
+                headerButtons[index + 1]?.focus();
+            }
+            else if (index < 0) {
+                event.preventDefault();
+                headerButtons[0]?.focus();
+            }
         }
     };
     const frameDocument = () => frame.contentDocument;
@@ -111,7 +139,7 @@ function showCard(card: ResultCard, labels: Labels) {
         const atEdge = event.shiftKey ? !active || active === stops[0] || !stops.includes(active as HTMLElement) : active === stops.at(-1) || !stops.includes(active as HTMLElement);
         if (atEdge) {
             event.preventDefault();
-            close.focus();
+            (event.shiftKey ? headerButtons.at(-1) : headerButtons[0])?.focus();
         }
     };
     frame.addEventListener("load", () => frameDocument()?.addEventListener("keydown", onCardKey));
@@ -133,6 +161,10 @@ function showCard(card: ResultCard, labels: Labels) {
         }
     };
     close.addEventListener("click", finish);
+    rerun?.addEventListener("click", () => {
+        finish();
+        onRerun?.();
+    });
     backdrop.addEventListener("click", (event) => {
         if (event.target === backdrop) {
             finish();
