@@ -15,13 +15,18 @@ from ._shared import ref_param, threads_param
 
 @dataclass(frozen=True, kw_only=True)
 class RefAcmgDataParams(_ConfiguredLibrary):
-    """Download the eight sources of ``vcf acmg`` (ClinVar and its protein
-    index, gnomAD v4.1 and its gene constraint, ClinGen, REVEL, SpliceAI,
-    phyloP) and the Ensembl GFF3 from their publishers, check them, and build
-    fastVEP's databases. Shows each source's terms; reruns resume."""
+    """Prepare fastVEP's research ACMG databases, including RepeatMasker and
+    gnomAD region flags, and the Ensembl GFF3. Shows each source's terms;
+    reruns resume. Downloads public sources only with ``--download``."""
 
     COMMAND = "ref acmg-data"
 
+    download: bool = param(
+        False,
+        help="Fetch missing public reference data from the publishers listed in "
+        "the plan; no sample data is sent.",
+        action="store_true",
+    )
     chromosomes: str | None = param(
         None,
         help="Chromosomes for gnomAD, SpliceAI, REVEL and phyloP: chr22, "
@@ -51,8 +56,8 @@ class RefAcmgDataParams(_ConfiguredLibrary):
     )
     dry_run: bool = param(
         False,
-        help="Show the sources, their terms, sizes and the disk needed; "
-        "download nothing.",
+        help="Show the sources and their terms without building. Add --download "
+        "to query publisher servers for size estimates without downloading files.",
         action="store_true",
     )
     threads: int | None = threads_param()

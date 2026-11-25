@@ -1,0 +1,14 @@
+##fileformat=VCFv4.2
+##contig=<ID=chr1,length=248956422>
+##INFO=<ID=AC_joint,Number=A,Type=Integer,Description="ac">
+##INFO=<ID=AN_joint,Number=1,Type=Integer,Description="an">
+##INFO=<ID=AF_joint,Number=A,Type=Float,Description="af">
+##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="hom">
+##INFO=<ID=AC_genomes,Number=A,Type=Integer,Description="not kept">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO
+chr1	1119	.	AC	A	.	PASS	AF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000
+chr1	1120	.	C	G	.	PASS	AF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000
+chr1	1121	.	C	G	.	PASS	AF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000
+chr1	1130	.	A	G	.	PASS	AF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000
+chr1	1150	.	T	A	.	PASS	AF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000;AC_genomes=1
+chr1	1668	.	GA	G	.	PASS	AF_joint=0.3;AC_joint=300000;AN_joint=1000000;nhomalt_joint=50000

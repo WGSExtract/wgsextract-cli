@@ -272,9 +272,19 @@ def print_ref_status(status: dict[str, Any]) -> None:
             if acmg["installed"]
             else f"unusable: {acmg['problem']}"
             if acmg.get("problem")
-            else "not installed ('wgsextract ref acmg-data')"
+            else "not installed ('wgsextract ref acmg-data --download')"
         )
     )
+    if "repeatMasker" in acmg:
+        human_output(
+            "  RepeatMasker (BP3): "
+            + ("built" if acmg["repeatMasker"] else "not built")
+        )
+        tracks = ", ".join(acmg["gnomadRegionTracks"]) or "none"
+        flagged = _chromosome_span(acmg["gnomadRegionFlagChromosomes"])
+        human_output(
+            f"  gnomAD region tracks: {tracks}; flagged library coverage: {flagged}"
+        )
     vep = status["vepCache"]
     versions = ", ".join(vep["versions"]) or "missing"
     human_output(

@@ -23,6 +23,8 @@ from wgsextract_cli.core.utils import (
     WGSExtractError,
 )
 
+from .acmg_regions import REGION_FLAGS, region_name, region_tracks, verified_region_bed
+
 # The sources vcf acmg can read per run, at only the input's sites.
 PER_RUN = ("gnomad", "spliceai")
 # vcf acmg's cache of per-run databases, in the databases folder.
@@ -58,6 +60,14 @@ PHYLOP_DIR = (
     "hg38.100way.phyloP100way/"
 )
 PHYLOP_FILE = "{chrom}.phyloP100way.wigFix.gz"
+REPEATMASKER_URL = (
+    "https://hgdownload.soe.ucsc.edu/goldenPath/hg38/database/rmsk.txt.gz"
+)
+_GNOMAD_RESOURCES = (
+    "https://storage.googleapis.com/gcp-public-data--gnomad/resources/grch38/"
+)
+LCR_URL = _GNOMAD_RESOURCES + "lcr_intervals/LCRFromHengHg38.txt"
+SEGDUP_URL = _GNOMAD_RESOURCES + "seg_dup_intervals/GRCh38_segdups.bed"
 SPLICEAI_URL = (
     "https://ftp.ensembl.org/pub/data_files/homo_sapiens/GRCh38/"
     "variation_plugins/spliceai_scores.raw.snv.ensembl_mane_v1.4.grch38.vcf.gz"
@@ -70,7 +80,7 @@ GNOMAD_KEEP = ",".join(
     for key in (
         "AC_joint", "AN_joint", "AF_joint", "nhomalt_joint", "AC_joint_XY",
         "AN_joint_XY", "faf95_joint", "fafmax_faf95_max_joint", "exomes_filters",
-        "genomes_filters",
+        "genomes_filters", "lcr", "segdup",
         *(f"AF_joint_{group}" for group in (
             "afr", "amr", "asj", "eas", "fin", "mid", "nfe", "remaining", "sas")),
     )
@@ -79,7 +89,7 @@ GNOMAD_KEEP = ",".join(
 
 @dataclass(frozen=True)
 class Source:
-    """One of the eight sources: ``key`` is its ``fastvep sa-build --source``."""
+    """A public source used to construct the ACMG reference library."""
 
     key: str
     label: str
@@ -136,6 +146,14 @@ SOURCES = (
         per_chromosome=True,
         chunk_bits=16,
     ),
+    Source(
+        "repeatmasker",
+        "UCSC RepeatMasker (BP3)",
+        "UCSC hg38 RepeatMasker track: cite UCSC and RepeatMasker; "
+        "see https://genome.ucsc.edu/goldenPath/credits.html for data terms.",
+    ),
+    Source("lcr", "gnomAD low-complexity regions (LCRFromHengHg38)", _GNOMAD_TERMS),
+    Source("segdup", "gnomAD segmental duplications (GRCh38_segdups)", _GNOMAD_TERMS),
 )
 BY_KEY = {source.key: source for source in SOURCES}
 
@@ -151,6 +169,9 @@ def source_url(key: str, chromosome: str = "") -> str:
         "revel": REVEL_URL,
         "spliceai": SPLICEAI_URL,
         "phylop": PHYLOP_DIR + PHYLOP_FILE,
+        "repeatmasker": REPEATMASKER_URL,
+        "lcr": LCR_URL,
+        "segdup": SEGDUP_URL,
     }[key]
     return url.format(chrom=chromosome or "{chrom}")
 
@@ -167,11 +188,15 @@ _DB_BYTES = {
     "clinvar_protein": 21e6,
     "gnomad_genes": 2e6,
     "omim": 1e6,
+    "repeatmasker": 16e6,
+    "lcr": 15e6,
+    "segdup": 1e6,
 }
 # Staging bytes a per-chromosome build holds at its peak: gnomAD's reduced VCF
 # per byte streamed, the SpliceAI cut and the REVEL rows per megabase.
-_TEMP_PER_SOURCE_BYTE = {"gnomad": 0.03}
+_TEMP_PER_SOURCE_BYTE = {"gnomad": 0.09}
 _TEMP_PER_MB = {"spliceai": 9.4e6, "revel": 2.1e6}
+_TEMP_BYTES = {"repeatmasker": 25_000_000, "lcr": 65_000_000, "segdup": 1_000_000}
 
 
 def fastvep_version() -> str:
@@ -269,7 +294,13 @@ def installed(sa_dir: str | Path) -> dict[str, Any]:
         by_source[entry["source"]].add(entry.get("chromosome") or "")
     gff3 = str((manifest.get("gff3") or {}).get("file") or "")
     site_data = site_data_of(manifest)
-    built = [s for s in SOURCES if site_data == "library" or s.key not in PER_RUN]
+    regions = region_tracks(Path(sa_dir), manifest)
+    built = [
+        s
+        for s in SOURCES
+        if s.key not in ("repeatmasker", *REGION_FLAGS)
+        and (site_data == "library" or s.key not in PER_RUN)
+    ]
     per_chromosome = [s.key for s in built if s.per_chromosome]
     return {
         "installed": bool(
@@ -285,6 +316,17 @@ def installed(sa_dir: str | Path) -> dict[str, Any]:
             key: entry.get("release", "")
             for key, entry in (manifest.get("sources") or {}).items()
         },
+        "repeatMasker": bool(by_source["repeatmasker"]),
+        "gnomadRegionTracks": sorted(regions),
+        "gnomadRegionFlagChromosomes": [
+            c
+            for c in CHROMOSOMES
+            if c in by_source["gnomad"]
+            and all(
+                flag in manifest["databases"][f"gnomad_{c}"].get("region_tracks", {})
+                for flag in REGION_FLAGS
+            )
+        ],
     }
 
 
@@ -299,6 +341,7 @@ class Step:
     stream: int | None = 0  # bytes read and not kept (gnomAD)
     database: int = 0
     temp: int = 0
+    repair_index: bool = False
 
 
 @dataclass
@@ -359,7 +402,7 @@ def make_plan(
     spliceai: Path | None,
     *,
     site_data: str | None = None,
-    probe: bool = True,
+    probe: bool = False,
 ) -> Plan:
     """What a build of ``chromosomes`` still has to do; ``probe`` asks the
     servers for download sizes. ``site_data`` per-run leaves gnomAD and
@@ -376,6 +419,14 @@ def make_plan(
         site_data or site_data_of(manifest),
     )
     built = _built(plan.sa_dir, manifest)
+    regions = region_tracks(plan.sa_dir, manifest)
+    repair = {
+        flag: digest
+        for flag in REGION_FLAGS
+        if flag not in regions
+        and (digest := verified_region_bed(plan.sa_dir, manifest, flag))
+    }
+    rebuild_regions = regions | repair
 
     def size(url: str) -> int | None:
         return _remote_size(url) if probe else None
@@ -396,8 +447,21 @@ def make_plan(
         if plan.site_data == "per-run" and source.key in PER_RUN:
             continue
         if not source.per_chromosome:
-            if source.key in built:
+            if source.key in built and (
+                source.key not in REGION_FLAGS or source.key in regions
+            ):
                 plan.done.append(source.key)
+            elif source.key in repair:
+                # Only a staged replacement index, not a new mask or joint VCF.
+                plan.steps.append(
+                    Step(
+                        source.key,
+                        source.key,
+                        database=1_000_000,
+                        temp=(plan.sa_dir / region_name(source.key)).stat().st_size,
+                        repair_index=True,
+                    )
+                )
             else:
                 plan.steps.append(
                     Step(
@@ -405,12 +469,20 @@ def make_plan(
                         source.key,
                         download=size(source_url(source.key)),
                         database=int(_DB_BYTES[source.key]),
+                        temp=_TEMP_BYTES.get(source.key, 0),
                     )
                 )
             continue
         for chrom in chromosomes:
             name = f"{source.key}_{chrom}"
-            if name in built:
+            if name in built and (
+                source.key != "gnomad"
+                or (
+                    len(rebuild_regions) == len(REGION_FLAGS)
+                    and manifest["databases"][name].get("region_tracks")
+                    == rebuild_regions
+                )
+            ):
                 plan.done.append(name)
                 continue
             step = Step(name, source.key, chrom)
