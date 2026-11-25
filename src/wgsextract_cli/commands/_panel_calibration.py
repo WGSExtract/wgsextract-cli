@@ -13,12 +13,14 @@ from wgsextract_cli.core import exon_callability as ec
 from wgsextract_cli.core import panel_audit as audit
 from wgsextract_cli.core import panel_calibration as calibration
 from wgsextract_cli.core.lookup.genotypes import VcfSource
+from wgsextract_cli.core.lookup.identifiers import contig_key
 from wgsextract_cli.core.panel_reference import (
     EXPECTED_SHA256,
     expected_syn,
     mane_model,
 )
 from wgsextract_cli.core.reference_evidence import ReferenceEvidence
+from wgsextract_cli.core.region_selection import selected_intervals
 from wgsextract_cli.core.results import current_result, warn
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.variant_confidence import Thresholds
@@ -32,6 +34,27 @@ def requests_calibration(params: PanelAuditParams, spec: Mapping[str, Any]) -> b
         or params.download
         or params.gnomad_expected
     )
+
+
+def _require_complete_calls(source: VcfSource, sex: str | None) -> None:
+    region = source.provenance.region if source.provenance else None
+    if not region:
+        return
+    eligible = {str(i) for i in range(1, 23)}
+    if sex in {"F", "M", "XX", "XY"}:
+        eligible.add("X")
+    chromosomes = {c: n for c, n in source.lengths.items() if contig_key(c) in eligible}
+    try:
+        assessed = selected_intervals(region, source.lengths, commas=True, files=False)
+    except ValueError:
+        assessed = {}
+    if not chromosomes or any(
+        assessed.get(chrom) != [(0, length)] for chrom, length in chromosomes.items()
+    ):
+        raise UsageError(
+            "Null calibration needs a whole-genome variant call set, but the VCF "
+            f"records calling region {region!r}. Use --no-calibration."
+        )
 
 
 @dataclass
@@ -201,11 +224,11 @@ def prepare(
         )
     if not groups:
         raise UsageError("Null calibration needs at least one gene group.")
-    if source.provenance and source.provenance.region:
-        raise UsageError(
-            "Null calibration needs a whole-genome variant call set, but the VCF "
-            f"records calling region {source.provenance.region!r}. Use --no-calibration."
-        )
+    provenance = (
+        evidence.provenance if evidence and evidence.provenance else source.provenance
+    )
+    sex = provenance.sex if provenance else None
+    _require_complete_calls(source, sex)
     model_path = params.exons or mane_model(params.ref)
     current_result().add_input(model_path, "calibration_exon_model")
     expected_by_transcript: dict[str, float] | None = None
@@ -226,15 +249,12 @@ def prepare(
             "panel_calibration_nominal_cds",
             "No gVCF is available; null matching uses model CDS length, not measured callability.",
         )
-    provenance = (
-        evidence.provenance if evidence and evidence.provenance else source.provenance
-    )
     opportunities, excluded = calibration.opportunities(
         model,
         names,
         evidence,
         thresholds,
-        sex=provenance.sex if provenance else None,
+        sex=sex,
     )
     filters: dict[str, Mapping[str, Any]] = {}
     filter_keys = {}
