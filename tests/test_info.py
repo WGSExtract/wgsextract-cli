@@ -10,8 +10,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import needs_tools, sam_to_bam
-from wgsextract_cli.commands.info import cache as info_cache
 from wgsextract_cli.commands.info import coverage, metrics, render, runner
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.results import CommandResult, collecting
@@ -92,9 +92,7 @@ def test_info_fast_mode(info_env):
     assert "Avg Read Length             150 bp" in output
     assert "Avg Insert Size             300 bp" in output
     assert "Sequencer                   Illumina NS 6000 (Dante)" in output
-    cache = json.loads(
-        (sample.parent / "manifests" / f"{sample.name}.wgse_info.json").read_text()
-    )
+    cache = json.loads(next(sample.parent.glob("manifests/*.json")).read_text())
     assert cache["input_signature"]["size"] == sample.stat().st_size
 
 
@@ -183,15 +181,13 @@ def test_1215_info_recomputes_metrics_for_same_size_and_mtime_bam(tmp_path):
 
 
 def test_1215_cached_info_returns_no_metrics_for_a_missing_input(tmp_path):
-    assert info_cache.cached_info(str(tmp_path / "missing.bam")) is None
+    assert metrics.cached_info(str(tmp_path / "missing.bam")) is None
 
 
 @pytest.mark.parametrize("payload", ['{"filename": "x", "avg_read_len": 99}', "{bad"])
 def test_info_legacy_or_corrupt_cache_is_recomputed(info_env, payload):
     sample, calls = info_env
-    cache_path = sample.parent / "manifests" / f"{sample.name}.wgse_info.json"
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(payload)
+    Path(str(sample) + ".wgse_info.json").write_text(payload)  # where it used to be
 
     output = _run_info(sample, "info")
 
@@ -199,18 +195,13 @@ def test_info_legacy_or_corrupt_cache_is_recomputed(info_env, payload):
     assert "Avg Read Length             150 bp" in output
 
 
-def test_info_reuses_a_cache_an_earlier_release_wrote_beside_the_input(info_env):
-    """PR #1581 review: without --outdir, only the new WGSEv6/manifests/ was
-    searched, so an earlier release's cache beside the input was ignored."""
+def test_1581_review_info_reads_an_older_cache_beside_its_input(info_env):
     sample, calls = info_env
     _run_info(sample, "info")
-    cache = sample.parent / "manifests" / f"{sample.name}.wgse_info.json"
+    cache = next(sample.parent.glob("manifests/*.wgse_info.json"))
     cache.rename(sample.parent / cache.name)
-
-    output = _run_cli("info", "--input", str(sample))
-
-    assert calls["run_body_sample"] == 1
-    assert "Avg Read Length             150 bp" in output
+    output = _run_cli("info", "--input", str(sample))  # no --outdir
+    assert calls["run_body_sample"] == 1 and "Avg Read Length    " in output
 
 
 def test_cached_reference_from_older_detection_is_recomputed(info_env):
@@ -492,12 +483,26 @@ def test_coverage_commands_against_real_samtools(tiny_bam, tmp_path):
 
 
 def test_1087_cli_info_no_cache_does_not_create_an_output_folder(
-    tiny_bam, tmp_path, capsys
-):
+    tiny_bam: Path, tmp_path: Path
+) -> None:
     config = tmp_path / "config.toml"
-    config.write_text("")
-    main(
+    # #1580: this child uses an explicit config and cannot inherit pytest's
+    # in-process state isolation.
+    config.write_text(state_directory_setting(tmp_path), encoding="utf-8")
+    # #1506: check a fresh process so test imports don't mask startup costs.
+    code = """
+import sys
+from wgsextract_cli.main import main
+
+main(sys.argv[1:])
+download_modules = {"urllib.request", "wgsextract_cli.core.ref_library.downloads"}
+assert not (loaded := download_modules & sys.modules.keys()), sorted(loaded)
+"""
+    result = subprocess.run(
         [
+            sys.executable,
+            "-c",
+            code,
             "--config",
             str(config),
             "--json",
@@ -505,11 +510,15 @@ def test_1087_cli_info_no_cache_does_not_create_an_output_folder(
             "--input",
             str(tiny_bam),
             "--no-cache",
-        ]
+        ],
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
     )
-    result = json.loads(capsys.readouterr().out)
-    assert result["status"] == "ok"
+    assert json.loads(result.stdout)["status"] == "ok"
     assert not (tmp_path / "WGSEv6").exists()
+    record = json.loads((tmp_path / "state" / "last-run.json").read_text("utf-8"))
+    assert record["result"]["command"] == "info"
 
 
 def _stat(name, length, mapped):

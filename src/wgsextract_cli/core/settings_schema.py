@@ -17,6 +17,7 @@ from types import MappingProxyType
 from typing import Any, Final, Literal, cast, get_type_hints
 
 from wgsextract_cli.core.paths import expand_path
+from wgsextract_cli.core.thread_count import parse_thread_count
 
 Kind = Literal["bool", "int", "float", "str", "paths", "table", "threads"]
 
@@ -603,8 +604,6 @@ class SettingField:
         elif kind == "threads":
             ok = type(value) is int or isinstance(value, str)
             if ok:
-                from wgsextract_cli.core.resource_policy import parse_thread_count
-
                 try:
                     parse_thread_count(value)
                 except ValueError:
@@ -690,6 +689,10 @@ def _schema(cls: type) -> Mapping[str, SettingField]:
 SETTINGS: Final = _schema(Settings)
 DEV_SETTINGS: Final = _schema(DevSettings)
 SERVER_SETTINGS: Final = _schema(ServerSettings)
+PATH_SETTINGS = frozenset(name for name, item in SETTINGS.items() if item.info.path)
+DEV_PATH_SETTINGS = frozenset(
+    name for name, item in DEV_SETTINGS.items() if item.info.path
+)
 DEV_TABLE: Final = "dev"
 # Dev settings were top-level keys before the [dev] table; name the new place.
 MOVED_TO_DEV: Final = MappingProxyType(

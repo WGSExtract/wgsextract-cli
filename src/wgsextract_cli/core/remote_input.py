@@ -12,21 +12,16 @@ the URL's path names the file's format.
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import re
 import uuid
 from dataclasses import dataclass
 from functools import lru_cache
-from http.client import HTTPException
 from os import fspath
 from pathlib import Path
 from typing import BinaryIO
-from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
-from urllib.request import Request, urlopen
 
-from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
@@ -103,6 +98,11 @@ class RemoteFile:
 
 def remote_file(url: str) -> RemoteFile:
     """The remote file's size and fingerprint, from an HTTP HEAD request."""
+    import hashlib
+    from http.client import HTTPException
+    from urllib.error import URLError
+    from urllib.request import Request, urlopen
+
     try:
         with urlopen(Request(url, method="HEAD"), timeout=_TIMEOUT) as response:
             headers = response.headers
@@ -145,6 +145,12 @@ def fetch_index(url: str, directory: PathInput) -> str | None:
     """Download the remote alignment's index (``URL.crai``, ``.bai`` or
     ``.csi``) into ``directory``; None when the server has none (404, or
     S3's 403). Other failures raise: a rerun can still use the index."""
+    from http.client import HTTPException
+    from urllib.error import HTTPError, URLError
+    from urllib.request import urlopen
+
+    from wgsextract_cli.core.atomic_output import atomic_write
+
     for local in index_files(url, directory):
         address = url + local.name.removeprefix("." + Path(urlsplit(url).path).name)
         try:
@@ -176,6 +182,10 @@ def copy_range(path: str, start: int, end: int | None, output: BinaryIO) -> None
         if end is not None and copied != end - start:
             raise WGSExtractError(f"{path} ended {end - start - copied} bytes early.")
         return
+    from http.client import HTTPException
+    from urllib.error import URLError
+    from urllib.request import Request, urlopen
+
     span = f"bytes={start}-{'' if end is None else end - 1}"
     try:
         with urlopen(

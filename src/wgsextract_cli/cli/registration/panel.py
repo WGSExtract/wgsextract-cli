@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 
 from wgsextract_cli.api._cli import add_arguments
-from wgsextract_cli.api.panel import PanelBedParams, PanelCheckParams
+from wgsextract_cli.api.panel import PanelAuditParams, PanelBedParams, PanelCheckParams
 from wgsextract_cli.cli._lazy import command_handler
 from wgsextract_cli.commands._command_needs import (
     INSTANT,
+    SECONDS,
     _n,
 )
 from wgsextract_cli.commands._messages.panel import CLI_HELP
@@ -14,6 +15,7 @@ from wgsextract_cli.commands._messages.panel import CLI_HELP
 NEEDS = {
     "panel bed": _n(INSTANT),
     "panel check": _n(INSTANT),
+    "panel audit": _n(SECONDS, "bcftools"),
 }
 
 
@@ -47,5 +49,17 @@ def register(
     sub.set_defaults(
         func=command_handler(
             "wgsextract_cli.commands._panel_check", "run_panel_check", PanelCheckParams
+        )
+    )
+    sub = subs.add_parser(
+        "audit",
+        parents=[base_parser],
+        help=CLI_HELP["cmd_panel-audit"],
+        description=CLI_HELP["cmd_panel-audit"],
+    )
+    add_arguments(sub, PanelAuditParams)
+    sub.set_defaults(
+        func=command_handler(
+            "wgsextract_cli.commands._panel_audit", "run_panel_audit", PanelAuditParams
         )
     )

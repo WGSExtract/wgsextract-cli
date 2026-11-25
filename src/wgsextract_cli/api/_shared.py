@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from wgsextract_cli.core.resource_policy import parse_thread_count
 from wgsextract_cli.core.steps import (
     DRY_RUN_HELP,
     RESTART_HELP,
@@ -12,6 +11,7 @@ from wgsextract_cli.core.steps import (
     force_step_help,
 )
 from wgsextract_cli.core.table_writer import FORMATS, table_format_type
+from wgsextract_cli.core.thread_count import parse_thread_count
 
 from ._params import param
 

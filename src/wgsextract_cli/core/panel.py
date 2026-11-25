@@ -137,7 +137,7 @@ class GeneMatch:
     suggestions: tuple[str, ...] = ()  # close symbols of an unknown name
 
 
-def match_gene(name: str, notes: Annotations) -> GeneMatch:
+def match_gene(name: str, notes: Annotations, *, suggest: bool = True) -> GeneMatch:
     key = name.upper()
     if key in notes.loci:
         return GeneMatch(name, key, "symbol")
@@ -149,6 +149,8 @@ def match_gene(name: str, notes: Annotations) -> GeneMatch:
         return GeneMatch(name, candidates[0].upper(), "alias")
     if candidates:
         return GeneMatch(name, None, "ambiguous", candidates)
+    if not suggest:
+        return GeneMatch(name, None, "unknown")
     close = difflib.get_close_matches(key, notes.loci, n=3, cutoff=0.8)
     close += sorted(s for s in notes.loci if s.startswith(key + "-"))[:5]
     return GeneMatch(

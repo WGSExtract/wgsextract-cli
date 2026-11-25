@@ -544,6 +544,25 @@ def variant_rows(
     sample doesn't carry (0/0 calls, the other ALT of a 0/1 multi-allelic
     site, no-calls) are left out.
     """
+    for row, _, _, _ in indexed_variant_rows(
+        records,
+        header,
+        sample_index=sample_index,
+        carried_only=carried_only,
+        pharmcat=pharmcat,
+    ):
+        yield row
+
+
+def indexed_variant_rows(
+    records: Iterable[str],
+    header: VcfHeader,
+    *,
+    sample_index: int | None = 0,
+    carried_only: bool = True,
+    pharmcat: Mapping[str, tuple[str, str]] | None = None,
+) -> Iterator[tuple[Row, int, int, str | None]]:
+    """Rows with record ordinal, 1-based ALT index and split provenance."""
     numbers = header.info_number
     csq_names = header.csq_fields or []
     ann_names = header.ann_fields or []
@@ -552,7 +571,7 @@ def variant_rows(
     pipe_formats = {**scores.PIPE_FORMATS, **header.info_formats}
     unscored = (None,) * len(scores.SCORE_COLUMNS)
     pharmcat = pharmcat or {}
-    for line in records:
+    for record_index, line in enumerate(records):
         fields = line.rstrip("\r\n").split("\t")
         if len(fields) < 8:
             continue
@@ -658,7 +677,7 @@ def variant_rows(
             }
             clinical["CLNSIG"] = clnsig
             review = ce.review_evidence(clinical)
-            yield (
+            row: Row = (
                 chrom,
                 pos,
                 ref,
@@ -741,3 +760,4 @@ def variant_rows(
                     else unscored
                 ),
             )
+            yield row, record_index, alt_index, info.get(SPLIT_TAG) if split else None
