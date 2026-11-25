@@ -25,7 +25,8 @@ from wgsextract_cli.core.paths import PathInput, absolute_path, expand_path
 OUTPUT_FOLDER = "WGSEv6"
 # Folders this tool made, compared case-insensitively: ``wgse`` is the name
 # releases up to v0.8.8 used, so their outputs don't get a nested ``WGSEv6/``.
-_OUTPUT_FOLDERS = frozenset({OUTPUT_FOLDER.lower(), "wgse"})
+LEGACY_OUTPUT_FOLDER = "wgse"
+_OUTPUT_FOLDERS = frozenset({OUTPUT_FOLDER.lower(), LEGACY_OUTPUT_FOLDER})
 # Commands whose outputs belong beside the files they describe, as an index
 # does: a checksum manifest (and its signature) lists the files around it.
 BESIDE_INPUT_COMMANDS = frozenset({"sign create"})

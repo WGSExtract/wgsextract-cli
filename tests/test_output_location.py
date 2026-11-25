@@ -157,3 +157,32 @@ def test_bam_index_keeps_lab_folder_free_of_manifests_and_info_json(tmp_path):
         "sample.bam.bai",
     ]
     assert (lab / "WGSEv6" / "manifests" / "sample.bam.wgse_info.json").is_file()
+
+
+@pytest.mark.parametrize("folder", ["", "wgse"])
+def test_1581_review_info_reuses_an_older_releases_cache(tmp_path, folder):
+    """PR #1581 review: without --outdir, `info` looked only in
+    WGSEv6/manifests/ and redid what an earlier release had cached beside the
+    input or in its wgse/ folder."""
+    import json
+    import shutil
+
+    from tests.htslib_helpers import sam_to_bam
+    from wgsextract_cli import api
+    from wgsextract_cli.api import InfoParams
+
+    if not shutil.which("samtools"):
+        pytest.skip("samtools not found in PATH")
+    lab = tmp_path / "lab"
+    lab.mkdir()
+    read = f"r1\t0\tchr1\t10\t60\t50M\t*\t0\t0\t{'A' * 50}\t{'I' * 50}"
+    bam = sam_to_bam(["@SQ\tSN:chr1\tLN:500", read], lab / "sample.bam")
+    api.info.info(InfoParams(input=bam))
+    cache = lab / "WGSEv6" / "manifests" / "sample.bam.wgse_info.json"
+    data = json.loads(cache.read_text())
+    data["avg_read_len"] = 77  # only the old cache says so
+    cache.unlink()
+    (lab / folder).mkdir(exist_ok=True)
+    (lab / folder / cache.name).write_text(json.dumps(data))
+
+    assert api.info.info(InfoParams(input=bam)).metrics["avg_read_len"] == 77

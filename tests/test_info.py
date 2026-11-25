@@ -195,15 +195,6 @@ def test_info_legacy_or_corrupt_cache_is_recomputed(info_env, payload):
     assert "Avg Read Length             150 bp" in output
 
 
-def test_1581_review_info_reads_an_older_cache_beside_its_input(info_env):
-    sample, calls = info_env
-    _run_info(sample, "info")
-    cache = next(sample.parent.glob("manifests/*.wgse_info.json"))
-    cache.rename(sample.parent / cache.name)
-    output = _run_cli("info", "--input", str(sample))  # no --outdir
-    assert calls["run_body_sample"] == 1 and "Avg Read Length    " in output
-
-
 def test_cached_reference_from_older_detection_is_recomputed(info_env):
     # #77: a cache whose read metrics are valid but whose reference
     # classification came from older, wrong detection.

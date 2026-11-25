@@ -9,7 +9,7 @@
   lab's own folder: `bam index` still writes its `.bai` beside the BAM, but
   its manifest goes to `WGSEv6/manifests/`. `info` without `--outdir` caches
   its results there too, instead of beside the input. Manifests and caches
-  written beside files by earlier releases are still read
+  that earlier releases wrote beside files or in `wgse/` are still read
   ([#1581](https://github.com/WGSExtract/wgsextract-cli/pull/1581)).
 
 ## Fixes

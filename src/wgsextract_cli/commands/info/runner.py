@@ -51,7 +51,7 @@ from ._reporting import reference_model_name as reference_model_name
 from ._tables import CHROMOSOME_TABLE as CHROMOSOME_TABLE
 from ._tables import QC_TABLE as QC_TABLE
 from ._tables import _export_tables
-from .cache import info_cache_path, input_signature
+from .cache import info_cache_path, input_signature, legacy_cache_folders
 from .metrics import (
     DEPTH_COUNTED,
     DEPTH_SAMPLED,
@@ -568,9 +568,9 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     signature = input_signature(input_file)
     cache = cache and signature is not None
     data = _load_cache(json_cache, signature)
-    # Earlier releases cached beside the output folder's files, or beside the
-    # input when there was no --outdir.
-    for folder in (outdir, str(absolute_path(input_file).parent)):
+    # Earlier releases cached beside the output folder's files, or, without
+    # --outdir, beside the input or in the wgse/ folder beside it.
+    for folder in (outdir, *legacy_cache_folders(input_file)):
         if data:
             break
         data = _load_cache(

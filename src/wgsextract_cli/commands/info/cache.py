@@ -9,6 +9,7 @@ from typing import Any
 
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.config import output_directory
+from wgsextract_cli.core.output_location import LEGACY_OUTPUT_FOLDER
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import fingerprint, manifest_dir_for
 from wgsextract_cli.core.variant_files import calculate_bam_md5
@@ -45,6 +46,13 @@ def info_cache_path(
     return manifest_dir_for(outdir) / f"{Path(input_path).name}.wgse_info.json"
 
 
+def legacy_cache_folders(input_path: str | os.PathLike[str]) -> list[str]:
+    """Where earlier releases cached ``info``'s metrics without --outdir:
+    beside the input, and in the ``wgse/`` output folder beside it."""
+    parent = absolute_path(input_path).parent
+    return [str(parent), str(parent / LEGACY_OUTPUT_FOLDER)]
+
+
 def cached_info(
     input_path: str, outdir: str | None = None, key: str = "gender"
 ) -> dict[str, Any] | None:
@@ -60,7 +68,7 @@ def cached_info(
         for folder in (
             outdir,
             output_directory([input_path]),
-            str(absolute_path(input_path).parent),
+            *legacy_cache_folders(input_path),
         )
         if folder
     ]
