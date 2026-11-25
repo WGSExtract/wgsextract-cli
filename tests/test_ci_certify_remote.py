@@ -394,24 +394,50 @@ def test_972_disconnect_reaps_remote_test_children(tmp_path: Path) -> None:
         "print(child.pid, flush=True); time.sleep(300)"
     )
     run_id = "a" * 32
+    env = {**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path)}
+    supervisor = [sys.executable, "-u", "-c", SUPERVISOR]
+
+    def request(identifier: str, script: str) -> str:
+        return json.dumps({"id": identifier, "script": script}) + "\n"
+
     with subprocess.Popen(
-        [sys.executable, "-u", "-c", SUPERVISOR],
-        env={**os.environ, "HOME": str(tmp_path), "USERPROFILE": str(tmp_path)},
+        supervisor,
+        env=env,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     ) as process:
         assert process.stdin is not None and process.stdout is not None
-        process.stdin.write(json.dumps({"id": run_id, "script": child_script}) + "\n")
+        process.stdin.write(request(run_id, child_script))
         process.stdin.flush()
         pid = int(process.stdout.readline())
+        retry = subprocess.run(
+            supervisor,
+            env=env,
+            input=request("b" * 32, "print('retry bootstrapped')"),
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        assert retry.returncode == 2
+        assert "Another remote certification" in retry.stdout
+        assert "retry bootstrapped" not in retry.stdout
         process.stdin.close()
         assert process.wait(timeout=15) == 2
         output = process.stdout.read()
     assert "disconnected" in output
     control = tmp_path / "src/wgsextract-cli/out/certify/remote-control"
     assert (control / (run_id + ".done")).is_file()
+    with subprocess.Popen(
+        supervisor, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
+    ) as retry_process:
+        assert retry_process.stdin is not None and retry_process.stdout is not None
+        retry_process.stdin.write(request("c" * 32, "print('retry bootstrapped')"))
+        retry_process.stdin.flush()
+        assert retry_process.stdout.readline().strip() == "retry bootstrapped"
+        assert retry_process.wait(timeout=15) == 0
     if sys.platform == "win32":
         rows = subprocess.check_output(
             ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], text=True
