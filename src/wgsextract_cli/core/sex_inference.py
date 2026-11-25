@@ -171,6 +171,8 @@ def sampled_read_density(
                 "samtools",
                 "bedcov",
                 "-c",
+                # Aligned bases only: deletions and skips would widen breadth
+                "-j",
                 "-d",
                 "1",
                 "-Q",
