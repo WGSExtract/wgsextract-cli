@@ -278,6 +278,7 @@ def annotate_vcf(
     compose_thresholds: Thresholds | None = None,
     annotation_source: str | None = None,
     keep_existing: bool = False,
+    mark_matches: str | None = None,
 ) -> str:
     """Refresh imported INFO fields, except when merging passes of one annotator.
 
@@ -295,6 +296,9 @@ def annotate_vcf(
         dir=scratch_parent(outdir), prefix=".wgse_annotate_"
     ) as work:
         cmd = ["bcftools", "annotate", "-a", annotation, "-c", columns]
+        if mark_matches:
+            cmd += ["--mark-sites", f"+{mark_matches}"]
+            remove = (*remove, f"INFO/{mark_matches}")
         # No resource value can apply to gVCF reference blocks, and looking up
         # every resource line under their END spans makes whole genomes ~25x
         # slower; pass those records through untouched.
