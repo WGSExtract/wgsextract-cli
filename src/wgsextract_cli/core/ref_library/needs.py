@@ -59,6 +59,10 @@ VCF_GENOME_COMMANDS = frozenset(
     }
 )
 
+# Commands that take both a BAM/CRAM ``--input`` and a separate ``--vcf-input``
+# rather than reading a VCF in place of ``--input``.
+ALIGNMENT_AND_VCF_COMMANDS = frozenset({"info gene"})
+
 # Commands whose --input is a BAM/CRAM they read only the header or index of,
 # or not at all, so a CRAM's reference isn't needed.
 HEADER_ONLY_COMMANDS = frozenset(
@@ -133,7 +137,10 @@ def missing_references(args: argparse.Namespace) -> list[MissingReference]:
     """What the parsed command line ``args`` needs and the library lacks."""
     command = str(getattr(args, "_command", "") or "")
     needs = (genome_need(command, args), annotation_need(command, args))
-    return [need.missing for need in needs if need and need.missing]
+    missing = [need.missing for need in needs if need and need.missing]
+    if models := gene_models_need(command, args):
+        missing.append(models)
+    return missing
 
 
 @dataclass(frozen=True)
@@ -202,7 +209,11 @@ def _needs_genome(command: str, args: argparse.Namespace, input_path: str) -> st
 def reads_vcf(command: str, args: argparse.Namespace) -> bool:
     """Whether ``command`` reads a VCF rather than its BAM/CRAM ``--input``:
     a VCF command (it has --vcf-input) that doesn't call variants."""
-    return hasattr(args, "vcf_input") and command not in GENOME_COMMANDS
+    return (
+        hasattr(args, "vcf_input")
+        and command not in GENOME_COMMANDS
+        and command not in ALIGNMENT_AND_VCF_COMMANDS
+    )
 
 
 def selected_vcf(args: argparse.Namespace) -> str | None:
@@ -541,4 +552,52 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
             reason=command,
             install_arguments=install,
         ),
+    )
+
+
+def gene_models_need(command: str, args: argparse.Namespace) -> MissingReference | None:
+    """The RefSeq transcript and exon models ``info gene`` reads for hg19/hg38,
+    installed by ``wgsextract ref gene-map``, when the library lacks them."""
+    if command != "info gene":
+        return None
+    from wgsextract_cli.core.alignment.metadata import get_bam_header
+    from wgsextract_cli.core.builds import build_from_chr1_length
+    from wgsextract_cli.core.gene_models import transcripts_path
+    from wgsextract_cli.core.gene_summary import TRANSCRIPT_BUILDS
+    from wgsextract_cli.core.ref_library.models import sequence_lengths
+    from wgsextract_cli.core.ref_library.resolver import library_roots
+
+    inputs = [
+        path
+        for path in (_given_path(args, "input"), _given_path(args, "vcf_input"))
+        if path
+    ]
+    builds: set[str | None] = set()
+    for path in inputs:
+        if not Path(path).is_file():
+            return None  # The command itself reports a missing input.
+        header = get_bam_header(path) or ""
+        lengths = sequence_lengths(header) if header else {}
+        if not lengths:
+            return None
+        builds.add(build_from_chr1_length(lengths))
+    if len(builds) > 1 or None in builds:
+        return None  # Mismatched or unknown input builds: let info gene explain.
+    detected = next(iter(builds), None)
+    requested = getattr(args, "build", None)
+    if requested and detected and requested != detected:
+        return None
+    build = detected or requested or "hg38"
+    if build not in TRANSCRIPT_BUILDS:
+        return None
+    explicit_lib = _explicit_library(_given_path(args, "ref"))
+    root = library_roots(explicit_lib).root
+    if transcripts_path(root, build) is not None:
+        return None
+    return MissingReference(
+        id="gene-map",
+        kind="annotation",
+        name="Gene Maps",
+        reason=command,
+        install_arguments=["ref", "gene-map", *_library_option(explicit_lib)],
     )

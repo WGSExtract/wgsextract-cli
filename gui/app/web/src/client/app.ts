@@ -13,6 +13,7 @@ import { initializeTauriUpdater } from "./tauri-updater.js";
 import { appendTerminal, discardPendingTerminalOutput, ensureMainTerminal, renderTerminalPane, terminalTabs } from "./terminal.js";
 import { applyUIModeTerminalVisibilityIfChanged } from "./terminal-visibility.js";
 import { renderUpdatePopover } from "./view/update.js";
+import { renderAlreadyRunDialog } from "./view/already-run.js";
 import { renderPrerequisitesDialog } from "./view/prerequisites.js";
 import { renderBundleHeader, renderConfirmationDialog, renderNavigation, renderUIModeSwitch, renderPage, renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID } from "./view.js";
 import { renderAboutDialog } from "./view/about.js";
@@ -158,6 +159,7 @@ function render() {
     ${state.isSidebarVisible ? "" : `<button type="button" class="sidebar-toggle sidebar-toggle-floating" data-sidebar-toggle title="${escapeAttribute(sidebarToggleTitle())}" aria-label="${escapeAttribute(sidebarToggleTitle())}">${renderIcon("sidebar.left", undefined, "▶")}</button>`}
     ${renderUpdatePopover()}
     ${state.pendingConfirmation ? renderConfirmationDialog() : ""}
+    ${renderAlreadyRunDialog()}
     ${renderPrerequisitesDialog()}
     ${renderSetupPromptDialog()}
     ${state.aboutDialogVisible ? renderAboutDialog() : ""}

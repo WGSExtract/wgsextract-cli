@@ -9,6 +9,9 @@ from pathlib import Path
 
 from wgsextract_cli.api._params import Params, param
 from wgsextract_cli.api._shared import (
+    check_confidence,
+    confidence_depth_param,
+    confidence_gq_param,
     memory_param,
     optional_input_param,
     outdir_param,
@@ -241,6 +244,53 @@ class VcfTableParams(_VcfSliceParams):
         choices=FORMATS,
         cli_type=table_format_type(),
     )
+
+
+@dataclass(frozen=True, kw_only=True)
+class VcfCallabilityParams(_VcfFileParams):
+    """Which coding exons of a gene list the sample's reference evidence (a
+    gVCF) could read, as ``exon_callability.tsv`` (one row per exon) and
+    ``exon_callability.json`` (per gene, with the sources and thresholds).
+    The input is a gVCF, or a VCF whose caller also wrote one
+    (``--reference-evidence gvcf``). A technical result, not a clinical test:
+    see docs/exon-callability.md."""
+
+    COMMAND = "vcf callability"
+
+    vcf_input: Path | None = _vcf_input_param(
+        "Input gVCF, or a VCF whose caller wrote one (--reference-evidence gvcf)."
+    )
+    gene_list: str | None = param(
+        None,
+        help="Genes to assess: a built-in list (acmg-sf-3.3, acmg-sf-3.2), or a "
+        "TSV (column gene) or BED file (gene symbol in column 4) (default: "
+        "config report_gene_list, else acmg-sf-3.3)",
+        metavar="LIST",
+        config_key="report_gene_list",
+        may_name_file=True,
+    )
+    exons: Path | None = param(
+        None,
+        help="Exon model TSV for other genes or builds (format: "
+        "docs/exon-callability.md) (default: the bundled hg19/hg38 MANE or "
+        "RefSeq Select coding exons of the built-in lists' genes)",
+        metavar="FILE",
+        path="file",
+    )
+    flank: int = param(
+        2,
+        help="Intronic bases assessed on each side of a coding exon, 0-50 "
+        "(default 2: the splice-site dinucleotides)",
+        minimum=0,
+    )
+    confidence_depth: tuple[float, float] | None = confidence_depth_param()
+    confidence_gq: tuple[float, float] | None = confidence_gq_param()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if not 0 <= self.flank <= 50:
+            raise UsageError("--flank must be between 0 and 50.")
+        check_confidence(self)
 
 
 @dataclass(frozen=True, kw_only=True)

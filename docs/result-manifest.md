@@ -260,7 +260,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `parabricks_low_memory` | `align`/`realign`/`vcf gatk` with `--gpu` | The GPU had too little free memory for the tool's default mode, so it ran with its low-memory option (`tool`, `option`, `gpu_free_gib`). |
 | `parabricks_host_memory` | `--gpu` commands | Less RAM is available than the Parabricks tool needs for a whole genome, though the computer has its minimum (`tool`, `needed_gib`, `available_gib`); the run continues and may be killed partway. |
 | `parabricks_memory` | `--gpu` commands with `--no-gpu-memory-check` | The GPU or host memory is below what the tool needs (`tool`); the run continues and may fail. |
-| `no_variants`, `no_reads`, `nothing_annotated` | variant calling, alignment, extraction, annotation | An output is empty. |
+| `no_variants`, `no_reads`, `nothing_annotated` | variant calling, alignment, extraction, annotation | An output is empty. `vcf chain-annotate` still writes an indexed, header-only VCF. |
 | `low_confidence_findings` | `vcf clinvar`, `vcf gnomad --max-af`, `vcf pharmcat`, `analyze` | Some reported calls are low confidence (`count`, `total`, `output`, top `reasons`); see [variant-confidence.md](variant-confidence.md). |
 | `alignment_sample_unverified` | `vcf pharmcat --alignment` | The BAM/CRAM has no read-group sample names to compare with the VCF. Confirm the files are from the same sample. |
 | `unconfirmed_clinical_findings` | `vcf clinvar`, `analyze` | The sample carries ClinVar pathogenic/likely pathogenic calls (`count`): a technical screen to confirm with an accredited laboratory, not a diagnosis. |
@@ -272,6 +272,7 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
 | `chip_ambiguous` | `info chip` | Two catalogued revisions match equally well. |
 | `gaps_not_excluded` | `vcf filter --exclude-near-gaps` | The reference or its gap table was not found, so variants near gaps were kept. |
 | `panel_contigs_not_in_vcf` | `vcf filter` and `vcf table` panel selection | Panel intervals on contigs absent from the VCF were omitted. |
+| `bed_contigs_not_in_vcf` | `vcf chain-annotate --bed` | BED intervals on contigs absent from the VCF were omitted (`contigs`, `path`). |
 | `gvcf_reference_missing`, `inconclusive_parent_genotypes` | `vcf trio` | A gVCF trio has no `--ref`, so reference blocks count only where they start at a variant; missing, partial or unassessed parental genotypes prevent inheritance classification. Inconclusive candidates are written separately (`count`, `mode`) and included in the personal report's overview warnings. |
 | `no_indel_scores` | `vcf cadd` | The CADD indel file is missing, so indels are not scored. |
 | `contigs_skipped` | `vcf to-fasta` | VCF contigs absent from the reference were left out (`count`). |

@@ -95,6 +95,11 @@ of the BED file as supplied.
 | `gnomad_nhomalt` | integer | Count of homozygotes for this ALT in gnomAD (`GNOMAD_NHOMALT` from `vcf gnomad`, native `nhomalt_joint`/`nhomalt`, or a gnomAD homozygote count in VEP `CSQ`). A known count of zero is distinct from a missing count. |
 | `kg_af`, `max_af` | real | VEP's 1000 Genomes phase 3 frequency of this ALT over all populations (`AF`), and its `MAX_AF`: the highest frequency in any population VEP's cache has, gnomAD and 1000 Genomes with Ensembl VEP's cache but 1000 Genomes only with a vep-rs cache from `vep download`. Where VEP lists several co-located known variants, the highest value. |
 | `ad_ref`, `ad_alt` | integer, integer | The sample's `FORMAT/AD` read counts for REF and this ALT. Empty when AD is missing or incomplete; an explicit count of zero stays `0`. A record split from a multi-allelic one keeps REF and its own ALT. |
+| `revel`, `alphamissense_score`, `alphamissense_class` | real, real, text | REVEL and AlphaMissense missense pathogenicity (0–1) and AlphaMissense's class (`likely_benign`, `ambiguous`, `likely_pathogenic`); see [In-silico scores](#in-silico-scores). |
+| `cadd_raw`, `cadd_phred` | real, real | CADD's raw and PHRED-scaled deleteriousness scores. |
+| `spliceai_max` | real | The highest of the ALT's four SpliceAI delta scores (`DS_AG`, `DS_AL`, `DS_DG`, `DS_DL`, 0–1), for the row's gene when scored. |
+| `phylop`, `gerp` | real, real | PhyloP and GERP++ conservation scores for the position. |
+| `sift_score`, `sift_prediction`, `polyphen_score`, `polyphen_prediction` | real, text, real, text | SIFT and PolyPhen-2 for the chosen transcript (for example `deleterious` 0.01, `probably_damaging` 0.998). |
 
 When a WGSE annotation splits a multi-allelic record, it saves the original
 AD total so the read fraction stays the same. A known split without a
@@ -151,6 +156,39 @@ gnomAD lacks, so the warning names both). The metadata key
 manifest metrics `gnomad_af_rows`, `kg_af_rows` and `max_af_rows` say which
 frequencies the table holds. Run `vcf gnomad` before filtering on rarity.
 
+## In-silico scores
+
+`vcf table` reads scores already in the VCF. It does not compute or download
+them. You can annotate first with `vcf revel`, `vcf alphamissense`, `vcf cadd`,
+`vcf spliceai`, `vcf phylop` and `vcf gerp`, or run them together:
+
+```bash
+wgsextract vcf chain-annotate --vcf-input sample.vcf.gz \
+  --annotations revel,alphamissense,cadd,spliceai,phylop,gerp
+```
+
+- **Source priority.** The table first looks for `REVEL`, `am_pathogenicity` /
+  `am_class`, `CADD_RAW` / `CADD_PHRED`, `SpliceAI`, `PHYLOP` and `GERP` in
+  INFO. It then tries fastVEP's `FV_REVEL`, `FV_ALPHAMISSENSE`, `FV_PHYLOP`
+  and `FV_GERP`, then VEP's CSQ plugin fields and dbNSFP fields. SIFT and
+  PolyPhen come from VEP CSQ first, then fastVEP's `FV_DBNSFP`. When fastVEP
+  has several AlphaMissense entries for one ALT, the highest-scoring entry
+  supplies both the score and, if present, its class.
+- **Transcript choice.** REVEL, AlphaMissense, SIFT and PolyPhen from CSQ
+  use the chosen transcript. CADD, PhyloP and GERP can fall back to another
+  CSQ entry for the same allele. When a numeric CSQ field lists several
+  values separated by `&`, the table uses the highest.
+- **SpliceAI.** Each row reads only its own ALT's entries and skips missing
+  (`.`) deltas. It uses the highest delta for the row's gene if that gene was
+  scored, or the highest delta across all genes otherwise. For split records
+  with `OLD_MULTIALLELIC`, SpliceAI and fastVEP entries match the original ALT
+  first. A normalized spelling is used only if it cannot name another original
+  ALT, or if `vcf spliceai` marked the score as refreshed for this row.
+- **Missing and site-level scores.** Missing scores stay empty, not zero.
+  At a site with several variant ALTs, a single allele-specific score
+  (`Number=1`) cannot be assigned to an ALT and stays empty. PhyloP and GERP
+  describe the position and apply to every ALT.
+
 ## Example queries
 
 With `sqlite3 sample_variants.sqlite` (or any SQLite client):
@@ -193,6 +231,17 @@ WHERE impact IN ('HIGH', 'MODERATE')
   AND gnomad_af < 0.001
   AND (max_af IS NULL OR max_af < 0.001)
   AND filter = 'PASS';
+
+-- Rare missense variants with a high predicted pathogenicity score
+SELECT gene, hgvs_p, revel, alphamissense_score, cadd_phred
+FROM variants
+WHERE consequence LIKE '%missense_variant%'
+  AND (gnomad_af IS NULL OR gnomad_af < 0.001)
+  AND (revel >= 0.5 OR alphamissense_class = 'likely_pathogenic');
+
+-- Variants SpliceAI predicts to change splicing
+SELECT gene, hgvs_c, spliceai_max, consequence
+FROM variants WHERE spliceai_max >= 0.5 ORDER BY spliceai_max DESC;
 
 -- Variants rare overall but common in some ancestry group, or seen
 -- homozygous in gnomAD's (largely healthy) individuals

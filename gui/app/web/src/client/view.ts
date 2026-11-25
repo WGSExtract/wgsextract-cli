@@ -94,7 +94,7 @@ export function renderNavigation() {
     const bottomPages = pages.filter((page) => page.sidebarPlacement === "bottom");
     const updateItem = renderUpdateNavigationItem();
     return `
-    <div class="nav-primary">${renderNavigationGroups(primaryPages)}${manifest.id === "wgs-extract" ? `<button type="button" class="nav-item" data-genome-viewer-open><span class="nav-icon" aria-hidden="true">${renderIcon("genome-viewer", "🔍", "🔍")}</span><span>${escapeHTML(state.labels.viewerTitle ?? "")}</span></button><button type="button" class="nav-item" data-gene-page-open>${escapeHTML(state.labels.geneTitle ?? "")}</button>` : ""}</div>
+    <div class="nav-primary">${renderNavigationGroups(primaryPages)}${manifest.id === "wgs-extract" ? `<button type="button" class="nav-item" data-genome-viewer-open><span class="nav-icon" aria-hidden="true">${renderIcon("genome-viewer", "🔍", "🔍")}</span><span>${escapeHTML(state.labels.viewerTitle ?? "")}</span></button><button type="button" class="nav-item" data-gene-page-open><span class="nav-icon" aria-hidden="true">${renderIcon("gene-page", "🧬", "🧬")}</span><span>${escapeHTML(state.labels.geneTitle ?? "")}</span></button>` : ""}</div>
     ${bottomPages.length || updateItem ? `<div class="nav-bottom">${updateItem}${renderNavigationGroups(bottomPages, false)}</div>` : ""}
   `;
 }
@@ -327,10 +327,9 @@ export function renderTextControl(control: ControlSpec) {
     const input = `<input id="${escapeAttribute(inputID)}" type="text" ${valueAttributes}
         placeholder="${escapeAttribute(control.placeholder ?? "")}" data-field-id="${escapeAttribute(control.id)}">`;
     const showInlineViewer = state.manifest?.id === "wgs-extract"
-        && ["bam_path", "vcf_path"].includes(control.id)
-        && !(state.activePageID === "info-bam" && control.id === "bam_path")
-        && !(state.activePageID === "vcf" && control.id === "vcf_path")
-        && /\.(bam|cram|(g\.?vcf|vcf)\.(gz|bgz))$/i.test(String(firstPathValue(rawValue)));
+        && control.id === "vcf_path"
+        && state.activePageID !== "vcf"
+        && /\.(g\.?vcf|vcf)\.(gz|bgz)$/i.test(String(firstPathValue(rawValue)));
     const multiList = isMultiPath && paths.length > 1
         ? `<ol class="multi-path-list" data-multi-path-list="${escapeAttribute(control.id)}">${paths.map((entry, index) => {
             const name = entry.split(/[\\/]/).pop() ?? entry;

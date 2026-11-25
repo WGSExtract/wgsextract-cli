@@ -5,7 +5,9 @@ import { installGlobalBundleLoadHandler, loadBundleFromPicker, type Bootstrap } 
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
 import { checkedOptionsChanged, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
+import { cancelPendingAlreadyRun, forceRunPendingAlreadyRun } from "./operations-already-run.js";
 import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
+import { bindAlreadyRunFocus } from "./view/already-run.js";
 import { chooseLocalPath } from "./path-picker.js";
 import { bindPrerequisitesFocus } from "./prerequisites-focus.js";
 import { openResultCard } from "./result-card-dialog.js";
@@ -373,6 +375,9 @@ export function bindEvents(bootstrap: Bootstrap) {
         const { confirm: _confirm, ...action } = pending.action;
         await runAction(action, pending.context, pending.reference);
     });
+    app.querySelector("[data-already-run-cancel]")?.addEventListener("click", cancelPendingAlreadyRun);
+    app.querySelector("[data-already-run-force]")?.addEventListener("click", () => void forceRunPendingAlreadyRun());
+    bindAlreadyRunFocus(app, cancelPendingAlreadyRun);
     app.querySelector("[data-prerequisites-cancel]")?.addEventListener("click", cancelPendingPrerequisites);
     app.querySelector("[data-prerequisites-continue]")?.addEventListener("click", () => void continuePendingPrerequisites());
     app.querySelector("[data-prerequisites-install]")?.addEventListener("click", () => void installPendingPrerequisites());

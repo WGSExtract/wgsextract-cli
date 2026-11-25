@@ -108,7 +108,7 @@ test("a bundle's data source timeoutSeconds must be a positive number", () => {
 });
 
 test("the published page schema allows every key the Tools page's data source uses", () => {
-    const schema = JSON.parse(readFileSync(path.join(bundleRoot, "..", "..", "docs", "schema", "page.schema.json"), "utf8"));
+    const schema = JSON.parse(readFileSync(path.join(bundleRoot, "..", "..", "devdocs", "schema", "page.schema.json"), "utf8"));
     const allowed = Object.keys(schema.$defs.dataSource.properties);
 
     assert.deepEqual(Object.keys(control.dataSource).filter((key) => !allowed.includes(key)), []);

@@ -14,6 +14,9 @@ from ..vcf import (
     VcfCaddParams as VcfCaddParams,
 )
 from ..vcf import (
+    VcfCallabilityParams as VcfCallabilityParams,
+)
+from ..vcf import (
     VcfCallParams as VcfCallParams,
 )
 from ..vcf import (

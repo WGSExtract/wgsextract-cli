@@ -6,9 +6,7 @@ import logging
 import re
 import shutil
 import subprocess
-import tempfile
 import threading
-import time
 from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import Future, wait
@@ -16,9 +14,8 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from http.client import HTTPException
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
-from urllib.error import HTTPError
-from urllib.request import Request, urlopen
 
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.acmg_manifest import (
@@ -26,11 +23,18 @@ from wgsextract_cli.core.acmg_manifest import (
     load_manifest,
     save_manifest,
 )
+from wgsextract_cli.core.acmg_regions import (
+    REGION_FLAGS,
+    region_bed,
+    region_outputs,
+    region_tracks,
+    repeatmasker_bed,
+    verified_region_bed,
+)
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.ref_library import download_file
-from wgsextract_cli.core.ref_library.segmented import user_agent
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     popen,
@@ -44,7 +48,6 @@ from ._acmg_data_plan import (
     BY_KEY,
     CHROMOSOMES,
     GFF3_TERMS,
-    GNOMAD_KEEP,
     PHYLOP_FILE,
     Plan,
     Step,
@@ -60,6 +63,7 @@ from ._acmg_data_sources import (
     split_revel,
     tabix_contigs,
 )
+from ._acmg_data_tools import add_region_flags, run_tool, stream_reduced
 
 
 def _gcs_md5(headers: Any) -> str | None:
@@ -131,23 +135,6 @@ class Stop:
         return self.event.is_set() or bool(self.outer and self.outer.is_set())
 
 
-def run_tool(command: list[str], cancel: CancelEvent | None) -> str:
-    """Run a tool, cancellably: its output, or its failure."""
-    with tempfile.TemporaryFile() as log:
-        process = popen(command, stdout=log, stderr=subprocess.STDOUT)
-        ok = wait_with_cancel(process, cancel)
-        log.seek(0)
-        output = log.read().decode(errors="replace")
-    if not ok:
-        raise WGSExtractError(
-            "Cancelled."
-            if cancel and cancel.is_set()
-            else f"{Path(command[0]).name} {command[1]} failed "
-            f"(exit {process.returncode}): {output.strip()[-1500:]}"
-        )
-    return output
-
-
 def sa_build(
     fastvep: str,
     key: str,
@@ -167,9 +154,17 @@ def sa_build(
     ]  # fmt: skip
     if source.chunk_bits:
         command += ["--chunk-bits", str(source.chunk_bits)]
+    if key == "repeatmasker":
+        command[3] = "custom_bed"
+        command += ["--name", key]
     logging.info("Building %s...", name)
     output = run_tool(command, cancel)
-    records = re.findall(r"Wrote: .*\(([\d,]+) (?:records|genes)", output)
+    pattern = (
+        r"Parsed ([\d,]+) interval records"
+        if key == "repeatmasker"
+        else r"Wrote: .*\(([\d,]+) (?:records|genes)"
+    )
+    records = re.findall(pattern, output)
     built = sorted(work.iterdir())
     if not records or not built:
         raise WGSExtractError(
@@ -293,7 +288,14 @@ class _Build:
             "downloaded": _now(),
         }
 
-    def database(self, step: Step, inputs: Path, *, keep_input: bool = True) -> None:
+    def database(
+        self,
+        step: Step,
+        inputs: Path,
+        *,
+        keep_input: bool = True,
+        regions: dict[str, str] | None = None,
+    ) -> None:
         """``fastvep sa-build`` into the staging folder, then moved in."""
         work = self.staging / step.name
         built, records = sa_build(
@@ -315,6 +317,7 @@ class _Build:
                 "bytes": main.stat().st_size,
                 "sha256": _digests(main)[0],
                 "built": _now(),
+                **({"region_tracks": regions} if regions else {}),
             },
         )
 
@@ -325,7 +328,10 @@ class _Build:
     def run(self, step: Step) -> None:
         if self.cancel and self.cancel.is_set():
             raise WGSExtractError("Cancelled.")
-        getattr(self, f"step_{step.source}")(step)
+        if step.source in REGION_FLAGS:
+            self.build_region_track(step)
+        else:
+            getattr(self, f"step_{step.source}")(step)
 
     def step_gff3(self, step: Step) -> None:
         base = _acmg_data_plan.ENSEMBL.format(release=self.plan.release)
@@ -406,6 +412,20 @@ class _Build:
 
     def step_gnomad(self, step: Step) -> None:
         assert step.chromosome
+        regions = region_tracks(self.plan.sa_dir, self.manifest)
+        if len(regions) != len(REGION_FLAGS):
+            raise WGSExtractError(
+                "Build the gnomAD low-complexity and segdup tracks first."
+            )
+        previous = self.manifest["databases"].get(step.name, {})
+        current = self.plan.sa_dir / str(previous.get("file") or "")
+        if (
+            previous.get("region_tracks") == regions
+            and current.is_file()
+            and current.stat().st_size == previous.get("bytes")
+        ):
+            logging.info("%s already has the restored gnomAD tracks.", step.name)
+            return
         url = source_url("gnomad", step.chromosome)
         headers = _head(url)
         size = int(headers.get("Content-Length") or 0)
@@ -432,7 +452,72 @@ class _Build:
                 "release": "4.1",
             },
         )
-        self.database(step, reduced, keep_input=False)
+        flagged = add_region_flags(
+            reduced, self.plan.sa_dir, regions, step.chromosome, self.cancel
+        )
+        self.database(step, flagged, keep_input=False, regions=regions)
+
+    def step_repeatmasker(self, step: Step) -> None:
+        source = self.fetch_track(step)
+        self.staging.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(dir=self.staging) as work:
+            bed = Path(work) / "repeatmasker.bed"
+            repeatmasker_bed(source, bed, CHROMOSOMES)
+            self.database(step, bed, keep_input=False)
+
+    def fetch_track(self, step: Step) -> Path:
+        url = source_url(step.source)
+        headers = _head(url)
+        dest = self.plan.sources_dir / Path(url).name
+        entry = self.fetch(url, dest, md5=_gcs_md5(headers))
+        entry["release"] = _http_date(headers)
+        self.record_source(step.source, dest.name, entry)
+        return dest
+
+    def build_region_track(self, step: Step) -> None:
+        main, tbi = region_outputs(self.plan.sa_dir, step.source)
+        digest = (
+            verified_region_bed(self.plan.sa_dir, self.manifest, step.source)
+            if step.repair_index
+            else None
+        )
+        if step.repair_index and not digest:
+            raise WGSExtractError(f"{main} changed during repair; rerun the build.")
+        self.staging.mkdir(parents=True, exist_ok=True)
+        tabix = get_tool_path("tabix") or "tabix"
+        with TemporaryDirectory(dir=self.staging) as work:
+            packed = Path(work) / main.name
+            index = Path(work) / tbi.name
+            if digest:
+                shutil.copyfile(main, packed)
+                if _sha256(packed, self.cancel) != digest:
+                    raise WGSExtractError(
+                        f"{main} changed during repair; rerun the build."
+                    )
+            else:
+                source = self.fetch_track(step)
+                bed = packed.with_suffix("")
+                region_bed(source, bed, step.source, CHROMOSOMES)
+                bgzip = get_tool_path("bgzip") or "bgzip"
+                run_tool([bgzip, "-f", str(bed)], self.cancel)
+            run_tool([tabix, "-p", "bed", str(packed)], self.cancel)
+            if not digest:
+                digest = _sha256(packed, self.cancel)
+                packed.replace(main)
+                self.on_output(main)
+            index.replace(tbi)
+        self.on_output(tbi)
+        self.record_database(
+            step,
+            {
+                "file": main.name,
+                "files": [main.name, tbi.name],
+                "bytes": main.stat().st_size,
+                "index_bytes": tbi.stat().st_size,
+                "sha256": digest,
+                "built": _now(),
+            },
+        )
 
     def step_phylop(self, step: Step) -> None:
         assert step.chromosome
@@ -596,92 +681,6 @@ class _Build:
             cut.unlink(missing_ok=True)
             raise WGSExtractError(f"Cutting {contig} out of {self.spliceai} failed.")
         self.database(step, cut, keep_input=False)
-
-
-def stream_reduced(
-    url: str, size: int, dest: Path, cancel: CancelEvent | None, attempts: int = 6
-) -> str:
-    """Stream a gnomAD VCF through bcftools into ``dest``, keeping only
-    ``GNOMAD_KEEP``. A dropped connection resumes at the byte it stopped at, so
-    bcftools reads the file whole; returns the MD5 of what was streamed."""
-    partial = dest.with_name(dest.name + ".partial")
-    command = [
-        "bcftools", "annotate", "--no-version", "-x", f"^{GNOMAD_KEEP}",
-        "-Oz", "-o", str(partial), "-",
-    ]  # fmt: skip
-    digest = hashlib.md5(usedforsecurity=False)
-    done = failures = 0
-    with tempfile.TemporaryFile() as err:
-        process = popen(command, stdin=subprocess.PIPE, stderr=err)
-        assert process.stdin is not None
-        sink = process.stdin
-        try:
-            while True:
-                headers = {"User-Agent": user_agent(url)}
-                if done:
-                    headers["Range"] = f"bytes={done}-"
-                try:
-                    with urlopen(Request(url, headers=headers), timeout=120) as r:
-                        if done and r.status != 206:
-                            raise WGSExtractError(
-                                f"{url} ignored a byte-range request, so its "
-                                "stream can't resume."
-                            )
-                        while chunk := r.read(1 << 20):
-                            if cancel and cancel.is_set():
-                                raise WGSExtractError("Cancelled.")
-                            sink.write(chunk)
-                            digest.update(chunk)
-                            done += len(chunk)
-                    if done < size:
-                        raise ConnectionError(f"the server sent {done} of {size} bytes")
-                    break
-                except BrokenPipeError:
-                    break  # bcftools stopped: its exit status and stderr say why
-                except HTTPError as e:
-                    if e.code != 429 and e.code < 500:
-                        raise WGSExtractError(f"Streaming {url} failed: {e}") from e
-                    failures = _retry(url, done, size, e, failures, attempts)
-                except (OSError, HTTPException) as e:
-                    failures = _retry(url, done, size, e, failures, attempts)
-        except BaseException:
-            process.kill()
-            process.wait()
-            partial.unlink(missing_ok=True)
-            raise
-        try:
-            sink.close()
-        except BrokenPipeError:
-            pass
-        ok = wait_with_cancel(process, cancel)
-        err.seek(0)
-        detail = err.read().decode(errors="replace").strip()
-    if not ok or done != size:
-        partial.unlink(missing_ok=True)
-        raise WGSExtractError(
-            f"Reducing {Path(url).name} failed after {done} of {size} bytes: "
-            f"{detail[-800:] or f'bcftools exited with {process.returncode}'}"
-        )
-    partial.replace(dest)
-    return digest.hexdigest()
-
-
-def _retry(
-    url: str, done: int, size: int, error: Exception, failures: int, attempts: int
-) -> int:
-    failures += 1
-    if failures >= attempts:
-        raise WGSExtractError(
-            f"Streaming {url} failed at byte {done} of {size}: {error}"
-        ) from error
-    logging.warning(
-        "Streaming %s stopped at %s (%s); resuming...",
-        Path(url).name,
-        format_bytes(done),
-        error,
-    )
-    time.sleep(min(30, 2**failures))
-    return failures
 
 
 def build(

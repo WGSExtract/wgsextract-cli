@@ -1,22 +1,19 @@
 import type { GeneDocument, GeneFilter } from "../../../shared/gene-page.js";
 import { geneExportName, geneFilters } from "../../../shared/gene-page.js";
+import { firstPathValue } from "../../../shared/rendering.js";
 import { api } from "./api.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
+import { createGenePrerequisitesController, type GenePageInputs, type GenePageProblem, type PendingGenePrerequisites } from "./gene-page-prerequisites.js";
 import { openGenomeViewer } from "./genome-viewer-launcher.js";
 import { renderGeneDocument, type GeneText } from "./gene-page-view.js";
+import { createModalFocusBinder } from "./modal-focus.js";
 import { chooseLocalPath } from "./path-picker.js";
 import { state } from "./state.js";
+import { renderCheckingNotice, renderPrerequisitesModal } from "./view/prerequisites.js";
 
 type GenePageResult =
     | { document: GeneDocument; exportPath?: string; exportRows?: number }
-    | { problem: string; fileName?: string; message?: string };
-
-interface GenePageInputs {
-    gene: string;
-    alignment: string;
-    vcf: string;
-    minDepth: number | null;
-}
+    | GenePageProblem;
 
 let pane: HTMLElement | undefined;
 
@@ -40,29 +37,47 @@ export function openGenePage(opener: HTMLElement) {
         <header class="page-header"><h1>${escapeHTML(text("title"))}</h1><p>${escapeHTML(text("privacy"))}</p></header>
         <form data-gene-form class="gene-form">
           ${field("gene", text("symbol"), text("symbolHelp"), "", 'required maxlength="64" autocomplete="off" spellcheck="false" dir="ltr"')}
-          ${field("alignment", text("alignment"), text("alignmentHelp"), String(state.fieldValues.bam_path ?? ""), 'autocomplete="off" spellcheck="false" dir="ltr"')}
-          ${field("vcf", text("vcf"), text("vcfHelp"), String(state.fieldValues.vcf_path ?? ""), 'autocomplete="off" spellcheck="false" dir="ltr"')}
+          ${field("alignment", text("alignment"), text("alignmentHelp"), firstPathValue(state.fieldValues.bam_path ?? ""), 'autocomplete="off" spellcheck="false" dir="ltr"')}
+          ${field("vcf", text("vcf"), text("vcfHelp"), firstPathValue(state.fieldValues.vcf_path ?? ""), 'autocomplete="off" spellcheck="false" dir="ltr"')}
           ${field("minDepth", text("minDepth"), text("minDepthHelp"), "", 'type="number" min="0" step="1" inputmode="numeric"')}
           <div><button type="submit" class="action-button primary">${escapeHTML(text("show"))}</button></div>
         </form>
         <p data-gene-status role="status" aria-live="polite"></p>
+        <section data-gene-install class="gene-install-panel" hidden>
+          <h3 data-gene-install-title></h3>
+          <pre data-gene-install-log class="gene-install-log"></pre>
+        </section>
         <div data-gene-result></div>
-      </main>`;
+      </main>
+      <div data-gene-prerequisites></div>`;
     const form = required<HTMLFormElement>(container, "[data-gene-form]");
     const status = required<HTMLElement>(container, "[data-gene-status]");
+    const installPanel = required<HTMLElement>(container, "[data-gene-install]");
+    const installTitle = required<HTMLElement>(container, "[data-gene-install-title]");
+    const installLog = required<HTMLElement>(container, "[data-gene-install-log]");
     const output = required<HTMLElement>(container, "[data-gene-result]");
+    const prereqSlot = required<HTMLElement>(container, "[data-gene-prerequisites]");
+    const bindModalFocus = createModalFocusBinder("[data-prerequisites-dialog]", "[data-prerequisites-install], [data-prerequisites-continue]");
     let current: { inputs: GenePageInputs; doc: GeneDocument; transcript: number; filter: GeneFilter | "all" } | undefined;
     let request: AbortController | undefined;
+    let checkingPrerequisites = false;
+    let pendingPrerequisites: PendingGenePrerequisites | null = null;
     const report = (key: string, values: Record<string, string> = {}, isError = false) => {
         status.textContent = key ? text(key, values) : "";
         status.classList.toggle("inline-error", isError);
         status.setAttribute("role", isError ? "alert" : "status");
     };
-    const problem = (result: { problem: string; fileName?: string; message?: string }) =>
+    const problem = (result: GenePageProblem) =>
         report(`problem.${result.problem}`, { file: result.fileName ?? "", message: result.message ?? "" }, true);
     const render = () => {
         if (!current) return;
         output.innerHTML = renderGeneDocument(current.doc, text, current.transcript, current.filter, Boolean(current.inputs.alignment || current.inputs.vcf));
+    };
+    const renderPrerequisites = () => {
+        prereqSlot.innerHTML = pendingPrerequisites
+            ? renderPrerequisitesModal(pendingPrerequisites.missing, pendingPrerequisites.stillMissing)
+            : checkingPrerequisites ? renderCheckingNotice() : "";
+        bindModalFocus(container, () => prerequisites.cancel());
     };
     const inputs = (): GenePageInputs => {
         const value = (name: string) => (form.elements.namedItem(name) as HTMLInputElement | null)?.value.trim() ?? "";
@@ -82,22 +97,57 @@ export function openGenePage(opener: HTMLElement) {
             if (request === controller) request = undefined;
         }
     };
-    form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        const asked = inputs();
+    const loadGene = async (asked: GenePageInputs) => {
+        installPanel.hidden = true;
         report("loading");
         output.setAttribute("aria-busy", "true");
-        void call(asked).then((result) => {
-            output.setAttribute("aria-busy", "false");
-            if (!result) return;
-            if ("problem" in result) {
-                problem(result);
-                return;
+        const result = await call(asked);
+        output.setAttribute("aria-busy", "false");
+        if (!result) return;
+        if ("problem" in result) {
+            problem(result);
+            return;
+        }
+        current = { inputs: asked, doc: result.document, transcript: 0, filter: "all" };
+        report("ready", { gene: result.document.gene.symbol });
+        render();
+    };
+    const prerequisites = createGenePrerequisitesController({
+        onChecking: (checking) => {
+            checkingPrerequisites = checking;
+            renderPrerequisites();
+        },
+        onPending: (pending) => {
+            pendingPrerequisites = pending;
+            if (pending) report("");
+            renderPrerequisites();
+        },
+        onInstallStart: (title) => {
+            report("");
+            installTitle.textContent = title;
+            installLog.textContent = "";
+            installPanel.hidden = false;
+        },
+        onInstallOutput: (chunk) => {
+            installLog.textContent += chunk;
+            installLog.scrollTop = installLog.scrollHeight;
+        },
+        onInstallEnd: (succeeded, error) => {
+            if (succeeded) {
+                installPanel.hidden = true;
+            } else if (error) {
+                status.textContent = error;
             }
-            current = { inputs: asked, doc: result.document, transcript: 0, filter: "all" };
-            report("ready", { gene: result.document.gene.symbol });
-            render();
-        });
+        },
+        onProblem: (result) => problem(result),
+        onReady: (asked) => loadGene(asked),
+    });
+    form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        request?.abort();
+        installPanel.hidden = true;
+        report("");
+        void prerequisites.run(inputs());
     });
     container.addEventListener("change", (event) => {
         const target = event.target;
@@ -110,7 +160,14 @@ export function openGenePage(opener: HTMLElement) {
     container.addEventListener("click", (event) => {
         const target = event.target instanceof Element ? event.target.closest<HTMLElement>("button") : null;
         if (!target) return;
-        if (target.matches("[data-gene-close]")) {
+        if (target.matches("[data-prerequisites-cancel]")) {
+            prerequisites.cancel();
+        } else if (target.matches("[data-prerequisites-continue]")) {
+            void prerequisites.continue();
+        } else if (target.matches("[data-prerequisites-install]")) {
+            void prerequisites.install();
+        } else if (target.matches("[data-gene-close]")) {
+            prerequisites.dispose();
             request?.abort();
             container.remove();
             pane = undefined;

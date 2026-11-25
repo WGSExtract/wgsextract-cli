@@ -43,7 +43,7 @@ identically.
   FASTA you already have can be reused; verify it first.
 - **Settings are not imported.** v4 kept a few values in `~/.wgsextract`
   (JSON). Copy the ones you want into `config.toml` (see
-  [Configuration](configuration.md)) or the Settings page:
+  [Configuration](https://wgsextract.github.io/wgsextract-cli/configuration.html)) or the Settings page:
 
 | v4 `~/.wgsextract` key | Current setting |
 | --- | --- |

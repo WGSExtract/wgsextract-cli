@@ -9,6 +9,7 @@ import { preferredOutput, resultCardOutput, resultNotice, type ResultDocument } 
 import { openResultCard } from "./result-card-dialog.js";
 import { actionNoticeKey } from "./result-view.js";
 import { openGenomeViewer } from "./genome-viewer-launcher.js";
+import { checkExistingOutput, holdBackAlreadyRun } from "./operations-already-run.js";
 import { prerequisitesInstalled } from "./operations-prerequisites.js";
 import type { ActionReference, ActionSpec, CommandContext, CommandSpec, LastResultDocumentPaths, TerminalEntry, ValueMap } from "../../../shared/types.js";
 
@@ -30,7 +31,7 @@ export async function runAction(
     action: ActionSpec,
     context: CommandContext,
     reference: ActionReference,
-    options: { prerequisitesChecked?: boolean; opener?: HTMLElement | null } = {},
+    options: { prerequisitesChecked?: boolean; skipExistingCheck?: boolean; forceRerun?: boolean; opener?: HTMLElement | null } = {},
 ) {
     if (action.confirm) {
         state.pendingConfirmation = { action, reference, context, input: "" };
@@ -40,9 +41,40 @@ export async function runAction(
     if (!action.command && !action.viewerInput) {
         throw new Error("Missing action command.");
     }
+    // Reuse fresh permanent outputs on disk: show the existing card/HTML directly, or ask before re-running.
+    if (action.command && !options.skipExistingCheck && state.manifest?.resultDocument) {
+        const existing = await checkExistingOutput(context, reference);
+        if (!existing) {
+            return;
+        }
+        if (existing.kind === "display") {
+            if (existing.cardPath) {
+                void openResultCard(existing.cardPath, state.labels, {
+                    onRerun: () => void runAction(action, context, reference, { skipExistingCheck: true, forceRerun: true }),
+                });
+            }
+            if (existing.openPath) {
+                void api<void>("/api/result/open", { method: "POST", body: { path: existing.openPath, reveal: false } }).catch((error: unknown) => {
+                    appendTerminal("error", state.labels.terminalProcessErrorTitle, errorMessage(error));
+                    scheduleRender();
+                });
+                if (!existing.cardPath) {
+                    holdBackAlreadyRun(action, context, reference, existing.outputs ?? [existing.openPath], existing.finishedAt);
+                }
+            }
+            return;
+        }
+        if (existing.kind === "already-run") {
+            holdBackAlreadyRun(action, context, reference, existing.outputs, existing.finishedAt);
+            return;
+        }
+    }
     // Without a check the tab opens at once, as it always has.
     const checked = options.prerequisitesChecked || !state.manifest?.prerequisites;
-    if (!checked && !(await prerequisitesInstalled(action, context, reference))) {
+    if (!checked && !(await prerequisitesInstalled(action, context, reference, {
+        ...(options.skipExistingCheck ? { skipExistingCheck: true } : {}),
+        ...(options.forceRerun ? { forceRerun: true } : {}),
+    }))) {
         return;
     }
     if (action.viewerInput) {
@@ -66,14 +98,27 @@ export async function runAction(
     const noticeRun = { key: actionNoticeKey(reference, context) };
     latestNoticeRuns.set(noticeRun.key, noticeRun);
     state.actionResultNotices.delete(noticeRun.key);
-    await streamCommand(action, context, "/api/run/stream", { action: reference, context }, noticeRun);
+    await streamCommand(
+        action,
+        context,
+        "/api/run/stream",
+        { action: reference, context, ...(options.forceRerun ? { force: true } : {}) },
+        noticeRun,
+    );
 }
 
 /**
  * Runs a command on the server with `endpoint`, streaming it into a new terminal tab described by `action`.
  * Resolves to its exit code, or null when it couldn't run or was cancelled.
  */
-export async function streamCommand(action: ActionSpec, context: CommandContext, endpoint: string, body: unknown, noticeRun: NoticeRun | null = null): Promise<number | null> {
+export async function streamCommand(
+    action: ActionSpec,
+    context: CommandContext,
+    endpoint: string,
+    body: unknown,
+    noticeRun: NoticeRun | null = null,
+    options: { onOutput?: (text: string) => void; signal?: AbortSignal } = {},
+): Promise<number | null> {
     const command = action.command ? displayCommand(action.command, context) : "";
     const runningID = appendTerminal(
         "command",
@@ -82,6 +127,12 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
         command,
         { ...primaryFileDetail(action, context), ...(action.serverOperation ? { pendingJobID: null } : {}) });
     const controller = new AbortController();
+    const forwardAbort = () => controller.abort();
+    if (options.signal?.aborted) {
+        controller.abort();
+    } else {
+        options.signal?.addEventListener("abort", forwardAbort, { once: true });
+    }
     runningActionControllers.set(runningID, controller);
     scheduleRender();
     let exitCode: number | null = null;
@@ -92,6 +143,9 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
             (event) => {
                 if (event.type === "complete") {
                     exitCode = event.result.exitCode;
+                }
+                if (event.type === "output" && event.text) {
+                    options.onOutput?.(event.text);
                 }
                 applyActionEvent(event, action, context, runningID, noticeRun);
             },
@@ -126,6 +180,7 @@ export async function streamCommand(action: ActionSpec, context: CommandContext,
         return null;
     }
     finally {
+        options.signal?.removeEventListener("abort", forwardAbort);
         runningActionControllers.delete(runningID);
         state.dataSourcePayloads.clear();
         scheduleRender();

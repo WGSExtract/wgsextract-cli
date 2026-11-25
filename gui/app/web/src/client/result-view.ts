@@ -1,3 +1,4 @@
+import { renderTextWithDocLinks } from "../../../shared/docs-links.js";
 import { resultCardRole, type ResultDocument, type ResultFile, type ResultNotice, type ResultScalar } from "../../../shared/result-document.js";
 import type { ActionReference, CommandContext } from "../../../shared/types.js";
 import { displayWorkspacePath } from "../../../shared/workspace-paths.js";
@@ -22,11 +23,11 @@ export function renderResultSummary(document: ResultDocument | undefined): strin
     return `
     <section class="result-summary ${escapeAttribute(document.status)}" aria-label="${escapeAttribute(labels.resultTitle ?? "Result")}">
       <h3>${escapeHTML(labels.resultTitle ?? "Result")}: ${escapeHTML(statusLabel(document.status))}</h3>
-      ${document.error?.message ? `<p class="result-error">${escapeHTML(document.error.message)}</p>` : ""}
+      ${document.error?.message ? `<p class="result-error">${renderTextWithDocLinks(document.error.message)}</p>` : ""}
       ${document.warnings.length ? `
         <h4>${escapeHTML(labels.resultWarningsTitle ?? "Warnings")}</h4>
         <ul class="result-warnings">
-          ${document.warnings.map((warning) => `<li><span aria-hidden="true">⚠️</span> <code>${escapeHTML(warning.code)}</code> ${escapeHTML(warning.message)}</li>`).join("")}
+          ${document.warnings.map((warning) => `<li><span aria-hidden="true">⚠️</span> <code>${escapeHTML(warning.code)}</code> ${renderTextWithDocLinks(warning.message)}</li>`).join("")}
         </ul>` : ""}
       ${metrics.length ? `
         <h4>${escapeHTML(labels.resultMetricsTitle ?? "Key metrics")}</h4>
@@ -61,7 +62,7 @@ export function renderResultNotice(notice: ResultNotice | undefined): string {
     return `
     <span class="precheck-banner warning result-notice" role="alert">
       <span aria-hidden="true">⚠️</span>
-      <span><strong>${escapeHTML(title)}</strong><span>${escapeHTML(notice.message)}</span>${setupButton}</span>
+      <span><strong>${escapeHTML(title)}</strong><span>${renderTextWithDocLinks(notice.message)}</span>${setupButton}</span>
     </span>`;
 }
 

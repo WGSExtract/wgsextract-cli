@@ -6,6 +6,7 @@ from __future__ import annotations
 import html
 import re
 import shlex
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -86,16 +87,6 @@ class Page:
     footer_link_href: str = ""
     footer_extra: str = ""
     include_auto_hero: bool = True
-
-
-def main() -> None:
-    if not SOURCE_DIR.is_dir():
-        raise SystemExit(f"Missing site source directory: {SOURCE_DIR}")
-
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    for source in sorted(SOURCE_DIR.glob("*.md")):
-        page = load_page(source)
-        (OUTPUT_DIR / page.output_name).write_text(render_page(page), encoding="utf-8")
 
 
 def load_page(source: Path) -> Page:
@@ -187,14 +178,14 @@ def parse_actions(value: str) -> tuple[tuple[str, str, str], ...]:
     return tuple(actions)
 
 
-def render_page(page: Page) -> str:
+def render_page(page: Page, *, body_html: str | None = None) -> str:
     canonical = (
         f"{BASE_URL}/"
         if page.output_name == "index.html"
         else f"{BASE_URL}/{page.output_name}"
     )
     hero = render_page_hero(page) if page.include_auto_hero else ""
-    body = render_markdown(page.body)
+    body = render_markdown(page.body) if body_html is None else body_html
     return "\n".join(
         [
             "<!doctype html>",
@@ -226,7 +217,6 @@ def render_page(page: Page) -> str:
             '    <link rel="stylesheet" href="assets/site.css" />',
             "  </head>",
             "  <body>",
-            render_ai_written_banner(),
             render_nav(page.output_name),
             "",
             "    <main>",
@@ -239,25 +229,6 @@ def render_page(page: Page) -> str:
             "  </body>",
             "</html>",
             "",
-        ]
-    )
-
-
-def render_ai_written_banner() -> str:
-    issues_url = f"{escape_attr(GITHUB_URL)}/issues/new"
-    pulls_url = f"{escape_attr(GITHUB_URL)}/pulls"
-    tooltip_html = (
-        "I'm tired and bad at writing things, help appreciated - "
-        + f'<a href="{issues_url}" target="_blank" rel="noopener noreferrer">file an issue</a>'
-        + " or "
-        + f'<a href="{pulls_url}" target="_blank" rel="noopener noreferrer">PR on GitHub</a>.'
-    )
-    return "\n".join(
-        [
-            '    <details class="ai-written-banner">',
-            '      <summary class="ai-written-banner-text">AI written</summary>',
-            f'      <div class="ai-written-tooltip" id="ai-written-tooltip">{tooltip_html}</div>',
-            "    </details>",
         ]
     )
 
@@ -919,4 +890,7 @@ def indent(text: str, spaces: int) -> str:
 
 
 if __name__ == "__main__":
+    sys.path.insert(0, str(ROOT))
+    from scripts.site_references import main
+
     main()

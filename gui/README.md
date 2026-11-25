@@ -1,5 +1,11 @@
 # WGS Extract GUI
 
+> **End users:** Looking for how to use the WGS Extract desktop app? Start with
+> the **[User Documentation](docs/README.md)**
+> ([rendered web docs](https://wgse.bio/wgsextract-cli/app/docs/index.html)).
+> This README and [`devdocs/`](devdocs/README.md) are oriented toward developers,
+> bundle authors and packagers.
+
 WGS Extract GUI turns a portable CLI-tool bundle into an installable desktop app for Windows, macOS, and Linux. It is one TypeScript app: a Web UI and a local Node backend, packaged as a native desktop app with [Tauri](https://tauri.app).
 
 ![WGS Extract GUI running the WGS Extract example bundle (Extract page, dark mode)](docs/readme-screenshot.png)
@@ -25,7 +31,8 @@ the desktop backend; it retains the server token and proxies selected file range
 | `app/web/packagers/tauri` | Tauri desktop shell (Rust): window, menus, native pickers, updater. |
 | `examples/` | Example bundles. |
 | `resources/` | Built-in localized strings and icon map. |
-| `docs/schema/` | JSON Schemas for `manifest.json` and pages. |
+| `docs/` | End-user guides ([user README](docs/README.md)), privacy guide, genome viewer, gene page, and changelog. |
+| `devdocs/` | Developer documentation ([developer index](devdocs/README.md)): architecture, setup, distribution, job server, prerequisites, result documents, and JSON Schemas (`devdocs/schema/`). |
 | `tools/`, `scripts/` | Python repo tooling: task runner, packaging, localization lint, site builder. |
 | `mockups/` | Redesign mockups, design system and icons for review (`make mockups`); not part of the app. See `mockups/README.md`. |
 
@@ -38,7 +45,7 @@ the desktop backend; it retains the server token and proxies selected file range
 `make setup` (Windows: `powershell -ExecutionPolicy Bypass -File .\make.ps1 setup`)
 bootstraps missing user-level tools, installs locked dependencies, and
 runs a quick Web UI smoke test. It never elevates or installs system packages.
-See [developer setup](docs/developer_setup.md) for manual OS prerequisites,
+See [developer setup](devdocs/developer_setup.md) for manual OS prerequisites,
 the change-to-PR loop, and an AI-agent walkthrough.
 
 ## Getting started
@@ -80,15 +87,15 @@ Development targets run through `tools/tasks.py`, so `uv run python tools/tasks.
 
 A bundle is a folder containing `manifest.json`, page files, scripts, and assets. Pass its path with `BUNDLE=<path>`; it defaults to `examples/WGSExtract`. The path can also be a `manifest.json` file or a `.zip`, `.tar`, `.tar.gz`/`.tgz` archive whose root, or single top-level folder, holds `manifest.json` (a gzipped `manifest.json.gz` works too). Archives are extracted to a cache under the system temp folder.
 
-Every load checks the manifest and pages against the rules in `docs/schema`, the setup steps' platform script folders, and tool version files. Check bundles without starting the app:
+Every load checks the manifest and pages against the rules in `devdocs/schema`, the setup steps' platform script folders, and tool version files. Check bundles without starting the app:
 
 ```bash
 npm --prefix app run bundle:validate -- examples/WGSExtract path/to/bundle.zip
 ```
 
-Bundles can include `strings.toml` and `strings.<language-code>.toml` localization tables next to `manifest.json`. Schema files live in `docs/schema/manifest.schema.json` and `docs/schema/page.schema.json`.
+Bundles can include `strings.toml` and `strings.<language-code>.toml` localization tables next to `manifest.json`. Schema files live in `devdocs/schema/manifest.schema.json` and `devdocs/schema/page.schema.json`.
 
-Actions can also run as cancellable jobs on a local server that the bundle declares; see [job servers](docs/job-server.md). Commands that describe their run in a JSON result document get their outputs, warnings and metrics shown from it; see [result documents](docs/result-documents.md). A bundle can check, before an action runs, for data it needs that isn't installed and offer to install it; see [prerequisites](docs/prerequisites.md). A data source can map what a command prints to the payload it shows with a module in the bundle; see [data sources](docs/data-sources.md).
+Actions can also run as cancellable jobs on a local server that the bundle declares; see [job servers](devdocs/job-server.md). Commands that describe their run in a JSON result document get their outputs, warnings and metrics shown from it; see [result documents](devdocs/result-documents.md). A bundle can check, before an action runs, for data it needs that isn't installed and offer to install it; see [prerequisites](devdocs/prerequisites.md). A data source can map what a command prints to the payload it shows with a module in the bundle; see [data sources](devdocs/data-sources.md).
 
 Run a bundle's action test plans with:
 
@@ -133,4 +140,4 @@ Uninstalling removes the bundle workspace with the app, but asks before deleting
 
 `make package` builds the macOS `.app`/`.dmg`, the Linux `.deb`/`.rpm`/`.pkg.tar.zst`/`.AppImage`, or the Windows NSIS installer, depending on the host. Packaging defaults to the bundled WGSExtract app; set `packaging.embedded_bundle_path` and `packaging.app_name` in `.devconfig.toml` to package a different bundle.
 
-Tagged releases build on all three OSes in GitHub Actions, sign and notarize the macOS app, and publish a Tauri updater feed. See [`docs/distribution.md`](docs/distribution.md) for signing, notarization, and self-updates.
+Tagged releases build on all three OSes in GitHub Actions, sign and notarize the macOS app, and publish a Tauri updater feed. See [`devdocs/distribution.md`](devdocs/distribution.md) for signing, notarization, and self-updates.

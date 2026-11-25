@@ -1,5 +1,9 @@
 # Releasing
 
+`pixi run package-smoke` builds a source distribution and a wheel from it,
+checks that both contain the compact CLI help index, and runs discovery from
+the installed wheel. Builds generate the index without changing the checkout.
+
 One `vX.Y.Z` release ships both the CLI and the WGS Extract desktop app
 (`gui/`), which bundles that same CLI release. Most of it is automated; this is
 the whole sequence, with what to check at each step.
@@ -138,7 +142,7 @@ before preflight was introduced. Start or retry Release from `main`.
   `TAURI_UPDATER_PUBKEY` variable. A release's macOS build fails without the
   Apple secrets. App publishing fails before uploading assets if any expected
   platform lacks a uniquely matched updater artifact with a nonempty signature.
-  See [gui/docs/distribution.md](../gui/docs/distribution.md).
+  See [gui/devdocs/distribution.md](../gui/devdocs/distribution.md).
 - **Trying a change first.** *Run workflow* on *GUI distribution* (or
   `gh workflow run gui-distribution.yml --ref BRANCH`) builds unsigned
   installers as run artifacts without releasing anything; the Install Lab can

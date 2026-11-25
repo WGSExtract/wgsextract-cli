@@ -263,6 +263,13 @@ export function localizationLabels(table: StringMap = {}) {
         resultCardSourceFormat: table["app.result.card.sourceFormat"] ?? "Shown from %{file}",
         resultCardViewTitle: table["app.result.card.view.title"] ?? "View Card",
         resultCardCloseTitle: table["app.result.card.close.title"] ?? "Close",
+        resultCardRerunTitle: table["app.result.card.rerun.title"] ?? "Force Run Again",
+        alreadyRunTitle: table["app.alreadyRun.title"] ?? "Command already run",
+        alreadyRunMessage: table["app.alreadyRun.message"] ?? "This command has already been run and its output files are newer than the input:",
+        alreadyRunQuestion: table["app.alreadyRun.question"] ?? "Would you like to force run it again?",
+        alreadyRunForceButtonTitle: table["app.alreadyRun.force"] ?? "Force Run Again",
+        alreadyRunCancelButtonTitle: table["app.alreadyRun.cancel"] ?? "Cancel",
+        alreadyRunMoreFilesFormat: table["app.alreadyRun.moreFiles"] ?? "and %{count} more",
         prerequisitesTitle: table["app.prerequisites.title"] ?? "Something this command needs is missing",
         prerequisitesMessage: table["app.prerequisites.message"] ?? "This command needs data or tools that aren't installed yet:",
         prerequisitesStillMissingMessage: table["app.prerequisites.stillMissing"] ??

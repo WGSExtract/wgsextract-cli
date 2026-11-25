@@ -6,6 +6,12 @@
 "app.action.skippedMissing.format" = "%{action} ignorée : %{inputs} manquant"  # i18n-source-hash:ea2e969a
 "app.action.unavailable.title" = "Cette action n’est pas disponible."  # i18n-source-hash:30726b2e
 "app.actionsColumn.title" = "Actions"  # i18n-ignore i18n-source-hash:c3cd636a
+"app.alreadyRun.cancel" = "Annuler"  # i18n-source-hash:77dfd213
+"app.alreadyRun.force" = "Forcer la réexécution"  # i18n-source-hash:69202187
+"app.alreadyRun.message" = "Cette commande a déjà été exécutée et ses fichiers de sortie sont plus récents que l’entrée :"  # i18n-source-hash:198c150f
+"app.alreadyRun.moreFiles" = "et %{count} de plus"  # i18n-source-hash:fdd52670
+"app.alreadyRun.question" = "Voulez-vous forcer sa réexécution ?"  # i18n-source-hash:7a7b68ff
+"app.alreadyRun.title" = "Commande déjà exécutée"  # i18n-source-hash:90e8ebab
 "app.colorTheme.dark" = "Sombre"  # i18n-source-hash:ae1ef014
 "app.colorTheme.label" = "Thème"  # i18n-source-hash:a797e309
 "app.colorTheme.light" = "Clair"  # i18n-source-hash:a36ef8ab
@@ -60,6 +66,7 @@
 "app.refresh.warning.format" = "Avertissement d’actualisation : %{error}"  # i18n-source-hash:8e6c1f82
 "app.refreshing.title" = "Actualisation..."  # i18n-source-hash:5b7bdb61
 "app.result.card.close.title" = "Fermer"  # i18n-source-hash:bbfa773e
+"app.result.card.rerun.title" = "Forcer la réexécution"  # i18n-source-hash:69202187
 "app.result.card.sourceFormat" = "Affiché depuis %{file}"  # i18n-source-hash:5aaf5fdf
 "app.result.card.title" = "Fiche de résultat"  # i18n-source-hash:d8b66952
 "app.result.card.view.title" = "Voir la fiche"  # i18n-source-hash:73cd1bf6

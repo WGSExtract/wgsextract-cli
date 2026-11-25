@@ -155,7 +155,7 @@ export interface ActionSpec {
 }
 
 /**
- * Checks, before an action runs, for data it needs that isn't installed yet (docs/prerequisites.md). `command`
+ * Checks, before an action runs, for data it needs that isn't installed yet (devdocs/prerequisites.md). `command`
  * gets the action's command line appended and prints `{"missing": [MissingPrerequisite...]}`; each item's
  * `installArguments` are run with `command.executable` to install it.
  */
@@ -183,7 +183,7 @@ export interface ServerOperationSpec {
     parameters?: LooseRecord;
 }
 
-/** A long-running local server, started on first use, that runs actions as cancellable jobs (docs/job-server.md). */
+/** A long-running local server, started on first use, that runs actions as cancellable jobs (devdocs/job-server.md). */
 export interface JobServerSpec {
     /** Prints `{"url": ..., "token": ...}` as a line of JSON on stdout once it is listening. */
     command: CommandSpec;

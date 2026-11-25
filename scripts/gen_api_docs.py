@@ -1,38 +1,28 @@
 #!/usr/bin/env python3
-"""Generate docs/api.md from the docstrings and Params fields of wgsextract_cli.api.
-
-python scripts/gen_api_docs.py          # rewrite docs/api.md
-python scripts/gen_api_docs.py --check  # exit 1 if docs/api.md is stale
-"""
+"""Render the published API reference from docstrings and Params fields."""
 
 from __future__ import annotations
 
-import argparse
 import inspect
 import os
 import re
-import sys
 import typing
 from collections.abc import Iterator
-from pathlib import Path
-from types import ModuleType
+from types import FunctionType, ModuleType
 
-ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "src"))
-
-from wgsextract_cli import api  # noqa: E402
-from wgsextract_cli.api._params import (  # noqa: E402
+from wgsextract_cli import api
+from wgsextract_cli.api._params import (
     ParamField,
     Params,
     param_fields,
     type_name,
 )
 
-OUTPUT = ROOT / "docs" / "api.md"
 GROUPS = (
     api.info,
     api.extract,
     api.bam,
+    api.fastq,
     api.qc,
     api.align,
     api.pet,
@@ -118,12 +108,12 @@ def field_table(cls: type[Params]) -> Iterator[str]:
         )
 
 
-def defined_in(module: ModuleType, predicate: typing.Callable[[object], bool]) -> list:
+def defined_in(module: ModuleType) -> list[FunctionType]:
     members = [
         obj
         for name, obj in vars(module).items()
         if not name.startswith("_")
-        and predicate(obj)
+        and inspect.isfunction(obj)
         and getattr(obj, "__module__", None) == module.__name__
     ]
     # Facade declarations retain their order even when their source moves.
@@ -137,7 +127,7 @@ def group_section(module: ModuleType) -> Iterator[str]:
     yield docstring(module)
     yield ""
     documented_params: set[type[Params]] = set()
-    for function in defined_in(module, inspect.isfunction):
+    for function in defined_in(module):
         cls = typing.get_type_hints(function).get("params")
         if cls is None:
             signature = str(inspect.signature(function)).replace("'", "")
@@ -226,22 +216,3 @@ def render() -> str:
     for module in GROUPS:
         lines += group_section(module)
     return "\n".join(lines).rstrip() + "\n"
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "--check", action="store_true", help="Fail if docs/api.md is out of date."
-    )
-    text = render()
-    if parser.parse_args().check:
-        if OUTPUT.read_text(encoding="utf-8") != text:
-            print(f"{OUTPUT.relative_to(ROOT)} is stale; run {__file__}.")
-            return 1
-        return 0
-    OUTPUT.write_text(text, encoding="utf-8", newline="\n")
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main())

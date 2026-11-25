@@ -108,8 +108,6 @@
 "sections.microarray.refinements.title" = "Additional Refinements"
 "controls.microarray.microarray-inputs.bam_path.label" = "BAM/CRAM Input"
 "controls.microarray.microarray-inputs.bam_path.tooltip" = "Input BAM or CRAM file."
-"controls.microarray.microarray-inputs.ref_fasta.label" = "Reference Genome"
-"controls.microarray.microarray-inputs.ref_fasta.tooltip" = "Downloaded reference genome FASTA, from the reference genome library, used to genotype the BAM/CRAM."
 "controls.microarray.microarray-inputs.out_dir.label" = "Output Directory"
 "controls.microarray.microarray-inputs.out_dir.tooltip" = "Directory where generated microarray kit files will be written."
 "sections.microarray.microarray-formats.title" = "Generate Microarray Target Formats"

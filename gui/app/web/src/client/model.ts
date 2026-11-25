@@ -2,6 +2,7 @@ import { commandContextFromState, configEditorControls, configValueKey, firstPat
 import { localizationLabels } from "../../../shared/localization.js";
 import type { CommandContext, ConfigSetting, ControlOption, ControlSpec, RowTagSpec, StateValue, ValueMap } from "../../../shared/types.js";
 import type { WorkspaceRoots } from "../../../shared/workspace-paths.js";
+import { renderTextWithDocLinks } from "../../../shared/docs-links.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { state } from "./state.js";
 
@@ -143,7 +144,7 @@ export function renderTooltip(text: unknown): string {
         : "";
 }
 export function renderInlineError(message: unknown, accessory = ""): string {
-    return `<div class="inline-error"><span aria-hidden="true">${renderIcon("exclamationmark.triangle.fill", undefined, "âš ")}</span><span>${escapeHTML(message)}</span>${accessory}</div>`;
+    return `<div class="inline-error"><span aria-hidden="true">${renderIcon("exclamationmark.triangle.fill", undefined, "âš ")}</span><span>${renderTextWithDocLinks(message)}</span>${accessory}</div>`;
 }
 export function renderLoadingInline(message: unknown): string {
     return `<p class="loading-inline"><span class="spinner small" aria-hidden="true"></span>${escapeHTML(message)}</p>`;

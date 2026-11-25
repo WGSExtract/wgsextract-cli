@@ -12,8 +12,8 @@ The command is off unless you ask for it: it refuses to run without
 runs it for you.
 
 ```bash
-wgsextract ref acmg-data --dry-run   # the plan, terms and sizes
-wgsextract ref acmg-data             # download and build, once
+wgsextract ref acmg-data --dry-run    # plan and terms, offline
+wgsextract ref acmg-data --download   # download and build, once
 wgsextract vep run --input sample.vcf.gz --engine vep-rs
 wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg
 ```
@@ -23,6 +23,12 @@ wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg
 - `acmg_annotated.vcf.gz` (+ `.tbi` or `.csi`): the input VCF, vep-rs consequences
   unchanged, with three INFO fields per ALT allele: `ACMG_CLASS`,
   `ACMG_CRITERIA` (the criteria met, joined by `&`) and `ACMG_TRANSCRIPT`.
+  The optional record-level `ACMG_GNOMAD_REGION` note shows `lcr`, `segdup`,
+  or `lcr&segdup` at the written VCF position when those masks were used for
+  that chromosome and the local tracks are still available. fastVEP does
+  not write withheld criteria to `ACMG_CRITERIA`. The note is not proof
+  that a given allele lost evidence: the veto requires a matching gnomAD
+  allele, and an indel's lookup may use a left-aligned position.
   The header carries the disclaimer in `##WGSE_ACMG`. Classifying an
   `acmg_annotated.vcf.gz` again replaces its earlier classes. The new VCF and
   index are published only after indexing succeeds; a failed index build
@@ -34,6 +40,14 @@ wgsextract vcf acmg --vcf-input sample_vep.vcf.gz --research-acmg
 - The result manifest lists both (roles `annotated_vcf` and `acmg_summary`),
   the class counts as metrics (`acmg_p`, `acmg_lp`, ...), and the warning
   `acmg_research_only`.
+- When RepeatMasker is missing, the header, summary and manifest say BP3
+  was not evaluated (`acmg_bp3_not_evaluated`). When the gnomAD region flags
+  are missing, they list affected flags and contigs
+  (`acmg_gnomad_region_flags_not_evaluated`). The population criteria still
+  run, but their low-complexity/segmental duplication veto is incomplete.
+  The region veto is only evaluated for alleles with a matching gnomAD
+  record; in particular, fastVEP can still assign PM2_Supporting to an
+  unmatched allele in one of these regions.
 
 [`vcf table`](variant-table.md) of `acmg_annotated.vcf.gz` has the columns
 `acmg_class`, `acmg_criteria` and `acmg_transcript`, with the disclaimer in
@@ -89,7 +103,7 @@ warning `acmg_contigs_not_classified`, and listed in the summary's
 
 ## Building the databases: `ref acmg-data`
 
-`wgsextract ref acmg-data` downloads the eight sources and the Ensembl GFF3
+`wgsextract ref acmg-data --download` downloads the sources and the Ensembl GFF3
 from their publishers, checks them, shows their terms and builds the
 databases with `fastvep sa-build`:
 
@@ -109,13 +123,24 @@ databases with `fastvep sa-build`:
   stored: bcftools keeps the INFO fields fastVEP reads (AC, AN, AF and
   nhomalt, faf95, the population AFs and each callset's filters), filtered
   sites included. A dropped connection resumes at the byte it stopped at.
+- The joint release has no `lcr` or `segdup` flags. The build marks gnomAD
+  records whose POS is in the two GRCh38 interval tracks published by gnomAD;
+  fastVEP uses those flags to withhold unreliable frequency evidence for
+  BA1, BS1, BS2 and PM2_Supporting. An allele absent from the source has no
+  gnomAD record to flag. The same tracks, when installed, are applied to
+  per-run site databases. `ref status` lists installed tracks and flagged
+  library chromosomes.
+- BP3 uses UCSC RepeatMasker `Simple_repeat` and `Low_complexity` intervals
+  on the primary nuclear chromosomes. Other repeat classes are not assumed
+  to be non-functional. Neither track membership nor a BP3 assignment is
+  proof that an interval has no known function.
 - SpliceAI is the library's `spliceai_hg38.vcf.gz` (`ref spliceai`, from
   Ensembl), downloaded when missing, or `--spliceai-file`: Illumina's own
   files need a BaseSpace login and licence acceptance, so download them
   yourself and pass the file. It must be GRCh38 and tabix-indexed.
 - `--chromosomes` (such as `chr22`, or `chr1-22,chrX`; default all) limits
   gnomAD, SpliceAI, REVEL and phyloP; the others are genome-wide. `vcf acmg`
-  reads gnomAD and SpliceAI per run for the chromosomes they weren't built for.
+  can read gnomAD and SpliceAI per run only with explicit opt-in (below).
 - `--site-data per-run` doesn't build gnomAD and SpliceAI at all (below); the
   folder remembers it, and `ref status` says so.
 - It's resumable: a rerun builds only what is missing, resuming interrupted
@@ -123,7 +148,15 @@ databases with `fastvep sa-build`:
   the others. Ctrl-C stops the builds running and starts no more. To take a new
   ClinVar or ClinGen release, delete its database (`clinvar.osa2`,
   `clinvar_protein.oga`, `omim.oga`) and its download, and rerun.
-- `--dry-run` prints the plan, the terms and the sizes, and downloads nothing;
+- On an existing library, `--download --chromosomes chr22` adds the tracks
+  and rebuilds gnomAD for chr22 only if it lacks current region flags. It
+  reuses unaffected databases. Upgrading all chromosomes can re-stream the
+  entire joint release; use `--site-data per-run` to prepare just the tracks
+  for opted-in per-run use without rebuilding library gnomAD.
+- `--dry-run` prints the plan and terms without reaching the network. With
+  `--download` it queries publisher servers for sizes without downloading
+  files. Without `--download`, a non-preview run names missing sources and
+  stops without reaching the network.
   the build refuses to start without the free space it needs on each drive
   it writes (the library's, and `--sa-dir`'s when that is elsewhere).
   `--threads` sets how many chromosomes build at a time (default 4); REVEL is
@@ -140,6 +173,8 @@ databases with `fastvep sa-build`:
 | REVEL v1.3 | 667 MB | `revel_chr22.osa2`, 4 MB; about 0.4 GB | free for non-commercial use; others contact the authors |
 | SpliceAI (Illumina, MANE SNVs via Ensembl) | 28.9 GB | `spliceai_chr22.osa2`, 228 MB; about 15 GB | academic and not-for-profit use only |
 | UCSC phyloP100way | 5.5 GB (chr22: 69 MB) | `phylop_chr22.osa2`, 75 MB; about 6 GB | freely available for public use |
+| UCSC hg38 RepeatMasker | 156 MB | `repeatmasker.osi`, 14 MB | [UCSC data terms](https://genome.ucsc.edu/goldenPath/credits.html); cite UCSC and RepeatMasker |
+| gnomAD GRCh38 LCRFromHengHg38 / GRCh38_segdups | 50 MB / 0.18 MB | `gnomad_lcr.bed.gz` / `gnomad_segdup.bed.gz`, 13 MB / 0.07 MB | CC0; cite gnomAD |
 
 You download these yourself and their terms apply to you; WGS Extract never
 mirrors them or the databases built from them, and you shouldn't share the
@@ -172,19 +207,19 @@ them).
 
 - `--site-data library` (the default) uses the library's gnomAD and SpliceAI
   databases, stays offline, and refuses missing sources or nuclear chromosomes
-  with guidance to build them using `ref acmg-data`. `auto` is an offline
+  with guidance to build them using `ref acmg-data --download`. `auto` is an offline
   alias. Only explicit `--site-data per-run` opts in to remote lookups, leaving
   the library's gnomAD/SpliceAI databases out. **This sends input-derived variant
   positions through byte-range requests to Google Cloud Storage (gnomAD) and
   Ensembl (SpliceAI unless configured locally), revealing access patterns even
   though the VCF is not uploaded.** The run warns `acmg_site_data_privacy`.
-  `ref acmg-data --site-data per-run` builds the other six sources only;
+  `ref acmg-data --download --site-data per-run` builds the other sources only;
   classification still requires explicit `vcf acmg --site-data per-run`.
 - A custom `ref acmg-data --spliceai-file PATH` is recorded and reused, including
   with `--site-data per-run`; a missing chosen source is refused, never silently
   replaced with Ensembl's. Local VCFs require a `.tbi` index. Older manifests
   recording a custom source without the choice must record it again with
-  `ref acmg-data --site-data per-run --spliceai-file PATH`.
+  `ref acmg-data --download --site-data per-run --spliceai-file PATH`.
 - A site is each record's span, one base wider on each side, both as written
   and left-aligned by `bcftools norm` against the reference, as fastVEP
   left-aligns an indel before it looks gnomAD up.
@@ -248,3 +283,47 @@ records) gets no P/LP call; 0.7% of its genic alleles are classified on
 fastVEP's own transcript. A chromosome 22 run takes about a minute on two
 cores, most of it loading the whole-genome GFF3 and FASTA, and peaks at about
 7 GB of memory.
+
+### Effect of the gnomAD region flags on HG002 chr22
+
+The gnomAD v4 release pipeline [looks up both flags at the variant locus][gnomad-flags].
+The joint sites VCF omits them, so `ref acmg-data` restores the flags using
+those same two masks. It does not change gnomAD's FILTER or discard any records.
+The flags are optional inputs to fastVEP 0.5.0. When present, its default
+[`gnomad_region_flags_block_frequency`][fastvep-setting] setting makes
+[`data_blocker`][fastvep-gate] withhold BA1, BS1, BS2 and PM2_Supporting when
+either flag is set on a matched gnomAD allele, even if it passed gnomAD QC.
+
+[ClinGen SVI's BA1 recommendation][clingen-ba1] specifies frequency, allele
+count and exceptions; it does not prescribe a blanket region veto.
+[gnomAD flags these sites rather than filtering them][gnomad-policy], and
+its [interpretation guide][gnomad-guide] advises using population evidence
+cautiously in these regions. The automatic veto is fastVEP's conservative
+implementation of that caution. A flag is not proof that an individual call
+or frequency is wrong.
+
+On the same GIAB HG002 v4.2.1 chr22 input (50,284 records), 8,669 classified
+alleles moved from B to VUS (17.0% of 50,861 classified alleles). Every move
+lost the population evidence shown below. No move lost BP4 or other
+non-population evidence. Two gained BP3; it fired three times overall.
+
+| gnomAD mask | BA1 only lost | BA1 + BS2 lost | BS1 + BS2 lost | B → VUS |
+|---|---:|---:|---:|---:|
+| Low complexity only | 282 | 4,909 | 32 | 5,223 |
+| Segmental duplication only | 27 | 3,274 | 12 | 3,313 |
+| Both | 1 | 131 | 1 | 133 |
+| Total | 310 | 8,314 | 45 | 8,669 |
+
+Across all classified alleles, B went from 47,376 to 38,604, LB from 475 to
+557, and VUS from 3,010 to 11,700; P and LP stayed at zero. In a seeded
+random sample of 20 B→VUS alleles, none had a two-star or higher ClinVar
+benign/likely benign classification, and none had any exact allele match in
+ClinVar (2026-11-15 GRCh38, after splitting and left-normalizing both files).
+This sample does not validate the accuracy of the change.
+
+[gnomad-flags]: https://github.com/broadinstitute/gnomad_qc/blob/ff3a6a4c10323803210b2e1e766fc28a33418df8/gnomad_qc/v4/create_release/create_release_sites_ht.py#L520-L536
+[fastvep-setting]: https://github.com/Huang-lab/fastVEP/blob/v0.5.0/crates/fastvep-classification/src/config.rs#L321-L333
+[fastvep-gate]: https://github.com/Huang-lab/fastVEP/blob/v0.5.0/crates/fastvep-classification/src/criteria/frequency_gate.rs#L245-L290
+[clingen-ba1]: https://pmc.ncbi.nlm.nih.gov/articles/PMC6188666/
+[gnomad-policy]: https://discuss.gnomad.broadinstitute.org/t/reference-bias-in-variant-calling/579/2
+[gnomad-guide]: https://pmc.ncbi.nlm.nih.gov/articles/PMC9160216/

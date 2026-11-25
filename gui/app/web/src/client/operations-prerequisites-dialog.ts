@@ -64,5 +64,9 @@ async function runIfInstalled(pending: PendingPrerequisites) {
         scheduleRender();
         return;
     }
-    await runAction(pending.action, pending.context, pending.reference, { prerequisitesChecked: true });
+    await runAction(pending.action, pending.context, pending.reference, {
+        prerequisitesChecked: true,
+        ...(pending.skipExistingCheck ? { skipExistingCheck: true } : {}),
+        ...(pending.forceRerun ? { forceRerun: true } : {}),
+    });
 }

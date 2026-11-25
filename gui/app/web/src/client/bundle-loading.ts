@@ -80,5 +80,6 @@ function resetBundleClientState() {
     state.aboutDialogVisible = false;
     state.pendingConfirmation = null;
     state.pendingPrerequisites = null;
+    state.pendingAlreadyRun = null;
     resetTerminalEntries();
 }

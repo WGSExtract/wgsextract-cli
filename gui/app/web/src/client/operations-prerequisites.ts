@@ -37,7 +37,12 @@ export async function inSameBundle<T>(step: () => Promise<T>): Promise<T | null>
  * prerequisites dialog asks the user to install what it needs, or to cancel. False, with no dialog, when another
  * bundle was loaded during the check.
  */
-export async function prerequisitesInstalled(action: ActionSpec, context: CommandContext, reference: ActionReference): Promise<boolean> {
+export async function prerequisitesInstalled(
+    action: ActionSpec,
+    context: CommandContext,
+    reference: ActionReference,
+    rerunOptions: { skipExistingCheck?: boolean; forceRerun?: boolean } = {},
+): Promise<boolean> {
     const missing = await inSameBundle(() => missingPrerequisites(context, reference));
     if (!missing) {
         return false;
@@ -45,7 +50,7 @@ export async function prerequisitesInstalled(action: ActionSpec, context: Comman
     if (missing.length === 0) {
         return true;
     }
-    state.pendingPrerequisites = { action, reference, context, missing, stillMissing: false };
+    state.pendingPrerequisites = { action, reference, context, missing, stillMissing: false, ...rerunOptions };
     scheduleRender();
     return false;
 }

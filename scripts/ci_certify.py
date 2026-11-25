@@ -433,8 +433,8 @@ def generic_commands(paths: list[str], targets: list[str] | str) -> list[list[st
     if site_validation(paths) or routes(paths)["site"]:
         commands.append([*pixi, "python", "gui/scripts/validate_site_sources.py"])
     if routes(paths)["site"]:
-        for script in ("scripts/build_site.py", "gui/scripts/build_site.py"):
-            commands.append([*pixi, "python", script])
+        commands.append([*pixi, "-e", "dev", "python", "scripts/build_site.py"])
+        commands.append([*pixi, "python", "gui/scripts/build_site.py"])
         commands.append(
             [
                 *pixi,

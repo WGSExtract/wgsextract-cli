@@ -9,10 +9,12 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from urllib.parse import quote
 
+from wgsextract_cli.core.docs_links import doc_url
 from wgsextract_cli.core.report_documents import (
     ReportAcmgDocument,
     ReportAncestryDocument,
     ReportAttemptDocument,
+    ReportCallabilityDocument,
     ReportClinvarDocument,
     ReportDocument,
     ReportFactDocument,
@@ -31,9 +33,12 @@ from wgsextract_cli.core.report_documents import (
     section_items,
 )
 
+from .callability_rendering import callability_html, callability_markdown
+
 RenderedSection = (
     ReportOverviewDocument
     | ReportClinvarDocument
+    | ReportCallabilityDocument
     | ReportAcmgDocument
     | ReportAncestryDocument
     | ReportSvDocument
@@ -202,9 +207,13 @@ def render_html(report: ReportDocument, base: str = ".") -> str:
                 section["sources"], lambda text, f: _link(text, _href(f, base))
             )
             out.append(f'<p class="muted">Sources: {links}</p>')
+    guide_href = doc_url(report["guide"])
+    conf_href = doc_url("docs/variant-confidence.md")
     out.append(
-        f'<p class="muted">Confidence labels: {_h(report["guide"])} and '
-        "docs/variant-confidence.md in WGS Extract.</p></body></html>"
+        f'<p class="muted">Confidence labels: '
+        f'<a href="{_h(guide_href)}" target="_blank" rel="noopener noreferrer">{_h(report["guide"])}</a> and '
+        f'<a href="{_h(conf_href)}" target="_blank" rel="noopener noreferrer">docs/variant-confidence.md</a> '
+        "in WGS Extract.</p></body></html>"
     )
     return "\n".join(out) + "\n"
 
@@ -258,6 +267,12 @@ def _html_section_body(
                     + "</td></tr>"
                 )
             out.append("</table>")
+    elif name == "exon_callability":
+        out.extend(
+            callability_html(
+                sections["exon_callability"], _h, lambda f: _link(f, _href(f, base))
+            )
+        )
     elif name == "mitochondrial" and sections["mitochondrial"].get("sites"):
         section = sections["mitochondrial"]
         out.append(f'<p class="disclaimer"><b>{_h(section.get("advisory"))}</b></p>')
@@ -676,6 +691,14 @@ def render_markdown(report: ReportDocument, base: str = ".") -> str:
                         )
                         + " |"
                     )
+        if name == "exon_callability":
+            out.extend(
+                callability_markdown(
+                    sections["exon_callability"],
+                    _md,
+                    lambda f: _md_link(f, _href(f, base)),
+                )
+            )
         if name == "mitochondrial" and sections["mitochondrial"].get("sites"):
             section = sections["mitochondrial"]
             out += ["", f"> **{_md(section.get('advisory'))}**", ""]

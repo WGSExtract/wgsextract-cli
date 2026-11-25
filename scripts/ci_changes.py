@@ -35,6 +35,7 @@ from scripts.ci_test_tiers import SINGLE_OS_MODULES  # noqa: E402
 SITE_PREFIXES = ("site/", "site_src/", "gui/site_src/", "gui/mockups/")
 SITE_SCRIPTS = (
     "scripts/build_site.py",
+    "scripts/build_docs_html.py",
     "scripts/validate_site_sources.py",
     "scripts/build_mockup_previews.py",
     "gui/scripts/build_site.py",
@@ -138,10 +139,6 @@ def routes(
         )
         # Non-Markdown test inputs still take precedence over area exclusions.
         uncovered = readers - DOCS_TEST_MODULES
-        if path == "scripts/gen_api_docs.py":
-            uncovered.discard("tests/test_api.py")
-        if path == "scripts/gen_config_docs.py":
-            uncovered.discard("tests/test_core_cli.py")
         if uncovered or (path.endswith(".py") and not docs_python):
             result["cli"] = True
         if (

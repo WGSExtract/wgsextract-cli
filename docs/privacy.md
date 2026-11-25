@@ -1,5 +1,12 @@
 # Privacy and network access
 
+> **Scope:** This document covers **WGS Extract CLI** (the command-line
+> back-end, Python API and local server). For the desktop app's privacy model —
+> including automatic update checks, interactive missing-data install prompts,
+> and how the GUI sits atop the strictly offline CLI — see
+> [Desktop App Privacy and network access](../gui/docs/privacy.md) and
+> [GUI Architecture — Privacy and network boundary](../gui/devdocs/architecture.md#privacy-and-network-boundary).
+
 Ordinary analysis, inspection and reporting stay on this computer. Defaults
 must not attempt a connection, even when a reference, tree, gene list or
 model is missing. There is no telemetry, usage reporting or background CLI

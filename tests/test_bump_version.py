@@ -13,7 +13,7 @@ GUI_TAG = "gui/examples/WGSExtract/scripts/wgsextract-release-tag.txt"
 GUI_FILES = [
     "gui/scripts/bump-wgsextract-cli.py",
     GUI_TAG,
-    "gui/docs/distribution.md",
+    "gui/devdocs/distribution.md",
     "gui/examples/WGSExtract/manifest.json",
     "gui/app/tests/conformance.test.mjs",
     "gui/tools/packaging/tests/test_embedded_branding.py",
@@ -68,7 +68,7 @@ def test_1537_bumps_release_versions_without_an_openapi_checkout_file(bump, tmp_
 
 def test_a_failed_app_bump_changes_nothing(bump, tmp_path):
     before = {name: (tmp_path / name).read_text() for name in FILES}
-    (tmp_path / "gui/docs/distribution.md").write_text("no version here\n")
+    (tmp_path / "gui/devdocs/distribution.md").write_text("no version here\n")
     assert bump.main(["bump", "9.8.7"]) == 1
     assert {name: (tmp_path / name).read_text() for name in FILES} == before
     assert (tmp_path / GUI_TAG).read_text() != "v9.8.7\n"
