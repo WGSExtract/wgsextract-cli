@@ -54,7 +54,7 @@ def _run(request: dict[str, Any], control_in: TextIO, out: TextIO) -> int:
     from wgsextract_cli.core.config import settings
     from wgsextract_cli.core.keep_awake import keep_awake
 
-    from .operations import PathGuard, find, params_from_json
+    from .operations import find, params_from_json
 
     configure_logging(debug=bool(request.get("debug")))
     lock = threading.Lock()
@@ -80,11 +80,7 @@ def _run(request: dict[str, Any], control_in: TextIO, out: TextIO) -> int:
     op = find(request["op"])
     params = params_from_json(op, request["params"])
     allowed = request.get("allowed")
-    scope = (
-        nullcontext()
-        if allowed is None
-        else read_scope.limited_to(PathGuard(allowed).allows)
-    )
+    scope = nullcontext() if allowed is None else read_scope.limited_to_folders(allowed)
     with (
         scope,
         keep_awake(bool(settings.get("keep_awake"))),

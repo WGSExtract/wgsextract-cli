@@ -317,7 +317,7 @@ metric counts them).
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the input's folder). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
 | `memory` | `str \| None` | `None` (config `memory_limit`) | `--memory`, `-m` | Memory per thread, e.g. '2G' (sorts: at most half the RAM in all); None picks a share of RAM (default: config memory_limit, else auto). |
-| `ybrowse` | `bool` | `False` | `--ybrowse` | Call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads). |
+| `ybrowse` | `bool` | `False` | `--ybrowse` | Call installed, allele-annotated yBrowse SNP targets (GRCh38, or GRCh37 after ref ybrowse --grch37; no downloads). |
 
 ### `api.extract.y_mt_extract(YMtExtractParams)`
 
@@ -416,7 +416,7 @@ are mismapped.
 | `formats` | `str \| None` | `None` | `--formats` | Comma-separated formats to write: fasta (consensus sequence), bam (reads) and vcf (variant calls), e.g. bam,vcf. |
 | `poz` | `bool` | `False` | `--poz` | With --target y and the bam format: restrict the BAM's Y reads to the bundled CombBED/McDonald/Poznik union (GRCh37, GRCh38 or T2T). |
 | `y_scope` | `str` | `'primary'` | `--y-scope` | Y contigs to read: primary (chrY only) or associated (also the reference's qualified Y-associated contigs, as WGS Extract v4 did; GRCh38 chrY_KI270740v1_random). Written as <input>_..._associated. One of: `primary`, `associated` |
-| `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38 only; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
+| `ybrowse` | `bool` | `False` | `--ybrowse` | With --target y and the vcf format: call installed, allele-annotated yBrowse SNP targets (GRCh38, or GRCh37 after ref ybrowse --grch37; no downloads) into <input>_Y_ybrowse.vcf.gz instead. |
 
 ## `api.bam`
 
@@ -1526,12 +1526,13 @@ journal lets interrupted chains resume from their last completed step.
 | `outdir` | `Path \| None` | `None` (config `output_directory`) | `--outdir`, `-o` | Outputs (default: config output_directory, else wgse/ beside primary input; otherwise the VCF's folder). |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 | `threads` | `int \| None` | `None` (config `cpu_threads`) | `--threads`, `-t` | CPU threads; None picks a count for this machine (default: config cpu_threads, else auto). |
-| `annotations` | `str` | `'clinvar,revel,phylop,gnomad,vep'` | `--annotations` | Comma-separated list of annotations to apply in order (default: clinvar,revel,phylop,gnomad,vep). |
+| `annotations` | `str` | `'clinvar,revel,phylop,gnomad,vep'` | `--annotations` | Comma-separated list of distinct annotations to apply in order (default: clinvar,revel,phylop,gnomad,vep). |
 | `keep_intermediates` | `bool` | `False` | `--keep-intermediates` | Keep intermediate VCFs after success so later runs can reuse them. |
 | `region` | `str \| None` | `None` | `-r`, `--region` | Only annotate this region (e.g. chr22:1000-2000) or comma-separated regions. |
-| `bed` | `Path \| None` | `None` | `--bed` | Only annotate regions in this 0-based BED or BED.gz file. |
+| `bed` | `Path \| None` | `None` | `--bed` | Only annotate regions in this 0-based BED or BED.gz file; clip to known contig lengths. |
 | `restart` | `bool` | `False` | `--force`, `--no-resume`, `--restart` | Rerun every step, ignoring the steps an earlier run completed. |
 | `force_steps` | `tuple[str, ...] \| None` | `None` | `--force-step`, `--force-steps` | Steps to rerun with the steps that use their outputs; None reruns none. Steps: select, clinvar, revel, phylop, cadd, gerp, gnomad, spliceai, alphamissense, pharmgkb, vep, trim. One of: `select`, `clinvar`, `revel`, `phylop`, `cadd`, `gerp`, `gnomad`, `spliceai`, `alphamissense`, `pharmgkb`, `vep`, `trim` |
+| `dry_run` | `bool` | `False` | `--dry-run` | Log which steps would run or be skipped, and why, and run none. |
 | `to_table` | `bool` | `False` | `--to-table` | Also export a variant table and SQLite database. |
 | `table_format` | `str \| None` | `None` | `--table-format` | Format with --to-table (default: tsv). One of: `tsv`, `parquet` |
 
@@ -2250,12 +2251,15 @@ CLI: `wgsextract ref ybrowse`.
 Install the snapshot; output role `reference_resource`.
 
 `RefYbrowseParams`: Install a verified, sites-only GRCh38 yBrowse snapshot into the
-library, or delete the installed snapshots.
+library, or delete the installed snapshots; `grch37` lifts it to GRCh37.
 
 | Field | Type | Default | CLI | Description |
 | --- | --- | --- | --- | --- |
 | `delete` | `bool` | `False` | `--delete` | Delete the installed yBrowse snapshots |
 | `snapshot` | `Path \| None` | `None` | `--snapshot` | Use a local GRCh38 VCF(.gz) instead of downloading from ybrowse.org. |
+| `grch37` | `bool` | `False` | `--grch37` | Lift the installed GRCh38 sites to GRCh37 with Ensembl's chain, checked against the GRCh37 FASTA --ref names or the library's. |
+| `chain` | `Path \| None` | `None` | `--chain` | With --grch37, lift with this chain. |
+| `download` | `bool` | `False` | `--download` | With --grch37, download Ensembl's pinned chain (730 KB) if missing. |
 | `ref` | `Path \| None` | `None` (config `reference_fasta`) | `--ref` | Reference FASTA or reference library folder; resolved from the input's header when omitted (default: config reference_fasta). |
 
 ### `api.ref.download(RefDownloadParams)`

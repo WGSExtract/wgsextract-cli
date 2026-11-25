@@ -31,6 +31,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "ref/library-list": {"ref": _DATA},
     "ref/acmg-data": {"ref": _DATA},
     "ref/imputation": {"ref": _DATA},
+    "ref/ybrowse": {"ref": _DATA},
     "report": {"input": _FILE},
     "sample/show": {"input": _FILE},
     "sample/set": {"input": _FILE, "sex": "female"},

@@ -106,7 +106,11 @@ def assembly_of(lengths: Mapping[str, int]) -> str | None:
 def index_paths(path: str | os.PathLike[str], kind: str) -> list[str]:
     """Every index a reader may use, in htslib's order: a CSI before the
     format's own (.bai, .crai or .tbi), each as ``<file><ext>`` or with the
-    file's extension replaced."""
+    file's extension replaced. One this run may not read (a link out of a
+    server job's folders, see :mod:`read_scope`) is neither inspected nor
+    listed."""
+    from wgsextract_cli.core import read_scope
+
     file = Path(path)
     own = {"bam": ".bai", "cram": ".crai", "vcf": ".tbi"}.get(kind)
     found: list[str] = []
@@ -114,8 +118,9 @@ def index_paths(path: str | os.PathLike[str], kind: str) -> list[str]:
         for candidate in (Path(f"{file}{suffix}"), file.with_suffix(suffix)):
             if (
                 candidate != file
-                and candidate.is_file()
                 and str(candidate) not in found
+                and read_scope.may_follow(candidate)
+                and candidate.is_file()
             ):
                 found.append(str(candidate))
     return found
@@ -137,20 +142,31 @@ class _Reader:
         self.at += struct.calcsize(fmt)
         return values
 
+    def count(self, size: int = 1) -> int:
+        """A count of items of ``size`` bytes that follow; a negative one, or
+        more than the index holds, is a damaged or crafted index."""
+        (value,) = self.take("<i")
+        if value < 0 or self.at + value * size > len(self.data):
+            raise ValueError(f"index count {value} out of bounds")
+        return value
+
+    def section(self, length: int) -> bytes:
+        raw = self.data[self.at : self.at + length]
+        self.at += length
+        return raw
+
     def bins(self, count: int, csi: bool, pseudo: int, offsets: set[int]) -> None:
         for _ in range(count):
-            (n_bin,) = self.take("<i")
-            for _ in range(n_bin):
+            # A bin is at least its id and chunk count (and a CSI's loffset).
+            for _ in range(self.count(16 if csi else 8)):
                 (bin_id,) = self.take("<I")
                 if csi:
                     self.take("<Q")  # loffset
-                (n_chunk,) = self.take("<i")
-                chunks = self.take(f"<{2 * n_chunk}Q")
+                chunks = self.take(f"<{2 * self.count(16)}Q")
                 if bin_id != pseudo:  # its "chunks" are read counts
                     offsets.update(v >> 16 for v in chunks)
             if not csi:
-                (n_intv,) = self.take("<i")
-                self.at += 8 * n_intv
+                self.section(8 * self.count(8))
 
 
 def _names(raw: bytes) -> list[str]:
@@ -167,22 +183,24 @@ def _index_contents(index: Path) -> _IndexContents | None:
     reader.at = 4
     offsets: set[int] = set()
     names: list[str] | None = None
+    # Every count and length is checked against what follows it.
     if magic == b"BAI\x01":
-        (count,) = reader.take("<i")
+        count = reader.count(8)  # a reference is at least two counts
         reader.bins(count, False, 37450, offsets)
     elif magic == b"TBI\x01":
-        count, *_meta, names_length = reader.take("<8i")
-        names = _names(data[reader.at : reader.at + names_length])
-        reader.at += names_length
+        count = reader.count(8)
+        reader.take("<6i")  # format, columns, meta character, skipped lines
+        names = _names(reader.section(reader.count()))
         reader.bins(count, False, 37450, offsets)
     elif magic == b"CSI\x01":
-        _shift, depth, aux_length = reader.take("<3i")
-        aux = data[reader.at : reader.at + aux_length]
-        reader.at += aux_length
-        if len(aux) >= 28:
-            (names_length,) = struct.unpack_from("<i", aux, 24)
-            names = _names(aux[28 : 28 + names_length])
-        (count,) = reader.take("<i")
+        _shift, depth = reader.take("<2i")
+        if not 0 <= depth <= 64:  # the pseudo-bin's number grows as 8**depth
+            raise ValueError(f"CSI depth {depth} out of bounds")
+        aux = _Reader(reader.section(reader.count()))
+        if len(aux.data) >= 28:
+            aux.at = 24
+            names = _names(aux.section(aux.count()))
+        count = reader.count(4)
         reader.bins(count, True, ((1 << (3 * depth + 3)) - 1) // 7 + 1, offsets)
     else:
         return None

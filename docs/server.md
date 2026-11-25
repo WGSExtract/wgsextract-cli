@@ -63,7 +63,9 @@ you start yourself:
   an allowed folder that points outside it is refused. That holds for the
   paths a request names; the files a command finds inside a named folder (a
   reference library's genomes, a model folder's weights, a checkpoint's
-  files) aren't checked one by one.
+  files) aren't generally checked one by one. The yBrowse installer checks
+  the paths it derives for snapshots, the liftover chain and its staging
+  files, and the reference FASTA and its indexes.
   The guard limits what a client can name. It is not a sandbox against other
   programs running as you, which can change the allowed folders (for example
   retarget a symlink) whatever the server does.
