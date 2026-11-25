@@ -9,8 +9,6 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
-from platformdirs import user_cache_dir
-
 from wgsextract_cli import __version__
 from wgsextract_cli.core.paths import windows_local_app_dir
 
@@ -113,6 +111,8 @@ def cache_path(key: str) -> Path:
     elif (windows_dir := windows_local_app_dir("wgsextract", "wgsextract")) is not None:
         cache_root = windows_dir / "Cache"
     else:
+        from platformdirs import user_cache_dir
+
         cache_root = Path(user_cache_dir("wgsextract"))
     return cache_root / "cli" / key / "help-index.json"
 

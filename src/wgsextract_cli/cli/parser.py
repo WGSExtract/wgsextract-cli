@@ -14,8 +14,7 @@ from wgsextract_cli.commands.registry import (
 )
 from wgsextract_cli.core.config import get_config_path, settings
 from wgsextract_cli.core.messages import CLI_HELP
-from wgsextract_cli.core.resource_policy import parse_thread_count
-from wgsextract_cli.core.users_workspace import write_initial_config
+from wgsextract_cli.core.thread_count import parse_thread_count
 
 from .argv import config_path_from_argv as config_path_from_argv
 from .argv import register_version
@@ -698,6 +697,8 @@ def _display_config_value(key: str, value: object) -> str:
 
 
 def bootstrap_default_config(config_path: Path) -> None:
+    from wgsextract_cli.core.users_workspace import write_initial_config
+
     print("\nConfig file does not exist yet.")
     try:
         interactive = sys.stdin.isatty()

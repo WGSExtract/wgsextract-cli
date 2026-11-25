@@ -3,6 +3,7 @@
 import copy
 import gzip
 import json
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -13,8 +14,12 @@ import tomli_w
 
 from tests.htslib_helpers import bgzip_index, needs_htslib
 from wgsextract_cli import api
-from wgsextract_cli.core.config import tomllib
 from wgsextract_cli.core.errors import CodedError
+
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
 
 FIXTURES = Path(__file__).parent / "fixtures" / "panel"
 SCHEMA = json.loads(

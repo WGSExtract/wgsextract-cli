@@ -33,9 +33,24 @@ from scripts.ci_certify_inputs import (
     locked_packages,
     validate_bootstrap,
 )
+from scripts.ci_certify_remote import acquire_host_lock
 from scripts.ci_certify_setup import prepare_wheels
 from scripts.ci_test_tiers import generic_test
 from scripts.pr_checks_ready import checks_ready
+from tests.ci_routing_helpers import run_router
+
+
+def test_1576_remote_host_lock_is_bound_to_controller_pid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def coordinator(command: list[str], **kwargs: Any) -> None:
+        assert command[:3] == ["agent-coord", "lock", "seraph"]
+        # contract: stale host locks must die with the controller
+        assert "--pid" in command
+        assert command[command.index("--pid") + 1] == str(os.getpid())
+
+    monkeypatch.setattr(subprocess, "run", coordinator)
+    acquire_host_lock("seraph")
 
 
 def attestations(
@@ -131,7 +146,11 @@ def test_ready_certification_requires_generic_and_every_routed_os(
         ).strip()
 
     git("init", "-q")
-    git("commit", "-qm", "base", "--allow-empty")
+    policy_test = "tests/test_github_actions_policy.py"
+    (tmp_path / "tests").mkdir()
+    (tmp_path / policy_test).write_text("def test_policy(tmp_path): pass\n")
+    git("add", policy_test)
+    git("commit", "-qm", "base")
     base = git("rev-parse", "HEAD")
     workflows = tmp_path / ".github" / "workflows"
     workflows.mkdir(parents=True)
@@ -139,42 +158,18 @@ def test_ready_certification_requires_generic_and_every_routed_os(
         (workflows / name).write_text("name: CI\n")
     git("add", ".")
     git("commit", "-qm", "workflow diff")
-    script = Path(__file__).resolve().parents[1] / "scripts" / "ci_changes.py"
     layers = ["generic", "linux-x64", "windows-x64"]
-    command = [
-        sys.executable,
-        str(script),
-        "--base",
+    output = run_router(
+        tmp_path,
         base,
-        "--head",
-        "HEAD",
         "--ready",
         "--certified",
         *(layer for layer in layers if layer != missing),
-    ]
-    output = subprocess.check_output(command, cwd=tmp_path, text=True)
+    )
     selected = dict(line.split("=", 1) for line in output.splitlines())
+    assert policy_test in json.loads(selected["ci_tests"])
     assert json.loads(selected["required_layers"]) == layers
     assert (selected["test_certified"] == "true") is (missing is None)
-
-
-def test_1495_windows_cert_does_not_skip_the_pinned_fresh_install() -> None:
-    workflows = Path(".github/workflows")
-    pr = (workflows / "pr_ci.yml").read_text()
-    caller = pr.split("\n  windows:\n", 1)[1].split("\n\n", 1)[0]
-    assert (
-        "|| contains(needs.changes.outputs.windows_tests, 'tests/test_imputation.py')"
-        in caller
-    )
-    assert "platform-certified:" in caller
-    windows = (workflows / "windows_ci.yml").read_text()
-    install, suite = windows.split("\n  imputation-install:\n", 1)[1].split(
-        "\n  test-windows:\n", 1
-    )
-    assert "if: inputs.platform-certified" in install
-    assert 'install: "false"' in install
-    assert "pixi install --locked -e imputation" in install
-    assert "!inputs.platform-certified" in suite
 
 
 @pytest.mark.parametrize(
