@@ -35,6 +35,10 @@ Always visible in both Basic and Advanced mode:
   mode.
 - **Web Font:** Choose the default system font priority or prefer **SF Pro**
   when available.
+- **Privacy mode** (off by default): Stops the app's startup update check. A
+  red **PRIVACY** badge shows under the app name while it is on. **File → Check
+  for Updates...** still checks when you choose it. See
+  [Privacy and network access](privacy.md).
 
 ## Report an Issue
 
