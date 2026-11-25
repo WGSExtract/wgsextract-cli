@@ -3,6 +3,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -119,40 +120,52 @@ def test_heartbeat_sends_its_count_and_fraction_to_api_callers():
 
 
 def test_extraction_heartbeat_moves_before_samtools_reports_its_count(
-    tmp_path, caplog, monkeypatch
-):
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Issue #549: a 35x FASTQ extraction showed "0/835M reads (0.0%)" for 23
     # minutes, because samtools fastq prints its count only when it finishes.
-    original = utils.Heartbeat
-    monkeypatch.setattr(
-        utils, "Heartbeat", lambda *a, **k: original(*a, interval=0.01, **k)
-    )
-    state = tmp_path / "state"
+    # Issue #1535: advance on observed heartbeats, not on timed rewrites of
+    # a file the estimator might try to read at the same time.
+    monkeypatch.setattr(utils, "Heartbeat", partial(Heartbeat, interval=0.01))
+    reported = tmp_path / "progress-reported"
     stage = [
         sys.executable,
         "-c",
-        "import pathlib,sys,time;state=pathlib.Path(sys.argv[1])\n"
-        "for shares in ('0.5 0','1 0','1 0.5'):\n"
-        "    state.write_text(shares);time.sleep(.2)\n"
+        "import pathlib,sys,time\n"
+        "reported = pathlib.Path(sys.argv[1])\n"
+        "deadline = time.monotonic() + 15\n"
+        "while not reported.exists():\n"
+        "    if time.monotonic() >= deadline:\n"
+        "        sys.exit('Extraction heartbeat did not report all phases')\n"
+        "    time.sleep(.01)\n"
         "sys.stderr.write('[M::bam2fq_mainloop] processed 4 reads\\n')",
-        str(state),
+        str(reported),
         "samtools",
         "fastq",
     ]
+    phases = (
+        ((0.5, 0.0), "50% of the input read"),
+        ((1.0, 0.0), "100% of the input read, collating pairs"),
+        ((1.0, 0.5), "~2/4 reads written (50.0%)"),
+    )
 
     def estimate() -> tuple[float, float]:
-        read, written = (state.read_text() or "0 0").split()
-        return float(read), float(written)
+        messages = caplog.text
+        for shares, message in phases:
+            if message not in messages:
+                return shares
+        reported.touch()
+        return phases[-1][0]
 
-    state.write_text("0 0")
     caplog.set_level(logging.INFO)
     utils.run_pipeline(
-        [stage], stdout=subprocess.DEVNULL, heartbeat=True, expected_reads=4,
+        [stage],
+        stdout=subprocess.DEVNULL,
+        stderr_dir=tmp_path,
+        heartbeat=True,
+        expected_reads=4,
         estimate=estimate,
-    )  # fmt: skip
-    assert "50% of the input read" in caplog.text
-    assert "100% of the input read, collating pairs" in caplog.text
-    assert "~2/4 reads written (50.0%)" in caplog.text
+    )
     assert "4/4 reads (100.0%)" in caplog.text
 
 
