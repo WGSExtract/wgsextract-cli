@@ -39,7 +39,7 @@ app_name = "WGSExtract"
 
 The branded name is used for the app bundle name, installer/DMG name, and native window title. If you omit `app_name`, packaging falls back to the bundle directory name. `TAURI_PRODUCT_SUFFIX` appends a suffix (for example `Ubuntu WebUI`) for side-by-side test builds.
 
-Packaging reads `version` from the bundle's `manifest.json` and uses it as the app version. For example, the bundled WGSExtract manifest currently sets `"version": "0.8.9"`, so installers are named with `0.8.9` instead of WGS Extract GUI's own version. Bundle-authored JSON files support `//` and `/* ... */` comments. Use SemVer-compatible values because Tauri/NSIS and macOS marketing versions reject arbitrary tags. Set `app_version` in `.devconfig.toml` or `PACKAGE_APP_VERSION` / `EMBEDDED_APP_VERSION` to override the manifest version.
+Packaging reads `version` from the bundle's `manifest.json` and uses it as the app version. For example, the bundled WGSExtract manifest currently sets `"version": "0.8.10"`, so installers are named with `0.8.10` instead of WGS Extract GUI's own version. Bundle-authored JSON files support `//` and `/* ... */` comments. Use SemVer-compatible values because Tauri/NSIS and macOS marketing versions reject arbitrary tags. Set `app_version` in `.devconfig.toml` or `PACKAGE_APP_VERSION` / `EMBEDDED_APP_VERSION` to override the manifest version.
 
 Embedded bundle scripts can be split by platform under `scripts/windows`, `scripts/macos`, `scripts/linux`, `scripts/linux/<distro>`, and `scripts/posix`. Runtime resolution chooses the most specific folder for the host and falls back to `posix` for POSIX platforms. Every platform folder present in a bundle must include the full referenced script set, otherwise bundle validation fails.
 
@@ -134,8 +134,10 @@ The macOS release builds natively on an Apple Silicon runner and an Intel runner
 
 `scripts/bump-wgsextract-cli.py vX.Y.Z` points the WGSExtract bundle at another
 wgsextract-cli release: the tag setup installs, the bundle version that names the
-installers, the tests that pin both, and a CHANGELOG entry. It changes nothing if
-any file can't be updated. The root's `scripts/bump_version.py X.Y.Z` runs it
+installers, and the tests that pin both. Release assembly updates the
+[changelog](CHANGELOG.md); see [the release process](../../docs/releasing.md).
+The bump script changes nothing if any file can't be updated.
+The root's `scripts/bump_version.py X.Y.Z` runs it
 with the CLI's own version bump, since the app and the CLI it bundles ship in
 the same release; the release workflow refuses a tag the bundle doesn't pin.
 

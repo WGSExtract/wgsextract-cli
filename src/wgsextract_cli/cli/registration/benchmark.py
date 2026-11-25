@@ -6,7 +6,19 @@ from functools import wraps
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.benchmark import BenchmarkParams
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    HOURS,
+    _n,
+)
+from wgsextract_cli.commands._messages.benchmark import CLI_HELP
+
+NEEDS = {
+    "benchmark": _n(
+        HOURS,
+        optional="bcftools bgzip curl samtools tabix",
+        scale=" for the full suite",
+    ),
+}
 
 
 def register(

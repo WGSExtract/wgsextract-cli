@@ -190,22 +190,24 @@ def test_1488_noop_pr_runs_do_not_queue_behind_failure_observers() -> None:
 def test_1237_gui_upload_requires_the_build_matrix_signed_updater_targets() -> None:
     build = (WORKFLOWS / "gui-build.yml").read_text()
     distribution = (WORKFLOWS / "gui-distribution.yml").read_text()
-    publisher = distribution.split("\n  publish:\n", 1)[1]
-    validation, upload = publisher.split("- name: Upload the app to the release", 1)
+    validation, upload = distribution.split("\n  assets:\n", 1)[1].split(
+        "\n  publish:\n", 1
+    )
 
     # CI contract: require the same target list that drove the installers,
     # and block uploads (including replacements) when feed validation fails.
     assert "artifact_name: ${{ fromJSON(inputs.targets) }}" in build
     assert "targets: ${{ inputs.targets }}" in build
     assert "value: ${{ jobs.tauri.outputs.targets }}" in build
-    assert "needs: tauri" in publisher
-    assert "inputs.tag != ''" in publisher.split("steps:", 1)[0]
+    assert "needs: tauri" in validation
+    assert "inputs.tag != ''" in validation.split("steps:", 1)[0]
     assert "ref: ${{ github.workflow_sha }}" in validation
     assert "EXPECTED_TARGETS: ${{ needs.tauri.outputs.targets }}" in validation
     assert '--expected-targets "$EXPECTED_TARGETS"' in validation
-    assert "--allow-unsigned" not in publisher
+    assert "--allow-unsigned" not in distribution
     assert "continue-on-error" not in validation
     assert "gh release upload" in upload and "gh release upload" not in validation
+    assert "Only Release preflight may supply assets for a draft." in upload
 
 
 @pytest.mark.parametrize(
@@ -290,69 +292,32 @@ def test_1045_draft_review_request_never_executes_pr_code() -> None:
         "macos_ci.yml",
         "windows_ci.yml",
         "linux_arm64.yml",
-        "cli_smoke.yml",
     ],
 )
-def test_nightly_reuses_green_main_except_for_linux_shadow_observations(
+def test_daily_backstop_runs_even_when_the_latest_main_sha_is_unchanged(
     workflow: str,
 ) -> None:
-    source = (WORKFLOWS / workflow).read_text()
-    assert "uses: ./.github/workflows/nightly_guard.yml" in source
-    assert f"workflow: {workflow}" in source
-    jobs = re.split(r"^  ([\w-]+):\s*\n", source.split("\njobs:\n", 1)[1], flags=re.M)
-    for name, body in zip(jobs[1::2], jobs[2::2], strict=True):
-        if name == "nightly" or (
-            workflow == "ubuntu_ci.yml"
-            and name in {"test-ubuntu", "test-ubuntu-balanced"}
-        ):
-            continue
-        assert "needs: nightly" in body
-        gate = re.search(r"\(([^()\n]*needs\.nightly\.result[^()\n]*)\)", body)
-        assert gate is not None
-        for event, result, skip, run in [
-            ("schedule", "success", "true", False),
-            ("schedule", "success", "false", True),
-            ("schedule", "failure", "", True),
-            ("schedule", "failure", "true", True),
-            ("push", "success", "true", False),
-            ("push", "skipped", "", True),
-            ("workflow_dispatch", "success", "true", False),
-            ("workflow_dispatch", "skipped", "", True),
-        ]:
-            assert (
-                matches_workflow_condition(
-                    gate[1],
-                    {
-                        "needs.nightly.result": result,
-                        "needs.nightly.outputs.skip": skip,
-                    },
-                )
-                is run
-            ), (
-                workflow,
-                name,
-                event,
-                result,
-                skip,
-            )
+    path = WORKFLOWS / workflow
+    source = path.read_text()
+    assert re.search(r'^  schedule:\n    - cron: "\d+ \d+ \* \* \*"', source, re.M)
+    assert event_path_filters(path, "workflow_dispatch") is not None
+    assert event_path_filters(path, "push") is None
+    assert "outputs.skip" not in source
+    name = source.splitlines()[0].removeprefix("name: ")
+    observer = (WORKFLOWS / "rerun_lost_runners.yml").read_text()
+    assert f"      - {name}\n" in observer
 
 
 def test_1464_ubuntu_dispatch_reaches_the_full_backstop_through_reusable_calls() -> (
     None
 ):
-    guard = (WORKFLOWS / "nightly_guard.yml").read_text()
-    guard_condition = guard.split("  check:\n", 1)[1].split("runs-on:", 1)[0]
-    assert (
-        "github.event_name == 'schedule' || inputs.main-backstop-candidate"
-        in guard_condition
-    )
     ubuntu = (WORKFLOWS / "ubuntu_ci.yml").read_text()
     backstop = ubuntu.split("\n  test-ubuntu:\n", 1)[1].split(
         "\n  test-ubuntu-balanced:", 1
     )[0]
     # A slow, failed or skipped guard cannot prevent a trusted full pytest run.
     assert "needs.nightly" not in backstop and "needs: nightly" not in backstop
-    assert "main-backstop-candidate: *main-backstop-candidate" in backstop
+    assert "main-backstop-candidate: " in backstop
     suite = (WORKFLOWS / "os_tests.yml").read_text()
     assert (
         "timeout-minutes: ${{ inputs.main-backstop-candidate && 80 || inputs.timeout-minutes }}"
@@ -498,6 +463,19 @@ def test_910_pr_workflows_allocate_no_draft_runners_and_wake_on_readiness(
     text = workflow.read_text()
     if workflow.name == "copilot_review_collaborators.yml":
         pytest.skip("Owner-approved API-only draft review request (#1045)")
+    if workflow.name == "priority_collaborator_prs.yml":
+        # Label drafts without allowing this exception to run PR code or gain
+        # broader permissions. Its only step is the reviewed API-only labeler.
+        assert event_path_filters(workflow, "pull_request_target") is not None
+        assert event_path_filters(workflow, "pull_request") is None
+        assert not re.search(r"^\s*(?:-\s*)?uses:", text, re.MULTILINE)
+        assert re.findall(r"^ *permissions:.*$", text, re.MULTILINE) == [
+            "permissions: {}",
+            "    permissions:",
+        ]
+        assert "    permissions:\n      pull-requests: write\n    steps:" in text
+        assert len(re.findall(r"^\s*(?:-\s*)?run:", text, re.MULTILINE)) == 1
+        return
     events = list(
         re.finditer(
             r"^  (pull_request(?:_target)?):\s*\n((?:    .*\n|\n)*)",
@@ -621,7 +599,6 @@ def test_949_required_waits_for_area_gate_without_a_dependency_cycle() -> None:
     # CI contract: branch protection must wait for the real area verdict.
     assert "ready-gate" in required_needs[1].split(", ")
     assert "required" not in area_needs[1].split(", ")
-    assert {"macos", "windows", "arm64", "smoke", "install"} <= set(
-        area_needs[1].split(", ")
-    )
+    assert {"macos", "windows", "arm64"} <= set(area_needs[1].split(", "))
+    assert not {"smoke", "install"} & set(area_needs[1].split(", "))
     assert "EVENT_NAME: ${{ github.event_name }}" in required

@@ -25,20 +25,65 @@ docs/sample-workspace.md describes the format.
 
 from __future__ import annotations
 
-import contextlib
 import logging
-import sys
-from collections.abc import Callable, Iterable, Iterator, Mapping
-from contextvars import ContextVar
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, get_args, overload
-
-import tomli_w
+from typing import TYPE_CHECKING, Literal, overload
 
 from wgsextract_cli import __version__
 from wgsextract_cli.core.paths import PathInput, absolute_path
+from wgsextract_cli.core.sample_context import (
+    active_workspace as active_workspace,
+)
+from wgsextract_cli.core.sample_context import (
+    check_override as check_override,
+)
+from wgsextract_cli.core.sample_context import (
+    current_workspace as current_workspace,
+)
+from wgsextract_cli.core.sample_context import (
+    known as known,
+)
+from wgsextract_cli.core.sample_context import (
+    record as record,
+)
+from wgsextract_cli.core.sample_context import (
+    recording_paused as recording_paused,
+)
+from wgsextract_cli.core.sample_context import (
+    resolve as resolve,
+)
+from wgsextract_cli.core.sample_context import (
+    workspace_for as workspace_for,
+)
+from wgsextract_cli.core.sample_facts import (
+    FACTS as FACTS,
+)
+from wgsextract_cli.core.sample_facts import (
+    OVERRIDABLE as OVERRIDABLE,
+)
+from wgsextract_cli.core.sample_facts import (
+    PERSON_FACTS as PERSON_FACTS,
+)
+from wgsextract_cli.core.sample_facts import (
+    PLATFORMS as PLATFORMS,
+)
+from wgsextract_cli.core.sample_facts import (
+    SEXES as SEXES,
+)
+from wgsextract_cli.core.sample_facts import (
+    Fact as Fact,
+)
+from wgsextract_cli.core.sample_facts import (
+    FactSpec as FactSpec,
+)
+from wgsextract_cli.core.sample_facts import (
+    Source as Source,
+)
+from wgsextract_cli.core.sample_facts import (
+    detected_fact,
+)
 from wgsextract_cli.core.sample_state import WorkspaceState, table
 from wgsextract_cli.core.sample_types import (
     SCHEMA_ID as SCHEMA_ID,
@@ -51,7 +96,6 @@ from wgsextract_cli.core.sample_types import (
     ObservedPlatform,
     ObservedSex,
     OverrideChanges,
-    Platform,
     Sex,
     Status,
     Superpopulation,
@@ -59,10 +103,30 @@ from wgsextract_cli.core.sample_types import (
     is_sex,
 )
 from wgsextract_cli.core.sample_view import (
-    FactView,
+    FactView as FactView,
+)
+from wgsextract_cli.core.sample_view import (
     FileStatus,
     FileView,
     WorkspaceView,
+)
+from wgsextract_cli.core.sample_workspace_format import (
+    SCHEMA_RESOURCE as SCHEMA_RESOURCE,
+)
+from wgsextract_cli.core.sample_workspace_format import (
+    WORKSPACE_FILE as WORKSPACE_FILE,
+)
+from wgsextract_cli.core.sample_workspace_format import (
+    load_schema as load_schema,
+)
+from wgsextract_cli.core.sample_workspace_format import (
+    read_workspace,
+)
+from wgsextract_cli.core.sample_workspace_format import (
+    render as render,
+)
+from wgsextract_cli.core.sample_workspace_format import (
+    tomllib as tomllib,
 )
 from wgsextract_cli.core.step_identity import file_fingerprint as file_fingerprint
 
@@ -74,176 +138,7 @@ if TYPE_CHECKING:
         WorkspaceOutput,
     )
 
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
-
-SCHEMA_RESOURCE = "assets/schemas/wgsextract.sample.1.schema.json"
-WORKSPACE_FILE = "wgsextract.sample.toml"
-_SCHEMA_PREFIX = "wgsextract.sample/"
-_SCHEMA_VERSION = 1
 _LOCK_TIMEOUT = 30
-_HEADER = (
-    "# WGS Extract sample workspace (wgsextract.sample/1); "
-    "see docs/sample-workspace.md.\n"
-    "# [override] holds your corrections and wins over detection: edit it here\n"
-    "# or with 'wgsextract sample set'. wgsextract rewrites [detected] and\n"
-    "# [outputs]; comments are not kept.\n\n"
-)
-
-SEXES: tuple[str, ...] = get_args(Sex)
-PLATFORMS: tuple[str, ...] = get_args(Platform)
-_ALIASES = {
-    "m": "Male",
-    "f": "Female",
-    "nanopore": "ont",
-    "oxford nanopore": "ont",
-    "hifi": "pacbio",
-    "mgi": "dnbseq",
-    "bgi": "dnbseq",
-    "bgiseq": "dnbseq",
-}
-
-Source = Literal["override", "detected"]
-
-
-@dataclass(frozen=True)
-class FactSpec:
-    """One kind of fact. ``choices`` makes it user-overridable. ``version`` is
-    its detector's: bump it when detection changes so recorded facts are
-    detected again."""
-
-    name: str
-    description: str
-    choices: tuple[str, ...] | None = None
-    version: int = 1
-
-    @property
-    def overridable(self) -> bool:
-        return self.choices is not None
-
-    def normalize(self, value: object) -> str:
-        """The canonical spelling of a user's value; ValueError if not allowed."""
-        assert self.choices is not None
-        text = str(value).strip()
-        lowered = _ALIASES.get(text.lower(), text).lower()
-        for choice in self.choices:
-            if choice.lower() == lowered:
-                return choice
-        raise ValueError(
-            f"{self.name} must be one of {', '.join(self.choices)}, not {value!r}"
-        )
-
-
-FACTS: dict[str, FactSpec] = {
-    spec.name: spec
-    for spec in (
-        FactSpec("sex", "Declared sex or observed non-PAR depth evidence.", SEXES, 6),
-        FactSpec(
-            "platform",
-            "Sequencing platform, from read groups, read names or a bounded FASTQ sample.",
-            PLATFORMS,
-            4,
-        ),
-        # 2: a VCF's ##reference path counts only by its file name.
-        # 3: .vcf.bgz and upper-case VCF names are read as VCFs (#1243).
-        # 4: metadata and contig counts are hints, not confirmed builds (#1346).
-        FactSpec("build", "Reference build the file is aligned to.", version=4),
-        FactSpec(
-            "somalier_sex",
-            "Male or Female, from chrX heterozygosity and chrY depth (qc relate).",
-        ),
-        FactSpec(
-            "superpopulation",
-            "1000 Genomes superpopulation (AFR, AMR, EAS, EUR, SAS; qc relate).",
-        ),
-        FactSpec("read_length", "Mean read length in bases."),
-        # Version 2: long reads' depth is sampled, not counted (#427).
-        FactSpec("mean_coverage", "Mean mapped read depth over the genome.", None, 2),
-        # Version 3: multi-reference CRAM containers are sampled on the contigs
-        # their index lists (#339).
-        FactSpec(
-            "target_depths",
-            "Mean mapped depth of the autosomes, chrX, chrY and mtDNA.",
-            None,
-            3,
-        ),
-        FactSpec(
-            "contamination",
-            "Fraction of the reads from another person (VerifyBamID2 FREEMIX).",
-        ),
-        FactSpec(
-            "ancestry",
-            "Shares of the 7 continental HGDP+1KG reference components "
-            "(qc ancestry; reference proportions, not ethnicity).",
-        ),
-    )
-}
-OVERRIDABLE = tuple(name for name, spec in FACTS.items() if spec.overridable)
-# Facts of the person rather than of one file: overridden folder-wide in a
-# genome folder, which holds one person's files.
-PERSON_FACTS = ("sex",)
-
-
-@dataclass(frozen=True)
-class Fact:
-    """A fact in effect: the user's override or a current detected value."""
-
-    name: str
-    value: object
-    source: Source
-    file: str | None = None
-    fingerprint: str | None = None
-    method: str | None = None
-    confidence: str | None = None
-    version: int | None = None
-    by: str | None = None
-    at: str | None = None
-    statistics: dict[str, float] | None = None
-    evidence_fingerprint: str | None = None
-
-    def describe(self) -> str:
-        if self.source == "override":
-            scope = f" for {self.file}" if self.file else ""
-            return f"your override{scope} in {WORKSPACE_FILE}"
-        detail = ", ".join(x for x in (self.method, self.confidence) if x)
-        when = (self.at or "")[:10]
-        return (
-            f"recorded in {WORKSPACE_FILE} from {self.file}"
-            + (f" by {self.by}" if self.by else "")
-            + (f" on {when}" if when else "")
-            + (f": {detail}" if detail else "")
-        )
-
-    def to_dict(self) -> FactView:
-        result: FactView = {
-            "name": self.name,
-            "value": self.value,
-            "source": self.source,
-        }
-        if self.file is not None:
-            result["file"] = self.file
-        if self.fingerprint is not None:
-            result["fingerprint"] = self.fingerprint
-        if self.method is not None:
-            result["method"] = self.method
-        if self.confidence is not None:
-            result["confidence"] = self.confidence
-        if self.version is not None:
-            result["version"] = self.version
-        if self.by is not None:
-            result["by"] = self.by
-        if self.at is not None:
-            result["at"] = self.at
-        if self.statistics is not None:
-            result["statistics"] = self.statistics
-        if self.evidence_fingerprint is not None:
-            result["evidence_fingerprint"] = self.evidence_fingerprint
-        return result
-
-
-# --- fingerprints ------------------------------------------------------------
 
 
 def _now() -> str:
@@ -294,40 +189,8 @@ class SampleWorkspace:
 
     # --- reading ---------------------------------------------------------------
 
-    def _read(self) -> WorkspaceState:
-        try:
-            with open(self.path, "rb") as stream:
-                raw: dict[str, object] = tomllib.load(stream)
-        except FileNotFoundError:
-            return WorkspaceState({"schema": SCHEMA_ID})
-        except OSError as e:
-            return WorkspaceState({}, True, False, f"unreadable: {e}")
-        except (tomllib.TOMLDecodeError, UnicodeDecodeError) as e:
-            return WorkspaceState({}, True, False, f"not valid TOML: {e}")
-        schema = raw.get("schema")
-        if schema == SCHEMA_ID:
-            malformed = _malformed(raw)
-            if malformed:
-                return WorkspaceState({}, True, False, malformed)
-            return WorkspaceState(raw, True)
-        version = None
-        if isinstance(schema, str) and schema.startswith(_SCHEMA_PREFIX):
-            with contextlib.suppress(ValueError):
-                version = int(schema.removeprefix(_SCHEMA_PREFIX))
-        if schema is None or (version is not None and version < _SCHEMA_VERSION):
-            # An older layout: keep the user's overrides and other keys, but
-            # detect everything again.
-            raw.pop("detected", None)
-            raw["schema"] = SCHEMA_ID
-            return WorkspaceState(raw, True, True, f"older schema {schema!r}; upgraded")
-        if version is not None:
-            return WorkspaceState(
-                {}, True, False, f"written by a newer wgsextract ({schema})"
-            )
-        return WorkspaceState({}, True, False, f"unknown schema {schema!r}")
-
     def _load(self) -> WorkspaceState:
-        doc = self._read()
+        doc = read_workspace(self.path)
         if doc.problem and not doc.writable:
             _warn_once(
                 f"Ignoring {self.path}: {doc.problem}. wgsextract won't change it; "
@@ -453,7 +316,7 @@ class SampleWorkspace:
                 return None
             if fact.get("evidence_fingerprint") != evidence:
                 return None
-        return _detected_fact(name, key, _text(entry["fingerprint"]), fact)
+        return detected_fact(name, key, entry["fingerprint"], fact)
 
     def detected_facts(self, name: str) -> list[Fact]:
         """``name`` as detected from each file still as it was, newest first."""
@@ -744,8 +607,8 @@ class SampleWorkspace:
                 "status": self._status(key, entry),
                 "fingerprint": entry.get("fingerprint"),
                 "facts": {
-                    name: _detected_fact(
-                        name, key, _text(entry.get("fingerprint")), table(fact)
+                    name: detected_fact(
+                        name, key, entry.get("fingerprint"), table(fact)
                     ).to_dict()
                     for name, fact in entry.items()
                     if isinstance(fact, dict) and "value" in fact
@@ -785,324 +648,3 @@ class SampleWorkspace:
                 if (fact := self.fact(name, file)) is not None
             }
         return data
-
-
-def _malformed(raw: Mapping[str, object]) -> str | None:
-    """What makes a current-schema document unusable, if anything."""
-    for section in ("override", "detected", "outputs"):
-        table = raw.get(section, {})
-        if not isinstance(table, dict):
-            return f"[{section}] isn't a table"
-        if section == "override" and not all(
-            isinstance(v, str) or (isinstance(v, dict) and "fingerprint" in v)
-            for v in table.values()
-        ):
-            return "an entry of [override] is neither a value nor a file's table"
-        if section != "override" and not all(
-            isinstance(entry, dict) for entry in table.values()
-        ):
-            return f"an entry of [{section}] isn't a table"
-    return None
-
-
-def _detected_fact(
-    name: str, key: str, fingerprint: str | None, fact: Mapping[str, object]
-) -> Fact:
-    version = fact.get("version")
-    return Fact(
-        name=name,
-        value=fact["value"],
-        source="detected",
-        file=key,
-        fingerprint=fingerprint,
-        method=_text(fact.get("method")),
-        confidence=_text(fact.get("confidence")),
-        version=version if isinstance(version, int) else None,
-        by=_text(fact.get("by")),
-        at=_text(fact.get("at")),
-        statistics=_statistics(fact.get("statistics")),
-        evidence_fingerprint=_text(fact.get("evidence_fingerprint")),
-    )
-
-
-def _statistics(value: object) -> dict[str, float] | None:
-    if not isinstance(value, dict):
-        return None
-    return {
-        key: float(item)
-        for key, item in value.items()
-        if isinstance(key, str) and isinstance(item, (int, float))
-    }
-
-
-def _text(value: object) -> str | None:
-    return value if isinstance(value, str) else None
-
-
-def render(raw: Mapping[str, object]) -> str:
-    """The TOML text: schema first, then [override], [detected], [outputs]."""
-    order = ("schema", "override", "detected", "outputs")
-    ordered = {k: raw[k] for k in order if k in raw}
-    ordered.update({k: v for k, v in raw.items() if k not in order})
-    text: str = tomli_w.dumps(ordered)
-    return _HEADER + text
-
-
-def load_schema() -> dict[str, Any]:
-    """The wgsextract.sample/1 JSON Schema shipped with the package."""
-    import json
-    from importlib import resources
-
-    text = resources.files("wgsextract_cli").joinpath(SCHEMA_RESOURCE).read_text()
-    schema: dict[str, Any] = json.loads(text)
-    return schema
-
-
-# --- finding the workspace of a file -------------------------------------------
-
-# The running command's --genome workspace and the files it claims; per
-# context, so worker threads (core.execution_context) see their command's.
-_active: ContextVar[tuple[SampleWorkspace, frozenset[Path]] | None] = ContextVar(
-    "active_sample_workspace", default=None
-)
-
-
-@contextlib.contextmanager
-def active_workspace(
-    folder: PathInput | None, files: Iterable[PathInput | None] = ()
-) -> Iterator[None]:
-    """Make ``folder`` (a --genome folder) the workspace of the files in it and
-    of ``files`` (its inputs, which genome-config.toml may place elsewhere)."""
-    if folder is None:
-        yield
-        return
-    token = _active.set(
-        (SampleWorkspace(folder), frozenset(absolute_path(f) for f in files if f))
-    )
-    try:
-        yield
-    finally:
-        _active.reset(token)
-
-
-def current_workspace() -> SampleWorkspace | None:
-    """The --genome workspace of the running command, if any."""
-    active = _active.get()
-    return active[0] if active else None
-
-
-def workspace_for(file: PathInput | None) -> SampleWorkspace | None:
-    """The workspace ``file`` belongs to: the --genome folder for its files and
-    inputs, else the file's own folder when that is a sample or genome folder."""
-    if not file:
-        return None
-    path = absolute_path(file)
-    active = _active.get()
-    if active is not None and (
-        path in active[1] or path.is_relative_to(active[0].folder)
-    ):
-        return active[0]
-    from wgsextract_cli.core.genome_library import GENOME_CONFIG_NAME
-
-    folder = path.parent
-    if (folder / WORKSPACE_FILE).is_file() or (folder / GENOME_CONFIG_NAME).is_file():
-        return SampleWorkspace(folder)
-    return None
-
-
-_LABELS = {
-    "sex": "Sex",
-    "platform": "Platform",
-    "build": "Build",
-    "somalier_sex": "Sex (somalier)",
-    "superpopulation": "Superpopulation",
-    "read_length": "Read length",
-    "mean_coverage": "Mean coverage",
-    "target_depths": "Target depths",
-    "contamination": "Contamination",
-    "ancestry": "Ancestry (K=7)",
-}
-_reported: set[tuple[str, str]] = set()
-
-
-def known(name: str, file: PathInput | None) -> Fact | None:
-    """The fact in effect for ``file``, if its workspace has one: the user's
-    override, else one detected from this revision of the file by the current
-    detector. Logged once per run."""
-    workspace = workspace_for(file)
-    if workspace is None or file is None:
-        return None
-    try:
-        fact = workspace.fact(name, file)
-    except (OSError, ValueError) as e:
-        logging.debug(f"Couldn't read sample facts from {workspace.path}: {e}")
-        return None
-    if fact is not None and (name, workspace.key(file)) not in _reported:
-        _reported.add((name, workspace.key(file)))
-        logging.info(f"{_LABELS.get(name, name)}: {fact.value} ({fact.describe()})")
-    return fact
-
-
-_recording: ContextVar[bool] = ContextVar("sample_facts_recording", default=True)
-
-
-@contextlib.contextmanager
-def recording_paused() -> Iterator[None]:
-    """Detect facts without recording them, for a report that changes nothing."""
-    token = _recording.set(False)
-    try:
-        yield
-    finally:
-        _recording.reset(token)
-
-
-@overload
-def record(
-    name: Literal["sex"],
-    file: PathInput | None,
-    value: ObservedSex | None,
-    *,
-    method: str,
-    confidence: Confidence,
-) -> bool: ...
-
-
-@overload
-def record(
-    name: Literal["somalier_sex"],
-    file: PathInput | None,
-    value: Sex | None,
-    *,
-    method: str,
-    confidence: Confidence,
-) -> bool: ...
-
-
-@overload
-def record(
-    name: Literal["platform"],
-    file: PathInput | None,
-    value: ObservedPlatform | None,
-    *,
-    method: str,
-    confidence: Confidence,
-    statistics: dict[str, float] | None = None,
-) -> bool: ...
-
-
-@overload
-def record(
-    name: Literal["superpopulation"],
-    file: PathInput | None,
-    value: Superpopulation | None,
-    *,
-    method: str,
-    confidence: Confidence,
-) -> bool: ...
-
-
-@overload
-def record(
-    name: Literal["build"],
-    file: PathInput | None,
-    value: str | None,
-    *,
-    method: str,
-    confidence: Confidence,
-) -> bool: ...
-
-
-@overload
-def record(
-    name: Literal["read_length", "mean_coverage", "contamination"],
-    file: PathInput | None,
-    value: float | None,
-    *,
-    method: str,
-    confidence: Confidence,
-) -> bool: ...
-
-
-@overload
-def record(
-    name: Literal["target_depths", "ancestry"],
-    file: PathInput | None,
-    value: dict[str, float] | None,
-    *,
-    method: str,
-    confidence: Confidence,
-) -> bool: ...
-
-
-def record(
-    name: FactName,
-    file: PathInput | None,
-    value: object,
-    *,
-    method: str,
-    confidence: Confidence,
-    statistics: dict[str, float] | None = None,
-) -> bool:
-    """Record a detected fact in ``file``'s workspace, if it has one, and warn
-    if it contradicts the user's override."""
-    workspace = workspace_for(file)
-    if workspace is None or file is None or not _recording.get():
-        return False
-    recorded = workspace._record(
-        name, file, value, method=method, confidence=confidence, statistics=statistics
-    )
-    check_override(name, file, value, method)
-    return recorded
-
-
-_checked: set[tuple[str, str]] = set()
-
-
-def check_override(
-    name: str, file: PathInput | None, detected: object, method: str | None
-) -> None:
-    """Warn, into the result manifest, when the reads contradict the override
-    in effect for ``file``: it changes the algorithm, so a wrong one must not
-    go unnoticed. Once per fact and file per run."""
-    workspace = workspace_for(file)
-    if workspace is None or file is None or detected in (None, "Unknown", "unknown"):
-        return
-    try:
-        override = workspace.overrides(file).get(name)
-    except (OSError, ValueError):
-        return
-    key = (name, str(absolute_path(file)))
-    if override is None or override == detected or key in _checked:
-        return
-    _checked.add(key)
-    from wgsextract_cli.core.results import warn
-
-    how = f" ({method})" if method else ""
-    warn(
-        f"{name}_override_differs",
-        f"Using your {name} override {override} for {Path(file).name}, but its "
-        f"reads look {detected}{how}. If the override is wrong, remove it with "
-        f"'wgsextract sample unset --{name}'.",
-        file=workspace.key(file),
-        detected=str(detected),
-        override=override,
-    )
-
-
-def resolve(
-    name: str, file: PathInput | None, detect: Callable[[], tuple[Any, str | None]]
-) -> Any:
-    """The value of a fact that changes an algorithm: the recorded or
-    detected one, or the user's override. With an override the fact is still
-    detected (``detect`` returns (value, method) and records it) or read from
-    the record, so a contradicting override is warned about."""
-    fact = known(name, file)
-    if fact is not None and fact.source == "detected":
-        return fact.value
-    workspace = workspace_for(file) if fact is not None else None
-    recorded = workspace.detected(name, file) if workspace and file else None
-    value, method = (recorded.value, recorded.method) if recorded else detect()
-    if fact is None:
-        return value
-    check_override(name, file, value, method)
-    return fact.value

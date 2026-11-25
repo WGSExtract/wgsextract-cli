@@ -93,8 +93,10 @@ _CHAINS_TO_GRCH37 = {"NCBI36": HG18_TO_HG19_CHAIN, "GRCh38": HG38_TO_HG19_CHAIN}
 # writes one of them (see chain_to_grch37), not to every target build.
 _OPTIONAL_CHAINS = {"GRCh38"}
 # Bump when the builder's output changes, so libraries rebuild their target.
-# 5 is CombinedKit v5: the letter-named chip variants and third-tier vendors.
-TARGET_VERSION = 5
+# 6 updates CombinedKit v5's target union for merged 23andMe_V4 (v4a-c) and
+# FTDNA_V2 (v2a-d) alongside frozen v3 templates; the public CombinedKit v5
+# name stays unchanged.
+TARGET_VERSION = 6
 _VERSION_LINE = f"##wgsextract_microarray_target_version={TARGET_VERSION}\n"
 # In order of precedence for a position's ID.
 _FORMATS = [

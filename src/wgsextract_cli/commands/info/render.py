@@ -10,7 +10,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.commands._messages.info import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline

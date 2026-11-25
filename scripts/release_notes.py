@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """Check and assemble release-note fragments.
 
-Each change adds its own file to docs/release-notes/unreleased/, so PRs never
-edit a shared notes file (#1281). A fragment is named NUMBER-SLUG.md after its
-issue or PR (for example 1155-missing-ystrs.md) and holds one or more of the
-sections below, each a `## Section` heading followed by a `- ` list of entries.
+Each change adds its own file to docs/release-notes/unreleased/ or
+gui/docs/changelog/unreleased/, so PRs never edit a shared notes file. A
+fragment is named NUMBER-SLUG.md after its issue or PR and holds one or more
+sections, each a `## Section` heading followed by a `- ` list of entries.
 
   python scripts/release_notes.py check [--base REF]
   python scripts/release_notes.py assemble X.Y.Z
 
-`assemble` writes docs/release-notes/vX.Y.Z.md from every fragment, grouped by
-section in the order below and by number within a section, then deletes the
-fragments; the release PR adds the summary and the app's changes by hand (see
-docs/releasing.md). With --base, `check` also fails when the change since REF is
-a release (it adds a vX.Y.Z.md or bumps pyproject.toml's version) while
-fragments remain, so none is left out of that release or announced twice.
+`assemble` writes docs/release-notes/vX.Y.Z.md and adds a dated release to
+gui/docs/CHANGELOG.md, then deletes the fragments. The release PR adds a
+summary by hand (see docs/releasing.md). With --base, `check` also fails when
+the change since REF is a release but fragments remain.
 """
 
 from __future__ import annotations
@@ -24,6 +22,7 @@ import re
 import subprocess
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 if sys.version_info >= (3, 11):
@@ -32,11 +31,14 @@ else:
     import tomli as tomllib
 
 NOTES = Path(__file__).resolve().parents[1] / "docs" / "release-notes"
-SECTIONS = ("Changed", "New", "Fixes", "Deprecated", "Removed", "Desktop app")
+GUI_CHANGELOG = NOTES.parents[1] / "gui" / "docs" / "CHANGELOG.md"
+SECTIONS = ("Changed", "New", "Fixes", "Deprecated", "Removed")
+GUI_SECTIONS = ("Added", "Changed", "Deprecated", "Removed", "Fixed", "Security")
 NAME = re.compile(r"(?P<number>[1-9]\d*)-[a-z0-9]+(?:-[a-z0-9]+)*\.md")
 HEADING = re.compile(r"##\s+(?P<section>.+?)\s*")
 VERSION = re.compile(r"v?(?P<version>\d+\.\d+\.\d+)")
-COMPARE = "https://github.com/WGSExtract/wgsextract-cli/compare"
+REPOSITORY_URL = "https://github.com/WGSExtract/wgsextract-cli"
+COMPARE = f"{REPOSITORY_URL}/compare"
 README = "README.md"
 
 
@@ -47,7 +49,7 @@ class Fragment:
     sections: dict[str, str]
 
 
-def parse(path: Path) -> tuple[Fragment | None, list[str]]:
+def parse(path: Path, allowed: tuple[str, ...]) -> tuple[Fragment | None, list[str]]:
     name = f"{path.parent.name}/{path.name}"
     match = NAME.fullmatch(path.name)
     if match is None:
@@ -59,10 +61,15 @@ def parse(path: Path) -> tuple[Fragment | None, list[str]]:
         heading = HEADING.fullmatch(line)
         if heading:
             section = heading["section"]
-            if section not in SECTIONS:
+            if section == "Desktop app" and allowed == SECTIONS:
+                errors.append(
+                    f"{name}:{number}: put desktop app entries in "
+                    "gui/docs/changelog/unreleased/"
+                )
+            elif section not in allowed:
                 errors.append(
                     f"{name}:{number}: unknown section {section!r}; use one of "
-                    + ", ".join(SECTIONS)
+                    + ", ".join(allowed)
                 )
             elif section in sections:
                 errors.append(f"{name}:{number}: duplicate section {section!r}")
@@ -91,7 +98,9 @@ def parse(path: Path) -> tuple[Fragment | None, list[str]]:
     return Fragment(path, int(match["number"]), bodies), []
 
 
-def collect(notes: Path) -> tuple[list[Fragment], list[str]]:
+def collect(
+    notes: Path, allowed: tuple[str, ...] = SECTIONS
+) -> tuple[list[Fragment], list[str]]:
     fragments: list[Fragment] = []
     errors: list[str] = []
     if (notes / "unreleased.md").exists():
@@ -109,7 +118,7 @@ def collect(notes: Path) -> tuple[list[Fragment], list[str]]:
         if not path.is_file():
             errors.append(f"unreleased/{path.name}: expected a Markdown file")
             continue
-        fragment, problems = parse(path)
+        fragment, problems = parse(path, allowed)
         errors += problems
         if fragment:
             fragments.append(fragment)
@@ -134,7 +143,7 @@ def project_version(notes: Path, revision: str) -> str | None:
     return version if isinstance(version, str) else None
 
 
-def released(notes: Path, base: str) -> list[str]:
+def released(notes: Path, base: str) -> list[tuple[str, str]]:
     """What since base makes this a release: added notes files, a version bump."""
     added = git(
         notes,
@@ -149,15 +158,15 @@ def released(notes: Path, base: str) -> list[str]:
     if added is None:
         raise ValueError(f"{notes.parents[1]} is not a git checkout")
     releases = [
-        f"{Path(path).name} is added here"
+        (match["version"], f"{Path(path).name} is added here")
         for path in added
         if Path(path).parent == Path("docs/release-notes")
         and Path(path).stem.startswith("v")
-        and VERSION.fullmatch(Path(path).stem)
+        and (match := VERSION.fullmatch(Path(path).stem))
     ]
     version = project_version(notes, "HEAD")
-    if version != project_version(notes, base):
-        releases.append(f"the version becomes {version} here")
+    if version is not None and version != project_version(notes, base):
+        releases.append((version, f"the version becomes {version} here"))
     return releases
 
 
@@ -178,18 +187,117 @@ def previous(notes: Path, version: tuple[int, ...]) -> str | None:
     return ".".join(map(str, max(older))) if older else None
 
 
-def render(version: str, fragments: list[Fragment], before: str | None) -> str:
+def grouped(fragments: list[Fragment], sections: tuple[str, ...]) -> dict[str, str]:
+    return {
+        section: "\n".join(bodies)
+        for section in sections
+        if (
+            bodies := [
+                fragment.sections[section]
+                for fragment in fragments
+                if section in fragment.sections
+            ]
+        )
+    }
+
+
+def render(
+    version: str,
+    fragments: list[Fragment],
+    before: str | None,
+    desktop: dict[str, str],
+) -> str:
     parts = [f"# WGS Extract {version}"]
-    for section in SECTIONS:
-        bodies = [f.sections[section] for f in fragments if section in f.sections]
-        if bodies:
-            parts.append(f"## {section}\n\n" + "\n".join(bodies))
+    sections = grouped(fragments, SECTIONS)
+    if desktop:
+        sections["Desktop app"] = "\n\n".join(
+            f"### {section}\n\n{body}" for section, body in desktop.items()
+        )
+    parts.extend(f"## {section}\n\n{body}" for section, body in sections.items())
     if before:
         parts.append(f"**Full changelog:** <{COMPARE}/v{before}...v{version}>")
     return "\n\n".join(parts) + "\n"
 
 
-def assemble(notes: Path, requested: str) -> Path:
+def collect_gui(changelog: Path | None) -> tuple[str, list[Fragment], list[str]]:
+    if changelog is None:
+        return "", [], []
+    directory = changelog.parent / "changelog"
+    fragments, errors = collect(directory, GUI_SECTIONS)
+    try:
+        history = changelog.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as error:
+        history = ""
+        errors.append(f"cannot read {changelog}: {error}")
+    if re.search(r"^##\s+\[?Unreleased\b", history, re.MULTILINE | re.IGNORECASE):
+        errors.append("move the shared Unreleased section to individual fragments")
+    return history, fragments, [f"desktop changelog: {error}" for error in errors]
+
+
+def has_gui_release(history: str, version: str) -> bool:
+    return bool(
+        re.search(
+            rf"^## \[{re.escape(version)}\] - \d{{4}}-\d{{2}}-\d{{2}}$",
+            history,
+            re.MULTILINE,
+        )
+    )
+
+
+def render_gui(history: str, version: str, desktop: dict[str, str]) -> str:
+    if re.search(rf"^## \[{re.escape(version)}\](?:\s|$)", history, re.MULTILINE):
+        raise ValueError(f"the desktop changelog already has release {version}")
+    changed = (
+        f"- Bump the bundled WGSExtract CLI installer target to `v{version}` "
+        f"([release notes]({REPOSITORY_URL}/releases/tag/v{version}))."
+    )
+    if "Changed" in desktop:
+        changed += "\n" + desktop["Changed"]
+    sections = {**desktop, "Changed": changed}
+    today = datetime.now(timezone.utc).date().isoformat()
+    release = [f"## [{version}] - {today}"]
+    release += [
+        f"### {section}\n{sections[section]}"
+        for section in GUI_SECTIONS
+        if section in sections
+    ]
+    index = re.search(r"^## ", history, re.MULTILINE)
+    start = index.start() if index else len(history)
+    return (
+        history[:start].rstrip()
+        + "\n\n"
+        + "\n\n".join(release)
+        + "\n\n"
+        + history[start:]
+    )
+
+
+def write_release(
+    output: Path, notes: str, changelog: Path | None, history: str
+) -> None:
+    changes = {output: notes}
+    if changelog is not None:
+        changes[changelog] = history
+    staged: dict[Path, Path] = {}
+    try:
+        for path, text in changes.items():
+            stage = path.with_suffix(".md.assemble")
+            with stage.open("x", encoding="utf-8") as file:
+                staged[path] = stage
+                file.write(text)
+        staged[output].replace(output)
+        if changelog is not None:
+            try:
+                staged[changelog].replace(changelog)
+            except OSError:
+                output.unlink()
+                raise
+    finally:
+        for stage in staged.values():
+            stage.unlink(missing_ok=True)
+
+
+def assemble(notes: Path, requested: str, changelog: Path | None) -> Path:
     match = VERSION.fullmatch(requested)
     if match is None:
         raise ValueError(f"{requested!r} is not a X.Y.Z version")
@@ -198,13 +306,20 @@ def assemble(notes: Path, requested: str) -> Path:
     if output.exists():
         raise ValueError(f"{output.name} already exists")
     fragments, errors = collect(notes)
+    history, app_fragments, app_errors = collect_gui(changelog)
+    errors += app_errors
     if errors:
         raise ValueError("\n".join(errors))
-    if not fragments:
+    if not fragments and changelog is None:
         raise ValueError("no release-note fragments in unreleased/")
     before = previous(notes, tuple(int(part) for part in version.split(".")))
-    output.write_text(render(version, fragments, before), encoding="utf-8")
-    for fragment in fragments:
+    desktop = grouped(app_fragments, GUI_SECTIONS)
+    if changelog is not None:
+        history = render_gui(history, version, desktop)
+    write_release(
+        output, render(version, fragments, before, desktop), changelog, history
+    )
+    for fragment in fragments + app_fragments:
         fragment.path.unlink()
     return output
 
@@ -214,6 +329,7 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--notes-dir", type=Path, default=NOTES, help=argparse.SUPPRESS)
+    parser.add_argument("--gui-changelog", type=Path, help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest="command", required=True)
     check = commands.add_parser("check", help="Validate fragment names and sections.")
     check.add_argument(
@@ -224,32 +340,49 @@ def main(argv: list[str] | None = None) -> int:
     build = commands.add_parser("assemble", help="Write vX.Y.Z.md from fragments.")
     build.add_argument("version", help="Release version, X.Y.Z")
     args = parser.parse_args(argv)
+    changelog = args.gui_changelog
+    if changelog is None and args.notes_dir == NOTES:
+        changelog = GUI_CHANGELOG
     if args.command == "check":
         fragments, errors = collect(args.notes_dir)
-        if args.base and fragments:
+        history, app_fragments, app_errors = collect_gui(changelog)
+        errors += app_errors
+        if args.base and (changelog is not None or fragments):
             try:
                 added = released(args.notes_dir, args.base)
             except (ValueError, subprocess.CalledProcessError) as error:
                 print(f"Cannot compare with {args.base}: {error}", file=sys.stderr)
                 return 1
             errors += [
-                f"{reason}, but {len(fragments)} fragment(s) remain in "
-                "unreleased/: the release must assemble them (move late ones' "
-                "entries into its notes file and delete them)"
-                for reason in added
+                f"{reason}, but {len(fragments)} CLI and {len(app_fragments)} GUI "
+                "release-note fragment(s) remain: the release must assemble them "
+                "(move late entries into the release notes and, for GUI fragments, "
+                "the desktop changelog, then delete them)"
+                for _, reason in added
+                if fragments or app_fragments
             ]
+            if changelog is not None:
+                errors += [
+                    f"desktop changelog has no dated entry for {version}; run assemble"
+                    for version in dict.fromkeys(version for version, _ in added)
+                    if not has_gui_release(history, version)
+                ]
         if errors:
             print("Release-note fragments are invalid:", file=sys.stderr)
             print("\n".join(f"  - {error}" for error in errors), file=sys.stderr)
             return 1
         print(f"{len(fragments)} release-note fragment(s) are valid.")
+        if changelog is not None:
+            print(f"{len(app_fragments)} desktop changelog fragment(s) are valid.")
         return 0
     try:
-        output = assemble(args.notes_dir, args.version)
-    except ValueError as error:
+        output = assemble(args.notes_dir, args.version, changelog)
+    except (OSError, ValueError) as error:
         print(error, file=sys.stderr)
         return 1
-    print(f"Wrote {output}; add the summary and the app's changes.")
+    if changelog is not None:
+        print(f"Updated {changelog}.")
+    print(f"Wrote {output}; add the release summary.")
     return 0
 
 

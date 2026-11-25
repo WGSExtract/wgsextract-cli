@@ -30,11 +30,13 @@ The current selector remains authoritative during shadow mode. Once enabled
 for a lane, the decisive selector reports unmatched inputs and runs the full
 lane only for named universal scopes. CI-only edits still run
 policy/routing/readiness tests, with one-OS smoke for changed matrix workflows.
-Before narrowing main pushes to the merge queue's selection and passed-test
-cache rules, establish the daily full latest-main backstop, cache refresh and
-miss attribution. Keep other platform lanes, required checks, merged-tree
-guards and certification intact. Add a selector regression for each confirmed
-miss.
+Ready PRs run the selected OS and area checks; merge groups retain the smaller
+Ubuntu/Windows gate. Main pushes run security and repository automation only;
+nightly runs the four full OS suites, refreshes the cache, and reports red main
+and selector misses. Install Lab, package/benchmark smoke, and the other heavy
+checks in [Releasing](docs/releasing.md) run on demand and gate publication,
+not PRs. Keep merged-tree guards and certification intact. Add a selector
+regression for each confirmed miss.
 
 - **Always** run `pixi run ruff check --fix {file_path}` and `pixi run ruff format {file_path}` after editing a Python file in this directory.
 - **Always** run `pixi run mypy {file_path}` (or `pixi run mypy src/wgsextract_cli`) to check for type errors before concluding a task.
@@ -92,12 +94,12 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - Implement only after the issue's author, or an owner, explicitly approves (for example "go ahead"). Then remove `research-done` and continue as normal work.
 - **Execution.**
   - Each issue gets its own branch and worktree. Implementer sub-agents get complete context.
-  - User-facing changes add their release notes as a fragment, `docs/release-notes/unreleased/NUMBER-slug.md` (format in that folder's README; `python scripts/release_notes.py check`), never in a shared notes file, so PRs don't conflict over them.
+  - User-facing changes add release-note fragments, never edits to a shared notes file: `docs/release-notes/unreleased/NUMBER-slug.md` for the CLI and `gui/docs/changelog/unreleased/NUMBER-slug.md` for the app. See each folder's README; `python scripts/release_notes.py check` validates both.
   - Open PRs as drafts (`gh pr create --draft`) once the branch passes the local gate. Drafts run no CI. The gate: run an independent review agent, fix its findings, run `pixi run lint`, the routing/lint tests (`tests/test_ci_changes.py`, `tests/test_github_actions_policy.py`), relevant local tests/type checks, documentation checks if docs changed (the `DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` and `scripts/validate_site_sources.py`), and the secret scan (`pixi run pre-commit run gitleaks --all-files`). Self-review the diff against AGENTS.md.
   - **Copilot reviews the draft, before readiness**, so the ready-time matrix runs once instead of once per review round. Ruleset `15885247` reviews a PR when it is opened, drafts included, but not on later pushes (`review_draft_pull_requests=true`, `review_on_push=false`; checked 2026-11-21). After pushing changes to a draft, request a fresh review with `gh pr edit N --add-reviewer @copilot`. Fix or decline all its threads in one batch (see Babysitting), then certify that head and mark it ready. Don't change repository settings yourself.
     - If Copilot's review fails to start (it posts "couldn't run its full agentic review because it didn't start before the timeout", usually from a hosted-runner backlog), don't wait or keep re-requesting: once the independent local review is clean and the head is certified, mark it ready and say in the ready note that the Copilot review couldn't start.
   - Mark ready only when local review and checks pass and the draft's Copilot threads are handled: readiness starts the area-selected full matrix. Draft pushes and ready-to-draft transitions allocate no CI runners; do not wait for draft checks or a draft `required` result.
-  - Ready admission (#1373, merge-queue starvation): certify macOS (and Windows where a host exists) too, so hosted runs skip. Right before `gh pr ready`, run `python scripts/ci_capacity.py --wait` in a background watcher; mark ready only on exit 0 (3 = hold for the merge queue or too many ready matrices). Each supervisor admits one PR at a time: the next check waits until the last admitted PR's ready run is visible.
+  - Ready admission (#1373, merge-queue starvation): certify macOS (and Windows where a host exists) too, so hosted runs skip. Right before `gh pr ready`, run `python scripts/ci_capacity.py --wait --pr N` in a background watcher; mark ready only on exit 0. Each supervisor admits one PR at a time: the next check waits until the last admitted PR's ready run is visible. See [Collaborator PRs](#collaborator-prs) for priority admission.
   - The PR uses `Fixes #N` and lands under the babysitting rules below.
   - Owner-account agents run `just certify` on the clean pushed PR head before `gh pr ready`, under `agent-coord` on shared hosts (at most four pytest workers). Prepare each checkout's locked environments first, then `just certify-setup` to retain verified wheels (`--reference` for full Ubuntu/macOS suites; repeat `-e` for supplemental environments). Local certification never installs or downloads inputs. Use `just certify --remote windows-x64` and `just certify --remote macos-arm64` with registered, accessible native SSH hosts; check host activity before setup. Remote runs fetch exact SHAs into a dedicated worktree, prepare missing pinned inputs (not environments), preserve 25 GiB disk free, and stream logs back. The controller keeps the lock until cleanup is confirmed; GitHub credentials and status posting stay on the controller. See `docs/ci_routing.md`.
   - Heavy compute goes through the host's resource coordinator, short timing runs included; running outside it starves everyone else's queue. On a host without one, check the load first and keep to a share that leaves room for others.
@@ -118,7 +120,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - **One host, no extra copies:** prefer the host that can run the whole pipeline; stream inputs from URLs and let tools read the original rather than making full-size copies.
   - **Smoke-test the exact script on the host that will run it,** including a forced failure (for example a missing input) that shows the failure alert arriving; keep the log in `out/`. Don't assume host tools such as `/usr/bin/time` exist on every machine.
   - **Every unattended step announces failure:** an exit trap that calls `agent-coord send`, naming the issue, host, step, exit code and log path. The supervisor watches each long job until it ends and re-arms its watch after every step.
-- **PR ownership.** Work only on pull requests authored by the GitHub account you are signed in as (`gh api user --jq .login`). Don't push to, rebase, review-fix, babysit or merge another user's PR, even a collaborator's, unless an owner explicitly tells you to work on that PR.
+- **PR ownership.** Work only on pull requests authored by the GitHub account you are signed in as (`gh api user --jq .login`). Don't push to, rebase, review-fix, babysit or merge another user's PR, even a collaborator's, unless an owner explicitly tells you to work on that PR. The limited collaborator actions below are an exception.
 - **Closing.** Close an issue only when its acceptance criteria are met. If part of it is blocked, for example on an upstream release, move that part to a new issue and link it.
 - **Communication.** Prefix agent comments on issues and PRs with `(AI):`. Keep a dated handoff log in `out/` so that a crashed or replaced supervisor can resume.
   - No AI brand or product attribution in commits, PRs or issues: no `Co-authored-by` trailers for an AI tool, no "Generated with <tool>" lines, no session links. The generic `(AI):` prefix is the attribution.
@@ -130,16 +132,24 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 ## Docs fast path
 
-- **Scope:** owner-account agents may push commits changing only hand-written Markdown prose directly to `main`, without a PR, review or queue. Generated/test-checked references (including API/command docs, site CLI cards, the help index and CLI snapshot), `AGENTS.md` and other policy files are excluded, as are code, workflow, config and asset files. Policy changes still need a PR and owner direction.
+- **Scope:** owner-account agents may push commits changing only hand-written Markdown prose directly to `main`, without a PR, review or queue. Generated/test-checked references (including API/command docs, site CLI cards and the help index), `AGENTS.md` and other policy files are excluded, as are code, workflow, config and asset files. Policy changes still need a PR and owner direction.
 - **Before pushing:** fetch and rebase on the latest `origin/main`, then run `python scripts/validate_site_sources.py` and `pixi run pre-commit run gitleaks --files ...` for all changed files. Fast-forward push only (`git push origin HEAD:main`); never force. If main advances, rebase and repeat the checks.
 - **Batching:** batch prose edits; check that the merge queue is empty before pushing and do not push while it has entries, because each main push rebuilds queued groups.
 - Keep `(AI):` on GitHub comments; add no AI brand trailers to commits.
+
+## Collaborator PRs
+
+- **`priority`** is added to PRs from humans with write, maintain, or admin access, except the agent account (`theontho`), when opened, reopened, marked ready, or converted to draft. Authors can remove it until the next such event; pushes do not restore it. Priority PRs skip the agent capacity gate; agents yield while these PRs have pending draft or ready CI or a merge queue entry. Agents never push to, ready, review-fix, or enqueue a collaborator's PR on their own.
+- **`hands-off`** tells agents and the coordinator to take no action on the PR, not even reruns. It overrides `land-asap` but does not remove runner priority.
+- **`land-asap`** tells agents the author is done: an owner-account agent may rerun cancelled or lost-runner jobs and enqueue a ready PR at the front once all merge checks pass. Without this label, agents may only move a passing PR's existing entry to the front, after the author enables auto-merge or enqueues it themselves.
 
 ## Babysitting a PR
 
 Auto-merge is now safe for area-selected checks because `required` includes the PR area gate; merge-group validation keeps its smaller matrix.
 
 "Babysit" a PR (or "babysit landing" it) means: shepherd it until it merges, using the `ci-pr-autopilot` skill (`.agents/skills/ci-pr-autopilot`).
+
+For collaborator PRs, the limits above override the steps below.
 
 - Fix review comments that are legitimate, then resolve their threads. Reply `(AI): Reason: ...` to the ones you decline, then resolve those too.
 - Fix real issues that CI finds, or fix CI itself when the failure is in CI rather than in the code.
@@ -150,4 +160,4 @@ Auto-merge is now safe for area-selected checks because `required` includes the 
 - Push follow-up commits and wait for CI to rerun. For a suspected flake or lost runner, rerun only the failed jobs (`gh run rerun RUN --failed`), not the whole run or a new push.
 - Don't update a branch just because it's BEHIND main. Update it only when it's DIRTY (conflicts) or main changed the same area (generated files, the help budget); the merge queue tests it against the latest main anyway.
 - Auto-merge never enqueues a DIRTY PR. The *Auto-merge conflict watch* workflow (`scripts/ci_auto_merge_watch.py`) labels such PRs `auto-merge-blocked` and comments once after each main push; merge main, resolve the conflicts and push, and the label clears itself.
-- Once passable, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA`, not a direct merge. Passable means every check passes or is validly skipped by routing, selection or certification (including selected macOS, Windows, ARM64, smoke and Install Lab jobs feeding `required`), no material threads are unresolved, and local checks pass. The queue retests the smaller `required` set against latest main, not the PR-only readiness gate; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.
+- Once passable, enqueue with `gh pr merge PR --squash --auto --match-head-commit SHA`, not a direct merge. Passable means every check passes or is validly skipped by routing, selection or certification (including selected macOS, Windows and ARM64 jobs feeding `required`), no material threads are unresolved, and local checks pass. The queue retests the smaller `required` set against latest main, not the PR-only readiness gate; if it drops the PR, fix or rerun the failure and enqueue again. Never bypass the queue.

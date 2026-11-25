@@ -18,6 +18,7 @@ from wgsextract_cli.api.bam import (
     _InputParams,
 )
 from wgsextract_cli.cli.registration.bam import register as register
+from wgsextract_cli.commands._messages.bam import LOG_MESSAGES
 from wgsextract_cli.core.alignment.samtools_commands import (
     alignment_index,
     regular_files_bytes,
@@ -27,7 +28,6 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.mimalloc import samtools_cram_executable
 from wgsextract_cli.core.output_checks import record_alignment_output
 from wgsextract_cli.core.paths import absolute_path

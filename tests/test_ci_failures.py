@@ -663,11 +663,11 @@ def test_pr_matching_red_main_is_labelled_and_never_rerun_even_with_landing_over
     [
         ("macos", "test-macos / all", "macos_ci.yml", "CI macOS"),
         pytest.param(
-            "smoke",
-            "smoke (ubuntu-latest)",
-            "cli_smoke.yml",
-            "CLI package and benchmark smoke",
-            id="1038-combined-smoke",
+            "windows",
+            "test-windows / all",
+            "windows_ci.yml",
+            "CI Windows",
+            id="windows-nightly",
         ),
     ],
 )
@@ -680,14 +680,14 @@ def test_routed_pr_job_compares_reusable_main_not_pr_only_wrapper(
         path=".github/workflows/pr_ci.yml",
     )
     api.jobs[1][0]["name"] = f"{prefix} / {job_name}"
-    if prefix == "smoke":
+    if prefix == "windows":
         api.annotation_text = ""
         api.evidence_text = "error: wheel install failed"
         for step in api.jobs[1][0]["steps"]:
             if step["conclusion"] == "failure":
-                step["name"] = "Build and Smoke Test Package"
+                step["name"] = "Run Tests"
     api.main = dict(
-        api.run, id=200, name=workflow_name, head_branch="main", event="push"
+        api.run, id=200, name=workflow_name, head_branch="main", event="schedule"
     )
     api.main_by_workflow[workflow] = api.main
     api.main_jobs = copy.deepcopy(api.jobs[1])
