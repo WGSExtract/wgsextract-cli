@@ -1,0 +1,50 @@
+name: Weekly CI efficiency report
+
+on:
+  schedule:
+    # Leave time after the Monday UTC cutoff for Sunday-night jobs to finish.
+    - cron: "31 5 * * 1"
+
+permissions: {}
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      checks: read
+      contents: read
+      pull-requests: read
+      statuses: read
+    outputs:
+      report: ${{ steps.report.outputs.body }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Measure the previous UTC week
+        id: report
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p out
+          python3 -m scripts.ci_efficiency_report --repository "$GITHUB_REPOSITORY" > out/ci-efficiency.md
+          {
+            echo 'body<<REPORT_EOF'
+            cat out/ci-efficiency.md
+            echo 'REPORT_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: measure
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Post one comment to development efficiency tracking
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPORT: ${{ needs.measure.outputs.report }}
+        run: gh api --method POST "repos/$GITHUB_REPOSITORY/issues/764/comments" -f body="$REPORT" --silent

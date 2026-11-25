@@ -340,6 +340,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 2
           persist-credentials: false
       - uses: ./.github/actions/setup-pixi
         with:
@@ -364,6 +365,11 @@ jobs:
               subprocess.run([sys.executable, "-m", "compileall", "-q", *gui], check=True)
               subprocess.run(["ruff", "check", "--isolated", "--target-version", "py313", "--select", "E9,F63,F7,F82", "--", *gui], check=True)
           PY
+
+      - name: Reject test smells introduced by this PR
+        if: github.event_name == 'pull_request'
+        # The PR merge checkout's first parent is the base of the tested tree.
+        run: pixi run -e lint -x python scripts/test_smells.py --base HEAD^1 --github --check
 
   optional-tools:
     needs: changes
