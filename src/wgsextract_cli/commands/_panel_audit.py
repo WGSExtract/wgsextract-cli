@@ -394,7 +394,9 @@ def _write(
             ),
         )
         staged_report.write_text(
-            json.dumps(document, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+            json.dumps(document, indent=2, allow_nan=False) + "\n",
+            encoding="utf-8",
+            newline="\n",
         )
         publish_output_set({staged_table: table, staged_report: report})
     result.add_output(report, "panel_audit")
