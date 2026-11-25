@@ -60,12 +60,32 @@ def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> No
             outdir=tmp_path,
         )
     )
+    _manifest(
+        tmp_path,
+        "later-same-panel",
+        "panel audit",
+        inputs=((vcf, "vcf_input"), (panel, "panel")),
+        status="failed",
+        finished="2099-01-01T00:00:00+00:00",
+    )
+    other_panel = _touch(tmp_path / "other-panel.toml")
+    _manifest(
+        tmp_path,
+        "later-other-panel",
+        "panel audit",
+        inputs=((vcf, "vcf_input"), (other_panel, "panel")),
+        status="failed",
+        finished="2099-01-02T00:00:00+00:00",
+    )
     result = api.report.build(api.ReportParams(input=vcf, outdir=tmp_path))
     outputs = {output.role: Path(output.path) for output in result.outputs}
     report = json.loads(outputs["report_json"].read_text(encoding="utf-8"))
     jsonschema.validate(report, pr.load_schema())
     section = report["sections"]["panel_audit"]
     assert section["research_only"] is True
+    (source,) = section["sources"]
+    assert source["latest_attempt"]["manifest"] == "later-same-panel.manifest.json"
+    assert "newer_attempt_failed" in {w["code"] for w in section["warnings"]}
     (finding,) = section["findings"]
     assert finding["value"] == "2 qualifying allele copies"
     assert finding["evidence"]["file"] == "audit.panel_audit.json"

@@ -9,7 +9,15 @@ from typing import Any
 from wgsextract_cli.core.panel_spec import DISCLAIMER
 from wgsextract_cli.core.report_documents import ReportPanelAuditDocument
 
-from .context import NOT_ASSESSED, _command, _Context, _finding, _section, latest
+from .context import (
+    NOT_ASSESSED,
+    Source,
+    _command,
+    _Context,
+    _finding,
+    _section,
+    latest,
+)
 from .rendering import RESEARCH_ONLY
 
 
@@ -38,10 +46,23 @@ def _group_text(group: Mapping[str, Any]) -> str:
     )
 
 
+def _panel_key(source: Source) -> tuple[object, ...]:
+    paths = tuple(
+        source.locate(path)
+        for record in source.records("inputs")
+        if record.get("role") == "panel" and isinstance(path := record.get("path"), str)
+    )
+    return paths or (source.manifest,)
+
+
 def panel_audit(ctx: _Context) -> ReportPanelAuditDocument | None:
-    source = latest(ctx.sources, _command("panel audit"))
+    match = _command("panel audit")
+    source = latest(ctx.sources, match)
     if source is None:
         return None
+    panel_key = _panel_key(source)
+    source = ctx.latest(lambda run: match(run) and _panel_key(run) == panel_key)
+    assert source is not None
     section: ReportPanelAuditDocument = {
         **_section("panel_audit", [source], ctx),
         "research_only": True,
