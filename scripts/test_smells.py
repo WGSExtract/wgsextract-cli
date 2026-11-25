@@ -212,7 +212,10 @@ def smells(path: Path, lines: ChangedLines | None) -> list[tuple[int, str, str]]
             isinstance(node, ast.stmt)
             and (
                 is_added(node)
-                or (lines is not None and node.lineno in lines.after_removed_contract)
+                or (
+                    lines is not None
+                    and any(n in lines.after_removed_contract for n in _span(node))
+                )
             )
             and _asserts_argv(node)
         ):

@@ -112,22 +112,34 @@ def test_1554_blocking_gate_only_checks_pr_test_changes(tmp_path: Path) -> None:
     assert "file=tests/test_new.py,line=7,title=TS001::" in errors[1]
 
 
+@pytest.mark.parametrize(
+    "contract_assert",
+    [
+        "    # contract: indexing preserves the BAM path\n"
+        '    assert cmd == ["samtools", "index", "x.bam"]\n',
+        "    assert cmd == [\n"
+        "        # contract: indexing preserves the BAM path\n"
+        '        "samtools", "index", "x.bam",\n'
+        "    ]\n",
+    ],
+    ids=["before-assert", "inside-assert"],
+)
 def test_1554_removed_contract_exposes_only_its_surviving_assert(
-    tmp_path: Path,
+    tmp_path: Path, contract_assert: str
 ) -> None:
     tests = _repo(tmp_path)
-    argv = (
-        "def test_command(cmd):\n"
-        "    # contract: indexing preserves the BAM path\n"
-        '    assert cmd == ["samtools", "index", "x.bam"]\n'
-        '    assert cmd == ["samtools", "view", "x.bam"]\n'
-    )
+    signature = "def test_command(cmd):\n"
+    legacy = '    assert cmd == ["samtools", "view", "x.bam"]\n'
+    argv = signature + contract_assert + legacy
     (tests / "test_argv.py").write_text(argv)
     (tests / "test_deleted.py").write_text(argv)
     _commit(tmp_path, "legacy argv assertions")
-    lines = argv.splitlines(keepends=True)
-    (tests / "test_argv.py").write_text("".join(lines[:1] + lines[2:]))
-    (tests / "test_deleted.py").write_text("".join(lines[:1] + lines[3:]))
+    (tests / "test_argv.py").write_text(
+        "".join(
+            line for line in argv.splitlines(keepends=True) if "# contract:" not in line
+        )
+    )
+    (tests / "test_deleted.py").write_text(signature + legacy)
 
     blocked = _smells(tmp_path, flags=("--check",))
 
