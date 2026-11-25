@@ -31,10 +31,14 @@ else:
             from .downloads import download_file
 
             return download_file
-        if name in _SUBMODULES:
-            from importlib import import_module
+        if name == "catalog":
+            import wgsextract_cli.core.ref_library.catalog as catalog
 
-            return import_module(f".{name}", __name__)
+            return catalog
+        if name == "downloads":
+            import wgsextract_cli.core.ref_library.downloads as downloads
+
+            return downloads
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
     def __dir__() -> list[str]:
