@@ -7,13 +7,14 @@ import jsonschema
 import pytest
 
 from tests.htslib_helpers import needs_htslib, run_wgsextract, vcf_calls
-from tests.sex_fixtures import distributed_alignment
+from tests.sex_fixtures import distributed_alignment, low_pass_alignment
 from tests.test_sample_ploidy import _snp_bam
 from wgsextract_cli import api
 from wgsextract_cli.commands.info.metrics import (
     infer_sex_call,
     parse_idxstats,
     sample_sex,
+    sample_sex_evidence,
 )
 from wgsextract_cli.core.results import CommandResult, collecting
 from wgsextract_cli.core.sample_workspace import SampleWorkspace, load_schema, tomllib
@@ -225,3 +226,24 @@ def test_issue_856_header_only_policy_keeps_no_scan_unknown_unrecorded(
     assert sample_sex(bam) == "Male"
     Path(bam + ".bai").unlink()
     assert sample_sex(bam, allow_scan=False) == "Male"
+
+
+@pytest.mark.parametrize(
+    ("spacing", "sex"),
+    [
+        ({"x_spacing": 4_000, "y_spacing": 0}, "Female"),
+        ({"x_spacing": 8_000, "y_spacing": 16_000}, "Male"),
+        ({"x_spacing": 8_000, "y_spacing": 0}, "Unknown"),  # X0-like
+        # One read per 50 kb: too few to compare dosage
+        ({"x_spacing": 50_000, "y_spacing": 0, "auto_spacing": 50_000}, "Unknown"),
+    ],
+)
+def test_low_pass_cram_sex_below_3x_regressed_by_891(
+    tmp_path: Path, spacing: dict[str, int], sex: str
+) -> None:
+    """Since #891 (sampled non-PAR depth), every CRAM below 3x was Unknown,
+    so sex-dependent ploidy refused low-pass genomes."""
+    cram = low_pass_alignment(tmp_path / "S", cram=True, **spacing)
+    effective, observed, _ = sample_sex_evidence(cram)
+    assert effective == observed.sex == sex
+    assert observed.confidence == ("low" if sex == "Unknown" else "medium")
