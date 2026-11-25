@@ -211,7 +211,9 @@ def _benchmark(outdir: Path, *argv: str) -> BenchmarkRun:
 
 @pytest.fixture(scope="module")
 def core_run(tmp_path_factory: pytest.TempPathFactory) -> BenchmarkRun:
-    return _benchmark(tmp_path_factory.mktemp("core"), "--suite", "core")
+    return _benchmark(
+        tmp_path_factory.mktemp("core"), "--suite", "core", "--region", "chrX"
+    )
 
 
 @pytest.fixture(scope="module")
@@ -257,14 +259,13 @@ def test_benchmark_prints_machine_progress_and_base_file_size(
 
 @needs_benchmark_tools
 def test_issue_856_smoke_benchmark_calls_sparse_sex_chromosomes_with_explicit_ploidy(
-    tmp_path: Path,
+    core_run: BenchmarkRun,
 ) -> None:
-    run = _benchmark(tmp_path, "--suite", "core", "--region", "chrX", "--threads", "1")
-    results = run.results
+    results = core_run.results
     for step in ("08-vcf-snp", "09-vcf-indel", "10-microarray"):
         assert results[step]["status"] == "PASS"
         assert all(Path(path).is_file() for path in results[step]["expected_outputs"])
-    info_path = next(run.run_dir.glob("steps/info/*.wgse_info.json"))
+    info_path = next(core_run.run_dir.glob("steps/info/*.wgse_info.json"))
     assert json.loads(info_path.read_text())["gender"] == "Unknown"
     assert {row["status"] for row in results.values()} == {"PASS"}
 
