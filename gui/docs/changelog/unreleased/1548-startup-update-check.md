@@ -2,7 +2,8 @@
 
 - **Privacy mode** under Settings → Standard UI Options stops the app's
   automatic network activity. While it is on, a red **PRIVACY** badge shows
-  under the app's name; its tooltip says where to turn it off.
+  under the app's name; its tooltip says where to turn it off
+  ([#1548](https://github.com/WGSExtract/wgsextract-cli/pull/1548)).
 
 ## Changed
 
