@@ -1,13 +1,8 @@
 import logging
 import os
-import signal
 import sys
-import threading
-import time
 from types import FrameType
 from typing import TextIO
-
-from wgsextract_cli.core.execution_context import current
 
 SIGNAL_EXPLANATIONS = {
     "SIGHUP": "terminal or parent session closed",
@@ -27,6 +22,8 @@ def received_stop_signal() -> int | None:
 
 def describe_signal(signum: int) -> str:
     """Return a concise user-facing explanation for a signal number."""
+    import signal
+
     try:
         signal_name = signal.Signals(signum).name
     except ValueError:
@@ -95,6 +92,9 @@ def configure_logging(*, debug: bool = False, quiet: bool = False) -> None:
 
 
 def install_signal_handlers() -> None:
+    import signal
+
+    from wgsextract_cli.core.execution_context import current
     from wgsextract_cli.core.process_registry import cleanup_processes
 
     global _stop_signal
@@ -116,6 +116,9 @@ def install_signal_handlers() -> None:
 def start_parent_monitor(parent_pid: int | None) -> None:
     if not parent_pid:
         return
+
+    import threading
+    import time
 
     from wgsextract_cli.core.process_registry import cleanup_processes
 

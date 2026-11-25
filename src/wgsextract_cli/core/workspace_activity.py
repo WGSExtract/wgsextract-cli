@@ -11,8 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
 
-from platformdirs import user_data_dir
-
 from wgsextract_cli.core.errors import WGSExtractError
 
 
@@ -49,6 +47,8 @@ def _standard_desktop_data_dir() -> Path:
             Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local")
             / "WGSExtract-gui"
         )
+    from platformdirs import user_data_dir
+
     return Path(user_data_dir("WGSExtract-gui", appauthor=False))
 
 

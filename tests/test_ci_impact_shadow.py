@@ -23,6 +23,35 @@ def _git(root: Path, *args: str) -> str:
     return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
 
 
+def _stage_impact_scripts(root: Path) -> None:
+    """Keep the real scripts' repository-relative discovery in the fixture."""
+    scripts = root / "scripts"
+    scripts.mkdir()
+    names = (
+        "ci_check_moves",
+        "ci_impact_diff",
+        "ci_impact_gate",
+        "ci_impact_import_smoke",
+        "ci_impact_lines",
+        "ci_impact_observations",
+        "ci_impact_results",
+        "ci_impact_scopes",
+        "ci_impact_shadow",
+        "ci_impact_static",
+        "ci_impact_symbols",
+        "ci_impact_wide",
+        "ci_run_tests",
+        "ci_select_tests",
+        "ci_test_cache",
+        "ci_test_dependencies",
+        "ci_test_tiers",
+    )
+    for name in names:
+        file = f"{name}.py"
+        shutil.copyfile(ROOT / "scripts" / file, scripts / file)
+    shutil.copyfile(ROOT / "pixi.toml", root / "pixi.toml")
+
+
 @pytest.mark.parametrize(
     "gate_receipt",
     [None, '{"mode": "symbol",', '{"mode": "symbol", "selection": {"bad": true}}'],
@@ -37,13 +66,14 @@ def test_shadow_reports_source_scans_and_base_only_failures(
     _git(tmp_path, "config", "commit.gpgsign", "false")
     _git(tmp_path, "config", "core.autocrlf", "false")
     cmd_path = "src/wgsextract_cli/commands/writer.py"
+    # tmp_path keeps the stand-in tests in the platform lane.
     fixture_files = {
         cmd_path: "def write(path):\n    path.write_text('ok\\n')\n",
-        "tests/test_text_newlines.py": "def test_newline():\n    assert False\n",
-        "tests/test_command_needs.py": "def test_needs():\n    pass\n",
-        "tests/test_writer.py": "def test_writer():\n    pass\n",
-        "tests/test_unrun.py": "def test_unrun():\n    pass\n",
-        "tests/test_qualify_30x.py": "def test_qualify():\n    pass\n",
+        "tests/test_text_newlines.py": "def test_newline(tmp_path):\n    assert False\n",
+        "tests/test_command_needs.py": "def test_needs(tmp_path): pass\n",
+        "tests/test_writer.py": "def test_writer(tmp_path): pass\n",
+        "tests/test_unrun.py": "def test_unrun(tmp_path): pass\n",
+        "tests/test_qualify_30x.py": "def test_qualify(tmp_path): pass\n",
     }
     for file, contents in fixture_files.items():
         target = tmp_path / file
@@ -59,11 +89,12 @@ def test_shadow_reports_source_scans_and_base_only_failures(
     pr_head = _git(tmp_path, "rev-parse", "HEAD")
     _git(tmp_path, "switch", "main")
     (tmp_path / "tests/test_qualify_30x.py").write_text(
-        "def test_qualify():\n    assert False\n"
+        "def test_qualify(tmp_path):\n    assert False\n"
     )
     _git(tmp_path, "commit", "-am", "Introduce base-only failure")
     base = _git(tmp_path, "rev-parse", "HEAD")
     _git(tmp_path, "merge", "--no-ff", "-m", "Synthetic PR test tree", "pr")
+    _stage_impact_scripts(tmp_path)
 
     output = tmp_path / "out"
     output.mkdir()
@@ -116,37 +147,28 @@ def test_shadow_reports_source_scans_and_base_only_failures(
     gate = output / "gate.json"
     if gate_receipt is not None:
         gate.write_text(gate_receipt)
-    cli = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import sys; sys.path.insert(0, sys.argv.pop(1)); "
-            "from scripts.ci_impact_shadow import main; main()",
-            str(ROOT),
-            "--selection",
-            "all",
-            "--outcome",
-            "failure",
-            "--observations",
-            str(evidence),
-            "--junit",
-            str(xml),
-            "--summary",
-            str(output / "summary.md"),
-            "--output",
-            str(output / "report.json"),
-            "--run-id",
-            "1",
-            "--attempt",
-            "1",
-            "--gate-decision",
-            str(gate),
-        ],
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
+    _impact_script(
+        tmp_path,
+        "shadow",
+        "--selection",
+        "all",
+        "--outcome",
+        "failure",
+        "--observations",
+        str(evidence),
+        "--junit",
+        str(xml),
+        "--summary",
+        str(output / "summary.md"),
+        "--output",
+        str(output / "report.json"),
+        "--run-id",
+        "1",
+        "--attempt",
+        "1",
+        "--gate-decision",
+        str(gate),
     )
-    assert cli.returncode == 0, cli.stdout + cli.stderr
     report = json.loads((output / "report.json").read_text())
     assert report["tested_base"] == base
     assert report["pr_head"] == pr_head
@@ -189,15 +211,7 @@ def _run(root: Path, *args: str) -> str:
 
 
 def _impact_script(root: Path, name: str, *args: str) -> str:
-    return _run(
-        root,
-        "-c",
-        "import importlib, sys; sys.path.insert(0, sys.argv.pop(1)); "
-        "importlib.import_module(sys.argv.pop(1)).main()",
-        str(ROOT),
-        f"scripts.ci_impact_{name}",
-        *args,
-    )
+    return _run(root, "-m", f"scripts.ci_impact_{name}", *args)
 
 
 @pytest.fixture(scope="module")
@@ -213,8 +227,8 @@ def nightly_line_checkout(tmp_path_factory: pytest.TempPathFactory) -> Path:
         "pytest.ini": "[pytest]\npythonpath = src/wgsextract_cli\n",
         "pixi.lock": "lock\n",
         "test-data/frozen.txt": "fixture",
-        "tests/test_text_newlines.py": "def test_newlines(): pass\n",
-        contract: "def test_contract(): pass\n",
+        "tests/test_text_newlines.py": "def test_newlines(tmp_path): pass\n",
+        contract: "def test_contract(tmp_path): pass\n",
         **{
             test: "from branchy import branchy\n\ndef test_branch():\n"
             f"    assert branchy({arg}) == {expected}\n"
@@ -231,6 +245,7 @@ def nightly_line_checkout(tmp_path_factory: pytest.TempPathFactory) -> Path:
         target.write_text(contents)
     _git(base, "add", ".")
     _git(base, "commit", "-m", "Nightly tested base")
+    _stage_impact_scripts(base)
 
     (base / "out").mkdir()
     # The lean merge-queue policy lane installs coverage, not pytest-cov.

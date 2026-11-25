@@ -830,11 +830,11 @@ def test_keep_going_runs_remaining_steps_and_reports_failures_at_the_end(
         "2 benchmark step(s) failed: Mitochondrial BAM extraction [extract mt-bam]; "
         "Microarray CombinedKit generation [microarray]"
     )
-    status = {r["slug"]: r["status"] for r in _report(tmp_path)["results"]}
-    assert [slug for slug, s in status.items() if s == "FAIL"] == [
-        "04b-mt-bam",
-        "10-microarray",
-    ]
+    report = _report(tmp_path)
+    assert report["metadata"]["region"] == "chrM"  # smoke profile default, no override
+    status = {r["slug"]: r["status"] for r in report["results"]}
+    failures = [slug for slug, s in status.items() if s == "FAIL"]
+    assert failures == ["04b-mt-bam", "10-microarray"]
     # The steps after each failure still ran, and passed.
     assert status["04c-ydna-bam"] == status["11-vcf-qc"] == "PASS"
     assert list(status.values()).count("PASS") == len(status) - 2

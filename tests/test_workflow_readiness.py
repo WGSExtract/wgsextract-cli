@@ -26,6 +26,24 @@ from tests.test_github_actions_policy import (
 )
 
 
+def test_1495_windows_cert_does_not_skip_the_pinned_fresh_install() -> None:
+    pr = (WORKFLOWS / "pr_ci.yml").read_text()
+    caller = pr.split("\n  windows:\n", 1)[1].split("\n\n", 1)[0]
+    assert (
+        "|| contains(needs.changes.outputs.windows_tests, 'tests/test_imputation.py')"
+        in caller
+    )
+    assert "platform-certified:" in caller
+    windows = (WORKFLOWS / "windows_ci.yml").read_text()
+    install, suite = windows.split("\n  imputation-install:\n", 1)[1].split(
+        "\n  test-windows:\n", 1
+    )
+    assert "if: inputs.platform-certified" in install
+    assert 'install: "false"' in install
+    assert "pixi install --locked -e imputation" in install
+    assert "!inputs.platform-certified" in suite
+
+
 def workflow_concurrency(workflow: Path) -> dict[str, str]:
     """Read workflow-level concurrency without assuming a YAML indent width."""
     lines = workflow.read_text().splitlines()
