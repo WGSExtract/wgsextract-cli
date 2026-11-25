@@ -177,10 +177,15 @@ class Source:
 
     def sample_files(self) -> list[Path]:
         """The sample files the run read (not references or resources)."""
+        roles = (
+            (*SAMPLE_ROLES, "reference_evidence")
+            if self.command == "panel audit"
+            else SAMPLE_ROLES
+        )
         return [
             self.locate(str(r["path"]))
             for r in self.records("inputs")
-            if r.get("role") in SAMPLE_ROLES and r.get("path")
+            if r.get("role") in roles and r.get("path")
         ]
 
     def warnings(self) -> list[ReportWarningDocument]:

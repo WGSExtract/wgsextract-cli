@@ -106,7 +106,7 @@ def test_1287_shared_panel_file_never_connects_another_samples_audit(
     bob.mkdir()
     (alice / "genome-config.toml").touch()
     alignment = _touch(alice / "alice.bam")
-    panel, calls, _ = _audit_inputs(bob, phase_set="1")
+    panel, calls, gvcf = _audit_inputs(bob, phase_set="1")
     panel = panel.rename(alice / "shared-panel.json")
     api.panel.audit(
         api.PanelAuditParams(
@@ -118,6 +118,20 @@ def test_1287_shared_panel_file_never_connects_another_samples_audit(
     )
     report = pr.build_report(alice, input_file=alignment, results=(shared,))
     assert "panel_audit" not in report["sections"]
+    own_gvcf = gvcf.rename(alice / "sample.g.vcf")
+    api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=calls,
+            gvcf=own_gvcf,
+            research_panel=True,
+            outdir=shared,
+        )
+    )
+    report = pr.build_report(alice, input_file=alignment, results=(shared,))
+    assert report["sections"]["panel_audit"]["findings"][0]["value"] == (
+        "2 qualifying allele copies"
+    )
 
 
 def test_cyp2d6_from_runs_before_issue_844_is_not_high_or_called_d6_copies(sample):
