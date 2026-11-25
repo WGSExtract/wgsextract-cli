@@ -19,6 +19,7 @@ from scripts.ci_select_tests import (
     select_tests,
 )
 from scripts.ci_test_dependencies import ROOT, docs_test_targets
+from tests.ci_routing_helpers import run_router
 
 
 @pytest.mark.parametrize(
@@ -441,25 +442,12 @@ def test_923_local_selector_cli_prints_only_diff_selection(tmp_path: Path) -> No
     git("config", "user.name", "CI Test")
     git("config", "user.email", "ci@example.invalid")
     (tmp_path / "README.md").write_text("initial")
+    repository(tmp_path, {"tests/test_unrelated.py": "def test_unrelated(): pass\n"})
     git("add", ".")
     git("commit", "--quiet", "-m", "base")
     base = git("rev-parse", "HEAD")
     (tmp_path / "README.md").write_text("changed")
     git("add", ".")
     git("commit", "--quiet", "-m", "prose")
-    command = [
-        sys.executable,
-        str(ROOT / "scripts/ci_changes.py"),
-        "--base",
-        base,
-        "--head",
-        "HEAD",
-        "--print-tests",
-    ]
-    assert json.loads(subprocess.check_output(command, cwd=tmp_path, text=True)) == []
-    assert (
-        subprocess.check_output(
-            [*command, "--full-suite"], cwd=tmp_path, text=True
-        ).strip()
-        == "all"
-    )
+    assert json.loads(run_router(tmp_path, base, "--print-tests")) == []
+    assert run_router(tmp_path, base, "--print-tests", "--full-suite").strip() == "all"
