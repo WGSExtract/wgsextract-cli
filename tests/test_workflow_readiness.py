@@ -433,7 +433,7 @@ def test_1554_superseded_runs_cancel_only_for_the_same_pr(workflow: Path) -> Non
     assert pr_group != group("pull_request", run_id=101, pr=1555)
     for event in ("merge_group", "push", "schedule", "release", "workflow_dispatch"):
         assert group(event, run_id=101) != group(event, run_id=102)
-        assert group(event, run_id=101) != pr_group
+        assert group(event, run_id=1554) != pr_group
 
 
 def test_923_fork_code_cannot_write_certification_outputs() -> None:

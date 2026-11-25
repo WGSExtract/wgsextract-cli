@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   # Isolate delayed draft payloads from readiness; redrafting still cancels ready work.
-  group: pr-area-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}-diff${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
+  group: pr-area-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}-diff${{ github.event.pull_request.draft && github.event.action != 'converted_to_draft' && '-draft' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
