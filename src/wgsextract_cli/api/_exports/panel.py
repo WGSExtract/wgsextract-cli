@@ -2,6 +2,9 @@
 
 from .. import panel as panel
 from ..panel import (
+    PanelAuditParams as PanelAuditParams,
+)
+from ..panel import (
     PanelBedParams as PanelBedParams,
 )
 from ..panel import (

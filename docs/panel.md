@@ -136,10 +136,10 @@ A clause passes when the variant passes every key in it:
 | `min_revel`, `min_alphamissense`, `min_spliceai` | The score is at least this (0–1). |
 | `min_cadd_phred` | The CADD PHRED score is at least this (0–100). |
 
-Scores use three-valued logic. A clause that needs a score the variant lacks
-neither passes nor fails it: the variant is `unscored`, listed but never
-counted, and never counted in calibration. Otherwise a missing SpliceAI score
-would pass an OR of clauses silently.
+Scores use three-valued logic. A failed condition rules out its clause even
+if that clause also needs a missing score. A passing clause qualifies the
+variant regardless of what other clauses say. If no clause passes and one is
+undecided, the variant is `unscored`, listed but never counted by default.
 
 ### Genes
 
@@ -161,6 +161,37 @@ Coordinates are build-qualified and must match the panel's `build`; nothing is
 lifted over. A haplotype's sites share one chromosome, each allele lists one
 base per site in the sites' order, and two allele names can't share the same
 bases. Allele names are the panel author's labels and get no interpretation.
+
+## Audit a sample
+
+```console
+wgsextract panel audit --panel my_panel.toml --vcf-input sample.vcf.gz \
+  --gvcf sample.g.vcf.gz --research-panel
+```
+
+The audit reads one local sample. Gene groups use the [variant table's
+annotations](variant-table.md): annotate gene consequences first with VEP
+or SnpEff. The annotation must name a gene and the variant must fall within
+its RefSeq span. A homozygous ALT counts as two copies; imputed genotypes do
+not enter group counts. Missing population frequencies are flagged, not
+treated as evidence of rarity.
+
+At watched loci, a gVCF can show confident reference. An absent locus in a
+variants-only VCF is `not_assessed`. The audit uses the input's gVCF companion
+if one was recorded, or you can name one with `--gvcf`. For gene callability
+the default exon models cover selected genes on GRCh38 and GRCh37; specify
+`--exons` for a local model covering other genes. No gVCF or no exon model for
+a gene means the audit does not infer that its coding bases were read.
+
+Heterozygotes are compared across positions only within a common phase set.
+Haplotype watches show `ambiguous_phase` when more than one orientation is
+possible, even if only one matches the named patterns. For pharmacogenes,
+prefer `vcf pharmcat` for star alleles and copy-number exceptions.
+
+The results are a JSON document, a variant TSV (or `--format parquet`), and a
+result manifest. They are research-only, not a diagnosis. Null calibration
+is not run by this audit yet. No files, variants, or coordinates are sent
+over the network.
 
 ## Problems and their locations
 

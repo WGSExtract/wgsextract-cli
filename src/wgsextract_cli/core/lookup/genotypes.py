@@ -43,6 +43,7 @@ STATUSES = (CONFIDENT_CALL, CONFIDENT_REFERENCE, WEAK_EVIDENCE, NO_CALL, NOT_ASS
 _STATE_STATUS = {
     # A variant the gVCF records but whose call couldn't be read.
     State.VARIANT: WEAK_EVIDENCE,
+    State.LOW_QUALITY_VARIANT: WEAK_EVIDENCE,
     State.CALLABLE_REFERENCE: CONFIDENT_REFERENCE,
     State.LOW_QUALITY_REFERENCE: WEAK_EVIDENCE,
     State.FILTERED: WEAK_EVIDENCE,
@@ -67,6 +68,9 @@ REASONS = {
     State.LOW_QUALITY_REFERENCE.value: (
         "The gVCF reads this as reference, below the depth or genotype-quality "
         "thresholds."
+    ),
+    State.LOW_QUALITY_VARIANT.value: (
+        "The gVCF records an alternate allele below the variant-quality thresholds."
     ),
     State.UNCOVERED.value: "The caller assessed this site but no reads covered it.",
     State.NOT_ASSESSED.value: "Outside the region the caller assessed.",
@@ -514,6 +518,8 @@ def site_result(
     locus: Locus,
     thresholds: vc.Thresholds,
     gvcf_source: VcfSource | None,
+    *,
+    include_split_origin: bool = False,
 ) -> dict[str, object]:
     """The sample's genotype and evidence state at ``locus``."""
     caller = vc.detect_caller(source.header.splitlines())
@@ -521,7 +527,11 @@ def site_result(
     chrom = local_contig(locus.chrom, source.contigs) or locus.chrom
     found = calls(records(source, chrom, locus.start, locus.end), source, "input")
     state = None if found else _evidence_state(evidence, locus, thresholds)
-    if state in (State.VARIANT, State.FILTERED, State.NO_CALL) and gvcf_source:
+    if (
+        state
+        in (State.VARIANT, State.LOW_QUALITY_VARIANT, State.FILTERED, State.NO_CALL)
+        and gvcf_source
+    ):
         # A call the gVCF records but the call set doesn't list.
         local = local_contig(locus.chrom, gvcf_source.contigs) or locus.chrom
         found = calls(
@@ -530,6 +540,9 @@ def site_result(
             "reference_evidence",
         )
     documents = [c.document(thresholds, caller, mq_kind) for c in found]
+    if include_split_origin:
+        for call, document in zip(found, documents, strict=True):
+            document["split_origin"] = call.info.get(vc.SPLIT_TAG)
     result: dict[str, object] = {"locus": locus.document(), "calls": documents}
     if found:
         primary = _primary(found, locus)
@@ -543,7 +556,9 @@ def site_result(
         else:
             status = (
                 CONFIDENT_CALL
-                if label in _CONFIDENT and kind == "variant"
+                if label in _CONFIDENT
+                and kind == "variant"
+                and state is not State.LOW_QUALITY_VARIANT
                 else WEAK_EVIDENCE
             )
         result.update(

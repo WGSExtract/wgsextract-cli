@@ -19,4 +19,9 @@ ENTRIES: dict[str, CommandHelp] = {
         "wgsextract panel check --panel my_panel.toml",
         "wgsextract panel check --panel my_panel.json --build hg19",
     ),
+    "panel audit": _h(
+        "<sample>.panel_audit.json, <sample>.panel_audit.tsv (or Parquet) "
+        "and a result manifest.",
+        "wgsextract panel audit --panel my_panel.toml --vcf-input sample.vcf.gz --research-panel",
+    ),
 }
