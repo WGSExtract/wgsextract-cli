@@ -113,8 +113,16 @@ def test_1464_replay_uses_only_comparable_full_main_passes(
             {"tests/test_somalier_relate.py"},
         ),
         ("tests/conftest.py", set()),
+        ("src/wgsextract_cli/core/__init__.py", set()),
     ],
-    ids=["891-writer", "879-pharmcat", "1278-chunked", "1261-somalier", "root-fixture"],
+    ids=[
+        "891-writer",
+        "879-pharmcat",
+        "1278-chunked",
+        "1261-somalier",
+        "root-fixture",
+        "package-initializer",
+    ],
 )
 def test_symbol_gate_preserves_historical_contracts_and_fallback(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, path: str, expected: set[str]
@@ -134,14 +142,26 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
     Path("tests").mkdir()
     for test in test_files:
         Path(test).write_text("def test_behavior():\n    pass\n")
+    if not expected:
+        for name in ("test_server_paths.py", "test_realign_resume.py"):
+            (Path("tests") / name).write_text("def test_behavior():\n    pass\n")
     source = Path(path)
     source.parent.mkdir(parents=True, exist_ok=True)
-    source.write_text("def write(path):\n    path.write_text('before\\n')\n")
+    initializer = path.endswith("/__init__.py")
+    source.write_text(
+        "VALUE = 'before'\n"
+        if initializer
+        else "def write(path):\n    path.write_text('before\\n')\n"
+    )
     Path("pixi.lock").write_bytes(b"lock")
     git("add", ".")
     git("commit", "-qm", "Base")
     base = git("rev-parse", "HEAD")
-    source.write_text("def write(path):\n    path.write_text('after')\n")
+    source.write_text(
+        "VALUE = 'after'\n"
+        if initializer
+        else "def write(path):\n    path.write_text('after')\n"
+    )
     git("commit", "-qam", "Change writer behavior")
     Path("out").mkdir()
     map_path = Path("out/map.json.gz")
@@ -222,7 +242,11 @@ def test_symbol_gate_preserves_historical_contracts_and_fallback(
         assert run_gate() == {"mode": "universal-full", "selection": "all"}
         assert run_gate(ready_tier=True) == {
             "mode": "universal-fast",
-            "selection": ["tests/test_legacy.py"],
+            "selection": [
+                "tests/test_legacy.py",
+                *([] if initializer else ["tests/test_realign_resume.py"]),
+                "tests/test_server_paths.py",
+            ],
         }
 
 

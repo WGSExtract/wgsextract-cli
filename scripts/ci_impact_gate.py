@@ -19,7 +19,7 @@ from scripts.ci_impact_shadow import (
     parse_selection,
 )
 from scripts.ci_impact_static import module_name, parse_python, tracked_python
-from scripts.ci_select_tests import ImportGraph
+from scripts.ci_select_tests import ImportGraph, ready_test_selection
 
 
 def _import_graph_at(root: Path, rev: str) -> ImportGraph:
@@ -110,7 +110,21 @@ def plan(
         for reason in rules
     ):
         if ready_tier and event == "pull_request" and isinstance(selection, list):
-            return fallback("universal-fast")
+            paths = sorted(
+                {
+                    path
+                    for change in diff.changes
+                    for path in (change.before, change.after)
+                    if path is not None
+                }
+            )
+            return {
+                "mode": "universal-fast",
+                "selection": sorted(
+                    set(selection)
+                    | set(ready_test_selection(paths, "all", repository=root))
+                ),
+            }
         return {"mode": "universal-full", "selection": "all"}
     if unmatched or not candidates["symbol"]:
         return fallback("legacy-unmatched-or-empty")
