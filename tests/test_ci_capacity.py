@@ -83,7 +83,7 @@ def priority_pr(
     number: int,
     *,
     draft: bool = False,
-    queued: bool = False,
+    queue_state: str | None = None,
     head_repository: str = REPO,
     labels: tuple[str, ...] = ("priority",),
 ) -> dict[str, Any]:
@@ -94,7 +94,7 @@ def priority_pr(
         "headRefName": "contributor/topic",
         "headRefOid": "a" * 40,
         "headRepository": {"nameWithOwner": head_repository},
-        "mergeQueueEntry": {"id": "entry"} if queued else None,
+        "mergeQueueEntry": {"state": queue_state} if queue_state else None,
     }
 
 
@@ -177,24 +177,46 @@ def test_priority_pr_bypasses_runner_and_matrix_pressure(capsys: Any) -> None:
 
 
 @pytest.mark.parametrize(
-    ("status", "job_statuses", "expected"),
+    ("status", "job_statuses", "waiting"),
     [
-        ("pending", [], ci_capacity.OK),
-        ("queued", [], ci_capacity.OK),
-        ("in_progress", ["in_progress"], ci_capacity.OK),
-        ("in_progress", ["in_progress", "queued"], ci_capacity.HOLD),
+        ("pending", [], []),
+        ("requested", [], []),
+        ("waiting", [], []),
+        ("queued", [], []),
+        ("in_progress", ["in_progress"], []),
+        ("in_progress", ["in_progress", "queued"], [1]),
     ],
 )
-def test_priority_ready_run_only_blocks_when_a_job_waits_for_a_runner(
-    status: str, job_statuses: list[str], expected: int, capsys: Any
+def test_1545_reserve_for_priority_ready_run_before_dependent_jobs_queue(
+    status: str, job_statuses: list[str], waiting: list[int], capsys: Any
 ) -> None:
     fake = FakeActions(
         snapshot((area(1), status, jobs(*job_statuses)), pulls=(priority_pr(1),))
     )
     code, report, _ = invoke(fake, "--pr", "2", capsys=capsys)
+    assert code == ci_capacity.HOLD
+    assert report["priority_ci"] == [1]
+    assert report["priority_waiting"] == waiting
+
+
+@pytest.mark.parametrize(
+    ("other_jobs", "expected"),
+    [
+        (["completed"], ci_capacity.OK),
+        (["completed", "waiting"], ci_capacity.HOLD),
+        (["completed", "queued"], ci_capacity.HOLD),
+    ],
+)
+def test_1545_backfill_only_when_final_check_is_the_only_active_area_job(
+    other_jobs: list[str], expected: int, capsys: Any
+) -> None:
+    job_list = [*jobs(*other_jobs), {"name": "required", "status": "in_progress"}]
+    fake = FakeActions(
+        snapshot((area(1), "in_progress", job_list), pulls=(priority_pr(1),))
+    )
+    code, report, _ = invoke(fake, "--pr", "2", capsys=capsys)
     assert code == expected
     assert report["priority_ci"] == [1]
-    assert report["merge_group_queued"] == 0
 
 
 def test_agent_yields_to_priority_fork_run_without_pr_metadata(capsys: Any) -> None:
@@ -224,15 +246,26 @@ def test_agent_yields_to_priority_fork_run_without_pr_metadata(capsys: Any) -> N
     assert "priority PR(s) #1" in err
 
 
-def test_agent_can_backfill_while_priority_merge_group_is_running(capsys: Any) -> None:
-    fake = FakeActions(
-        snapshot(
-            (run(1, "merge_group"), "in_progress", jobs("in_progress")),
-            pulls=(priority_pr(1, queued=True),),
-        )
+@pytest.mark.parametrize(
+    ("state", "group_jobs", "expected"),
+    [
+        ("QUEUED", [], ci_capacity.HOLD),
+        ("AWAITING_CHECKS", ["in_progress"], ci_capacity.HOLD),
+        ("MERGEABLE", [], ci_capacity.OK),
+        ("MERGEABLE", ["queued"], ci_capacity.HOLD),
+    ],
+)
+def test_1545_priority_queue_reserves_capacity_until_mergeable(
+    state: str, group_jobs: list[str], expected: int, capsys: Any
+) -> None:
+    entries = (
+        [(run(2, "merge_group"), "in_progress", jobs(*group_jobs))]
+        if group_jobs
+        else []
     )
+    fake = FakeActions(snapshot(*entries, pulls=(priority_pr(1, queue_state=state),)))
     code, report, _ = invoke(fake, "--pr", "2", capsys=capsys)
-    assert code == ci_capacity.OK
+    assert code == expected
     assert report["priority_queued"] == [1]
 
 

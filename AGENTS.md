@@ -139,7 +139,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
 
 ## Collaborator PRs
 
-- **`priority`** is added to PRs from humans with write, maintain, or admin access, except the agent account (`theontho`), when opened, reopened, marked ready, or converted to draft. Authors can remove it until the next such event; pushes do not restore it. Priority PRs skip the agent capacity gate; agents yield when a priority PR job or any merge-group job is waiting for a runner. Other PRs may use spare capacity and join the normal merge queue behind priority PRs. Agents never push to, ready, review-fix, or enqueue a collaborator's PR on their own.
+- **`priority`** is added to PRs from humans with write, maintain, or admin access, except the agent account (`theontho`), when opened, reopened, marked ready, or converted to draft. Authors can remove it until the next such event; pushes do not restore it. Priority PRs skip the agent capacity gate. Agents reserve capacity while a priority PR's CI can still schedule jobs or its queue entry still needs checks, and while any merge-group job is waiting for a runner. Agents never push to, ready, review-fix, or enqueue a collaborator's PR on their own.
 - **`hands-off`** tells agents and the coordinator to take no action on the PR, not even reruns. It overrides `land-asap` but does not remove runner priority.
 - **`land-asap`** tells agents the author is done: an owner-account agent may rerun cancelled or lost-runner jobs and enqueue a ready PR at the front once all merge checks pass. Without this label, agents may only move a passing PR's existing entry to the front, after the author enables auto-merge or enqueues it themselves.
 

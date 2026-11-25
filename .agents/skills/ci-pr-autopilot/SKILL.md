@@ -76,9 +76,10 @@ starts area-selected full CI; do not land using the old draft-run checks.
 Certify macOS (and Windows where a host exists) on the exact head before
 ready. Immediately before `gh pr ready`, run `python scripts/ci_capacity.py
 --wait --pr N` in a background watcher and proceed only on exit 0.
-Priority PRs skip this gate; other PRs yield while a priority PR job or any
-merge-group job is waiting for a runner, in addition to the usual capacity limits.
-Other PRs can use spare capacity and join the normal merge queue behind priority PRs.
+Priority PRs skip this gate. Other PRs reserve capacity while a priority PR's
+CI can still schedule jobs or its queue entry still needs checks, even if no
+job is queued yet. Any merge-group job waiting for a runner also blocks
+admission, in addition to the usual capacity limits.
 Admit one PR at a time per supervisor: start the next check only after the
 previously admitted PR's ready area run is visible.
 
