@@ -19,9 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 Value: TypeAlias = Path | str | None
 IGNORED = {".git", ".pixi", "out", "tmp", "scratch", "__pycache__", "node_modules"}
 DOCS_TEST_TARGETS = (
-    "tests/test_api.py::test_api_docs_are_up_to_date",
-    "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
+    "tests/test_site_references.py",
     "tests/test_cli_help.py",
+    "tests/test_help_index.py",
     # Real Git/generator checks need only the same Python deps as freshness tests.
     "tests/test_regen.py",
     "tests/test_text_newlines.py",
@@ -41,46 +41,40 @@ DOCS_TEST_MODULES = frozenset(
 )
 GENERATED_DOCS = frozenset(
     {
-        "docs/api.md",
-        "docs/commands.md",
-        "docs/configuration.md",
-        # Hand-written generator input also requires configuration freshness.
+        # Hand-written inputs to the generated site references.
         "docs/data/configuration-guide.md",
+        "site_src/api.md",
         "site_src/cli.md",
-        "src/wgsextract_cli/assets/cli/help-index.json",
+        "site_src/commands.md",
+        "site_src/configuration.md",
+        "site_src/reference.md",
     }
 )
 DOCS_TARGET_INPUTS = {
-    "tests/test_api.py::test_api_docs_are_up_to_date": (
-        "src/wgsextract_cli/api/**",
-        "scripts/gen_api_docs.py",
-        "docs/api.md",
-    ),
-    "tests/test_core_cli.py::test_configuration_docs_are_up_to_date": (
-        "src/wgsextract_cli/core/config.py",
-        "src/wgsextract_cli/core/settings_schema.py",
-        "scripts/gen_config_docs.py",
-        "docs/configuration.md",
-        "docs/data/configuration-guide.md",
-    ),
-    "tests/test_cli_help.py": (
+    "tests/test_site_references.py": (
         "src/wgsextract_cli/**",
-        "scripts/gen_command_docs.py",
-        "docs/commands.md",
+        "scripts/build_site.py",
+        "scripts/gen_api_docs.py",
+        "scripts/gen_config_docs.py",
+        "scripts/site_references.py",
+        "scripts/validate_site_sources.py",
+        "docs/data/configuration-guide.md",
+        "site_src/api.md",
         "site_src/cli.md",
+        "site_src/commands.md",
+        "site_src/configuration.md",
+        "site_src/reference.md",
     ),
+    "tests/test_cli_help.py": ("src/wgsextract_cli/**",),
+    "tests/test_help_index.py": ("src/wgsextract_cli/**",),
     "tests/test_regen.py": (
         "scripts/regen*",
-        "scripts/gen_api_docs.py",
-        "scripts/gen_command_docs.py",
-        "scripts/gen_config_docs.py",
+        "src/wgsextract_cli/cli/help_index.py",
         "scripts/gen_server_openapi.py",
-        "docs/data/configuration-guide.md",
         "justfile",
     ),
     "tests/test_text_newlines.py": (
         "scripts/regen.py",
-        "scripts/gen_*_docs.py",
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
@@ -121,8 +115,9 @@ for _target in ("tests/test_workflow_readiness.py", "tests/test_workflow_paths.p
 DOCS_ONLY_SCRIPTS = frozenset(
     {
         "scripts/gen_api_docs.py",
-        "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
+        "scripts/site_references.py",
+        "scripts/build_site.py",
         "scripts/regen.py",
         "scripts/bump_version.py",
         "gui/scripts/bump-wgsextract-cli.py",

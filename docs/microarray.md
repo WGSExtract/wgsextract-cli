@@ -103,7 +103,7 @@ uses only single-base alleles; a partially missing SNP genotype is a no-call
 Imputed VCFs without DP/GQ also require explicit threshold overrides; their
 imputation-confidence mask still applies.
 
-Matching top-level [configuration](configuration.md) keys are
+Matching top-level [configuration](https://wgsextract.github.io/wgsextract-cli/configuration.html) keys are
 `microarray_min_gq`, `microarray_min_dp`, `microarray_assume_hom_ref`,
 `microarray_exclude_filtered` and `microarray_call_reasons`.
 Explicit CLI values win, including `--min-gq 0`, `--assume-hom-ref`,

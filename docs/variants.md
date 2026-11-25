@@ -1,6 +1,6 @@
 # Calling, annotating and typing variants
 
-Use the [command reference](commands.md) for all callers and options.
+Use the [command reference](https://wgsextract.github.io/wgsextract-cli/commands.html) for all callers and options.
 [Confidence labels and caller accuracy](variant-confidence.md) describe what
 the results can establish; research findings require clinical confirmation.
 For long reads, also read [ONT/PacBio support](ont.md).
