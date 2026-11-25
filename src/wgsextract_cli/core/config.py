@@ -1,4 +1,5 @@
-import difflib
+from __future__ import annotations
+
 import logging
 import os
 import sys
@@ -6,49 +7,20 @@ import threading
 from collections.abc import Iterable, Iterator, Mapping, MutableMapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, TypeVar, cast, overload
-
-from platformdirs import user_config_dir
+from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
 from wgsextract_cli.core.errors import WGSExtractError
 from wgsextract_cli.core.execution_context import ConfigState, bound, current
 from wgsextract_cli.core.paths import expand_path, windows_local_app_dir
-from wgsextract_cli.core.settings_schema import (
-    DEV_SETTINGS,
-    DEV_TABLE,
-    MOVED_TO_DEV,
-    SERVER_SETTINGS,
-    SETTINGS,
-    DevSettings,
-    InvalidSetting,
-    ServerSettings,
-    Settings,
-    check_values,
-)
-from wgsextract_cli.core.users_workspace import (
-    claim_users_workspace,
-    default_mygenomes_library,
-    existing_mygenomes_library,
-    users_workspace,
-)
 from wgsextract_cli.core.workspace_activity import relocated_config_path, workspace_use
 
-# For Python < 3.11, use tomli
-if sys.version_info >= (3, 11):
-    import tomllib
-else:
-    import tomli as tomllib
+if TYPE_CHECKING:
+    from wgsextract_cli.core.settings_schema import Settings
 
 APP_NAME = "wgsextract"
 APP_AUTHOR = "theontho"
 T = TypeVar("T")
 _warned_unknown_keys: set[tuple[str, str]] = set()
-
-# The settings whose leading ~ loading expands (core/settings_schema.py).
-PATH_SETTINGS = frozenset(name for name, item in SETTINGS.items() if item.info.path)
-DEV_PATH_SETTINGS = frozenset(
-    name for name, item in DEV_SETTINGS.items() if item.info.path
-)
 
 
 def _normalize_path_setting(value: Any) -> Any:
@@ -60,6 +32,12 @@ def _normalize_path_setting(value: Any) -> Any:
 
 
 def normalize_config_paths(config: dict[str, Any]) -> dict[str, Any]:
+    from wgsextract_cli.core.settings_schema import (
+        DEV_PATH_SETTINGS,
+        DEV_TABLE,
+        PATH_SETTINGS,
+    )
+
     for key in PATH_SETTINGS:
         if key in config:
             config[key] = _normalize_path_setting(config[key])
@@ -110,6 +88,16 @@ def _validate_config_types(
     *,
     allow_invalid_threads: bool = False,
 ) -> None:
+    from wgsextract_cli.core.settings_schema import (
+        DEV_SETTINGS,
+        DEV_TABLE,
+        MOVED_TO_DEV,
+        SERVER_SETTINGS,
+        SETTINGS,
+        InvalidSetting,
+        check_values,
+    )
+
     server = config.get("server", {})
     if not isinstance(server, Mapping):
         raise WGSExtractError(f"Invalid [server] table in {config_path}.")
@@ -162,22 +150,29 @@ def _canonical(key: str) -> str:
 
 
 def _warn_unknown(keys: Iterable[str], known: Iterable[str], where: str) -> None:
-    known = list(known)
-    for key in sorted(keys):
+    keys = sorted(keys)
+    if not keys:
+        return
+    from difflib import get_close_matches
+
+    candidates = list(known)
+    for key in keys:
         identity = (where, key)
         if identity in _warned_unknown_keys:
             continue
         _warned_unknown_keys.add(identity)
-        matches = difflib.get_close_matches(key, known, n=1)
+        matches = get_close_matches(key, candidates, n=1)
         hint = f" Did you mean {matches[0]!r}?" if matches else ""
         logging.warning(f"Unknown setting {key!r} in {where}.{hint}")
 
 
 def get_config_dir() -> Path:
     """Get the standard user configuration directory for this app."""
-    return windows_local_app_dir(APP_NAME, APP_AUTHOR) or Path(
-        user_config_dir(APP_NAME, APP_AUTHOR)
-    )
+    if directory := windows_local_app_dir(APP_NAME, APP_AUTHOR):
+        return directory
+    from platformdirs import user_config_dir
+
+    return Path(user_config_dir(APP_NAME, APP_AUTHOR))
 
 
 # The process's configuration: what the CLI's --config selects and library
@@ -236,6 +231,8 @@ def legacy_config_paths() -> list[Path]:
 def default_config_path() -> Path:
     """config.toml in the users workspace, unless an older install already
     keeps one where the CLI used to (it stays there)."""
+    from wgsextract_cli.core.users_workspace import users_workspace
+
     workspace_config = users_workspace() / "config.toml"
     for legacy in legacy_config_paths():
         if legacy.is_file():
@@ -251,15 +248,27 @@ def get_config_path() -> Path:
 
 def read_toml(path: Path) -> dict[str, Any]:
     """Parse a TOML file, accepting the UTF-8 byte-order mark Windows editors add."""
-    return tomllib.loads(path.read_bytes().decode("utf-8-sig"))
+    return _read_toml(path, settings_errors=False)
 
 
-def _read_settings_file(path: Path) -> dict[str, Any]:
+def _read_toml(path: Path, *, settings_errors: bool) -> dict[str, Any]:
+    data = path.read_bytes()
+    if not data:
+        return {}
+    if sys.version_info >= (3, 11):
+        import tomllib
+    else:
+        import tomli as tomllib
+
     try:
-        return read_toml(path)
+        return tomllib.loads(data.decode("utf-8-sig"))
     except tomllib.TOMLDecodeError as e:
+        if not settings_errors:
+            raise
         raise WGSExtractError(f"Invalid TOML in {path}: {e}") from e
     except UnicodeDecodeError as e:
+        if not settings_errors:
+            raise
         raise WGSExtractError(f"Invalid UTF-8 in {path} at byte {e.start + 1}") from e
 
 
@@ -267,28 +276,38 @@ def load_config() -> dict[str, Any]:
     """
     Load configuration from the standard config file.
     """
-    config = {}
-
-    # Load from config.toml
     config_path = get_config_path()
-    workspace_config = users_workspace() / "config.toml"
-    if (
-        _state().path is None
-        and config_path.is_file()
-        and workspace_config.is_file()
-        and config_path.resolve() != workspace_config.resolve()
-    ):
-        logging.warning(
-            "Multiple configuration files exist: using existing CLI config %s; "
-            "ignoring workspace config %s. Use --config PATH to choose explicitly.",
-            config_path,
-            workspace_config,
-        )
+    if _state().path is None:
+        from wgsextract_cli.core.users_workspace import users_workspace
+
+        workspace_config = users_workspace() / "config.toml"
+        if (
+            config_path.is_file()
+            and workspace_config.is_file()
+            and config_path.resolve() != workspace_config.resolve()
+        ):
+            logging.warning(
+                "Multiple configuration files exist: using existing CLI config %s; "
+                "ignoring workspace config %s. Use --config PATH to choose explicitly.",
+                config_path,
+                workspace_config,
+            )
+    config = {}
     if config_path.exists():
         try:
-            config = _read_settings_file(config_path)
+            config = _read_toml(config_path, settings_errors=True)
         except OSError as e:
             logging.warning(f"Ignoring unreadable config {config_path}: {e}")
+    if not config:
+        return config
+
+    from wgsextract_cli.core.settings_schema import (
+        DEV_SETTINGS,
+        DEV_TABLE,
+        MOVED_TO_DEV,
+        SERVER_SETTINGS,
+        SETTINGS,
+    )
 
     for legacy_key in LEGACY_SETTINGS & config.keys():
         logging.debug(f"Ignoring obsolete setting {legacy_key!r} in {config_path}")
@@ -428,6 +447,17 @@ def settings_from(values: Mapping[str, object]) -> Settings:
     """``values`` (config.toml's top level) as Settings. An alias counts only
     when its setting isn't given; an invalid cpu_threads reads as auto, which
     the parser warns about."""
+    from wgsextract_cli.core.settings_schema import (
+        DEV_SETTINGS,
+        DEV_TABLE,
+        SERVER_SETTINGS,
+        SETTINGS,
+        DevSettings,
+        ServerSettings,
+        Settings,
+        check_values,
+    )
+
     source = get_config_path()
     _validate_config_types(values, source, allow_invalid_threads=True)
     given = {
@@ -497,6 +527,13 @@ def _update_table(
 
 
 def _apply_config_updates(config: dict[str, Any], updates: dict[str, Any]) -> None:
+    from wgsextract_cli.core.settings_schema import (
+        DEV_PATH_SETTINGS,
+        DEV_TABLE,
+        MOVED_TO_DEV,
+        SETTINGS,
+    )
+
     """Merge save_config's ``updates`` into the settings read from config.toml."""
     for legacy_key in LEGACY_SETTINGS:
         config.pop(legacy_key, None)
@@ -535,6 +572,10 @@ def save_config(updates: dict[str, Any]) -> None:
 
     from wgsextract_cli.core.atomic_output import atomic_write
     from wgsextract_cli.core.file_lock import shared_file_lock
+    from wgsextract_cli.core.users_workspace import (
+        claim_users_workspace,
+        users_workspace,
+    )
 
     with _load_lock:
         state = _state()
@@ -551,7 +592,7 @@ def save_config(updates: dict[str, Any]) -> None:
         if target.exists():
             # Refuse to overwrite a config we cannot parse; that would drop the
             # user's other settings.
-            current_config = _read_settings_file(target)
+            current_config = _read_toml(target, settings_errors=True)
 
         _apply_config_updates(current_config, updates)
         _validate_config_types(current_config, config_path)
@@ -578,6 +619,12 @@ def get(key: str, default: object | None = None) -> object | None:
 
 def configured_paths() -> list[object]:
     """Every path setting's value, the [dev] table's too (for redaction)."""
+    from wgsextract_cli.core.settings_schema import (
+        DEV_PATH_SETTINGS,
+        DEV_TABLE,
+        PATH_SETTINGS,
+    )
+
     values = [settings.get(key) for key in sorted(PATH_SETTINGS)]
     dev = settings.get(DEV_TABLE)
     if isinstance(dev, Mapping):
@@ -603,6 +650,10 @@ def mygenomes_library() -> str:
     if configured:
         return configured
     from wgsextract_cli.core.runtime import repo_root
+    from wgsextract_cli.core.users_workspace import (
+        default_mygenomes_library,
+        existing_mygenomes_library,
+    )
 
     existing = existing_mygenomes_library(repo_root())
     return str(existing or default_mygenomes_library())

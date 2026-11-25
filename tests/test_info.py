@@ -473,12 +473,24 @@ def test_coverage_commands_against_real_samtools(tiny_bam, tmp_path):
 
 
 def test_1087_cli_info_no_cache_does_not_create_an_output_folder(
-    tiny_bam, tmp_path, capsys
-):
+    tiny_bam: Path, tmp_path: Path
+) -> None:
     config = tmp_path / "config.toml"
-    config.write_text("")
-    main(
+    config.touch()
+    # #1506: check a fresh process so test imports don't mask startup costs.
+    code = """
+import sys
+from wgsextract_cli.main import main
+
+main(sys.argv[1:])
+download_modules = {"urllib.request", "wgsextract_cli.core.ref_library.downloads"}
+assert not (loaded := download_modules & sys.modules.keys()), sorted(loaded)
+"""
+    result = subprocess.run(
         [
+            sys.executable,
+            "-c",
+            code,
             "--config",
             str(config),
             "--json",
@@ -486,10 +498,12 @@ def test_1087_cli_info_no_cache_does_not_create_an_output_folder(
             "--input",
             str(tiny_bam),
             "--no-cache",
-        ]
+        ],
+        capture_output=True,
+        encoding="utf-8",
+        check=True,
     )
-    result = json.loads(capsys.readouterr().out)
-    assert result["status"] == "ok"
+    assert json.loads(result.stdout)["status"] == "ok"
     assert not (tmp_path / "wgse").exists()
 
 

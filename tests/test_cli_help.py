@@ -200,9 +200,11 @@ def test_help_all_json_is_a_versioned_command_index(capsys, entries):
     ],
 )
 def test_startup_regression_help_does_not_import_analysis_libraries(
-    argv: list[str] | None,
+    argv: list[str] | None, tmp_path: Path
 ) -> None:
     """#1506: discovery must not load analysis, serving, or unrelated API groups."""
+    config_path = tmp_path / "config.toml"
+    config_path.touch()
     code = f"""
 import contextlib
 import io
@@ -216,7 +218,7 @@ with contextlib.redirect_stdout(io.StringIO()):
         from wgsextract_cli.cli.parser import build_parser
         build_parser()[0].format_help()
     else:
-        sys.argv = ["wgsextract", *argv]
+        sys.argv = ["wgsextract", "--config", {str(config_path)!r}, *argv]
         try:
             runpy.run_module("wgsextract_cli", run_name="__main__")
         except SystemExit as error:
@@ -238,6 +240,9 @@ if argv in (
     implementations.add("wgsextract_cli.api")
 if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
     implementations.update({{
+        "importlib.metadata",
+        "wgsextract_cli.core.settings_schema",
+        "wgsextract_cli.core.resource_policy",
         "wgsextract_cli.commands._help_catalog",
         "wgsextract_cli.commands._help_topics",
         "wgsextract_cli.core.dependencies",

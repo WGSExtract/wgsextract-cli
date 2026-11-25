@@ -27,11 +27,11 @@ from wgsextract_cli.core import (
     native_aligners,
     native_deepvariant,
     process_registry,
-    resource_policy,
 )
 from wgsextract_cli.core.alignment import profiles as output_profiles
 from wgsextract_cli.core.microarray import quirks as microarray_quirks
 from wgsextract_cli.core.settings_schema import SETTINGS
+from wgsextract_cli.core.thread_count import parse_thread_count
 from wgsextract_cli.core.utils import WGSExtractError
 
 
@@ -47,13 +47,13 @@ def temp_config(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("value", [None, "auto", "AUTO", " auto "])
 def test_parse_thread_count_auto(value):
-    assert resource_policy.parse_thread_count(value) is None
+    assert parse_thread_count(value) is None
 
 
 @pytest.mark.parametrize("value", ["0", "-2", "many", "1.5"])
 def test_parse_thread_count_rejects_invalid(value):
     with pytest.raises(ValueError):
-        resource_policy.parse_thread_count(value)
+        parse_thread_count(value)
 
 
 def test_config_threads_auto_becomes_none_default(temp_config):
