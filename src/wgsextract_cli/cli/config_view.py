@@ -5,12 +5,6 @@ from collections.abc import Mapping
 from typing import Any
 
 from wgsextract_cli.core.config import get_config_path, settings
-from wgsextract_cli.core.settings_schema import (
-    DEV_SETTINGS,
-    DEV_TABLE,
-    SERVER_SETTINGS,
-    SETTINGS,
-)
 
 
 def configured_thread_count() -> int | None:
@@ -18,7 +12,7 @@ def configured_thread_count() -> int | None:
     if value is None:
         return None
 
-    from wgsextract_cli.core.resource_policy import parse_thread_count
+    from wgsextract_cli.core.thread_count import parse_thread_count
 
     try:
         return parse_thread_count(value)
@@ -29,6 +23,13 @@ def configured_thread_count() -> int | None:
 
 
 def configuration_rows(values: Mapping[str, Any]) -> list[tuple[str, object, object]]:
+    from wgsextract_cli.core.settings_schema import (
+        DEV_SETTINGS,
+        DEV_TABLE,
+        SERVER_SETTINGS,
+        SETTINGS,
+    )
+
     rows = [(key, item.default, values.get(key)) for key, item in SETTINGS.items()]
     for table, schema in ((DEV_TABLE, DEV_SETTINGS), ("server", SERVER_SETTINGS)):
         stored = values.get(table)

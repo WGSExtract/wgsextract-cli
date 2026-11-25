@@ -7,7 +7,6 @@ import sys
 from os import PathLike, fspath
 from pathlib import Path
 from typing import TypeAlias
-from urllib.parse import urlsplit
 
 PathInput: TypeAlias = str | PathLike[str]
 
@@ -15,10 +14,11 @@ PathInput: TypeAlias = str | PathLike[str]
 def java_local_path(path: PathInput) -> str:
     """Keep local Windows drive paths from being mistaken for URI schemes."""
     value = fspath(path)
-    if sys.platform == "win32" and (
-        ntpath.splitdrive(value)[0] or not urlsplit(value).scheme
-    ):
-        return ntpath.normpath(value)
+    if sys.platform == "win32":
+        from urllib.parse import urlsplit
+
+        if ntpath.splitdrive(value)[0] or not urlsplit(value).scheme:
+            return ntpath.normpath(value)
     return value
 
 

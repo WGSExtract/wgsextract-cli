@@ -7,6 +7,7 @@ from wgsextract_cli.core.runtime import (
     ThreadTuningProfile,
     default_thread_tuning_profile,
 )
+from wgsextract_cli.core.thread_count import parse_thread_count
 
 
 @dataclass(frozen=True)
@@ -40,19 +41,6 @@ def stage_thread_plan(
     total = getattr(profile, "cpu_alignment_threads", None) or count
     alignment = count if metal else total
     return StageThreadPlan(alignment, count, count, total, total)
-
-
-def parse_thread_count(value: object) -> int | None:
-    """Parse a --threads / cpu_threads value; None means "auto"."""
-    if value is None or (isinstance(value, str) and value.strip().lower() == "auto"):
-        return None
-    try:
-        count = int(str(value).strip())
-    except ValueError:
-        count = 0
-    if count < 1:
-        raise ValueError(f"expected a positive integer or 'auto', got {value!r}")
-    return count
 
 
 def get_resource_threads(
