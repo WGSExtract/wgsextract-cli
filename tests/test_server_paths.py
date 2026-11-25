@@ -7,34 +7,14 @@ from pathlib import Path as Path
 
 import pytest as pytest
 
+from tests.server_helpers import client as client
+from tests.server_helpers import work as work
 from tests.server_path_cases import _COMPANIONS as _COMPANIONS
 from tests.server_path_cases import _DATA as _DATA
 from tests.server_path_cases import _EVERY_PATH as _EVERY_PATH
+from tests.server_path_cases import _IN, _RecordingFlavour
 from tests.server_path_cases import _base_request as _base_request
 from tests.server_path_cases import _path_value as _path_value
-from tests.test_server import _ALIGN_REQUESTS as _ALIGN_REQUESTS
-from tests.test_server import _CALLER_OPS as _CALLER_OPS
-from tests.test_server import _CALLER_PATHS as _CALLER_PATHS
-from tests.test_server import _EXAMPLE_PATHS as _EXAMPLE_PATHS
-from tests.test_server import _IN as _IN
-from tests.test_server import _METHYLATION_PATHS as _METHYLATION_PATHS
-from tests.test_server import _PET_ANALYZE_PATHS as _PET_ANALYZE_PATHS
-from tests.test_server import _PET_ANALYZE_REQUESTS as _PET_ANALYZE_REQUESTS
-from tests.test_server import _REF_PATHS as _REF_PATHS
-from tests.test_server import _REGION_LISTS as _REGION_LISTS
-from tests.test_server import _REPAIR_PATHS as _REPAIR_PATHS
-from tests.test_server import _SIGN_PATHS as _SIGN_PATHS
-from tests.test_server import _SIGN_REQUESTS as _SIGN_REQUESTS
-from tests.test_server import _TYPING_PATHS as _TYPING_PATHS
-from tests.test_server import _VCF_PATHS as _VCF_PATHS
-from tests.test_server import _VEP_PATHS as _VEP_PATHS
-from tests.test_server import _RecordingFlavour as _RecordingFlavour
-from tests.test_server import _serve as _serve
-from tests.test_server import client as client
-from tests.test_server import fake_data as fake_data
-from tests.test_server import slow_coverage as slow_coverage
-from tests.test_server import variant_tables as variant_tables
-from tests.test_server import work as work
 from wgsextract_cli.api._params import json_schema as json_schema
 from wgsextract_cli.core.config import settings as settings
 from wgsextract_cli.core.utils import UsageError as UsageError

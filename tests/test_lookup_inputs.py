@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 
 from jsonschema import Draft202012Validator
 
-from tests.test_server import Mcp, _serve
+from tests.server_helpers import Mcp, _serve
 
 
 def test_929_optional_lookup_fields_are_omittable_not_nullable(tmp_path: Path) -> None:

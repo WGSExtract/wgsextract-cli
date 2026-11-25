@@ -3,36 +3,28 @@
 import io
 import json
 import shutil
+import subprocess
 import sys
 import threading
 from pathlib import Path
 
+from tests.server_data import fake_data as fake_data
+from tests.server_helpers import FAKE_DIR, Mcp, _serve
+from tests.server_helpers import client as client
+from tests.server_helpers import work as work
+
 # The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
 from tests.smoke_utils import ensure_fake_data as ensure_fake_data
-from tests.test_server import (
-    FAKE_DIR,
-    Mcp,
-    _indexed_bam,
-    _serve,
-)
-from tests.test_server import (
-    client as client,
-)
-from tests.test_server import (
-    fake_data as fake_data,
-)
-from tests.test_server import (
-    slow_coverage as slow_coverage,
-)
-from tests.test_server import (
-    variant_tables as variant_tables,
-)
-from tests.test_server import (
-    work as work,
-)
 from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.mcp_server import McpServer
 from wgsextract_cli.server.operations import PathGuard
+
+
+def _indexed_bam(work: Path, bam: Path) -> Path:
+    copy = work / "s.bam"
+    shutil.copyfile(bam, copy)
+    subprocess.run(["samtools", "index", str(copy)], check=True)
+    return copy
 
 
 def test_1209_stdio_cancel_before_started_stops_worker_without_reply(tmp_path):

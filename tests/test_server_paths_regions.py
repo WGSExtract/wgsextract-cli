@@ -2,25 +2,9 @@
 
 import pytest
 
-from tests.test_server import (
-    _REGION_LISTS,
-    _RecordingFlavour,
-)
-from tests.test_server import (
-    client as client,
-)
-from tests.test_server import (
-    fake_data as fake_data,
-)
-from tests.test_server import (
-    slow_coverage as slow_coverage,
-)
-from tests.test_server import (
-    variant_tables as variant_tables,
-)
-from tests.test_server import (
-    work as work,
-)
+from tests.server_helpers import client as client
+from tests.server_helpers import work as work
+from tests.server_path_cases import _REGION_LISTS, _RecordingFlavour
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.server.operations import (
     PathGuard,

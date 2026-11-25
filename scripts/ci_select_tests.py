@@ -49,6 +49,15 @@ CI_TESTS = (
     "tests/test_ci_efficiency_report.py",
 )
 SMOKE_TESTS = ("tests/test_microarray_vendor_formats.py", "tests/test_table_writer.py")
+# These helpers replaced imports from test_server.py. Their consumers still
+# import them explicitly, so the import graph can select the affected tests.
+SERVER_TEST_HELPERS = frozenset(
+    {
+        "tests/server_data.py",
+        "tests/server_helpers.py",
+        "tests/server_path_cases.py",
+    }
+)
 REMOTE_CERTIFICATION_TEST = "tests/test_ci_certify_remote.py"
 REMOTE_CERTIFICATION_INPUTS = {
     REMOTE_CERTIFICATION_TEST,
@@ -445,6 +454,7 @@ def select_tests(
             or (path.startswith("src/wgsextract_cli/") and not path.endswith(".py"))
             or (
                 path.startswith("tests/")
+                and path not in SERVER_TEST_HELPERS
                 and (
                     Path(path).name == "conftest.py"
                     or "helper" in path

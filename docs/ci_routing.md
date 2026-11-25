@@ -480,7 +480,14 @@ modules used as helpers; their literal file inputs propagate to importers.
 Tests are selected when they reach a changed Python module, directly change,
 or read a changed path/glob recorded by `test_inputs`. Changes to conftest,
 helpers, shared fixtures, the dependency manifests/lockfile, deleted modules and
-unknown paths trigger broad fallback. On ready PRs this means the fast tier
+unknown paths trigger broad fallback. The server-specific `tests/server_helpers.py`,
+`tests/server_data.py` and `tests/server_path_cases.py` are an exception: their
+callers and fixture users import them explicitly, so a change selects their
+transitive importers and any literal readers. HTTP limits and job-log tests
+live in `tests/test_server_http_limits.py`; reference-library and dependency
+queries live in `tests/test_server_queries.py`. Both are routed by those
+imports in the same way as other server test modules.
+On ready PRs a broad fallback means the fast tier
 plus known affected tests; diagnostic and local certification selection can
 still request the full suite. Eager package
 initializers can legitimately connect many tests: this selector does not
@@ -714,6 +721,11 @@ CI slowdown); macOS's three vCPUs and ARM64's four are physical either way.
 Pixi and reference setup run on each allocated runner; installer validation
 and dedicated integration checks run once per OS. The tier definitions remain
 available for local diagnosis:
+
+Modules that use shared `out/fake_30x` data must import `ensure_fake_data`
+directly from `tests.smoke_utils`, even when they use it through a fixture
+from `tests/server_data.py`. The scheduler uses that import to keep all
+shared-data modules on one worker.
 
 - **Core:** every test not explicitly listed in `INTEGRATION_MODULES` in
   `scripts/ci_test_tiers.py`. New tests automatically join this tier.

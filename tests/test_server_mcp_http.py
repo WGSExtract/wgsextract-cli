@@ -20,10 +20,13 @@ import psutil
 import pytest
 
 from tests.fake_tools import python_tool
+from tests.server_data import fake_data as fake_data
+from tests.server_helpers import FAKE_DIR, interrupt_serve_announcement
+from tests.server_helpers import work as work
+
+# The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
+from tests.smoke_utils import ensure_fake_data as ensure_fake_data
 from tests.smoke_utils import get_cli_command
-from tests.test_server import FAKE_DIR, interrupt_serve_announcement
-from tests.test_server import fake_data as fake_data
-from tests.test_server import work as work
 from wgsextract_cli.core.last_run import state_directory
 
 pytest.importorskip("mcp", reason="the optional MCP SDK is not installed")

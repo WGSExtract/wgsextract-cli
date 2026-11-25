@@ -15,7 +15,7 @@ from scripts.server_transport_typescript import (
     result_typescript,
     typescript_records,
 )
-from tests.test_server import Mcp, _serve
+from tests.server_helpers import Mcp, _serve
 from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.server.http_api import openapi_document
 from wgsextract_cli.server.jobs import Job

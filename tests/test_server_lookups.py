@@ -2,6 +2,7 @@
 
 import contextlib
 import gzip
+import importlib.util
 import json
 import os
 import shutil
@@ -16,30 +17,119 @@ from typing import Any
 
 import pytest
 
-from tests.test_server import (
-    Client,
-    Mcp,
-    _pharmcat_run,
-    _serve,
-)
-from tests.test_server import (
-    client as client,
-)
-from tests.test_server import (
-    fake_data as fake_data,
-)
-from tests.test_server import (
-    slow_coverage as slow_coverage,
-)
-from tests.test_server import (
-    variant_tables as variant_tables,
-)
-from tests.test_server import (
-    work as work,
-)
+from tests.server_helpers import Client, Mcp, _serve
+from tests.server_helpers import client as client
+from tests.server_helpers import work as work
 from wgsextract_cli.server.operations import (
     PathGuard,
 )
+
+
+def _pharmcat_run(sample: Path, folder: Path) -> None:
+    """A `vcf pharmcat` manifest in ``sample`` whose phenotypes are in ``folder``."""
+    phenotypes = {
+        "geneReports": {
+            "CYP2C19": {
+                "recommendationDiplotypes": [
+                    {
+                        "allele1": {"name": "*1"},
+                        "allele2": {"name": "*17"},
+                        "phenotypes": ["Rapid Metabolizer"],
+                    }
+                ]
+            }
+        }
+    }
+    evidence = folder / "HG002.phenotype.json"
+    evidence.write_text(json.dumps(phenotypes))
+    manifest = sample / "HG002.phenotype.manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema": "wgsextract.result/1",
+                "command": "vcf pharmcat",
+                "status": "ok",
+                "exit_code": 0,
+                "inputs": [{"path": str(sample / "HG002.vcf.gz"), "role": "input"}],
+                "outputs": [{"path": str(evidence), "role": "pharmcat_phenotypes"}],
+                "manifest": str(manifest),
+                "provenance": {"finished": "2025-01-01T00:00:00+00:00"},
+            }
+        )
+    )
+
+
+_TABLE_HEADER = """##fileformat=VCFv4.2
+##contig=<ID=chr1,length=1000>
+##contig=<ID=chr2,length=1000>
+##INFO=<ID=CLNSIG,Number=.,Type=String,Description="ClinVar significance">
+##INFO=<ID=WGSE_CONF,Number=A,Type=String,Description="Confidence">
+##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Feature">
+##INFO=<ID=GNOMAD_POPMAX_AF,Number=A,Type=Float,Description="Group maximum AF">
+##INFO=<ID=GNOMAD_NHOMALT,Number=A,Type=Integer,Description="Homozygote count">
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase set">
+##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
+#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1
+"""
+# (chrom, pos, id, ref, alt, gene, ClinVar, confidence)
+_TABLE_RECORDS = [
+    ("chr1", 100, "rs1", "A", "G", "GENEA", "Pathogenic", "high"),
+    ("chr1", 200, "rs2", "C", "T", "GENEA", "Likely_pathogenic", "moderate"),
+    ("chr1", 300, "rs22", "G", "A", "GENEB", "Benign", "low"),
+    ("chr1", 400, "rs4", "T", "C", "GENEB", "Pathogenic/Likely_pathogenic", "high"),
+    ("chr2", 50, "rs5", "A", "T", "GENEC", None, "high"),
+]
+
+
+@pytest.fixture
+def variant_tables(work: Path) -> dict[str, Path]:
+    from tests.htslib_helpers import bgzip_index, run_wgsextract
+
+    lines = [
+        "\t".join(
+            [
+                chrom,
+                str(pos),
+                rsid,
+                ref,
+                alt,
+                "50",
+                "PASS",
+                ";".join(
+                    ([f"CLNSIG={clnsig}"] if clnsig else [])
+                    + [
+                        f"WGSE_CONF={conf}",
+                        f"CSQ={alt}|missense_variant|MODERATE|{gene}|"
+                        + ("ENST4" if rsid == "rs4" else ""),
+                    ]
+                    + (
+                        ["GNOMAD_POPMAX_AF=0.125", "GNOMAD_NHOMALT=0"]
+                        if rsid == "rs4"
+                        else []
+                    )
+                ),
+                "GT:PS:AD" if rsid == "rs4" else "GT",
+                "0|1:350:14,6" if rsid == "rs4" else "0/1",
+            ]
+        )  # fmt: skip
+        for chrom, pos, rsid, ref, alt, gene, clnsig, conf in _TABLE_RECORDS
+    ]
+    plain = work / "sample.vcf"
+    plain.write_text(_TABLE_HEADER + "\n".join(lines) + "\n")
+    vcf = bgzip_index(plain)
+    run_wgsextract("vcf", "table", "--vcf-input", vcf, "--outdir", str(work))
+    tables = {
+        "sqlite": work / "sample_variants.sqlite",
+        "tsv": work / "sample_variants.tsv",
+    }
+    if importlib.util.find_spec("pyarrow"):
+        run_wgsextract(
+            "vcf", "table", "--vcf-input", vcf, "--outdir", str(work),
+            "--no-sqlite", "--format", "parquet",
+        )  # fmt: skip
+        tables["parquet"] = work / "sample_variants.parquet"
+    return tables
 
 
 @pytest.mark.parametrize("through_link", [False, True])
