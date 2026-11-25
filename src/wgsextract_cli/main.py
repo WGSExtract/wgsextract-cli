@@ -6,9 +6,8 @@ import sys
 from collections.abc import Sequence
 from contextlib import ExitStack
 
+from .cli.argv import config_path_from_argv, show_version, version_only
 from .cli.bootstrap import configure_stdio_encoding
-from .cli.help import print_full_help, run_help
-from .cli.parser import build_parser, config_path_from_argv, parse_args
 from .core.config import reload_settings, set_config_path
 from .core.errors import WGSExtractError
 from .core.workspace_activity import WORKSPACE_LEASE_ARGUMENT, workspace_use
@@ -28,8 +27,9 @@ def main(argv: Sequence[str] | None = None, *, admitted_by: str | None = None) -
 
 
 def _run(argv: Sequence[str] | None, workspace: ExitStack) -> None:
+    tokens = list(sys.argv[1:] if argv is None else argv)
     try:
-        set_config_path(config_path_from_argv(sys.argv[1:] if argv is None else argv))
+        set_config_path(config_path_from_argv(tokens))
         reload_settings()
     except WGSExtractError as exc:
         detail = " ".join(str(exc).splitlines())
@@ -40,9 +40,19 @@ def _run(argv: Sequence[str] | None, workspace: ExitStack) -> None:
         )
         raise SystemExit(1) from None
 
+    if version_only(tokens):
+        from .cli.config_view import configured_thread_count
+
+        configured_thread_count()
+        show_version()
+        return
+
+    from .cli.help import print_full_help, run_help
+    from .cli.parser import build_parser, parse_args
+
     parser, base_parser = build_parser(lazy=True)
-    args, explicit_dests = parse_args(parser, base_parser, argv)
-    args._argv = list(sys.argv[1:] if argv is None else argv)
+    args, explicit_dests = parse_args(parser, base_parser, tokens)
+    args._argv = tokens
 
     if args.full_help:
         print_full_help(parser)
@@ -74,7 +84,7 @@ def _run(argv: Sequence[str] | None, workspace: ExitStack) -> None:
         workspace.close()
 
     try:
-        with run_logging(args, sys.argv[1:] if argv is None else argv):
+        with run_logging(args, tokens):
             if hasattr(args, "func"):
                 from .cli.dispatch import dispatch_command
 

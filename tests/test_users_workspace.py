@@ -223,6 +223,15 @@ def test_1322_cli_cannot_start_or_save_during_a_desktop_move(tmp_path, monkeypat
     result = subprocess.run(args, capture_output=True, text=True, timeout=30)
     assert result.returncode == 1
     assert "being moved" in result.stderr
+
+    # #1506: even a version query still admits the workspace before loading config.
+    version = subprocess.run(
+        [*args[:-2], "--version"], capture_output=True, text=True, timeout=30
+    )
+    assert version.returncode == 1
+    assert version.stdout == ""
+    assert "being moved" in version.stderr
+
     with config.scoped_config(file):
         with pytest.raises(config.WGSExtractError, match="being moved"):
             save_config({"cpu_threads": 7})
