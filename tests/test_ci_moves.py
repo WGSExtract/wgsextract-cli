@@ -14,6 +14,7 @@ from scripts.ci_changes import queue_windows_required, routes
 from scripts.ci_moves import select_moves
 from scripts.ci_select_tests import select_tests
 from scripts.ci_test_dependencies import ROOT
+from tests.ci_routing_helpers import run_router
 from tests.test_ci_selection import repository
 
 
@@ -165,19 +166,7 @@ def test_1045_queue_smokes_windows_for_code_but_not_prose(
         (root / "README.md").write_text("Documentation\n")
     git(root, "add", ".")
     git(root, "commit", "-qm", "queue group")
-    output = subprocess.check_output(
-        [
-            sys.executable,
-            str(ROOT / "scripts/ci_changes.py"),
-            "--base",
-            base,
-            "--head",
-            "HEAD",
-            "--queue",
-        ],
-        cwd=root,
-        text=True,
-    )
+    output = run_router(root, base, "--queue")
     selected = dict(line.split("=", 1) for line in output.splitlines())
     assert selected["windows_tests"] == "[]"
     assert selected["ubuntu_tests"] == "[]"

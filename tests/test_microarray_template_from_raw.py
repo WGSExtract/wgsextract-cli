@@ -1,4 +1,5 @@
 import gzip
+from pathlib import Path
 
 import pytest
 
@@ -198,19 +199,22 @@ def test_y_snp_names_and_marker_lists_without_genotypes_are_read(tmp_path):
     )
 
 
-def test_delta_against_a_shipped_template_reproduces_the_rows(tmp_path):
+def test_delta_against_a_shipped_template_reproduces_the_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from itertools import islice
 
-    from scripts.microarray_template_from_raw import TEMPLATES
+    from scripts import microarray_template_from_raw
     from wgsextract_cli.core.microarray.templates import template_rows
 
+    base_path = "body/MyHeritage_V3.csv.gz"
     base = list(
         islice(
             template_rows(
                 "MyHeritage_V3",
-                str(TEMPLATES / "body/MyHeritage_V3.csv.gz"),
+                str(microarray_template_from_raw.TEMPLATES / base_path),
             ),
-            1000,
+            1001,
         )
     )
     rows = [base[0], ("rs_new1", "1", "5"), *base[2:1000], ("rs_new2", "X", "9")]
@@ -221,6 +225,11 @@ def test_delta_against_a_shipped_template_reproduces_the_rows(tmp_path):
     )
     expected = [(i.replace("rs_new", "rs9"), c, p) for i, c, p in rows]
     root = tmp_path / "templates"
+    local_base = root / base_path
+    local_base.parent.mkdir(parents=True)
+    with gzip.open(local_base, "wt", encoding="utf-8") as stream:
+        stream.writelines(f"{m},{c},{p}\n" for m, c, p in base)
+    monkeypatch.setattr(microarray_template_from_raw, "TEMPLATES", root)
     count, base_name = build_template(
         [raw], "Genera_V1", root, delta_base="MyHeritage_V3"
     )
@@ -230,4 +239,6 @@ def test_delta_against_a_shipped_template_reproduces_the_rows(tmp_path):
     assert gzip.decompress(body.read_bytes()) == (
         b"#base\tMyHeritage_V3\n=1\n+rs91\t1\t5\n-1\n=998\n+rs92\tX\t9\n"
     )
+    # The resulting delta must also resolve against the unmodified packaged body.
+    local_base.unlink()
     assert list(template_rows("Genera_V1", str(body))) == expected
