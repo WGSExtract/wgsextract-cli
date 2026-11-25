@@ -50,6 +50,7 @@ are generated from their sources.
 | [Lineage](lineage.md) | Extract Y/mtDNA, call haplogroups/STRs, set up yBrowse and review data licences |
 | [FTDNA VCF repair](ftdna-vcf-repair.md) | Turn legacy Big Y FILTER expressions into declared IDs |
 | [Variant workflows](variants.md) | Call/annotate, analyse trios and type pharmacogenes/repeats |
+| [Compare local VCFs](variant-comparison.md) | Compare calls across callers or family members |
 | [Variant confidence](variant-confidence.md) | Understand technical evidence labels and caller accuracy |
 | [Built-in genome viewer](../gui/docs/genome-viewer.md) | Inspect local reads and variants, or open an extraction result at its locus |
 | [Gene page](../gui/docs/gene-page.md) | One gene's transcripts, your variants in it and its exon coverage, offline |

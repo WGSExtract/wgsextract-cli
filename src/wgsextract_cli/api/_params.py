@@ -403,6 +403,15 @@ def output_directory_default(
         and not values.get("table_format")
     ):
         return None
+    if cls.COMMAND == "vcf compare":
+        from .vcf_specs.compare import local_path
+
+        entries = values.get("callset") or ()
+        return output_directory(
+            [local_path(entries[0].partition("=")[2])]
+            if entries and "=" in entries[0]
+            else []
+        )
     inputs = (
         []
         if cls.COMMAND in BESIDE_INPUT_COMMANDS or cls.SAVES_IN_WORKING_FOLDER

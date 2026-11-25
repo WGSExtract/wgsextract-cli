@@ -8,6 +8,7 @@ import io
 import os
 import re
 from collections.abc import Iterable
+from itertools import chain
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -246,28 +247,35 @@ def merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
 
 
 def selected_intervals(
-    region: str, lengths: dict[str, int], *, commas: bool = False
+    region: str, lengths: dict[str, int], *, commas: bool = False, files: bool = True
 ) -> Intervals:
     """Union of whitespace- (or, with ``commas``, comma-) separated literals
     and BED/BED.gz/BEDPE files.
 
     Rows on contigs absent from ``lengths`` are dropped and intervals are
     clipped to the contig; raises ValueError when nothing remains.
+    With ``files=False``, only literal regions are recognized.
     """
-    intervals: Intervals = {}
-    for selection in region_items(region, commas=commas):
-        if selection.lower().endswith((".bed", ".bed.gz", ".bedpe")):
-            rows = bed_intervals(selection)
-        else:
-            rows = [literal_region(selection, lengths)]
-        for chrom, start, end in rows:
-            if chrom not in lengths:
-                continue
-            start, end = min(start, lengths[chrom]), min(end, lengths[chrom])
-            if end > start:
-                intervals.setdefault(chrom, []).append((start, end))
+    rows = chain.from_iterable(
+        bed_intervals(item)
+        if files and item.lower().endswith((".bed", ".bed.gz", ".bedpe"))
+        else [literal_region(item, lengths)]
+        for item in region_items(region, commas=commas, files=files)
+    )
+    intervals = bounded_intervals(rows, lengths)
     if not intervals:
         raise ValueError("Selection covers no reference bases.")
+    return intervals
+
+
+def bounded_intervals(
+    rows: Iterable[tuple[str, int, int]], lengths: dict[str, int]
+) -> Intervals:
+    """Clip rows to known contigs and merge their nonempty half-open intervals."""
+    intervals: Intervals = {}
+    for chrom, start, end in rows:
+        if chrom in lengths and start < (end := min(end, lengths[chrom])):
+            intervals.setdefault(chrom, []).append((start, end))
     return merge_intervals(intervals)
 
 
