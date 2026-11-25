@@ -408,7 +408,7 @@ def run_panel_audit(params: PanelAuditParams) -> None:
     verify_dependencies(["bcftools"])
     check_format(params.table_format)
     source = _open(params.vcf_input.expanduser().absolute(), "--vcf-input")
-    current_result().add_input(source.path, "vcf")
+    current_result().add_input(source.path, "vcf_input")
     outdir = (params.outdir or Path(source.path).parent).expanduser().absolute()
     outdir.mkdir(parents=True, exist_ok=True)
     with scratch_directory(outdir, ".wgse_panel_audit_") as work:

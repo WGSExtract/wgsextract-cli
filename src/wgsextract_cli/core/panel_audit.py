@@ -157,11 +157,12 @@ def allele_phase(alleles: Iterable[Allele]) -> tuple[str | None, str | None]:
     records: dict[int | str, set[int]] = {}
     phase_sets: dict[tuple[str, str], set[int]] = {}
     hets = 0
-    uncertain = False
+    incomplete = False
+    unphased = False
     both = False
     for allele in alleles:
         if not allele.complete or allele.ploidy != 2:
-            uncertain = True
+            incomplete = True
         elif len(allele.copies) == 2:
             both = True
         else:
@@ -174,18 +175,18 @@ def allele_phase(alleles: Iterable[Allele]) -> tuple[str | None, str | None]:
                     allele.copies
                 )
             else:
-                uncertain = True
+                unphased = True
     if any(len(alts) == 2 for alts in records.values()) or any(
         len(copies) == 2 for copies in phase_sets.values()
     ):
         return "trans", "biallelic"
     phase = None
     if hets >= 2:
-        phase = "cis" if len(phase_sets) == 1 and not uncertain else "unknown"
+        phase = "cis" if len(phase_sets) == 1 and not unphased else "unknown"
     if both:
         return phase, "biallelic"
-    if uncertain and not hets:
+    if incomplete and not hets:
         return phase, "not_established"
-    if phase == "unknown" or (hets and uncertain):
+    if phase == "unknown" or (hets and incomplete):
         return phase, "possible_biallelic"
     return phase, "one_copy" if hets else None

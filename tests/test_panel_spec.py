@@ -382,6 +382,26 @@ def test_1287_audit_never_overwrites_its_panel(tmp_path: Path) -> None:
 
 
 @needs_htslib
+def test_1287_one_complete_unphased_heterozygote_is_one_copy(tmp_path: Path) -> None:
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    document = json.loads(panel.read_text(encoding="utf-8"))
+    document["defaults"]["qualify"] = [{"impacts": ["HIGH"]}]
+    del document["sites"], document["haplotypes"]
+    _write(tmp_path, document, ".json")
+    sample = tmp_path / "unphased.vcf"
+    with gzip.open(vcf, "rt", encoding="utf-8") as stream:
+        sample.write_text(stream.read().replace("1|0:30:", "1/0:30:"), encoding="utf-8")
+    result = api.panel.audit(
+        api.PanelAuditParams(panel=panel, vcf_input=sample, research_panel=True)
+    )
+    report = next(o for o in result.outputs if o.role == "panel_audit")
+    details = json.loads(Path(report.path).read_text(encoding="utf-8"))
+    (gene,) = details["groups"][0]["genes"]
+    assert gene["qualifying_allele_copies"] == 1 and gene["phase"] is None
+    assert gene["biallelic_state"] == "one_copy"
+
+
+@needs_htslib
 def test_1287_split_multiallelic_watch_preserves_both_alleles(tmp_path: Path) -> None:
     from wgsextract_cli.core.utils import run_command
 
