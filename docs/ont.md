@@ -666,6 +666,10 @@ The output is `<input stem>.<build>.<preset>.methylation.tsv`, or `.parquet`
 with `--format parquet`. The result manifest records the reference,
 annotation version and checksums, and the promoter and coverage rules.
 Without `--partition-hp`, these are pooled, descriptive summaries.
+For timing and disk measurements on public HG002 data, see
+[methylation region resource estimates](resource_estimates.md#methylation-regions).
+If you already have a site table and do not need haplotype comparisons,
+summarize that table rather than running modkit again.
 
 ### Split region summaries by haplotype
 
