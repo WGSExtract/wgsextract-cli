@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from wgsextract_cli.api._runtime import cancel_event, checkpoint
+from wgsextract_cli.commands._messages.vep import LOG_MESSAGES
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import PathInput, expand_path
 from wgsextract_cli.core.ref_library import download_file
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary

@@ -14,7 +14,6 @@
     "src/wgsextract_cli/core/acmg_data.py": 1533,
     "src/wgsextract_cli/core/chunked_alignment.py": 835,
     "src/wgsextract_cli/core/resource_estimates.py": 1705,
-    "src/wgsextract_cli/core/sample_workspace.py": 1123,
     "src/wgsextract_cli/core/steps.py": 874,
     "src/wgsextract_cli/core/utils.py": 809,
     "src/wgsextract_cli/core/variant_confidence.py": 1152,

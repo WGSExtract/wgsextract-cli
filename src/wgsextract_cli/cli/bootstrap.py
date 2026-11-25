@@ -8,7 +8,6 @@ from types import FrameType
 from typing import TextIO
 
 from wgsextract_cli.core.execution_context import current
-from wgsextract_cli.core.utils import cleanup_processes
 
 SIGNAL_EXPLANATIONS = {
     "SIGHUP": "terminal or parent session closed",
@@ -96,6 +95,8 @@ def configure_logging(*, debug: bool = False, quiet: bool = False) -> None:
 
 
 def install_signal_handlers() -> None:
+    from wgsextract_cli.core.process_registry import cleanup_processes
+
     global _stop_signal
     _stop_signal = None
 
@@ -115,6 +116,8 @@ def install_signal_handlers() -> None:
 def start_parent_monitor(parent_pid: int | None) -> None:
     if not parent_pid:
         return
+
+    from wgsextract_cli.core.process_registry import cleanup_processes
 
     def monitor_parent() -> None:
         while True:

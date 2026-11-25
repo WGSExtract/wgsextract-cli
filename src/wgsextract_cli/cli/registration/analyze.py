@@ -6,7 +6,18 @@ from functools import wraps
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.analyze import AnalyzeBatchGenParams, AnalyzeComprehensiveParams
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    _CALL,
+    HOURS,
+    INSTANT,
+    _n,
+)
+from wgsextract_cli.commands._messages.analyze import CLI_HELP
+
+NEEDS = {
+    "analyze comprehensive": _n(HOURS, *_CALL),
+    "analyze batch-gen": _n(INSTANT),
+}
 
 
 def register(

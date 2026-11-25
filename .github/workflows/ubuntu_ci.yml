@@ -1,12 +1,7 @@
 name: CI Ubuntu
 
-# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix
-# (main pushes run the files their merge group left to them, #1373).
+# pr_ci.yml selects PRs and merge groups; nightly is the full backstop.
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - "**/*.md"
   workflow_call:
     inputs:
       tests:
@@ -30,7 +25,7 @@ on:
         type: string
         default: "[]"
   schedule:
-    - cron: "11 6 * * *"
+    - cron: "23 8 * * *"
   workflow_dispatch:
     inputs:
       optional-tools-only:
@@ -47,19 +42,17 @@ permissions:
   actions: read
 
 concurrency:
-  group: ci-ubuntu-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  group: ci-ubuntu-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   nightly:
+    if: github.event_name == 'workflow_dispatch' && inputs.balanced-full-suite && !inputs.optional-tools-only
     uses: ./.github/workflows/nightly_guard.yml
     with:
-      workflow: ubuntu_ci.yml
-      main-backstop-candidate: &main-backstop-candidate ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.optional-tools-only && !inputs.balanced-full-suite)) }}
-      shard-os: ${{ inputs.balanced-full-suite && !inputs.optional-tools-only && 'ubuntu' || '' }}
+      shard-os: ubuntu
   lint:
-    needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.smoke-only && !inputs.generic-certified }}
+    if: ${{ !cancelled() && !inputs.optional-tools-only && !inputs.smoke-only && !inputs.generic-certified }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -85,15 +78,14 @@ jobs:
       - name: Advisory test-smell annotations (never fails)
         run: pixi run -e lint -x python scripts/test_smells.py --base HEAD^1 --github
   test-ubuntu:
-    # The daily full pytest run seeds shadow observations and must not reuse
-    # a green push or depend on the guard runner. The guard controls other jobs.
+    # The serial daily run seeds a complete observation map.
     if: ${{ !cancelled() && !inputs.optional-tools-only && !inputs.balanced-full-suite && !inputs.platform-certified && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: ubuntu
       runner: ubuntu-latest
       timeout-minutes: 48
-      main-backstop-candidate: *main-backstop-candidate
+      main-backstop-candidate: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.optional-tools-only && !inputs.balanced-full-suite)) }}
       environments: default dev vep-rs fastvep
       reference: true
       tests: ${{ inputs.tests || 'all' }}
@@ -102,7 +94,7 @@ jobs:
       skip-generic: ${{ github.event_name == 'pull_request' }}
       setup-checks: ${{ github.event_name != 'pull_request' || inputs.setup-checks }}
       move-modules: ${{ inputs.move-modules || '[]' }}
-      # The merge queue runs this suite, so main skips what it already ran (#1373).
+      # The merge queue records passing tests; the nightly reruns the full suite.
       queue-dedupe: true
 
   test-ubuntu-balanced:
@@ -118,15 +110,13 @@ jobs:
       matrix: ${{ needs.nightly.outputs.matrix }}
 
   optional-tools:
-    needs: nightly
-    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_contamination.py') || contains(inputs.tests, 'tests/test_vcf_callers.py') || contains(inputs.tests, 'tests/test_typing_str_long_reads.py') || contains(inputs.tests, 'tests/test_methylation.py') || contains(inputs.tests, 'tests/test_methylation_regions.py') || contains(inputs.tests, 'tests/test_genotyping_commands.py')) }}
+    if: ${{ !cancelled() && github.event_name != 'pull_request' && github.event_name != 'merge_group' && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_contamination.py') || contains(inputs.tests, 'tests/test_vcf_callers.py') || contains(inputs.tests, 'tests/test_typing_str_long_reads.py') || contains(inputs.tests, 'tests/test_methylation.py') || contains(inputs.tests, 'tests/test_methylation_regions.py') || contains(inputs.tests, 'tests/test_genotyping_commands.py')) }}
     uses: ./.github/workflows/optional_tools.yml
     with:
       tests: ${{ inputs.tests || 'all' }}
 
   imputation:
-    needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py')) }}
+    if: ${{ !cancelled() && !inputs.optional-tools-only && !inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_imputation.py')) }}
     # GLIMPSE2 and Beagle from the opt-in imputation environment on HG002 1x
     # reads and chip genotypes (tests/fixtures/imputation_hg002).
     runs-on: ubuntu-latest
@@ -149,8 +139,7 @@ jobs:
   # ONT end to end on real GIAB HG002 R10.4.1 reads (tests/fixtures/ont_hg002):
   # align with minimap2, then Sniffles from the opt-in pacbio environment.
   ont-hg002:
-    needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && !inputs.optional-tools-only && !inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_ont_hg002.py') || contains(inputs.tests, 'tests/test_phasing.py') || contains(inputs.tests, 'tests/test_somalier_relate.py')) }}
+    if: ${{ !cancelled() && !inputs.optional-tools-only && !inputs.platform-certified && !inputs.smoke-only && (inputs.tests == 'all' || inputs.tests == '' || contains(inputs.tests, 'tests/test_ont_hg002.py') || contains(inputs.tests, 'tests/test_phasing.py') || contains(inputs.tests, 'tests/test_somalier_relate.py')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

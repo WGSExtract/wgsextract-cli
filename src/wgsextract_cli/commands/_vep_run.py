@@ -15,6 +15,7 @@ from typing import Any
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vep import VepRunParams
 from wgsextract_cli.cli.hints import quote
+from wgsextract_cli.commands._messages.vep import LOG_MESSAGES
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.atomic_output import atomic_output
@@ -27,7 +28,7 @@ from wgsextract_cli.core.dependency_checks import (
     verify_dependencies,
 )
 from wgsextract_cli.core.errors import CodedError
-from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES as SHARED_LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path, expand_path
 from wgsextract_cli.core.ref_library.assets import fasta_index_build
@@ -410,7 +411,7 @@ def _run_vep_on_input(
         if is_bam:
             if not lib.fasta:
                 raise WGSExtractError(
-                    LOG_MESSAGES["ref_required_for"].format(
+                    SHARED_LOG_MESSAGES["ref_required_for"].format(
                         task="variant calling from BAM/CRAM"
                     )
                 )

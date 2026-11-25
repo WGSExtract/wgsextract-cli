@@ -2,7 +2,8 @@ name: Set up the desktop app toolchain
 description: >-
   Node and the app's npm dependencies, plus on request the Rust toolchain and
   Tauri's Linux libraries (to build the app) or the CLI's Python dependencies
-  (for the app's tests). Downloads use the main-owned caches.
+  (for generating transport types and testing bundle commands). Downloads use
+  the main-owned caches.
 inputs:
   npm-install:
     description: >-
@@ -25,8 +26,8 @@ inputs:
     default: ""
   cli-python:
     description: >-
-      Set up Python with the CLI's dependencies, which the app's tests use to
-      parse bundle commands ("true" or "false").
+      Set up Python with the CLI's dependencies, needed for app builds and the
+      bundle command tests ("true" or "false").
     required: false
     default: "false"
   cache:

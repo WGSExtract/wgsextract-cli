@@ -51,6 +51,18 @@ class LocaleLinterRuleTests(unittest.TestCase):
         self.assertIn("duplicate-key", codes)
         self.assertIn("missing-builtin-key", codes)
 
+    def test_1537_builtin_catalogs_require_sorted_single_line_entries(self) -> None:
+        path = Path(__file__).with_name("fixtures") / "strings.fr.toml"
+        catalog = parse_toml_file(path)
+        source = lint_source(catalog, requires_builtin=True)
+        translated = lint_locale(catalog, catalog, "BuiltinStrings", "fr", requires_builtin=True)
+
+        for findings in (source, translated.findings):
+            locations = {(finding.code, finding.line, finding.key) for finding in findings}
+            self.assertIn(("builtin-key-order", 2, "alpha"), locations)
+            self.assertIn(("builtin-multiline", 2, "alpha"), locations)
+        self.assertFalse(lint_source(catalog, requires_builtin=False))
+
     def test_source_hash_warning_and_rewrite_helpers(self) -> None:
         source = parsed_file([entry("title", "New source", 1)])
         target = parsed_file([entry("title", "Translated", 1, recorded_source_hash="deadbeef")])

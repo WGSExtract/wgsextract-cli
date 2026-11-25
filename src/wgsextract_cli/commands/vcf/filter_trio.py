@@ -5,13 +5,13 @@ import tempfile
 from pathlib import Path
 
 from wgsextract_cli.api.vcf import VcfFilterParams, VcfTrioParams
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core.alignment.health import warn_about_alignment
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled, safe_output
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import n_count_paths, read_fai_lengths

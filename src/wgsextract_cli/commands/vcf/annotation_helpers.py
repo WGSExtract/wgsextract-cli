@@ -9,11 +9,11 @@ from pathlib import Path
 
 from wgsextract_cli.api._params import param_fields
 from wgsextract_cli.api.vcf import _VcfFileParams
+from wgsextract_cli.commands._messages.vcf import LOG_MESSAGES
 from wgsextract_cli.core import resource_releases
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.output_checks import (
     vcf_record_count,
     warn_if_nothing_annotated,

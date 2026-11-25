@@ -154,6 +154,7 @@ def run_container(
     cpus: int | None = None,
     entrypoint: str | None = None,
     temporary_directory: str | None = None,
+    working_directory: str | None = None,
     local_only: bool = False,
     oom_error: str | None = None,
     capture_output: bool = False,
@@ -168,7 +169,7 @@ def run_container(
     stops it and raises that message, for tools such as DeepVariant whose
     worker pools wait forever on a killed worker. ``capture_output`` returns
     its output instead of showing it. ``cpus`` caps the CPUs the container
-    may use."""
+    may use. ``working_directory`` must be among the mounted directories."""
     mounts = sorted(
         {host_path(p) if Path(p).is_dir() else str(Path(host_path(p)).parent)
          for p in paths if p}
@@ -199,7 +200,10 @@ def run_container(
     if tag := os.environ.get(RUN_TAG):
         # A rerun finds the container of a step whose wgsextract was killed.
         cmd += ["--label", f"{STEP_LABEL}={tag}"]
-    cmd += [*(["-w", mounts[0]] if mounts else []), image, *command]
+    cwd = (
+        host_path(working_directory) if working_directory else next(iter(mounts), None)
+    )
+    cmd += [*(["-w", cwd] if cwd else []), image, *command]
     token = current().cancel
     interrupted = False
     try:

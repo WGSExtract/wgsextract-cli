@@ -54,7 +54,7 @@ def test_929_result_contract_changes_select_freshness(path: str) -> None:
     "path",
     [
         "scripts/server_transport_typescript.py",
-        "gui/app/shared/generated/server-transport.ts",
+        "scripts/gen_server_openapi.py",
         "gui/app/shared/generated/result-records.ts",
         "gui/app/shared/generated/report-records.ts",
     ],
@@ -139,7 +139,6 @@ def test_1482_root_fixture_imports_apply_to_regular_tests(tmp_path: Path) -> Non
         "tests/conftest.py",
         "tests/htslib_helpers.py",
         "tests/fixtures/sample.bam",
-        "tests/cli_snapshot.py",
         "pyproject.toml",
         "pixi.toml",
         "pixi.lock",
@@ -321,7 +320,6 @@ def test_1496_split_help_catalog_selects_help_contract_tests() -> None:
     assert {
         "tests/test_cli_help.py",
         "tests/test_command_needs.py",
-        "tests/test_api_cli_parity.py",
         "tests/test_regen.py",
     }.issubset(selected)
     assert "tests/test_cli_help.py" in docs_test_targets(paths)

@@ -21,7 +21,6 @@ IGNORED = {".git", ".pixi", "out", "tmp", "scratch", "__pycache__", "node_module
 DOCS_TEST_TARGETS = (
     "tests/test_api.py::test_api_docs_are_up_to_date",
     "tests/test_core_cli.py::test_configuration_docs_are_up_to_date",
-    "tests/test_api_cli_parity.py",
     "tests/test_cli_help.py",
     # Real Git/generator checks need only the same Python deps as freshness tests.
     "tests/test_regen.py",
@@ -48,7 +47,6 @@ GENERATED_DOCS = frozenset(
         # Hand-written generator input also requires configuration freshness.
         "docs/data/configuration-guide.md",
         "site_src/cli.md",
-        "tests/fixtures/api_cli_snapshot.json",
         "src/wgsextract_cli/assets/cli/help-index.json",
     }
 )
@@ -65,11 +63,6 @@ DOCS_TARGET_INPUTS = {
         "docs/configuration.md",
         "docs/data/configuration-guide.md",
     ),
-    "tests/test_api_cli_parity.py": (
-        "src/wgsextract_cli/**",
-        "tests/cli_snapshot.py",
-        "tests/fixtures/api_cli_snapshot.json",
-    ),
     "tests/test_cli_help.py": (
         "src/wgsextract_cli/**",
         "scripts/gen_command_docs.py",
@@ -81,8 +74,8 @@ DOCS_TARGET_INPUTS = {
         "scripts/gen_api_docs.py",
         "scripts/gen_command_docs.py",
         "scripts/gen_config_docs.py",
+        "scripts/gen_server_openapi.py",
         "docs/data/configuration-guide.md",
-        "tests/cli_snapshot.py",
         "justfile",
     ),
     "tests/test_text_newlines.py": (
@@ -91,7 +84,7 @@ DOCS_TARGET_INPUTS = {
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
-        "tests/cli_snapshot.py",
+        "scripts/gen_server_openapi.py",
     ),
     "tests/test_bump_version.py": (
         "scripts/bump_version*",
@@ -152,7 +145,8 @@ def docs_test_targets(
     selected = set()
     inputs = test_inputs(repository)
     for path in paths:
-        if path.endswith(".md") and path not in GENERATED_DOCS:
+        generated = path in GENERATED_DOCS
+        if path.endswith(".md") and not generated:
             continue
         # Literal reads complement the declared transitive inputs. Inferred
         # fixture globs (e.g. f"scripts/{generator}") are too broad for this lane.
@@ -161,7 +155,7 @@ def docs_test_targets(
             module = target.split("::")[0]
             # Routing/policy fixtures mention arbitrary paths rather than reading them.
             discovered = (
-                path not in GENERATED_DOCS
+                not generated
                 and module in readers
                 and module
                 not in {

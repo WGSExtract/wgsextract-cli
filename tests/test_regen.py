@@ -12,7 +12,6 @@ from wgsextract_cli.cli.help import SITE_BLOCK_END, SITE_BLOCK_START
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED = (
-    "tests/fixtures/api_cli_snapshot.json",
     "docs/api.md",
     "docs/commands.md",
     "src/wgsextract_cli/assets/cli/help-index.json",
@@ -28,8 +27,6 @@ GENERATED = (
     "src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json",
     "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json",
-    "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json",
-    "gui/app/shared/generated/server-transport.ts",
     "gui/app/shared/generated/result-records.ts",
     "gui/app/shared/generated/report-records.ts",
 )
@@ -67,9 +64,9 @@ def regen_repo(tmp_path: Path) -> Path:
         "scripts/gen_output_schemas.py",
         "scripts/gen_report_schema.py",
         "scripts/gen_server_contracts.py",
+        "scripts/gen_server_openapi.py",
         "scripts/json_lines.py",
         "scripts/server_transport_typescript.py",
-        "tests/cli_snapshot.py",
         "site_src/cli.md",
     ):
         target = tmp_path / relative
@@ -141,7 +138,7 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     # #1471: regenerate to LF even if the existing files use CRLF.
     crlf_artifacts = [
         regen_repo / "docs/configuration.md",
-        regen_repo / "tests/fixtures/api_cli_snapshot.json",
+        regen_repo / "docs/commands.md",
     ]
     for path in crlf_artifacts:
         path.write_text(
@@ -158,8 +155,6 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     staged = git(regen_repo, "diff", "--cached", "--name-only").stdout.splitlines()
     assert set(staged) == {*GENERATED, "site_src/cli.md"}
     assert not git(regen_repo, "diff", "--name-only").stdout
-    snapshot = json.loads((regen_repo / GENERATED[0]).read_text(encoding="utf-8"))
-    assert snapshot["commands"]["microarray"]["help"]
     assert "MicroarrayParams" in (regen_repo / "docs/api.md").read_text(
         encoding="utf-8"
     )
@@ -168,6 +163,15 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     assert "server_max_jobs" in (regen_repo / "docs/configuration.md").read_text(
         encoding="utf-8"
     )
+    document = json.loads(
+        (regen_repo / "out/contracts/wgsextract.server.openapi.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "/v1/ops/microarray" in document["paths"]
+    assert "export interface Job {" in (
+        regen_repo / "gui/app/shared/generated/server-transport.ts"
+    ).read_text(encoding="utf-8")
     for generator in (
         "gen_api_docs.py",
         "gen_command_docs.py",
@@ -185,18 +189,19 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
         assert checked.returncode == 0, checked.stderr
 
 
-def test_989_stale_compact_openapi_reports_readable_field_diff(
+def test_989_stale_server_response_schema_reports_readable_field_diff(
     regen_repo: Path,
 ) -> None:
     regenerated = resolve(regen_repo)
     assert regenerated.returncode == 0, regenerated.stderr
     path = (
-        regen_repo / "src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+        regen_repo
+        / "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json"
     )
     document = json.loads(path.read_text(encoding="utf-8"))
-    document["info"]["version"] = "stale-version"
+    document["$id"] = "stale-schema-id"
     path.write_text(
-        json.dumps(document, separators=(",", ":")) + "\n", encoding="utf-8"
+        json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
     checked = subprocess.run(
@@ -208,13 +213,10 @@ def test_989_stale_compact_openapi_reports_readable_field_diff(
 
     assert checked.returncode == 1
     assert (
-        "committed/src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json"
+        "committed/src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json"
         in checked.stderr
     )
-    assert '-    "version": "stale-version",' in checked.stderr
-    assert '+    "version":' in checked.stderr
+    assert '-  "$id": "stale-schema-id",' in checked.stderr
+    assert '+  "$id": "urn:wgsextract:server:responses:1",' in checked.stderr
     assert len(checked.stderr) < 5000
-    assert (
-        json.loads(path.read_text(encoding="utf-8"))["info"]["version"]
-        == "stale-version"
-    )
+    assert json.loads(path.read_text(encoding="utf-8"))["$id"] == "stale-schema-id"
