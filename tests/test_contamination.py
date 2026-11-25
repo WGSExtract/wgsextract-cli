@@ -122,7 +122,7 @@ def panel(tmp_path_factory):
 def test_freemix_measures_a_mixture_and_is_recorded(
     tmp_path, panel, fraction, low, high
 ):
-    """#1087: reports go in wgse/, leaving the lab's input folder untouched."""
+    """#1087: reports go in WGSEv6/, leaving the lab's input folder untouched."""
     pop, prefix = panel
     folder = tmp_path / "genome"
     folder.mkdir()
@@ -139,7 +139,7 @@ def test_freemix_measures_a_mixture_and_is_recorded(
     report = out / "s.contamination.selfSM"
     assert report.is_file() and (out / "s.contamination.Ancestry").is_file()
     assert not list(folder.glob("s.contamination.*"))
-    assert Path(result.manifest).parent == out
+    assert Path(result.manifest).parent == out / "manifests"
     assert (
         json.loads(Path(result.manifest).read_text())["metrics"]["freemix"] == freemix
     )
