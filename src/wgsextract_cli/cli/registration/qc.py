@@ -18,7 +18,38 @@ from wgsextract_cli.api.qc import (
     RelateParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
-from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.commands._command_needs import (
+    _SMALL,
+    HOURS,
+    MINUTES,
+    SECONDS,
+    _n,
+)
+from wgsextract_cli.commands._messages.qc import CLI_HELP
+
+NEEDS = {
+    "qc fastp": _n(MINUTES, "fastp"),
+    "qc fastqc": _n(HOURS, "fastqc", optional="bcftools multiqc"),
+    "qc multiqc": _n(SECONDS, "multiqc", optional="bcftools fastqc", scale=""),
+    "qc multiqc-metrics": _n(SECONDS, scale=""),
+    "qc vcf": _n(MINUTES, "bcftools"),
+    "qc relate": _n(
+        MINUTES, "bcftools", "samtools", "somalier", optional="bgzip tabix"
+    ),
+    "qc ancestry": _n(MINUTES, "samtools", optional="bcftools curl"),
+    "qc contamination": _n(MINUTES, "samtools", "verifybamid2", optional="bcftools"),
+    "qc roh": _n(MINUTES, "bcftools", "bgzip", "tabix"),
+    "qc fake-data": _n(
+        SECONDS,
+        "bcftools",
+        "bgzip",
+        "samtools",
+        "tabix",
+        optional="sambamba",
+        scale=_SMALL,
+    ),
+}
+
 
 cmd_ancestry = command_handler("wgsextract_cli.commands.qc.ancestry", "cmd_ancestry")
 cmd_contamination = command_handler(

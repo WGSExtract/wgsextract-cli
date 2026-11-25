@@ -5,6 +5,15 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.lookup import LookupParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._command_needs import (
+    SECONDS,
+    _n,
+)
+
+NEEDS = {
+    "lookup": _n(SECONDS, optional="bcftools", scale=" from existing results"),
+}
+
 
 HELP = "Genotype and evidence at an rsID, locus or gene, with report findings."
 
