@@ -1,3 +1,0 @@
-## Added
-
-- The Microarray page keeps **CombinedKit v3** alongside **CombinedKit v5** (expanding v3), places `23andMe v1/v2` before `v3` and `FTDNA v1 (Affy)` before `v2` on their main rows, puts FTDNA's GRCh38 Y formats (`v2y`, `v3y`, `v4y`) on a dedicated **FTDNA (Y only, Build 38)** row, exposes the consumer vendor formats from [#1107 (Microarray: letter-named vendor variants and CombinedKit v5)](https://github.com/WGSExtract/wgsextract-cli/pull/1107) (AncestryDNA `v2ab`, `v2cd`, `v2e`; FamilyTreeDNA `v4`; MyHeritage `v3`; `tellmeGen`, `Genera`, `MTHFR Genetics`, `meuDNA` `v1`/`v2`, `SelfDecode`, and `Nucleus`), and removes the dropped minor date/size variants and standalone `ancestry_v2`.

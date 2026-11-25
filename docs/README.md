@@ -87,7 +87,8 @@ Start with the [README quick start](../README.md#quick-start), the
 | [Bootstrap compression results](bootstrap_compression_results.md) | Read historical compression measurements |
 
 Release notes: [unreleased](release-notes/unreleased/README.md),
-[v0.8.9](release-notes/v0.8.9.md), [v0.8.8](release-notes/v0.8.8.md), [v0.8.7](release-notes/v0.8.7.md),
+[v0.8.10](release-notes/v0.8.10.md), [v0.8.9](release-notes/v0.8.9.md),
+[v0.8.8](release-notes/v0.8.8.md), [v0.8.7](release-notes/v0.8.7.md),
 [v0.8.6](release-notes/v0.8.6.md), [v0.8.5](release-notes/v0.8.5.md).
 Documentation inputs under `data/` include the
 [configuration guide source](data/configuration-guide.md) (rendered into
