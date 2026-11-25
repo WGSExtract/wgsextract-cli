@@ -1,13 +1,8 @@
 name: CI Windows
 
 # Native Windows uses the same published Pixi tools as users.
-# pr_ci.yml selects PRs; main pushes and nightly runs retain the full matrix
-# (main pushes run the files their merge group left to them, #1373).
+# pr_ci.yml selects PRs and merge groups; nightly is the full backstop.
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - "**/*.md"
   workflow_call:
     inputs:
       tests:
@@ -25,7 +20,7 @@ on:
         type: string
         default: "[]"
   schedule:
-    - cron: "11 6 * * *"
+    - cron: "41 8 * * *"
   workflow_dispatch:
 
 permissions:
@@ -33,18 +28,17 @@ permissions:
   actions: read
 
 concurrency:
-  group: ci-windows-${{ github.event_name }}-${{ (github.event_name == 'push' && github.ref == 'refs/heads/main' && github.run_attempt == 1 || github.event_name == 'pull_request') && github.ref || github.run_id }}
+  group: ci-windows-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   nightly:
     uses: ./.github/workflows/nightly_guard.yml
     with:
-      workflow: windows_ci.yml
       shard-os: windows
   test-windows:
     needs: nightly
-    if: ${{ !cancelled() && (needs.nightly.result != 'success' || needs.nightly.outputs.skip != 'true') && inputs.tests != '[]' }}
+    if: ${{ !cancelled() && inputs.tests != '[]' }}
     uses: ./.github/workflows/os_tests.yml
     with:
       os: windows
@@ -56,5 +50,5 @@ jobs:
       smoke-only: ${{ inputs.smoke-only == true }}
       setup-checks: ${{ github.event_name != 'pull_request' || inputs.setup-checks }}
       move-modules: ${{ inputs.move-modules || '[]' }}
-      # The merge queue runs this suite, so main skips what it already ran (#1373).
+      # The merge queue records passing tests; the nightly reruns the full suite.
       queue-dedupe: true

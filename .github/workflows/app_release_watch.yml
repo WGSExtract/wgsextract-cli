@@ -1,9 +1,7 @@
 name: App release watch
 
-# A new WGS Extract release gets the full Install Lab run of its app (the weekly
-# matrix: pinned CLI and negative controls included) within the hour, not at the
-# next weekly run. The app joins the release after release.yml publishes it (or
-# when a maintainer publishes its draft), so this checks for that by the hour.
+# After publication, test the installed app with its publicly available pinned
+# CLI as well as with the tree. Preflight tests the candidate before publishing.
 # The same check moves https://wgsextract.github.io/'s v6 row to that release.
 on:
   schedule:

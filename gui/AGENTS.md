@@ -68,6 +68,7 @@ benchmarks) live on the `old-experimental` branch; do not reintroduce them here.
 - Use Node's built-in test runner (`node:test`) for tests under `app/tests`, and add new test files to `scripts/run-node-tests.mjs`.
 - Prefer explicit error handling over non-null assertions and unchecked casts.
 - Every user-visible string goes through the localization tables in `resources/BuiltinStrings`.
+- Insert built-in translations in case-sensitive key order in every locale. Keep each entry on one physical line (use `\n` inside strings), with any translation marker on that same line. The localization linter enforces this for the built-in catalogs, not for bundle catalogs.
 - After changing an English string, update its translations, then run `python tools/localization/lint_locales.py --update-source-hashes` from `gui/`. It refreshes stale `i18n-source-hash` comments and adds one to new translations, but leaves `i18n-ignore`, TODO and verbatim-English lines alone, so the diff should be one line per changed or newly translated key per locale. The linter warns `missing-source-hash` for a translated line without a hash.
 
 ## App Behavior
@@ -90,6 +91,9 @@ from anywhere. The root's pre-commit hooks lint `gui/` changes with
 `tools/tasks.py lint`; the GUI's CI is `.github/workflows/gui-*.yml`. The app
 ships in the same `vX.Y.Z` release as the CLI it bundles (see
 `docs/releasing.md` at the root).
+
+Record user-facing app changes in `docs/changelog/unreleased/` fragments, not
+in `docs/CHANGELOG.md`. The root release tool assembles the changelog.
 
 Run `make setup` to prepare the development tools.
 

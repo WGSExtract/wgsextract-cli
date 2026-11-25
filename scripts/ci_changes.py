@@ -40,15 +40,6 @@ SITE_SCRIPTS = (
     "gui/scripts/build_site.py",
     "gui/scripts/validate_site_sources.py",
 )
-INSTALL_PREFIXES = (
-    ".github/actions/",
-    "packaging/",
-    "scripts/installlab/",
-    "src/wgsextract_cli/cli/",
-    "gui/app/web/packagers/",
-    "gui/tools/packaging/",
-    "gui/examples/WGSExtract/",
-)
 INSTALL_FILES = {
     "pixi.toml",
     "pixi.lock",
@@ -58,6 +49,9 @@ INSTALL_FILES = {
     "uninstall.sh",
     "uninstall_windows.bat",
     "scripts/bootstrap_windows_prereqs.ps1",
+    "scripts/build_package_artifacts.py",
+    "scripts/gen_server_openapi.py",
+    "scripts/package_smoke.py",
     "src/wgsextract_cli/main.py",
     "src/wgsextract_cli/__main__.py",
     "gui/tools/tasks.py",
@@ -119,14 +113,12 @@ def documentation_targets(
 def routes(
     paths: list[str],
     *,
-    force_install_lab: bool = False,
     draft: bool = False,
     repository: Path = ROOT,
 ) -> dict[str, bool]:
     result = dict.fromkeys(
-        ("cli", "docs", "native", "site", "install", "fast", "draft_cli"), False
+        ("cli", "docs", "native", "site", "fast", "draft_cli"), False
     )
-    result["install"] = force_install_lab
     for path in paths:
         if ci_path(path):
             continue
@@ -164,8 +156,6 @@ def routes(
         if path.startswith("native/"):
             result["native"] = True
             continue
-        if path.startswith(INSTALL_PREFIXES) or path in INSTALL_FILES:
-            result["install"] = True
         if path.startswith("gui/"):
             continue
         if path.startswith(".github/workflows/gui-"):
@@ -182,10 +172,10 @@ def routes(
     )
     if draft:
         result["fast"] = bool(paths) and any(
-            result[area] for area in ("cli", "native", "site", "install")
+            result[area] for area in ("cli", "native", "site")
         )
         result["draft_cli"] = result["cli"]
-        for area in ("cli", "native", "site", "install"):
+        for area in ("cli", "native", "site"):
             result[area] = False
     result["docs"] = bool(
         documentation_targets(paths, tests, repository=repository)
@@ -199,7 +189,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True)
     parser.add_argument("--head", required=True)
-    parser.add_argument("--force-install-lab", action="store_true")
     parser.add_argument("--draft", action="store_true")
     parser.add_argument("--full-suite", action="store_true")
     parser.add_argument(
@@ -221,7 +210,7 @@ def main() -> None:
         ]
     )
     paths = changed.decode().rstrip("\0").split("\0") if changed else []
-    selected = routes(paths, force_install_lab=args.force_install_lab, draft=args.draft)
+    selected = routes(paths, draft=args.draft)
     queue_windows = queue_windows_required(paths)
     affected_tests = select_tests(paths)
     tests = "all" if args.full_suite else affected_tests
@@ -235,9 +224,7 @@ def main() -> None:
         return
     ci_tests = ci_test_targets(paths)
     output = "".join(f"{key}={str(value).lower()}\n" for key, value in selected.items())
-    output += (
-        f"setup_checks={str(setup_checks(paths) or args.force_install_lab).lower()}\n"
-    )
+    output += f"setup_checks={str(setup_checks(paths)).lower()}\n"
     output += "move_modules=" + json.dumps(moves.modules if moves else []) + "\n"
     output += (
         "optional_tests="

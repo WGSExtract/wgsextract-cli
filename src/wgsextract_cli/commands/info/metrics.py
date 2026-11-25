@@ -10,11 +10,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
+from wgsextract_cli.commands._messages.info import LOG_MESSAGES
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.alignment.sequencing import platform_from_metadata
 from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.constants import SEQUENCERS
-from wgsextract_cli.core.messages import LOG_MESSAGES
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import n_count_paths
 from wgsextract_cli.core.results import fingerprint

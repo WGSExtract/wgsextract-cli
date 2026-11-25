@@ -29,7 +29,6 @@ src/wgsextract_cli/commands/genotyping/str_catalog/* text eol=lf
 # Fully generated outputs of scripts/regen.py use LF.
 # Local merges keep one side; ALWAYS run just regen-resolve after merging.
 # GitHub does not run custom drivers; see docs/developer_setup.md.
-tests/fixtures/api_cli_snapshot.json text eol=lf merge=generated
 docs/api.md text eol=lf merge=generated
 docs/commands.md text eol=lf merge=generated
 docs/configuration.md text eol=lf merge=generated
@@ -45,7 +44,5 @@ src/wgsextract_cli/assets/schemas/wgsextract.methylation-regions-hp.1.schema.jso
 src/wgsextract_cli/assets/schemas/wgsextract.panel.1.schema.json text eol=lf merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.report.1.schema.json text eol=lf merge=generated
 src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json text eol=lf merge=generated
-src/wgsextract_cli/assets/schemas/wgsextract.server.openapi.json text eol=lf merge=generated
-gui/app/shared/generated/server-transport.ts text eol=lf merge=generated
 gui/app/shared/generated/result-records.ts text eol=lf merge=generated
 gui/app/shared/generated/report-records.ts text eol=lf merge=generated

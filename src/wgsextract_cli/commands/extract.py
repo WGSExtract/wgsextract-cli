@@ -18,13 +18,14 @@ from wgsextract_cli.api.extract import (
     _ExtractParams,
 )
 from wgsextract_cli.cli.registration.extract import register as register
+from wgsextract_cli.commands._messages.extract import LOG_MESSAGES
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.atomic_output import atomic_outputs_enabled
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.messages import LOG_MESSAGES
+from wgsextract_cli.core.messages import LOG_MESSAGES as SHARED_LOG_MESSAGES
 from wgsextract_cli.core.output_checks import (
     bam_has_reads,
     warn_if_no_reads,
@@ -140,7 +141,9 @@ def require_reference(
                 hint = f" Install the matching reference explicitly: wgsextract ref library --install {genome['code']}"
         if not hint:
             hint = " Select the matching reference with wgsextract ref library, then pass its FASTA with --ref."
-        raise UsageError(LOG_MESSAGES["ref_required_for"].format(task=task) + hint)
+        raise UsageError(
+            SHARED_LOG_MESSAGES["ref_required_for"].format(task=task) + hint
+        )
     return resolved_ref
 
 
@@ -266,7 +269,9 @@ def run_mito_fasta(params: MitoFastaParams) -> None:
             _extract_regions(base, input_path, out_bam, [chr_m])
             _call_haploid_variants(out_bam, ref, out_vcf)
 
-            logging.info(LOG_MESSAGES["generating_consensus"].format(output=out_fasta))
+            logging.info(
+                SHARED_LOG_MESSAGES["generating_consensus"].format(output=out_fasta)
+            )
             from wgsextract_cli.core.atomic_output import safe_output
 
             with safe_output(out_fasta) as staged, open(staged, "wb") as f:

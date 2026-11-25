@@ -87,6 +87,7 @@ jobs:
         uses: ./.github/actions/setup-gui
         with:
           rust: "true"
+          cli-python: "true"
           tauri-linux-libraries: "true"
           extra-apt-packages: rpm zstd
           cache: ${{ inputs.tag == '' }}
