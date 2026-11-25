@@ -94,6 +94,31 @@ def run_key(run: Row) -> tuple[str, str]:
     return ((run.get("head_repository") or {}).get("full_name", ""), run["head_branch"])
 
 
+def compact_run(run: Row) -> Row:
+    # Full API results repeat repository metadata for every workflow and PR.
+    # Keep only report fields before holding an entire week's runs in memory.
+    return {
+        **{
+            field: run.get(field)
+            for field in (
+                "id",
+                "path",
+                "head_sha",
+                "created_at",
+                "updated_at",
+                "run_started_at",
+                "event",
+                "conclusion",
+                "run_attempt",
+                "check_suite_node_id",
+            )
+        },
+        "head_branch": run["head_branch"],
+        "head_repository": {"full_name": run_key(run)[0]},
+        "pull_requests": [{"number": pr["number"]} for pr in run["pull_requests"]],
+    }
+
+
 def ready_periods(pr: Row) -> list[tuple[datetime, bool]]:
     changes = sorted(
         (stamp(event["createdAt"]), event["__typename"] == READY)
@@ -353,7 +378,7 @@ def prior_area_runs(api: GitHub, pr: Row, lower: datetime) -> list[Row]:
         }
     )
     return [
-        run
+        compact_run(run)
         for run in api.pages(
             f"actions/workflows/pr_ci.yml/runs?{filters}", "workflow_runs"
         )
@@ -399,15 +424,16 @@ def collect(api: GitHub, start: datetime, end: datetime) -> tuple[list[Row], lis
     days = [lower + timedelta(days=day) for day in range((end - lower).days)]
 
     def day_runs(day: datetime) -> list[Row]:
-        return api.runs_between(day, day + timedelta(days=1))
+        return [
+            compact_run(run)
+            for run in api.runs_between(day, day + timedelta(days=1))
+            if lower <= stamp(run["created_at"]) < end
+            and run["path"].startswith(".github/workflows/")
+        ]
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         runs_by_id = {
-            run["id"]: run
-            for batch in pool.map(day_runs, days)
-            for run in batch
-            if lower <= stamp(run["created_at"]) < end
-            and run["path"].startswith(".github/workflows/")
+            run["id"]: run for batch in pool.map(day_runs, days) for run in batch
         }
     heads: dict[tuple[str, str], set[str]] = defaultdict(set)
     for run in runs_by_id.values():
