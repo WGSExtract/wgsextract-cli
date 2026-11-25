@@ -702,8 +702,9 @@ The [native backend notes](../native/README.md#ont-chaining-and-qualification-sc
 record a newer 93,328-read HG002 ONT CPU profile: sorting and chaining took
 about 64% of CPU time, dual-affine gap alignment 18.3%. Its native CPU records
 matched upstream 2.31 exactly. Real CUDA kernel and synthetic-genome
-failure/fallback tests also passed on the RTX 3090. These checks do not replace
-the still-missing whole-genome CUDA timing and memory measurement.
+failure/fallback tests also passed on the RTX 3090. The measured
+[whole-genome ONT realignment on Windows](resource_estimates.md#whole-genome-ont-requirements)
+covers a different host (RTX 5080) and does not qualify the Linux machine.
 
 On Linux ARM64 (for example Graviton, Ampere or Cobalt), the linux-aarch64
 `wgse-bwa` package has no GPU backend; its CPU backend runs bwa's steps with
