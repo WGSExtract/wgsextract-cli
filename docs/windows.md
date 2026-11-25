@@ -412,11 +412,24 @@ trusted ReFS Dev Drive with the Defender filter attached.
 | Upstream CPU | 612 s | 11.8 GiB | 0 MiB | 9.63 GiB |
 | Automatic CUDA | 539 s | 12.9 GiB | 925 MiB | 9.77 GiB |
 
-This is one run per backend, not a whole-genome timing. The CUDA run was 12%
-shorter; its index build was also faster (29 s vs 47 s), and both runs
-spent time encoding and merging CRAM. WDDM VRAM is measured device-wide
-above idle. See [whole-genome sizing](resource_estimates.md#whole-genome-ont-requirements)
-for the projection and storage caveats.
+The slice CUDA run was 12% shorter; its index build was also faster (29 s
+vs 47 s), and both runs spent time encoding and merging CRAM. A
+[same-input check](https://github.com/WGSExtract/wgsextract-cli/issues/1121#issuecomment-7106665157)
+also matched all 118,687 decoded SAM records between Windows CUDA and Linux
+CUDA under WSL2.
+
+On the same host, the full HG002 ONT CRAM took **17.66 h upstream CPU**
+(minimap2 2.31-r1302) and **15.25 h on CUDA** (`wgse-minimap2` 0.4.1).
+Both outputs passed `samtools quickcheck`, matched the input count of
+7,931,564 primary records, and produced the same sorted digest of
+11,847,832 decoded alignment records. The compressed CRAM files were not
+byte-identical.
+
+These are single runs. Full-run storage was local NTFS, not the slice's ReFS
+Dev Drive. Neither benchmark isolates filesystem, pipe or Defender overhead.
+WDDM VRAM is measured device-wide above idle. See
+[whole-genome ONT requirements](resource_estimates.md#whole-genome-ont-requirements)
+for the measured memory and disk peaks.
 
 ## Upgrading from a WSL or MSYS2 setup
 
