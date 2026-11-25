@@ -198,6 +198,38 @@ def test_732_omitted_imputation_ref_cannot_escape_allowed_roots(
     assert error.value.code == "path_not_allowed"
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "ybrowse/hg19",
+        "ybrowse/GRCh38_to_GRCh37.chain.gz",
+        "ybrowse/.GRCh38_to_GRCh37.chain.gz.download.partial",
+        "genomes/b37.fa.fai",
+    ],
+)
+def test_1186_server_refuses_unauthorized_grch37_ybrowse_paths(tmp_path, relative_path):
+    library = tmp_path / "library"
+    link = library / relative_path
+    link.parent.mkdir(parents=True)
+    genomes = library / "genomes"
+    genomes.mkdir(exist_ok=True)
+    (genomes / "b37.fa").write_text(">Y\nA\n", encoding="ascii")
+    outside = tmp_path / "outside"
+    is_directory = relative_path.endswith("/hg19")
+    if is_directory:
+        outside.mkdir()
+    else:
+        outside.touch()
+    try:
+        link.symlink_to(outside, target_is_directory=is_directory)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    request = {"ref": str(library), "grch37": True, "download": True}
+    with _serve(tmp_path, [library]) as client:
+        status, body = client.request("POST", "/ops/ref/ybrowse", request)
+    assert (status, body["error"]["code"]) == (403, "path_not_allowed"), body
+
+
 @pytest.mark.parametrize("op", ["vcf/impute", "ref/imputation"])
 @pytest.mark.parametrize("escape", ["panel-folder", "binary", "marker-path"])
 def test_732_imputation_rejects_escaping_panel_paths(tmp_path, op, escape):

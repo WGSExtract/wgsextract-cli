@@ -130,6 +130,14 @@ def test_1087_windows_batch_full_removal_reaches_workspace_cleanup(
     workspace.mkdir(parents=True)
     (workspace / "config.toml").write_text("cpu_threads = 2\n")
     (workspace / ".users-workspace").write_text("WGS Extract users workspace\n")
+    cache = install / "tmp" / "cache"
+    help_cache = cache / "cli" / "version-registry"
+    help_cache.mkdir(parents=True)
+    (help_cache / "help-index.json").write_text("{}", encoding="utf-8")
+    marker = install / "tmp" / ".managed-help-cache"
+    marker.touch()
+    unrelated = cache / "other"
+    unrelated.touch()
     result = subprocess.run(
         [
             "cmd.exe",
@@ -154,6 +162,9 @@ def test_1087_windows_batch_full_removal_reaches_workspace_cleanup(
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert not workspace.exists()
+    assert not marker.exists()
+    assert not help_cache.exists()
+    assert unrelated.exists()
 
 
 def test_1087_windows_uninstall_answers_new_workspace_prompt_without_accepting_errors(

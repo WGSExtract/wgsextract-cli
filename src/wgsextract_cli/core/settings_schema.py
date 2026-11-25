@@ -2,7 +2,7 @@
 
 ``Settings`` (and its ``[dev]`` table, ``DevSettings``) is the one place a
 setting is declared. Loading, ``wgsextract config``, bug reports and
-docs/configuration.md all read it, so they cannot drift apart. Add a setting as
+the published configuration reference all read it. Add a setting as
 a field with ``setting(default, help, ...)``; its type annotation decides how
 config.toml values are checked.
 """

@@ -639,15 +639,13 @@ def add_shared_arguments(
         metavar="FILE",
         help="Read and save settings in this config.toml instead of the per-user one.",
     )
-    # Write the result document to PATH, keeping human output on stdout
-    # (docs/result-manifest.md). analyze reads its steps' results this way,
-    # and so does the desktop app. Hidden from help like other caller flags.
+    # Internal flags let workflows and the desktop app read result documents
+    # without changing stdout, link child runs and carry server read scope.
     add("--result-file", dest="_result_file", metavar="PATH", help=argparse.SUPPRESS)
-    # A workflow (analyze) starting this run as one of its steps names its own
-    # run, its root run and the step, so the manifests link (#1182).
     add("--parent-run", dest="_parent_run", metavar="ID", help=argparse.SUPPRESS)
     add("--root-run", dest="_root_run", metavar="ID", help=argparse.SUPPRESS)
     add("--run-step", dest="_run_step", metavar="STEP", help=argparse.SUPPRESS)
+    add("--read-scope", dest="_read_scope", metavar="JSON", help=argparse.SUPPRESS)
     add(
         "--parent-pid",
         type=int,

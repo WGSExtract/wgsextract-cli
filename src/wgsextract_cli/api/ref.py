@@ -77,6 +77,7 @@ from ._ref_resources import (
 from ._ref_resources import (
     _Resource as _Resource,
 )
+from ._ref_ybrowse import RefYbrowseParams as RefYbrowseParams
 from ._runtime import CancelToken, ProgressCallback, execute
 from ._shared import ref_param, threads_param
 
@@ -180,24 +181,6 @@ class RefGnomadSvParams(_InLibrary, Params):
         choices=("hg38", "hg19"),
     )
     delete: bool = _delete_param("gnomAD SV tables")
-    ref: Path | None = ref_param()
-
-
-@dataclass(frozen=True, kw_only=True)
-class RefYbrowseParams(_InLibrary, Params):
-    """Install a verified, sites-only GRCh38 yBrowse snapshot into the
-    library, or delete the installed snapshots."""
-
-    COMMAND = "ref ybrowse"
-
-    delete: bool = _delete_param("yBrowse snapshots")
-
-    snapshot: Path | None = param(
-        None,
-        help="Use a local GRCh38 VCF(.gz) instead of downloading from ybrowse.org.",
-        path="file",
-        cli_type=Path,
-    )
     ref: Path | None = ref_param()
 
 

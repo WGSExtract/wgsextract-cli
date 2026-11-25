@@ -251,6 +251,13 @@ print(json.dumps(sorted(
     if name.split(".")[0] in heavy or name in implementations
 )))
 """
+    if argv == ["help", "--all", "--json"]:
+        # Source installs materialize discovery on first use. Check warm startup.
+        subprocess.run(
+            [sys.executable, "-m", "wgsextract_cli.cli.help_index"],
+            cwd=ROOT,
+            check=True,
+        )
     completed = subprocess.run(
         [sys.executable, "-c", code],
         cwd=ROOT,
@@ -419,17 +426,6 @@ def test_help_index_has_no_settings_from_the_users_config(tmp_path):
 def test_first_sentence_keeps_abbreviations():
     text = "Download maps (e.g. GENCODE) for genes. More detail."
     assert cli_help.first_sentence(text) == "Download maps (e.g. GENCODE) for genes."
-
-
-def test_command_reference_doc_and_site_cards_are_current(root):
-    doc = (ROOT / "docs" / "commands.md").read_text(encoding="utf-8")
-    assert doc == cli_help.render_markdown(root), "run 'pixi run gen-command-docs'"
-    site = (ROOT / "site_src" / "cli.md").read_text(encoding="utf-8")
-    start = site.index(cli_help.SITE_BLOCK_START)
-    end = site.index(cli_help.SITE_BLOCK_END) + len(cli_help.SITE_BLOCK_END) + 1
-    assert site[start:end] == cli_help.render_site_commands(), (
-        "run 'pixi run gen-command-docs'"
-    )
 
 
 def test_journey_steps_and_deprecation_replacements_are_runnable_commands():

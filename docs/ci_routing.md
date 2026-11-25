@@ -536,14 +536,15 @@ fixed jobs do not scale linearly. The replay uses the current graph and
 latest PR head, not historical imports or every earlier push. Main/nightly
 misses must become selector regressions rather than suppressed failures.
 
-The lightweight documentation job installs the package, pytest and jsonschema
+The lightweight documentation job installs the package and documentation test dependencies
 **only when its selected Python tests are nonempty**, never for prose alone.
 `DOCS_TARGET_INPUTS` in `scripts/ci_test_dependencies.py`, complemented by exact
 test-input reads, selects each target independently:
 
-- `tests/test_api.py::test_api_docs_are_up_to_date` (`docs/api.md`);
-- `tests/test_cli_help.py` (`docs/commands.md`, generated site cards and help
-  topics/examples);
+- `tests/test_site_references.py` (generated command, API and configuration
+  reference pages and CLI cards);
+- `tests/test_cli_help.py` and `tests/test_help_index.py` (help topics/examples
+  and the compact discovery cache);
 - `tests/test_bump_version.py` (CLI/app site sources, version/distribution docs);
 - `tests/test_regen.py` (real Git conflicts and regeneration/freshness checks,
   without bioinformatics tools);
@@ -555,8 +556,9 @@ test-input reads, selects each target independently:
 `DOCS_TEST_TARGETS` in `scripts/ci_test_dependencies.py` is the available target
 inventory, not an unconditional test batch. The router outputs `docs_tests`
 and `site_validation`. Prose outside `site_src/` and `gui/site_src/` selects
-neither; site prose runs both source validators with system Python and no
-package installation. This does not build Pages for a Markdown-only PR.
+neither; ordinary site prose runs both source validators with system Python
+and no package installation. Reference page templates and the configuration
+guide also select the site generation test.
 Version/changelog prose does not run release-script tests.
 
 When the CLI lane is selected, `docs_tests` is empty: affected freshness checks
@@ -684,9 +686,9 @@ verdict, and closing an old red-main issue does not certify the pending SHA.
 
 A ready PR analyzes only the CodeQL languages whose files it changes
 (`scripts/ci_codeql_scope.py`): Python for `.py`/`.pyi`, JavaScript/TypeScript
-for the extractor's file types (including JSON, YAML, HTML and XML), Rust for
-`.rs`, `Cargo.toml`/`Cargo.lock` or any file in a crate directory, and Actions
-for `action.yml`. Changes under `.github/` or to the scope script analyze every
+for the extractor's file types (including JSON, YAML, HTML and XML), and
+Actions for `action.yml`. Rust is not scanned (owner decision 2026-11-24: about
+52 runner-hours a week with no findings). Changes under `.github/` or to the scope script analyze every
 language. Main pushes and the nightly schedule always analyze every language.
 
 GitHub's CodeQL check turns `neutral` ("N configurations not found") and
@@ -947,10 +949,15 @@ Before `gh pr ready`, agents run `python scripts/ci_capacity.py --wait --pr N`.
 It reads PRs, workflow runs and jobs through `gh api` (read-only) and exits 0
 when admission is fine. The `priority` label, added to PRs from non-bot
 collaborators with write access other than `theontho`, lets the named PR skip
-the capacity gate. Other PRs exit 3 (hold) while a priority PR has active
-draft or ready CI or is in the merge queue, while any `merge_group` job
-is queued for a runner, or while more than `--max-ready` (default 4)
-ready-PR area matrices are in flight. `--wait` polls with
+the capacity gate. Other PRs exit 3 (hold) while a priority run can still need
+a runner, a priority queue entry is not yet `MERGEABLE`, any `merge_group` job
+is queued, or more than `--max-ready` (default 4) ready-PR area matrices are
+in flight. An empty job list or a running routing job can precede a matrix
+fan-out, so neither indicates spare capacity. Once `required` is the only
+unfinished job in a ready PR area run and already has a runner, that run no
+longer blocks admission. Unknown workflows reserve capacity until they
+complete; the coordinator can cancel unstarted agent runs, not reclaim runners
+from agent jobs already running. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
 prints the counts. The check reserves nothing, so each supervisor admits one
 PR at a time and starts the next check only once the previous PR's ready run
@@ -964,7 +971,8 @@ run each.
   added when you open, reopen, mark ready, or convert the PR to draft. You
   can remove it until the next of those events; pushes do not restore it.
   With it, you can ready your PR without waiting for agent capacity, and
-  agents yield while your draft or ready CI or merge queue entry is pending.
+  agents reserve runners while your CI can still schedule jobs or your queue
+  entry needs checks.
 - Add **`hands-off`** if you want to handle everything yourself, including
   CI reruns. Add **`land-asap`** when you're done: owner-account agents may
   rerun cancelled or lost-runner jobs and enqueue your ready PR at the front once

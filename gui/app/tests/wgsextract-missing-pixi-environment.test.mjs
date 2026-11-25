@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -39,13 +39,21 @@ async function setUpWorkspace(root) {
 }
 
 async function installEnvironment(envsDir, project, manifest) {
-  const meta = path.join(envsDir, project, "envs", "default", "conda-meta");
+  const prefix = path.join(envsDir, project, "envs", "default");
+  const meta = path.join(prefix, "conda-meta");
   await mkdir(meta, { recursive: true });
   await writeFile(path.join(meta, "pixi"), JSON.stringify({ manifest_path: manifest, environment_name: "default" }));
+  return prefix;
 }
 
-function runInEnvironment(workspace, args, { dataSource }) {
+function runInEnvironment(workspace, args, { dataSource, explicitPixi = true }) {
   const env = { ...process.env, PIXI: workspace.pixi, WGSEXTRACT_APP_DIR: workspace.appDir };
+  if (!explicitPixi) {
+    delete env.PIXI;
+    for (const key of Object.keys(env)) {
+      if (key.toLowerCase() === "path") env[key] = path.dirname(workspace.pixi) + path.delimiter + env[key];
+    }
+  }
   delete env.WGSEXTRACT_GUI_DATA_SOURCE;
   if (dataSource) {
     env.WGSEXTRACT_GUI_DATA_SOURCE = "1";
@@ -57,6 +65,46 @@ function runInEnvironment(workspace, args, { dataSource }) {
     child.stdin.end();
   });
 }
+
+test("#1506 the detached runtime launches its own Python directly and still forwards stdin", { skip }, async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), "wgsextract-envs-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = await setUpWorkspace(root);
+  const prefix = await installEnvironment(workspace.envsDir, "wgsextract-cli-1", path.join(workspace.appDir, "pixi.toml"));
+  await writeFile(path.join(workspace.appDir, ".pixi", "wgsextract-activation.json"), "{}");
+  const env = {
+    ...process.env,
+    WGSEXTRACT_APP_DIR: workspace.appDir,
+    WGSEXTRACT_TEST_LAUNCHER: path.join(windowsScripts, "run-wgsextract-env.ps1"),
+    WGSEXTRACT_TEST_PYTHON: path.join(prefix, "python.exe"),
+    WGSEXTRACT_TEST_STUB: path.join(root, "test-cli.exe"),
+    WGSEXTRACT_FORWARD_STDIN: "1",
+  };
+  delete env.PIXI;
+  const driver = path.join(root, "exercise launch.ps1");
+  await writeFile(driver, `
+$ErrorActionPreference = 'Stop'
+Add-Type -OutputAssembly $env:WGSEXTRACT_TEST_STUB -OutputType ConsoleApplication -TypeDefinition @'
+using System;
+class TestCli {
+    static int Main(string[] args) {
+        Console.WriteLine(args[args.Length - 1]);
+        Console.WriteLine(Console.ReadLine());
+        return 23;
+    }
+}
+'@
+Move-Item -LiteralPath $env:WGSEXTRACT_TEST_STUB -Destination $env:WGSEXTRACT_TEST_PYTHON
+'a piped value' | & $env:WGSEXTRACT_TEST_LAUNCHER wgsextract 'argument with spaces'
+exit $LASTEXITCODE
+`);
+  const result = await new Promise((resolve) => {
+    execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", driver], { env, timeout: 60_000 },
+      (error, stdout, stderr) => resolve({ exitCode: error ? error.code : 0, stdout, stderr }));
+  });
+  assert.equal(result.exitCode, 23, result.stderr);
+  assert.deepEqual(result.stdout.trim().split(/\r?\n/), ["argument with spaces", "a piped value"]);
+});
 
 async function pixiCalls(workspace) {
   return existsSync(workspace.log) ? (await readFile(workspace.log, "utf8")).trim().split(/\r?\n/) : [];
@@ -97,7 +145,7 @@ test("data sources run in the environment setup installed for this workspace", {
   const workspace = await setUpWorkspace(root);
   await installEnvironment(workspace.envsDir, "wgsextract-cli-1", path.join(workspace.appDir, "pixi.toml"));
 
-  const result = await runInEnvironment(workspace, ["wgsextract", "ref", "list"], { dataSource: true });
+  const result = await runInEnvironment(workspace, ["wgsextract", "ref", "list"], { dataSource: true, explicitPixi: false });
 
   assert.equal(result.exitCode, 0, result.stderr);
   assert.deepEqual(await pixiCalls(workspace), ["run --no-install --frozen wgsextract ref list"]);

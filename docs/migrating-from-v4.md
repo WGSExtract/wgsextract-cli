@@ -43,7 +43,7 @@ identically.
   FASTA you already have can be reused; verify it first.
 - **Settings are not imported.** v4 kept a few values in `~/.wgsextract`
   (JSON). Copy the ones you want into `config.toml` (see
-  [Configuration](configuration.md)) or the Settings page:
+  [Configuration](https://wgsextract.github.io/wgsextract-cli/configuration.html)) or the Settings page:
 
 | v4 `~/.wgsextract` key | Current setting |
 | --- | --- |
@@ -75,7 +75,7 @@ tasks, Advanced adds every CLI option. Pages are named as in the app.
 | MT FASTA / BAM / VCF | Extract: MT-only | `extract mito-fasta`, `extract mt-bam`, `extract mito-vcf` | |
 | Y BAM; Y+MT BAM | Extract: Y-only; Y and MT | `extract ydna-bam`, `extract y-mt-extract` | No `chrY_KI270740v1_random` reads (#1184) |
 | Y BAM (Poz) | Extract | `extract ydna-bam --poz` | |
-| Targeted Y VCF (yBrowse) | Extract | `extract ydna-vcf --ybrowse` | GRCh38 only (#1186) |
+| Targeted Y VCF (yBrowse) | Extract | `extract ydna-vcf --ybrowse` | GRCh38; GRCh37 after `ref ybrowse --install --grch37`, lifted from GRCh38, not YBrowse's GRCh37 file ([lineage](lineage.md#grch37)) |
 | Y haplogroup (Yleaf) | Ancestry: Run Yleaf | `lineage y-haplogroup` | Yleaf 4.1.6-derived engine; trees selectable |
 | mt haplogroup (Haplogrep) | Ancestry: Run Mito Haplogrep | `lineage mt-haplogroup` | Haplogrep 3, not 2.4.0 |
 | Unmapped export | Extract: Unmapped | `extract unmapped`, `--fastq` | Paired singletons kept as a separate output |
@@ -159,14 +159,13 @@ wgsextract vcf indel --input sample.cram --outdir new_outputs
 | v44.2 capability | Current state |
 | --- | --- |
 | Y and Y+MT BAMs keep `chrY_KI270740v1_random` reads on GRCh38 | Not kept; #1184 (reference-aware Y-associated contigs) |
-| Targeted Y VCF on GRCh37 with HG and ISOGG annotations | `--ybrowse` is GRCh38-only; #1186 (GRCh37 targeted Y VCF) |
 | Named one-click exome presets (TruSeq, xGen) and Poz coverage bins | Supply the BED to `extract custom` / `info calculate-coverage --by`; `--poz` exists for Y |
 | Header text export, Save Window image, Finnish translation | Not available |
 | Haplogrep 2.4.0 / v4's Yleaf payload | Haplogrep 3 and a Yleaf 4.1.6-derived engine: haplogroups can differ, especially on older trees |
 
-Of the genealogy follow-ups from #994, #1185 (FTDNA VCF FILTER repair) is
-done ([FTDNA VCF repair](ftdna-vcf-repair.md)); #1184 and #1186 above are
-open.
+Of the genealogy follow-ups from #994, #1185 (FTDNA VCF FILTER repair) and
+#1186 (GRCh37 targeted Y VCF) are done ([FTDNA VCF repair](ftdna-vcf-repair.md),
+[GRCh37 yBrowse](lineage.md#grch37)); #1184 above is open.
 
 ## Fixes since the comparison
 
