@@ -292,6 +292,7 @@ def resolve(
     allele: Allele,
     observation: Call | None,
     cursor: EvidenceCursor | None,
+    primary: EvidenceCursor | None,
 ) -> tuple[Call, bool]:
     if cursor is None:
         return observation or Call("absent"), False
@@ -300,6 +301,11 @@ def resolve(
         return observation, observation.carried and evidence is State.CALLABLE_REFERENCE
     if evidence is State.NOT_ASSESSED and observation is not None:
         return observation, False
+    if evidence is State.CALLABLE_REFERENCE and primary is not None:
+        # Primary records can veto a reference call, never supply one.
+        blocker = primary.state(allele)
+        if blocker in {State.VARIANT, State.FILTERED, State.NO_CALL}:
+            evidence = blocker
     return Call(
         "variant_evidence" if evidence is State.VARIANT else evidence.value
     ), False
