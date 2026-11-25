@@ -22,6 +22,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "info/chip": {"input": _FILE},
     "info/calculate-coverage": {"input": _FILE},
     "lookup": {"locus": "GRCh38:chr1:1"},
+    "vcf/compare": {"callset": [f"a={_FILE}", f"b={_FILE}"]},
     "vcf/impute": {"input": _FILE, "ref": _DATA},
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},

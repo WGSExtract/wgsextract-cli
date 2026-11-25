@@ -444,6 +444,30 @@ MAIN_PUSH_WORKFLOWS = {
 }
 
 
+def test_1552_pages_deploy_requires_visible_artifact_from_its_build() -> None:
+    source = (WORKFLOWS / "pages.yml").read_text()
+    build, deploy, *_ = re.split(r"\n  [\w-]+:\n", source.split("\njobs:\n", 1)[1])
+    assert deploy.startswith("    needs: build\n")
+    condition = deploy.split("\n    if: ", 1)[1].splitlines()[0]
+    assert set(top_level_conjuncts(condition)) == {
+        "needs.build.outputs.artifact-id != ''",
+        "needs.build.outputs.artifact-name != ''",
+    }
+    assert "github-pages-${GITHUB_RUN_ATTEMPT}" in build
+    assert "artifact-id: ${{ steps.upload.outputs.artifact_id }}" in build
+    assert "artifact-name: ${{ steps.artifact.outputs.name }}" in build
+    verify, publish = deploy.split("uses: actions/deploy-pages@", 1)
+    assert "artifact_name: ${{ needs.build.outputs.artifact-name }}" in publish
+    first_check, retry = verify.split("- name: Verify the uploaded artifact again", 1)
+    for check in (first_check, retry):
+        assert "uses: actions/download-artifact@" in check
+        assert "artifact-ids: ${{ needs.build.outputs.artifact-id }}" in check
+        assert "github-token:" not in check
+    assert "if: steps.check-artifact.outcome == 'failure'" in retry
+    assert "continue-on-error:" not in retry + publish
+    assert "always()" not in deploy
+
+
 def github_glob_matches(path: str, pattern: str) -> bool:
     """Evaluate the *, ** subset used here, including root files and dotfiles."""
     assert not any(char in pattern for char in "?[]+\\"), (

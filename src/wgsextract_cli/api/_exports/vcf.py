@@ -32,6 +32,9 @@ from ..vcf import (
     VcfCnvParams as VcfCnvParams,
 )
 from ..vcf import (
+    VcfCompareParams as VcfCompareParams,
+)
+from ..vcf import (
     VcfDeepvariantParams as VcfDeepvariantParams,
 )
 from ..vcf import (

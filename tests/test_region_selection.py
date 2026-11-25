@@ -64,3 +64,9 @@ def test_long_region_list_is_not_file_name_too_long_977(separator, commas):
     assert selected_intervals(region, {"chr1": 10_000}, commas=commas) == {
         "chr1": [(0, 5000)]
     }
+
+
+def test_compare_1295_literal_evidence_regions_allow_empty_comma_items():
+    assert selected_intervals(
+        " chr1:1-5, ,chr1:6-10,", {"chr1": 100}, commas=True, files=False
+    ) == {"chr1": [(0, 10)]}
