@@ -1,7 +1,7 @@
 import type { ActionSpec, BundleManifest, CommandSpec, LooseRecord } from "./types.js";
 import type { ResultDocumentRecord, ResultErrorRecord, ResultFileRecord, ResultWarningRecord } from "./generated/result-records.js";
 
-/** Result document formats the app can read (docs/result-documents.md). */
+/** Result document formats the app can read (devdocs/result-documents.md). */
 export const resultDocumentFormats = ["wgsextract.result/1"] as const satisfies readonly ResultDocumentRecord["schema"][];
 
 export type ResultDocumentFormat = ResultDocumentRecord["schema"];

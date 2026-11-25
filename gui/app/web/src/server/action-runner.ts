@@ -59,6 +59,7 @@ export async function runAction(
     runProcess: RunProcess,
     emit: ActionEmit = () => { },
     resultSpec?: ResultDocumentSpec,
+    extraEnv?: StringMap,
 ): Promise<ActionRunResult> {
     if (!action?.command) {
         throw new Error("Missing action command.");
@@ -78,7 +79,7 @@ export async function runAction(
         const documentOnStdout = resultSpec && !documentDirectory;
         const result = await runProcess(executable, rendered.arguments ?? [], {
             cwd: bundleRoot,
-            env: { ...process.env, ...bundleEnvironment(bundleRoot) },
+            env: { ...process.env, ...bundleEnvironment(bundleRoot), ...extraEnv },
             ...(signal ? { signal } : {}),
             ...(documentOnStdout ? {} : { onStdout: (text: string) => void emit({ type: "output", stream: "stdout", text }) }),
             onStderr: (text) => void emit({ type: "output", stream: "stderr", text }),

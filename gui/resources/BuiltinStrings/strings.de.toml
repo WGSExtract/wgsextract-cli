@@ -6,6 +6,12 @@
 "app.action.skippedMissing.format" = "%{action} übersprungen: %{inputs} fehlt"  # i18n-source-hash:ea2e969a
 "app.action.unavailable.title" = "Diese Aktion ist nicht verfügbar."  # i18n-source-hash:30726b2e
 "app.actionsColumn.title" = "Aktionen"  # i18n-source-hash:c3cd636a
+"app.alreadyRun.cancel" = "Abbrechen"  # i18n-source-hash:77dfd213
+"app.alreadyRun.force" = "Erzwingen und erneut ausführen"  # i18n-source-hash:69202187
+"app.alreadyRun.message" = "Dieser Befehl wurde bereits ausgeführt und seine Ausgabedateien sind neuer als die Eingabe:"  # i18n-source-hash:198c150f
+"app.alreadyRun.moreFiles" = "und %{count} weitere"  # i18n-source-hash:fdd52670
+"app.alreadyRun.question" = "Möchten Sie ihn erneut ausführen?"  # i18n-source-hash:7a7b68ff
+"app.alreadyRun.title" = "Befehl bereits ausgeführt"  # i18n-source-hash:90e8ebab
 "app.colorTheme.dark" = "Dunkel"  # i18n-source-hash:ae1ef014
 "app.colorTheme.label" = "Design"  # i18n-source-hash:a797e309
 "app.colorTheme.light" = "Hell"  # i18n-source-hash:a36ef8ab
@@ -56,6 +62,7 @@
 "app.refresh.warning.format" = "Warnung beim Aktualisieren: %{error}"  # i18n-source-hash:8e6c1f82
 "app.refreshing.title" = "Wird aktualisiert..."  # i18n-source-hash:5b7bdb61
 "app.result.card.close.title" = "Schließen"  # i18n-source-hash:bbfa773e
+"app.result.card.rerun.title" = "Erzwingen und erneut ausführen"  # i18n-source-hash:69202187
 "app.result.card.sourceFormat" = "Angezeigt aus %{file}"  # i18n-source-hash:5aaf5fdf
 "app.result.card.title" = "Ergebniskarte"  # i18n-source-hash:d8b66952
 "app.result.card.view.title" = "Karte anzeigen"  # i18n-source-hash:73cd1bf6

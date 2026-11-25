@@ -25,6 +25,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from wgsextract_cli.core import read_scope, resource_releases
+from wgsextract_cli.core.docs_links import doc_url
 from wgsextract_cli.core.errors import CodedError
 from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.core.provenance_records import ResourceRecord
@@ -248,7 +249,7 @@ def read_answers(path: Path) -> tuple[AnswersDocument, str]:
         raise CodedError(
             "unsupported_schema",
             f"{path} is not a {ANSWERS_SCHEMA} answers file; see "
-            "docs/recheck-and-delta.md for its format.",
+            f"{doc_url('recheck-and-delta.md')} for its format.",
         )
     answers = document.get("answers")
     if not isinstance(answers, list) or not all(

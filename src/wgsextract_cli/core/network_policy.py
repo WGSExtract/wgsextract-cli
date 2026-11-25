@@ -1,5 +1,6 @@
 """Consent for first-use downloads, scoped to a CLI/API operation (#1052)."""
 
+from wgsextract_cli.core.docs_links import doc_url
 from wgsextract_cli.core.execution_context import current
 from wgsextract_cli.core.utils import UsageError
 
@@ -23,5 +24,5 @@ def require_download(resource: str, download_command: str | None = None) -> None
     )
     raise DownloadRequired(
         f"Missing public reference data: {resource}. Rerun '{'wgsextract ' + command} "
-        f"--download' to confirm the download (see docs/privacy.md).{hint}"
+        f"--download' to confirm the download (see {doc_url('privacy.md')}).{hint}"
     )
