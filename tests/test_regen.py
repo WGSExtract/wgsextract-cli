@@ -12,7 +12,6 @@ from wgsextract_cli.cli.help import SITE_BLOCK_END, SITE_BLOCK_START
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED = (
-    "tests/fixtures/api_cli_snapshot.json",
     "docs/api.md",
     "docs/commands.md",
     "src/wgsextract_cli/assets/cli/help-index.json",
@@ -69,7 +68,6 @@ def regen_repo(tmp_path: Path) -> Path:
         "scripts/gen_server_contracts.py",
         "scripts/json_lines.py",
         "scripts/server_transport_typescript.py",
-        "tests/cli_snapshot.py",
         "site_src/cli.md",
     ):
         target = tmp_path / relative
@@ -141,7 +139,7 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     # #1471: regenerate to LF even if the existing files use CRLF.
     crlf_artifacts = [
         regen_repo / "docs/configuration.md",
-        regen_repo / "tests/fixtures/api_cli_snapshot.json",
+        regen_repo / "docs/commands.md",
     ]
     for path in crlf_artifacts:
         path.write_text(
@@ -158,8 +156,6 @@ def test_regen_resolve_rebuilds_and_stages_all_generated_outputs(
     staged = git(regen_repo, "diff", "--cached", "--name-only").stdout.splitlines()
     assert set(staged) == {*GENERATED, "site_src/cli.md"}
     assert not git(regen_repo, "diff", "--name-only").stdout
-    snapshot = json.loads((regen_repo / GENERATED[0]).read_text(encoding="utf-8"))
-    assert snapshot["commands"]["microarray"]["help"]
     assert "MicroarrayParams" in (regen_repo / "docs/api.md").read_text(
         encoding="utf-8"
     )

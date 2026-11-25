@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from wgsextract_cli.api import support
+import wgsextract_cli.api.support as support
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.cli._lazy import command_handler
 

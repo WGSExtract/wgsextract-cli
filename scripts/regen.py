@@ -9,7 +9,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATOR_SCRIPTS = (
-    "tests/cli_snapshot.py",
     "scripts/gen_api_docs.py",
     "scripts/gen_command_docs.py",
     "scripts/gen_config_docs.py",
@@ -18,7 +17,6 @@ GENERATOR_SCRIPTS = (
     "scripts/gen_server_contracts.py",
 )
 GENERATED = (
-    "tests/fixtures/api_cli_snapshot.json",
     "docs/api.md",
     "docs/commands.md",
     "src/wgsextract_cli/assets/cli/help-index.json",
