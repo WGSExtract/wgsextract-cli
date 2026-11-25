@@ -583,18 +583,29 @@ def test_1287_null_counts_callable_cds_and_excludes_duplicated_controls(
 
 
 @needs_htslib
-def test_1287_regional_vcf_cannot_be_calibrated_against_genome_wide_controls(
+@pytest.mark.parametrize("end", [11796331, 248956422])
+def test_1287_only_incomplete_called_regions_block_null_calibration(
     tmp_path: Path,
+    end: int,
 ) -> None:
     from wgsextract_cli.core.reference_evidence import Provenance
 
     panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
     with gzip.open(vcf, "rt", encoding="utf-8") as stream:
         header, body = stream.read().split("#CHROM", 1)
-    policy = Provenance("bcftools", "1.23", "gq", region="chr1:11796321-11796331")
+    start = 1 if end == 248956422 else 11796321
+    region = f"chr1:{start}-{end}"
+    policy = Provenance("bcftools", "1.23", "gq", region=region)
     restricted = tmp_path / "restricted.vcf"
     restricted.write_text(
         header + policy.header() + "\n#CHROM" + body, encoding="utf-8"
+    )
+    model = tmp_path / "exons.tsv"
+    model.write_text(
+        "#contig\tchr1\t248956422\n"
+        "gene\ttranscript\ttag\tstrand\texon\texons\tchrom\tstart\tend\tcds_start\tcds_end\tlimitations\n"
+        "MTHFR\tNM_005957.5\tMANE Select\t+\t1\t1\tchr1\t11796321\t11796330\t11796321\t11796330\t\n",
+        encoding="utf-8",
     )
     result = api.panel.audit(
         api.PanelAuditParams(
@@ -602,13 +613,17 @@ def test_1287_regional_vcf_cannot_be_calibrated_against_genome_wide_controls(
             vcf_input=restricted,
             research_panel=True,
             null_sets=100,
+            exons=model,
             outdir=tmp_path / "regional",
         ),
         check=False,
     )
-    assert result.exit_code == 2
-    assert result.error and "chr1:11796321-11796331" in result.error.message
-    assert not result.outputs
+    if start == 1:
+        assert result.exit_code == 0 and result.outputs
+    else:
+        assert result.exit_code == 2
+        assert result.error and region in result.error.message
+        assert not result.outputs
 
 
 @needs_htslib
