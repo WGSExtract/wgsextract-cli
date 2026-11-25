@@ -3,6 +3,7 @@ import logging
 import shutil
 import subprocess
 import sys
+from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 from typing import Literal
@@ -34,7 +35,7 @@ from wgsextract_cli.core.workspace_activity import forward_workspace_admission
 from .._vep_engines import VepEngine, configured_engine
 from .._vep_run import vep_output_paths
 from .basic import record_variants, require_vcf_input, vcf_input_handler
-from .chain_scope import select_records, vcf_indexes
+from .chain_scope import ChainScope, resolve_scope, select_records, vcf_indexes
 from .clinvar_revel import CLINVAR_ANNOTATED, REVEL_ANNOTATED
 from .deleteriousness import CADD_ANNOTATED, GERP_ANNOTATED
 from .population import GNOMAD_ANNOTATED, PHYLOP_ANNOTATED
@@ -148,7 +149,9 @@ def _annotations(params: VcfChainAnnotateParams) -> list[str]:
             f"Unknown annotation type(s): {', '.join(unknown)}. Valid: "
             f"{', '.join([*_VCF_STEPS, 'vep'])}"
         )
-
+    repeated = [ann for ann, count in Counter(annotations).items() if count > 1]
+    if repeated:
+        raise UsageError(f"--annotations lists {', '.join(repeated)} more than once.")
     return annotations
 
 
@@ -239,6 +242,8 @@ def _run_annotation(
     args: list[str],
 ) -> None:
     decision = journal.decide(step)
+    if journal.dry_run:
+        return
     if decision.run:
         if absolute_path(output) == absolute_path(source):
             raise UsageError(f"Annotation step '{ann}' would overwrite its input.")
@@ -275,6 +280,7 @@ def _scope_step(
     source: str,
     outdir: Path,
     params: VcfChainAnnotateParams,
+    scope: ChainScope,
     *,
     whole_contigs: bool = False,
 ) -> str:
@@ -283,24 +289,28 @@ def _scope_step(
     step = Step(
         name,
         inputs={
-            "vcf": source, "bed": params.bed,
+            "vcf": source, "bed": params.bed, "reference_index": scope.reference_index,
             **{f"index:{p.name}": p for p in vcf_indexes(source)},
         },
         outputs=[output],
-        params={"region": params.region, "whole_contigs": whole_contigs},
+        params={
+            "region": params.region, "whole_contigs": whole_contigs,
+            "bed_sha256": scope.bed_sha256,
+        },
         tools=["bcftools", "tabix"],
+        version=2,
     )  # fmt: skip
     decision = journal.decide(step)
-    if decision.run:
+    if decision.run and not journal.dry_run:
         if absolute_path(output) == absolute_path(source):
             raise UsageError("Region selection would overwrite its input.")
         with journal.running(decision) as handle:
             outdir.mkdir(parents=True, exist_ok=True)
             with atomic_output(output) as staged:
                 select_records(
-                    source, staged, params.region, params.bed,
+                    source, staged, scope.whole_contigs if whole_contigs else scope.intervals,
                     get_resource_threads(params.threads, stage="compression"),
-                    whole_contigs=whole_contigs,
+                    remap=name == "trim",
                 )  # fmt: skip
                 ensure_vcf_indexed(staged)
             for index in vcf_indexes(output):
@@ -330,6 +340,34 @@ def _work_dir(path: Path, protected: list[Path], cleanup: list[Path]) -> Path:
     return path
 
 
+def _same_path(output: Path, source: str | Path) -> bool:
+    path = absolute_path(source)
+    return output == path or (
+        output.exists() and path.exists() and output.samefile(path)
+    )
+
+
+def _plan_manifest_stem(
+    outdir: Path,
+    params: VcfChainAnnotateParams,
+    input_file: str,
+    lib: ReferenceLibrary,
+    annotations: list[str],
+) -> Path:
+    stem = outdir / "chain_annotate.plan"
+    manifest = stem.with_name(stem.name + MANIFEST_SUFFIX)
+    protected = (
+        input_file, params.bed, params.ref, lib.fasta, lib.fai,
+        *vcf_indexes(input_file), *(dataset(ann, lib) for ann in annotations),
+        lib.cadd_indel_file if "cadd" in annotations else None,
+    )  # fmt: skip
+    if any(path is not None and _same_path(manifest, path) for path in protected):
+        raise UsageError(
+            "The dry-run manifest would overwrite an input; choose another --outdir."
+        )
+    return stem
+
+
 def _run_steps(
     journal: StepJournal,
     params: VcfChainAnnotateParams,
@@ -339,6 +377,7 @@ def _run_steps(
     lib: ReferenceLibrary,
     child_args: list[str],
     step_dirs: list[Path],
+    scope: ChainScope | None,
 ) -> str:
     ready: list[tuple[int, str]] = []
     for position, ann in enumerate(annotations, start=1):
@@ -370,15 +409,7 @@ def _run_steps(
         protected.append(absolute_path(lib.cadd_indel_file))
 
     last_context_step = 0
-    if params.region is not None or params.bed is not None:
-        current_result().set_details(
-            {
-                "scope": {
-                    "region": params.region,
-                    "bed": str(params.bed) if params.bed else None,
-                }
-            }
-        )
+    if scope is not None:
         # Left alignment can move an indel arbitrarily far within its contig;
         # ClinVar can also compose MNVs from SNVs outside the requested span.
         last_context_step = max(
@@ -386,7 +417,7 @@ def _run_steps(
         )
         scope_dir = _work_dir(outdir / "chain_select", protected, step_dirs)
         source = _scope_step(
-            journal, "select", source, scope_dir, params,
+            journal, "select", source, scope_dir, params, scope,
             whole_contigs=bool(last_context_step),
         )  # fmt: skip
 
@@ -413,13 +444,14 @@ def _run_steps(
             ann, f"[{position}/{len(annotations)}]", source, output, args,
         )  # fmt: skip
         source = output
-        if position == last_context_step:
+        if scope is not None and position == last_context_step:
             trim_dir = _work_dir(outdir / "chain_trim", protected, step_dirs)
-            source = _scope_step(journal, "trim", source, trim_dir, params)
-    current_result().add_metrics(
-        annotations_applied=",".join(ann for _, ann in ready),
-        annotations_skipped=len(annotations) - len(ready),
-    )
+            source = _scope_step(journal, "trim", source, trim_dir, params, scope)
+    if not journal.dry_run:
+        current_result().add_metrics(
+            annotations_applied=",".join(ann for _, ann in ready),
+            annotations_skipped=len(annotations) - len(ready),
+        )
     return source
 
 
@@ -434,21 +466,24 @@ def run_chain_annotate(
     input_file = require_vcf_input(params)
     outdir = absolute_path(params.outdir or absolute_path(input_file).parent)
     final_out = outdir / "chain_annotated.vcf.gz"
-    if absolute_path(input_file) == final_out or (
-        final_out.exists()
-        and Path(input_file).exists()
-        and final_out.samefile(input_file)
-    ):
+    if _same_path(final_out, input_file):
         raise UsageError(
             "vcf chain-annotate would overwrite its input; choose another --outdir."
         )
-    current_result().expect_output(final_out)
+    result = current_result()
+    if not params.dry_run:
+        result.expect_output(final_out)
     md5_sig = (
         calculate_bam_md5(input_file, None)
         if input_file.lower().endswith((".bam", ".cram"))
         else None
     )
     lib = ReferenceLibrary(params.ref, md5_sig, input_path=input_file)
+    if params.dry_run:
+        result.set_manifest_stem(
+            _plan_manifest_stem(outdir, params, input_file, lib, annotations)
+        )
+    scope = resolve_scope(input_file, params.region, params.bed, lib.fasta)
     child_args = [
         sys.executable, "-m", "wgsextract_cli.main",
         *config_args(keep_awake=keep_awake),
@@ -469,16 +504,31 @@ def run_chain_annotate(
                 lib,
                 child_args,
                 step_dirs,
+                scope,
             )
+            if journal.dry_run:
+                # The chain always publishes and optionally exports after the
+                # resumable annotation steps, even when it reused every step.
+                journal.decide(
+                    Step("publish", inputs={"vcf": source}, outputs=[final_out])
+                )
+                if params.to_table:
+                    journal.decide(Step("table", inputs={"vcf": final_out}))
+                return
             with atomic_output(final_out) as staged:
                 shutil.copy2(source, staged)
                 for ext in (".tbi", ".csi"):
                     if Path(source + ext).exists():
                         shutil.copy2(source + ext, staged + ext)
             logging.info(f"Chain annotation complete: {final_out}")
-            record_variants(
-                str(final_out), "annotated_vcf", vcf_record_count(final_out)
-            )
+            count = vcf_record_count(final_out)
+            record_variants(str(final_out), "annotated_vcf", count)
+            if count == 0:
+                warn(
+                    "no_variants",
+                    "The annotated VCF contains no records.",
+                    path=str(final_out),
+                )
             if params.to_table:
                 run_table(
                     VcfTableParams(
@@ -486,7 +536,7 @@ def run_chain_annotate(
                     )
                 )
         except BaseException:
-            if step_dirs:
+            if step_dirs and not journal.dry_run:
                 logging.warning("Preserving chain annotation intermediates for resume.")
             raise
         if not params.keep_intermediates:
