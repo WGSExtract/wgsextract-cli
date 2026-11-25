@@ -346,7 +346,6 @@ def collect(
                 lower,
                 end,
                 workflow=path.rsplit("/", 1)[1],
-                event="schedule" if path in OS_WORKFLOWS else "",
             )
             for path in sorted({PR_WORKFLOW, *OS_WORKFLOWS})
         ]
