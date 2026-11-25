@@ -3,6 +3,7 @@
 import copy
 import gzip
 import json
+import shutil
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -704,6 +705,71 @@ def test_1429_matching_expected_counts_can_change_the_underpowered_state() -> No
     mismatched = compare({**expected, **dict.fromkeys(targets, 19.0)})
     assert mismatched["reason"] == "outside_control_expected_syn_range"
     assert "upper_tail_p" not in mismatched
+
+
+@needs_htslib
+def test_1429_cached_expected_counts_compare_only_exact_transcript_matches(
+    tmp_path: Path,
+) -> None:
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    document = json.loads(panel.read_text(encoding="utf-8"))
+    document["groups"][0]["genes"].append("AGRN")
+    panel = _write(tmp_path, document, ".json")
+    library = tmp_path / "library"
+    cache = library / "panel"
+    cache.mkdir(parents=True)
+    asset = FIXTURES / "gnomad-v4.1-mane-expected-syn.tsv.gz"
+    shutil.copyfile(asset, cache / asset.name)
+    exons = tmp_path / "model.tsv"
+    exons.write_text(
+        "#contig\tchr1\t248956422\n"
+        "gene\ttranscript\ttag\tstrand\texon\texons\tchrom\tstart\tend\tcds_start\tcds_end\tlimitations\n"
+        + "".join(
+            f"{name}\t{transcript}\tMANE Select\t+\t1\t1\tchr1\t{start}\t{start + 9}\t"
+            f"{start}\t{start + 9}\t\n"
+            for name, transcript, start in (
+                ("MTHFR", "NM_005957.5", 11796321),
+                ("AGRN", "NM_198576.9999", 1020125),
+                ("SAMD11", "NM_001385641.1", 923930),
+                ("PLEKHN1", "NM_032129.3", 966482),
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    def audit(expected: bool) -> dict[str, Any]:
+        result = api.panel.audit(
+            api.PanelAuditParams(
+                panel=panel,
+                vcf_input=vcf,
+                exons=exons,
+                ref=library,
+                research_panel=True,
+                null_sets=100,
+                gnomad_expected=expected,
+                outdir=tmp_path / ("paired" if expected else "cds-only"),
+            )
+        )
+        report = next(o for o in result.outputs if o.role == "panel_audit")
+        data = json.loads(Path(report.path).read_text(encoding="utf-8"))
+        return data["groups"][0]["calibration"]
+
+    baseline, augmented = audit(False), audit(True)
+    comparison = augmented.pop("expected_count_comparison")
+    assert augmented == baseline and baseline["target_genes"] == 2
+    assert comparison["missing_target_expected_count"] == ["AGRN"]
+    cds, joint = (
+        comparison["cds_only_on_common_genes"],
+        comparison["cds_and_expected_syn"],
+    )
+    assert cds["state"] == joint["state"] == "calibrated"
+    assert cds["target_genes"] == joint["target_genes"] == 1
+    assert cds["control_genes"] == joint["control_genes"] == 2
+    assert (
+        cds["observed_expected_syn"]
+        == joint["observed_expected_syn"]
+        == pytest.approx(353.39)
+    )
 
 
 def test_1429_expected_counts_cannot_replace_callable_cds(tmp_path: Path) -> None:
