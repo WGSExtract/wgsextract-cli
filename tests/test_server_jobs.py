@@ -5,34 +5,20 @@ import shutil
 import subprocess
 import sys
 import threading
+from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 
 from tests.htslib_helpers import needs_htslib, vcf_calls
+from tests.server_data import fake_data as fake_data
+from tests.server_data import slow_coverage as slow_coverage
+from tests.server_helpers import FAKE_DIR, _serve
+from tests.server_helpers import client as client
+from tests.server_helpers import work as work
 
 # The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
 from tests.smoke_utils import ensure_fake_data as ensure_fake_data
-from tests.test_server import (
-    FAKE_DIR,
-    JOB_VALIDATOR,
-    VALIDATOR,
-    _serve,
-)
-from tests.test_server import (
-    client as client,
-)
-from tests.test_server import (
-    fake_data as fake_data,
-)
-from tests.test_server import (
-    slow_coverage as slow_coverage,
-)
-from tests.test_server import (
-    variant_tables as variant_tables,
-)
-from tests.test_server import (
-    work as work,
-)
 from tests.test_vep_run import _vcf, ensembl_test_cache
 from tests.test_vep_run import fake_vep as fake_vep
 from wgsextract_cli.core import results
@@ -44,6 +30,22 @@ from wgsextract_cli.server.operations import (
     RequestError,
     find,
     params_from_json,
+)
+
+CLI_ROOT = Path(__file__).resolve().parents[1]
+
+
+VALIDATOR = Draft202012Validator(results.load_schema())
+JOB_VALIDATOR = Draft202012Validator(
+    {
+        **json.loads(
+            (
+                CLI_ROOT
+                / "src/wgsextract_cli/assets/schemas/wgsextract.server.responses.1.schema.json"
+            ).read_text(encoding="utf-8")
+        ),
+        "$ref": "#/$defs/Job",
+    }
 )
 
 

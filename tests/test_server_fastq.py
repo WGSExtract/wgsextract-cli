@@ -2,11 +2,11 @@
 
 import pytest
 
+from tests.server_data import fake_data as fake_data
+from tests.server_data import slow_coverage as slow_coverage
+from tests.server_helpers import FAKE_DIR, _serve
+from tests.server_helpers import work as work
 from tests.smoke_utils import ensure_fake_data as ensure_fake_data
-from tests.test_server import FAKE_DIR, _serve
-from tests.test_server import fake_data as fake_data
-from tests.test_server import slow_coverage as slow_coverage
-from tests.test_server import work as work
 from wgsextract_cli.api.fastq import FastqArchiveParams, archive
 
 

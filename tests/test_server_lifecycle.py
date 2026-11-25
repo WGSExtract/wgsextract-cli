@@ -8,6 +8,7 @@ import signal
 import socket
 import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -17,35 +18,32 @@ import psutil
 import pytest
 
 from tests.home_isolation import state_directory_setting
+from tests.server_data import fake_data as fake_data
+from tests.server_data import slow_coverage as slow_coverage
+from tests.server_helpers import FAKE_DIR, Client, _serve, interrupt_serve_announcement
+from tests.server_helpers import client as client
+from tests.server_helpers import work as work
 
 # The loadgroup scheduler recognizes this import for shared fake_30x fixtures.
 from tests.smoke_utils import ensure_fake_data as ensure_fake_data
 from tests.smoke_utils import get_cli_command
-from tests.test_server import (
-    FAKE_DIR,
-    Client,
-    _job_logs,
-    _serve,
-    _wait_for,
-    interrupt_serve_announcement,
-)
-from tests.test_server import (
-    client as client,
-)
-from tests.test_server import (
-    fake_data as fake_data,
-)
-from tests.test_server import (
-    slow_coverage as slow_coverage,
-)
-from tests.test_server import (
-    variant_tables as variant_tables,
-)
-from tests.test_server import (
-    work as work,
-)
 from wgsextract_cli.core.last_run import state_directory
 from wgsextract_cli.server.jobs import write_private_json
+
+
+def _job_logs(tmp_path: Path) -> str:
+    """The workers' logs, to show why a job got stuck."""
+    return "\n".join(
+        f"== {log.name}\n{log.read_text(errors='replace')}"
+        for log in sorted((tmp_path / "state" / "jobs").glob("*.log"))
+    )
+
+
+def _wait_for(predicate: Any, tmp_path: Path, timeout: float = 120) -> None:
+    deadline = time.monotonic() + timeout
+    while not predicate():
+        assert time.monotonic() < deadline, f"timed out\n{_job_logs(tmp_path)}"
+        time.sleep(0.2)
 
 
 def test_cancel_stops_running_jobs_and_drops_queued_ones(

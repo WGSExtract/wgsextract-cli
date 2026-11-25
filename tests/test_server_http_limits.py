@@ -6,10 +6,12 @@ import json
 import os
 import queue
 import socket
+import struct
 import subprocess
 import sys
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import BinaryIO, cast
@@ -19,6 +21,9 @@ import psutil
 import pytest
 
 from tests.home_isolation import state_directory_setting
+from tests.server_helpers import TOKEN
+from tests.server_helpers import client as client
+from tests.server_helpers import work as work
 from tests.smoke_utils import get_cli_command
 from tests.test_server_remote_viewer import (
     HOST,
@@ -423,3 +428,148 @@ def test_1173_review_advertised_url_connects_through_allowlisted_proxy(
         for thread in threads:
             thread.join(3)
         manager.shutdown()
+
+
+def test_requests_need_the_token_and_a_local_host(client):
+    assert client.request("GET", "/health", token=None)[0] == 200
+    for token in (None, "wrong"):
+        status, body = client.request("GET", "/ops", token=token)
+        assert (status, body["error"]["code"]) == (401, "unauthorized")
+    status, body = client.request("GET", "/ops", headers={"Host": "evil.example"})
+    assert (status, body["error"]["code"]) == (403, "bad_host")
+    status, body = client.request(
+        "GET", "/ops", headers={"Origin": "https://evil.example"}
+    )
+    assert (status, body["error"]["code"]) == (403, "bad_origin")
+
+
+@pytest.mark.parametrize(
+    ("headers", "status"),
+    [
+        ([("Content-Length", "-1")], 400),
+        ([], 411),
+        ([("Transfer-Encoding", "chunked")], 400),
+        ([("Content-Length", "0"), ("Content-Length", "0")], 400),
+        ([("Content-Length", "\xa00")], 400),
+    ],
+)
+def test_bad_lengths_are_refused_and_errors_close_the_connection(
+    client, headers, status
+):
+    # #1209: invalid or missing framing must be rejected before reading a body.
+    host, port = client.url.removeprefix("http://").removesuffix("/v1").split(":")
+    connection = http.client.HTTPConnection(host, int(port), timeout=30)
+    connection.putrequest("POST", "/v1/ops/info")
+    connection.putheader("Authorization", "Bearer " + TOKEN)
+    connection.putheader("Content-Type", "application/json")
+    for name, value in headers:
+        connection.putheader(name, value)
+    connection.endheaders()
+    response = connection.getresponse()
+    assert response.status == status
+    assert json.loads(response.read())["error"]["code"] == "bad_length"
+    assert response.headers["Connection"] == "close"
+    connection.close()
+
+
+@pytest.mark.parametrize(
+    ("length", "expected"),
+    [(1, (409, "job_id_in_use")), (2, (400, "bad_length")), (2, None)],
+    ids=["complete-malformed-json", "truncated-body", "stalled-body"],
+)
+def test_1297_duplicate_job_reply_checks_body_framing(client, work, length, expected):
+    job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
+    path = "/ops/example-genome/list"
+    status, job = client.request(
+        "POST",
+        path + "?wait=30",
+        {"target_root": str(work)},
+        headers={"X-WGSE-Job-ID": job_id},
+    )
+    assert (status, job["id"], job["status"]) == (200, job_id, "succeeded")
+
+    # Headers and body can arrive separately. Closing with unread bytes can
+    # abort the connection before the client sees the 409 on Windows.
+    host, port = client.url.removeprefix("http://").removesuffix("/v1").split(":")
+    connection = http.client.HTTPConnection(host, int(port), timeout=30)
+    try:
+        connection.putrequest("POST", "/v1" + path)
+        connection.putheader("Authorization", "Bearer " + TOKEN)
+        connection.putheader("X-WGSE-Job-ID", job_id)
+        connection.putheader("Content-Type", "application/json")
+        connection.putheader("Content-Length", str(length))
+        connection.endheaders()
+        connection.send(b"{")
+        if expected is None:
+            # Leave the write side open so only the input deadline ends the read.
+            with pytest.raises(
+                (
+                    http.client.RemoteDisconnected,
+                    ConnectionAbortedError,
+                    ConnectionResetError,
+                )
+            ):
+                connection.getresponse()
+            return
+        if length == 2:
+            assert connection.sock is not None
+            connection.sock.shutdown(socket.SHUT_WR)
+        with connection.getresponse() as response:
+            assert (
+                response.status,
+                json.loads(response.read())["error"]["code"],
+            ) == expected
+    finally:
+        connection.close()
+
+
+def test_1209_job_log_tails_text_and_disallows_caching(client, tmp_path, work):
+    status, job = client.request(
+        "POST", "/ops/example-genome/list?wait=10", {"target_root": str(work)}
+    )
+    assert status == 200
+    job_id = job["id"]
+    content = b"old\r\n" * 20_000 + b"boundary\r\n" + b"x" * 65_530 + b"\r\nend"
+    (tmp_path / "state" / "jobs" / f"{job_id}.log").write_bytes(content)
+    path = f"/jobs/{job_id}/log"
+
+    assert client.request("GET", f"{path}?tail=-1")[0] == 400
+    request = urllib.request.Request(
+        client.url + path + "?tail=2", headers={"Authorization": f"Bearer {TOKEN}"}
+    )
+    with urllib.request.urlopen(request, timeout=10) as response:
+        assert response.headers["Cache-Control"] == "no-store"
+        assert response.read() == b"x" * 65_530 + b"\nend\n"
+    assert client.request("GET", f"{path}?tail=0") == (
+        200,
+        content.decode().replace("\r\n", "\n") + "\n",
+    )
+
+
+def test_a_client_resetting_its_connection_prints_no_traceback(client, capfd):
+    # Issue #554: on Windows, PowerShell's Invoke-RestMethod resets its idle
+    # keep-alive connection, and `wgsextract serve` printed a ConnectionResetError
+    # traceback on stderr for each one.
+    host, port = client.url.removeprefix("http://").removesuffix("/v1").split(":")
+    before = set(threading.enumerate())
+
+    def handlers() -> set[threading.Thread]:
+        return {t for t in set(threading.enumerate()) - before if t.is_alive()}
+
+    with socket.create_connection((host, int(port)), timeout=30) as sock:
+        # An unfinished request line: its handler waits to read the rest.
+        sock.sendall(b"GET /v1/health HTTP/1.1")
+        deadline = time.monotonic() + 30
+        while not handlers() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert handlers(), "the server never picked up the connection"
+        # Linger 0: closing sends a reset, as Windows does.
+        linger = struct.pack("HH" if sys.platform == "win32" else "ii", 1, 0)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger)
+    deadline = time.monotonic() + 30
+    while handlers() and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert not handlers(), "the reset connection's handler never finished"
+    stderr = capfd.readouterr().err
+    assert client.request("GET", "/health", token=None)[0] == 200
+    assert "Traceback" not in stderr

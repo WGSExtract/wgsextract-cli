@@ -10,11 +10,11 @@ from typing import Any
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, snp_sample
+from tests.server_helpers import Mcp
 from tests.test_1052_offline_defaults import blocked_network as blocked_network
 from tests.test_personal_report import _cli
 from tests.test_personal_report import _phased_mutyh_report as _phased_mutyh_report
 from tests.test_personal_report import served_lists as served_lists
-from tests.test_server import Mcp
 from wgsextract_cli import api
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.reference_evidence import POLICY_HEADER_KEY, Provenance

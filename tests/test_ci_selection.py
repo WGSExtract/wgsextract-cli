@@ -20,6 +20,7 @@ from scripts.ci_select_tests import (
     select_tests,
 )
 from scripts.ci_test_dependencies import ROOT, docs_test_targets
+from scripts.ci_test_tiers import shared_fake_data
 from tests.ci_routing_helpers import run_router
 
 
@@ -63,6 +64,55 @@ def test_929_result_contract_changes_select_freshness(path: str) -> None:
 )
 def test_989_transport_changes_select_committed_contract_freshness(path: str) -> None:
     assert "tests/test_server_contracts.py" in select_tests([path])
+
+
+@pytest.mark.parametrize(
+    ("path", "expected", "unrelated"),
+    [
+        (
+            "tests/server_helpers.py",
+            {
+                "tests/test_server_http_limits.py",
+                "tests/test_server_queries.py",
+                "tests/test_lookup_inputs.py",
+                "tests/test_result_card.py",
+            },
+            "tests/test_server_paths_schema.py",
+        ),
+        (
+            "tests/server_data.py",
+            {"tests/test_server_jobs.py", "tests/test_server_mcp_http.py"},
+            "tests/test_server_queries.py",
+        ),
+        (
+            "tests/server_path_cases.py",
+            {"tests/test_server_paths.py", "tests/test_server_paths_schema.py"},
+            "tests/test_server_queries.py",
+        ),
+    ],
+)
+def test_1537_split_server_helpers_select_their_consumers(
+    path: str, expected: set[str], unrelated: str
+) -> None:
+    selected = select_tests([path])
+    assert selected != "all"
+    assert expected <= set(selected)
+    assert unrelated not in selected
+
+
+def test_1537_server_http_changes_select_transport_and_queries() -> None:
+    selected = select_tests(["src/wgsextract_cli/server/http_api.py"])
+    assert selected == "all" or {
+        "tests/test_server_http_limits.py",
+        "tests/test_server_queries.py",
+    } <= set(selected)
+
+
+@pytest.mark.parametrize(
+    "path", ["tests/test_server_fastq.py", "tests/test_server_mcp_http.py"]
+)
+def test_1537_shared_server_data_still_uses_the_serial_worker(path: str) -> None:
+    assert shared_fake_data(ROOT / path)
 
 
 def repository(tmp_path: Path, files: dict[str, str]) -> Path:

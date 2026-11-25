@@ -4,24 +4,9 @@ import json
 
 import pytest
 
-from tests.test_server import (
-    _serve,
-)
-from tests.test_server import (
-    client as client,
-)
-from tests.test_server import (
-    fake_data as fake_data,
-)
-from tests.test_server import (
-    slow_coverage as slow_coverage,
-)
-from tests.test_server import (
-    variant_tables as variant_tables,
-)
-from tests.test_server import (
-    work as work,
-)
+from tests.server_helpers import _serve
+from tests.server_helpers import client as client
+from tests.server_helpers import work as work
 from wgsextract_cli.api._params import with_config_defaults
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.server.operations import (

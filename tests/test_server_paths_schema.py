@@ -6,16 +6,12 @@ from pathlib import Path
 import pytest
 
 from tests.server_path_cases import (
-    _COMPANIONS,
-    _DATA,
-    _EVERY_PATH,
-    _base_request,
-    _path_value,
-)
-from tests.test_server import (
     _ALIGN_REQUESTS,
     _CALLER_OPS,
     _CALLER_PATHS,
+    _COMPANIONS,
+    _DATA,
+    _EVERY_PATH,
     _EXAMPLE_PATHS,
     _METHYLATION_PATHS,
     _PET_ANALYZE_PATHS,
@@ -27,22 +23,9 @@ from tests.test_server import (
     _TYPING_PATHS,
     _VCF_PATHS,
     _VEP_PATHS,
+    _base_request,
+    _path_value,
     _RecordingFlavour,
-)
-from tests.test_server import (
-    client as client,
-)
-from tests.test_server import (
-    fake_data as fake_data,
-)
-from tests.test_server import (
-    slow_coverage as slow_coverage,
-)
-from tests.test_server import (
-    variant_tables as variant_tables,
-)
-from tests.test_server import (
-    work as work,
 )
 from wgsextract_cli.server.operations import (
     PathGuard,

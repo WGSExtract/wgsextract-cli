@@ -11,8 +11,8 @@ import pytest
 from jsonschema import Draft202012Validator
 
 from tests.home_isolation import state_directory_setting
+from tests.server_helpers import Mcp, _serve
 from tests.smoke_utils import ensure_fake_data, run_cli
-from tests.test_server import Mcp, _serve
 from wgsextract_cli import __version__
 from wgsextract_cli.cli.dispatch import dispatch_command
 from wgsextract_cli.core import read_scope, result_card, results

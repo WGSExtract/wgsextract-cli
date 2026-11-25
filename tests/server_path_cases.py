@@ -1,5 +1,6 @@
 """Inputs shared by the server's exhaustive path authorization tests."""
 
+import ntpath
 import typing
 from typing import Any
 
@@ -81,4 +82,143 @@ _EVERY_PATH = [
     for name, op in operations().items()
     for item in op.fields()
     if item.spec.path and not item.spec.local_only
+]
+
+
+class _RecordingFlavour:
+    """Windows path rules on any OS, recording what would touch the disk."""
+
+    def __init__(self) -> None:
+        self.opened: list[str] = []
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(ntpath, name)
+
+    def abspath(self, path: str) -> str:
+        assert ntpath.isabs(path), path  # else it would read the working folder
+        return ntpath.normpath(path)
+
+    def realpath(self, path: str) -> str:
+        self.opened.append(path)
+        return ntpath.normpath(path)
+
+
+_IN = r"C:\data\a.bam"
+
+
+_ALIGN_REQUESTS = {
+    "align": {"r1": r"C:\data\r1.fq", "ref": r"C:\data\ref.fa"},
+    "realign": {"input": r"C:\data\a.bam", "ref": r"C:\data\ref.fa"},
+}
+
+
+_VCF_FILE_OPS = (
+    "annotate", "filter", "table", "to-fasta", "trio", "clinvar", "revel",
+    "phylop", "cadd", "gerp", "gnomad", "spliceai", "alphamissense", "pharmgkb",
+    "pharmcat", "chain-annotate",
+)  # fmt: skip
+_VCF_PATHS = [
+    (f"vcf/{name}", item)
+    for name in _VCF_FILE_OPS
+    for item in find(f"vcf/{name}").fields()
+    if item.spec.path and not item.spec.local_only
+]
+
+
+_REF_PATHS = [
+    (name, item)
+    for name, op in operations().items()
+    if name.startswith("ref/")
+    for item in op.fields()
+    if item.spec.path and not item.spec.local_only
+]
+
+
+_PET_ANALYZE_REQUESTS = {
+    "pet-align": {"r1": r"C:\data\r1.fq", "species": "dog"},
+    "analyze/comprehensive": {"input": _IN},
+    "analyze/batch-gen": {
+        "directory": r"C:\data",
+        "output": r"C:\data\batch.csv",
+    },
+}
+_PET_ANALYZE_PATHS = [
+    (op, item)
+    for op in _PET_ANALYZE_REQUESTS
+    for item in find(op).fields()
+    if item.spec.path and not item.spec.local_only
+]
+
+
+_CALLER_OPS = ("cnv", "sv", "freebayes", "gatk", "deepvariant", "clair3", "phase")
+_CALLER_PATHS = [
+    (f"vcf/{name}", item)
+    for name in _CALLER_OPS
+    for item in find(f"vcf/{name}").fields()
+    if item.spec.path or item.spec.may_name_file
+]
+
+
+_REPAIR_PATHS = [
+    (op, item)
+    for op in ("repair/ftdna-bam", "repair/ftdna-vcf")
+    for item in find(op).fields()
+    if item.spec.path or item.spec.may_name_file
+]
+
+
+_SIGN_PATHS = [
+    (op, item)
+    for op in ("sign/create", "sign/verify")
+    for item in find(op).fields()
+    if item.spec.path or item.spec.may_name_file
+]
+_SIGN_REQUESTS = {
+    "sign/create": {"paths": [r"C:\data\a.bam"], "outdir": r"C:\data"},
+    "sign/verify": {"manifest": r"C:\data\SHA256SUMS"},
+}
+
+
+_EXAMPLE_PATHS = [
+    (op, item)
+    for op in ("example-genome/list", "example-genome/download")
+    for item in find(op).fields()
+    if item.spec.path or item.spec.may_name_file
+]
+
+
+_TYPING_PATHS = [
+    (op, item)
+    for op in (
+        "typing/cyp2d6",
+        "typing/hla",
+        "typing/smn",
+        "typing/str",
+        "typing/target-cnv",
+    )
+    for item in find(op).fields()
+    if item.spec.path or item.spec.may_name_file
+]
+
+
+_VEP_PATHS = [
+    item
+    for item in find("vep/run").fields()
+    if item.spec.path or item.spec.may_name_file
+]
+
+
+_METHYLATION_PATHS = [
+    item
+    for item in find("methylation/pileup").fields()
+    if item.spec.path or item.spec.may_name_file
+]
+
+
+# Each backend's region list: DeepVariant splits on whitespace, Parabricks
+# (deepvariant/gatk --gpu) and GATK on commas.
+_REGION_LISTS = [
+    ("vcf/deepvariant", {}, " "),
+    ("vcf/deepvariant", {"gpu": True}, ","),
+    ("vcf/gatk", {}, ","),
 ]
