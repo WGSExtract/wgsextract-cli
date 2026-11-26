@@ -186,6 +186,7 @@ def test_1393_named_build_outputs_do_not_pin_a_finished_checkout(
     git(repo, "worktree", "add", "--detach", str(path))
     git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
     write(path / "scratch/build/helper.o", "generated build artifact")
+    write(path / "scratch/build/with\nnewline.o", "another generated artifact")
     write(path / "out/cert.log", "evidence\n")
     (path / "out/trace.log").write_bytes(b"\0binary trace")
     write(path / "state/last-run.json", "{}\n")
@@ -208,7 +209,11 @@ def test_1393_named_build_outputs_do_not_pin_a_finished_checkout(
     assert run.returncode == 0, run.stderr
     record = result(repo, path)
     assert record["reason"] == "removed"
-    assert record["disposable_outputs"] == ["out/trace.log", "scratch/build/helper.o"]
+    assert record["disposable_outputs"] == [
+        "out/trace.log",
+        "scratch/build/helper.o",
+        "scratch/build/with\nnewline.o",
+    ]
     assert not path.exists()
     archive = repo / str(record["archive"])
     assert (archive / "out/cert.log").read_text() == "evidence\n"
@@ -284,6 +289,58 @@ def test_1393_replacement_at_planned_output_path_is_retained(
     assert run.returncode == 0, run.stderr
     assert result(repo, path)["reason"] == "disposable-outputs-changed"
     assert artifact.read_text() == "new output not present at planning time"
+
+
+def test_1393_replacement_during_final_batched_ignore_check_is_retained(
+    repo: Path, github: Callable[..., None]
+) -> None:
+    path = repo / "scratch" / "rt-build"
+    git(repo, "worktree", "add", "--detach", str(path))
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    artifact = path / "out/helper.o"
+    replacement = repo / "out/replacement.o"
+    write(artifact, "original artifact")
+    write(path / "out/other.o", "independent artifact")
+    write(replacement, "replacement during final ignore check")
+    github([])
+    real_git = shutil.which("git")
+    gh = shutil.which("gh")
+    assert real_git is not None and gh is not None
+    wrapper = Path(gh).with_name("git")
+    write(
+        wrapper,
+        f"#!{sys.executable}\n"
+        "import os, pathlib, subprocess, sys\n"
+        f"real_git = {real_git!r}\n"
+        "args = sys.argv[1:]\n"
+        "if 'check-ignore' not in args:\n"
+        "    os.execv(real_git, [real_git, *args])\n"
+        "names = sys.stdin.buffer.read() if '--stdin' in args else b''\n"
+        "if set(names.split(b'\\0')) != {b'out/helper.o', b'out/other.o', b''}:\n"
+        "    sys.exit('expected both artifacts in the same ignore request')\n"
+        "answer = subprocess.run([real_git, *args], input=names, capture_output=True)\n"
+        f"counter = pathlib.Path({str(wrapper.with_name('passes'))!r})\n"
+        "count = int(counter.read_text()) + 1 if counter.exists() else 1\n"
+        "counter.write_text(str(count))\n"
+        "if count == 3:\n"
+        f"    os.replace({str(replacement)!r}, {str(artifact)!r})\n"
+        "sys.stdout.buffer.write(answer.stdout)\n"
+        "sys.stderr.buffer.write(answer.stderr)\n"
+        "sys.exit(answer.returncode)\n",
+    )
+    wrapper.chmod(0o755)
+
+    run = cleanup(
+        repo,
+        "--github",
+        "--include-detached",
+        "--disposable-output",
+        "out/*.o",
+        "--apply",
+    )
+    assert run.returncode == 0, run.stderr
+    assert result(repo, path)["reason"] == "changed-during-archive"
+    assert artifact.read_text() == "replacement during final ignore check"
 
 
 def test_1393_detached_checkout_in_use_is_retained(

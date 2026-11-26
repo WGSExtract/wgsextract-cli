@@ -42,13 +42,13 @@ else:
         return module
 
     inventory_files = load_helper(
-        "inventory", "931da25113ce93ac648ecb06de9969d913a10d465021194d8e1fa5d5d53642e9"
+        "inventory", "215bbff8f7b84d128b6a97bef6b91a0740cf3806c2de8736c87f0f6465db1d49"
     )
     activity = load_helper(
         "activity", "2700ae87bfa047a1668db32a7a592beaf0b3d67013594420400eb31bda1125d1"
     )
     git_tools = load_helper(
-        "git", "561d6bcd79a7f72e333323808151ff9efa779adba8818c07efdca83f50d2dd47"
+        "git", "3676bff1f83af0c58edda12dd7796aadba0c886906fbb6b2cd37d4d0141668f2"
     )
 
 CleanupError = git_tools.CleanupError
@@ -330,9 +330,7 @@ def contents(
         path,
         tracked,
         disposable,
-        lambda name: bool(
-            git(path, "check-ignore", "--", os.fspath(name), allow_no_matches=True)
-        ),
+        lambda names: git_tools.ignored_paths(path, names),
     )
 
 

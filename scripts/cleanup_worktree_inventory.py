@@ -593,14 +593,15 @@ def inventory(
     path: Path,
     tracked: set[Path],
     disposable: tuple[tuple[str, ...], ...] = (),
-    ignored: Callable[[Path], bool] | None = None,
+    ignored: Callable[[set[Path]], set[Path]] | None = None,
 ) -> Inventory:
     inventory = Inventory()
     bytecode: dict[Path, Path] = {}
     size = 0
     excluded = set()
+    outputs: dict[Path, tuple[Stamp, str]] = {}
 
-    def accept_output(relative: Path, info: os.stat_result) -> bool:
+    def consider_output(relative: Path, info: os.stat_result, reason: str) -> None:
         if (
             info.st_uid != os.geteuid()
             or info.st_nlink != 1
@@ -610,11 +611,10 @@ def inventory(
             )
             or not matches_output(relative, disposable)
             or ignored is None
-            or not ignored(relative)
         ):
-            return False
-        inventory.disposable[relative] = stamp(info)
-        return True
+            inventory.retained = inventory.retained or f"{reason}: {relative}"
+        else:
+            outputs[relative] = (stamp(info), reason)
 
     for name in sorted(CACHE_DIRS):
         directory = path / name
@@ -664,14 +664,10 @@ def inventory(
             )
         )
         if not allowed or any(SENSITIVE_NAME.search(part) for part in relative.parts):
-            if not accept_output(relative, info):
-                inventory.retained = inventory.retained or f"unknown-data: {relative}"
+            consider_output(relative, info, "unknown-data")
             continue
         if info.st_size > MAX_FILE or size + info.st_size > MAX_ARCHIVE:
-            if not accept_output(relative, info):
-                inventory.retained = (
-                    inventory.retained or f"evidence-too-large: {relative}"
-                )
+            consider_output(relative, info, "evidence-too-large")
             continue
         if info.st_uid != os.geteuid() or info.st_nlink != 1:
             inventory.retained = inventory.retained or f"unsafe-evidence: {relative}"
@@ -683,10 +679,7 @@ def inventory(
         except UnicodeDecodeError:
             data = b"\0"
         if b"\0" in data:
-            if not accept_output(relative, info):
-                inventory.retained = (
-                    inventory.retained or f"non-text-evidence: {relative}"
-                )
+            consider_output(relative, info, "non-text-evidence")
             continue
         size += info.st_size
         inventory.evidence[relative] = expected
@@ -699,6 +692,24 @@ def inventory(
         except (FileNotFoundError, ValueError):
             pass
         inventory.retained = inventory.retained or f"unknown-data: {relative}"
+    if outputs and ignored is not None:
+        matches = ignored(set(outputs))
+        for relative, (expected, reason) in outputs.items():
+            if relative not in matches:
+                inventory.retained = inventory.retained or f"{reason}: {relative}"
+                continue
+            try:
+                current = (path / relative).lstat()
+            except (FileNotFoundError, NotADirectoryError):
+                current = None
+            if (
+                current is None
+                or not stat.S_ISREG(current.st_mode)
+                or stamp(current) != expected
+            ):
+                inventory.blocked = "disposable-outputs-changed"
+                break
+            inventory.disposable[relative] = expected
     return inventory
 
 

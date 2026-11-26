@@ -13,7 +13,9 @@ class CleanupError(Exception):
     """State could not safely be verified."""
 
 
-def run(root: Path, *args: str, allow_no_matches: bool = False) -> str:
+def run(
+    root: Path, *args: str, allow_no_matches: bool = False, stdin: bytes | None = None
+) -> str:
     env = os.environ.copy()
     if args[0] == "git":
         env = {k: v for k, v in env.items() if not k.startswith("GIT_")}
@@ -21,7 +23,13 @@ def run(root: Path, *args: str, allow_no_matches: bool = False) -> str:
             GIT_NO_LAZY_FETCH="1", GIT_NO_REPLACE_OBJECTS="1", GIT_OPTIONAL_LOCKS="0"
         )
     result = subprocess.run(
-        args, cwd=root, env=env, capture_output=True, timeout=120, check=False
+        args,
+        cwd=root,
+        env=env,
+        input=stdin,
+        capture_output=True,
+        timeout=120,
+        check=False,
     )
     if (
         allow_no_matches
@@ -37,7 +45,9 @@ def run(root: Path, *args: str, allow_no_matches: bool = False) -> str:
     return os.fsdecode(result.stdout)
 
 
-def git(root: Path, *args: str, allow_no_matches: bool = False) -> str:
+def git(
+    root: Path, *args: str, allow_no_matches: bool = False, stdin: bytes | None = None
+) -> str:
     return run(
         root,
         "git",
@@ -45,7 +55,25 @@ def git(root: Path, *args: str, allow_no_matches: bool = False) -> str:
         "core.fsmonitor=false",
         *args,
         allow_no_matches=allow_no_matches,
+        stdin=stdin,
     )
+
+
+def ignored_paths(root: Path, paths: set[Path]) -> set[Path]:
+    if not paths:
+        return set()
+    response = git(
+        root,
+        "check-ignore",
+        "--stdin",
+        "-z",
+        allow_no_matches=True,
+        stdin=b"".join(os.fsencode(path) + b"\0" for path in sorted(paths)),
+    )
+    matches = {Path(name) for name in response.split("\0")[:-1]}
+    if (response and not response.endswith("\0")) or not matches <= paths:
+        raise CleanupError("Git returned unexpected ignored paths")
+    return matches
 
 
 def operation_in_progress(path: Path) -> bool:
