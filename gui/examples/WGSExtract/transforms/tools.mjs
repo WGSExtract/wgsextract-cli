@@ -361,13 +361,20 @@ export function items(document) {
     return { items: tools.map(row) };
 }
 
+/** Mandatory, optional, or pre-installed: optional but shipped with the CLI, so it can't be removed on its own. */
+function groupTag(tool) {
+    if (tool.group === "mandatory") return { id: "mandatory", title: "mandatory", style: "primary" };
+    if (tool.preinstalled) return { id: "pre-installed", title: "pre-installed", style: "secondary" };
+    return { id: tool.group, title: tool.group, style: "secondary" };
+}
+
 function row(tool) {
     const installed = tool.status === "installed";
     return {
         id: tool.name,
         title: tool.name,
         status: tool.status,
-        tags: [{ id: tool.group, title: tool.group, style: tool.group === "mandatory" ? "primary" : "secondary" }],
+        tags: [groupTag(tool)],
         tooltip: toolTooltip(tool),
         values: {
             name: tool.name,

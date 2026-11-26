@@ -296,3 +296,37 @@ def test_vcf_variantqc_and_granite_qc_validate_optional_tools_and_run(
     assert any(o.role == "granite_qc_json" for o in gqc_result.outputs)
     assert gqc_result.metrics["TiTv"] == 2.08
     assert "TiTv" in gqc_result.text
+
+
+@needs_tools("bgzip", "samtools", "discvrseq", "java17")
+def test_vcf_variantqc_real_discvrseq_reads_unindexed_bgzipped_vcf(tmp_path):
+    """Real VariantQC on an unindexed .vcf.gz: GATK rejected it ("An index is
+    required but was not found") until inputs were indexed first."""
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "ACGTTGCA" * 125})
+    subprocess.run(["samtools", "dict", "-o", tmp_path / "ref.dict", ref], check=True)
+    plain = _write_vcf(
+        tmp_path / "sample.vcf",
+        [
+            "##fileformat=VCFv4.2",
+            "##contig=<ID=chr1,length=1000>",
+            '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">',
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHG002",
+        ],
+        [
+            "chr1\t10\t.\tT\tC\t50\tPASS\t.\tGT\t0/1",
+            "chr1\t20\t.\tA\tG\t50\tPASS\t.\tGT\t1/1",
+            "chr1\t30\t.\tG\tGA\t50\tPASS\t.\tGT\t0/1",
+        ],
+    )
+    vcf = tmp_path / "sample.vcf.gz"
+    with vcf.open("wb") as out:
+        subprocess.run(["bgzip", "-c", plain], stdout=out, check=True)
+
+    result = api.vcf.variantqc(
+        VcfVariantQcParams(vcf_input=vcf, ref=ref, outdir=tmp_path / "qc")
+    )
+
+    report = (tmp_path / "qc" / "sample.variantqc.html").read_text(encoding="utf-8")
+    assert any(o.role == "variantqc_report" for o in result.outputs)
+    assert '{"name":"nSNPs","data":[2,0,2]}' in report
+    assert '{"name":"nInsertions","data":[1,0,1]}' in report

@@ -3,7 +3,9 @@ Tools page, and the missing optional tools `ref needs` names so the app can
 offer "Install and Continue" before a run, as it does for a missing genome."""
 
 import json
+import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -73,6 +75,23 @@ def test_list_succeeds_where_check_fails_on_a_missing_mandatory_tool(host, capsy
     samtools = _row(document, "samtools")
     assert samtools["group"] == "mandatory" and samtools["status"] == "missing"
     assert not samtools["can_install"] and not samtools["can_uninstall"]
+
+
+def test_tools_shipped_with_the_cli_are_preinstalled(host, monkeypatch, capsys):
+    """fastp in the CLI's own environment can't be removed on its own, so the
+    Tools page labels it pre-installed; the same kind of tool on PATH isn't."""
+    shipped = Path(sys.prefix, "bin")
+    python_tool(shipped, "fastp", "print('fastp 1.4.0')")
+    python_tool(host, "fastqc", "print('FastQC v0.13.0')")
+    monkeypatch.setenv("PATH", f"{shipped}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+
+    _, document = _json(capsys, "deps", "list")
+
+    fastp, fastqc = _row(document, "fastp"), _row(document, "fastqc")
+    assert fastp["status"] == "installed" and fastp["preinstalled"]
+    assert not fastp["can_uninstall"]
+    assert fastqc["status"] == "installed" and not fastqc["preinstalled"]
 
 
 def test_list_marks_tools_this_platform_cannot_have(host, fake_pixi, capsys):

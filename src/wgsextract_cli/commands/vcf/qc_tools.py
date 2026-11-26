@@ -8,6 +8,7 @@ import os
 import re
 import subprocess
 import tempfile
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,7 @@ from wgsextract_cli.core.utils import (
     run_command,
 )
 from wgsextract_cli.core.variant_files import verify_paths_exist
+from wgsextract_cli.core.variant_sample import prepare_input_vcf
 from wgsextract_cli.core.vcf_reference import identify_vcf_reference
 
 from .._extract_helpers import cleanup_files
@@ -138,35 +140,39 @@ def run_variantqc(params: VcfVariantQcParams) -> None:
     outdir.mkdir(parents=True, exist_ok=True)
     out_html = outdir / f"{_vcf_stem(vcf_path)}.variantqc.html"
 
-    cmd = [
-        *cmd_base,
-        "VariantQC",
-        "-R",
-        resolved_ref,
-    ]
-    if len(all_vcfs) == 1:
-        cmd.extend(["-V", str(all_vcfs[0])])
-    else:
-        used_labels: set[str] = set()
-        for path in all_vcfs:
-            cmd.extend([f"-V:{_variantqc_label(path, used_labels)}", str(path)])
-    cmd.extend(["-O", str(out_html)])
-    if params.pedigree:
-        ped = os.fspath(params.pedigree)
+    ped = os.fspath(params.pedigree) if params.pedigree else None
+    if ped:
         verify_paths_exist({"--pedigree": ped})
-        cmd.extend(["-ped", ped])
 
-    logging.info(
-        "Running DISCVRSeq VariantQC on %d VCF(s) (%s) -> %s",
-        len(all_vcfs),
-        ", ".join(p.name for p in all_vcfs),
-        out_html,
-    )
-    try:
-        with cleanup_files(on_failure=[str(out_html)]):
-            run_command(cmd)
-    except (OSError, subprocess.SubprocessError) as e:
-        raise WGSExtractError(f"DISCVRSeq VariantQC failed: {e}") from e
+    with ExitStack() as cleanup:
+        # GATK reads only indexed VCFs: index each in place, or an indexed
+        # working copy when it is plain text or its folder is read-only.
+        inputs = [
+            prepare_input_vcf(str(path), None, str(outdir), cleanup)[0]
+            for path in all_vcfs
+        ]
+        cmd = [*cmd_base, "VariantQC", "-R", resolved_ref]
+        if len(all_vcfs) == 1:
+            cmd.extend(["-V", inputs[0]])
+        else:
+            used_labels: set[str] = set()
+            for path, vcf_arg in zip(all_vcfs, inputs, strict=True):
+                cmd.extend([f"-V:{_variantqc_label(path, used_labels)}", vcf_arg])
+        cmd.extend(["-O", str(out_html)])
+        if ped:
+            cmd.extend(["-ped", ped])
+
+        logging.info(
+            "Running DISCVRSeq VariantQC on %d VCF(s) (%s) -> %s",
+            len(all_vcfs),
+            ", ".join(p.name for p in all_vcfs),
+            out_html,
+        )
+        try:
+            with cleanup_files(on_failure=[str(out_html)]):
+                run_command(cmd)
+        except (OSError, subprocess.SubprocessError) as e:
+            raise WGSExtractError(f"DISCVRSeq VariantQC failed: {e}") from e
 
     if not out_html.is_file():
         raise WGSExtractError(f"DISCVRSeq VariantQC produced no report at {out_html}.")

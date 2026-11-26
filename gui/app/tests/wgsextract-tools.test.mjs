@@ -19,7 +19,7 @@ const control = page.sections[0].controls[0];
 function tool(fields) {
     return {
         path: null, runtime: null, version: null, alt_env: null, group: "optional", status: "missing",
-        environment: null, environment_tools: [], can_install: false, can_uninstall: false, note: null, ...fields,
+        environment: null, environment_tools: [], can_install: false, can_uninstall: false, preinstalled: false, note: null, ...fields,
     };
 }
 
@@ -28,7 +28,7 @@ const depsList = {
     details: {
         tools: [
             tool({ name: "samtools", group: "mandatory", status: "installed", path: "/env/bin/samtools", runtime: "pixi", version: "samtools 1.24" }),
-            tool({ name: "fastp", status: "installed", path: "/env/bin/fastp", runtime: "pixi", version: "fastp 1.4.0" }),
+            tool({ name: "fastp", status: "installed", path: "/env/bin/fastp", runtime: "pixi", version: "fastp 1.4.0", preinstalled: true }),
             tool({ name: "gatk", environment: "gatk", environment_tools: ["gatk"], can_install: true }),
             tool({
                 name: "sniffles", status: "installed", path: "pixi run -e pacbio sniffles", runtime: "pixi", alt_env: "pacbio",
@@ -68,7 +68,9 @@ test("each Tools row shows its status, whether it is mandatory, and where it com
 
     assert.equal(rows.samtools.status, "installed");
     assert.deepEqual(rows.samtools.tags.map((tag) => tag.id), ["mandatory"]);
-    assert.deepEqual(rows.fastp.tags.map((tag) => tag.id), ["optional"]);
+    // Shipped with the CLI and not removable on its own.
+    assert.deepEqual(rows.fastp.tags.map((tag) => tag.title), ["pre-installed"]);
+    assert.deepEqual(rows.gatk.tags.map((tag) => tag.title), ["optional"]);
     assert.equal(rows.samtools.values.details, "samtools 1.24");
     assert.equal(rows.fastp.values.environment, "default");
     assert.equal(rows.sambamba.values.details, "sambamba isn't built for win32 AMD64.");

@@ -135,10 +135,14 @@ CERTIFICATION = {
     "vcf info": tested(
         _REVIEWED, "test_vcf_info.py", "VCF statistics and build checks on fixtures."
     ),
-    "vcf variantqc": experimental(
-        _REVIEWED,
-        "External VariantQC integration does not establish output correctness.",
-        f"{_TESTS}/test_genotype_qc.py",
+    "vcf variantqc": validated(
+        "2026-11-26",
+        "Real DISCVRSeq 1.3.86 on Java 17 matched bcftools counts for HG002 GRCh38 "
+        "calls on Windows; the same tool WGS Extract v5 used. Report content "
+        "beyond variant counts is DISCVRSeq's own.",
+        ("Windows",),
+        "https://github.com/BimberLab/DISCVRSeq",
+        f"{_TESTS}/test_vcf_info.py",
     ),
     "vcf granite-qc": experimental(
         _REVIEWED,

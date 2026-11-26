@@ -41,6 +41,7 @@ from wgsextract_cli.core.tool_catalog import (
     PIXI_TOOL_ENVS,
     platform_unavailable_tools,
 )
+from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
     UsageError,
@@ -151,6 +152,19 @@ def _same_or_inside(path: Path, folder: Path) -> bool:
         return False
 
 
+def _preinstalled(path: str) -> bool:
+    """Whether the tool at ``path`` ships in the CLI's own environment, so it
+    comes with WGS Extract and goes only with it. A tool on PATH or in an
+    environment of its own is not."""
+    if is_pixi_tool_command(path):
+        return False
+    try:
+        argv = _tool_command_parts(path)
+    except ValueError:
+        return False
+    return bool(argv) and _same_or_inside(Path(argv[0]), Path(sys.prefix))
+
+
 def _runs_cli(env: str) -> bool:
     """Whether the CLI itself runs in ``env``: removing it would remove the
     CLI. Unless Pixi names the environment, the running Python's prefix is
@@ -207,6 +221,7 @@ def tool_row(row: dict[str, Any], group: str) -> dict[str, Any]:
             "environment_tools": [tool] if jar_env else [],
             "can_install": can_install,
             "can_uninstall": can_uninstall,
+            "preinstalled": False,
             "note": note,
         }
     can_install = status == MISSING and env is not None and installable(tool)
@@ -225,6 +240,9 @@ def tool_row(row: dict[str, Any], group: str) -> dict[str, Any]:
         "environment_tools": environment_tools(env) if env else [],
         "can_install": can_install,
         "can_uninstall": can_uninstall,
+        "preinstalled": bool(
+            group == "optional" and path and env is None and _preinstalled(str(path))
+        ),
         "note": note,
     }
 
@@ -243,6 +261,7 @@ def unavailable_row(tool: str) -> dict[str, Any]:
         "environment_tools": [],
         "can_install": False,
         "can_uninstall": False,
+        "preinstalled": False,
         "note": f"{tool} isn't built for {_host()}.",
     }
 
