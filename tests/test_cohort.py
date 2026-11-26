@@ -2,12 +2,15 @@ import csv
 import gzip
 import hashlib
 import json
+import os
+import stat
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import state_directory_setting
 from tests.htslib_helpers import bgzip_index, needs_htslib
 from wgsextract_cli.api.cohort import CohortSummarizeParams, summarize
 from wgsextract_cli.core.results import fingerprint
@@ -177,6 +180,8 @@ def test_1288_cohort_counts_reference_missing_other_alt_and_partial(cohort, tmp_
     assert any(
         warning["code"] == "cohort_sensitive_summary" for warning in result["warnings"]
     )
+    assert all(row["below_disclosure_threshold"] == "true" for row in rows.values())
+    assert not (dest / "cohort.variants.export.tsv").exists()
     recorded = Path(result["manifest"]).read_text(encoding="utf-8")
     assert "secret-" not in proc.stdout + proc.stderr + recorded + table.read_text(
         encoding="utf-8"
@@ -185,6 +190,104 @@ def test_1288_cohort_counts_reference_missing_other_alt_and_partial(cohort, tmp_
         ".log.provenance.json"
     ).read_text(encoding="utf-8")
     assert not (dest / "cohort.participants.private.json").exists()
+
+
+def test_1442_small_cells_are_flagged_locally_and_omitted_from_exports(
+    cohort, tmp_path
+):
+    manifest, document = cohort
+    # A homozygote has two ALT copies but is still only one carrier.
+    person = document["participants"][0]
+    variants = tmp_path / person["variants"]["path"]
+    with variants.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write("chr1\t11\t.\tA\tT\t.\tPASS\t.\tGT:DP:GQ\t1/1:20:60\n")
+    person["variants"] = _binding(variants)
+    manifest.write_text(json.dumps(document), encoding="utf-8")
+    config = tmp_path / "config.toml"
+    config.write_text(
+        state_directory_setting(tmp_path)
+        + "cohort_min_samples = 2\ncohort_min_allele_count = 2\ncohort_min_carriers = 2\n",
+        encoding="utf-8",
+    )
+
+    def run(dest, *options, use_config=False):
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "wgsextract_cli",
+                *(["--config", str(config)] if use_config else []),
+                "cohort",
+                "summarize",
+                str(manifest),
+                "--outdir",
+                str(dest),
+                "--export",
+                "--json",
+                *options,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stderr
+        return json.loads(proc.stdout)
+
+    def read_table(path):
+        with path.open(encoding="utf-8", newline="") as stream:
+            return list(csv.DictReader(stream, delimiter="\t"))
+
+    dest = tmp_path / "default"
+    result = run(dest)
+    assert read_table(dest / "cohort.variants.export.tsv") == []
+    assert "cohort_small_cohort" in {w["code"] for w in result["warnings"]}
+
+    dest = tmp_path / "configured"
+    result = run(dest, use_config=True)
+    assert read_table(dest / "cohort.variants.export.tsv") == []
+    assert "cohort_small_cohort" not in {w["code"] for w in result["warnings"]}
+    assert any(
+        row["pos"] == "11"
+        and row["ac"] == "2"
+        and row["below_disclosure_threshold"] == "true"
+        for row in read_table(dest / "cohort.variants.tsv")
+    )
+
+    dest = tmp_path / "override"
+    result = run(dest, "--min-carriers", "1", use_config=True)
+    assert read_table(dest / "cohort.variants.export.tsv") == [
+        {
+            "chrom": "chr1",
+            "pos": "11",
+            "ref": "A",
+            "alt": "T",
+            "carriers": "1",
+        }
+    ]
+    if os.name == "posix":
+        assert (
+            stat.S_IMODE((dest / "cohort.variants.export.tsv").stat().st_mode) & 0o077
+            == 0
+        )
+    warnings = {w["code"]: w for w in result["warnings"]}
+    assert warnings["cohort_low_allele_count"]["details"]["minimum"] == 2
+    assert "cohort_low_callable_samples" in warnings
+    assert "cohort_low_non_carriers" in warnings
+    recorded = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+    assert {
+        key: recorded["metrics"][key]
+        for key in (
+            "min_samples",
+            "min_allele_count",
+            "min_carriers",
+            "disclosure_flagged_rows",
+        )
+    } == {
+        "min_samples": 2,
+        "min_allele_count": 2,
+        "min_carriers": 1,
+        "disclosure_flagged_rows": 7,
+    }
 
 
 def test_1288_cohort_api_bed_parquet_and_opt_in(cohort, tmp_path):
@@ -228,12 +331,26 @@ def test_1288_cohort_api_bed_parquet_and_opt_in(cohort, tmp_path):
             outdir=dest,
             table_format="parquet",
             include_identifiers=True,
+            export=True,
+            min_samples=2,
+            min_allele_count=1,
+            min_carriers=1,
         )
     )
     data = parquet.read_table(dest / "cohort.variants.parquet")
     assert data["pos"].to_pylist() == [10, 10, 10, 20]
     assert data["an"].to_pylist() == [5, 5, 5, 2]
     assert b"secret-" not in repr(data.schema.metadata).encode()
+    export = parquet.read_table(dest / "cohort.variants.export.parquet")
+    assert export["pos"].to_pylist() == [10, 10, 10]
+    assert "an" not in export.column_names and "n_het" not in export.column_names
+    assert b"secret-" not in repr(export.schema.metadata).encode()
+    if os.name == "posix":
+        assert (
+            stat.S_IMODE((dest / "cohort.variants.export.parquet").stat().st_mode)
+            & 0o077
+            == 0
+        )
     opted_in = next(
         item for item in result.outputs if item.role == "private_cohort_participants"
     )
@@ -354,7 +471,19 @@ def test_1288_cohort_will_not_overwrite_or_retire_a_bound_file(cohort, tmp_path)
     assert not (dest / "cohort.variants.tsv").exists()
 
 
-def test_1288_cohort_checks_relatedness_flags_for_renamed_vcf_samples(cohort, tmp_path):
+@pytest.mark.parametrize(
+    ("relationship", "estimate", "minimum", "outcome"),
+    [
+        ("same person", 0.99, None, "duplicate"),
+        ("third-degree", 0.10, None, "warning"),
+        ("third-degree", 0.10, 0.2, "no warning"),
+        ("uncertain: a VCF's called sites only", 0.5, None, "no warning"),
+        ("unrelated", float("nan"), None, "no warning"),
+    ],
+)
+def test_1442_cohort_warns_only_for_assessed_relatedness(
+    cohort, tmp_path, relationship, estimate, minimum, outcome
+):
     manifest, document = cohort
     a, b = document["participants"][:2]
     old, b["sample"] = b["sample"], a["sample"]
@@ -386,8 +515,8 @@ def test_1288_cohort_checks_relatedness_flags_for_renamed_vcf_samples(cohort, tm
     )
     pairs = tmp_path / "secret-relate.pairs.tsv"
     pairs.write_text(
-        "sample_a\tsample_b\trelationship\tflagged\n"
-        f"{label_a}\t{label_b}\tsame person\ttrue\n",
+        "sample_a\tsample_b\trelationship\trelatedness\tflagged\n"
+        f"{label_a}\t{label_b}\t{relationship}\t{estimate}\tfalse\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -417,8 +546,27 @@ def test_1288_cohort_checks_relatedness_flags_for_renamed_vcf_samples(cohort, tm
     }
     manifest.write_text(json.dumps(document), encoding="utf-8", newline="\n")
     result = summarize(
-        CohortSummarizeParams(cohort_manifest=manifest, outdir=tmp_path / "result"),
+        CohortSummarizeParams(
+            cohort_manifest=manifest,
+            outdir=tmp_path / "result",
+            min_relatedness=minimum,
+        ),
         check=False,
     )
-    assert result.error is not None and "duplicate participants" in result.error.message
+    if outcome == "duplicate":
+        assert (
+            result.error is not None
+            and "duplicate participants" in result.error.message
+        )
+    else:
+        assert result.exit_code == 0
+        assert result.metrics["samples"] == len(document["participants"])
+        assert any(w.code == "cohort_relatedness_unassessed" for w in result.warnings)
+        matches = [
+            w for w in result.warnings if w.code == "cohort_related_participants"
+        ]
+        if outcome == "warning":
+            assert len(matches) == 1 and matches[0].details["pairs"] == 1
+        else:
+            assert not matches
     assert "secret-" not in result.to_json()

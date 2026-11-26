@@ -204,6 +204,7 @@ ReportFindingSection = Literal[
     "clinvar",
     "mitochondrial",
     "acmg_research",
+    "panel_audit",
     "structural_variants",
     "medication_review",
 ]
@@ -239,7 +240,7 @@ class ReportFindingRequired(TypedDict):
                 "Research use only; not a diagnosis.",
                 "Not a prescription; review with a clinician.",
             ),
-            description="Research use only for acmg_research findings; not a prescription for medication_review findings.",
+            description="Research use only for acmg_research and panel_audit findings; not a prescription for medication_review findings.",
         ),
     ]
 
@@ -688,11 +689,22 @@ class ReportSectionsRequired(TypedDict):
     microarray: ReportMicroarrayDocument
 
 
+class ReportPanelAuditDocument(ReportSectionDocument):
+    research_only: Literal[True]
+    disclaimer: str
+
+
 class ReportResearchSection(TypedDict, total=False):
     acmg_research: Annotated[
         ReportAcmgDocument,
         Constraints(
             description="fastVEP's automated ACMG/AMP classes (vcf acmg), research use only and not a diagnosis. Present only when vcf acmg ran."
+        ),
+    ]
+    panel_audit: Annotated[
+        ReportPanelAuditDocument,
+        Constraints(
+            description="A previously run local research panel audit, not a diagnosis or evidence of association."
         ),
     ]
 

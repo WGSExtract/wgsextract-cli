@@ -32,6 +32,7 @@ from tests.test_server_remote_viewer import (
     requires_safe_reads,
 )
 from wgsextract_cli.core.config import get_config_path
+from wgsextract_cli.server import http_api
 from wgsextract_cli.server.http_api import Server
 from wgsextract_cli.server.http_limits import LimitedHTTPServer
 from wgsextract_cli.server.jobs import JobManager
@@ -477,7 +478,11 @@ def test_bad_lengths_are_refused_and_errors_close_the_connection(
     [(1, (409, "job_id_in_use")), (2, (400, "bad_length")), (2, None)],
     ids=["complete-malformed-json", "truncated-body", "stalled-body"],
 )
-def test_1297_duplicate_job_reply_checks_body_framing(client, work, length, expected):
+def test_1297_duplicate_job_reply_checks_body_framing(
+    client, work, length, expected, monkeypatch
+):
+    if expected is None:
+        monkeypatch.setattr(http_api, "BODY_TIMEOUT_SECONDS", 0.5)
     job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
     path = "/ops/example-genome/list"
     status, job = client.request(

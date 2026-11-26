@@ -8,6 +8,7 @@ import jsonschema
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, write_fasta
+from tests.test_panel_spec import _audit_inputs
 from tests.test_personal_report import (
     _acmg_run as _acmg_run,
 )
@@ -32,6 +33,7 @@ from tests.test_personal_report import (
 from tests.test_personal_report import (
     served_lists as served_lists,
 )
+from wgsextract_cli import api
 from wgsextract_cli.core import personal_report as pr
 from wgsextract_cli.core.sample_workspace import SampleWorkspace
 
@@ -43,6 +45,112 @@ def test_pgx_and_lineage_labels_come_from_the_callers_evidence(sample):
     (mt,) = sections["lineage"]["findings"]
     assert (mt["value"], mt["confidence"]) == ("H1a", "high")
     assert any("H1a" in link["url"] for link in mt["links"])
+
+
+@needs_htslib
+def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> None:
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    assert "panel_audit" not in pr.build_report(tmp_path, input_file=vcf)["sections"]
+    # Only one of the two qualifying calls is in the matched coding region.
+    exons = tmp_path / "exons.tsv"
+    exons.write_text(
+        "#contig\tchr1\t248956422\n"
+        "gene\ttranscript\ttag\tstrand\texon\texons\tchrom\tstart\tend\tcds_start\tcds_end\tlimitations\n"
+        "MTHFR\tNM_MTHFR\tMANE Select\t+\t1\t1\tchr1\t11796321\t11796321\t11796321\t11796321\t\n"
+        "NOC2L\tNM_NOC2L\tMANE Select\t+\t1\t1\tchr1\t944210\t944210\t944210\t944210\t\n",
+        encoding="utf-8",
+    )
+    audit = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=vcf,
+            exons=exons,
+            null_sets=100,
+            research_panel=True,
+            outdir=tmp_path,
+        )
+    )
+    failed_attempt = _manifest(
+        tmp_path,
+        "later-same-panel",
+        "panel audit",
+        inputs=((vcf, "vcf_input"), (panel, "panel")),
+        status="failed",
+        finished="2099-01-01T00:00:00+00:00",
+    )
+    other_panel = _touch(tmp_path / "other-panel.toml")
+    _manifest(
+        tmp_path,
+        "later-other-panel",
+        "panel audit",
+        inputs=((vcf, "vcf_input"), (other_panel, "panel")),
+        status="failed",
+        finished="2099-01-02T00:00:00+00:00",
+    )
+    result = api.report.build(api.ReportParams(input=vcf, outdir=tmp_path))
+    outputs = {output.role: Path(output.path) for output in result.outputs}
+    report = json.loads(outputs["report_json"].read_text(encoding="utf-8"))
+    jsonschema.validate(report, pr.load_schema())
+    section = report["sections"]["panel_audit"]
+    assert section["research_only"] is True
+    (source,) = section["sources"]
+    assert audit.manifest is not None
+    audit_manifest = Path(audit.manifest).relative_to(tmp_path).as_posix()
+    assert source["manifest"] == audit_manifest
+    assert source["latest_attempt"]["manifest"] == (
+        failed_attempt.relative_to(tmp_path).as_posix()
+    )
+    assert "newer_attempt_failed" in {w["code"] for w in section["warnings"]}
+    (finding,) = section["findings"]
+    assert finding["value"] == "2 qualifying allele copies"
+    null_scope = "1 qualifying allele copy across 1 eligible gene"
+    assert f"{null_scope}: empirical upper-tail p=" in finding["detail"]
+    assert finding["evidence"]["file"] == "audit.panel_audit.json"
+    assert finding["evidence"]["manifest"] == audit_manifest
+    for role in ("report_html", "report_markdown", "findings_table"):
+        content = outputs[role].read_text(encoding="utf-8")
+        assert "Research use only; not a diagnosis" in content
+        assert "audit.panel_audit.json" in content
+        assert null_scope in content
+
+
+@needs_htslib
+def test_1287_shared_panel_file_never_connects_another_samples_audit(
+    tmp_path: Path,
+) -> None:
+    alice = tmp_path / "alice"
+    bob = tmp_path / "bob"
+    shared = tmp_path / "results"
+    alice.mkdir()
+    bob.mkdir()
+    (alice / "genome-config.toml").touch()
+    alignment = _touch(alice / "alice.bam")
+    panel, calls, gvcf = _audit_inputs(bob, phase_set="1")
+    panel = panel.rename(alice / "shared-panel.json")
+    api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=calls,
+            research_panel=True,
+            outdir=shared,
+        )
+    )
+    report = pr.build_report(alice, input_file=alignment, results=(shared,))
+    assert "panel_audit" not in report["sections"]
+    own_gvcf = gvcf.rename(alice / "sample.g.vcf")
+    api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=calls,
+            gvcf=own_gvcf,
+            research_panel=True,
+            outdir=shared,
+        )
+    )
+    report = pr.build_report(alice, input_file=alignment, results=(shared,))
+    assert report["sections"]["panel_audit"]["findings"][0]["value"] == (
+        "2 qualifying allele copies"
+    )
 
 
 def test_cyp2d6_from_runs_before_issue_844_is_not_high_or_called_d6_copies(sample):

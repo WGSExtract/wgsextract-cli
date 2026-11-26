@@ -204,10 +204,11 @@ MINIMUM_VERSIONS = {"bcftools": (1, 0), "samtools": (1, 10)}
 VERSION_BANNER_NAMES = {"haplogrep3": "haplogrep 3 ", "granite": "granite ("}
 
 
-def get_tool_version(tool: str) -> str | None:
+def get_tool_version(tool: str, *, full_banner: bool = False) -> str | None:
     """Attempt to get the version of a tool by running it.
 
-    Successful probes are cached per process, by command."""
+    Successful probes are cached per process, by command. Return the first
+    line unless the caller needs a bundled library's version too."""
     if reason := (
         unsupported_windows_arm64_tool(tool) or tool_unsupported_reason(tool)
     ):
@@ -246,7 +247,7 @@ def get_tool_version(tool: str) -> str | None:
         if version.startswith("Error:"):
             return version
         tool_versions[key] = version
-    return version
+    return version if full_banner else version.partition("\n")[0]
 
 
 def _probe_version(tool: str, full_cmd: list[str]) -> str:
@@ -275,9 +276,7 @@ def _probe_version_in(tool: str, full_cmd: list[str], cwd: str | None) -> str:
             return failure
 
         if res.returncode == 0 and output and not output.startswith("[main]"):
-            lines = [line.strip() for line in output.splitlines() if line.strip()]
-            if lines:
-                return lines[0]
+            return output
 
         # 2. Fallback for tools that use bare command or --help
         res = _run_probe(tool, full_cmd, cwd)
