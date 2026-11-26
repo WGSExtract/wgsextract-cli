@@ -1,8 +1,17 @@
+from pathlib import Path
+from typing import Any
+
 from tests.htslib_helpers import needs_htslib, sam_to_bam
 from wgsextract_cli import api
 from wgsextract_cli.api import RefStatusParams
 from wgsextract_cli.commands.ref.status import print_ref_status, ref_status_values
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.constants import (
+    BOOTSTRAP_FILENAME,
+    BOOTSTRAP_URL,
+    BOOTSTRAP_VERSION,
+)
+from wgsextract_cli.core.resource_mirrors import resources as mirror_catalog
 
 
 def _status(**fields):
@@ -46,6 +55,52 @@ def test_ref_status_reports_gui_library_values(tmp_path):
     assert values["library.pharmgkbInstalled"] == "true"
     assert values["library.testGenomeInstalled"] == "true"
     assert values["library.testGenomeStatus"] == "installed"
+
+
+def test_ref_status_bootstrap_distinguishes_installed_and_available_releases(
+    tmp_path: Path,
+) -> None:
+    reflib = tmp_path / "reference"
+    reflib.mkdir()
+    datasets = tmp_path / "datasets"
+
+    def bootstrap() -> dict[str, Any]:
+        details = api.ref.status(
+            RefStatusParams(ref=reflib, mygenomes_library=datasets)
+        ).details
+        assert details is not None
+        result = details["bootstrap"]
+        assert isinstance(result, dict)
+        return result
+
+    missing = bootstrap()
+    assert missing["installedVersion"] is None
+    assert missing["availableVersion"] == BOOTSTRAP_VERSION
+    assert (
+        missing["downloadBytes"]
+        == mirror_catalog()[BOOTSTRAP_URL]["upstream_size_at_audit"]
+        > 0
+    )
+    assert not missing["updateAvailable"]
+
+    (reflib / ".bootstrap-0.0.1").touch()
+    assert bootstrap()["installedVersion"] == "0.0.1"
+    assert bootstrap()["updateAvailable"]
+
+    (reflib / f".bootstrap-{BOOTSTRAP_VERSION}").touch()
+    (reflib / ".bootstrap-999.0.0").mkdir()  # a directory is not an extraction marker
+    assert bootstrap()["installedVersion"] == BOOTSTRAP_VERSION
+    assert not bootstrap()["updateAvailable"]
+
+    for version in ("9.9.0", "9.10.0"):
+        (reflib / f".bootstrap-{version}").touch()
+    assert bootstrap()["installedVersion"] == "9.10.0"
+    assert not bootstrap()["updateAvailable"]
+
+    (reflib / f"{BOOTSTRAP_FILENAME}.partial").touch()
+    interrupted = bootstrap()
+    assert not interrupted["installed"]
+    assert interrupted["installedVersion"] is None
 
 
 def test_ref_status_uses_custom_annotation_vcf_for_readiness(tmp_path):

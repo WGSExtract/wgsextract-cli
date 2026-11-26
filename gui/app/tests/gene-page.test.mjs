@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { exonNumbers, filteredVariants, GeneDocumentError, geneDocument, geneExportName } from "../dist/shared/gene-page.js";
+import { parseIconMapToml } from "../dist/shared/icon-map.js";
 import { genePagePrerequisites, installGenePagePrerequisite, openGenePage } from "../dist/web/src/server/gene-page.js";
 import { ResultPaths } from "../dist/web/src/server/result-paths.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
@@ -233,12 +234,15 @@ test("gene page prerequisites controller supports Cancel, Continue (after extern
     assert.equal(events.filter((event) => event.kind === "ready").length, 2);
 });
 
-test("sidebar Gene page item renders a nav icon beside its label", () => {
+test("the shipped Gene page sidebar item renders its icon and keeps the label on one line", async () => {
+    const iconMap = parseIconMapToml(await readFile(new URL("../../examples/WGSExtract/iconmap.toml", import.meta.url), "utf8"));
     Object.assign(state, createInitialState(), {
         manifest: { id: "wgs-extract", displayName: "WGS Extract", pages: [] },
         labels: { ...state.labels, geneTitle: "Gene page", viewerTitle: "Genome viewer" },
-        iconMap: { bootstrap: { "gene-page": "file-earmark-medical", "genome-viewer": "search" }, emoji: { "gene-page": "🧬" } },
+        iconMap,
     });
     const nav = renderNavigation();
     assert.match(nav, /data-gene-page-open><span class="nav-icon" aria-hidden="true">[\s\S]*?bi-file-earmark-medical[\s\S]*?<\/span><span>Gene page<\/span><\/button>/);
+    const css = await readFile(new URL("../web/styles.css", import.meta.url), "utf8");
+    assert.match(css, /\[data-gene-page-open\][^{]*\{[^}]*white-space:\s*nowrap/);
 });

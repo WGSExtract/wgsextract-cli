@@ -63,6 +63,27 @@ export function displayWorkspacePath(value: string, roots: WorkspaceRoots): stri
     return shown.relative ? `${shown.token}/${shown.relative}` : shown.token;
 }
 
+/** Resolve a workspace-relative field for display without changing its saved value. */
+export function resolveWorkspaceDisplayPath(value: string, roots: WorkspaceRoots): string {
+    for (const [token, root] of [
+        [usersWorkspaceToken, roots.users || roots.bundle],
+        [bundleWorkspaceToken, roots.bundle],
+    ] as const) {
+        if (!root) {
+            continue;
+        }
+        if (value === token) {
+            return root;
+        }
+        const suffix = value.slice(token.length);
+        if (value.startsWith(token) && /^[\\/]/.test(suffix)) {
+            const separator = /^(?:[A-Za-z]:|\\\\)/.test(root) ? "\\" : "/";
+            return root.replace(/[\\/]+$/, "") + suffix.replace(/[\\/]+/g, () => separator);
+        }
+    }
+    return value;
+}
+
 /** Whether `candidate` is `parent` itself or inside it. */
 export function isSameOrInsidePath(parent: string, candidate: string): boolean {
     return pathRelativeToRoot(candidate, parent) != null;

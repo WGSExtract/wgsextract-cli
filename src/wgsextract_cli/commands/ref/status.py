@@ -21,6 +21,7 @@ from wgsextract_cli.core import (
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.builds import display_build
 from wgsextract_cli.core.config import mygenomes_library, settings
+from wgsextract_cli.core.constants import BOOTSTRAP_URL, BOOTSTRAP_VERSION
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
 from wgsextract_cli.core.mini_genome import status as test_genome_status
 from wgsextract_cli.core.paths import absolute_path, expand_path
@@ -35,8 +36,10 @@ from wgsextract_cli.core.ref_library.assets import (
     reference_library_of,
 )
 from wgsextract_cli.core.ref_library.layout import download_dirs
+from wgsextract_cli.core.ref_library.processing import bootstrap_installed_version
 from wgsextract_cli.core.reference_processing import bootstrap_has_support_assets
 from wgsextract_cli.core.reference_resolver import ReferenceLibrary
+from wgsextract_cli.core.resource_mirrors import resources as mirror_catalog
 from wgsextract_cli.core.results import current_result, human_output
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -120,7 +123,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         },
         "build": build,
         # The AADR 2M panel is an optional download, not part of the bootstrap.
-        "bootstrap": {"installed": bootstrap_has_support_assets(reflib)},
+        "bootstrap": _bootstrap_status(reflib),
         "aadr": aadr,
         "somalier": {
             "installed": somalier_resources.installed(reflib),
@@ -166,6 +169,21 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
         "ploidy": _ploidy_status(reflib),
         "mappabilityMaps": _mappability_map_status(reflib),
         "testGenome": test_genome,
+    }
+
+
+def _bootstrap_status(reflib: str) -> dict[str, Any]:
+    installed = bootstrap_has_support_assets(reflib)
+    version = bootstrap_installed_version(reflib) if installed else None
+    release = mirror_catalog().get(BOOTSTRAP_URL, {})
+    return {
+        "installed": installed,
+        "installedVersion": version,
+        "availableVersion": BOOTSTRAP_VERSION,
+        "downloadBytes": release.get("upstream_size_at_audit"),
+        "updateAvailable": version is not None
+        and tuple(map(int, version.split(".")))
+        < tuple(map(int, BOOTSTRAP_VERSION.split("."))),
     }
 
 

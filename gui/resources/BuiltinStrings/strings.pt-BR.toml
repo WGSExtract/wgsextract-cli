@@ -295,6 +295,7 @@
 "library.status.missing" = "Ausente"  # i18n-source-hash:92185dc5
 "library.status.unavailable" = "Não disponível"  # i18n-source-hash:4028c0c8
 "library.status.unindexed" = "Precisa de índice"  # i18n-source-hash:a821219f
+"library.status.updateAvailable" = "Atualização disponível"  # i18n-source-hash:21f1865b
 "library.tags.mandatory" = "Obrigatória"  # i18n-source-hash:4c2ea2d1
 "library.tags.optional" = "Opcional"  # i18n-source-hash:0c6c4102
 "library.tags.recommended" = "Recomendado"  # i18n-source-hash:9ef93755

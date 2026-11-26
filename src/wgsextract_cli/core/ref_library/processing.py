@@ -4,6 +4,7 @@ import contextlib
 import filecmp
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tarfile
@@ -446,6 +447,24 @@ def bootstrap_has_support_assets(reflib_dir: str) -> bool:
     if any(root.glob(BOOTSTRAP_MARKER_PREFIX + "*")):
         return True
     return all((root / name).is_file() for name in _LEGACY_BOOTSTRAP_SENTINELS)
+
+
+def bootstrap_installed_version(reflib_dir: str) -> str | None:
+    """Return the highest completed release marker, if the library has one."""
+    versions = (
+        marker.name.removeprefix(BOOTSTRAP_MARKER_PREFIX)
+        for marker in Path(reflib_dir).glob(BOOTSTRAP_MARKER_PREFIX + "*")
+        if marker.is_file()
+    )
+    return max(
+        (
+            version
+            for version in versions
+            if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version)
+        ),
+        key=lambda version: tuple(map(int, version.split("."))),
+        default=None,
+    )
 
 
 # Bootstrap files and subtrees whose content legitimately updates between

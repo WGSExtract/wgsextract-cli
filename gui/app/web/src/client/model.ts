@@ -106,6 +106,7 @@ export function tagStyle(status: unknown): string {
             return "success";
         case "unindexed":
         case "incomplete":
+        case "update-available":
             return "warning";
         case "missing":
         case "unavailable":

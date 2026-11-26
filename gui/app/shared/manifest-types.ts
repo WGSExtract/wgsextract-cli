@@ -79,6 +79,7 @@ export interface ControlSpec {
     label?: string;
     value?: StateValue;
     multiple?: boolean;
+    pathDisplay?: "absolute";
     options?: ControlOption[];
     settings?: ConfigSetting[];
     configFile?: ConfigFileSpec;

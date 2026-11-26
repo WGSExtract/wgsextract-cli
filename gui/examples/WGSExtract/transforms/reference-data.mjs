@@ -1,5 +1,5 @@
 // Maps `wgsextract --json ref status` into rows for the Reference Data table.
-// Each row carries its status ("installed" | "missing"), version, target build,
+// Each row carries its status, version, target build,
 // purpose, and either its on-disk size (when installed) or download size.
 import { readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -142,23 +142,26 @@ export function items(document) {
     const vep = details.vepCache ?? {};
     const dbsnp = details.dbsnp ?? {};
     const vepVersions = Array.isArray(vep.versions) ? vep.versions : [];
+    const bootstrap = details.bootstrap ?? {};
+    const installedVersion = bootstrap.installedVersion ? `v${bootstrap.installedVersion}` : "";
+    const availableVersion = bootstrap.availableVersion ? `v${bootstrap.availableVersion}` : "";
+    const bootstrapVersion = bootstrap.installed && availableVersion && installedVersion !== availableVersion
+        ? `${installedVersion || "—"} / ${availableVersion}`
+        : installedVersion || availableVersion || "—";
 
     const rows = [
         row({
             id: "bootstrap",
             name: "Library Bootstrap",
-            installed: Boolean(details.bootstrap?.installed),
+            installed: Boolean(bootstrap.installed),
+            updateAvailable: bootstrap.updateAvailable === true,
             tags: [{ id: "required", title: "Required", style: "primary" }],
-            version: "v0.2.0",
+            version: bootstrapVersion,
             build: "All",
             usedFor: "Liftover chains, chip templates, N-counts",
-            downloadSize: "~15 MB",
-            installedBytes: fileGroupBytes(refRoot, [
-                "hg19ToHg38.over.chain.gz", "hg38ToHg19.over.chain.gz",
-                "chm13v2-grch38.chain", "grch38-chm13v2.chain",
-                "chm13v2-hg19.chain", "hg19-chm13v2.chain",
-                "TruSeq_Exome_TargetedRegions_v1.2.bed", "xgen_plus_spikein.GRCh38.bed",
-            ]),
+            downloadSize: Number.isFinite(bootstrap.downloadBytes) && bootstrap.downloadBytes > 0
+                ? `${(bootstrap.downloadBytes / (1024 ** 2)).toFixed(1)} MiB`
+                : "—",
             tooltip: "Core reference support files: liftover chains, microarray chip templates, and N-count tables.",
         }),
         row({
@@ -334,12 +337,12 @@ function annotationRow(id, name, buildsMap, version, build, usedFor, downloadSiz
     });
 }
 
-function row({ id, name, installed, tags = [], version, build, usedFor, downloadSize, installedBytes = 0, tooltip = "", advancedOnly = false }) {
+function row({ id, name, installed, updateAvailable = false, tags = [], version, build, usedFor, downloadSize, installedBytes = 0, tooltip = "", advancedOnly = false }) {
     const diskSize = installed ? formatDiskBytes(installedBytes) : "";
     return {
         id,
         title: name,
-        status: installed ? "installed" : "missing",
+        status: installed ? (updateAvailable ? "update-available" : "installed") : "missing",
         tags,
         tooltip: referenceDataTooltip(id, tooltip),
         values: {
@@ -380,10 +383,6 @@ function sumPaths(paths) {
 function sumWithIndex(filePath) {
     if (!filePath) return 0;
     return fileBytes(filePath) + fileBytes(`${filePath}.tbi`) + fileBytes(`${filePath}.csi`);
-}
-
-function fileGroupBytes(refRoot, names) {
-    return sumPaths(names.map((name) => path.join(refRoot, name)));
 }
 
 function findNamedBytes(refRoot, names) {
