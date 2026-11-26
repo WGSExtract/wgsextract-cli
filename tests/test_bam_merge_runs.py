@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
-from tests.smoke_utils import operation_warnings
 from wgsextract_cli import api
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.utils import run_command
@@ -104,7 +103,7 @@ def test_runs_keep_their_read_groups_sample_and_mod_tags(tmp_path, cram):
     assert result.metrics["read_groups"] == 2
     runs = [r["autosomal_depth"] for r in result.details["runs"]]
     assert result.metrics["autosomal_depth"] == pytest.approx(sum(runs), abs=0.02)
-    assert not operation_warnings(result)
+    assert not result.warnings
 
 
 @needs_samtools
@@ -127,7 +126,7 @@ def test_runs_without_a_sample_name_take_the_output_name(tmp_path):
     a = _run(tmp_path / "a.bam", 1)
     b = _run(tmp_path / "b.bam", 2)
     result = _merge(tmp_path, [a, b], output="NA12878.bam")
-    assert [w.code for w in operation_warnings(result)] == ["sample_name_assumed"]
+    assert [w.code for w in result.warnings] == ["sample_name_assumed"]
     assert {g["SM"] for g in _groups(_merged(result)).values()} == {"NA12878"}
 
 
@@ -137,7 +136,7 @@ def test_clashing_read_group_ids_stay_apart_with_the_sample_set(tmp_path):
     a = _run(tmp_path / "a.bam", 1, rg="@RG\tID:1\tPU:FAA1")
     b = _run(tmp_path / "b.bam", 2, rg="@RG\tID:1\tPU:FAB2")
     result = _merge(tmp_path, [a, b], sample="S")
-    assert [w.code for w in operation_warnings(result)] == ["read_group_conflict"]
+    assert [w.code for w in result.warnings] == ["read_group_conflict"]
     groups = _groups(_merged(result))
     assert sorted(g["PU"] for g in groups.values()) == ["FAA1", "FAB2"]
     assert all(g["SM"] == "S" and g["PL"] == "ONT" for g in groups.values())
@@ -155,7 +154,7 @@ def test_runs_with_identical_read_group_lines_stay_apart(tmp_path):
     a = _run(tmp_path / "a.bam", 1, rg="@RG\tID:x\tPL:ONT")
     b = _run(tmp_path / "b.bam", 2, rg="@RG\tID:x\tPL:ONT")
     result = _merge(tmp_path, [a, b], sample="S")
-    assert [w.code for w in operation_warnings(result)] == ["read_group_renamed"]
+    assert [w.code for w in result.warnings] == ["read_group_renamed"]
     assert result.metrics["read_groups"] == 2
     merged = _reads(_merged(result))
     ids = [
@@ -174,7 +173,7 @@ def test_one_run_split_across_files_keeps_one_read_group(tmp_path):
     a = _run(tmp_path / "a.bam", 1, rg=rg)
     b = _run(tmp_path / "b.bam", 2, rg=rg)
     result = _merge(tmp_path, [a, b], sample="S")
-    assert not operation_warnings(result)
+    assert not result.warnings
     assert list(_groups(_merged(result))) == ["x"]
 
 
@@ -205,7 +204,7 @@ def test_different_reads_sharing_names_are_flagged(tmp_path):
     a = _run(tmp_path / "a.bam", 1, names=names)
     b = _run(tmp_path / "b.bam", 2, names=names)
     result = _merge(tmp_path, [a, b], sample="S")
-    assert [w.code for w in operation_warnings(result)] == ["read_name_collision"]
+    assert [w.code for w in result.warnings] == ["read_name_collision"]
 
 
 @needs_samtools
@@ -223,7 +222,7 @@ def test_a_run_without_mod_tags_is_flagged(tmp_path):
         [_run(tmp_path / "mods.bam", 1), _run(tmp_path / "plain.bam", 2, mods=False)],
         sample="S",
     )
-    (warning,) = operation_warnings(result)
+    (warning,) = result.warnings
     assert warning.code == "mod_tags_partial"
     assert warning.details["inputs"] == "plain.bam"
 
@@ -267,7 +266,7 @@ def test_mates_sharing_a_name_across_runs_are_flagged(tmp_path):
     a = _run(tmp_path / "a.bam", 1, names=names, flag=64 | 1 | 8)
     b = _run(tmp_path / "b.bam", 2, names=names, flag=128 | 1 | 8)
     result = _merge(tmp_path, [a, b], sample="S")
-    assert [w.code for w in operation_warnings(result)] == ["read_name_collision"]
+    assert [w.code for w in result.warnings] == ["read_name_collision"]
 
 
 @needs_samtools

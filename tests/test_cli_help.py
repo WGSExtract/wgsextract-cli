@@ -487,10 +487,8 @@ def test_a_deprecated_command_still_runs_warns_and_is_listed_apart(
     captured = capsys.readouterr()
     result = json.loads(captured.out)
     assert result["status"] == "ok"
-    (deprecation,) = [
-        w for w in result["warnings"] if w["code"] == "deprecated_command"
-    ]
-    assert deprecation["details"] == {
+    assert [w["code"] for w in result["warnings"]] == ["deprecated_command"]
+    assert result["warnings"][0]["details"] == {
         "replacement": "ref library --list",
         "remove_in": "9.9.0",
     }

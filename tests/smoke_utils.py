@@ -7,17 +7,11 @@ from pathlib import Path
 
 from tests.home_isolation import isolated_home_env, state_directory_setting
 from wgsextract_cli.core.file_lock import build_lock
-from wgsextract_cli.core.results import CommandResult, ResultWarning
 from wgsextract_cli.core.utils import run_command
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _TOOL_CACHE: dict[str, bool] = {}
-
-
-def operation_warnings(result: CommandResult) -> list[ResultWarning]:
-    """Run diagnostics, excluding the command's evidence-level notice."""
-    return [w for w in result.warnings if w.code != "command_certification_notice"]
 
 
 def check_tool(tool_name: str) -> bool:

@@ -1439,7 +1439,7 @@ def test_smn_reports_copy_numbers_and_says_it_is_not_a_diagnosis(tmp_path, smn, 
     assert "SMN1: 2 copies, SMN2: 2 copies" in caplog.text
     assert "not a diagnosis" in caplog.text
     assert "2+0" in caplog.text
-    assert manifest_warnings(result).keys() <= {"command_certification_notice"}
+    assert manifest_warnings(result) == {}
 
 
 @pytest.mark.skipif(

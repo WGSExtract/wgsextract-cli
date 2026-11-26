@@ -21,7 +21,6 @@ from tests.htslib_helpers import (
     sam_to_bam,
     write_fasta,
 )
-from tests.smoke_utils import operation_warnings
 from wgsextract_cli import api
 from wgsextract_cli.commands.qc.relate import UNCERTAIN, infer_sex
 from wgsextract_cli.core import somalier_resources
@@ -165,7 +164,7 @@ def test_trio_relatedness_and_sex(family, tmp_path):
     }
     assert result.metrics["related_pairs"] == 2
     assert result.metrics["flagged_pairs"] == 0
-    assert not operation_warnings(result)
+    assert not result.warnings
     assert (tmp_path / "relate.html").is_file()
     assert {
         Path(o.path).name for o in result.outputs if o.role == "somalier_sketch"

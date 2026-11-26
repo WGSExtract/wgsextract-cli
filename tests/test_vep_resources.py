@@ -10,7 +10,6 @@ import pytest
 
 from tests.htslib_helpers import needs_tools, run_wgsextract
 from tests.http_server import serving
-from tests.smoke_utils import operation_warnings
 from wgsextract_cli import api
 from wgsextract_cli.api.vep import VepDownloadParams, VepVerifyParams
 from wgsextract_cli.commands._vep_resources import preprocess_vcf_chr_prefix
@@ -409,7 +408,7 @@ def test_verify_warns_about_missing_chromosomes(tmp_path):
     result = api.vep.verify(VepVerifyParams(vep_cache=tmp_path))
 
     assert result.metrics["missing_chromosomes"] == 3
-    assert [(w.code, w.details) for w in operation_warnings(result)] == [
+    assert [(w.code, w.details) for w in result.warnings] == [
         ("chromosomes_missing", {"chromosomes": "22,Y,MT"})
     ]
 

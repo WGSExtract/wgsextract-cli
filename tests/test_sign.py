@@ -6,7 +6,7 @@ from pathlib import Path, PureWindowsPath
 
 import pytest
 
-from tests.smoke_utils import operation_warnings, run_cli
+from tests.smoke_utils import run_cli
 from wgsextract_cli import api
 from wgsextract_cli.commands.sign import _manifest_name, _read_manifest
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
@@ -189,7 +189,7 @@ def test_1358_verify_skips_openssh_that_hangs_above_8kib(
     if fallback:
         verified = _verify(manifest, public_key=public_key)
         assert verified.metrics["files"] == 122
-        assert not operation_warnings(verified)
+        assert not verified.warnings
     else:
         with pytest.raises(
             api.CommandFailed, match=r"No working ssh-keygen\.exe"
@@ -270,7 +270,7 @@ def test_unsigned_manifest_checks_hashes_only(outputs):
     manifest = outputs / "SHA256SUMS"
     assert not manifest.with_suffix(".sig").exists()
     verified = _verify(manifest)
-    assert "unsigned" in {w.code for w in verified.warnings}
+    assert [w.code for w in verified.warnings] == ["unsigned"]
 
     (outputs / "a.txt").unlink()
     with pytest.raises(api.CommandFailed, match="missing: a.txt"):
@@ -292,7 +292,7 @@ def test_unvalidated_signature_is_a_result_warning(tmp_path, outputs):
     _create(outputs, key=_key(tmp_path / "id"))
     verified = _verify(outputs / "SHA256SUMS")
     assert verified.metrics["signed"] is True
-    assert "signature_not_trusted" in {w.code for w in verified.warnings}
+    assert [w.code for w in verified.warnings] == ["signature_not_trusted"]
 
 
 def test_verify_reads_nothing_outside_the_read_scope(tmp_path, outputs):

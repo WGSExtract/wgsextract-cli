@@ -140,9 +140,6 @@ def test_mcp_offers_read_only_queries_by_default(work, fake_data):
     job = result["structuredContent"]
     assert job["status"] == "succeeded" and job["result"]["metrics"]["sorted"]
     assert job["result"]["certification"] == "Tested"
-    assert "command_certification_notice" in {
-        warning["code"] for warning in job["result"]["warnings"]
-    }
     assert json.loads(result["content"][0]["text"]) == job
 
     result = mcp.call("info", input=str(work.parent / "a.bam"))

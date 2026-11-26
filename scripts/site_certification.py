@@ -21,10 +21,10 @@ def render() -> str:
             "mechanics have been tested. Platform entries describe the linked "
             "qualification; a missing entry is not an unsupported-platform claim.",
             "",
-            "Running a Tested or Experimental operation reports a notice; asking "
+            "Running a Tested or Experimental operation logs a notice; asking "
             "for help does not run the operation. Set "
             "`certification_notices = false` in `config.toml` to hide it without "
-            "changing the level recorded in results.",
+            "changing the level recorded in results. The notice is not a run warning.",
             "",
             "## Evidence by command",
             "",

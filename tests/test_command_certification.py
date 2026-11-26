@@ -59,13 +59,10 @@ def test_1596_certification_notice_is_configurable_but_manifest_keeps_level(
     doc = json.loads(captured.out)
     Draft202012Validator(load_schema()).validate(doc)
     assert doc["certification"] == "Tested"
-    assert (
-        json.loads(Path(doc["manifest"]).read_text(encoding="utf-8"))["certification"]
-        == "Tested"
-    )
-    warning = next(
-        (w for w in doc["warnings"] if w["code"] == "command_certification_notice"),
-        None,
-    )
-    assert bool(warning) is not suppress
-    assert ("Tested certification" in captured.err) is not suppress
+    manifest = json.loads(Path(doc["manifest"]).read_text(encoding="utf-8"))
+    assert manifest["certification"] == "Tested"
+    assert doc["warnings"] == manifest["warnings"] == []
+    notices = [
+        line for line in captured.err.splitlines() if "Tested certification" in line
+    ]
+    assert len(notices) == (0 if suppress else 1)

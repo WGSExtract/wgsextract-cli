@@ -22,7 +22,6 @@ from tests.htslib_helpers import (
     sam_to_bam,
     write_fasta,
 )
-from tests.smoke_utils import operation_warnings
 from tests.test_1052_offline_defaults import blocked_network as blocked_network
 from tests.yleaf_helpers import native_tables as native_tables
 from wgsextract_cli.api import CommandFailed
@@ -906,7 +905,7 @@ def test_mt_haplogroup_maps_a_chm13_chrm_onto_rcrs_positions_832(tmp_path, at_10
     assert [r[:4] for r in call["records"]] == expected
     assert f"md5={RCRS_MD5}" in "".join(call["contigs"])
     assert "rCRS" in result.details["mt_reference"]
-    assert not operation_warnings(result)
+    assert not result.warnings
 
 
 _POLY_C = {  # CHM13 16294-16310 is rCRS 302-316 with a C after 310

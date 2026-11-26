@@ -931,7 +931,7 @@ def test_cli_sign_create_never_lists_its_own_result_manifest(tmp_path):
     assert rc == 0, stderr
     document = json.loads(stdout)
     assert document["metrics"]["changed_files"] == 0
-    assert "unsigned" in {w["code"] for w in document["warnings"]}
+    assert [w["code"] for w in document["warnings"]] == ["unsigned"]
 
 
 def test_vep_records_an_existing_output_it_skips(tmp_path):

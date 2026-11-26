@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from functools import cache
@@ -89,7 +90,6 @@ def certification_paths() -> Iterator[str]:
 
 def record_certification(result: CommandResult, path: str) -> None:
     from wgsextract_cli.core.config import settings
-    from wgsextract_cli.core.results import warn
     from wgsextract_cli.core.settings_schema import SETTINGS
 
     # Internal/non-command result producers do not have registration metadata.
@@ -102,9 +102,9 @@ def record_certification(result: CommandResult, path: str) -> None:
     } and settings.get(
         "certification_notices", SETTINGS["certification_notices"].default
     ):
-        warn(
-            "command_certification_notice",
-            f"{path}: {certification.level.value} certification. "
-            + LEVEL_CRITERIA[certification.level],
-            certification=certification.level.value,
+        logging.info(
+            "%s: %s certification. %s",
+            path,
+            certification.level.value,
+            LEVEL_CRITERIA[certification.level],
         )

@@ -71,7 +71,7 @@ def test_ucsc_hg19_chrm_is_targeted_whole(tmp_path):
     ref = _fai(tmp_path / "ucsc.fa", "hg19", chrM=16_571)
     result, rows = _bed(tmp_path, genes=("MT-ND1",), pad_kb=0, ref=ref)
     assert rows == [["chrM", "0", "16571", "MT-ND1"]]
-    assert "panel_chrm_not_rcrs" in {w.code for w in result.warnings}
+    assert [w.code for w in result.warnings] == ["panel_chrm_not_rcrs"]
 
 
 def test_ref_of_another_build_is_refused(tmp_path):
@@ -102,7 +102,7 @@ def test_unique_alias_resolves_with_a_warning(tmp_path):
     gene_file.write_text("# my panel\nCYPIID6  # alias\n")
     result, rows = _bed(tmp_path, gene_file=gene_file, pad_kb=0)
     assert [r[3] for r in rows] == ["CYP2D6"]
-    (warning,) = (w for w in result.warnings if w.code == "gene_alias")
+    (warning,) = result.warnings
     assert warning.code == "gene_alias" and warning.details["symbol"] == "CYP2D6"
 
 
@@ -116,7 +116,7 @@ def test_acmg_sf_preset_follows_the_reports_default_list(tmp_path):
 def test_large_panel_warns(tmp_path):
     result, _ = _bed(tmp_path, presets=("acmg-sf", "autoimmune"), pad_kb=2000)
     assert result.metrics["genome_fraction"] > panel.WARN_FRACTION
-    assert "panel_too_large" in {w.code for w in result.warnings}
+    assert [w.code for w in result.warnings] == ["panel_too_large"]
 
 
 def test_cli_writes_the_bed_and_lists_presets(tmp_path, capsys):

@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, run_wgsextract, write_fasta
-from tests.smoke_utils import operation_warnings
 from wgsextract_cli import api
 from wgsextract_cli.core.bgzf import is_bgzf
 from wgsextract_cli.core.utils import run_command
@@ -83,7 +82,7 @@ def _records(vcf: Path) -> list[list[str]]:
 
 
 def _codes(result: api.Result) -> dict[str, dict]:
-    return {warning.code: warning.details for warning in operation_warnings(result)}
+    return {warning.code: warning.details for warning in result.warnings}
 
 
 def _digest(path: Path) -> str:
@@ -201,7 +200,7 @@ def test_valid_vcf_records_no_warnings(tmp_path):
         api.VcfPrepareParams(input=_valid_vcf(tmp_path), outdir=tmp_path / "o")
     )
 
-    assert not operation_warnings(result)
+    assert result.warnings == []
     assert result.metrics["input_index"] == "valid"
 
 

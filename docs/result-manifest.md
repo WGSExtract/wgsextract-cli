@@ -94,7 +94,7 @@ parser still treats external/compact documents as unvalidated input.
 | --- | --- |
 | `schema` | Always `"wgsextract.result/1"`. |
 | `command` | The subcommand path, e.g. `"vcf snp"` or `"lineage y-haplogroup"`. |
-| `certification` | Command certification at the time of the run. Older manifests omit it. See `wgsextract help <command>` for evidence and limits. |
+| `certification` | Command certification at the time of the run. Older manifests omit it. The Tested or Experimental run notice is logged separately, not listed in `warnings`. Set `certification_notices = false` in `config.toml` to hide it without changing the recorded level. See `wgsextract help <command>` for evidence and limits. |
 | `status`, `exit_code`, `error` | `ok`, `failed` or `cancelled`; the process exit code; and `null` or `{kind, message}`, where `kind` is one of `failure`, `usage`, `missing_dependency` or `cancelled`. Some errors include a stable message `code`. |
 | `inputs`, `outputs` | File records: `path` (absolute), `kind` (`bam`, `cram`, `vcf`, `fasta`, `fastq`, `tsv`, `json`, `directory`, ...), `role` (what the file is to this command, e.g. `input`, `snps`, `mt_bam`, `haplogroup_report`), `exists`, `size_bytes`, `mtime` (UTC ISO 8601), `fingerprint`, `index` (the `.bai`/`.crai`/`.csi`/`.tbi`/`.fai` beside it, if any) and per-file `metrics`. |
 | `metrics` | Flat headline numbers and labels, e.g. `variants`, `haplogroup`, `sex`, `avg_depth`. |
@@ -237,10 +237,6 @@ links the manifests of a BAM/VCF workflow, such as `vcf snp` followed by
   commands record artifacts but don't check them yet.
 
 ### Warning codes
-
-`command_certification_notice` reports a Tested or Experimental command
-(`certification` in the warning details). Set `certification_notices = false`
-in `config.toml` to suppress this notice without changing the manifest's level.
 
 | Code | Raised by | Meaning |
 | --- | --- | --- |

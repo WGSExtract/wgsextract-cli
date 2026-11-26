@@ -121,7 +121,7 @@ class Settings:
     """Every config.toml setting, checked and with its default filled in."""
 
     certification_notices: bool = setting(
-        True, "Warn when running commands at the Tested or Experimental level"
+        True, "Log a notice when running commands at the Tested or Experimental level"
     )
     allow_reference_downloads: bool = setting(
         False,
