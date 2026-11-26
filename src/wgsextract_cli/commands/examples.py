@@ -146,7 +146,9 @@ def _download_file(
     """Download into <destination>.partial (resuming it if present), then rename."""
     from wgsextract_cli.core.network_policy import require_network
 
-    require_network(destination.name)
+    shared_http = method != "aspera" and urlparse(source).scheme in {"http", "https"}
+    if force or not shared_http:
+        require_network(destination.name)
     if force:
         for path in _download_paths(destination):
             path.unlink(missing_ok=True)
@@ -154,7 +156,7 @@ def _download_file(
     logging.info(
         "%s %s", "Resuming" if partial.exists() else "Downloading", redact_urls(source)
     )
-    if method != "aspera" and urlparse(source).scheme in {"http", "https"}:
+    if shared_http:
         if not download_file(
             source, str(destination), cancel_event=cancel_event(), use_cache=not force
         ):

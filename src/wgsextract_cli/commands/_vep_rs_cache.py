@@ -199,16 +199,22 @@ def _fetch(sources: list[_Source]) -> None:
     todo: list[tuple[str, Path, _Sum]] = []
     for source in sources:
         checkpoint()
+        candidates = (
+            (source.dest, source.dest.with_suffix(""))
+            if source.table
+            else (source.dest,)
+        )
+        for candidate in candidates:
+            for path in (candidate, *(Path(f"{candidate}{x}") for x in _SIDECARS)):
+                _require_in_scope(path)
+        if any(dest.is_file() and Path(f"{dest}.ok").is_file() for dest in candidates):
+            continue
         folder, filename = source.url.rsplit("/", 1)
         listing = _expected_sums(f"{folder}/{source.listing}", checksums)
         url, dest = source.url, source.dest
         if filename not in listing and source.table and filename[:-3] in listing:
             url, dest = url[:-3], dest.with_suffix("")
             filename = filename[:-3]
-        for path in (dest, *(Path(f"{dest}{x}") for x in _SIDECARS)):
-            _require_in_scope(path)
-        if Path(f"{dest}.ok").exists() and dest.exists():
-            continue
         expected = listing.get(filename)
         if expected is None:
             if source.optional:

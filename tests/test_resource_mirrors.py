@@ -20,7 +20,8 @@ from scripts import mirror_resource_transfer as transfer
 from tests.htslib_helpers import needs_tools
 from tests.http_server import RangeServer
 from wgsextract_cli import api
-from wgsextract_cli.core import gnomad_af, resource_mirrors
+from wgsextract_cli.core import dev_download_cache, gnomad_af, resource_mirrors
+from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.network_policy import NetworkRestricted, network_options
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.utils import run_command
@@ -330,10 +331,11 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
 
 
 @needs_tools("bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize("catalogued", [True, False])
 def test_1591_gnomad_resumes_saved_contigs_offline(
-    source, mirror_catalog, tmp_path, monkeypatch
+    source, mirror_catalog, tmp_path, monkeypatch, catalogued
 ):
-    entry = mirror_catalog(source, b"published contig bytes")
+    entry = mirror_catalog(source, b"published contig bytes", allowed=catalogued)
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", entry["upstream_url"])
     monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
     library = tmp_path / "library"
@@ -351,6 +353,62 @@ def test_1591_gnomad_resumes_saved_contigs_offline(
     result = run_command(["tabix", str(table), "chr1:100-100"], capture_output=True)
     assert result.stdout.encode() == row
     assert not source.requests
+
+
+@needs_tools("bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize(
+    ("mode", "location"),
+    [("off", "staged"), ("low", "staged"), ("off", "cache"), ("off", "missing")],
+)
+def test_1591_gnomad_mirror_feeder_only_requires_network_for_missing_raw_parts(
+    source, mirror_catalog, tmp_path, monkeypatch, caplog, mode, location
+):
+    vcf = (
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=1000>\n"
+        '##INFO=<ID=AF_joint,Number=A,Type=Float,Description="AF">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t100\t.\tA\tG\t.\tPASS\tAF_joint=0.25\n"
+    )
+    data = gzip.compress(vcf.encode())
+    split = len(data) // 2
+    entry = mirror_catalog(source, data, split=split)
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_URL", entry["upstream_url"])
+    monkeypatch.setattr(gnomad_af, "GNOMAD_V4_CONTIGS", ["chr1"])
+    library = tmp_path / "library"
+    parts = library / "downloads" / f".gnomad_hg38_parts_v{gnomad_af._TABLE_SCHEMA}"
+    staging = parts / "chr1.tsv.gz.mirror"
+    staging.mkdir(parents=True)
+    if location == "cache":
+        monkeypatch.setitem(settings, "dev", {"download_cache": True})
+        monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    for index, chunk in enumerate((data[:split], data[split:])):
+        part = staging / f"part{index:04d}"
+        if location == "missing" and index == 1:
+            break
+        part.write_bytes(chunk)
+        if location == "cache":
+            pin = entry["parts"][index]
+            dev_download_cache.store_download_in_dev_cache(
+                pin["url"], part, checksum_hint=f"sha256:{pin['sha256']}"
+            )
+            part.unlink()
+
+    result = api.ref.gnomad(
+        api.RefGnomadParams(ref=library, release="4.1", network=mode, download=True),
+        check=False,
+    )
+    table = library / "downloads/gnomad_hg38.tsv.gz"
+    assert not source.requests
+    if location == "missing":
+        assert result.exit_code == 2
+        assert result.error and "--network off" in result.error.message
+        assert not table.exists()
+        assert not (parts / "chr1.tsv.gz.partial").exists()
+        assert "MIRROR_FALLBACK" not in caplog.text
+    else:
+        assert result.exit_code == 0
+        query = run_command(["tabix", str(table), "chr1:100-100"], capture_output=True)
+        assert query.stdout == "chr1\t100\tA\tG\t0.25\t.\t.\n"
 
 
 @needs_tools("bcftools", "bgzip")

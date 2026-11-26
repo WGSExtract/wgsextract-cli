@@ -1,5 +1,6 @@
 """#1591: network mode limits transfers independently of their usual opt-ins."""
 
+import gzip
 import hashlib
 import json
 import sys
@@ -10,7 +11,10 @@ import pytest
 from tests.htslib_helpers import needs_tools, write_fasta
 from tests.http_server import serving
 from wgsextract_cli import api
-from wgsextract_cli.core import bwa_mem2
+from wgsextract_cli.core import bwa_mem2, cpic_data, gene_lists
+from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.network_policy import NetworkRestricted, network_options
+from wgsextract_cli.core.ref_library.processing import download_and_process_genome
 from wgsextract_cli.main import main
 from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.operations import find, params_from_json
@@ -189,4 +193,51 @@ def test_1591_prebuilt_index_reports_low_mode_as_usage(tmp_path, monkeypatch):
         )
         assert result.exit_code == 2
         assert result.error and "--allow-large-download" in result.error.message
+        assert not http.requests
+
+
+@needs_tools("samtools", "bgzip")
+@pytest.mark.parametrize("cached", [True, False])
+def test_1591_reference_restart_reuses_cache_or_preserves_installed_fasta(
+    tmp_path, monkeypatch, cached
+):
+    monkeypatch.setitem(settings, "dev", {"download_cache": cached})
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    library = tmp_path / "library"
+    name = "fixture.fa.gz"
+    old = b">chr1\nACGT\n"
+    new = b">chr1\nTGCA\n"
+    archive = gzip.compress(new)
+    with serving(data=archive) as http:
+        genome = {
+            "label": "fixture", "source": "loopback", "final": name,
+            "url": http.url_for(name), "sha256": hashlib.sha256(archive).hexdigest(),
+        }  # fmt: skip
+        assert download_and_process_genome(genome, str(library))
+        # Restore an older installed reference at the target location.
+        fasta = library / "genomes" / name
+        fasta.write_bytes(gzip.compress(old))
+        http.requests.clear()
+        with network_options("off", False):
+            if cached:
+                assert download_and_process_genome(genome, str(library), restart=True)
+            else:
+                with pytest.raises(NetworkRestricted, match="--network off"):
+                    download_and_process_genome(genome, str(library), restart=True)
+        assert gzip.decompress(fasta.read_bytes()) == (new if cached else old)
+        assert not http.requests
+
+
+def test_1591_report_resources_propagate_network_mode_refusal(tmp_path, monkeypatch):
+    with serving(data=b"test") as http:
+        url = http.url_for("resource")
+        monkeypatch.setitem(cpic_data.PIN, "url", url)
+        list_id = gene_lists.default_id()
+        monkeypatch.setitem(gene_lists.MANIFEST["lists"][list_id], "download", url)
+        with network_options("off", False):
+            with pytest.raises(NetworkRestricted, match="--network off"):
+                cpic_data.ensure(tmp_path)
+            monkeypatch.setitem(settings, "reference_library", str(tmp_path))
+            with pytest.raises(NetworkRestricted, match="--network off"):
+                gene_lists.load(list_id)
         assert not http.requests

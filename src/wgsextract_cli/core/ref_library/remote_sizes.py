@@ -24,7 +24,7 @@ from urllib.request import Request, urlopen
 
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.execution_context import context_thread
-from wgsextract_cli.core.network_policy import require_network
+from wgsextract_cli.core.network_policy import NetworkRestricted, require_network
 
 from .segmented import user_agent
 
@@ -95,6 +95,7 @@ def _probe_all(urls: list[str]) -> dict[str, int]:
     for url in urls:
         todo.put(url)
     found: dict[str, int] = {}
+    refused: list[NetworkRestricted] = []
     lock = threading.Lock()
     deadline = time.monotonic() + BUDGET_SECONDS
 
@@ -104,7 +105,13 @@ def _probe_all(urls: list[str]) -> dict[str, int]:
                 url = todo.get_nowait()
             except queue.Empty:
                 return
-            if size := probe_size(url):
+            try:
+                size = probe_size(url)
+            except NetworkRestricted as error:
+                with lock:
+                    refused.append(error)
+                return
+            if size:
                 with lock:
                     found[url] = size
 
@@ -116,6 +123,8 @@ def _probe_all(urls: list[str]) -> dict[str, int]:
     for worker in workers:
         worker.join(max(0.0, deadline - time.monotonic()))
     with lock:
+        if refused:
+            raise refused[0]
         return dict(found)
 
 
@@ -128,7 +137,8 @@ def refresh_sizes(library: Path, urls: Iterable[str]) -> dict[str, int]:
         {
             url
             for url in urls
-            if url and now - cache.get(url, {}).get("fetched_at", 0) >= TTL_SECONDS
+            if urlparse(url).scheme in {"ftp", "http", "https"}
+            and now - cache.get(url, {}).get("fetched_at", 0) >= TTL_SECONDS
         }
     )
     if not stale:

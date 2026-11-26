@@ -112,10 +112,12 @@ def download_gnomad(
     return success
 
 
-def _remove_genome_files(base_path: str) -> None:
+def _remove_genome_files(base_path: str, *, keep_fasta: bool = False) -> None:
     """The FASTA, everything made from it, and its sequence dictionary."""
-    for path in [base_path, *(base_path + ext for ext in GENOME_SIDECARS)]:
-        Path(path).unlink(missing_ok=True)
+    if not keep_fasta:
+        Path(base_path).unlink(missing_ok=True)
+    for ext in GENOME_SIDECARS:
+        Path(base_path + ext).unlink(missing_ok=True)
     Path(reference_dict_path(base_path)).unlink(missing_ok=True)
 
 
@@ -211,26 +213,27 @@ def download_and_process_genome(
     Path(target_dir).mkdir(parents=True, exist_ok=True)
     final_path = str(Path(target_dir, genome_data["final"]))
 
-    if restart:
-        from wgsextract_cli.core.network_policy import require_download, require_network
-
-        require_download(genome_data["final"])
-        require_network(genome_data["final"])
-        # Indexes too: an old .fai beside a failed download reads as installed.
-        _remove_genome_files(final_path)
-
-    if get_genome_status(genome_data["final"], reflib_dir) != "installed":
+    if restart or get_genome_status(genome_data["final"], reflib_dir) != "installed":
         logging.info(
             f"Downloading {genome_data['label']} from {genome_data['source']}..."
         )
-        if not download_file(
-            genome_data["url"],
-            final_path,
-            progress_callback,
-            cancel_event,
-            expected_sha256=genome_data.get("sha256") or None,
-        ):
-            return False
+        with (
+            tempfile.TemporaryDirectory(prefix=".restart-", dir=target_dir)
+            if restart
+            else contextlib.nullcontext(None)
+        ) as staging:
+            target = str(Path(staging, genome_data["final"])) if staging else final_path
+            if not download_file(
+                genome_data["url"],
+                target,
+                progress_callback,
+                cancel_event,
+                expected_sha256=genome_data.get("sha256") or None,
+            ):
+                return False
+            if staging:
+                os.replace(target, final_path)
+                _remove_genome_files(final_path, keep_fasta=True)
 
     if not process_reference_file(final_path, status_callback, cancel_event):
         return False

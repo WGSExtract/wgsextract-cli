@@ -27,7 +27,7 @@ Set `network_mode` in `config.toml`, or override it for one invocation with
 | --- | --- |
 | `full` (default) | Existing operation-specific opt-ins apply. Selecting `full` alone does not grant consent. |
 | `low` | Bulk transfers also require `--allow-large-download`. These include reference genomes and bootstrap archives, panels, models, annotation databases, package installs, and remote alignment or annotation streams. Small requests such as catalog size probes, release and checksum lookups, and pinned cytoband tables can still run with their usual opt-ins. |
-| `off` | Refuses outbound operations even with `--download`, `--allow-large-download` or a disclosure opt-in. Installed data and cached metadata can still be read locally. |
+| `off` | Refuses outbound operations even with `--download`, `--allow-large-download` or a disclosure opt-in. Installed data, cached metadata and checksum-verified staged downloads can still be reused locally. |
 
 The CLI does not detect metered connections; the desktop app or another caller
 can select the mode. The Python API and server accept `network` and
