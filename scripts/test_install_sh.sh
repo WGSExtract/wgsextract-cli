@@ -63,6 +63,10 @@ case "${1:-}" in
         fi
         if [ "${1:-}" = "wgsextract" ]; then
             shift
+            if [ "${1:-}" = "--config" ]; then
+                test -f "$2" && test ! -s "$2"
+                shift 2
+            fi
             case "${1:-}" in
                 ""|--help|help|deps)
                     exit 0

@@ -161,6 +161,7 @@
 "app.workspaceLocation.cancel.title" = "Cancelar"  # i18n-source-hash:77dfd213
 "app.workspaceLocation.current.label" = "Espaço de trabalho do usuário atual"  # i18n-source-hash:bde47812
 "app.workspaceLocation.error.busy" = "A área de trabalho está em uso. Aguarde o fim dos comandos, salvamentos ou outros deslocamentos e tente novamente."  # i18n-source-hash:c1c9bf24
+"app.workspaceLocation.error.choiceRequired" = "Execute a configuração ou escolha uma pasta para a área de trabalho antes de alterar as configurações."  # i18n-source-hash:c0693703
 "app.workspaceLocation.error.inProgress" = "A área de trabalho está sendo movida. Tente novamente após a conclusão."  # i18n-source-hash:3ff7818a
 "app.workspaceLocation.error.protectedFolder" = "Esta pasta contém dados do aplicativo e não pode ser movida."  # i18n-source-hash:cd96c9aa
 "app.workspaceLocation.error.settingsLocked" = "O arquivo de configurações está bloqueado. Aguarde o fim do salvamento e tente mover a pasta novamente."  # i18n-source-hash:4359f6f1

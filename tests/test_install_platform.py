@@ -95,7 +95,7 @@ def test_1211_failed_upgrade_keeps_the_previous_app(
         "  printf partial > .pixi/envs/default/keep\n"
         f"{second_upgrade}"
         f"  [ '{step}' != install ] || {{ echo 'injected install failure' >&2; exit 42; }}\n"
-        f"elif [ \"$3\" = deps ] && [ '{step}' = deps ]; then\n"
+        f"elif [ \"${{5:-}}\" = deps ] && [ '{step}' = deps ]; then\n"
         "  echo 'injected deps failure' >&2; exit 42\n"
         "fi\n"
     )
@@ -299,7 +299,7 @@ def test_issue_801_macos_preflight_does_not_initialize_developer_state(
         [
             str(SH),
             "-c",
-            "log() { printf '%s\\n' \"$*\"; }\nOS_NAME=Darwin\n"
+            "log() { printf '%s\\n' \"$*\"; }\nOS_NAME=Darwin\nMANAGED=0\n"
             "verify_xcode_command_line_tools() {"
             + preflight
             + "\nverify_xcode_command_line_tools",
@@ -507,11 +507,32 @@ def test_linux_arm_validates_downloaded_ref_before_pixi_or_app_changes(
     assert not list(installation.glob(".source-download*"))
     if supported:
         assert result.returncode == 0, result.stderr
+        assert (
+            "Installing WGS Extract CLI from the downloaded archive:" in result.stdout
+        )
+        assert "Downloading WGS Extract CLI from" not in result.stdout
+        assert "Add this to your shell profile" in result.stdout
         assert "install --locked" in pixi_marker.read_text()
         assert (app / "pixi.toml").read_text() == manifest_text
         assert launcher.read_text() != "existing launcher"
         assert (installation / "uninstall.sh").exists()
         assert (installation / "install-manifest.json").exists()
+        managed = subprocess.run(
+            [str(SH), str(ROOT / "install.sh"), "--managed"],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert managed.returncode == 0, managed.stderr
+        assert "WGS Extract CLI is installed" in managed.stdout
+        for hint in (
+            "Create the CLI launcher",
+            "Uninstaller:",
+            "Add this to your shell profile",
+        ):
+            assert hint not in managed.stdout
+        assert not list(home.iterdir())
     else:
         assert result.returncode == 1
         assert ref in result.stderr

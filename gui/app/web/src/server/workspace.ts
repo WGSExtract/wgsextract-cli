@@ -3,7 +3,7 @@ import { chmod, cp, mkdir, open, readFile, readdir, rm, stat, writeFile } from "
 import path from "node:path";
 import { relativeTopLevelName, resolveUserPath } from "./paths.js";
 import { assertAdoptableWorkspaceRoot, bundleWorkspaceRoot, isWorkspaceSentinel, workspaceSentinelContents, workspaceSentinelFileName } from "./workspace-location.js";
-import { claimUsersWorkspaceRoot, prepareUsersWorkspace, registerUsersWorkspace, syncedEntryNames } from "./users-workspace.js";
+import { claimUsersWorkspaceRoot, prepareUsersWorkspace, registerUsersWorkspace, syncedEntryNames, usersWorkspaceNeedsSetup } from "./users-workspace.js";
 import { configEditorControls } from "../../../shared/rendering.js";
 import type { BundleManifest, ControlSpec } from "../../../shared/types.js";
 import { errnoCode } from "./errors.js";
@@ -45,7 +45,7 @@ export async function prepareBundleWorkspace(manifest: BundleManifest, sourceRoo
     const generatedNames = bootstrappedWorkspaceEntryNames(manifest, workspaceRoot);
     const sourceEntries = (await readdir(sourceRoot, { withFileTypes: true })).filter((entry) => !entry.name.startsWith(".") && !generatedNames.has(entry.name));
     const sourceNames = new Set(sourceEntries.map((entry) => entry.name));
-    if (usersRoot !== workspaceRoot) {
+    if (usersRoot !== workspaceRoot && !(await usersWorkspaceNeedsSetup(manifest, workspaceRoot))) {
         await prepareUsersWorkspace(usersRoot, workspaceRoot, sourceNames);
     }
     await mkdir(workspaceRoot, { recursive: true });

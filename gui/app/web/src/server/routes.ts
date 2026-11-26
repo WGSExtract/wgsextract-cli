@@ -4,9 +4,10 @@ import type { BundleManifest, Labels, LooseRecord, RunProcess } from "../../../s
 import { evaluatePrecheck, evaluateSetupInstallSizePrecheck, fileStateValues, runDataSource } from "./action-runner.js";
 import { serveBundleFavicon, serveBundleFile } from "./assets.js";
 import { loadLocaleOptions } from "./bundle-loader.js";
-import { saveBundleState } from "./bundle-state.js";
+import { bootstrapConfigFiles } from "./config-bootstrap.js";
+import { loadBundleState, saveBundleState } from "./bundle-state.js";
 import { savePrivacyMode } from "./privacy-mode.js";
-import { loadConfig, saveConfig } from "./config-store.js";
+import { initialConfigFilePaths, loadConfig, saveConfig } from "./config-store.js";
 import { errorMessage, HttpError } from "./errors.js";
 import { contentType, json, notFound, readJSONBody, serveIndex, staticFile } from "./http.js";
 import { findConfigEditorControl, locationKey, resolveActionReference, resolveDataSource, type DynamicActions } from "./manifest-lookup.js";
@@ -28,7 +29,7 @@ import { applySecurityHeaders, contentSecurityPolicy, guardRequest } from "./req
 import { runSetup, runUninstall } from "./setup-runner.js";
 import { wrapEmitWithEventLog } from "./setup-event-log.js";
 import { bundleArchiveFormat } from "./bundle-archive.js";
-import { assertCurrentUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo, workspaceMoveRevision } from "./users-workspace.js";
+import { assertCurrentUsersWorkspace, prepareUsersWorkspace, saveUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo, usersWorkspaceNeedsSetup, workspaceMoveRevision } from "./users-workspace.js";
 import { withWorkspaceMove, withWorkspaceUse } from "./workspace-activity.js";
 import type { WorkspaceMoveTarget } from "./workspace-move.js";
 import { LinkedMoveFolderError } from "./workspace-move-guard.js";
@@ -397,10 +398,12 @@ export function createRequestHandler(context: RequestHandlerContext) {
             );
         },
         "/api/config/load": jsonRoute(context, async (body) => {
+            await requireUsersWorkspaceChoice(context);
             const control = findConfigEditorControl(context.manifest, requiredString(body, "controlID"));
             return loadConfig(control, optionalString(body, "path"), context.bundleRoot);
         }),
         "/api/config/save": jsonRoute(context, async (body) => {
+            await requireUsersWorkspaceChoice(context);
             const control = findConfigEditorControl(context.manifest, requiredString(body, "controlID"));
             return saveConfig(control, optionalString(body, "path"), requestObject(body.values ?? {}, "values"), context.bundleRoot);
         }),
@@ -547,9 +550,25 @@ async function handleStepStream(request: IncomingMessage, response: ServerRespon
     const bundle = await context.localizedBundleLoader.load(requestedLocale(body, context.defaultLocale), preferredLocales(request.headers["accept-language"]));
     await withCurrentWorkspace(context, () => streamNDJSON(
         response,
-        (emit, signal) => runner(bundle.manifest, context.bundleRoot, context.runProcess, wrapEmitWithEventLog(emit), bundle.labels ?? {}, signal),
+        async (emit, signal) => {
+            if (runner === runSetup && await usersWorkspaceNeedsSetup(bundle.manifest, context.bundleRoot)) {
+                const usersRoot = usersWorkspaceFor(context.bundleRoot);
+                await saveUsersWorkspace(bundle.manifest, usersRoot);
+                await prepareUsersWorkspace(usersRoot, context.bundleRoot, new Set());
+                const saved = await loadBundleState(context.bundleRoot);
+                const configPaths = initialConfigFilePaths(bundle.manifest, saved, context.bundleRoot);
+                await bootstrapConfigFiles(bundle.manifest, context.bundleRoot, configPaths);
+            }
+            return runner(bundle.manifest, context.bundleRoot, context.runProcess, wrapEmitWithEventLog(emit), bundle.labels ?? {}, signal);
+        },
         (error) => ({ type: "complete", result: { status: "failed", results: [], error } }),
     ), request);
+}
+
+async function requireUsersWorkspaceChoice(context: RequestHandlerContext) {
+    if (await usersWorkspaceNeedsSetup(context.manifest, context.bundleRoot)) {
+        throw new HttpError(409, "workspaceChoiceRequired");
+    }
 }
 
 function withAppVersion(bundle: ManifestResponse, appVersion: unknown): ManifestResponse {

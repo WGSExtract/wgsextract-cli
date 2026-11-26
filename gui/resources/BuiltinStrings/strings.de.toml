@@ -161,6 +161,7 @@
 "app.workspaceLocation.cancel.title" = "Abbrechen"  # i18n-source-hash:77dfd213
 "app.workspaceLocation.current.label" = "Aktueller Benutzer-Arbeitsbereich"  # i18n-source-hash:bde47812
 "app.workspaceLocation.error.busy" = "Der Arbeitsbereich wird gerade verwendet. Warten Sie, bis laufende Befehle, Speicher- oder Verschiebevorgänge abgeschlossen sind, und versuchen Sie es erneut."  # i18n-source-hash:c1c9bf24
+"app.workspaceLocation.error.choiceRequired" = "Führen Sie die Einrichtung aus oder wählen Sie einen Arbeitsbereichsordner, bevor Sie Einstellungen ändern."  # i18n-source-hash:c0693703
 "app.workspaceLocation.error.inProgress" = "Der Arbeitsbereich wird verschoben. Versuchen Sie es nach dem Verschieben erneut."  # i18n-source-hash:3ff7818a
 "app.workspaceLocation.error.protectedFolder" = "Dieser Ordner enthält App-Daten und kann nicht verschoben werden."  # i18n-source-hash:cd96c9aa
 "app.workspaceLocation.error.settingsLocked" = "Die Einstellungsdatei ist gesperrt. Warten Sie, bis das Speichern abgeschlossen ist, und versuchen Sie dann erneut, den Ordner zu verschieben."  # i18n-source-hash:4359f6f1

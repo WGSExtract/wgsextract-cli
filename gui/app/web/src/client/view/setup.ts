@@ -103,16 +103,19 @@ export function renderSetupPromptDialog() {
     const sizeMessage = setupInitialInstallSizeMessage();
     const diskSpaceMessage = setupDiskSpaceMessage();
     const disabled = setupRunDisabled() ? " disabled" : "";
+    const workspace = state.workspaceLocation;
     return `
       <div class="modal-backdrop" role="presentation">
         <section class="confirmation-modal setup-prompt-modal" role="alertdialog" aria-modal="true" aria-labelledby="setup-prompt-title">
           <h2 id="setup-prompt-title">${escapeHTML(state.labels.setupTitle ?? "Setup")}</h2>
           <p>${escapeHTML(body)}</p>
+          ${workspace ? `<p>${escapeHTML(state.labels.workspaceLocationTitle)}: <code>${escapeHTML(workspace.workspaceRoot)}</code></p>` : ""}
           ${sizeMessage ? `<p class="setup-prompt-size">${escapeHTML(sizeMessage)}</p>` : ""}
           ${diskSpaceMessage ? `<p class="setup-prompt-disk${setupDiskSpaceClass()}">${escapeHTML(diskSpaceMessage)}</p>` : ""}
           ${toolSummary ? `<p class="setup-prompt-tool">${escapeHTML(toolSummary)}</p>` : ""}
           <div class="modal-actions">
             <button type="button" class="secondary-button" data-setup-prompt-dismiss autofocus>${escapeHTML(state.labels.terminalCancelButtonTitle ?? "Cancel")}</button>
+            ${workspace ? `<button type="button" class="secondary-button" data-setup-workspace>${escapeHTML(state.labels.workspaceLocationFolderLabel)}</button>` : ""}
             <button type="button" class="action-button primary" data-setup-prompt-run${disabled}>${renderIcon("play.fill", undefined, "▶")}${escapeHTML(state.labels.setupRunButtonTitle ?? "Run Setup")}</button>
           </div>
         </section>

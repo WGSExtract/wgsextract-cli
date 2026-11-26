@@ -161,6 +161,7 @@
 "app.workspaceLocation.cancel.title" = "Annuler"  # i18n-source-hash:77dfd213
 "app.workspaceLocation.current.label" = "Espace de travail utilisateur actuel"  # i18n-source-hash:bde47812
 "app.workspaceLocation.error.busy" = "L’espace de travail est en cours d’utilisation. Attendez la fin des commandes, des enregistrements ou des autres déplacements, puis réessayez."  # i18n-source-hash:c1c9bf24
+"app.workspaceLocation.error.choiceRequired" = "Lancez la configuration ou choisissez un dossier pour l’espace de travail avant de modifier les paramètres."  # i18n-source-hash:c0693703
 "app.workspaceLocation.error.inProgress" = "L’espace de travail est en cours de déplacement. Réessayez une fois le déplacement terminé."  # i18n-source-hash:3ff7818a
 "app.workspaceLocation.error.protectedFolder" = "Ce dossier contient des données de l’application et ne peut pas être déplacé."  # i18n-source-hash:cd96c9aa
 "app.workspaceLocation.error.settingsLocked" = "Le fichier de paramètres est verrouillé. Attendez la fin de l’enregistrement, puis réessayez de déplacer le dossier."  # i18n-source-hash:4359f6f1

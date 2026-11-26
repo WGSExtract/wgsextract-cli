@@ -16,6 +16,9 @@ GitHub release, not `main`. It creates `wgsextract-cli/` in the current
 directory (or beside a downloaded `install.sh`) with the app in `app/`,
 Pixi files in `.pixi/`, and the `wgsextract` launcher and `uninstall.sh`.
 On macOS it checks for Xcode Command Line Tools first.
+Install verification uses a temporary config, not the user's CLI settings.
+The desktop launcher passes `--managed` to suppress terminal instructions and
+the successful Xcode check message; failed checks still stop installation.
 When upgrading, the installer restores the previous app if Pixi setup or
 verification fails. A successful upgrade rebuilds the default environment.
 If the Pixi environment location stays the same, optional environments are kept.

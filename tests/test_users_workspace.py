@@ -61,7 +61,7 @@ def test_an_older_install_keeps_its_config_where_it_is(new_install):
 
 @pytest.mark.parametrize("moved", [False, True])
 def test_1087_gui_config_does_not_replace_existing_cli_settings(
-    new_install, tmp_path, monkeypatch, caplog, moved
+    new_install, tmp_path, monkeypatch, moved
 ):
     workspace = Path.home() / "wgs-extract"
     if moved:
@@ -88,22 +88,44 @@ def test_1087_gui_config_does_not_replace_existing_cli_settings(
     assert get_config_path() == legacy
     assert settings["cpu_threads"] == 3
     assert settings["output_directory"] == "/cli/outputs"
-    assert any(
-        str(legacy) in message
-        and str(workspace_config) in message
-        and "--config" in message
-        for message in caplog.messages
-    )
     save_config({"cpu_threads": 4})
     assert workspace_config.read_text() == gui_contents
     assert config.read_toml(legacy)["cpu_threads"] == 4
 
-    caplog.clear()
     config.set_config_path(workspace_config)
     config.reload_settings()
     assert settings["cpu_threads"] == 2
-    assert not any(
-        "Multiple configuration files" in message for message in caplog.messages
+
+
+def test_1597_cli_config_ambiguity_is_logged_once_and_not_for_explicit_config(
+    new_install,
+):
+    workspace_config = Path.home() / "wgs-extract" / "config.toml"
+    legacy = legacy_config_paths()[0]
+    for path in (workspace_config, legacy):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("cpu_threads = 2\n")
+
+    def run(args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                f"from wgsextract_cli.main import main; main({args}); main({args})",
+            ],
+            check=True,
+            capture_output=True,
+            encoding="utf-8",
+        )
+
+    warning = run(repr(["--version"])).stderr
+    assert warning.count("Multiple configuration files exist") == 1
+    assert "⚠️: Multiple configuration files exist" in warning
+    assert "WARNING:root:" not in warning
+    assert str(legacy) in warning and str(workspace_config) in warning
+    assert (
+        "Multiple configuration files"
+        not in run(repr(["--config", str(workspace_config), "--version"])).stderr
     )
 
 

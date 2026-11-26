@@ -177,6 +177,7 @@ export function localizationLabels(table: StringMap = {}) {
         workspaceLocationSettingOnlyTitle: table["app.workspaceLocation.settingOnly.title"] ?? "Change Setting Only",
         workspaceMoveBusy: table["app.workspaceLocation.error.busy"] ?? "The workspace is in use. Finish running commands, saves or other moves, then try again.",
         workspaceMoveInProgress: table["app.workspaceLocation.error.inProgress"] ?? "The workspace is being moved. Try again when the move has finished.",
+        workspaceChoiceRequired: table["app.workspaceLocation.error.choiceRequired"] ?? "Run setup or choose a users workspace folder before editing settings.",
         workspaceMoveSettingsLocked: table["app.workspaceLocation.error.settingsLocked"] ?? "The settings file is locked. Finish saving settings, then try the move again.",
         workspaceMoveStale: table["app.workspaceLocation.error.stale"] ?? "Another window moved the workspace. Reopen the app before using it.",
         workspaceMoveProtectedFolder: table["app.workspaceLocation.error.protectedFolder"] ?? "This folder contains app data and cannot be moved.",

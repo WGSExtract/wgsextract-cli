@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type { BundleManifest, WorkspaceLocationInfo } from "../../../shared/types.js";
 import { errnoCode, HttpError } from "./errors.js";
+import { loadBundleState } from "./bundle-state.js";
 import { appSupportContainerName, devAppDataName, safePathComponent } from "./paths.js";
 import { appSettingsPath, bundleSetting, isManagedWorkspace, type MovedConfigPath, readAppSettings, updateAppSettings, withBundleSetting, withMovedConfigPaths, workspaceRootIn, workspaceSentinelFileName } from "./workspace-location.js";
 
@@ -37,6 +38,22 @@ export function registerUsersWorkspace(bundleRoot: string, usersRoot: string, fo
 /** The users workspace of the bundle in `bundleRoot`; without one, the bundle workspace stands in for it. */
 export function usersWorkspaceFor(bundleRoot: string): string {
     return usersWorkspaces.get(path.resolve(bundleRoot))?.root ?? bundleRoot;
+}
+
+/** A fresh desktop workspace is not created until the user starts setup. */
+export async function usersWorkspaceNeedsSetup(manifest: UsersManifest, bundleRoot: string): Promise<boolean> {
+    const registered = usersWorkspaces.get(path.resolve(bundleRoot));
+    if (manifest.id !== "wgs-extract" || !manifest.defaultUsersWorkspace || !registered?.followsLocation) {
+        return false;
+    }
+    if (bundleSetting(await readAppSettings(), chosenKey, manifest)) {
+        return false;
+    }
+    // A CLI-created default workspace alone is not consent for a new desktop
+    // install to open it. Keep previous GUI setups and legacy migrations intact.
+    const setup = (await loadBundleState(bundleRoot)).setupRun;
+    const previouslyRanSetup = setup?.status === "ok" || setup?.status === "warning" || Boolean(setup?.results?.length);
+    return !previouslyRanSetup && !(await isManagedWorkspace(registered.root));
 }
 
 /**

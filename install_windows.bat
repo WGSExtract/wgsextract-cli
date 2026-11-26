@@ -18,6 +18,7 @@ cd /d "%SCRIPT_DIR%" || exit /b 1
 set "SKIP_PIXI_INSTALL=0"
 set "SKIP_PIXI_BOOTSTRAP=0"
 set "SKIP_CHECKS=0"
+set "MANAGED=0"
 set "DRY_RUN=0"
 set "ALLOW_NONEMPTY_BOOTSTRAP_DIR=0"
 set "IGNORED_ARGS="
@@ -45,6 +46,11 @@ if /I "!ARG!"=="--skip-pixi-bootstrap" (
 )
 if /I "!ARG!"=="--skip-checks" (
     set "SKIP_CHECKS=1"
+    shift
+    goto parse_args
+)
+if /I "!ARG!"=="--managed" (
+    set "MANAGED=1"
     shift
     goto parse_args
 )
@@ -112,6 +118,7 @@ if not exist "%SCRIPT_DIR%pixi.toml" (
 
 set "BOOTSTRAP_PREREQ_ARGS="
 if "%SKIP_PIXI_BOOTSTRAP%"=="1" set "BOOTSTRAP_PREREQ_ARGS=-SkipPixiInstall"
+if "%MANAGED%"=="1" set "BOOTSTRAP_PREREQ_ARGS=!BOOTSTRAP_PREREQ_ARGS! -NoUserPath"
 echo Ensuring Pixi is installed...
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%scripts\bootstrap_windows_prereqs.ps1" -PlainErrors !BOOTSTRAP_PREREQ_ARGS!
 if errorlevel 1 exit /b 1
@@ -155,17 +162,20 @@ if "%SKIP_CHECKS%"=="0" (
     if errorlevel 1 exit /b 1
     type nul > "%SCRIPT_DIR%tmp\.managed-help-cache"
     if errorlevel 1 exit /b 1
-    pixi run wgsextract help --all --json >nul
+    type nul > "%SCRIPT_DIR%tmp\verification.toml"
     if errorlevel 1 exit /b 1
-    pixi run wgsextract deps check
+    pixi run wgsextract --config "%SCRIPT_DIR%tmp\verification.toml" help --all --json >nul
     if errorlevel 1 exit /b 1
+    pixi run wgsextract --config "%SCRIPT_DIR%tmp\verification.toml" deps check
+    if errorlevel 1 exit /b 1
+    del "%SCRIPT_DIR%tmp\verification.toml"
 ) else (
     echo Skipping final tool checks.
 )
 
 echo.
 echo Installation complete.
-echo Run: pixi run wgsextract --help
+if "%MANAGED%"=="0" echo Run: pixi run wgsextract --help
 exit /b 0
 
 :bootstrap_source
@@ -193,6 +203,7 @@ echo Options:
 echo   --skip-pixi-install       Do not run pixi install.
 echo   --skip-pixi-bootstrap     Do not install Pixi if it is missing.
 echo   --skip-checks             Do not run the final wgsextract deps check.
+echo   --managed                 Do not update the user PATH or print terminal hints.
 echo   --allow-nonempty-bootstrap-dir
 echo                           Allow standalone source bootstrap into a non-empty directory.
 echo   --dry-run                 Print resolved paths and exit without changing anything.

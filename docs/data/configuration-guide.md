@@ -3,8 +3,11 @@
 `--config FILE` works anywhere on the command line and selects the file for
 both reading and saving, before validation. An invalid unused default cannot
 block a valid alternate file; a bundling tool can choose a separate config.
-The CLI and desktop app otherwise share the users-workspace config described
-above. Former per-user locations, still recognized for existing installs, are:
+The desktop app always selects the config in its users workspace. First-run
+setup shows that folder (normally `~/wgs-extract`) before creating it. You
+can choose a different folder in Settings. Standalone CLI runs use the shared
+users-workspace config unless an older CLI config exists. The CLI warns once
+if both exist. Former per-user locations are:
 
 - macOS: `~/.config/wgsextract/config.toml` if that file exists, otherwise
   `~/Library/Application Support/wgsextract/config.toml` if present;

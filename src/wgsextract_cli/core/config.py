@@ -21,6 +21,8 @@ APP_NAME = "wgsextract"
 APP_AUTHOR = "theontho"
 T = TypeVar("T")
 _warned_unknown_keys: set[tuple[str, str]] = set()
+_warned_ambiguous_config = False
+_config_warning_lock = threading.Lock()
 
 
 def _normalize_path_setting(value: Any) -> Any:
@@ -286,12 +288,7 @@ def load_config() -> dict[str, Any]:
             and workspace_config.is_file()
             and config_path.resolve() != workspace_config.resolve()
         ):
-            logging.warning(
-                "Multiple configuration files exist: using existing CLI config %s; "
-                "ignoring workspace config %s. Use --config PATH to choose explicitly.",
-                config_path,
-                workspace_config,
-            )
+            _warn_ambiguous_config(config_path, workspace_config)
     config = {}
     if config_path.exists():
         try:
@@ -343,6 +340,23 @@ def load_config() -> dict[str, Any]:
 
     _validate_config_types(config, config_path, allow_invalid_threads=True)
     return normalize_config_paths(config)
+
+
+def _warn_ambiguous_config(config_path: Path, workspace_config: Path) -> None:
+    global _warned_ambiguous_config
+    with _config_warning_lock:
+        if _warned_ambiguous_config:
+            return
+        _warned_ambiguous_config = True
+    from wgsextract_cli.core.results import warn
+
+    warn(
+        "ambiguous_config",
+        f"Multiple configuration files exist: using existing CLI config {config_path}; "
+        f"ignoring workspace config {workspace_config}. Use --config PATH to choose explicitly.",
+        selected=str(config_path),
+        ignored=str(workspace_config),
+    )
 
 
 class _Settings(MutableMapping[str, Any]):

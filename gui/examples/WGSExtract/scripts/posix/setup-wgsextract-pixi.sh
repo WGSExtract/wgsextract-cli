@@ -117,7 +117,11 @@ archive="$work_dir/wgsextract-cli.tar.gz"
 extract_dir="$work_dir/source"
 mkdir -p "$extract_dir"
 
-log "Downloading WGS Extract CLI from $ARCHIVE_URL"
+if [ -f "$ARCHIVE_URL" ]; then
+  log "Using WGS Extract CLI archive: $ARCHIVE_URL"
+else
+  log "Downloading WGS Extract CLI from $ARCHIVE_URL"
+fi
 download_source_archive "$ARCHIVE_URL" "$ARCHIVE_FALLBACK_URL" "$archive"
 tar -xzf "$archive" -C "$extract_dir"
 source_dir="$(find "$extract_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
@@ -147,7 +151,7 @@ log "Delegating WGS Extract CLI install to upstream install.sh..."
 # Trust model: this bootstrapper executes install.sh from the pinned upstream
 # archive after shell syntax validation. The release tag file controls that pin.
 mkdir -p "$BIN_DIR"
-sh "$installer"
+sh "$installer" --managed
 
 # Save activation once for desktop calls. An older or externally managed
 # runtime can still run through the existing offline Pixi path.

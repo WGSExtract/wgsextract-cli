@@ -60,6 +60,7 @@ export type LabelTextKey =
     | "workspaceLocationSettingOnlyTitle"
     | "workspaceMoveBusy"
     | "workspaceMoveInProgress"
+    | "workspaceChoiceRequired"
     | "workspaceMoveSettingsLocked"
     | "workspaceMoveStale"
     | "workspaceMoveProtectedFolder"

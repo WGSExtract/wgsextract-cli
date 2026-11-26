@@ -541,7 +541,7 @@ test("WGSExtract POSIX runtime wrapper rejects BAM and CRAM index inputs", async
   }
 });
 
-test("runs WGSExtract POSIX setup scripts from nested script folders", async (t) => {
+test("#1597 WGS Extract POSIX setup and CLI use the selected workspace", async (t) => {
   if (process.platform === "win32") {
     t.skip("This regression covers POSIX packaged setup script paths.");
     return;
@@ -551,6 +551,7 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
   const sourceBundleRoot = path.join(repoRoot, "examples", "WGSExtract");
   const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-wgsextract-posix-setup-"));
   const bundleRoot = path.join(tempRoot, "WGSExtract");
+  const usersRoot = path.join(tempRoot, "selected workspace");
   // The CLI setup installed, wherever the app's data folder is on this platform.
   const appDir = path.join(tempRoot, "runtime", "wgsextract-cli", "app");
   const fakePixi = path.join(tempRoot, "pixi");
@@ -579,6 +580,21 @@ test("runs WGSExtract POSIX setup scripts from nested script folders", async (t)
     assert.equal(result.status, "ok", [result.stdout, result.stderr].filter(Boolean).join("\n"));
     assert.match(result.command, /scripts\/posix\/bootstrap-reference-library\.sh/);
     assert.match(result.stdout, /fake pixi run --no-install --frozen python .*bootstrap_reference_library\.py/);
+
+    const env = { ...process.env, WGSEXTRACT_GUI_BUNDLE_WORKSPACE: bundleRoot, WGSEXTRACT_GUI_USERS_WORKSPACE: usersRoot };
+    delete env.WGSEXTRACT_GUI_CONFIG_PATH;
+    const posixScripts = path.join(bundleRoot, "scripts", "posix");
+    const config = await processManager.runProcess("sh", [path.join(posixScripts, "bootstrap-wgsextract-config.sh")], { env });
+    assert.equal(config.exitCode, 0, config.stderr);
+    const { path: configPath, contents } = JSON.parse(config.stdout);
+    assert.equal(configPath, path.join(usersRoot, "config.toml"));
+    for (const folder of ["mygenomes", "reference", "genomes", "temp"]) {
+      assert.ok(contents.includes(JSON.stringify(path.join(usersRoot, folder))), contents);
+    }
+    assert.ok(contents.includes(`log_dir = ${JSON.stringify(path.join(bundleRoot, "logs"))}`), contents);
+    const cli = await processManager.runProcess("sh", [path.join(posixScripts, "run-wgsextract.sh"), "--version"], { env });
+    assert.equal(cli.exitCode, 0, cli.stderr);
+    assert.ok(cli.stdout.includes(`wgsextract --config ${configPath} --version`), cli.stdout);
   } finally {
     await processManager.terminateAllProcesses();
     setOrDeleteEnv("PIXI", previousPixi);

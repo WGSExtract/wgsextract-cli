@@ -61,6 +61,26 @@ test("a folder of the user's with the default name is left alone and the next fr
   assert.equal(usersWorkspaceFor(bundle), `${users}-2`, "the recorded folder stays the default");
 });
 
+test("#1597 first-run WGS Extract resolves the default without creating it before the user chooses a folder", async (t) => {
+  const desktop = { ...manifest, id: "wgs-extract" };
+  const { root, source, users } = await fixture(t, desktop);
+  const bundleRoot = await prepareBundleWorkspace(desktop, source);
+  assert.equal(usersWorkspaceFor(bundleRoot), users);
+  await assert.rejects(stat(users), { code: "ENOENT" });
+
+  // An existing standalone CLI workspace belongs to that user until they opt in.
+  await mkdir(users);
+  await writeFile(path.join(users, ".users-workspace"), "WGS Extract users workspace\n");
+  const standaloneConfig = path.join(users, "config.toml");
+  await writeFile(standaloneConfig, "cpu_threads = 2\n");
+  const chosen = path.join(root, "chosen folder");
+  await move({ manifest: desktop, sourceRoot: source, bundleRoot, folder: chosen });
+  await prepareBundleWorkspace(desktop, source);
+  assert.equal(usersWorkspaceFor(bundleRoot), chosen);
+  assert.equal(await readFile(standaloneConfig, "utf8"), "cpu_threads = 2\n");
+  await assert.rejects(stat(path.join(chosen, "config.toml")), { code: "ENOENT" });
+});
+
 test("1087 migration rejects workspace aliases without deleting saved state", async (t) => {
   const { root, source, bundle } = await fixture(t);
   await prepareBundleWorkspace(manifest, source);

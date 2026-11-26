@@ -15,7 +15,7 @@ import { assertSettingsFileUnlocked, withWorkspaceMove, workspaceActivityDirecto
 import { createLink, type FolderMove, type PlannedLink, planLink, planLinks, type RelinkedLink, relinkMovedFolder, restoreLinks } from "./workspace-links.js";
 import type { MovedConfigPath } from "./workspace-location.js";
 import { refuseLinkedMoveFolders } from "./workspace-move-guard.js";
-import { assertCurrentUsersWorkspace, defaultUsersWorkspaceRoot, recordWorkspaceMove, saveUsersWorkspace, usersWorkspaceFor } from "./users-workspace.js";
+import { assertCurrentUsersWorkspace, defaultUsersWorkspaceRoot, recordWorkspaceMove, saveUsersWorkspace, usersWorkspaceFor, usersWorkspaceNeedsSetup } from "./users-workspace.js";
 
 /** What to move: the users workspace to `folder` (null: its default location), or with `setting`, that setting's folder. */
 export interface WorkspaceMoveTarget {
@@ -59,6 +59,11 @@ async function moveWorkspaceNow(request: WorkspaceMoveRequest) {
     await prepareMove(request, [from, folder ?? target, target]);
     if (path.relative(from, target) === "") {
         await saveUsersWorkspace(manifest, folder == null ? null : target);
+        return;
+    }
+    if (await usersWorkspaceNeedsSetup(manifest, bundleRoot)) {
+        await assertUsableTarget(target, from, [request.sourceRoot, bundleRoot, workspaceActivityDirectory()]);
+        await recordWorkspaceMove(manifest, folder == null ? null : target);
         return;
     }
     await moveFolderAndPaths(request, from, target, (movedConfigs) =>

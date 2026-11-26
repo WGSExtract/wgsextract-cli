@@ -219,6 +219,7 @@ test("renders setup status for settings bundles with and without setup steps", a
   assert.match(renderSetupGlobalStatusBar(), /data-setup-global-start/);
   assert.match(renderSetupGlobalStatusBar(), /Ready to set up/);
   state.setupPromptVisible = true;
+  state.workspaceLocation = { workspaceRoot: "/chosen/WGS folder", defaultRoot: "/home/user/wgs-extract", usingDefault: false };
   assert.match(renderSetupPromptDialog(), /role="alertdialog"/);
   assert.match(renderSetupPromptDialog(), /WGSExtract will probably not work properly/);
   assert.match(renderSetupPromptDialog(), /Initial setup will install about 6 GB\./);
@@ -226,6 +227,8 @@ test("renders setup status for settings bundles with and without setup steps", a
   assert.match(renderSetupPromptDialog(), /Tool: Example CLI v1\.2\.3/);
   assert.match(renderSetupPromptDialog(), /<p class="setup-prompt-tool">Tool: Example CLI v1\.2\.3<\/p>/);
   assert.match(renderSetupPromptDialog(), /data-setup-prompt-run/);
+  assert.match(renderSetupPromptDialog(), /\/chosen\/WGS folder/);
+  assert.match(renderSetupPromptDialog(), /data-setup-workspace/);
   assert.doesNotMatch(renderSetupPromptDialog(), /data-setup-prompt-run disabled/);
 
   state.setupPreflight = {

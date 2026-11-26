@@ -8,7 +8,7 @@ export { renderActionRows, renderActions, renderPrecheckBanner } from "./view/ac
 import { renderActionRows, renderActions } from "./view/actions.js";
 export { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
 import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view/settings.js";
-import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
+import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection, workspaceLocationSectionID } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
 import { actionTitledForUIMode, isShownInUIMode, visibleActions, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
@@ -159,7 +159,8 @@ export function isSectionExpanded(page: BundlePage, section: PageSection): boole
 function renderSections(page: BundlePage): string {
     let parentCollapsed = false;
     const sections = visibleSections(page, state.uiMode);
-    const location = page.id === "settings" && state.uiMode === "advanced" ? renderWorkspaceLocationSection() : "";
+    const showLocation = state.uiMode === "advanced" || (!state.setupRun && state.openSections.has(workspaceLocationSectionID));
+    const location = page.id === "settings" && showLocation ? renderWorkspaceLocationSection() : "";
     const editorIndex = sections.findIndex((section) => (section.controls ?? []).some((control) => control.kind === "configEditor"));
     const rendered = sections
         .map((section) => {

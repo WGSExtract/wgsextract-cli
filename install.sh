@@ -4,6 +4,12 @@
 # SC2016: launcher templates use literal $install_dir for runtime expansion.
 set -eu
 
+MANAGED=0
+case "${1:-}" in
+    --managed) MANAGED=1; shift ;;
+esac
+[ "$#" -eq 0 ] || { printf 'Usage: %s [--managed]\n' "$0" >&2; exit 2; }
+
 REPO_URL="${WGSEXTRACT_REPO_URL:-https://github.com/WGSExtract/wgsextract-cli}"
 REQUESTED_REF="${WGSEXTRACT_REF:-${WGSEXTRACT_RELEASE_TAG:-latest}}"
 
@@ -261,7 +267,9 @@ EOF
         exit 1
     fi
 
-    log "Xcode Command Line Tools are available: $developer_dir"
+    if [ "$MANAGED" -eq 0 ]; then
+        log "Xcode Command Line Tools are available: $developer_dir"
+    fi
 }
 
 resolve_latest_release_tag() {
@@ -505,31 +513,38 @@ if [ -z "$ARCHIVE_URL" ]; then
 else
     REF="${REQUESTED_REF:-custom}"
 fi
+ARCHIVE_URL="$(expand_home_path "$ARCHIVE_URL")"
+case "$ARCHIVE_URL" in
+    http://*|https://*)
+        archive_plan="Download WGS Extract CLI from"
+        archive_action="Downloading WGS Extract CLI from"
+        ;;
+    *)
+        [ -f "$ARCHIVE_URL" ] || fail "Local source archive does not exist: $ARCHIVE_URL"
+        archive_plan="Install WGS Extract CLI from the downloaded archive"
+        archive_action="Installing WGS Extract CLI from the downloaded archive:"
+        ;;
+esac
 
 print_banner
 log "This installer will:"
-log "  1. Download WGS Extract CLI from:"
+log "  1. $archive_plan:"
 log "     $ARCHIVE_URL"
 log "  2. Use Pixi if it is already installed, or install Pixi if it is missing."
 log "  3. Install or update the app in:"
 log "     $INSTALL_DIR"
-log "  4. Create the CLI launcher:"
-log "     $LAUNCHER"
-case "$OS_NAME" in
-    Darwin)
-        log "  5. Create the uninstaller:"
-        log "     $UNINSTALL_SH"
-        log "  6. Verify the app starts and required dependencies are visible."
-        if ! is_truthy "$NO_OPEN"; then
-            log "  7. Open the install folder in Finder when finished."
-        fi
-        ;;
-    Linux)
-        log "  5. Create the uninstaller:"
-        log "     $UNINSTALL_SH"
-        log "  6. Verify the app starts and required dependencies are visible."
-        ;;
-esac
+if [ "$MANAGED" -eq 1 ]; then
+    log "  4. Verify the app starts and required dependencies are visible."
+else
+    log "  4. Create the CLI launcher:"
+    log "     $LAUNCHER"
+    log "  5. Create the uninstaller:"
+    log "     $UNINSTALL_SH"
+    log "  6. Verify the app starts and required dependencies are visible."
+    if [ "$OS_NAME" = Darwin ] && ! is_truthy "$NO_OPEN"; then
+        log "  7. Open the install folder in Finder when finished."
+    fi
+fi
 log ""
 
 PIXI="${PIXI:-}"
@@ -679,7 +694,7 @@ ARCHIVE="$WORK_DIR/wgsextract-cli.tar.gz"
 EXTRACT_DIR="$WORK_DIR/source"
 mkdir -p "$EXTRACT_DIR"
 
-log "Downloading WGS Extract CLI from $ARCHIVE_URL"
+log "$archive_action $ARCHIVE_URL"
 download_source_archive "$ARCHIVE_URL" "$ARCHIVE_FALLBACK_URL" "$ARCHIVE"
 tar -xzf "$ARCHIVE" -C "$EXTRACT_DIR"
 
@@ -723,16 +738,23 @@ if [ -z "$PIXI" ]; then
         log "Installing Pixi..."
         install_embedded_pixi
         PIXI_INSTALLED_BY_SETUP=1
-        shell_name="${SHELL:-}"
-        case "${shell_name##*/}" in
-            fish)
-                log "For fish, add Pixi to PATH with: fish_add_path $(quote_sh "$PIXI_BIN_DIR")"
-                ;;
-            *)
-                log "To use Pixi directly, add this to your shell profile: export PATH=$(quote_sh "$PIXI_BIN_DIR"):\"\$PATH\""
-                ;;
-        esac
+        if [ "$MANAGED" -eq 0 ]; then
+            shell_name="${SHELL:-}"
+            case "${shell_name##*/}" in
+                fish)
+                    log "For fish, add Pixi to PATH with: fish_add_path $(quote_sh "$PIXI_BIN_DIR")"
+                    ;;
+                *)
+                    log "To use Pixi directly, add this to your shell profile: export PATH=$(quote_sh "$PIXI_BIN_DIR"):\"\$PATH\""
+                    ;;
+            esac
+        fi
     fi
+fi
+
+if [ "$MANAGED" -eq 1 ]; then
+    export PIXI_HOME="$INSTALL_DIR/.pixi"
+    export XDG_CACHE_HOME="$INSTALL_DIR/.cache"
 fi
 
 if grep -Eq '^[[:space:]]*requires-pixi([[:space:]]|=)' "$SOURCE_DIR/pixi.toml"; then
@@ -799,9 +821,11 @@ export PIXI_CACHE_DIR
 "$PIXI" install --locked
 
 log "Checking installation..."
-"$PIXI" run wgsextract --help >/dev/null
-"$PIXI" run wgsextract help --all --json >/dev/null
-"$PIXI" run wgsextract deps check >/dev/null
+CHECK_CONFIG="$WORK_DIR/verification.toml"
+: > "$CHECK_CONFIG"
+"$PIXI" run wgsextract --config "$CHECK_CONFIG" --help >/dev/null
+"$PIXI" run wgsextract --config "$CHECK_CONFIG" help --all --json >/dev/null
+"$PIXI" run wgsextract --config "$CHECK_CONFIG" deps check >/dev/null
 
 if [ -n "$DETACHED_BACKUP" ]; then
     current_envs="$(CDPATH= cd -P "$APP_DIR/.pixi/envs" && pwd -P)"
@@ -873,7 +897,7 @@ rm -rf "$INSTALL_DIR/tmp" || log "Could not remove the legacy temporary director
 
 case "$OS_NAME" in
     Darwin)
-        if ! is_truthy "$NO_OPEN"; then
+        if [ "$MANAGED" -eq 0 ] && ! is_truthy "$NO_OPEN"; then
             log "Opening install directory in Finder..."
             open_install_dir || log "Could not open the install directory in Finder."
         fi
@@ -883,6 +907,9 @@ esac
 log ""
 log "WGS Extract CLI is installed."
 log "Install directory: $INSTALL_DIR"
+if [ "$MANAGED" -eq 1 ]; then
+    exit 0
+fi
 log "Launcher: $LAUNCHER"
 log "Uninstaller: $UNINSTALL_SH"
 case ":$PATH:" in

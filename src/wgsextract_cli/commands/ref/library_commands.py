@@ -633,9 +633,7 @@ def run_bootstrap(params: RefBootstrapParams) -> None:
     if should_save_reflib:
         save_config({"reference_library": reflib})
         logging.info(f"Saved reference library path to config.toml: {reflib}")
-    logging.info(
-        "Bootstrap complete. You can now install genomes via 'wgsextract ref library'."
-    )
+    logging.info("Reference library bootstrap complete.")
 
 
 def run_microarray_targets(params: RefMicroarrayTargetsParams) -> None:

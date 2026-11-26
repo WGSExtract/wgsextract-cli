@@ -192,19 +192,27 @@ if (-not $prefix) {
     exit 127
 }
 
-# Use the package cache setup-wgsextract-pixi.ps1 installed the environment with.
-if (-not $env:PIXI_CACHE_DIR) {
+# Keep the app's cache out of the user's home even when it reuses their Pixi.
+if ($env:WGSEXTRACT_GUI_APP_DATA) {
+    $env:PIXI_CACHE_DIR = Join-Path $runtimeRoot "pixi\cache"
+    $env:RATTLER_CACHE_DIR = Join-Path $env:PIXI_CACHE_DIR "rattler"
+    $env:XDG_CACHE_HOME = Join-Path $runtimeRoot "pixi\cache"
+} elseif (-not $env:PIXI_CACHE_DIR) {
     $pixiBaseDir = if ($env:WGSEXTRACT_PIXI_BASE_DIR) { $env:WGSEXTRACT_PIXI_BASE_DIR } else { Join-Path $env:LOCALAPPDATA "WGSExtractPixi" }
     $env:PIXI_CACHE_DIR = Join-Path $pixiBaseDir "cache"
 }
 
-# Pixi resolution: an explicit $env:PIXI, then the Pixi on PATH or in Pixi's
-# home (PIXI_HOME, else ~\.pixi), where install_windows.bat installs it
-# (Windows setup does not embed Pixi).
+# Pixi resolution: an explicit $env:PIXI, the managed runtime's copy, then
+# a Pixi on PATH or in the user's existing Pixi home.
 $pixi = $env:PIXI
 if ($pixi -and -not (Test-Path -LiteralPath $pixi -PathType Leaf)) {
     Write-Error "PIXI is set but is not executable: $pixi"
     exit 127
+}
+$managedPixiHome = Join-Path (Split-Path -Parent $appDir) ".pixi"
+$managedPixi = Join-Path $managedPixiHome "bin\pixi.exe"
+if (-not $pixi -and (Test-Path -LiteralPath $managedPixi -PathType Leaf)) {
+    $pixi = $managedPixi
 }
 if (-not $pixi) {
     $command = Get-Command pixi -ErrorAction SilentlyContinue
@@ -221,6 +229,9 @@ if (-not $pixi) {
             break
         }
     }
+}
+if ($env:WGSEXTRACT_GUI_APP_DATA) {
+    $env:PIXI_HOME = $managedPixiHome
 }
 $activation = Join-Path $appDir ".pixi\wgsextract-activation.json"
 $python = Join-Path $prefix "python.exe"

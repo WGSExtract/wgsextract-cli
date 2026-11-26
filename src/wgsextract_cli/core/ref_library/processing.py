@@ -491,7 +491,7 @@ def install_ploidy_files(reflib_dir: str) -> bool:
     for alias, output in outputs.items():
         existing = Path(output).read_text() if Path(output).is_file() else None
         if existing is not None and existing != _OLD_PLOIDY_TEMPLATES[alias]:
-            logging.info("Ploidy file already installed: %s", output)
+            logging.debug("Ploidy file already installed: %s", output)
             continue
         logging.info("Installing ploidy file for %s: %s", alias, output)
         try:

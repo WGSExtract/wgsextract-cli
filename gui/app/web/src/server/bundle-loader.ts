@@ -9,7 +9,7 @@ import { loadBundleState, takeBundleStateWarning } from "./bundle-state.js";
 import { bootstrapConfigFiles } from "./config-bootstrap.js";
 import { initialCheckedOptions, initialConfigFilePaths, initialConfigValues, initialFieldValues } from "./config-store.js";
 import { isSafePageFileName } from "./paths.js";
-import { usersWorkspaceFor } from "./users-workspace.js";
+import { usersWorkspaceFor, usersWorkspaceNeedsSetup } from "./users-workspace.js";
 import { validatePlatformScriptSets } from "./platform-scripts.js";
 import { validateManifest } from "./manifest-validator.js";
 import { bundleArchiveFormat, extractBundleArchive } from "./bundle-archive.js";
@@ -265,9 +265,12 @@ export async function loadLocalizedBundle(locale: string | undefined, repoRoot: 
     const iconMap = await loadIconMap(repoRoot, bundleRoot);
     manifest.exitCodeReference = effectiveExitCodeReference(manifest.exitCodeReference, table);
     const configFilePaths = initialConfigFilePaths(manifest, bundleState, bundleRoot);
-    await bootstrapConfigFiles(manifest, bundleRoot, configFilePaths);
+    const awaitingWorkspaceChoice = await usersWorkspaceNeedsSetup(manifest, bundleRoot);
+    if (!awaitingWorkspaceChoice) {
+        await bootstrapConfigFiles(manifest, bundleRoot, configFilePaths);
+    }
     const configWarnings: string[] = [];
-    const configValues = await initialConfigValues(manifest, configFilePaths, bundleRoot, configWarnings);
+    const configValues = await initialConfigValues(manifest, awaitingWorkspaceChoice ? {} : configFilePaths, bundleRoot, configWarnings);
     const fieldValues = initialFieldValues(manifest, configValues, bundleState);
     const checkedOptions = initialCheckedOptions(manifest, configValues, bundleState);
     const stateWarning = takeBundleStateWarning(bundleRoot);

@@ -39,6 +39,10 @@ if [ ! -f "$prefix/conda-meta/pixi" ]; then
 fi
 
 export PIXI_CACHE_DIR="${PIXI_CACHE_DIR:-$runtime/.pixi/cache}"
+if [ -n "${WGSEXTRACT_GUI_APP_DATA:-}" ]; then
+  export RATTLER_CACHE_DIR="$runtime/.pixi/cache/rattler"
+  export XDG_CACHE_HOME="$runtime/.cache"
+fi
 activation="$app_dir/.pixi/wgsextract-activation.json"
 pixi=""
 if [ -n "${PIXI:-}" ]; then
@@ -55,6 +59,9 @@ elif command -v pixi >/dev/null 2>&1; then
   pixi="$(command -v pixi)"
 elif [ -x "$HOME/.pixi/bin/pixi" ]; then
   pixi="$HOME/.pixi/bin/pixi"
+fi
+if [ -n "${WGSEXTRACT_GUI_APP_DATA:-}" ]; then
+  export PIXI_HOME="$runtime/.pixi"
 fi
 
 if [ "$1" = wgsextract ] && [ -z "${PIXI:-}" ] &&

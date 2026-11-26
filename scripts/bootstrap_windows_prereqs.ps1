@@ -5,6 +5,7 @@ param(
     [string]$PixiInstallUrl = $(if ($env:WGSEXTRACT_PIXI_INSTALL_URL) { $env:WGSEXTRACT_PIXI_INSTALL_URL } else { "" }),
     [string]$PixiInstallSha256 = $(if ($env:WGSEXTRACT_PIXI_INSTALL_SHA256) { $env:WGSEXTRACT_PIXI_INSTALL_SHA256 } else { "" }),
     [switch]$SkipPixiInstall,
+    [switch]$NoUserPath,
     # For a launcher that only reads the exit code (install_windows.bat): on
     # failure print just the message and exit 1. Without it errors are thrown,
     # so a calling script (dev_setup.ps1) stops too.
@@ -236,11 +237,13 @@ function Ensure-Pixi {
         Copy-UrlOrFile -Source $url -Destination $download
         Assert-FileSha256 -Path $download -ExpectedSha256 $expected -Label "Pixi executable"
         Move-Item -LiteralPath $download -Destination (Join-Path $bin "pixi.exe") -Force
-        $environment = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Environment")
-        try {
-            Add-PixiToUserPath -Directory $bin -Key $environment
-        } finally {
-            $environment.Dispose()
+        if (-not $NoUserPath) {
+            $environment = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey("Environment")
+            try {
+                Add-PixiToUserPath -Directory $bin -Key $environment
+            } finally {
+                $environment.Dispose()
+            }
         }
         Add-PathForCurrentProcess $bin
         $pixi = Get-Command pixi -ErrorAction SilentlyContinue

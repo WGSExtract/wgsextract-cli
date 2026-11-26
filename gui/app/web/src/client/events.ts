@@ -20,6 +20,7 @@ import { applyUIModeTerminalVisibility, setTerminalVisible } from "./terminal-vi
 import { bindTooltipEvents } from "./tooltips.js";
 import { bindWorkspaceLocationEvents } from "./workspace-location.js";
 import { bindCollapsibleSections } from "./view/collapsible.js";
+import { workspaceLocationSectionID } from "./view/workspace-location.js";
 import { setupPageID } from "./view.js";
 import type { ConfigSetting, ControlSpec } from "../../../shared/types.js";
 import { normalizeUIMode } from "../../../shared/ui-mode.js";
@@ -118,6 +119,13 @@ export function bindEvents(bootstrap: Bootstrap) {
     app.querySelector("[data-setup-prompt-dismiss]")?.addEventListener("click", () => {
         state.setupPromptVisible = false;
         state.setupPromptDismissed = true;
+        scheduleRender();
+    });
+    app.querySelector("[data-setup-workspace]")?.addEventListener("click", () => {
+        state.setupPromptVisible = false;
+        state.setupPromptDismissed = true;
+        state.activePageID = setupPageID();
+        state.openSections.add(workspaceLocationSectionID);
         scheduleRender();
     });
     app.querySelector("[data-open-bundle-workspace]")?.addEventListener("click", async () => {

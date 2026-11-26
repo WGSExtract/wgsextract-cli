@@ -149,7 +149,8 @@ function Restore-AppSource {
 
 # Pre-state snapshot so the manifest records who owns each prerequisite.
 $msys2PreInstalled = Test-MsysInstall -Root $msys2Root
-$pixiPreInstalled = ($null -ne (Find-Pixi))
+$existingPixi = Find-Pixi
+$pixiPreInstalled = ($null -ne $existingPixi)
 # Where install_windows.bat installs Pixi. A PIXI_HOME that already holds
 # anything may be shared with other files, so it is never the app's to remove.
 $pixiHomeBefore = if ($env:PIXI_HOME) { $env:PIXI_HOME } else { Join-Path $HOME ".pixi" }
@@ -223,15 +224,18 @@ try {
         exit 1
     }
 
-    # Redirect Pixi cache+envs to a short machine-local path to avoid Windows MAX_PATH
-    # (260) issues when nested under the workspace. Tracked in install-manifest so the
-    # uninstaller removes them.
-    $pixiBaseDir = if ($env:WGSEXTRACT_PIXI_BASE_DIR) { $env:WGSEXTRACT_PIXI_BASE_DIR } else { Join-Path $env:LOCALAPPDATA "WGSExtractPixi" }
+    # Keep environments under app data without nesting them under the CLI source.
+    $pixiBaseDir = if ($env:WGSEXTRACT_PIXI_BASE_DIR) { $env:WGSEXTRACT_PIXI_BASE_DIR } elseif ($env:WGSEXTRACT_GUI_APP_DATA) {
+        Join-Path $env:WGSEXTRACT_GUI_APP_DATA "pixi"
+    } else { Join-Path $installDir ".pixi" }
     $pixiCacheDirNew = Join-Path $pixiBaseDir "cache"
     $pixiEnvsDirNew = Join-Path $pixiBaseDir "envs"
     New-Item -ItemType Directory -Force -Path $pixiCacheDirNew, $pixiEnvsDirNew | Out-Null
     $env:PIXI_CACHE_DIR = $pixiCacheDirNew
+    $env:RATTLER_CACHE_DIR = Join-Path $pixiCacheDirNew "rattler"
     $env:PIXI_PROJECT_ENVIRONMENT_DIR = $pixiEnvsDirNew
+    if ($existingPixi) { $env:Path = "$(Split-Path -Parent $existingPixi);$env:Path" }
+    $env:PIXI_HOME = Join-Path $installDir ".pixi"
 
     # CLI releases before native Windows tools (0.6.x and older) install MSYS2
     # and its pacman tools; newer ones take every tool from Pixi and need none.
@@ -244,32 +248,25 @@ try {
     } else {
         $msys2InUserFolder = $false
     }
-    $batArgs = @()
-
-    # install_windows.bat saves its runtime defaults in the user's own CLI config
-    # (platformdirs' user_config_dir("wgsextract", "theontho")). The app's commands
-    # use the bundle's config and find MSYS2 through MSYS2_ROOT, so that file is put
-    # back as it was: a user's own CLI settings stay theirs, and none is left behind.
-    $userCliConfig = Join-Path $env:LOCALAPPDATA "theontho\wgsextract\config.toml"
-    $userCliConfigBefore = if (Test-Path -LiteralPath $userCliConfig -PathType Leaf) { [System.IO.File]::ReadAllBytes($userCliConfig) } else { $null }
-
     Write-Host "Delegating to upstream install_windows.bat (installs Pixi as needed and the CLI's tools)..."
+    # Older release archives do not have --managed. Run their verification here
+    # with an explicit config instead of reading the terminal CLI's config.
+    $managedInstaller = Select-String -LiteralPath $installBat -SimpleMatch '"--managed"' -Quiet
+    $installerOption = if ($managedInstaller) { "--managed" } else { "--skip-checks" }
     Push-Location $appDir
     try {
-        & $env:ComSpec /d /c "call `"$installBat`""
+        & $env:ComSpec /d /c "call `"$installBat`" $installerOption"
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        if (-not $managedInstaller) {
+            $verification = Join-Path $workDir "verification.toml"
+            [System.IO.File]::WriteAllText($verification, "")
+            $checkPixi = Find-Pixi
+            if (-not $checkPixi) { throw "Pixi was not found after installation." }
+            & $checkPixi run wgsextract --config $verification deps check
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        }
     } finally {
         Pop-Location
-        if ($null -ne $userCliConfigBefore) {
-            [System.IO.File]::WriteAllBytes($userCliConfig, $userCliConfigBefore)
-        } elseif (Test-Path -LiteralPath $userCliConfig) {
-            Remove-Item -LiteralPath $userCliConfig -Force
-            foreach ($dir in (Split-Path -Parent $userCliConfig), (Join-Path $env:LOCALAPPDATA "theontho")) {
-                if ((Test-Path -LiteralPath $dir) -and -not (Get-ChildItem -LiteralPath $dir -Force)) {
-                    Remove-Item -LiteralPath $dir -Force
-                }
-            }
-        }
     }
 
     if ($usesMsys2 -and -not (Test-MsysInstall -Root $msys2Root)) {
@@ -320,7 +317,7 @@ try {
         if ($pixiInstallRoot -and -not $pixiHomeExisted) {
             $manifestItems.Add(@{ type = "directory"; path = $pixiInstallRoot; ownedBy = "install_windows.bat" })
         }
-        if ($pixiBinDir) {
+        if ($pixiBinDir -and -not $managedInstaller) {
             $manifestItems.Add(@{ type = "userPathEntry"; path = $pixiBinDir; ownedBy = "install_windows.bat" })
         }
     }

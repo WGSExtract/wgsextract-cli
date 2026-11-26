@@ -64,6 +64,7 @@ export function elements<T extends Element = HTMLElement>(selector: string): T[]
 export function errorMessage(error: unknown): string {
     const message = error instanceof Error ? error.message : String(error);
     switch (message) {
+        case "workspaceChoiceRequired":
         case "workspaceMoveBusy":
         case "workspaceMoveInProgress":
         case "workspaceMoveSettingsLocked":
