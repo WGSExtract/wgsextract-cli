@@ -189,9 +189,44 @@ possible, even if only one matches the named patterns. For pharmacogenes,
 prefer `vcf pharmcat` for star alleles and copy-number exceptions.
 
 The results are a JSON document, a variant TSV (or `--format parquet`), and a
-result manifest. They are research-only, not a diagnosis. Null calibration
-is not run by this audit yet. No files, variants, or coordinates are sent
-over the network.
+result manifest. They are research-only, not a diagnosis. No files, variants,
+or coordinates are sent over the network.
+
+### Matched null calibration
+
+Add `[calibration]` to the panel, or pass `--null-sets 1000`, to request a null
+comparison. Use a whole-genome GRCh38 VCF with a comparable annotation scope
+for the panel and controls. `--no-calibration` skips it even if the panel
+requests it. A VCF marked as called on a restricted region is rejected for
+calibration. The first run uses an installed, checksum-pinned MANE Select
+exon model; `--download` explicitly fetches the public model from the
+WGSExtract GitHub release, or `--exons FILE` supplies a local model in the
+same format. No sample information is sent. The model is derived from NCBI
+RefSeq (public domain) and NIST GIAB stratifications (freely reusable).
+
+The audit applies the same group filters to the observed and control genes.
+For calibration it counts only qualifying alleles inside coding bases where
+the gVCF supports a variant or reference call, or inside model CDS when no
+gVCF is supplied. It excludes genes with at least half their CDS in
+segmental duplications, and all panel genes from the control pool. Controls
+are drawn without replacement within quantile bins of coding length and the
+same chromosome class. ChrX is included only when the input declares known
+sex in its calling policy. Missing opportunity or too few matched genes
+does not produce a null statistic. ChrY is excluded from calibration. For XY
+samples, pseudoautosomal and non-pseudoautosomal X genes are matched separately;
+genes whose CDS crosses both are excluded. In haploid X regions, `1` and `1/1`
+each count as one ALT copy. Heterozygous and partial calls contribute no copies
+to calibration; this does not change the ordinary audit counts. The audit
+withholds the statistic if a target length lies outside its chromosome class's
+control range or the expected control total differs by more than 20% from the
+target total.
+
+The report shows observed copies and genes, the null allele-count histogram
+and matched lengths, mean, population standard deviation, percentile
+(midrank for ties), and the finite-sample empirical upper-tail probability
+`(1 + null counts >= observed) / (1 + number of draws)`. Small panels and a
+null mean below one are flagged as underpowered. The comparison is to other
+genes in **this sample**, not population disease association.
 
 ## Problems and their locations
 

@@ -469,6 +469,306 @@ def test_1287_audit_requires_explicit_research_opt_in() -> None:
         api.PanelAuditParams(panel=Path("panel.toml"), vcf_input=Path("sample.vcf.gz"))
 
 
+@needs_htslib
+def test_1287_null_counts_callable_cds_and_excludes_duplicated_controls(
+    tmp_path: Path,
+) -> None:
+    panel, vcf, gvcf = _audit_inputs(tmp_path, phase_set="1")
+    header = ""
+    observed = []
+    with gzip.open(vcf, "rt") as stream:
+        for line in stream:
+            if line.startswith("#"):
+                header += line
+            else:
+                observed.append(line)
+    control = [
+        "chr1\t923930\t.\tC\tG\t50\tPASS\tCSQ=G|stop_gained|HIGH|SAMD11\tGT:DP:GQ\t1/1:30:60\n",
+        "chr1\t944210\t.\tA\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|NOC2L\tGT:DP:GQ\t1/1:30:60\n",
+    ]
+    counts = tmp_path / "combined.vcf"
+    counts.write_text(header + "".join(control + observed), encoding="utf-8")
+    indexed = Path(bgzip_index(counts))
+    gheader = gvcf.read_text(encoding="utf-8").split("#CHROM")[0]
+    blocks = [
+        (923931, 923939, 30, 60),
+        (944211, 944219, 30, 60),
+        (1013500, 1013509, 30, 60),
+        (1020125, 1020134, 2, 3),
+        (11796325, 11796330, 30, 60),
+    ]
+    grows = (
+        control
+        + observed[:4]
+        + [
+            f"chr1\t{start}\t.\tA\t<NON_REF>\t.\tPASS\tEND={end}\tGT:DP:GQ:MIN_DP\t0/0:{dp}:{gq}:{dp}\n"
+            for start, end, dp, gq in blocks
+        ]
+    )
+    gvcf.write_text(
+        gheader
+        + "#CHROM"
+        + header.split("#CHROM")[1]
+        + "".join(sorted(grows, key=lambda row: int(row.split("\t")[1]))),
+        encoding="utf-8",
+    )
+    model = tmp_path / "exons.tsv"
+    model.write_text(
+        "#contig\tchr1\t248956422\n"
+        "gene\ttranscript\ttag\tstrand\texon\texons\tchrom\tstart\tend\tcds_start\tcds_end\tlimitations\n"
+        + "".join(
+            f"{gene}\tNM_{gene}\tMANE Select\t+\t1\t1\tchr1\t{start}\t{start + 9}\t"
+            f"{start}\t{start + 9}\t{mask}\n"
+            for gene, start, mask in (
+                ("MTHFR", 11796321, ""),
+                ("NOC2L", 944210, ""),
+                ("ISG15", 1013500, ""),
+                ("AGRN", 1020125, ""),
+                ("SAMD11", 923930, "segmental_duplication:923930-923934"),
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    def audit(
+        directory: str, reference: Path | None
+    ) -> tuple[dict[str, Any], set[str]]:
+        result = api.panel.audit(
+            api.PanelAuditParams(
+                panel=panel,
+                vcf_input=indexed,
+                gvcf=reference,
+                exons=model,
+                research_panel=True,
+                null_sets=100,
+                seed=7,
+                outdir=tmp_path / directory,
+            )
+        )
+        report = next(o for o in result.outputs if o.role == "panel_audit")
+        return json.loads(Path(report.path).read_text(encoding="utf-8")), {
+            warning.code for warning in result.warnings
+        }
+
+    calibrated, warnings = audit("first", gvcf)
+    repeated, _ = audit("repeat", gvcf)
+    null = calibrated["groups"][0]["calibration"]
+    assert repeated["groups"][0]["calibration"] == null
+    assert null["basis"] == "callable_cds_bp"
+    assert null["observed_allele_copies"] == 2
+    assert null["observed_matched_bp"] == null["null_mean_matched_bp"] == 10
+    assert null["control_genes"] == 2
+    histogram = null["null_histogram"]
+    assert set(histogram) == {"0", "2"} and sum(histogram.values()) == 100
+    assert null["upper_tail_p"] == pytest.approx((histogram["2"] + 1) / 101)
+    assert "panel_calibration_underpowered" in warnings
+    assert calibrated["calibration_universe"]["segmental_duplication_exclusions"] == [
+        "SAMD11"
+    ]
+    fallback, _ = audit("fallback", None)
+    assert fallback["groups"][0]["calibration"]["basis"] == "cds_bp"
+    assert fallback["groups"][0]["calibration"]["control_genes"] == 3
+    original = model.read_text(encoding="utf-8")
+    model.write_text(
+        original.replace("1013509", "1013511").replace("11796330", "11796331"),
+        encoding="utf-8",
+    )
+    in_support, _ = audit("between-control-lengths", None)
+    assert in_support["groups"][0]["calibration"]["state"] == "calibrated"
+    model.write_text(
+        original.replace("11796330", "11796420"),
+        encoding="utf-8",
+    )
+    unmatched, warnings = audit("outside-support", None)
+    null = unmatched["groups"][0]["calibration"]
+    assert null["reason"] == "outside_control_cds_range"
+    assert null["unmatched_targets"] == ["MTHFR"]
+    assert "upper_tail_p" not in null
+    assert "panel_calibration_underpowered" in warnings
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("sex", "nonpar_gt"), [("XY", "1"), ("XY", "1/1"), ("XX", "1/1"), ("", "1/1")]
+)
+def test_1287_null_matches_x_controls_and_counts_haploid_evidence(
+    tmp_path: Path, sex: str, nonpar_gt: str
+) -> None:
+    from wgsextract_cli.core.reference_evidence import Provenance
+
+    panel, _, gvcf = _audit_inputs(tmp_path, phase_set="1")
+    spec = json.loads(panel.read_text(encoding="utf-8"))
+    del spec["sites"], spec["haplotypes"]
+    spec["groups"] = [
+        {"id": "x", "genes": ["PLCXD1", "G6PD"]},
+        {"id": "boundary", "genes": ["XG"]},
+    ]
+    _write(tmp_path, spec, ".json")
+    header, remaining = gvcf.read_text(encoding="utf-8").split("#CHROM", 1)
+    columns = "#CHROM" + remaining.splitlines()[0] + "\n"
+    # Use the same annotated variants in the VCF and the reference evidence.
+    header += "##contig=<ID=chrX,length=156040895>\n"
+    policy = Provenance(
+        "bcftools",
+        "1.23",
+        "gq",
+        ploidy="chrX:2781480-155701382=1" if sex == "XY" else "",
+        sex=sex,
+    )
+    header += policy.header() + "\n"
+    coding = [
+        ("PLCXD1", 276360, ["1/1"]),
+        ("GTPBP6", 304760, ["1/1"]),
+        ("XG", 2781475, []),
+        ("MECP2", 154021580, ["1/1"]),
+        ("G6PD", 154531390, [nonpar_gt, "0/1"]),
+    ]
+    variants = []
+    blocks = []
+    for gene, start, calls in coding:
+        for pos, gt in enumerate(calls, start):
+            variants.append(
+                f"chrX\t{pos}\t.\tA\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|{gene}"
+                f"\tGT:DP:GQ:AD\t{gt}:30:60:{'15,15' if gt == '0/1' else '0,30'}\n"
+            )
+        # DP 6 is below the diploid floor but above the biological haploid
+        # floor. The diploid-encoded block must still contribute all its bases.
+        depth = 6 if sex == "XY" and gene in {"MECP2", "G6PD"} else 30
+        blocks.append(
+            f"chrX\t{start + len(calls)}\t.\tA\t<NON_REF>\t.\tPASS\tEND={start + 9}"
+            f"\tGT:DP:GQ:MIN_DP\t0/0:{depth}:60:{depth}\n"
+        )
+    vcf = tmp_path / "x-calls.vcf"
+    vcf.write_text(
+        "".join(
+            line
+            for line in header.splitlines(keepends=True)
+            if not line.startswith("##ALT=")
+        )
+        + columns
+        + "".join(variants),
+        encoding="utf-8",
+    )
+    gvcf.write_text(
+        header
+        + columns
+        + "".join(sorted(variants + blocks, key=lambda row: int(row.split("\t")[1]))),
+        encoding="utf-8",
+    )
+    model = tmp_path / "x-exons.tsv"
+    model.write_text(
+        "#contig\tchrX\t156040895\n"
+        "gene\ttranscript\ttag\tstrand\texon\texons\tchrom\tstart\tend\tcds_start\tcds_end\tlimitations\n"
+        + "".join(
+            f"{gene}\tNM_{gene}\tMANE Select\t+\t1\t1\tchrX\t{start}\t{start + 9}\t"
+            f"{start}\t{start + 9}\t\n"
+            for gene, start, _ in coding
+        ),
+        encoding="utf-8",
+    )
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=Path(bgzip_index(vcf)),
+            gvcf=gvcf,
+            exons=model,
+            research_panel=True,
+            null_sets=100,
+        )
+    )
+    report = next(o for o in result.outputs if o.role == "panel_audit")
+    groups = json.loads(Path(report.path).read_text(encoding="utf-8"))["groups"]
+    null, boundary = (group["calibration"] for group in groups)
+    if not sex:
+        assert null["reason"] == "no_eligible_target_genes"
+        assert null["excluded_targets"] == {
+            "PLCXD1": "chromosome_out_of_scope",
+            "G6PD": "chromosome_out_of_scope",
+        }
+        return
+    assert null["observed_matched_bp"] == null["null_mean_matched_bp"] == 20
+    strata = {
+        row["chromosome_class"]: (row["target_genes"], row["control_genes"])
+        for row in null["strata"]
+    }
+    if sex == "XY":
+        assert strata == {"X_diploid": (1, 1), "X_haploid": (1, 1)}
+        assert null["observed_allele_copies"] == 3
+        assert null["null_histogram"] == {"3": 100}
+        assert boundary["excluded_targets"] == {"XG": "mixed_x_ploidy"}
+    else:
+        assert strata == {"X_diploid": (2, 2)}
+        assert null["observed_allele_copies"] == 5
+        assert null["null_histogram"] == {"4": 100}
+        assert boundary["observed_matched_bp"] == 10
+
+
+@needs_htslib
+@pytest.mark.parametrize("end", [11796331, 248956422])
+def test_1287_only_incomplete_called_regions_block_null_calibration(
+    tmp_path: Path,
+    end: int,
+) -> None:
+    from wgsextract_cli.core.reference_evidence import Provenance
+
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    with gzip.open(vcf, "rt", encoding="utf-8") as stream:
+        header, body = stream.read().split("#CHROM", 1)
+    start = 1 if end == 248956422 else 11796321
+    region = f"chr1:{start}-{end}"
+    policy = Provenance("bcftools", "1.23", "gq", region=region)
+    restricted = tmp_path / "restricted.vcf"
+    restricted.write_text(
+        header + policy.header() + "\n#CHROM" + body, encoding="utf-8"
+    )
+    model = tmp_path / "exons.tsv"
+    model.write_text(
+        "#contig\tchr1\t248956422\n"
+        "gene\ttranscript\ttag\tstrand\texon\texons\tchrom\tstart\tend\tcds_start\tcds_end\tlimitations\n"
+        "MTHFR\tNM_005957.5\tMANE Select\t+\t1\t1\tchr1\t11796321\t11796330\t11796321\t11796330\t\n",
+        encoding="utf-8",
+    )
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=restricted,
+            research_panel=True,
+            null_sets=100,
+            exons=model,
+            outdir=tmp_path / "regional",
+        ),
+        check=False,
+    )
+    if start == 1:
+        assert result.exit_code == 0 and result.outputs
+    else:
+        assert result.exit_code == 2
+        assert result.error and region in result.error.message
+        assert not result.outputs
+
+
+@needs_htslib
+def test_1287_missing_mane_reference_requires_explicit_download(tmp_path: Path) -> None:
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    library = tmp_path / "library"
+    library.mkdir()
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=vcf,
+            ref=library,
+            research_panel=True,
+            null_sets=100,
+            outdir=tmp_path / "local",
+        ),
+        check=False,
+    )
+    assert result.exit_code == 2
+    assert result.error and "mane-grch38-v1.tsv.gz" in result.error.message
+    assert "--download" in result.error.message
+    assert not list(library.iterdir())
+
+
 def test_panel_bed_accepts_hgnc_ids(tmp_path):
     result = api.panel.bed(
         api.PanelBedParams(genes=("HGNC:613",), pad_kb=0, outdir=tmp_path)

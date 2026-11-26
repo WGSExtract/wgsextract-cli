@@ -15,7 +15,7 @@ from wgsextract_cli.commands._messages.panel import CLI_HELP
 NEEDS = {
     "panel bed": _n(INSTANT),
     "panel check": _n(INSTANT),
-    "panel audit": _n(SECONDS, "bcftools"),
+    "panel audit": _n(SECONDS, "bcftools", optional="curl"),
 }
 
 
