@@ -37,6 +37,7 @@ from wgsextract_cli.core.alignment.samtools_commands import (
     alignment_index,
     parse_memory,
 )
+from wgsextract_cli.core.artifact_facts import index_paths
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -243,13 +244,9 @@ def _glimpse(
         )
 
     def ligate(panel: imputation_panel.ChromosomePanel) -> None:
+        phased = [work / f"{panel.chrom}.{i}.bcf" for i in range(len(panel.chunks))]
         listing = work / f"{panel.chrom}.chunks.txt"
-        listing.write_text(
-            "".join(
-                f"{work / f'{panel.chrom}.{i}.bcf'}\n" for i in range(len(panel.chunks))
-            ),
-            newline="\n",
-        )
+        listing.write_text("".join(f"{path}\n" for path in phased), newline="\n")
         ligated = work / f"{panel.chrom}.bcf"
         # GLIMPSE2_ligate has no --log: its report goes there instead.
         _glimpse_tool(
@@ -257,8 +254,12 @@ def _glimpse(
              "--threads", "1"],
             work / f"{panel.chrom}.ligate.log", panel.chrom, report_to_log=True,
         )  # fmt: skip
-        if not ligated.is_file():
+        if not ligated.is_file() or not ligated.stat().st_size:
             raise WGSExtractError(f"GLIMPSE2_ligate wrote no {panel.chrom} output.")
+        # Only the ligated chromosome is needed by the final concat.
+        for path in phased:
+            path.unlink()
+            path.with_suffix(".bcf.csi").unlink(missing_ok=True)
 
     chunks = [
         Job(
@@ -405,15 +406,20 @@ def _beagle(
         contig.write_text(
             f"##contig=<ID={panel.chrom},length={length}>\n", newline="\n"
         )
-        ensure_vcf_indexed(f"{out}.vcf.gz")
+        imputed = Path(f"{out}.vcf.gz")
+        ensure_vcf_indexed(imputed)
+        gt.unlink()
         part = work / f"{panel.chrom}.vcf.gz"
         run_command(
             ["bcftools", "annotate", "-h", contig,
              "-a", panel.panel,
              "-c", "INFO/WGSE_PANEL_AC:=INFO/AC,INFO/WGSE_PANEL_AN:=INFO/AN",
              "-Oz", "-o", part,
-             f"{out}.vcf.gz"]
+             imputed]
         )  # fmt: skip
+        for index in index_paths(imputed, "vcf"):
+            Path(index).unlink()
+        imputed.unlink()
         parts.append(part)
     return parts, {"sample": sample}
 
