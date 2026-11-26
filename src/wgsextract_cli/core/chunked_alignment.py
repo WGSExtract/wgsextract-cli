@@ -38,6 +38,10 @@ from typing import Any
 
 from wgsextract_cli.core import execution_context
 from wgsextract_cli.core.alignment import splice as alignment_splice
+from wgsextract_cli.core.alignment._chunk_groups import (
+    ChunkGroupOutput,
+    chunk_group_output,
+)
 from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.ref_library.assets import header_sequences
@@ -435,8 +439,15 @@ class ChunkedAlignment:
             if len(state["chunks"]) < len(self.chunks):
                 self._preflight()
                 index = self._index(state)
+                complete = next(iter(state["chunks"]), None)
+                split = chunk_group_output(
+                    self.workdir, [[r.contig for r in group] for group in groups],
+                    self.reference, self.format, self.output_profile,
+                    self.compression_threads or self.threads,
+                    self._group_file(0, int(complete)) if complete is not None else None,
+                )  # fmt: skip
                 for number, chunk in enumerate(self.chunks):
-                    self._align_chunk(state, number, chunk, groups, index)
+                    self._align_chunk(state, number, chunk, groups, index, split)
                 Path(index).unlink(missing_ok=True)
             self._assemble(state, groups)
         if self._assembly().is_file():
@@ -718,6 +729,7 @@ class ChunkedAlignment:
         chunk: Chunk,
         groups: list[Chunk],
         index: str,
+        split: ChunkGroupOutput,
     ) -> None:
         """Align and sort one chunk, then split it into the output's groups."""
         if str(number) in state["chunks"]:
@@ -738,45 +750,30 @@ class ChunkedAlignment:
                 else ["samtools", "view", *view, "-e", _UNPLACED, str(unplaced)],
                 self.reads,
                 [*self.mapper, index, "-"],
-                [
-                    "samtools",
-                    "sort",
-                    "--no-PG",
-                    "-@",
-                    self.threads,
-                    "-m",
-                    self.memory,
-                    "-T",
-                    str(sort_prefix),
-                    "-l",
-                    "1",
-                    "-O",
-                    "BAM",
-                    "--write-index",
-                    "-o",
-                    # CSI: a BAI can't index contigs longer than 512 Mb.
-                    f"{sorted_chunk}##idx##{sorted_chunk}.csi",
-                    "-",
-                ],
-            ],  # fmt: skip
+                split.sort(sorted_chunk, sort_prefix, self.threads, self.memory),
+                *split.stages(number),
+            ],
             description=f"Alignment of chunk {number + 1} of {total}",
             cancel_event=execution_context.current().cancel,
             heartbeat=True,
         )
-        sizes = []
-        for group, regions in enumerate(groups):
-            path = self._group_file(group, number)
-            options = ["--no-PG", "-@", self.compression_threads or self.threads, *self._output_options(),
-                       "-o", str(path)]  # fmt: skip
-            run_command(
-                self._view(options, str(sorted_chunk), regions, f"group-{group:03d}")
-            )
-            sizes.append(path.stat().st_size)
-        sorted_chunk.unlink()
-        Path(f"{sorted_chunk}.csi").unlink(missing_ok=True)
+        if not split.splitter:
+            for group, regions in enumerate(groups):
+                options = ["--no-PG", "-@", self.compression_threads or self.threads, *split.options,
+                           "-o", str(self._group_file(group, number))]  # fmt: skip
+                run_command(
+                    self._view(
+                        options, str(sorted_chunk), regions, f"group-{group:03d}"
+                    )
+                )
+            sorted_chunk.unlink()
+            Path(f"{sorted_chunk}.csi").unlink(missing_ok=True)
         if unplaced is not None:
             unplaced.unlink()
-        state["chunks"][str(number)] = sizes
+        state["chunks"][str(number)] = [
+            self._group_file(group, number).stat().st_size
+            for group in range(len(groups))
+        ]
         self._save(state)
 
     def _assemble(self, state: dict[str, Any], groups: list[Chunk]) -> None:
