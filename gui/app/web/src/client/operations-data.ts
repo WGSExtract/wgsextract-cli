@@ -20,6 +20,15 @@ export function precheckLabels() {
     }));
 }
 
+let dataSourceGeneration = 0;
+
+export function clearDataSourceCache() {
+    dataSourceGeneration += 1;
+    state.dataSourcePayloads.clear();
+    state.dataSourceErrors.clear();
+    state.loadingDataSources.clear();
+}
+
 export function ensureDataSource(key: string, source: ManifestLocation, context: CommandContext) {
     if (state.dataSourcePayloads.has(key) || state.dataSourceErrors.has(key) || state.loadingDataSources.has(key)) {
         return;
@@ -30,23 +39,27 @@ export function ensureDataSource(key: string, source: ManifestLocation, context:
     }
     state.dataSourceErrors.delete(key);
     state.loadingDataSources.add(key);
+    const generation = dataSourceGeneration;
     api<DataSourcePayload>("/api/datasource", { method: "POST", body: { source, context } })
         .then((payload) => {
-        if (payload.displayPaths) {
-            // A path can change while the data source is resolving it.
-            payload.displayPaths = Object.fromEntries(Object.entries(payload.displayPaths)
-                .filter(([id]) => state.fieldValues[id] === context.fieldValues?.[id]));
+        if (generation !== dataSourceGeneration
+            || Object.keys(payload.displayPaths ?? {}).some((id) => state.fieldValues[id] !== context.fieldValues?.[id])) {
+            return;
         }
         state.dataSourcePayloads.set(key, payload);
         selectDefaultDataSourceOption(key, payload);
         state.dataSourceErrors.delete(key);
     })
         .catch((error) => {
-        state.dataSourceErrors.set(key, errorMessage(error));
+        if (generation === dataSourceGeneration) {
+            state.dataSourceErrors.set(key, errorMessage(error));
+        }
     })
         .finally(() => {
-        state.loadingDataSources.delete(key);
-        scheduleRender();
+        if (generation === dataSourceGeneration) {
+            state.loadingDataSources.delete(key);
+            scheduleRender();
+        }
     });
 }
 export function ensureActionPrecheck(key: string, reference: ActionReference, context: CommandContext) {

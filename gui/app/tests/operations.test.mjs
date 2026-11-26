@@ -15,8 +15,9 @@ globalThis.document = {
 };
 
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
-const { ensureDataSource, openBundleWorkspace, retryDataSource, runAction, runSetup } = await import("../dist/web/src/client/operations.js");
-const { renderActions, renderConfigSetting, renderDropdownControl, renderPage } = await import("../dist/web/src/client/view.js");
+const { configSettingChanged, ensureDataSource, openBundleWorkspace, retryDataSource, runAction, runSetup } = await import("../dist/web/src/client/operations.js");
+const { renderActions, renderConfigSetting, renderDropdownControl, renderPage, renderTextControl } = await import("../dist/web/src/client/view.js");
+const { bindWorkspaceLocationEvents } = await import("../dist/web/src/client/workspace-location.js");
 
 function resetState() {
   Object.assign(state, createInitialState(), {
@@ -318,6 +319,55 @@ test("data source errors do not block retries", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+for (const previousResult of ["cached", "in flight"]) {
+  test(`Change Setting Only refreshes a relative Reference Data path with an old result ${previousResult}`, async (t) => {
+    resetState();
+    const oldSetting = "~/old-reference";
+    const newSetting = "~/new-reference";
+    const setting = { id: "ref_path", key: "reference_library", kind: "path", moveContents: true };
+    const pathControl = { id: "ref_path", kind: "path", pathDisplay: "absolute", pathDisplaySource: "reference_data" };
+    const renderPath = () => renderTextControl(pathControl);
+    const query = () => ensureDataSource("control:reference_data", { controlID: "reference_data" }, { fieldValues: { ...state.fieldValues } });
+    const resolved = (value) => Response.json({ displayPaths: { ref_path: value.replace("~", "/home/user") } });
+    state.fieldValues.ref_path = state.configValues["settings.ref_path"] = oldSetting;
+    let completeOld;
+    const pendingOld = new Promise((resolve) => { completeOld = resolve; });
+    let saved;
+    t.mock.method(globalThis, "fetch", (url, init) => {
+      const payload = JSON.parse(init.body);
+      if (url === "/api/datasource") {
+        const value = payload.context.fieldValues.ref_path;
+        return value === oldSetting && previousResult === "in flight" ? pendingOld : resolved(value);
+      }
+      if (url === "/api/config/save") {
+        saved = payload.values.reference_library;
+        return Response.json({ path: "/config.toml" });
+      }
+      assert.equal(url, "/api/state/save");
+      return Response.json({});
+    });
+    query();
+    if (previousResult === "cached") {
+      await waitUntil(() => renderPath().includes('value="/home/user/old-reference"'));
+    }
+    await configSettingChanged(newSetting, setting, { id: "settings" });
+    let confirmSettingOnly;
+    bindWorkspaceLocationEvents({
+      querySelector: (selector) => selector === "[data-workspace-location-setting-only]"
+        ? { addEventListener: (_type, callback) => { confirmSettingOnly = callback; } }
+        : null,
+      querySelectorAll: () => [],
+    });
+    await confirmSettingOnly();
+    query();
+    await waitUntil(() => renderPath().includes('value="/home/user/new-reference"'));
+    completeOld(resolved(oldSetting));
+    await new Promise(setImmediate);
+    assert.match(renderPath(), /value="\/home\/user\/new-reference"/);
+    assert.equal(saved, newSetting);
+  });
+}
 
 test("setup holds data sources while running and reloads failed ones when it ends", async () => {
   resetState();

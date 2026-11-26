@@ -1,7 +1,7 @@
 import { api } from "./api.js";
 import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-picker-memory.js";
 import { errorMessage } from "./model.js";
-import { clearFileStateCache } from "./operations-data.js";
+import { clearDataSourceCache, clearFileStateCache } from "./operations-data.js";
 import { chooseLocalPath } from "./path-picker.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
@@ -62,9 +62,7 @@ export async function loadBundleFromPicker(bootstrap: Bootstrap) {
 
 function resetBundleClientState() {
     state.activePageID = "";
-    state.dataSourcePayloads.clear();
-    state.dataSourceErrors.clear();
-    state.loadingDataSources.clear();
+    clearDataSourceCache();
     clearFileStateCache();
     state.actionPrechecks.clear();
     state.actionPrecheckErrors.clear();
