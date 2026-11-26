@@ -10,6 +10,7 @@ import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib, write_fasta
 from wgsextract_cli.api.vcf import VcfCaddParams, VcfClinvarParams, cadd, clinvar
+from wgsextract_cli.commands.vcf.matching import normalized_clinvar_resource
 from wgsextract_cli.core import personal_report, variant_table
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -138,6 +139,27 @@ def test_issue_1243_upper_case_compressed_vcfs_are_annotated(tmp_path):
     resource = Path(bgzip_index(plain, tmp_path / "CLINVAR.VCF.BGZ"))
     (found,) = records(annotate(tmp_path / "out", sample, resource, ref))
     assert found[:5] == ["1", "2", "sample", "CA", "C"]
+
+
+def test_1251_cold_clinvar_build_does_not_leave_a_text_resource(tmp_path: Path) -> None:
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": SEQ})
+    plain = vcf(
+        tmp_path / "clinvar.vcf",
+        [
+            "5 VCVdel AA A,CC . PASS CLNSIG=Pathogenic;CLNREVSTAT=reviewed_by_expert_panel GT 1/2"
+        ],
+        resource=True,
+    )
+    resource = bgzip_index(plain, tmp_path / "clinvar.vcf.gz")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    normalized = Path(normalized_clinvar_resource(resource, str(ref), str(scratch)))
+    deletion, substitution = records(normalized)
+    assert deletion[:5] == ["chr1", "2", "VCVdel", "CA", "C"]
+    assert substitution[:5] == ["chr1", "5", "VCVdel", "AA", "CC"]
+    assert all("WGSE_CLINVAR_STARS=3" in row[7] for row in (deletion, substitution))
+    assert Path(f"{normalized}.tbi").is_file() or Path(f"{normalized}.csi").is_file()
+    assert not list(scratch.glob("*.vcf"))
 
 
 @pytest.mark.parametrize(

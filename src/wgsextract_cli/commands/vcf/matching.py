@@ -2,22 +2,26 @@
 
 import gzip
 import json
+import os
 import sqlite3
 from bisect import bisect_right
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import closing
 from pathlib import Path
+from typing import TextIO
 from urllib.parse import quote
 
 from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_confidence as vc
+from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.results import ResultWarning, current_result, warn
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_depths import ad_total_header, preserve_ad_total
 from wgsextract_cli.core.variant_files import (
+    chromosome_rename_mapping,
     ensure_vcf_indexed,
     is_vcf_path,
     match_chromosome_name,
@@ -26,104 +30,24 @@ from wgsextract_cli.core.variant_files import (
 )
 from wgsextract_cli.core.variant_table import parse_header
 
-from .resource_ref_check import check_table_build, record_count, ref_mismatch_warning
+from .matching_tables import select_snv_rows, write_table
+from .resource_ref_check import (
+    check_table_build,
+    record_count,
+    ref_mismatch_warning,
+    warn_skipped_contigs,
+)
 
 
-def table_as_vcf(
+def _write_vcf(
     source: str,
-    columns: str,
-    headers: Sequence[str],
-    reference: str,
-    work: str,
-    snv_query: str | None = None,
-) -> tuple[str, str]:
-    fields = columns.split(",")
-    if "REF" not in fields or "ALT" not in fields:
-        return source, columns
-    lengths = {
-        name: int(length)
-        for line in Path(reference + ".fai").read_text().splitlines()
-        for name, length, *_ in [line.split("\t")]
-    }
-    check_table_build(source, fields, lengths, reference, work)
-    info_fields = [
-        (i, c.removeprefix("INFO/"))
-        for i, c in enumerate(fields)
-        if c.startswith("INFO/")
-    ]
-    output = Path(work, "allele-table.vcf")
-    subset = None
-    if snv_query:
-        regions = Path(work, "snv-regions.tsv")
-        available = run_command(
-            ["tabix", "-l", source], capture_output=True
-        ).stdout.splitlines()
-        query_names = {
-            c: match_chromosome_name(c, available) for c in vcf_chromosomes(snv_query)
-        }
-        with (
-            gzip.open(snv_query, "rt") as query,
-            regions.open("w", newline="\n") as loci,
-        ):
-            for line in query:
-                if line.startswith("#"):
-                    continue
-                row = line.split("\t")
-                if len(row[3]) == len(row[4]) == 1 and set(row[3] + row[4]) <= set(
-                    "ACGT"
-                ):
-                    chrom = query_names.get(row[0])
-                    if chrom:
-                        loci.write(f"{chrom}\t{row[1]}\t{row[1]}\n")
-        subset = Path(work, "snv-scores.tsv")
-        with subset.open("w", newline="\n") as selected:
-            if regions.stat().st_size:
-                run_command(["tabix", "-R", str(regions), source], stdout=selected)
-    contigs = []
-    with output.open("w", newline="\n") as handle:
-        handle.write("##fileformat=VCFv4.2\n")
-        for line in Path(reference + ".fai").read_text().splitlines():
-            name, length, *_ = line.split("\t")
-            contigs.append(name)
-            handle.write(f"##contig=<ID={name},length={length}>\n")
-        handle.writelines(h + "\n" for h in headers)
-        handle.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
-        mapped_names: dict[str, str] = {}
-        with subset.open() if subset else gzip.open(source, "rt") as records:
-            for line in records:
-                if line.startswith("#"):
-                    continue
-                row = line.rstrip("\n").split("\t")
-                chrom = row[fields.index("CHROM")]
-                if chrom not in mapped_names:
-                    mapped_names[chrom] = match_chromosome_name(chrom, contigs) or chrom
-                info = ";".join(f"{tag}={row[i]}" for i, tag in info_fields)
-                handle.write(
-                    "\t".join(
-                        [
-                            mapped_names[chrom],
-                            row[fields.index("POS")],
-                            ".",
-                            row[fields.index("REF")],
-                            row[fields.index("ALT")],
-                            ".",
-                            ".",
-                            info or ".",
-                        ]
-                    )
-                    + "\n"
-                )
-    return str(output), ",".join("INFO/" + tag for _, tag in info_fields)
-
-
-def _text_copy(
-    source: str,
-    output: Path,
+    handle: TextIO,
+    text: str,
+    contigs: Sequence[str],
     clinical: bool,
     allowed: set[str] | None = None,
     incompatible_mito: set[str] | None = None,
 ) -> tuple[int, bool]:
-    text = run_command(["bcftools", "view", "-h", source], capture_output=True).stdout
     if clinical:
         text = "\n".join(
             line
@@ -149,103 +73,93 @@ def _text_copy(
         )
     records_written = 0
     has_multiallelic = False
-    with output.open("w", newline="\n") as handle:
-        for line in text.splitlines():
-            if line.startswith("#CHROM"):
-                if allowed is None and header.samples:
-                    handle.write(ad_total_header(header.format_number))
-                for contig in vcf_chromosomes(source):
-                    if (
-                        f"##contig=<ID={contig}," not in text
-                        and f"##contig=<ID={contig}>" not in text
-                    ):
-                        handle.write(f"##contig=<ID={contig}>\n")
-                for tag, description in definitions.items():
-                    if f"##INFO=<ID={tag}," not in text:
-                        kind = "Integer" if tag == ce.STARS else "String"
-                        number = "A" if tag in {ce.STARS, ce.TIER} else "1"
-                        handle.write(
-                            f"##INFO=<ID={tag},Number={number},Type={kind},"
-                            f'Description="{description}">\n'
-                        )
-            handle.write(line + "\n")
-        # Streaming a prepared BGZF VCF avoids capturing a whole genome.
-        opener = gzip.open if source.lower().endswith((".gz", ".bgz")) else open
-        skipped = set()
-        skipped_count = 0
-        mito_count = 0
-        with opener(source, "rt") as records:
-            for line in records:
-                if line.startswith("#"):
+    for line in text.splitlines():
+        if line.startswith("#CHROM"):
+            if allowed is None and header.samples:
+                handle.write(ad_total_header(header.format_number))
+            for contig in contigs:
+                if (
+                    f"##contig=<ID={contig}," not in text
+                    and f"##contig=<ID={contig}>" not in text
+                ):
+                    handle.write(f"##contig=<ID={contig}>\n")
+            for tag, description in definitions.items():
+                if f"##INFO=<ID={tag}," not in text:
+                    kind = "Integer" if tag == ce.STARS else "String"
+                    number = "A" if tag in {ce.STARS, ce.TIER} else "1"
+                    handle.write(
+                        f"##INFO=<ID={tag},Number={number},Type={kind},"
+                        f'Description="{description}">\n'
+                    )
+        handle.write(line + "\n")
+    skipped = set()
+    skipped_count = 0
+    mito_count = 0
+    opener = gzip.open if source.lower().endswith((".gz", ".bgz")) else open
+    with opener(source, "rt") as records:
+        for line in records:
+            if line.startswith("#"):
+                continue
+            fields = line.rstrip().split("\t")
+            if allowed is not None and fields[0] not in allowed:
+                if fields[0] in (incompatible_mito or set()):
+                    mito_count += 1
                     continue
-                fields = line.rstrip().split("\t")
-                if allowed is not None and fields[0] not in allowed:
-                    if fields[0] in (incompatible_mito or set()):
-                        mito_count += 1
-                        continue
-                    skipped.add(fields[0])
-                    skipped_count += 1
-                    continue
-                records_written += 1
-                has_multiallelic |= "," in fields[4]
-                info = dict(item.partition("=")[::2] for item in fields[7].split(";"))
-                if clinical:
-                    for tag in (ce.IDENTITY, ce.STARS, ce.TIER):
-                        info.pop(tag, None)
-                    evidence_rows = []
-                    for allele in range(len(fields[4].split(","))):
-                        per_allele = dict(info)
-                        for key in ("CLNREVSTAT", "CLNSIG", "CLNSIGCONF"):
-                            field_number = info_numbers.get(key)
-                            if field_number in {"A", "R"} and key in info:
-                                values = info[key].split(",")
-                                index = allele + (field_number == "R")
-                                per_allele[key] = (
-                                    values[index] if index < len(values) else "."
-                                )
-                        evidence_rows.append(ce.review_evidence(per_allele))
-                    info[ce.IDENTITY] = fields[2]
-                    if any(e["stars"] is not None for e in evidence_rows):
-                        info[ce.STARS] = ",".join(
-                            str(e["stars"]) if e["stars"] is not None else "."
-                            for e in evidence_rows
-                        )
-                    info[ce.TIER] = ",".join(
-                        str(e["review_tier"]).replace(" ", "_").replace(",", "")
+                skipped.add(fields[0])
+                skipped_count += 1
+                continue
+            records_written += 1
+            has_multiallelic |= "," in fields[4]
+            info = dict(item.partition("=")[::2] for item in fields[7].split(";"))
+            if clinical:
+                for tag in (ce.IDENTITY, ce.STARS, ce.TIER):
+                    info.pop(tag, None)
+                evidence_rows = []
+                for allele in range(len(fields[4].split(","))):
+                    per_allele = dict(info)
+                    for key in ("CLNREVSTAT", "CLNSIG", "CLNSIGCONF"):
+                        field_number = info_numbers.get(key)
+                        if field_number in {"A", "R"} and key in info:
+                            values = info[key].split(",")
+                            index = allele + (field_number == "R")
+                            per_allele[key] = (
+                                values[index] if index < len(values) else "."
+                            )
+                    evidence_rows.append(ce.review_evidence(per_allele))
+                info[ce.IDENTITY] = fields[2]
+                if any(e["stars"] is not None for e in evidence_rows):
+                    info[ce.STARS] = ",".join(
+                        str(e["stars"]) if e["stars"] is not None else "."
                         for e in evidence_rows
                     )
-                elif allowed is None and ce.ORIGIN not in info:
-                    info.setdefault(
-                        ce.ORIGIN,
-                        quote(
-                            json.dumps(
-                                {
-                                    "chrom": fields[0],
-                                    "pos": int(fields[1]),
-                                    "ref": fields[3],
-                                    "alt": fields[4],
-                                    "format": fields[8] if len(fields) > 8 else None,
-                                    "samples": fields[9:],
-                                },
-                                separators=(",", ":"),
-                            ),
-                            safe="",
-                        ),
-                    )
-                info.pop(".", None)
-                fields[7] = (
-                    ";".join(f"{k}={v}" if v else k for k, v in info.items()) or "."
+                info[ce.TIER] = ",".join(
+                    str(e["review_tier"]).replace(" ", "_").replace(",", "")
+                    for e in evidence_rows
                 )
-                if allowed is None and "AD" in header.format_number:
-                    preserve_ad_total(fields)
-                handle.write("\t".join(fields) + "\n")
-    if skipped:
-        warn(
-            "annotation_contigs_not_in_reference",
-            f"Excluded {skipped_count} resource records on contigs absent from the reference FASTA; these cannot be matched. No sample records were excluded.",
-            count=skipped_count,
-            contigs=",".join(sorted(skipped)),
-        )
+            elif allowed is None and ce.ORIGIN not in info:
+                info.setdefault(
+                    ce.ORIGIN,
+                    quote(
+                        json.dumps(
+                            {
+                                "chrom": fields[0],
+                                "pos": int(fields[1]),
+                                "ref": fields[3],
+                                "alt": fields[4],
+                                "format": fields[8] if len(fields) > 8 else None,
+                                "samples": fields[9:],
+                            },
+                            separators=(",", ":"),
+                        ),
+                        safe="",
+                    ),
+                )
+            info.pop(".", None)
+            fields[7] = ";".join(f"{k}={v}" if v else k for k, v in info.items()) or "."
+            if allowed is None and "AD" in header.format_number:
+                preserve_ad_total(fields)
+            handle.write("\t".join(fields) + "\n")
+    warn_skipped_contigs(skipped, skipped_count)
     if mito_count:
         warn(
             "annotation_mito_reference_incompatible",
@@ -262,26 +176,22 @@ def _left_align(source: str, reference: str, output: str, check_ref: str) -> Non
     )  # fmt: skip
 
 
-def _normalize(
-    source: str,
-    reference: str,
-    output: str,
-    work: str,
-    clinical: bool,
-    is_resource: bool = False,
-    origin: str | None = None,
-) -> tuple[str, ResultWarning | None]:
+def _reference_lengths(reference: str) -> dict[str, int]:
     fai = Path(reference + ".fai")
     if not fai.is_file():
         raise WGSExtractError(
             f"Reference FASTA index missing: {fai}; run samtools faidx."
         )
-    lengths = {
+    return {
         f[0]: int(f[1])
         for line in fai.read_text().splitlines()
         if (f := line.split("\t"))
     }
-    header = run_command(["bcftools", "view", "-h", source], capture_output=True).stdout
+
+
+def _check_contig_lengths(
+    header: str, lengths: dict[str, int], *, is_resource: bool
+) -> set[str]:
     incompatible_mito = set()
     for contig, length in header_contig_lengths(header).items():
         alias = match_chromosome_name(contig, lengths)
@@ -297,41 +207,133 @@ def _normalize(
             raise WGSExtractError(
                 f"Reference/build mismatch: {contig} has length {length}, FASTA has {expected}."
             )
-    staged = Path(work, "resource.vcf" if is_resource else "query.vcf")
-    allowed = (
-        {c for c in vcf_chromosomes(source) if match_chromosome_name(c, lengths)}
-        - incompatible_mito
-        if is_resource
-        else None
-    )
-    total, has_multiallelic = _text_copy(
-        source, staged, clinical, allowed, incompatible_mito
-    )
+    return incompatible_mito
+
+
+def _sort_command(source: str, output: str, work: str) -> list[str]:
+    sort_dir = str(Path(work, "sort"))
+    return ["bcftools", "sort", "-T", sort_dir, "-Oz", "-o", output, source]
+
+
+def _normalize_query(source: str, reference: str, work: str) -> str:
+    lengths = _reference_lengths(reference)
+    header = run_command(["bcftools", "view", "-h", source], capture_output=True).stdout
+    _check_contig_lengths(header, lengths, is_resource=False)
+    staged = Path(work, "query.vcf")
+    with staged.open("w", newline="\n") as handle:
+        _write_vcf(source, handle, header, vcf_chromosomes(source), False)
     renamed = normalize_vcf_chromosomes(str(staged), list(lengths), work)
+    output = str(Path(work, "query.vcf.gz"))
     norm = output + ".norm.gz"
-    warning = None
+    split = output + ".split.gz"
+    run_command(
+        ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
+         "-Oz", "-o", split, renamed],
+        capture_output=True,
+    )  # fmt: skip
+    _left_align(split, reference, norm, "e")
+    run_command(_sort_command(norm, output, work), capture_output=True)
+    ensure_vcf_indexed(output)
+    return output
+
+
+def _stream_resource(
+    write: Callable[[TextIO], tuple[int, bool]],
+    stages: list[list[str]],
+    work: str,
+) -> tuple[int, bool]:
+    read_fd, write_fd = os.pipe()
+    with (
+        os.fdopen(read_fd, "rb") as reader,
+        os.fdopen(write_fd, "w", encoding="utf-8", newline="\n") as writer,
+        ContextThreadPoolExecutor(max_workers=1) as pool,
+    ):
+
+        def feed() -> tuple[int, bool]:
+            with writer:
+                return write(writer)
+
+        producer = pool.submit(feed)
+        try:
+            with reader:
+                run_pipeline(stages, stdin=reader, stderr_dir=work,
+                             description="Annotation resource REF validation")  # fmt: skip
+        except WGSExtractError:
+            # Close the read end before joining the writer. Prefer a source
+            # error to bcftools failing on the resulting truncated stream.
+            try:
+                producer.result()
+            except BrokenPipeError:
+                pass
+            raise
+        return producer.result()
+
+
+def _normalize_resource(
+    source: str,
+    reference: str,
+    work: str,
+    clinical: bool,
+    origin: str,
+    *,
+    columns: str = "",
+    headers: Sequence[str] = (),
+    snv_query: str | None = None,
+) -> tuple[str, ResultWarning | None]:
+    lengths = _reference_lengths(reference)
+    stages: list[list[str]] = []
+    if columns:
+        fields = columns.split(",")
+        check_table_build(source, fields, lengths, reference, work)
+        subset = select_snv_rows(source, snv_query, work) if snv_query else None
+
+        def write(handle: TextIO) -> tuple[int, bool]:
+            return write_table(source, fields, headers, lengths, subset, handle)
+    else:
+        header = run_command(
+            ["bcftools", "view", "-h", source], capture_output=True
+        ).stdout
+        contigs = vcf_chromosomes(source)
+        incompatible_mito = _check_contig_lengths(header, lengths, is_resource=True)
+        allowed = {
+            c for c in contigs if match_chromosome_name(c, lengths)
+        } - incompatible_mito
+        mapping = chromosome_rename_mapping(contigs, list(lengths))
+        if mapping:
+            rename_path = Path(work, "resource-chromosomes.txt")
+            names = "".join(f"{a}\t{b}\n" for a, b in mapping)
+            rename_path.write_text(names, newline="\n")
+            stages.append(
+                ["bcftools", "annotate", "--rename-chrs", str(rename_path), "-Ou", "-"]
+            )
+
+        def write(handle: TextIO) -> tuple[int, bool]:
+            return _write_vcf(
+                source, handle, header, contigs, clinical, allowed, incompatible_mito
+            )
+
     # Check unsplit resources so a row with several ALTs counts only once.
     # Compute drops from records, not bcftools' version-dependent summary.
-    if is_resource:
-        kept = output + ".checked.gz" if has_multiallelic else norm
-        _left_align(renamed, reference, kept, "x")
-        warning = ref_mismatch_warning(
-            total - record_count(kept), total, origin or source
-        )
-        renamed = kept
-    if not is_resource or has_multiallelic:
-        split = output + ".split.gz"
-        run_command(
-            ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
-             "-Oz", "-o", split, renamed],
-            capture_output=True,
-        )  # fmt: skip
-        # Left-align split alleles independently, without dropping sample rows.
-        _left_align(split, reference, norm, "e")
-    run_command(
-        ["bcftools", "sort", "-T", str(Path(work, "sort")), "-Oz", "-o", output, norm],
-        capture_output=True,
+    kept = str(Path(work, "resource.checked.vcf.gz"))
+    stages.append(
+        ["bcftools", "norm", "-f", reference, "-c", "x", "-Oz", "-o", kept, "-"]
     )
+    total, has_multiallelic = _stream_resource(write, stages, work)
+    warning = ref_mismatch_warning(total - record_count(kept), total, origin)
+    output = str(Path(work, "resource.vcf.gz"))
+    if has_multiallelic:
+        run_pipeline(
+            [
+                ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG, "-Ou", kept],
+                ["bcftools", "norm", "-f", reference, "-c", "e", "-Ou", "-"],
+                _sort_command("-", output, work),
+            ],
+            description="Annotation resource allele normalization",
+            stderr_dir=work,
+        )  # fmt: skip
+    else:
+        run_command(_sort_command(kept, output, work), capture_output=True)
+    Path(kept).unlink()
     ensure_vcf_indexed(output)
     return output, warning
 
@@ -649,15 +651,7 @@ def normalized_clinvar_resource(source: str, reference: str, work: str) -> str:
         source,
         reference,
         ["", [], True],
-        lambda: _normalize(
-            source,
-            reference,
-            str(Path(work, "resource.vcf.gz")),
-            work,
-            True,
-            True,
-            source,
-        ),
+        lambda: _normalize_resource(source, reference, work, True, source),
     )
 
 
@@ -673,9 +667,7 @@ def normalized_inputs(
     snv_table: bool = False,
     resource_source: str | None = None,
 ) -> tuple[str, str, str]:
-    normalized_query, _ = _normalize(
-        query, reference, str(Path(work, "query.vcf.gz")), work, False
-    )
+    normalized_query = _normalize_query(query, reference, work)
     from .resource_cache import normalized_resource
 
     is_vcf = is_vcf_path(resource, bcf=False)
@@ -691,24 +683,15 @@ def normalized_inputs(
     )
 
     def build() -> tuple[str, ResultWarning | None]:
-        selected = source
-        if not is_vcf:
-            selected, _ = table_as_vcf(
-                source,
-                columns,
-                headers,
-                reference,
-                work,
-                normalized_query if snv_table else None,
-            )
-        return _normalize(
-            selected,
+        return _normalize_resource(
+            source,
             reference,
-            str(Path(work, "resource.vcf.gz")),
             work,
             clinical,
-            True,
             resource_source or source,
+            columns="" if is_vcf else columns,
+            headers=headers,
+            snv_query=normalized_query if snv_table else None,
         )
 
     if snv_table and not is_vcf:

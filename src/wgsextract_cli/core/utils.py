@@ -752,8 +752,11 @@ def run_pipeline(
             monitor.__enter__()
         returncodes = []
         for proc in procs:
-            while cancel_event is not None and proc.poll() is None:
-                if cancel_event.is_set():
+            # Infinite Windows waits defer Python's main-thread signal handlers.
+            while (
+                cancel_event is not None or sys.platform == "win32"
+            ) and proc.poll() is None:
+                if cancel_event is not None and cancel_event.is_set():
                     raise WGSExtractError(f"{description} cancelled")
                 try:
                     proc.wait(timeout=0.1)
