@@ -126,6 +126,36 @@ function apiFetch(baseURL, route, { body, headers = {}, method } = {}) {
   });
 }
 
+test("#1113: gene.iobio hand-off needs fresh consent and passes only gene and build to the browser", async (t) => {
+  const launched = [];
+  const { baseURL } = await withTestServer(t, { openBrowser: async (url) => { launched.push(url); } });
+  const route = "/api/gene/iobio/open";
+  const choice = { gene: "BRCA1", build: "hg38" };
+  const consent = { ...choice, consentVersion: 1 };
+  assert.equal((await apiFetch(baseURL, route, { body: consent, headers: { "x-gfc-token": "" } })).status, 401);
+  assert.equal((await apiFetch(baseURL, route, { body: choice })).status, 403);
+  assert.equal((await apiFetch(baseURL, route, { body: { ...consent, build: "t2t" } })).status, 400);
+  assert.equal((await apiFetch(baseURL, route, { body: { ...consent, gene: "BRCA1&sample0=test" } })).status, 400);
+  assert.deepEqual(launched, []);
+
+  // Capture the system browser launch, not a live request to the service.
+  const result = await apiFetch(baseURL, route, { body: {
+    ...consent, vcf: "/private/local.vcf.gz", sample: "private-sample", url: "https://example.org",
+  } });
+  assert.equal(result.status, 200);
+  assert.deepEqual(await result.json(), { ok: true });
+  assert.equal(launched.length, 1);
+  const [url] = launched;
+  assert.equal(`${url.origin}${url.pathname}`, "https://gene.iobio.io/");
+  assert.deepEqual(Object.fromEntries(url.searchParams), { gene: "BRCA1", build: "GRCh38" });
+
+  const { geneIobioConsent: receipt } = JSON.parse(await readFile(appSettingsPath(), "utf8"));
+  assert.ok(Number.isFinite(Date.parse(receipt.acceptedAt)));
+  assert.deepEqual(Object.keys(receipt).sort(), ["acceptedAt", "version"]);
+  assert.equal((await apiFetch(baseURL, route, { body: choice })).status, 403, "A stored receipt cannot open another gene.");
+  assert.equal(launched.length, 1);
+});
+
 test("#1090: opening viewer files uses API authentication and rejects traversal or non-local paths", async (t) => {
   const manifest = testManifest();
   manifest.id = "wgs-extract";

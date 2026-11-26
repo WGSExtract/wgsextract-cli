@@ -3,6 +3,7 @@ import { geneExportName, geneFilters } from "../../../shared/gene-page.js";
 import { firstPathValue } from "../../../shared/rendering.js";
 import { api } from "./api.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
+import { requestGeneIobio } from "./gene-iobio.js";
 import { createGenePrerequisitesController, type GenePageInputs, type GenePageProblem, type PendingGenePrerequisites } from "./gene-page-prerequisites.js";
 import { openGenomeViewer } from "./genome-viewer-launcher.js";
 import { renderGeneDocument, type GeneText } from "./gene-page-view.js";
@@ -181,6 +182,8 @@ export function openGenePage(opener: HTMLElement) {
             void chooseLocalPath({ id: name, label: text(name), pathType: "file" }, input?.value ?? "").then((chosen) => {
                 if (chosen && input) input.value = chosen;
             });
+        } else if (target.matches("[data-gene-iobio]") && current) {
+            requestGeneIobio(current.doc, text, target);
         } else if (target.matches("[data-gene-viewer]") && current) {
             const locus = current.doc.gene.locus;
             openGenomeViewer(state.localizationCode, state.labels, target, current.inputs.alignment || current.inputs.vcf, locus, { host: container, backLabel: text("backToGene") });

@@ -1,3 +1,4 @@
+import { geneIobioBuild } from "../../../shared/gene-iobio.js";
 import { exonNumbers, filteredVariants, geneFilters, type GeneDocument, type GeneFilter, type GeneNotice, type GeneTranscript, type GeneVariant } from "../../../shared/gene-page.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 
@@ -15,6 +16,7 @@ export function renderGeneDocument(doc: GeneDocument, text: GeneText, transcript
         <h2 id="gene-summary-title">${escapeHTML(text("summary", { gene: doc.gene.symbol, build: doc.build, locus: doc.gene.locus }))}</h2>
         <p>${escapeHTML(text("geneSource", { source: doc.gene.source }))}</p>
         ${canView ? `<button type="button" class="action-button secondary compact" data-gene-viewer>${escapeHTML(text("open"))}</button>` : ""}
+        ${geneIobioBuild(doc.build) ? `<button type="button" class="action-button secondary compact" data-gene-iobio>${escapeHTML(text("iobio.review"))}</button>` : ""}
       </section>
       ${renderNotices(doc.notices, text)}
       ${renderTranscripts(doc, transcript, transcriptIndex, text)}
