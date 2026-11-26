@@ -11,6 +11,7 @@ import pytest
 from wgsextract_cli.api import CancelToken
 from wgsextract_cli.core import containers
 from wgsextract_cli.core.execution_context import bound
+from wgsextract_cli.core.network_policy import network_options
 from wgsextract_cli.core.process_registry import proc_registry
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -190,3 +191,23 @@ def test_issue_1207_mount_keeps_colons_and_csv_characters(tmp_path, monkeypatch)
         "image", ["/bin/cat", str(sample)], [str(sample)], capture_output=True
     )
     assert result.stdout == "mounted"
+
+
+@pytest.mark.parametrize(
+    ("mode", "allow_large"), [("full", False), ("low", True), ("off", False)]
+)
+def test_1591_local_compute_uses_no_network_or_automatic_pull(
+    tmp_path, monkeypatch, mode, allow_large
+):
+    require_bare_name_fakes()
+    engine = FakeDocker(tmp_path / "bin", tmp_path / "dv")
+    engine.add_image("local-image")
+    monkeypatch.setattr(
+        containers, "get_tool_path", lambda _tool: str(tmp_path / "bin" / "docker")
+    )
+    with network_options(mode, allow_large):
+        containers.run_container("local-image", ["/usr/bin/true"], [])
+
+    (run,) = engine.runs()
+    # contract: isolate local-compute traffic and never pull as part of a launch.
+    assert (run["network"], run["pull"]) == ("--network=none", "--pull=never")

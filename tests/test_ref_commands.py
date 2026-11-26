@@ -795,8 +795,8 @@ def test_library_menu_shows_each_genomes_status(
 @needs_library_tools
 @pytest.mark.parametrize(
     "answers",
-    [["0"], [], ["9"], ["x"], ["1", "n"], ["2", "c"]],
-    ids=["exit", "eof", "out-of-range", "not-a-number", "keep", "cancel"],
+    [["0"], [], ["9"], ["x"], ["1", "n"], ["2", "c"], ["2", ""], ["2", "typo"]],
+    ids=["exit", "eof", "range", "bad-id", "keep", "cancel", "1591-enter", "1591-typo"],
 )
 def test_library_menu_choices_that_change_nothing(
     tmp_path, monkeypatch, server, menu_library, answers

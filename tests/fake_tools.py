@@ -1192,7 +1192,7 @@ elif args[0] == "events":
 elif args[0] == "run":
     opts, i = {"-e": [], "-v": [], "--mount": []}, 1
     while args[i].startswith("-"):
-        if args[i] == "--rm" or args[i].startswith("--pull="):
+        if args[i] == "--rm" or args[i].startswith(("--pull=", "--network=")):
             opts[args[i].split("=")[0]], i = args[i], i + 1
         elif args[i] in ("-e", "-v", "--mount"):
             opts[args[i]].append(args[i + 1])
@@ -1210,6 +1210,7 @@ elif args[0] == "run":
     name = opts.get("--name", "anonymous")
     log({"cmd": "run", "image": image, "name": name, "label": opts.get("--label"),
          "entrypoint": opts.get("--entrypoint"), "pull": opts.get("--pull"),
+         "network": opts.get("--network"),
          "gpus": opts.get("--gpus"), "cpus": opts.get("--cpus"), "env": env,
          "mounts": mounts,
          "command": command})

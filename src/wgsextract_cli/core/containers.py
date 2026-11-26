@@ -35,8 +35,10 @@ from wgsextract_cli.core.utils import (
 OOM_EVENT_GRACE = 5.0
 # Labels each container with the step run (RUN_TAG) that started it.
 STEP_LABEL = "wgsextract.step"
-# A container's REF_PATH: set and local, so htslib never asks a server.
+# A local REF_PATH avoids older HTSlib's default EBI lookup.
 CONTAINER_REF_PATH = "/tmp/hts-ref/%2s/%2s/%s"
+# Do not pull missing images or let older HTSlib follow CRAM reference URLs.
+LOCAL_RUN_OPTIONS = ("--pull=never", "--network=none")
 
 
 def docker(setup: str) -> str:
@@ -155,12 +157,13 @@ def run_container(
     entrypoint: str | None = None,
     temporary_directory: str | None = None,
     working_directory: str | None = None,
-    local_only: bool = False,
     oom_error: str | None = None,
     capture_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    """Run ``command`` in ``image``. ``paths`` are the files and directories it
-    reads or writes, and ``command`` names them by host_path; their directories
+    """Run ``command`` in an installed image without network access.
+
+    ``paths`` are the files and directories it reads or writes, and
+    ``command`` names them by host_path; their directories
     are mounted at the same paths in the container. POSIX mount paths with
     both a colon and a comma or double quote require an engine with CSV
     ``--mount`` support (Docker or Podman 4.9 and later).
@@ -174,11 +177,15 @@ def run_container(
         {host_path(p) if Path(p).is_dir() else str(Path(host_path(p)).parent)
          for p in paths if p}
     )  # fmt: skip
-    cmd = [docker(""), "run", "--rm", *(["--gpus", "all"] if gpus else [])]
+    cmd = [
+        docker(""),
+        "run",
+        "--rm",
+        *LOCAL_RUN_OPTIONS,
+        *(["--gpus", "all"] if gpus else []),
+    ]
     if cpus is not None:
         cmd += ["--cpus", str(cpus)]
-    if local_only:
-        cmd += ["--pull=never"]
     if entrypoint is not None:
         cmd += ["--entrypoint", entrypoint]
     # The user has no home in the image; tools that write settings use /tmp.
@@ -193,13 +200,6 @@ def run_container(
     # from EBI unless REF_PATH is set; the host's caches aren't mounted, so it
     # gets an empty folder of its own (#636).
     cmd += ["-e", f"{REF_PATH}={CONTAINER_REF_PATH}"]
-    from wgsextract_cli.core.network_policy import network_mode
-
-    mode = network_mode()
-    if mode != "full" and "--pull=never" not in cmd:
-        cmd += ["--pull=never"]
-    if mode == "off":
-        cmd += ["--network=none"]
     for mount in mounts:
         cmd += _bind_mount(mount)
     name = f"wgsextract-{uuid.uuid4().hex[:12]}"

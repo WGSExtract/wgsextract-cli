@@ -339,7 +339,7 @@ class _Launcher:
             # Bypass community entrypoints that auto-select INT8/BF16.
             result = run_container(
                 self.image, argv[1:], self.paths,
-                entrypoint=argv[0], local_only=True, **options,
+                entrypoint=argv[0], **options,
             )  # fmt: skip
         else:
             result = run_container(self.image, argv, self.paths, **options)

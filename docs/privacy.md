@@ -53,6 +53,8 @@ explicit `--download` to fetch missing UCSC `cytoBand` data, even if the
 persistent setting is enabled. The request contains only the hg19/hg38 public
 assembly path on `hgdownload.soe.ucsc.edu`; no sample-derived data is sent.
 The genome viewer uses installed tables only and never requests UCSC data.
+`ref microarray-targets` also requires its own `--download` if a liftOver
+chain needed to build the targets is missing.
 
 `analyze comprehensive` runs these same guarded subcommands. Provision missing
 data first with the download command named in the error, or explicitly opt in
@@ -167,6 +169,7 @@ queries. The separate `vep download` command fetches public data only.
 | --- | --- | --- |
 | `qc ancestry --download` | GitHub WGSExtract releases/CDN | Pinned HGDP+1KG reference filename, not sample ancestry or positions |
 | `microarray --download` | `hgdownload.soe.ucsc.edu`; GitHub WGSExtract releases/CDN as mirror | Whole hg18→hg19 / hg19→hg38 chain filenames; sample coordinates are lifted locally and never sent |
+| `ref microarray-targets --download` | Same UCSC hosts and mirrors as `microarray` | Whole liftOver chains for building public chip targets; the command never reads sample data |
 | `vcf pharmcat --download` | `zenodo.org`, via PharmCAT's reference downloader (record 7288118) | Public GRCh38 reference archive/index filenames, not pharmacogenetic variants or sample files |
 | `ref index --aligner bwa-mem2 --download` | Published hs38DH index on Amazon S3 | Reference index filenames, not read/sample information; without permission the index is built locally if RAM permits |
 | `typing hla --download` | IPD-IMGT/HLA's public distribution, via T1K (GitHub ANHIG/IMGTHLA) | Allele-database identifiers, not reads or HLA calls |
@@ -214,7 +217,7 @@ behavior. Classification describes the baseline, before this change.
 | CRAM decoding by htslib/Java tools | No remote fallback intended | Local-only `REF_PATH` retained; no Java reference-download property; missing references fail |
 | Liftover/chip coordinates | Coordinate conversion is local; missing microarray chains were fetched | **Default-violation** found in review: missing whole-chain downloads now require `microarray --download`; pyliftover receives only local chain files |
 | VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | Ensembl VEP could fall back to online annotation if its cache directory was missing | Local caches/indexes only; a missing cache now stops `vep run` and names `vep download` |
-| DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required; `--pull=never`; no runtime dependency installation |
+| DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required. Local compute containers use `--network=none` and `--pull=never` in every mode; no runtime dependency installation. |
 | `ref download`, genome-library install, bootstrap, annotation resources, gene maps, microarray targets, ancestry/AADR/somalier/imputation/yBrowse/gnomAD-SV install, ACMG data preparation | Yes | Explicit network operations; retain downloads and mirrors |
 | Reference/dataset listing/status/verify/count/delete | No | Local metadata; remote sizes only with the opt-in above |
 | `ref index --aligner bwa-mem2` on hs38DH | Yes if published index absent | **Default-violation** found in independent review: fetching prebuilt indexes now requires `--download`; local index building stays available |

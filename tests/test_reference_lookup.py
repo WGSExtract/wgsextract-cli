@@ -8,6 +8,7 @@ server. A local HTTP server stands in for EBI's.
 import hashlib
 import os
 import secrets
+import subprocess
 import sys
 import threading
 from collections.abc import Iterator
@@ -102,8 +103,8 @@ def _samtools_fetches_http_references() -> bool:
 
 @needs_htslib
 def test_reference_server_records_htslib_lookups_but_not_host_probes_987(
-    orphan_cram, reference_server
-):
+    orphan_cram: Path, reference_server: _ReferenceServer
+) -> None:
     """The server's path filter (#987) must keep htslib's lookups, or the
     "never asks a server" tests below would pass vacuously."""
     import urllib.error
@@ -120,11 +121,15 @@ def test_reference_server_records_htslib_lookups_but_not_host_probes_987(
 
     env = {**os.environ, "REF_PATH": _server_url(reference_server)}
     env.pop("REF_CACHE", None)
-    result = run_command(
-        [get_tool_path("samtools"), "view", str(orphan_cram)],
+    samtools = get_tool_path("samtools")
+    assert samtools
+    # This positive control exercises the server, not the CLI's network guard.
+    result = subprocess.run(
+        [samtools, "view", str(orphan_cram)],
         capture_output=True,
         check=False,
         env=env,
+        timeout=10,
     )
     assert result.returncode != 0
     md5 = hashlib.md5(SEQUENCE.encode(), usedforsecurity=False).hexdigest()

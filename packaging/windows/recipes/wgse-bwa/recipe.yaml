@@ -20,7 +20,7 @@ source:
   - url: https://github.com/fg-labs/bwa-mem3/archive/refs/tags/v0.16.0.tar.gz
     sha256: 28f7e4be7cf359e97b59f2925bb67b27905058c13e6c8af08507b13f2c10662c
     target_directory: mem3
-  - url: https://zlib.net/fossils/zlib-1.3.1.tar.gz
+  - url: https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
     sha256: 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
     target_directory: zlib
 
