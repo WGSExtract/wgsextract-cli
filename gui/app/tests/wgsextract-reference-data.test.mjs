@@ -1,8 +1,35 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { items } from "../../examples/WGSExtract/transforms/reference-data.mjs";
+
+test("Library Bootstrap shows the CLI release rather than a hard-coded version or partial disk size", async () => {
+  const cli = new URL("../../../src/wgsextract_cli/", import.meta.url);
+  const constants = await readFile(new URL("core/constants.py", cli), "utf8");
+  const availableVersion = constants.match(/^BOOTSTRAP_VERSION = "([^"]+)"/m)?.[1];
+  assert.ok(availableVersion);
+  const catalog = JSON.parse(await readFile(new URL("assets/resource_mirrors.json", cli), "utf8"));
+  const downloadBytes = catalog.resources.find((entry) => entry.id === "bootstrap-current").upstream_size_at_audit;
+  const expectedSize = `${(downloadBytes / 2 ** 20).toFixed(1)} MiB`;
+  const bootstrapRow = (bootstrap) => items({ details: {
+    referenceLibrary: { path: path.resolve("../out") },
+    bootstrap: { availableVersion, downloadBytes, ...bootstrap },
+  } }).items.find((row) => row.id === "bootstrap");
+
+  const current = bootstrapRow({ installed: true, installedVersion: availableVersion });
+  assert.equal(current.status, "installed");
+  assert.equal(current.values.version, `v${availableVersion}`);
+  assert.equal(current.values.size, expectedSize);
+  const outdated = bootstrapRow({ installed: true, installedVersion: "0.0.1", updateAvailable: true });
+  assert.equal(outdated.status, "update-available");
+  assert.equal(outdated.values.version, `v0.0.1 / v${availableVersion}`);
+  assert.equal(outdated.values.size, expectedSize);
+  const missing = bootstrapRow({ installed: false, availableVersion: "12.34.56" });
+  assert.equal(missing.status, "missing");
+  assert.equal(missing.values.version, "v12.34.56");
+  assert.equal(missing.values.size, expectedSize);
+});
 
 test("reference-data transform maps installed and missing resources with sizes, versions, and UI modes", async (t) => {
   const output = path.resolve("../out/tests");
@@ -49,6 +76,7 @@ test("reference-data transform maps installed and missing resources with sizes, 
   });
 
   const byId = new Map(payload.items.map((row) => [row.id, row]));
+  assert.equal(payload.displayPaths.ref_path, root);
   assert.equal(byId.get("bootstrap").status, "installed");
   assert.equal(byId.get("bootstrap").tags[0].id, "required");
   assert.equal(byId.get("gene-map").status, "installed");

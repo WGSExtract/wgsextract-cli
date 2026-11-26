@@ -373,6 +373,12 @@ previous payloads are now the manifest's `details`: the `info chip` detection
 `.details` where you used to read the top-level document. `ref status --values`
 is unchanged.
 
+In `ref status --json`, `details.bootstrap` reports whether support assets are
+installed, their `installedVersion` (null if it cannot be determined),
+the CLI's `availableVersion`, and its archive size in `downloadBytes` (null if
+not in the local catalog). `updateAvailable` is true only when a known
+installed version is older than the available release. This lookup is offline.
+
 ## Coverage
 
 These commands record full manifests: `info` (including `--detailed`),

@@ -5,6 +5,7 @@ import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { appendTerminal } from "./terminal.js";
 import { persistBundleState, type PersistBundleStateOptions } from "./operations-state.js";
+import { clearDataSourceCache, clearFileStateCache } from "./operations-data.js";
 import { askToMoveSettingFolder } from "./workspace-location.js";
 import type { ConfigLoadResponse, ConfigSaveResponse, ConfigSetting, ControlSpec } from "../../../shared/types.js";
 
@@ -79,11 +80,12 @@ export async function configSettingChanged(value: string, setting: ConfigSetting
 async function saveSetting(value: string, setting: ConfigSetting, control: ControlSpec) {
     state.configValues[configValueKey(control, setting)] = value;
     const fieldKey = boundFieldKey(setting);
-    if (fieldKey) {
-        state.fieldValues[fieldKey] = value;
-    }
     await saveConfig(control, false, [setting]);
     if (fieldKey) {
+        state.fieldValues[fieldKey] = value;
+        clearDataSourceCache();
+        clearFileStateCache();
+        scheduleRender();
         await persistBundleState({ removeFieldIDs: [fieldKey] });
     }
 }

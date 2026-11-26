@@ -4,7 +4,7 @@ import { configValueKey, splitPathList } from "../../../shared/rendering.js";
 import { installGlobalBundleLoadHandler, loadBundleFromPicker, type Bootstrap } from "./bundle-loading.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
-import { checkedOptionsChanged, clearFileStateCache, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
+import { checkedOptionsChanged, clearDataSourceCache, clearFileStateCache, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
 import { cancelPendingAlreadyRun, forceRunPendingAlreadyRun } from "./operations-already-run.js";
 import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
 import { bindAlreadyRunFocus } from "./view/already-run.js";
@@ -65,8 +65,7 @@ export function bindEvents(bootstrap: Bootstrap) {
     elements<HTMLSelectElement>("[data-locale-picker]").forEach((picker) => {
         picker.addEventListener("change", async (event) => {
             const target = event.currentTarget as HTMLSelectElement;
-            state.dataSourcePayloads.clear();
-            state.dataSourceErrors.clear();
+            clearDataSourceCache();
             const useSystemDefault = target.value === "__system__";
             state.localizationCode = useSystemDefault ? "" : target.value;
             state.usingSystemDefaultLocale = useSystemDefault;
@@ -238,7 +237,7 @@ export function bindEvents(bootstrap: Bootstrap) {
     elements("[data-load-config]").forEach((button) => {
         button.addEventListener("click", async () => {
             await loadConfig(findControl(requiredDataset(button, "loadConfig")));
-            scheduleRender();
+            clearDataSourcesAndRender();
         });
     });
     elements("[data-save-config]").forEach((button) => {
@@ -485,8 +484,7 @@ async function persistAndRender(options = {}) {
 }
 
 function clearDataSourcesAndRender() {
-    state.dataSourcePayloads.clear();
-    state.dataSourceErrors.clear();
+    clearDataSourceCache();
     clearFileStateCache();
     scheduleRender();
 }

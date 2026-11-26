@@ -287,6 +287,7 @@ export function localizationLabels(table: StringMap = {}) {
             incomplete: table["library.status.incomplete"] ?? "incomplete",
             missing: table["library.status.missing"] ?? "missing",
             unavailable: table["library.status.unavailable"] ?? "not available",
+            "update-available": table["library.status.updateAvailable"] ?? "update available",
         },
         libraryTagLabels: {
             recommended: table["library.tags.recommended"] ?? "Recommended",

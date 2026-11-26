@@ -302,6 +302,7 @@
 "library.status.missing" = "Missing"
 "library.status.unavailable" = "Not Available"
 "library.status.unindexed" = "Needs Index"
+"library.status.updateAvailable" = "Update available"
 "library.tags.mandatory" = "Mandatory"
 "library.tags.optional" = "Optional"
 "library.tags.recommended" = "Recommended"

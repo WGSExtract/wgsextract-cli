@@ -180,6 +180,30 @@ test("a path field shows its full path on hover", async () => {
   assert.doesNotMatch(renderTextControl({ id: "bam_path", kind: "path", label: "BAM/CRAM" }), /title=/);
 });
 
+test("Reference Data Path shows the resolved folder without rewriting its workspace template", async () => {
+  const { state, renderTextControl } = await clientView();
+  const page = parseJsonWithComments(readFileSync(new URL("../../examples/WGSExtract/pages/library.json", import.meta.url), "utf8"));
+  const control = page.sections.flatMap((section) => section.controls ?? []).find(({ id }) => id === "ref_path");
+  state.bundleRootPath = "/application/bundle";
+  state.usersWorkspacePath = "/volumes/large disk/wgs-extract";
+  state.fieldValues = { ref_path: "{{usersWorkspace}}/reference" };
+  assert.match(renderTextControl(control), /value="\/volumes\/large disk\/wgs-extract\/reference"/);
+  assert.equal(state.fieldValues.ref_path, "{{usersWorkspace}}/reference");
+
+  state.usersWorkspacePath = "D:\\large disk\\wgs-extract";
+  assert.match(renderTextControl(control), /value="D:\\large disk\\wgs-extract\\reference"/);
+  state.fieldValues.ref_path = "{{bundleWorkspace}}/reference";
+  assert.match(renderTextControl(control), /value="\/application\/bundle\/reference"/);
+  state.dataSourcePayloads.set("control:reference_data", { displayPaths: { ref_path: "/home/owner/reference" } });
+  for (const configured of ["~/reference", "reference"]) {
+    state.fieldValues.ref_path = configured;
+    assert.match(renderTextControl(control), /value="\/home\/owner\/reference"/);
+    assert.equal(state.fieldValues.ref_path, configured);
+  }
+  state.fieldValues.ref_path = "/custom/reference";
+  assert.match(renderTextControl(control), /value="\/custom\/reference"/);
+});
+
 test("setup steps name their kind in words, never the manifest id", async () => {
   // Owner request: Settings showed internal step kinds such as "setupScript" and "pathTool".
   const { setupStepKinds } = await import("../dist/shared/setup-step-kinds.js");

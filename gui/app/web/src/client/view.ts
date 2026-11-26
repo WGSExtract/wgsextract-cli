@@ -94,7 +94,9 @@ export function renderNavigation() {
     const bottomPages = pages.filter((page) => page.sidebarPlacement === "bottom");
     const updateItem = renderUpdateNavigationItem();
     return `
-    <div class="nav-primary">${renderNavigationGroups(primaryPages)}${manifest.id === "wgs-extract" ? `<button type="button" class="nav-item" data-genome-viewer-open><span class="nav-icon" aria-hidden="true">${renderIcon("genome-viewer", "🔍", "🔍")}</span><span>${escapeHTML(state.labels.viewerTitle ?? "")}</span></button><button type="button" class="nav-item" data-gene-page-open><span class="nav-icon" aria-hidden="true">${renderIcon("gene-page", "🧬", "🧬")}</span><span>${escapeHTML(state.labels.geneTitle ?? "")}</span></button>` : ""}</div>
+    <div class="nav-primary">${renderNavigationGroups(primaryPages)}${manifest.id === "wgs-extract" ? `
+      <button type="button" class="nav-item" data-genome-viewer-open><span class="nav-icon" aria-hidden="true">${renderIcon("genome-viewer", "🔍", "🔍")}</span><span>${escapeHTML(state.labels.viewerTitle ?? "")}</span></button>
+      <button type="button" class="nav-item" title="${escapeAttribute(state.labels.geneTitle ?? "")}" data-gene-page-open><span class="nav-icon" aria-hidden="true">${renderIcon("gene-page", "🧬", "🧬")}</span><span>${escapeHTML(state.labels.geneTitle ?? "")}</span></button>` : ""}</div>
     ${bottomPages.length || updateItem ? `<div class="nav-bottom">${updateItem}${renderNavigationGroups(bottomPages, false)}</div>` : ""}
   `;
 }
@@ -323,7 +325,10 @@ export function renderTextControl(control: ControlSpec) {
     const isMultiPath = control.kind === "path" && control.multiple === true;
     const paths = isMultiPath ? splitPathList(rawValue) : [];
     const primaryValue = isMultiPath ? (paths[0] ?? "") : rawValue;
-    const valueAttributes = control.kind === "path" ? pathInputAttributes(primaryValue) : `value="${escapeAttribute(rawValue)}"`;
+    const pathDisplay = control.pathDisplay === "absolute" ? {
+        resolvedPath: state.dataSourcePayloads.get(`control:${control.pathDisplaySource}`)?.displayPaths?.[control.id],
+    } : undefined;
+    const valueAttributes = control.kind === "path" ? pathInputAttributes(primaryValue, "", pathDisplay) : `value="${escapeAttribute(rawValue)}"`;
     const input = `<input id="${escapeAttribute(inputID)}" type="text" ${valueAttributes}
         placeholder="${escapeAttribute(control.placeholder ?? "")}" data-field-id="${escapeAttribute(control.id)}">`;
     const showInlineViewer = state.manifest?.id === "wgs-extract"

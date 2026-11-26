@@ -361,6 +361,13 @@ button:disabled {
   text-align: center;
 }
 
+[data-gene-page-open] > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .update-nav-anchor {
   position: relative;
 }

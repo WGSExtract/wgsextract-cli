@@ -12,6 +12,7 @@ Reference **genomes** (FASTA sequences and aligner indexes) live on their own
 
 The **Reference Data Library** path at the top of the page shows where these
 datasets are stored (by default inside your users workspace, `~/wgs-extract`).
+It shows the resolved absolute path without changing your saved setting.
 
 - You can point this folder to another location, such as a larger external SSD.
 - When you change the folder path, the app offers three choices:
@@ -28,9 +29,13 @@ version, target genome build, what it is used for, and either its on-disk size
 (when installed) or approximate download size (when missing). Hover over a row to
 see its data source, publishing organization, and license summary.
 
+Library Bootstrap always shows the current archive's download size. If the
+installed version differs, the versions are listed as installed / available.
+An older installation is marked **Update available**.
+
 | Dataset | Purpose | Notes |
 | --- | --- | --- |
-| **Library Bootstrap** | Core liftover chains, microarray chip templates, and N-count tables | Marked **Required** for microarray, liftover, and reference helpers (~15 MB). |
+| **Library Bootstrap** | Core liftover chains, microarray chip templates, and N-count tables | Marked **Required** for microarray, liftover, and reference helpers. |
 | **Gene Map** | RefSeq gene spans and exon/transcript models (GRCh37 & GRCh38) | Powers the [Gene Page](gene-page.md), Genome Viewer gene search & transcript tracks, and gene filtering. |
 | **dbSNP (hg38 / hg19)** | NCBI dbSNP common human SNPs (~37M rsIDs) and offline SQLite lookup index | Enables offline rsID annotation and lookup. Large download; asks for confirmation before downloading. |
 | **Cytobands (hg38 / hg19)** | UCSC chromosome banding tables | Draws the chromosome ideogram track in the [Genome Viewer](genome-viewer.md). |
