@@ -1,11 +1,4 @@
-"""Operation exceptions and the structured error recorded in results."""
-
-from dataclasses import dataclass, field
-from typing import Annotated, Literal
-
-from wgsextract_cli.core.output_schema import Constraints
-
-ErrorKind = Literal["failure", "usage", "missing_dependency", "cancelled"]
+"""Operation exceptions shared by the CLI and its implementations."""
 
 
 class WGSExtractError(Exception):
@@ -18,12 +11,3 @@ class CodedError(WGSExtractError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
-
-
-@dataclass
-class ResultError:
-    kind: ErrorKind
-    message: str
-    code: Annotated[str, Constraints(pattern="^[a-z][a-z0-9_]*$")] | None = field(
-        default=None, metadata={"omit_none": True}
-    )

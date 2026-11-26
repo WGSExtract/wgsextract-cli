@@ -8,7 +8,6 @@ from wgsextract_cli.core.artifacts import (
     RunRecord,
     SourceEdge,
 )
-from wgsextract_cli.core.errors import ResultError
 from wgsextract_cli.core.output_schema import Shape, output_schema
 from wgsextract_cli.core.provenance_records import (
     Fingerprint,
@@ -20,6 +19,7 @@ from wgsextract_cli.core.results import (
     CommandResult,
     FileRecord,
     Provenance,
+    ResultError,
     ResultWarning,
     Scalar,
 )
