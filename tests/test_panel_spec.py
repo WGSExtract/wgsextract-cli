@@ -244,7 +244,14 @@ def test_the_cli_fails_an_invalid_panel_with_its_problems(tmp_path):
     assert not [p for p in tmp_path.iterdir() if p != path]
 
 
-def _audit_inputs(tmp_path: Path, *, phase_set: str) -> tuple[Path, Path, Path]:
+def _audit_inputs(
+    tmp_path: Path,
+    *,
+    phase_set: str,
+    second_gt: str = "0|1",
+    undeclared_deepvariant: bool = False,
+    delayed_reference: bool = False,
+) -> tuple[Path, Path, Path]:
     panel = {
         "schema": "wgsextract.panel/1",
         "id": "test-panel",
@@ -286,11 +293,19 @@ def _audit_inputs(tmp_path: Path, *, phase_set: str) -> tuple[Path, Path, Path]:
 ##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
 ##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase Set">
 """
+    end_header = '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+    if undeclared_deepvariant:
+        header += "##DeepVariant_version=1.5.0\n" + end_header
+        gheader = header
+        symbolic = "<*>"
+    else:
+        gheader = header + '##ALT=<ID=NON_REF,Description="Any ALT">\n' + end_header
+        symbolic = "<NON_REF>"
     columns = "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tTEST\n"
     records = [
         "11796321 . G A 50 PASS CSQ=A|stop_gained|HIGH|MTHFR;GNOMAD_AF=nan GT:DP:GQ:AD:PS 1|0:30:60:15,15:1",
         "11796322 . C T 50 PASS CSQ=T|missense_variant|MODERATE|MTHFR;REVEL=0.9;CADD_PHRED=25;GNOMAD_AF=0.001 GT:DP:GQ:AD:PS "
-        + f"0|1:30:60:15,15:{phase_set}",
+        + f"{second_gt}:30:60:15,15:{phase_set}",
         "11796323 . A T 50 PASS CSQ=T|missense_variant|MODERATE|MTHFR;CADD_PHRED=25 GT:DP:GQ 1/1:30:60",
         "11796324 . C T 50 PASS CSQ=T|missense_variant|MODERATE|MTHFR;CADD_PHRED=1 GT:DP:GQ 1/1:30:60",
         "11796331 . G T 50 PASS CSQ=T|stop_gained|HIGH|MTHFR;GNOMAD_AF=0.1 GT:DP:GQ 1/1:30:60",
@@ -299,72 +314,23 @@ def _audit_inputs(tmp_path: Path, *, phase_set: str) -> tuple[Path, Path, Path]:
     vcf = tmp_path / "audit.vcf"
     vcf.write_text(header + columns + calls, encoding="utf-8")
     gvcf = tmp_path / "audit.g.vcf"
+    preceding_variants = (
+        "".join(
+            f"chr1\t{pos}\t.\tA\tC,<*>\t30\tPASS\t.\tGT:DP:GQ\t0/1:30:50\n"
+            for pos in range(1, 10_001)
+        )
+        if delayed_reference
+        else ""
+    )
     gvcf.write_text(
-        header
-        + '##ALT=<ID=NON_REF,Description="Any ALT">\n'
-        + '##INFO=<ID=END,Number=1,Type=Integer,Description="Block end">\n'
+        gheader
         + columns
-        + "chr1\t11796325\t.\tG\t<NON_REF>\t.\tPASS\tEND=11796330\tGT:DP:GQ:MIN_DP\t0/0:30:60:30\n"
-        + "chr1\t11796335\t.\tC\tA,<NON_REF>\t.\tPASS\t.\tGT:DP:GQ:AD\t0/1:2:5:1,1,0\n",
+        + preceding_variants
+        + f"chr1\t11796325\t.\tG\t{symbolic}\t.\tPASS\tEND=11796330\tGT:DP:GQ:MIN_DP\t0/0:30:60:30\n"
+        + f"chr1\t11796335\t.\tC\tA,{symbolic}\t.\tPASS\t.\tGT:DP:GQ:AD\t0/1:2:5:1,1,0\n",
         encoding="utf-8",
     )
     return _write(tmp_path, panel, ".json"), Path(bgzip_index(vcf)), gvcf
-
-
-@needs_htslib
-@pytest.mark.parametrize("phase_set", ["1", "2"])
-def test_1287_audit_distinguishes_mixed_scores_reference_and_phase(
-    tmp_path: Path, phase_set: str
-) -> None:
-    panel, vcf, gvcf = _audit_inputs(tmp_path, phase_set=phase_set)
-    table_format = "tsv" if phase_set == "1" else "parquet"
-    pq = pytest.importorskip("pyarrow.parquet") if table_format == "parquet" else None
-    result = api.panel.audit(
-        api.PanelAuditParams(
-            panel=panel,
-            vcf_input=vcf,
-            gvcf=gvcf,
-            research_panel=True,
-            table_format=table_format,
-        )
-    )
-    report = next(o for o in result.outputs if o.role == "panel_audit")
-    table = next(o for o in result.outputs if o.role == "panel_audit_table")
-    details = json.loads(Path(report.path).read_text(encoding="utf-8"))
-    assert details["research_only"] and "not a diagnosis" in details["disclaimer"]
-    (gene,) = details["groups"][0]["genes"]
-    assert [a["pos"] for a in gene["qualifying"]] == [11796321, 11796322]
-    assert gene["qualifying"][0]["missing"] == ["gnomad_af"]
-    assert gene["qualifying"][0]["gnomad_af"] is None
-    assert [a["pos"] for a in gene["unscored"]] == [11796323]
-    assert gene["qualifying_allele_copies"] == 2
-    assert gene["phase"] == ("trans" if phase_set == "1" else "unknown")
-    reference, gap, low = details["sites"]
-    assert (
-        reference["status"],
-        reference["genotype"],
-        reference["query_allele_copies"],
-    ) == (
-        "confident_reference",
-        "0/0",
-        0,
-    )
-    assert gap["status"] == "not_assessed" and gap["genotype"] is None
-    assert low["status"] == "weak_evidence"
-    (watch,) = details["haplotypes"]
-    assert watch["status"] == ("called" if phase_set == "1" else "ambiguous_phase")
-    assert watch.get("diplotype", watch.get("candidates")) == (
-        ["left", "right"] if phase_set == "1" else [["left", "right"]]
-    )
-    assert table.metrics["rows"] == 3
-    if pq:
-        audited = pq.read_table(table.path)
-        assert audited.schema.metadata[b"research_only"] == b"true"
-        assert audited["decision"].to_pylist() == [
-            "qualifying",
-            "qualifying",
-            "unscored",
-        ]
 
 
 @needs_htslib

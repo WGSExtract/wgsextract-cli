@@ -545,8 +545,17 @@ bytecode regenerated from verified installed source. A matching header is
 not enough; caches from another Python version or a source-rewriting tool
 such as pytest may therefore be retained.
 The report distinguishes cache trimming from worktree retirement.
+Use `--disposable-output 'scratch/build/*.o'` (repeatable) to identify
+additional ignored artifacts you can recreate. The pattern matches from the
+worktree root under `out/`, `tmp/`, or `scratch/`; `*` does not cross a `/`.
+Preview without `--apply` and check `disposable_outputs` in the private report.
+Matching files that cannot be archived as small text evidence are discarded.
+A match does not override tracked or unignored
+changes, cache verification, links, sensitive names, or the usual worktree
+safety checks. It does not recursively approve matching directories.
 Small UTF-8 logs under `out/` and recognised Python, shell, Lua
-and R source files under `scratch/` (1 MiB per file, 32 MiB total) are copied
+and R source files under `scratch/`, plus `state/last-run.json` and
+`state/last-failed-run.json` (1 MiB per file, 32 MiB total), are copied
 to a private, local directory in `out/archive/` without following links. They
 are not executed. Do not put secrets in run logs or scratch sources.
 

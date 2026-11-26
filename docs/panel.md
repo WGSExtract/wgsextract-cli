@@ -178,12 +178,17 @@ treated as evidence of rarity.
 
 At watched loci, a gVCF can show confident reference. An absent locus in a
 variants-only VCF is `not_assessed`. The audit uses the input's gVCF companion
-if one was recorded, or you can name one with `--gvcf`. For gene callability
-the default exon models cover selected genes on GRCh38 and GRCh37; specify
+if one was recorded, or you can name one with `--gvcf`. It recognizes DeepVariant
+reference blocks even when the caller omits the symbolic ALT header. For gene
+callability the default exon models cover selected genes on GRCh38 and GRCh37; specify
 `--exons` for a local model covering other genes. No gVCF or no exon model for
 a gene means the audit does not infer that its coding bases were read.
 
 Heterozygotes are compared across positions only within a common phase set.
+Two qualifying alternate alleles on the same chromosome copy are `cis`
+(`one_copy` if there is no other evidence); on opposite copies they are
+`trans` (`biallelic`). A gene's phase and a haplotype watch's named allele
+match are separate results.
 Haplotype watches show `ambiguous_phase` when more than one orientation is
 possible, even if only one matches the named patterns. For pharmacogenes,
 prefer `vcf pharmcat` for star alleles and copy-number exceptions.
