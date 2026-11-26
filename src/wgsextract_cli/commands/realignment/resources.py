@@ -167,6 +167,8 @@ def _minimap2_needs(
     *,
     reads: int | None = None,
     samblaster: bool = False,
+    streaming: bool = False,
+    additional_ram_bytes: int = 0,
 ) -> "_Needs":
     """minimap2's RAM at these settings and what it can't run without (its
     index), as align sizes them for the read files ``paths`` (local files
@@ -181,7 +183,7 @@ def _minimap2_needs(
         "reads": reads,
         "platform": job.platform,
         "preset": preset,
-        "input_bytes": files,
+        "input_bytes": None if streaming else files,
     }
     hours = None
     if preset != "sr":
@@ -209,7 +211,11 @@ def _minimap2_needs(
     except (OSError, ValueError) as error:
         logging.debug("minimap2's memory wasn't estimated: %s", error)
         return _Needs(hours=hours)
-    return _Needs(need, least, hours)
+    return _Needs(
+        need + additional_ram_bytes,
+        least + additional_ram_bytes if least is not None else None,
+        hours,
+    )
 
 
 def _short_read_plan(

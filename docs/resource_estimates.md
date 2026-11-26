@@ -316,12 +316,14 @@ pipeline fits the RAM available; otherwise `wgse-bwa` (on its GPU when that
 fits) or bwa runs, and the preflight reports that aligner's estimate
 ([hardware guide](hardware.md#bwa-mem3-on-linux)).
 
-Eligible paired BWA/bwa-mem2 realignment without `--keep-fastq` streams newly
+Eligible paired BWA and minimap2 `sr` realignment without `--keep-fastq` streams newly
 extracted reads (forced refresh of cached FASTQs at the exact output paths
 retains file handling): `samtools view | collate | fastq` writes interleaved
-pairs to stdout and the aligner reads them with `-p`, through ordinary process
-pipes on every platform, including native Windows. There is no
-`extracted_fastqs` demand. minimap2, GPU and long-read workflows keep files.
+pairs to the aligner's stdin through ordinary process pipes. There is no
+`extracted_fastqs` demand. For minimap2, streaming requires an explicit
+uncompressed FASTA small enough to fit in a single index part: minimap2
+would otherwise need to reread the inputs for each part. GPU short-read
+realignment still uses FASTQ files.
 
 Streaming uses file extraction's collate bucket count (20× BAM / 70× CRAM input
 size against sort-stage threads × per-thread memory, 64–200 buckets).
@@ -331,7 +333,7 @@ order depends on that count, so the aligner receives the same pairs in the same
 order either way and the realigned records are identical. A 30x genome streams
 whenever one bucket fits beside alignment in RAM.
 
-Collate holds one bucket in memory while BWA maps. Its estimate is the largest
+Collate holds one bucket in memory while the aligner maps. Its estimate is the largest
 bucket's records (the indexed input count over the buckets, plus six standard
 deviations) times the power-of-two buffer of the largest BAM record in the
 read-length sample, plus 128 bytes of per-record bookkeeping and 64 MiB of
@@ -1047,8 +1049,11 @@ also applies.
   They support keeping the compressed-output budgets conservative rather
   than replacing replay/header worst-case allowances with one run's peak.
   GATK retains 10% of input bytes for output and twice that for temporary
-  storage. Regional GATK CRAM conversion
-  also budgets a whole-input BAM upper bound on the output volume.
+  storage. Regional GATK CRAM conversion also budgets a whole-input BAM
+  upper bound on the output volume. GATK 4.6.2.0 can read indexed CRAM 3.0
+  directly when `--region` selects whole contigs and the CRAI is compatible.
+  Partial intervals, other CRAM versions, and unqualified GATK builds retain
+  regional BAM staging.
   GATK scattering additionally charges retained shard VCFs and their indexes to
   caller staging (`--tmp-dir` when configured, otherwise the output volume).
   JVM temporary storage has its own demand (`--tmp-dir`, otherwise system temp).

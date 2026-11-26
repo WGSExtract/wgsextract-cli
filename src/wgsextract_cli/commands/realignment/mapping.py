@@ -17,7 +17,7 @@ from wgsextract_cli.core.native_aligners import (
     on_windows_x64,
 )
 from wgsextract_cli.core.results import current_result
-from wgsextract_cli.core.steps import Decision, Step, StepJournal
+from wgsextract_cli.core.steps import Decision, Step, StepJournal, StepRun
 from wgsextract_cli.core.utils import (
     get_resource_defaults,
 )
@@ -163,13 +163,31 @@ def _align(
     """Run the align step. Aligners index their output as they write it, so
     that index is then recorded as the index step. ``keep_partial``: the
     aligner resumes an interrupted attempt's work (a chunked alignment)."""
-    out_path = str(decision.step.outputs[0])
     aligning = journal.start(decision, keep_partial=keep_partial)
     run()
+    _finish_alignment(journal, aligning)
+
+
+def _align_streamed(
+    journal: StepJournal, decision: Decision, run: Callable[[Callable[[], None]], None]
+) -> None:
+    """Do not change the journal until the mapper accepts the streaming plan."""
+    aligning: StepRun | None = None
+
+    def before_write() -> None:
+        nonlocal aligning
+        aligning = journal.start(decision)
+
+    run(before_write)
+    assert aligning is not None
+    _finish_alignment(journal, aligning)
+
+
+def _finish_alignment(journal: StepJournal, aligning: StepRun) -> None:
     aligning.metrics["aligner"] = current_result().metrics.get("aligner")
     aligning.metrics.update(_native_aligner_metrics(current_result().metrics))
     journal.finish(aligning)
-    index = journal.check(_index_step(out_path))
+    index = journal.check(_index_step(str(aligning.decision.step.outputs[0])))
     journal.finish(journal.start(index, keep_partial=True))
 
 

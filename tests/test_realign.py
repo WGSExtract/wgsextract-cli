@@ -300,6 +300,7 @@ class _Fakes:
         _write_alignment(args)
 
     def stream(self, args, **kwargs):
+        kwargs.pop("before_write")()
         self.streamed.append(kwargs)
         self.align(args)
 
