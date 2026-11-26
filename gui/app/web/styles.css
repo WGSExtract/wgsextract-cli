@@ -2356,6 +2356,27 @@ a.doc-link {
   padding: var(--space-3) var(--space-5) 32px;
 }
 
+.gene-iobio-dialog {
+  box-sizing: border-box;
+  max-width: min(36rem, calc(100% - 2rem));
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.gene-iobio-dialog::backdrop {
+  background: rgb(0 0 0 / 55%);
+}
+
+.gene-iobio-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 .gene-form {
   display: grid;
   grid-template-columns: minmax(10rem, max-content) minmax(0, 40rem);

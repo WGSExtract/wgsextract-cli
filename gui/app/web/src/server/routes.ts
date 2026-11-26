@@ -38,6 +38,7 @@ import { isViewerBuild } from "../../../shared/viewer-rows.js";
 import { lookupViewerRsid } from "./viewer-rsids.js";
 import { RemoteViewerConnection } from "./remote-viewer-connection.js";
 import { RemoteViewer } from "./remote-viewer.js";
+import { openGeneIobio } from "./gene-iobio.js";
 import { genePagePrerequisites, installGenePagePrerequisite, openGenePage } from "./gene-page.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
@@ -50,6 +51,7 @@ interface LocalizedBundle {
 
 export interface RequestHandlerContext {
     addDevReloadClient: (response: ServerResponse) => void;
+    openBrowser?: (url: URL) => Promise<void>;
     apiToken: string;
     /** True when a launcher (Tauri/Electron) injects the token into its own webview instead of index.html. */
     apiTokenInjectedByLauncher?: boolean;
@@ -92,7 +94,7 @@ type StepRunner = typeof runSetup;
 const maxRememberedPicks = 16;
 const independentlyGuardedRoutes = new Set([
     "/api/workspace-location/move", "/api/setup/stream", "/api/uninstall/stream",
-    "/api/path/pick", "/api/shutdown",
+    "/api/path/pick", "/api/shutdown", "/api/gene/iobio/open",
 ]);
 
 async function assertCurrentWorkspace(context: RequestHandlerContext, request?: IncomingMessage) {
@@ -251,6 +253,10 @@ export function createRequestHandler(context: RequestHandlerContext) {
             } finally {
                 response.off("close", close);
             }
+        },
+        "/api/gene/iobio/open": async (request, response) => {
+            requireViewerLoopback(request);
+            json(response, await openGeneIobio(await readBody(request, context), context.openBrowser));
         },
         "/api/gene/prerequisites": async (request, response) => {
             requireViewerLoopback(request);

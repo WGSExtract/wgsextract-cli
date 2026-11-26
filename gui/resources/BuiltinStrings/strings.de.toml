@@ -223,6 +223,13 @@
 "gene.filter.clinvar_plp" = "ClinVar pathogen oder wahrscheinlich pathogen"  # i18n-source-hash:71c2caf0
 "gene.filter.rare_damaging" = "Selten (gnomAD unter %{af}) mit hoher oder mittlerer Auswirkung"  # i18n-source-hash:a3cb6ce8
 "gene.geneSource" = "Genspanne: %{source} (mitgeliefert)."  # i18n-source-hash:2b269812
+"gene.iobio.cancel" = "Abbrechen"  # i18n-source-hash:77dfd213
+"gene.iobio.error" = "gene.iobio konnte nicht im Browser geöffnet werden."  # i18n-source-hash:df6f8532
+"gene.iobio.licence" = "gene.iobio ist für die akademische und private Nutzung kostenlos. Jede andere Nutzung (auch gewerbliche) erfordert eine Lizenz von Frameshift Genomics (info@frameshift.io). Nicht zur klinischen Nutzung."  # i18n-source-hash:509bbb29
+"gene.iobio.open" = "Akzeptieren und gene.iobio öffnen"  # i18n-source-hash:b814d43d
+"gene.iobio.privacy" = "Dies öffnet gene.iobio.io im Browser und übermittelt das Gensymbol (%{gene}) und die Referenzversion (%{build}). Diese Angaben können sensibel sein. WGS Extract sendet keine Probendateien, Dateipfade oder Proben-IDs. Wenn Sie dort eine BAM- oder VCF-Datei und ihren Index auswählen, kann die Website diese Dateien über waygate.iobio.io für die iobio-Server zugänglich machen. Beim Fortfahren wird Ihre Zustimmung lokal gespeichert, ohne das Gen oder die Referenzversion zu speichern."  # i18n-source-hash:4eba5694
+"gene.iobio.review" = "Lizenz und Datenschutz von gene.iobio …"  # i18n-source-hash:fb9dc96b
+"gene.iobio.title" = "In gene.iobio öffnen?"  # i18n-source-hash:0bc72654
 "gene.legendBelow" = "Unter dem Schwellenwert"  # i18n-source-hash:064474a5
 "gene.legendCallable" = "Auswertbar"  # i18n-source-hash:3b55289f
 "gene.legendUnknown" = "Keine Abdeckungsdaten"  # i18n-source-hash:d4af56c3
@@ -247,7 +254,7 @@
 "gene.noticeThen" = "Dann die VCF öffnen, die er schreibt."  # i18n-source-hash:d3f69d68
 "gene.noticesTitle" = "Fehlende Daten"  # i18n-source-hash:c43907c0
 "gene.open" = "Im Genombetrachter öffnen"  # i18n-source-hash:1b3c5363
-"gene.privacy" = "Alles auf dieser Seite liest die WGS-Extract-CLI aus Dateien auf diesem Computer. Nichts wird heruntergeladen, und nichts über Ihr Genom wird irgendwohin gesendet."  # i18n-source-hash:a8bbcba1
+"gene.privacy" = "„Gen anzeigen“ liest Dateien auf diesem Computer. Dabei werden keine Daten heruntergeladen und keine Informationen über Ihr Genom gesendet."  # i18n-source-hash:4f3c2403
 "gene.problem.exportNeedsVcf" = "Eine VCF wählen, um ihre Varianten zu exportieren."  # i18n-source-hash:e0352a71
 "gene.problem.fileMissing" = "%{file} wurde nicht gefunden."  # i18n-source-hash:dc73ef4f
 "gene.problem.geneFailed" = "Das Gen konnte nicht gelesen werden: %{message}"  # i18n-source-hash:286060db

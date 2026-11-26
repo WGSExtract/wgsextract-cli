@@ -249,6 +249,12 @@ each came from), `coverage` (gene, 100 bins and each distinct exon, with
 `below` when any base is under the threshold) and `notices`. A notice names
 what is missing and the command that makes it (`ref gene-map`, `vep run`,
 `vcf clinvar`, `vcf gnomad`, `vcf acmg`, `vcf call`); nothing is downloaded.
+
+`info gene` has no online mode. The desktop's optional
+[gene.iobio hand-off](../gui/docs/gene-page.md#open-in-geneiobio) requires
+separate confirmation and does not share files. gene.iobio is free for
+academic and personal use; any other use (including commercial) requires a
+licence from Frameshift Genomics (info@frameshift.io). Not for clinical use.
 The desktop app's [gene page](../gui/docs/gene-page.md) shows this document.
 
 ## Annotation resources

@@ -37,6 +37,16 @@ SHA-256 and fetches it only on request. Source rights for the data this
 project ships are tracked in issue #864.
 
 
+Optional gene.iobio website hand-off
+===================================
+
+The desktop Gene page can open the separately licensed gene.iobio website
+only after consent. WGS Extract does not bundle or install gene.iobio or GRU.
+gene.iobio is free for academic and personal use; any other use (including
+commercial) requires a licence from Frameshift Genomics (info@frameshift.io).
+Not for clinical use.
+
+
 Yleaf-derived Y-DNA analysis
 ==========================
 
