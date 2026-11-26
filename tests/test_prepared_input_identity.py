@@ -123,7 +123,7 @@ def test_1093_plain_vcf_copy_uses_owned_output_fallback_and_leaves_inputs_untouc
     assert sorted(p.name for p in output.iterdir()) == [
         "filtered.vcf.gz",
         "filtered.vcf.gz.tbi",
-        "filtered.vcf.manifest.json",
+        "manifests",
     ]
     queried = run_command(
         ["bcftools", "query", "-f", "%ID\n", str(output / "filtered.vcf.gz")],
@@ -194,7 +194,7 @@ def test_1093_region_table_keeps_original_name_provenance_and_default_outputs(
         capsys, "vcf", "table", "--vcf-input", str(source), "--region", "chr1:1-20"
     )
     assert result["status"] == "ok", result["error"]
-    output = source.parent / "wgse"
+    output = source.parent / "WGSEv6"
     assert (output / "sample_variants.tsv").is_file()
     with sqlite3.connect(output / "sample_variants.sqlite") as db:
         assert db.execute("SELECT pos FROM variants").fetchall() == [(10,)]
@@ -203,7 +203,7 @@ def test_1093_region_table_keeps_original_name_provenance_and_default_outputs(
     assert metadata["source_sha256"] == hashlib.sha256(original).hexdigest()
     assert source.read_bytes() == original
     assert not any(p.name.startswith(".wgse") for p in output.iterdir())
-    assert sorted(p.name for p in source.parent.iterdir()) == ["sample.vcf", "wgse"]
+    assert sorted(p.name for p in source.parent.iterdir()) == ["WGSEv6", "sample.vcf"]
 
 
 def test_1093_annotation_manifest_keeps_the_supplied_plain_resource_path(
@@ -307,7 +307,7 @@ def test_1093_resource_cache_survives_run_cleanup_and_temporary_copy_identities(
         assert sorted(p.name for p in output.iterdir()) == [
             "gnomad_annotated.vcf.gz",
             "gnomad_annotated.vcf.gz.tbi",
-            "gnomad_annotated.vcf.manifest.json",
+            "manifests",
         ]
     assert list(source.parent.iterdir()) == [source]
     assert list(annotation.parent.iterdir()) == [annotation]

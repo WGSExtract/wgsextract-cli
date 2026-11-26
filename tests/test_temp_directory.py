@@ -167,7 +167,10 @@ def test_bam_sort_budgets_spills_on_the_tmp_dir_volume_separately(
         # The sorter's or collate's spills went to --tmp-dir, not the output.
         assert _spills(seen[scratch])
         assert not _spills(seen[output])
-        assert all(len(Path(name).parts) == 1 for name in seen[output])
+        assert all(
+            len(Path(name).parts) == 1 or Path(name).parts[0] == "manifests"
+            for name in seen[output]
+        )
     else:
         message = _failure(result)
         directory, needed = (
@@ -219,7 +222,10 @@ def test_realign_budgets_output_and_staging_volumes_separately(
         # Extraction spills, and staged FASTQs, went to --tmp-dir.
         assert _spills(seen[scratch])
         assert not _spills(seen[output])
-        assert all(len(Path(name).parts) == 1 for name in seen[output])
+        assert all(
+            len(Path(name).parts) == 1 or Path(name).parts[0] == "manifests"
+            for name in seen[output]
+        )
     else:
         message = _failure(result)
         directory, needed = (scratch, budgets[1]) if short == "scratch" else (
@@ -454,9 +460,10 @@ def test_tmp_dir_keeps_command_scratch_out_of_the_output(capsys, tmp_path, folde
     assert any(name.endswith("calls.vcf.gz") for name in seen[scratch])
     assert not any("calls.vcf" in name for name in seen[output])
     assert sorted(p.name for p in output.iterdir()) == [
+        "manifests",
         "sample_MT.fasta",
-        "sample_MT.fasta.manifest.json",
     ]
+    assert (output / "manifests" / "sample_MT.fasta.manifest.json").is_file()
     assert list(scratch.iterdir()) == []
 
 

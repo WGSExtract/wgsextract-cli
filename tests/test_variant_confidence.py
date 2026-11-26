@@ -185,7 +185,7 @@ def _run(tmp_path: Path, *argv: str) -> dict:
         dispatch_command(args, set())
     except SystemExit as error:
         assert not error.code
-    manifest = next(Path(args.outdir).glob("*.manifest.json"))
+    manifest = next(Path(args.outdir).glob("manifests/*.manifest.json"))
     document = json.loads(manifest.read_text())
     errors = list(Draft202012Validator(results.load_schema()).iter_errors(document))
     assert not errors, errors

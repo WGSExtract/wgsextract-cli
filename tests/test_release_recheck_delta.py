@@ -524,8 +524,8 @@ def test_1363_a_changed_installation_is_not_necessarily_latest(
     runs, tmp_path, latest, downloads
 ):
     folder = tmp_path / "moved"
-    shutil.copytree(runs["october"].parent, folder)
-    manifest = folder / "clinvar_pathogenic.vcf.manifest.json"
+    shutil.copytree(runs["october"].parent.parent, folder)
+    manifest = folder / "manifests" / "clinvar_pathogenic.vcf.manifest.json"
     document = json.loads(manifest.read_text())
     resource = Path(document["resources"][0]["path"])
     installed = _clinvar(tmp_path / "clinvar_now.vcf", "2026-11-15", NOVEMBER)
@@ -776,7 +776,9 @@ def test_1363_cadd_records_its_indel_table_beside_the_snv_table(tmp_path):
          "--cadd-indel-file", indels, "--outdir", str(outdir)]
     )  # fmt: skip
     assert rc == 0, stderr
-    manifest = json.loads((outdir / "cadd_annotated.vcf.manifest.json").read_text())
+    manifest = json.loads(
+        (outdir / "manifests" / "cadd_annotated.vcf.manifest.json").read_text()
+    )
     assert {(r["id"], Path(r["path"]).name) for r in manifest["resources"]} == {
         ("cadd", "cadd.tsv.gz"),
         ("cadd-indel", "cadd_indel.tsv.gz"),

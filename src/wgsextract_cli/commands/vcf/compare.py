@@ -16,7 +16,6 @@ from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.results import (
-    MANIFEST_SUFFIX,
     current_result,
     human_output,
     warn,
@@ -378,7 +377,8 @@ def _check_destinations(
     input_paths = {path.resolve() for path in inputs}
     for path in (
         *_result_paths(outdir, params).values(),
-        outdir / f"compare{MANIFEST_SUFFIX}",
+        # Where the run publishes its manifest (set_manifest_stem below).
+        current_result().manifest_path_for_output(outdir / "compare"),
     ):
         if path.resolve() in input_paths:
             raise UsageError(

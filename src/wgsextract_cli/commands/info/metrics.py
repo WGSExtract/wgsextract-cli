@@ -1,8 +1,6 @@
 import csv
-import json
 import logging
 import math
-import os
 import re
 import subprocess
 import tempfile
@@ -11,18 +9,15 @@ from pathlib import Path
 from typing import Any, NamedTuple, TypedDict
 
 from wgsextract_cli.commands._messages.info import LOG_MESSAGES
+from wgsextract_cli.commands.info.cache import cached_info
 from wgsextract_cli.core import sample_workspace
 from wgsextract_cli.core.alignment.sequencing import platform_from_metadata
-from wgsextract_cli.core.config import output_directory
 from wgsextract_cli.core.constants import SEQUENCERS
-from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import n_count_paths
-from wgsextract_cli.core.results import fingerprint
 from wgsextract_cli.core.sample_types import is_observed_sex
 from wgsextract_cli.core.sample_workspace import Confidence
 from wgsextract_cli.core.ultima import is_ultima_header
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
-from wgsextract_cli.core.variant_files import calculate_bam_md5
 
 ULTIMA_SEQUENCER = "Ultima Genomics UG 100"
 
@@ -224,18 +219,23 @@ def run_body_sample(filepath: str, cram_opt: Sequence[str]) -> BodySample:
         logging.debug(f"No reads sampled from {filepath}: {error}")
 
     avg_len = total_len / count if count > 0 else 0
-    avg_tlen = sum(tlen_values) / len(tlen_values) if len(tlen_values) > 0 else 0
     std_len = (
         math.sqrt(sum((x - avg_len) ** 2 for x in len_values) / count)
         if count > 1
         else 0
     )
-    std_tlen = (
-        math.sqrt(sum((x - avg_tlen) ** 2 for x in tlen_values) / len(tlen_values))
-        if len(tlen_values) > 1
-        else 0
-    )
     is_paired = paired_count > (count / 2) if count > 0 else False
+    # For single-end libraries, each read spans the full sequenced fragment.
+    if not is_paired:
+        avg_tlen = avg_len
+        std_tlen = std_len
+    else:
+        avg_tlen = sum(tlen_values) / len(tlen_values) if tlen_values else 0
+        std_tlen = (
+            math.sqrt(sum((x - avg_tlen) ** 2 for x in tlen_values) / len(tlen_values))
+            if len(tlen_values) > 1
+            else 0
+        )
 
     return BodySample(
         count,
@@ -487,63 +487,6 @@ def record_sex(input_path: str, call: SexCall) -> None:
                 method=call.method,
                 confidence=call.confidence,
             )
-
-
-def input_signature(path: str) -> dict[str, int | str] | None:
-    """Local identity and a bounded content check, even for whole-genome files.
-
-    The sampled digest is not a full integrity check. On Windows, ctime
-    records creation, not edits, so a change outside the samples that also
-    preserves size and mtime can go undetected.
-    """
-    try:
-        st = os.stat(path)
-    except OSError:
-        return None
-    content = fingerprint(path)
-    if content is None:
-        return None
-    return {
-        "size": st.st_size,
-        "mtime_ns": st.st_mtime_ns,
-        "ctime_ns": st.st_ctime_ns,
-        "device": st.st_dev,
-        "inode": st.st_ino,
-        "fingerprint": content,
-    }
-
-
-def cached_info(
-    input_path: str, outdir: str | None = None, key: str = "gender"
-) -> dict[str, Any] | None:
-    """`info`'s cached metrics for this very file, if a cache with `key` exists
-    in the output folder, beside the input or in the configured output folder."""
-    name = f"{Path(input_path).name}.wgse_info.json"
-    this_file = input_signature(input_path)
-    if this_file is None:
-        return None
-    signature = calculate_bam_md5(input_path, None)
-    for folder in (
-        outdir,
-        str(absolute_path(input_path).parent),
-        output_directory([input_path]),
-    ):
-        cache = str(Path(folder, name)) if folder else ""
-        try:
-            with open(cache) as f:
-                info = json.load(f)
-        except (OSError, ValueError):
-            continue
-        # The header signature is shared by every sample on that reference, so
-        # the cache must also be from this very file.
-        if (
-            isinstance(info, dict)
-            and info.get("md5_signature") == signature
-            and info.get("input_signature") == this_file
-            and info.get(key)
-        ):
-            return info
-    return None
 
 
 def sample_sex(

@@ -97,7 +97,9 @@ def test_1175_report_keeps_mutserve_levels_at_reviewed_variants(
         return
     assert {"heteroplasmy_calls", "heteroplasmy_site_evidence"} <= kept.keys()
     # The haplogroup report still names the run's manifest.
-    assert (folder / f"{kept['haplogroup_report']}.manifest.json").is_file()
+    assert (
+        folder / "manifests" / f"{kept['haplogroup_report']}.manifest.json"
+    ).is_file()
     assert result.details["heteroplasmy"]["mt_reference"]["origin"] == "rCRS"
     assert result.metrics["mt_heteroplasmies"] >= 1
 
@@ -185,7 +187,7 @@ def _mutserve_run(
     keep_raw: bool = True,
 ) -> None:
     """A `lineage mt-haplogroup --contamination` run's manifest and files."""
-    folder.mkdir(exist_ok=True)
+    (folder / "manifests").mkdir(parents=True, exist_ok=True)
     cram = folder / "kit.cram"
     cram.write_text("x")
     vcf = folder / "mutserve_heteroplasmies.vcf.gz"
@@ -216,10 +218,12 @@ def _mutserve_run(
                 "mt_reference": {"origin": origin, "contig": "chrM"},
             }
         },
-        "manifest": str(folder / "haplogrep_results.txt.manifest.json"),
+        "manifest": str(folder / "manifests" / "haplogrep_results.txt.manifest.json"),
         "provenance": {"finished": "2026-01-01T00:00:00+00:00"},
     }
-    (folder / "haplogrep_results.txt.manifest.json").write_text(json.dumps(document))
+    (folder / "manifests" / "haplogrep_results.txt.manifest.json").write_text(
+        json.dumps(document)
+    )
 
 
 def _call(pos: int, ref: str, alt: str, gt: str, level: float, depth: int) -> str:
@@ -242,7 +246,8 @@ def test_1175_only_failed_heteroplasmy_attempts_affect_the_section(
         _mutserve_run(tmp_path)
     sample = tmp_path / input_name
     sample.touch()
-    failed = tmp_path / "failed.manifest.json"
+    failed = tmp_path / "manifests" / "failed.manifest.json"
+    failed.parent.mkdir(exist_ok=True)
     failed.write_text(
         json.dumps(
             {
@@ -269,7 +274,7 @@ def test_1175_only_failed_heteroplasmy_attempts_affect_the_section(
     section = report["sections"]["mitochondrial"]
     assert section["status"] == status
     if status == "failed":
-        assert section["sources"][0]["manifest"] == failed.name
+        assert section["sources"][0]["manifest"] == "manifests/failed.manifest.json"
     elif has_evidence:
         assert section["sources"][0]["latest_attempt"] is None
 

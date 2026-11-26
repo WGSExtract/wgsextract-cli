@@ -49,8 +49,10 @@
 "sections.info-bam.bam-commands.title" = "Gerenciamento de BAM / CRAM"  # i18n-source-hash:48ce1911
 "actions.info-bam.bam-commands.bam-sort.title" = "Ordenar"  # i18n-source-hash:adc4e96a
 "actions.info-bam.bam-commands.bam-sort.tooltip" = "Ordene alinhamentos por coordenadas genômicas. Exigido pela maioria das ferramentas posteriores, incluindo chamadores de variantes."  # i18n-source-hash:54055bea
+"actions.info-bam.bam-commands.bam-sort.alreadySortedTooltip" = "Este arquivo já está ordenado por coordenadas."  # i18n-source-hash:fddaf146
 "actions.info-bam.bam-commands.bam-index.title" = "Indexar"  # i18n-source-hash:c2df9b93
 "actions.info-bam.bam-commands.bam-index.tooltip" = "Crie um índice de acesso aleatório (.bai/.crai) para que as ferramentas possam ir para regiões específicas sem ler o arquivo inteiro."  # i18n-source-hash:70e92856
+"actions.info-bam.bam-commands.bam-index.alreadyIndexedTooltip" = "Este arquivo já está indexado."  # i18n-source-hash:d0e978ae
 "actions.info-bam.bam-commands.bam-to-cram.title" = "Para CRAM"  # i18n-source-hash:cf48cf11
 "actions.info-bam.bam-commands.bam-to-cram.tooltip" = "Converta BAM para CRAM para armazenamento de longo prazo; CRAM geralmente é 30-50% menor que BAM sem perda de dados."  # i18n-source-hash:74aaf17b
 "actions.info-bam.bam-commands.bam-unsort.title" = "Desordenar"  # i18n-source-hash:1559143b

@@ -173,7 +173,9 @@ def test_mcp_runs_jobs_when_allowed(work, fake_data):
     job = mcp.call("job_status", job_id=started["id"], wait_seconds=300)
     assert job["structuredContent"]["status"] == "succeeded"
 
-    manifest = mcp.call("read_manifest", path=str(work / "snps.vcf.manifest.json"))
+    manifest = mcp.call(
+        "read_manifest", path=str(work / "manifests" / "snps.vcf.manifest.json")
+    )
     assert manifest["structuredContent"]["command"] == "vcf snp"
     assert "provenance" not in manifest["structuredContent"]
     assert mcp.call("cancel_job", job_id=started["id"])["isError"] is True

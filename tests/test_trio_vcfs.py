@@ -146,8 +146,8 @@ def test_trio_defaults_to_denovo_in_wgse_beside_the_proband_input(
     run_wgsextract(
         "vcf", "trio", input_option, child, "--mother", mother, "--father", father
     )
-    assert _ids(tmp_path / "wgse" / "trio_denovo.vcf.gz") == ["denovo"]
-    assert not (tmp_path / "wgse" / "trio_recessive.vcf.gz").exists()
+    assert _ids(tmp_path / "WGSEv6" / "trio_denovo.vcf.gz") == ["denovo"]
+    assert not (tmp_path / "WGSEv6" / "trio_recessive.vcf.gz").exists()
 
 
 @pytest.mark.parametrize(

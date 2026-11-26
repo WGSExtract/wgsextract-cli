@@ -70,7 +70,9 @@ def test_card_shows_result_and_provenance_beside_the_manifest(tmp_path):
     assert str(data) not in html and str(outdir) not in html
     assert "sample_snps.vcf.manifest.json" in html
 
-    manifest = json.loads((outdir / "sample_snps.vcf.manifest.json").read_text())
+    manifest = json.loads(
+        (outdir / "manifests" / "sample_snps.vcf.manifest.json").read_text()
+    )
     assert not list(VALIDATOR.iter_errors(manifest))
     roles = {Path(o["path"]).name: o["role"] for o in manifest["outputs"]}
     assert roles == {"sample_snps.vcf.gz": "snps", card.name: "result_card"}
@@ -91,9 +93,10 @@ def test_failed_attempt_card_shows_the_error_and_keeps_the_manifest_name(tmp_pat
         raise WGSExtractError("Bad <b>input</b> & more.")
 
     assert dispatch(command, tmp_path, card=True) == 1
-    manifest = tmp_path / "s.vcf.failed.manifest.json"
+    manifest = tmp_path / "manifests" / "s.vcf.failed.manifest.json"
     card = tmp_path / "s.vcf.failed.card.html"
-    assert sorted(p.name for p in tmp_path.iterdir()) == [card.name, manifest.name]
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["manifests", card.name]
+    assert manifest.is_file()
     html = card.read_text(encoding="utf-8")
     assert "Failed" in html and manifest.name in html
     assert "Bad &lt;b&gt;input&lt;/b&gt; &amp; more." in html
@@ -114,9 +117,26 @@ def test_directory_output_keeps_its_manifest_name(tmp_path):
 
     assert dispatch(command, tmp_path, card=True) == 0
     assert (folder / "vep.card.html").is_file()
-    document = json.loads((folder / "vep.manifest.json").read_text())
+    document = json.loads((folder / "manifests" / "vep.manifest.json").read_text())
     assert {o["role"] for o in document["outputs"]} == {"cache", "result_card"}
     assert not list(folder.glob("*.card.html.manifest.json"))
+
+
+def test_an_output_folder_named_manifests_keeps_its_card_inside(tmp_path):
+    """Review of the manifests/ move: with --outdir proj/manifests the card
+    went to proj/, outside the folder the user chose."""
+    outdir = tmp_path / "proj" / "manifests"
+    outdir.mkdir(parents=True)
+    output = outdir / "s.vcf.gz"
+
+    def command(args):
+        output.write_bytes(b"data")
+        results.current_result().add_output(output, "snps")
+
+    assert dispatch(command, outdir, card=True) == 0
+    assert sorted(p.name for p in (tmp_path / "proj").iterdir()) == ["manifests"]
+    assert (outdir / "s.vcf.card.html").is_file()
+    assert (outdir / "manifests" / "s.vcf.manifest.json").is_file()
 
 
 def test_report_without_a_sample_writes_nothing(tmp_path):
@@ -214,7 +234,9 @@ def test_cli_report_only_info_gets_a_card_and_manifest(tmp_path):
     first_line = stdout.strip().splitlines()[0]
     assert first_line.split()[0] in html
     assert "samtools" in html and str(FAKE_DIR) not in html
-    manifest = json.loads((tmp_path / "fake.bam_info.manifest.json").read_text())
+    manifest = json.loads(
+        (tmp_path / "manifests" / "fake.bam_info.manifest.json").read_text()
+    )
     assert [o["role"] for o in manifest["outputs"]] == ["result_card"]
 
 
@@ -292,9 +314,11 @@ def test_cli_info_without_outdir_puts_its_card_in_the_default_wgse_folder(tmp_pa
     rc, _, stderr = run_cli(["info", "--input", str(lab / "fake.bam"), "--card"])
     assert rc == 0, stderr
     assert "No result card written" not in stderr
-    card = lab / "wgse" / "fake.bam_info.card.html"
+    card = lab / "WGSEv6" / "fake.bam_info.card.html"
     assert "Avg Read Length" in card.read_text(encoding="utf-8")
-    manifest = json.loads((lab / "wgse" / "fake.bam_info.manifest.json").read_text())
+    manifest = json.loads(
+        (lab / "WGSEv6" / "manifests" / "fake.bam_info.manifest.json").read_text()
+    )
     assert [o["path"] for o in manifest["outputs"]] == [str(card)]
 
 
@@ -344,7 +368,9 @@ def test_concurrent_runs_never_pair_a_card_with_another_runs_manifest(tmp_path):
             thread.start()
         for thread in threads:
             thread.join()
-        manifest = json.loads((tmp_path / "s_info.manifest.json").read_text())
+        manifest = json.loads(
+            (tmp_path / "manifests" / "s_info.manifest.json").read_text()
+        )
         assert f"<code>{manifest['command']}</code>" in card.read_text(encoding="utf-8")
 
 
@@ -360,8 +386,8 @@ def test_server_job_card_stays_inside_the_allowed_folders(tmp_path):
         assert result_card.card_path(result, outside) is None
         assert result.manifest_path() is None
         assert (
-            result_card.card_path(result, allowed / "wgse")
-            == allowed / "wgse" / "s.bam_info.card.html"
+            result_card.card_path(result, allowed / "WGSEv6")
+            == allowed / "WGSEv6" / "s.bam_info.card.html"
         )
 
 
@@ -440,7 +466,7 @@ def test_bam_and_cram_of_one_sample_get_cards_of_their_own(tmp_path):
         (tmp_path / name).write_bytes(b"x")
         result = results.CommandResult(command="info")
         result.add_input(tmp_path / name)
-        card = result_card.card_path(result, tmp_path / "wgse")
+        card = result_card.card_path(result, tmp_path / "WGSEv6")
         assert card is not None
         names.append(card.name)
     assert names == ["s.bam_info.card.html", "s.cram_info.card.html"]
@@ -505,7 +531,8 @@ def test_a_successful_retry_retires_the_failed_card(tmp_path):
     assert (tmp_path / "s.vcf.failed.card.html").is_file()
     assert dispatch(succeeding, tmp_path, card=True) == 0
     names = sorted(p.name for p in tmp_path.iterdir())
-    assert names == ["s.vcf.card.html", "s.vcf.gz", "s.vcf.manifest.json"]
+    assert names == ["manifests", "s.vcf.card.html", "s.vcf.gz"]
+    assert (tmp_path / "manifests" / "s.vcf.manifest.json").is_file()
 
 
 def test_a_card_that_cannot_be_locked_keeps_the_manifest(tmp_path, monkeypatch):
@@ -524,7 +551,7 @@ def test_a_card_that_cannot_be_locked_keeps_the_manifest(tmp_path, monkeypatch):
         results.current_result().add_output(output, "out")
 
     assert dispatch(command, tmp_path, card=True) == 0
-    assert (tmp_path / "s.txt.manifest.json").is_file()
+    assert (tmp_path / "manifests" / "s.txt.manifest.json").is_file()
     assert not (tmp_path / "s.txt.card.html").exists()
 
 

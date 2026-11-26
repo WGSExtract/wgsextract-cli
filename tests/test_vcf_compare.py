@@ -512,12 +512,17 @@ def test_compare_1295_region_keeps_same_position_evidence_for_exclusions(tmp_pat
     ]
 
 
-def test_compare_1295_output_does_not_replace_bed(tmp_path):
+# PR #1581 review: the guard missed the manifest's new place in manifests/.
+@pytest.mark.parametrize(
+    "name", ["compare.summary.tsv", "manifests/compare.manifest.json"]
+)
+def test_compare_1295_output_does_not_replace_bed(tmp_path, name):
     build = "##reference=GRCh38\n"
     row = ["10\t.\tA\tG\t.\tPASS\t.\tGT\t0/1"]
     a = _vcf(tmp_path / "a.vcf", row, metadata=build)
     b = _vcf(tmp_path / "b.vcf", row, metadata=build)
-    bed = tmp_path / "compare.summary.tsv"
+    bed = tmp_path / name
+    bed.parent.mkdir(exist_ok=True)
     intervals = b"chr1\t9\t10\n"
     bed.write_bytes(intervals)
     result = api.vcf.compare(

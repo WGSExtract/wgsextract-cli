@@ -333,7 +333,9 @@ def test_1293_windows_precomputed_regions_report_coverage_and_nulls(
     assert rows["chr21:369958-370298"]["status"] == "no_reference_cpgs"
     assert any(r["status"] == "contig_absent" for r in rows.values())
 
-    manifest = json.loads(next(params.outdir.glob("*.manifest.json")).read_text())
+    manifest = json.loads(
+        next(params.outdir.glob("manifests/*.manifest.json")).read_text()
+    )
     assert manifest["details"]["annotation"]["source"] == "UCSC masked cpgIslandExt"
     assert (
         manifest["details"]["annotation"]["sha256"]

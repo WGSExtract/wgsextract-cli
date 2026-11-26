@@ -89,12 +89,14 @@ test("port validation keeps the omitted and missing --port behaviour (#527)", ()
   assert.throws(() => parseArgs(["--port"]), /Missing value for --port/);
 });
 
-test("{{appData}} and bundle scripts' WGSEXTRACT_GUI_APP_DATA are the app's data folder, WGSExtract-gui by default", async () => {
+test("{{appData}} and bundle scripts' WGSEXTRACT_GUI_APP_DATA are the app's data folder; a run the installed app did not start uses WGSExtract-gui-dev", async () => {
   const { appSupportDirectory, applicationSupportDirectory, bundleEnvironment } = await import("../dist/web/src/server/paths.js");
   const previous = process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
   delete process.env.WGSEXTRACT_GUI_APP_DATA_NAME;
   try {
-    const appData = path.join(applicationSupportDirectory(), "WGSExtract-gui");
+    // A checkout's server must not share the installed app's runtime and bundle copy (a dev bundle once replaced
+    // the installed 0.8.9 app's pages, which then failed with "wgsextract: command not found").
+    const appData = path.join(applicationSupportDirectory(), "WGSExtract-gui-dev");
     assert.equal(appSupportDirectory(), appData);
     assert.equal(expandPathTokens("{{appData}}/runtime/wgsextract-cli/bin/wgsextract", "/bundle"), path.join(appData, "runtime", "wgsextract-cli", "bin", "wgsextract"));
     assert.deepEqual(bundleEnvironment("/bundle"), {
@@ -104,6 +106,9 @@ test("{{appData}} and bundle scripts' WGSEXTRACT_GUI_APP_DATA are the app's data
       WGSEXTRACT_GUI_USERS_WORKSPACE: "/bundle",
       WGSEXTRACT_GUI_APP_DATA: appData,
     });
+    // The installed app always names its folder (main.rs).
+    process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "WGSExtract-gui";
+    assert.equal(appSupportDirectory(), path.join(applicationSupportDirectory(), "WGSExtract-gui"));
     process.env.WGSEXTRACT_GUI_APP_DATA_NAME = "test.app";
     assert.equal(appSupportDirectory(), path.join(applicationSupportDirectory(), "test.app"));
   } finally {

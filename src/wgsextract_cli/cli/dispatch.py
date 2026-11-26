@@ -289,7 +289,7 @@ def _run_command(
         and args.outdir is None
         and "outdir" not in explicit_dests
     ):
-        # Unset, outputs go to wgse/ beside the lab's primary input, never in
+        # Unset, outputs go to WGSEv6/ beside the lab's primary input, never in
         # its folder (core/output_location.py).
         from wgsextract_cli.api._cli import command_params
         from wgsextract_cli.api._params import (
@@ -324,6 +324,14 @@ def _run_command(
         elif dest == "input" and is_url(value) and command_reads_urls(args):
             check_public(str(value))  # Before a secret in it is recorded.
             result.add_input(value, role)
+    if not private:
+        from wgsextract_cli.core.config import output_directory as configured_outdir
+
+        manifest_outdir = getattr(args, "outdir", None) or configured_outdir(
+            [r.path for r in result.inputs]
+        )
+        if manifest_outdir:
+            result.set_manifest_dir(manifest_outdir)
     input_path = None if private else getattr(args, "input", None)
     command = getattr(args, "command", None) or ""
     status = reports_status(args)

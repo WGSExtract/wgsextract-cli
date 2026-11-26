@@ -159,12 +159,14 @@ def test_y_str_cli_writes_calls_and_an_ftdna_row(tmp_path):
     run_wgsextract(
         "lineage", "y-str", "--input", bam, "--panel", "Y-12", "--build", "hg38",
     )  # fmt: skip
-    header, row = list(csv.reader((tmp_path / "wgse" / "ystr/kit.ftdna.csv").open()))
+    header, row = list(csv.reader((tmp_path / "WGSEv6" / "ystr/kit.ftdna.csv").open()))
     values = dict(zip(header, row, strict=True))
     assert (values["DYS393"], values["DYS390"], values["DYS391"]) == ("13", "24", "11")
     assert values["DYS19"] == ""
     table = list(
-        csv.DictReader((tmp_path / "wgse" / "ystr/kit.ystr.tsv").open(), delimiter="\t")
+        csv.DictReader(
+            (tmp_path / "WGSEv6" / "ystr/kit.ystr.tsv").open(), delimiter="\t"
+        )
     )
     dys19 = next(r for r in table if r["marker"] == "DYS19")
     assert (dys19["status"], dys19["read_alleles"]) == ("low_support", "15:1")
@@ -181,7 +183,7 @@ def test_y_str_cli_detects_the_build_from_the_header(tmp_path):
     ]
     bam = sam_to_bam(["@SQ\tSN:chrY\tLN:62460029", *reads], tmp_path / "kit.bam")
     run_wgsextract("lineage", "y-str", "--input", bam, "--panel", "Y-12")
-    header, row = list(csv.reader((tmp_path / "wgse" / "ystr/kit.ftdna.csv").open()))
+    header, row = list(csv.reader((tmp_path / "WGSEv6" / "ystr/kit.ftdna.csv").open()))
     values = dict(zip(header, row, strict=True))
     assert (values["DYS393"], values["DYS390"], values["DYS391"]) == ("13", "24", "11")
 
@@ -246,7 +248,7 @@ def test_issue_1155_restored_strs_and_ambiguous_dys425_export(
     run_wgsextract(
         "lineage", "y-str", "--input", bam, "--panel", "all", "--build", build
     )
-    output = tmp_path / "wgse/ystr"
+    output = tmp_path / "WGSEv6/ystr"
     table = {
         row["marker"]: row
         for row in csv.DictReader(

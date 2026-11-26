@@ -23,7 +23,7 @@ import { isSameOrInsidePath } from "../../../shared/workspace-paths.js";
 import { loadManifestFromRoot } from "./bundle-loader.js";
 import { leaveAppImageEnvironment } from "./appimage-environment.js";
 import { errorMessage } from "./errors.js";
-import { appSupportDirectory, configPath, resolveUserPath } from "./paths.js";
+import { appSupportDirectory, configPath, defaultAppDataName, resolveUserPath } from "./paths.js";
 import { createProcessManager } from "./process-runner.js";
 import { runUninstall, type SetupSummary } from "./setup-runner.js";
 import { isUsersWorkspace, registerUsersWorkspace, resolveUsersWorkspaceRoot } from "./users-workspace.js";
@@ -53,8 +53,9 @@ async function main(argv: string[]): Promise<number> {
     // The uninstall steps run the system's programs, not the AppImage's.
     leaveAppImageEnvironment();
     const { appDataName, printWorkspace, removeWorkspace, removeAppData, bundle } = parseArgs(argv);
-    if (appDataName) {
-        process.env.WGSEXTRACT_GUI_APP_DATA_NAME = appDataName;
+    // The Windows uninstaller names no folder: it removes the installed app's, never a development run's.
+    if (appDataName || !process.env.WGSEXTRACT_GUI_APP_DATA_NAME) {
+        process.env.WGSEXTRACT_GUI_APP_DATA_NAME = appDataName ?? defaultAppDataName;
     }
     // An app upgraded from 0.8.6 or earlier and uninstalled before it ever ran still has its settings there.
     await migrateLegacyAppData();

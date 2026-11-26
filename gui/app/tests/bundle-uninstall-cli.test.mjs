@@ -94,3 +94,25 @@ test("--remove-app-data deletes the hidden bundle workspace after successful ste
   assert.equal((await runCli(kept, "--remove-app-data")).code, 1);
   await stat(path.join(kept.workspace, "manifest.json"));
 });
+
+test("the Windows uninstaller, which names no data folder, removes the installed app's, never a development run's", async (t) => {
+  // No uninstall steps run here (no bundle workspace), so this needs no shell and runs on every platform.
+  const paths = await fixture(t, "#!/bin/sh\n");
+  const data = path.dirname(path.dirname(path.dirname(paths.workspace)));
+  const installed = path.join(data, "WGSExtract-gui");
+  const development = path.join(data, "WGSExtract-gui-dev");
+  for (const folder of [installed, development]) {
+    await mkdir(folder, { recursive: true });
+    await writeFile(path.join(folder, "settings.json"), "{}\n");
+  }
+  const env = { ...process.env, HOME: paths.root, USERPROFILE: paths.root, LOCALAPPDATA: data, XDG_DATA_HOME: data, WGSEXTRACT_GUI_UNINSTALL_RESULT_FILE: paths.result };
+  delete env.WGSEXTRACT_GUI_APP_DATA_NAME;
+
+  const { code, stdout } = await new Promise((resolve) => {
+    execFile(process.execPath, [cli, "--remove-app-data", paths.bundle], { env }, (error, out) => resolve({ code: error ? error.code : 0, stdout: out }));
+  });
+
+  assert.equal(code, 0, stdout);
+  await assert.rejects(stat(installed), { code: "ENOENT" });
+  assert.equal((await stat(path.join(development, "settings.json"))).isFile(), true);
+});

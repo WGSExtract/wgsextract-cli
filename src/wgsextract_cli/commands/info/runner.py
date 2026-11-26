@@ -51,6 +51,7 @@ from ._reporting import reference_model_name as reference_model_name
 from ._tables import CHROMOSOME_TABLE as CHROMOSOME_TABLE
 from ._tables import QC_TABLE as QC_TABLE
 from ._tables import _export_tables
+from .cache import info_cache_path, input_signature, legacy_cache_folders
 from .metrics import (
     DEPTH_COUNTED,
     DEPTH_SAMPLED,
@@ -63,7 +64,6 @@ from .metrics import (
     generate_chrom_table,
     get_file_stats,
     infer_sex_call,
-    input_signature,
     is_long_read_library,
     long_read_lengths,
     long_read_mapped_pct,
@@ -87,7 +87,9 @@ def _load_cache(path: str, signature: dict[str, int | str] | None) -> dict[str, 
 
     Caches written before input signatures were recorded are treated as stale.
     """
-    if signature is None:
+    from wgsextract_cli.core import read_scope
+
+    if signature is None or not read_scope.may_follow(path):
         return {}
     try:
         with open(path) as f:
@@ -111,7 +113,19 @@ def _load_cache(path: str, signature: dict[str, int | str] | None) -> dict[str, 
 
 
 def _save_cache(path: str, data: dict[str, Any]) -> bool:
+    from wgsextract_cli.core import read_scope
+    from wgsextract_cli.core.results import MANIFESTS_DIR
+
+    if not read_scope.may_follow(path):
+        logging.debug(f"Not writing metrics cache {path}: outside the allowed folders")
+        return False
     try:
+        cache_path = Path(path)
+        if (
+            cache_path.parent.name == MANIFESTS_DIR
+            and cache_path.parent.parent.is_dir()
+        ):
+            cache_path.parent.mkdir(exist_ok=True)
         # Atomic: concurrent info calls may read the cache while one writes it.
         # Readable like the plain write it replaced: other users and tools
         # (Install Lab's oracle) read this cache.
@@ -471,8 +485,11 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     if detailed and input_file.lower().endswith(".cram") and not resolved_ref:
         raise UsageError("--ref required for detailed mode with CRAM.")
 
-    outdir = outdir_arg or str(absolute_path(input_file).parent)
-    if outdir_arg and (cache or detailed):
+    from wgsextract_cli.core.config import output_directory as configured_outdir
+
+    default_outdir = None if outdir_arg else configured_outdir([input_file])
+    outdir = outdir_arg or default_outdir or str(absolute_path(input_file).parent)
+    if (outdir_arg or default_outdir) and (cache or detailed):
         Path(outdir).mkdir(parents=True, exist_ok=True)
     logging.debug(f"Output directory: {str(absolute_path(outdir))}")
 
@@ -546,11 +563,19 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
             current_result().add_output(bins_path, "coverage_bins")
         return
 
-    json_cache = str(Path(outdir, f"{Path(input_file).name}.wgse_info.json"))
+    json_cache = str(info_cache_path(input_file, outdir))
     table_stem = Path(outdir, Path(input_file).name + region_file_tag(region))
     signature = input_signature(input_file)
     cache = cache and signature is not None
     data = _load_cache(json_cache, signature)
+    # Earlier releases cached beside the output folder's files, or, without
+    # --outdir, beside the input or in the wgse/ folder beside it.
+    for folder in (outdir, *legacy_cache_folders(input_file)):
+        if data:
+            break
+        data = _load_cache(
+            str(Path(folder, f"{Path(input_file).name}.wgse_info.json")), signature
+        )
     call = data.get("sex_call")
     sex_unavailable = (
         isinstance(call, list)
@@ -577,6 +602,17 @@ def run_info(params: InfoLikeParams, *, as_csv: bool = False) -> None:
     # Likewise the sequencer, from the cached first read name and the header.
     if data.get("avg_read_len"):
         data["sequencer"] = determine_sequencer(data.get("first_qname"), header)
+    # Single-end caches written before insert size fell back to read length
+    # stored 0 bp (SD=0 bp); refresh them from the cached read-length stats.
+    if (
+        data.get("avg_read_len")
+        and data.get("is_paired") is False
+        and not data.get("avg_insert_size")
+    ):
+        data["avg_insert_size"] = data["avg_read_len"]
+        data["std_insert_size"] = data.get("std_read_len", 0)
+        if cache:
+            _save_cache(json_cache, data)
 
     if data.get("avg_read_len") and "alignment_health" not in data:
         # A cache from before these checks existed.

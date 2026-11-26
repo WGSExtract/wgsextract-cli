@@ -383,7 +383,7 @@ def test_836_unavailable_resource_alt_contigs_do_not_block_primary_findings(tmp_
     out = tmp_path / "out"
     result = annotate(out, sample, resource, ref)
     assert len(records(result)) == 1
-    document = json.loads(next(out.glob("*.manifest.json")).read_text())
+    document = json.loads(next(out.glob("manifests/*.manifest.json")).read_text())
     (warning,) = [
         w
         for w in document["warnings"]

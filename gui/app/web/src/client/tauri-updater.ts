@@ -54,12 +54,18 @@ async function initializeTauriUpdaterWhenReady() {
         applyProgressEvent(payload);
         scheduleRender();
     });
-    if (state.autoUpdate) {
+    // Privacy mode stops the startup check; File > Check for Updates... still checks when asked.
+    if (state.autoUpdate && !state.privacyMode) {
         const delay = Math.max(0, Number(state.autoUpdateDelaySeconds) || 0);
         window.setTimeout(() => {
+            // Privacy mode may have been turned on while the check waited.
+            if (state.privacyMode) {
+                return;
+            }
             void checkForUpdates({
                 revealOnAvailable: true,
                 autoDownloadAndInstall: Boolean(state.autoAcceptUpdate),
+                quietOnError: true,
             });
         }, delay * 1000);
     }
@@ -83,7 +89,14 @@ export function dismissUpdatePopover() {
     scheduleRender();
 }
 
-export async function checkForUpdates(options: { revealOnAvailable?: boolean; autoDownloadAndInstall?: boolean } = {}) {
+type UpdateCheckOptions = {
+    revealOnAvailable?: boolean;
+    autoDownloadAndInstall?: boolean;
+    /** A startup check nobody asked for: when it fails (offline, say), leave no error button behind. */
+    quietOnError?: boolean;
+};
+
+export async function checkForUpdates(options: UpdateCheckOptions = {}) {
     if (checkPromise) {
         return checkPromise;
     }
@@ -93,7 +106,7 @@ export async function checkForUpdates(options: { revealOnAvailable?: boolean; au
     return checkPromise;
 }
 
-async function runUpdateCheck(options: { revealOnAvailable?: boolean; autoDownloadAndInstall?: boolean }) {
+async function runUpdateCheck(options: UpdateCheckOptions) {
     const tauri = tauriAPI();
     if (!tauri) {
         state.update.supported = false;
@@ -143,6 +156,13 @@ async function runUpdateCheck(options: { revealOnAvailable?: boolean; autoDownlo
             state.update.message = "";
             state.update.popoverVisible = false;
             console.info("Updater disabled:", message);
+            return;
+        }
+        if (options.quietOnError) {
+            state.update.status = "idle";
+            state.update.message = "";
+            state.update.popoverVisible = false;
+            console.warn("Startup update check failed:", message);
             return;
         }
         state.update.status = "error";

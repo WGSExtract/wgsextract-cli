@@ -49,8 +49,10 @@
 "sections.info-bam.bam-commands.title" = "BAM/CRAM-Verwaltung"  # i18n-source-hash:48ce1911
 "actions.info-bam.bam-commands.bam-sort.title" = "Sortieren"  # i18n-source-hash:adc4e96a
 "actions.info-bam.bam-commands.bam-sort.tooltip" = "Sortieren Sie Ausrichtungen nach genomischen Koordinaten. Erforderlich für die meisten nachgelagerten Tools, einschließlich Variant Caller."  # i18n-source-hash:54055bea
+"actions.info-bam.bam-commands.bam-sort.alreadySortedTooltip" = "Diese Datei ist bereits nach Koordinaten sortiert."  # i18n-source-hash:fddaf146
 "actions.info-bam.bam-commands.bam-index.title" = "Indexieren"  # i18n-source-hash:c2df9b93
 "actions.info-bam.bam-commands.bam-index.tooltip" = "Erstellen Sie einen Random-Access-Index (.bai/.crai), damit Tools zu bestimmten Regionen springen können, ohne die ganze Datei zu lesen."  # i18n-source-hash:70e92856
+"actions.info-bam.bam-commands.bam-index.alreadyIndexedTooltip" = "Diese Datei ist bereits indexiert."  # i18n-source-hash:d0e978ae
 "actions.info-bam.bam-commands.bam-to-cram.title" = "Zu CRAM"  # i18n-source-hash:cf48cf11
 "actions.info-bam.bam-commands.bam-to-cram.tooltip" = "Konvertieren Sie BAM zur Langzeitspeicherung in CRAM; CRAM ist meist 30-50 % kleiner als BAM, ohne Datenverlust."  # i18n-source-hash:74aaf17b
 "actions.info-bam.bam-commands.bam-unsort.title" = "Unsortieren"  # i18n-source-hash:1559143b

@@ -7,7 +7,7 @@ misread those records. `wgsextract repair ftdna-vcf` rewrites the column into
 declared IDs that keep the failure's meaning:
 
 ```sh
-wgsextract repair ftdna-vcf --input variants.vcf        # writes wgse/variants_repaired.vcf
+wgsextract repair ftdna-vcf --input variants.vcf        # writes WGSEv6/variants_repaired.vcf
 bcftools view variants.vcf | wgsextract repair ftdna-vcf > fixed.vcf
 ```
 

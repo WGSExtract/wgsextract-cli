@@ -338,14 +338,20 @@ fn write_downloaded_update(bytes: &[u8]) -> Result<DownloadedUpdate, String> {
 }
 
 pub(crate) fn env_flag(name: &str) -> bool {
-    matches!(
-        env::var(name)
-            .unwrap_or_default()
-            .trim()
-            .to_ascii_lowercase()
-            .as_str(),
-        "1" | "true" | "yes" | "on"
-    )
+    env_flag_or(name, false)
+}
+
+/// Reads a yes/no variable, or `default` when it is unset or says neither.
+pub(crate) fn env_flag_or(name: &str, default: bool) -> bool {
+    parse_flag(&env::var(name).unwrap_or_default()).unwrap_or(default)
+}
+
+fn parse_flag(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" | "on" => Some(true),
+        "0" | "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
 }
 
 pub(crate) fn env_duration_seconds(name: &str) -> Duration {
@@ -379,5 +385,23 @@ fn write_update_status(event: &str) {
             "Could not open update status file {}: {error}",
             path.display()
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_flag;
+
+    #[test]
+    fn startup_update_check_flag_turns_off_only_when_said_so() {
+        // GFC_TAURI_AUTO_UPDATE unset or unreadable keeps the default (on); tests pass 0 to stay offline.
+        assert_eq!(parse_flag(""), None);
+        assert_eq!(parse_flag("maybe"), None);
+        for off in ["0", "false", " No ", "OFF"] {
+            assert_eq!(parse_flag(off), Some(false), "{off}");
+        }
+        for on in ["1", "true", "Yes", "on"] {
+            assert_eq!(parse_flag(on), Some(true), "{on}");
+        }
     }
 }
