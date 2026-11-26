@@ -2394,7 +2394,8 @@ a.doc-link {
   padding: var(--space-3) var(--space-5) 32px;
 }
 
-.gene-iobio-dialog {
+.gene-iobio-dialog,
+.network-consent-dialog {
   box-sizing: border-box;
   max-width: min(36rem, calc(100% - 2rem));
   padding: var(--space-4);
@@ -2404,7 +2405,8 @@ a.doc-link {
   color: var(--text);
 }
 
-.gene-iobio-dialog::backdrop {
+.gene-iobio-dialog::backdrop,
+.network-consent-dialog::backdrop {
   background: rgb(0 0 0 / 55%);
 }
 
@@ -2413,6 +2415,18 @@ a.doc-link {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
+}
+
+.network-settings-options {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.network-settings-options label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: fit-content;
 }
 
 .gene-form {

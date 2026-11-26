@@ -47,6 +47,13 @@
 "app.library.empty" = "Es sind keine Bibliothekselemente definiert."  # i18n-source-hash:e9b707e7
 "app.loadButton.title" = "Laden"  # i18n-source-hash:ddcb77ff
 "app.loading.title" = "Wird geladen..."  # i18n-source-hash:b04ba49f
+"app.network.consentDetail" = "Mit OK kann die Einrichtung bei Bedarf Werkzeuge und öffentliche Referenzdaten herunterladen. Die App sucht dann beim Start nach Updates. Das lässt sich in den Einstellungen ändern."  # i18n-source-hash:99f992cd
+"app.network.consentQuestion" = "Möchten Sie auf das Netzwerk zugreifen, um die Basisbibliothek herunterzuladen (und die Standard-Netzwerkfunktionen zu nutzen)?"  # i18n-source-hash:f9f90027
+"app.network.launchCheck" = "Beim Start nach Updates suchen"  # i18n-source-hash:755bb8af
+"app.network.notNow" = "Nicht jetzt"  # i18n-source-hash:e4571490
+"app.network.saveError" = "Die Netzwerkeinstellungen konnten nicht gespeichert werden. Versuchen Sie es erneut."  # i18n-source-hash:7eecfa8b
+"app.network.settingsDetail" = "Suchen Sie beim Start auf GitHub nach App-Updates oder unterbinden Sie automatische Verbindungen mit dem Datenschutzmodus. Manuelle Prüfungen und Downloads bleiben möglich."  # i18n-source-hash:1dbc57f6
+"app.network.title" = "Netzwerk und Datenschutz"  # i18n-source-hash:ac0186fe
 "app.page.empty.title" = "Keine Seiten"  # i18n-source-hash:d269aee1
 "app.pathPicker.chooseButton.title" = "Auswählen..."  # i18n-source-hash:1f77e839
 "app.pathPicker.error.title" = "Pfad konnte nicht ausgewählt werden"  # i18n-source-hash:fa84a44d
@@ -60,7 +67,7 @@
 "app.prerequisites.stillMissing" = "Es ist noch immer nicht installiert. Installieren Sie es hier oder selbst und klicken Sie erneut auf Fortfahren."  # i18n-source-hash:09498e32
 "app.prerequisites.title" = "Etwas, das dieser Befehl benötigt, fehlt"  # i18n-source-hash:560fc1a9
 "app.privacyMode.badge.title" = "DATENSCHUTZ"  # i18n-source-hash:2f158034
-"app.privacyMode.badge.tooltip" = "Der Datenschutzmodus ist aktiv: Die App sucht beim Start nicht nach Updates. Schalten Sie ihn unter „Standardoptionen der Oberfläche“ auf der Seite „Einstellungen“ aus."  # i18n-source-hash:40463462
+"app.privacyMode.badge.tooltip" = "Der Datenschutzmodus ist aktiv. Ändern Sie ihn in den Einstellungen unter „Netzwerk und Datenschutz“."  # i18n-source-hash:4009cf49
 "app.privacyMode.label" = "Datenschutzmodus"  # i18n-source-hash:c2540489
 "app.privacyMode.tooltip" = "Beendet die automatischen Netzwerkzugriffe der App. Ist er aktiv, sucht die App beim Start nicht auf GitHub nach Updates; prüfen Sie selbst über File > Check for Updates..."  # i18n-source-hash:de492a08
 "app.refresh.warning.format" = "Warnung beim Aktualisieren: %{error}"  # i18n-source-hash:8e6c1f82

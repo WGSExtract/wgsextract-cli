@@ -1,4 +1,5 @@
 import { api } from "./api.js";
+import { networkAllowed } from "../../../shared/network-settings.js";
 import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-picker-memory.js";
 import { errorMessage } from "./model.js";
 import { clearDataSourceCache, clearFileStateCache } from "./operations-data.js";
@@ -24,7 +25,7 @@ export function installGlobalBundleLoadHandler(bootstrap: Bootstrap) {
 }
 
 export async function loadBundleFromPicker(bootstrap: Bootstrap) {
-    if (bundleLoadInFlight) {
+    if (bundleLoadInFlight || !networkAllowed(state.networkSettings, "explicit")) {
         return;
     }
     bundleLoadInFlight = true;

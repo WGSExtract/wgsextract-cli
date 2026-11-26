@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { RemoteViewerConnection } from "../dist/web/src/server/remote-viewer-connection.js";
+import { isolateWorkspaceEnvironment } from "./workspace-fixture.mjs";
 
 async function listen(t, handler) {
     const server = createServer(handler);
@@ -21,6 +22,7 @@ async function fixture(t) {
     const output = path.resolve("../out/tests");
     await mkdir(output, { recursive: true });
     const root = await mkdtemp(path.join(output, "remote-viewer-"));
+    isolateWorkspaceEnvironment(t, root);
     t.after(() => rm(root, { recursive: true, force: true }));
     const bundle = path.join(root, "bundle");
     await mkdir(bundle);
@@ -82,6 +84,8 @@ async function fixture(t) {
     const post = (route, body = {}, token = appToken) => fetch(`${backend.base}${route}`, {
         method: "POST", headers: { "content-type": "application/json", "x-gfc-token": token }, body: JSON.stringify(body),
     });
+    const choice = await post("/api/network-settings", { consent: "deferred" });
+    assert.equal(choice.status, 200);
     const configure = async () => {
         const response = await post("/api/viewer/remote/import", {
             title: "Choose configuration", requestID: randomBytes(24).toString("base64url"),

@@ -45,6 +45,7 @@ const defaultTests = [
   "tests/remote-viewer-client.test.mjs",
   "tests/setup-runner.test.mjs",
   "tests/tauri-updater.test.mjs",
+  "tests/network-consent.test.mjs",
   "tests/developer-cache.test.mjs",
   "tests/terminal.test.mjs",
   "tests/result-document.test.mjs",

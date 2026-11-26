@@ -27,7 +27,7 @@ export function createInitialState(): WebUIState {
         colorTheme: "system",
         webUIFont: "system",
         uiMode: "basic",
-        privacyMode: false,
+        networkSettings: { consent: "pending", privacyMode: false, checkForUpdatesAtLaunch: false },
         bundleRootPath: "",
         usersWorkspacePath: "",
         lastResultDocumentPaths: {},

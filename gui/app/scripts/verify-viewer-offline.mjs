@@ -8,6 +8,7 @@ import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
+import { configureOfflineVerification } from "./offline-verification-settings.mjs";
 import { prepareViewerFixtures } from "./prepare-viewer-fixtures.mjs";
 import { cytobandChromosomeLengths } from "../dist/shared/viewer-cytobands.js";
 
@@ -35,6 +36,7 @@ if (values.cytobands) {
         + "chr1\t125100000\t248956422\tq44\tgpos100\n");
 }
 const originalFiles = values["read-only"] ? (await readdir(fixtures.library, { recursive: true })).sort() : [];
+await configureOfflineVerification(output);
 const bundleRoot = path.join(output, "bundle");
 await cp(path.join(root, "gui/examples/WGSExtract"), bundleRoot, { recursive: true });
 const users = path.join(output, "users");

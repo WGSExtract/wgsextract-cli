@@ -40,14 +40,13 @@ through `config.toml` before running the comprehensive workflow.
 The desktop exposes the same default-off setting under Settings → advanced
 settings → **Allow missing public-data downloads**, with the request disclosure
 in its tooltip.
-The desktop app checks GitHub for a newer release when it starts. It is a plain
-request for the public release feed (`latest.json`); it sends no sample
-information, and the update is downloaded only after you choose to. Turn on
-Settings → Standard UI Options → **Privacy mode** to stop it. The setting is
-app-wide (the app's `settings.json`), so loading another bundle does not turn
-it off. A red **PRIVACY** badge under the app's name shows while it is on, and
-**File → Check for Updates…** still checks when asked. A development build
-without an updater key has no feed and never checks.
+The desktop app makes no outbound requests before the first-launch network
+choice. Choosing **OK** enables launch checks for newer releases. They query
+GitHub's public release feed (`latest.json`) without sending sample
+information. To turn checks off or pause automatic connections, open
+**Settings → Network & Privacy**. **File → Check for Updates…** still checks
+when asked. A development build without an updater key has no feed and never
+checks.
 Lineage and microarray pages also offer an unchecked per-run download option.
 Fresh-install automation plans select it explicitly; ordinary runs do not.
 
@@ -162,7 +161,7 @@ queries. The separate `vep download` command fetches public data only.
 | `ref library --remote-sizes` / desktop **Look up sizes** | Each catalog entry's host, including UCSC, NCBI and EBI | HTTP(S) HEAD or FTP SIZE requests for public reference filenames with missing or at least 30-day-old cached sizes; no sample data |
 | `realign --input https://…` | The URL's host and redirects | Explicitly selected remote alignment/index; HEAD, index download and sample-derived genomic byte ranges. Use a local file to avoid disclosing access patterns. Server clients cannot supply URLs. |
 | `benchmark --dataset real` / `--dataset-url` | Selected public benchmark host | Dataset/index URLs; this explicitly selected dataset mode downloads public test data |
-| Desktop startup update check (off in **Privacy mode**), **Check for Updates…**, then **Download** | Configured GitHub release/update endpoints/CDN | Application version, platform/architecture and asset requests, not sample information |
+| Desktop startup update check (opt-in on fresh installs and paused in **Privacy mode**), **Check for Updates…**, then **Download** | Configured GitHub release/update endpoints/CDN | Application version, platform/architecture and asset requests, not sample information |
 | Desktop **Setup**, reference/dataset download actions | GitHub, Pixi/Conda/PyPI registries and each selected resource publisher | Selected package versions, platform and public dataset identifiers, not sample information |
 | Desktop genome viewer **Connect and view remote file**, after transfer consent | The operator-selected server URL displayed in the viewer | Selected server-side sample/index/reference paths, adjacent FASTA index paths and genomic byte offsets; the backend authenticates with the server token and receives selected genomic/reference bytes |
 
@@ -210,7 +209,7 @@ behavior. Classification describes the baseline, before this change.
 | Dorado `basecall` model names/modifications | Yes | **Default-violation**: require `--download` or a local model directory |
 | Remote realignment input, remote sizes, benchmark real-data selection | Yes | Explicit **opt-in**; request data disclosed above |
 | `serve` HTTP/MCP, desktop local backend/path picker | Loopback only | Explicit local transport, no automatic remote call; stdio MCP opens no listener |
-| Desktop launch | GitHub update check | **Default on, by owner decision**: one request for the public release feed, no sample data; **Privacy mode** turns it off, and tests set `GFC_TAURI_AUTO_UPDATE=0` |
+| Desktop launch | GitHub update check | **Off on a fresh install until you choose OK**; **Privacy mode** pauses it. The request for the public release feed sends no sample data. |
 | Desktop Reference Genomes page rendering | Automatically ran `ref library --list --remote-sizes`, querying catalog hosts when sizes were missing/stale | **Default-violation** found in independent review: the automatic data source now uses cached sizes only; a separate, confirmed **Look up sizes** action opts in |
 | `deps check` / shared optional-tool discovery and version probes | Pixi could resolve a changed manifest | **Default-violation**: frozen lockfile queries/probes, without environment installation |
 | Installed CLI/desktop analysis launchers | Pixi could complete/update environments or resolve a changed manifest | **Default-violation**: always `--no-install --frozen`; Setup remains explicit |
