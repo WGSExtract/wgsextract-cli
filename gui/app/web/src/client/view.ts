@@ -385,7 +385,7 @@ export function renderCheckboxGroup(control: ControlSpec, context: CommandContex
         return `
               <label${disabled ? ` class="disabled" data-tooltip="${escapeAttribute(disabled)}" tabindex="0"` : ""}>
                 <input type="checkbox" data-check-group="${escapeAttribute(control.id)}" value="${escapeAttribute(option.id)}" ${selected.has(option.id) && !disabled ? "checked" : ""}${disabled ? " disabled" : ""}>
-                <span>${escapeHTML(displayOption(option))}${optionSuffix}</span>
+                <span>${option.iconName || option.textIcon ? renderIconTitle(displayOption(option), option.iconName, option.textIcon) : escapeHTML(displayOption(option))}${optionSuffix}</span>
               </label>`;
     };
     const body = control.layout === "rows"

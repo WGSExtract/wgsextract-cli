@@ -5,6 +5,7 @@ export const iconMapSources = {
     windows: "windows",
     bootstrap: "bootstrap",
     emoji: "emoji",
+    wgse: "wgse",
 } as const;
 
 export function parseIconMapToml(text: string): IconMap {

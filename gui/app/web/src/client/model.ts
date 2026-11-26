@@ -1,10 +1,12 @@
 import { commandContextFromState, configEditorControls, configValueKey, firstPathValue, optionTitle, splitPathList } from "../../../shared/rendering.js";
 import { localizationLabels } from "../../../shared/localization.js";
+import { iconMapSources, resolveIcon } from "../../../shared/icon-map.js";
 import type { CommandContext, ConfigSetting, ControlOption, ControlSpec, RowTagSpec, StateValue, ValueMap } from "../../../shared/types.js";
 import type { WorkspaceRoots } from "../../../shared/workspace-paths.js";
 import { renderTextWithDocLinks } from "../../../shared/docs-links.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { state } from "./state.js";
+import { wgseIcons } from "./wgse-icons.js";
 
 const fallbackLabels = localizationLabels({});
 
@@ -156,8 +158,16 @@ export function renderIconTitle(title: unknown, iconName: unknown, textIcon: unk
     return `<span class="icon-title"><span class="icon-title-icon" aria-hidden="true">${renderIcon(iconName, textIcon, fallback)}</span><span>${escapeHTML(title)}</span></span>`;
 }
 export function renderIcon(iconName: unknown, textIcon: unknown, fallback: string): string {
-    const bootstrap = resolveIcon("bootstrap", iconName);
-    const emoji = resolveIcon("emoji", iconName);
+    const key = String(iconName ?? "");
+    if (state.iconSet === "platform") {
+        const svgName = resolveIcon(state.iconMap, iconMapSources.wgse, key);
+        const svg = svgName && Object.hasOwn(wgseIcons, svgName) ? wgseIcons[svgName] : undefined;
+        if (svg) {
+            return svg;
+        }
+    }
+    const bootstrap = resolveIcon(state.iconMap, iconMapSources.bootstrap, key);
+    const emoji = resolveIcon(state.iconMap, iconMapSources.emoji, key);
     const playIconClass = isPlayIcon(iconName, textIcon, fallback, bootstrap, emoji) ? " play-icon" : "";
     if (state.iconSet === "platform" && bootstrap) {
         return `<i class="bi bi-${escapeAttribute(bootstrap)} web-icon${playIconClass}" aria-hidden="true"></i>`;
@@ -172,10 +182,6 @@ export function renderIcon(iconName: unknown, textIcon: unknown, fallback: strin
         return `<i class="bi bi-${escapeAttribute(bootstrap)} web-icon${playIconClass}" aria-hidden="true"></i>`;
     }
     return `<span class="emoji-icon${playIconClass}">${escapeHTML(fallback)}</span>`;
-}
-function resolveIcon(source: string, iconName: unknown): string | undefined {
-    const key = String(iconName ?? "").trim();
-    return key ? state.iconMap?.[source]?.[key] : undefined;
 }
 function isPlayIcon(iconName: unknown, textIcon: unknown, fallback: string, bootstrap: string | undefined, emoji: string | undefined): boolean {
     return iconName === "play" || iconName === "play.fill" || bootstrap === "play" || bootstrap === "play-fill" || emoji === "â–¶ï¸" || (!iconName && !textIcon && fallback === "â–¶");

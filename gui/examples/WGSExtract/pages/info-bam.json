@@ -122,6 +122,7 @@
         },
         {
           "id": "coverage-sample",
+          "iconName": "coverage",
           "row": 2,
           "resultCard": true,
           "title": "actions.info-bam.info-commands.coverage-sample.title",
@@ -153,6 +154,7 @@
         },
         {
           "id": "calculate-coverage",
+          "iconName": "coverage",
           "row": 2,
           "resultCard": true,
           "title": "actions.info-bam.info-commands.calculate-coverage.title",
@@ -195,6 +197,7 @@
         },
         {
           "id": "calculate-coverage-shown",
+          "iconName": "coverage",
           "row": 2,
           "resultCard": true,
           "title": "actions.info-bam.info-commands.calculate-coverage.title",
@@ -236,6 +239,7 @@
         },
         {
           "id": "coverage-by-bed",
+          "iconName": "coverage",
           "row": 2,
           "resultCard": true,
           "title": "actions.cli.coverage-by-bed.title",

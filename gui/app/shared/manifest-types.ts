@@ -5,6 +5,8 @@ export interface ControlOption {
     id: string;
     title?: string;
     label?: string;
+    iconName?: string;
+    textIcon?: string;
     selected?: boolean;
     /** A checkbox option can't be chosen while any of these match, and commands see it unchecked. */
     disabledWhen?: ConditionSpec[];

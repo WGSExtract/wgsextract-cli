@@ -7,6 +7,32 @@
   var WGSM = window.WGSM;
   var ICONS = window.WGSM_ICONS || {};
   var NS = "http://www.w3.org/2000/svg";
+  // Keep archived mockup markup working without keeping its old drawings.
+  var draftNames = {
+    admixture: "ancestry",
+    align: "alignment-import",
+    chip: "microarray",
+    convert: "refresh-cw",
+    "file-bam": "bam",
+    "file-cram": "bam",
+    "file-fasta": "fasta",
+    "file-fastq": "fastq",
+    "file-raw": "basecall",
+    "file-vcf": "vcf",
+    gpu: "cpu",
+    helix: "fasta",
+    jobs: "terminal",
+    "kit-upload": "upload",
+    "mt-ring": "mt-dna",
+    qc: "coverage",
+    realign: "alignment-import",
+    reference: "reference-genome",
+    relate: "trio",
+    remote: "server",
+    repeats: "typing",
+    variant: "variant-calling",
+    "y-lineage": "haplotree",
+  };
 
   WGSM.icon = function (name, extraClass) {
     var svg = document.createElementNS(NS, "svg");
@@ -15,7 +41,7 @@
     svg.setAttribute("focusable", "false");
     svg.setAttribute("class", "icon" + (extraClass ? " " + extraClass : ""));
     svg.dataset.icon = name;
-    var icon = ICONS[name];
+    var icon = ICONS[Object.hasOwn(draftNames, name) ? draftNames[name] : name];
     if (!icon) {
       console.warn("Unknown icon: " + name);
       icon = ICONS["circle-help"];

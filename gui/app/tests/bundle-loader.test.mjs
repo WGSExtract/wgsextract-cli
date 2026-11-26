@@ -200,6 +200,9 @@ test("bundle loader merges built-in and bundle icon maps", async () => {
 
 [bootstrap]
 "fasta" = "diagram-3"
+
+[wgse]
+"fasta" = "fasta"
 `
     );
 
@@ -210,6 +213,7 @@ test("bundle loader merges built-in and bundle icon maps", async () => {
     assert.equal(bundle.manifest.version, "2.3.4");
     assert.equal(bundle.iconMap.bootstrap.fasta, "diagram-3");
     assert.equal(bundle.iconMap.bootstrap.terminal, "terminal");
+    assert.equal(bundle.iconMap.wgse.fasta, "fasta");
   } finally {
     await rm(directory, { force: true, recursive: true });
   }
