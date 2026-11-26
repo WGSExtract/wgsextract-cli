@@ -1,8 +1,16 @@
 """Issue #1325: a resource's stale REF rows are dropped, not fatal."""
 
+import errno
+import gzip
 import json
 import subprocess
+from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import AbstractContextManager, contextmanager
+from itertools import chain
 from pathlib import Path
+from threading import Event, current_thread
+from typing import Any
 
 import pytest
 
@@ -27,6 +35,8 @@ from wgsextract_cli.api.vcf import (
     clinvar,
     revel,
 )
+from wgsextract_cli.commands.vcf.matching import normalized_inputs
+from wgsextract_cli.core import utils
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import WGSExtractError
@@ -34,6 +44,115 @@ from wgsextract_cli.main import main
 
 pytestmark = needs_tools("samtools", "bcftools", "bgzip", "tabix")
 EXCLUDED = "annotation_ref_mismatch_excluded"
+
+
+@pytest.mark.parametrize(
+    ("is_table", "interrupt", "source_error"),
+    [(False, False, False), (True, True, False), (False, False, True)],
+    ids=["vcf-downstream-failure", "table-interrupt", "vcf-source-error"],
+)
+def test_1585_excluded_contig_tail_does_not_delay_shutdown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    is_table: bool,
+    interrupt: bool,
+    source_error: bool,
+) -> None:
+    sample = _sample(tmp_path, SAMPLE_ROWS, length=1000)
+    ref = reference_for_vcf(tmp_path / "ref" / "ref.fa.gz", sample)
+    if is_table:
+        resource = _tsv(
+            tmp_path / "scores.tsv.gz", "#CHROM\tPOS\tREF\tALT", ["1 100 C T"]
+        )
+        columns = "CHROM,POS,REF,ALT"
+        excluded = "other\t100\tC\tT\n"
+    else:
+        resource = _vcf(
+            tmp_path / "scores.vcf.gz", ["100 . C T . . . GT 0/1"],
+            contig="1", length=1000,
+        )  # fmt: skip
+        columns = ""
+        excluded = "other\t100\t.\tC\tT\t.\t.\t.\tGT\t0/1\n"
+
+    scanning_tail, release_tail = Event(), Event()
+    fail_source, source_failed = Event(), Event()
+    real_open, real_popen = gzip.open, utils.popen
+    children: list[subprocess.Popen[bytes]] = []
+
+    def tail() -> Iterator[str]:
+        # Never reach EOF until test cleanup; none of these rows writes to bcftools.
+        yield excluded
+        scanning_tail.set()
+        while not release_tail.is_set():
+            if fail_source.is_set():
+                source_failed.set()
+                raise OSError(errno.EINVAL, "resource read failed")
+            yield excluded
+
+    @contextmanager
+    def resource_stream() -> Iterator[Iterator[str]]:
+        with real_open(resource, "rt") as handle:
+            yield chain(handle, tail())
+
+    def open_with_tail(
+        path: str | Path, mode: str = "rb", *args: Any, **kwargs: Any
+    ) -> AbstractContextManager[object]:
+        if path == resource and mode == "rt":
+            return resource_stream()
+        return real_open(path, mode, *args, **kwargs)
+
+    def start_consumer(cmd: list[str], **kwargs: Any) -> subprocess.Popen[bytes]:
+        if not kwargs.get("stdin"):
+            return real_popen(cmd, **kwargs)
+        consumer = cmd[:2] == ["bcftools", "norm"]
+        if consumer:
+            assert scanning_tail.wait(5)
+            if not interrupt:
+                cmd = [*cmd, "--invalid-annotation-test-option"]
+        child = real_popen(cmd, **kwargs)
+        children.append(child)
+        if consumer and source_error:
+            child.wait(timeout=5)
+            fail_source.set()
+            assert source_failed.wait(5)
+        if consumer and interrupt:
+            wait, caller = child.wait, current_thread()
+            interrupted = False
+
+            def interrupted_wait(timeout: float | None = None) -> int:
+                nonlocal interrupted
+                if current_thread() is caller and not interrupted:
+                    interrupted = True
+                    raise KeyboardInterrupt
+                return wait(timeout)
+
+            monkeypatch.setattr(child, "wait", interrupted_wait)
+        return child
+
+    monkeypatch.setattr(gzip, "open", open_with_tail)
+    monkeypatch.setattr(utils, "popen", start_consumer)
+    work = tmp_path / "work"
+    work.mkdir()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        result = pool.submit(
+            normalized_inputs, sample, resource, str(ref), str(work), False,
+            columns=columns,
+        )  # fmt: skip
+        try:
+            if interrupt:
+                with pytest.raises(KeyboardInterrupt):
+                    result.result(timeout=8)
+            elif source_error:
+                with pytest.raises(OSError, match="resource read failed") as error:
+                    result.result(timeout=8)
+                assert error.value.errno == errno.EINVAL
+            else:
+                with pytest.raises(WGSExtractError, match="bcftools norm"):
+                    result.result(timeout=8)
+            assert len(children) == (1 if is_table else 2)
+            assert all(child.returncode is not None for child in children)
+        finally:
+            release_tail.set()
 
 
 @pytest.mark.parametrize("bcftools_summary", [True, False])

@@ -9,6 +9,7 @@ from wgsextract_cli.core.result_warnings import (
     RESOURCE_REF_MISMATCH_EXCLUDED,
     ResultWarning,
 )
+from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import match_chromosome_name
 
@@ -22,6 +23,16 @@ _BUILD_SAMPLE_BLOCKS = 64
 # Every block htslib and bgzip write starts with this gzip header.
 _BGZF_HEADER = b"\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff\x06\x00BC\x02\x00"
 _MITO = {"M", "MT", "chrM", "chrMT"}
+
+
+def warn_skipped_contigs(skipped: set[str], count: int) -> None:
+    if skipped:
+        warn(
+            "annotation_contigs_not_in_reference",
+            f"Excluded {count} resource records on contigs absent from the reference FASTA; these cannot be matched. No sample records were excluded.",
+            count=count,
+            contigs=",".join(sorted(skipped)),
+        )
 
 
 def record_count(vcf: str | Path) -> int:

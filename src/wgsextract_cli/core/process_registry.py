@@ -7,9 +7,11 @@ import sys
 import threading
 import time
 import weakref
+from collections.abc import Sequence
 from typing import Any
 
 from wgsextract_cli.core.download_progress import CancelEvent
+from wgsextract_cli.core.errors import WGSExtractError
 
 _owned_groups: weakref.WeakKeyDictionary[subprocess.Popen[Any], int] = (
     weakref.WeakKeyDictionary()
@@ -120,6 +122,40 @@ def wait_with_cancel(
         if process.poll() is not None:
             return process.returncode == 0
         time.sleep(0.1)
+
+
+def is_sigpipe(returncode: int) -> bool:
+    sigpipe = getattr(signal, "SIGPIPE", None)
+    return sigpipe is not None and returncode in (-sigpipe, 128 + sigpipe)
+
+
+def wait_for_pipeline(
+    procs: Sequence[subprocess.Popen[bytes]],
+    cancel_event: CancelEvent | None,
+    description: str,
+    *,
+    fail_fast: bool,
+) -> list[int | None]:
+    # Infinite Windows waits defer Python's main-thread signal handlers.
+    if cancel_event is None and not fail_fast and sys.platform != "win32":
+        return [proc.wait() for proc in procs]
+    for proc in procs:
+        while proc.poll() is None:
+            if cancel_event is not None and cancel_event.is_set():
+                raise WGSExtractError(f"{description} cancelled")
+            if fail_fast:
+                statuses = [stage.poll() for stage in procs]
+                if any(
+                    code not in (None, 0)
+                    and (index == len(procs) - 1 or not is_sigpipe(code))
+                    for index, code in enumerate(statuses)
+                ):
+                    return statuses
+            try:
+                proc.wait(timeout=0.1)
+            except subprocess.TimeoutExpired:
+                pass
+    return [proc.wait() for proc in procs]
 
 
 def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
