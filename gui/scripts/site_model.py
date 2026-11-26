@@ -21,6 +21,7 @@ NAV_ITEMS = (
     ("docs.html", "Docs"),
     ("https://wgsextract.github.io/wgsextract-cli/", "WGSExtract CLI"),
     ("whats-different.html", "What's Different"),
+    ("mockups/preview/v2/index.html", "UI mockups"),
 )
 
 
