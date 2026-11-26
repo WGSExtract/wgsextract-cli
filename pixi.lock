@@ -767,7 +767,7 @@ environments:
     - https://pypi.org/simple
     packages:
       linux-64:
-      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.24-h118bc1c_4.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.25-h118bc1c_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-0.7.19-h577a1d6_1.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-mem2-2.3-he70b90d_0.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/delly-2.8.2-h3752d28_0.conda
@@ -1250,7 +1250,7 @@ environments:
     - https://pypi.org/simple
     packages:
       linux-64:
-      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.24-h118bc1c_4.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.25-h118bc1c_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-0.7.19-h577a1d6_1.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-mem2-2.3-he70b90d_0.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/delly-2.8.2-h3752d28_0.conda
@@ -3997,7 +3997,7 @@ environments:
     - https://pypi.org/simple
     packages:
       linux-64:
-      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.24-h118bc1c_4.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.25-h118bc1c_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-0.7.19-h577a1d6_1.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-mem2-2.3-he70b90d_0.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/delly-2.8.2-h3752d28_0.conda
@@ -5191,7 +5191,7 @@ environments:
     - https://pypi.org/simple
     packages:
       linux-64:
-      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.24-h118bc1c_4.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.25-h118bc1c_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-0.7.19-h577a1d6_1.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-mem2-2.3-he70b90d_0.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/delly-2.8.2-h3752d28_0.conda
@@ -6085,7 +6085,7 @@ environments:
     - https://pypi.org/simple
     packages:
       linux-64:
-      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.24-h118bc1c_4.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.25-h118bc1c_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-0.7.19-h577a1d6_1.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/bwa-mem2-2.3-he70b90d_0.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/delly-2.8.2-h3752d28_0.conda
@@ -6571,7 +6571,7 @@ environments:
     - url: https://conda.anaconda.org/bioconda/
     packages:
       linux-64:
-      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.24-h118bc1c_4.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.25-h118bc1c_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/htslib-1.24-ha79157c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/alsa-lib-1.2.16.1-h7cc23a3_1.conda
@@ -9159,9 +9159,9 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/openssl-3.6.5-h55eecbc_0.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
 packages:
-- conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.24-h118bc1c_4.conda
-  sha256: f2dd5cb44c4200734fee9a3054d9ee2d9a4a0f184e2d68d906d9fa0bc23f4559
-  md5: 7498cf4d0dc337d71547c92f57eefdc5
+- conda: https://conda.anaconda.org/bioconda/linux-64/bcftools-1.25-h118bc1c_0.conda
+  sha256: e9f5147ca4f577c35b355eb9a4bb3f4b1f8fe5bc3f935c9480b81f9f1e6f5dc7
+  md5: b63f6dd6e9bffbc6904938064278f4d7
   depends:
   - __glibc >=2.17,<3.0.a0
   - gsl >=2.6,<2.7.0a0
@@ -9175,9 +9175,9 @@ packages:
   purls: []
   run_exports:
     weak:
-    - bcftools >=1.24,<2.0a0
-  size: 964513
-  timestamp: 1791078523114
+    - bcftools >=1.25,<2.0a0
+  size: 976488
+  timestamp: 1793107606997
 - conda: https://conda.anaconda.org/bioconda/linux-64/blast-legacy-2.2.26-hf7ff83a_5.tar.bz2
   sha256: 8db508c79e05063154e805c73c55c4b0a05bf71cd1523ebd2e4d581401f8eca6
   md5: 5903537286f884c60a3c7f0f3247ad68
