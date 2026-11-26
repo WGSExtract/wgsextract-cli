@@ -26,12 +26,15 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from wgsextract_cli.core.alignment.metadata import (
+    vcf_detection_header,
+    vcf_metadata_build_hint,
+)
 from wgsextract_cli.core.builds import (
     CHR1_LENGTH_BUILDS,
     build_from_path,
     canonical_build,
     display_build,
-    reference_header_name,
 )
 from wgsextract_cli.core.constants import MODEL_TAGS_BY_CODE, REFERENCE_MODELS
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -127,32 +130,6 @@ def _naming_from_chroms(chroms: Sequence[str]) -> str:
     if any(c in {"1", "2", "X", "Y", "MT"} for c in chroms):
         return "Num"
     return ""
-
-
-def _read_vcf_header(vcf_path: str) -> str:
-    bcftools = get_tool_path("bcftools")
-    if bcftools:
-        res = run_command(
-            [bcftools, "view", "-h", vcf_path], capture_output=True, check=False
-        )
-        if res.returncode == 0 and res.stdout:
-            return res.stdout
-    # Plain/gzip fallback when bcftools is unavailable or header-only reading suffices.
-    path = Path(vcf_path)
-    if not path.is_file() or path.suffix.lower() == ".bcf":
-        return ""
-    try:
-        opener = gzip.open if path.suffix.lower() in (".gz", ".bgz") else open
-        lines: list[str] = []
-        with opener(path, "rt", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                if line.startswith("#"):
-                    lines.append(line)
-                else:
-                    break
-        return "".join(lines)
-    except OSError:
-        return ""
 
 
 def _stream_vcf_snps(
@@ -435,7 +412,7 @@ def identify_vcf_reference(
 ) -> VcfReferenceDetection:
     """Identify a VCF's reference model (header first) or Major Build (body sampling fallback)."""
     path_str = os.fspath(vcf_path)
-    hdr = header if header is not None else _read_vcf_header(path_str)
+    hdr = vcf_detection_header(path_str, header)
     lengths = sequence_lengths(hdr)
     signature = calculate_bam_md5(path_str, header=hdr) if lengths else None
 
@@ -458,14 +435,7 @@ def identify_vcf_reference(
         )
 
     # Layer 2b: Header ##reference= / ##assembly= / ##contig= metadata tokens.
-    metadata = "\n".join(
-        reference_header_name(line.partition("=")[2])
-        if line.lower().startswith("##reference=")
-        else line
-        for line in hdr.splitlines()
-        if line.lower().startswith(("##reference=", "##assembly=", "##contig="))
-    )
-    header_build = build_from_path(metadata) if metadata else None
+    header_build = vcf_metadata_build_hint(hdr)
     header_naming = _naming_from_chroms(list(lengths.keys()))
     if header_build:
         return VcfReferenceDetection(
