@@ -29,9 +29,26 @@ is allowed. No file is read from the VCF's `##reference` URL.
 chr22:100-200` accepts a one-based inclusive interval or a whole contig.
 The scope overlaps the **normalized** REF span, including the anchor base
 of an insertion. Blocks starting outside the panel can still provide
-reference evidence inside it. MNPs and other equal-length complex alleles
-are not atomized; symbolic variants, breakends, `*`, and non-reference
-placeholders are not counted as comparison alleles.
+reference evidence inside it. Symbolic variants, breakends, `*`, and
+non-reference placeholders are not counted as comparison alleles.
+
+### Compare primitive alleles
+
+By default, MNPs and other complex sequence alleles stay intact after
+splitting and normalization. Add `--atomize` with an indexed local `--ref`
+to let bcftools decompose sequence alleles, then left-align the resulting
+alleles. An MNP can now match separate SNVs, and summary counts and scopes
+refer to the resulting primitives. This does not test haplotype equivalence.
+
+Dosage is the number of copies of a primitive carried by the selected
+sample. If two ALTs of the same input record contain the same primitive,
+both copies count in a `1/2` genotype. Overlapping ALTs can project to
+missing GT alleles, but only an incomplete source genotype (including a
+called non-reference placeholder or unsupported ALT) is treated as partial.
+A phased source GT can retain its separators in the anchor projection;
+phase is not used for matching and the projection does not establish phase
+between rows. gVCF reference blocks and overlapping primary evidence are
+not atomized; evidence is evaluated against each resulting allele's span.
 
 ## Select alleles across samples
 
@@ -89,5 +106,20 @@ a particular indel.
   to other labels are in the tables. `WGSE_COMPARE_STATE` uses label order
   from its INFO header, and `WGSE_COMPARE_DECISION` describes the outcome.
   The anchor GT is a biallelic projection, not a joint genotype.
+  With `--atomize`, anchor rows omit source ID, QUAL, INFO annotations
+  and FORMAT fields other than GT and FT, because annotations from the
+  original record need not describe the primitive.
+- `--emit-partition-vcfs` is an independent opt-in for exactly two
+  callsets in concordance mode. It writes `compare.shared.vcf.gz`,
+  `compare.only_a.vcf.gz`, and `compare.only_b.vcf.gz` to the same
+  `--outdir` as the summary, each with a CSI index. A and B are the
+  first and second callsets. The sites-only rows have no sample genotype
+  or quality, and `WGSE_COMPARE_STATE` lists both callsets' states in
+  input order. An allele carried by both goes in `shared` even if
+  dosages differ. An allele carried by just one goes in that callset's
+  file, whether the other callset's state is callable reference,
+  another ALT, or unknown. These files do not label false positives.
+  Rerunning into the same directory without the flag removes the old
+  partitions and indexes so they cannot be mistaken for the new results.
 - `compare.manifest.json` records the input fingerprints and policies,
   counts, outputs, and warnings.

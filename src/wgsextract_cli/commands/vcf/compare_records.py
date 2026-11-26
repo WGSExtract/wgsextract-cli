@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from bisect import bisect_right
 from collections import deque
 from collections.abc import Collection, Generator, Iterable, Iterator
@@ -9,7 +10,7 @@ from dataclasses import dataclass
 from heapq import merge
 from itertools import groupby
 from pathlib import Path
-from typing import TextIO
+from typing import IO
 
 from wgsextract_cli.core.reference_evidence import ReferenceEvidence, site_state
 from wgsextract_cli.core.reference_evidence_records import Span, State
@@ -22,7 +23,7 @@ from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.variant_confidence import Thresholds
 from wgsextract_cli.core.variant_files import match_chromosome_name
 
-from .compare_inputs import PARTIAL, Dictionary, genotype
+from .compare_inputs import PARTIAL, SOURCE_RECORD, Dictionary, genotype
 
 Allele = tuple[str, int, str, str]
 _SMALL_BASES = frozenset("ACGTN")
@@ -87,6 +88,7 @@ class Call:
     dosage: int | None = None
     ploidy: int | None = None
     record: str | None = None
+    source: str | None = None
 
     @property
     def carried(self) -> bool:
@@ -96,24 +98,37 @@ class Call:
         return self.state, self.dosage, self.ploidy
 
 
-def _observation(fields: list[str], line: str) -> Call:
+def _observation(fields: list[str], line: str, *, atomized: bool) -> Call:
+    tags = fields[7].split(";")
+    source = None
+    if atomized and SOURCE_RECORD in fields[7]:
+        source = next(
+            (
+                tag.partition("=")[2]
+                for tag in tags
+                if tag.startswith(f"{SOURCE_RECORD}=")
+            ),
+            None,
+        )
     sample = dict(zip(fields[8].split(":"), fields[9].split(":"), strict=False))
     if fields[6] not in {".", "PASS"} or sample.get("FT", ".") not in {".", "PASS"}:
-        return Call("filtered")
+        return Call("filtered", source=source)
     alleles = genotype(fields)
     dosage = alleles.count("1")
-    complete = PARTIAL not in fields[7].split(";")
+    complete = PARTIAL not in tags
     if dosage:
         return Call(
-            "carried" if complete else "partial_alt", dosage, len(alleles), line
+            "carried" if complete else "partial_alt", dosage, len(alleles), line, source
         )
-    return Call("not_called" if complete else "no_call")
+    return Call("not_called" if complete else "no_call", source=source)
 
 
 def records(
-    stream: TextIO,
+    stream: IO[str],
     index: int,
     order: dict[str, int],
+    *,
+    atomized: bool,
 ) -> Iterator[tuple[tuple[int, int], int, Allele, Call]]:
     for line in stream:
         if line.startswith("#"):
@@ -129,7 +144,7 @@ def records(
         if not alt or alt == ref or (alt != "." and not _SMALL_BASES.issuperset(alt)):
             continue
         allele = chrom, pos, ref, alt
-        call = _observation(fields, line)
+        call = _observation(fields, line, atomized=atomized)
         if alt == "." and call.carried:
             call = Call("no_call")
         yield (order[chrom], pos), index, allele, call
@@ -209,6 +224,44 @@ def _dedup(observations: list[Call]) -> Call:
     return min(observations, key=lambda call: call.record or "")
 
 
+def _combine_projections(projections: list[Call]) -> Call:
+    carrying = [call for call in projections if call.record is not None]
+    if not carrying:
+        return _dedup(projections)
+    first = carrying[0]
+    if len(carrying) == 1:
+        return first
+    fields = [call.record.split("\t") for call in carrying if call.record is not None]
+    # Projections of the same input GT retain its allele slots. Union the
+    # slots, rather than adding dosages that could count one copy twice.
+    slots = [genotype(row) for row in fields]
+    merged = [
+        next((a for a in ("1", "0") if a in group), ".")
+        for group in zip(*slots, strict=True)
+    ]
+    gt, sep, rest = fields[0][9].partition(":")
+    parts = re.split(r"([/|])", gt)
+    parts[::2] = merged
+    fields[0][9] = "".join(parts) + sep + rest
+    return Call(first.state, merged.count("1"), first.ploidy, "\t".join(fields[0]))
+
+
+def _resolve_duplicates(observations: list[Call]) -> Call:
+    if len(observations) == 1 or all(call.source is None for call in observations):
+        return _dedup(observations)
+    separate = []
+    by_source: dict[str, list[Call]] = {}
+    for call in observations:
+        if call.source is None:
+            separate.append(call)
+        else:
+            by_source.setdefault(call.source, []).append(call)
+    separate.extend(
+        _combine_projections(projections) for projections in by_source.values()
+    )
+    return _dedup(separate)
+
+
 def _at_locus(
     call: Call | None,
     has_other_alt: bool,
@@ -237,13 +290,16 @@ def _check_locus_reference(alleles: Collection[Allele]) -> None:
 
 
 def sites(
-    streams: Iterable[TextIO],
+    streams: Iterable[IO[str]],
     order: dict[str, int],
     scope: Scope,
     *,
     check_reference: bool,
+    atomized: bool = False,
 ) -> Iterator[tuple[Allele, list[Call | None]]]:
-    incoming = [records(stream, i, order) for i, stream in enumerate(streams)]
+    incoming = [
+        records(stream, i, order, atomized=atomized) for i, stream in enumerate(streams)
+    ]
     combined = merge(*incoming, key=lambda item: item[0])
     for _, rows in groupby(combined, key=lambda item: item[0]):
         observed: dict[Allele, dict[int, list[Call]]] = {}
@@ -259,8 +315,9 @@ def sites(
             continue
         if check_reference and len(observed) > 1:
             _check_locus_reference(observed)
+        dedup = _resolve_duplicates if atomized else _dedup
         resolved = {
-            allele: {i: _dedup(calls) for i, calls in calls_by_input.items()}
+            allele: {i: dedup(calls) for i, calls in calls_by_input.items()}
             for allele, calls_by_input in observed.items()
         }
         carried = {

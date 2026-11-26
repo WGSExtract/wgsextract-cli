@@ -84,8 +84,9 @@ ENTRIES: dict[str, CommandHelp] = {
     ),
     "vcf compare": _h(
         "compare.summary.json and compare.summary.tsv (or .parquet); "
-        "optional compare.variants table and indexed compare.anchor.vcf.gz.",
+        "optional per-allele table, indexed anchor VCF, and indexed two-callset VCF partitions.",
         "wgsextract vcf compare --callset a=caller-a.vcf.gz --callset b=caller-b.vcf.gz --ref GRCh38.fa",
+        "wgsextract vcf compare --callset a=caller-a.vcf.gz --callset b=caller-b.vcf.gz --ref GRCh38.fa --atomize --emit-partition-vcfs --outdir comparison",
         "wgsextract vcf compare --mode unique --callset child=child.vcf.gz --callset parent=parent.g.vcf.gz --include child --exclude parent --reference-evidence gvcf --emit-vcf",
     ),
     "vcf callability": _h(
