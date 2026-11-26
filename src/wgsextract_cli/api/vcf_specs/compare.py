@@ -96,6 +96,11 @@ class VcfCompareParams(Params):
         action="store_true",
         help="Allow unknown builds with a warning; never bypass a known mismatch.",
     )
+    atomize: bool = param(
+        False,
+        action="store_true",
+        help="Compare primitive sequence alleles instead of complex alleles; requires --ref.",
+    )
     bed: Path | None = param(
         None,
         path="file",
@@ -120,6 +125,11 @@ class VcfCompareParams(Params):
         action="store_true",
         help="Write an indexed single-sample anchor VCF (first callset or first include).",
     )
+    emit_partition_vcfs: bool = param(
+        False,
+        action="store_true",
+        help="Write indexed shared, only_a and only_b VCFs for two-callset concordance.",
+    )
     emit_variants: bool = param(
         False,
         action="store_true",
@@ -133,6 +143,14 @@ class VcfCompareParams(Params):
         if len(labels) < 2:
             raise UsageError(
                 "At least two --callset LABEL=PATH arguments are required."
+            )
+        if self.atomize and self.ref is None:
+            raise UsageError("--atomize requires an indexed local --ref.")
+        if self.emit_partition_vcfs and (
+            self.mode != "concordance" or len(labels) != 2
+        ):
+            raise UsageError(
+                "--emit-partition-vcfs requires exactly two callsets in concordance mode."
             )
         for option, given in (
             ("sample", labelled(self.sample, "sample")),
