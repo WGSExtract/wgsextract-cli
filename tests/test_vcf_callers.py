@@ -166,6 +166,72 @@ def test_gatk_calls_the_snp_from_a_regional_cram(genome, tmp_path):
     ]
 
 
+def _calling_cram(genome, cram):
+    run_command(
+        [
+            "samtools", "view", "-C", "-T", genome.ref,
+            "--output-fmt-option", "version=3.0", "-o", cram, genome.bam,
+        ]
+    )  # fmt: skip
+    run_command(["samtools", "index", cram])
+
+
+@needs_tools("gatk", "samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("gvcf", [False, True], ids=["vcf", "gvcf"])
+def test_1125_gatk_whole_contig_cram_matches_staged_bam(genome, tmp_path, caplog, gvcf):
+    if callers._gatk_version() != "4.6.2.0":
+        pytest.skip("requires the qualified GATK version")
+    cram = tmp_path / "calling.cram"
+    _calling_cram(genome, cram)
+    staged = tmp_path / "regional.bam"
+    run_command(
+        ["samtools", "view", "-bh", "-T", genome.ref, "-o", staged, cram, "chr1"]
+    )
+    run_command(["samtools", "index", staged])
+
+    with caplog.at_level(logging.INFO):
+        for mode, path in (("staged", staged), ("direct", cram)):
+            run_wgsextract(
+                "vcf", "gatk", "--input", str(path), "--ref", genome.ref,
+                "--outdir", str(tmp_path / mode), "--threads", "1",
+                "--region", "chr1",
+                *(["--reference-evidence", "gvcf"] if gvcf else []),
+            )  # fmt: skip
+    assert "Reading indexed CRAM directly" in caplog.text
+    for filename in ["gatk.vcf.gz", "gatk.g.vcf.gz"] if gvcf else ["gatk.vcf.gz"]:
+        bodies = [
+            run_command(
+                ["bcftools", "view", "-H", tmp_path / mode / filename],
+                capture_output=True,
+            ).stdout
+            for mode in ("staged", "direct")
+        ]
+        assert bodies[0] and bodies[0] == bodies[1]
+
+
+@needs_tools("gatk", "samtools", "bcftools", "tabix")
+@pytest.mark.parametrize("index_case", ["different-sidecars", "space-delimited"])
+def test_1125_incompatible_crai_still_stages_the_whole_contig(
+    genome, tmp_path, caplog, index_case
+):
+    cram = tmp_path / "calling.cram"
+    _calling_cram(genome, cram)
+    index = Path(f"{cram}.crai")
+    if index_case == "different-sidecars":
+        cram.with_suffix(".crai").write_bytes(index.read_bytes())
+    else:
+        with gzip.open(index, "rt") as source:
+            text = source.read()
+        with gzip.open(index, "wt") as target:
+            target.write(text.replace("\t", " "))
+    with caplog.at_level(logging.INFO):
+        assert (
+            _call("gatk", genome, str(cram), tmp_path / "out", "-r", "chr1")
+            == genome.calls
+        )
+    assert "Preparing regional BAM" in caplog.text
+
+
 def _1000_genomes_style_cram(genome: Namespace, folder: Path) -> Path:
     """The sample's CRAM 3.0 with 50 unmapped reads after the mapped ones, and
     a .crai whose unmapped-slice row has the read length (100) as its span, as
@@ -195,9 +261,13 @@ def _1000_genomes_style_cram(genome: Namespace, folder: Path) -> Path:
 
 
 @needs_tools("gatk", "samtools", "tabix")
-@pytest.mark.parametrize("linked", [False, True])
+@pytest.mark.parametrize(
+    ("linked", "regional"),
+    [(False, False), (True, False), (False, True)],
+    ids=["whole", "linked-whole", "whole-contig"],
+)
 def test_1034_gatk_reads_a_cram_whose_crai_htsjdk_rejects(
-    genome, tmp_path, caplog, linked
+    genome, tmp_path, caplog, linked, regional
 ):
     """#1034 (vcf gatk rejects 1000 Genomes CRAM indexes): htsjdk refused the
     .crai ("unmapped slice with unexpected alignment start (0) or span"). GATK
@@ -220,13 +290,31 @@ def test_1034_gatk_reads_a_cram_whose_crai_htsjdk_rejects(
     run_wgsextract(
         "vcf", "gatk", "--input", reads.as_posix(), "--ref", ref,
         "--outdir", outdir.as_posix(), "--tmp-dir", scratch.as_posix(),
+        *(["--region", "chr1"] if regional else []),
     )  # fmt: skip
 
     assert [c[:5] for c in vcf_calls(outdir / "gatk.vcf.gz")] == genome.calls
-    assert "can't read the CRAM index" in caplog.text
-    assert "span 100" in caplog.text
+    if regional:
+        assert "Preparing regional BAM" in caplog.text
+    else:
+        assert "can't read the CRAM index" in caplog.text
+        assert "span 100" in caplog.text
     assert {p.name: p.read_bytes() for p in cram.parent.iterdir()} == before
     assert list(scratch.iterdir()) == []
+
+
+@needs_tools("gatk", "samtools")
+def test_1125_whole_contig_still_requires_a_cram_index(tmp_path, genome):
+    from wgsextract_cli.core.artifact_checks import ArtifactIncompatible
+
+    cram = tmp_path / "no-index.cram"
+    shutil.copyfile(genome.cram, cram)
+    with pytest.raises(ArtifactIncompatible, match="index .* is missing"):
+        run_wgsextract(
+            "vcf", "gatk", "--input", str(cram), "--ref", genome.ref,
+            "--outdir", str(tmp_path / "out"), "--region", "chr1",
+        )  # fmt: skip
+    assert not Path(f"{cram}.crai").exists()
 
 
 # --- GATK at its process boundary ----------------------------------------------

@@ -144,6 +144,10 @@ def test_version_probe_reads_each_tools_way_of_reporting(host, tool, body, expec
     _tool(host, tool, body)
 
     assert get_tool_version(tool) == expected
+    if tool == "bcftools":
+        assert get_tool_version(tool, full_banner=True) == (
+            "bcftools 1.21\nUsing htslib 1.21"
+        )
 
 
 def test_version_probe_without_the_tool(host):

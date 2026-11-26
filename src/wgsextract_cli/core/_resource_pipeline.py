@@ -68,6 +68,7 @@ def estimate_resources(
     fastq_dir: str | None = None,
     temp_dir: str | None = None,
     gatk_staging_dir: str | None = None,
+    gatk_region_staging: bool = True,
     region: str | None = None,
     duplicate_marking: Literal["samblaster", "markdup", "gatk-flow"] | None = None,
     parallel: bool = False,
@@ -505,7 +506,7 @@ def estimate_resources(
             notes.append(
                 "GATK RAM is a heuristic; Java heap and flow-mode settings can change its peak."
             )
-            if cram_input and region:
+            if cram_input and region and gatk_region_staging:
                 demands.append(
                     (
                         gatk_staging_dir or output_dir,
