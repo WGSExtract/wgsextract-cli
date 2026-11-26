@@ -10,9 +10,10 @@ source:
   - url: https://github.com/samtools/bcftools/releases/download/${{ version }}/bcftools-${{ version }}.tar.bz2
     sha256: f96e583d2315998645bb56756f1c8f230c489512db2655b0f623198ebc8a2d99
     patches:
-      - patches/0001-bounded-cram-stop-copy.patch
-      - patches/0002-vector-bam-sequence-packing.patch
-      - patches/0003-reuse-cram-buffers.patch
+      # Windows ARM64 still uses the patches for bundled htslib 1.24.
+      - patches/1.25/0001-bounded-cram-stop-copy.patch
+      - patches/1.25/0002-vector-bam-sequence-packing.patch
+      - patches/1.25/0003-reuse-cram-buffers.patch
       - patches/0004-bulk-copy-single-sample.patch
   - url: https://github.com/microsoft/mimalloc/archive/v${{ mimalloc_version }}.tar.gz
     sha256: 2672e6a99d4579fb4bb32d9de0d63aa424ce600d31fbfaf06eb74d940d2e07a6

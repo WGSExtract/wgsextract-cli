@@ -19,7 +19,7 @@ printf '%s  %s\n' 158c271e4e2986bb2dd11283b640edc10c56695b293df77a109ce994803037
 mkdir -p "$build"
 exec > >(tee "$build/validation.log") 2>&1
 tar -xjf "$archive" --strip-components=1 -C "$build"
-for name in 0001-bounded-cram-stop-copy 0002-vector-bam-sequence-packing 0003-reuse-cram-buffers; do
+for name in 0001-bounded-cram-stop-copy 0002-vector-bam-sequence-packing 1.25/0003-reuse-cram-buffers; do
     patch --batch --forward -p1 -d "$build" < "$root/packaging/windows/recipes/htslib/patches/$name.patch"
 done
 cd "$build"

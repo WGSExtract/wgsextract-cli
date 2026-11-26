@@ -11,7 +11,8 @@ source:
   patches:
     - patches/0001-bounded-cram-stop-copy.patch
     - patches/0002-vector-bam-sequence-packing.patch
-    - patches/0003-reuse-cram-buffers.patch
+    # GLIMPSE2 and Windows ARM64 still use the htslib 1.24 inflate path.
+    - patches/1.25/0003-reuse-cram-buffers.patch
 
 build:
   number: 0
