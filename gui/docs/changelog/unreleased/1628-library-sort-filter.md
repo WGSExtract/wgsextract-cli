@@ -5,7 +5,7 @@
   platform. Reference Data lists installed resources before missing ones.
   Each group is alphabetical ([#1628, library sort and filter](https://github.com/WGSExtract/wgsextract-cli/pull/1628)).
 
-## New
+## Added
 
 - Tools, Reference Data and Reference Genomes each have a keyword filter on
   their title line. Typed words match a row's name, tags, status or shown
