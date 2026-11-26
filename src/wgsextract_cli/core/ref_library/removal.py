@@ -16,10 +16,9 @@ from pathlib import Path, PureWindowsPath
 
 from wgsextract_cli.core import mini_genome
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
-from wgsextract_cli.core.file_lock import exclusive_lock, held
+from wgsextract_cli.core.file_lock import exclusive_lock, held, shared_file_lock
 from wgsextract_cli.core.ref_library.assets import (
     GENOME_SIDECARS,
-    RESTART_LOCK_SUFFIX,
     annotation_vcf_names,
     genome_restart_dir,
     reference_dict_path,
@@ -170,7 +169,7 @@ def vep_release_paths(
 
 # The build_locks of runs that write beside a genome's FASTA: bwa and
 # bwa-mem2 indexing, and `ref dense-sa`.
-_GENOME_BUILD_LOCKS = (".bwa-index.lock", ".dense-sa.lock", RESTART_LOCK_SUFFIX)
+_GENOME_BUILD_LOCKS = (".bwa-index.lock", ".dense-sa.lock")
 
 
 def genome_paths(fasta: Path) -> list[Path]:
@@ -241,12 +240,16 @@ def remove_genome(folder: Path, name: str) -> dict[Path, int]:
     if not folder.is_dir():
         return {}
     fasta = Path(os.path.realpath(folder), name)
+    replacement = genome_restart_dir(fasta)
     locks = [Path(f"{fasta}{suffix}") for suffix in _GENOME_BUILD_LOCKS]
     guards = [Path(f"{lock}.guard") for lock in locks]
     ours = [guard for guard in guards if not guard.exists()]
     deleted = False
     try:
         with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                shared_file_lock(replacement, timeout=10, follow_symlinks=False)
+            )
             # Holding each lock's guard keeps a builder from starting meanwhile.
             for lock in locks:
                 stack.enter_context(exclusive_lock(lock, timeout=10))
@@ -256,7 +259,7 @@ def remove_genome(folder: Path, name: str) -> dict[Path, int]:
                         f" ({lock}); delete {name} once it has finished."
                     )
             found = [p for p in genome_paths(fasta) if p.exists() or p.is_symlink()]
-            staging = {*_staging_folders(fasta), genome_restart_dir(fasta)}
+            staging = {*_staging_folders(fasta), replacement}
             for path in found:
                 if path.is_dir() and not path.is_symlink() and path not in staging:
                     raise WGSExtractError(f"{path} is a folder; not deleting {name}.")

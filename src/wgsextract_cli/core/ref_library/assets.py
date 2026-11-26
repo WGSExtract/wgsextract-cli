@@ -62,9 +62,6 @@ GENOME_SIDECARS = (
 )  # fmt: skip
 
 
-RESTART_LOCK_SUFFIX = ".restart.lock"
-
-
 def genome_restart_dir(fasta: Path) -> Path:
     return fasta.with_name(f".{fasta.name}.restart")
 

@@ -21,10 +21,9 @@ from wgsextract_cli.core.annotation_resources import (
 )
 from wgsextract_cli.core.bgzf import ensure_bgzf
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.file_lock import build_lock
+from wgsextract_cli.core.file_lock import shared_file_lock
 from wgsextract_cli.core.ref_library.assets import (
     GENOME_SIDECARS,
-    RESTART_LOCK_SUFFIX,
     genome_restart_dir,
     n_count_paths,
     read_fai_lengths,
@@ -219,7 +218,9 @@ def download_and_process_genome(
     final_path = str(Path(target_dir, genome_data["final"]))
 
     with (
-        build_lock(final_path + RESTART_LOCK_SUFFIX)
+        shared_file_lock(
+            genome_restart_dir(Path(final_path)), timeout=1800, follow_symlinks=False
+        )
         if restart
         else contextlib.nullcontext()
     ):
