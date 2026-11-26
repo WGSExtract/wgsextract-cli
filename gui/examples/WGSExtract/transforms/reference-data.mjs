@@ -316,7 +316,7 @@ export function items(document) {
         annotationRow("gerp", "GERP++", annotations.gerp, "RS (bigWig)", "37 / 38", "Evolutionary conservation & IGV track", "~10 GB / build"),
         annotationRow("phylop", "PhyloP", annotations.phylop, "100-way (bigWig)", "37 / 38", "Evolutionary conservation & IGV track", "~10 GB / build"),
     ];
-    return { items: rows };
+    return { items: rows, displayPaths: { ref_path: refRoot } };
 }
 
 function annotationRow(id, name, buildsMap, version, build, usedFor, downloadSize) {

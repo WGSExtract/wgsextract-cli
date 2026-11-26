@@ -171,6 +171,12 @@ test("Reference Data Path shows the resolved folder without rewriting its worksp
   assert.match(renderTextControl(control), /value="D:\\large disk\\wgs-extract\\reference"/);
   state.fieldValues.ref_path = "{{bundleWorkspace}}/reference";
   assert.match(renderTextControl(control), /value="\/application\/bundle\/reference"/);
+  state.dataSourcePayloads.set("control:reference_data", { displayPaths: { ref_path: "/home/owner/reference" } });
+  for (const configured of ["~/reference", "reference"]) {
+    state.fieldValues.ref_path = configured;
+    assert.match(renderTextControl(control), /value="\/home\/owner\/reference"/);
+    assert.equal(state.fieldValues.ref_path, configured);
+  }
   state.fieldValues.ref_path = "/custom/reference";
   assert.match(renderTextControl(control), /value="\/custom\/reference"/);
 });

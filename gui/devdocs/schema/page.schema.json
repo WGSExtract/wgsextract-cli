@@ -80,6 +80,14 @@
           "enum": ["file", "directory", "bundle"],
           "description": "Explicit native picker kind, independent of translated labels."
         },
+        "pathDisplay": {
+          "enum": ["absolute"],
+          "description": "Show an absolute path when resolved, without changing the saved value."
+        },
+        "pathDisplaySource": {
+          "type": "string",
+          "description": "Optional control ID whose data source returns this field's resolved absolute path in displayPaths."
+        },
         "multiple": {
           "type": "boolean",
           "description": "Allow selecting multiple files for a path control (newline-separated). Single-file placeholders resolve to the first chosen path; {{id.all}} and {{id.extra}} expand to all or remaining paths."

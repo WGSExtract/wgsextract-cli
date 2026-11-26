@@ -11,7 +11,8 @@ Reference **genomes** (FASTA sequences and aligner indexes) live on their own
 ## Reference Data Library folder
 
 The **Reference Data Library** path at the top of the page shows where these
-datasets are stored as an absolute path (by default inside your users workspace, `~/wgs-extract`).
+datasets are stored (by default inside your users workspace, `~/wgs-extract`).
+It shows the resolved absolute path without changing your saved setting.
 
 - You can point this folder to another location, such as a larger external SSD.
 - When you change the folder path, the app offers three choices:

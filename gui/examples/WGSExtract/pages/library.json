@@ -14,6 +14,7 @@
           "label": "controls.library.library-paths.ref_path.label",
           "kind": "path",
           "pathDisplay": "absolute",
+          "pathDisplaySource": "reference_data",
           "tooltip": "controls.library.library-paths.ref_path.tooltip"
         }
       ],

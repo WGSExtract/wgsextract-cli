@@ -325,7 +325,10 @@ export function renderTextControl(control: ControlSpec) {
     const isMultiPath = control.kind === "path" && control.multiple === true;
     const paths = isMultiPath ? splitPathList(rawValue) : [];
     const primaryValue = isMultiPath ? (paths[0] ?? "") : rawValue;
-    const valueAttributes = control.kind === "path" ? pathInputAttributes(primaryValue, "", control.pathDisplay) : `value="${escapeAttribute(rawValue)}"`;
+    const pathDisplay = control.pathDisplay === "absolute" ? {
+        resolvedPath: state.dataSourcePayloads.get(`control:${control.pathDisplaySource}`)?.displayPaths?.[control.id],
+    } : undefined;
+    const valueAttributes = control.kind === "path" ? pathInputAttributes(primaryValue, "", pathDisplay) : `value="${escapeAttribute(rawValue)}"`;
     const input = `<input id="${escapeAttribute(inputID)}" type="text" ${valueAttributes}
         placeholder="${escapeAttribute(control.placeholder ?? "")}" data-field-id="${escapeAttribute(control.id)}">`;
     const showInlineViewer = state.manifest?.id === "wgs-extract"

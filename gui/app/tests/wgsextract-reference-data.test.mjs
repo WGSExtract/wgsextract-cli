@@ -76,6 +76,7 @@ test("reference-data transform maps installed and missing resources with sizes, 
   });
 
   const byId = new Map(payload.items.map((row) => [row.id, row]));
+  assert.equal(payload.displayPaths.ref_path, root);
   assert.equal(byId.get("bootstrap").status, "installed");
   assert.equal(byId.get("bootstrap").tags[0].id, "required");
   assert.equal(byId.get("gene-map").status, "installed");

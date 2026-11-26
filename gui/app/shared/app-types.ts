@@ -76,6 +76,7 @@ export interface UpdateState {
 
 export interface DataSourcePayload {
     values?: ValueMap;
+    displayPaths?: StringMap;
     options?: ControlOption[];
     rows?: RowSpec[];
     items?: Array<LooseRecord>;

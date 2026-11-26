@@ -32,6 +32,11 @@ export function ensureDataSource(key: string, source: ManifestLocation, context:
     state.loadingDataSources.add(key);
     api<DataSourcePayload>("/api/datasource", { method: "POST", body: { source, context } })
         .then((payload) => {
+        if (payload.displayPaths) {
+            // A path can change while the data source is resolving it.
+            payload.displayPaths = Object.fromEntries(Object.entries(payload.displayPaths)
+                .filter(([id]) => state.fieldValues[id] === context.fieldValues?.[id]));
+        }
         state.dataSourcePayloads.set(key, payload);
         selectDefaultDataSourceOption(key, payload);
         state.dataSourceErrors.delete(key);
