@@ -331,6 +331,7 @@ def annotate_vcf(
                     header_lines,
                     label in {"CADD", "REVEL", "AlphaMissense"},
                     annotation_source,
+                    prepare_table=label == "gnomAD",
                 )
                 cmd[cmd.index("-a") + 1] = annotation
                 cmd[cmd.index("-c") + 1] = columns

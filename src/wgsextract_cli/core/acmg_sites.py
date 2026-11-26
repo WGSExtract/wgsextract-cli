@@ -407,6 +407,7 @@ def _fill(
         else ["bgzip", "-c"]
     )  # fmt: skip
     count = 0
+    sweeps = file.local_sweeps
     writes = records_vcf.open("wb") if source != "gnomad" else nullcontext()
     with writes as out:
         proc = popen(
@@ -432,6 +433,7 @@ def _fill(
                 (tuple(span) for span in sites.tolist()),
                 connections,
                 on_group=write,
+                sweep_dir=stage,
             )
             if not count:
                 anchor = file.first_record(contig)
@@ -475,6 +477,7 @@ def _fill(
         "size_bytes": file.source.size,
         "sites": len(sites),
         "records": records,
+        **({"local_sweep": True} if file.local_sweeps != sweeps else {}),
         "first_record_added": anchor is not None,
         "seconds": round(time.monotonic() - started, 1),
         "built": datetime.now(timezone.utc).isoformat(timespec="seconds"),
@@ -591,12 +594,19 @@ def _source_databases(
             raise WGSExtractError(
                 f"{source} source {where} holds nothing of {chromosome}."
             ) from e
-        logging.info(
-            "%s %s: %s records, read %s in %s requests (%.0f s).",
-            source, chromosome, f"{database.meta['records']:,}",
-            format_bytes(database.meta["bytes_read"]),
-            f"{database.meta['requests']:,}", database.meta["seconds"],
-        )  # fmt: skip
+        if database.meta.get("local_sweep"):
+            logging.info(
+                "%s %s: %s records from local indexed sweep (%.0f s).",
+                source, chromosome, f"{database.meta['records']:,}",
+                database.meta["seconds"],
+            )  # fmt: skip
+        else:
+            logging.info(
+                "%s %s: %s records, read %s in %s requests (%.0f s).",
+                source, chromosome, f"{database.meta['records']:,}",
+                format_bytes(database.meta["bytes_read"]),
+                f"{database.meta['requests']:,}", database.meta["seconds"],
+            )  # fmt: skip
         found.append(database)
     return found
 
