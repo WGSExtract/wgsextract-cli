@@ -6,7 +6,7 @@ import secrets
 import select
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from email.utils import formatdate
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -52,6 +52,7 @@ class RangeServer:
     None as the prefix size stalls before headers instead.
     body_disconnects[path]: signal if a client disconnects during the pause.
     headers[path]: extra headers sent with path (as x-goog-hash on GCS).
+    transform_get: alter a response body without changing its reported revision.
     """
 
     def __init__(self, data: bytes | None = b"", files: dict[str, bytes] | None = None):
@@ -77,6 +78,7 @@ class RangeServer:
         ] = {}
         self.body_disconnects: dict[str, threading.Event] = {}
         self.headers: dict[str, dict[str, str]] = {}
+        self.transform_get: Callable[[int, bytes], bytes] | None = None
         self.requests: list[tuple[str, str | None]] = []
         # (method, request target with any query, headers) of each request.
         self.raw_requests: list[tuple[str, str, dict[str, str]]] = []
@@ -202,6 +204,8 @@ class RangeServer:
                         return
                     end = int(last) + 1 if last else len(data)
                     body, code = data[start:end], 206
+                if server.transform_get is not None:
+                    body = server.transform_get(start, body)
                 cut_path = path in server.drop_paths
                 server.drop_paths.discard(path)
                 cut = (

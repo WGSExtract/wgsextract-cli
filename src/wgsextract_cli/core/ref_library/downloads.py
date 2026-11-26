@@ -38,6 +38,7 @@ from wgsextract_cli.core.network_policy import require_download
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 from . import segmented
+from .bgzf_repair import repair_bgzf
 from .segmented import range_start
 
 
@@ -102,6 +103,15 @@ def resolve_github_release_asset_sha256(url: str) -> str | None:
 
 def verify_download_sha256(path: str, expected_sha256: str | None) -> bool:
     """Verify a downloaded file against an expected SHA-256 digest."""
+    return _verify_download_sha256(path, expected_sha256)
+
+
+def _verify_download_sha256(
+    path: str,
+    expected_sha256: str | None,
+    *,
+    repair: Callable[[str], bool] | None = None,
+) -> bool:
     if not expected_sha256:
         return True
 
@@ -117,6 +127,11 @@ def verify_download_sha256(path: str, expected_sha256: str | None) -> bool:
     actual_sha256 = sha256.hexdigest()
     if actual_sha256 == expected_sha256.lower():
         logging.info(f"Verified SHA-256 of {Path(path).name}: {actual_sha256}")
+        return True
+    if repair is not None and repair(expected_sha256.lower()):
+        logging.info(
+            "Verified SHA-256 of repaired %s: %s", Path(path).name, expected_sha256
+        )
         return True
 
     logging.error("Downloaded file checksum mismatch.")
@@ -306,7 +321,13 @@ def _download_file(
                     remote,
                     progress_callback,
                     cancel_event,
-                    verify=lambda path: verify_download_sha256(path, expected_sha256),
+                    verify=lambda path: _verify_download_sha256(
+                        path,
+                        expected_sha256,
+                        repair=lambda pin: repair_bgzf(
+                            path, url, remote, pin, cancel_event
+                        ),
+                    ),
                 )
             except segmented.RangesUnsupported:
                 logging.info("Server ignores byte ranges; using one connection.")
@@ -531,7 +552,13 @@ def _urllib_download(
                     )
                 logging.info("%s is already fully downloaded.", Path(dest).name)
                 return _finish_download(
-                    url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
+                    url,
+                    dest,
+                    partial_dest,
+                    expected_sha256,
+                    checksum_hint,
+                    use_cache,
+                    cancel_event,
                 )
             code = response.getcode()
             served = segmented.Revision.from_headers(response.info())
@@ -577,7 +604,13 @@ def _urllib_download(
                 use_cache,
             )
         return _finish_download(
-            url, dest, partial_dest, expected_sha256, checksum_hint, use_cache
+            url,
+            dest,
+            partial_dest,
+            expected_sha256,
+            checksum_hint,
+            use_cache,
+            cancel_event,
         )
     except DownloadCancelled as e:
         logging.info(redact_urls(str(e), sources=(url,)))
@@ -643,8 +676,14 @@ def _finish_download(
     expected_sha256: str | None,
     checksum_hint: str | None,
     use_cache: bool = True,
+    cancel_event: CancelEvent | None = None,
 ) -> bool:
-    if not verify_download_sha256(partial_dest, expected_sha256):
+    def repair(pin: str) -> bool:
+        source = _read_source(Path(partial_dest))
+        revision = source[1] if source is not None else segmented.Revision()
+        return repair_bgzf(partial_dest, url, revision, pin, cancel_event)
+
+    if not _verify_download_sha256(partial_dest, expected_sha256, repair=repair):
         Path(partial_dest + ".source").unlink(missing_ok=True)
         return False
     Path(partial_dest).replace(dest)
