@@ -14,6 +14,7 @@ from urllib.request import Request, urlopen
 from wgsextract_cli.core.acmg_regions import flags_at_sites, region_name
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
+from wgsextract_cli.core.network_policy import require_network
 from wgsextract_cli.core.ref_library.segmented import user_agent
 from wgsextract_cli.core.utils import WGSExtractError, popen, wait_with_cancel
 
@@ -75,6 +76,7 @@ def stream_reduced(
     """Stream a gnomAD VCF through bcftools into ``dest``, keeping only
     ``GNOMAD_KEEP``. A dropped connection resumes at the byte it stopped at, so
     bcftools reads the file whole; returns the MD5 of what was streamed."""
+    require_network("gnomAD ACMG VCF")
     partial = dest.with_name(dest.name + ".partial")
     command = [
         "bcftools", "annotate", "--no-version", "-x", f"^{GNOMAD_KEEP}",

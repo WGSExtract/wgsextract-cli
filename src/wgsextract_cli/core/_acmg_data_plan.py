@@ -15,6 +15,7 @@ from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.acmg_manifest import MANIFEST, load_manifest, site_data_of
 from wgsextract_cli.core.dependency_checks import get_tool_version
 from wgsextract_cli.core.download_progress import format_bytes
+from wgsextract_cli.core.network_policy import require_network
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.ref_library.segmented import user_agent
@@ -547,12 +548,14 @@ def _remote_size(url: str) -> int | None:
 
 
 def _head(url: str) -> Any:
+    require_network("ACMG resource size lookup", large=False)
     request = Request(url, method="HEAD", headers={"User-Agent": user_agent(url)})
     with urlopen(request, timeout=60) as response:
         return response.headers
 
 
 def _text(url: str) -> str:
+    require_network("ACMG resource metadata lookup", large=False)
     request = Request(url, headers={"User-Agent": user_agent(url)})
     with urlopen(request, timeout=60) as response:
         return str(response.read().decode())

@@ -123,3 +123,12 @@ macOS uses `caffeinate`, Linux uses already-installed/permitted
 Missing helpers, denied permissions or cleanup errors never fail the run.
 This prevents automatic sleep, not shutdown or forced/manual suspension;
 display sleep is allowed. Report-only help/config/deps never inhibit sleep.
+
+## Network mode
+
+Set `network_mode = "full"` (the default), `"low"` or `"off"`. Use
+`--network` to override the setting for one run. In low mode, pass
+`--allow-large-download` to confirm a bulk transfer. In off mode, no transfer
+opt-in can override the block. The mode never replaces `--download` or any
+other operation-specific consent. See
+[Privacy and network access](../privacy.md#cli-network-mode).

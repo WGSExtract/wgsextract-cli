@@ -142,6 +142,9 @@ def _run(args: argparse.Namespace) -> None:
         if transport
         else state / "jobs"
     )
+    from wgsextract_cli.core.execution_context import current
+    from wgsextract_cli.core.network_policy import network_mode
+
     manager = JobManager(
         jobs,
         config_path=get_config_path(),
@@ -154,6 +157,8 @@ def _run(args: argparse.Namespace) -> None:
         default_outdir=settings.get("output_directory"),
         # As given: a worker allows a symlinked root as written, as here.
         allowed=roots,
+        network=network_mode(),
+        allow_large_download=current().allow_large_download,
     )
     try:
         if transport == "stdio":

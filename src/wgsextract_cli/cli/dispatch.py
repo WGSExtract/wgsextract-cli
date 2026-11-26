@@ -12,6 +12,7 @@ from wgsextract_cli.core import execution_context, live_status, read_scope
 from wgsextract_cli.core.genome_library import apply_genome_selection
 from wgsextract_cli.core.keep_awake import keep_awake
 from wgsextract_cli.core.last_run import LogTail, record_last_run
+from wgsextract_cli.core.network_policy import network_options
 from wgsextract_cli.core.output_location import remove_if_empty
 from wgsextract_cli.core.ref_library.lookup import local_reference_lookup
 from wgsextract_cli.core.remote_input import check_public, is_url
@@ -124,6 +125,9 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
         reserved as stdout,
         collecting(result, as_json=as_json),
         execution_context.bound(cancel=cancel),
+        network_options(
+            getattr(args, "network", None), getattr(args, "allow_large_download", False)
+        ),
         output_publication_scope(),
         read_scope.from_argument(getattr(args, "_read_scope", None)),
     ):

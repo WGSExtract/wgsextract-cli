@@ -107,6 +107,9 @@ def vep_cache_root(vep_cache: PathInput | None, ref: PathInput | None) -> str:
 
 
 def _verify_vep_tarball(base_url: str, target_path: str, filename: str) -> None:
+    from wgsextract_cli.core.network_policy import require_network
+
+    require_network("Ensembl VEP checksum lookup", large=False)
     checksum_url = f"{base_url}/CHECKSUMS"
     checksum_path = target_path + ".CHECKSUMS"
     logging.info(LOG_MESSAGES["vep_verifying_checksums"])

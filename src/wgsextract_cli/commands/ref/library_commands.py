@@ -434,8 +434,8 @@ def cmd_library(args: argparse.Namespace) -> None:
 def _install_from_mirrors(
     mirrors: Sequence[Mapping[str, str]], reflib_dir: str
 ) -> None:
-    """Install from the first mirror that works. A later mirror starts afresh:
-    its file may differ (NIH's hs38DH is uncompressed), so no partial is resumed."""
+    """Install from the first mirror that works, keeping each mirror's partial
+    separate: its bytes may differ (NIH's hs38DH is uncompressed)."""
     for i, genome in enumerate(mirrors):
         if i:
             logging.warning(

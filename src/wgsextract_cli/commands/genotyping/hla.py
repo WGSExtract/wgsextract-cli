@@ -101,6 +101,9 @@ def reported_diplotype(call: HlaCall | None) -> str | None:
 
 
 def _build_index(directory: str) -> None:
+    from wgsextract_cli.core.network_policy import require_network
+
+    require_network("IPD-IMGT/HLA T1K allele index")
     build = env_tool("t1k-build.pl", "t1k")
     parent = str(Path(directory).parent)
     Path(parent).mkdir(parents=True, exist_ok=True)

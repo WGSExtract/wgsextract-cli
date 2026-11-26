@@ -16,6 +16,7 @@ from wgsextract_cli.core.alignment.cram_staging import (
 )
 from wgsextract_cli.core.alignment.samtools_commands import alignment_index
 from wgsextract_cli.core.containers import (
+    LOCAL_RUN_OPTIONS,
     docker,
     docker_info,
 )
@@ -189,7 +190,7 @@ def _supports_num_partitions(
         if tag:
             return (int(tag.group(1)), int(tag.group(2))) >= (1, 9)
         probe = [
-            docker(setup or ""), "run", "--rm", "--pull=never",
+            docker(setup or ""), "run", "--rm", *LOCAL_RUN_OPTIONS,
             "--entrypoint", "/opt/deepvariant/bin/postprocess_variants",
             image, "--helpfull",
         ]  # fmt: skip

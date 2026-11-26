@@ -3,10 +3,14 @@ import os
 import time
 from pathlib import Path
 
+import pytest
+
+from tests.http_server import serving
 from wgsextract_cli.commands.benchmark.datasets import _real_dataset_cache_dir
 from wgsextract_cli.commands.benchmark.models import BenchmarkJob
 from wgsextract_cli.core import dev_download_cache, ref_library
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.network_policy import NetworkRestricted, network_options
 
 
 def test_dev_download_cache_round_trip(tmp_path, monkeypatch):
@@ -167,3 +171,42 @@ def test_download_file_verifies_a_cache_restore_before_dest_exists(
     assert downloads.download_file(url, str(destination), expected_sha256=sha256)
     assert visible == [False]
     assert destination.read_bytes() == b"cached reference"
+
+
+@pytest.mark.parametrize(
+    ("mode", "corrupt"), [("off", False), ("low", False), ("off", True)]
+)
+def test_1591_only_verified_cache_reuse_bypasses_network_restrictions(
+    tmp_path, monkeypatch, mode, corrupt
+):
+    monkeypatch.setitem(settings, "dev", {"download_cache": True})
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg-cache"))
+    data = b"cached reference"
+    sha256 = hashlib.sha256(data).hexdigest()
+    destination = tmp_path / "local" / "reference.fa"
+    destination.parent.mkdir()
+    with serving(data=data) as http:
+        url = http.url_for("reference.fa")
+        assert ref_library.downloads.download_file(
+            url, str(destination), expected_sha256=sha256
+        )
+        destination.unlink()
+        http.requests.clear()
+        if corrupt:
+            cached = dev_download_cache.cached_download_path(
+                url, destination, checksum_hint=f"sha256:{sha256}"
+            )
+            cached.write_bytes(b"bad cached data")
+        with network_options(mode, False):
+            if corrupt:
+                with pytest.raises(NetworkRestricted, match="--network off"):
+                    ref_library.downloads.download_file(
+                        url, str(destination), expected_sha256=sha256
+                    )
+                assert not destination.exists()
+            else:
+                assert ref_library.downloads.download_file(
+                    url, str(destination), expected_sha256=sha256
+                )
+                assert destination.read_bytes() == data
+        assert not http.requests

@@ -18,6 +18,26 @@ installation alone would still allow lockfile resolution and registry queries.
 Incomplete installed runtimes fail with setup guidance, rather than falling back
 to a potentially different CLI on the host's PATH.
 
+## CLI network mode
+
+Set `network_mode` in `config.toml`, or override it for one invocation with
+`--network full|low|off`.
+
+| Mode | Outbound behavior |
+| --- | --- |
+| `full` (default) | Existing operation-specific opt-ins apply. Selecting `full` alone does not grant consent. |
+| `low` | Bulk transfers also require `--allow-large-download`. These include reference genomes and bootstrap archives, panels, models, annotation databases, package installs, and remote alignment or annotation streams. Small requests such as catalog size probes, release and checksum lookups, and pinned cytoband tables can still run with their usual opt-ins. |
+| `off` | Refuses outbound operations even with `--download`, `--allow-large-download` or a disclosure opt-in. Installed data, cached metadata and checksum-verified staged downloads can still be reused locally. |
+
+The CLI does not detect metered connections; the desktop app or another caller
+can select the mode. The Python API and server accept `network` and
+`allow_large_download` on operation parameters. A server job can be stricter,
+but cannot relax the mode selected when `serve` starts. This setting governs
+outbound operations, not the server's inbound listener or network access by
+other programs.
+
+## Download and disclosure opt-ins
+
 Explicit download/install commands may use the network. Other commands need
 `--download` before fetching missing public data. Without permission they
 name the missing data and explain how to confirm the download. Installed,
@@ -197,7 +217,7 @@ behavior. Classification describes the baseline, before this change.
 | CRAM decoding by htslib/Java tools | No remote fallback intended | Local-only `REF_PATH` retained; no Java reference-download property; missing references fail |
 | Liftover/chip coordinates | Coordinate conversion is local; missing microarray chains were fetched | **Default-violation** found in review: missing whole-chain downloads now require `microarray --download`; pyliftover receives only local chain files |
 | VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | Ensembl VEP could fall back to online annotation if its cache directory was missing | Local caches/indexes only; a missing cache now stops `vep run` and names `vep download` |
-| DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required; every container launch uses `--pull=never`, even if an image disappears after preflight; no runtime dependency installation |
+| DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required. Local compute containers use `--network=none` and `--pull=never` in every mode; no runtime dependency installation. |
 | `ref download`, genome-library install, bootstrap, annotation resources, gene maps, microarray targets, ancestry/AADR/somalier/imputation/yBrowse/gnomAD-SV install, ACMG data preparation | Yes | Explicit network operations; retain downloads and mirrors |
 | Reference/dataset listing/status/verify/count/delete | No | Local metadata; remote sizes only with the opt-in above |
 | `ref index --aligner bwa-mem2` on hs38DH | Yes if published index absent | **Default-violation** found in independent review: fetching prebuilt indexes now requires `--download`; local index building stays available |

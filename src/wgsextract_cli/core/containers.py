@@ -35,8 +35,10 @@ from wgsextract_cli.core.utils import (
 OOM_EVENT_GRACE = 5.0
 # Labels each container with the step run (RUN_TAG) that started it.
 STEP_LABEL = "wgsextract.step"
-# A container's REF_PATH: set and local, so htslib never asks a server.
+# A local REF_PATH avoids older HTSlib's default EBI lookup.
 CONTAINER_REF_PATH = "/tmp/hts-ref/%2s/%2s/%s"
+# Do not pull missing images or let older HTSlib follow CRAM reference URLs.
+LOCAL_RUN_OPTIONS = ("--pull=never", "--network=none")
 
 
 def docker(setup: str) -> str:
@@ -158,8 +160,10 @@ def run_container(
     oom_error: str | None = None,
     capture_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    """Run ``command`` in ``image``. ``paths`` are the files and directories it
-    reads or writes, and ``command`` names them by host_path; their directories
+    """Run ``command`` in an installed image without network access.
+
+    ``paths`` are the files and directories it reads or writes, and
+    ``command`` names them by host_path; their directories
     are mounted at the same paths in the container. POSIX mount paths with
     both a colon and a comma or double quote require an engine with CSV
     ``--mount`` support (Docker or Podman 4.9 and later).
@@ -173,12 +177,11 @@ def run_container(
         {host_path(p) if Path(p).is_dir() else str(Path(host_path(p)).parent)
          for p in paths if p}
     )  # fmt: skip
-    # An image can disappear between the preflight and any stage launch.
     cmd = [
         docker(""),
         "run",
         "--rm",
-        "--pull=never",
+        *LOCAL_RUN_OPTIONS,
         *(["--gpus", "all"] if gpus else []),
     ]
     if cpus is not None:
