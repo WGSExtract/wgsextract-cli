@@ -154,13 +154,12 @@ def test_stream_failure_leaves_no_fastqs_or_collate_spills(monkeypatch, source, 
 @pytest.mark.parametrize("markdup", [False, True], ids=["auto-marker", "markdup"])
 @pytest.mark.parametrize("aligner", ["bwa", "bwa-mem2", "minimap2"])
 def test_paired_stream_body_matches_files_including_discarded_reads(
-    tmp_path, genome_and_ref, monkeypatch, cram, markdup, aligner
+    tmp_path, genome_and_ref, monkeypatch, ram, cram, markdup, aligner
 ):
     if realign.align_cmd.get_tool_path(aligner) is None:
         pytest.skip(f"{aligner} unavailable")
-    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 8 * 1024**3)
-    for module in (realign.align_cmd, preparation, short_reads):
-        monkeypatch.setattr(module, "streaming_mapping_fits", lambda *_a, **_kw: True)
+    # Exercise both streaming memory checks even on runners with little free RAM.
+    ram(16 * 1024**3)
     genome, ref = genome_and_ref
     source, pairs = _old_alignment(tmp_path, genome)
     records = _view("view", source).splitlines()

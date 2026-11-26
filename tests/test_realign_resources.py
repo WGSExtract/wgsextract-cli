@@ -352,7 +352,9 @@ def test_realign_uses_actual_input_count_before_extraction_for_memory_and_disk(
         lambda *_a, **kwargs: budgets.append(("memory", kwargs["reads"])),
     )
 
-    def align(args, **_kwargs):
+    def align(args, *, before_write=None, **_kwargs):
+        if before_write is not None:
+            before_write()
         budgets.append(("align", args.read_count))
         _write_alignment(args)
 
