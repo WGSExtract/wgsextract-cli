@@ -49,13 +49,23 @@ def test_pgx_and_lineage_labels_come_from_the_callers_evidence(sample):
 
 @needs_htslib
 def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> None:
-    panel, vcf, gvcf = _audit_inputs(tmp_path, phase_set="1")
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
     assert "panel_audit" not in pr.build_report(tmp_path, input_file=vcf)["sections"]
+    # Only one of the two qualifying calls is in the matched coding region.
+    exons = tmp_path / "exons.tsv"
+    exons.write_text(
+        "#contig\tchr1\t248956422\n"
+        "gene\ttranscript\ttag\tstrand\texon\texons\tchrom\tstart\tend\tcds_start\tcds_end\tlimitations\n"
+        "MTHFR\tNM_MTHFR\tMANE Select\t+\t1\t1\tchr1\t11796321\t11796321\t11796321\t11796321\t\n"
+        "NOC2L\tNM_NOC2L\tMANE Select\t+\t1\t1\tchr1\t944210\t944210\t944210\t944210\t\n",
+        encoding="utf-8",
+    )
     audit = api.panel.audit(
         api.PanelAuditParams(
             panel=panel,
             vcf_input=vcf,
-            gvcf=gvcf,
+            exons=exons,
+            null_sets=100,
             research_panel=True,
             outdir=tmp_path,
         )
@@ -93,12 +103,15 @@ def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> No
     assert "newer_attempt_failed" in {w["code"] for w in section["warnings"]}
     (finding,) = section["findings"]
     assert finding["value"] == "2 qualifying allele copies"
+    null_scope = "1 qualifying allele copy across 1 eligible gene"
+    assert f"{null_scope}: empirical upper-tail p=" in finding["detail"]
     assert finding["evidence"]["file"] == "audit.panel_audit.json"
     assert finding["evidence"]["manifest"] == audit_manifest
     for role in ("report_html", "report_markdown", "findings_table"):
         content = outputs[role].read_text(encoding="utf-8")
         assert "Research use only; not a diagnosis" in content
         assert "audit.panel_audit.json" in content
+        assert null_scope in content
 
 
 @needs_htslib

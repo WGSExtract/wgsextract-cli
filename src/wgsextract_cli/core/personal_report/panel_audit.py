@@ -37,12 +37,19 @@ def _group_text(group: Mapping[str, Any]) -> str:
     p = calibration.get("upper_tail_p")
     if not isinstance(p, (float, int)) or isinstance(p, bool) or not 0 <= p <= 1:
         return text
+    copies = calibration.get("observed_allele_copies")
+    genes = calibration.get("target_genes")
+    if type(copies) is not int or copies < 0 or type(genes) is not int or genes < 1:
+        return text
     basis = (
         "callable CDS" if calibration.get("basis") == "callable_cds_bp" else "model CDS"
     )
+    copy_label = "copy" if copies == 1 else "copies"
+    gene_label = "gene" if genes == 1 else "genes"
     limitation = "; underpowered" if calibration.get("underpowered") else ""
     return (
-        f"{text}; same-genome {basis} null, empirical upper-tail p={p:.3g}{limitation}"
+        f"{text}; same-genome {basis} null for {copies} qualifying allele {copy_label} "
+        f"across {genes} eligible {gene_label}: empirical upper-tail p={p:.3g}{limitation}"
     )
 
 
