@@ -51,7 +51,7 @@ def test_pgx_and_lineage_labels_come_from_the_callers_evidence(sample):
 def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> None:
     panel, vcf, gvcf = _audit_inputs(tmp_path, phase_set="1")
     assert "panel_audit" not in pr.build_report(tmp_path, input_file=vcf)["sections"]
-    api.panel.audit(
+    audit = api.panel.audit(
         api.PanelAuditParams(
             panel=panel,
             vcf_input=vcf,
@@ -60,7 +60,7 @@ def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> No
             outdir=tmp_path,
         )
     )
-    _manifest(
+    failed_attempt = _manifest(
         tmp_path,
         "later-same-panel",
         "panel audit",
@@ -84,11 +84,17 @@ def test_1287_report_shows_only_the_samples_research_audit(tmp_path: Path) -> No
     section = report["sections"]["panel_audit"]
     assert section["research_only"] is True
     (source,) = section["sources"]
-    assert source["latest_attempt"]["manifest"] == "later-same-panel.manifest.json"
+    assert audit.manifest is not None
+    audit_manifest = Path(audit.manifest).relative_to(tmp_path).as_posix()
+    assert source["manifest"] == audit_manifest
+    assert source["latest_attempt"]["manifest"] == (
+        failed_attempt.relative_to(tmp_path).as_posix()
+    )
     assert "newer_attempt_failed" in {w["code"] for w in section["warnings"]}
     (finding,) = section["findings"]
     assert finding["value"] == "2 qualifying allele copies"
     assert finding["evidence"]["file"] == "audit.panel_audit.json"
+    assert finding["evidence"]["manifest"] == audit_manifest
     for role in ("report_html", "report_markdown", "findings_table"):
         content = outputs[role].read_text(encoding="utf-8")
         assert "Research use only; not a diagnosis" in content
