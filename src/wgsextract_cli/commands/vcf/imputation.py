@@ -244,13 +244,9 @@ def _glimpse(
         )
 
     def ligate(panel: imputation_panel.ChromosomePanel) -> None:
+        phased = [work / f"{panel.chrom}.{i}.bcf" for i in range(len(panel.chunks))]
         listing = work / f"{panel.chrom}.chunks.txt"
-        listing.write_text(
-            "".join(
-                f"{work / f'{panel.chrom}.{i}.bcf'}\n" for i in range(len(panel.chunks))
-            ),
-            newline="\n",
-        )
+        listing.write_text("".join(f"{path}\n" for path in phased), newline="\n")
         ligated = work / f"{panel.chrom}.bcf"
         # GLIMPSE2_ligate has no --log: its report goes there instead.
         _glimpse_tool(
@@ -258,8 +254,12 @@ def _glimpse(
              "--threads", "1"],
             work / f"{panel.chrom}.ligate.log", panel.chrom, report_to_log=True,
         )  # fmt: skip
-        if not ligated.is_file():
+        if not ligated.is_file() or not ligated.stat().st_size:
             raise WGSExtractError(f"GLIMPSE2_ligate wrote no {panel.chrom} output.")
+        # Only the ligated chromosome is needed by the final concat.
+        for path in phased:
+            path.unlink()
+            path.with_suffix(".bcf.csi").unlink(missing_ok=True)
 
     chunks = [
         Job(
