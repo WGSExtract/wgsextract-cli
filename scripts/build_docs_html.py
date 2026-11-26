@@ -32,6 +32,7 @@ CLI_NAV = (
     ("wgs-guide.html", "WGS guide"),
     ("reference.html", "Reference"),
     ("docs/index.html", "Docs"),
+    ("app/mockups/preview/v2/index.html", "UI mockups"),
 )
 APP_NAV = (
     ("index.html", "Home"),
@@ -40,6 +41,7 @@ APP_NAV = (
     ("docs.html", "Docs"),
     ("../index.html", "WGSExtract CLI"),
     ("whats-different.html", "What's Different"),
+    ("mockups/preview/v2/index.html", "UI mockups"),
 )
 
 DOC_EXTRA_CSS = """
