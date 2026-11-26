@@ -181,33 +181,33 @@ def test_bam_sort_budgets_spills_on_the_tmp_dir_volume_separately(
     assert list(scratch.iterdir()) == []
 
 
-@needs_tools("samtools", "bwa", "minimap2")
+@needs_tools("samtools", "bwa", "minimap2", "bgzip")
 @pytest.mark.parametrize(
-    ("options", "budgets"),
+    ("options", "compressed_ref", "budgets"),
     # A 4 GiB input: extraction spills 9 GB and writes 4 GB of FASTQ; the
     # alignment writes a 4 GB BAM. (output GB, --tmp-dir GB)
     [
-        # Files: the FASTQs are staged on --tmp-dir and deleted afterwards.
-        (["--aligner", "minimap2"], (4, 4 + 9)),
+        # Compressed reference: minimap2 stages FASTQs on --tmp-dir.
+        (["--aligner", "minimap2"], True, (4, 4 + 9)),
         # Kept FASTQs are outputs; extraction spills stay on --tmp-dir.
-        (["--aligner", "bwa", "--keep-fastq"], (4 + 4, 9)),
+        (["--aligner", "bwa", "--keep-fastq"], False, (4 + 4, 9)),
         # Streaming: no FASTQs are written at all.
-        (["--aligner", "bwa"], (4, 9)),
+        (["--aligner", "minimap2"], False, (4, 9)),
     ],
     ids=["files", "keep-fastq", "streaming"],
 )
 @pytest.mark.parametrize("short", [None, "scratch", "output"])
 def test_realign_budgets_output_and_staging_volumes_separately(
-    capsys, monkeypatch, volumes, paired_bam, folders, options, budgets, short
+    capsys, ram, volumes, paired_bam, folders, options, compressed_ref, budgets, short
 ):
-    # Streaming needs RAM for a collate bucket beside BWA; give every runner
-    # (a 7 GB macOS one too) plenty, so only disk space decides.
-    real_memory = psutil.virtual_memory
-    monkeypatch.setattr(
-        psutil, "virtual_memory", lambda: real_memory()._replace(available=64 * GIB)
-    )
+    ram(16 * GIB)
     # Collate always spills, however few the reads.
     ref, bam = paired_bam(2_000)
+    if compressed_ref:
+        # #1125: a compressed reference is not eligible for paired streaming.
+        with Path(ref + ".gz").open("wb") as compressed:
+            run_command(["bgzip", "-c", ref], stdout=compressed)
+        ref += ".gz"
     output, scratch = folders
     volumes.sizes[Path(bam)] = 4 * GIB
     volumes.free[output] = budgets[0] - (short == "output")
@@ -219,9 +219,13 @@ def test_realign_budgets_output_and_staging_volumes_separately(
     if short is None:
         assert result["status"] == "ok", result["error"]
         assert (output / "sample_aligned.bam").is_file()
-        # Extraction spills, and staged FASTQs, went to --tmp-dir.
+        # Spills go to --tmp-dir; only file mode also stages the mate FASTQs.
         assert _spills(seen[scratch])
         assert not _spills(seen[output])
+        mates = {"sample_R1.fastq.gz", "sample_R2.fastq.gz"}
+        assert {Path(name).name for name in seen[scratch]} & mates == (
+            mates if compressed_ref else set()
+        )
         assert all(
             len(Path(name).parts) == 1 or Path(name).parts[0] == "manifests"
             for name in seen[output]
@@ -230,7 +234,7 @@ def test_realign_budgets_output_and_staging_volumes_separately(
         message = _failure(result)
         directory, needed = (scratch, budgets[1]) if short == "scratch" else (
             output, budgets[0])  # fmt: skip
-        if short == "scratch" and "--keep-fastq" not in options:
+        if short == "scratch" and not compressed_ref and "--keep-fastq" not in options:
             # Streaming that doesn't fit falls back to staging the FASTQs.
             needed = 4 + 9
         assert f"~{needed} GiB disk on {directory}" in message

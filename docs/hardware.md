@@ -58,11 +58,12 @@ with `bam unalign --se`, then `align` the single-end FASTQ.
 ONT, PacBio and Ultima `--platform` paths handle single ends themselves.
 
 Paired short-read realign streams newly extracted reads as interleaved pairs
-(`-p`) into BWA/bwa-mem2 when a collate bucket fits beside alignment, including
+into BWA or minimap2 `sr` when a collate bucket fits beside alignment, including
 30x genomes. It uses extraction's bucket count for identical records and
-preserves paired filtering; the program header truthfully records stdin `-p`.
-Otherwise it extracts to files without changing aligner. `--keep-fastq`,
-supplied/reused FASTQs, minimap2, GPU and long reads retain their file paths.
+preserves paired filtering. Minimap2 also needs an explicit uncompressed FASTA
+that fits in a single index part. Otherwise realign extracts to files without
+changing aligner. `--keep-fastq`, supplied/reused FASTQs, and GPU short-read
+realignment keep using files.
 `--force-extract` with cached FASTQs at the exact output paths also retains
 file handling and success-cleanup/failure-retention rules; fresh forced
 extraction may stream. Collation needs temp disk and one bucket's RAM beside

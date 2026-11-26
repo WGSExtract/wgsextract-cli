@@ -7,6 +7,7 @@ import os as os
 import shutil as shutil
 import subprocess as subprocess
 import tempfile as tempfile
+from collections.abc import Callable
 from collections.abc import Sequence as Sequence
 from contextlib import ExitStack as ExitStack
 from dataclasses import dataclass as dataclass
@@ -390,6 +391,7 @@ def align_bwa(
     discarded_fastq: Path | None = None,
     read_paths: list[str] | None = None,
     additional_ram_bytes: int = 0,
+    before_write: Callable[[], None] | None = None,
 ) -> None:
     """BWA-MEM alignment with bwa or bwa-mem2 (short_read_aligner's choice),
     or bwa-mem3."""
@@ -420,6 +422,8 @@ def align_bwa(
     ]  # fmt: skip
     ref = Path(setup.ref)
     try:
+        if before_write is not None:
+            before_write()
         command = (
             [*align_cmd, "-p", ref, "-"]
             if upstream
