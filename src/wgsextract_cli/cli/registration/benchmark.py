@@ -6,11 +6,20 @@ from functools import wraps
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.benchmark import BenchmarkParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     HOURS,
     _n,
 )
 from wgsextract_cli.commands._messages.benchmark import CLI_HELP
+
+CERTIFICATION = {
+    "benchmark": tested(
+        "2026-11-25",
+        "test_benchmark.py",
+        "Benchmark orchestration and outputs checked on fixture inputs.",
+    ),
+}
 
 NEEDS = {
     "benchmark": _n(

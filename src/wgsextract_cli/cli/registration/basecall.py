@@ -5,11 +5,20 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.align import BasecallParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, experimental
 from wgsextract_cli.commands._command_needs import (
     HOURS,
     _n,
 )
 from wgsextract_cli.commands._messages.basecall import CLI_HELP
+
+CERTIFICATION = {
+    "basecall": experimental(
+        "2026-11-25",
+        "Dorado integration fixtures do not qualify basecalling accuracy.",
+        f"{REPO}/blob/main/tests/test_basecall.py",
+    ),
+}
 
 NEEDS = {
     "basecall": _n(

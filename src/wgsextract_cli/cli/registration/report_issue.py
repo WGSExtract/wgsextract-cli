@@ -5,10 +5,19 @@ import argparse
 import wgsextract_cli.api.support as support
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
+
+CERTIFICATION = {
+    "report-issue": tested(
+        "2026-11-25",
+        "test_report_issue.py",
+        "Report content and redaction checked against fixture logs and manifests.",
+    ),
+}
 
 NEEDS = {
     "report-issue": _n(SECONDS, scale=""),

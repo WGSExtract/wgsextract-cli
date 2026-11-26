@@ -133,11 +133,13 @@ def test_mcp_offers_read_only_queries_by_default(work, fake_data):
     assert "ref_acmg_data" not in tools
     assert tools["info"]["annotations"]["readOnlyHint"] is True
     assert tools["info"]["inputSchema"]["required"] == ["input"]
+    assert "Certification: Tested" in tools["info"]["description"]
 
     result = mcp.call("info", input=str(bam))
     assert result["isError"] is False
     job = result["structuredContent"]
     assert job["status"] == "succeeded" and job["result"]["metrics"]["sorted"]
+    assert job["result"]["certification"] == "Tested"
     assert json.loads(result["content"][0]["text"]) == job
 
     result = mcp.call("info", input=str(work.parent / "a.bam"))

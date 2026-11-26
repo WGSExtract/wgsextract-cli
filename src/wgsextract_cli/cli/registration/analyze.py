@@ -6,6 +6,7 @@ from functools import wraps
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.analyze import AnalyzeBatchGenParams, AnalyzeComprehensiveParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     _CALL,
     HOURS,
@@ -13,6 +14,19 @@ from wgsextract_cli.commands._command_needs import (
     _n,
 )
 from wgsextract_cli.commands._messages.analyze import CLI_HELP
+
+CERTIFICATION = {
+    "analyze comprehensive": tested(
+        "2026-11-25",
+        "test_analyze_comprehensive.py",
+        "Fixture workflow checks; external backends are not all qualified.",
+    ),
+    "analyze batch-gen": tested(
+        "2026-11-25",
+        "test_analyze_batch.py",
+        "Local batch generation with fixture inputs.",
+    ),
+}
 
 NEEDS = {
     "analyze comprehensive": _n(HOURS, *_CALL),

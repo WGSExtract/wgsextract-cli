@@ -16,6 +16,7 @@ from wgsextract_cli.api.extract import (
     YMtExtractParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     _CALL,
     _SAM,
@@ -24,6 +25,60 @@ from wgsextract_cli.commands._command_needs import (
     _n,
 )
 from wgsextract_cli.commands._messages.extract import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "extract mito-fasta": tested(
+        _REVIEWED,
+        "test_extract_commands.py",
+        "Mitochondrial consensus checked against a planted SNP.",
+    ),
+    "extract mito-vcf": tested(
+        _REVIEWED,
+        "test_extract_commands.py",
+        "Haploid mitochondrial calling checked against a planted SNP.",
+    ),
+    "extract mt-bam": tested(
+        _REVIEWED,
+        "test_extract_commands.py",
+        "Mitochondrial read extraction checked on fixture alignments.",
+    ),
+    "extract ydna-bam": tested(
+        _REVIEWED,
+        "test_extract_commands.py",
+        "Y read extraction checked on fixture alignments.",
+    ),
+    "extract ydna-vcf": tested(
+        _REVIEWED,
+        "test_extract_commands.py",
+        "Haploid Y calling checked against a planted SNP.",
+    ),
+    "extract y-mt-extract": tested(
+        _REVIEWED,
+        "test_extract_commands.py",
+        "Sorted Y and mitochondrial output checked on fixtures.",
+    ),
+    "extract unmapped": tested(
+        _REVIEWED,
+        "test_extract_commands.py",
+        "Unmapped read and mate preservation checked on fixtures.",
+    ),
+    "extract custom": tested(
+        _REVIEWED,
+        "test_extract_commands.py",
+        "Region and BED extraction checked on fixture alignments.",
+    ),
+    "extract region": tested(
+        _REVIEWED,
+        "test_extract_region.py",
+        "Regional BAM and CRAM outputs checked on fixture alignments.",
+    ),
+    "extract bam-subset": tested(
+        _REVIEWED,
+        "test_extract_commands.py",
+        "Read fraction and output checked on fixture BAMs.",
+    ),
+}
 
 NEEDS = {
     "extract mito-fasta": _n(MINUTES, *_CALL, optional="sambamba"),

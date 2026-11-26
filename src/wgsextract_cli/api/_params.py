@@ -245,6 +245,7 @@ class Params:
 
     COMMAND: ClassVar[str] = ""
     CLI_COMMAND: ClassVar[str] = ""
+
     LOCAL_ONLY: ClassVar[bool] = False
     # Keep raw invocation and input paths out of logs/results for cohort data.
     PRIVATE_PROVENANCE: ClassVar[bool] = False
@@ -254,6 +255,11 @@ class Params:
     ATOMIC_WRITES: ClassVar[frozenset[str]] = frozenset()
     _config_default_fields: ClassVar[frozenset[str]] = frozenset()
     VCF_INPUT_OVERRIDES_INPUT: ClassVar[bool] = False
+
+    @classmethod
+    def certification_path(cls) -> str:
+        """Canonical command whose certification applies to these parameters."""
+        return (cls.CLI_COMMAND or cls.COMMAND).partition(" --")[0]
 
     def explicitly_set(self, name: str) -> bool:
         """Whether a nonempty value came from the caller, not config defaults."""
@@ -539,21 +545,25 @@ def _strings(value: Any) -> Any:
     return value
 
 
-def json_schema(cls: type[Params]) -> dict[str, Any]:
+def json_schema(
+    cls: type[Params], *, include_certification: bool = True
+) -> dict[str, Any]:
     """A JSON Schema (draft 2020-12) of the parameters, for server mode and docs."""
+    from wgsextract_cli.commands._certification import command_certification
+
     properties: dict[str, Any] = {}
     required: list[str] = []
     for item in param_fields(cls):
-        schema = _type_schema(item.type, item.spec)
+        property_schema = _type_schema(item.type, item.spec)
         if item.spec.description:
-            schema["description"] = item.spec.description
+            property_schema["description"] = item.spec.description
         if item.required:
             required.append(item.name)
         else:
             default = item.default
-            schema["default"] = _plain(default)
-        properties[item.name] = schema
-    return {
+            property_schema["default"] = _plain(default)
+        properties[item.name] = property_schema
+    schema: dict[str, Any] = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": cls.__name__,
         "description": inspect.cleandoc(cls.__doc__ or "").split("\n\n")[0],
@@ -562,6 +572,11 @@ def json_schema(cls: type[Params]) -> dict[str, Any]:
         "required": required,
         "additionalProperties": False,
     }
+    if include_certification and (path := cls.certification_path()):
+        certification = command_certification(path)
+        schema["x-certification"] = certification.level.value
+        schema["x-certification-evidence"] = certification.evidence()
+    return schema
 
 
 def _type_schema(tp: Any, spec: ParamSpec) -> dict[str, Any]:

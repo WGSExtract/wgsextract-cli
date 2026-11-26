@@ -3,10 +3,19 @@ from __future__ import annotations
 import argparse
 
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
+
+CERTIFICATION = {
+    "serve": tested(
+        "2026-11-25",
+        "test_server_jobs.py",
+        "Local HTTP server and worker jobs checked on fixture inputs.",
+    ),
+}
 
 NEEDS = {
     "serve": _n(SECONDS, scale=" to start; runs until stopped"),

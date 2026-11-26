@@ -9,11 +9,25 @@ from wgsextract_cli.api.sample import (
     SampleUnsetParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     INSTANT,
     _n,
 )
 from wgsextract_cli.commands._messages.sample import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "sample show": tested(
+        _REVIEWED, "test_sample_workspace.py", "Local sample metadata lookup checked."
+    ),
+    "sample set": tested(
+        _REVIEWED, "test_sample_workspace.py", "Local sample metadata updates checked."
+    ),
+    "sample unset": tested(
+        _REVIEWED, "test_sample_workspace.py", "Local sample metadata removal checked."
+    ),
+}
 
 NEEDS = {
     "sample show": _n(INSTANT),

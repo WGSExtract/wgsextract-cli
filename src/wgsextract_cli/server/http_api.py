@@ -613,8 +613,7 @@ def openapi_document(
             "post": {
                 "operationId": op.tool_name,
                 "summary": op.summary,
-                "description": f"Runs `wgsextract {op.command}` as a {op.kind}."
-                + (_DELETES if op.may_delete else ""),
+                "description": op.describe_run() + (_DELETES if op.may_delete else ""),
                 "parameters": [
                     _WAIT,
                     _FULL,

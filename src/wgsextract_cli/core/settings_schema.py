@@ -120,6 +120,9 @@ class ServerSettings:
 class Settings:
     """Every config.toml setting, checked and with its default filled in."""
 
+    certification_notices: bool = setting(
+        True, "Log a notice when running commands at the Tested or Experimental level"
+    )
     allow_reference_downloads: bool = setting(
         False,
         "Allow first-use public reference/model downloads for commands with "

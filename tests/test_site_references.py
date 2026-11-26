@@ -17,12 +17,21 @@ def test_1531_site_build_publishes_live_references_and_cli_cards(
     )
     pages = {
         name: (tmp_path / f"{name}.html").read_text(encoding="utf-8")
-        for name in ("api", "commands", "configuration", "cli", "reference")
+        for name in (
+            "api",
+            "commands",
+            "configuration",
+            "certification",
+            "cli",
+            "reference",
+        )
     }
     assert "<table>" in pages["api"] and "MicroarrayParams" in pages["api"]
     assert "<code>vcf snp</code>" in pages["commands"]
     assert "<code>server_max_jobs</code>" in pages["configuration"]
     assert "docs/hardware.md#threads-and-memory" in pages["configuration"]
     assert 'id="journeys"' in pages["cli"] and 'href="commands.html"' in pages["cli"]
-    for name in ("api", "commands", "configuration"):
+    assert "<code>vcf compare</code>" in pages["certification"]
+    assert "issues/1295#issuecomment-" in pages["certification"]
+    for name in ("api", "commands", "configuration", "certification"):
         assert f'href="{name}.html"' in pages["reference"]

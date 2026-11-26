@@ -5,11 +5,26 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.sign import SignCreateParams, SignVerifyParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     MINUTES,
     _n,
 )
 from wgsextract_cli.commands._messages.sign import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "sign create": tested(
+        _REVIEWED,
+        "test_sign.py",
+        "Fixture signatures created and checked with ssh-keygen.",
+    ),
+    "sign verify": tested(
+        _REVIEWED,
+        "test_sign.py",
+        "Verification and tamper detection checked on fixture signatures.",
+    ),
+}
 
 NEEDS = {
     "sign create": _n(MINUTES, optional="ssh-keygen", scale=" for genome-sized files"),

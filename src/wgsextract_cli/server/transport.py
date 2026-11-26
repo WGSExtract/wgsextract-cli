@@ -6,6 +6,7 @@ schema identifier is not validation of all their fields.
 
 from typing import Annotated, Literal, TypedDict
 
+from wgsextract_cli.core.certification import CertificationLabel
 from wgsextract_cli.core.output_schema import Constraints
 
 Kind = Literal["query", "job"]
@@ -41,6 +42,7 @@ class OperationRequired(TypedDict):
     op: str
     kind: Kind
     summary: str
+    certification: CertificationLabel
 
 
 class OperationSummary(OperationRequired, total=False):

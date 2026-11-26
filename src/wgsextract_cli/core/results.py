@@ -42,6 +42,7 @@ from wgsextract_cli.core.artifacts import (
     Producer,
     RunRecord,
 )
+from wgsextract_cli.core.certification import CertificationLabel
 from wgsextract_cli.core.errors import CodedError, ErrorKind, ResultError
 from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.core.provenance_records import (
@@ -258,6 +259,9 @@ class CommandResult:
         RunRecord,
         Constraints(description="This run's identity in its workflow."),
     ] = field(default_factory=RunRecord)
+    certification: CertificationLabel | None = field(
+        default=None, metadata={"omit_none": True}
+    )
 
     def __post_init__(self) -> None:
         self._lock = threading.Lock()
@@ -487,7 +491,9 @@ class CommandResult:
     def to_dict(self) -> dict[str, object]:
         document: dict[str, object] = {}
         for item in dataclasses.fields(self):
-            document[item.name] = _json_safe_dataclass(getattr(self, item.name))
+            value = getattr(self, item.name)
+            if value is not None or not item.metadata.get("omit_none"):
+                document[item.name] = _json_safe_dataclass(value)
         return document
 
     def to_json(self) -> str:

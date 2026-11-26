@@ -16,6 +16,7 @@ from wgsextract_cli.api.bam import (
     BamUnsortParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     _SAM,
     HOURS,
@@ -25,6 +26,58 @@ from wgsextract_cli.commands._command_needs import (
     _n,
 )
 from wgsextract_cli.commands._messages.bam import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "bam sort": tested(
+        _REVIEWED, "test_bam_commands.py", "Sort order checked on fixture alignments."
+    ),
+    "bam index": tested(
+        _REVIEWED,
+        "test_bam_commands.py",
+        "Index creation checked on fixture alignments.",
+    ),
+    "bam unindex": tested(
+        _REVIEWED,
+        "test_bam_commands.py",
+        "Index removal checked on fixture alignments.",
+    ),
+    "bam unsort": tested(
+        _REVIEWED,
+        "test_bam_commands.py",
+        "BAM and CRAM sort-order headers are relabeled without changing any records.",
+    ),
+    "bam to-cram": tested(
+        _REVIEWED,
+        "test_cram_reference.py",
+        "CRAM conversion and reference handling checked on fixtures.",
+    ),
+    "bam to-bam": tested(
+        _REVIEWED,
+        "test_bam_commands.py",
+        "BAM conversion checked on fixture alignments.",
+    ),
+    "bam unalign": tested(
+        _REVIEWED,
+        "test_bam_unalign_paths.py",
+        "FASTQ output checked on fixture alignments.",
+    ),
+    "bam identify": tested(
+        _REVIEWED,
+        "test_bam_commands.py",
+        "Build identification checked on fixture alignments.",
+    ),
+    "bam merge": tested(
+        _REVIEWED,
+        "test_bam_merge_runs.py",
+        "Merge and publication checked on fixture alignments.",
+    ),
+    "bam to-ubam": tested(
+        _REVIEWED,
+        "test_bam_to_ubam.py",
+        "Unmapped BAM conversion checked on fixture alignments.",
+    ),
+}
 
 NEEDS = {
     "bam sort": _n(HOURS, *_SAM, optional="bcftools sambamba"),

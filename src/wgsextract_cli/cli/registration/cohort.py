@@ -5,10 +5,19 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.cohort import CohortSummarizeParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     MINUTES,
     _n,
 )
+
+CERTIFICATION = {
+    "cohort summarize": tested(
+        "2026-11-25",
+        "test_cohort.py",
+        "Disclosure thresholds and summaries checked on fixture VCFs.",
+    ),
+}
 
 NEEDS = {
     "cohort summarize": _n(MINUTES, "bcftools"),

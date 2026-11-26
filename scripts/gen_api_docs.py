@@ -17,6 +17,7 @@ from wgsextract_cli.api._params import (
     param_fields,
     type_name,
 )
+from wgsextract_cli.commands._certification import command_certification
 
 GROUPS = (
     api.info,
@@ -140,6 +141,7 @@ def group_section(module: ModuleType) -> Iterator[str]:
         yield f"### `api.{short}.{function.__name__}({cls.__name__})`"
         yield ""
         yield f"CLI: `wgsextract {cls.CLI_COMMAND or cls.COMMAND}`."
+        yield command_certification(cls.certification_path()).describe()
         yield ""
         yield docstring(function)
         yield ""

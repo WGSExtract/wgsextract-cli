@@ -8,12 +8,29 @@ from wgsextract_cli.api.methylation import (
     MethylationRegionsParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, tested, validated
 from wgsextract_cli.commands._command_needs import (
     HOURS,
     MINUTES,
     _n,
 )
 from wgsextract_cli.commands._messages.methylation import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "methylation pileup": tested(
+        _REVIEWED,
+        "test_methylation.py",
+        "modkit output and tag handling checked on fixture reads.",
+    ),
+    "methylation regions": validated(
+        _REVIEWED,
+        "HG002 promoter/island BGZF–Parquet parity and chr21 HP checks; not whole-genome read-level phasing validation.",
+        ("macOS",),
+        f"{REPO}/issues/1293#issuecomment-7169747432",
+        f"{REPO}/blob/main/tests/test_methylation_regions.py",
+    ),
+}
 
 NEEDS = {
     "methylation pileup": _n(HOURS, "modkit", "samtools", "tabix", optional="bcftools"),

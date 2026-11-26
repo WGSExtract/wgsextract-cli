@@ -11,7 +11,9 @@ from pathlib import Path
 from scripts.build_site import OUTPUT_DIR, ROOT, SOURCE_DIR, load_page, render_page
 
 DOCS_URL = "https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/"
-REFERENCE_PAGES = frozenset({"api.html", "commands.html", "configuration.html"})
+REFERENCE_PAGES = frozenset(
+    {"api.html", "commands.html", "configuration.html", "certification.html"}
+)
 _REPO_DOC_LINK = re.compile(r"\]\(([\w-]+\.md(?:#[\w-]+)?)\)")
 _GENERATED_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 
@@ -43,6 +45,10 @@ def reference_html(output_name: str, root: Path) -> str:
 
         with settings_suspended():
             text = render_markdown(build_parser()[0])
+    elif output_name == "certification.html":
+        from scripts.site_certification import render
+
+        text = render()
     else:
         raise ValueError(f"Unknown reference page: {output_name}")
     # Page metadata supplies the h1; the Markdown contains the rest of the page.

@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from wgsextract_cli.api._runtime import CancelToken
+from wgsextract_cli.commands._certification import record_certification
 from wgsextract_cli.commands._command_needs import COMMAND_NEEDS, HOURS, MINUTES
 from wgsextract_cli.commands.registry import DEPRECATED
 from wgsextract_cli.core import execution_context, live_status, read_scope
@@ -132,6 +133,7 @@ def dispatch_command(args: argparse.Namespace, explicit_dests: set[str]) -> None
                 _rendering_progress(line),
                 local_reference_lookup(),
             ):
+                record_certification(result, result.command)
                 _run(args, explicit_dests, result)
         finally:
             root.removeHandler(tail)
