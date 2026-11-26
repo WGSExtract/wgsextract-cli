@@ -103,6 +103,69 @@ def test_a_contig_with_no_records_at_its_sites_still_has_a_first_record(indexed)
     assert file.first_record("chr2") == first.encode()
 
 
+@pytest.mark.parametrize(
+    "newline", ["\n", "\r\n", "mixed"], ids=["lf", "crlf", "mixed"]
+)
+def test_1507_dense_local_lookup_keeps_pos_order_and_duplicate_records(
+    tmp_path: Path, newline: str
+) -> None:
+    # Both an END span and multiple REF bases can overlap a target whose
+    # position is different. Neither should be added to the site database.
+    variants = (
+        (101, "chr1\t101\tspan\tA\t<DEL>\t.\tPASS\tEND=500"),
+        (198, "chr1\t198\tdel\tAAA\tA\t.\tPASS\t."),
+        (200, "chr1\t200\tins\tA\tAT\t.\tPASS\t."),
+        (200, "chr1\t200\tins\tA\tAT\t.\tPASS\t."),
+        (200, "chr1\t200\tsnv\tA\tG\t.\tPASS\t."),
+        (350, "chr1\t350\tcontained\tA\tT\t.\tPASS\t."),
+        (600, "chr1\t600\tlast\tA\tC\t.\tPASS\t."),
+        (650, "chr1\t650\toutside\tA\tG\t.\tPASS\t."),
+    )
+    plain = tmp_path / "sites.vcf"
+    header = HEADER.replace(
+        "#CHROM", '##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n#CHROM'
+    )
+    lines = [
+        (
+            line + ("\r" if newline == "\r\n" or (newline == "mixed" and i % 2) else "")
+        ).encode()
+        for i, (_, line) in enumerate(variants)
+    ]
+    plain.write_bytes(header.encode() + b"\n".join(lines) + b"\n")
+    vcf = bgzip_index(plain)
+    sites = [(p, p) for p in range(200, 601, 2)]
+    staged: list[bytes] = []
+    TabixFile(vcf).records_at("chr1", sites, on_group=staged.extend, sweep_dir=tmp_path)
+    expected = [
+        line
+        for (pos, _), line in zip(variants, lines, strict=True)
+        if (pos, pos) in sites
+    ]
+    assert staged == expected == TabixFile(vcf).records_at("chr1", sites)
+
+
+def test_1507_dense_local_lookup_seeks_near_targets_in_a_multiblock_vcf(
+    indexed: tuple[Path, list[tuple[str, int, str]]], tmp_path: Path
+) -> None:
+    vcf, variants = indexed
+    positions = {
+        pos
+        for chrom, pos, _ in variants
+        if chrom == "chr1" and 6_000_000 < pos < 6_050_000
+    }
+    sites = [(pos, pos) for pos in sorted(positions)]
+    reader = TabixFile(str(vcf))
+
+    found = reader.records_at("chr1", sites, sweep_dir=tmp_path)
+
+    assert found == [
+        line.encode()
+        for chrom, pos, line in variants
+        if chrom == "chr1" and pos in positions
+    ]
+    assert reader.bytes_read < vcf.stat().st_size / 5
+
+
 def test_629_windows_stat_and_fstat_difference_does_not_change_the_source(
     indexed: tuple[Path, list[tuple[str, int, str]]], monkeypatch: pytest.MonkeyPatch
 ) -> None:

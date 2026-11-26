@@ -125,6 +125,25 @@ class Settings:
         "Allow first-use public reference/model downloads for commands with "
         "--download (hosts and request data: docs/privacy.md); no sample uploads",
     )
+    cohort_min_samples: int = setting(
+        21,
+        "Cohort disclosure minimum for cohort size and callable participants",
+        minimum=1,
+    )
+    cohort_min_allele_count: int = setting(
+        10, "Cohort disclosure minimum for called ALT copies", minimum=1
+    )
+    cohort_min_carriers: int = setting(
+        10,
+        "Cohort disclosure minimum for both carriers and callable non-carriers",
+        minimum=1,
+    )
+    cohort_min_relatedness: float = setting(
+        0.09,
+        "Cohort warning cutoff on the qc relate scale (twice kinship)",
+        minimum=0.0,
+        maximum=1.0,
+    )
     input_path: str | None = setting(
         None, "Default input BAM/CRAM or FASTQ file", path=True
     )

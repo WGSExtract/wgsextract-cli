@@ -154,6 +154,36 @@ def test_629_custom_spliceai_is_preserved_and_missing_source_never_substituted(
 
 
 @needs_fastvep
+def test_1507_dense_and_sparse_local_sites_build_the_same_spliceai_database(
+    library: tuple[Path, Path], tmp_path: Path
+) -> None:
+    import numpy as np
+
+    from wgsextract_cli.core.acmg_sites import build_databases
+
+    lib, spliceai = library
+    sa_dir = tmp_path / "sa"
+    acmg_data.record_site_data(sa_dir, "per-run", spliceai)
+    outputs = []
+    for name, spans in (
+        ("dense", [(pos, pos) for pos in range(750, 1250, 2)]),
+        ("sparse", [(1014, 1014)]),
+    ):
+        (found,) = build_databases(
+            {"spliceai": ["1"]},
+            {"1": np.array(spans)},
+            str(lib),
+            tmp_path / name,
+            connections=1,
+            sa_dir=sa_dir,
+        )
+        assert found.meta["records"] == 1 and not found.meta["first_record_added"]
+        assert found.meta.get("local_sweep", False) == (name == "dense")
+        outputs.append({p.name: p.read_bytes() for p in found.paths})
+    assert outputs[0] == outputs[1]
+
+
+@needs_fastvep
 def test_629_spliceai_coverage_cannot_be_satisfied_by_another_chromosome(
     publishers, library, tmp_path
 ):
