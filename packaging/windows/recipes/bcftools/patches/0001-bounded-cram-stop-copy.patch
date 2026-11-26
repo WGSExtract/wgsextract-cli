@@ -1,5 +1,5 @@
---- a/htslib-1.24/cram/cram_codecs.c
-+++ b/htslib-1.24/cram/cram_codecs.c
+--- a/htslib-1.25/cram/cram_codecs.c
++++ b/htslib-1.25/cram/cram_codecs.c
 @@ -2030,7 +2030,7 @@
                                        int *out_size) {
      cram_block *b;

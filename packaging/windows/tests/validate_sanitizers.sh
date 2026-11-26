@@ -2,7 +2,7 @@
 # Linux/glibc + GCC. Uses a supplied archive; never downloads or installs.
 set -euo pipefail
 if (( $# < 2 || $# > 3 )); then
-    echo "Usage: $0 HTSLIB_1.24_TARBALL NEW_OUT_DIRECTORY [JOBS]" >&2
+    echo "Usage: $0 HTSLIB_1.25_TARBALL NEW_OUT_DIRECTORY [JOBS]" >&2
     exit 2
 fi
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
@@ -13,7 +13,7 @@ jobs=${3:-2}
 [[ $jobs =~ ^[1-9][0-9]*$ ]]
 case "$build" in "$root"/out/*|"$root"/tmp/*) ;; *) echo 'Output must be under repository out/ or tmp/' >&2; exit 2 ;; esac
 for tool in gcc make tar patch sha256sum awk; do command -v "$tool" >/dev/null; done
-printf '%s  %s\n' 28a8de191381c7a97a35675ceac76fa1ea95e7b678d6a2e9d600a7874e4077de "$archive" | sha256sum --check
+printf '%s  %s\n' 158c271e4e2986bb2dd11283b640edc10c56695b293df77a109ce99480303730 "$archive" | sha256sum --check
 # Require fresh sources: stale configuration can silently disable sanitizers.
 [[ ! -e $build ]]
 mkdir -p "$build"

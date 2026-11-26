@@ -1,5 +1,5 @@
---- a/htslib-1.24/sam.c
-+++ b/htslib-1.24/sam.c
+--- a/htslib-1.25/sam.c
++++ b/htslib-1.25/sam.c
 @@ -38,6 +38,10 @@
  #include <unistd.h>
  #include <regex.h>

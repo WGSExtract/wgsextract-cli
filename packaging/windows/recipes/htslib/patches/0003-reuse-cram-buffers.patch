@@ -120,15 +120,15 @@
  #define CRAM_DEFAULT_LEVEL 5
  
  /* ----------------------------------------------------------------------
-@@ -838,7 +951,7 @@
-     if (!*size)
-         *size = csize*2;
-     for(;;) {
--        new_data = realloc(data, *size);
-+        new_data = data ? realloc(data, *size) : cram_buffer_malloc(*size);
-         if (!new_data) {
-             hts_log_error("Memory allocation failure");
-             goto fail;
+@@ -835,7 +948,7 @@
+     }
+ 
+     assert (*size > 0);
+-    uint8_t *data = malloc(*size);
++    uint8_t *data = cram_buffer_malloc(*size);
+     if (!data) {
+         hts_log_error("Memory allocation failure");
+         goto fail;
 @@ -867,7 +980,7 @@
  
   fail:
