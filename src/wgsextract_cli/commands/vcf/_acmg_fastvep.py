@@ -10,8 +10,8 @@ from collections.abc import Callable
 from typing import IO
 
 from wgsextract_cli.core.execution_context import context_thread
-from wgsextract_cli.core.process_registry import terminate_trees
-from wgsextract_cli.core.utils import WGSExtractError, _is_sigpipe, popen
+from wgsextract_cli.core.process_registry import is_sigpipe, terminate_trees
+from wgsextract_cli.core.utils import WGSExtractError, popen
 
 _SETUP_DONE = "Using --pick order"
 
@@ -131,7 +131,7 @@ class _FastVep:
         detail = "".join(self.strip_tail).strip()
         # Windows reports a failed stdout write instead of SIGPIPE when fastVEP
         # stops. Preserve genuine input errors, but report the downstream cause.
-        broken_pipe = _is_sigpipe(strip) or any(
+        broken_pipe = is_sigpipe(strip) or any(
             line.strip() == "[main_vcfannotate] Error: failed to write to -"
             for line in detail.splitlines()
         )

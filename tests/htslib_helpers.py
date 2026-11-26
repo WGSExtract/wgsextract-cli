@@ -1,10 +1,13 @@
 """Skip markers and tiny indexed files for tests that run samtools/bcftools/htslib."""
 
 import gzip
+import hashlib
+import json
 import random
 import subprocess
 from argparse import Namespace
 from collections.abc import Iterable, Mapping
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -80,6 +83,11 @@ def write_fasta(
     return path
 
 
+@cache
+def _executable_digest(path: str) -> bytes:
+    return hashlib.sha256(Path(path).read_bytes()).digest()
+
+
 def reference_for_vcf(path: Path, vcf: str | Path, *resources: str | Path) -> Path:
     """A compressed synthetic reference consistent with the fixture's REF bases.
 
@@ -105,32 +113,51 @@ def reference_for_vcf(path: Path, vcf: str | Path, *resources: str | Path) -> Pa
                 chrom = match_chromosome_name(chrom, lengths) or chrom
                 for offset, base in enumerate(ref):
                     edits[chrom][int(pos) - 1 + offset] = base
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("wb") as output:
-        process = subprocess.Popen(
-            [get_tool_path("bgzip"), "-c"], stdin=subprocess.PIPE, stdout=output
-        )
-        assert process.stdin is not None
-        try:
-            for chrom, length in lengths.items():
-                process.stdin.write(f">{chrom}\n".encode())
-                positions = sorted(edits[chrom].items())
-                index = 0
-                for start in range(0, length, 1_000_000):
-                    chunk = bytearray(b"A" * min(1_000_000, length - start))
-                    while index < len(positions) and positions[index][0] < start + len(
-                        chunk
-                    ):
-                        pos, base = positions[index]
-                        chunk[pos - start] = ord(base)
-                        index += 1
-                    process.stdin.write(chunk)
-                process.stdin.write(b"\n")
-        finally:
-            process.stdin.close()
-            if process.wait():
-                raise RuntimeError("bgzip failed creating the synthetic reference")
-    run_command(["samtools", "faidx", str(path)], capture_output=True)
+    bgzip = get_tool_path("bgzip")
+    samtools = get_tool_path("samtools")
+    assert bgzip is not None and samtools is not None
+    contigs = [
+        (chrom, length, sorted(edits[chrom].items()))
+        for chrom, length in lengths.items()
+    ]
+
+    def build(root: Path, name: str = "ref.fa.gz") -> None:
+        fasta = root / name
+        with fasta.open("wb") as output:
+            process = subprocess.Popen(
+                [bgzip, "-c"], stdin=subprocess.PIPE, stdout=output
+            )
+            assert process.stdin is not None
+            try:
+                for chrom, length, positions in contigs:
+                    process.stdin.write(f">{chrom}\n".encode())
+                    index = 0
+                    for start in range(0, length, 1_000_000):
+                        chunk = bytearray(b"A" * min(1_000_000, length - start))
+                        while index < len(positions) and positions[index][0] < (
+                            start + len(chunk)
+                        ):
+                            pos, base = positions[index]
+                            chunk[pos - start] = ord(base)
+                            index += 1
+                        process.stdin.write(chunk)
+                    process.stdin.write(b"\n")
+            finally:
+                process.stdin.close()
+                if process.wait():
+                    raise RuntimeError("bgzip failed creating the synthetic reference")
+        run_command([samtools, "faidx", str(fasta)], capture_output=True)
+
+    if not (cacheable_tool(bgzip) and cacheable_tool(samtools)):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        build(path.parent, path.name)
+        return path
+
+    key = _executable_digest(bgzip) + json.dumps(contigs).encode()
+    names = ("ref.fa.gz", "ref.fa.gz.fai", "ref.fa.gz.gzi")
+    prepared = prepared_files(key, samtools, names, build)
+    for name, suffix in zip(names, ("", ".fai", ".gzi"), strict=True):
+        copy_prepared(prepared / name, Path(f"{path}{suffix}"))
     return path
 
 
@@ -226,7 +253,7 @@ def run_wgsextract(*argv: str) -> None:
     its WGSExtractError propagate instead of exiting."""
     from wgsextract_cli.cli.parser import build_parser, parse_args
 
-    args, _ = parse_args(*build_parser(), list(argv))
+    args, _ = parse_args(*build_parser(lazy=True), list(argv))
     args.func(args)
 
 

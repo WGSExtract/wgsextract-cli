@@ -1,5 +1,7 @@
 import os
+import subprocess
 import sys
+from pathlib import Path
 from threading import Event
 
 import pytest
@@ -65,6 +67,37 @@ def test_run_pipeline_tolerates_sigpipe_when_consumer_succeeds():
 def test_run_pipeline_requires_a_stage():
     with pytest.raises(ValueError):
         run_pipeline([])
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows waits defer Ctrl-C")
+def test_1251_windows_pipeline_interrupts_before_stage_finishes(tmp_path: Path) -> None:
+    script = """
+import _thread
+import sys
+import threading
+import time
+from pathlib import Path
+from wgsextract_cli.core.utils import run_pipeline
+
+root = Path(sys.argv[1])
+def interrupt_after_start():
+    while not (root / "started").exists():
+        time.sleep(0.01)
+    _thread.interrupt_main()
+
+stage = (
+    "from pathlib import Path; import sys, time; root = Path(sys.argv[1]); "
+    "(root / 'started').touch(); time.sleep(5); (root / 'finished').touch()"
+)
+threading.Thread(target=interrupt_after_start, daemon=True).start()
+try:
+    run_pipeline([[sys.executable, "-c", stage, str(root)]])
+except KeyboardInterrupt:
+    pass
+"""
+    subprocess.run([PY, "-c", script, str(tmp_path)], check=True, timeout=25)
+    assert (tmp_path / "started").is_file()
+    assert not (tmp_path / "finished").exists()
 
 
 @pytest.mark.parametrize("heartbeat", [False, True])

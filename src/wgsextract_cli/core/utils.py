@@ -6,7 +6,6 @@ import os
 import re
 import shlex
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -43,10 +42,12 @@ from wgsextract_cli.core.process_registry import (
     cleanup_processes as cleanup_processes,
 )
 from wgsextract_cli.core.process_registry import (
+    is_sigpipe,
     proc_registry,
     process_group_kwargs,
     remember_process_group,
     terminate_trees,
+    wait_for_pipeline,
 )
 from wgsextract_cli.core.process_registry import (
     wait_with_cancel as wait_with_cancel,
@@ -576,11 +577,6 @@ def _stderr_tail(stream: IO[bytes], max_lines: int = 20) -> str:
     return "\n".join(lines[-max_lines:])
 
 
-def _is_sigpipe(returncode: int) -> bool:
-    sigpipe = getattr(signal, "SIGPIPE", None)
-    return sigpipe is not None and returncode in (-sigpipe, 128 + sigpipe)
-
-
 def _running(proc: subprocess.Popen[bytes]) -> bool:
     return proc.poll() is None
 
@@ -598,6 +594,7 @@ def run_pipeline(
     expected_reads: int | None = None,
     estimate: Callable[[], tuple[float, float]] | None = None,
     keep_stderr: Mapping[int, PathInput] | None = None,
+    fail_fast: bool = False,
 ) -> None:
     """
     Run commands connected stdout-to-stdin, wait for every stage, and raise
@@ -608,6 +605,8 @@ def run_pipeline(
     included in the error. An upstream stage killed by SIGPIPE is not a failure
     when every later stage succeeded (the consumer intentionally stopped early).
     Cancellation kills and reaps every started stage before closing its files.
+    ``fail_fast`` also stops waiting for live stages on a real stage failure,
+    for streams whose upstream may otherwise wait indefinitely for input.
     ``estimate`` returns the shares of the input read and output written,
     which the heartbeat shows until a stage reports its read count.
     ``keep_stderr`` maps a stage's index to a file that receives its whole
@@ -750,16 +749,9 @@ def run_pipeline(
                 ),
             )
             monitor.__enter__()
-        returncodes = []
-        for proc in procs:
-            while cancel_event is not None and proc.poll() is None:
-                if cancel_event.is_set():
-                    raise WGSExtractError(f"{description} cancelled")
-                try:
-                    proc.wait(timeout=0.1)
-                except subprocess.TimeoutExpired:
-                    pass
-            returncodes.append(proc.wait())
+        returncodes = wait_for_pipeline(
+            procs, cancel_event, description, fail_fast=fail_fast
+        )
         if monitor:
             monitor.__exit__()
             monitor = None
@@ -767,12 +759,14 @@ def run_pipeline(
         for index, (stage, returncode) in enumerate(
             zip(stages, returncodes, strict=True)
         ):
+            if returncode is None:
+                continue  # still running; the finally block will reap it
             # Label from the caller's argv, not the resolved (possibly wrapped) one.
             args = _caller_args(stage)
             stage_name = " ".join([Path(args[0]).name, *args[1:2]]) if args else "?"
             tail = _stderr_tail(stderr_files[index])
             downstream_ok = all(code == 0 for code in returncodes[index + 1 :])
-            if returncode == 0 or (_is_sigpipe(returncode) and downstream_ok):
+            if returncode == 0 or (is_sigpipe(returncode) and downstream_ok):
                 if tail:
                     logging.debug(f"{stage_name} stderr:\n{tail}")
                 continue
