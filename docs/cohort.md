@@ -62,13 +62,16 @@ entry. For relatedness and sex, give a top-level `relatedness` object with
 `result`, `samples`, and `pairs` artifact bindings from the same `qc relate`
 run; use its TSV outputs. Match input paths and sample names to the
 participants. An identified same-person pair fails; other flags and
-uncertainty are preserved privately, not used as exclusion criteria.
+uncertainty are preserved privately, not used as exclusion criteria. See
+[cohort disclosure defaults](privacy.md#cohort-disclosure-defaults) for the
+warning on related participants and what missing relatedness data means.
 
 ## Run and interpret
 
 ```bash
 wgsextract cohort summarize cohort.json --region chr22 --outdir summary
 wgsextract cohort summarize cohort.json --bed targets.bed --format parquet --outdir summary
+wgsextract cohort summarize cohort.json --export --outdir summary
 ```
 
 Without a scope all autosomes are included. `--region` takes 1-based
@@ -96,6 +99,7 @@ not pass the call checks.
 | `reference_called_samples` | Callable participants whose entire genotype is reference. |
 | `not_assessed_samples` | Participants without a record or a gVCF scope declaration covering the site. |
 | `uncallable_samples` | Other participants that did not contribute alleles, such as covered no-calls, low-quality records, or gaps inside the assessed interval. |
+| `below_disclosure_threshold` | `true` if the cohort, callable participants, ALT copies, carriers or callable non-carriers did not meet the active disclosure minimums. The exact counts remain in this private table. |
 
 A `1/2` genotype contributes one copy to each ALT with two called
 chromosomes. Calls carrying only another ALT count toward `an`, not `ac` or
@@ -121,3 +125,13 @@ keep inputs, temporary work and outputs on a local, access-controlled disk,
 outside cloud sync and network mounts. Even without identifiers, rare
 alleles and exact counts can reveal membership: these data are not anonymous
 or approved for sharing.
+
+Add `--export` to also write a separate local `cohort.variants.export.tsv`
+or `.parquet`. It contains only `chrom`, `pos`, `ref`, `alt` and `carriers`,
+and omits flagged rows entirely. Exact callable and non-carrier counts
+stay private so missingness cannot be calculated directly. A run with no eligible
+rows writes an empty table with the same schema. The exact summary,
+result manifest, and any per-person join stay private, including when an
+export is requested. Use a fresh output directory when preparing a new
+export: runs without `--export` do not remove prior exports. Keep even the
+reduced file private unless its intended disclosure has been reviewed.
