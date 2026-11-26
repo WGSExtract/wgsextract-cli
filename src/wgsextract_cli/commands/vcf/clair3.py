@@ -215,7 +215,7 @@ def _require_cuda_torch(image: str) -> None:
     try:
         probe = run_container(
             image, ["python", "-c", _CUDA_PROBE], [],
-            gpus=True, local_only=True, capture_output=True,
+            gpus=True, capture_output=True,
         )  # fmt: skip
         found = probe.stdout.split()[-1:]
     except (OSError, subprocess.SubprocessError) as error:
@@ -239,9 +239,7 @@ def _image_clair3_version(image: str) -> tuple[int, ...] | None:
     if image == DEFAULT_GPU_IMAGE:
         return DEFAULT_GPU_VERSION
     try:
-        result = run_container(
-            image, [GPU_CLAIR3, "-v"], [], local_only=True, capture_output=True
-        )
+        result = run_container(image, [GPU_CLAIR3, "-v"], [], capture_output=True)
     except (OSError, subprocess.SubprocessError):
         return None
     # NVIDIA's CUDA images print their CUDA version first.
@@ -652,7 +650,7 @@ def _run_clair3(
                         gpu.image, command,
                         container_paths([run_reads, run_ref, run_model, *weights,
                                          run_work]),
-                        gpus=True, cpus=int(threads), local_only=True,
+                        gpus=True, cpus=int(threads),
                         temporary_directory=run_work,
                     )  # fmt: skip
                 else:

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.home_isolation import isolated_home_env, state_directory_setting
 from tests.htslib_helpers import (
     needs_htslib,
     needs_tools,
@@ -19,8 +20,10 @@ from tests.htslib_helpers import (
 )
 from wgsextract_cli import api
 from wgsextract_cli.core.config import settings
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.ref_library.remote_sizes import CACHE_FILE
 from wgsextract_cli.core.results import CommandResult, collecting
+from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.server.operations import RequestError, find, params_from_json
 
 
@@ -39,6 +42,122 @@ def blocked_network(monkeypatch):
     assert not attempts, (
         "#1052: catching a connection error does not make a command offline"
     )
+
+
+@needs_htslib
+def test_1591_default_cli_commands_never_attempt_network(tmp_path: Path) -> None:
+    bam = sam_to_bam(
+        [
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:chr1\tLN:1000",
+            "@SQ\tSN:chrM\tLN:16569",
+            "fake1\t0\tchr1\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
+            "fakeMT\t0\tchrM\t1\t60\t4M\t*\t0\t0\tACGT\tIIII",
+        ],
+        tmp_path / "fake.bam",
+    )
+    vcf = tmp_path / "fake.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=1000>\n"
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        '##FORMAT=<ID=DP,Number=1,Type=Integer,Description="Depth">\n'
+        '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tfake\n"
+        "chr1\t20\trsFake\tA\tG\t50\tPASS\t.\tGT:DP:GQ\t0/1:30:60\n"
+    )
+    fasta = write_fasta(
+        tmp_path / "reference" / "genomes" / "hg19.fa",
+        {"chr1": "A" * 1000},
+        assembly="GRCh37",
+    )
+    library = fasta.parent.parent
+    templates = library / "microarray" / "raw_file_templates" / "body"
+    templates.mkdir(parents=True)
+    (templates / "FTDNA_V1_Affy.csv").write_text("rsFake,1,20,\n")
+    table = tmp_path / "chips.tab"
+    table.write_text("chr1\t20\trsFake\n")
+    run_command([get_tool_path("bgzip"), "-f", str(table)])
+    targets = tmp_path / "chips.tab.gz"
+    run_command([get_tool_path("tabix"), "-s1", "-b2", "-e2", str(targets)])
+    prepared = tmp_path / "prepared.vcf.gz"
+    config = tmp_path / "config.toml"
+    config.write_text(state_directory_setting(tmp_path), encoding="utf-8")
+    commands = [
+        (["--version"], 0),
+        (["help", "--all", "--json"], 0),
+        (["info", "--input", bam], 0),
+        (["extract", "mt-bam", "--input", bam], 0),
+        (["vcf", "prepare", "--vcf-input", str(vcf), "--output", str(prepared)], 0),
+        (["vcf", "info", "--vcf-input", str(prepared)], 0),
+        (["ref", "status", "--ref", str(library)], 0),
+        (["ref", "microarray-targets", "--ref", str(library)], 2),
+        (["microarray", "--input", str(vcf), "--ref", str(fasta),
+          "--ref-vcf-tab", str(targets)], 0),
+        (["report", "--input", bam, "--outdir", str(tmp_path)], 0),
+    ]  # fmt: skip
+    # Start fresh and instrument sockets before importing the CLI. Keep only
+    # OS/tool search paths, not the caller's config, proxy or download settings.
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() in {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR"}
+    }
+    env.update(isolated_home_env(tmp_path / "home"))
+    env.update(dict.fromkeys(("TEMP", "TMP", "TMPDIR"), str(tmp_path)))
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            """
+import json
+import socket
+import sys
+
+attempts = []
+
+def refuse(*args, **kwargs):
+    attempts.append(" ".join(command[:2]))
+    raise AssertionError("network blocked by offline regression")
+
+for name in ("connect", "connect_ex"):
+    setattr(socket.socket, name, refuse)
+for name in ("getaddrinfo", "gethostbyname", "gethostbyname_ex",
+             "gethostbyaddr", "getnameinfo"):
+    setattr(socket, name, refuse)
+
+command = ["startup"]
+try:
+    sys.path.insert(0, sys.argv[3])
+    from wgsextract_cli.main import main
+
+    for command, expected in json.loads(sys.argv[2]):
+        code = 0
+        try:
+            main(["--config", sys.argv[1], *command])
+        except SystemExit as exc:
+            code = exc.code
+        assert code == expected, (command, code)
+finally:
+    assert not attempts, f"Unexpected network attempts: {attempts}"
+""",
+            str(config),
+            json.dumps(commands),
+            str(Path(__file__).resolve().parents[1] / "src"),
+        ],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=90,
+    )
+    assert run.returncode == 0, run.stdout[-3000:] + run.stderr
+    assert "hg18ToHg19.over.chain.gz" in run.stderr and "--download" in run.stderr
+    output = tmp_path / "WGSEv6"
+    assert (output / "fake_mtDNA.bam").is_file()
+    assert "rsFake\t1\t20\tAG" in (output / "fake_CombinedKit.txt").read_text()
+    assert (tmp_path / "fake_personal_report.html").is_file()
 
 
 @needs_htslib
