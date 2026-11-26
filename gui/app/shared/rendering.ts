@@ -7,5 +7,6 @@ export * from "./rendering-toml.js";
 
 /** Whether every word of `filter` appears in `text`. */
 export function rowMatchesFilter(text: string, filter: string): boolean {
-    return filter.toLowerCase().split(/\s+/).filter(Boolean).every((word) => text.includes(word));
+    const haystack = text.toLowerCase();
+    return filter.toLowerCase().split(/\s+/).filter(Boolean).every((word) => haystack.includes(word));
 }
