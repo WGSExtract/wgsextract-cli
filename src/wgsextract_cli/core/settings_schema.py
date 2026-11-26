@@ -16,6 +16,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Final, Literal, cast, get_type_hints
 
+from wgsextract_cli.core.network_options import NETWORK_MODES
 from wgsextract_cli.core.paths import expand_path
 from wgsextract_cli.core.thread_count import parse_thread_count
 
@@ -52,7 +53,6 @@ def setting(
 
 
 AUTO_OFF = ("auto", "off")
-NETWORK_MODES = ("full", "low", "off")
 # --reference-evidence: none, or a gVCF beside the variant VCF (#863).
 REFERENCE_EVIDENCE_MODES = ("none", "gvcf")
 

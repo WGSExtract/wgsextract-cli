@@ -384,7 +384,7 @@ class JobManager:
         effective = op.request_values(
             with_config_defaults(params_from_json(op, params))
         )
-        from wgsextract_cli.core.settings_schema import NETWORK_MODES
+        from wgsextract_cli.core.network_options import NETWORK_MODES
 
         if self.network is not None:
             requested = effective.get("network") or self.network

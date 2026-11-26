@@ -16,8 +16,9 @@ from dataclasses import MISSING, dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TypeVar
 
+from wgsextract_cli.core.network_options import NETWORK_MODES
 from wgsextract_cli.core.remote_input import is_url
-from wgsextract_cli.core.settings_schema import NETWORK_MODES, SETTINGS
+from wgsextract_cli.core.settings_schema import SETTINGS
 from wgsextract_cli.core.utils import UsageError
 
 PathKind = Literal["file", "directory", "file_or_directory"]

@@ -16,6 +16,21 @@ from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.operations import find, params_from_json
 
 
+def test_1591_help_exposes_network_options_to_cli_callers(capsys) -> None:
+    main(["help", "--all", "--json"])
+    index = json.loads(capsys.readouterr().out)
+    options = {option["dest"]: option for option in index["global_options"]}
+    assert options["network"]["choices"] == ["full", "low", "off"]
+    assert "--allow-large-download" in options["allow_large_download"]["flags"]
+
+    main(["help", "ref", "download", "--json"])
+    props = json.loads(capsys.readouterr().out)["commands"][0]["input_schema"][
+        "properties"
+    ]
+    assert props["network"]["x-cli-flag"] == "--network"
+    assert props["allow_large_download"]["x-cli-flag"] == "--allow-large-download"
+
+
 @pytest.mark.parametrize(
     ("configured", "flags", "refusal"),
     [

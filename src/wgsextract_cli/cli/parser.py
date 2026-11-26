@@ -14,6 +14,7 @@ from wgsextract_cli.commands.registry import (
 )
 from wgsextract_cli.core.config import get_config_path, settings
 from wgsextract_cli.core.messages import CLI_HELP
+from wgsextract_cli.core.network_options import NETWORK_MODES
 from wgsextract_cli.core.thread_count import parse_thread_count
 
 from .argv import config_path_from_argv as config_path_from_argv
@@ -636,8 +637,6 @@ def add_shared_arguments(
         metavar="FILE",
         help="Read and save settings in this config.toml instead of the per-user one.",
     )
-    from wgsextract_cli.core.settings_schema import NETWORK_MODES
-
     add(
         "--network",
         choices=NETWORK_MODES,
