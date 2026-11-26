@@ -242,7 +242,7 @@ test("the shipped Gene page sidebar item renders its icon and keeps the label on
         iconMap,
     });
     const nav = renderNavigation();
-    assert.match(nav, /data-gene-page-open><span class="nav-icon" aria-hidden="true">[\s\S]*?bi-file-earmark-medical[\s\S]*?<\/span><span>Gene page<\/span><\/button>/);
+    assert.match(nav, /data-gene-page-open><span class="nav-icon" aria-hidden="true">[\s\S]*?class="wgse-icon"[\s\S]*?<\/span><span>Gene page<\/span><\/button>/);
     const css = await readFile(new URL("../web/styles.css", import.meta.url), "utf8");
     assert.match(css, /\[data-gene-page-open\][^{]*\{[^}]*white-space:\s*nowrap/);
 });

@@ -1518,6 +1518,28 @@ h2 .icon-title-icon .wgse-icon {
   color: var(--danger);
 }
 
+.pill.certification-badge {
+  --certification-tint: var(--muted);
+  justify-self: start;
+  color: color-mix(in srgb, var(--text) 74%, var(--certification-tint));
+  background: color-mix(in srgb, var(--certification-tint) 16%, transparent);
+  outline-color: color-mix(in srgb, var(--certification-tint) 45%, transparent);
+  text-decoration: none;
+}
+
+.certification-badge.primary { --certification-tint: var(--accent); }
+.certification-badge.success { --certification-tint: var(--success); }
+.certification-badge.warning { --certification-tint: var(--warning); }
+
+.certification-badge:hover {
+  text-decoration: underline;
+}
+
+.pill.certification-badge:focus-visible {
+  outline: 2px solid var(--focus-ring-color);
+  outline-offset: 2px;
+}
+
 .inline-error {
   display: flex;
   align-items: center;

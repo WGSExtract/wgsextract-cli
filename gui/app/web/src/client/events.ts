@@ -2,6 +2,7 @@ import { api } from "./api.js";
 import { bindGenomeViewerEvents } from "./genome-viewer-entry.js";
 import { configValueKey, splitPathList } from "../../../shared/rendering.js";
 import { installGlobalBundleLoadHandler, loadBundleFromPicker, type Bootstrap } from "./bundle-loading.js";
+import { bindCertificationLinks } from "./certification-links.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
 import { checkedOptionsChanged, clearDataSourceCache, clearFileStateCache, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
@@ -39,6 +40,7 @@ export function bindEvents(bootstrap: Bootstrap) {
     installGlobalBundleLoadHandler(bootstrap);
     installGlobalAboutHandler();
     bindTooltipEvents();
+    bindCertificationLinks();
     bindSplitters(app);
     bindUpdateEvents();
     elements("[data-page-id]").forEach((button) => {

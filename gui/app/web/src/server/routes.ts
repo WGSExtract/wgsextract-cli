@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import path from "node:path";
 import type { BundleManifest, Labels, LooseRecord, RunProcess } from "../../../shared/types.js";
+import { certificationEvidenceUrl } from "../../../shared/command-certification.js";
 import { evaluatePrecheck, evaluateSetupInstallSizePrecheck, fileStateValues, runDataSource } from "./action-runner.js";
 import { serveBundleFavicon, serveBundleFile } from "./assets.js";
 import { loadLocaleOptions } from "./bundle-loader.js";
@@ -39,6 +40,7 @@ import { lookupViewerRsid } from "./viewer-rsids.js";
 import { RemoteViewerConnection } from "./remote-viewer-connection.js";
 import { RemoteViewer } from "./remote-viewer.js";
 import { openGeneIobio } from "./gene-iobio.js";
+import { openSystemBrowser } from "./system-browser.js";
 import { genePagePrerequisites, installGenePagePrerequisite, openGenePage } from "./gene-page.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
@@ -94,7 +96,7 @@ type StepRunner = typeof runSetup;
 const maxRememberedPicks = 16;
 const independentlyGuardedRoutes = new Set([
     "/api/workspace-location/move", "/api/setup/stream", "/api/uninstall/stream",
-    "/api/path/pick", "/api/shutdown", "/api/gene/iobio/open",
+    "/api/path/pick", "/api/shutdown", "/api/gene/iobio/open", "/api/certification/open",
 ]);
 
 async function assertCurrentWorkspace(context: RequestHandlerContext, request?: IncomingMessage) {
@@ -257,6 +259,13 @@ export function createRequestHandler(context: RequestHandlerContext) {
         "/api/gene/iobio/open": async (request, response) => {
             requireViewerLoopback(request);
             json(response, await openGeneIobio(await readBody(request, context), context.openBrowser));
+        },
+        "/api/certification/open": async (request, response) => {
+            requireViewerLoopback(request);
+            const url = certificationEvidenceUrl(requiredString(await readBody(request, context), "command"));
+            if (!url) throw new HttpError(404, "Unknown certification command.");
+            await (context.openBrowser ?? openSystemBrowser)(url);
+            json(response, { ok: true });
         },
         "/api/gene/prerequisites": async (request, response) => {
             requireViewerLoopback(request);

@@ -176,6 +176,15 @@
 "app.workspaceLocation.settingOnly.title" = "Modifier le paramètre seulement"  # i18n-source-hash:95a44482
 "app.workspaceLocation.title" = "Emplacement de l’espace de travail utilisateur"  # i18n-source-hash:3e182ff1
 "app.workspaceLocation.useDefault.title" = "Utiliser la valeur par défaut"  # i18n-source-hash:e145072a
+"certification.Certified.label" = "Certifié"  # i18n-source-hash:7f98f010
+"certification.Certified.tooltip" = "Vérifié sur des données réelles sous Linux, macOS et Windows, avec des tests de régression des outils. Sélectionnez le badge pour consulter les preuves."  # i18n-source-hash:f793af48
+"certification.Experimental.label" = "Expérimental"  # i18n-source-hash:b718f8c3
+"certification.Experimental.tooltip" = "Vérification limitée ou non établie, ou usage réservé à la recherche. Sélectionnez le badge pour consulter les preuves."  # i18n-source-hash:5f705a9b
+"certification.Tested.label" = "Testé"  # i18n-source-hash:91900379
+"certification.Tested.tooltip" = "Vérifié avec des données ou des jeux d’essai. Sélectionnez le badge pour consulter les preuves."  # i18n-source-hash:966ab992
+"certification.Validated.label" = "Validé"  # i18n-source-hash:75444607
+"certification.Validated.tooltip" = "Vérifié sur des données réelles sur au moins une plateforme. Sélectionnez le badge pour consulter les preuves et les limites."  # i18n-source-hash:8d9fb04f
+"certification.openError" = "Impossible d’ouvrir les preuves de certification dans le navigateur par défaut."  # i18n-source-hash:ded15a2e
 "exitCodes.default.1.summary" = "La commande a signalé un échec générique. Consultez la sortie ci-dessus pour l’erreur WGS Extract ou outil spécifique."  # i18n-source-hash:ebe2ed7e
 "exitCodes.default.1.title" = "Échec général de la commande"  # i18n-source-hash:87ab6134
 "exitCodes.default.126.summary" = "La commande ou le script existe, mais n’a pas pu être exécuté. Vérifiez les permissions du fichier et que la configuration s’est terminée correctement."  # i18n-source-hash:587086c7

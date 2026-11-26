@@ -4,6 +4,7 @@ import { formatLabel, renderIcon, renderInlineError, renderLoadingInline } from 
 import { actionPrecheckKey, contextWithFileState, ensureActionPrecheck } from "../operations.js";
 import { actionNoticeKey, renderResultNotice } from "../result-view.js";
 import { state } from "../state.js";
+import { renderCertificationBadge } from "./certification-badge.js";
 import type { ActionReference, ActionSpec, CommandContext, ManifestLocation, PrecheckResult } from "../../../../shared/types.js";
 
 /** Groups a section's actions by their optional 1-based `row`, omitting rows whose actions are all hidden. */
@@ -46,6 +47,7 @@ export function renderActions(actions: ActionSpec[], context: CommandContext, ow
       const tooltipText = actionTooltipText(action.tooltip ?? command, disabledText ?? (isLoadingPrecheck ? state.labels.refreshingTitle : ""));
       const roleClass = action.role === "destructive" ? "danger" : action.role === "secondary" ? "secondary" : "primary";
       const showsPrecheck = Boolean(precheck?.message);
+      const noticeKey = actionNoticeKey(reference, resolvedContext);
       return `
         <span class="action-stack${compact ? " compact" : ""}${showsPrecheck ? " has-precheck" : ""}" data-tooltip="${escapeAttribute(tooltipText)}" ${disabledText || isLoadingPrecheck ? 'tabindex="0"' : ""}>
           ${showsPrecheck && precheck ? renderPrecheckBanner(precheck) : isLoadingPrecheck ? renderLoadingInline(state.labels.refreshingTitle) : ""}
@@ -61,8 +63,9 @@ export function renderActions(actions: ActionSpec[], context: CommandContext, ow
             <span class="action-icon" aria-hidden="true">${renderIcon(action.iconName, action.textIcon, "▶")}</span>
             ${action.iconOnly ? "" : `<span>${escapeHTML(action.title)}</span>`}
           </button>
+          ${state.manifest?.id === "wgs-extract" ? renderCertificationBadge(action, JSON.stringify(noticeKey), state.labels.certificationStrings) : ""}
           ${actionEstimate(action)}
-          ${renderResultNotice(state.actionResultNotices.get(actionNoticeKey(reference, resolvedContext)))}
+          ${renderResultNotice(state.actionResultNotices.get(noticeKey))}
         </span>
       `;
     })

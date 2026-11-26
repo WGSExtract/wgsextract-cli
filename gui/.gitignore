@@ -32,6 +32,7 @@ tests/conformance/*/settings/
 
 # TypeScript build outputs and dependencies
 /app/shared/generated/server-transport.ts
+/app/shared/generated/command-certifications.ts
 app/dist/
 app/web/vendor/igv/igv.min.js
 app/.cache/

@@ -156,6 +156,20 @@ test("#1113: gene.iobio hand-off needs fresh consent and passes only gene and bu
   assert.equal(launched.length, 1);
 });
 
+test("#1596: desktop evidence opens only a known command on the published certification page", async (t) => {
+  const launched = [];
+  const { baseURL } = await withTestServer(t, { openBrowser: async (url) => { launched.push(url.href); } });
+  const route = "/api/certification/open";
+  const body = { command: "qc fastqc" };
+  assert.equal((await apiFetch(baseURL, route, { body, headers: { "x-gfc-token": "" } })).status, 401);
+  assert.equal((await apiFetch(baseURL, route, { body: { command: "https://example.org/" } })).status, 404);
+  assert.deepEqual(launched, []);
+
+  const result = await apiFetch(baseURL, route, { body: { ...body, url: "https://example.org/" } });
+  assert.equal(result.status, 200);
+  assert.deepEqual(launched, ["https://wgse.bio/wgsextract-cli/certification.html#command-qc-fastqc"]);
+});
+
 test("#1090: opening viewer files uses API authentication and rejects traversal or non-local paths", async (t) => {
   const manifest = testManifest();
   manifest.id = "wgs-extract";
