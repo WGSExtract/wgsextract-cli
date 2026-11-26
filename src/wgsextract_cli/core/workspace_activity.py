@@ -1,6 +1,5 @@
 """Coordinate CLI operations with the desktop app's workspace moves."""
 
-import json
 import os
 import re
 import sys
@@ -9,7 +8,6 @@ from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path
-from uuid import uuid4
 
 from wgsextract_cli.core.errors import WGSExtractError
 
@@ -92,9 +90,10 @@ def relocated_config_path(path: Path) -> Path:
         return path
     settings = desktop_data_dir() / "settings.json"
     try:
-        redirects = json.loads(settings.read_text(encoding="utf-8")).get(
-            "movedConfigPaths"
-        )
+        record = settings.read_text(encoding="utf-8")
+        import json
+
+        redirects = json.loads(record).get("movedConfigPaths")
     except (OSError, ValueError, AttributeError):
         return path
     if not isinstance(redirects, dict):
@@ -141,7 +140,6 @@ def hold_workspace(admitted_by: str | None = None) -> WorkspaceLease:
     # The Node app also uses this fixed location: a standalone CLI must see a
     # move even when it did not inherit the launching GUI's data override.
     directory = _standard_desktop_data_dir() / "workspace-activity"
-    marker = directory / f"use-{os.getpid()}-{uuid4()}"
     try:
         directory.mkdir(exist_ok=True, mode=0o700)
     except FileNotFoundError:
@@ -151,6 +149,9 @@ def hold_workspace(admitted_by: str | None = None) -> WorkspaceLease:
         if admitted_by is not None:
             raise WGSExtractError("The job lost its workspace lease.") from None
         return WorkspaceLease(None, ExitStack())
+    from uuid import uuid4
+
+    marker = directory / f"use-{os.getpid()}-{uuid4()}"
     # Publish before looking for moves. A mover checks for users only
     # after publishing its own marker. No file handle stays open.
     marker.touch(exist_ok=False)

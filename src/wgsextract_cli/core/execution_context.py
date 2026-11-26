@@ -18,18 +18,19 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import os
-import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from concurrent.futures import Future, ThreadPoolExecutor  # noqa: TID251
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from wgsextract_cli.api._runtime import CancelToken, ProgressCallback
-    from wgsextract_cli.core.results import CommandResult
+    import threading
 
-T = TypeVar("T")
+    from wgsextract_cli.api._runtime import CancelToken, ProgressCallback
+    from wgsextract_cli.core._context_executor import (
+        ContextThreadPoolExecutor as ContextThreadPoolExecutor,
+    )
+    from wgsextract_cli.core.results import CommandResult
 
 
 @dataclass(eq=False)
@@ -106,6 +107,8 @@ def context_thread(
 ) -> threading.Thread:  # noqa: TID251
     """A ``threading.Thread`` (not started) running ``target`` in a copy of
     the calling thread's context."""
+    import threading
+
     context = contextvars.copy_context()
     return threading.Thread(  # noqa: TID251
         target=context.run,
@@ -116,24 +119,10 @@ def context_thread(
     )
 
 
-class _ContextFuture(Future[T]):
-    """A future whose done-callbacks run in a copy of the context they were
-    added in, whichever thread completes or cancels it (or adds them to a
-    future already done)."""
+def __getattr__(name: str) -> object:
+    # Reading the current config does not need an executor or its worker setup.
+    if name == "ContextThreadPoolExecutor":
+        from wgsextract_cli.core._context_executor import ContextThreadPoolExecutor
 
-    def add_done_callback(self, fn: Callable[[Future[T]], object]) -> None:
-        context = contextvars.copy_context()
-        super().add_done_callback(lambda future: context.run(fn, future))
-
-
-class ContextThreadPoolExecutor(ThreadPoolExecutor):
-    """A ``ThreadPoolExecutor`` whose tasks each run in a copy of the context
-    of the thread that submitted them, and whose futures' done-callbacks run
-    in a copy of the context they were added in."""
-
-    def submit(self, fn: Callable[..., T], /, *args: Any, **kwargs: Any) -> Future[T]:
-        future = super().submit(contextvars.copy_context().run, fn, *args, **kwargs)
-        # The executor makes a plain Future; give it context-bound callbacks
-        # before anyone can add one.
-        future.__class__ = _ContextFuture
-        return future
+        return ContextThreadPoolExecutor
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

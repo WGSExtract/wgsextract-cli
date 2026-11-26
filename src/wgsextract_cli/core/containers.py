@@ -155,7 +155,6 @@ def run_container(
     entrypoint: str | None = None,
     temporary_directory: str | None = None,
     working_directory: str | None = None,
-    local_only: bool = False,
     oom_error: str | None = None,
     capture_output: bool = False,
 ) -> subprocess.CompletedProcess[str]:
@@ -174,11 +173,16 @@ def run_container(
         {host_path(p) if Path(p).is_dir() else str(Path(host_path(p)).parent)
          for p in paths if p}
     )  # fmt: skip
-    cmd = [docker(""), "run", "--rm", *(["--gpus", "all"] if gpus else [])]
+    # An image can disappear between the preflight and any stage launch.
+    cmd = [
+        docker(""),
+        "run",
+        "--rm",
+        "--pull=never",
+        *(["--gpus", "all"] if gpus else []),
+    ]
     if cpus is not None:
         cmd += ["--cpus", str(cpus)]
-    if local_only:
-        cmd += ["--pull=never"]
     if entrypoint is not None:
         cmd += ["--entrypoint", entrypoint]
     # The user has no home in the image; tools that write settings use /tmp.

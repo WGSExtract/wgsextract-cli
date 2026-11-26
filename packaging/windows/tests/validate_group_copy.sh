@@ -2,7 +2,7 @@
 # Optional diagnostic: does not install the candidate patch in any recipe.
 set -euo pipefail
 if (( $# != 4 )); then
-    echo "Usage: $0 PRISTINE_BCFTOOLS_1.24_DIR CANDIDATE_PATCH SANITIZED_HTSLIB_BUILD NEW_OUT_DIR" >&2
+    echo "Usage: $0 PRISTINE_BCFTOOLS_1.25_DIR CANDIDATE_PATCH SANITIZED_HTSLIB_BUILD NEW_OUT_DIR" >&2
     exit 2
 fi
 root=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)

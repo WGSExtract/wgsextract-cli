@@ -10,9 +10,7 @@ NO_COLOR is set (https://no-color.org), so piped output stays plain.
 from __future__ import annotations
 
 import argparse
-import difflib
 import functools
-import json
 import os
 import re
 import sys
@@ -23,7 +21,6 @@ from dataclasses import dataclass
 from typing import IO, Any
 
 from wgsextract_cli.commands._advanced_options import ADVANCED_OPTIONS, COMMON_ADVANCED
-from wgsextract_cli.commands._certification import command_certification
 from wgsextract_cli.commands.registry import (
     ADVANCED,
     ADVANCED_SUBCOMMANDS,
@@ -37,8 +34,9 @@ from wgsextract_cli.commands.registry import (
     Journey,
     command_tier,
 )
-from wgsextract_cli.core.certification import CertificationLevel
 from wgsextract_cli.core.messages import CLI_HELP
+
+from .stdio import enable_windows_vt as _enable_windows_vt
 
 if typing.TYPE_CHECKING:
     from wgsextract_cli.commands._command_needs import CommandNeeds
@@ -83,30 +81,6 @@ def use_color(stream: IO[str] | None = None) -> bool:
         return not _WINDOWS or _enable_windows_vt(stream.fileno())
     except (AttributeError, OSError, ValueError):
         return False
-
-
-@functools.cache
-def _enable_windows_vt(fd: int) -> bool:
-    """Turn on ENABLE_VIRTUAL_TERMINAL_PROCESSING for the console behind fd;
-    False if it isn't a console or refuses the mode."""
-    if sys.platform != "win32":
-        return False
-    import ctypes
-    import msvcrt
-    from ctypes import wintypes
-
-    enable_vt = 0x0004  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    try:
-        handle = msvcrt.get_osfhandle(fd)
-    except OSError:
-        return False
-    mode = wintypes.DWORD()
-    if not kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-        return False
-    if mode.value & enable_vt:
-        return True
-    return bool(kernel32.SetConsoleMode(handle, mode.value | enable_vt))
 
 
 def _style(text: str, code: str, color: bool) -> str:
@@ -362,11 +336,13 @@ def resolve_command(
 
 
 def suggestions(value: str, choices: Iterable[Any]) -> list[str]:
+    from difflib import get_close_matches
+
     """Up to three choices close to value, ignoring case."""
     names = {str(choice).lower(): str(choice) for choice in choices}
     if value.lower() in names:
         return [names[value.lower()]]
-    close = difflib.get_close_matches(value.lower(), list(names), n=3, cutoff=0.6)
+    close = get_close_matches(value.lower(), list(names), n=3, cutoff=0.6)
     if not close:
         close = [name for name in names if name.startswith(value.lower())][:3]
     return [names[name] for name in close]
@@ -407,6 +383,9 @@ def unknown_option_message(prog: str, option: str, known: Iterable[str]) -> str:
 def format_index(entries: list[CommandEntry], color: bool) -> str:
     """'help --all': one line per command, grouped by tier, each summary cut
     to fit INDEX_WIDTH columns ('help <command>' has the rest)."""
+    from wgsextract_cli.commands._certification import command_certification
+    from wgsextract_cli.core.certification import CertificationLevel
+
     width = max((len(entry.path) for entry in entries), default=0) + 2
     level_width = max(len(level.value) for level in CertificationLevel) + 2
     room = INDEX_WIDTH - 2 - width - level_width
@@ -480,6 +459,8 @@ def index_json(
         are the external tools a run checks for, "optional_tools" those only
         some options use, and "runtime" one of instant, seconds, minutes, hours
         or download, for a 30x genome unless "runtime_text" says otherwise."""
+    from wgsextract_cli.commands._certification import command_certification
+
     schemas = {} if compact else input_schemas()
     commands = []
     for entry in entries:
@@ -568,6 +549,7 @@ def command_contract(path: str, deprecation: Deprecation | None) -> str:
 def dump_json(document: dict[str, Any]) -> str:
     """Compact JSON with each item of a top-level list on its own line: few
     tokens for an agent, and still greppable ('grep "path":"vcf snp"')."""
+    import json
 
     def compact(value: Any) -> str:
         return json.dumps(value, separators=(",", ":"))

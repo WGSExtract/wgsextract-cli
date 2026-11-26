@@ -245,7 +245,6 @@ def _allows_downloads(params: Params) -> bool:
             "ref gerp",
             "ref acmg-data",
             "ref bootstrap",
-            "ref microarray-targets",
             "deps install",
             "vep download",
             "example-genome download",
