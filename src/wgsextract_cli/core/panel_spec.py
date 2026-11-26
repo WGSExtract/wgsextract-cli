@@ -174,7 +174,8 @@ class Haplotype(_Haplotype, total=False):
 class Calibration(TypedDict, total=False):
     null_sets: Annotated[int, Constraints(minimum=100, maximum=100000)]
     match_on: Annotated[
-        list[Literal["callable_cds_bp"]], Constraints(minItems=1, uniqueItems=True)
+        list[Literal["callable_cds_bp", "gnomad_expected_syn"]],
+        Constraints(minItems=1, uniqueItems=True, contains_const="callable_cds_bp"),
     ]
     bins: Annotated[int, Constraints(minimum=2, maximum=100)]
     seed: Annotated[int, Constraints(minimum=0, maximum=2**53)]
@@ -466,6 +467,8 @@ def _constrain(value: Any, rule: Constraints, path: str, out: list[Problem]) -> 
     for least in (rule.minLength, rule.minItems, rule.minProperties):
         if least is not None and len(value) < least:
             messages.append("must not be empty")
+    if rule.contains_const is not None and rule.contains_const not in value:
+        messages.append(f"must include {rule.contains_const!r}")
     out.extend(Problem("bad_value", path, text) for text in messages)
     if rule.uniqueItems:
         seen: set[str] = set()

@@ -37,6 +37,7 @@ class Constraints:
     uniqueItems: bool | None = None
     minProperties: int | None = None
     enum: tuple[str | int | float | bool | None, ...] | None = None
+    contains_const: str | None = None
 
 
 @dataclass(frozen=True)
@@ -129,7 +130,10 @@ def output_schema(
             for metadata in args[1:]:
                 if not isinstance(metadata, Constraints):
                     raise TypeError(f"Unsupported schema metadata: {metadata!r}")
-                values: dict[str, object] = vars(metadata)
+                values: dict[str, object] = vars(metadata).copy()
+                contains = values.pop("contains_const")
+                if contains is not None:
+                    result["contains"] = {"const": contains}
                 if metadata.enum is not None:
                     values = {**values, "enum": list(metadata.enum)}
                 result.update(

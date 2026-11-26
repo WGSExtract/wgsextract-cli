@@ -769,6 +769,20 @@ def test_1287_missing_mane_reference_requires_explicit_download(tmp_path: Path) 
     assert not list(library.iterdir())
 
 
+def test_1429_expected_counts_cannot_replace_callable_cds(tmp_path: Path) -> None:
+    document = _panel()
+    document["calibration"]["match_on"] = ["gnomad_expected_syn"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(document, SCHEMA)
+    result = _check(_write(tmp_path, document, ".json"))
+    assert result.exit_code == 1
+    assert result.details is not None
+    assert any(
+        issue["location"] == "calibration.match_on"
+        for issue in result.details["problems"]
+    )
+
+
 def test_panel_bed_accepts_hgnc_ids(tmp_path):
     result = api.panel.bed(
         api.PanelBedParams(genes=("HGNC:613",), pad_kb=0, outdir=tmp_path)

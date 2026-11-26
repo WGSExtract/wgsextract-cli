@@ -228,6 +228,26 @@ and matched lengths, mean, population standard deviation, percentile
 null mean below one are flagged as underpowered. The comparison is to other
 genes in **this sample**, not population disease association.
 
+### Optional gnomAD expected-count covariate
+
+`--gnomad-expected`, or `match_on = ["callable_cds_bp", "gnomad_expected_syn"]`
+under `[calibration]`, adds a second comparison. Its source is gnomAD v4.1
+gene constraint metrics (`syn.exp`, [CC0 1.0](https://gnomad.broadinstitute.org/terms)),
+matched to the exact versioned RefSeq MANE Select transcript. Genes without
+a matching expectation are listed or counted as exclusions; missing values
+are not zero. The public checksum-pinned file is fetched from the WGS Extract
+GitHub data release only with explicit `--download`. No sample data is sent.
+
+The original CDS-only null is unchanged. On the subset with expected
+counts, the report compares a CDS-only null with one also matched within
+four expected-count quantiles per CDS stratum. The two arms use the same
+genes and filters, so the comparison separates covariate effects from
+missing data. It shows balance on both axes and flags a joint null that
+becomes underpowered or has no comparable controls. A joint target more
+than 20% outside its actual control range on either axis is not calibrated.
+The synonymous
+expectation is a matching covariate, not a risk score.
+
 ## Problems and their locations
 
 A location is a key path with 0-based indices (`groups[1].genes[3]`), or a

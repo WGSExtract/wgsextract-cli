@@ -248,6 +248,36 @@ def test_1287_audit_download_cannot_follow_an_escaping_partial(tmp_path, monkeyp
     assert error.value.code == "path_not_allowed"
 
 
+@pytest.mark.parametrize("activation", ["panel", "flag"])
+def test_1429_audit_guards_implicit_gnomad_counts_with_custom_exons(
+    tmp_path, monkeypatch, activation
+):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+    panel = allowed / "research.toml"
+    panel.write_text(
+        '[calibration]\nmatch_on = ["callable_cds_bp", "gnomad_expected_syn"]\n'
+        if activation == "panel"
+        else ""
+    )
+    reference = tmp_path / "outside"
+    monkeypatch.setitem(settings, "reference_library", str(reference))
+    params = params_from_json(
+        find("panel/audit"),
+        {
+            "panel": str(panel),
+            "vcf_input": str(allowed / "sample.vcf"),
+            "exons": str(allowed / "custom.tsv"),
+            "research_panel": True,
+            "gnomad_expected": activation == "flag",
+        },
+    )
+    with pytest.raises(RequestError) as error:
+        PathGuard([allowed]).check(params)
+    assert error.value.code == "path_not_allowed"
+    PathGuard([allowed, reference]).check(params)
+
+
 @pytest.mark.parametrize(
     "relative_path",
     [
