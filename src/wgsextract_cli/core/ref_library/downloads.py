@@ -144,7 +144,6 @@ def download_file(
 ) -> bool:
     """Prefer audited, pinned mirrors; retain the original source as fallback."""
     require_download(Path(dest).name)
-    require_network(Path(dest).name, large=large)
     from wgsextract_cli.core.resource_mirrors import (
         download_mirror,
         mirror_for,
@@ -156,7 +155,16 @@ def download_file(
         r"[a-fA-F0-9]{64}", expected_sha256
     ):
         raise WGSExtractError("Expected SHA256 must contain exactly 64 hex digits.")
-    if use_mirrors and (entry := mirror_for(url)):
+    entry = mirror_for(url) if use_mirrors else None
+    if entry and expected_sha256 is None and not entry.get("upstream_mutable", False):
+        expected_sha256 = entry["sha256"]
+    if (
+        use_cache
+        and expected_sha256
+        and _restore_download(url, dest, expected_sha256.lower())
+    ):
+        return True
+    if entry:
         if Path(dest + ".partial").exists():
             logging.info(
                 "Resuming upstream partial for %s; skipping mirror.", entry["id"]
@@ -173,8 +181,6 @@ def download_file(
             return True
         if cancel_event and cancel_event.is_set():
             return False
-        if expected_sha256 is None and not entry.get("upstream_mutable", False):
-            expected_sha256 = entry["sha256"]
     ok = _download_file(
         url,
         dest,
@@ -183,6 +189,7 @@ def download_file(
         expected_sha256=expected_sha256,
         resolve_release_digest=resolve_release_digest,
         use_cache=use_cache,
+        large=large,
     )
     if ok and use_mirrors and Path(dest + ".mirror").exists():
         try:
@@ -223,6 +230,22 @@ def download_file(
     return ok
 
 
+def _restore_download(url: str, dest: str, expected_sha256: str | None) -> bool:
+    target = Path(dest)
+    partial = dest + ".partial"
+    if target.exists() or Path(partial).exists():
+        return False
+    if not restore_cached_download(
+        url,
+        target,
+        checksum_hint=f"sha256:{expected_sha256}" if expected_sha256 else None,
+        verify=lambda path: verify_download_sha256(str(path), expected_sha256),
+    ):
+        return False
+    Path(partial + ".source").unlink(missing_ok=True)
+    return True
+
+
 def _download_file(
     url: str,
     dest: str,
@@ -232,18 +255,16 @@ def _download_file(
     expected_sha256: str | None = None,
     resolve_release_digest: bool = True,
     use_cache: bool = True,
+    large: bool = True,
 ) -> bool:
     """Resume .partial files; replace dest only after verification.
 
     Disabling release metadata lookup does not disable an explicit checksum.
     Disabling cache use bypasses both restoration and publication.
     """
-    require_http_url(url, "download URL")
+    require_network(Path(dest).name, large=large)
+    pinned = expected_sha256 is not None
     partial_dest = dest + ".partial"
-    if expected_sha256 is not None and not re.fullmatch(
-        r"[a-fA-F0-9]{64}", expected_sha256
-    ):
-        raise WGSExtractError("Expected SHA256 must contain exactly 64 hex digits.")
     try:
         if expected_sha256 is not None:
             expected_sha256 = expected_sha256.lower()
@@ -271,15 +292,8 @@ def _download_file(
     segments_path = Path(partial_dest + ".segments")
     if partial_path.exists() and not segments_path.exists():
         _bind_single_partial(url, partial_path)
-    if use_cache and not dest_path.exists() and not partial_path.exists():
-        if restore_cached_download(
-            url,
-            dest_path,
-            checksum_hint=checksum_hint,
-            verify=lambda path: verify_download_sha256(str(path), expected_sha256),
-        ):
-            Path(partial_dest + ".source").unlink(missing_ok=True)
-            return True
+    if use_cache and not pinned and _restore_download(url, dest, expected_sha256):
+        return True
 
     # A large file over several connections (servers that cap each one), unless
     # an earlier single-connection attempt left a partial to resume.

@@ -96,7 +96,14 @@ def restricted_hts_env(
     from wgsextract_cli.core.network_policy import network_mode
 
     mode = network_mode()
-    if mode == "full" or (mode == "low" and current().allow_large_download):
+    # An explicit remote alignment is authorized by realign's input checks;
+    # a local CRAM's embedded reference URL is not an opt-in.
+    explicit_remote = any(
+        arg.lower().startswith(("http://", "https://")) for arg in command[1:]
+    )
+    if explicit_remote and (
+        mode == "full" or (mode == "low" and current().allow_large_download)
+    ):
         return env
     # A syntactically invalid libcurl proxy fails without DNS or a socket.
     # Clear NO_PROXY too: even a loopback UR must not bypass this guard.

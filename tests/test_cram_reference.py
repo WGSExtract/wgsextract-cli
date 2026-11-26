@@ -79,10 +79,22 @@ def test_1061_missing_ur_decodes_from_local_reference(tmp_path, monkeypatch, suf
 
 
 @pytest.mark.parametrize(
-    ("mode", "allowed"), [("off", False), ("low", False), ("full", True)]
+    ("mode", "confirm_bulk", "remote_input", "allowed"),
+    [
+        ("off", True, True, False),
+        ("full", False, False, False),
+        ("low", True, False, False),
+        ("low", False, True, False),
+        ("low", True, True, True),
+    ],
 )
 def test_1591_legacy_native_url_fallback_obeys_mode(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, allowed: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    confirm_bulk: bool,
+    remote_input: bool,
+    allowed: bool,
 ) -> None:
     require_bare_name_fakes()
     curl = shutil.which("curl")
@@ -92,16 +104,22 @@ def test_1591_legacy_native_url_fallback_obeys_mode(
     monkeypatch.setenv("NO_PROXY", "*")
     with serving(data=b"reference") as http:
         # Older HTSlib uses libcurl to follow the CRAM header's reference URL.
-        command = [curl, "-fsS", "--max-time", "5", http.url_for("reference.fa")]
+        command = [curl, "-fsS", "--max-time", "5"]
+        fallback = http.url_for("reference.fa")
+        http.files["reads.cram"] = b"remote reads"
         python_tool(
             tmp_path,
             "samtools",
-            f"import subprocess\nraise SystemExit(subprocess.call({command!r}))",
+            "import subprocess, sys\n"
+            f"url = sys.argv[-1] if sys.argv[-1].startswith('http://') else {fallback!r}\n"
+            f"raise SystemExit(subprocess.call({command!r} + [url]))",
         )
-        with network_options(mode, False):
-            run = run_command(["samtools", "view", "reads.cram"], True, check=False)
+        reads = http.url_for("reads.cram") if remote_input else "reads.cram"
+        with network_options(mode, confirm_bulk):
+            run = run_command(["samtools", "view", reads], True, check=False)
         if allowed:
-            assert run.stdout == "reference"
+            assert run.stdout == "remote reads"
+            assert http.get_paths == ["reads.cram"]
         else:
             assert run.returncode != 0
             assert not http.requests

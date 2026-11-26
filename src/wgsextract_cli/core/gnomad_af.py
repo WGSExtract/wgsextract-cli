@@ -117,9 +117,9 @@ def _index_table(path: str) -> None:
 
 
 def _remote_size(url: str, cancel_event: CancelEvent | None) -> int:
-    require_network("gnomAD contig size lookup", large=False)
     if entry := mirror_for(url):
         return int(entry["size"])
+    require_network("gnomAD contig size lookup", large=False)
     request = Request(url, method="HEAD")
     response_cm = (
         cancellable_http(request, 60, cancel_event)

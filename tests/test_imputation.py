@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -266,6 +267,73 @@ def test_1118_a_failed_chunk_names_itself_and_writes_no_output(reflib, tmp_path)
             )
         )
     assert not (tmp_path / "imputed.vcf.gz").exists()
+
+
+@needs_htslib
+@needs_glimpse
+def test_1125_imputation_retires_phased_chunks_before_gather(
+    reflib: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    files: list[str] = []
+    real_popen = subprocess.Popen
+
+    def launch(argv: list[str], *args: Any, **kwargs: Any) -> subprocess.Popen[Any]:
+        if isinstance(argv, (list, tuple)) and any(
+            Path(tool).stem == "bcftools" and subcommand == "concat"
+            for tool, subcommand in zip(argv, argv[1:], strict=False)
+        ):
+            files.extend(path.name for path in scratch.rglob("*.bcf*"))
+        return real_popen(argv, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    monkeypatch.setitem(settings, "temp_directory", str(scratch))
+    result = api.vcf.impute(
+        api.VcfImputeParams(
+            input=FIXTURE / "reads.bam",
+            ref=reflib,
+            outdir=tmp_path / "out",
+            threads=2,
+        )
+    )
+
+    assert "chr20.bcf" in files
+    assert not [name for name in files if re.match(r"chr20\.\d+\.bcf", name)]
+    sites = result.metrics["imputed_sites"]
+    assert isinstance(sites, int) and sites > 1000
+
+
+@needs_htslib
+@needs_glimpse
+def test_1125_empty_ligation_does_not_publish_an_imputed_vcf(
+    reflib: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real_popen = subprocess.Popen
+
+    def launch(argv: list[str], *args: Any, **kwargs: Any) -> subprocess.Popen[Any]:
+        if (
+            isinstance(argv, (list, tuple))
+            and "--output" in argv
+            and any(Path(arg).stem.casefold() == "glimpse2_ligate" for arg in argv)
+        ):
+            output = argv[argv.index("--output") + 1]
+            argv = [
+                sys.executable, "-c",
+                "from pathlib import Path; import sys; Path(sys.argv[1]).touch()",
+                output,
+            ]  # fmt: skip
+        return real_popen(argv, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess, "Popen", launch)
+    out = tmp_path / "out"
+    with pytest.raises(api.CommandFailed, match=r"GLIMPSE2_ligate wrote no chr20"):
+        api.vcf.impute(
+            api.VcfImputeParams(
+                input=FIXTURE / "reads.bam", ref=reflib, outdir=out, threads=2
+            )
+        )
+    assert not (out / "imputed.vcf.gz").exists()
 
 
 def _beagle_installed() -> bool:
