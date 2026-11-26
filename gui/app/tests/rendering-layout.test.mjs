@@ -12,20 +12,43 @@ async function clientView() {
   return { state, ...(await import("../dist/web/src/client/view.js")), ...(await import("../dist/web/src/client/terminal.js")) };
 }
 
-test("every WGSExtract page and titled section has a Bootstrap icon", () => {
-  // UI audit: Workflows and several Advanced sections fell back to emoji while the app showed Bootstrap Icons.
+test("every WGSExtract page and titled section has a platform-mode icon", () => {
+  // UI audit: Workflows and several Advanced sections unexpectedly fell back to emoji.
   const bundle = new URL("../../examples/WGSExtract/", import.meta.url);
-  const bootstrap = parseIconMapToml(readFileSync(new URL("iconmap.toml", bundle), "utf8")).bootstrap;
+  const { bootstrap, wgse } = parseIconMapToml(readFileSync(new URL("iconmap.toml", bundle), "utf8"));
   const missing = [];
   for (const file of readdirSync(new URL("pages/", bundle))) {
     const page = parseJsonWithComments(readFileSync(new URL(`pages/${file}`, bundle), "utf8"));
     for (const item of [page, ...(page.sections ?? []).filter((section) => section.title)]) {
-      if (!bootstrap[item.iconName]) {
+      if (!wgse[item.iconName] && !bootstrap[item.iconName]) {
         missing.push(`${page.id}/${item.id}`);
       }
     }
   }
   assert.deepEqual(missing, []);
+});
+
+test("domain icons use the shipped SVG in platform mode without replacing generic icons or emoji", async () => {
+  const { state, renderCheckboxGroup } = await clientView();
+  const { renderIcon } = await import("../dist/web/src/client/model.js");
+  state.iconMap = parseIconMapToml(`
+[wgse]
+cnv = "cnv"
+external = "<script>not an icon</script>"
+[bootstrap]
+settings = "gear"
+external = "file-text"
+[emoji]
+cnv = "📊"
+`);
+  const control = { id: "calls", kind: "checkboxGroup", options: [{ id: "cnv", title: "Copy number", iconName: "cnv" }] };
+  const rendered = renderCheckboxGroup(control);
+  assert.match(rendered, /<svg[^>]+aria-hidden="true"[^>]*>.*<\/svg><\/span><span>Copy number<\/span>/);
+  assert.match(renderIcon("settings", null, ""), /bi-gear/);
+  assert.match(renderIcon("external", null, ""), /bi-file-text/);
+  state.iconSet = "emoji";
+  assert.match(renderCheckboxGroup(control), /emoji-icon[^>]*>📊<\/span>/);
+  assert.doesNotMatch(renderCheckboxGroup(control), /<svg/);
 });
 
 test("a section with only actions has no blank header or controls band", async () => {

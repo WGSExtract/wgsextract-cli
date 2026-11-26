@@ -406,7 +406,6 @@ gui/mockups/
     tokens.css base.css components/*.css
     design-system.html  every token and component, light and dark
   icons/
-    wgse/*.svg          WGS Extract icons (drawn for this project)
     lucide/*.svg        Lucide UI icons (ISC, see lucide/LICENSE)
     logos/*.svg         three app logomark options
     build_icons.py      bundles the SVGs into icons.js (run after edits)

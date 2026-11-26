@@ -131,6 +131,8 @@
         "advancedOnly": { "$ref": "#/$defs/advancedOnly" },
         "id": { "type": "string", "description": "Option value; an empty id is a dropdown's unset choice." },
         "title": { "type": "string", "minLength": 1 },
+        "iconName": { "type": "string", "description": "Semantic icon key for a checkbox option." },
+        "textIcon": { "$ref": "#/$defs/textIcon" },
         "selected": { "type": "boolean", "default": false },
         "group": { "type": "string", "description": "Checkbox group heading, or with layout rows the row title." },
         "category": { "type": "string", "description": "With layout rows, the heading above a set of rows." },
