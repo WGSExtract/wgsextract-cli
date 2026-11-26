@@ -1,5 +1,7 @@
 """Real Git regressions for safely retiring detached worktrees (#1393)."""
 
+import shlex
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -175,6 +177,113 @@ def test_1393_detached_still_requires_safe_location_and_contents(
     for reason, path in paths.items():
         assert result(repo, path)["reason"] == reason
         assert path.is_dir()
+
+
+def test_1393_named_build_outputs_do_not_pin_a_finished_checkout(
+    repo: Path, github: Callable[..., None]
+) -> None:
+    path = repo / "scratch" / "rt-build"
+    git(repo, "worktree", "add", "--detach", str(path))
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    write(path / "scratch/build/helper.o", "generated build artifact")
+    write(path / "out/cert.log", "evidence\n")
+    (path / "out/trace.log").write_bytes(b"\0binary trace")
+    write(path / "state/last-run.json", "{}\n")
+    (repo / ".git/info/exclude").write_text("/state/\n")
+    github([])
+    args = ("--github", "--include-detached", "--apply")
+
+    run = cleanup(repo, *args)
+    assert run.returncode == 0, run.stderr
+    assert path.is_dir()
+
+    run = cleanup(
+        repo,
+        *args,
+        "--disposable-output",
+        "scratch/build/*.o",
+        "--disposable-output",
+        "out/*.log",
+    )
+    assert run.returncode == 0, run.stderr
+    record = result(repo, path)
+    assert record["reason"] == "removed"
+    assert record["disposable_outputs"] == ["out/trace.log", "scratch/build/helper.o"]
+    assert not path.exists()
+    archive = repo / str(record["archive"])
+    assert (archive / "out/cert.log").read_text() == "evidence\n"
+    assert (archive / "state/last-run.json").read_text() == "{}\n"
+
+
+@pytest.mark.parametrize(
+    "blocker", ["directory", "link", "tracked", "untracked", "key"]
+)
+def test_1393_named_output_glob_cannot_override_safety_checks(
+    repo: Path, github: Callable[..., None], blocker: str
+) -> None:
+    path = repo / "scratch" / "rt-build"
+    git(repo, "worktree", "add", "--detach", str(path))
+    artifact = path / "out/helper.o"
+    if blocker == "directory":
+        write(artifact / "sample.bin", "keep")
+    elif blocker == "link":
+        artifact.parent.mkdir()
+        artifact.symlink_to(path / "source.txt")
+    elif blocker == "key":
+        artifact = artifact.with_name("private-key.o")
+        write(artifact, "keep")
+    else:
+        write(artifact, "keep")
+        if blocker == "tracked":
+            git(path, "add", "-f", "out/helper.o")
+        else:
+            (path / ".gitignore").write_text("/scratch/\n")
+            git(path, "commit", "-am", "Do not ignore out")
+    git(repo, "update-ref", "refs/remotes/origin/main", git(path, "rev-parse", "HEAD"))
+    github([])
+
+    run = cleanup(
+        repo,
+        "--github",
+        "--include-detached",
+        "--disposable-output",
+        "out/*.o",
+        "--apply",
+    )
+    assert run.returncode == 0, run.stderr
+    assert artifact.exists()
+    assert result(repo, path)["disposable_outputs"] == []
+
+
+def test_1393_replacement_at_planned_output_path_is_retained(
+    repo: Path, github: Callable[..., None]
+) -> None:
+    path = repo / "scratch" / "rt-build"
+    git(repo, "worktree", "add", "--detach", str(path))
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    artifact = path / "out/helper.o"
+    replacement = repo / "out/replacement.o"
+    write(artifact, "generated build artifact")
+    write(replacement, "new output not present at planning time")
+    github([])
+    executable = shutil.which("gh")
+    assert executable is not None
+    gh = Path(executable)
+    shebang, _, response = gh.read_text().partition("\n")
+    replace = shlex.join(["mv", "--", str(replacement), str(artifact)])
+    gh.write_text(f"{shebang}\n{replace} || exit 1\n{response}")
+
+    run = cleanup(
+        repo,
+        "--github",
+        "--include-detached",
+        "--disposable-output",
+        "out/*.o",
+        "--apply",
+    )
+    assert run.returncode == 0, run.stderr
+    assert result(repo, path)["reason"] == "disposable-outputs-changed"
+    assert artifact.read_text() == "new output not present at planning time"
 
 
 def test_1393_detached_checkout_in_use_is_retained(

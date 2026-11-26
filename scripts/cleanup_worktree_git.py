@@ -70,6 +70,46 @@ def operation_in_progress(path: Path) -> bool:
     return False
 
 
+def hook_paths(location: Path) -> tuple[Path, Path]:
+    keys = git(
+        location,
+        "config",
+        "--null",
+        "--name-only",
+        "--get-regexp",
+        r"^hook\..*\.command$",
+        allow_no_matches=True,
+    )
+    if keys:
+        key = keys.split("\0", 1)[0]
+        raise CleanupError(f"config-hook-unverifiable: {key}")
+    git_dir = Path(git(location, "rev-parse", "--absolute-git-dir").removesuffix("\n"))
+    # Git uses the checkout or $GIT_DIR as the hook working directory.
+    reported = git(location, "rev-parse", "--git-path", "hooks").removesuffix("\n")
+    if not git_dir.is_absolute() or not reported:
+        raise CleanupError("Git did not report its hooks or metadata path")
+    return location / reported, git_dir / reported
+
+
+def explicit_crlf_checkout(path: Path, relative: Path) -> bool:
+    name = str(relative)
+    entries = git(path, "check-attr", "--cached", "-z", "--all", "--", name).split(
+        "\0"
+    )[:-1]
+    attributes = {}
+    for reported, attribute, setting in zip(
+        entries[::3], entries[1::3], entries[2::3], strict=True
+    ):
+        if reported != name:
+            raise CleanupError("Git returned attributes for an unexpected path")
+        attributes[attribute] = setting
+    return (
+        attributes.get("text") == "set"
+        and attributes.get("eol") == "crlf"
+        and not attributes.keys() & {"filter", "ident", "working-tree-encoding"}
+    )
+
+
 MAIN_REF = "refs/remotes/origin/main"
 
 

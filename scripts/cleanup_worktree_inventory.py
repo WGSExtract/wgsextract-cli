@@ -14,9 +14,10 @@ import shutil
 import stat
 import sys
 import warnings
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import ExitStack
 from dataclasses import dataclass, field
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 CACHE_DIRS = {
@@ -39,6 +40,7 @@ SENSITIVE_NAME = re.compile(
 )
 MAX_FILE = 1024 * 1024
 MAX_ARCHIVE = 32 * MAX_FILE
+RUN_RECORDS = {Path("state/last-run.json"), Path("state/last-failed-run.json")}
 
 Stamp = tuple[int, int, int, int, int]
 
@@ -504,6 +506,32 @@ class Inventory:
     retained: str = ""
     evidence: dict[Path, Stamp] = field(default_factory=dict)
     caches: dict[str, Stamp] = field(default_factory=dict)
+    disposable: dict[Path, Stamp] = field(default_factory=dict)
+
+
+def output_pattern(value: str) -> tuple[str, ...]:
+    parts = tuple(value.split("/"))
+    if (
+        len(parts) < 2
+        or parts[0] not in {"out", "tmp", "scratch"}
+        or any(part in {"", ".", ".."} or "**" in part for part in parts)
+        or not any(re.search(r"[a-zA-Z0-9]", part) for part in parts[1:])
+    ):
+        raise ValueError("Expected a narrow file glob under out/, tmp/ or scratch/")
+    return parts
+
+
+def matches_output(relative: Path, patterns: tuple[tuple[str, ...], ...]) -> bool:
+    return not any(
+        SENSITIVE_NAME.search(part) or part.startswith(".") for part in relative.parts
+    ) and any(
+        len(relative.parts) == len(pattern)
+        and all(
+            fnmatchcase(part, glob)
+            for part, glob in zip(relative.parts, pattern, strict=True)
+        )
+        for pattern in patterns
+    )
 
 
 def bytecode_source(relative: Path) -> Path | None:
@@ -561,11 +589,33 @@ def matches_bytecode(path: Path, source: Path) -> bool:
     return data == marshal.dumps(expected)
 
 
-def inventory(path: Path, tracked: set[Path]) -> Inventory:
+def inventory(
+    path: Path,
+    tracked: set[Path],
+    disposable: tuple[tuple[str, ...], ...] = (),
+    ignored: Callable[[Path], bool] | None = None,
+) -> Inventory:
     inventory = Inventory()
     bytecode: dict[Path, Path] = {}
     size = 0
     excluded = set()
+
+    def accept_output(relative: Path, info: os.stat_result) -> bool:
+        if (
+            info.st_uid != os.geteuid()
+            or info.st_nlink != 1
+            or (
+                relative.parts[0] == "scratch"
+                and relative.suffix in SCRATCH_SOURCE_SUFFIXES
+            )
+            or not matches_output(relative, disposable)
+            or ignored is None
+            or not ignored(relative)
+        ):
+            return False
+        inventory.disposable[relative] = stamp(info)
+        return True
+
     for name in sorted(CACHE_DIRS):
         directory = path / name
         if not directory.is_dir() or directory.is_symlink():
@@ -605,15 +655,23 @@ def inventory(path: Path, tracked: set[Path]) -> Inventory:
             and info.st_size == 0
         ):
             continue
-        allowed = (relative.parts[0] == "out" and relative.suffix in TEXT_SUFFIXES) or (
-            relative.parts[0] == "scratch"
-            and relative.suffix in SCRATCH_SOURCE_SUFFIXES
+        allowed = (
+            relative in RUN_RECORDS
+            or (relative.parts[0] == "out" and relative.suffix in TEXT_SUFFIXES)
+            or (
+                relative.parts[0] == "scratch"
+                and relative.suffix in SCRATCH_SOURCE_SUFFIXES
+            )
         )
         if not allowed or any(SENSITIVE_NAME.search(part) for part in relative.parts):
-            inventory.retained = inventory.retained or f"unknown-data: {relative}"
+            if not accept_output(relative, info):
+                inventory.retained = inventory.retained or f"unknown-data: {relative}"
             continue
         if info.st_size > MAX_FILE or size + info.st_size > MAX_ARCHIVE:
-            inventory.retained = inventory.retained or f"evidence-too-large: {relative}"
+            if not accept_output(relative, info):
+                inventory.retained = (
+                    inventory.retained or f"evidence-too-large: {relative}"
+                )
             continue
         if info.st_uid != os.geteuid() or info.st_nlink != 1:
             inventory.retained = inventory.retained or f"unsafe-evidence: {relative}"
@@ -625,7 +683,10 @@ def inventory(path: Path, tracked: set[Path]) -> Inventory:
         except UnicodeDecodeError:
             data = b"\0"
         if b"\0" in data:
-            inventory.retained = inventory.retained or f"non-text-evidence: {relative}"
+            if not accept_output(relative, info):
+                inventory.retained = (
+                    inventory.retained or f"non-text-evidence: {relative}"
+                )
             continue
         size += info.st_size
         inventory.evidence[relative] = expected
