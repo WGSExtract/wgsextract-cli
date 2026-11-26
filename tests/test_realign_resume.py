@@ -31,6 +31,9 @@ from tests.test_realign import (
     _view as _view,
 )
 from tests.test_realign import (
+    _write_realign_reference as _write_realign_reference,
+)
+from tests.test_realign import (
     genome_and_ref as genome_and_ref,
 )
 from tests.test_realign import (
@@ -43,6 +46,65 @@ from wgsextract_cli.commands import realign
 from wgsextract_cli.commands.realignment import mapping as realign_mapping
 from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.core.utils import WGSExtractError
+
+
+@pytest.fixture(scope="module")
+def resume_input(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[Path, str, str]:
+    root = tmp_path_factory.mktemp("realign-resume")
+    genome, ref = _write_realign_reference(root)
+    source, _ = _old_alignment(root, genome)
+    return root, source, ref
+
+
+def _resume_argv(source: str, ref: str, out: Path) -> list[str]:
+    return [
+        "--input", str(source), "--ref", ref, "--outdir", str(out),
+        "--threads", "2", "--sample", "Ann",
+    ]  # fmt: skip
+
+
+@pytest.fixture(scope="module")
+def clean_resume_records(
+    resume_input: tuple[Path, str, str],
+) -> tuple[list[str], str]:
+    root, source, ref = resume_input
+    baseline = root / "keep-fastq"
+    baseline.mkdir()
+    shims = _dying_tools(baseline, baseline / "calls.log")
+    out = baseline / "out"
+    clean = _realign_cli([*_resume_argv(source, ref, out), "--keep-fastq"], shims)
+    assert clean.returncode == 0, clean.stderr
+    return _records(out / "x_aligned.bam")
+
+
+def _retained_fastq_argv(source: str, ref: str, out: Path, scratch: Path) -> list[str]:
+    return [
+        *_resume_argv(source, ref, out),
+        "--tmp-dir", str(scratch), "--memory", "64M",
+        "--native-aligners", "off", "--json",
+    ]  # fmt: skip
+
+
+@pytest.fixture(scope="module")
+def clean_retained_fastq_records(
+    resume_input: tuple[Path, str, str],
+) -> tuple[list[str], str]:
+    root, source, ref = resume_input
+    baseline = root / "retained-fastq"
+    baseline.mkdir()
+    scratch = baseline / "scratch"
+    scratch.mkdir()
+    shims = _dying_tools(baseline, baseline / "calls.log")
+    out = baseline / "out"
+    clean = _realign_cli(
+        _retained_fastq_argv(source, ref, out, scratch),
+        shims,
+        available_memory=1024**3,
+    )
+    assert clean.returncode == 0, clean.stderr
+    return _records(out / "x_aligned.bam")
 
 
 @pytest.mark.parametrize("failed", [False, True])
@@ -132,23 +194,18 @@ def test_force_step_index_reindexes_an_alignment_its_aligner_indexed(
      ("samtools sort", "INT")],
 )  # fmt: skip
 def test_a_run_killed_mid_step_resumes_there_with_identical_output(
-    tmp_path, genome_and_ref, die, signal
+    tmp_path, resume_input, clean_resume_records, die, signal
 ):
-    genome, ref = genome_and_ref
-    source, _ = _old_alignment(tmp_path, genome)
+    _, source, ref = resume_input
     log = tmp_path / "calls.log"
     shims = _dying_tools(tmp_path, log)
 
     def realign_to(outdir, die=None):
         log.write_text("")
-        argv = ["--input", str(source), "--ref", ref, "--outdir", str(outdir),
-                "--threads", "2", "--keep-fastq", "--sample", "Ann"]  # fmt: skip
+        argv = [*_resume_argv(source, ref, outdir), "--keep-fastq"]
         done = _realign_cli(argv, shims, die, signal)
         calls = [c for c in log.read_text().splitlines() if c != "samtools --version"]
         return done, calls
-
-    clean, _ = realign_to(tmp_path / "clean")
-    assert clean.returncode == 0, clean.stderr
 
     out = tmp_path / "out"
     killed, calls = realign_to(out, die=die)
@@ -173,7 +230,7 @@ def test_a_run_killed_mid_step_resumes_there_with_identical_output(
     assert "Skipping step extract: complete" in resumed.stderr
     assert "Running step align: an earlier run was interrupted" in resumed.stderr
     assert any(re.fullmatch(die, call) for call in calls)
-    assert _records(bam) == _records(tmp_path / "clean" / "x_aligned.bam")
+    assert _records(bam) == clean_resume_records
     reindexed = tmp_path / "reindexed.bai"
     _view("index", "-b", "-o", str(reindexed), str(bam))
     assert Path(str(bam) + ".bai").read_bytes() == reindexed.read_bytes()
@@ -200,10 +257,9 @@ def test_a_run_killed_mid_step_resumes_there_with_identical_output(
     ],
 )
 def test_722_sigint_resume_reuses_valid_retained_temp_fastqs(
-    tmp_path, genome_and_ref, cache_state, temp_alias
+    tmp_path, resume_input, clean_retained_fastq_records, cache_state, temp_alias
 ):
-    genome, ref = genome_and_ref
-    source, _ = _old_alignment(tmp_path, genome)
+    _, source, ref = resume_input
     scratch = tmp_path / "scratch"
     scratch.mkdir()
     if temp_alias:
@@ -213,13 +269,8 @@ def test_722_sigint_resume_reuses_valid_retained_temp_fastqs(
     shims = _dying_tools(tmp_path, tmp_path / "calls.log")
 
     def run(outdir, die=None, effective_uid=None):
-        argv = [
-            "--input", str(source), "--ref", ref, "--outdir", str(outdir),
-            "--tmp-dir", str(scratch), "--threads", "2", "--memory", "64M",
-            "--native-aligners", "off", "--sample", "Ann", "--json",
-        ]  # fmt: skip
         return _realign_cli(
-            argv,
+            _retained_fastq_argv(source, ref, outdir, scratch),
             shims,
             die,
             "INT",
@@ -227,8 +278,6 @@ def test_722_sigint_resume_reuses_valid_retained_temp_fastqs(
             effective_uid=effective_uid,
         )
 
-    clean = run(tmp_path / "clean")
-    assert clean.returncode == 0, clean.stderr
     out = tmp_path / "out"
     stopped = run(out, die="bwa mem")
     assert stopped.returncode == 130, stopped.stderr
@@ -256,9 +305,7 @@ def test_722_sigint_resume_reuses_valid_retained_temp_fastqs(
     result = json.loads(resumed.stdout)
     trusted = cache_state in {"valid", "sticky-temp-root"}
     assert result["metrics"]["steps_skipped"] == (1 if trusted else 0)
-    assert _records(out / "x_aligned.bam") == _records(
-        tmp_path / "clean" / "x_aligned.bam"
-    )
+    assert _records(out / "x_aligned.bam") == clean_retained_fastq_records
     if trusted:
         assert not any(path.exists() for path in retained)
     else:

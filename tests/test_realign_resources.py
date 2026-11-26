@@ -37,6 +37,9 @@ from tests.test_realign import (
     _write_alignment as _write_alignment,
 )
 from tests.test_realign import (
+    _write_realign_reference as _write_realign_reference,
+)
+from tests.test_realign import (
     genome_and_ref as genome_and_ref,
 )
 from tests.test_realign import (
@@ -87,17 +90,11 @@ def test_968_realign_auto_plan_survives_extraction_and_matches_explicit_threads(
     assert records[0] == records[1]
 
 
-@needs_tools("bwa", "samtools", "samblaster")
-@pytest.mark.parametrize("keep_fastq", [False, True], ids=["stream", "files"])
-def test_997_codec_workers_do_not_expand_realign_collation_budget(
-    tmp_path, genome_and_ref, monkeypatch, keep_fastq
-):
-    from tests.test_alignment_commands import _m1_core_levels
-
-    _m1_core_levels(monkeypatch)
-    monkeypatch.setitem(settings, "cpu_threads", "auto")
-    genome, ref = genome_and_ref
-    source, _ = _old_alignment(tmp_path, genome)
+@pytest.fixture(scope="module")
+def padded_alignment(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, str]:
+    root = tmp_path_factory.mktemp("padded-realign")
+    genome, ref = _write_realign_reference(root)
+    source, _ = _old_alignment(root, genome)
     lines = _view("view", "-H", source).splitlines()
     rng = random.Random(997)
     # Budget-sensitive buckets and coincident fragments expose reordered duplicates.
@@ -114,8 +111,21 @@ def test_997_codec_workers_do_not_expand_realign_collation_budget(
         )
         fields[9] = genome[100:200] if first else genome[300:400]
         lines.append("\t".join([*fields, f"ZZ:Z:{padding}"]))
-    source = sam_to_bam(lines, tmp_path / "old" / "padded.bam")
+    source = sam_to_bam(lines, root / "old" / "padded.bam")
     run_command(["bwa", "index", ref])
+    return source, ref
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+@pytest.mark.parametrize("keep_fastq", [False, True], ids=["stream", "files"])
+def test_997_codec_workers_do_not_expand_realign_collation_budget(
+    tmp_path, padded_alignment, monkeypatch, keep_fastq
+):
+    from tests.test_alignment_commands import _m1_core_levels
+
+    _m1_core_levels(monkeypatch)
+    monkeypatch.setitem(settings, "cpu_threads", "auto")
+    source, ref = padded_alignment
     outputs, requirements, fastqs = [], [], []
     # Equal 8M sort budgets: auto is 4 x 2M, explicit is 8 x 1M.
     for name, threads, memory in (("auto", None, "2M"), ("explicit", 8, "1M")):
