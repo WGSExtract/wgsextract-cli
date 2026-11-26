@@ -693,17 +693,13 @@ Long reads work the same way with `wgse-minimap2` 0.4.0 or later (minimap2
   that extra RAM wouldn't fit, it runs on the CPU. On a Mac, `wgse-minimap2`
   still runs on the CPU.
 
-On the same Linux host (Ryzen 5 5600X, 6 cores / 12 hardware threads, 62 GiB
-usable RAM, RTX 3090), a streamed whole-genome HG002 ONT `realign` took
-**15.32 h with CUDA vs 16.61 h with upstream CPU minimap2** (7.8% less wall
-time in this shared-host comparison). With eight threads and 4 GiB chunks,
-CUDA peaked at 21.00 GiB process-tree RSS and 954 MiB of its own VRAM, vs 16.34 GiB RSS
-on CPU. Both runs peaked at about 212 GiB of run-directory disk and produced
-identical sorted decoded-record digests.
-See [whole-genome ONT requirements](resource_estimates.md#whole-genome-ont-requirements)
-for the setup and comparison. The slice gains above are mapping-only and
-exclude input decoding, methylation-tag preservation, sorting and output
-encoding.
+On the same Linux host, a streamed whole-genome HG002 ONT `realign` with CUDA
+finished about 8% sooner than upstream CPU minimap2 (15.3 h vs 16.6 h) and
+produced identical sorted decoded-record digests; see
+[whole-genome ONT requirements](resource_estimates.md#whole-genome-ont-requirements)
+for the measured setup, memory, VRAM and disk. The slice gains above are
+mapping-only and exclude input decoding, methylation-tag preservation, sorting
+and output encoding.
 The [native backend notes](../native/README.md#ont-chaining-and-qualification-scope)
 record a newer 93,328-read HG002 ONT CPU profile: sorting and chaining took
 about 64% of CPU time, dual-affine gap alignment 18.3%. Its native CPU records

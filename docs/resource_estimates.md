@@ -445,7 +445,7 @@ needs `--split-prefix` and a merge pass, and maps more slowly.
 
 The GPU accelerates gap fills, not chaining, decoding, sorting or CRAM
 encoding. For whole-genome runtime, use the
-[measured RTX 3090 realignment](#whole-genome-ont-requirements) rather than
+[Linux x86-64 RTX 3090 whole-genome ONT realign comparison](#whole-genome-ont-requirements) rather than
 extrapolating the ONT/HiFi slice mapping speedups or using them to reduce
 host resource budgets.
 
