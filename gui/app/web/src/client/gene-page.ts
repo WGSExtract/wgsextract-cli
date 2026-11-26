@@ -183,7 +183,7 @@ export function openGenePage(opener: HTMLElement) {
                 if (chosen && input) input.value = chosen;
             });
         } else if (target.matches("[data-gene-iobio]") && current) {
-            requestGeneIobio(current.doc, text, target);
+            requestGeneIobio(current.doc, current.inputs, text, target);
         } else if (target.matches("[data-gene-viewer]") && current) {
             const locus = current.doc.gene.locus;
             openGenomeViewer(state.localizationCode, state.labels, target, current.inputs.alignment || current.inputs.vcf, locus, { host: container, backLabel: text("backToGene") });
