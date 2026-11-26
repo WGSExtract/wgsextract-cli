@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
-import { parseIconMapToml } from "../dist/shared/icon-map.js";
+import { mergeIconMaps, parseIconMapToml } from "../dist/shared/icon-map.js";
+import { wgseIcons } from "../dist/web/src/client/wgse-icons.js";
 import { parseTomlStrings, parseTomlStringValue } from "../dist/shared/localization.js";
 import {
   conditionMatches,
@@ -63,6 +64,33 @@ test("critical Bootstrap Icons stylesheet covers every WebUI and shipped bundle 
 
   for (const iconName of iconNames) {
     assert.match(criticalCSS, new RegExp(`\\.bi-${iconName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}::before`));
+  }
+});
+
+test("the bundle overrides a WGSE key without losing the other icons or emoji assignments", () => {
+  const base = parseIconMapToml('[wgse]\nreads = "fastq"\nvariants = "vcf"\n[emoji]\nreads = "📄"');
+  const bundle = parseIconMapToml('[wgse]\nreads = "basecall"');
+  assert.deepEqual(mergeIconMaps(base, bundle), {
+    wgse: { reads: "basecall", variants: "vcf" }, emoji: { reads: "📄" },
+  });
+});
+
+test("all shipped WGSE icon mappings resolve to built SVGs and have an emoji fallback", () => {
+  const sources = new URL("../../resources/BuiltinIcons/wgse/", import.meta.url);
+  const files = readdirSync(sources).filter((name) => name.endsWith(".svg")).map((name) => name.slice(0, -4));
+  assert.deepEqual(Object.keys(wgseIcons).sort(), files.sort());
+  for (const file of ["../../resources/BuiltinIconMap/iconmap.toml", "../../examples/WGSExtract/iconmap.toml"]) {
+    const map = parseIconMapToml(readFileSync(new URL(file, import.meta.url), "utf8"));
+    for (const [key, name] of Object.entries(map.wgse ?? {})) {
+      assert.ok(Object.hasOwn(wgseIcons, name), `${file}: ${key} points to missing ${name}.svg`);
+      assert.ok(map.emoji?.[key], `${file}: ${key} has no emoji mapping`);
+    }
+  }
+  for (const [name, svg] of Object.entries(wgseIcons)) {
+    assert.match(svg, /^<svg\b[^>]*viewBox="0 0 24 24"[^>]*stroke="currentColor"/, `${name}: invalid themed SVG root`);
+    for (const [, paint] of svg.matchAll(/\b(?:fill|stroke)="([^"]+)"/g)) {
+      assert.ok(paint === "none" || paint === "currentColor", `${name}: hard-coded ${paint}`);
+    }
   }
 });
 

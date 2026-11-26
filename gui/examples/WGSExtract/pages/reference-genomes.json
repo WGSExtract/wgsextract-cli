@@ -286,10 +286,10 @@
           "advancedOnly": true
         }
       ],
-      "iconName": "library",
+      "iconName": "reference-genome",
       "textIcon": "📚"
     }
   ],
-  "iconName": "index-reference",
+  "iconName": "reference-genome",
   "textIcon": "🧬"
 }

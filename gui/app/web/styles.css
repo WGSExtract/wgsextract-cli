@@ -1406,6 +1406,22 @@ tbody tr + tr {
   font-size: 1.04em;
 }
 
+.wgse-icon {
+  inline-size: 1rem;
+  block-size: 1rem;
+  vertical-align: -0.125em;
+}
+
+.nav-icon .wgse-icon {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+
+h2 .icon-title-icon .wgse-icon {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+}
+
 :root[dir="rtl"] .play-icon {
   transform: scaleX(-1);
 }

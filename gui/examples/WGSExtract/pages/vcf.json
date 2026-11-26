@@ -38,7 +38,7 @@
     {
       "id": "vcf-info-commands",
       "title": "sections.vcf.info-commands.title",
-      "iconName": "alignment-info",
+      "iconName": "inspect-variants",
       "textIcon": "📊",
       "actions": [
         {
@@ -87,7 +87,7 @@
           "id": "view-vcf",
           "title": "actions.vcf.info-commands.view-vcf.title",
           "tooltip": "actions.vcf.info-commands.view-vcf.tooltip",
-          "iconName": "alignment-info",
+          "iconName": "inspect-variants",
           "textIcon": "🔎",
           "viewerInput": "vcf_path",
           "prerequisiteArguments": [

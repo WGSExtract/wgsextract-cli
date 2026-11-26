@@ -35,6 +35,7 @@
       "actions": [
         {
           "id": "region-mt",
+          "iconName": "mt-dna",
           "title": "actions.extract.extract-inputs.region-mt.title",
           "tooltip": "actions.extract.extract-inputs.region-mt.tooltip",
           "command": {
@@ -97,6 +98,7 @@
         },
         {
           "id": "region-ymt",
+          "iconName": "mt-dna",
           "title": "actions.extract.extract-inputs.region-ymt.title",
           "tooltip": "actions.extract.extract-inputs.region-ymt.tooltip",
           "command": {
@@ -1056,6 +1058,7 @@
             },
             {
               "id": "cnv",
+              "iconName": "cnv",
               "title": "options.vcf.variant-calling.vcf_call_types.cnv.title",
               "advancedOnly": true
             }
@@ -1632,7 +1635,7 @@
       "id": "methylation",
       "title": "sections.vcf.v066.methylation.title",
       "subtitle": "sections.vcf.v066.methylation.subtitle",
-      "iconName": "variant-calling",
+      "iconName": "methylation",
       "textIcon": "🧪",
       "visibleWhen": [
         {
@@ -1726,6 +1729,7 @@
       "actions": [
         {
           "id": "methylation-pileup",
+          "iconName": "methylation",
           "title": "actions.vcf.v066.methylation.title",
           "tooltip": "actions.vcf.v066.methylation.tooltip",
           "command": {
