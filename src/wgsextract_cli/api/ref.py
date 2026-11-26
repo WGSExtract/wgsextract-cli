@@ -242,10 +242,18 @@ class RefBootstrapParams(_InLibrary, Params):
 class RefMicroarrayTargetsParams(_InLibrary, Params):
     """Build the genome-wide hg19 and hg38 microarray targets
     (``microarray/All_SNPs_<build>_ref.tab.gz``) from the bootstrap's chip
-    templates, or delete them. ``microarray`` builds a missing one itself."""
+    templates, or delete them. Missing liftOver chains require ``download``.
+    ``microarray`` builds a missing target itself."""
 
     COMMAND = "ref microarray-targets"
 
+    download: bool = param(
+        False,
+        help="Fetch missing public liftOver chains from UCSC or its mirror; "
+        "no sample data is sent.",
+        action="store_true",
+        writes=True,
+    )
     delete: bool = _delete_param("microarray targets")
     ref: Path | None = ref_param()
 

@@ -42,6 +42,7 @@ from wgsextract_cli.core.microarray.templates import (
     lift_to_grch37,
     template_rows,
 )
+from wgsextract_cli.core.network_policy import require_download
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.ref_library.layout import DOWNLOAD_DIRS
 from wgsextract_cli.core.utils import WGSExtractError, run_command
@@ -476,6 +477,7 @@ def download_chain(source: ChainSource, dest: str) -> bool:
     with its SHA-256. Each URL stages into its own file, so while dest is
     missing, trying one source never discards another's resumable partial
     download; once dest is in place, every source's staging files are removed."""
+    require_download(source.name)
     staged = {
         url: f"{dest}.{hashlib.sha256(url.encode()).hexdigest()[:12]}"
         for url in source.urls
