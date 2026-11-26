@@ -57,6 +57,53 @@ job authorization and download permission; merely starting the server grants
 neither to an analysis. Do not enable downloads globally on a machine that
 must remain offline.
 
+## Cohort disclosure defaults
+
+[`cohort summarize`](cohort.md) reads and writes local files only. It does
+not upload, query a remote service, or offer network sharing. `--export`
+writes a separate local file, not a transfer. Keep all cohort files and
+temporary work on an access-controlled disk outside synced folders and
+network mounts; the CLI cannot tell whether a directory is synced.
+
+The exact summary keeps all rows and flags those that fall below the
+disclosure minimums. The optional export omits those rows entirely. These
+top-level `config.toml` settings can be overridden for a single run:
+
+| Setting | CLI option | Default and effect |
+| --- | --- | --- |
+| `cohort_min_samples` | `--min-samples` | **21** participants in the cohort and **21** callable participants at each exported row. |
+| `cohort_min_allele_count` | `--min-allele-count` | **10** called copies of the target ALT at each exported row. |
+| `cohort_min_carriers` | `--min-carriers` | **10** distinct carriers and **10** callable non-carriers at each exported row. A homozygote counts as one carrier, and a call carrying only another ALT counts as a non-carrier. |
+| `cohort_min_relatedness` | `--min-relatedness` | **0.09** (twice kinship), the existing [`qc relate`](relate.md) third-degree cutoff. This warns; it does not filter rows or remove relatives. |
+
+The **21** minimum follows the first positive count permitted by the
+[NIH All of Us Data and Statistics Dissemination Policy](https://support.researchallofus.org/hc/en-us/articles/22346276580372-Data-and-Statistics-Dissemination-Policy).
+The symmetric **10**-person cells use the
+[ONS Secure Research Service output-checking guidance](https://www.ons.gov.uk/file?uri=/aboutus/whatwedo/statistics/requestingstatistics/secureresearchservice/gettingyourresearchoutputsapproved/srsoutputcheckingguidance.february2025.pdf)
+as a starting point. The **10** ALT-copy minimum is a separate, configurable
+check on allele copies, not an independent-person privacy rule. These are
+local screening defaults, not compliance with either policy.
+
+The result manifest records the active thresholds and number of flagged
+rows. `cohort_small_cohort` warns about cohort size; `cohort_low_callable_samples`,
+`cohort_low_allele_count`, `cohort_low_carriers`, and `cohort_low_non_carriers`
+report counts of flagged rows by reason without listing variants. A row can
+trigger more than one warning reason. `cohort_related_participants` reports
+pairs meeting the cutoff without naming them. It uses only matched, assessed
+pair estimates from an explicitly bound `qc relate` result
+([Somalier](https://doi.org/10.1186/s13073-020-00761-2)). Missing, unmatched,
+called-sites-only, or otherwise uncertain pairs are not evidence of
+independence. If a QC result was supplied, `cohort_relatedness_unassessed`
+reports incomplete pair coverage. An identified same-person pair still
+fails the duplicate-input check; other QC findings do not automatically
+exclude participants.
+
+Keep the exact table, manifest and any private participant join private.
+Even the reduced export is sensitive: allele presence, overlapping releases
+and outside data can reveal membership or reconstruct suppressed counts.
+The thresholds are not anonymization, approval to share, or a substitute for
+checking consent, recipient permissions and disclosure risk.
+
 ## Checking a run before going offline
 
 `wgsextract deps ready -- COMMAND ...` reports whether a command line can run
