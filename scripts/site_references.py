@@ -55,6 +55,14 @@ def reference_html(output_name: str, root: Path) -> str:
     body = _GENERATED_COMMENT.sub("", text.partition("\n")[2])
     body = _REPO_DOC_LINK.sub(rf"]({DOCS_URL}\1)", body)
     rendered = MarkdownIt("commonmark", {"html": False}).enable("table").render(body)
+    if output_name == "certification.html":
+        rendered = re.sub(
+            r"<tr>\n<td><code>([a-z0-9 -]+)</code>",
+            lambda match: (
+                f'<tr id="command-{match[1].replace(" ", "-")}">\n<td><code>{match[1]}</code>'
+            ),
+            rendered,
+        )
     rendered = rendered.replace("<table>", '<div class="table-wrap"><table>').replace(
         "</table>", "</table></div>"
     )

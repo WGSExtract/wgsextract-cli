@@ -164,6 +164,7 @@ export interface Labels extends Partial<Record<LabelTextKey, string>> {
     geneStrings?: StringMap;
     libraryStatusLabels?: StringMap;
     libraryTagLabels?: StringMap;
+    certificationStrings?: StringMap;
     [key: string]: unknown;
 }
 

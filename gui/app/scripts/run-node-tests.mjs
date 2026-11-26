@@ -53,6 +53,7 @@ const defaultTests = [
   "tests/existing-output.test.mjs",
   "tests/prerequisites.test.mjs",
   "tests/ui-mode.test.mjs",
+  "tests/command-certification.test.mjs",
   "tests/docs-links.test.mjs",
 ];
 

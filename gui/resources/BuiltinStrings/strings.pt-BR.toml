@@ -176,6 +176,15 @@
 "app.workspaceLocation.settingOnly.title" = "Alterar só a configuração"  # i18n-source-hash:95a44482
 "app.workspaceLocation.title" = "Local do espaço de trabalho do usuário"  # i18n-source-hash:3e182ff1
 "app.workspaceLocation.useDefault.title" = "Usar padrão"  # i18n-source-hash:e145072a
+"certification.Certified.label" = "Certificado"  # i18n-source-hash:7f98f010
+"certification.Certified.tooltip" = "Verificado com dados reais no Linux, macOS e Windows, com testes de regressão das ferramentas. Selecione para ver as evidências."  # i18n-source-hash:f793af48
+"certification.Experimental.label" = "Experimental"  # i18n-ignore
+"certification.Experimental.tooltip" = "Verificação limitada ou não comprovada, ou uso restrito à pesquisa. Selecione para ver as evidências."  # i18n-source-hash:5f705a9b
+"certification.Tested.label" = "Testado"  # i18n-source-hash:91900379
+"certification.Tested.tooltip" = "Verificado com dados ou casos de teste. Selecione para ver as evidências."  # i18n-source-hash:966ab992
+"certification.Validated.label" = "Validado"  # i18n-source-hash:75444607
+"certification.Validated.tooltip" = "Verificado com dados reais em pelo menos uma plataforma. Selecione para ver as evidências e os limites."  # i18n-source-hash:8d9fb04f
+"certification.openError" = "Não foi possível abrir as evidências de certificação no navegador padrão."  # i18n-source-hash:ded15a2e
 "exitCodes.default.1.summary" = "O comando relatou uma falha genérica. Revise a saída acima para ver o erro específico do WGS Extract ou da ferramenta."  # i18n-source-hash:ebe2ed7e
 "exitCodes.default.1.title" = "Falha geral do comando"  # i18n-source-hash:87ab6134
 "exitCodes.default.126.summary" = "O comando ou script existe, mas não pôde ser executado. Verifique as permissões do arquivo e se a configuração foi concluída com sucesso."  # i18n-source-hash:587086c7

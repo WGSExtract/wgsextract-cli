@@ -16,6 +16,7 @@ from wgsextract_cli.server.http_api import openapi_document  # noqa: E402
 
 OPENAPI = ROOT / "out/contracts/wgsextract.server.openapi.json"
 GUI_TYPES = ROOT / "gui/app/shared/generated/server-transport.ts"
+GUI_CERTIFICATIONS = ROOT / "gui/app/shared/generated/command-certifications.ts"
 
 
 def _ts_type(schema: dict[str, Any]) -> str:
@@ -88,6 +89,23 @@ def main() -> None:
     parser.add_argument("--gui", action="store_true")
     args = parser.parse_args()
     build_openapi(args.output, gui_types=GUI_TYPES if args.gui else None)
+    if args.gui:
+        from wgsextract_cli.cli.help_index import build_index
+        from wgsextract_cli.core.certification import CertificationLevel
+
+        levels = " | ".join(json.dumps(level.value) for level in CertificationLevel)
+        commands = {
+            entry["path"]: entry["certification"] for entry in build_index()["commands"]
+        }
+        GUI_CERTIFICATIONS.write_text(
+            "// Generated from the CLI help index. Do not edit.\n"
+            f"type CertificationLevel = {levels};\n"
+            "export const commandCertifications: Readonly<Record<string, CertificationLevel | undefined>> = "
+            + json.dumps(commands, indent=4, sort_keys=True)
+            + ";\n",
+            encoding="utf-8",
+            newline="\n",
+        )
 
 
 if __name__ == "__main__":

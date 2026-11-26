@@ -137,6 +137,7 @@ export function localizationLabels(table: StringMap = {}) {
         uiModeBasicTooltip: table["app.uiMode.basic.tooltip"] ?? "Show the common tasks, with recommended settings chosen for you.",
         uiModeAdvancedTooltip: table["app.uiMode.advanced.tooltip"] ?? "Show every feature and option.",
         layoutDirection: layoutDirection(table["language.layoutDirection"]),
+        certificationStrings: Object.fromEntries(Object.entries(table).filter(([key]) => key.startsWith("certification.")).map(([key, value]) => [key.slice("certification.".length), value])),
         viewerTitle: table["viewer.title"] ?? "Genome viewer",
         viewerStrings: Object.fromEntries(Object.entries(table).filter(([key]) => key.startsWith("viewer.")).map(([key, value]) => [key.slice("viewer.".length), value])),
         geneTitle: table["gene.title"] ?? "Gene page",

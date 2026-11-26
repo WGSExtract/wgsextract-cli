@@ -176,6 +176,15 @@
 "app.workspaceLocation.settingOnly.title" = "Nur Einstellung ändern"  # i18n-source-hash:95a44482
 "app.workspaceLocation.title" = "Speicherort des Benutzer-Arbeitsbereichs"  # i18n-source-hash:3e182ff1
 "app.workspaceLocation.useDefault.title" = "Standard verwenden"  # i18n-source-hash:e145072a
+"certification.Certified.label" = "Zertifiziert"  # i18n-source-hash:7f98f010
+"certification.Certified.tooltip" = "Mit echten Daten unter Linux, macOS und Windows sowie mit Regressionstests der Werkzeuge geprüft. Auswählen, um die Nachweise zu sehen."  # i18n-source-hash:f793af48
+"certification.Experimental.label" = "Experimentell"  # i18n-source-hash:b718f8c3
+"certification.Experimental.tooltip" = "Begrenzt oder nicht geprüft oder nur für die Forschung vorgesehen. Auswählen, um die Nachweise zu sehen."  # i18n-source-hash:5f705a9b
+"certification.Tested.label" = "Getestet"  # i18n-source-hash:91900379
+"certification.Tested.tooltip" = "Mit Testdaten oder Testfällen geprüft. Auswählen, um die Nachweise zu sehen."  # i18n-source-hash:966ab992
+"certification.Validated.label" = "Validiert"  # i18n-source-hash:75444607
+"certification.Validated.tooltip" = "Mit echten Daten auf mindestens einer Plattform geprüft. Auswählen, um Nachweise und Grenzen zu sehen."  # i18n-source-hash:8d9fb04f
+"certification.openError" = "Die Zertifizierungsnachweise konnten nicht im Standardbrowser geöffnet werden."  # i18n-source-hash:ded15a2e
 "exitCodes.default.1.summary" = "Der Befehl meldete einen allgemeinen Fehler. Prüfen Sie die Ausgabe oben auf den konkreten Fehler von WGS Extract oder des Tools."  # i18n-source-hash:ebe2ed7e
 "exitCodes.default.1.title" = "Allgemeiner Befehlsfehler"  # i18n-source-hash:87ab6134
 "exitCodes.default.126.summary" = "Der Befehl oder das Skript existiert, konnte aber nicht ausgeführt werden. Prüfen Sie Dateiberechtigungen und ob die Einrichtung erfolgreich abgeschlossen wurde."  # i18n-source-hash:587086c7
