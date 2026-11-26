@@ -96,8 +96,9 @@ def test_1591_default_cli_commands_never_attempt_network(tmp_path: Path) -> None
           "--ref-vcf-tab", str(targets)], 0),
         (["report", "--input", bam, "--outdir", str(tmp_path)], 0),
     ]  # fmt: skip
-    # Start fresh and instrument sockets before importing the CLI. Keep only
-    # OS/tool search paths, not the caller's config, proxy or download settings.
+    # Start fresh and instrument Python sockets before importing the CLI.
+    # The network-namespace extraction test below covers native subprocesses.
+    # Keep tool search paths, not the caller's config, proxy or opt-in settings.
     env = {
         key: value
         for key, value in os.environ.items()
