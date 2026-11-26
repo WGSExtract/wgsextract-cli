@@ -19,7 +19,9 @@ from wgsextract_cli.core.aadr_resources import aadr_2m_path
 from wgsextract_cli.core.file_lock import exclusive_lock, held
 from wgsextract_cli.core.ref_library.assets import (
     GENOME_SIDECARS,
+    RESTART_LOCK_SUFFIX,
     annotation_vcf_names,
+    genome_restart_dir,
     reference_dict_path,
 )
 from wgsextract_cli.core.ref_library.layout import download_dirs
@@ -168,14 +170,14 @@ def vep_release_paths(
 
 # The build_locks of runs that write beside a genome's FASTA: bwa and
 # bwa-mem2 indexing, and `ref dense-sa`.
-_GENOME_BUILD_LOCKS = (".bwa-index.lock", ".dense-sa.lock")
+_GENOME_BUILD_LOCKS = (".bwa-index.lock", ".dense-sa.lock", RESTART_LOCK_SUFFIX)
 
 
 def genome_paths(fasta: Path) -> list[Path]:
     """What a genome leaves beside its FASTA: the FASTA, a partial download,
     its indexes (samtools, bwa, bwa-mem2 and wgse-bwa's dense suffix arrays),
-    its sequence dictionary and their run manifests, and an interrupted index
-    build's staging folders. Not its N counts, which the library bootstrap
+    its sequence dictionary and their run manifests, and staging from an
+    interrupted replacement or index build. Not its N counts, which the library bootstrap
     ships for every catalog genome."""
     made = [
         fasta,
@@ -196,6 +198,7 @@ def genome_paths(fasta: Path) -> list[Path]:
                 *arrays,
                 *sorted(fasta.parent.glob(f"{name}.wgse-sa*")),
                 *_staging_folders(fasta),
+                genome_restart_dir(fasta),
             ]
         )
     )
@@ -230,8 +233,8 @@ def remove_genome(folder: Path, name: str) -> dict[Path, int]:
     (``genome_paths``); return each deleted path with the bytes it freed.
 
     Only entries of ``folder`` itself are deleted, a link as the link. A
-    folder among them other than an index build's staging folder, or an index
-    another run is building, is refused before anything is deleted."""
+    folder among them other than recognized staging, or a reference another
+    run is replacing or indexing, is refused before anything is deleted."""
     plain = name == Path(name).name == PureWindowsPath(name).name
     if not plain or name in ("", ".", ".."):
         raise UsageError(f"{name!r} is not a genome file name.")
@@ -253,7 +256,7 @@ def remove_genome(folder: Path, name: str) -> dict[Path, int]:
                         f" ({lock}); delete {name} once it has finished."
                     )
             found = [p for p in genome_paths(fasta) if p.exists() or p.is_symlink()]
-            staging = set(_staging_folders(fasta))
+            staging = {*_staging_folders(fasta), genome_restart_dir(fasta)}
             for path in found:
                 if path.is_dir() and not path.is_symlink() and path not in staging:
                     raise WGSExtractError(f"{path} is a folder; not deleting {name}.")

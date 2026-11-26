@@ -404,6 +404,7 @@ def test_1591_gnomad_mirror_feeder_only_requires_network_for_missing_raw_parts(
         assert result.error and "--network off" in result.error.message
         assert not table.exists()
         assert not (parts / "chr1.tsv.gz.partial").exists()
+        assert (staging / "part0000").read_bytes() == data[:split]
         assert "MIRROR_FALLBACK" not in caplog.text
     else:
         assert result.exit_code == 0

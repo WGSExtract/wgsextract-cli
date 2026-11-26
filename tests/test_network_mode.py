@@ -14,7 +14,9 @@ from wgsextract_cli import api
 from wgsextract_cli.core import bwa_mem2, cpic_data, gene_lists
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.network_policy import NetworkRestricted, network_options
+from wgsextract_cli.core.ref_library import downloads
 from wgsextract_cli.core.ref_library.processing import download_and_process_genome
+from wgsextract_cli.core.ref_library.removal import remove_genome
 from wgsextract_cli.main import main
 from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.operations import find, params_from_json
@@ -241,3 +243,48 @@ def test_1591_report_resources_propagate_network_mode_refusal(tmp_path, monkeypa
             with pytest.raises(NetworkRestricted, match="--network off"):
                 gene_lists.load(list_id)
         assert not http.requests
+
+
+@needs_tools("samtools", "bgzip")
+@pytest.mark.parametrize("discard", [False, True], ids=["resume", "discard"])
+def test_1591_interrupted_reference_replacement_preserves_fasta_and_staging(
+    tmp_path, monkeypatch, discard
+):
+    library = tmp_path / "library"
+    name = "fixture.fa.gz"
+    old = gzip.compress(b">chr1\nACGT\n")
+    new_fasta = b">chr1\n" + b"TGCA" * 50_000 + b"\n"
+    replacement = gzip.compress(new_fasta)
+    monkeypatch.setattr(downloads, "DOWNLOAD_ATTEMPTS", 1)
+    with serving(files={"old": old, "new": replacement}) as http:
+        http.etags = True
+        genome = {"label": "fixture", "source": "loopback", "final": name}
+        assert download_and_process_genome(
+            {**genome, "url": http.url_for("old")}, str(library)
+        )
+        genomes = library / "genomes"
+        installed = genomes / name
+        previous = installed.read_bytes()
+        index = (genomes / f"{name}.fai").read_bytes()
+        genome |= {
+            "url": http.url_for("new"),
+            "sha256": hashlib.sha256(replacement).hexdigest(),
+        }
+        http.drop_paths.add("new")
+
+        assert not download_and_process_genome(genome, str(library), restart=True)
+        assert installed.read_bytes() == previous
+        assert (genomes / f"{name}.fai").read_bytes() == index
+        (partial,) = genomes.rglob(f"{name}.partial")
+        assert partial.read_bytes() == replacement[: len(replacement) // 2]
+        stage = partial.parent.parent
+        if discard:
+            remove_genome(genomes, name)
+            assert not installed.exists()
+        else:
+            http.requests.clear()
+            assert download_and_process_genome(genome, str(library), restart=True)
+            # contract: a retry requests only bytes beyond the confirmed prefix.
+            assert http.requests == [("GET", f"bytes={len(replacement) // 2}-")]
+            assert gzip.decompress(installed.read_bytes()) == new_fasta
+        assert not stage.exists()

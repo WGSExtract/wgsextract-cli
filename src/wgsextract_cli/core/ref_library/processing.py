@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import filecmp
+import hashlib
 import logging
 import os
 import re
@@ -12,6 +13,7 @@ import tempfile
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
 
+from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.annotation_resources import (
     GNOMAD_URLS,
     CancelEvent,
@@ -19,8 +21,11 @@ from wgsextract_cli.core.annotation_resources import (
 )
 from wgsextract_cli.core.bgzf import ensure_bgzf
 from wgsextract_cli.core.dependency_checks import verify_dependencies
+from wgsextract_cli.core.file_lock import build_lock
 from wgsextract_cli.core.ref_library.assets import (
     GENOME_SIDECARS,
+    RESTART_LOCK_SUFFIX,
+    genome_restart_dir,
     n_count_paths,
     read_fai_lengths,
     reference_dict_path,
@@ -204,36 +209,76 @@ def download_and_process_genome(
     restart: bool = False,
     status_callback: Callable[[str], None] | None = None,
 ) -> bool:
-    """Download (resuming a .partial) and index a genome; restart discards existing data.
+    """Download (resuming a .partial) and index a genome.
 
-    An already-installed genome is only re-indexed unless restart is set.
+    A restart stages a replacement without touching the installed FASTA.
     """
     verify_dependencies(["samtools", "bgzip"])
     target_dir = reference_genomes_dir(reflib_dir)
     Path(target_dir).mkdir(parents=True, exist_ok=True)
     final_path = str(Path(target_dir, genome_data["final"]))
 
+    with (
+        build_lock(final_path + RESTART_LOCK_SUFFIX)
+        if restart
+        else contextlib.nullcontext()
+    ):
+        return _prepare_genome(
+            genome_data, reflib_dir, final_path, progress_callback,
+            cancel_event, restart, status_callback
+        )  # fmt: skip
+
+
+def _prepare_genome(
+    genome_data: Mapping[str, str],
+    reflib_dir: str,
+    final_path: str,
+    progress_callback: ProgressCallback | None,
+    cancel_event: CancelEvent | None,
+    restart: bool,
+    status_callback: Callable[[str], None] | None,
+) -> bool:
     if restart or get_genome_status(genome_data["final"], reflib_dir) != "installed":
+        url = genome_data["url"]
+        expected = genome_data.get("sha256") or None
+        staging = genome_restart_dir(Path(final_path)) if restart else None
+        target = final_path
+        if staging is not None:
+            source_dir = staging / hashlib.sha256(url.encode()).hexdigest()
+            if (
+                staging.is_symlink()
+                or source_dir.is_symlink()
+                or not read_scope.may_follow(source_dir)
+            ):
+                raise WGSExtractError(
+                    f"Cannot use restart staging folder: {source_dir}"
+                )
+            staging.mkdir(exist_ok=True, mode=0o700)
+            source_dir.mkdir(exist_ok=True, mode=0o700)
+            target = str(source_dir / Path(final_path).name)
+            if Path(target).is_symlink():
+                raise WGSExtractError(
+                    f"Cannot use a symlink as restart staging: {target}"
+                )
         logging.info(
             f"Downloading {genome_data['label']} from {genome_data['source']}..."
         )
-        with (
-            tempfile.TemporaryDirectory(prefix=".restart-", dir=target_dir)
-            if restart
-            else contextlib.nullcontext(None)
-        ) as staging:
-            target = str(Path(staging, genome_data["final"])) if staging else final_path
-            if not download_file(
-                genome_data["url"],
-                target,
-                progress_callback,
-                cancel_event,
-                expected_sha256=genome_data.get("sha256") or None,
-            ):
-                return False
-            if staging:
-                os.replace(target, final_path)
-                _remove_genome_files(final_path, keep_fasta=True)
+        ready = bool(
+            staging
+            and expected
+            and Path(target).is_file()
+            and verify_download_sha256(target, expected)
+        )
+        if not ready and not download_file(
+            url, target, progress_callback, cancel_event, expected_sha256=expected
+        ):
+            return False
+        if cancel_event and cancel_event.is_set():
+            return False
+        if staging is not None:
+            os.replace(target, final_path)
+            _remove_genome_files(final_path, keep_fasta=True)
+            shutil.rmtree(staging)
 
     if not process_reference_file(final_path, status_callback, cancel_event):
         return False
@@ -249,7 +294,11 @@ def download_and_process_genome(
             _remove_genome_files(final_path)
             return False
     _record_n_counts(
-        final_path, genome_data["final"], target_dir, status_callback, cancel_event
+        final_path,
+        genome_data["final"],
+        str(Path(final_path).parent),
+        status_callback,
+        cancel_event,
     )
     return True
 

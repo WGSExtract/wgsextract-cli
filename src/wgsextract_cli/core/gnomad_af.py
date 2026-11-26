@@ -183,6 +183,7 @@ def _stream_gnomad_contig(
     exact, and so a cut-off download fails instead of leaving a short table.
     """
     partial = part + ".partial"
+    staging = Path(part + ".mirror")
     mirror = mirror_for(url) if use_mirrors else None
     if mirror is None:
         require_network("gnomAD allele-frequency contig")
@@ -207,14 +208,14 @@ def _stream_gnomad_contig(
                 if cancelled():
                     return
                 if mirror:
-                    staging = Path(part + ".mirror")
-                    for chunk in mirror_chunks(mirror, staging, cancel_event):
+                    for chunk in mirror_chunks(
+                        mirror, staging, cancel_event, keep_staged=True
+                    ):
                         if cancelled():
                             return
                         sink.write(chunk)
                         on_bytes(len(chunk))
                         reported += len(chunk)
-                    shutil.rmtree(staging)
                 else:
                     pinned = mirror_for(url)
                     digest = hashlib.sha256()
@@ -282,6 +283,8 @@ def _stream_gnomad_contig(
     # Closed first: Windows can't rename or delete an open file.
     if ok:
         Path(partial).replace(part)
+        if staging.is_dir():
+            shutil.rmtree(staging)
         return None
     Path(partial).unlink()
     if restriction is not None:
