@@ -130,6 +130,8 @@ try {
     page.on("pageerror", (error) => errors.push(error.message));
     page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
     await page.goto(url);
+    // The sidebar is painted before the event bindings are imported.
+    await page.waitForLoadState("networkidle");
     await page.locator("[data-gene-page-open]").click();
     await page.locator("#gene-gene").fill("brca1");
     assert.equal(await page.locator("#gene-alignment").inputValue(), bam, "The page starts from the genome chosen in the app.");
@@ -137,6 +139,29 @@ try {
     await page.locator("#gene-minDepth").fill("20");
     await page.locator("[data-gene-form] button[type=submit]").click();
     await page.locator(".gene-summary h2").filter({ hasText: "BRCA1 on hg38" }).waitFor({ timeout: 120_000 });
+    const handoffs = [];
+    const opened = Promise.withResolvers();
+    await page.route("**/api/gene/iobio/open", async (route) => {
+        handoffs.push(route.request().postDataJSON());
+        await opened.promise;
+        return route.fulfill({ json: { ok: true } });
+    });
+    const disclosure = page.getByRole("dialog", { name: "Open in gene.iobio?" });
+    await page.locator("[data-gene-iobio]").click();
+    await disclosure.getByText(/Frameshift Genomics/).waitFor();
+    await disclosure.getByText(/BRCA1.*GRCh38.*waygate\.iobio\.io/).waitFor();
+    await disclosure.getByRole("button", { name: "Cancel", exact: true }).click();
+    await disclosure.waitFor({ state: "hidden" });
+    assert.equal(handoffs.length, 0);
+    await page.locator("[data-gene-iobio]").click();
+    await disclosure.getByRole("button", { name: "Accept and open gene.iobio" }).click();
+    assert.equal(await disclosure.getByRole("button", { name: "Cancel", exact: true }).isDisabled(), true);
+    await page.keyboard.press("Escape");
+    assert.equal(await disclosure.isVisible(), true, "Acceptance was sent; Escape cannot undo it.");
+    opened.resolve();
+    await disclosure.waitFor({ state: "hidden" });
+    assert.equal(handoffs.length, 1);
+    assert.deepEqual(handoffs[0], { gene: "BRCA1", build: "hg38", consentVersion: 1 });
     const proof = { exonRows: await page.locator(".gene-coverage tbody tr").count(), belowRows: await page.locator(".gene-coverage tbody tr.below").count() };
     proof.variants = await page.locator(".gene-variants tbody tr").count();
     await page.locator("[data-gene-filter]").selectOption("clinvar_plp");

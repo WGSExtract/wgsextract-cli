@@ -42,6 +42,12 @@ WGS Extract intentionally separates two different user needs across two layers:
 | **3. Explicit management & help actions** | Running **Setup**, clicking **Install / Download** on [Reference Data](reference-data.md), [Reference Genomes](reference-genomes.md), or [Tools](tools.md), clicking **Look up sizes**, opening a documentation link, or clicking **Open GitHub issue** | **Off until you click** | **Never** (except a redacted bug report that you preview and submit yourself) | Only runs when you explicitly click the button or link |
 | **4. Sample-derived remote features** | [Remote Genome Viewer](genome-viewer.md#view-files-on-a-remote-server) (**Connect and view remote file**), or realigning a remote `https://` alignment URL | **Always explicit opt-in** (off in Basic & Advanced) | **Yes** — sends requested file paths and genomic byte ranges to the server you chose | Never enabled by default; requires explicit per-action confirmation |
 
+[Open in gene.iobio](gene-page.md#open-in-geneiobio) also requires explicit
+per-launch consent. It opens `gene.iobio.io` in your browser with the selected
+gene symbol and build only. WGS Extract does not send any sample files; if you
+choose files on the site, it may expose them to iobio's servers through
+`waygate.iobio.io`.
+
 ## What external servers can see (IP address & metadata)
 
 Even when **no DNA or sample information** leaves your computer, any internet
