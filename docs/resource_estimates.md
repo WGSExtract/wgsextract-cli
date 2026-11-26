@@ -500,6 +500,12 @@ genome-wide). The figures are bytes per byte of input CRAM (BAM inputs count
 | Output CRAM / BAM | 1.8 / 2.75 | slice CRAM 1.90 (1.91 bases per base); whole genome 1.79 (#431) |
 | Tagged bgzipped FASTQ (`realign`) | 1.45 | 1.39 |
 
+Chunked long-read realignment streams its sorted BAM into one reference group
+at a time when pysam 0.24.1 or newer is installed. It no longer writes a
+temporary BAM and CSI for each chunk. The external sort spills still need
+scratch space, and the groups and assembly stay on disk so the run can resume.
+Installations without this pysam version keep using the indexed BAM handoff.
+
 `realign --tmp-dir` on another volume needs the spills there, and the output and
 FASTQ in the output directory. For the 103.7 GB HG002 ONT CRAM at `--threads 5
 --memory 256M` that is about 316 GiB of scratch and 174 GiB of output plus 141
