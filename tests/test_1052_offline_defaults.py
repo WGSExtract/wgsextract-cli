@@ -18,6 +18,7 @@ from tests.htslib_helpers import (
     sam_to_bam,
     write_fasta,
 )
+from wgsextract_cli import __file__ as cli_package_file
 from wgsextract_cli import api
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -106,6 +107,8 @@ def test_1591_default_cli_commands_never_attempt_network(tmp_path: Path) -> None
     }
     env.update(isolated_home_env(tmp_path / "home"))
     env.update(dict.fromkeys(("TEMP", "TMP", "TMPDIR"), str(tmp_path)))
+    # Use the package pytest loaded without declaring all of src/ as test data.
+    package_root = Path(cli_package_file).resolve().parents[1]
     run = subprocess.run(
         [
             sys.executable,
@@ -144,7 +147,7 @@ finally:
 """,
             str(config),
             json.dumps(commands),
-            str(Path(__file__).resolve().parents[1] / "src"),
+            str(package_root),
         ],
         cwd=tmp_path,
         env=env,
