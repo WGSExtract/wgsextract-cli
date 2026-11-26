@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import tempfile
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
@@ -37,10 +38,19 @@ from wgsextract_cli.core.table_writer import (
     write_table,
 )
 from wgsextract_cli.core.temp_directory import scratch_directory
-from wgsextract_cli.core.utils import UsageError
+from wgsextract_cli.core.utils import UsageError, popen
 from wgsextract_cli.core.variant_confidence import Thresholds, thresholds_from
 
 _SCHEMA = "wgsextract.panel_audit/1"
+_GVCF_SUFFIXES = (
+    ".g.vcf",
+    ".g.vcf.gz",
+    ".g.vcf.bgz",
+    ".g.bcf",
+    ".gvcf",
+    ".gvcf.gz",
+    ".gvcf.bgz",
+)
 _TABLE_COLUMNS = (
     Column("group_id", "TEXT", "Research panel group."),
     Column("decision", "TEXT", "Qualifying or unscored for this group."),
@@ -51,10 +61,42 @@ _TABLE_COLUMNS = (
 )
 
 
-def _open(path: Path, option: str) -> genotypes.VcfSource:
+def _deepvariant_blocks(source: genotypes.VcfSource) -> bool:
+    # Some DeepVariant exports omit the ALT declaration and retain the same
+    # END header line in both the gVCF and the variants-only call set.
+    if (
+        "##DeepVariant_version=" not in source.header
+        or "##INFO=<ID=END," not in source.header
+    ):
+        return False
+    command = [
+        "bcftools",
+        "query",
+        "-i",
+        'N_ALT=1 && ALT="<*>" && INFO/END!="."',
+        "-f",
+        "%POS\n",
+        source.path,
+    ]
+    with popen(
+        command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+    ) as proc:
+        assert proc.stdout is not None
+        try:
+            return bool(proc.stdout.readline())
+        finally:
+            proc.kill()
+
+
+def _open(
+    path: Path, option: str, *, probe_reference_blocks: bool = False
+) -> genotypes.VcfSource:
     if not path.is_file():
         raise UsageError(f"{option} must name a local file: {path}.")
-    return genotypes.open_vcf(str(path), None, option=option)
+    source = genotypes.open_vcf(str(path), None, option=option)
+    if probe_reference_blocks and not source.is_gvcf:
+        source.is_gvcf = _deepvariant_blocks(source)
+    return source
 
 
 def _gvcf(
@@ -69,7 +111,11 @@ def _gvcf(
             "No gVCF is available. Unlisted loci are not assessed, not reference.",
         )
         return None, None
-    gvcf = source if str(path) == source.path else _open(Path(path), "--gvcf")
+    gvcf = (
+        source
+        if str(path) == source.path
+        else _open(Path(path), "--gvcf", probe_reference_blocks=True)
+    )
     if not gvcf.is_gvcf:
         raise UsageError(f"--gvcf must contain reference evidence: {path}.")
     if gvcf.sample != source.sample:
@@ -413,7 +459,17 @@ def _write(
 def run_panel_audit(params: PanelAuditParams) -> None:
     verify_dependencies(["bcftools"])
     check_format(params.table_format)
-    source = _open(params.vcf_input.expanduser().absolute(), "--vcf-input")
+    source_path = params.vcf_input.expanduser().absolute()
+    if params.gvcf is None:
+        # Ordinary indexed VCF site audits must not scan the whole file.
+        probe = source_path.name.lower().endswith(_GVCF_SUFFIXES)
+    else:
+        probe = params.gvcf.expanduser().absolute() == source_path
+    source = _open(
+        source_path,
+        "--vcf-input",
+        probe_reference_blocks=probe,
+    )
     current_result().add_input(source.path, "vcf_input")
     outdir = (params.outdir or Path(source.path).parent).expanduser().absolute()
     outdir.mkdir(parents=True, exist_ok=True)
