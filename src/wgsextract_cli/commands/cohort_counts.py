@@ -10,14 +10,35 @@ from contextlib import ExitStack
 from dataclasses import dataclass
 from heapq import heappop, heappush, merge
 from itertools import groupby
+from typing import NamedTuple
 
 from wgsextract_cli.commands.cohort_vcf import Prepared, chromosome_records
 from wgsextract_cli.core.reference_evidence import Span, State
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.variant_confidence import Thresholds
-from wgsextract_cli.core.variant_table import Row
 
 _BASES = frozenset("ACGT")
+
+
+class CohortRow(NamedTuple):
+    chrom: str
+    pos: int
+    ref: str
+    alt: str
+    ac: int
+    an: int
+    af: float | None
+    het: int
+    hom_alt: int
+    hemi: int
+    callable_samples: int
+    reference_called: int
+    not_assessed: int
+    uncallable: int
+
+    @property
+    def carriers(self) -> int:
+        return self.het + self.hom_alt + self.hemi
 
 
 def _format(row: list[str]) -> dict[str, str]:
@@ -176,7 +197,7 @@ def _site_rows(
     keys: set[tuple[str, str]],
     active: list[list[Record]],
     evidence: list[EvidenceCursor],
-) -> Iterator[Row]:
+) -> Iterator[CohortRow]:
     ref = next(iter(keys))[0]  # The single-base REF has been checked against the FASTA.
     genotypes: Counter[tuple[str, ...]] = Counter()
     missing: Counter[State] = Counter()
@@ -214,7 +235,7 @@ def _site_rows(
                     hom_alt += n
                 else:
                     het += n
-        yield (
+        yield CohortRow(
             chrom,
             pos,
             ref,
@@ -238,7 +259,7 @@ def chromosome_rows(
     length: int,
     ranges: list[tuple[int, int]],
     thresholds: Thresholds,
-) -> Iterator[Row]:
+) -> Iterator[CohortRow]:
     with ExitStack() as stack:
         sources, cursors = [], []
         active: list[list[Record]] = []
