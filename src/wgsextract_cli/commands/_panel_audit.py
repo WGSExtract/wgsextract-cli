@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from os import SEEK_END
 from pathlib import Path
 from typing import Any
 
@@ -38,7 +39,7 @@ from wgsextract_cli.core.table_writer import (
     write_table,
 )
 from wgsextract_cli.core.temp_directory import scratch_directory
-from wgsextract_cli.core.utils import UsageError, popen
+from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen
 from wgsextract_cli.core.variant_confidence import Thresholds, thresholds_from
 
 _SCHEMA = "wgsextract.panel_audit/1"
@@ -61,7 +62,7 @@ _TABLE_COLUMNS = (
 )
 
 
-def _deepvariant_blocks(source: genotypes.VcfSource) -> bool:
+def _deepvariant_blocks(source: genotypes.VcfSource, work: Path) -> bool:
     # Some DeepVariant exports omit the ALT declaration and retain the same
     # END header line in both the gVCF and the variants-only call set.
     if (
@@ -78,25 +79,33 @@ def _deepvariant_blocks(source: genotypes.VcfSource) -> bool:
         "%POS\n",
         source.path,
     ]
-    with popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
-    ) as proc:
+    with (
+        tempfile.TemporaryFile(dir=work) as errors,
+        popen(command, stdout=subprocess.PIPE, stderr=errors, text=True) as proc,
+    ):
         assert proc.stdout is not None
         try:
-            return bool(proc.stdout.readline())
+            if proc.stdout.readline():
+                return True
+            status = proc.wait()
         finally:
-            proc.kill()
+            if proc.poll() is None:
+                proc.kill()
+        if status:
+            errors.seek(max(0, errors.seek(0, SEEK_END) - 1000))
+            detail = errors.read().decode(errors="replace").strip()
+            raise WGSExtractError(
+                f"Could not read {source.path} while checking DeepVariant reference blocks "
+                f"(bcftools query exited {status}). Verify or regenerate the input."
+                + (f"\n{detail}" if detail else "")
+            )
+    return False
 
 
-def _open(
-    path: Path, option: str, *, probe_reference_blocks: bool = False
-) -> genotypes.VcfSource:
+def _open(path: Path, option: str) -> genotypes.VcfSource:
     if not path.is_file():
         raise UsageError(f"{option} must name a local file: {path}.")
-    source = genotypes.open_vcf(str(path), None, option=option)
-    if probe_reference_blocks and not source.is_gvcf:
-        source.is_gvcf = _deepvariant_blocks(source)
-    return source
+    return genotypes.open_vcf(str(path), None, option=option)
 
 
 def _gvcf(
@@ -111,11 +120,10 @@ def _gvcf(
             "No gVCF is available. Unlisted loci are not assessed, not reference.",
         )
         return None, None
-    gvcf = (
-        source
-        if str(path) == source.path
-        else _open(Path(path), "--gvcf", probe_reference_blocks=True)
-    )
+    local_path = Path(path).expanduser().absolute()
+    gvcf = source if local_path == Path(source.path) else _open(local_path, "--gvcf")
+    if not gvcf.is_gvcf:
+        gvcf.is_gvcf = _deepvariant_blocks(gvcf, work)
     if not gvcf.is_gvcf:
         raise UsageError(f"--gvcf must contain reference evidence: {path}.")
     if gvcf.sample != source.sample:
@@ -460,18 +468,16 @@ def run_panel_audit(params: PanelAuditParams) -> None:
     verify_dependencies(["bcftools"])
     check_format(params.table_format)
     source_path = params.vcf_input.expanduser().absolute()
-    if params.gvcf is None:
-        # Ordinary indexed VCF site audits must not scan the whole file.
-        probe = source_path.name.lower().endswith(_GVCF_SUFFIXES)
-    else:
-        probe = params.gvcf.expanduser().absolute() == source_path
-    source = _open(
-        source_path,
-        "--vcf-input",
-        probe_reference_blocks=probe,
-    )
+    source = _open(source_path, "--vcf-input")
     current_result().add_input(source.path, "vcf_input")
     outdir = (params.outdir or Path(source.path).parent).expanduser().absolute()
     outdir.mkdir(parents=True, exist_ok=True)
     with scratch_directory(outdir, ".wgse_panel_audit_") as work:
+        # Ordinary indexed VCF site audits must not scan the whole file.
+        if (
+            params.gvcf is None
+            and not source.is_gvcf
+            and source_path.name.lower().endswith(_GVCF_SUFFIXES)
+        ):
+            source.is_gvcf = _deepvariant_blocks(source, Path(work))
         _run(params, source, outdir, Path(work))

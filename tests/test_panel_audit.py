@@ -1,6 +1,7 @@
 """Research panel genotype, reference evidence and phase."""
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Literal
 
@@ -9,6 +10,7 @@ import pytest
 from tests.htslib_helpers import needs_htslib
 from tests.test_panel_spec import _audit_inputs
 from wgsextract_cli import api
+from wgsextract_cli.core.dependencies import get_tool_path
 
 
 @needs_htslib
@@ -115,6 +117,47 @@ def test_1287_deepvariant_variants_only_header_does_not_imply_reference_evidence
     )
     assert mistaken.exit_code == 2
     assert mistaken.error and "reference evidence" in mistaken.error.message
+
+
+@needs_htslib
+@pytest.mark.parametrize("as_primary", [True, False])
+def test_1287_corrupt_deepvariant_probe_reports_read_error(
+    tmp_path: Path, as_primary: bool
+) -> None:
+    panel, vcf, gvcf = _audit_inputs(
+        tmp_path, phase_set="1", undeclared_deepvariant=True
+    )
+    header = b"".join(
+        line
+        for line in gvcf.read_bytes().splitlines(keepends=True)
+        if line.startswith(b"#")
+    )
+    bgzip = get_tool_path("bgzip")
+    assert bgzip is not None
+    header_blocks = subprocess.check_output([bgzip, "-c"], input=header)
+    body_blocks = bytearray(
+        subprocess.check_output(
+            [bgzip, "-c"], input=b"chr1\t11796321\t.\tG\tA\t30\tPASS\t.\tGT\t0/1\n"
+        )
+    )
+    # Keep the header and EOF readable; corrupt the CRC of the body block.
+    body_blocks[-28 - 8] ^= 1
+    corrupt = tmp_path / "corrupt.g.vcf.gz"
+    corrupt.write_bytes(header_blocks[:-28] + body_blocks)
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel,
+            vcf_input=corrupt if as_primary else vcf,
+            gvcf=None if as_primary else corrupt,
+            research_panel=True,
+        ),
+        check=False,
+    )
+    assert result.exit_code != 0 and result.error
+    assert str(corrupt) in result.error.message
+    assert "checking DeepVariant reference blocks" in result.error.message
+    assert "CRC32 checksum mismatch" in result.error.message
+    assert not result.outputs
 
 
 @needs_htslib
