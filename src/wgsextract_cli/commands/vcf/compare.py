@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import tempfile
 from collections import Counter
+from collections.abc import Callable
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import IO
 
 from wgsextract_cli.api._cli import cli_handler
+from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.vcf_specs.compare import VcfCompareParams, labelled
 from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.config import output_directory
@@ -27,25 +29,34 @@ from wgsextract_cli.core.table_writer import (
     table_path,
     write_table,
 )
+from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import UsageError, run_command
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG, thresholds_from
 
 from .compare_inputs import (
     ALIGN_ORIGIN,
     PARTIAL,
+    SOURCE_RECORD,
     Dictionary,
     Input,
     prepare,
     reference_indexes,
     require_local,
+    vcf_stream,
     verify_build,
 )
 from .compare_records import Call, EvidenceCursor, Scope, resolve, sites
 from .compare_summary import PAIR_COLUMNS, SUPPORT_COLUMNS, Summary, variant_type
+from .compare_vcfs import (
+    DECISION_TAG,
+    PARTITIONS,
+    STATE_TAG,
+    PartitionVCFs,
+    comparison_info,
+    compressed_vcf,
+)
 
 _SCHEMA = "wgsextract.vcf_compare/1"
-_STATE_TAG = "WGSE_COMPARE_STATE"
-_DECISION_TAG = "WGSE_COMPARE_DECISION"
 _KEY_COLUMNS = (
     Column("chrom", "TEXT"),
     Column("pos", "INTEGER"),
@@ -121,29 +132,33 @@ class Groups:
         )
 
 
-def _header(stream: TextIO, destination: TextIO, labels: tuple[str, ...]) -> None:
+def _header(
+    stream: IO[str],
+    write: Callable[[str], None],
+    labels: tuple[str, ...],
+    *,
+    atomize: bool,
+) -> None:
+    hidden = (
+        (PARTIAL, ALIGN_ORIGIN, SOURCE_RECORD) if atomize else (PARTIAL, ALIGN_ORIGIN)
+    )
+    prefixes = tuple(f"##INFO=<ID={tag}," for tag in hidden)
     for line in stream:
-        if line.startswith(f"##INFO=<ID={_STATE_TAG},") or line.startswith(
-            f"##INFO=<ID={_DECISION_TAG},"
+        if line.startswith(f"##INFO=<ID={STATE_TAG},") or line.startswith(
+            f"##INFO=<ID={DECISION_TAG},"
         ):
             raise UsageError(
                 "The anchor already has comparison annotations; use its original callset."
             )
         if line.startswith("#CHROM\t"):
-            description = f"Per-callset state in order: {', '.join(labels)}"
-            destination.write(
-                f'##INFO=<ID={_STATE_TAG},Number=.,Type=String,Description="{description}">\n'
-                f'##INFO=<ID={_DECISION_TAG},Number=1,Type=String,Description="Comparison decision">\n'
-            )
-            destination.write(line)
+            write(comparison_info(labels))
+            write(line)
             break
-        if not line.startswith(
-            (f"##INFO=<ID={PARTIAL},", f"##INFO=<ID={ALIGN_ORIGIN},")
-        ):
-            destination.write(line)
+        if not line.startswith(prefixes):
+            write(line)
 
 
-def _annotate(record: str, calls: list[Call], decision: str) -> str:
+def _annotate(record: str, calls: list[Call], decision: str, *, atomize: bool) -> str:
     fields = record.split("\t")
     tags = {}
     for item in fields[7].split(";"):
@@ -151,8 +166,10 @@ def _annotate(record: str, calls: list[Call], decision: str) -> str:
             tags[item.partition("=")[0]] = item
     if shifted := tags.pop(ALIGN_ORIGIN, None):
         tags.setdefault(SPLIT_TAG, f"{SPLIT_TAG}={shifted.partition('=')[2]}")
-    tags[_STATE_TAG] = f"{_STATE_TAG}=" + ",".join(call.state for call in calls)
-    tags[_DECISION_TAG] = f"{_DECISION_TAG}={decision}"
+    if atomize:
+        tags.pop(SOURCE_RECORD, None)
+    tags[STATE_TAG] = f"{STATE_TAG}=" + ",".join(call.state for call in calls)
+    tags[DECISION_TAG] = f"{DECISION_TAG}={decision}"
     fields[7] = ";".join(tags.values())
     return "\t".join(fields) + "\n"
 
@@ -176,8 +193,10 @@ def _collect(
     skipped, inconsistent = 0, Counter[str]()
     outcomes: Counter[str] = Counter()
     fmt = params.table_format
+    paths = _result_paths(publish, params)
     with ExitStack() as stack:
         streams = []
+        normalized_inputs = []
         readers = []
         for index, (label, item) in enumerate(labeled.calls.items()):
             explicit = labeled.evidence.get(label)
@@ -189,6 +208,7 @@ def _collect(
                 calls=True,
                 evidence=group.strict,
                 blockers_only=explicit is not None,
+                atomize=params.atomize,
             )
             skipped += count
             primary = None
@@ -218,7 +238,13 @@ def _collect(
             if reader is not None:
                 stack.callback(reader.close)
             readers.append((reader, primary))
-            streams.append(stack.enter_context(normalized.open(encoding="utf-8")))
+            normalized_inputs.append(normalized)
+        for normalized in normalized_inputs:
+            streams.append(
+                stack.enter_context(
+                    vcf_stream(normalized, normalized.parent, "normalized")
+                )
+            )
         variant_writer = None
         if params.emit_variants or group.include:
             columns = _KEY_COLUMNS + tuple(
@@ -236,16 +262,21 @@ def _collect(
         anchor_file = None
         if params.emit_vcf:
             anchor_file = stack.enter_context(
-                (work / "anchor.vcf").open(
-                    "w",
-                    encoding="utf-8",
-                    newline="\n",
-                )
+                compressed_vcf(paths["compare_anchor"], work)
             )
-            _header(streams[anchor], anchor_file, summary.labels)
+            _header(
+                streams[anchor], anchor_file, summary.labels, atomize=params.atomize
+            )
+        partitions = None
+        if params.emit_partition_vcfs:
+            partitions = PartitionVCFs(stack, paths, work, dictionary, summary.labels)
         order = {name: rank for rank, name in enumerate(dictionary.names.values())}
         for allele, observations in sites(
-            streams, order, scope, check_reference=labeled.reference is None
+            streams,
+            order,
+            scope,
+            check_reference=labeled.reference is None,
+            atomized=params.atomize,
         ):
             calls = []
             for label, observation, (cursor, primary) in zip(
@@ -258,6 +289,8 @@ def _collect(
             summary.add(allele, kind, calls)
             decision = group.decision(calls)
             outcomes[decision] += 1
+            if partitions is not None:
+                partitions.write(allele, calls)
             if variant_writer is not None:
                 variant_writer.write(
                     [
@@ -275,7 +308,7 @@ def _collect(
                 and (record := calls[anchor].record)
                 and (decision == "retained" or not group.include)
             ):
-                anchor_file.write(_annotate(record, calls, decision))
+                anchor_file(_annotate(record, calls, decision, atomize=params.atomize))
     for label, count in inconsistent.items():
         if count:
             warn(
@@ -291,7 +324,6 @@ def _publish(
     params: VcfCompareParams,
     summary: Summary,
     outcomes: Counter[str],
-    work: Path,
     staged: Path,
     destination: Path,
 ) -> None:
@@ -325,22 +357,14 @@ def _publish(
         encoding="utf-8",
         newline="\n",
     )
-    if params.emit_vcf:
-        anchor = paths["compare_anchor"]
-        run_command(
-            [
-                "bcftools",
-                "view",
-                "--no-version",
-                "-Oz",
-                "-o",
-                anchor,
-                work / "anchor.vcf",
-            ],
-            capture_output=True,
-        )
-        run_command(["bcftools", "index", "--csi", anchor])
-    publish_output_set({path: destination / path.name for path in paths.values()})
+    for path in paths.values():
+        if path.name.endswith(".vcf.gz"):
+            run_command(["bcftools", "index", "--csi", path])
+    publish_output_set(
+        {path: destination / path.name for path in paths.values()},
+        retire=_retired_partitions(destination, params),
+        checkpoint=checkpoint,
+    )
     for role, path in paths.items():
         result.add_output(destination / path.name, role)
 
@@ -353,13 +377,26 @@ def _result_paths(folder: Path, params: VcfCompareParams) -> dict[str, Path]:
     }
     if params.emit_variants or params.mode != "concordance":
         paths["compare_variants"] = Path(table_path(folder / "compare.variants", fmt))
-    if params.emit_vcf:
-        anchor = folder / "compare.anchor.vcf.gz"
-        paths["compare_anchor_index"] = Path(f"{anchor}.csi")
-        paths["compare_anchor"] = anchor
+    names: tuple[str, ...] = ("anchor",) if params.emit_vcf else ()
+    if params.emit_partition_vcfs:
+        names += PARTITIONS
+    for name in names:
+        vcf = folder / f"compare.{name}.vcf.gz"
+        paths[f"compare_{name}_index"] = Path(f"{vcf}.csi")
+        paths[f"compare_{name}"] = vcf
     # Use this as the atomic publication lock for every output combination.
     paths["compare_summary_json"] = folder / "compare.summary.json"
     return paths
+
+
+def _retired_partitions(folder: Path, params: VcfCompareParams) -> tuple[Path, ...]:
+    if params.emit_partition_vcfs:
+        return ()
+    return tuple(
+        folder / f"compare.{name}.vcf.gz{suffix}"
+        for name in PARTITIONS
+        for suffix in ("", ".csi")
+    )
 
 
 def _check_destinations(
@@ -377,6 +414,7 @@ def _check_destinations(
     input_paths = {path.resolve() for path in inputs}
     for path in (
         *_result_paths(outdir, params).values(),
+        *_retired_partitions(outdir, params),
         # Where the run publishes its manifest (set_manifest_stem below).
         current_result().manifest_path_for_output(outdir / "compare"),
     ):
@@ -415,7 +453,13 @@ def run_compare(params: VcfCompareParams) -> None:
                 {"label": label, "sample": call.sample, "build": call.build}
                 for label, call in sources.calls.items()
             ],
-            "normalization": "split_left_align" if sources.reference else "split_only",
+            "normalization": (
+                "atomize_left_align"
+                if params.atomize
+                else "split_left_align"
+                if sources.reference
+                else "split_only"
+            ),
             "allow_unverified_build": params.allow_unverified_build,
             "reference_evidence": params.reference_evidence,
             "reference_min_depth": thresholds.min_depth,
@@ -423,7 +467,7 @@ def run_compare(params: VcfCompareParams) -> None:
         }
     )
     with (
-        tempfile.TemporaryDirectory(prefix="wgse_compare_") as work_name,
+        scratch_directory(outdir, ".wgse_compare_work_") as work_name,
         tempfile.TemporaryDirectory(prefix=".wgse_compare_", dir=outdir) as staged_name,
     ):
         work, staged = Path(work_name), Path(staged_name)
@@ -446,7 +490,7 @@ def run_compare(params: VcfCompareParams) -> None:
                 "Skipped symbolic, spanning-deletion or breakend alleles.",
                 alleles=skipped,
             )
-        _publish(params, summary, outcomes, work, staged, outdir)
+        _publish(params, summary, outcomes, staged, outdir)
     result.add_metrics(
         alleles=sum(outcomes.values()),
         retained=outcomes["retained"],
