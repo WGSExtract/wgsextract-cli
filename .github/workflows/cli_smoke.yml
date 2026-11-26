@@ -22,6 +22,7 @@ jobs:
         with:
           environments: >-
             default dev vep-rs
+            ${{ matrix.os == 'macos-latest' && 'delly' || '' }}
             ${{ matrix.os == 'windows-latest' && 'gatk' || '' }}
       - name: Build and Smoke Test Package
         run: pixi run package-smoke

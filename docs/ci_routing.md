@@ -252,8 +252,9 @@ Already verified downloads are reused; incomplete or incorrect downloads never
 replace a verified archive.
 
 For **full Ubuntu/macOS product suites**, install the supplemental environments
-needed by the selection (normally `vep-rs`; `imputation`, `pacbio`, `phasing`,
-and `somalier` for their routed tests), then retain their wheels too:
+needed by the selection (normally `vep-rs`; also `delly` on macOS; `imputation`,
+`pacbio`, `phasing`, and `somalier` for their routed tests), then retain their
+wheels too:
 
 ```sh
 pixi install --locked -e vep-rs

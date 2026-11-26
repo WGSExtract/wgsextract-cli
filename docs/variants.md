@@ -210,6 +210,9 @@ number of `repairs`.
 
 `vcf sv` defaults to Delly 2 (`delly sr`); `vcf cnv` uses `delly cnv`,
 which needs no mappability map (`--map` is accepted but ignored).
+On macOS, install Delly with `pixi install --locked -e delly`. WGS Extract
+finds it in that environment; Delly still requires htslib 1.24, while the
+macOS builds of bcftools 1.25 require htslib 1.25.
 ONT detection/`--ont` or `--long-read` selects Sniffles; `--pacbio` supports
 pbsv/Sniffles. Explicit `--caller` wins, but Delly with a long-read flag
 or pbsv with ONT is rejected. See [structural variants](ont.md#structural-variants).
