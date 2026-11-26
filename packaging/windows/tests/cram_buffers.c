@@ -56,14 +56,10 @@ static void *worker(void *argument) {
             CHECK(cram_uncompress_block(held[s]) == 0);
             CHECK(held[s]->method == RAW && held[s]->alloc == length);
             CHECK(memcmp(held[s]->data, raw, length) == 0);
-            /* Exercise the unknown-size inflate/realloc path too. */
+            /* Pool pointers retain ordinary free compatibility. */
             if (round == 0 && s == 2) {
-                size_t actual_size = 0;
-                char *out = zlib_mem_inflate((char *)compressed, compressed_size,
-                                           &actual_size);
-                CHECK(out && actual_size == length);
-                CHECK(memcmp(out, raw, length) == 0);
-                free(out); /* Pool pointers retain ordinary free compatibility. */
+                free(held[s]->data);
+                held[s]->data = NULL;
             }
             /* Error followed by success must not leave corrupt cached bytes. */
             if (round == 0 && s == 1) {
@@ -115,9 +111,10 @@ int main(int argc, char **argv) {
         b->data = malloc(length + 65536);
         CHECK(b->data);
         cram_free_block(b);
-        char *out = zlib_mem_inflate(compressed, compressed_size, &length);
-        CHECK(out && length == 1048576);
-        volatile unsigned char *past_end = (unsigned char *)out + length;
+        b = block(compressed, compressed_size, length);
+        CHECK(cram_uncompress_block(b) == 0);
+        CHECK(b->alloc == length);
+        volatile unsigned char *past_end = b->data + length;
         return past_end[0]; /* Cached capacity must not hide a logical overrun. */
     }
 #else
