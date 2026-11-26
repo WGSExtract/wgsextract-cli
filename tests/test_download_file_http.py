@@ -78,6 +78,7 @@ def test_explicit_checksum_verifies_before_replacing_destination(
     )
     assert dest.read_bytes() == b"previous verified download"
     assert not Path(str(dest) + ".partial").exists()
+    assert server.gets() == [None]
     assert downloads.download_file(
         server.url,
         str(dest),
@@ -159,14 +160,12 @@ def test_redownload_replaces_existing_dest_only_after_verification(
     monkeypatch.setattr(
         downloads, "resolve_github_release_asset_sha256", lambda _: digest
     )
-    real_verify = downloads.verify_download_sha256
 
-    def verify(path, expected):
+    def during_transfer(_offset: int, body: bytes) -> bytes:
         assert dest.read_bytes() == old
-        assert Path(path) == partial
-        return real_verify(path, expected)
+        return body
 
-    monkeypatch.setattr(downloads, "verify_download_sha256", verify)
+    server.transform_get = during_transfer
     assert downloads.download_file(server.url, str(dest))
     assert dest.read_bytes() == DATA
     assert not partial.exists()
