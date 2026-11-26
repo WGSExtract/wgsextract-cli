@@ -26,6 +26,9 @@ from tests.test_realign import (
     _visible as _visible,
 )
 from tests.test_realign import (
+    _write_realign_reference as _write_realign_reference,
+)
+from tests.test_realign import (
     genome_and_ref as genome_and_ref,
 )
 from tests.test_realign import (
@@ -148,20 +151,13 @@ def test_stream_failure_leaves_no_fastqs_or_collate_spills(monkeypatch, source, 
     assert list(source.parent.glob(".collate_*")) == []
 
 
-@needs_tools("bwa", "samtools")
-@pytest.mark.parametrize("cram", [False, True], ids=["bam", "cram"])
-@pytest.mark.parametrize("markdup", [False, True], ids=["auto-marker", "markdup"])
-@pytest.mark.parametrize("aligner", ["bwa", "bwa-mem2"])
-def test_paired_stream_body_matches_files_including_discarded_reads(
-    tmp_path, genome_and_ref, monkeypatch, cram, markdup, aligner
-):
-    if realign.align_cmd.get_tool_path(aligner) is None:
-        pytest.skip(f"{aligner} unavailable")
-    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 8 * 1024**3)
-    for module in (realign.align_cmd, preparation, short_reads):
-        monkeypatch.setattr(module, "streaming_mapping_fits", lambda *_a, **_kw: True)
-    genome, ref = genome_and_ref
-    source, pairs = _old_alignment(tmp_path, genome)
+@pytest.fixture(scope="module")
+def filtered_alignments(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[str, str, str, str, int]:
+    root = tmp_path_factory.mktemp("filtered-alignments")
+    genome, ref = _write_realign_reference(root)
+    source, pairs = _old_alignment(root, genome)
     records = _view("view", source).splitlines()
     extra = []
     for flag in (0x100, 0x800):
@@ -171,17 +167,31 @@ def test_paired_stream_body_matches_files_including_discarded_reads(
     extra.append(
         f"singleton\t73\told1\t1\t60\t100M\t*\t0\t0\t{genome[:100]}\t{'I' * 100}"
     )
-    source = sam_to_bam(
+    bam = sam_to_bam(
         [*_view("view", "-H", source).splitlines(), *records, *extra],
-        tmp_path / "old" / "filtered.bam",
+        root / "old" / "filtered.bam",
     )
-    input_ref = None
-    if cram:
-        input_ref = str(write_fasta(tmp_path / "old" / "encode.fa", {"old1": genome}))
-        encoded = tmp_path / "old" / "filtered.cram"
-        run_command(["samtools", "view", "-C", "-T", input_ref, "-o", encoded, source])
-        run_command(["samtools", "index", encoded])
-        source = str(encoded)
+    input_ref = str(write_fasta(root / "old" / "encode.fa", {"old1": genome}))
+    cram = root / "old" / "filtered.cram"
+    run_command(["samtools", "view", "-C", "-T", input_ref, "-o", cram, bam])
+    run_command(["samtools", "index", cram])
+    return bam, str(cram), ref, input_ref, pairs
+
+
+@needs_tools("bwa", "samtools")
+@pytest.mark.parametrize("cram", [False, True], ids=["bam", "cram"])
+@pytest.mark.parametrize("markdup", [False, True], ids=["auto-marker", "markdup"])
+@pytest.mark.parametrize("aligner", ["bwa", "bwa-mem2"])
+def test_paired_stream_body_matches_files_including_discarded_reads(
+    tmp_path, filtered_alignments, monkeypatch, cram, markdup, aligner
+):
+    if realign.align_cmd.get_tool_path(aligner) is None:
+        pytest.skip(f"{aligner} unavailable")
+    monkeypatch.setattr(alignment_memory, "available_memory", lambda: 8 * 1024**3)
+    for module in (realign.align_cmd, preparation, short_reads):
+        monkeypatch.setattr(module, "streaming_mapping_fits", lambda *_a, **_kw: True)
+    bam, encoded, ref, input_ref, pairs = filtered_alignments
+    source = encoded if cram else bam
     if markdup:
         original = realign.align_cmd.get_tool_path
         for module in (realign.align_cmd, common, preparation, short_reads):
@@ -195,7 +205,7 @@ def test_paired_stream_body_matches_files_including_discarded_reads(
             _args(
                 source,
                 ref=ref,
-                input_ref=input_ref,
+                input_ref=input_ref if cram else None,
                 aligner=aligner,
                 outdir=str(tmp_path / mode),
                 keep_fastq=mode == "files",

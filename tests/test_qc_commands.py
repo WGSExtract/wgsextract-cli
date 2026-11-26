@@ -3,12 +3,14 @@
 import gzip
 import json
 import random
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_tools, run_wgsextract
+from tests.smoke_utils import run_cli
 from wgsextract_cli.core import dependency_checks
 from wgsextract_cli.core.utils import WGSExtractError
 from wgsextract_cli.main import main
@@ -163,16 +165,32 @@ def _visible(folder: Path) -> list[str]:
     )
 
 
+@pytest.fixture(scope="module")
+def paired_fastqc(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[list[str], Path, dict[str, object]]:
+    root = tmp_path_factory.mktemp("paired-fastqc")
+    r1 = _fastq(root / "sample_R1.fastq", NAMES, 1)
+    r2 = _fastq(root / "sample_R2.fastq", NAMES, 2)
+    reports = root / "reports"
+    args = ["--json", "qc", "fastqc", "--input", r1, "--r2", r2, "--threads", "1"]
+    code, stdout, stderr = run_cli([*args, "--outdir", str(reports)])
+    assert code == 0, stderr
+    metrics: dict[str, object] = json.loads(stdout)["metrics"]
+    return args, reports, metrics
+
+
 @needs_tools("fastqc", "multiqc")
-def test_multiqc_combines_mates_without_changing_fastqc_reports(tmp_path, monkeypatch):
+def test_multiqc_combines_mates_without_changing_fastqc_reports(
+    tmp_path, monkeypatch, paired_fastqc
+):
     from hashlib import sha256
 
+    _, prepared, _ = paired_fastqc
     reports = tmp_path / "fastqc reports"
-    for mate in (1, 2):
-        reads = _fastq(tmp_path / f"sample_R{mate}.fastq", NAMES, mate)
-        run_wgsextract(
-            "qc", "fastqc", "--input", reads, "--outdir", str(reports), "--threads", "1"
-        )
+    reports.mkdir()
+    for report in prepared.glob("*_fastqc.*"):
+        shutil.copyfile(report, reports / report.name)
     before = {p.name: sha256(p.read_bytes()).hexdigest() for p in reports.iterdir()}
     home = tmp_path / "multiqc-home"
     home.mkdir()
@@ -203,30 +221,19 @@ def test_multiqc_combines_mates_without_changing_fastqc_reports(tmp_path, monkey
 
 
 @needs_tools("fastqc", "multiqc")
-def test_fastqc_reports_both_mates_and_merges_them_when_asked(tmp_path, capsys):
+def test_fastqc_reports_both_mates_and_merges_them_when_asked(
+    tmp_path, capsys, paired_fastqc
+):
     """#825: the app's FastQC button ran a wrapper for R2 and MultiQC."""
-    r1 = _fastq(tmp_path / "sample_R1.fastq", NAMES, 1)
-    r2 = _fastq(tmp_path / "sample_R2.fastq", NAMES, 2)
-    outdir = tmp_path / "out"
-    argv = [
-        "--json",
-        "qc",
-        "fastqc",
-        "--input",
-        r1,
-        "--r2",
-        r2,
-        "--outdir",
-        str(outdir),
-    ]
-    main([*argv, "--threads", "1"])
-    result = json.loads(capsys.readouterr().out)
-    assert result["metrics"]["total_sequences"] == 10
-    assert result["metrics"]["r2_total_sequences"] == 10
-    assert not (outdir / "multiqc_report.html").exists()  # only when asked
+    argv, reports, metrics = paired_fastqc
+    assert metrics["total_sequences"] == 10
+    assert metrics["r2_total_sequences"] == 10
+    assert not (reports / "multiqc_report.html").exists()  # only when asked
 
+    outdir = tmp_path / "out"
+    outdir.mkdir()
     (outdir / "multiqc_report.html").write_text("an earlier report")
-    main([*argv, "--threads", "1", "--multiqc"])
+    main([*argv, "--outdir", str(outdir), "--multiqc"])
     result = json.loads(capsys.readouterr().out)
     assert sorted(o["role"] for o in result["outputs"]).count("fastqc_report_zip") == 2
     html = (outdir / "multiqc_report.html").read_text()
