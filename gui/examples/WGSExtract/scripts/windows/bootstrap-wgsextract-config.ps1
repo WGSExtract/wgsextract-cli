@@ -72,7 +72,7 @@ function Add-FolderSetting {
     Add-Setting $Key $Path
 }
 
-# Unset: each command writes to a wgse folder beside its input files from the lab,
+# Unset: each command writes to a WGSEv6 folder beside its input files from the lab,
 # whose own folder stays untouched. Only Advanced mode may point it elsewhere.
 Add-Setting "output_directory" ""
 Add-FolderSetting "mygenomes_library" $myGenomesPath

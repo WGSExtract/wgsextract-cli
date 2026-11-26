@@ -173,7 +173,7 @@ def test_issue_856_unknown_measurement_recovers_after_index_restored(
 def test_issue_856_fast_info_discards_retired_sex_cache(tmp_path: Path) -> None:
     bam = distributed_alignment(tmp_path / "S.bam")
     api.info.info(api.InfoParams(input=Path(bam), detailed=True, outdir=tmp_path))
-    cache = Path(bam + ".wgse_info.json")
+    cache = Path(bam).parent / "manifests" / f"{Path(bam).name}.wgse_info.json"
     old = json.loads(cache.read_text())
     old.update(
         sex_inference_version=2,
@@ -190,7 +190,7 @@ def test_issue_856_unavailable_sex_keeps_other_cached_info(tmp_path: Path) -> No
     bam = distributed_alignment(tmp_path / "S.bam")
     Path(bam + ".bai").unlink()
     api.info.info(api.InfoParams(input=Path(bam), detailed=True, outdir=tmp_path))
-    cache = Path(bam + ".wgse_info.json")
+    cache = Path(bam).parent / "manifests" / f"{Path(bam).name}.wgse_info.json"
     data = json.loads(cache.read_text())
     data["avg_read_len"] = 123
     cache.write_text(json.dumps(data))

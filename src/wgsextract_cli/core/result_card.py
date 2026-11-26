@@ -35,6 +35,8 @@ from wgsextract_cli.core.results import (
     MANIFEST_SUFFIX,
     CommandResult,
     FileRecord,
+    manifest_base_dir,
+    manifest_dir_for,
 )
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -55,16 +57,18 @@ _STATUS_LABEL = {"ok": "Completed", "failed": "Failed", "cancelled": "Cancelled"
 def card_path(
     result: CommandResult, outdir: str | os.PathLike[str] | None
 ) -> Path | None:
-    """Where this run's card goes: beside its manifest, with the same stem.
+    """Where this run's card goes: in the output directory with the same stem
+    as its manifest (which lives in ``manifests/``).
 
     A report-only run that reads a sample (``info``) writes no manifest of its
     own; it gets one named after its input and command, so the card always
-    has its full-path record beside it, in ``outdir`` or, when the command has
-    none, where outputs go by default: config.toml's output_directory, else
-    ``wgse/`` beside the input. A failed run whose input was missing names it
-    after the input it was given. A report-only run without an input (``ref
-    status``) is about no sample and gets no card. Neither is a server job's
-    card outside the folders the server may use. None when there is none."""
+    has its full-path record in ``manifests/``, in ``outdir`` or, when the
+    command has none, where outputs go by default: config.toml's
+    output_directory, else ``WGSEv6/`` beside the input. A failed run whose
+    input was missing names it after the input it was given. A report-only run
+    without an input (``ref status``) is about no sample and gets no card.
+    Neither is a server job's card outside the folders the server may use. None
+    when there is none."""
     manifest = result.manifest_path()
     if manifest is None:
         from wgsextract_cli.core.config import output_directory
@@ -80,9 +84,13 @@ def card_path(
         if not folder:
             return None
         name = f"{_input_name(local[0])}_{'_'.join(result.command.split()) or 'wgsextract'}"
-        manifest = Path(folder).expanduser().absolute() / (name + MANIFEST_SUFFIX)
-    stem = manifest.with_name(manifest.name.removesuffix(MANIFEST_SUFFIX))
-    card = stem.with_name(stem.name + CARD_SUFFIX)
+        base = Path(folder).expanduser().absolute()
+        manifest = manifest_dir_for(base) / (name + MANIFEST_SUFFIX)
+    else:
+        base = manifest_base_dir(manifest)
+        name = manifest.name.removesuffix(MANIFEST_SUFFIX)
+    stem = base / name
+    card = base / (name + CARD_SUFFIX)
     if not (may_follow(card) and may_follow(manifest)):
         return None
     if _is_result_data(result, card) or _is_result_data(result, manifest):
@@ -123,7 +131,7 @@ def publish(result: CommandResult, card: Path | None) -> Path | None:
         manifest = result.write_manifest()
     if manifest is not None and not manifest.name.endswith(FAILED_MANIFEST):
         stem = manifest.name.removesuffix(MANIFEST_SUFFIX)
-        old_card = manifest.with_name(f"{stem}.failed{CARD_SUFFIX}")
+        old_card = manifest_base_dir(manifest) / f"{stem}.failed{CARD_SUFFIX}"
         if not _is_result_data(result, old_card):
             old_card.unlink(missing_ok=True)
     return manifest

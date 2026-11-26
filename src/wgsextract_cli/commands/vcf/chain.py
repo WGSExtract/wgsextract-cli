@@ -20,7 +20,12 @@ from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
-from wgsextract_cli.core.results import MANIFEST_SUFFIX, current_result, warn
+from wgsextract_cli.core.results import (
+    MANIFEST_SUFFIX,
+    current_result,
+    manifest_dir_for,
+    warn,
+)
 from wgsextract_cli.core.steps import Step, StepJournal, resume_policy
 from wgsextract_cli.core.table_writer import check_format
 from wgsextract_cli.core.utils import (
@@ -74,7 +79,11 @@ def _forward_step_warnings(step: str, ann: str, step_outdir: str) -> None:
     """Repeat what a step warned about its annotation data (``annotation_*``,
     such as resource records it excluded): its log was captured and its folder
     is removed. Findings about the sample stay with the step's own command."""
-    for manifest in sorted(Path(step_outdir).glob(f"*{MANIFEST_SUFFIX}")):
+    step_path = Path(step_outdir)
+    manifests = sorted(manifest_dir_for(step_path).glob(f"*{MANIFEST_SUFFIX}"))
+    if not manifests:
+        manifests = sorted(step_path.glob(f"*{MANIFEST_SUFFIX}"))
+    for manifest in manifests:
         if manifest.name.endswith(".failed" + MANIFEST_SUFFIX):
             continue  # an earlier, failed attempt's
         for item in json.loads(manifest.read_text(encoding="utf-8"))["warnings"]:
@@ -355,7 +364,7 @@ def _plan_manifest_stem(
     annotations: list[str],
 ) -> Path:
     stem = outdir / "chain_annotate.plan"
-    manifest = stem.with_name(stem.name + MANIFEST_SUFFIX)
+    manifest = manifest_dir_for(outdir) / (stem.name + MANIFEST_SUFFIX)
     protected = (
         input_file, params.bed, params.ref, lib.fasta, lib.fai,
         *vcf_indexes(input_file), *(dataset(ann, lib) for ann in annotations),

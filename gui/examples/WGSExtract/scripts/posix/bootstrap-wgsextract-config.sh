@@ -65,7 +65,7 @@ folder_setting() {
   setting "$1" "$2"
 }
 
-# Unset: each command writes to a wgse/ folder beside its input files from the lab,
+# Unset: each command writes to a WGSEv6/ folder beside its input files from the lab,
 # whose own folder stays untouched. Only Advanced mode may point it elsewhere.
 contents="$(setting output_directory "")"
 contents="$contents$(folder_setting mygenomes_library "$mygenomes_path")"

@@ -155,25 +155,29 @@ class Source:
 
     def locate(self, recorded: str) -> Path:
         """A path the manifest recorded; when the folder has been moved or
-        copied since, the same file relative to the manifest's new place
-        (if it is there), so a copy reports on its own files."""
+        copied since, the same file relative to the manifest's new output
+        folder (if it is there), so a copy reports on its own files."""
+        from wgsextract_cli.core.results import manifest_base_dir
+
         path = Path(recorded)
         original = self.document.get("manifest")
         if isinstance(original, str):
             try:
-                relative = path.relative_to(Path(original).parent)
+                relative = path.relative_to(manifest_base_dir(original))
             except ValueError:
                 return path
-            moved = self.manifest.parent / relative
+            moved = manifest_base_dir(self.manifest) / relative
             if read_scope.may_follow(moved) and moved.exists():
                 return moved
         return path
 
     @property
     def recorded_folder(self) -> str | None:
-        """The folder the manifest was written in, as it recorded it."""
+        """The output folder the manifest describes, as it recorded it."""
+        from wgsextract_cli.core.results import manifest_base_dir
+
         original = self.document.get("manifest")
-        return str(Path(original).parent) if isinstance(original, str) else None
+        return str(manifest_base_dir(original)) if isinstance(original, str) else None
 
     def sample_files(self) -> list[Path]:
         """The sample files the run read (not references or resources)."""

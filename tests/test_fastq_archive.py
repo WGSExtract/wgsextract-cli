@@ -126,6 +126,21 @@ def test_fastq_archive_1432_restores_single_end_and_refuses_to_replace_a_source(
     assert restored.read_bytes() == original
 
 
+def test_fastq_archive_refuses_a_mate_where_its_manifest_will_go(tmp_path):
+    """PR #1581 review: the guard checked the manifest beside the archive, but
+    it is published in WGSEv6/manifests/, where it could replace an input."""
+    lab = tmp_path / "lab"
+    r1, r2 = lab / "r1.fq", lab / "WGSEv6" / "manifests" / "reads.wgfq.manifest.json"
+    r2.parent.mkdir(parents=True)
+    r1.write_bytes(R1)
+    r2.write_bytes(R2)
+    result = api.fastq.archive(
+        api.FastqArchiveParams(r1=r1, r2=r2, output=lab / "reads.wgfq"), check=False
+    )
+    assert result.error and result.error.code == "fastq_output_conflict"
+    assert r2.read_bytes() == R2
+
+
 def test_fastq_archive_1432_refuses_nested_restore_paths_before_writing(tmp_path):
     r1, r2, archive = (tmp_path / name for name in ("r1.fq", "r2.fq", "reads.wgfq"))
     r1.write_bytes(R1)
@@ -247,7 +262,9 @@ def test_fastq_archive_1432_allows_distinct_case_on_case_sensitive_storage(tmp_p
 def test_fastq_archive_1447_refuses_a_manifest_that_aliases_its_source(tmp_path):
     source = tmp_path / "r.fq"
     archive = tmp_path / "reads.wgfq"
-    manifest = tmp_path / "reads.wgfq.manifest.json"
+    # Published in WGSEv6/manifests/, as the archive sits in the input's folder.
+    manifest = tmp_path / "WGSEv6" / "manifests" / "reads.wgfq.manifest.json"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(R1)
     manifest.hardlink_to(source)
 
@@ -270,7 +287,8 @@ def test_fastq_restore_1447_manifest_cannot_replace_the_second_mate(tmp_path):
     r2.write_bytes(R2)
     api.fastq.archive(api.FastqArchiveParams(r1=r1, r2=r2, output=archive))
     first = tmp_path / "restored.fq"
-    second = tmp_path / "RESTORED.FQ.MANIFEST.JSON"
+    (tmp_path / "manifests").mkdir(exist_ok=True)
+    second = tmp_path / "manifests" / "RESTORED.FQ.MANIFEST.JSON"
 
     result = api.fastq.restore(
         api.FastqRestoreParams(input=archive, output=first, output_r2=second),

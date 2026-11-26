@@ -39,13 +39,14 @@ async function makeWorkspace(t) {
   const root = await mkdtemp(path.join(base, "existing-output-"));
   t.after(() => rm(root, { force: true, recursive: true }));
   const sampleDir = path.join(root, "sample");
-  const wgseDir = path.join(sampleDir, "wgse");
-  await mkdir(wgseDir, { recursive: true });
+  const wgseDir = path.join(sampleDir, "WGSEv6");
+  const manifestsDir = path.join(wgseDir, "manifests");
+  await mkdir(manifestsDir, { recursive: true });
   const bam = path.join(sampleDir, "sample.bam");
   await writeFile(bam, "bam-bytes");
   const older = new Date("2026-01-01T00:00:00Z");
   await utimes(bam, older, older);
-  return { root, sampleDir, wgseDir, bam };
+  return { root, sampleDir, wgseDir, manifestsDir, bam };
 }
 
 async function writeManifest(dir, name, doc, mtime = new Date("2026-01-02T00:00:00Z")) {
@@ -56,13 +57,13 @@ async function writeManifest(dir, name, doc, mtime = new Date("2026-01-02T00:00:
 }
 
 test("fresh result-card and HTML-report outputs return kind=display and distinguish options", async (t) => {
-  const { root, wgseDir, bam } = await makeWorkspace(t);
+  const { root, wgseDir, manifestsDir, bam } = await makeWorkspace(t);
   const card = path.join(wgseDir, "sample.bam_info.card.html");
   await writeFile(card, "<html>card</html>");
   const newer = new Date("2026-01-02T00:00:00Z");
   await utimes(card, newer, newer);
 
-  await writeManifest(wgseDir, "sample.bam_info.manifest.json", {
+  await writeManifest(manifestsDir, "sample.bam_info.manifest.json", {
     schema: "wgsextract.result/1",
     command: "info",
     status: "ok",
@@ -91,11 +92,11 @@ test("fresh result-card and HTML-report outputs return kind=display and distingu
   const detailed = await findExistingOutput(baseManifest, detailedInfo, ctx, root, new ResultPaths());
   assert.equal(detailed.kind, "none", "Basic Info card must not satisfy Detailed Info");
 
-  // HTML report (openOutput): fresh report displays, but a newer manifest in wgse/ makes `report` stale.
+  // HTML report (openOutput): fresh report displays, but a newer manifest in WGSEv6/manifests/ makes `report` stale.
   const reportHtml = path.join(wgseDir, "sample_report.html");
   await writeFile(reportHtml, "<html>report</html>");
   await utimes(reportHtml, newer, newer);
-  await writeManifest(wgseDir, "sample_report.html.manifest.json", {
+  await writeManifest(manifestsDir, "sample_report.html.manifest.json", {
     schema: "wgsextract.result/1",
     command: "report",
     status: "ok",
@@ -114,18 +115,18 @@ test("fresh result-card and HTML-report outputs return kind=display and distingu
   assert.equal(reportPaths.has(reportHtml), true);
 
   // A newer analysis manifest invalidates the summary report.
-  await writeManifest(wgseDir, "other.manifest.json", { schema: "wgsextract.result/1", command: "info", status: "ok", exit_code: 0, outputs: [] }, new Date("2026-01-03T00:00:00Z"));
+  await writeManifest(manifestsDir, "other.manifest.json", { schema: "wgsextract.result/1", command: "info", status: "ok", exit_code: 0, outputs: [] }, new Date("2026-01-03T00:00:00Z"));
   assert.equal((await findExistingOutput(baseManifest, reportAction, ctx, root, new ResultPaths())).kind, "none");
 });
 
 test("output-only commands return kind=already-run when fresh, and kind=none when stale, deleted, or forced", async (t) => {
-  const { root, wgseDir, bam } = await makeWorkspace(t);
+  const { root, wgseDir, manifestsDir, bam } = await makeWorkspace(t);
   const mtBam = path.join(wgseDir, "sample_MT.bam");
   await writeFile(mtBam, "mt-reads");
   const newer = new Date("2026-01-02T00:00:00Z");
   await utimes(mtBam, newer, newer);
 
-  await writeManifest(wgseDir, "sample_MT.bam.manifest.json", {
+  await writeManifest(manifestsDir, "sample_MT.bam.manifest.json", {
     schema: "wgsextract.result/1",
     command: "extract region",
     status: "ok",
@@ -183,8 +184,9 @@ test("findExistingOutput rejects untrusted manifests pointing outside outdir and
   const root = await mkdtemp(path.join(tmpdir(), "wgse-existing-containment-"));
   t.after(async () => rm(root, { recursive: true, force: true }));
   const inputDir = path.join(root, "sample");
-  const outdir = path.join(inputDir, "wgse");
-  await mkdir(outdir, { recursive: true });
+  const outdir = path.join(inputDir, "WGSEv6");
+  const manifestsDir = path.join(outdir, "manifests");
+  await mkdir(manifestsDir, { recursive: true });
   const bam = path.join(inputDir, "s.bam");
   const outsideFile = path.join(root, "outside.html");
   await writeFile(bam, "bam");
@@ -193,7 +195,7 @@ test("findExistingOutput rejects untrusted manifests pointing outside outdir and
   await utimes(outsideFile, now, now);
 
   // Crafted manifest pointing outside outdir must be rejected and never remembered in ResultPaths.
-  await writeFile(path.join(outdir, "crafted.manifest.json"), JSON.stringify({
+  await writeFile(path.join(manifestsDir, "crafted.manifest.json"), JSON.stringify({
     schema: "wgsextract.result/1",
     command: "report",
     status: "ok",
@@ -212,7 +214,7 @@ test("findExistingOutput rejects untrusted manifests pointing outside outdir and
   const localReport = path.join(outdir, "report.html");
   await writeFile(localReport, "<html>ok</html>");
   await utimes(localReport, now, now);
-  await writeFile(path.join(outdir, "good.manifest.json"), JSON.stringify({
+  await writeFile(path.join(manifestsDir, "good.manifest.json"), JSON.stringify({
     schema: "wgsextract.result/1",
     command: "report",
     status: "ok",

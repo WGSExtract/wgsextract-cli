@@ -372,7 +372,7 @@ def test_statuses_from_a_truncated_call_list_are_only_the_certain_ones(sample):
                 "zygosity": zygosity, "confidence": "high", "reasons": [],
                 "CLNSIG": "Pathogenic", "GENEINFO": "MUTYH:4595"}  # fmt: skip
 
-    manifest = sample / "clinvar_pathogenic.vcf.manifest.json"
+    manifest = sample / "manifests" / "clinvar_pathogenic.vcf.manifest.json"
     document = json.loads(manifest.read_text())
     document["outputs"] = [
         o for o in document["outputs"] if o["role"] != "confidence_table"

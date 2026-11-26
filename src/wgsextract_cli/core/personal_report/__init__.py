@@ -424,8 +424,11 @@ def _path_scrubber(ctx: _Context) -> Callable[[str], str]:
     it, and any other absolute path as its file name alone."""
     prefixes: dict[str, str] = {}
     for source in ctx.sources:
-        here = ctx.rel(source.manifest.parent) or "."
-        for folder in (source.recorded_folder, str(source.manifest.parent)):
+        from wgsextract_cli.core.results import manifest_base_dir
+
+        base = manifest_base_dir(source.manifest)
+        here = ctx.rel(base) or "."
+        for folder in (source.recorded_folder, str(base)):
             if folder:
                 prefixes[folder] = here
     prefixes[str(ctx.folder)] = "."

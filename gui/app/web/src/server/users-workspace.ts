@@ -5,8 +5,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 import type { BundleManifest, WorkspaceLocationInfo } from "../../../shared/types.js";
 import { errnoCode, HttpError } from "./errors.js";
-import { safePathComponent } from "./paths.js";
-import { appSettingsPath, bundleSetting, isManagedWorkspace, type MovedConfigPath, readAppSettings, withBundleSetting, withMovedConfigPaths, workspaceRootIn, workspaceSentinelFileName, writeAppSettings } from "./workspace-location.js";
+import { appSupportContainerName, devAppDataName, safePathComponent } from "./paths.js";
+import { appSettingsPath, bundleSetting, isManagedWorkspace, type MovedConfigPath, readAppSettings, updateAppSettings, withBundleSetting, withMovedConfigPaths, workspaceRootIn, workspaceSentinelFileName } from "./workspace-location.js";
 
 /**
  * {{usersWorkspace}}: one visible folder in the user's home (~/wgs-extract) for the bundle's settings file and the
@@ -39,7 +39,11 @@ export function usersWorkspaceFor(bundleRoot: string): string {
     return usersWorkspaces.get(path.resolve(bundleRoot))?.root ?? bundleRoot;
 }
 
-/** A bundle may only suggest one visible folder directly in the user's home; it never picks an arbitrary path. */
+/**
+ * A bundle may only suggest one visible folder directly in the user's home; it never picks an arbitrary path. A
+ * development run (paths.ts's devAppDataName) uses that name with "-dev" (~/wgs-extract-dev), so a checkout never
+ * shares the installed app's settings file, libraries or outputs.
+ */
 export function declaredDefaultUsersWorkspace(manifest: Pick<BundleManifest, "defaultUsersWorkspace">): string | null {
     const declared = manifest.defaultUsersWorkspace?.trim();
     if (!declared) {
@@ -49,7 +53,14 @@ export function declaredDefaultUsersWorkspace(manifest: Pick<BundleManifest, "de
     if (!match?.[1]) {
         throw new Error(`defaultUsersWorkspace must name one visible folder in the home folder, like ~/my-app: ${declared}`);
     }
-    return path.join(homedir(), match[1]);
+    const folder = appSupportContainerName() === devAppDataName ? `${match[1]}-dev` : match[1];
+    return path.join(homedir(), folder);
+}
+
+/** The installed app's default folder, which the CLI also assumes when the app's settings record no other. */
+function cliDefaultUsersWorkspace(manifest: Pick<BundleManifest, "defaultUsersWorkspace">): string | null {
+    const declared = manifest.defaultUsersWorkspace?.trim();
+    return declared ? path.join(homedir(), declared.slice(2)) : null;
 }
 
 type UsersManifest = Pick<BundleManifest, "id" | "defaultUsersWorkspace">;
@@ -78,7 +89,7 @@ export async function resolveUsersWorkspaceRoot(manifest: UsersManifest): Promis
 
 /** Records the folder the user moved the users workspace to, or clears it (null) to use the default. */
 export async function saveUsersWorkspace(manifest: UsersManifest, folder: string | null) {
-    await writeAppSettings(withBundleSetting(await readAppSettings(), chosenKey, manifest, folder));
+    await updateAppSettings((settings) => withBundleSetting(settings, chosenKey, manifest, folder));
 }
 
 const revisionsKey = "workspaceMoveRevisions";
@@ -95,10 +106,11 @@ export async function workspaceMoveRevision(manifest: UsersManifest) {
 }
 
 export async function recordWorkspaceMove(manifest: UsersManifest, folder?: string | null, movedConfigs: readonly MovedConfigPath[] = []) {
-    const settings = await readAppSettings();
-    const next = folder === undefined ? settings : withBundleSetting(settings, chosenKey, manifest, folder);
-    const revisions = { ...moveRevisions(settings), [safePathComponent(manifest.id)]: randomUUID() };
-    await writeAppSettings(withMovedConfigPaths({ ...next, [revisionsKey]: revisions }, movedConfigs));
+    await updateAppSettings((settings) => {
+        const next = folder === undefined ? settings : withBundleSetting(settings, chosenKey, manifest, folder);
+        const revisions = { ...moveRevisions(settings), [safePathComponent(manifest.id)]: randomUUID() };
+        return withMovedConfigPaths({ ...next, [revisionsKey]: revisions }, movedConfigs);
+    });
 }
 
 /** A second app process must not start using paths cached before another moved the workspace. */
@@ -143,6 +155,12 @@ export async function claimUsersWorkspaceRoot(manifest: UsersManifest): Promise<
     const recorded = bundleSetting(settings, defaultsKey, manifest);
     const root = recorded ?? declared;
     if (await isAdoptable(root)) {
+        // The CLI the app runs reads this record; without it, it would assume the installed app's folder.
+        if (!recorded && root !== cliDefaultUsersWorkspace(manifest)) {
+            // Another writer may have recorded one first: that record is the one in force.
+            const saved = await updateAppSettings((current) => bundleSetting(current, defaultsKey, manifest) ? null : withBundleSetting(current, defaultsKey, manifest, root));
+            return bundleSetting(saved, defaultsKey, manifest) ?? root;
+        }
         return root;
     }
     if (recorded) {
@@ -151,7 +169,7 @@ export async function claimUsersWorkspaceRoot(manifest: UsersManifest): Promise<
     for (let suffix = 2; suffix <= maxDefaultSuffix; suffix++) {
         const candidate = `${declared}-${suffix}`;
         if (await isAdoptable(candidate)) {
-            await writeAppSettings(withBundleSetting(settings, defaultsKey, manifest, candidate));
+            await updateAppSettings((current) => withBundleSetting(current, defaultsKey, manifest, candidate));
             console.error(`${declared} is not this app's, so the users workspace is kept in ${candidate} instead.`);
             return candidate;
         }
@@ -164,12 +182,21 @@ export async function claimUsersWorkspaceRoot(manifest: UsersManifest): Promise<
  * the users workspace now: what it held of the user's (settings file, libraries, outputs) stays there.
  */
 async function adoptLegacySettings(manifest: UsersManifest): Promise<Record<string, unknown>> {
-    let settings = await readAppSettings();
-    const legacyDirectory = settings[legacyChosenDirectoryKey];
-    const legacyDefault = bundleSetting(settings, legacyDefaultsKey, manifest);
-    if (typeof legacyDirectory !== "string" && !legacyDefault) {
+    const settings = await readAppSettings();
+    if (!hasLegacySettings(settings, manifest)) {
         return settings;
     }
+    return updateAppSettings((current) => hasLegacySettings(current, manifest) ? withoutLegacySettings(current, manifest) : null);
+}
+
+function hasLegacySettings(settings: Record<string, unknown>, manifest: UsersManifest) {
+    return typeof settings[legacyChosenDirectoryKey] === "string" || Boolean(bundleSetting(settings, legacyDefaultsKey, manifest));
+}
+
+function withoutLegacySettings(original: Record<string, unknown>, manifest: UsersManifest): Record<string, unknown> {
+    let settings = { ...original };
+    const legacyDirectory = settings[legacyChosenDirectoryKey];
+    const legacyDefault = bundleSetting(settings, legacyDefaultsKey, manifest);
     if (typeof legacyDirectory === "string" && path.isAbsolute(legacyDirectory) && !bundleSetting(settings, chosenKey, manifest)) {
         settings = withBundleSetting(settings, chosenKey, manifest, workspaceRootIn(legacyDirectory, manifest.id));
     }
@@ -178,7 +205,6 @@ async function adoptLegacySettings(manifest: UsersManifest): Promise<Record<stri
     }
     delete settings[legacyChosenDirectoryKey];
     delete settings[legacyDefaultsKey];
-    await writeAppSettings(settings);
     return settings;
 }
 

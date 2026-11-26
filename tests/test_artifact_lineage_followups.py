@@ -55,9 +55,9 @@ def test_1379_filtered_calls_of_another_person_are_refused_like_the_calls(
     assert _call_snps(sample, calls)[0] == 0
     vcf = calls / "snps.vcf.gz"
     if not called_here:
-        (calls / "snps.vcf.manifest.json").unlink()
+        (calls / "manifests" / "snps.vcf.manifest.json").unlink()
     filtered = _filter(vcf, tmp_path / "filtered")
-    artifact = _output(_manifest(filtered.parent / "filtered.vcf.manifest.json"),
+    artifact = _output(_manifest(filtered.parent / "manifests" / "filtered.vcf.manifest.json"),
                        "filtered_vcf")["artifact"]  # fmt: skip
     assert [Path(r["path"]).name for r in artifact["called_from"]] == (
         ["s.bam"] if called_here else []
@@ -217,7 +217,7 @@ def test_1379_chain_annotate_lists_its_annotators_runs(tmp_path: Path) -> None:
     ])  # fmt: skip
     assert code == 0, stderr
     assert not list(out.glob("chain_step_*"))
-    document = _manifest(out / "chain_annotated.vcf.manifest.json")
+    document = _manifest(out / "manifests" / "chain_annotated.vcf.manifest.json")
     [child] = document["run"]["children"]
     assert child["step"] == "clinvar" and child["command"] == "vcf clinvar"
     assert child["status"] == "ok" and child["run"]
@@ -238,7 +238,7 @@ def test_1379_resumed_chain_keeps_the_annotators_original_run(tmp_path: Path) ->
         "--config", str(config), "vcf", "chain-annotate", "--annotations", "clinvar",
         "--input", str(calls / "snps.vcf.gz"), "--outdir", str(out),
     ]  # fmt: skip
-    manifest = out / "chain_annotated.vcf.manifest.json"
+    manifest = out / "manifests" / "chain_annotated.vcf.manifest.json"
     code, _, stderr = run_cli([*argv, "--keep-intermediates"])
     assert code == 0, stderr
     [original] = _manifest(manifest)["run"]["children"]
@@ -298,8 +298,10 @@ def test_1379_a_pipe_named_like_a_manifest_never_blocks_the_result(
     vcf.write_text(
         "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
     )
-    os.mkfifo(tmp_path / "calls.vcf.manifest.json")
-    os.mkfifo(tmp_path / "other.manifest.json")
+    (tmp_path / "manifests").mkdir()
+    os.mkfifo(tmp_path / "manifests" / "calls.vcf.manifest.json")
+    os.mkfifo(tmp_path / "manifests" / "other.manifest.json")
+    os.mkfifo(tmp_path / "legacy.manifest.json")  # beside it, as earlier releases wrote
     result = CommandResult(command="vcf filter")
     result.add_input(vcf, "vcf_input")
     finalize = threading.Thread(
@@ -320,7 +322,7 @@ def test_1379_reads_vouch_only_for_vcfs_named_by_their_sample(tmp_path: Path) ->
     sample = snp_sample(tmp_path / "in")
     calls = tmp_path / "calls"
     assert _call_snps(sample, calls)[0] == 0
-    (calls / "snps.vcf.manifest.json").unlink()  # an external VCF
+    (calls / "manifests" / "snps.vcf.manifest.json").unlink()  # an external VCF
     vcf = calls / "snps.vcf.gz"
     names = tmp_path / "names.txt"
     names.write_text("lab-id-7\n")
@@ -352,7 +354,7 @@ def test_1379_a_malformed_manifest_beside_calls_only_loses_their_producer(
     sample = snp_sample(tmp_path / "in")
     calls = tmp_path / "calls"
     assert _call_snps(sample, calls)[0] == 0
-    (calls / "snps.vcf.manifest.json").write_text(
+    (calls / "manifests" / "snps.vcf.manifest.json").write_text(
         json.dumps({"schema": "wgsextract.result/1", "outputs": 1})
     )
     other = _bam(tmp_path / "other.bam", 3000, sample="NA12878")
@@ -385,7 +387,7 @@ def test_1379_an_external_vcf_annotated_from_recorded_calls_stays_external(
         "--ann-vcf", str(calls / "snps.vcf.gz"), "--cols", "ID", "--outdir", str(out),
     ])  # fmt: skip
     assert code == 0, stderr
-    manifest = next(out.glob("*.manifest.json"))
+    manifest = next(out.glob("manifests/*.manifest.json"))
     annotated = _output(_manifest(manifest), "annotated")["artifact"]
     assert annotated["samples"] == ["S"] and annotated["called_from"] == []
 
@@ -412,7 +414,7 @@ def test_1379_a_neighbouring_manifest_is_trusted_only_when_well_formed(
     sample = snp_sample(tmp_path / "in")
     calls = tmp_path / "calls"
     assert _call_snps(sample, calls)[0] == 0
-    path = calls / "snps.vcf.manifest.json"
+    path = calls / "manifests" / "snps.vcf.manifest.json"
     document = json.loads(path.read_text())
     _output(document, "snps")["artifact"][field] = value
     path.write_text(json.dumps(document))
@@ -443,7 +445,7 @@ def test_1379_a_workflows_filtered_calls_keep_their_steps_reads(
     calls = tmp_path / "calls"
     lineage = ["--parent-run", result.run.id, "--root-run", result.run.id]
     assert _call_snps(sample, calls, *lineage, "--run-step", "call")[0] == 0
-    step = _output(_manifest(calls / "snps.vcf.manifest.json"), "snps")
+    step = _output(_manifest(calls / "manifests" / "snps.vcf.manifest.json"), "snps")
     vcf = calls / "snps.vcf.gz"
     significant = tmp_path / "significant.vcf.gz"
     run_command(["bcftools", "view", "-Oz", "-o", str(significant), str(vcf)])

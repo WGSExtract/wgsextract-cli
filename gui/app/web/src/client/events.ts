@@ -4,7 +4,7 @@ import { configValueKey, splitPathList } from "../../../shared/rendering.js";
 import { installGlobalBundleLoadHandler, loadBundleFromPicker, type Bootstrap } from "./bundle-loading.js";
 import { normalizeColorTheme, normalizeIconSet } from "./icons.js";
 import { elements, errorMessage, findControl, resolveText } from "./model.js";
-import { checkedOptionsChanged, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
+import { checkedOptionsChanged, clearFileStateCache, configSettingChanged, fieldValueChanged, loadConfig, cancelSetup, openBundleWorkspace, persistBundleState, retryActionPrecheck, retryDataSource, runAction, runSetup, saveConfig } from "./operations.js";
 import { cancelPendingAlreadyRun, forceRunPendingAlreadyRun } from "./operations-already-run.js";
 import { cancelPendingPrerequisites, continuePendingPrerequisites, installPendingPrerequisites } from "./operations-prerequisites-dialog.js";
 import { bindAlreadyRunFocus } from "./view/already-run.js";
@@ -44,6 +44,7 @@ export function bindEvents(bootstrap: Bootstrap) {
     elements("[data-page-id]").forEach((button) => {
         button.addEventListener("click", async () => {
             state.activePageID = requiredDataset(button, "pageId");
+            clearFileStateCache();
             await persistAndRender();
         });
     });
@@ -80,6 +81,20 @@ export function bindEvents(bootstrap: Bootstrap) {
     app.querySelector<HTMLSelectElement>("[data-color-theme-picker]")?.addEventListener("change", async (event) => {
         state.colorTheme = normalizeColorTheme((event.currentTarget as HTMLSelectElement).value);
         await persistAndRender();
+    });
+    app.querySelector<HTMLInputElement>("[data-privacy-mode-toggle]")?.addEventListener("change", async (event) => {
+        const enabled = (event.currentTarget as HTMLInputElement).checked;
+        try {
+            await api("/api/privacy-mode", { method: "POST", body: { enabled } });
+            state.privacyMode = enabled;
+        }
+        catch (error) {
+            // Unsaved, the checkbox goes back to the setting in force.
+            appendTerminal("error", state.labels.privacyModeLabel ?? "Privacy mode", errorMessage(error));
+        }
+        finally {
+            scheduleRender();
+        }
     });
     app.querySelector<HTMLSelectElement>("[data-web-font-picker]")?.addEventListener("change", async (event) => {
         state.webUIFont = (event.currentTarget as HTMLSelectElement).value === "sfPro" ? "sfPro" : "system";
@@ -459,6 +474,7 @@ async function selectUIMode(value: string) {
         return;
     }
     state.uiMode = mode;
+    clearFileStateCache();
     applyUIModeTerminalVisibility();
     await persistAndRender();
 }
@@ -471,6 +487,7 @@ async function persistAndRender(options = {}) {
 function clearDataSourcesAndRender() {
     state.dataSourcePayloads.clear();
     state.dataSourceErrors.clear();
+    clearFileStateCache();
     scheduleRender();
 }
 async function copyText(text: string) {

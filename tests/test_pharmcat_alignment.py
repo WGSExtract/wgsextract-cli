@@ -169,7 +169,7 @@ def test_1477_alignment_only_fills_absent_and_covered_ref_only_sites(
         195,
         199,
     }
-    manifest_path = next(out.glob("*.manifest.json"))
+    manifest_path = next(out.glob("manifests/*.manifest.json"))
     manifest = json.loads(manifest_path.read_text())
     summary = manifest["details"]["pharmcat_reference_evidence"]
     assert summary == {

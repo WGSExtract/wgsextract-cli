@@ -85,7 +85,7 @@ def test_info_reports_long_reads_aligned_depth_not_record_count(long_reads, tmp_
     assert float(table["chrY"]["Map ARD"]) == pytest.approx(2, abs=0.5)
     assert float(table["chr1"]["Map ARD"]) == pytest.approx(20, rel=0.05)
     # The cached table is what the callers' low-coverage check reads.
-    cache = json.loads((tmp_path / "ont.bam.wgse_info.json").read_text())
+    cache = json.loads((tmp_path / "manifests" / "ont.bam.wgse_info.json").read_text())
     assert cache["depth_method"].startswith("depth of sampled")
 
 
@@ -114,7 +114,7 @@ def test_depth_unsampled_without_an_index_is_measured_once_indexed(
 def _cache_reused(alignment: str, ref: str, outdir) -> bool:
     """Whether `info --detailed` reused the cache an earlier run saved,
     rather than reading the alignment again."""
-    cache = outdir / f"{os.path.basename(alignment)}.wgse_info.json"
+    cache = outdir / "manifests" / f"{os.path.basename(alignment)}.wgse_info.json"
     # In 2001, and a whole second, which every filesystem's clock can hold.
     old = 1_000_000_000 * 10**9
     os.utime(cache, ns=(old, old))

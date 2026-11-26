@@ -187,9 +187,13 @@ def test_ref_gnomad_sv_checks_disk_space_first(gnomad_server, monkeypatch, tmp_p
 
 
 def test_ref_gnomad_sv_deletes(library):
+    folder = library / "gnomad-sv"
+    assert list(folder.glob("manifests/gnomad_sv_*.manifest.json"))
     api.ref.gnomad_sv(api.RefGnomadSvParams(ref=library, build="hg38", delete=True))
 
-    assert not list((library / "gnomad-sv").glob("gnomad_sv_*"))
+    assert not list(folder.glob("gnomad_sv_*"))
+    # PR #1581 review: the install's manifest in manifests/ was left behind.
+    assert not list(folder.glob("manifests/gnomad_sv_*"))
 
 
 def test_ref_status_reports_an_unfinished_install_as_not_installed(library):

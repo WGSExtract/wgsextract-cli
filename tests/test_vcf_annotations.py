@@ -494,9 +494,9 @@ def test_chain_step_without_its_output_fails_and_keeps_intermediates(tmp_path):
     ):
         run_wgsextract("vcf", "chain-annotate", "--input", str(input_vcf),
                        "--ref", lib, "--annotations", "clinvar")  # fmt: skip
-    assert sorted(os.listdir(tmp_path)) == ["in.vcf.gz", "wgse"]
-    assert (tmp_path / "wgse" / "chain_step_1_clinvar").is_dir()
-    assert (tmp_path / "wgse" / "chain_annotate.steps.json").is_file()
+    assert sorted(os.listdir(tmp_path)) == ["WGSEv6", "in.vcf.gz"]
+    assert (tmp_path / "WGSEv6" / "chain_step_1_clinvar").is_dir()
+    assert (tmp_path / "WGSEv6" / "chain_annotate.steps.json").is_file()
 
 
 @needs_bcftools
@@ -918,8 +918,9 @@ def test_issue_894_missing_resource_is_a_usage_error_with_a_failed_manifest(
     assert rc == 2, stderr
     assert "unexpected error" not in stderr
     assert f"{flag} file not found: {missing}" in stderr
-    assert os.listdir(outdir) == [manifest]
-    document = json.loads((outdir / manifest).read_text())
+    assert os.listdir(outdir) == ["manifests"]
+    assert os.listdir(outdir / "manifests") == [manifest]
+    document = json.loads((outdir / "manifests" / manifest).read_text())
     assert document["status"] == "failed"
     assert document["exit_code"] == 2
     assert document["error"]["kind"] == "usage"
@@ -935,8 +936,8 @@ def test_issue_894_failed_attempt_keeps_the_earlier_result_until_a_rerun(tmp_pat
                    ["100 c1 C T . . CLNSIG=Pathogenic;CLNDN=x GT 0/1"],
                    info=("CLNSIG", "CLNDN"))  # fmt: skip
     outdir = tmp_path / "out"
-    ok = outdir / "clinvar_pathogenic.vcf.manifest.json"
-    failed = outdir / "clinvar_pathogenic.vcf.failed.manifest.json"
+    ok = outdir / "manifests" / "clinvar_pathogenic.vcf.manifest.json"
+    failed = outdir / "manifests" / "clinvar_pathogenic.vcf.failed.manifest.json"
     reference = reference_for_vcf(tmp_path / "ref.fa.gz", sample)
 
     def run(resource: Path | str) -> int:

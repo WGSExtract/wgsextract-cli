@@ -365,28 +365,32 @@ def _touch(*paths: Path) -> None:
 
 def test_remove_genome_removes_every_sidecar_and_nothing_else(tmp_path):
     g = tmp_path / "genomes"
-    ours = [
-        g / name
-        for name in (
-            "hs38.fa.gz",
-            "hs38.fa.gz.partial",
-            "hs38.fa.gz.fai",
-            "hs38.fa.gz.gzi",
-            "hs38.fa.gz.dict",
-            "hs38.dict",
-            "hs38.fa.manifest.json",
-            "hs38.dict.manifest.json",
-        )
-    ]
+    # PR #1581 review: `ref dense-sa`'s manifest in manifests/ was left behind.
+    names = ["hs38.fa.gz", "hs38.fa.gz.partial", "hs38.fa.gz.fai", "hs38.fa.gz.gzi",
+             "hs38.fa.gz.dict", "hs38.dict", "hs38.fa.manifest.json",
+             "hs38.dict.manifest.json", "manifests/hs38.fa.manifest.json",
+             "manifests/hs38.dict.manifest.json", "hs38.fa.gz.wgse-sa16",
+             "manifests/hs38.fa.gz.wgse-sa16.manifest.json"]  # fmt: skip
+    ours = [g / name for name in names]
     # #825: the N counts stay, as the bootstrap ships them for every genome.
     others = [g / "hs38d1.fna.gz", g / "hs38d1.dict", g / "hs38_ncnt.csv"]
     _touch(*ours, *others)
 
     assert set(library_removal.remove_genome(g, "hs38.fa.gz")) == set(ours)
-    assert sorted(p.name for p in g.iterdir()) == sorted(p.name for p in others)
+    left = sorted(p.relative_to(g).as_posix() for p in g.rglob("*"))
+    assert left == sorted(["manifests", *(p.name for p in others)])
     assert get_genome_status("hs38.fa.gz", str(tmp_path)) == "missing"
     assert rp.has_ref_ns("hs38.fa.gz", str(tmp_path))
     assert library_removal.remove_genome(g, "hs38.fa.gz") == {}  # nothing left
+
+
+def test_remove_genome_never_deletes_through_a_linked_manifests_folder(tmp_path):
+    # PR #1581 review: deletion unlinked manifests outside the library.
+    g, outside = tmp_path / "genomes", tmp_path / "elsewhere"
+    _touch(g / "hs38.fa.gz", outside / "hs38.fa.manifest.json")
+    (g / "manifests").symlink_to(outside, target_is_directory=True)
+    library_removal.remove_genome(g, "hs38.fa.gz")
+    assert (outside / "hs38.fa.manifest.json").is_file()
 
 
 def test_remove_genome_removes_download_state_and_aligner_indexes(tmp_path):

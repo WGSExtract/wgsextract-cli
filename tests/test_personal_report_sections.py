@@ -137,7 +137,7 @@ def test_1287_shared_panel_file_never_connects_another_samples_audit(
 def test_cyp2d6_from_runs_before_issue_844_is_not_high_or_called_d6_copies(sample):
     # Issue 844: older runs recorded Cyrius's CYP2D6+CYP2D7 Total_CN as
     # cyp2d6_copy_number and no Call_info, so a unique match is unproven.
-    manifest = sample / "HG002_cyp2d6.manifest.json"
+    manifest = sample / "manifests" / "HG002_cyp2d6.manifest.json"
     data = json.loads(manifest.read_text())
     del data["metrics"]["cyp2d6_call_status"]
     data["metrics"]["cyp2d6_copy_number"] = 4

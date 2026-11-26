@@ -75,6 +75,14 @@ export function retryActionPrecheck(key: string) {
     state.actionPrecheckErrors.delete(key);
     scheduleRender();
 }
+let fileStateGeneration = 0;
+
+export function clearFileStateCache() {
+    fileStateGeneration += 1;
+    state.fileStateValues.clear();
+    state.loadingFileStates.clear();
+}
+
 export function contextWithFileState(context: CommandContext): CommandContext {
     const key = fileStateKey(context);
     ensureFileState(key, context);
@@ -85,16 +93,26 @@ function ensureFileState(key: string, context: CommandContext) {
     if (!key || state.fileStateValues.has(key) || state.loadingFileStates.has(key)) {
         return;
     }
+    const generation = fileStateGeneration;
     state.loadingFileStates.add(key);
     api<FileStateResponse>("/api/file-state", { method: "POST", body: { context } })
         .then((result) => {
+        if (generation !== fileStateGeneration) {
+            return;
+        }
         state.fileStateValues.set(key, result.values ?? {});
     })
         .catch((error) => {
+        if (generation !== fileStateGeneration) {
+            return;
+        }
         console.warn(`Could not resolve file state: ${errorMessage(error)}`);
         state.fileStateValues.set(key, {});
     })
         .finally(() => {
+        if (generation !== fileStateGeneration) {
+            return;
+        }
         state.loadingFileStates.delete(key);
         scheduleRender();
     });

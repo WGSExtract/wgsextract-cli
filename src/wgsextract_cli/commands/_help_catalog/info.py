@@ -4,7 +4,7 @@ from . import CommandHelp, _h
 
 ENTRIES: dict[str, CommandHelp] = {
     "info": _h(
-        "Prints a summary and caches it as <input file name>.wgse_info.json; "
+        "Prints a summary and caches it as manifests/<input file name>.wgse_info.json; "
         "with --format also <input file name>_chromosomes and _qc (QC stats) "
         "as .tsv or .parquet.",
         "wgsextract info --input sample.cram",

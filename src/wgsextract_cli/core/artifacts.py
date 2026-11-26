@@ -299,33 +299,43 @@ _MANIFEST_SCAN_LIMIT = 256
 
 
 def recorded_producer(record: FileRecord) -> _Recorded | None:
-    """The producer a manifest beside ``record`` names for this exact file
-    (same path and fingerprint): its own ``<file>.manifest.json`` first, then
-    any other in its folder, since a command writes one manifest for all its
-    outputs (``vcf call``'s indels in ``snps.vcf.manifest.json``) and a
-    workflow names its own (``analyze.manifest.json``)."""
+    """The producer a manifest for ``record`` names for this exact file
+    (same path and fingerprint): its own ``manifests/<file>.manifest.json``
+    first, then any other in ``manifests/`` (or a legacy manifest beside the
+    file), since a command writes one manifest for all its outputs (``vcf
+    call``'s indels in ``snps.vcf.manifest.json``) and a workflow names its
+    own (``analyze.manifest.json``)."""
+    from wgsextract_cli.core import read_scope
     from wgsextract_cli.core.results import MANIFEST_SUFFIX, manifest_path_for
 
     if record.fingerprint is None:
         return None
     own = manifest_path_for(record.path)
-    try:
-        others = sorted(
-            p
-            for p in own.parent.glob(f"*{MANIFEST_SUFFIX}")
-            if p != own and not p.name.endswith(f".failed{MANIFEST_SUFFIX}")
-        )[:_MANIFEST_SCAN_LIMIT]
-    except OSError:
-        others = []
-    from wgsextract_cli.core import read_scope
+    legacy_own = Path(record.path).parent / own.name
+    # Both exact names first, so a crowded folder can't push them out.
+    candidates: list[Path] = [own, legacy_own]
+    others: list[Path] = []
+    for folder in (own.parent, legacy_own.parent):
+        try:
+            others.extend(
+                sorted(
+                    p
+                    for p in folder.glob(f"*{MANIFEST_SUFFIX}")
+                    if p not in candidates
+                    and not p.name.endswith(f".failed{MANIFEST_SUFFIX}")
+                )
+            )
+        except OSError:
+            pass
+    candidates.extend(others[:_MANIFEST_SCAN_LIMIT])
 
-    for manifest in (own, *others):
+    for manifest in candidates:
         # A server job reads only the folders it allows, manifests included;
         # a FIFO or device named like a manifest would block the read.
         if not read_scope.may_follow(manifest) or not manifest.is_file():
             continue
-        if found := _producer_in(manifest, record):
-            return found
+        if found_rec := _producer_in(manifest, record):
+            return found_rec
     return None
 
 

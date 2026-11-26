@@ -533,7 +533,7 @@ def test_863_pgs_counts_callable_reference_but_never_uncovered_sites(
 
     # Issue #863 review: a manifest without fingerprints can't vouch that its
     # gVCF belongs to this VCF, so it isn't used.
-    manifests = list(tmp_path.glob("*.manifest.json"))
+    manifests = list(tmp_path.glob("manifests/*.manifest.json"))
     for manifest in manifests:
         document = json.loads(manifest.read_text())
         for output in document["outputs"]:
@@ -752,7 +752,7 @@ def test_863_analyze_reports_the_gvcf_state_of_clinvar_pathogenic_sites(
         main(args)
         return next(
             json.loads(p.read_text())
-            for p in out.glob("*.manifest.json")
+            for p in out.glob("manifests/*.manifest.json")
             if "confidence" in (json.loads(p.read_text()).get("details") or {})
         )
 

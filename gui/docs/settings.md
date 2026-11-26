@@ -35,6 +35,10 @@ Always visible in both Basic and Advanced mode:
   mode.
 - **Web Font:** Choose the default system font priority or prefer **SF Pro**
   when available.
+- **Privacy mode** (off by default): Stops the app's startup update check. A
+  red **PRIVACY** badge shows under the app name while it is on. **File → Check
+  for Updates...** still checks when you choose it. See
+  [Privacy and network access](privacy.md).
 
 ## Report an Issue
 
@@ -89,7 +93,7 @@ shared `config.toml` directly (see the CLI
 [Configuration reference](https://wgse.bio/wgsextract-cli/configuration.html) for every key):
 
 - **Folder paths** (changing any folder asks **Move / Change Setting Only / Cancel**):
-  - **Output Directory** (`output_directory`) — Advanced-only override; ignored in Basic mode so Basic runs always use the `wgse/` folder beside each input.
+  - **Output Directory** (`output_directory`) — Advanced-only override; ignored in Basic mode so Basic runs always use the `WGSEv6/` folder beside each input.
   - **My Genomes Library** (`mygenomes_library`)
   - **Reference Data Library** (`reference_library`)
   - **Reference Genome Library** (`reference_genome_library`)

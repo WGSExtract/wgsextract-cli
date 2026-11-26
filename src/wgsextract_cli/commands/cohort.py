@@ -28,6 +28,7 @@ from wgsextract_cli.core.results import (
     MANIFEST_SUFFIX,
     current_result,
     human_output,
+    manifest_dir_for,
     warn,
 )
 from wgsextract_cli.core.table_writer import (
@@ -186,13 +187,12 @@ def run_summary(params: CohortSummarizeParams) -> None:
     targets = [
         Path(output),
         *(
+            manifest_dir_for(outdir) / (stem.name + suffix)
+            for suffix in (MANIFEST_SUFFIX, FAILED_MANIFEST)
+        ),
+        *(
             stem.with_name(stem.name + suffix)
-            for suffix in (
-                MANIFEST_SUFFIX,
-                FAILED_MANIFEST,
-                CARD_SUFFIX,
-                ".failed" + CARD_SUFFIX,
-            )
+            for suffix in (CARD_SUFFIX, ".failed" + CARD_SUFFIX)
         ),
         *(
             index

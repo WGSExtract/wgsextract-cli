@@ -87,7 +87,9 @@ def _stamps(outdir: Path, *names: str) -> dict[str, int]:
 
 def _reused(outdir: Path) -> dict[str, bool]:
     """Each output file in the result manifest, and whether it was reused."""
-    manifest = json.loads((outdir / "sample_microarray.manifest.json").read_text())
+    manifest = json.loads(
+        (outdir / "manifests" / "sample_microarray.manifest.json").read_text()
+    )
     return {
         Path(o["path"]).name: bool(o["metrics"].get("reused"))
         for o in manifest["outputs"]
@@ -364,7 +366,9 @@ def test_issue_853_reused_hg38_outputs_keep_the_liftover_counts(
             check=True,
         )
         manifests.append(
-            json.loads((outdir / "sample_microarray.manifest.json").read_text())
+            json.loads(
+                (outdir / "manifests" / "sample_microarray.manifest.json").read_text()
+            )
         )
 
     assert _genotypes(outdir / V3) == {"rs101": "AC", "rs102": "CC", "rs103": "--"}

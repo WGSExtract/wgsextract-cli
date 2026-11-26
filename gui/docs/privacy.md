@@ -37,7 +37,7 @@ WGS Extract intentionally separates two different user needs across two layers:
 
 | Tier | Examples | Default | Can it send sample data? | How to control it |
 | --- | --- | --- | --- | --- |
-| **1. Automatic update checks** | Checking for newer WGS Extract app releases at startup, and planned update checks for Reference Data, Reference Genomes, and Tools catalogs | **On by default** in desktop builds (opt-out) | **Never** — sends only version/catalog metadata, OS/arch, IP, and standard HTTP headers | Disable automatic update checks in **Settings** |
+| **1. Automatic update checks** | Checking for newer WGS Extract app releases at startup, and planned update checks for Reference Data, Reference Genomes, and Tools catalogs | **On by default** in desktop builds (opt-out) | **Never** — sends only version/catalog metadata, OS/arch, IP, and standard HTTP headers | Turn on **Privacy mode** in **Settings → Standard UI Options**; a red **PRIVACY** badge shows while it is on |
 | **2. Interactive prerequisite prompts** | Clicking **Install and Continue** when a command or [Gene Page](gene-page.md) reports a missing reference genome or Gene Map | **Asks before downloading** — never downloads silently | **Never** — fetches public reference files only | Click **Cancel** or **Continue** instead, or pre-install files beforehand |
 | **3. Explicit management & help actions** | Running **Setup**, clicking **Install / Download** on [Reference Data](reference-data.md), [Reference Genomes](reference-genomes.md), or [Tools](tools.md), clicking **Look up sizes**, opening a documentation link, or clicking **Open GitHub issue** | **Off until you click** | **Never** (except a redacted bug report that you preview and submit yourself) | Only runs when you explicitly click the button or link |
 | **4. Sample-derived remote features** | [Remote Genome Viewer](genome-viewer.md#view-files-on-a-remote-server) (**Connect and view remote file**), or realigning a remote `https://` alignment URL | **Always explicit opt-in** (off in Basic & Advanced) | **Yes** — sends requested file paths and genomic byte ranges to the server you chose | Never enabled by default; requires explicit per-action confirmation |
@@ -64,7 +64,7 @@ This applies to automatic update checks as well as manual downloads:
   the same rule: lightweight read-only metadata checks that report when a newer
   public database (such as ClinVar or yBrowse) or tool release is available,
   without downloading multi-gigabyte files until you explicitly click to update,
-  and governed by the same automatic-update-check setting in **Settings**.
+  and governed by the same **Privacy mode** switch in **Settings**.
 - **Public downloads** contact the upstream publisher (such as GitHub releases,
   Pixi/Conda/PyPI registries, NCBI, UCSC, EBI/Ensembl, Broad/gnomAD, Zenodo,
   or yBrowse) or an audited WGS Extract mirror. See the complete destination
@@ -97,8 +97,11 @@ This applies to automatic update checks as well as manual downloads:
 If you work in an air-gapped environment or want **zero** outbound network
 traffic — including no IP-visible update checks:
 
-1. **Disable automatic update checks** in **Settings** (future Reference Data,
-   Reference Genomes, and Tools update checks will honor the same setting).
+1. Turn on **Privacy mode** in **Settings → Standard UI Options**. The app then
+   skips its startup update check and shows a red **PRIVACY** badge under its
+   name. **File → Check for Updates...** still checks when you choose it.
+   Future Reference Data, Reference Genomes, and Tools update checks will honor
+   the same switch.
 2. Keep **Allow missing public-data downloads** turned **off** in
    **Settings → Users Workspace Settings** (this is already the default).
 3. Pre-install the tools, reference genomes, and reference data you need while

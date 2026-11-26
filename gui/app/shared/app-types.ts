@@ -7,6 +7,7 @@ import type { LooseRecord, StringMap, ValueMap } from "./value-types.js";
 
 export interface CommandContext {
     setupReady?: boolean;
+    uiMode?: UIMode;
     fieldValues?: ValueMap;
     checkedOptions?: StringMap;
     configValues?: ValueMap;
@@ -131,6 +132,8 @@ export interface ManifestResponse {
     localizationOptions: LocalizedOption[];
     usingSystemDefaultLocale?: boolean;
     bundleState?: BundleStateSnapshot | null;
+    /** The app-wide Privacy mode setting (settings.json), not a bundle's saved state. */
+    privacyMode?: boolean;
     appVersion?: string;
     workspaceLocation?: WorkspaceLocationInfo;
     workspaceMoveRevision?: string;
@@ -253,6 +256,8 @@ export interface WebUIState {
     colorTheme: string;
     webUIFont: string;
     uiMode: UIMode;
+    /** Stops the app's automatic network activity: no update check at startup. */
+    privacyMode: boolean;
     bundleRootPath: string;
     usersWorkspacePath: string;
     homePath?: string;

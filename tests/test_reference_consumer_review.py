@@ -188,7 +188,8 @@ def test_1026_clinvar_evidence_uses_normalized_compatible_full_spans(
             "MT\t1\t.\tA\t<NON_REF>\t.\tPASS\tEND=100\tGT:MIN_DP:GQ\t0/0:30:50",
         ],
     )
-    (tmp_path / "calls.manifest.json").write_text(
+    (tmp_path / "manifests").mkdir(exist_ok=True)
+    (tmp_path / "manifests" / "calls.manifest.json").write_text(
         json.dumps(
             {
                 "status": "ok",
@@ -250,7 +251,7 @@ def test_1026_clinvar_evidence_uses_normalized_compatible_full_spans(
         )
         details = next(
             json.loads(path.read_text())["details"]
-            for path in (tmp_path / "out").glob("*.manifest.json")
+            for path in (tmp_path / "out").rglob("*.manifest.json")
             if "confidence" in (json.loads(path.read_text()).get("details") or {})
         )
     checked = details["confidence"][0]["reference_evidence"]["checked"]

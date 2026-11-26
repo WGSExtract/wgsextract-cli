@@ -11,6 +11,7 @@ from typing import Any
 
 from wgsextract_cli import __version__
 from wgsextract_cli.api.panel import PanelAuditParams
+from wgsextract_cli.commands import _panel_calibration
 from wgsextract_cli.commands._panel_check import inspect_panel
 from wgsextract_cli.commands.vcf.table import VcfStream, table_stem
 from wgsextract_cli.core import exon_callability as ec
@@ -105,18 +106,20 @@ def _callability(
     reference: genotypes.Evidence | None,
     thresholds: Thresholds,
     symbols: set[str],
+    model: ec.ExonModel | None,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any] | None]:
-    if params.exons and reference is None:
+    if params.exons and reference is None and model is None:
         raise UsageError("--exons requires reference evidence from a gVCF.")
     if reference is None or not symbols:
-        return {}, None
-    if params.exons:
-        current_result().add_input(params.exons, "exon_model")
-        model = ec.load_model(params.exons)
-    elif build in ("hg19", "hg38"):
-        model = ec.bundled_model(build)
-    else:
-        raise UsageError(f"No exon model is bundled for {build}; give --exons.")
+        return {}, model.describe() if model else None
+    if model is None:
+        if params.exons:
+            current_result().add_input(params.exons, "exon_model")
+            model = ec.load_model(params.exons)
+        elif build in ("hg19", "hg38"):
+            model = ec.bundled_model(build)
+        else:
+            raise UsageError(f"No exon model is bundled for {build}; give --exons.")
     names = ec.contig_names(model, reference.reader.lengths)
     exons = [exon for symbol in sorted(symbols) for exon in model.genes.get(symbol, ())]
     scored = ec.assess(reference.reader, exons, names, thresholds, 0)
@@ -224,11 +227,28 @@ def _run(
         for gene in group["genes"]
         if gene.get("symbol") and gene.get("cds_bp")
     }
+    calibrator = None
+    exon_model = None
+    if params.requests_calibration(spec):
+        calibrator, exon_model = _panel_calibration.prepare(
+            params,
+            source,
+            build,
+            details["groups"],
+            reference.reader if reference else None,
+            thresholds,
+        )
     callable_genes, model = _callability(
-        params, annotation_build, reference, thresholds, symbols
+        params,
+        annotation_build,
+        reference,
+        thresholds,
+        symbols,
+        exon_model,
     )
     by_gene: dict[str, list[audit.Allele]] = defaultdict(list)
-    if symbols:
+    search_symbols = symbols | (set(calibrator.opportunities) if calibrator else set())
+    if search_symbols:
         with tempfile.TemporaryFile(dir=work) as errors:
             stream = VcfStream(
                 ["bcftools", "view", "--no-version", source.path], errors
@@ -243,13 +263,28 @@ def _run(
                         "symbols. An unannotated input cannot show that no variants qualify."
                     )
                 for allele in audit.gene_alleles(
-                    stream.stdout, stream.header, notes, symbols
+                    stream.stdout,
+                    stream.header,
+                    notes,
+                    search_symbols,
                 ):
-                    by_gene[allele.gene].append(allele)
+                    if allele.gene in symbols:
+                        by_gene[allele.gene].append(allele)
+                    if calibrator is not None:
+                        calibrator.record(allele)
                 stream.check()
             finally:
                 stream.close()
     rows = _groups(details["groups"], by_gene, callable_genes)
+    calibration = None
+    if calibrator is not None:
+        settings = details["calibration"]
+        if params.null_sets is not None:
+            settings["null_sets"] = params.null_sets
+        settings["seed"] = (
+            params.seed if params.seed is not None else settings.get("seed", 0)
+        )
+        calibration = calibrator.finish(details["groups"], settings)
     if spec.get("sites") or spec.get("haplotypes"):
         if (
             gvcf is not None
@@ -289,9 +324,10 @@ def _run(
         "sample": source.sample,
         "source_panel": spec,
         "exon_model": model,
+        "calibration_universe": calibration,
         "reference_evidence": reference.origin if reference else None,
     }
-    _write(params, source, build, outdir, document, rows, reference)
+    _write(params, source, build, outdir, document, rows)
 
 
 def _watches(
@@ -326,17 +362,12 @@ def _write(
     outdir: Path,
     document: dict[str, Any],
     rows: list[Sequence[Value]],
-    reference: genotypes.Evidence | None,
 ) -> None:
     stem = table_stem(source.path).removesuffix("_variants") + ".panel_audit"
     report = outdir / f"{stem}.json"
     table = outdir / f"{stem}.{params.table_format}"
     result = current_result()
-    inputs = [Path(source.path), params.panel]
-    if reference:
-        inputs.append(Path(reference.path))
-    if params.exons:
-        inputs.append(params.exons)
+    inputs = [Path(record.path) for record in result.inputs]
     for destination in (report, table, manifest_path_for(report)):
         for path in inputs:
             path = path.expanduser()
