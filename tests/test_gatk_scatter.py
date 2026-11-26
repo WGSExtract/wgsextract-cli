@@ -17,13 +17,14 @@ import pytest
 from tests.disk_volumes import GIB, Volumes
 from tests.fake_tools import FakeGatk, require_bare_name_fakes
 from tests.htslib_helpers import (
+    needs_tools,
     require_runnable,
     run_wgsextract,
     sam_to_bam,
     vcf_calls,
     write_fasta,
 )
-from wgsextract_cli.commands.vcf import gatk_scatter
+from wgsextract_cli.commands.vcf import callers, gatk_scatter
 from wgsextract_cli.core import paths, resource_estimates
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
@@ -200,6 +201,58 @@ def test_scatter_gathers_shards_in_reference_order(
     ]
     assert (output.parent / "manifests" / "gatk.vcf.manifest.json").is_file()
     assert list(scratch.iterdir()) == []
+
+
+@needs_tools("gatk", "samtools", "bcftools", "tabix")
+def test_1125_scattered_ultima_whole_contig_cram_matches_bam(
+    ultima, tmp_path, caplog, monkeypatch
+):
+    if callers._gatk_version() != "4.6.2.0":
+        pytest.skip("requires the qualified GATK version")
+    monkeypatch.setattr(gatk_scatter, "available_memory", lambda: 16 * GIB)
+    ref = tmp_path / "mixed.fa"
+    ref.write_text(Path(ultima.ref).read_text().replace(">chr1\n", ">1\n"))
+    run_command(["samtools", "faidx", ref])
+    sam = run_command(
+        ["samtools", "view", "-h", ultima.bam], capture_output=True
+    ).stdout
+    source = sam_to_bam(
+        sam.replace("\tSN:chr1\t", "\tSN:1\t")
+        .replace("\tchr1\t", "\t1\t")
+        .splitlines(),
+        tmp_path / "mixed.bam",
+    )
+    cram = tmp_path / "ultima.cram"
+    run_command(
+        [
+            "samtools", "view", "-C", "-T", ref,
+            "--output-fmt-option", "version=3.0", "-o", cram, source,
+        ]
+    )  # fmt: skip
+    run_command(["samtools", "index", cram])
+    staged = tmp_path / "staged.bam"
+    run_command(
+        [
+            "samtools", "view", "-bh", "-M", "-T", ref, "-o", staged, cram,
+            "chr2", "1",
+        ]
+    )  # fmt: skip
+    run_command(["samtools", "index", staged])
+    caplog.set_level("INFO")
+    for mode, path in (("staged", staged), ("direct", cram)):
+        run_wgsextract(
+            "vcf", "gatk", "--scatter", "--input", str(path), "--ref", str(ref),
+            "--outdir", str(tmp_path / mode), "--threads", "2", "--region", "chr2,1",
+        )  # fmt: skip
+    assert "Reading indexed CRAM directly" in caplog.text
+    bodies = [
+        run_command(
+            ["bcftools", "view", "-H", tmp_path / mode / "gatk.vcf.gz"],
+            capture_output=True,
+        ).stdout
+        for mode in ("staged", "direct")
+    ]
+    assert bodies[0] and bodies[0] == bodies[1]
 
 
 def test_scatter_that_fits_one_worker_runs_one_gatk(ultima, gatk, tmp_path, capsys):

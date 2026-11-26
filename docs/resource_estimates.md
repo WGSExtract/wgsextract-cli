@@ -1047,8 +1047,11 @@ also applies.
   They support keeping the compressed-output budgets conservative rather
   than replacing replay/header worst-case allowances with one run's peak.
   GATK retains 10% of input bytes for output and twice that for temporary
-  storage. Regional GATK CRAM conversion
-  also budgets a whole-input BAM upper bound on the output volume.
+  storage. Regional GATK CRAM conversion also budgets a whole-input BAM
+  upper bound on the output volume. GATK 4.6.2.0 can read indexed CRAM 3.0
+  directly when `--region` selects whole contigs and the CRAI is compatible.
+  Partial intervals, other CRAM versions, and unqualified GATK builds retain
+  regional BAM staging.
   GATK scattering additionally charges retained shard VCFs and their indexes to
   caller staging (`--tmp-dir` when configured, otherwise the output volume).
   JVM temporary storage has its own demand (`--tmp-dir`, otherwise system temp).
