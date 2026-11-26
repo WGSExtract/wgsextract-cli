@@ -25,7 +25,23 @@ async function isolatedRoot(t) {
 }
 
 async function browserFixture(t) {
-    const bundleRoot = await isolatedRoot(t);
+    const bundleRoot = await mkdtemp(path.join(tmpdir(), "net-consent-"));
+    const pendingRequests = new Set();
+    const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
+    const server = createServer();
+    let browser;
+    t.after(async () => {
+        await browser?.close();
+        if (server.listening) {
+            const closed = new Promise((resolve) => server.close(resolve));
+            server.closeAllConnections();
+            await closed;
+        }
+        await manager.terminateAllProcesses();
+        await Promise.allSettled(pendingRequests);
+        await rm(bundleRoot, { recursive: true, force: true });
+    });
+    isolateWorkspaceEnvironment(t, bundleRoot);
     await writeFile(path.join(bundleRoot, "manifest.json"), JSON.stringify({
         id: "wgs-extract", displayName: "WGS Extract", summary: "Desktop consent fixture.",
         setup: { steps: [{ id: "bootstrap", kind: "pathTool", label: "Bootstrap fixture", value: process.execPath }] },
@@ -37,53 +53,57 @@ async function browserFixture(t) {
     const repoRoot = path.dirname(app);
     const load = (locale) => loadLocalizedBundle(locale, repoRoot, bundleRoot, bundleRoot);
     const loaded = await load();
-    const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
-    const server = createServer(createRequestHandler({
+    const handle = createRequestHandler({
         ...loaded, apiToken: "browser-consent-test", repoRoot, maxBodyBytes: 1048576,
         distRoot: path.join(app, "dist"), webRoot: path.join(app, "web"), bundleRoot,
         dynamicActions: new Map(), localizedBundleLoader: { load }, runProcess: manager.runProcess,
-    }));
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    t.after(async () => {
-        server.closeAllConnections();
-        await new Promise((resolve) => server.close(resolve));
-        await manager.terminateAllProcesses();
     });
-    const browser = await chromium.launch({ executablePath });
-    t.after(() => browser.close());
+    server.on("request", (request, response) => {
+        const pending = handle(request, response);
+        pendingRequests.add(pending);
+        void pending.finally(() => pendingRequests.delete(pending));
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    browser = await chromium.launch({ executablePath });
     const page = await browser.newPage({ viewport: { width: 1060, height: 780 } });
     page.setDefaultTimeout(6_000);
     const origin = `http://127.0.0.1:${server.address().port}`;
     const setupCalls = [], external = [];
-    await page.route("**/*", (route) => {
-        const url = new URL(route.request().url());
-        if (url.origin !== origin) {
-            external.push(url.href);
-            return route.abort();
-        }
-        if (url.pathname === "/api/setup/stream") setupCalls.push(url.pathname);
-        return route.continue();
+    await page.route((url) => url.origin !== origin, (route) => {
+        external.push(route.request().url());
+        return route.abort();
+    });
+    page.on("request", (request) => {
+        const url = new URL(request.url());
+        if (url.origin === origin && url.pathname === "/api/setup/stream") setupCalls.push(url.pathname);
     });
     await page.addInitScript(() => {
         window.WGSEXTRACT_GUI_AUTO_UPDATE = true;
         window.updateRequests = [];
+        window.updaterReady = new Promise((resolve) => { window.signalUpdaterReady = resolve; });
+        window.startupUpdate = new Promise((resolve) => { window.signalStartupUpdate = resolve; });
         window.__TAURI__ = {
-            event: { listen: async () => { window.updaterReady = true; } },
+            event: { listen: async () => { window.signalUpdaterReady(); } },
             core: { invoke: async (command) => {
                 if (command.startsWith("gfc_update_")) window.updateRequests.push(command);
+                if (command === "gfc_update_check") window.signalStartupUpdate();
                 return { currentVersion: "0.8.10" };
             } },
         };
     });
-    await page.goto(origin);
-    await page.waitForFunction(() => window.updaterReady);
-    return { page, external, setupCalls, updates: () => page.evaluate(() => window.updateRequests) };
+    await page.goto(origin, { waitUntil: "domcontentloaded" });
+    await page.evaluate(() => window.updaterReady);
+    return {
+        page, external, setupCalls,
+        updates: () => page.evaluate(() => window.updateRequests),
+        startupUpdate: () => page.evaluate(() => window.startupUpdate),
+    };
 }
 
 const browserTestOptions = { skip: !existsSync(executablePath) && "Requires installed Chromium.", timeout: 30_000 };
 
 test("#1591 first launch makes no outbound requests until OK, then starts setup and checks for updates", browserTestOptions, async (t) => {
-    const { page, external, setupCalls, updates } = await browserFixture(t);
+    const { page, external, setupCalls, updates, startupUpdate } = await browserFixture(t);
     const dialog = page.getByRole("dialog", { name: "Network & Privacy" });
     const ok = dialog.getByRole("button", { name: "OK", exact: true });
     await ok.waitFor();
@@ -91,16 +111,19 @@ test("#1591 first launch makes no outbound requests until OK, then starts setup 
     await page.evaluate(() => window.dispatchEvent(new Event("wgsextract-gui-check-for-updates")));
     assert.deepEqual({ external, setupCalls, updates: await updates() }, { external: [], setupCalls: [], updates: [] });
 
-    const setup = page.waitForResponse((response) => response.url().endsWith("/api/setup/stream"));
-    await page.keyboard.press("Enter");
-    assert.equal((await setup).status(), 200);
-    await page.waitForFunction(() => window.updateRequests.includes("gfc_update_check"));
+    const [setup] = await Promise.all([
+        page.waitForResponse((response) => response.url().endsWith("/api/setup/stream")),
+        startupUpdate(),
+        ok.press("Enter"),
+    ]);
+    assert.equal(setup.status(), 200);
+    assert.equal(await setup.finished(), null);
     assert.equal(await page.getByRole("checkbox", { name: "Check for updates at launch" }).isChecked(), true);
     assert.deepEqual(external, []);
 });
 
 test("#1591 Not now opens Settings offline and saves an independent launch preference", browserTestOptions, async (t) => {
-    const { page, external, setupCalls, updates } = await browserFixture(t);
+    const { page, external, setupCalls, updates, startupUpdate } = await browserFixture(t);
     await page.getByRole("button", { name: "Not now" }).click();
     const section = page.getByRole("region", { name: "Network & Privacy" });
     await section.waitFor();
@@ -123,7 +146,7 @@ test("#1591 Not now opens Settings offline and saves an independent launch prefe
     assert.equal((await save).status(), 200);
     await page.reload();
     await checkbox.waitFor();
-    await page.waitForFunction(() => window.updateRequests.includes("gfc_update_check"));
+    await startupUpdate();
     assert.deepEqual(setupCalls, []);
 });
 

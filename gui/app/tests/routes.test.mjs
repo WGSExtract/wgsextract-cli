@@ -52,7 +52,7 @@ function testManifest() {
   };
 }
 
-async function withTestServer(t, overrides = {}, { fresh = false } = {}) {
+async function withTestServer(t, overrides = {}, { fresh = false, onRequestSettled } = {}) {
   const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-routes-"));
   for (const [key, value] of Object.entries(dataEnvironment(tempRoot))) {
       const original = process.env[key];
@@ -108,7 +108,14 @@ async function withTestServer(t, overrides = {}, { fresh = false } = {}) {
     ...overrides,
   };
 
-  const server = createServer(createRequestHandler(context));
+  const handle = createRequestHandler(context);
+  const server = createServer(onRequestSettled ? async (request, response) => {
+    try {
+      await handle(request, response);
+    } finally {
+      onRequestSettled(request.url);
+    }
+  } : handle);
   t.after(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
@@ -704,24 +711,21 @@ test("#1234: a client that stops reading and disconnects mid-move releases the w
   const moveBlocked = new Promise((resolve) => {
     blocked = resolve;
   });
-  let settled;
-  const moveSettled = new Promise((resolve) => {
-    settled = resolve;
-  });
+  const moveSettled = Promise.withResolvers();
   const progress = { type: "progress", text: "x".repeat(256 * 1024) };
   const { baseURL, port } = await withTestServer(t, {
     async moveWorkspace(_target, emit, signal) {
-      try {
-        while (!signal.aborted) {
-          const written = emit(progress);
-          const waiting = await Promise.race([written.then(() => false), new Promise((resolve) => setTimeout(resolve, 50, true))]);
-          if (waiting) blocked();
-          await written;
-        }
+      while (!signal.aborted) {
+        const written = emit(progress);
+        const waiting = await Promise.race([written.then(() => false), new Promise((resolve) => setTimeout(resolve, 50, true))]);
+        if (waiting) blocked();
+        await written;
       }
-      finally {
-        settled();
-      }
+    },
+  }, {
+    onRequestSettled(url) {
+      // Callback completion alone does not mean the outer route has released the move lease.
+      if (url === "/api/workspace-location/move") moveSettled.resolve();
     },
   });
 
@@ -739,7 +743,7 @@ test("#1234: a client that stops reading and disconnects mid-move releases the w
     client.destroy();
   }
 
-  await within(moveSettled, 5000, "the move");
+  await within(moveSettled.promise, 5000, "the move");
   const after = await apiFetch(baseURL, "/api/setup/stream", { body: { locale: "en" } });
   assert.equal(after.status, 200);
   assert.equal((await readNDJSON(after)).at(-1).type, "complete");
