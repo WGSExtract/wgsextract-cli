@@ -37,6 +37,7 @@ from wgsextract_cli.core.alignment.samtools_commands import (
     alignment_index,
     parse_memory,
 )
+from wgsextract_cli.core.artifact_facts import index_paths
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
@@ -405,15 +406,20 @@ def _beagle(
         contig.write_text(
             f"##contig=<ID={panel.chrom},length={length}>\n", newline="\n"
         )
-        ensure_vcf_indexed(f"{out}.vcf.gz")
+        imputed = Path(f"{out}.vcf.gz")
+        ensure_vcf_indexed(imputed)
+        gt.unlink()
         part = work / f"{panel.chrom}.vcf.gz"
         run_command(
             ["bcftools", "annotate", "-h", contig,
              "-a", panel.panel,
              "-c", "INFO/WGSE_PANEL_AC:=INFO/AC,INFO/WGSE_PANEL_AN:=INFO/AN",
              "-Oz", "-o", part,
-             f"{out}.vcf.gz"]
+             imputed]
         )  # fmt: skip
+        for index in index_paths(imputed, "vcf"):
+            Path(index).unlink()
+        imputed.unlink()
         parts.append(part)
     return parts, {"sample": sample}
 
