@@ -35,6 +35,7 @@ def report_schema() -> dict[str, object]:
         report.ReportGeneDocument: Shape("reportGene", additional=False),
         report.ReportGeneListDocument: Shape("gene_list"),
         report.ReportAcmgDocument: Shape("reportAcmg"),
+        report.ReportPanelAuditDocument: Shape("reportPanelAudit"),
         report.ReportAcmgCountsDocument: Shape(
             "reportAcmgCounts", additional=report.NonnegativeCount
         ),

@@ -14,7 +14,7 @@ from wgsextract_cli.core import variant_confidence as vc
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
 from wgsextract_cli.core.results import ResultWarning, current_result, warn
-from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_depths import ad_total_header, preserve_ad_total
 from wgsextract_cli.core.variant_files import (
@@ -36,10 +36,13 @@ def table_as_vcf(
     reference: str,
     work: str,
     snv_query: str | None = None,
-) -> tuple[str, str]:
+    *,
+    prepare: bool = False,
+) -> tuple[str, int, bool]:
     fields = columns.split(",")
-    if "REF" not in fields or "ALT" not in fields:
-        return source, columns
+    chrom_i, pos_i, ref_i, alt_i = (
+        fields.index(c) for c in ("CHROM", "POS", "REF", "ALT")
+    )
     lengths = {
         name: int(length)
         for line in Path(reference + ".fai").read_text().splitlines()
@@ -79,41 +82,51 @@ def table_as_vcf(
         with subset.open("w", newline="\n") as selected:
             if regions.stat().st_size:
                 run_command(["tabix", "-R", str(regions), source], stdout=selected)
-    contigs = []
+    total = 0
+    has_multiallelic = False
+    skipped: dict[str, int] = {}
     with output.open("w", newline="\n") as handle:
         handle.write("##fileformat=VCFv4.2\n")
-        for line in Path(reference + ".fai").read_text().splitlines():
-            name, length, *_ = line.split("\t")
-            contigs.append(name)
+        for name, length in lengths.items():
             handle.write(f"##contig=<ID={name},length={length}>\n")
         handle.writelines(h + "\n" for h in headers)
         handle.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
-        mapped_names: dict[str, str] = {}
+        mapped_names: dict[str, str | None] = {}
         with subset.open() if subset else gzip.open(source, "rt") as records:
             for line in records:
                 if line.startswith("#"):
                     continue
                 row = line.rstrip("\n").split("\t")
-                chrom = row[fields.index("CHROM")]
+                chrom = row[chrom_i]
                 if chrom not in mapped_names:
-                    mapped_names[chrom] = match_chromosome_name(chrom, contigs) or chrom
-                info = ";".join(f"{tag}={row[i]}" for i, tag in info_fields)
-                handle.write(
-                    "\t".join(
-                        [
-                            mapped_names[chrom],
-                            row[fields.index("POS")],
-                            ".",
-                            row[fields.index("REF")],
-                            row[fields.index("ALT")],
-                            ".",
-                            ".",
-                            info or ".",
-                        ]
-                    )
-                    + "\n"
+                    mapped_names[chrom] = match_chromosome_name(chrom, lengths)
+                mapped = mapped_names[chrom]
+                if prepare and mapped is None:
+                    skipped[chrom] = skipped.get(chrom, 0) + 1
+                    continue
+                alt = row[alt_i]
+                if prepare:
+                    has_multiallelic |= "," in alt
+                    total += 1
+                info = ";".join(
+                    f"{tag}={row[i]}" if row[i] or not prepare else tag
+                    for i, tag in info_fields
                 )
-    return str(output), ",".join("INFO/" + tag for _, tag in info_fields)
+                handle.write(
+                    f"{mapped or chrom}\t{row[pos_i]}\t.\t{row[ref_i]}\t{alt}\t.\t.\t{info or '.'}\n"
+                )
+    _warn_missing_contigs(set(skipped), sum(skipped.values()))
+    return str(output), total, has_multiallelic
+
+
+def _warn_missing_contigs(contigs: set[str], count: int) -> None:
+    if contigs:
+        warn(
+            "annotation_contigs_not_in_reference",
+            f"Excluded {count} resource records on contigs absent from the reference FASTA; these cannot be matched. No sample records were excluded.",
+            count=count,
+            contigs=",".join(sorted(contigs)),
+        )
 
 
 def _text_copy(
@@ -239,13 +252,7 @@ def _text_copy(
                 if allowed is None and "AD" in header.format_number:
                     preserve_ad_total(fields)
                 handle.write("\t".join(fields) + "\n")
-    if skipped:
-        warn(
-            "annotation_contigs_not_in_reference",
-            f"Excluded {skipped_count} resource records on contigs absent from the reference FASTA; these cannot be matched. No sample records were excluded.",
-            count=skipped_count,
-            contigs=",".join(sorted(skipped)),
-        )
+    _warn_missing_contigs(skipped, skipped_count)
     if mito_count:
         warn(
             "annotation_mito_reference_incompatible",
@@ -308,18 +315,31 @@ def _normalize(
         source, staged, clinical, allowed, incompatible_mito
     )
     renamed = normalize_vcf_chromosomes(str(staged), list(lengths), work)
+    return _normalize_prepared(
+        renamed, reference, output, work, has_multiallelic,
+        (total, origin or source) if is_resource else None,
+    )  # fmt: skip
+
+
+def _normalize_prepared(
+    renamed: str,
+    reference: str,
+    output: str,
+    work: str,
+    has_multiallelic: bool,
+    resource: tuple[int, str] | None,
+) -> tuple[str, ResultWarning | None]:
     norm = output + ".norm.gz"
     warning = None
     # Check unsplit resources so a row with several ALTs counts only once.
     # Compute drops from records, not bcftools' version-dependent summary.
-    if is_resource:
+    if resource is not None:
+        total, origin = resource
         kept = output + ".checked.gz" if has_multiallelic else norm
         _left_align(renamed, reference, kept, "x")
-        warning = ref_mismatch_warning(
-            total - record_count(kept), total, origin or source
-        )
+        warning = ref_mismatch_warning(total - record_count(kept), total, origin)
         renamed = kept
-    if not is_resource or has_multiallelic:
+    if resource is None or has_multiallelic:
         split = output + ".split.gz"
         run_command(
             ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
@@ -334,6 +354,31 @@ def _normalize(
     )
     ensure_vcf_indexed(output)
     return output, warning
+
+
+def _normalize_biallelic_table(
+    table_vcf: str,
+    reference: str,
+    output: str,
+    work: str,
+    total: int,
+    origin: str,
+) -> tuple[str, ResultWarning | None]:
+    # The final index counts exactly the retained records: no ALT splitting,
+    # intermediate compressed VCF or second pass to count mismatches.
+    run_pipeline(
+        [
+            ["bcftools", "norm", "-f", reference, "-c", "x", "-Ou", table_vcf],
+            ["bcftools", "sort", "-T", str(Path(work, "sort")), "-Oz", "-o", output],
+        ],
+        description="Normalizing the allele table",
+        stderr_dir=work,
+    )
+    ensure_vcf_indexed(output)
+    kept = int(
+        run_command(["bcftools", "index", "-n", output], capture_output=True).stdout
+    )
+    return output, ref_mismatch_warning(total - kept, total, origin)
 
 
 def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) -> str:
@@ -672,6 +717,8 @@ def normalized_inputs(
     headers: Sequence[str] = (),
     snv_table: bool = False,
     resource_source: str | None = None,
+    *,
+    prepare_table: bool = False,
 ) -> tuple[str, str, str]:
     normalized_query, _ = _normalize(
         query, reference, str(Path(work, "query.vcf.gz")), work, False
@@ -691,20 +738,32 @@ def normalized_inputs(
     )
 
     def build() -> tuple[str, ResultWarning | None]:
+        output = str(Path(work, "resource.vcf.gz"))
         selected = source
         if not is_vcf:
-            selected, _ = table_as_vcf(
+            selected, total, multiallelic = table_as_vcf(
                 source,
                 columns,
                 headers,
                 reference,
                 work,
                 normalized_query if snv_table else None,
+                prepare=prepare_table,
             )
+            if prepare_table:
+                # Already mapped, filtered and counted against this FASTA.
+                origin = resource_source or source
+                if not multiallelic:
+                    return _normalize_biallelic_table(
+                        selected, reference, output, work, total, origin
+                    )
+                return _normalize_prepared(
+                    selected, reference, output, work, multiallelic, (total, origin)
+                )
         return _normalize(
             selected,
             reference,
-            str(Path(work, "resource.vcf.gz")),
+            output,
             work,
             clinical,
             True,

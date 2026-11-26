@@ -26,14 +26,19 @@ import zlib
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from concurrent.futures import Future
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from email.utils import parsedate_to_datetime
 from functools import cached_property
+from pathlib import Path
+from typing import BinaryIO
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, getproxies, proxy_bypass, urlopen
 
 from wgsextract_cli.core import read_scope
+from wgsextract_cli.core._tabix_sweep import sweep_local
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.download_progress import CancelEvent
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.ref_library.segmented import user_agent
@@ -52,6 +57,9 @@ _CACHED = 64  # blocks a search keeps
 # block of bytes.
 _READ_ON = 4
 _ATTEMPTS = 6
+_SWEEP_MIN_SITES = 128
+# Roughly eight targets per 16 Ki-base index window on average.
+_SWEEP_MEAN_GAP = 2048
 
 
 # Google Cloud Storage serves many connections from one address; Ensembl's FTP
@@ -198,6 +206,24 @@ class ByteSource:
             self._check_scope()
             with open(self.location, "rb") as f:
                 self._unchanged(os.fstat(f.fileno()))
+
+    @contextmanager
+    def local_stream(self, offset: int) -> Iterator[BinaryIO]:
+        """Pin the checked input descriptor for a local child reader."""
+        assert not self.remote
+        if offset >= self.size:
+            raise WGSExtractError(f"{self.location}: tabix offset past end of file.")
+        self._check_scope()
+        with open(self.location, "rb", buffering=0) as stream:
+            self._unchanged(os.fstat(stream.fileno()))
+            stream.seek(offset)
+            yield stream
+            self._unchanged(os.fstat(stream.fileno()))
+            size = stream.tell() - offset
+        self.verify()
+        with self._lock:
+            self.bytes_read += size
+            self.requests += 1
 
     def _head(self, url: str) -> tuple[str, int, http.client.HTTPMessage]:
         request = Request(url, method="HEAD", headers={"User-Agent": user_agent(url)})
@@ -629,6 +655,7 @@ class TabixFile:
         self.source = ByteSource(location, cancel)
         self._index: TabixIndex | None = None
         self.index_bytes = 0
+        self.local_sweeps = 0
         self._header: bytes | None = None
         self._typical = 16384
 
@@ -690,14 +717,23 @@ class TabixFile:
         sites: Iterable[tuple[int, int]],
         workers: int = 8,
         on_group: Callable[[list[bytes]], None] | None = None,
+        *,
+        sweep_dir: Path | None = None,
     ) -> list[bytes]:
         """The contig's records with POS in any ``(first, last)`` site
         (1-based, inclusive, sorted, not overlapping), in file order; with
-        ``on_group``, handed to it in order a group at a time instead."""
+        ``on_group``, handed to it in order a group at a time instead.
+        A private ``sweep_dir`` enables an indexed sweep for dense local sites."""
         found = self.index.contigs.get(contig)
         ordered = list(sites)
         if found is None or not ordered:
             return []
+        records: list[bytes] = []
+        sink = on_group or records.extend
+        if sweep_dir is not None and self._sweep(
+            contig, found, ordered, sweep_dir, sink
+        ):
+            return records
         name = contig.encode()
         # Enough groups to keep every connection busy; near sites in a group
         # share the blocks read.
@@ -711,8 +747,6 @@ class TabixFile:
             self._typical = search.blocks.typical
             return search.found
 
-        records: list[bytes] = []
-        sink = on_group or records.extend
         pool = ContextThreadPoolExecutor(max_workers=max(1, workers))
         try:
             pending: deque[Future[list[bytes]]] = deque()
@@ -725,3 +759,30 @@ class TabixFile:
         finally:
             pool.shutdown(wait=True, cancel_futures=True)
         return records
+
+    def _sweep(
+        self,
+        contig: str,
+        bounds: _Contig,
+        sites: list[tuple[int, int]],
+        work: Path,
+        sink: Callable[[list[bytes]], None],
+    ) -> bool:
+        # A sweep pays for the gaps too; the range reader can jump over them.
+        if (
+            self.source.remote
+            or self.index.meta != "#"
+            or len(sites) < _SWEEP_MIN_SITES
+            or sites[-1][0] - sites[0][1] > _SWEEP_MEAN_GAP * len(sites)
+            or not (bgzip := get_tool_path("bgzip"))
+        ):
+            return False
+        linear = bounds.linear
+        window = min((sites[0][0] - 1) >> _MIN_SHIFT, len(linear) - 1)
+        start = max(linear[window] if window >= 0 else 0, bounds.start)
+        with self.source.local_stream(start >> 16) as source:
+            sweep_local(
+                bgzip, source, start & 0xFFFF, contig, sites, work, sink, self.cancel
+            )
+        self.local_sweeps += 1
+        return True

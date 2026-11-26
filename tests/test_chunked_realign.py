@@ -58,7 +58,7 @@ def ont(tmp_path_factory):
         cigar = cigar or f"{len(seq)}M"
         records.append(
             (contig, pos, f"{name}\t{flag}\t{contig}\t{pos}\t60\t{cigar}\t*\t0\t0"
-             f"\t{stored}\t{'5' * len(seq)}\tRG:Z:r\t{MODS}")
+             f"\t{stored}\t{'5' * len(seq)}\tRG:Z:r\t{MODS}\tMN:i:{len(seq)}")
         )  # fmt: skip
         return name
 
@@ -86,7 +86,7 @@ def ont(tmp_path_factory):
     records.sort(key=lambda r: (names.index(r[0]), r[1]))
     unmapped = [
         f"{uuid.UUID(int=rng.getrandbits(128))}\t4\t*\t0\t0\t*\t*\t0\t0\t{s}"
-        f"\t{'5' * len(s)}\tRG:Z:r\t{MODS}"
+        f"\t{'5' * len(s)}\tRG:Z:r\t{MODS}\tMN:i:{len(s)}"
         for s in ("".join(rng.choices("ACGT", k=1500)) for _ in range(6))
     ]
     header = [
