@@ -39,6 +39,7 @@ from wgsextract_cli.commands.alignment import common, preparation, short_reads
 from wgsextract_cli.commands.realignment import steps as realign_steps
 from wgsextract_cli.core import parabricks
 from wgsextract_cli.core.alignment import memory as alignment_memory
+from wgsextract_cli.core.atomic_output import atomic_output_mode
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -148,10 +149,10 @@ def test_stream_failure_leaves_no_fastqs_or_collate_spills(monkeypatch, source, 
     assert list(source.parent.glob(".collate_*")) == []
 
 
-@needs_tools("bwa", "samtools")
+@needs_tools("samtools")
 @pytest.mark.parametrize("cram", [False, True], ids=["bam", "cram"])
 @pytest.mark.parametrize("markdup", [False, True], ids=["auto-marker", "markdup"])
-@pytest.mark.parametrize("aligner", ["bwa", "bwa-mem2"])
+@pytest.mark.parametrize("aligner", ["bwa", "bwa-mem2", "minimap2"])
 def test_paired_stream_body_matches_files_including_discarded_reads(
     tmp_path, genome_and_ref, monkeypatch, cram, markdup, aligner
 ):
@@ -171,6 +172,9 @@ def test_paired_stream_body_matches_files_including_discarded_reads(
     extra.append(
         f"singleton\t73\told1\t1\t60\t100M\t*\t0\t0\t{genome[:100]}\t{'I' * 100}"
     )
+    tie = records[0].split("\t")
+    tie[10] = "!" * len(tie[10])
+    extra.append("\t".join(tie))
     source = sam_to_bam(
         [*_view("view", "-H", source).splitlines(), *records, *extra],
         tmp_path / "old" / "filtered.bam",
@@ -199,6 +203,7 @@ def test_paired_stream_body_matches_files_including_discarded_reads(
                 aligner=aligner,
                 outdir=str(tmp_path / mode),
                 keep_fastq=mode == "files",
+                **({"native_aligners": "off"} if aligner == "minimap2" else {}),
             )
         )
     files = tmp_path / "files" / "filtered_aligned.bam"
@@ -207,10 +212,94 @@ def test_paired_stream_body_matches_files_including_discarded_reads(
     assert body == _view("view", files)
     assert len(body.splitlines()) == pairs * 2
     assert "singleton" not in body
-    assert "-p " in _view("view", "-H", stream)
+    header = _view("view", "-H", stream)
+    if aligner == "minimap2":
+        # #1125: the default run never extracted a seekable mate pair.
+        assert ".fastq.gz" not in header
+    else:
+        assert "-p " in header
     assert ".fastq.gz" in _view("view", "-H", files)
     assert not list((tmp_path / "stream").glob("*.fastq.gz"))
     assert not list((tmp_path / "stream").glob(".collate_*"))
+
+
+@needs_tools("minimap2", "samtools")
+def test_1125_minimap2_memory_fallback_keeps_extraction_step(
+    tmp_path, genome_and_ref, monkeypatch, caplog
+):
+    genome, ref = genome_and_ref
+    source, pairs = _old_alignment(tmp_path, genome)
+    monkeypatch.setattr(realign_steps, "available_memory", lambda: 256 * 1024**2)
+    with caplog.at_level(logging.INFO):
+        realign.run(
+            _args(
+                source,
+                ref=ref,
+                aligner="minimap2",
+                outdir=tmp_path / "fallback",
+                native_aligners="off",
+            )
+        )
+    alignment = tmp_path / "fallback" / "x_aligned.bam"
+    assert len(_view("view", alignment).splitlines()) == pairs * 2
+    assert ".fastq.gz" in _view("view", "-H", alignment)
+    assert "does not fit available RAM" in caplog.text
+
+
+@needs_tools("minimap2", "samtools")
+def test_1125_forced_minimap2_extract_replaces_cached_mates(tmp_path, genome_and_ref):
+    genome, ref = genome_and_ref
+    source, pairs = _old_alignment(tmp_path, genome)
+    outdir = tmp_path / "out"
+    options = {
+        "ref": ref,
+        "aligner": "minimap2",
+        "outdir": outdir,
+        "native_aligners": "off",
+    }
+    realign.run(_args(source, **options, keep_fastq=True))
+    for path in outdir.glob("*.fastq.gz"):
+        path.write_bytes(b"stale FASTQ")
+    realign.run(_args(source, **options, force_steps=("extract",)))
+    assert not list(outdir.glob("*.fastq.gz"))
+    assert len(_view("view", outdir / "x_aligned.bam").splitlines()) == pairs * 2
+
+
+@needs_tools("minimap2", "samtools")
+def test_1125_failed_late_memory_fallback_keeps_previous_alignment(
+    tmp_path, genome_and_ref, monkeypatch, caplog
+):
+    genome, ref = genome_and_ref
+    source, _ = _old_alignment(tmp_path, genome)
+    outdir = tmp_path / "out"
+    output = outdir / "x_aligned.bam"
+    options = {
+        "ref": ref,
+        "aligner": "minimap2",
+        "outdir": outdir,
+        "native_aligners": "off",
+    }
+    with atomic_output_mode(True):
+        realign.run(_args(source, **options))
+        original = output.read_bytes()
+        monkeypatch.setattr(realign_steps, "available_memory", lambda: 8 * 1024**3)
+        monkeypatch.setattr(short_reads, "available_memory", lambda: 256 * 1024**2)
+        replace_file = os.replace
+
+        def refuse_publish(src, dst, **kwargs):
+            if Path(dst) == output:
+                raise PermissionError("could not replace previous BAM")
+            return replace_file(src, dst, **kwargs)
+
+        monkeypatch.setattr(os, "replace", refuse_publish)
+        with (
+            caplog.at_level(logging.INFO),
+            pytest.raises(WGSExtractError, match="could not replace previous BAM"),
+        ):
+            realign.run(_args(source, **options, sample="new-sample"))
+    assert "Available RAM changed before streaming started" in caplog.text
+    assert output.read_bytes() == original
+    _view("quickcheck", output)
 
 
 @needs_tools("bwa", "samtools")

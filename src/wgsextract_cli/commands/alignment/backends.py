@@ -86,6 +86,7 @@ if TYPE_CHECKING:
 from .common import (
     BWA_BATCH_BASES,
     AlignJob,
+    StreamingMemoryUnavailable,
     _AlignSetup,
     duplicate_marker,
 )
@@ -95,6 +96,7 @@ from .preparation import (
 )
 from .short_reads import (
     aligner_gpu_bytes,
+    streaming_mapping_fits,
 )
 
 # Ultima's duplicate marking (Picard MarkDuplicates in flow mode, as in Ultima's
@@ -346,27 +348,42 @@ def _minimap2_command(
     return gpu
 
 
-def align_minimap2(job: AlignJob) -> None:
+def align_minimap2(
+    job: AlignJob,
+    *,
+    upstream: Sequence[Sequence[object]] = (),
+    discarded_fastq: Path | None = None,
+    read_paths: list[str] | None = None,
+    additional_ram_bytes: int = 0,
+) -> None:
     if is_long_read(job) and job.r2:
         raise UsageError("Long reads are single-end: drop --r2.")
     preset = _minimap2_preset(job)
-    setup = _prepare_alignment(job, ["minimap2", "samtools"], "Minimap2 alignment")
+    setup = _prepare_alignment(
+        job,
+        ["minimap2", "samtools"],
+        "Minimap2 alignment",
+        read_paths=read_paths,
+        validate_reads=not upstream,
+    )
 
     ext = ".cram" if job.format == "CRAM" else ".bam"
     out_bam = str(Path(setup.outdir, f"{setup.stem}_aligned{ext}"))
 
     logging.info(
         LOG_MESSAGES["aligning_reads"].format(
-            input=job.r1, output=out_bam, tool="Minimap2"
+            input=read_paths[0] if read_paths else job.r1,
+            output=out_bam,
+            tool="Minimap2",
         )
     )
     logging.info("Using minimap2 preset %s for %s reads.", preset, job.platform)
     duplicates = duplicate_marker(paired=bool(job.r2)) if preset == "sr" else None
-    read_files = [path for path in (job.r1, job.r2) if path]
+    read_files = read_paths or [path for path in (job.r1, job.r2) if path]
     # Pipes and devices report no size; only regular files bound the batches.
-    input_bytes = regular_files_bytes(read_files)
+    input_bytes = None if upstream else regular_files_bytes(read_files)
     read_count = job.read_count
-    if read_count is None and duplicates == "samblaster":
+    if not upstream and read_count is None and duplicates == "samblaster":
         statistics = fastq_input_statistics(setup.r1, job.r2)
         read_count = statistics.reads if statistics is not None else None
     read_length = job.input_reads.read_length if job.input_reads else None
@@ -388,7 +405,7 @@ def align_minimap2(job: AlignJob) -> None:
     setup = setup._replace(alignment_threads=str(plan.alignment))
     gpu_bytes = aligner_gpu_bytes(aligner, setup.ref, read_count)
     # realign checked a chunked alignment's disk space, chunk by chunk.
-    if not job.chunks:
+    if not job.chunks and not upstream:
         preflight_resources(
             lambda: estimate_resources(
                 "align",
@@ -409,6 +426,20 @@ def align_minimap2(job: AlignJob) -> None:
                 gpu_bytes=gpu_bytes,
             )
         )
+    if upstream and not streaming_mapping_fits(
+        setup.ref,
+        "minimap2",
+        threads=setup.threads,
+        alignment_threads=setup.alignment_threads,
+        memory=setup.sort_budget,
+        samblaster=duplicates == "samblaster",
+        reads=read_count,
+        platform=job.platform,
+        read_length=read_length,
+        preset=preset,
+        additional_ram_bytes=additional_ram_bytes,
+    ):
+        raise StreamingMemoryUnavailable("Collation exceeds available alignment RAM")
     check_mapping_memory(
         setup.ref,
         "minimap2",
@@ -421,13 +452,13 @@ def align_minimap2(job: AlignJob) -> None:
         read_length=read_length,
         preset=preset,
         input_bytes=input_bytes,
+        additional_ram_bytes=additional_ram_bytes,
         gpu_bytes=gpu_bytes,
     )
     aligner.announce()
     aligner.record()
     align_cmd = [*aligner.argv(), "-ax", preset, "-t", str(plan.alignment)]
-    upstream: list[Sequence[object]] = []
-    reads = setup.r1
+    reads = "-" if upstream else setup.r1
     # realign --keep-fastq aligns a FASTQ, so it passes its BAM/CRAM's.
     description = job.read_group_description
     if is_long_read(job):
@@ -488,7 +519,7 @@ def align_minimap2(job: AlignJob) -> None:
     align_cmd += [setup.ref, reads]
     try:
         run_streamed_alignment(
-            align_cmd + ([job.r2] if job.r2 else []),
+            align_cmd + ([job.r2] if job.r2 and not upstream else []),
             out_bam,
             threads=setup.threads,
             memory=setup.sort_budget,
@@ -496,7 +527,9 @@ def align_minimap2(job: AlignJob) -> None:
             output_profile=job.output_profile or "default",
             ref=setup.ref,
             duplicates=duplicates,
-            upstream=upstream or None,
+            upstream=list(upstream) or None,
+            discarded_fastq=discarded_fastq,
+            expected_reads=read_count if upstream else None,
             exact_reads=job.exact_reads,
         )
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:

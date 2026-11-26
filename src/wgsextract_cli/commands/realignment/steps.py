@@ -69,6 +69,18 @@ from .resources import (
 )
 
 
+def _single_part_minimap2_reference(target: str | None) -> bool:
+    # minimap2 rereads its queries for each index part. An uncompressed FASTA's
+    # byte size bounds its base count below the short-read index limit (-I 8G).
+    if not target:
+        return False
+    path = Path(target)
+    if not path.is_file() or path.stat().st_size >= 8_000_000_000:
+        return False
+    with path.open("rb") as fasta:
+        return fasta.read(1) == b">"
+
+
 def _run_steps(
     job: RealignJob,
     journal: StepJournal,
@@ -223,15 +235,26 @@ def _run_steps(
 
     refresh_cached_fastqs = (
         need_extract
-        and job.force_extract
+        and (job.force_extract or journal.policy.forced("extract"))
         and any(Path(path).is_file() for path in (r1_path, r2_path) if path)
     )
+    bwa = selected_aligner in align_cmd.BWA_ALIGNERS
+    minimap2 = selected_aligner == "minimap2"
     streaming = (
         need_extract
-        and selected_aligner in align_cmd.BWA_ALIGNERS
         and not job.keep_fastq
         and not job.gpu
         and not refresh_cached_fastqs
+        and (
+            bwa
+            or (
+                minimap2
+                and align_cmd._minimap2_preset(job) == "sr"
+                and job.ref is not None
+                and Path(job.ref).is_file()
+                and _single_part_minimap2_reference(target)
+            )
+        )
     )
     align_decision: Decision | None = None
     if journal.dry_run or not need_extract:
@@ -269,7 +292,7 @@ def _run_steps(
     if streaming:
         sample = alignment_sample(job.input, cram_opt=cram_opt)
         read_length = sample.read_length
-        # One collate bucket is resident while BWA maps; reserve it alongside.
+        # One collate bucket is resident while the mapper runs; reserve it alongside.
         additional_ram_bytes = collate_working_memory(
             job.input,
             threads,
@@ -278,7 +301,7 @@ def _run_steps(
             max_record_bytes=sample.max_record_bytes,
         )
         fits = additional_ram_bytes <= available_memory()
-        if fits and target and Path(target).is_file():
+        if fits and target and Path(target).is_file() and bwa:
             samblaster = (
                 align_cmd.duplicate_marker(paired=bool(r2_path)) == "samblaster"
             )
@@ -308,6 +331,19 @@ def _run_steps(
                 gpu_bytes=align_cmd.aligner_gpu_bytes(aligner, target, reads),
                 dense_sa_bytes=aligner.dense_sa_bytes,
             )
+        elif fits and minimap2:
+            needs = _minimap2_needs(
+                job,
+                [job.input],
+                target,
+                threads,
+                memory,
+                reads=reads,
+                samblaster=align_cmd.duplicate_marker(paired=True) == "samblaster",
+                streaming=True,
+                additional_ram_bytes=additional_ram_bytes,
+            )
+            fits = needs.memory is not None and needs.memory <= available_memory()
         if not fits:
             logging.info(
                 "Holding a collate bucket (~%.1f GiB) beside alignment does not "
@@ -318,7 +354,7 @@ def _run_steps(
             streaming = False
             additional_ram_bytes = 0
     needs = _Needs()
-    if selected_aligner in align_cmd.BWA_ALIGNERS and not job.gpu:
+    if bwa and not job.gpu:
         needs = _report_resource_estimates(
             job,
             target,
@@ -332,7 +368,7 @@ def _run_steps(
             read_length=read_length,
             additional_ram_bytes=additional_ram_bytes,
         )
-    elif selected_aligner == "minimap2" and not job.gpu:
+    elif minimap2 and not job.gpu:
         # Short reads with --aligner minimap2 (--preset sr).
         needs = _minimap2_needs(
             job,
@@ -342,6 +378,8 @@ def _run_steps(
             memory,
             reads=reads,
             samblaster=align_cmd.duplicate_marker(paired=bool(r2_path)) == "samblaster",
+            streaming=streaming,
+            additional_ram_bytes=additional_ram_bytes,
         )
     if job.aligner == "bwa-mem2" and target and Path(target).is_file():
         # As align's: bwa-mem2, or wgse-bwa-mem3 in its place, must fit.
@@ -401,17 +439,8 @@ def _run_steps(
             )
             streaming = False
             additional_ram_bytes = 0
-            needs = _report_resource_estimates(
-                job,
-                target,
-                outdir,
-                threads,
-                memory,
-                reads,
-                input_paths=[job.input],
-                need_extract=True,
-                paired=bool(r2_path),
-                read_length=read_length,
+            needs = _extracted_alignment_needs(
+                job, target, outdir, threads, memory, reads, read_length, minimap2
             )
             disk = _disk_requirements(
                 job.input,
@@ -427,10 +456,12 @@ def _run_steps(
         needs,
     )
 
+    aborted_stream = False
     if streaming:
         logging.info(
-            "Streaming paired FASTQ from %s into BWA; no gzipped FASTQ files.",
+            "Streaming paired FASTQ from %s into %s; no gzipped FASTQ files.",
             job.input,
+            "minimap2" if minimap2 else "BWA",
         )
         # Logical mate names preserve existing output stems/read groups, not read paths.
         align_job = replace(
@@ -440,6 +471,7 @@ def _run_steps(
             input_reads=InputReads(reads, read_length),
         )
         align_decision = journal.decide(align_step)
+        mapper = align_cmd.align_minimap2 if minimap2 else align_cmd.align_bwa
         try:
             with paired_fastq_stream(
                 job.input,
@@ -452,7 +484,7 @@ def _run_steps(
                 _align(
                     journal,
                     align_decision,
-                    lambda: align_cmd.align_bwa(
+                    lambda: mapper(
                         align_job,
                         upstream=stream.stages,
                         discarded_fastq=stream.discarded_fastq,
@@ -461,21 +493,14 @@ def _run_steps(
                     ),
                 )
         except align_cmd.StreamingMemoryUnavailable:
+            # The mapper rejected the plan before touching the alignment.
+            aborted_stream = True
             logging.info(
                 "Available RAM changed before streaming started; extracting "
                 "FASTQs without changing the aligner."
             )
-            needs = _report_resource_estimates(
-                job,
-                target,
-                outdir,
-                threads,
-                memory,
-                reads,
-                input_paths=[job.input],
-                need_extract=True,
-                paired=bool(r2_path),
-                read_length=read_length,
+            needs = _extracted_alignment_needs(
+                job, target, outdir, threads, memory, reads, read_length, minimap2
             )
             disk = _disk_requirements(
                 job.input,
@@ -535,7 +560,12 @@ def _run_steps(
             align_step, after=[extract_decision] if extract_decision else []
         )
     try:
-        _align(journal, align_decision, lambda: align_cmd.run(align_job))
+        _align(
+            journal,
+            align_decision,
+            lambda: align_cmd.run(align_job),
+            keep_partial=aborted_stream,
+        )
     except BaseException:
         if (
             need_extract
@@ -579,6 +609,40 @@ def _run_steps(
     else:  # kept by the --keep-fastq run that extracted them
         current_result().add_input(r1_path, "fastq_r1")
         current_result().add_input(r2_path, "fastq_r2")
+
+
+def _extracted_alignment_needs(
+    job: RealignJob,
+    target: str | None,
+    outdir: str,
+    threads: str,
+    memory: str,
+    reads: int | None,
+    read_length: float | None,
+    minimap2: bool,
+) -> _Needs:
+    if minimap2:
+        return _minimap2_needs(
+            job,
+            [job.input],
+            target,
+            threads,
+            memory,
+            reads=reads,
+            samblaster=align_cmd.duplicate_marker(paired=True) == "samblaster",
+        )
+    return _report_resource_estimates(
+        job,
+        target,
+        outdir,
+        threads,
+        memory,
+        reads,
+        input_paths=[job.input],
+        need_extract=True,
+        paired=True,
+        read_length=read_length,
+    )
 
 
 def _recover_retained_fastqs(
