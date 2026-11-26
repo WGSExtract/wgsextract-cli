@@ -311,6 +311,7 @@ from .overview import (
 from .overview import (
     _overview as _overview,
 )
+from .panel_audit import panel_audit
 from .rendering import NEWER_ATTEMPT_FAILED as NEWER_ATTEMPT_FAILED
 from .rendering import NOT_DIAGNOSIS as NOT_DIAGNOSIS
 from .rendering import RESEARCH_ONLY as RESEARCH_ONLY
@@ -349,7 +350,7 @@ FINDING_COLUMNS: tuple[Column, ...] = (
         TEXT,
         "Report section: lineage, pharmacogenomics, medication_review, "
         "carrier_screening, repeat_expansions, clinvar, mitochondrial, "
-        "acmg_research or structural_variants.",
+        "acmg_research, panel_audit or structural_variants.",
     ),
     Column("label", TEXT, "What the finding is, e.g. 'BRCA2 Pathogenic'."),
     Column("value", TEXT, "The result: haplogroup, diplotype or ClinVar class."),
@@ -381,7 +382,7 @@ FINDING_COLUMNS: tuple[Column, ...] = (
     Column(
         "disclaimer",
         TEXT,
-        "Technical result, not diagnosis (research use only for acmg_research; "
+        "Technical result, not diagnosis (research use only for acmg_research and panel_audit; "
         "not a prescription for medication_review).",
     ),
     Column("clinvar_id", TEXT, "ClinVar resource record identity."),
@@ -488,6 +489,8 @@ def build_report(
     # Opt-in research: shown only when `vcf acmg` ran, never asked for.
     if research is not None:
         research_section["acmg_research"] = research
+    if audited := panel_audit(ctx):
+        research_section["panel_audit"] = audited
     pharmacogenomics = _pharmacogenomics(ctx)
     review: dict[str, ReportMedicationReviewDocument] = {}
     # Opt-in: only for medications the person lists (--pgx-context).
