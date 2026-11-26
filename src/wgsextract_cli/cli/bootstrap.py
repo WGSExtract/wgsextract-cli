@@ -2,7 +2,6 @@ import logging
 import os
 import sys
 from types import FrameType
-from typing import TextIO
 
 SIGNAL_EXPLANATIONS = {
     "SIGHUP": "terminal or parent session closed",
@@ -55,24 +54,6 @@ class EmojiFormatter(logging.Formatter):
         record = logging.makeLogRecord(record.__dict__)
         record.levelname = self.LEVEL_EMOJIS.get(record.levelno, record.levelname)
         return super().format(record)
-
-
-def configure_stdio_encoding() -> None:
-    """UTF-8 output everywhere. Piped or redirected output on Windows would
-    otherwise use the ANSI code page (cp1252), which has none of the log
-    symbols, so the app and log files saw "??" for each."""
-    for stream in (sys.stdout, sys.stderr):
-        _reconfigure_stream(stream)
-
-
-def _reconfigure_stream(stream: TextIO) -> None:
-    reconfigure = getattr(stream, "reconfigure", None)
-    if not callable(reconfigure):
-        return
-    try:
-        reconfigure(encoding="utf-8", errors="replace")
-    except (OSError, ValueError):
-        logging.debug("Could not reconfigure stdio encoding.", exc_info=True)
 
 
 def configure_logging(*, debug: bool = False, quiet: bool = False) -> None:

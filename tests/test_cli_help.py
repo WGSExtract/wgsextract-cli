@@ -218,6 +218,7 @@ import json
 import runpy
 import sys
 
+preloaded = set(sys.modules)
 argv = {argv!r}
 with contextlib.redirect_stdout(io.StringIO()):
     if argv is None:
@@ -254,13 +255,18 @@ if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
         "wgsextract_cli.core.dependencies",
         "wgsextract_cli.core.run_log",
         "wgsextract_cli.core.utils",
+        "concurrent.futures.thread",
     }})
 if argv == ["--version"]:
     implementations.update({{"wgsextract_cli.cli.parser", "wgsextract_cli.cli.help"}})
+if argv in (["--help"], ["--version"]):
+    implementations.update({{
+        "wgsextract_cli.cli.bootstrap", "wgsextract_cli.core.output_schema", "logging",
+    }})
 if argv == ["info", "--help"]:
     implementations.update({{"wgsextract_cli.api.vcf", "wgsextract_cli.api._public"}})
 print(json.dumps(sorted(
-    name for name in sys.modules
+    name for name in sys.modules.keys() - preloaded
     if name.split(".")[0] in heavy or name in implementations
 )))
 """
