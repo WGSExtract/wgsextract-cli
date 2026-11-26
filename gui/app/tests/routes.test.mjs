@@ -131,9 +131,10 @@ test("#1113: gene.iobio hand-off needs fresh consent and passes only gene and bu
   const { baseURL } = await withTestServer(t, { openBrowser: async (url) => { launched.push(url); } });
   const route = "/api/gene/iobio/open";
   const choice = { gene: "BRCA1", build: "hg38" };
-  const consent = { ...choice, consentVersion: 1 };
+  const consent = { ...choice, consentVersion: 2 };
   assert.equal((await apiFetch(baseURL, route, { body: consent, headers: { "x-gfc-token": "" } })).status, 401);
   assert.equal((await apiFetch(baseURL, route, { body: choice })).status, 403);
+  assert.equal((await apiFetch(baseURL, route, { body: { ...choice, consentVersion: 1 } })).status, 403, "The old notice does not authorize a new launch.");
   assert.equal((await apiFetch(baseURL, route, { body: { ...consent, build: "t2t" } })).status, 400);
   assert.equal((await apiFetch(baseURL, route, { body: { ...consent, gene: "BRCA1&sample0=test" } })).status, 400);
   assert.deepEqual(launched, []);
