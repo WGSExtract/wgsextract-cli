@@ -29,13 +29,13 @@ CERTIFICATION = {
     ),
     "info calculate-coverage": tested(
         _REVIEWED,
-        "test_info_metrics.py",
-        "Coverage metrics checked on fixture alignments.",
+        "test_info_targets.py",
+        "Target depth and enrichment checked on fixture alignments.",
     ),
     "info coverage-sample": tested(
         _REVIEWED,
-        "test_info_targets.py",
-        "Target depth and enrichment checked on fixture alignments.",
+        "test_info.py",
+        "Sampled chromosome breadth checked on fixture alignments with reference gaps.",
     ),
     "info gene": tested(
         _REVIEWED,
@@ -44,8 +44,8 @@ CERTIFICATION = {
     ),
     "info chip": tested(
         _REVIEWED,
-        "test_microarray_identity.py",
-        "Chip identity and format checks on fixture kits.",
+        "test_microarray_revisions.py",
+        "Chip revision identification and listing checked on fixture kits.",
     ),
 }
 

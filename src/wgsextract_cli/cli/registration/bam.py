@@ -45,7 +45,7 @@ CERTIFICATION = {
     "bam unsort": tested(
         _REVIEWED,
         "test_bam_commands.py",
-        "Read-group ordering checked on fixture alignments.",
+        "BAM and CRAM sort-order headers are relabeled without changing any records.",
     ),
     "bam to-cram": tested(
         _REVIEWED,
