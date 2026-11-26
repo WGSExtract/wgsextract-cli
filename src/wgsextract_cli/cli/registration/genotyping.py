@@ -12,12 +12,49 @@ from wgsextract_cli.api.genotyping import (
     TypingTargetCnvParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, experimental, tested, validated
 from wgsextract_cli.commands._command_needs import (
     MINUTES,
     SECONDS,
     _n,
 )
 from wgsextract_cli.commands._messages.genotyping import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "typing cyp2d6": experimental(
+        _REVIEWED,
+        "Caller integration fixtures do not qualify CYP2D6 results.",
+        f"{REPO}/blob/main/tests/test_genotyping.py",
+    ),
+    "typing hla": experimental(
+        _REVIEWED,
+        "Caller integration fixtures do not qualify HLA results.",
+        f"{REPO}/blob/main/tests/test_genotyping.py",
+    ),
+    "typing paraphase": experimental(
+        _REVIEWED,
+        "Integration fixtures do not qualify Paraphase calls.",
+        f"{REPO}/blob/main/tests/test_typing_paraphase.py",
+    ),
+    "typing smn": experimental(
+        _REVIEWED,
+        "Caller integration fixtures do not qualify SMN results.",
+        f"{REPO}/blob/main/tests/test_genotyping.py",
+    ),
+    "typing str": validated(
+        _REVIEWED,
+        "HG002 ONT repeats compared with GIAB and PacBio PureTarget expansions; long or weakly supported alleles remain uncertain.",
+        ("Linux",),
+        f"{REPO}/blob/main/docs/ont.md#repeat-expansions",
+        f"{REPO}/blob/main/tests/test_typing_str_long_reads.py",
+    ),
+    "typing target-cnv": tested(
+        _REVIEWED,
+        "test_typing_target_cnv.py",
+        "Target-depth and callability checks on fixture alignments; not a clinical validation.",
+    ),
+}
 
 NEEDS = {
     "typing cyp2d6": _n(MINUTES, "cyrius", "minimap2", "samtools", optional="bcftools"),

@@ -44,6 +44,7 @@ from wgsextract_cli.api.vcf import (
     _VcfFileParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, experimental, tested, validated
 from wgsextract_cli.commands._command_needs import (
     _CALL,
     _VCF,
@@ -54,6 +55,205 @@ from wgsextract_cli.commands._command_needs import (
 )
 from wgsextract_cli.commands._messages.vcf import CLI_HELP
 from wgsextract_cli.core.config import settings
+
+_REVIEWED = "2026-11-25"
+_TESTS = f"{REPO}/blob/main/tests"
+_WINDOWS_30X = f"{REPO}/issues/1024#issuecomment-7046241211"
+_ONT = f"{REPO}/blob/main/docs/ont.md"
+CERTIFICATION = {
+    "vcf snp": validated(
+        _REVIEWED,
+        "HG002 GRCh38 30× Windows qualification matched published counts; not per-genotype parity or all presets.",
+        ("Windows",),
+        _WINDOWS_30X,
+        f"{_TESTS}/test_vcf_basic.py",
+    ),
+    "vcf indel": validated(
+        _REVIEWED,
+        "HG002 GRCh38 30× Windows qualification matched published counts; not per-genotype parity or all presets.",
+        ("Windows",),
+        _WINDOWS_30X,
+        f"{_TESTS}/test_vcf_basic.py",
+    ),
+    "vcf call": tested(
+        _REVIEWED,
+        "test_vcf_call.py",
+        "SNP/indel and gVCF orchestration checked on fixture alignments.",
+    ),
+    "vcf annotate": tested(
+        _REVIEWED,
+        "test_vcf_basic.py",
+        "Annotation field copying checked with real bcftools.",
+    ),
+    "vcf filter": tested(
+        _REVIEWED,
+        "test_vcf_commands.py",
+        "Filtering of fixture variants checked with bcftools.",
+    ),
+    "vcf table": tested(
+        _REVIEWED,
+        "test_vcf_table.py",
+        "Tabular exports checked against fixture variant calls.",
+    ),
+    "vcf prepare": tested(
+        _REVIEWED,
+        "test_vcf_prepare.py",
+        "Normalization and preparation checked on fixture VCFs.",
+    ),
+    "vcf compare": validated(
+        _REVIEWED,
+        "Normalized allele and gVCF comparison checked on a 12 kb HG002 slice; no whole-genome or inheritance claim.",
+        ("Linux",),
+        f"{REPO}/issues/1295#issuecomment-7160979567",
+        f"{_TESTS}/test_vcf_compare.py",
+    ),
+    "vcf clinvar": tested(
+        _REVIEWED,
+        "test_clinvar_matching.py",
+        "Allele matching checked against local ClinVar fixtures.",
+    ),
+    "vcf revel": tested(
+        _REVIEWED,
+        "test_vcf_annotations.py",
+        "REVEL score annotation checked on fixture alleles.",
+    ),
+    "vcf gnomad": tested(
+        _REVIEWED,
+        "test_gnomad_af.py",
+        "Frequency annotation checked on fixture alleles.",
+    ),
+    "vcf sv-freq": tested(
+        _REVIEWED,
+        "test_sv_frequency.py",
+        "Structural-variant frequency matching checked on fixtures.",
+    ),
+    "vcf pharmgkb": tested(
+        _REVIEWED,
+        "test_pharmgkb.py",
+        "PharmGKB annotations checked on fixture variants.",
+    ),
+    "vcf info": tested(
+        _REVIEWED, "test_vcf_info.py", "VCF statistics and build checks on fixtures."
+    ),
+    "vcf variantqc": experimental(
+        _REVIEWED,
+        "External VariantQC integration does not establish output correctness.",
+        f"{_TESTS}/test_genotype_qc.py",
+    ),
+    "vcf granite-qc": experimental(
+        _REVIEWED,
+        "External GRANITE integration does not establish output correctness.",
+        f"{_TESTS}/test_genotype_qc.py",
+    ),
+    "vcf callability": tested(
+        _REVIEWED,
+        "test_reference_evidence.py",
+        "Reference and no-call evidence checked on fixture gVCFs.",
+    ),
+    "vcf to-fasta": tested(
+        _REVIEWED,
+        "test_vcf_consensus.py",
+        "Consensus sequence checked on fixture variants and references.",
+    ),
+    "vcf trio": tested(
+        _REVIEWED,
+        "test_trio_vcfs.py",
+        "Trio sample and inheritance states checked on fixture variants.",
+    ),
+    "vcf cnv": experimental(
+        _REVIEWED,
+        "Integration fixtures do not qualify CNV accuracy.",
+        f"{_TESTS}/test_structural.py",
+    ),
+    "vcf sv": validated(
+        _REVIEWED,
+        "HG002 ONT Sniffles calls scored against GIAB SV truth; does not qualify Delly or other read types.",
+        ("Linux",),
+        f"{_ONT}#validation-on-giab-hg002",
+        f"{_TESTS}/test_ont_hg002.py",
+    ),
+    "vcf freebayes": tested(
+        _REVIEWED,
+        "test_vcf_callers.py",
+        "Real FreeBayes calls checked against a planted SNP.",
+    ),
+    "vcf gatk": tested(
+        _REVIEWED,
+        "test_vcf_callers.py",
+        "Fixture GATK calls and CRAM/BAM handling checked.",
+    ),
+    "vcf deepvariant": validated(
+        _REVIEWED,
+        "GIAB-scored ONT chr20 and same-input Linux WGS ARM/x64 parity; not all DeepVariant modes.",
+        ("Linux",),
+        f"{_ONT}#validation-on-giab-hg002",
+        f"{REPO}/blob/main/docs/deepvariant-arm64.md#completed-public-whole-genome-qualification",
+        f"{_TESTS}/test_deepvariant_native.py",
+    ),
+    "vcf clair3": validated(
+        _REVIEWED,
+        "HG002 chr20–22 CPU/MPS checks against GIAB truth; no whole-genome or all-model guarantee.",
+        ("Linux", "macOS"),
+        f"{_ONT}#validation-on-giab-hg002",
+        f"{REPO}/issues/1101#issuecomment-7175184245",
+        f"{REPO}/issues/1124#issuecomment-7175184658",
+        f"{_TESTS}/test_ont_hg002.py",
+    ),
+    "vcf phase": validated(
+        _REVIEWED,
+        "LongPhase and WhatsHap scored against GIAB phasing on HG002 chr20 ONT and a HiFi slice; no whole-genome claim.",
+        ("Linux",),
+        f"{_ONT}#phasing",
+        f"{_TESTS}/test_phasing.py",
+    ),
+    "vcf impute": validated(
+        _REVIEWED,
+        "HG002 ~1× GLIMPSE2 chr21/22 pilot cross-checked against GIAB; not all depths, ancestries or imputation engines.",
+        ("macOS",),
+        f"{REPO}/issues/1118#issuecomment-7172655613",
+        f"{_TESTS}/test_imputation.py",
+    ),
+    "vcf phylop": tested(
+        _REVIEWED,
+        "test_vcf_bigwig_scores.py",
+        "phyloP annotation checked on fixture score tracks.",
+    ),
+    "vcf cadd": tested(
+        _REVIEWED,
+        "test_vcf_annotations.py",
+        "CADD score annotation checked on fixture alleles.",
+    ),
+    "vcf gerp": tested(
+        _REVIEWED,
+        "test_vcf_bigwig_scores.py",
+        "GERP annotation checked on fixture score tracks.",
+    ),
+    "vcf spliceai": tested(
+        _REVIEWED,
+        "test_vcf_annotations.py",
+        "SpliceAI scores checked on fixture variants.",
+    ),
+    "vcf alphamissense": tested(
+        _REVIEWED,
+        "test_vcf_annotations.py",
+        "AlphaMissense scores checked on fixture variants.",
+    ),
+    "vcf acmg": experimental(
+        _REVIEWED,
+        "Research-only interpretation; no clinical classification is certified.",
+        f"{REPO}/blob/main/docs/acmg.md",
+    ),
+    "vcf pharmcat": experimental(
+        _REVIEWED,
+        "Research pharmacogenomics; fixture workflow tests do not qualify medical recommendations.",
+        f"{_TESTS}/test_pharmcat.py",
+    ),
+    "vcf chain-annotate": tested(
+        _REVIEWED,
+        "test_vcf_chain.py",
+        "Local annotation chains checked against fixture variants and artifacts.",
+    ),
+}
 
 NEEDS = {
     "vcf snp": _n(HOURS, *_CALL),

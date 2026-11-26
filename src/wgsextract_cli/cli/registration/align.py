@@ -5,12 +5,23 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.align import AlignParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, validated
 from wgsextract_cli.commands._command_needs import (
     _SAM,
     HOURS,
     _n,
 )
 from wgsextract_cli.commands._messages.align import CLI_HELP
+
+CERTIFICATION = {
+    "align": validated(
+        "2026-11-25",
+        "CPU/CUDA decoded-record parity on 5 million HG002 Illumina read pairs; not an all-backend qualification.",
+        ("Windows",),
+        f"{REPO}/blob/main/docs/windows.md#wgse-bwa-and-optional-nvidia-cuda",
+        f"{REPO}/blob/main/tests/test_alignment_commands.py",
+    ),
+}
 
 NEEDS = {
     "align": _n(

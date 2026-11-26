@@ -21,6 +21,7 @@ on:
       - "scripts/build_docs_html.py"
       - "scripts/validate_site_sources.py"
       - "scripts/site_references.py"
+      - "scripts/site_certification.py"
       - "scripts/gen_api_docs.py"
       - "scripts/gen_config_docs.py"
       - "gui/README.md"

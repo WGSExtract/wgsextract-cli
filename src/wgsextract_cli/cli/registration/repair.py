@@ -5,6 +5,7 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.repair import RepairFtdnaBamParams, RepairFtdnaVcfParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     _SAM,
     MINUTES,
@@ -12,6 +13,16 @@ from wgsextract_cli.commands._command_needs import (
     _n,
 )
 from wgsextract_cli.commands._messages.repair import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "repair ftdna-bam": tested(
+        _REVIEWED, "test_repair_ftdna.py", "BAM repair checked on fixture records."
+    ),
+    "repair ftdna-vcf": tested(
+        _REVIEWED, "test_repair_ftdna.py", "VCF repair checked on fixture records."
+    ),
+}
 
 NEEDS = {
     "repair ftdna-bam": _n(MINUTES, *_SAM, optional="bcftools"),

@@ -151,6 +151,12 @@ class WgsArgumentParser(argparse.ArgumentParser):
         if self.advanced_actions and not self.show_advanced:
             text += "\n" + advanced_note(self.prog, len(self.advanced_actions))
         if path := self.get_default("_command"):
+            from wgsextract_cli.commands._certification import find_certification
+
+            if certification := find_certification(path):
+                text += f"\n{certification.describe()}\n"
+                if certification.links:
+                    text += "\n".join(certification.links) + "\n"
             text += command_contract(path, getattr(self, "deprecation", None))
         return text
 

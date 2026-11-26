@@ -92,6 +92,22 @@
     "run": {
       "$ref": "#/$defs/run",
       "description": "This run's identity in its workflow."
+    },
+    "certification": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "Certified",
+            "Validated",
+            "Tested",
+            "Experimental"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [

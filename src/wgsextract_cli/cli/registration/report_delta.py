@@ -5,10 +5,19 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.report import ReportDeltaParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     INSTANT,
     _n,
 )
+
+CERTIFICATION = {
+    "report-delta": tested(
+        "2026-11-25",
+        "test_release_recheck_delta.py",
+        "Differences checked on paired fixture reports.",
+    ),
+}
 
 NEEDS = {
     "report-delta": _n(INSTANT),

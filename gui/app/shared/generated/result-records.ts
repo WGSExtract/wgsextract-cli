@@ -15,6 +15,7 @@ export interface ResultDocumentRecord {
     manifest: string | null;
     provenance: ResultProvenanceRecord;
     run: RunRecord;
+    certification?: (string) & ("Certified" | "Validated" | "Tested" | "Experimental") | null;
 }
 
 export interface ResultErrorRecord {

@@ -99,6 +99,15 @@
         "summary": {
           "type": "string"
         },
+        "certification": {
+          "type": "string",
+          "enum": [
+            "Certified",
+            "Validated",
+            "Tested",
+            "Experimental"
+          ]
+        },
         "destructive": {
           "type": "boolean"
         }
@@ -106,7 +115,8 @@
       "required": [
         "op",
         "kind",
-        "summary"
+        "summary",
+        "certification"
       ]
     },
     "OperationDescription": {
@@ -124,6 +134,15 @@
         "summary": {
           "type": "string"
         },
+        "certification": {
+          "type": "string",
+          "enum": [
+            "Certified",
+            "Validated",
+            "Tested",
+            "Experimental"
+          ]
+        },
         "destructive": {
           "type": "boolean"
         },
@@ -139,6 +158,7 @@
         "op",
         "kind",
         "summary",
+        "certification",
         "command",
         "params"
       ]

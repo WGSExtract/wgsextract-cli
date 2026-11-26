@@ -5,11 +5,20 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.pet import PetAlignParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     HOURS,
     _n,
 )
 from wgsextract_cli.commands._messages.pet import CLI_HELP
+
+CERTIFICATION = {
+    "pet-align": tested(
+        "2026-11-25",
+        "test_pet_align.py",
+        "Paired-end processing checked on fixture FASTQs.",
+    ),
+}
 
 NEEDS = {
     "pet-align": _n(

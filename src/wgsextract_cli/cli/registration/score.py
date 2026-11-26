@@ -5,10 +5,19 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.score import ScorePgsParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, experimental
 from wgsextract_cli.commands._command_needs import (
     MINUTES,
     _n,
 )
+
+CERTIFICATION = {
+    "score pgs": experimental(
+        "2026-11-25",
+        "Research-only polygenic scores; fixture checks are not clinical calibration.",
+        f"{REPO}/blob/main/tests/test_pgs.py",
+    ),
+}
 
 NEEDS = {
     "score pgs": _n(MINUTES, "bcftools", optional="plink2 curl"),

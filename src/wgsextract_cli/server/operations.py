@@ -26,6 +26,7 @@ from wgsextract_cli.api._params import (
     with_config_defaults,
 )
 from wgsextract_cli.api._runtime import READ_ONLY_COMMANDS
+from wgsextract_cli.commands._certification import Certification, command_certification
 from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.core.utils import UsageError
@@ -68,6 +69,13 @@ class Operation:
     @property
     def command(self) -> str:
         return self.params.COMMAND
+
+    @property
+    def certification(self) -> Certification:
+        return command_certification(self.params.certification_path())
+
+    def describe_run(self) -> str:
+        return f"Runs `wgsextract {self.command}` as a {self.kind}. {self.certification.describe()}"
 
     @property
     def tool_name(self) -> str:
@@ -131,6 +139,7 @@ class Operation:
             "op": self.name,
             "kind": self.kind,
             "summary": self.summary,
+            "certification": self.certification.level.value,
         }
         if self.may_delete:
             out["destructive"] = True

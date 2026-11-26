@@ -10,6 +10,7 @@ from wgsextract_cli.api.vep import (
     VepVerifyParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, experimental, tested
 from wgsextract_cli.commands._command_needs import (
     DOWNLOAD,
     MINUTES,
@@ -17,6 +18,28 @@ from wgsextract_cli.commands._command_needs import (
     _n,
 )
 from wgsextract_cli.commands._messages.vep import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "vep download": experimental(
+        _REVIEWED,
+        "Fixture resource acquisition does not qualify all upstream downloads.",
+        f"{REPO}/blob/main/tests/test_vep_resources.py",
+    ),
+    "vep verify": tested(
+        _REVIEWED,
+        "test_vep_resources.py",
+        "Local cache and resource checks on fixtures.",
+    ),
+    "vep delete": tested(
+        _REVIEWED, "test_vep_resources.py", "Local cache deletion checked on fixtures."
+    ),
+    "vep run": tested(
+        _REVIEWED,
+        "test_vep_rs.py",
+        "Fixture annotation output checked; not all engines and options are qualified.",
+    ),
+}
 
 NEEDS = {
     # Minutes with vep-rs, the default; hours with Ensembl VEP.

@@ -5,7 +5,22 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.fastq import FastqArchiveParams, FastqRestoreParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import MINUTES, _n
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "fastq archive": tested(
+        _REVIEWED,
+        "test_fastq_archive.py",
+        "Byte-preserving FASTQ archive round trips on fixtures.",
+    ),
+    "fastq restore": tested(
+        _REVIEWED,
+        "test_fastq_archive.py",
+        "Archive integrity and byte-exact FASTQ restoration on fixtures.",
+    ),
+}
 
 NEEDS = {
     "fastq archive": _n(MINUTES),

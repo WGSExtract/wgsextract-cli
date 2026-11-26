@@ -158,7 +158,13 @@ def test_top_level_help_starts_with_the_core_journey(capsys):
 def test_help_all_prints_one_line_per_runnable_command(capsys, entries):
     main(["help", "--all"])
 
-    lines = [line for line in capsys.readouterr().out.splitlines() if line[:2] == "  "]
+    output = capsys.readouterr().out
+    assert "Certification" in output
+    lines = [
+        line
+        for line in output.splitlines()
+        if line.startswith("  ") and not line.startswith("  Path ")
+    ]
     listed = sorted(entries, key=lambda e: e.deprecation is not None)
     assert [line.split("  ")[1] for line in lines] == [e.path for e in listed]
     assert all(len(line) <= cli_help.INDEX_WIDTH for line in lines)
@@ -481,8 +487,10 @@ def test_a_deprecated_command_still_runs_warns_and_is_listed_apart(
     captured = capsys.readouterr()
     result = json.loads(captured.out)
     assert result["status"] == "ok"
-    assert [w["code"] for w in result["warnings"]] == ["deprecated_command"]
-    assert result["warnings"][0]["details"] == {
+    (deprecation,) = [
+        w for w in result["warnings"] if w["code"] == "deprecated_command"
+    ]
+    assert deprecation["details"] == {
         "replacement": "ref library --list",
         "remove_in": "9.9.0",
     }

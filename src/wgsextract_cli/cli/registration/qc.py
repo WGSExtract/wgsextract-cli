@@ -18,6 +18,7 @@ from wgsextract_cli.api.qc import (
     RelateParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, experimental, tested
 from wgsextract_cli.commands._command_needs import (
     _SMALL,
     HOURS,
@@ -26,6 +27,56 @@ from wgsextract_cli.commands._command_needs import (
     _n,
 )
 from wgsextract_cli.commands._messages.qc import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "qc fastp": tested(
+        _REVIEWED, "test_qc_commands.py", "FASTQ processing checked on fixtures."
+    ),
+    "qc fastqc": tested(
+        _REVIEWED,
+        "test_qc_commands.py",
+        "FastQC reports checked on fixtures when installed.",
+    ),
+    "qc multiqc": tested(
+        _REVIEWED,
+        "test_qc_commands.py",
+        "MultiQC reports checked on fixtures when installed.",
+    ),
+    "qc multiqc-metrics": tested(
+        _REVIEWED,
+        "test_multiqc_metrics.py",
+        "Custom content checked against fixture manifests.",
+    ),
+    "qc vcf": tested(
+        _REVIEWED,
+        "test_qc_commands.py",
+        "bcftools QC statistics checked on fixture VCFs.",
+    ),
+    "qc relate": tested(
+        _REVIEWED,
+        "test_somalier_relate.py",
+        "Relatedness inputs and output checked on fixture genotypes.",
+    ),
+    "qc ancestry": experimental(
+        _REVIEWED,
+        "Reference-dependent ancestry estimates are not clinical classifications.",
+        f"{REPO}/blob/main/tests/test_qc_ancestry.py",
+    ),
+    "qc contamination": tested(
+        _REVIEWED,
+        "test_contamination.py",
+        "Fixture contamination workflow and report checks.",
+    ),
+    "qc roh": tested(
+        _REVIEWED, "test_qc_roh.py", "ROH calls and abstention checked on fixture VCFs."
+    ),
+    "qc fake-data": tested(
+        _REVIEWED,
+        "test_fake_data_generation.py",
+        "Generated fixture alignments and variants checked with real tools.",
+    ),
+}
 
 NEEDS = {
     "qc fastp": _n(MINUTES, "fastp"),

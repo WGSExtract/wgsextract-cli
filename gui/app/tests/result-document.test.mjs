@@ -32,12 +32,14 @@ type RequireNone<T extends never> = T;
 type FileFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultFileRecord>, "artifact">>;
 type WarningFieldsRequired = RequireNone<OptionalKeys<ResultWarningRecord>>;
 type ErrorFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultErrorRecord>, "code">>;
-type ResultFieldsRequired = RequireNone<OptionalKeys<ResultDocumentRecord>>;
+// Certification is optional because the same schema ID covers older manifests.
+type ResultFieldsRequired = RequireNone<Exclude<OptionalKeys<ResultDocumentRecord>, "certification">>;
 type ProvenanceFieldsRequired = RequireNone<OptionalKeys<ResultProvenanceRecord>>;
 type ReferenceFieldsRequired = RequireNone<OptionalKeys<ResultReferenceRecord>>;
 type ReportFieldsRequired = RequireNone<OptionalKeys<ReportDocumentRecord>>;
 type ReportSampleFieldsRequired = RequireNone<OptionalKeys<ReportDocumentRecord["sample"]>>;
 type RequiredKeys<T> = Exclude<keyof T, OptionalKeys<T>>;
+type LegacyResultStaysValid = RequireNone<Extract<"certification", RequiredKeys<ResultDocumentRecord>>>;
 type LegacySectionsStayOptional = RequireNone<Extract<"ancestry" | "carrier_screening" | "acmg_research", RequiredKeys<ReportDocumentRecord["sections"]>>>;
 // @ts-expect-error The emitted report has a versioned literal schema identity.
 const wrongSchema: ReportDocumentRecord["schema"] = "wgsextract.result/1";

@@ -10,11 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli import __version__
+from wgsextract_cli.core.certification import CertificationLevel
 from wgsextract_cli.core.paths import windows_local_app_dir
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_INDEX = Path("assets/cli/help-index.json")
 PACKAGE_KEY = PACKAGE_INDEX.with_suffix(".key")
+_CERTIFICATION_LABELS = frozenset(level.value for level in CertificationLevel)
 
 
 @cache
@@ -29,7 +31,12 @@ def registry_key(root: Path = PACKAGE_ROOT) -> str:
     files.extend((root / "commands").glob("*.py"))
     files.extend(
         root / path
-        for path in ("core/config.py", "core/messages.py", "core/settings_schema.py")
+        for path in (
+            "core/certification.py",
+            "core/config.py",
+            "core/messages.py",
+            "core/settings_schema.py",
+        )
     )
     for path in sorted(files):
         digest.update(path.relative_to(root).as_posix().encode())
@@ -88,6 +95,8 @@ def read_index(path: Path, key: str) -> dict[str, Any] | None:
                 isinstance(item.get(field), str)
                 for field in ("path", "summary", "tier")
             )
+            and isinstance(level := item.get("certification"), str)
+            and level in _CERTIFICATION_LABELS
             and isinstance(flags := item.get("key_flags"), list)
             and all(isinstance(flag, str) for flag in flags)
             for item in commands

@@ -5,11 +5,20 @@ import argparse
 from wgsextract_cli.api._cli import add_arguments
 from wgsextract_cli.api.report import ReportParams
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     SECONDS,
     _n,
 )
 from wgsextract_cli.commands._messages.report import CLI_HELP
+
+CERTIFICATION = {
+    "report": tested(
+        "2026-11-25",
+        "test_personal_report.py",
+        "Report findings and limitations checked on fixture VCFs; not clinical validation.",
+    ),
+}
 
 NEEDS = {
     "report": _n(SECONDS, scale=" from existing results", optional="curl"),

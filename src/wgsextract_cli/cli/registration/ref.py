@@ -41,6 +41,7 @@ from wgsextract_cli.api.ref import (
     RefYbrowseParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, experimental, tested, validated
 from wgsextract_cli.commands._command_needs import (
     _SAM,
     DOWNLOAD,
@@ -52,6 +53,164 @@ from wgsextract_cli.commands._command_needs import (
 )
 from wgsextract_cli.commands._messages.ref import CLI_HELP
 from wgsextract_cli.core.utils import UsageError
+
+_REVIEWED = "2026-11-25"
+_TESTS = f"{REPO}/blob/main/tests"
+CERTIFICATION = {
+    "ref aadr": experimental(
+        _REVIEWED,
+        "Resource acquisition fixtures do not qualify upstream AADR releases.",
+        f"{REPO}/blob/main/docs/aadr.md",
+    ),
+    "ref ybrowse": tested(
+        _REVIEWED,
+        "test_ybrowse.py",
+        "YBrowse resource preparation checked on fixtures.",
+    ),
+    "ref somalier": tested(
+        _REVIEWED,
+        "test_somalier_relate.py",
+        "Resource install, validation and removal checked with fixture archives.",
+    ),
+    "ref ancestry": tested(
+        _REVIEWED,
+        "test_qc_ancestry.py",
+        "Reference panel installation and reuse checked on fixtures.",
+    ),
+    "ref gnomad-sv": tested(
+        _REVIEWED,
+        "test_sv_frequency.py",
+        "Structural-variant resource preparation checked on fixtures.",
+    ),
+    "ref imputation": tested(
+        _REVIEWED,
+        "test_imputation.py",
+        "Panel installation and reuse checked with fixture GLIMPSE2 resources.",
+    ),
+    "ref download": tested(
+        _REVIEWED,
+        "test_download_file_http.py",
+        "The shared downloader's checksum verification and local publication are tested against a local HTTP server.",
+    ),
+    "ref index": validated(
+        _REVIEWED,
+        "Canonical hs38 BWA index used in the HG002 30× Windows qualification; other indexes were not part of that run.",
+        ("Windows",),
+        f"{REPO}/issues/1024#issuecomment-7046241211",
+        f"{_TESTS}/test_ref_commands.py",
+    ),
+    "ref dense-sa": tested(
+        _REVIEWED,
+        "test_dense_suffix_array.py",
+        "Dense suffix array artifacts checked on fixture FASTAs.",
+    ),
+    "ref count-ns": tested(
+        _REVIEWED, "test_ref_commands.py", "Known N runs counted in fixture FASTAs."
+    ),
+    "ref verify": tested(
+        _REVIEWED,
+        "test_ref_commands.py",
+        "Reference checks exercised with real faidx and fixture FASTAs.",
+    ),
+    "ref library": tested(
+        _REVIEWED,
+        "test_ref_commands.py",
+        "Local reference inventory and resource state checked.",
+    ),
+    "ref status": tested(
+        _REVIEWED,
+        "test_ref_status.py",
+        "Resource inventory checked in a local fixture library.",
+    ),
+    "ref recheck": experimental(
+        _REVIEWED,
+        "Release comparison fixtures do not establish real-data correctness.",
+        f"{_TESTS}/test_release_recheck_delta.py",
+    ),
+    "ref test-genome": tested(
+        _REVIEWED,
+        "test_ref_test_genome.py",
+        "Build identification checked on fixture references and alignments.",
+    ),
+    "ref needs": tested(
+        _REVIEWED,
+        "test_ref_needs.py",
+        "Offline readiness checked against fixture resource states.",
+    ),
+    "ref gene-map": tested(
+        _REVIEWED,
+        "test_gene_map.py",
+        "Gene maps and aliases checked on fixture annotations.",
+    ),
+    "ref cytobands": tested(
+        _REVIEWED,
+        "test_cytobands.py",
+        "Cytoband normalization checked on fixture resources.",
+    ),
+    "ref clinvar": tested(
+        _REVIEWED,
+        "test_annotation_downloads.py",
+        "ClinVar resource preparation checked on fixtures.",
+    ),
+    "ref dbsnp": tested(
+        _REVIEWED, "test_dbsnp.py", "dbSNP resource checks on fixture variants."
+    ),
+    "ref revel": tested(
+        _REVIEWED,
+        "test_annotation_downloads.py",
+        "REVEL resource preparation checked on fixtures.",
+    ),
+    "ref phylop": tested(
+        _REVIEWED,
+        "test_annotation_downloads.py",
+        "phyloP resource preparation checked on fixtures.",
+    ),
+    "ref gnomad": tested(
+        _REVIEWED,
+        "test_annotation_downloads.py",
+        "gnomAD resource preparation checked on fixtures.",
+    ),
+    "ref spliceai": tested(
+        _REVIEWED,
+        "test_annotation_downloads.py",
+        "SpliceAI resource preparation checked on fixtures.",
+    ),
+    "ref alphamissense": tested(
+        _REVIEWED,
+        "test_annotation_downloads.py",
+        "AlphaMissense resource preparation checked on fixtures.",
+    ),
+    "ref pharmgkb": tested(
+        _REVIEWED,
+        "test_pharmgkb.py",
+        "PharmGKB resource preparation checked on fixtures.",
+    ),
+    "ref cadd": tested(
+        _REVIEWED,
+        "test_annotation_downloads.py",
+        "CADD resource preparation checked on fixtures.",
+    ),
+    "ref gerp": tested(
+        _REVIEWED,
+        "test_annotation_downloads.py",
+        "GERP resource preparation checked on fixtures.",
+    ),
+    "ref bootstrap": tested(
+        _REVIEWED,
+        "test_ref_bootstrap_config.py",
+        "Local resource bundle setup checked on fixtures.",
+    ),
+    "ref acmg-data": experimental(
+        _REVIEWED,
+        "Research resource preparation checked on fixtures; not a clinical resource qualification.",
+        f"{_TESTS}/test_ref_acmg_data.py",
+    ),
+    "ref microarray-targets": tested(
+        _REVIEWED,
+        "test_microarray_targets.py",
+        "Microarray target files and validation checked on fixtures.",
+    ),
+}
 
 NEEDS = {
     "ref download": _n(DOWNLOAD, optional="curl"),

@@ -17,6 +17,7 @@ footer_link_href: 'index.html'
 ## CLI references
 
 - [Commands](commands.html): options, requirements, outputs and examples.
+- [Command certification](certification.html): evidence, platforms and limits.
 - [Python API](api.html): typed parameters, functions and results.
 - [Configuration](configuration.html): `config.toml` settings and defaults.
 :::

@@ -122,7 +122,9 @@ class McpTools:
                     "; waits for the result)"
                     if op.kind == "query"
                     else "; starts a background job, follow it with job_status)"
-                ),
+                )
+                + " "
+                + op.certification.describe(),
                 op.schema(read_only=read_only),
                 read_only=read_only,
                 destructive=op.may_delete and self.guard.allow_destructive,

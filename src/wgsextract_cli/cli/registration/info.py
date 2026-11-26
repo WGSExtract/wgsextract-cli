@@ -11,6 +11,7 @@ from wgsextract_cli.api.info import (
     InfoParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import tested
 from wgsextract_cli.commands._command_needs import (
     _SAM,
     MINUTES,
@@ -18,6 +19,35 @@ from wgsextract_cli.commands._command_needs import (
     _n,
 )
 from wgsextract_cli.commands._messages.info import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "info": tested(
+        _REVIEWED,
+        "test_info.py",
+        "Alignment statistics checked against fixture records.",
+    ),
+    "info calculate-coverage": tested(
+        _REVIEWED,
+        "test_info_metrics.py",
+        "Coverage metrics checked on fixture alignments.",
+    ),
+    "info coverage-sample": tested(
+        _REVIEWED,
+        "test_info_targets.py",
+        "Target depth and enrichment checked on fixture alignments.",
+    ),
+    "info gene": tested(
+        _REVIEWED,
+        "test_exon_callability.py",
+        "Exon coverage and callability checked on fixture alignments.",
+    ),
+    "info chip": tested(
+        _REVIEWED,
+        "test_microarray_identity.py",
+        "Chip identity and format checks on fixture kits.",
+    ),
+}
 
 NEEDS = {
     "info": _n(SECONDS, *_SAM, optional="bcftools"),

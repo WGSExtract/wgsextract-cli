@@ -44,6 +44,7 @@ GENERATED_DOCS = frozenset(
         # Hand-written inputs to the generated site references.
         "docs/data/configuration-guide.md",
         "site_src/api.md",
+        "site_src/certification.md",
         "site_src/cli.md",
         "site_src/commands.md",
         "site_src/configuration.md",
@@ -56,10 +57,12 @@ DOCS_TARGET_INPUTS = {
         "scripts/build_site.py",
         "scripts/gen_api_docs.py",
         "scripts/gen_config_docs.py",
+        "scripts/site_certification.py",
         "scripts/site_references.py",
         "scripts/validate_site_sources.py",
         "docs/data/configuration-guide.md",
         "site_src/api.md",
+        "site_src/certification.md",
         "site_src/cli.md",
         "site_src/commands.md",
         "site_src/configuration.md",
@@ -116,6 +119,7 @@ DOCS_ONLY_SCRIPTS = frozenset(
     {
         "scripts/gen_api_docs.py",
         "scripts/gen_config_docs.py",
+        "scripts/site_certification.py",
         "scripts/site_references.py",
         "scripts/build_site.py",
         "scripts/regen.py",

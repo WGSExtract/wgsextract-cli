@@ -194,6 +194,10 @@ def test_929_http_response_schemas_match_live_discovery_and_errors(
         status, body = client.request("GET", "/jobs/missing")
         assert status == 404
         validate(body, "Error")
+        status, body = client.request("GET", "/ops/vcf/compare")
+        assert status == 200
+        assert body["certification"] == "Validated"
+        assert body["params"]["x-certification-evidence"]["links"]
         status, body = client.request("GET", f"/variants?path={table}")
         assert status == 200
         validate(body, "VariantPage")

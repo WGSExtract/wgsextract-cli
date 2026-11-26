@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from typing import IO, Any
 
 from wgsextract_cli.commands._advanced_options import ADVANCED_OPTIONS, COMMON_ADVANCED
+from wgsextract_cli.commands._certification import command_certification
 from wgsextract_cli.commands.registry import (
     ADVANCED,
     ADVANCED_SUBCOMMANDS,
@@ -36,6 +37,7 @@ from wgsextract_cli.commands.registry import (
     Journey,
     command_tier,
 )
+from wgsextract_cli.core.certification import CertificationLevel
 from wgsextract_cli.core.messages import CLI_HELP
 
 if typing.TYPE_CHECKING:
@@ -406,12 +408,14 @@ def format_index(entries: list[CommandEntry], color: bool) -> str:
     """'help --all': one line per command, grouped by tier, each summary cut
     to fit INDEX_WIDTH columns ('help <command>' has the rest)."""
     width = max((len(entry.path) for entry in entries), default=0) + 2
-    room = max(20, INDEX_WIDTH - 2 - width)
+    level_width = max(len(level.value) for level in CertificationLevel) + 2
+    room = INDEX_WIDTH - 2 - width - level_width
     lines: list[str] = []
     for title, group in _index_groups(entries):
         if lines:
             lines.append("")
         lines.append(_heading(f"{title}:", color))
+        lines.append(f"  {'Path':<{width}}{'Certification':<{level_width}}Summary")
         for entry in group:
             pad = " " * (width - len(entry.path))
             summary = textwrap.shorten(
@@ -421,7 +425,10 @@ def format_index(entries: list[CommandEntry], color: bool) -> str:
                 room,
                 placeholder="...",
             )
-            lines.append(f"  {_name(entry.path, color)}{pad}{summary}")
+            level = command_certification(entry.path).level.value
+            lines.append(
+                f"  {_name(entry.path, color)}{pad}{level:<{level_width}}{summary}"
+            )
     return "\n".join(lines) + "\n"
 
 
@@ -459,13 +466,13 @@ def index_json(
     whole index), also those and the help topics.
 
         compact=True uses wgsextract.help-index/1: each command has "path",
-        "tier", a one-line "summary", and "key_flags" (ordinary flags plus
+        "tier", "certification", a one-line "summary", and "key_flags" (ordinary flags plus
         required advanced flags). Deprecation metadata is retained. Top-level
         "details" and "full" explain how to request schemas.
 
         compact=False uses wgsextract.help/1 and adds the following full-only
-        fields. "usage" is argparse's usage line and "options" each command's
-        own options
+        fields. Bulk "certification_evidence" is keyed by path. "usage" is
+        argparse's usage line and "options" each command's own options
         (the global ones are listed once, under "global_options"). Commands with
         a typed Params class (wgsextract_cli.api) also carry its JSON Schema as
         "input_schema", each property naming its flag in "x-cli-flag" (or, for a
@@ -476,9 +483,11 @@ def index_json(
     schemas = {} if compact else input_schemas()
     commands = []
     for entry in entries:
+        certification = command_certification(entry.path)
         command: dict[str, Any] = {
             "path": entry.path,
             "tier": entry.tier,
+            "certification": certification.level.value,
             "summary": first_sentence(entry.summary) if compact else entry.summary,
         }
         if compact:
@@ -498,7 +507,8 @@ def index_json(
                 examples=list(entry.help.examples) if entry.help else [],
                 outputs=entry.help.outputs if entry.help else None,
             )
-        if not compact:
+            if global_options is None:
+                command["certification_evidence"] = certification.evidence()
             if needs := command_needs(entry.path):
                 command["tools"] = list(needs.tools)
                 command["optional_tools"] = list(needs.optional)
@@ -517,6 +527,11 @@ def index_json(
         from wgsextract_cli.commands._help_topics import HELP_TOPICS
 
         document["global_options"] = global_options
+        if not compact:
+            document["certification_evidence"] = {
+                entry.path: command_certification(entry.path).evidence()
+                for entry in entries
+            }
     document["commands"] = commands
     if global_options is not None:
         document["topics"] = [
@@ -671,7 +686,7 @@ def input_schemas() -> dict[str, dict[str, Any]]:
 
     schemas = {}
     for path, cls in _typed_commands().items():
-        schema = json_schema(cls)
+        schema = json_schema(cls, include_certification=False)
         schema.pop("$schema", None)
         for field in param_fields(cls):
             key = "x-cli-positional" if field.spec.positional else "x-cli-flag"

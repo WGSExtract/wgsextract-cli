@@ -358,6 +358,7 @@ def _run(
     """Run ``impl`` in a context of its own; the result, what failed it, and
     the default output folder it created (to remove if the run left it empty)
     and, with ``card``, where its result card goes."""
+    from wgsextract_cli.commands._certification import record_certification
     from wgsextract_cli.core.atomic_output import atomic_output_mode
     from wgsextract_cli.core.config import (
         ensure_settings_loaded,
@@ -392,6 +393,7 @@ def _run(
         ),
         local_reference_lookup(),
     ):
+        record_certification(result, params.certification_path())
         default_outdir = getattr(params, "outdir", None) is None and not settings.get(
             "output_directory"
         )

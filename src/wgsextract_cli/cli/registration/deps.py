@@ -12,12 +12,36 @@ from wgsextract_cli.api.deps import (
     DepsUninstallParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, experimental, tested
 from wgsextract_cli.commands._command_needs import (
     DOWNLOAD,
     SECONDS,
     _n,
 )
 from wgsextract_cli.commands._messages.deps import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "deps check": tested(
+        _REVIEWED, "test_dependency_probes.py", "Local dependency probes checked."
+    ),
+    "deps list": tested(
+        _REVIEWED, "test_deps_manage.py", "Local dependency inventory checked."
+    ),
+    "deps ready": tested(
+        _REVIEWED, "test_deps_ready.py", "Local dependency readiness checked."
+    ),
+    "deps install": experimental(
+        _REVIEWED,
+        "External installers are mocked in fixture tests.",
+        f"{REPO}/blob/main/tests/test_deps_manage.py",
+    ),
+    "deps uninstall": experimental(
+        _REVIEWED,
+        "External uninstallers are mocked in fixture tests.",
+        f"{REPO}/blob/main/tests/test_deps_manage.py",
+    ),
+}
 
 NEEDS = {
     "deps check": _n(SECONDS, scale=""),

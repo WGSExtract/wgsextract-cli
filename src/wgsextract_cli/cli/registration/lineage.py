@@ -10,12 +10,35 @@ from wgsextract_cli.api.lineage import (
     YStrParams,
 )
 from wgsextract_cli.cli._lazy import command_handler
+from wgsextract_cli.commands._certification import REPO, experimental, tested
 from wgsextract_cli.commands._command_needs import (
     _SAM,
     MINUTES,
     _n,
 )
 from wgsextract_cli.commands._messages.lineage import CLI_HELP
+
+_REVIEWED = "2026-11-25"
+CERTIFICATION = {
+    "lineage y-haplogroup": tested(
+        _REVIEWED,
+        "test_lineage_chm13_parity.py",
+        "Fixture lineage results compared across reference builds.",
+    ),
+    "lineage y-str": tested(
+        _REVIEWED, "test_ystr.py", "Fixture Y-STR outputs and no-call cases."
+    ),
+    "lineage mt-haplogroup": tested(
+        _REVIEWED,
+        "test_lineage_haplogroups.py",
+        "Fixture mitochondrial input and lineage checks.",
+    ),
+    "lineage y-private": experimental(
+        _REVIEWED,
+        "Private Y variants are research evidence, not confirmed novel lineage markers.",
+        f"{REPO}/blob/main/tests/test_y_private.py",
+    ),
+}
 
 NEEDS = {
     "lineage y-haplogroup": _n(MINUTES, "bcftools", "samtools"),

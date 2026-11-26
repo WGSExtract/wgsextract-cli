@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from tests.smoke_utils import operation_warnings
 from wgsextract_cli import api
 from wgsextract_cli.core.utils import UsageError, run_command
 
@@ -95,7 +96,7 @@ def test_per_target_depth_enrichment_and_low_targets(tmp_path, form):
     assert metrics["off_target_mean_depth"] == pytest.approx(6 / 5)
     assert metrics["enrichment"] == pytest.approx((25 / 15) / (6 / 5), abs=0.01)
     assert metrics["targets_below_min_depth"] == 1
-    assert [w.code for w in result.warnings] == ["targets_below_min_depth"]
+    assert [w.code for w in operation_warnings(result)] == ["targets_below_min_depth"]
     summary = next(o for o in result.outputs if o.role == "target_summary")
     assert "Enrichment (on/off-target mean): 1.4x" in Path(summary.path).read_text()
 
