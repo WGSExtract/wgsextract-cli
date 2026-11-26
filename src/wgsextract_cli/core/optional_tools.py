@@ -492,7 +492,14 @@ _COMMAND_TOOLS: dict[str, Callable[[argparse.Namespace], list[str]]] = {
     "vcf phase": _phase_tools,
     "vcf impute": _impute_tools,
     "vcf deepvariant": _gvcf_tools,
-    "vcf variantqc": lambda _args: ["java17", "discvrseq"],
+    # Preparing an input without its <vcf>.tbi indexes it or copies it.
+    "vcf variantqc": lambda _args: [
+        "java17",
+        "discvrseq",
+        "bcftools",
+        "tabix",
+        "bgzip",
+    ],
     "vcf granite-qc": lambda _args: ["granite"],
 }
 _VEP_TOOLS = frozenset({"vep", "vep-rs", "vep-cache-builder"})

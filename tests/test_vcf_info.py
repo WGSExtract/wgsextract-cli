@@ -298,10 +298,12 @@ def test_vcf_variantqc_and_granite_qc_validate_optional_tools_and_run(
     assert "TiTv" in gqc_result.text
 
 
-@needs_tools("bgzip", "samtools", "discvrseq", "java17")
-def test_vcf_variantqc_real_discvrseq_reads_unindexed_bgzipped_vcf(tmp_path):
-    """Real VariantQC on an unindexed .vcf.gz: GATK rejected it ("An index is
-    required but was not found") until inputs were indexed first."""
+@needs_tools("bgzip", "tabix", "samtools", "discvrseq", "java17")
+@pytest.mark.parametrize("index", ["none", "csi", "short-tbi"])
+def test_vcf_variantqc_real_discvrseq_reads_any_indexed_bgzipped_vcf(tmp_path, index):
+    """Real VariantQC on a .vcf.gz without the <vcf>.tbi GATK reads: it
+    stopped with "An index is required but was not found" when the VCF had no
+    index, only a CSI one, or a sample.vcf.tbi."""
     ref = write_fasta(tmp_path / "ref.fa", {"chr1": "ACGTTGCA" * 125})
     subprocess.run(["samtools", "dict", "-o", tmp_path / "ref.dict", ref], check=True)
     plain = _write_vcf(
@@ -321,6 +323,11 @@ def test_vcf_variantqc_real_discvrseq_reads_unindexed_bgzipped_vcf(tmp_path):
     vcf = tmp_path / "sample.vcf.gz"
     with vcf.open("wb") as out:
         subprocess.run(["bgzip", "-c", plain], stdout=out, check=True)
+    if index == "csi":
+        subprocess.run(["tabix", "-C", "-p", "vcf", vcf], check=True)
+    elif index == "short-tbi":
+        subprocess.run(["tabix", "-p", "vcf", vcf], check=True)
+        Path(f"{vcf}.tbi").rename(tmp_path / "sample.vcf.tbi")
 
     result = api.vcf.variantqc(
         VcfVariantQcParams(vcf_input=vcf, ref=ref, outdir=tmp_path / "qc")

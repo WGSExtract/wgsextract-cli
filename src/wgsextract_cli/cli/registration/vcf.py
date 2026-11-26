@@ -264,7 +264,9 @@ NEEDS = {
     "vcf indel": _n(HOURS, *_CALL),
     "vcf call": _n(HOURS, *_CALL, optional="delly pbsv sambamba sniffles"),
     "vcf info": _n(SECONDS, "bcftools", optional="htsfile samtools tabix"),
-    "vcf variantqc": _n(MINUTES, optional="bcftools discvrseq java17 samtools"),
+    "vcf variantqc": _n(
+        MINUTES, optional="bcftools bgzip discvrseq java17 samtools tabix"
+    ),
     "vcf granite-qc": _n(MINUTES, "bcftools", optional="granite samtools"),
     "vcf annotate": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf filter": _n(MINUTES, *_VCF, optional="bgzip samtools"),

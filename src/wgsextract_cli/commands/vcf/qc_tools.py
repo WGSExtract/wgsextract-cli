@@ -19,7 +19,7 @@ from wgsextract_cli.core.dependency_checks import (
     log_dependency_info,
     verify_dependencies,
 )
-from wgsextract_cli.core.paths import absolute_path, expand_path
+from wgsextract_cli.core.paths import absolute_path, append_suffix, expand_path
 from wgsextract_cli.core.ref_library.assets import (
     is_fasta_path,
     resolve_reference_library,
@@ -35,8 +35,8 @@ from wgsextract_cli.core.utils import (
     get_resource_defaults,
     run_command,
 )
-from wgsextract_cli.core.variant_files import verify_paths_exist
-from wgsextract_cli.core.variant_sample import prepare_input_vcf
+from wgsextract_cli.core.variant_files import ensure_vcf_indexed, verify_paths_exist
+from wgsextract_cli.core.variant_sample import indexed_sample_vcf
 from wgsextract_cli.core.vcf_reference import identify_vcf_reference
 
 from .._extract_helpers import cleanup_files
@@ -97,6 +97,37 @@ def _variantqc_label(path: Path, used: set[str]) -> str:
     return label
 
 
+def _fresh_tbi(vcf: Path) -> bool:
+    tbi = append_suffix(vcf, ".tbi")
+    return tbi.is_file() and tbi.stat().st_mtime_ns >= vcf.stat().st_mtime_ns
+
+
+def _variantqc_input(vcf: Path, outdir: Path, cleanup: ExitStack) -> str:
+    """``vcf``, or an indexed working copy, with the fresh ``<vcf>.tbi`` GATK
+    looks for: it reads neither CSI nor a ``sample.vcf.tbi`` index. An
+    unindexed bgzipped VCF is indexed beside itself; any other input (plain,
+    BCF, CSI- or short-name-indexed, or in a read-only folder) is copied."""
+    if vcf.suffix.lower() in {".gz", ".bgz"}:
+        try:
+            ensure_vcf_indexed(vcf)
+        except WGSExtractError as e:
+            if isinstance(e, MissingDependencyError):
+                raise
+            logging.info(f"Using a working copy: {e}")
+        if _fresh_tbi(vcf):
+            return str(vcf)
+    logging.info(f"Preparing an indexed working copy of {vcf}...")
+    copy = Path(
+        indexed_sample_vcf(str(vcf), None, str(outdir), cleanup, trim_alt_alleles=False)
+    )
+    if not _fresh_tbi(copy):
+        raise WGSExtractError(
+            f"{vcf.name} has a contig too long for a TBI index, which DISCVRSeq "
+            "VariantQC requires."
+        )
+    return str(copy)
+
+
 def run_variantqc(params: VcfVariantQcParams) -> None:
     """Run DISCVRSeq VariantQC to produce an interactive HTML VCF QC report."""
     input_file = require_vcf_input(params)
@@ -145,12 +176,7 @@ def run_variantqc(params: VcfVariantQcParams) -> None:
         verify_paths_exist({"--pedigree": ped})
 
     with ExitStack() as cleanup:
-        # GATK reads only indexed VCFs: index each in place, or an indexed
-        # working copy when it is plain text or its folder is read-only.
-        inputs = [
-            prepare_input_vcf(str(path), None, str(outdir), cleanup)[0]
-            for path in all_vcfs
-        ]
+        inputs = [_variantqc_input(path, outdir, cleanup) for path in all_vcfs]
         cmd = [*cmd_base, "VariantQC", "-R", resolved_ref]
         if len(all_vcfs) == 1:
             cmd.extend(["-V", inputs[0]])

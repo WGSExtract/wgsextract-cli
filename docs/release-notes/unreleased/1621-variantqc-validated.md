@@ -11,7 +11,8 @@
 
 ## Fixes
 
-- `vcf variantqc` indexes a bgzipped VCF before running DISCVRSeq, or works
-  from an indexed copy when the VCF is plain text or its folder is read-only.
-  DISCVRSeq stopped with "An index is required but was not found" on an
-  unindexed `.vcf.gz` ([#1621, VariantQC and Tools labels](https://github.com/WGSExtract/wgsextract-cli/pull/1621)).
+- `vcf variantqc` gives DISCVRSeq the `<vcf>.tbi` index it needs: it indexes
+  an unindexed `.vcf.gz` beside itself, or works from an indexed copy when the
+  VCF is plain text, has only a CSI or `sample.vcf.tbi` index, or is in a
+  read-only folder. DISCVRSeq stopped with "An index is required but was not
+  found" in those cases ([#1621, VariantQC and Tools labels](https://github.com/WGSExtract/wgsextract-cli/pull/1621)).
