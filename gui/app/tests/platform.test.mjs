@@ -157,6 +157,19 @@ test("Tauri product name keeps public apps on base name", async () => {
   assert.equal(tauriProductName("   "), null);
 });
 
+test("debug Tauri builds get the development identifier, as the shell gives them the development data folder (#1548)", async () => {
+  const { devAppIdentifier, isDevelopmentBuild } = await import("../scripts/run-tauri.mjs");
+  const identifier = (argv) => devAppIdentifier("dev.wgsextract-gui", isDevelopmentBuild(argv));
+
+  for (const argv of [["dev"], ["build", "--debug", "--no-bundle"], ["build", "-d"]]) {
+    assert.equal(identifier(argv), "dev.wgsextract-gui.dev", argv.join(" "));
+  }
+  // Release builds share the installed app's identifier and data folder; arguments after -- are Cargo's.
+  for (const argv of [["dev", "--release"], ["build"], ["build", "--", "-d"]]) {
+    assert.equal(identifier(argv), "dev.wgsextract-gui", argv.join(" "));
+  }
+});
+
 test("About dialog renders bundle and tool versions with clickable GitHub link", async () => {
   const previousWindow = globalThis.window;
   const previousLocalStorage = globalThis.localStorage;

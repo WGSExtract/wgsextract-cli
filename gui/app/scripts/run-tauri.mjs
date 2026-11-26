@@ -49,7 +49,7 @@ export async function main(argv = process.argv.slice(2), platform = os.platform(
     throw new Error("Usage: node scripts/run-tauri.mjs <tauri args...>");
   }
 
-  await prepareBranding();
+  await prepareBranding({ development: isDevelopmentBuild(argv) });
   try {
     await run(process.execPath, [tauriScript, ...argv, "-c", generatedConfigPath], {
       cwd: tauriDir,
@@ -60,7 +60,7 @@ export async function main(argv = process.argv.slice(2), platform = os.platform(
   }
 }
 
-async function prepareBranding() {
+async function prepareBranding({ development = false } = {}) {
   const baseConfigPath = path.join(tauriDir, "tauri.conf.json");
   const baseConfig = JSON.parse(await readFile(baseConfigPath, "utf8"));
   const bundlePath = resolveEmbeddedBundlePath();
@@ -70,7 +70,7 @@ async function prepareBranding() {
     process.env.TAURI_PRODUCT_SUFFIX,
   );
   const appVersion = resolveAppVersion(bundleMetadata, baseConfig.version);
-  const appIdentifier = resolveAppIdentifier(baseConfig.identifier);
+  const appIdentifier = devAppIdentifier(resolveAppIdentifier(baseConfig.identifier), development);
 
   await mkdir(path.dirname(generatedConfigPath), { recursive: true });
   await rm(generatedBundlePath, { recursive: true, force: true });
@@ -272,6 +272,26 @@ function resolveAppVersion(bundleMetadata, defaultVersion) {
     || devConfig.packaging?.app_version
     || bundleMetadata.version
     || defaultVersion;
+}
+
+/**
+ * Debug builds (`tauri dev`, `tauri build --debug`/`-d`) are development runs: main.rs gives them the development
+ * data folder (cfg!(debug_assertions)), so they need the development identifier too, or their webview data and logs
+ * would be the installed app's. `tauri dev --release` is a release build. Arguments after `--` go to Cargo.
+ */
+export function isDevelopmentBuild(argv) {
+  const end = argv.indexOf("--");
+  const tauriArgs = end === -1 ? argv : argv.slice(0, end);
+  if (tauriArgs[0] === "dev") return !tauriArgs.includes("--release");
+  return tauriArgs[0] === "build" && (tauriArgs.includes("--debug") || tauriArgs.includes("-d"));
+}
+
+/**
+ * A development run's identifier, so its webview data and logs stay apart from the installed app's (and both can
+ * run at once); its backend data folder is apart too (main.rs's APP_DATA_NAME).
+ */
+export function devAppIdentifier(identifier, development) {
+  return development ? `${identifier}.dev` : identifier;
 }
 
 function resolveAppIdentifier(defaultIdentifier) {

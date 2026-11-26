@@ -265,7 +265,7 @@ def test_issue_856_smoke_benchmark_calls_sparse_sex_chromosomes_with_explicit_pl
     for step in ("08-vcf-snp", "09-vcf-indel", "10-microarray"):
         assert results[step]["status"] == "PASS"
         assert all(Path(path).is_file() for path in results[step]["expected_outputs"])
-    info_path = next(core_run.run_dir.glob("steps/info/*.wgse_info.json"))
+    info_path = next(core_run.run_dir.glob("steps/info/manifests/*.wgse_info.json"))
     assert json.loads(info_path.read_text())["gender"] == "Unknown"
     assert {row["status"] for row in results.values()} == {"PASS"}
 

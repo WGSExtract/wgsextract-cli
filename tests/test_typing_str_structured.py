@@ -38,7 +38,7 @@ def sample(tmp_path):
 
 
 def _manifest(out):
-    [path] = out.glob("*.manifest.json")
+    [path] = out.glob("manifests/*.manifest.json")
     return json.loads(path.read_text(encoding="utf-8"))
 
 

@@ -122,11 +122,11 @@ def test_vcf_run_writes_indexed_output_and_moves_report(tmp_path, fake_vep):
 
     _vep("-i", vcf, "--vep-cache", str(cache), "--vep-assembly", "GRCh38", "-t", "3")
 
-    out = tmp_path / "wgse" / "s_vep.vcf.gz"
+    out = tmp_path / "WGSEv6" / "s_vep.vcf.gz"
     assert vcf_calls(out) == [("1", "10", "A", "G", "0/1")]
     assert Path(f"{out}.tbi").exists()
-    assert (tmp_path / "wgse" / "s_vep.vcf_summary.html").exists()
-    assert not list((tmp_path / "wgse").glob(".wgse_vep_*"))
+    assert (tmp_path / "WGSEv6" / "s_vep.vcf_summary.html").exists()
+    assert not list((tmp_path / "WGSEv6").glob(".wgse_vep_*"))
     [cmd] = fake_vep()
     assert _value(cmd, "-i") == vcf
     assert Path(_value(cmd, "-o")).parent.name.startswith(".wgse_vep_")
@@ -168,16 +168,16 @@ def test_ensembl_only_setup_keeps_ensembl_vep_and_says_how_to_switch(
 
 def test_existing_output_is_skipped_unless_forced(tmp_path, fake_vep):
     vcf = _vcf(tmp_path / "s.vcf.gz")
-    (tmp_path / "wgse").mkdir()
-    (tmp_path / "wgse" / "s_vep.vcf.gz").write_text("old")
+    (tmp_path / "WGSEv6").mkdir()
+    (tmp_path / "WGSEv6" / "s_vep.vcf.gz").write_text("old")
 
     _vep("-i", vcf, "--vep-cache", str(tmp_path))
     assert fake_vep() == []
-    assert (tmp_path / "wgse" / "s_vep.vcf.gz").read_text() == "old"
+    assert (tmp_path / "WGSEv6" / "s_vep.vcf.gz").read_text() == "old"
 
     _vep("-i", vcf, "--vep-cache", str(tmp_path), "--force")
     assert len(fake_vep()) == 1
-    assert vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz") == [
+    assert vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz") == [
         ("1", "10", "A", "G", "0/1")
     ]
 
@@ -304,7 +304,7 @@ def test_add_chr_feeds_vep_a_prefixed_copy(tmp_path, fake_vep):
 
     [cmd] = fake_vep()
     assert Path(_value(cmd, "-i")).name == "with_chr.vcf"
-    assert vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz") == [
+    assert vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz") == [
         ("chr1", "10", "A", "G", "0/1"),
         ("chr2", "20", "C", "T", "1/1"),
     ]
@@ -319,8 +319,8 @@ def test_vep_failure_fails_the_run_and_leaves_no_output(tmp_path, fake_vep):
         _vep("-i", vcf, "--vep-cache", str(tmp_path))
 
     assert len(fake_vep()) == 1
-    assert not list((tmp_path / "wgse").glob("s_vep*"))
-    assert not list((tmp_path / "wgse").glob(".wgse_vep_*"))
+    assert not list((tmp_path / "WGSEv6").glob("s_vep*"))
+    assert not list((tmp_path / "WGSEv6").glob(".wgse_vep_*"))
 
 
 def test_failed_tab_run_is_retried_next_time(tmp_path, fake_vep):
@@ -420,7 +420,7 @@ def test_region_limits_a_vcf_input(tmp_path, fake_vep):
 
     _vep("-i", vcf, "--vep-cache", str(tmp_path), "-r", "2")
 
-    assert [c[0] for c in vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")] == ["2"]
+    assert [c[0] for c in vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz")] == ["2"]
 
 
 def test_cache_downloaded_into_reference_library_is_used(tmp_path, fake_vep):
@@ -490,7 +490,7 @@ def test_bam_input_calls_variants_in_region_then_annotates(tmp_path, fake_vep):
     [cmd] = fake_vep()
     assert Path(_value(cmd, "-i")).name == "variants.vcf.gz"
     assert _value(cmd, "--fasta") == fasta
-    calls = vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")
+    calls = vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz")
     assert [(c[0], c[1], c[4]) for c in calls] == [("chr1", "301", "1")]
 
 
@@ -526,7 +526,7 @@ def test_839_bam_to_vep_keeps_supported_deletion(tmp_path, fake_vep, region, iup
     )
 
     assert result.status == "ok"
-    output = tmp_path / "wgse" / "deletion_vep.vcf.gz"
+    output = tmp_path / "WGSEv6" / "deletion_vep.vcf.gz"
     calls = vcf_calls(output, "chr1:1-150")
     assert any(len(ref) == len(alt) + 1 and gt == "1/1" for _, _, ref, alt, gt in calls)
     assert any(
@@ -571,7 +571,7 @@ def test_839_indel_after_snp_drops_stale_bias_but_snp_keeps_values(
         )
     )
     assert result.status == "ok"
-    output = tmp_path / "wgse" / "mixed_vep.vcf.gz"
+    output = tmp_path / "WGSEv6" / "mixed_vep.vcf.gz"
     rows = [
         line.split("\t")
         for line in run_command(
@@ -604,7 +604,7 @@ def test_bam_input_is_called_with_the_ploidy_file(tmp_path, fake_vep):
         )
     )
 
-    calls = vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")
+    calls = vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz")
     assert [(c[1], c[4]) for c in calls] == [("101", "1"), ("301", "1")]
 
 
@@ -627,7 +627,7 @@ def test_api_run_reports_outputs_and_batch_metrics(tmp_path, fake_vep):
         VepRunParams(input=Path(vcf), vep_cache=tmp_path, vep_assembly="GRCh37")
     )
 
-    out = tmp_path / "wgse" / "s_vep.vcf.gz"
+    out = tmp_path / "WGSEv6" / "s_vep.vcf.gz"
     assert vcf_calls(out) == [("1", "10", "A", "G", "0/1")]
     assert {(Path(o.path).name, o.role) for o in result.outputs} >= {
         ("s_vep.vcf.gz", "vep_annotated"),
@@ -671,9 +671,10 @@ def test_cancelled_batch_stops_and_leaves_no_partial_output(tmp_path, fake_vep):
     assert time.monotonic() - started < 30
     assert len(fake_vep()) == 1
     assert "input_failed" not in {w.code for w in result.warnings}
-    assert sorted(p.name for p in batch.iterdir() if "vep" in p.name) == [
-        "vep.manifest.json"
-    ]
+    assert sorted(p.name for p in batch.iterdir() if "vep" in p.name) == []
+    assert sorted(
+        p.name for p in (batch / "manifests").iterdir() if "vep" in p.name
+    ) == ["vep.manifest.json"]
 
 
 def test_api_expands_home_in_every_path(tmp_path, fake_vep, monkeypatch):
@@ -716,5 +717,5 @@ def test_api_reads_a_home_relative_bam(tmp_path, fake_vep, monkeypatch):
         )
     )
 
-    calls = vcf_calls(tmp_path / "wgse" / "s_vep.vcf.gz")
+    calls = vcf_calls(tmp_path / "WGSEv6" / "s_vep.vcf.gz")
     assert [(c[0], c[1]) for c in calls] == [("chr1", "301")]

@@ -127,8 +127,9 @@ def test_download_fetches_verifies_and_extracts_cache(tmp_path, ensembl):
     assert [p.name for p in cache.iterdir()] == ["homo_sapiens"]
     assert sorted(p.name for p in version_dir.parent.iterdir()) == [
         "116_GRCh38",
-        "116_GRCh38.manifest.json",
+        "manifests",
     ]
+    assert (version_dir.parent / "manifests" / "116_GRCh38.manifest.json").is_file()
 
 
 @needs_curl_tar

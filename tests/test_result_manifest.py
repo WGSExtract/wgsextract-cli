@@ -91,7 +91,7 @@ def test_issue_717_cleanup_failure_cannot_replace_signal_cancellation(
     assert_valid(document)
     assert document["status"] == "cancelled"
     assert document["exit_code"] == proc.returncode == code
-    assert json.loads(output.with_suffix(".txt.manifest.json").read_text()) == document
+    assert json.loads(results.manifest_path_for(output).read_text()) == document
     # The replaced cleanup error stays visible under --debug (review on #718).
     assert "Step cleanup failed." in proc.stderr
 
@@ -128,10 +128,10 @@ def test_fingerprint_is_cheap_copy_stable_and_content_sensitive(tmp_path):
 @pytest.mark.parametrize(
     ("output", "manifest"),
     [
-        ("out/sample_snps.vcf.gz", "out/sample_snps.vcf.manifest.json"),
-        ("out/sample_mtDNA.bam", "out/sample_mtDNA.bam.manifest.json"),
-        ("out/sample.tsv", "out/sample.tsv.manifest.json"),
-        ("out/sample", "out/sample.manifest.json"),
+        ("out/sample_snps.vcf.gz", "out/manifests/sample_snps.vcf.manifest.json"),
+        ("out/sample_mtDNA.bam", "out/manifests/sample_mtDNA.bam.manifest.json"),
+        ("out/sample.tsv", "out/manifests/sample.tsv.manifest.json"),
+        ("out/sample", "out/manifests/sample.manifest.json"),
     ],
 )
 def test_manifest_is_named_after_the_output(output, manifest):
@@ -182,7 +182,7 @@ def test_outputs_differing_only_in_type_get_separate_manifests(tmp_path, first, 
 
     run(first)
     run(second)
-    manifests = sorted(tmp_path.glob("*.manifest.json"))
+    manifests = sorted(tmp_path.glob("manifests/*.manifest.json"))
     assert len(manifests) == 2
     roles = {json.loads(m.read_text())["outputs"][0]["role"] for m in manifests}
     assert roles == {first, second}
@@ -200,7 +200,7 @@ def test_manifest_is_written_atomically_next_to_outputs(tmp_path):
         print("human text")
 
     assert dispatch(command, tmp_path, token="hunter2") == 0
-    manifest = tmp_path / "s_snps.vcf.manifest.json"
+    manifest = tmp_path / "manifests" / "s_snps.vcf.manifest.json"
     document = json.loads(manifest.read_text())
     assert_valid(document)
     assert [p.name for p in tmp_path.iterdir() if ".tmp" in p.name] == []
@@ -346,8 +346,8 @@ def test_cli_extract_writes_a_valid_manifest(tmp_path):
     assert document["inputs"][0]["fingerprint"].startswith("wgse-fp1:")
     assert document["provenance"]["reference"]["path"].endswith("fake_ref.fa")
     assert "samtools" in document["provenance"]["tools"]
-    written = json.loads((tmp_path / "fake_mtDNA.bam.manifest.json").read_text())
-    assert written == document
+    path = tmp_path / "manifests/fake_mtDNA.bam.manifest.json"
+    assert json.loads(path.read_text()) == document
 
 
 @pytest.mark.parametrize("pair", [("mito-fasta", "mito-vcf"), ("ydna-bam", "ydna-vcf")])
@@ -361,7 +361,7 @@ def test_cli_extract_pairs_keep_both_manifests(tmp_path, pair):
         rc, _, stderr = run_cli(["extract", command, *common])
         assert rc == 0, stderr
     commands = set()
-    for manifest in tmp_path.glob("*.manifest.json"):
+    for manifest in tmp_path.glob("manifests/*.manifest.json"):
         document = json.loads(manifest.read_text())
         assert_valid(document)
         commands.add(document["command"])
@@ -431,7 +431,7 @@ def test_params_report_the_genome_selection_actually_used(
 
 
 def test_manifest_never_replaces_the_run_log(tmp_path):
-    log = tmp_path / "s_mtDNA.bam.manifest.json"
+    log = tmp_path / "manifests" / "s_mtDNA.bam.manifest.json"
 
     def command(args):
         (tmp_path / "s_mtDNA.bam").write_bytes(b"bam")
@@ -469,7 +469,7 @@ def test_failed_manifest_write_leaves_manifest_unset(tmp_path, capsys, monkeypat
     document = json.loads(capsys.readouterr().out)
     assert_valid(document)
     assert document["manifest"] is None
-    assert not (tmp_path / "s.vcf.manifest.json").exists()
+    assert not (tmp_path / "manifests" / "s.vcf.manifest.json").exists()
 
 
 def test_rewrapped_dependency_error_still_exits_3(tmp_path, capsys):
@@ -590,7 +590,7 @@ def test_cli_trio_manifest_lists_every_mode_output(tmp_path):
     document = json.loads(stdout)
     assert_valid(document)
     assert_outputs_match_disk(document)
-    assert document["manifest"] == str(outdir / "trio.manifest.json")
+    assert document["manifest"] == str(outdir / "manifests" / "trio.manifest.json")
     on_disk = {p.name for p in outdir.glob("trio_*.vcf.gz")}
     assert {Path(o["path"]).name for o in document["outputs"]} == on_disk
     family = {i["role"]: i for i in document["inputs"]}

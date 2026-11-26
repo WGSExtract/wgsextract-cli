@@ -22,6 +22,7 @@ export function commandContextFromState(state: StateLike, rowValues: ValueMap = 
     const { fieldValues, checkedOptions, configValues } = valuesForUIMode(state);
     const context: CommandContext = {
         setupReady: !setupStepsForPlatform(state.manifest?.setup?.steps ?? []).length || state.setupRun?.status === "ok" || state.setupRun?.status === "warning",
+        uiMode: normalizeUIMode(state.uiMode),
         fieldValues: { ...fieldValues, ...sectionValues },
         checkedOptions,
         configValues: { ...configValues, ...fieldValues, ...sectionValues },
@@ -162,6 +163,9 @@ function rawContextValue(context: CommandContext, placeholder: string): StateVal
 export function contextValue(context: CommandContext, placeholder: string): StateValue {
     if (placeholder === "setupReady") {
         return context.setupReady ? "true" : "false";
+    }
+    if (placeholder === "uiMode") {
+        return normalizeUIMode(context.uiMode);
     }
     if (placeholder === "bundleRoot" || placeholder === "bundleWorkspace") {
         return context.bundleRootPath;

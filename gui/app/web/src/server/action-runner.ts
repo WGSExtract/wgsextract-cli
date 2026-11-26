@@ -8,6 +8,7 @@ import { decodeXML, environmentKey, formatGB, resolveBundlePath, resolveUserPath
 import { platformCommand } from "./platform-command.js";
 import { isPlatformScriptReference, resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errnoCode, errorMessage } from "./errors.js";
+import { isIndexedAlignment, isSortedAlignment } from "./alignment-state.js";
 import { dataSourceTransform, transformedPayload, type DataSourceTransform } from "./data-source-transform.js";
 
 const dataSourceTimeoutMs = 15_000;
@@ -216,7 +217,7 @@ export async function fileStateValues(context: CommandContext, bundleRoot: strin
     return values;
 }
 async function fileStateForPath(id: string, rawPath: unknown, bundleRoot: string): Promise<StringMap> {
-    const pathText = String(rawPath ?? "").trim();
+    const pathText = firstPathValue(rawPath);
     const values: StringMap = {
         [`${id}.pathExtension`]: "",
         [`${id}.isIndexed`]: "false",
@@ -232,14 +233,14 @@ async function fileStateForPath(id: string, rawPath: unknown, bundleRoot: string
     const resolvedPath = resolveUserPath(pathText, bundleRoot);
     values[`${id}.pathExtension`] = path.extname(resolvedPath).replace(/^\./, "").toLowerCase();
     values[`${id}.parentDir`] = path.dirname(resolvedPath);
-    values[`${id}.isIndexed`] = String(await isIndexedAlignment(resolvedPath));
-    values[`${id}.isSorted`] = String(await isSortedAlignment(resolvedPath));
     try {
         const info = await stat(resolvedPath);
         values[`${id}.exists`] = "true";
         if (info.isFile()) {
             values[`${id}.fileSize`] = String(info.size);
             values[`${id}.fileSizeGB`] = (Number(info.size) / 1_073_741_824).toFixed(2);
+            values[`${id}.isIndexed`] = String(await isIndexedAlignment(resolvedPath));
+            values[`${id}.isSorted`] = String(await isSortedAlignment(resolvedPath));
         }
     }
     catch (error) {
@@ -248,43 +249,6 @@ async function fileStateForPath(id: string, rawPath: unknown, bundleRoot: string
         }
     }
     return values;
-}
-async function isIndexedAlignment(resolvedPath: string): Promise<boolean> {
-    const parsed = path.parse(resolvedPath);
-    const withoutExtension = path.join(parsed.dir, parsed.name);
-    const indexPaths = [
-        `${resolvedPath}.bai`,
-        `${resolvedPath}.crai`,
-        `${resolvedPath}.csi`,
-        `${withoutExtension}.bai`,
-        `${withoutExtension}.crai`,
-        `${withoutExtension}.csi`,
-    ];
-    return (await Promise.all(indexPaths.map((candidate) => pathExists(candidate)))).some(Boolean);
-}
-async function isSortedAlignment(resolvedPath: string): Promise<boolean> {
-    if (await isIndexedAlignment(resolvedPath)) {
-        return true;
-    }
-    const filename = path.basename(resolvedPath).toLowerCase();
-    return (filename.includes(".sorted.") ||
-        filename.includes("_sorted.") ||
-        filename.endsWith(".sorted.bam") ||
-        filename.endsWith(".sorted.cram") ||
-        filename.includes(".sort.") ||
-        filename.includes("_sort."));
-}
-async function pathExists(filePath: string): Promise<boolean> {
-    try {
-        await stat(filePath);
-        return true;
-    }
-    catch (error) {
-        if (errnoCode(error) === "ENOENT" || errnoCode(error) === "ENOTDIR") {
-            return false;
-        }
-        throw error;
-    }
 }
 export async function evaluatePrecheck(
     precheck: LooseRecord | undefined,

@@ -17,10 +17,11 @@ genomics tasks with safe defaults:
   Advanced mode. Your saved Advanced value is preserved for when you switch back
   to Advanced mode, so experimenting in Advanced mode never silently alters a
   Basic run.
-- **Automatic output folders:** Outputs are written to a `wgse/` folder beside
-  the primary input file (or beside an input already inside a `wgse/` folder),
+- **Automatic output folders:** Outputs are written to a `WGSEv6/` folder beside
+  the primary input file (or beside an input already inside a `WGSEv6/` folder),
   keeping your original lab folder untouched except for standard sidecar indexes
-  (`.bai`, `.crai`, `.tbi`, `.csi`).
+  (`.bai`, `.crai`, `.tbi`, `.csi`). Machine-readable manifests and info caches
+  go in `WGSEv6/manifests/`.
 - **Expanded sections:** Everyday sections open directly unless a section is
   explicitly collapsed by default (such as **Report an Issue** on Settings).
 

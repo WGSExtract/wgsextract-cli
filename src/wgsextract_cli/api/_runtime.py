@@ -202,7 +202,7 @@ def run_inline(
     filled = with_config_defaults(params, keep=explicit)
     outdir = getattr(filled, "outdir", None)
     # The command creates its default output folder; a run that leaves it
-    # empty (it failed, or wrote nothing) doesn't leave an empty wgse/ behind.
+    # empty (it failed, or wrote nothing) doesn't leave an empty WGSEv6/ behind.
     # A folder the user named stays, even empty.
     default = getattr(params, "outdir", None) is None and not settings.get(
         "output_directory"
@@ -481,6 +481,14 @@ def _prepare(params: Params, result: CommandResult) -> Path | None:
         path = getattr(params, name, None)
         if isinstance(path, Path) and path.expanduser().exists():
             result.add_input(path.expanduser(), input_role(params.COMMAND, name))
+    if not params.PRIVATE_PROVENANCE:
+        from wgsextract_cli.core.config import output_directory as configured_outdir
+
+        manifest_outdir = getattr(params, "outdir", None) or configured_outdir(
+            [r.path for r in result.inputs]
+        )
+        if manifest_outdir:
+            result.set_manifest_dir(manifest_outdir)
     if isinstance(input_path, Path):
         input_path = input_path.expanduser()
         if input_path.suffix.lower() in {".bam", ".cram"} and checks_alignment_input(

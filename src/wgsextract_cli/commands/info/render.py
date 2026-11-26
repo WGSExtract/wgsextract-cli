@@ -213,7 +213,7 @@ def render_info(data: Mapping[str, Any], detailed: bool = False) -> str:
             "OTHER:",
             "  Bio Gender      - Non-PAR depth screening; Unknown if insufficient.",
             "  Avg Read Length - Mean base pairs per read (SD = standard deviation).",
-            "  Avg Insert Size - Mean distance between pairs (inner + reads).",
+            "  Avg Insert Size - Mean fragment length (pair span, or read length for single-end).",
             "  Read N50        - Long reads: half the bases are in reads at least",
             "                    this long (from the first 20,000 records).",
             "  Mapped Reads    - Long reads: % of reads (not records) that map.",

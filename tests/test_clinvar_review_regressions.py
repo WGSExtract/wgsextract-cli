@@ -55,7 +55,7 @@ def test_837_review_phased_mnv_findings_survive_valid_input_representations(
     if case == "multiallelic":
         assert finding[9].split(":")[0] == "1|0"
     if case == "missing_end":
-        document = json.loads(next(out.glob("*.manifest.json")).read_text())
+        document = json.loads(next(out.glob("manifests/*.manifest.json")).read_text())
         assert document["metrics"]["clinvar_mnv_indexed_records"] == 2
         assert len(records(out / "clinvar_annotated.vcf.gz")) == 4
 
@@ -219,7 +219,7 @@ def test_841_conflict_confidence_never_changes_pathogenic_counts_or_warnings(tmp
     )
     out = tmp_path / "out"
     annotate(out, sample, resource, ref)
-    document = json.loads(next(out.glob("*.manifest.json")).read_text())
+    document = json.loads(next(out.glob("manifests/*.manifest.json")).read_text())
     assert document["metrics"]["confidence_low"] == 1
     assert document["metrics"]["clinvar_conflict_confidence_low"] == 1
     assert [w["code"] for w in document["warnings"]].count(
@@ -253,7 +253,7 @@ def test_836_only_known_hg19_mito_resource_incompatibility_is_excluded(
             annotate(out, sample, resource, ref)
     else:
         assert len(records(annotate(out, sample, resource, ref))) == 1
-        document = json.loads(next(out.glob("*.manifest.json")).read_text())
+        document = json.loads(next(out.glob("manifests/*.manifest.json")).read_text())
         assert [
             w["details"]["count"]
             for w in document["warnings"]
@@ -315,7 +315,7 @@ def test_836_normalized_resource_cache_invalidates_when_source_changes(tmp_path)
     out = tmp_path / "out"
     annotate(out, sample, resource, ref)
     annotate(out, sample, resource, ref)
-    document = json.loads(next(out.glob("*.manifest.json")).read_text())
+    document = json.loads(next(out.glob("manifests/*.manifest.json")).read_text())
     assert document["metrics"]["annotation_normalization_cache_hit"] is True
     resource.write_text(resource.read_text().replace("Pathogenic", "Benign"))
     assert records(annotate(out, sample, resource, ref)) == []

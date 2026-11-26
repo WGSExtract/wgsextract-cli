@@ -133,7 +133,8 @@ def _manifest(
     finished: str = "2025-01-01T00:00:00+00:00",
     error: str = "tool crashed",
 ) -> Path:
-    path = folder / f"{name}.manifest.json"
+    path = folder / "manifests" / f"{name}.manifest.json"
+    path.parent.mkdir(exist_ok=True)
     document = {
         "schema": "wgsextract.result/1",
         "command": command,
@@ -334,7 +335,7 @@ def test_clinvar_lists_gene_list_hits_with_their_call_confidence(sample):
     assert hits["MUTYH"]["evidence"] == {
         "file": "clinvar_pathogenic.vcf.gz",
         "region": f"{chrom}:{pos}",
-        "manifest": "clinvar_pathogenic.vcf.manifest.json",
+        "manifest": "manifests/clinvar_pathogenic.vcf.manifest.json",
     }
     # Conflicting classifications are not P/LP; chr1:1000 is outside the list.
     assert clinvar["counts"] == {
@@ -446,7 +447,7 @@ def _phased_mutyh_report(
                      "--outdir", str(results), "--ref", str(reference))  # fmt: skip
     assert code == 0, log
     if calls_from != "table":
-        (manifest,) = results.glob("clinvar_pathogenic*.manifest.json")
+        (manifest,) = results.glob("manifests/clinvar_pathogenic*.manifest.json")
         document = json.loads(manifest.read_text())
         document["outputs"] = [
             o for o in document["outputs"] if o["role"] != "confidence_table"

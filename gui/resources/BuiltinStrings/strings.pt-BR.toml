@@ -59,6 +59,10 @@
 "app.prerequisites.message" = "Este comando precisa de dados ou ferramentas que ainda não estão instalados:"  # i18n-source-hash:93ca8e45
 "app.prerequisites.stillMissing" = "Ainda não está instalado. Instale-o aqui ou você mesmo e clique em Continuar novamente."  # i18n-source-hash:09498e32
 "app.prerequisites.title" = "Falta algo de que este comando precisa"  # i18n-source-hash:560fc1a9
+"app.privacyMode.badge.title" = "PRIVACIDADE"  # i18n-source-hash:2f158034
+"app.privacyMode.badge.tooltip" = "O modo de privacidade está ativado: o app não procura atualizações ao iniciar. Desative-o em Opções padrão da interface, na página Configurações."  # i18n-source-hash:40463462
+"app.privacyMode.label" = "Modo de privacidade"  # i18n-source-hash:c2540489
+"app.privacyMode.tooltip" = "Interrompe a atividade de rede automática do app. Quando ativado, o app não procura atualizações no GitHub ao iniciar; use File > Check for Updates... para verificar você mesmo."  # i18n-source-hash:de492a08
 "app.refresh.warning.format" = "Aviso de atualização: %{error}"  # i18n-source-hash:8e6c1f82
 "app.refreshing.title" = "Atualizando..."  # i18n-source-hash:5b7bdb61
 "app.result.card.close.title" = "Fechar"  # i18n-source-hash:bbfa773e

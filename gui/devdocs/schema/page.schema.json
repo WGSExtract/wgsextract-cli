@@ -48,7 +48,7 @@
           "type": "array",
           "items": { "$ref": "#/$defs/actionCondition" },
           "default": [],
-          "description": "Hide the whole section unless every condition matches. The built-in placeholder hostPlatform is windows, macos, linux, or posix."
+          "description": "Hide the whole section unless every condition matches. Built-in placeholders include hostPlatform (windows, macos, linux, or posix) and uiMode (basic or advanced)."
         },
         "controls": {
           "type": "array",

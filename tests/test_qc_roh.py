@@ -444,7 +444,7 @@ def test_issue_1174_cli_writes_segments_markers_and_manifest(tmp_path):
     args, _ = parse_args(*build_parser(), argv)
     dispatch_command(args, set())
 
-    manifest = json.loads((out / "sample.roh.manifest.json").read_text())
+    manifest = json.loads((out / "manifests" / "sample.roh.manifest.json").read_text())
     assert not list(Draft202012Validator(results.load_schema()).iter_errors(manifest))
     assert {o["role"] for o in manifest["outputs"]} == {
         "roh_segments", "roh_report", "roh_markers"

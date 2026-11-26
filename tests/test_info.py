@@ -92,7 +92,7 @@ def test_info_fast_mode(info_env):
     assert "Avg Read Length             150 bp" in output
     assert "Avg Insert Size             300 bp" in output
     assert "Sequencer                   Illumina NS 6000 (Dante)" in output
-    cache = json.loads(Path(str(sample) + ".wgse_info.json").read_text())
+    cache = json.loads(next(sample.parent.glob("manifests/*.json")).read_text())
     assert cache["input_signature"]["size"] == sample.stat().st_size
 
 
@@ -161,7 +161,7 @@ def test_1215_info_recomputes_metrics_for_same_size_and_mtime_bam(tmp_path):
     assert "20 bp" in _run_info(sample, "info")
     workspace.record("sex", sample, "Female", method="screening", confidence="high")
     assert workspace.detected("sex", sample) is not None
-    cache = tmp_path / "sample.bam.wgse_info.json"
+    cache = tmp_path / "manifests" / "sample.bam.wgse_info.json"
     assert json.loads(cache.read_text())["avg_read_len"] == 20
     before = sample.stat()
 
@@ -187,7 +187,7 @@ def test_1215_cached_info_returns_no_metrics_for_a_missing_input(tmp_path):
 @pytest.mark.parametrize("payload", ['{"filename": "x", "avg_read_len": 99}', "{bad"])
 def test_info_legacy_or_corrupt_cache_is_recomputed(info_env, payload):
     sample, calls = info_env
-    Path(str(sample) + ".wgse_info.json").write_text(payload)
+    Path(str(sample) + ".wgse_info.json").write_text(payload)  # where it used to be
 
     output = _run_info(sample, "info")
 
@@ -200,7 +200,7 @@ def test_cached_reference_from_older_detection_is_recomputed(info_env):
     # classification came from older, wrong detection.
     sample, calls = info_env
     _run_info(sample, "info", "--detailed")
-    cache_path = Path(str(sample) + ".wgse_info.json")
+    cache_path = sample.parent / "manifests" / f"{sample.name}.wgse_info.json"
     cache = json.loads(cache_path.read_text())
     cache["ref_model_str"] = "hg19 (Chr), , 1 SNs"
     cache_path.write_text(json.dumps(cache))
@@ -262,7 +262,7 @@ def test_region_coverage_does_not_poison_whole_genome_cache(info_env, monkeypatc
     region_out = _run_info(sample, "info", "calculate-coverage", "-r", "1:1-1000")
     assert "42 %" in region_out
     assert seen == [("sample.bam_1_1_1000_coverage.tsv", None)]
-    assert not Path(str(sample) + ".wgse_info.json").exists()
+    assert not (sample.parent / "manifests" / f"{sample.name}.wgse_info.json").exists()
 
     detailed = _run_info(sample, "info", "--detailed")
     assert "42 %" not in detailed
@@ -507,7 +507,7 @@ assert not (loaded := download_modules & sys.modules.keys()), sorted(loaded)
         check=True,
     )
     assert json.loads(result.stdout)["status"] == "ok"
-    assert not (tmp_path / "wgse").exists()
+    assert not (tmp_path / "WGSEv6").exists()
     record = json.loads((tmp_path / "state" / "last-run.json").read_text("utf-8"))
     assert record["result"]["command"] == "info"
 
@@ -651,7 +651,7 @@ def test_detailed_coverage_bins_leave_ns_out_and_feed_detailed_info(tmp_path):
     assert float(chr1["Depth 1-3 fraction"]) == 1.0
 
     # Without the metrics cache, Detailed Info reuses the saved coverage result.
-    (tmp_path / "s.bam.wgse_info.json").unlink()
+    (tmp_path / "manifests" / "s.bam.wgse_info.json").unlink()
     _run_info(
         bam, "info", "--detailed", "--no-cache", "--ref", str(ref), "--format", "tsv"
     )
@@ -706,7 +706,7 @@ def test_n_counts_counted_after_detailed_coverage_update_it_without_rescan(
 
 
 def _table_breadth_from_cache(folder: Path) -> dict[str, str]:
-    cache = json.loads((folder / "s.bam.wgse_info.json").read_text())
+    cache = json.loads((folder / "manifests" / "s.bam.wgse_info.json").read_text())
     rows = list(csv.reader(io.StringIO(cache["chrom_table_csv"])))
     col = rows[0].index("Breadth Coverage")
     return {r[0]: r[col] for r in rows[1:]}

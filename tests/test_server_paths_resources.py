@@ -23,7 +23,7 @@ def test_1087_inferred_output_symlink_cannot_escape_allowed_input_folder(tmp_pat
     allowed.mkdir()
     outside.mkdir()
     try:
-        (allowed / "wgse").symlink_to(outside, target_is_directory=True)
+        (allowed / "WGSEv6").symlink_to(outside, target_is_directory=True)
     except OSError:
         pytest.skip("symlinks are unavailable")
     params = params_from_json(
@@ -61,7 +61,7 @@ def test_1087_host_only_defaults_are_not_subject_to_request_path_restrictions(
         params_from_json(op, {"vcf_input": str(allowed / "sample.vcf")})
     )
 
-    assert checked.outdir == allowed / "wgse"
+    assert checked.outdir == allowed / "WGSEv6"
     assert with_config_defaults(checked).pharmcat_dir == host_tool
     assert "pharmcat_dir" not in op.request_values(checked)
 
@@ -77,7 +77,7 @@ def test_1087_server_output_follows_the_vcf_override(tmp_path, monkeypatch):
             },
         )
     )
-    assert checked.outdir == tmp_path / "current" / "wgse"
+    assert checked.outdir == tmp_path / "current" / "WGSEv6"
 
 
 def test_1087_trio_proband_overrides_unused_inputs_for_output_inference(
@@ -94,7 +94,7 @@ def test_1087_trio_proband_overrides_unused_inputs_for_output_inference(
             },
         )
     )
-    assert checked.outdir == tmp_path / "current" / "wgse"
+    assert checked.outdir == tmp_path / "current" / "WGSEv6"
 
 
 @pytest.mark.parametrize(

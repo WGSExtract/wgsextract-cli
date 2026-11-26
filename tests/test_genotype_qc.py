@@ -288,7 +288,7 @@ def test_issue_430_vcf_region_is_judged_by_its_own_depth(
     argv = ["vcf", "snp", "--input", slice_bam["bam"], "--ref", slice_bam["ref"]]
     argv += ["--region", region, "--ploidy", "2", "--outdir", str(outdir)]
     main([*argv, "--config", str(tmp_path / "config.toml")])
-    (manifest,) = outdir.glob("*.manifest.json")
+    (manifest,) = outdir.glob("manifests/*.manifest.json")
     warnings = json.loads(manifest.read_text())["warnings"]
     low = [w for w in warnings if w["code"] == "low_coverage"]
     assert bool(low) is warned

@@ -428,7 +428,9 @@ def test_manifest_lists_only_the_vcf_input_read(tmp_path, capsys, command, statu
     assert result["status"] == status
     assert _inputs(result) == [("vcf_input", "sample.vcf.gz")]
     if command[1] == "clinvar":
-        saved = json.loads((out / "clinvar_pathogenic.vcf.manifest.json").read_text())
+        saved = json.loads(
+            (out / "manifests" / "clinvar_pathogenic.vcf.manifest.json").read_text()
+        )
         assert _inputs(saved) == [("vcf_input", "sample.vcf.gz")]
 
 

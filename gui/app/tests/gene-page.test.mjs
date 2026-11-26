@@ -97,7 +97,7 @@ test("#1166: the gene page runs the local CLI with the selected settings and let
         stdout: JSON.stringify(cliResult(page, args.includes("--export")
             ? [{ path: table, role: "variant_table", kind: "tsv", metrics: { rows: 1 } }] : [])),
     }));
-    const table = path.join(path.dirname(f.vcf), "wgse", filename);
+    const table = path.join(path.dirname(f.vcf), "WGSEv6", filename);
     const paths = new ResultPaths();
     const signal = new AbortController().signal;
     const shown = await openGenePage({ gene: "brca1", vcf: "{{usersWorkspace}}/mygenomes/s.vcf.gz", minDepth: 20 }, f.context, paths, signal);

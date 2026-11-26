@@ -71,7 +71,7 @@ def test_1148_cytobands_require_explicit_download_and_reuse_offline(
         assert target.read_bytes() == body
         assert any(output.role == "reference_resource" for output in result.outputs)
         server.requests.clear()
-        manifest = Path(str(target) + ".manifest.json")
+        manifest = target.parent / "manifests" / f"{target.name}.manifest.json"
         record = manifest.read_bytes()
         reused = api.ref.cytobands(params)
         assert not reused.outputs
@@ -255,7 +255,7 @@ def test_1153_default_library_ignores_configured_external_fasta(
         )
         assert not (fasta.parent / "downloads").exists()
         target = library / "downloads" / "cytobands_hg38.tsv"
-        manifest = Path(str(target) + ".manifest.json")
+        manifest = target.parent / "manifests" / f"{target.name}.manifest.json"
         record = manifest.read_bytes()
         main(["--config", str(config), "ref", "cytobands"])
         assert str(target) in capsys.readouterr().out

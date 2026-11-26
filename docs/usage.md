@@ -59,7 +59,8 @@ in separate directories if they use a shortened index name such as `sample.vcf.c
 Preserve matching indexes when moving a VCF: file dates alone cannot tell whether
 the pair matches.
 
-File-writing commands record `<output>.manifest.json`: inputs and outputs
+File-writing commands record `manifests/<output>.manifest.json` inside the
+output directory: inputs and outputs
 with cheap fingerprints, metrics, structured warnings and provenance
 (versions, parameters, reference and timing). `--json` prints the result
 document instead of human output; logs stay on stderr.
@@ -70,7 +71,7 @@ The typed `wgsextract_cli.api` returns a `Result`; migration includes `info`,
 Outputs use the full input stem: `HG002.chr20.bam` produces
 `HG002.chr20_sorted.bam` and `HG002.chr20_coverage.tsv`.
 Use `--outdir`, configured `outdir`, or the `--genome` folder; see
-[configuration](https://wgsextract.github.io/wgsextract-cli/configuration.html) for the default `wgse/` output folder.
+[configuration](https://wgse.bio/wgsextract-cli/configuration.html) for the default `WGSEv6/` output folder.
 Detected sample sex, platform, build and depth are fingerprint-bound facts in
 [`wgsextract.sample.toml`](sample-workspace.md), reused rather than redetected.
 Correct them with, for example, `wgsextract sample set --genome ID --sex Female`.

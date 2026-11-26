@@ -497,7 +497,7 @@ def test_a_rerun_failing_before_modkit_keeps_the_previous_results(
     bam, ref = tagged
     out = tmp_path / "out"
     api.methylation.pileup(MethylationPileupParams(input=bam, ref=ref, outdir=out))
-    before = {p.name: p.read_bytes() for p in out.iterdir()}
+    before = {p.name: p.read_bytes() for p in out.iterdir() if p.is_file()}
 
     result = api.methylation.pileup(
         MethylationPileupParams(input=bam, ref=ref, outdir=out, region="chr20,chrZ"),
@@ -505,7 +505,7 @@ def test_a_rerun_failing_before_modkit_keeps_the_previous_results(
     )
 
     assert result.status == "failed" and "chrZ" in result.error.message
-    assert {p.name: p.read_bytes() for p in out.iterdir()} == before
+    assert {p.name: p.read_bytes() for p in out.iterdir() if p.is_file()} == before
 
 
 @needs_samtools
@@ -520,7 +520,7 @@ def test_a_rerun_cancelled_after_modkit_publishes_nothing_with_atomic_outputs(
     bam, ref = tagged
     out = tmp_path / "out"
     api.methylation.pileup(MethylationPileupParams(input=bam, ref=ref, outdir=out))
-    before = {p.name: p.read_bytes() for p in out.iterdir()}
+    before = {p.name: p.read_bytes() for p in out.iterdir() if p.is_file()}
     token = api.CancelToken()
 
     def cancel_at_tabix(event: api.ProgressEvent) -> None:
@@ -535,7 +535,7 @@ def test_a_rerun_cancelled_after_modkit_publishes_nothing_with_atomic_outputs(
     )
 
     assert result.status == "cancelled"
-    assert {p.name: p.read_bytes() for p in out.iterdir()} == before
+    assert {p.name: p.read_bytes() for p in out.iterdir() if p.is_file()} == before
 
 
 @needs_samtools

@@ -124,7 +124,8 @@ def _aggregate(
 def _cached_depths(
     alignment: str, outdir: str | None, n_basis: str
 ) -> dict[str, float] | None:
-    from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION, cached_info
+    from wgsextract_cli.commands.info.cache import cached_info
+    from wgsextract_cli.commands.info.metrics import SEX_INFERENCE_VERSION
 
     info = cached_info(alignment, outdir, "chrom_table_csv")
     # The table hides chrY for a Female, so one from an older infer_sex is
@@ -260,7 +261,8 @@ def _counted_depths(
 def read_length(alignment: str, outdir: str | None = None) -> float:
     """Mean read length: recorded in the sample workspace, else from `info`'s
     cache, else from sampled reads (then recorded). 0.0 when unknown."""
-    from wgsextract_cli.commands.info.metrics import cached_info, run_body_sample
+    from wgsextract_cli.commands.info.cache import cached_info
+    from wgsextract_cli.commands.info.metrics import run_body_sample
 
     fact = sample_workspace.known("read_length", alignment)
     if fact is not None and isinstance(fact.value, (str, int, float)):

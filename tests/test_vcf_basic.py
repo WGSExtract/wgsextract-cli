@@ -168,7 +168,9 @@ def test_982_cli_baq_overrides_persistent_choice(sample, tmp_path, monkeypatch, 
             expected = not configured if extra else configured
             # contract: CLI/config BAQ selection must reach the real mpileup (#982).
             assert ("-B" not in argv) is expected
-            manifest = json.loads((output / f"{kind}s.vcf.manifest.json").read_text())
+            manifest = json.loads(
+                (output / "manifests" / f"{kind}s.vcf.manifest.json").read_text()
+            )
             assert manifest["provenance"]["params"]["baq"] is expected
 
 

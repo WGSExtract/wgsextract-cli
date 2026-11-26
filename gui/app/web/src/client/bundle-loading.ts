@@ -1,6 +1,7 @@
 import { api } from "./api.js";
 import { bundlePickerDefaultPath, rememberBundlePickerPath } from "./bundle-picker-memory.js";
 import { errorMessage } from "./model.js";
+import { clearFileStateCache } from "./operations-data.js";
 import { chooseLocalPath } from "./path-picker.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
@@ -64,8 +65,7 @@ function resetBundleClientState() {
     state.dataSourcePayloads.clear();
     state.dataSourceErrors.clear();
     state.loadingDataSources.clear();
-    state.fileStateValues.clear();
-    state.loadingFileStates.clear();
+    clearFileStateCache();
     state.actionPrechecks.clear();
     state.actionPrecheckErrors.clear();
     state.actionResultNotices.clear();

@@ -416,8 +416,8 @@ def test_acmg_refuses_to_overwrite_an_input_named_like_its_output(
 ):
     # Review of #988: the classified VCF replaced an input of the same name.
     inputs = _inputs(tmp_path)
-    # Force a real collision, including the default for inputs already in wgse/.
-    destination = tmp_path if explicit_outdir else tmp_path / "wgse"
+    # Force a real collision, including the default for inputs already in WGSEv6/.
+    destination = tmp_path if explicit_outdir else tmp_path / "WGSEv6"
     destination.mkdir(exist_ok=True)
     named = destination / "acmg_annotated.vcf.gz"
     inputs["input"].rename(named)
@@ -455,7 +455,7 @@ def test_1087_acmg_default_output_preserves_same_named_lab_input(tmp_path):
     )
 
     annotated = Path(next(o.path for o in result.outputs if o.role == "annotated_vcf"))
-    assert annotated == tmp_path / "wgse" / named.name
+    assert annotated == tmp_path / "WGSEv6" / named.name
     assert any(info.get("ACMG_CLASS") for info in _acmg(annotated).values())
     assert named.read_bytes() == before
 
