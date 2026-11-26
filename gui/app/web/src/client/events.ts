@@ -82,6 +82,20 @@ export function bindEvents(bootstrap: Bootstrap) {
         state.colorTheme = normalizeColorTheme((event.currentTarget as HTMLSelectElement).value);
         await persistAndRender();
     });
+    app.querySelector<HTMLInputElement>("[data-privacy-mode-toggle]")?.addEventListener("change", async (event) => {
+        const enabled = (event.currentTarget as HTMLInputElement).checked;
+        try {
+            await api("/api/privacy-mode", { method: "POST", body: { enabled } });
+            state.privacyMode = enabled;
+        }
+        catch (error) {
+            // Unsaved, the checkbox goes back to the setting in force.
+            appendTerminal("error", state.labels.privacyModeLabel ?? "Privacy mode", errorMessage(error));
+        }
+        finally {
+            scheduleRender();
+        }
+    });
     app.querySelector<HTMLSelectElement>("[data-web-font-picker]")?.addEventListener("change", async (event) => {
         state.webUIFont = (event.currentTarget as HTMLSelectElement).value === "sfPro" ? "sfPro" : "system";
         await persistAndRender();

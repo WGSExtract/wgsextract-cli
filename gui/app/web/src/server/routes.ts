@@ -5,6 +5,7 @@ import { evaluatePrecheck, evaluateSetupInstallSizePrecheck, fileStateValues, ru
 import { serveBundleFavicon, serveBundleFile } from "./assets.js";
 import { loadLocaleOptions } from "./bundle-loader.js";
 import { saveBundleState } from "./bundle-state.js";
+import { savePrivacyMode } from "./privacy-mode.js";
 import { loadConfig, saveConfig } from "./config-store.js";
 import { errorMessage, HttpError } from "./errors.js";
 import { contentType, json, notFound, readJSONBody, serveIndex, staticFile } from "./http.js";
@@ -403,6 +404,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
             const control = findConfigEditorControl(context.manifest, requiredString(body, "controlID"));
             return saveConfig(control, optionalString(body, "path"), requestObject(body.values ?? {}, "values"), context.bundleRoot);
         }),
+        "/api/privacy-mode": jsonRoute(context, savePrivacyMode),
         "/api/state/save": jsonRoute(context, async (body) => {
             const patch = parseBundleStatePatch(body.state);
             for (const [controlID, requestedPath] of Object.entries(patch.configFilePaths ?? {})) {

@@ -1,10 +1,11 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, readdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import type { BundleManifest } from "../../../shared/types.js";
 import { writeFileAtomically } from "./atomic-file.js";
 import { errnoCode, errorMessage } from "./errors.js";
 import { applicationSupportDirectory, appSupportContainerName, appSupportDirectory, defaultAppDataName, safePathComponent } from "./paths.js";
+import { withSettingsFileLock } from "./settings-lock.js";
 
 export const workspaceSentinelFileName = ".bundle-workspace";
 export const workspaceSentinelContents = "WGS Extract GUI workspace\n";
@@ -65,23 +66,55 @@ export function bundleWorkspaceRoot(manifest: Pick<BundleManifest, "id">) {
     return workspaceRootIn(appDataWorkspacesDirectory(), manifest.id);
 }
 
-export async function readAppSettings(): Promise<Record<string, unknown>> {
+/** The app settings, and whether a settings file exists that could not be read as settings. */
+async function readAppSettingsFile(): Promise<{ settings: Record<string, unknown>; unreadable: boolean }> {
     try {
         const parsed: unknown = JSON.parse(await readFile(appSettingsPath(), "utf8"));
-        return parsed != null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+        if (parsed != null && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return { settings: parsed as Record<string, unknown>, unreadable: false };
+        }
+        console.error(`Ignoring ${appSettingsPath()}: it does not hold settings`);
     }
     catch (error) {
-        if (errnoCode(error) !== "ENOENT") {
-            console.error(`Ignoring unreadable ${appSettingsPath()}: ${errorMessage(error)}`);
+        if (errnoCode(error) === "ENOENT") {
+            return { settings: {}, unreadable: false };
         }
-        return {};
+        console.error(`Ignoring unreadable ${appSettingsPath()}: ${errorMessage(error)}`);
     }
+    return { settings: {}, unreadable: true };
+}
+
+export async function readAppSettings(): Promise<Record<string, unknown>> {
+    return (await readAppSettingsFile()).settings;
 }
 
 /** Saves the app-wide settings. The only record of where a moved users workspace is: never left half-written. */
-export async function writeAppSettings(settings: Record<string, unknown>) {
+async function writeAppSettings(settings: Record<string, unknown>) {
     await mkdir(appSupportDirectory(), { recursive: true });
     await writeFileAtomically(appSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+/**
+ * One read-modify-write of the app settings under the settings file lock. Every writer goes through here, so none
+ * writes back an older snapshot over another's change (a bundle load turning Privacy mode off, say). `change`
+ * returns the settings to write, or null to leave the file as it is; either way the settings in force are returned.
+ */
+export async function updateAppSettings(change: (settings: Record<string, unknown>) => Record<string, unknown> | null): Promise<Record<string, unknown>> {
+    return withSettingsFileLock(appSettingsPath(), async () => {
+        const { settings: current, unreadable } = await readAppSettingsFile();
+        const next = change(current);
+        if (next === null) {
+            return current;
+        }
+        if (unreadable) {
+            // It may still hold the only record of a moved users workspace: keep it beside the new file.
+            const kept = `${appSettingsPath()}.unreadable-${Date.now()}`;
+            await rename(appSettingsPath(), kept);
+            console.error(`Kept the unreadable app settings as ${kept}`);
+        }
+        await writeAppSettings(next);
+        return next;
+    });
 }
 
 export type MovedConfigPath = readonly [from: string, to: string];
@@ -103,7 +136,7 @@ export function withMovedConfigPaths(settings: Record<string, unknown>, paths: r
 }
 
 export async function saveMovedConfigPath(from: string, to: string) {
-    await writeAppSettings(withMovedConfigPaths(await readAppSettings(), [[from, to]]));
+    await updateAppSettings((settings) => withMovedConfigPaths(settings, [[from, to]]));
 }
 
 /** One bundle's entry of a map in the app settings, keyed by bundle ID. */

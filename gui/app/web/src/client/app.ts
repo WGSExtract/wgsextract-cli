@@ -49,6 +49,7 @@ async function bootstrap(locale?: string) {
         state.colorTheme = normalizeColorTheme(bundle.bundleState?.colorTheme);
         state.webUIFont = bundle.bundleState?.webUIFont === "sfPro" ? "sfPro" : "system";
         state.uiMode = normalizeUIMode(bundle.bundleState?.uiMode);
+        state.privacyMode = bundle.privacyMode === true;
         // At launch, or when a loaded bundle changes the mode; a reload in the same mode (a language change, say) keeps the pane as it was.
         applyUIModeTerminalVisibilityIfChanged();
         state.setupRun = bundle.bundleState?.setupRun ?? null;

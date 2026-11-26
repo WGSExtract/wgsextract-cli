@@ -13,9 +13,9 @@ use std::{
 
 use app_update::native_dialog::check_for_updates;
 use app_update::{
-    env_duration_seconds, env_flag, gfc_update_check, gfc_update_download, gfc_update_install,
-    AUTO_ACCEPT_UPDATE_ENV, AUTO_UPDATE_ACTION_DELAY_SECONDS_ENV, AUTO_UPDATE_DELAY_SECONDS_ENV,
-    AUTO_UPDATE_ENV, E2E_STEP_DELAY_SECONDS_ENV,
+    env_duration_seconds, env_flag, env_flag_or, gfc_update_check, gfc_update_download,
+    gfc_update_install, AUTO_ACCEPT_UPDATE_ENV, AUTO_UPDATE_ACTION_DELAY_SECONDS_ENV,
+    AUTO_UPDATE_DELAY_SECONDS_ENV, AUTO_UPDATE_ENV, E2E_STEP_DELAY_SECONDS_ENV,
 };
 use backend::{BackendLaunch, BackendProcess};
 use tauri::{ipc::CapabilityBuilder, Manager, WebviewUrl, WebviewWindowBuilder};
@@ -129,7 +129,10 @@ fn main() {
                     .permission("allow-gfc-update-install"),
             )?;
             let overlay_script = update_e2e_overlay::script(&application_name, &application_version);
-            let auto_update = env_flag(AUTO_UPDATE_ENV);
+            // Release builds check for updates at startup unless the user turns on Privacy mode (the
+            // page skips the check) or GFC_TAURI_AUTO_UPDATE=0 (tests that must stay offline). Debug
+            // builds check only when GFC_TAURI_AUTO_UPDATE=1 says so.
+            let auto_update = env_flag_or(AUTO_UPDATE_ENV, !cfg!(debug_assertions));
             let auto_accept_update = env_flag(AUTO_ACCEPT_UPDATE_ENV);
             let auto_update_delay_seconds =
                 env_duration_seconds(AUTO_UPDATE_DELAY_SECONDS_ENV).as_secs();
@@ -278,8 +281,14 @@ pub(crate) struct AppPaths {
     pub(crate) backend_log: Option<PathBuf>,
 }
 
-/// The backend's default data folder name (paths.ts's defaultAppDataName).
-const APP_DATA_NAME: &str = "WGSExtract-gui";
+/// The backend's data folder name: the installed app's (paths.ts's defaultAppDataName), or for a
+/// debug build (`make tauri`, `tauri dev`) a development run's (devAppDataName), so running a
+/// checkout never touches the installed app's runtime or its copy of the bundle.
+const APP_DATA_NAME: &str = if cfg!(debug_assertions) {
+    "WGSExtract-gui-dev"
+} else {
+    "WGSExtract-gui"
+};
 
 impl AppPaths {
     fn resolve(app: &tauri::App) -> Result<Self, Box<dyn std::error::Error>> {
