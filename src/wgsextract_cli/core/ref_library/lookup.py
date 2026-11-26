@@ -21,7 +21,7 @@ from __future__ import annotations
 import os
 import re
 import threading
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -80,6 +80,33 @@ def local_ref_path(value: str | None, sep: str | None = None) -> str:
     if sep == ":":
         local = [entry.replace(":", "::") for entry in local]
     return sep.join(local)
+
+
+def restricted_hts_env(
+    command: Sequence[str], env: Mapping[str, str] | None
+) -> Mapping[str, str] | None:
+    """Keep older HTSlib from following a remote CRAM @SQ UR on a cache miss."""
+    tools = {"samtools", "bcftools", "htsfile"}
+    executable = Path(command[0]).stem if command else ""
+    if executable not in tools and not (
+        executable == "pixi" and any(Path(arg).stem in tools for arg in command[1:])
+    ):
+        return env
+    from wgsextract_cli.core.execution_context import current
+    from wgsextract_cli.core.network_policy import network_mode
+
+    mode = network_mode()
+    if mode == "full" or (mode == "low" and current().allow_large_download):
+        return env
+    # A syntactically invalid libcurl proxy fails without DNS or a socket.
+    # Clear NO_PROXY too: even a loopback UR must not bypass this guard.
+    child = {
+        key: value
+        for key, value in (os.environ if env is None else env).items()
+        if not key.lower().endswith("_proxy")
+    }
+    child["all_proxy"] = "http://["
+    return child
 
 
 # Concurrent library calls share the process environment: the first to start

@@ -34,7 +34,7 @@ from wgsextract_cli.core.download_progress import (
     require_http_url,
     retryable_http_status,
 )
-from wgsextract_cli.core.network_policy import require_download
+from wgsextract_cli.core.network_policy import require_download, require_network
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 from . import segmented
@@ -80,6 +80,7 @@ def resolve_github_release_asset_sha256(url: str) -> str | None:
     if github_token:
         headers["Authorization"] = f"Bearer {github_token}"
 
+    require_network("GitHub release checksum lookup", large=False)
     req = Request(api_url, headers=headers)
     with urlopen(req, timeout=30) as response:
         release = json.loads(response.read().decode("utf-8"))
@@ -139,9 +140,11 @@ def download_file(
     resolve_release_digest: bool = True,
     use_cache: bool = True,
     use_mirrors: bool = True,
+    large: bool = True,
 ) -> bool:
     """Prefer audited, pinned mirrors; retain the original source as fallback."""
     require_download(Path(dest).name)
+    require_network(Path(dest).name, large=large)
     from wgsextract_cli.core.resource_mirrors import (
         download_mirror,
         mirror_for,
@@ -159,7 +162,13 @@ def download_file(
                 "Resuming upstream partial for %s; skipping mirror.", entry["id"]
             )
         elif download_mirror(
-            entry, dest, progress_callback, cancel_event, expected_sha256, use_cache
+            entry,
+            dest,
+            progress_callback,
+            cancel_event,
+            expected_sha256,
+            use_cache,
+            large=large,
         ):
             return True
         if cancel_event and cancel_event.is_set():

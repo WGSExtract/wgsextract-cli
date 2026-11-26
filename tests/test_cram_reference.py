@@ -3,11 +3,15 @@
 import gzip
 import os
 import shutil
+from pathlib import Path
 
 import pytest
 
+from tests.fake_tools import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from tests.http_server import serving
 from wgsextract_cli.core.alignment.cram_reference import cram_reference_cache
+from wgsextract_cli.core.network_policy import network_options
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -72,3 +76,32 @@ def test_1061_missing_ur_decodes_from_local_reference(tmp_path, monkeypatch, suf
     ):
         pytest.fail("A mismatched reference must not reach the native reader")
     assert list(work.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("mode", "allowed"), [("off", False), ("low", False), ("full", True)]
+)
+def test_1591_legacy_native_url_fallback_obeys_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, allowed: bool
+) -> None:
+    require_bare_name_fakes()
+    curl = shutil.which("curl")
+    if not curl:
+        pytest.skip("curl unavailable for legacy HTSlib transport probe")
+    monkeypatch.setenv("PATH", str(tmp_path), prepend=os.pathsep)
+    monkeypatch.setenv("NO_PROXY", "*")
+    with serving(data=b"reference") as http:
+        # Older HTSlib uses libcurl to follow the CRAM header's reference URL.
+        command = [curl, "-fsS", "--max-time", "5", http.url_for("reference.fa")]
+        python_tool(
+            tmp_path,
+            "samtools",
+            f"import subprocess\nraise SystemExit(subprocess.call({command!r}))",
+        )
+        with network_options(mode, False):
+            run = run_command(["samtools", "view", "reads.cram"], True, check=False)
+        if allowed:
+            assert run.stdout == "reference"
+        else:
+            assert run.returncode != 0
+            assert not http.requests

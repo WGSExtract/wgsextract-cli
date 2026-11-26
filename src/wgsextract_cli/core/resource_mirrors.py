@@ -43,6 +43,7 @@ def mirror_chunks(
     use_cache: bool = True,
     *,
     assembled: Path | None = None,
+    large: bool = True,
 ) -> Iterator[bytes]:
     """Verify each part before yielding; reject a corrupt concatenation too.
 
@@ -105,6 +106,7 @@ def mirror_chunks(
             expected_sha256=pinned["sha256"],
             use_mirrors=False,
             use_cache=use_cache,
+            large=large,
         ):
             raise MirrorError(f"could not verify {pinned['url']}")
         if part.stat().st_size != pinned["size"]:
@@ -129,6 +131,8 @@ def download_mirror(
     cancel_event: CancelEvent | None,
     expected_sha256: str | None,
     use_cache: bool = True,
+    *,
+    large: bool = True,
 ) -> bool:
     target = Path(dest)
     work = Path(dest + ".mirror")
@@ -146,6 +150,7 @@ def download_mirror(
                 progress_callback,
                 use_cache,
                 assembled=staged,
+                large=large,
             ):
                 output.write(chunk)
         staged.replace(target)

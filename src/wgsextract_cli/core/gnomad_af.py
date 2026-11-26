@@ -32,6 +32,7 @@ from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
     context_thread,
 )
+from wgsextract_cli.core.network_policy import require_network
 from wgsextract_cli.core.process_registry import terminate_trees
 from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.resource_mirrors import mirror_chunks, mirror_for
@@ -116,6 +117,7 @@ def _index_table(path: str) -> None:
 
 
 def _remote_size(url: str, cancel_event: CancelEvent | None) -> int:
+    require_network("gnomAD contig size lookup", large=False)
     if entry := mirror_for(url):
         return int(entry["size"])
     request = Request(url, method="HEAD")
@@ -180,6 +182,7 @@ def _stream_gnomad_contig(
     The download is fed to bcftools here (not opened by htslib) so progress is
     exact, and so a cut-off download fails instead of leaving a short table.
     """
+    require_network("gnomAD allele-frequency contig")
     partial = part + ".partial"
     mirror = mirror_for(url) if use_mirrors else None
     reported = 0

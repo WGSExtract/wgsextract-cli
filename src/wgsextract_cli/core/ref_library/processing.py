@@ -212,6 +212,10 @@ def download_and_process_genome(
     final_path = str(Path(target_dir, genome_data["final"]))
 
     if restart:
+        from wgsextract_cli.core.network_policy import require_download, require_network
+
+        require_download(genome_data["final"])
+        require_network(genome_data["final"])
         # Indexes too: an old .fai beside a failed download reads as installed.
         _remove_genome_files(final_path)
 

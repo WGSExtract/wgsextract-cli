@@ -27,6 +27,7 @@ from urllib.request import Request, urlopen
 from wgsextract_cli.core import read_scope, resource_releases
 from wgsextract_cli.core.docs_links import doc_url
 from wgsextract_cli.core.errors import CodedError
+from wgsextract_cli.core.network_policy import require_network
 from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.core.provenance_records import ResourceRecord
 from wgsextract_cli.core.utils import UsageError
@@ -318,6 +319,7 @@ def lookup_online(used: Sequence[_Used]) -> AnswersDocument:
     answers: list[AnswerDocument] = []
     contacted: list[str] = []
     for (resource_id, build), url in online_targets(used):
+        require_network("Public release listing lookup", large=False)
         contacted.append(url)
         logging.info("Asking %s for the newest %s release.", url, resource_id)
         try:

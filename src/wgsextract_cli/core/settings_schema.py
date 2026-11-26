@@ -52,6 +52,7 @@ def setting(
 
 
 AUTO_OFF = ("auto", "off")
+NETWORK_MODES = ("full", "low", "off")
 # --reference-evidence: none, or a gVCF beside the variant VCF (#863).
 REFERENCE_EVIDENCE_MODES = ("none", "gvcf")
 
@@ -127,6 +128,12 @@ class Settings:
         False,
         "Allow first-use public reference/model downloads for commands with "
         "--download (hosts and request data: docs/privacy.md); no sample uploads",
+    )
+    network_mode: str = setting(
+        "full",
+        "Outbound network mode: full keeps existing opt-ins, low also requires "
+        "--allow-large-download for bulk transfers, off refuses network access",
+        choices=NETWORK_MODES,
     )
     cohort_min_samples: int = setting(
         21,

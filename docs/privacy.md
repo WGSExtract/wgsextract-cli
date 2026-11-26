@@ -18,6 +18,26 @@ installation alone would still allow lockfile resolution and registry queries.
 Incomplete installed runtimes fail with setup guidance, rather than falling back
 to a potentially different CLI on the host's PATH.
 
+## CLI network mode
+
+Set `network_mode` in `config.toml`, or override it for one invocation with
+`--network full|low|off`.
+
+| Mode | Outbound behavior |
+| --- | --- |
+| `full` (default) | Existing operation-specific opt-ins apply. Selecting `full` alone does not grant consent. |
+| `low` | Bulk transfers also require `--allow-large-download`. These include reference genomes and bootstrap archives, panels, models, annotation databases, package installs, and remote alignment or annotation streams. Small requests such as catalog size probes, release and checksum lookups, and pinned cytoband tables can still run with their usual opt-ins. |
+| `off` | Refuses outbound operations even with `--download`, `--allow-large-download` or a disclosure opt-in. Installed data and cached metadata can still be read locally. |
+
+The CLI does not detect metered connections; the desktop app or another caller
+can select the mode. The Python API and server accept `network` and
+`allow_large_download` on operation parameters. A server job can be stricter,
+but cannot relax the mode selected when `serve` starts. This setting governs
+outbound operations, not the server's inbound listener or network access by
+other programs.
+
+## Download and disclosure opt-ins
+
 Explicit download/install commands may use the network. Other commands need
 `--download` before fetching missing public data. Without permission they
 name the missing data and explain how to confirm the download. Installed,

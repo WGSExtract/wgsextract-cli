@@ -219,7 +219,11 @@ def _publish(target: Path, build: str, cancel_event: CancelEvent | None) -> None
                 saved.replace(str(archive) + suffix)
         url, digest = CYTOBAND_SOURCES[build]
         if not download_file(
-            url, str(archive), cancel_event=cancel_event, expected_sha256=digest
+            url,
+            str(archive),
+            cancel_event=cancel_event,
+            expected_sha256=digest,
+            large=False,
         ):
             raise WGSExtractError(
                 f"Failed to download {target.name}; rerun with --download to resume."

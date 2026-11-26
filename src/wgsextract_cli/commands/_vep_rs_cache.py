@@ -293,6 +293,9 @@ def _check_download(dest: Path, expected: _Sum) -> None:
 
 
 def _read_checksum_listing(url: str) -> str:
+    from wgsextract_cli.core.network_policy import require_network
+
+    require_network("Ensembl VEP checksum lookup", large=False)
     attempts = 3
     for attempt in range(1, attempts + 1):
         checkpoint()

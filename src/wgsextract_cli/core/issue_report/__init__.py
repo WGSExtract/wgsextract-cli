@@ -473,6 +473,9 @@ def open_in_browser(url: str) -> bool:
     """Open ``url`` in the user's browser; False if no browser could be started."""
     import webbrowser
 
+    from wgsextract_cli.core.network_policy import require_network
+
+    require_network("Open GitHub issue in browser", large=False)
     try:
         return bool(webbrowser.open(url, new=2))
     except webbrowser.Error:

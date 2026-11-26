@@ -144,6 +144,12 @@ def _download_file(
     force: bool = False,
 ) -> None:
     """Download into <destination>.partial (resuming it if present), then rename."""
+    from wgsextract_cli.core.network_policy import require_network
+
+    require_network(destination.name)
+    if force:
+        for path in _download_paths(destination):
+            path.unlink(missing_ok=True)
     partial = _partial_path(destination)
     logging.info(
         "%s %s", "Resuming" if partial.exists() else "Downloading", redact_urls(source)
@@ -294,10 +300,7 @@ def run_download(params: ExampleGenomeDownloadParams) -> None:
         example_dir.mkdir(parents=True, exist_ok=True)
         for source, destination, role, transfer_method in planned:
             checkpoint()
-            if params.force:
-                for path in _download_paths(destination):
-                    path.unlink(missing_ok=True)
-            elif destination.exists():
+            if not params.force and destination.exists():
                 logging.info(f"Skipping existing {destination}")
                 current_result().add_output(destination, role)
                 continue

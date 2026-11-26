@@ -193,6 +193,13 @@ def run_container(
     # from EBI unless REF_PATH is set; the host's caches aren't mounted, so it
     # gets an empty folder of its own (#636).
     cmd += ["-e", f"{REF_PATH}={CONTAINER_REF_PATH}"]
+    from wgsextract_cli.core.network_policy import network_mode
+
+    mode = network_mode()
+    if mode != "full" and "--pull=never" not in cmd:
+        cmd += ["--pull=never"]
+    if mode == "off":
+        cmd += ["--network=none"]
     for mount in mounts:
         cmd += _bind_mount(mount)
     name = f"wgsextract-{uuid.uuid4().hex[:12]}"

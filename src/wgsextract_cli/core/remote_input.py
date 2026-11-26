@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import BinaryIO
 from urllib.parse import urlsplit, urlunsplit
 
+from wgsextract_cli.core.network_policy import require_network
 from wgsextract_cli.core.paths import PathInput
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 
@@ -66,6 +67,7 @@ def check_url(url: str) -> None:
     naming a BAM/CRAM, or when samtools can't read http(s) (built without
     libcurl, as on Windows)."""
     check_public(url)
+    require_network("Remote BAM/CRAM input")
     if Path(urlsplit(url).path).suffix.lower() not in _INDEX_SUFFIXES:
         raise UsageError(f"{shown(url)} doesn't name a .bam or .cram file.")
     if not _samtools_reads_urls():
@@ -98,6 +100,7 @@ class RemoteFile:
 
 def remote_file(url: str) -> RemoteFile:
     """The remote file's size and fingerprint, from an HTTP HEAD request."""
+    require_network("Remote BAM/CRAM input")
     import hashlib
     from http.client import HTTPException
     from urllib.error import URLError
@@ -145,6 +148,7 @@ def fetch_index(url: str, directory: PathInput) -> str | None:
     """Download the remote alignment's index (``URL.crai``, ``.bai`` or
     ``.csi``) into ``directory``; None when the server has none (404, or
     S3's 403). Other failures raise: a rerun can still use the index."""
+    require_network("Remote BAM/CRAM index")
     from http.client import HTTPException
     from urllib.error import HTTPError, URLError
     from urllib.request import urlopen
@@ -182,6 +186,7 @@ def copy_range(path: str, start: int, end: int | None, output: BinaryIO) -> None
         if end is not None and copied != end - start:
             raise WGSExtractError(f"{path} ended {end - start - copied} bytes early.")
         return
+    require_network("Remote BAM/CRAM byte ranges")
     from http.client import HTTPException
     from urllib.error import URLError
     from urllib.request import Request, urlopen

@@ -207,6 +207,11 @@ def config_args(*, keep_awake: bool | None = None) -> list[str]:
 
     selected = _state().path
     args = ["--config", str(selected)] if selected else []
+    context = current()
+    if context.network_mode is not None:
+        args += ["--network", context.network_mode]
+    if context.allow_large_download:
+        args.append("--allow-large-download")
     if keep_awake or (keep_awake is False and settings.get("keep_awake", False)):
         args.append("--keep-awake" if keep_awake else "--no-keep-awake")
     # An internal step's card would describe the step; its caller writes its own.

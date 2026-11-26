@@ -170,6 +170,8 @@ class JobManager:
         allowed: Iterable[str | os.PathLike[str]] | None = None,
         worker_command: list[str] | None = None,
         card: bool | None = None,
+        network: str | None = None,
+        allow_large_download: bool = False,
     ) -> None:
         self.directory = directory
         self.allowed = None if allowed is None else [os.fspath(a) for a in allowed]
@@ -178,6 +180,8 @@ class JobManager:
         self.max_jobs = max(1, max_jobs)
         self.debug = debug
         self.card = card  # each job's result card; None: as config.toml says
+        self.network = network
+        self.allow_large_download = allow_large_download
         self.worker_command = worker_command or [
             sys.executable,
             "-m",
@@ -380,6 +384,13 @@ class JobManager:
         effective = op.request_values(
             with_config_defaults(params_from_json(op, params))
         )
+        from wgsextract_cli.core.settings_schema import NETWORK_MODES
+
+        if self.network is not None:
+            requested = effective.get("network") or self.network
+            effective["network"] = max(self.network, requested, key=NETWORK_MODES.index)
+        if self.allow_large_download:
+            effective["allow_large_download"] = True
         if self.default_outdir and "outdir" in effective and not params.get("outdir"):
             effective["outdir"] = self.default_outdir
         job = Job(

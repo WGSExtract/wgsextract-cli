@@ -24,6 +24,7 @@ from urllib.request import Request, urlopen
 
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.execution_context import context_thread
+from wgsextract_cli.core.network_policy import require_network
 
 from .segmented import user_agent
 
@@ -70,6 +71,8 @@ def _ftp_size(url: str) -> int | None:
 def probe_size(url: str) -> int | None:
     """The size of the file at ``url``, or None when the server doesn't say."""
     scheme = urlparse(url).scheme
+    if scheme in ("ftp", "http", "https"):
+        require_network("Reference catalog size lookup", large=False)
     try:
         if scheme == "ftp":
             return _ftp_size(url)
@@ -130,6 +133,7 @@ def refresh_sizes(library: Path, urls: Iterable[str]) -> dict[str, int]:
     )
     if not stale:
         return cached_sizes(library)
+    require_network("Reference catalog size lookup", large=False)
     found = _probe_all(stale)
     logging.info("Found the download size of %d of %d genomes.", len(found), len(stale))
     # A library that doesn't exist yet holds no genomes to cache sizes for.
