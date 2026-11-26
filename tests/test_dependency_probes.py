@@ -248,7 +248,9 @@ def test_a_timed_out_probe_is_retried_with_a_longer_limit(host, tmp_path, monkey
     second, every time."""
     log = tmp_path / "runs.log"
     _tool(
-        host, "samtools", _logging_runs(log) + 'time.sleep(4); print("samtools 1.21")'
+        host,
+        "samtools",
+        _logging_runs(log) + 'time.sleep(2.25); print("samtools 1.21")',
     )
     # The clock: the real limits are a minute, then three.
     monkeypatch.setattr(dependency_checks, "VERSION_PROBE_TIMEOUT", 2)
@@ -432,11 +434,11 @@ def test_a_slow_lockfile_query_still_gives_the_install_hint(
     slow = python_tool(
         tmp_path / "slow-pixi",
         "pixi",
-        _logging_runs(log) + "import subprocess, sys, time\ntime.sleep(4)\n"
+        _logging_runs(log) + "import subprocess, sys, time\ntime.sleep(2.25)\n"
         f"sys.exit(subprocess.call([{str(fake_pixi.exe)!r}, *sys.argv[1:]]))\n",
     )
     monkeypatch.setenv("PIXI_EXE", str(slow))
-    # The clock: only the first limit shrinks, below the 4 s stall; the
+    # The clock: only the first limit shrinks, below the 2.25 s stall; the
     # retry keeps its real budget so a slow runner can't fail this test.
     retry = pixi_tools.PIXI_QUERY_TIMEOUTS[-1]
     monkeypatch.setattr(pixi_tools, "PIXI_QUERY_TIMEOUTS", (2, retry))
