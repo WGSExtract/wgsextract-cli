@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -184,7 +185,8 @@ class TableWriter:
 
     Rows are buffered one row group at a time, so memory doesn't grow with the
     table. The file appears under its final name only when the ``with`` block
-    completes without an error.
+    completes without an error. ``private=True`` uses owner-only permissions
+    on POSIX, including during staging.
     """
 
     def __init__(
@@ -195,6 +197,7 @@ class TableWriter:
         *,
         metadata: Mapping[str, str] | None = None,
         row_group_rows: int = ROW_GROUP_ROWS,
+        private: bool = False,
     ) -> None:
         if table_format not in FORMATS:
             raise ValueError(f"Unknown table format: {table_format}")
@@ -203,6 +206,7 @@ class TableWriter:
         self.format = table_format
         self.metadata = dict(metadata or {})
         self.row_group_rows = row_group_rows
+        self.private = private
         self.rows = 0
         self._buffer: list[Sequence[Value]] = []
         self._arrow: list[Any] = []
@@ -215,6 +219,8 @@ class TableWriter:
     def __enter__(self) -> TableWriter:
         with ExitStack() as stack:
             staged = stack.enter_context(atomic_output(self.path))
+            if self.private:
+                os.close(os.open(staged, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
             if self.format == "tsv":
                 self._tsv = stack.enter_context(
                     open(staged, "w", newline="\n", encoding="utf-8")
