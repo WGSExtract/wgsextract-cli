@@ -1,6 +1,5 @@
 """Saved settings and defaults for the configuration report."""
 
-import logging
 from collections.abc import Mapping
 from typing import Any
 
@@ -17,6 +16,8 @@ def configured_thread_count() -> int | None:
     try:
         return parse_thread_count(value)
     except ValueError as error:
+        import logging
+
         # A bad default must not block a command or a --threads override.
         logging.warning(f"Ignoring invalid cpu_threads in {get_config_path()}: {error}")
         return None

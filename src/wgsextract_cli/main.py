@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
-import logging
 import os
 import sys
 from collections.abc import Sequence
 from contextlib import ExitStack
 
 from .cli.argv import config_path_from_argv, show_version, version_only
-from .cli.bootstrap import configure_stdio_encoding
+from .cli.stdio import configure_stdio_encoding
 from .core.config import reload_settings, set_config_path
 from .core.errors import WGSExtractError
 from .core.workspace_activity import WORKSPACE_LEASE_ARGUMENT, workspace_use
@@ -92,6 +91,8 @@ def _run(argv: Sequence[str] | None, workspace: ExitStack) -> None:
             else:
                 parser.print_help()
     except RunLogError as exc:
+        import logging
+
         logging.error("Cannot write persistent run log: %s", exc)
         raise SystemExit(1) from exc
 
