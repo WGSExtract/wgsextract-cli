@@ -450,9 +450,11 @@ def test_several_samples_are_called_in_one_stream(
     assert "contigs with" not in caplog.text
 
 
-def _decoy_heavy(root: Path) -> tuple[str, str]:
+@pytest.fixture(scope="module")
+def decoy_heavy(tmp_path_factory: pytest.TempPathFactory) -> tuple[str, str]:
     """A 120 kb contig, 40 small read-bearing contigs (two with 300-read deep
     patches) and 3,000 empty 1 kb decoys, like hs38DH's header."""
+    root = tmp_path_factory.mktemp("decoy-calls")
     rng = random.Random(3)
     lengths = {"chrBig": 120_000}
     lengths |= {f"chrUn_{i}": 1_500 for i in range(40)}
@@ -495,12 +497,15 @@ def _decoy_heavy(root: Path) -> tuple[str, str]:
 @needs_htslib
 @pytest.mark.parametrize("indels", [False, True])
 def test_many_small_contigs_are_called_in_a_few_jobs(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture, indels: bool
+    decoy_heavy: tuple[str, str],
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    indels: bool,
 ) -> None:
     # PR #560 review: one pipeline per contig made an hs38DH-style header
     # (thousands of decoys) 14x slower in parallel than serially.
     caplog.set_level(logging.INFO)
-    serial, parallel = _bodies(_decoy_heavy(tmp_path), tmp_path, indels=indels)
+    serial, parallel = _bodies(decoy_heavy, tmp_path, indels=indels)
     assert serial == parallel
     assert "chrUn_3\t" in serial and "chrUn_39\t" in serial
     jobs = re.search(r"Calling (\d+) contigs in (\d+) jobs", caplog.text)

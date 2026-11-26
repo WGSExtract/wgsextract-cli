@@ -4,6 +4,7 @@ import { syncBuiltinESMExports } from "node:module";
 import test from "node:test";
 
 const { createProcessManager } = await import("../dist/web/src/server/process-runner.js");
+const { launchBrowserProcess } = await import("../dist/web/src/server/system-browser.js");
 const { TailBuffer } = await import("../dist/web/src/server/tail-buffer.js");
 const { windowsAdminLauncherScript, windowsAdminWrapperScript } = await import("../dist/web/src/server/windows-admin.js");
 
@@ -58,6 +59,10 @@ test("process manager captures successful output", async () => {
   assert.equal(result.exitCode, 0);
   assert.equal(result.stdout, "out");
   assert.equal(result.stderr, "err");
+});
+
+test("#1113: opening an external browser does not wait for it to close", async () => {
+  await launchBrowserProcess(process.execPath, ["-e", "setTimeout(() => process.exit(2), 1500)"]);
 });
 
 test("process manager keeps the tail of buffered stdout and stderr independently", async () => {

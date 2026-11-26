@@ -2,9 +2,9 @@
 
 **Gene page**, in the WGS Extract sidebar below **Genome viewer**, shows one
 gene from your own files: its transcripts and exons, your variants in it with
-their annotations, and how well your reads cover each exon. Everything is read
-on this computer by the WGS Extract CLI (`wgsextract info gene`); nothing is
-downloaded, and nothing about your genome is sent anywhere.
+their annotations, and how well your reads cover each exon. **Show gene** reads
+files on this computer with `wgsextract info gene`. It does not download data
+or send information about your genome.
 
 ## Opening a gene
 
@@ -42,6 +42,27 @@ Enter a gene symbol or alias (NCBI RefSeq, such as `BRCA1`) and, optionally:
 
 ACMG classes are fastVEP's automated classification, for research only and
 not a diagnosis.
+
+## Open in gene.iobio
+
+For GRCh37 or GRCh38, choose **gene.iobio licence and privacy…** on a gene
+result. Read the notice and choose **Accept and open gene.iobio** to open
+`gene.iobio.io` in your default browser. WGS Extract does not bundle or install
+gene.iobio or its backend. The CLI has no external hand-off.
+
+gene.iobio is free for academic and personal use; any other use (including
+commercial) requires a licence from Frameshift Genomics (info@frameshift.io).
+Not for clinical use.
+
+The browser sends only the selected gene symbol and reference build in the
+link, along with ordinary browser request metadata. The gene and build may
+themselves be sensitive. WGS Extract does not send reads, variants, filenames,
+paths or sample IDs. If you select local BAM or VCF files and their indexes
+on the website, it can expose them to iobio's servers through
+`waygate.iobio.io`; do not assume access is limited to the selected gene.
+Each launch requires fresh confirmation. The app records the last
+acceptance time and notice version locally, without recording the gene or
+build in the receipt.
 
 ## Missing data
 

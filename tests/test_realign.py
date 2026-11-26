@@ -6,6 +6,7 @@ import platform as platform
 import random as random
 import re as re
 import shutil as shutil
+import subprocess
 import sys as sys
 from pathlib import Path as Path
 from typing import NamedTuple as NamedTuple
@@ -51,11 +52,11 @@ def _args(source, **overrides):
     return RealignParams(**values)
 
 
-def _view(*args):
+def _view(*args: str) -> str:
     return run_command(["samtools", *args], capture_output=True).stdout
 
 
-def _old_alignment(tmp_path, genome, pairs=150):
+def _old_alignment(tmp_path: Path, genome: str, pairs: int = 150) -> tuple[str, int]:
     """A coordinate-sorted, indexed BAM of FR pairs on the genome under its old
     contig name ``old1``, with pair p0 duplicated as ``dup``."""
     rng = random.Random(11)
@@ -81,6 +82,10 @@ def _old_alignment(tmp_path, genome, pairs=150):
 
 @pytest.fixture
 def genome_and_ref(tmp_path):
+    return _write_realign_reference(tmp_path)
+
+
+def _write_realign_reference(tmp_path: Path) -> tuple[str, str]:
     rng = random.Random(5)
     genome = "".join(rng.choice("ACGT") for _ in range(6_000))
     (tmp_path / "old").mkdir()
@@ -342,7 +347,7 @@ def source(tmp_path):
 # --- resuming after a crash ---------------------------------------------------
 
 
-def _dying_tools(tmp_path, log):
+def _dying_tools(tmp_path: Path, log: Path) -> Path:
     """PATH shims for the aligner, samtools and sambamba that log each call's
     subcommand and, when it matches the pattern in ``tmp_path/die``, SIGKILL
     the wgsextract run's process group and their own mid-call, as an OOM kill
@@ -389,10 +394,14 @@ def _dying_tools(tmp_path, log):
 
 
 def _realign_cli(
-    argv, shims, die=None, signal="9", available_memory=None, effective_uid=None
-):
+    argv: list[str],
+    shims: Path,
+    die: str | None = None,
+    signal: str = "9",
+    available_memory: int | None = None,
+    effective_uid: int | None = None,
+) -> subprocess.CompletedProcess[str]:
     import os
-    import subprocess
     import sys
 
     if die:
@@ -429,6 +438,6 @@ def _realign_cli(
     return subprocess.CompletedProcess(run.args, run.returncode, stdout, stderr)
 
 
-def _records(bam):
+def _records(bam: Path | str) -> tuple[list[str], str]:
     header = [h for h in _view("view", "-H", str(bam)).splitlines() if h[:3] != "@PG"]
     return header, _view("view", str(bam))

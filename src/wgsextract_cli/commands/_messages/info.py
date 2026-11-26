@@ -6,7 +6,12 @@ CLI_HELP = {
     "arg_csv": "Output the table as CSV instead of formatted text",
     "cmd_calculate-coverage": "Generate a full breadth-of-coverage report. Uses samtools coverage to calculate exactly how much of each chromosome was sequenced.",
     "cmd_coverage-sample": "Quickly estimate per-chromosome breadth of coverage by sampling ~1,000 evenly spaced, length-weighted 1 kb windows. An estimate; use calculate-coverage for exact numbers.",
-    "cmd_info-gene": "Look at one gene from local data: its span and RefSeq transcripts, your VCF's variants in it with consequence, ClinVar, gnomAD and research-only ACMG annotations, and BAM/CRAM read depth over each exon against a callable threshold. Nothing is downloaded; missing data names the command that makes it.",
+    "cmd_info-gene": (
+        "Look at one gene from local data: its span and RefSeq transcripts, your VCF's variants in it with consequence, ClinVar, gnomAD and research-only ACMG annotations, and BAM/CRAM read depth over each exon against a callable threshold. "
+        "Nothing is downloaded; missing data names the command that makes it. "
+        "Only the desktop Gene page offers an optional hand-off to gene.iobio, with consent each time. "
+        "gene.iobio is free for academic and personal use; any other use (including commercial) requires a licence from Frameshift Genomics (info@frameshift.io). Not for clinical use."
+    ),
     "cmd_info-chip": "Identify the vendor, chip and revision of a consumer microarray raw-data file (23andMe, AncestryDNA, MyHeritage, FTDNA, ...) from its header and marker set, with a confidence score and the matching --formats template.",
 }
 
