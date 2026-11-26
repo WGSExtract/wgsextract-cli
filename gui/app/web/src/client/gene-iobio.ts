@@ -1,12 +1,23 @@
 import { geneIobioBuild, geneIobioConsentVersion } from "../../../shared/gene-iobio.js";
 import type { GeneDocument } from "../../../shared/gene-page.js";
+import { resolveWorkspaceDisplayPath } from "../../../shared/workspace-paths.js";
 import { api } from "./api.js";
 import { escapeHTML } from "./dom.js";
 import type { GeneText } from "./gene-page-view.js";
+import { workspaceRoots } from "./model.js";
 
-export function requestGeneIobio(doc: GeneDocument, text: GeneText, opener: HTMLElement) {
+export function requestGeneIobio(
+    doc: GeneDocument, files: { alignment: string; vcf: string }, text: GeneText, opener: HTMLElement,
+) {
     const build = geneIobioBuild(doc.build);
     if (!build) return;
+    const roots = workspaceRoots();
+    const selected = ([
+        [files.alignment, /\.(bam|cram)$/],
+        [files.vcf, /\.vcf\.gz$/],
+    ] as const).filter(([file]) => file).map(([file, supported]) => `
+        <li><bdi>${escapeHTML(resolveWorkspaceDisplayPath(file, roots))}</bdi>
+            ${supported.test(file) ? "" : `(${escapeHTML(text("iobio.unsupportedFile"))})`}</li>`);
     const dialog = document.createElement("dialog");
     dialog.className = "gene-iobio-dialog";
     dialog.setAttribute("aria-labelledby", "gene-iobio-title");
@@ -15,6 +26,8 @@ export function requestGeneIobio(doc: GeneDocument, text: GeneText, opener: HTML
       <h2 id="gene-iobio-title">${escapeHTML(text("iobio.title"))}</h2>
       <p id="gene-iobio-licence">${escapeHTML(text("iobio.licence"))}</p>
       <p id="gene-iobio-privacy">${escapeHTML(text("iobio.privacy", { gene: doc.gene.symbol, build }))}</p>
+      ${selected.length ? `<p>${escapeHTML(text("iobio.loadFiles"))}</p>
+      <ul class="gene-iobio-files">${selected.join("")}</ul>` : ""}
       <p class="inline-error" role="alert"></p>
       <div class="gene-iobio-actions">
         <button type="button" class="secondary-button" data-iobio-cancel autofocus>${escapeHTML(text("iobio.cancel"))}</button>

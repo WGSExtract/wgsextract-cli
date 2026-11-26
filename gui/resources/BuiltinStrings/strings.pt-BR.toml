@@ -235,10 +235,12 @@
 "gene.iobio.cancel" = "Cancelar"  # i18n-source-hash:77dfd213
 "gene.iobio.error" = "Não foi possível abrir o gene.iobio no navegador."  # i18n-source-hash:df6f8532
 "gene.iobio.licence" = "O gene.iobio é gratuito para uso acadêmico e pessoal; qualquer outro uso (inclusive comercial) requer uma licença da Frameshift Genomics (info@frameshift.io). Não se destina ao uso clínico."  # i18n-source-hash:509bbb29
+"gene.iobio.loadFiles" = "No site, escolha «Load → Specify files». O seletor aceita BAM com BAI, CRAM com CRAI e VCF compactado (.vcf.gz) com TBI ou CSI."  # i18n-source-hash:31032bc6
 "gene.iobio.open" = "Aceitar e abrir o gene.iobio"  # i18n-source-hash:b814d43d
-"gene.iobio.privacy" = "Esta ação abre gene.iobio.io no navegador e envia o símbolo do gene (%{gene}) e a versão da referência (%{build}). Essas informações podem ser sensíveis. O WGS Extract não envia arquivos de amostras, caminhos de arquivos nem identificadores de amostras. Se você selecionar um arquivo BAM ou VCF e seu índice no site, ele pode expor esses arquivos aos servidores iobio via waygate.iobio.io. Ao continuar, seu consentimento é registrado localmente, sem armazenar o gene nem a versão da referência."  # i18n-source-hash:4eba5694
+"gene.iobio.privacy" = "Esta ação abre gene.iobio.io no navegador e envia o símbolo do gene (%{gene}) e a versão da referência (%{build}). Essas informações podem ser sensíveis, e o site pode enviar o link ao seu serviço de análise de tráfego. O WGS Extract não envia arquivos de amostras, caminhos de arquivos nem identificadores de amostras. Se você selecionar arquivos locais no site, ele pode expor esses arquivos aos servidores iobio via waygate.iobio.io. Ao continuar, seu consentimento é registrado localmente, sem armazenar o gene nem a versão da referência."  # i18n-source-hash:789e46c6
 "gene.iobio.review" = "Licença e privacidade do gene.iobio…"  # i18n-source-hash:fb9dc96b
 "gene.iobio.title" = "Abrir no gene.iobio?"  # i18n-source-hash:0bc72654
+"gene.iobio.unsupportedFile" = "não aceito pelo seletor de arquivos do site"  # i18n-source-hash:dc6a4107
 "gene.legendBelow" = "Abaixo do limite"  # i18n-source-hash:064474a5
 "gene.legendCallable" = "Avaliável"  # i18n-source-hash:3b55289f
 "gene.legendUnknown" = "Sem dados de cobertura"  # i18n-source-hash:d4af56c3

@@ -235,10 +235,12 @@
 "gene.iobio.cancel" = "Abbrechen"  # i18n-source-hash:77dfd213
 "gene.iobio.error" = "gene.iobio konnte nicht im Browser geöffnet werden."  # i18n-source-hash:df6f8532
 "gene.iobio.licence" = "gene.iobio ist für die akademische und private Nutzung kostenlos. Jede andere Nutzung (auch gewerbliche) erfordert eine Lizenz von Frameshift Genomics (info@frameshift.io). Nicht zur klinischen Nutzung."  # i18n-source-hash:509bbb29
+"gene.iobio.loadFiles" = "Wählen Sie auf der Website „Load → Specify files“. Die Dateiauswahl akzeptiert BAM mit BAI, CRAM mit CRAI und komprimierte VCF (.vcf.gz) mit TBI oder CSI."  # i18n-source-hash:31032bc6
 "gene.iobio.open" = "Akzeptieren und gene.iobio öffnen"  # i18n-source-hash:b814d43d
-"gene.iobio.privacy" = "Dies öffnet gene.iobio.io im Browser und übermittelt das Gensymbol (%{gene}) und die Referenzversion (%{build}). Diese Angaben können sensibel sein. WGS Extract sendet keine Probendateien, Dateipfade oder Proben-IDs. Wenn Sie dort eine BAM- oder VCF-Datei und ihren Index auswählen, kann die Website diese Dateien über waygate.iobio.io für die iobio-Server zugänglich machen. Beim Fortfahren wird Ihre Zustimmung lokal gespeichert, ohne das Gen oder die Referenzversion zu speichern."  # i18n-source-hash:4eba5694
+"gene.iobio.privacy" = "Dies öffnet gene.iobio.io im Browser und übermittelt das Gensymbol (%{gene}) und die Referenzversion (%{build}). Diese Angaben können sensibel sein, und die Website kann den Link an ihren Analysedienst senden. WGS Extract sendet keine Probendateien, Dateipfade oder Proben-IDs. Wenn Sie dort lokale Dateien auswählen, kann die Website diese über waygate.iobio.io für die iobio-Server zugänglich machen. Beim Fortfahren wird Ihre Zustimmung lokal gespeichert, ohne das Gen oder die Referenzversion zu speichern."  # i18n-source-hash:789e46c6
 "gene.iobio.review" = "Lizenz und Datenschutz von gene.iobio …"  # i18n-source-hash:fb9dc96b
 "gene.iobio.title" = "In gene.iobio öffnen?"  # i18n-source-hash:0bc72654
+"gene.iobio.unsupportedFile" = "von der Dateiauswahl der Website nicht unterstützt"  # i18n-source-hash:dc6a4107
 "gene.legendBelow" = "Unter dem Schwellenwert"  # i18n-source-hash:064474a5
 "gene.legendCallable" = "Auswertbar"  # i18n-source-hash:3b55289f
 "gene.legendUnknown" = "Keine Abdeckungsdaten"  # i18n-source-hash:d4af56c3

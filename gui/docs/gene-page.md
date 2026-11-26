@@ -57,12 +57,25 @@ Not for clinical use.
 The browser sends only the selected gene symbol and reference build in the
 link, along with ordinary browser request metadata. The gene and build may
 themselves be sensitive. WGS Extract does not send reads, variants, filenames,
-paths or sample IDs. If you select local BAM or VCF files and their indexes
-on the website, it can expose them to iobio's servers through
+paths or sample IDs. The notice shows the local paths used for the current
+result. On gene.iobio, choose **Load** → **Specify files** and select each file
+with its matching index: BAM + BAI, CRAM + CRAI, or `.vcf.gz` + TBI or CSI.
+The notice marks filenames the picker does not accept, such as `.vcf.bgz`.
+Selecting local files on the website can expose them to iobio's servers through
 `waygate.iobio.io`; do not assume access is limited to the selected gene.
 Each launch requires fresh confirmation. The app records the last
 acceptance time and notice version locally, without recording the gene or
 build in the receipt.
+
+The desktop Gene page accepts local inputs, not remote URLs. gene.iobio's
+file URL parameters are for files its hosted backend can reach; they cannot
+load files from your computer. In a Chromium test against the live site
+(2026-11-26), the site annotated BRCA1 variants from a public VCF and index.
+With a synthetic loopback VCF and index, the browser sent those URLs to
+`backend.iobio.io/variantHeader`, which could not open them. There were no
+requests to the loopback file server. The site sent the page URL to Google
+Analytics both with the test file parameters and with just the gene and build.
+WGS Extract does not start a file server or add file parameters to the link.
 
 ## Missing data
 
