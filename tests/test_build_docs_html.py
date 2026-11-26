@@ -130,7 +130,8 @@ def test_build_docs_html_renders_cli_and_gui_docs_with_rewritten_links(
             target_part = attr.split("#", 1)[0]
             if not target_part or target_part.endswith("assets/site.css"):
                 continue
-            # Top-level landing pages (index.html, install.html, etc.) are built by build_site.py.
+            # Top-level landing pages (index.html, install.html, etc.) are built by build_site.py;
+            # the mockups preview is added by the Pages workflow from the mockups/v2 branch.
             resolved = (html_file.parent / target_part).resolve()
             rel = resolved.relative_to(tmp_path.resolve()).as_posix()
             if "/" not in rel or rel in {
@@ -139,6 +140,7 @@ def test_build_docs_html_renders_cli_and_gui_docs_with_rewritten_links(
                 "app/wgsextract.html",
                 "app/docs.html",
                 "app/whats-different.html",
+                "app/mockups/preview/v2/index.html",
             }:
                 continue
             if not resolved.is_file():

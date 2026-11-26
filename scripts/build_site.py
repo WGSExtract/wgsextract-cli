@@ -34,6 +34,7 @@ NAV_ITEMS = [
     ("workflows.html", "Workflows"),
     ("wgs-guide.html", "WGS guide"),
     ("reference.html", "Reference"),
+    ("app/mockups/preview/v2/index.html", "UI mockups"),
 ]
 
 
