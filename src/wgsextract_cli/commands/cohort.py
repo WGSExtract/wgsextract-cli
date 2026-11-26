@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterable
+from collections import Counter
+from collections.abc import Iterable, Iterator
+from contextlib import ExitStack
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from wgsextract_cli.api._runtime import checkpoint
 from wgsextract_cli.api.cohort import CohortSummarizeParams
-from wgsextract_cli.commands.cohort_counts import chromosome_rows
+from wgsextract_cli.commands.cohort_counts import CohortRow, chromosome_rows
 from wgsextract_cli.commands.cohort_inputs import (
     Cohort,
     local_path,
@@ -20,6 +23,7 @@ from wgsextract_cli.commands.cohort_qc import join
 from wgsextract_cli.commands.cohort_vcf import prepare_participant
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.builds import build_from_chr1_length
+from wgsextract_cli.core.config import typed_settings
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.reference_resolver import read_fai_lengths
 from wgsextract_cli.core.region_selection import Intervals, selected_intervals
@@ -42,9 +46,10 @@ from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import UsageError
 from wgsextract_cli.core.variant_confidence import Thresholds
 from wgsextract_cli.core.variant_files import chromosome_aliases
-from wgsextract_cli.core.variant_table import COLUMNS, INTEGER, REAL
+from wgsextract_cli.core.variant_table import COLUMNS, INTEGER, REAL, Row
 
-_SCHEMA = "wgsextract.cohort_variants/1"
+_SCHEMA = "wgsextract.cohort_variants/2"
+_EXPORT_SCHEMA = "wgsextract.cohort_export/1"
 _AUTOSOME = re.compile(r"(?:chr)?(?:[1-9]|1[0-9]|2[0-2])\Z")
 _REGION = r"(?:chr)?(?:[1-9]|1[0-9]|2[0-2])(?::[0-9]+(?:-[0-9]+)?)?"
 _COLUMNS = (
@@ -71,7 +76,68 @@ _COLUMNS = (
         INTEGER,
         "Participants with assessed but ineligible, missing or contradictory evidence.",
     ),
+    Column(
+        "below_disclosure_threshold",
+        "BOOLEAN",
+        "Row did not meet disclosure thresholds.",
+    ),
 )
+_EXPORT_COLUMNS = (
+    *COLUMNS[:4],
+    Column("carriers", INTEGER, "Callable participants carrying this ALT."),
+)
+
+
+@dataclass
+class Disclosure:
+    samples: int
+    min_samples: int
+    min_allele_count: int
+    min_carriers: int
+    flagged_rows: int = 0
+    below: Counter[str] = field(default_factory=Counter)
+
+    def rows(
+        self, rows: Iterable[CohortRow], export: TableWriter | None
+    ) -> Iterator[Row]:
+        for row in rows:
+            carriers = row.carriers
+            non_carriers = row.callable_samples - carriers
+            checks = (
+                ("callable_samples", row.callable_samples < self.min_samples),
+                ("allele_count", row.ac < self.min_allele_count),
+                ("carriers", carriers < self.min_carriers),
+                ("non_carriers", non_carriers < self.min_carriers),
+            )
+            reasons = [reason for reason, failed in checks if failed]
+            flagged = bool(reasons) or self.samples < self.min_samples
+            self.below.update(reasons)
+            self.flagged_rows += flagged
+            if export is not None and not flagged:
+                export.write([(row.chrom, row.pos, row.ref, row.alt, carriers)])
+            yield (*row, flagged)
+
+    def warn(self) -> None:
+        if self.samples < self.min_samples:
+            warn(
+                "cohort_small_cohort",
+                f"Cohort size ({self.samples:,}) is below the disclosure minimum ({self.min_samples:,}).",
+                samples=self.samples,
+                min_samples=self.min_samples,
+            )
+        for reason, minimum in (
+            ("callable_samples", self.min_samples),
+            ("allele_count", self.min_allele_count),
+            ("carriers", self.min_carriers),
+            ("non_carriers", self.min_carriers),
+        ):
+            if count := self.below[reason]:
+                warn(
+                    f"cohort_low_{reason}",
+                    f"{count:,} cohort allele row(s) fall below the disclosure minimum for {reason.replace('_', ' ')}.",
+                    rows=count,
+                    minimum=minimum,
+                )
 
 
 def _scope(params: CohortSummarizeParams, lengths: dict[str, int]) -> Intervals:
@@ -161,6 +227,18 @@ def run_summary(params: CohortSummarizeParams) -> None:
     verify_dependencies(["bcftools"])
     check_format(params.table_format)
     cohort = read_cohort(params.cohort_manifest)
+    defaults = typed_settings()
+    min_relatedness = (
+        defaults.cohort_min_relatedness
+        if params.min_relatedness is None
+        else params.min_relatedness
+    )
+    disclosure = Disclosure(
+        len(cohort.participants),
+        params.min_samples or defaults.cohort_min_samples,
+        params.min_allele_count or defaults.cohort_min_allele_count,
+        params.min_carriers or defaults.cohort_min_carriers,
+    )
     lengths = _load_reference(cohort)
     scope = _scope(params, lengths)
     thresholds = Thresholds(
@@ -169,6 +247,12 @@ def run_summary(params: CohortSummarizeParams) -> None:
     outdir = local_path(Path.cwd(), str(params.outdir or Path.cwd()))
     stem = outdir / "cohort.variants"
     output = table_path(stem, params.table_format)
+    export_path = (
+        table_path(outdir / "cohort.variants.export", params.table_format)
+        if params.export
+        else None
+    )
+    tables = [output, export_path] if export_path is not None else [output]
     private = outdir / "cohort.participants.private.json"
     inputs = {
         cohort.reference.path,
@@ -185,7 +269,7 @@ def run_summary(params: CohortSummarizeParams) -> None:
     if cohort.relatedness:
         inputs.update(artifact.path for artifact in cohort.relatedness.artifacts)
     targets = [
-        Path(output),
+        *(Path(path) for path in tables),
         *(
             manifest_dir_for(outdir) / (stem.name + suffix)
             for suffix in (MANIFEST_SUFFIX, FAILED_MANIFEST)
@@ -196,8 +280,9 @@ def run_summary(params: CohortSummarizeParams) -> None:
         ),
         *(
             index
+            for path in tables
             for suffix in (".bai", ".crai", ".csi", ".tbi", ".idx")
-            for index in (Path(output + suffix), Path(output).with_suffix(suffix))
+            for index in (Path(path + suffix), Path(path).with_suffix(suffix))
         ),
     ]
     if params.include_identifiers:
@@ -224,21 +309,54 @@ def run_summary(params: CohortSummarizeParams) -> None:
                     cohort, person, number, lengths, Path(work, str(number))
                 )
             )
-        joined = join(cohort, (item.primary_samples for item in prepared))
-        with TableWriter(
-            output, _COLUMNS, params.table_format, metadata=metadata
-        ) as table:
+        joined = join(
+            cohort, (item.primary_samples for item in prepared), min_relatedness
+        )
+        with ExitStack() as stack:
+            export = (
+                stack.enter_context(
+                    TableWriter(
+                        export_path,
+                        _EXPORT_COLUMNS,
+                        params.table_format,
+                        metadata={
+                            "schema": _EXPORT_SCHEMA,
+                            "reference_build": cohort.build,
+                        },
+                        private=True,
+                    )
+                )
+                if export_path is not None
+                else None
+            )
+            table = stack.enter_context(
+                TableWriter(
+                    output,
+                    _COLUMNS,
+                    params.table_format,
+                    metadata=metadata,
+                    private=True,
+                )
+            )
             for chrom, length in lengths.items():
                 if chrom in scope:
                     checkpoint()
                     table.write(
-                        chromosome_rows(
-                            prepared, chrom, length, scope[chrom], thresholds
+                        disclosure.rows(
+                            chromosome_rows(
+                                prepared, chrom, length, scope[chrom], thresholds
+                            ),
+                            export,
                         )
                     )
         rows = table.rows
     result.set_manifest_stem(stem)
     result.add_output(output, "cohort_variant_table", metrics={"rows": rows})
+    if export is not None and export_path is not None:
+        result.add_output(
+            export_path, "cohort_variant_export", metrics={"rows": export.rows}
+        )
+        human_output(f"{export.rows:,} cohort export rows: {export_path}")
     if params.include_identifiers:
         atomic_write(
             private,
@@ -263,7 +381,13 @@ def run_summary(params: CohortSummarizeParams) -> None:
         table_schema=_SCHEMA,
         min_depth=params.min_depth,
         min_gq=params.min_gq,
+        min_samples=disclosure.min_samples,
+        min_allele_count=disclosure.min_allele_count,
+        min_carriers=disclosure.min_carriers,
+        min_relatedness=min_relatedness,
+        disclosure_flagged_rows=disclosure.flagged_rows,
     )
+    disclosure.warn()
     warn(
         "cohort_sensitive_summary",
         "Exact cohort counts are sensitive even without sample names; keep them private.",
