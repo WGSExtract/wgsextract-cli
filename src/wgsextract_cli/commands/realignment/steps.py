@@ -47,6 +47,7 @@ from .long_reads import (
 from .mapping import (
     _align,
     _align_step,
+    _align_streamed,
     _index_step,
     _resume_alignment,
 )
@@ -456,7 +457,6 @@ def _run_steps(
         needs,
     )
 
-    aborted_stream = False
     if streaming:
         logging.info(
             "Streaming paired FASTQ from %s into %s; no gzipped FASTQ files.",
@@ -481,20 +481,19 @@ def _run_steps(
                 temp_parent=outdir,
                 cram_opt=cram_opt,
             ) as stream:
-                _align(
+                _align_streamed(
                     journal,
                     align_decision,
-                    lambda: mapper(
+                    lambda before_write: mapper(
                         align_job,
                         upstream=stream.stages,
                         discarded_fastq=stream.discarded_fastq,
                         read_paths=[job.input],
                         additional_ram_bytes=additional_ram_bytes,
+                        before_write=before_write,
                     ),
                 )
         except align_cmd.StreamingMemoryUnavailable:
-            # The mapper rejected the plan before touching the alignment.
-            aborted_stream = True
             logging.info(
                 "Available RAM changed before streaming started; extracting "
                 "FASTQs without changing the aligner."
@@ -560,12 +559,7 @@ def _run_steps(
             align_step, after=[extract_decision] if extract_decision else []
         )
     try:
-        _align(
-            journal,
-            align_decision,
-            lambda: align_cmd.run(align_job),
-            keep_partial=aborted_stream,
-        )
+        _align(journal, align_decision, lambda: align_cmd.run(align_job))
     except BaseException:
         if (
             need_extract

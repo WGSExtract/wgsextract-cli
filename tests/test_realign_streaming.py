@@ -285,16 +285,22 @@ def test_1125_failed_late_memory_fallback_keeps_previous_alignment(
         monkeypatch.setattr(realign_steps, "available_memory", lambda: 8 * 1024**3)
         monkeypatch.setattr(short_reads, "available_memory", lambda: 256 * 1024**2)
         replace_file = os.replace
+        blocked_path = outdir / "x_R1.fastq.gz"
 
         def refuse_publish(src, dst, **kwargs):
-            if Path(dst) == output:
-                raise PermissionError("could not replace previous BAM")
+            if Path(dst) == blocked_path:
+                raise PermissionError(f"could not publish {blocked_path.name}")
             return replace_file(src, dst, **kwargs)
 
         monkeypatch.setattr(os, "replace", refuse_publish)
+        with pytest.raises(PermissionError, match="could not publish x_R1"):
+            realign.run(_args(source, **options, sample="new-sample"))
+        assert output.read_bytes() == original
+
+        blocked_path = output
         with (
             caplog.at_level(logging.INFO),
-            pytest.raises(WGSExtractError, match="could not replace previous BAM"),
+            pytest.raises(WGSExtractError, match="could not publish x_aligned"),
         ):
             realign.run(_args(source, **options, sample="new-sample"))
     assert "Available RAM changed before streaming started" in caplog.text

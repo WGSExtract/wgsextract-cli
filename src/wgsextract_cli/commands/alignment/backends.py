@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -355,6 +355,7 @@ def align_minimap2(
     discarded_fastq: Path | None = None,
     read_paths: list[str] | None = None,
     additional_ram_bytes: int = 0,
+    before_write: Callable[[], None] | None = None,
 ) -> None:
     if is_long_read(job) and job.r2:
         raise UsageError("Long reads are single-end: drop --r2.")
@@ -518,6 +519,8 @@ def align_minimap2(
         return
     align_cmd += [setup.ref, reads]
     try:
+        if before_write is not None:
+            before_write()
         run_streamed_alignment(
             align_cmd + ([job.r2] if job.r2 and not upstream else []),
             out_bam,
