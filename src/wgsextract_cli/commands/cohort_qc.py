@@ -19,7 +19,7 @@ from wgsextract_cli.commands.cohort_inputs import (
     verify_artifact,
 )
 from wgsextract_cli.core.ref_library.assets import input_stem
-from wgsextract_cli.core.results import fingerprint
+from wgsextract_cli.core.results import fingerprint, warn
 from wgsextract_cli.core.utils import UsageError
 
 
@@ -75,7 +75,7 @@ def _records(artifact: Artifact, fields: set[str]) -> Iterable[dict[str, str]]:
 
 
 def _read_relatedness(
-    relatedness: Relatedness, participants: tuple[Participant, ...]
+    relatedness: Relatedness, participants: tuple[Participant, ...], minimum: float
 ) -> dict[int, dict[str, object]]:
     qc = _qc_result(relatedness.result, "qc relate", "the relatedness result")
     for table, role in (
@@ -127,28 +127,58 @@ def _read_relatedness(
         }
     if not joined:
         raise ValueError
+    related_pairs = 0
+    assessed_pairs = 0
     for row in _records(
-        relatedness.pairs, {"sample_a", "sample_b", "relationship", "flagged"}
+        relatedness.pairs,
+        {"sample_a", "sample_b", "relationship", "flagged", "relatedness"},
     ):
         first, second = by_sample.get(row["sample_a"]), by_sample.get(row["sample_b"])
-        if first is None or second is None:
+        if first is None or second is None or first == second:
             continue
-        if first != second and row["relationship"] == "same person":
+        relationship = row["relationship"]
+        if relationship == "same person":
             raise UsageError(
                 "Relatedness QC identifies duplicate participants in the cohort."
             )
+        if not (
+            relationship.startswith("uncertain:")
+            or relationship == "too few shared sites"
+        ):
+            estimate = float(row["relatedness"] or "nan")
+            if math.isfinite(estimate):
+                assessed_pairs += 1
+                related_pairs += estimate >= minimum
         if row["flagged"] == "true":
             for index in (first, second):
                 count = joined[index]["flagged_pairs"]
                 assert isinstance(count, int)
                 joined[index]["flagged_pairs"] = count + 1
+    if related_pairs:
+        warn(
+            "cohort_related_participants",
+            f"{related_pairs:,} assessed cohort pair(s) meet the relatedness warning cutoff; no participants were removed.",
+            pairs=related_pairs,
+            assessed_pairs=assessed_pairs,
+            min_relatedness=minimum,
+        )
+    total_pairs = len(participants) * (len(participants) - 1) // 2
+    if assessed_pairs < total_pairs:
+        warn(
+            "cohort_relatedness_unassessed",
+            f"Relatedness was not assessed for {total_pairs - assessed_pairs:,} cohort pair(s).",
+            unassessed_pairs=total_pairs - assessed_pairs,
+            assessed_pairs=assessed_pairs,
+        )
     return joined
 
 
-def join(cohort: Cohort, sample_counts: Iterable[int]) -> list[dict[str, object]]:
+def join(
+    cohort: Cohort, sample_counts: Iterable[int], min_relatedness: float
+) -> list[dict[str, object]]:
     try:
         related = (
-            _read_relatedness(cohort.relatedness, cohort.participants)
+            _read_relatedness(cohort.relatedness, cohort.participants, min_relatedness)
             if cohort.relatedness
             else {}
         )
