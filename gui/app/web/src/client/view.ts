@@ -1,5 +1,5 @@
 import { pathInputAttributes } from "./view/path-input.js";
-import { applyDataSourcePayload, configValueKey, firstPathValue, hydrateRows, isSectionVisible, optionDisabledReason, rowContext, splitPathList, withoutDisabledOptions, } from "../../../shared/rendering.js";
+import { applyDataSourcePayload, configValueKey, rowMatchesFilter, firstPathValue, hydrateRows, isSectionVisible, optionDisabledReason, rowContext, splitPathList, withoutDisabledOptions, } from "../../../shared/rendering.js";
 import { escapeAttribute, escapeHTML } from "./dom.js";
 import { buildTagStyle, commandContext, configDataSourceContext, displayOption, localizedStatus, localizedTag, renderIcon, renderIconTitle, renderInlineError, renderLoadingBox, renderLoadingInline, renderTooltip, resolveText, tagStyle, } from "./model.js";
 import { ensureDataSource } from "./operations.js";
@@ -499,9 +499,17 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
       </div>
     `;
     }
+    const filter = state.libraryFilters.get(key) ?? "";
+    const matches = rows.filter((row) => rowMatchesFilter(rowFilterText(row), filter)).length;
     return `
     <div class="library-list">
       <div class="control-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</div>
+      ${rows.length
+        ? `<input type="search" class="library-filter" data-library-filter="${escapeAttribute(key)}"
+              value="${escapeAttribute(filter)}" placeholder="${escapeAttribute(state.labels.libraryFilterLabel)}"
+              aria-label="${escapeAttribute(state.labels.libraryFilterLabel)}">
+            <p class="empty" data-library-no-matches="${escapeAttribute(key)}" ${matches ? "hidden" : ""}>${escapeHTML(state.labels.libraryNoMatchesTitle)}</p>`
+        : ""}
       ${rows.length
         ? `<div class="table-wrap" data-scroll-key="${escapeAttribute(key)}" tabindex="0" role="region" aria-label="${escapeAttribute(control.label)}"><table>
               <thead><tr>
@@ -512,7 +520,8 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
                 ${rows
             .map((row) => {
             const contextForRow = rowContext(context, row);
-            return `<tr>
+            const filterText = rowFilterText(row);
+            return `<tr data-filter-text="${escapeAttribute(filterText)}" ${rowMatchesFilter(filterText, filter) ? "" : "hidden"}>
                       ${columns.map((column) => `<td>${renderRowCell(row, column)}</td>`).join("")}
                       ${(control.rowActions ?? []).length
                 ? `<td><div class="row-actions">${renderActions((control.rowActions ?? []).map((action) => actionTitledForUIMode(action, state.uiMode)), contextForRow, location, true)}</div></td>`
@@ -526,6 +535,16 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
     </div>
   `;
 }
+/** What a table's keyword filter searches: the row's title, cell values, tags and status, lower case. */
+export function rowFilterText(row: RowSpec): string {
+    return [
+        row.title,
+        ...Object.values(row.values ?? {}),
+        ...(row.tags ?? []).map((tag) => localizedTag(tag)),
+        localizedStatus(row.status),
+    ].map((part) => String(part ?? "")).join(" ").toLowerCase();
+}
+
 export function renderConfigEditor(control: ControlSpec, location: ManifestLocation) {
     return `
     <div class="config-editor">

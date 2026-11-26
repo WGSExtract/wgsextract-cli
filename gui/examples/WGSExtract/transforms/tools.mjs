@@ -352,13 +352,30 @@ function toolTooltip(tool) {
     return formatProvenanceTooltip({ ...meta, extras });
 }
 
-/** One row per tool: mandatory tools first, then the optional ones, those this computer can't have last. */
+/**
+ * One row per tool: installed tools first (mandatory, then pre-installed, then
+ * the rest), then missing ones, then those this computer can't have; each
+ * group alphabetical.
+ */
 export function items(document) {
     const tools = document?.details?.tools;
     if (!Array.isArray(tools)) {
         throw new Error("wgsextract deps list printed no tool list.");
     }
-    return { items: tools.map(row) };
+    return { items: [...tools].sort(compareTools).map(row) };
+}
+
+const STATUS_ORDER = { installed: 0, missing: 1, unavailable: 2 };
+
+function installedRank(tool) {
+    if (tool.status !== "installed") return 0;
+    return tool.group === "mandatory" ? 0 : tool.preinstalled ? 1 : 2;
+}
+
+function compareTools(a, b) {
+    return (STATUS_ORDER[a.status] ?? 1) - (STATUS_ORDER[b.status] ?? 1)
+        || installedRank(a) - installedRank(b)
+        || String(a.name).localeCompare(String(b.name), "en", { sensitivity: "base" });
 }
 
 /** Mandatory, optional, or pre-installed: optional but shipped with the CLI, so it can't be removed on its own. */

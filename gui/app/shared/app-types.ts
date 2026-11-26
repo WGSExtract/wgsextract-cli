@@ -281,6 +281,8 @@ export interface WebUIState {
     loadingDataSources: Set<string>;
     /** Collapsible sections the user opened or closed from their default, by "pageID/sectionID". */
     toggledSections: Set<string>;
+    /** Keyword typed into a table's filter box, by "control:<id>". */
+    libraryFilters: Map<string, string>;
     /** The Settings page's Setup steps: shown (true), hidden (false), or null to hide them once setup has run. */
     setupExpanded: boolean | null;
     fileStateValues: Map<string, ValueMap>;

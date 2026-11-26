@@ -45,6 +45,8 @@
 "app.jobs.status.warning" = "Finished with warnings"
 "app.layoutDirection.label" = "Layout"
 "app.library.empty" = "No library items are defined."
+"app.library.filter.label" = "Filter by keyword"
+"app.library.noMatches" = "No items match the filter."
 "app.loadButton.title" = "Load"
 "app.loading.title" = "Loading..."
 "app.page.empty.title" = "No Pages"

@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { disabledReason, hydrateRows, isActionVisible, rowContext } from "../dist/shared/rendering.js";
+import { disabledReason, hydrateRows, isActionVisible, rowContext, rowMatchesFilter } from "../dist/shared/rendering.js";
 import { runDataSource } from "../dist/web/src/server/action-runner.js";
 import { validateDataSource } from "../dist/web/src/server/manifest-validation.js";
 
@@ -83,6 +83,28 @@ test("each Tools row shows its status, whether it is mandatory, and where it com
     }
     assert.match(rows.samtools.tooltip, /Installed path: \/env\/bin\/samtools/);
     assert.match(rows.plink2.tooltip, /Note: Download PLINK 2 for your system\./);
+});
+
+test("Tools rows list installed tools first (mandatory, pre-installed, the rest), then missing, then unavailable", () => {
+    const order = items({ details: { tools: [
+        tool({ name: "sambamba", status: "unavailable" }),
+        tool({ name: "plink2" }),
+        tool({ name: "Gatk", status: "installed", path: "pixi run -e gatk gatk", environment: "gatk" }),
+        tool({ name: "minimap2", status: "installed", path: "/env/bin/minimap2", preinstalled: true }),
+        tool({ name: "bcftools", group: "mandatory", status: "installed", path: "/env/bin/bcftools" }),
+        tool({ name: "delly" }),
+        tool({ name: "abc", status: "installed", path: "pixi run -e abc abc", environment: "abc" }),
+        tool({ name: "bwa-mem3", status: "unavailable" }),
+    ] } }).items.map((row) => row.id);
+
+    assert.deepEqual(order, ["bcftools", "minimap2", "abc", "Gatk", "delly", "plink2", "bwa-mem3", "sambamba"]);
+});
+
+test("a table's keyword filter keeps rows holding every typed word, in any case", () => {
+    const text = "java17 openjdk 17.0.21 optional installed";
+    assert.ok(rowMatchesFilter(text, ""));
+    assert.ok(rowMatchesFilter(text, "  OpenJDK   installed "));
+    assert.ok(!rowMatchesFilter(text, "openjdk missing"));
 });
 
 test("the Tools table needs deps list's tool rows", () => {

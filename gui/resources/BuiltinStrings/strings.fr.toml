@@ -45,6 +45,8 @@
 "app.jobs.status.warning" = "Terminée avec des avertissements"  # i18n-source-hash:05f8289b
 "app.layoutDirection.label" = "Disposition"  # i18n-source-hash:972ad8d8
 "app.library.empty" = "Aucun élément de bibliothèque n’est défini."  # i18n-source-hash:e9b707e7
+"app.library.filter.label" = "Filtrer par mot-clé"  # i18n-source-hash:f4fd5788
+"app.library.noMatches" = "Aucun élément ne correspond au filtre."  # i18n-source-hash:05e491f0
 "app.loadButton.title" = "Charger"  # i18n-source-hash:ddcb77ff
 "app.loading.title" = "Chargement..."  # i18n-source-hash:b04ba49f
 "app.page.empty.title" = "Aucune page"  # i18n-source-hash:d269aee1

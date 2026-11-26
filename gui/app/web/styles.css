@@ -2573,3 +2573,8 @@ a.doc-link {
   width: auto;
   max-width: 100%;
 }
+
+/* A table's keyword filter, above the table it narrows. */
+.library-filter {
+  width: min(100%, 24em);
+}
