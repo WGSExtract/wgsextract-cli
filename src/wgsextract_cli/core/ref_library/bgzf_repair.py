@@ -25,13 +25,14 @@ from .segmented import TIMEOUT_SECONDS, Revision, user_agent
 _ATTEMPTS = 3
 _BLOCK_LIMIT = 65536
 _VOTE_WINDOW = 64 << 20
+_BGZF_MAGIC = b"\x1f\x8b\x08\x04"
 
 
 def _block_size(
     read: Callable[[int], bytes], *, require_magic: bool = True
 ) -> int | None:
     header = read(18)
-    if len(header) != 18 or (require_magic and header[:4] != b"\x1f\x8b\x08\x04"):
+    if len(header) != 18 or (require_magic and header[:4] != _BGZF_MAGIC):
         return None
     extra_length = int.from_bytes(header[10:12], "little")
     if not 6 <= extra_length <= _BLOCK_LIMIT - 22:
@@ -59,6 +60,31 @@ def _valid_block(block: bytes) -> bool:
     except zlib.error:
         return False
     return len(data) <= _BLOCK_LIMIT and inflater.eof and not inflater.unused_data
+
+
+def _is_bgzf(file: BinaryIO) -> bool:
+    # The BGZF-specific BC field may survive a torn opening gzip magic.
+    if _block_size(file.read, require_magic=False) is not None:
+        return True
+    # Look past up to two damaged opening members. Validate the whole
+    # candidate rather than taking its magic string alone as evidence.
+    file.seek(0)
+    last_start = 2 * _BLOCK_LIMIT
+    prefix = file.read(last_start + _BLOCK_LIMIT)
+    reader = BytesIO(prefix)
+    search_end = last_start + len(_BGZF_MAGIC)
+    pos = prefix.find(_BGZF_MAGIC, 1, search_end)
+    while pos != -1:
+        reader.seek(pos)
+        size = _block_size(reader.read)
+        if (
+            size is not None
+            and pos + size <= len(prefix)
+            and _valid_block(prefix[pos : pos + size])
+        ):
+            return True
+        pos = prefix.find(_BGZF_MAGIC, pos + 1, search_end)
+    return False
 
 
 class _RepairError(Exception):
@@ -131,6 +157,9 @@ class _RangeSource:
 
                     def read_header(length: int) -> bytes:
                         nonlocal pos
+                        # A corrupt XLEN must fail this probe, not the repair.
+                        if pos + length > self.size:
+                            return b""
                         data = self.read(pos, length)
                         pos += length
                         return data
@@ -148,7 +177,7 @@ class _RangeSource:
                     actual_size = _block_size(BytesIO(data).read)
                     if actual_size == size and _valid_block(data):
                         return data
-                    size = actual_size or size
+                    size = actual_size
             except (OSError, HTTPException) as exc:
                 logging.debug(
                     "BGZF range request failed: %s",
@@ -206,8 +235,7 @@ def repair_bgzf(
     location = redact_urls(url)
     try:
         with open(path, "r+b") as file:
-            # The BGZF-specific BC field may survive a torn opening gzip magic.
-            if _block_size(file.read, require_magic=False) is None:
+            if not _is_bgzf(file):
                 return False
             file_size = file.seek(0, 2)
             if revision.size is not None and revision.size != file_size:

@@ -105,8 +105,9 @@ def test_1619_repairs_only_damaged_bgzf_blocks(
     ]
 
 
+@pytest.mark.parametrize("corruption", ["BSIZE", "XLEN", "truncated"])
 def test_1619_retries_a_corrupted_header_probe_at_eof(
-    server: RangeServer, bgzf_panel: Panel, tmp_path: Path
+    server: RangeServer, bgzf_panel: Panel, tmp_path: Path, corruption: str
 ) -> None:
     data, blocks = bgzf_panel
     eof, end = blocks[-1]
@@ -116,8 +117,14 @@ def test_1619_retries_a_corrupted_header_probe_at_eof(
         if len(body) == len(data):
             # Damage both magic values, leaving BC intact in the opening block.
             return _flip_bytes(start, body, 0, eof)
-        if start == eof and server.gets().count(probe) == 1:
-            return body[:16] + b"\xff\xff"
+        if start == eof:
+            server.drop_starts.discard(eof)
+            if server.gets()[-1] == probe and server.gets().count(probe) == 1:
+                if corruption == "BSIZE":
+                    return body[:16] + b"\xff\xff"
+                if corruption == "XLEN":
+                    return body[:10] + b"\x14" + body[11:]
+                server.drop_starts.add(eof)
         return body
 
     server.transform_get = corrupt
@@ -133,6 +140,34 @@ def test_1619_retries_a_corrupted_header_probe_at_eof(
         probe,
         probe,
         f"bytes={eof}-{end - 1}",
+    ]
+
+
+@pytest.mark.parametrize("damaged_members", [1, 2])
+def test_1619_recognizes_bgzf_when_opening_bc_fields_are_corrupt(
+    server: RangeServer, bgzf_panel: Panel, tmp_path: Path, damaged_members: int
+) -> None:
+    data, blocks = bgzf_panel
+    damaged = blocks[:damaged_members]
+
+    def corrupt(start: int, body: bytes) -> bytes:
+        if len(body) == len(data):
+            return _flip_bytes(start, body, *(offset + 12 for offset, _ in damaged))
+        return body
+
+    server.transform_get = corrupt
+    dest = tmp_path / "panel.vcf.gz"
+    assert downloads.download_file(
+        server.url, str(dest), expected_sha256=hashlib.sha256(data).hexdigest()
+    )
+    assert dest.read_bytes() == data
+    assert server.gets() == [
+        None,
+        *(
+            span
+            for start, end in damaged
+            for span in (f"bytes={start}-{start + 17}", f"bytes={start}-{end - 1}")
+        ),
     ]
 
 
@@ -155,6 +190,30 @@ def test_1619_persistently_corrupt_bgzf_is_not_installed(
     assert server.url in caplog.text
     assert f"bytes {start}-{end - 1}" in caplog.text
     assert "Retry the download" in caplog.text
+
+
+def test_1619_repair_stops_if_the_remote_revision_changes(
+    server: RangeServer,
+    bgzf_panel: Panel,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    data, (_, (start, end), *_) = bgzf_panel
+
+    def corrupt(offset: int, body: bytes) -> bytes:
+        if server.gets() == [None]:
+            server.data = _flip_bytes(0, data, 4)
+            return _flip_bytes(offset, body, end - 4)
+        return body
+
+    server.transform_get = corrupt
+    dest = tmp_path / "panel.vcf.gz"
+    assert not downloads.download_file(
+        server.url, str(dest), expected_sha256=hashlib.sha256(data).hexdigest()
+    )
+    assert not dest.exists()
+    assert server.gets() == [None, f"bytes={start}-{end - 1}"]
+    assert "changed the file" in caplog.text
 
 
 @pytest.mark.parametrize("pinned", [True, False])
