@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from scripts import cleanup_worktree_activity
+    from scripts import cleanup_worktree_git as git_tools
     from scripts import cleanup_worktree_inventory as inventory_files
 
     activity = cleanup_worktree_activity
@@ -46,14 +47,19 @@ else:
     activity = load_helper(
         "activity", "2700ae87bfa047a1668db32a7a592beaf0b3d67013594420400eb31bda1125d1"
     )
+    git_tools = load_helper(
+        "git", "af5115c1a3a174818aaf78a68c9753f7f8ce99fb8cf652f757cdbb258adcfc29"
+    )
 
+CleanupError = git_tools.CleanupError
+git = git_tools.git
 REPO = "WGSExtract/wgsextract-cli"
 LEGACY_REPO = "theontho/wgsextract-cli"
 PROC = Path("/proc")
 INSPECTOR_SOCKET = Path("/run/wgse-worktree-inspector.sock")
 INSPECTOR_UID = 0
 INSPECTOR_SHA256 = "512c326798a3971160a32392aa76cb22548d95cba385a8b3a9d30509a558abec"
-MIN_MERGE_AGE = timedelta(days=1)
+MIN_PR_AGE = timedelta(days=1)
 PR_QUERY = """
 query($owner: String!, $name: String!, $endCursor: String) {
   viewer { login }
@@ -62,17 +68,13 @@ query($owner: String!, $name: String!, $endCursor: String) {
     pullRequests(first: 100, after: $endCursor) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number state mergedAt author { login }
+        number state mergedAt closedAt author { login }
         baseRefName headRefName headRefOid headRepository { nameWithOwner }
       }
     }
   }
 }
 """
-
-
-class CleanupError(Exception):
-    """State could not safely be verified."""
 
 
 ERRORS = (
@@ -93,8 +95,10 @@ class Worktree:
     branch: str
     locked: bool
     unavailable: bool
+    detached: bool = False
     reason: str = "not-assessed"
     pr: int | None = None
+    recovery: str | None = None
     archive: str | None = None
     retained_reason: str = ""
     planned_caches: list[str] = field(default_factory=list)
@@ -104,41 +108,6 @@ class Worktree:
     @property
     def directory(self) -> Path:
         return Path(self.path)
-
-
-def run(root: Path, *args: str, allow_no_matches: bool = False) -> str:
-    env = os.environ.copy()
-    if args[0] == "git":
-        env = {k: v for k, v in env.items() if not k.startswith("GIT_")}
-        env.update(
-            GIT_NO_LAZY_FETCH="1", GIT_NO_REPLACE_OBJECTS="1", GIT_OPTIONAL_LOCKS="0"
-        )
-    result = subprocess.run(
-        args, cwd=root, env=env, capture_output=True, timeout=120, check=False
-    )
-    if (
-        allow_no_matches
-        and result.returncode == 1
-        and not (result.stdout or result.stderr)
-    ):
-        return ""
-    if result.returncode or (allow_no_matches and result.stderr):
-        raise CleanupError(
-            f"{args[0]} {args[1]} failed ({result.returncode}): "
-            f"{os.fsdecode(result.stderr).strip()}"
-        )
-    return os.fsdecode(result.stdout)
-
-
-def git(root: Path, *args: str, allow_no_matches: bool = False) -> str:
-    return run(
-        root,
-        "git",
-        "-c",
-        "core.fsmonitor=false",
-        *args,
-        allow_no_matches=allow_no_matches,
-    )
 
 
 def worktrees(root: Path) -> list[Worktree]:
@@ -157,6 +126,7 @@ def worktrees(root: Path) -> list[Worktree]:
                 entries.get("branch", ""),
                 "locked" in entries,
                 "prunable" in entries or "bare" in entries,
+                "detached" in entries,
             )
         )
     if (
@@ -180,7 +150,9 @@ def safe_directory(path: Path, mode: int = 0o755) -> None:
         raise CleanupError(f"Unsafe output directory: {path}")
 
 
-def candidate(root: Path, tree: Worktree, trees: list[Worktree]) -> str:
+def candidate(
+    root: Path, tree: Worktree, trees: list[Worktree], include_detached: bool
+) -> str:
     path = tree.directory
     if path.parent != root / "scratch" or path.resolve() != path:
         return "outside-canonical-scratch"
@@ -188,7 +160,10 @@ def candidate(root: Path, tree: Worktree, trees: list[Worktree]) -> str:
         return "git-locked"
     if tree.unavailable or not path.is_dir():
         return "unavailable"
-    if not tree.branch.startswith("refs/heads/") or tree.branch == "refs/heads/main":
+    if tree.detached and include_detached:
+        if why := git_tools.detached_block(path, tree.head, tree.branch):
+            return why
+    elif not tree.branch.startswith("refs/heads/") or tree.branch == "refs/heads/main":
         return "not-a-topic-branch"
     if any(
         other.directory != path and other.directory.resolve().is_relative_to(path)
@@ -401,7 +376,7 @@ def check_pull_requests(root: Path, trees: list[Worktree]) -> None:
     # REST's head filter omits merged PRs whose remote branches were deleted.
     # Fetch only decision metadata and match branches locally.
     response = json.loads(
-        run(
+        git_tools.run(
             root,
             "gh",
             "api",
@@ -460,31 +435,59 @@ def check_pull_requests(root: Path, trees: list[Worktree]) -> None:
                 raise CleanupError("Invalid GitHub pull request metadata")
             if branch not in latest or number > latest[branch][0]:
                 latest[branch] = number, pr
+    detached_heads = {tree.head for tree in trees if tree.detached}
+    main = git_tools.origin_main(root) if detached_heads else ""
+    ancestry = {head: git_tools.on_main(root, head, main) for head in detached_heads}
+    by_head = {
+        head: (number, pr)
+        for number, pr in sorted(latest.values(), key=lambda pair: pair[0])
+        if isinstance(head := pr["headRefOid"], str) and head in detached_heads
+    }
     for tree in trees:
-        branch = tree.branch.removeprefix("refs/heads/")
-        if branch not in latest:
-            tree.reason = "no-pull-request"
-        else:
-            tree.pr, pr = latest[branch]
-            tree.reason = pr_reason(tree, pr, login)
+        if tree.detached and ancestry[tree.head]:
+            tree.reason = "eligible"
+            tree.recovery = git_tools.detached_ref(tree.head)
+            continue
+        match = (
+            by_head.get(tree.head)
+            if tree.detached
+            else latest.get(tree.branch.removeprefix("refs/heads/"))
+        )
+        if match is None:
+            tree.reason = (
+                "detached-head-not-on-main-or-pr"
+                if tree.detached
+                else "no-pull-request"
+            )
+            continue
+        tree.pr, pr = match
+        tree.reason = pr_reason(tree, pr, login)
+        if tree.detached and tree.reason == "eligible":
+            tree.recovery = git_tools.detached_ref(tree.head)
 
 
 def pr_reason(tree: Worktree, latest: dict[str, object], login: str) -> str:
     author = latest["author"]
     if not isinstance(author, dict) or author["login"] != login:
         return "pull-request-not-owned"
-    merged = latest["mergedAt"]
-    if (
-        latest["state"] != "MERGED"
-        or not isinstance(merged, str)
-        or latest["baseRefName"] != "main"
-    ):
+    if tree.detached and latest["state"] == "CLOSED":
+        finished = latest["closedAt"]
+        recent = "recently-closed"
+    elif latest["state"] == "MERGED":
+        finished = latest["mergedAt"]
+        recent = "recently-merged"
+    else:
+        finished = None
+        recent = ""
+    if not isinstance(finished, str) or latest["baseRefName"] != "main":
+        if tree.detached:
+            return "pull-request-not-finished-on-main"
         return "latest-pull-request-not-merged-to-main"
     if latest["headRefOid"] != tree.head:
         return "head-not-exact-merged-head"
-    merged_at = datetime.fromisoformat(merged.replace("Z", "+00:00"))
-    if datetime.now(timezone.utc) - merged_at < MIN_MERGE_AGE:
-        return "recently-merged"
+    finished_at = datetime.fromisoformat(finished.replace("Z", "+00:00"))
+    if datetime.now(timezone.utc) - finished_at < MIN_PR_AGE:
+        return recent
     return "eligible"
 
 
@@ -513,12 +516,17 @@ def available_caches(
 
 
 def plan(
-    root: Path, trees: list[Worktree], github: bool, inspector: bool, trim_caches: bool
+    root: Path,
+    trees: list[Worktree],
+    github: bool,
+    inspector: bool,
+    trim_caches: bool,
+    include_detached: bool,
 ) -> None:
     paths = set()
     inventories: dict[Path, inventory_files.Inventory] = {}
     for tree in trees[1:]:
-        tree.reason = candidate(root, tree, trees)
+        tree.reason = candidate(root, tree, trees, include_detached)
         if not tree.reason and activity.mounted(tree.directory):
             tree.reason = "contains-mount"
         if not tree.reason:
@@ -572,9 +580,13 @@ def plan(
 def recheck(root: Path, tree: Worktree, inspector: bool) -> str:
     trees = worktrees(root)
     now = next((item for item in trees if item.path == tree.path), None)
-    if now is None or now.head != tree.head or now.branch != tree.branch:
+    if now is None or (now.head, now.branch, now.detached) != (
+        tree.head,
+        tree.branch,
+        tree.detached,
+    ):
         return "registration-changed"
-    if reason := candidate(root, now, trees):
+    if reason := candidate(root, now, trees, tree.detached):
         return reason
     if activity.mounted(tree.directory):
         return "contains-mount"
@@ -612,6 +624,14 @@ def apply_tree(
     if not keep:
         if links:
             return "symlink-dependency"
+        if tree.detached and not git_tools.preserve_detached_head(
+            root, tree.head, tree.recovery, from_main=tree.pr is None
+        ):
+            return "origin-main-changed"
+        if tree.detached and (
+            why := git_tools.detached_block(path, tree.head, tree.branch)
+        ):
+            return why
         git(root, "worktree", "remove", "--", tree.path)
         return "removed"
     for name in tree.planned_caches:
@@ -641,6 +661,7 @@ def cleanup(
     github: bool,
     inspector: bool,
     trim_caches: bool,
+    include_detached: bool = False,
 ) -> None:
     trees = worktrees(root)
     trees[0].reason = "primary-checkout"
@@ -649,6 +670,7 @@ def cleanup(
         "github": github,
         "inspector": inspector,
         "trim_caches": trim_caches,
+        "include_detached": include_detached,
     }
 
     def save() -> None:
@@ -660,7 +682,7 @@ def cleanup(
         staging.replace(report)
 
     try:
-        plan(root, trees, github, inspector, trim_caches)
+        plan(root, trees, github, inspector, trim_caches, include_detached)
         save()
         if apply:
             eligible = [
@@ -695,7 +717,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--github",
         action="store_true",
-        help="request this repository's PR metadata from github.com (match branches locally)",
+        help="request this repository's PR metadata from github.com (match locally)",
     )
     parser.add_argument(
         "--inspector",
@@ -707,9 +729,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="also trim verified generated caches in retained merged worktrees",
     )
+    parser.add_argument(
+        "--include-detached",
+        action="store_true",
+        help="also consider detached checkouts under scratch with a recoverable HEAD",
+    )
     args = parser.parse_args(argv)
     if args.apply and not args.github:
-        parser.error("--apply requires --github to verify merged PRs")
+        parser.error("--apply requires --github to verify worktree eligibility")
     report = None
     try:
         if sys.platform != "linux":
@@ -759,6 +786,7 @@ def main(argv: list[str] | None = None) -> int:
                 github=args.github,
                 inspector=args.inspector,
                 trim_caches=args.trim_caches,
+                include_detached=args.include_detached,
             )
         return 0
     except ERRORS as exc:
