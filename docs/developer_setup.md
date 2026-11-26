@@ -480,18 +480,35 @@ python3 scripts/cleanup_worktrees.py                   # offline audit, no remov
 python3 scripts/cleanup_worktrees.py --github          # verify eligibility only
 python3 scripts/cleanup_worktrees.py --github --apply  # retire eligible worktrees
 python3 scripts/cleanup_worktrees.py --github --trim-caches  # preview cache trimming too
+python3 scripts/cleanup_worktrees.py --github --inspector --include-detached  # preview detached cleanup too
 ```
 
 `--github` uses an existing authenticated `gh` session to request PR metadata
-from github.com. Branch names and worktree contents are matched locally, never
-uploaded. A candidate must live directly under `scratch/`, and exactly match
+from github.com. Branch names, commit IDs and worktree contents are matched
+locally, never uploaded. A candidate must live directly under `scratch/`.
+A checkout on a branch must exactly match
 the head of its latest PR from this repository, merged into `main` at least a
 day ago and authored by the authenticated account. Git removes the worktree
 without `--force`; the branch stays. An authentication or state error stops the
 run. The private JSON report in `out/worktree-cleanup/` records skips, removals
 and errors.
 
-Dirty, locked, detached, active or linked worktrees are left alone. Tracked
+Detached checkouts are skipped unless you pass `--include-detached`. Their
+exact HEAD must be reachable from the local `origin/main` tracking ref (the
+tool never fetches it), or match the head of a latest same-repository PR
+authored by the authenticated account and merged into `main` or closed
+against `main` at least a day ago. Before removing a detached checkout,
+apply saves its exact commit locally under
+`refs/worktree-cleanup/detached/<head>` so even an unmerged PR tip remains
+recoverable without GitHub. The report gives the recovery ref; for example,
+`git worktree add --detach scratch/recovered <ref>` restores the checkout.
+A detached checkout with an in-progress Git operation or older commits
+recoverable only from its HEAD reflog is retained.
+The inspector is restricted to the same direct children of `scratch/`;
+sibling coordinator checkouts such as `~/src/wt-cert42` are out of scope.
+The schedule template does not opt into detached cleanup.
+
+Dirty, locked, active or linked worktrees are left alone. Tracked
 files must also match the exact committed Git blobs byte for byte, except that
 files up to 1 MiB explicitly marked `text eol=crlf` may match after converting
 uniform CRLF endings back to LF. This check does not rely on Git's cached file
