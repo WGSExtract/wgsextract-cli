@@ -87,6 +87,7 @@ SECTIONS = {
     "clinvar": "ClinVar pathogenic / likely pathogenic in {gene_list} genes",
     "mitochondrial": "Mitochondrial DNA: heteroplasmy at reviewed variants",
     "acmg_research": "Automated ACMG classes in {gene_list} genes (research only)",
+    "panel_audit": "Gene panel audit (research only)",
     "exon_callability": "Exon callability of {gene_list} genes",
     "structural_variants": "Rare structural variants",
     "medication_review": "Medication review (CPIC guidance; not a prescription)",
@@ -180,10 +181,15 @@ class Source:
 
     def sample_files(self) -> list[Path]:
         """The sample files the run read (not references or resources)."""
+        roles = (
+            (*SAMPLE_ROLES, "reference_evidence")
+            if self.command == "panel audit"
+            else SAMPLE_ROLES
+        )
         return [
             self.locate(str(r["path"]))
             for r in self.records("inputs")
-            if r.get("role") in SAMPLE_ROLES and r.get("path")
+            if r.get("role") in roles and r.get("path")
         ]
 
     def warnings(self) -> list[ReportWarningDocument]:
@@ -228,8 +234,13 @@ def collect_sources(folder: Path, extra: Iterable[Path] = ()) -> list[Source]:
             for key, source in candidates.items()
             if any(
                 _inside(p, folder) or _key(p) in produced
-                # The catalog selects what to size, not whose sample it is.
-                for p in source.files("inputs", exclude_role="repeat_catalog")
+                for p in (
+                    # A shared panel or exon model does not connect two samples.
+                    source.sample_files()
+                    if source.command == "panel audit"
+                    # The catalog selects what to size, not whose sample it is.
+                    else source.files("inputs", exclude_role="repeat_catalog")
+                )
             )
         ]
         if not kept:

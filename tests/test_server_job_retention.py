@@ -4,7 +4,8 @@ import sys
 
 import pytest
 
-from wgsextract_cli.server.jobs import MAX_FINISHED_JOBS, JobManager
+from wgsextract_cli.server import jobs
+from wgsextract_cli.server.jobs import JobManager
 from wgsextract_cli.server.operations import RequestError, find
 
 
@@ -38,7 +39,8 @@ def test_1209_event_replay_keeps_recent_events_and_final_status(tmp_path):
         manager.shutdown()
 
 
-def test_1209_evicting_finished_jobs_keeps_their_disk_records(tmp_path):
+def test_1209_evicting_finished_jobs_keeps_their_disk_records(tmp_path, monkeypatch):
+    monkeypatch.setattr(jobs, "MAX_FINISHED_JOBS", 2)
     manager = JobManager(
         tmp_path / "jobs",
         config_path=None,
@@ -49,7 +51,7 @@ def test_1209_evicting_finished_jobs_keeps_their_disk_records(tmp_path):
     job_id = "86f82f25-86e5-423f-acec-1c996d97e259"
     try:
         first = manager.submit(op, params, job_id=job_id)
-        for _ in range(MAX_FINISHED_JOBS):
+        for _ in range(jobs.MAX_FINISHED_JOBS):
             latest = manager.submit(op, params)
         old = manager.get(first.id)
         assert old is not None and old.status == "failed"

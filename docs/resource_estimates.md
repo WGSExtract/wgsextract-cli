@@ -500,6 +500,12 @@ genome-wide). The figures are bytes per byte of input CRAM (BAM inputs count
 | Output CRAM / BAM | 1.8 / 2.75 | slice CRAM 1.90 (1.91 bases per base); whole genome 1.79 (#431) |
 | Tagged bgzipped FASTQ (`realign`) | 1.45 | 1.39 |
 
+Chunked long-read realignment streams its sorted BAM into one reference group
+at a time when pysam 0.24.1 or newer is installed. It no longer writes a
+temporary BAM and CSI for each chunk. The external sort spills still need
+scratch space, and the groups and assembly stay on disk so the run can resume.
+Installations without this pysam version keep using the indexed BAM handoff.
+
 `realign --tmp-dir` on another volume needs the spills there, and the output and
 FASTQ in the output directory. For the 103.7 GB HG002 ONT CRAM at `--threads 5
 --memory 256M` that is about 316 GiB of scratch and 174 GiB of output plus 141
@@ -1041,8 +1047,11 @@ also applies.
   They support keeping the compressed-output budgets conservative rather
   than replacing replay/header worst-case allowances with one run's peak.
   GATK retains 10% of input bytes for output and twice that for temporary
-  storage. Regional GATK CRAM conversion
-  also budgets a whole-input BAM upper bound on the output volume.
+  storage. Regional GATK CRAM conversion also budgets a whole-input BAM
+  upper bound on the output volume. GATK 4.6.2.0 can read indexed CRAM 3.0
+  directly when `--region` selects whole contigs and the CRAI is compatible.
+  Partial intervals, other CRAM versions, and unqualified GATK builds retain
+  regional BAM staging.
   GATK scattering additionally charges retained shard VCFs and their indexes to
   caller staging (`--tmp-dir` when configured, otherwise the output volume).
   JVM temporary storage has its own demand (`--tmp-dir`, otherwise system temp).

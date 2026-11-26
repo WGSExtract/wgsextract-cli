@@ -58,7 +58,9 @@ def _htsjdk_crai(alignment: str) -> Path | None:
     return None
 
 
-def _htsjdk_crai_problem(index: PathInput) -> str | None:
+def _htsjdk_crai_problem(
+    index: PathInput, *, require_valid_rows: bool = False
+) -> str | None:
     """Why htsjdk (GATK, Picard) would refuse this .crai, or None.
 
     htsjdk converts a .crai to a BAI as it opens the CRAM and refuses an
@@ -68,21 +70,68 @@ def _htsjdk_crai_problem(index: PathInput) -> str | None:
     try:
         with open(index, "rb") as signature:
             compressed = signature.read(2) == b"\x1f\x8b"
+        if require_valid_rows and not compressed:
+            return "the index is not gzip-compressed"
         opener = gzip.open if compressed else open
         with opener(index, "rt") as source:
+            number = 0
             for number, line in enumerate(source, 1):
-                fields = line.split()
+                fields = (
+                    line.rstrip("\r\n").split("\t")
+                    if require_valid_rows
+                    else line.split()
+                )
                 if len(fields) != 6:
-                    return None
+                    return (
+                        f"row {number} does not have six fields"
+                        if require_valid_rows
+                        else None
+                    )
                 rid, start, span = map(int, fields[:3])
+                if require_valid_rows:
+                    values = tuple(map(int, fields))
+                    i32, i64 = 2**31 - 1, 2**63 - 1
+                    bounds = (
+                        (-1, i32),
+                        (-1, i32),
+                        (0, i32),
+                        (0, i64),
+                        (0, i32),
+                        (0, i32),
+                    )
+                    if any(
+                        not field.isascii() or not field.removeprefix("-").isdigit()
+                        for field in fields
+                    ) or any(
+                        not low <= value <= high
+                        for value, (low, high) in zip(values, bounds, strict=True)
+                    ):
+                        return f"row {number} has an invalid CRAI field"
                 if rid == -1 and (start not in (0, -1) or span not in (0, 1)):
                     return (
                         f"row {number} is an unmapped slice with start {start} "
                         f"and span {span}"
                     )
-    except (OSError, EOFError, ValueError, zlib.error):
-        return None
+            if require_valid_rows and not number:
+                return "the index has no rows"
+    except (OSError, EOFError, ValueError, zlib.error) as error:
+        return str(error) if require_valid_rows else None
     return None
+
+
+def usable_htsjdk_crai(alignment: str) -> str | None:
+    """An explicit, structurally readable CRAI for a qualified direct reader."""
+    index = _htsjdk_crai(alignment)
+    canonical = Path(f"{alignment}.crai")
+    # htslib opens x.cram.crai first; htsjdk opens x.crai first.
+    if (
+        index is None
+        or not canonical.is_file()
+        or canonical.resolve() != index.resolve()
+        or _htsjdk_crai_problem(index, require_valid_rows=True) is not None
+    ):
+        return None
+    return str(index)
 
 
 def htsjdk_cram_index(

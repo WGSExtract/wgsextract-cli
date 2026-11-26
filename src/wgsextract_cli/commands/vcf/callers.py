@@ -18,6 +18,7 @@ from wgsextract_cli.core.alignment.cram_staging import (
     cram_version,
     htsjdk_cram_index,
     needs_cram30,
+    usable_htsjdk_crai,
 )
 from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -302,6 +303,37 @@ def _gatk_version() -> str:
     )
 
 
+def _direct_regional_cram_index(
+    alignment: str, region: str | None, ref: str
+) -> str | None:
+    # Partial intervals can draw on reads beyond the staged BAM's bounds:
+    # GATK pads its assembly regions. Qualify only whole selected contigs.
+    if (
+        not region
+        or is_region_file(region)
+        or not alignment.lower().endswith(".cram")
+        or not Path(alignment).is_file()
+        or cram_version(alignment) != (3, 0)
+    ):
+        return None
+    names = region_items(region, commas=True)
+    lengths = read_fai_lengths(ref)
+    if not names or any(
+        not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name not in lengths
+        for name in names
+    ):
+        return None
+    banner = get_tool_version("gatk", full_banner=True) or ""
+    if not (
+        re.search(
+            r"(?m)^The Genome Analysis Toolkit \(GATK\) v4\.6\.2\.0[ \t\r]*$", banner
+        )
+        and re.search(r"(?m)^HTSJDK Version: 4\.2\.0[ \t\r]*$", banner)
+    ):
+        return None
+    return usable_htsjdk_crai(alignment)
+
+
 def run_gatk(params: VcfGatkParams) -> None:
     from wgsextract_cli.core import reference_evidence as evidence
 
@@ -421,6 +453,11 @@ def _run_gatk(
     setup = setup or setup_caller(params)
     _threads, outdir, ref, lib = setup.threads, setup.outdir, setup.ref, setup.lib
     input_file, region = str(params.input), params.region
+    stage = bool(stage_region and region)
+    if stage and (direct_index := _direct_regional_cram_index(input_file, region, ref)):
+        stage = False
+        read_index = direct_index
+        logging.info("Reading indexed CRAM directly for whole-contig GATK selection.")
     shards = scatter_intervals(ref, region, _threads) if scatter else []
     preflight_resources(
         lambda: estimate_resources(
@@ -432,6 +469,7 @@ def _run_gatk(
             region=region,
             temp_dir=configured_temp_directory() or tempfile.gettempdir(),
             gatk_staging_dir=configured_temp_directory(),
+            gatk_region_staging=stage,
             gatk_workers=len(shards) or 1,
             reference_evidence=gvcf is not None,
         )
@@ -479,7 +517,7 @@ def _run_gatk(
 
     try:
         gatk_input, temp_gatk_input = _prepare_gatk_input(
-            input_file, region if stage_region else None, ref, outdir
+            input_file, region if stage else None, ref, outdir
         )
         reads = ["-I", java_local_path(gatk_input)]
         if read_index and gatk_input == input_file:

@@ -319,6 +319,7 @@ def _normalize_resource(
     columns: str = "",
     headers: Sequence[str] = (),
     snv_query: str | None = None,
+    sort_table_stream: bool = False,
 ) -> tuple[str, ResultWarning | None]:
     lengths = _reference_lengths(reference)
     stages: list[list[str]] = []
@@ -362,12 +363,24 @@ def _normalize_resource(
     # Check unsplit resources so a row with several ALTs counts only once.
     # Compute drops from records, not bcftools' version-dependent summary.
     kept = str(Path(work, "resource.checked.vcf.gz"))
-    stages.append(
-        ["bcftools", "norm", "-f", reference, "-c", "x", "-Oz", "-o", kept, "-"]
-    )
+    validate = ["bcftools", "norm", "-f", reference, "-c", "x"]
+    if sort_table_stream:
+        stages.extend([validate + ["-Ou", "-"], _sort_command("-", kept, work)])
+    else:
+        stages.append(validate + ["-Oz", "-o", kept, "-"])
     total, has_multiallelic = _stream_resource(write, stages, work)
-    warning = ref_mismatch_warning(total - record_count(kept), total, origin)
     output = str(Path(work, "resource.vcf.gz"))
+    if sort_table_stream and not has_multiallelic:
+        # The sorted biallelic stream is already final. Count retained records
+        # from its index instead of scanning the compressed VCF again.
+        Path(kept).replace(output)
+        ensure_vcf_indexed(output)
+        retained = int(
+            run_command(["bcftools", "index", "-n", output], capture_output=True).stdout
+        )
+        return output, ref_mismatch_warning(total - retained, total, origin)
+
+    warning = ref_mismatch_warning(total - record_count(kept), total, origin)
     if has_multiallelic:
         run_pipeline(
             [
@@ -713,6 +726,8 @@ def normalized_inputs(
     headers: Sequence[str] = (),
     snv_table: bool = False,
     resource_source: str | None = None,
+    *,
+    prepare_table: bool = False,
 ) -> tuple[str, str, str]:
     normalized_query = _normalize_query(query, reference, work)
     from .resource_cache import normalized_resource
@@ -739,6 +754,7 @@ def normalized_inputs(
             columns="" if is_vcf else columns,
             headers=headers,
             snv_query=normalized_query if snv_table else None,
+            sort_table_stream=prepare_table and not is_vcf,
         )
 
     if snv_table and not is_vcf:
