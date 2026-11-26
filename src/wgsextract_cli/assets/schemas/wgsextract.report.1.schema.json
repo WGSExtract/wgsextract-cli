@@ -127,6 +127,10 @@
           "$ref": "#/$defs/reportAcmg",
           "description": "fastVEP's automated ACMG/AMP classes (vcf acmg), research use only and not a diagnosis. Present only when vcf acmg ran."
         },
+        "panel_audit": {
+          "$ref": "#/$defs/reportPanelAudit",
+          "description": "A previously run local research panel audit, not a diagnosis or evidence of association."
+        },
         "ancestry": {
           "$ref": "#/$defs/reportAncestry"
         },
@@ -242,6 +246,7 @@
             "clinvar",
             "mitochondrial",
             "acmg_research",
+            "panel_audit",
             "structural_variants",
             "medication_review"
           ]
@@ -324,7 +329,7 @@
         },
         "disclaimer": {
           "type": "string",
-          "description": "Research use only for acmg_research findings; not a prescription for medication_review findings.",
+          "description": "Research use only for acmg_research and panel_audit findings; not a prescription for medication_review findings.",
           "enum": [
             "Technical result, not diagnosis.",
             "Research use only; not a diagnosis.",
@@ -1771,6 +1776,71 @@
         "type": "integer",
         "minimum": 0
       }
+    },
+    "reportPanelAudit": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "not_run",
+            "failed"
+          ],
+          "description": "ok: at least one source run succeeded; not_run: no run found (see missing); failed: only failed runs found (see error)."
+        },
+        "summary": {
+          "type": "string"
+        },
+        "findings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        },
+        "missing": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportMissing"
+          },
+          "description": "Parts of the section not run yet, with the command that produces each (relative to the sample folder)."
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportWarning"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reportSource"
+          },
+          "description": "The result manifests the section was built from: the selected evidence's status and finish time, and the newest attempt when that is newer."
+        },
+        "error": {
+          "type": "string"
+        },
+        "research_only": {
+          "const": true
+        },
+        "disclaimer": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "status",
+        "summary",
+        "findings",
+        "missing",
+        "warnings",
+        "sources",
+        "research_only",
+        "disclaimer"
+      ]
     },
     "reportAncestry": {
       "type": "object",

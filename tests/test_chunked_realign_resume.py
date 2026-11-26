@@ -1,5 +1,6 @@
 """Regression tests for invalidation and cancellation of chunked realignment (#1208)."""
 
+import json
 import os
 import platform
 import shlex
@@ -12,16 +13,78 @@ from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import needs_tools
-from tests.test_chunked_realign import GROUP_SORT, MAPPING, _view
+from tests.htslib_helpers import needs_tools, run_wgsextract
+from tests.test_chunked_realign import (
+    GROUP_SORT,
+    MAPPING,
+    _chunk_size,
+    _dying_tools,
+    _realign,
+    _realign_cli,
+    _records,
+    _view,
+)
 from tests.test_chunked_realign import ont as ont
 from wgsextract_cli.api import Cancelled, CancelToken
 from wgsextract_cli.core import execution_context
+from wgsextract_cli.core.alignment._chunk_groups import binary_group_splitter_available
 from wgsextract_cli.core.chunked_alignment import ChunkedAlignment, Region
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.process_registry import proc_registry
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import WGSExtractError, run_command
+
+
+@pytest.mark.skipif(
+    platform.system() == "Windows" or not binary_group_splitter_available(),
+    reason="requires a Bash shim and the binary chunk splitter",
+)
+@needs_tools("samtools", "minimap2")
+@pytest.mark.parametrize("fmt", ["BAM", "CRAM"], ids=["bam", "older-cram-groups"])
+def test_1125_killed_during_sorted_stream_keeps_committed_chunks(
+    tmp_path, ont, fmt, caplog
+):
+    out = tmp_path / "out"
+    ext = fmt.lower()
+    argv = [
+        "--input", ont["cram"], "--ref", ont["ref"], "--outdir", str(out),
+        "--platform", "ont", "--threads", "2", "--memory", "256M",
+        "--chunk-size", _chunk_size(ont["cram"]), "--format", fmt, "--no-preflight",
+    ]  # fmt: skip
+    shims, _ = _dying_tools(tmp_path, r"^samtools sort .*chunk-[0-9]+\.sort -u ", 3)
+    assert _realign_cli(tmp_path, shims, argv, die=True).returncode != 0
+    workdir = out / f"x_aligned.{ext}.chunks"
+    state = json.loads((workdir / "state.json").read_text())
+    assert set(state["chunks"]) == {"0", "1"}
+    assert not list(workdir.glob("chunk-*.bam*"))
+    committed = list(workdir.glob(f"group-*/chunk-0000[01].{ext}"))
+    assert committed and all(path.stat().st_size for path in committed)
+
+    if fmt == "CRAM":
+        # Simulate committed groups from a samtools that defaulted to CRAM 3.0.
+        for number, sizes in state["chunks"].items():
+            for group in range(len(sizes)):
+                path = workdir / f"group-{group:03d}/chunk-{int(number):05d}.cram"
+                old = path.with_suffix(".old.cram")
+                run_command(
+                    [
+                        "samtools", "view", "--no-PG", "-C", "-T", ont["ref"],
+                        "--output-fmt-option", "version=3.0", "-o", old, path,
+                    ]
+                )  # fmt: skip
+                old.replace(path)
+                sizes[group] = path.stat().st_size
+        (workdir / "state.json").write_text(json.dumps(state))
+
+    with caplog.at_level("INFO"):
+        run_wgsextract("realign", *argv)
+    assert "Resuming the chunked alignment: 2 of " in caplog.text
+    whole = tmp_path / "whole"
+    _realign(ont["cram"], ont["ref"], whole, "--chunk-size", "0", "--format", fmt)
+    assert _records(str(out / f"x_aligned.{ext}"), ont["ref"]) == _records(
+        str(whole / f"x_aligned.{ext}"), ont["ref"]
+    )
+    assert not workdir.exists()
 
 
 @pytest.fixture

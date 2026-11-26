@@ -27,6 +27,7 @@ export interface ReportSectionsDocument {
     structural_variants: ReportSvDocument;
     microarray: ReportMicroarrayDocument;
     acmg_research?: ReportAcmgDocument;
+    panel_audit?: ReportPanelAuditDocument;
     ancestry?: ReportAncestryDocument;
     carrier_screening?: ReportSectionDocument;
     medication_review?: ReportMedicationReviewDocument;
@@ -49,7 +50,7 @@ export interface ReportOverviewDocument {
 }
 
 export interface ReportFindingDocument {
-    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "repeat_expansions" | "clinvar" | "mitochondrial" | "acmg_research" | "structural_variants" | "medication_review";
+    section: "lineage" | "pharmacogenomics" | "carrier_screening" | "repeat_expansions" | "clinvar" | "mitochondrial" | "acmg_research" | "panel_audit" | "structural_variants" | "medication_review";
     label: string;
     value: string;
     detail: string | null;
@@ -314,6 +315,19 @@ export interface ReportAcmgCountsDocument {
     in_gene_list: number;
     outside_gene_list: number;
     unplaced: number;
+}
+
+export interface ReportPanelAuditDocument {
+    title: string;
+    status: "ok" | "not_run" | "failed";
+    summary: string;
+    findings: (ReportFindingDocument)[];
+    missing: (ReportMissingDocument)[];
+    warnings: (ReportWarningDocument)[];
+    sources: (ReportSourceDocument)[];
+    error?: string;
+    research_only: true;
+    disclaimer: string;
 }
 
 export interface ReportAncestryDocument {

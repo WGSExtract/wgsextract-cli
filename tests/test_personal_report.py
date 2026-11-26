@@ -35,6 +35,7 @@ from wgsextract_cli.core import personal_report as pr
 from wgsextract_cli.core.config import get_config_path as get_config_path
 from wgsextract_cli.core.config import reload_settings as reload_settings
 from wgsextract_cli.core.config import settings as settings
+from wgsextract_cli.core.results import manifest_path_for
 from wgsextract_cli.core.sample_workspace import SampleWorkspace as SampleWorkspace
 from wgsextract_cli.core.utils import UsageError as UsageError
 from wgsextract_cli.core.utils import run_command as run_command
@@ -133,7 +134,7 @@ def _manifest(
     finished: str = "2025-01-01T00:00:00+00:00",
     error: str = "tool crashed",
 ) -> Path:
-    path = folder / "manifests" / f"{name}.manifest.json"
+    path = manifest_path_for(folder / name)
     path.parent.mkdir(exist_ok=True)
     document = {
         "schema": "wgsextract.result/1",

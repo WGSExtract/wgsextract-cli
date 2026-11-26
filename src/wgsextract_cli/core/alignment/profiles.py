@@ -25,26 +25,34 @@ def validate_output_profile(profile: str) -> None:
     options = output_profile_options(profile)
     if not options:
         return
-    tool = get_tool_path("samtools")
-    if not tool:
-        raise WGSExtractError("samtools is required for --output-profile.")
     try:
-        result = subprocess.run(
-            [*_tool_command_parts(tool), "view", "-C", *options, "-o", "-", "-"],
-            input=b"@HD\tVN:1.6\n",
-            capture_output=True,
-            check=True,
-            timeout=30,
-        )
+        version = probe_cram_output_version(options)
     except (OSError, subprocess.SubprocessError) as error:
         raise WGSExtractError(
             f"Installed samtools cannot write the {profile} output profile. "
             "Use --output-profile default or install a samtools supporting "
             "the requested CRAM options."
         ) from error
-    version = b"\x03\x01" if profile == "archive" else b"\x03\x00"
-    if result.stdout[:6] != b"CRAM" + version:
+    expected = (3, 1) if profile == "archive" else (3, 0)
+    if version != expected:
         raise WGSExtractError(
             f"Installed samtools did not write the CRAM version required by "
             f"the {profile} output profile."
         )
+
+
+def probe_cram_output_version(options: list[str]) -> tuple[int, int] | None:
+    """Return the CRAM version actually emitted by the configured samtools."""
+    tool = get_tool_path("samtools")
+    if not tool:
+        raise WGSExtractError("samtools is required for CRAM output.")
+    output = subprocess.run(
+        [*_tool_command_parts(tool), "view", "-C", *options, "-o", "-", "-"],
+        input=b"@HD\tVN:1.6\n",
+        capture_output=True,
+        check=True,
+        timeout=30,
+    ).stdout
+    if len(output) >= 6 and output[:4] == b"CRAM":
+        return output[4], output[5]
+    return None
