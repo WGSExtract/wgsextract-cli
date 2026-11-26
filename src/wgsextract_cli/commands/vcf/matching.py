@@ -6,8 +6,9 @@ import os
 import sqlite3
 from bisect import bisect_right
 from collections.abc import Callable, Sequence
-from contextlib import closing
+from contextlib import closing, suppress
 from pathlib import Path
+from threading import Event
 from typing import TextIO
 from urllib.parse import quote
 
@@ -47,6 +48,8 @@ def _write_vcf(
     clinical: bool,
     allowed: set[str] | None = None,
     incompatible_mito: set[str] | None = None,
+    *,
+    stop: Event | None = None,
 ) -> tuple[int, bool]:
     if clinical:
         text = "\n".join(
@@ -98,6 +101,8 @@ def _write_vcf(
     opener = gzip.open if source.lower().endswith((".gz", ".bgz")) else open
     with opener(source, "rt") as records:
         for line in records:
+            if stop is not None and stop.is_set():
+                return records_written, has_multiallelic
             if line.startswith("#"):
                 continue
             fields = line.rstrip().split("\t")
@@ -238,10 +243,11 @@ def _normalize_query(source: str, reference: str, work: str) -> str:
 
 
 def _stream_resource(
-    write: Callable[[TextIO], tuple[int, bool]],
+    write: Callable[[TextIO, Event], tuple[int, bool]],
     stages: list[list[str]],
     work: str,
 ) -> tuple[int, bool]:
+    stop = Event()
     read_fd, write_fd = os.pipe()
     with (
         os.fdopen(read_fd, "rb") as reader,
@@ -251,20 +257,27 @@ def _stream_resource(
 
         def feed() -> tuple[int, bool]:
             with writer:
-                return write(writer)
+                return write(writer, stop)
 
-        producer = pool.submit(feed)
         try:
             with reader:
-                run_pipeline(stages, stdin=reader, stderr_dir=work,
-                             description="Annotation resource REF validation")  # fmt: skip
+                try:
+                    producer = pool.submit(feed)
+                    run_pipeline(
+                        stages,
+                        stdin=reader,
+                        stderr_dir=work,
+                        description="Annotation resource REF validation",
+                        fail_fast=len(stages) > 1,
+                    )
+                finally:
+                    # A tail of excluded contigs won't see a broken pipe.
+                    stop.set()
         except WGSExtractError:
             # Close the read end before joining the writer. Prefer a source
             # error to bcftools failing on the resulting truncated stream.
-            try:
+            with suppress(BrokenPipeError):
                 producer.result()
-            except BrokenPipeError:
-                pass
             raise
         return producer.result()
 
@@ -287,8 +300,8 @@ def _normalize_resource(
         check_table_build(source, fields, lengths, reference, work)
         subset = select_snv_rows(source, snv_query, work) if snv_query else None
 
-        def write(handle: TextIO) -> tuple[int, bool]:
-            return write_table(source, fields, headers, lengths, subset, handle)
+        def write(handle: TextIO, stop: Event) -> tuple[int, bool]:
+            return write_table(source, fields, headers, lengths, subset, handle, stop)
     else:
         header = run_command(
             ["bcftools", "view", "-h", source], capture_output=True
@@ -307,9 +320,16 @@ def _normalize_resource(
                 ["bcftools", "annotate", "--rename-chrs", str(rename_path), "-Ou", "-"]
             )
 
-        def write(handle: TextIO) -> tuple[int, bool]:
+        def write(handle: TextIO, stop: Event) -> tuple[int, bool]:
             return _write_vcf(
-                source, handle, header, contigs, clinical, allowed, incompatible_mito
+                source,
+                handle,
+                header,
+                contigs,
+                clinical,
+                allowed,
+                incompatible_mito,
+                stop=stop,
             )
 
     # Check unsplit resources so a row with several ALTs counts only once.

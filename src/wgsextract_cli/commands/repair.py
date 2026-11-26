@@ -19,6 +19,7 @@ from wgsextract_cli.commands._messages.repair import LOG_MESSAGES
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.output_location import single_output_path
 from wgsextract_cli.core.paths import expand_path
+from wgsextract_cli.core.process_registry import is_sigpipe
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import current_result, json_mode
@@ -26,7 +27,6 @@ from wgsextract_cli.core.temp_directory import input_scratch_directory, scratch_
 from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
-    _is_sigpipe,
     popen,
     run_command,
 )
@@ -116,7 +116,7 @@ def repair_bam_file(params: RepairFtdnaBamParams) -> None:
         if write_code or read_code:
             # A failed reader leaves the writer an empty or truncated stream,
             # and a failed writer kills the reader with SIGPIPE; report the cause.
-            reader_failed = read_code and not _is_sigpipe(read_code)
+            reader_failed = read_code and not is_sigpipe(read_code)
             label, code, err = (
                 ("samtools view -h", read_code, read_err)
                 if reader_failed or not write_code

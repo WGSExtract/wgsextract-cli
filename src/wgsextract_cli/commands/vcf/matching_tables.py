@@ -3,6 +3,7 @@
 import gzip
 from collections.abc import Sequence
 from pathlib import Path
+from threading import Event
 from typing import TextIO
 
 from wgsextract_cli.core.utils import run_command
@@ -42,6 +43,7 @@ def write_table(
     lengths: dict[str, int],
     subset: Path | None,
     handle: TextIO,
+    stop: Event,
 ) -> tuple[int, bool]:
     tags = [
         (i, c.removeprefix("INFO/"))
@@ -60,6 +62,8 @@ def write_table(
     has_multiallelic = False
     with subset.open() if subset else gzip.open(source, "rt") as records:
         for line in records:
+            if stop.is_set():
+                return total, has_multiallelic
             if line.startswith("#"):
                 continue
             row = line.rstrip("\n").split("\t")
