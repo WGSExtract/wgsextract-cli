@@ -1,5 +1,6 @@
 """Reference-normalized allele matching and phase-supported ClinVar MNVs."""
 
+import errno
 import gzip
 import json
 import os
@@ -9,7 +10,6 @@ from collections.abc import Callable, Sequence
 from contextlib import closing, suppress
 from pathlib import Path
 from threading import Event
-from typing import TextIO
 from urllib.parse import quote
 
 from wgsextract_cli.core import clinical_evidence as ce
@@ -42,7 +42,7 @@ from .resource_ref_check import (
 
 def _write_vcf(
     source: str,
-    handle: TextIO,
+    emit: Callable[[str], int],
     text: str,
     contigs: Sequence[str],
     clinical: bool,
@@ -79,22 +79,22 @@ def _write_vcf(
     for line in text.splitlines():
         if line.startswith("#CHROM"):
             if allowed is None and header.samples:
-                handle.write(ad_total_header(header.format_number))
+                emit(ad_total_header(header.format_number))
             for contig in contigs:
                 if (
                     f"##contig=<ID={contig}," not in text
                     and f"##contig=<ID={contig}>" not in text
                 ):
-                    handle.write(f"##contig=<ID={contig}>\n")
+                    emit(f"##contig=<ID={contig}>\n")
             for tag, description in definitions.items():
                 if f"##INFO=<ID={tag}," not in text:
                     kind = "Integer" if tag == ce.STARS else "String"
                     number = "A" if tag in {ce.STARS, ce.TIER} else "1"
-                    handle.write(
+                    emit(
                         f"##INFO=<ID={tag},Number={number},Type={kind},"
                         f'Description="{description}">\n'
                     )
-        handle.write(line + "\n")
+        emit(line + "\n")
     skipped = set()
     skipped_count = 0
     mito_count = 0
@@ -163,7 +163,7 @@ def _write_vcf(
             fields[7] = ";".join(f"{k}={v}" if v else k for k, v in info.items()) or "."
             if allowed is None and "AD" in header.format_number:
                 preserve_ad_total(fields)
-            handle.write("\t".join(fields) + "\n")
+            emit("\t".join(fields) + "\n")
     warn_skipped_contigs(skipped, skipped_count)
     if mito_count:
         warn(
@@ -226,7 +226,7 @@ def _normalize_query(source: str, reference: str, work: str) -> str:
     _check_contig_lengths(header, lengths, is_resource=False)
     staged = Path(work, "query.vcf")
     with staged.open("w", newline="\n") as handle:
-        _write_vcf(source, handle, header, vcf_chromosomes(source), False)
+        _write_vcf(source, handle.write, header, vcf_chromosomes(source), False)
     renamed = normalize_vcf_chromosomes(str(staged), list(lengths), work)
     output = str(Path(work, "query.vcf.gz"))
     norm = output + ".norm.gz"
@@ -243,7 +243,7 @@ def _normalize_query(source: str, reference: str, work: str) -> str:
 
 
 def _stream_resource(
-    write: Callable[[TextIO, Event], tuple[int, bool]],
+    write: Callable[[Callable[[str], int], Event], tuple[int, bool]],
     stages: list[list[str]],
     work: str,
 ) -> tuple[int, bool]:
@@ -254,10 +254,31 @@ def _stream_resource(
         os.fdopen(write_fd, "w", encoding="utf-8", newline="\n") as writer,
         ContextThreadPoolExecutor(max_workers=1) as pool,
     ):
+        pipe_error: OSError | None = None
+
+        def emit(line: str) -> int:
+            nonlocal pipe_error
+            try:
+                return writer.write(line)
+            except OSError as error:
+                pipe_error = error
+                raise
 
         def feed() -> tuple[int, bool]:
-            with writer:
-                return write(writer, stop)
+            nonlocal pipe_error
+            try:
+                result = write(emit, stop)
+            except BaseException:
+                # A flush during close must not replace the producer's error.
+                with suppress(OSError):
+                    writer.close()
+                raise
+            try:
+                writer.close()
+            except OSError as error:
+                pipe_error = error
+                raise
+            return result
 
         try:
             with reader:
@@ -274,10 +295,16 @@ def _stream_resource(
                     # A tail of excluded contigs won't see a broken pipe.
                     stop.set()
         except WGSExtractError:
-            # Close the read end before joining the writer. Prefer a source
-            # error to bcftools failing on the resulting truncated stream.
-            with suppress(BrokenPipeError):
+            # run_pipeline has reaped the children and our read end is closed.
+            # Windows may report a broken pipe as EINVAL, including on flush.
+            try:
                 producer.result()
+            except OSError as error:
+                if error is not pipe_error or not (
+                    isinstance(error, BrokenPipeError)
+                    or (os.name == "nt" and error.errno == errno.EINVAL)
+                ):
+                    raise
             raise
         return producer.result()
 
@@ -300,8 +327,8 @@ def _normalize_resource(
         check_table_build(source, fields, lengths, reference, work)
         subset = select_snv_rows(source, snv_query, work) if snv_query else None
 
-        def write(handle: TextIO, stop: Event) -> tuple[int, bool]:
-            return write_table(source, fields, headers, lengths, subset, handle, stop)
+        def write(emit: Callable[[str], int], stop: Event) -> tuple[int, bool]:
+            return write_table(source, fields, headers, lengths, subset, emit, stop)
     else:
         header = run_command(
             ["bcftools", "view", "-h", source], capture_output=True
@@ -320,10 +347,10 @@ def _normalize_resource(
                 ["bcftools", "annotate", "--rename-chrs", str(rename_path), "-Ou", "-"]
             )
 
-        def write(handle: TextIO, stop: Event) -> tuple[int, bool]:
+        def write(emit: Callable[[str], int], stop: Event) -> tuple[int, bool]:
             return _write_vcf(
                 source,
-                handle,
+                emit,
                 header,
                 contigs,
                 clinical,

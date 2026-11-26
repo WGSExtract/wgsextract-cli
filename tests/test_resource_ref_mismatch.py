@@ -1,5 +1,6 @@
 """Issue #1325: a resource's stale REF rows are dropped, not fatal."""
 
+import errno
 import gzip
 import json
 import subprocess
@@ -46,12 +47,16 @@ EXCLUDED = "annotation_ref_mismatch_excluded"
 
 
 @pytest.mark.parametrize(
-    ("is_table", "interrupt"),
-    [(False, False), (True, True)],
-    ids=["vcf-downstream-failure", "table-interrupt"],
+    ("is_table", "interrupt", "source_error"),
+    [(False, False, False), (True, True, False), (False, False, True)],
+    ids=["vcf-downstream-failure", "table-interrupt", "vcf-source-error"],
 )
 def test_1585_excluded_contig_tail_does_not_delay_shutdown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, is_table: bool, interrupt: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    is_table: bool,
+    interrupt: bool,
+    source_error: bool,
 ) -> None:
     sample = _sample(tmp_path, SAMPLE_ROWS, length=1000)
     ref = reference_for_vcf(tmp_path / "ref" / "ref.fa.gz", sample)
@@ -70,6 +75,7 @@ def test_1585_excluded_contig_tail_does_not_delay_shutdown(
         excluded = "other\t100\t.\tC\tT\t.\t.\t.\tGT\t0/1\n"
 
     scanning_tail, release_tail = Event(), Event()
+    fail_source, source_failed = Event(), Event()
     real_open, real_popen = gzip.open, utils.popen
     children: list[subprocess.Popen[bytes]] = []
 
@@ -78,6 +84,9 @@ def test_1585_excluded_contig_tail_does_not_delay_shutdown(
         yield excluded
         scanning_tail.set()
         while not release_tail.is_set():
+            if fail_source.is_set():
+                source_failed.set()
+                raise OSError(errno.EINVAL, "resource read failed")
             yield excluded
 
     @contextmanager
@@ -102,6 +111,10 @@ def test_1585_excluded_contig_tail_does_not_delay_shutdown(
                 cmd = [*cmd, "--invalid-annotation-test-option"]
         child = real_popen(cmd, **kwargs)
         children.append(child)
+        if consumer and source_error:
+            child.wait(timeout=5)
+            fail_source.set()
+            assert source_failed.wait(5)
         if consumer and interrupt:
             wait, caller = child.wait, current_thread()
             interrupted = False
@@ -129,6 +142,10 @@ def test_1585_excluded_contig_tail_does_not_delay_shutdown(
             if interrupt:
                 with pytest.raises(KeyboardInterrupt):
                     result.result(timeout=8)
+            elif source_error:
+                with pytest.raises(OSError, match="resource read failed") as error:
+                    result.result(timeout=8)
+                assert error.value.errno == errno.EINVAL
             else:
                 with pytest.raises(WGSExtractError, match="bcftools norm"):
                     result.result(timeout=8)

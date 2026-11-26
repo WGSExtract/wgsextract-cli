@@ -1,10 +1,9 @@
 """Project indexed allele tables into the resource normalization stream."""
 
 import gzip
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from threading import Event
-from typing import TextIO
 
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.core.variant_files import match_chromosome_name, vcf_chromosomes
@@ -42,7 +41,7 @@ def write_table(
     headers: Sequence[str],
     lengths: dict[str, int],
     subset: Path | None,
-    handle: TextIO,
+    emit: Callable[[str], int],
     stop: Event,
 ) -> tuple[int, bool]:
     tags = [
@@ -50,10 +49,12 @@ def write_table(
         for i, c in enumerate(fields)
         if c.startswith("INFO/")
     ]
-    handle.write("##fileformat=VCFv4.2\n")
-    handle.writelines(f"##contig=<ID={c},length={n}>\n" for c, n in lengths.items())
-    handle.writelines(h + "\n" for h in headers)
-    handle.write("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
+    emit("##fileformat=VCFv4.2\n")
+    for contig, length in lengths.items():
+        emit(f"##contig=<ID={contig},length={length}>\n")
+    for header in headers:
+        emit(header + "\n")
+    emit("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n")
     mapped_names: dict[str, str | None] = {}
     chrom_col, pos_col, ref_col, alt_col = (
         fields.index(c) for c in ("CHROM", "POS", "REF", "ALT")
@@ -78,7 +79,7 @@ def write_table(
             alt = row[alt_col]
             has_multiallelic |= "," in alt
             total += 1
-            handle.write(
+            emit(
                 f"{mapped}\t{row[pos_col]}\t.\t{row[ref_col]}\t{alt}\t.\t.\t{info or '.'}\n"
             )
     warn_skipped_contigs(
