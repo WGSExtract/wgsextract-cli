@@ -107,9 +107,9 @@ def test_1393_detached_main_checkout_keeps_work_recoverable_only_from_reflog(
     abandoned = git(path, "rev-parse", "HEAD")
     git(path, "reset", "--hard", "origin/main")
     # Clear ORIG_HEAD so only the worktree's HEAD reflog preserves the commit.
-    git(path, "reset", "--hard", "origin/main")
+    git(path, "update-ref", "ORIG_HEAD", "HEAD")
     if old_value_only:
-        git(path, "reflog", "delete", "HEAD@{2}")
+        git(path, "reflog", "delete", "HEAD@{1}")
         assert abandoned not in git(path, "reflog", "show", "--format=%H")
     github([])
 

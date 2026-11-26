@@ -518,8 +518,9 @@ a checkout even if Git reports it clean. Activity is checked through Linux
 If Linux hides or denies
 inspection of a process, the run reports the error and does not remove
 unverified worktrees. Use the optional inspector below when unprivileged
-process visibility is insufficient. Use `git worktree lock` before starting
-work in a checkout that might be eligible for cleanup.
+process visibility is insufficient. Use `git worktree lock` to reserve a
+checkout that might be eligible for cleanup, including while a job is queued:
+the process scan cannot see reservations that have no process using the path.
 Do not start work in an eligible checkout during cleanup. Symlinks are checked
 in this repository and its registered worktrees, including shared Git
 metadata and each checkout's effective `core.hooksPath`. If a symlinked
