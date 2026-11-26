@@ -3,9 +3,9 @@ import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises"
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import type { BundleManifest, WorkspaceLocationInfo } from "../../../shared/types.js";
+import type { BundleManifest, SetupRun, WorkspaceLocationInfo } from "../../../shared/types.js";
 import { errnoCode, HttpError } from "./errors.js";
-import { loadBundleState } from "./bundle-state.js";
+import { loadBundleState, saveBundleState } from "./bundle-state.js";
 import { appSupportContainerName, devAppDataName, safePathComponent } from "./paths.js";
 import { appSettingsPath, bundleSetting, isManagedWorkspace, type MovedConfigPath, readAppSettings, updateAppSettings, withBundleSetting, withMovedConfigPaths, workspaceRootIn, workspaceSentinelFileName } from "./workspace-location.js";
 
@@ -51,9 +51,13 @@ export async function usersWorkspaceNeedsSetup(manifest: UsersManifest, bundleRo
     }
     // A CLI-created default workspace alone is not consent for a new desktop
     // install to open it. Keep previous GUI setups and legacy migrations intact.
-    const setup = (await loadBundleState(bundleRoot)).setupRun;
-    const previouslyRanSetup = setup?.status === "ok" || setup?.status === "warning" || Boolean(setup?.results?.length);
-    return !previouslyRanSetup && !(await isManagedWorkspace(registered.root));
+    const persisted = await loadBundleState(bundleRoot);
+    return !persisted.usersWorkspaceAdopted && !setupEstablishedWorkspace(persisted.setupRun) &&
+        !(await isManagedWorkspace(registered.root));
+}
+
+export function setupEstablishedWorkspace(setup: SetupRun | null): boolean {
+    return setup?.status === "ok" || setup?.status === "warning" || Boolean(setup?.results?.length);
 }
 
 /**
@@ -285,6 +289,8 @@ async function releaseLegacyBundleWorkspace(usersRoot: string, bundleRoot: strin
         const saved: unknown = JSON.parse(await readFile(state, "utf8"));
         await writeFile(path.join(bundleRoot, bundleStateFileName), `${JSON.stringify(migrateWorkspaceTokens(saved), null, 2)}\n`, "utf8");
     }
+    await mkdir(bundleRoot, { recursive: true });
+    await saveBundleState({ usersWorkspaceAdopted: true }, bundleRoot);
 
     function migrateWorkspaceTokens(value: unknown): unknown {
         if (typeof value === "string") {

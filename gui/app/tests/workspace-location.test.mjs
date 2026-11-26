@@ -13,6 +13,7 @@ const cli = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../dist/
 const { saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { applicationSupportDirectory, normalizeContext } = await import("../dist/web/src/server/paths.js");
 const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
+const { forgetSetupWithMissingTools } = await import("../dist/web/src/server/setup-runner.js");
 const { appDataWorkspacesDirectory, appSettingsPath, updateAppSettings } = await import("../dist/web/src/server/workspace-location.js");
 const { readPrivacyMode, savePrivacyMode } = await import("../dist/web/src/server/privacy-mode.js");
 const { saveUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo } = await import("../dist/web/src/server/users-workspace.js");
@@ -80,6 +81,31 @@ test("#1597 first-run WGS Extract resolves the default without creating it befor
   assert.equal(await readFile(standaloneConfig, "utf8"), "cpu_threads = 2\n");
   await assert.rejects(stat(path.join(chosen, "config.toml")), { code: "ENOENT" });
 });
+
+for (const legacy of [false, true]) {
+  test(`#1601 keeps the adopted default workspace ${legacy ? "after legacy migration" : "when tools are missing"}`, async (t) => {
+    const desktop = { ...manifest, id: "wgs-extract", setup: { steps: [
+      { id: "cli", label: "CLI", kind: "pathTool", value: "{{bundleWorkspace}}/missing-cli" },
+    ] } };
+    const { root, source, users } = await fixture(t, desktop);
+    await mkdir(path.join(users, "library"), { recursive: true });
+    const [marker, label] = legacy ? [".bundle-workspace", "WGS Extract GUI workspace"] : [".users-workspace", "WGS Extract users workspace"];
+    await writeFile(path.join(users, marker), `${label}\n`);
+    await writeFile(path.join(users, "config.toml"), "cpu_threads = 8\n");
+    await writeFile(path.join(users, "library", "kept.txt"), "existing library");
+    const bundleRoot = await prepareBundleWorkspace(desktop, source);
+
+    if (!legacy) {
+      await writeFile(path.join(bundleRoot, "state.json"), JSON.stringify({ setupRun: { status: "ok", results: [] } }));
+      assert.equal(await forgetSetupWithMissingTools(desktop, bundleRoot), true);
+    }
+    const chosen = path.join(root, "relocated");
+    await move({ manifest: desktop, sourceRoot: source, bundleRoot, folder: chosen });
+    assert.equal(await readFile(path.join(chosen, "config.toml"), "utf8"), "cpu_threads = 8\n");
+    assert.equal(await readFile(path.join(chosen, "library", "kept.txt"), "utf8"), "existing library");
+    await assert.rejects(stat(users), { code: "ENOENT" });
+  });
+}
 
 test("1087 migration rejects workspace aliases without deleting saved state", async (t) => {
   const { root, source, bundle } = await fixture(t);

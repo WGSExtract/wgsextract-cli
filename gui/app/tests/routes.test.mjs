@@ -11,7 +11,7 @@ import { dataEnvironment } from "./workspace-fixture.mjs";
 const { createRequestHandler } = await import("../dist/web/src/server/routes.js");
 const { streamNDJSON } = await import("../dist/web/src/server/ndjson.js");
 const { takeApiToken } = await import("../dist/web/src/server/request-guard.js");
-const { recordWorkspaceMove } = await import("../dist/web/src/server/users-workspace.js");
+const { recordWorkspaceMove, registerUsersWorkspace } = await import("../dist/web/src/server/users-workspace.js");
 const { appSettingsPath } = await import("../dist/web/src/server/workspace-location.js");
 
 const apiToken = "test-token-0123456789abcdefghijklmnopqrstuvwxyz";
@@ -554,6 +554,36 @@ test("POST /api/setup/stream emits setup completion", async (t) => {
   assert.equal(events.at(-1).type, "complete");
   assert.equal(events.at(-1).result.status, "ok");
   assert.equal(calls.runProcess.length, 1);
+});
+
+test("#1601 first setup migrates previous settings before running steps and streams the resulting config", async (t) => {
+  const manifest = testManifest();
+  manifest.id = "wgs-extract";
+  manifest.defaultUsersWorkspace = "~/desktop";
+  const control = manifest.pages.flatMap((page) => page.sections).flatMap((section) => section.controls)
+    .find((item) => item.kind === "configEditor");
+  control.configFile = {
+    path: "{{usersWorkspace}}/config.toml",
+    previousPaths: ["{{bundleWorkspace}}/config.toml"],
+    format: "toml",
+  };
+  const { baseURL, tempRoot, calls, context } = await withTestServer(t, {
+    manifest, localizedBundleLoader: { async load() { return { manifest }; } },
+  });
+  const selected = path.join(tempRoot, "desktop");
+  const previous = path.join(context.bundleRoot, "config.toml");
+  registerUsersWorkspace(context.bundleRoot, selected, true);
+  await writeFile(previous, 'threads = "7"\n');
+
+  const events = await readNDJSON(await apiFetch(baseURL, "/api/setup/stream", { body: {} }));
+
+  assert.equal(events[0].type, "config");
+  assert.equal(events[0].configFilePaths.settings, "{{usersWorkspace}}/config.toml");
+  assert.equal(events[0].configValues["settings.threads"], "7");
+  assert.equal(events.at(-1).result.status, "ok");
+  assert.equal(calls.runProcess.length, 1);
+  assert.equal(await readFile(path.join(selected, "config.toml"), "utf8"), 'threads = "7"\n');
+  await assert.rejects(readFile(previous), { code: "ENOENT" });
 });
 
 test("PR #531 review: nothing starts or writes while the workspace moves, so no change is lost with the old copy", async (t) => {

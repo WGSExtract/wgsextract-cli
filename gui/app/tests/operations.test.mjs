@@ -363,6 +363,50 @@ test("setup holds data sources while running and reloads failed ones when it end
   }
 });
 
+test("#1601 setup refreshes settings and their bound fields before a library can be moved or saved", async (t) => {
+  resetState();
+  const { configSettingChanged, saveConfig } = await import("../dist/web/src/client/operations.js");
+  const setting = { id: "reference_library", key: "reference_library", kind: "path", moveContents: true };
+  const control = { id: "paths", kind: "configEditor", configFile: { path: "/selected/config.toml" }, settings: [setting] };
+  state.manifest.pages = [{ id: "settings", sections: [{ controls: [control] }] }];
+  state.fieldValues.reference_library = "";
+  const writes = [];
+  const stream = setupStreamResponse();
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url, options) => {
+    if (url === "/api/setup/stream") return stream.response;
+    if (url === "/api/config/save") writes.push(JSON.parse(options.body));
+    return Response.json({});
+  };
+  const setup = runSetup();
+  await waitUntil(() => state.setupRun?.status === "running");
+  await saveConfig(control);
+  assert.deepEqual(writes, []);
+
+  stream.write({ type: "config", configFilePaths: { paths: "/selected/config.toml" },
+    configValues: { "paths.reference_library": "/selected/reference" } });
+  stream.write({ type: "complete", result: { status: "ok", results: [] } });
+  stream.close();
+  await setup;
+  assert.equal(state.fieldValues.reference_library, "/selected/reference");
+  await configSettingChanged("/faster/reference", setting, control);
+  assert.equal(state.workspaceMove?.setting.from, "/selected/reference");
+  await saveConfig(control);
+  assert.deepEqual(writes, [{ controlID: "paths", path: "/selected/config.toml", values: { reference_library: "/selected/reference" } }]);
+});
+
+test("#1601 the explicitly opened workspace location remains visible in Basic mode after failed preflight", () => {
+  resetState();
+  const page = { id: "settings", title: "Settings", sections: [] };
+  state.manifest.pages = [page];
+  state.uiMode = "basic";
+  state.workspaceLocation = { workspaceRoot: "/users/wgs-extract", defaultRoot: "/users/wgs-extract", usingDefault: true };
+  state.setupRun = { status: "failed", results: [], error: "Not enough disk space." };
+  state.openSections.add("users-workspace-location");
+  assert.match(renderPage(page), /data-workspace-location-choose/);
+});
+
 test("opens the bundle workspace through the server API", async () => {
   resetState();
   const originalFetch = globalThis.fetch;

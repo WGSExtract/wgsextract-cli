@@ -1,13 +1,13 @@
-import { setupResultLine } from "../../../shared/rendering.js";
+import { configEditorControls, configValueKey, setupResultLine } from "../../../shared/rendering.js";
 import { api, apiStream } from "./api.js";
-import { errorMessage } from "./model.js";
+import { errorMessage, syncSharedField } from "./model.js";
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { appendTerminal, appendTerminalOutput, runningActionControllers } from "./terminal.js";
 import { findTerminalEntry } from "./terminal-output.js";
 import { persistBundleState } from "./operations-state.js";
 import { resolveSetupPreflight } from "./operations-setup-preflight.js";
-import type { SetupRun, SetupStepResult, TerminalEntry } from "../../../shared/types.js";
+import type { SetupRun, SetupStepResult, StringMap, TerminalEntry, ValueMap } from "../../../shared/types.js";
 
 let setupElapsedTimer: ReturnType<typeof setInterval> | null = null;
 let runningSetup: AbortController | null = null;
@@ -81,6 +81,7 @@ export async function openBundleWorkspace() {
     await api<void>("/api/open-bundle-workspace", { method: "POST", body: {} });
 }
 type SetupStreamEvent =
+    | { type: "config"; configFilePaths: StringMap; configValues: ValueMap }
     | { type: "step-start"; step: { id: string; label?: string; command?: string } }
     | { type: "output"; text?: string }
     | { type: "step-complete"; result: SetupStepResult & { durationMs?: number } }
@@ -91,6 +92,15 @@ function applySetupEvent(event: SetupStreamEvent, tab: TerminalEntry | undefined
         return;
     }
     switch (event.type) {
+        case "config":
+            state.configFilePaths = event.configFilePaths;
+            state.configValues = event.configValues;
+            for (const control of configEditorControls(state.manifest ?? {})) {
+                for (const setting of control.settings ?? []) {
+                    syncSharedField(setting, event.configValues[configValueKey(control, setting)]);
+                }
+            }
+            break;
         case "step-start":
             startSetupElapsedTimer(event.step.id);
             state.setupRun = {

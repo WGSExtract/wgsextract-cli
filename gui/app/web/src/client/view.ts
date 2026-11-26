@@ -159,7 +159,7 @@ export function isSectionExpanded(page: BundlePage, section: PageSection): boole
 function renderSections(page: BundlePage): string {
     let parentCollapsed = false;
     const sections = visibleSections(page, state.uiMode);
-    const showLocation = state.uiMode === "advanced" || (!state.setupRun && state.openSections.has(workspaceLocationSectionID));
+    const showLocation = state.uiMode === "advanced" || state.openSections.has(workspaceLocationSectionID);
     const location = page.id === "settings" && showLocation ? renderWorkspaceLocationSection() : "";
     const editorIndex = sections.findIndex((section) => (section.controls ?? []).some((control) => control.kind === "configEditor"));
     const rendered = sections

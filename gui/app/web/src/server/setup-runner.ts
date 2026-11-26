@@ -10,6 +10,7 @@ import { expandPathTokens, resolveBundlePath, bundleEnvironment } from "./paths.
 import { platformCommand } from "./platform-command.js";
 import { resolvePlatformScriptPath } from "./platform-scripts.js";
 import { errorMessage } from "./errors.js";
+import { setupEstablishedWorkspace } from "./users-workspace.js";
 
 const activeWorkspaces = new Set<string>();
 
@@ -173,7 +174,10 @@ export async function forgetSetupWithMissingTools(manifest: SetupManifest, bundl
         .map((step) => expandSetupValue(step.value, bundleRoot))
         .some((tool) => path.isAbsolute(tool) && !existsSync(tool));
     if (missing) {
-        await saveBundleState({ setupRun: null }, bundleRoot);
+        await saveBundleState({
+            setupRun: null,
+            ...(setupEstablishedWorkspace(setupRun) ? { usersWorkspaceAdopted: true } : {}),
+        }, bundleRoot);
     }
     return missing;
 }

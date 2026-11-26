@@ -7,7 +7,7 @@ import { loadLocaleOptions } from "./bundle-loader.js";
 import { bootstrapConfigFiles } from "./config-bootstrap.js";
 import { loadBundleState, saveBundleState } from "./bundle-state.js";
 import { savePrivacyMode } from "./privacy-mode.js";
-import { initialConfigFilePaths, loadConfig, saveConfig } from "./config-store.js";
+import { initialConfigFilePaths, initialConfigValues, loadConfig, saveConfig } from "./config-store.js";
 import { errorMessage, HttpError } from "./errors.js";
 import { contentType, json, notFound, readJSONBody, serveIndex, staticFile } from "./http.js";
 import { findConfigEditorControl, locationKey, resolveActionReference, resolveDataSource, type DynamicActions } from "./manifest-lookup.js";
@@ -548,16 +548,28 @@ function rememberDynamicActions(context: RequestHandlerContext, location: Return
 async function handleStepStream(request: IncomingMessage, response: ServerResponse, context: RequestHandlerContext, runner: StepRunner) {
     const body = await withCurrentWorkspace(context, () => readBody(request, context), request);
     const bundle = await context.localizedBundleLoader.load(requestedLocale(body, context.defaultLocale), preferredLocales(request.headers["accept-language"]));
+    const refreshConfig = runner === runSetup && bundle.manifest.id === "wgs-extract" && Boolean(bundle.manifest.defaultUsersWorkspace);
+    if (refreshConfig && await usersWorkspaceNeedsSetup(bundle.manifest, context.bundleRoot)) {
+        await context.localizedBundleLoader.preloaded?.catch(() => undefined);
+        await withWorkspaceMove(async () => {
+            await assertCurrentWorkspace(context, request);
+            if (!(await usersWorkspaceNeedsSetup(bundle.manifest, context.bundleRoot))) return;
+            const usersRoot = usersWorkspaceFor(context.bundleRoot);
+            await prepareUsersWorkspace(usersRoot, context.bundleRoot, new Set());
+            const saved = await loadBundleState(context.bundleRoot);
+            const configPaths = initialConfigFilePaths(bundle.manifest, saved, context.bundleRoot);
+            await bootstrapConfigFiles(bundle.manifest, context.bundleRoot, configPaths);
+            await saveUsersWorkspace(bundle.manifest, usersRoot);
+        });
+    }
     await withCurrentWorkspace(context, () => streamNDJSON(
         response,
         async (emit, signal) => {
-            if (runner === runSetup && await usersWorkspaceNeedsSetup(bundle.manifest, context.bundleRoot)) {
-                const usersRoot = usersWorkspaceFor(context.bundleRoot);
-                await saveUsersWorkspace(bundle.manifest, usersRoot);
-                await prepareUsersWorkspace(usersRoot, context.bundleRoot, new Set());
+            if (refreshConfig) {
                 const saved = await loadBundleState(context.bundleRoot);
-                const configPaths = initialConfigFilePaths(bundle.manifest, saved, context.bundleRoot);
-                await bootstrapConfigFiles(bundle.manifest, context.bundleRoot, configPaths);
+                const configFilePaths = initialConfigFilePaths(bundle.manifest, saved, context.bundleRoot);
+                const configValues = await initialConfigValues(bundle.manifest, configFilePaths, context.bundleRoot);
+                await emit({ type: "config", configFilePaths, configValues });
             }
             return runner(bundle.manifest, context.bundleRoot, context.runProcess, wrapEmitWithEventLog(emit), bundle.labels ?? {}, signal);
         },

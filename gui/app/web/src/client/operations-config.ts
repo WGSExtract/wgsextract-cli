@@ -26,6 +26,9 @@ export async function loadConfig(control: ControlSpec) {
     }
 }
 export async function fieldValueChanged(value: string, control: ControlSpec) {
+    if (state.setupRun?.status === "running" && configSettingBindings(control.id).length) {
+        return;
+    }
     const movable = configSettingBindings(control.id).find((binding) => binding.setting.moveContents === true);
     if (movable) {
         await configSettingChanged(value, movable.setting, movable.control);
@@ -38,6 +41,9 @@ export async function fieldValueChanged(value: string, control: ControlSpec) {
     await syncBoundConfigSettings(control.id, configValue, isMulti ? {} : { removeFieldIDs: [control.id] });
 }
 export async function checkedOptionsChanged(selectedIDs: Set<string>, control: ControlSpec) {
+    if (state.setupRun?.status === "running" && configSettingBindings(control.id).length) {
+        return;
+    }
     state.checkedOptions[control.id] = selectedIDs;
     const value = [...selectedIDs].sort().join(",");
     await syncBoundConfigSettings(control.id, value, { removeCheckedIDs: [control.id] });
@@ -68,6 +74,9 @@ async function syncBoundConfigSettings(controlID: string, value: string, removeP
     await persistBundleState(removePersistedState);
 }
 export async function configSettingChanged(value: string, setting: ConfigSetting, control: ControlSpec) {
+    if (state.setupRun?.status === "running") {
+        return;
+    }
     const current = String(state.configValues[configValueKey(control, setting)] ?? "");
     if (setting.moveContents === true && current.trim() && value.trim() && current !== value) {
         // The folder's contents may move with it: the user decides, and until then the setting keeps its value.
@@ -92,6 +101,9 @@ async function saveSetting(value: string, setting: ConfigSetting, control: Contr
  * window loaded earlier never undo what the CLI or another window saved since.
  */
 export async function saveConfig(control: ControlSpec, reportSuccess = false, settings = control.settings ?? []) {
+    if (state.setupRun?.status === "running") {
+        return;
+    }
     try {
         const values = Object.fromEntries(settings.filter((setting) => state.uiMode === "advanced" || setting.advancedOnly !== true).map((setting) => [setting.key, state.configValues[configValueKey(control, setting)] ?? setting.value ?? ""]));
         const result = await api<ConfigSaveResponse>("/api/config/save", {

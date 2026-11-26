@@ -13,6 +13,7 @@ export type BundleState = {
     checkedOptions: Record<string, string[]>;
     selectedPageID: string | null;
     setupRun: SetupRun | null;
+    usersWorkspaceAdopted?: true;
     iconSet: "emoji" | "platform";
     colorTheme: "light" | "dark" | "system";
     webUIFont: "sfPro" | "system";
@@ -98,6 +99,7 @@ export async function loadBundleState(bundleRoot: string): Promise<BundleState> 
         checkedOptions: state.checkedOptions ?? {},
         selectedPageID: state.selectedPageID ?? null,
         setupRun: state.setupRun ?? null,
+        ...(state.usersWorkspaceAdopted === true ? { usersWorkspaceAdopted: true } : {}),
         iconSet: normalizeIconSet(state.iconSet),
         colorTheme: normalizeColorTheme(state.colorTheme),
         webUIFont: normalizeWebUIFont(state.webUIFont),
@@ -120,6 +122,7 @@ export async function saveBundleState(partialState: BundleStateUpdate, bundleRoo
             selectedPageID: Object.hasOwn(partialState, "selectedPageID") ? partialState.selectedPageID ?? null : current.selectedPageID,
             // Setup runs are validated as objects at the request boundary and stored as reported.
             setupRun: Object.hasOwn(partialState, "setupRun") ? (partialState.setupRun ?? null) as SetupRun | null : current.setupRun,
+            ...(partialState.usersWorkspaceAdopted || current.usersWorkspaceAdopted ? { usersWorkspaceAdopted: true } : {}),
             iconSet: Object.hasOwn(partialState, "iconSet") ? normalizeIconSet(partialState.iconSet) : current.iconSet,
             colorTheme: Object.hasOwn(partialState, "colorTheme")
                 ? normalizeColorTheme(partialState.colorTheme)
