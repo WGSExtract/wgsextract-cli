@@ -3,11 +3,11 @@
 import logging
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 
 from .cli.argv import config_path_from_argv, show_version, version_only
-from .cli.bootstrap import configure_logging, configure_stdio_encoding
+from .cli.bootstrap import cli_logging, configure_stdio_encoding
 from .core.config import reload_settings, set_config_path
 from .core.errors import WGSExtractError
 from .core.workspace_activity import WORKSPACE_LEASE_ARGUMENT, workspace_use
@@ -23,16 +23,18 @@ def main(argv: Sequence[str] | None = None, *, admitted_by: str | None = None) -
         except (OSError, WGSExtractError) as exc:
             print(f"Cannot use the workspace: {exc}", file=sys.stderr)
             raise SystemExit(1) from None
-        _run(argv, workspace)
+        tokens = list(sys.argv[1:] if argv is None else argv)
+        # Config is loaded before argparse, but its diagnostics use the CLI format.
+        options = tokens[: tokens.index("--")] if "--" in tokens else tokens
+        with cli_logging(
+            debug="--debug" in options, quiet="--quiet" in options
+        ) as set_log_level:
+            _run(tokens, workspace, set_log_level)
 
 
-def _run(argv: Sequence[str] | None, workspace: ExitStack) -> None:
-    tokens = list(sys.argv[1:] if argv is None else argv)
-    # Config is loaded before argparse, but its diagnostics use the CLI format.
-    startup_options = tokens[: tokens.index("--")] if "--" in tokens else tokens
-    configure_logging(
-        debug="--debug" in startup_options, quiet="--quiet" in startup_options
-    )
+def _run(
+    tokens: list[str], workspace: ExitStack, set_log_level: Callable[[bool, bool], None]
+) -> None:
     try:
         set_config_path(config_path_from_argv(tokens))
         reload_settings()
@@ -74,7 +76,7 @@ def _run(argv: Sequence[str] | None, workspace: ExitStack) -> None:
     )
     from .core.run_log import RunLogError, run_logging
 
-    configure_logging(debug=args.debug, quiet=args.quiet)
+    set_log_level(args.debug, args.quiet)
     install_signal_handlers()
     start_parent_monitor(args.parent_pid)
 

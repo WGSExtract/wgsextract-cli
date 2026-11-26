@@ -1,6 +1,8 @@
 import logging
 import os
 import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from types import FrameType
 from typing import TextIO
 
@@ -75,20 +77,45 @@ def _reconfigure_stream(stream: TextIO) -> None:
         logging.debug("Could not reconfigure stdio encoding.", exc_info=True)
 
 
-def configure_logging(*, debug: bool = False, quiet: bool = False) -> None:
+def _cli_log_handler() -> logging.StreamHandler[TextIO]:
     handler = logging.StreamHandler()
-    handler.setLevel(
-        logging.DEBUG if debug else logging.ERROR if quiet else logging.INFO
-    )
     handler.setFormatter(
         EmojiFormatter("[%(asctime)s] %(levelname)s: %(message)s", datefmt="%H:%M:%S")
     )
-    logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
+    return handler
 
-    if debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    elif quiet:
-        logging.getLogger().setLevel(logging.ERROR)
+
+def _log_level(debug: bool, quiet: bool) -> int:
+    return logging.DEBUG if debug else logging.ERROR if quiet else logging.INFO
+
+
+def configure_logging(*, debug: bool = False, quiet: bool = False) -> None:
+    handler = _cli_log_handler()
+    level = _log_level(debug, quiet)
+    handler.setLevel(level)
+    logging.basicConfig(level=level, handlers=[handler], force=True)
+
+
+@contextmanager
+def cli_logging(*, debug: bool, quiet: bool) -> Iterator[Callable[[bool, bool], None]]:
+    """Format CLI diagnostics without replacing an embedding caller's handlers."""
+    root = logging.getLogger()
+    previous_level = root.level
+    handler = _cli_log_handler()
+
+    def set_level(debug: bool, quiet: bool) -> None:
+        level = _log_level(debug, quiet)
+        root.setLevel(level)
+        handler.setLevel(level)
+
+    set_level(debug, quiet)
+    root.addHandler(handler)
+    try:
+        yield set_level
+    finally:
+        root.removeHandler(handler)
+        handler.close()
+        root.setLevel(previous_level)
 
 
 def install_signal_handlers() -> None:

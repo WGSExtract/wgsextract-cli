@@ -104,14 +104,20 @@ def test_1597_cli_config_ambiguity_is_logged_once_and_not_for_explicit_config(
     legacy = legacy_config_paths()[0]
     for path in (workspace_config, legacy):
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("cpu_threads = 2\n")
+        path.write_text('cpu_threads = "many"\n')
 
     def run(args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 sys.executable,
                 "-c",
-                f"from wgsextract_cli.main import main; main({args}); main({args})",
+                "from wgsextract_cli.main import main\n"
+                "for _ in range(2):\n"
+                "    try:\n"
+                f"        main({args})\n"
+                "    except SystemExit as exc:\n"
+                "        if exc.code != 0:\n"
+                "            raise\n",
             ],
             check=True,
             capture_output=True,
@@ -121,6 +127,7 @@ def test_1597_cli_config_ambiguity_is_logged_once_and_not_for_explicit_config(
     warning = run(repr(["--version"])).stderr
     assert warning.count("Multiple configuration files exist") == 1
     assert "⚠️: Multiple configuration files exist" in warning
+    assert warning.count("⚠️: Ignoring invalid cpu_threads") == 2
     assert "WARNING:root:" not in warning
     assert str(legacy) in warning and str(workspace_config) in warning
     assert (
