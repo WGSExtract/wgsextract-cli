@@ -552,8 +552,9 @@ def sampled_mapped_bases(
 
 
 # A CRAM need only decode FLAG, RNAME, POS and CIGAR to count records: 4x
-# faster on a 30x ONT genome than decoding whole records.
-_COUNT_FIELDS = ["--input-fmt-option", "required_fields=0x2E"]
+# faster on a 30x ONT genome than decoding whole records. htslib 1.25
+# requires the mask in decimal.
+_COUNT_FIELDS = ["--input-fmt-option", f"required_fields={0x2E:d}"]
 
 
 def _flagstat_counts(

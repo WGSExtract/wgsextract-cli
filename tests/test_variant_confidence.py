@@ -541,6 +541,29 @@ def test_mapping_quality_floor_follows_how_the_caller_averages_it():
     assert _label(rows, mq="Average mapping quality") == ["high:.", "low:low_mapq"]
 
 
+@needs_bcftools
+def test_1555_fractional_bcftools_mapping_quality_keeps_threshold_precision(
+    tmp_path: Path,
+) -> None:
+    rows = [
+        f"{pos} . C T 50 PASS MQ={mq} GT:AD:DP:GQ 0/1:15,15:30:99"
+        for pos, mq in enumerate(("19.25", "19.999", "20", "20.001"), 100)
+    ]
+    source = _vcf(tmp_path / "sample.vcf.gz", rows, mq="Average mapping quality")
+    labelled = tmp_path / "labelled.vcf.gz"
+    label_vcf(
+        source,
+        labelled,
+        Thresholds(min_depth=10, high_depth=20, min_gq=20, high_gq=30),
+        include="INFO/MQ>=19.5",
+    )
+    assert _labels(labelled) == [
+        "101:low:low_mapq",
+        "102:high:.",
+        "103:high:.",
+    ]
+
+
 def test_quality_by_depth_is_judged_only_on_gatk_quality_scores():
     # A clean 34x heterozygote; DRAGEN's recalibrated QUAL gives it QD 1.5.
     row = ["100 . C T 50 PASS QD=1.5 GT:AD:DP:GQ 0/1:15,19:34:49"]

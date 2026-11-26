@@ -217,7 +217,7 @@ PIXI_TOOL_ENVS = {
     "haplogrep3": "default",
     "haplocheck": "default",
     "gatk": "gatk",
-    "delly": "default",
+    "delly": "delly" if sys.platform == "darwin" else "default",
     "freebayes": "freebayes",
     "samtools": "default",
     "bcftools": "default",
@@ -261,7 +261,7 @@ PIXI_TOOL_ENVS = {
     "cyrius_python": "cyrius",
 }
 # Environments without a Python of their own: their tools are probed from here.
-PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant", "java17"})
+PIXI_ENVS_WITHOUT_PYTHON = frozenset({"deepvariant", "delly", "java17"})
 
 
 # Interpreters only their own Pixi environment provides (its packages matter).
