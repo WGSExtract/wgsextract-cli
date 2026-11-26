@@ -239,6 +239,65 @@ def test_1419_gnomad_v4_rebuild_keeps_allele_specific_annotations(
     assert _query(tmp_path / "joint" / "gnomad_annotated.vcf.gz", fmt)[:2] == annotated
 
 
+@needs_tools("samtools")
+@pytest.mark.parametrize(
+    "split", [True, False], ids=["biallelic", "legacy-multiallelic"]
+)
+def test_1507_cold_gnomad_table_matches_warm_output_with_shifted_indels(
+    tmp_path: Path, split: bool
+) -> None:
+    ref = tmp_path / "ref.fa"
+    ref.write_text(">chr1\n" + "C" + "A" * 999 + "\n")
+    run_command(["samtools", "faidx", str(ref)])
+    table = tmp_path / "joint.tsv"
+    indels = (
+        "1\t10\tAA\tA\t0.01\t0.1\t1\n1\t10\tAA\tAAA\t0.02\t0.2\t2\n"
+        if split
+        else "1\t10\tAA\tA,AAA\t0.01,0.02\t0.1,0.2\t1,2\n"
+    )
+    table.write_text(
+        "## gnomAD v4.1 joint exomes+genomes, PASS alleles; table schema 3\n"
+        "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint\n"
+        + indels
+        + "1\t50\tG\tT\t0.3\t0.4\t3\n"
+        "missing\t40\tA\tG\t0.4\t0.5\t4\n"
+    )
+    compressed = tmp_path / "joint.tsv.gz"
+    with compressed.open("wb") as out:
+        run_command(["bgzip", "-c", str(table)], stdout=out)
+    run_command(["tabix", "-s", "1", "-b", "2", "-e", "2", str(compressed)])
+    sample = _vcf(
+        tmp_path / "sample.vcf",
+        "chr1",
+        "chr1\t5\tdel\tAA\tA\t.\tPASS\t.\n"
+        "chr1\t6\tins\tA\tAA\t.\tPASS\t.\n"
+        "chr1\t50\tsnv\tA\tT\t.\tPASS\t.\n",
+    )
+    data = []
+    for folder, cached in (("cold", False), ("warm", True)):
+        outdir = tmp_path / folder
+        result = api.vcf.gnomad(
+            api.VcfGnomadParams(
+                vcf_input=sample, gnomad_file=compressed, ref=ref, outdir=outdir
+            )
+        )
+        assert result.metrics["annotation_normalization_cache_hit"] is cached
+        warnings = {w.code: w.details for w in result.warnings}
+        assert warnings["annotation_contigs_not_in_reference"]["contigs"] == "missing"
+        assert warnings["annotation_ref_mismatch_excluded"]["count"] == 1
+        output = outdir / "gnomad_annotated.vcf.gz"
+        with gzip.open(output, "rb") as lines:
+            data.append(b"".join(line for line in lines if not line.startswith(b"#")))
+        assert sorted(
+            _query(output, "%ID:%GNOMAD_AF:%GNOMAD_POPMAX_AF:%GNOMAD_NHOMALT")
+        ) == [
+            "del:0.01:0.1:1",
+            "ins:0.02:0.2:2",
+            "snv:.:.:.",
+        ]
+    assert data[0] == data[1]
+
+
 def test_1419_gnomad_query_launch_failure_reaps_normalizer(tmp_path, monkeypatch):
     launched = []
     original_init = subprocess.Popen.__init__
