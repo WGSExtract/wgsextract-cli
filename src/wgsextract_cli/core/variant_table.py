@@ -30,6 +30,7 @@ from functools import partial
 from typing import TypeVar
 from urllib.parse import unquote
 
+from wgsextract_cli.core import _variant_table_protein as protein
 from wgsextract_cli.core import acmg
 from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_scores as scores
@@ -45,9 +46,9 @@ from wgsextract_cli.core._variant_table_header import VcfHeader as VcfHeader
 from wgsextract_cli.core._variant_table_header import parse_header as parse_header
 from wgsextract_cli.core.csq_alleles import (
     allele_entries,
+    ann_for_allele,
     csq_entries,
     csq_for_allele,
-    for_allele,
     split_origin,
 )
 from wgsextract_cli.core.gnomad_fields import (
@@ -62,9 +63,9 @@ from wgsextract_cli.core.vcf_alleles import allele_key
 
 TEXT, INTEGER, REAL = "TEXT", "INTEGER", "REAL"
 
-# The table's schema, in column order. Add a column by appending it here and
-# filling it in ``variant_rows``; the writers and docs read this list.
-COLUMNS: tuple[Column, ...] = (
+# The panel audit export uses this fixed prefix. Append new variant table
+# columns to COLUMNS and their values to indexed_variant_rows.
+PANEL_AUDIT_COLUMNS: tuple[Column, ...] = (
     Column("chrom", TEXT, "Chromosome, as named in the VCF (chr1 or 1)."),
     Column("pos", INTEGER, "1-based position of REF."),
     Column("ref", TEXT, "Reference allele."),
@@ -251,6 +252,7 @@ COLUMNS: tuple[Column, ...] = (
         "for this ALT (joint or the supplied standalone callset).",
     ),
 )
+COLUMNS = (*PANEL_AUDIT_COLUMNS, *protein.COLUMNS)
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
 
@@ -567,7 +569,6 @@ def indexed_variant_rows(
             if carried_only and zyg is not None and zyg not in CARRIED:
                 continue
             ann_spellings: tuple[str, ...] = (alt,)
-            pipe_spellings = ann_spellings
             index, n_alts = alt_index, len(alts)
             alt_fraction: float | None
             if ad_total and len(ad) == n_alts + 1 and ad[alt_index] <= ad_total:
@@ -580,23 +581,21 @@ def indexed_variant_rows(
             if origin is not None and split:
                 _, o_alts, index = origin
                 original_alt = o_alts[index - 1]
-                ann_spellings = (alt, original_alt)
-                if scored:
-                    # The normalized spelling can name another ALT's retained entries.
-                    pipe_spellings = (
-                        (original_alt,)
-                        if allele_key(alt) in map(allele_key, o_alts)
-                        else (original_alt, alt)
-                    )
+                # ANN has no provenance to distinguish a fresh annotation from
+                # a retained sibling's entry if they have the same spelling.
+                ann_spellings = (
+                    (original_alt,)
+                    if allele_key(alt) in map(allele_key, o_alts)
+                    else (original_alt, alt)
+                )
             csq_matches = csq_for_allele(csq_all, ref, alts, alt_index, origin)
             csq = pick_csq(csq_matches)
-            ann_matches = for_allele(
-                ann_all, "Allele", ann_spellings, index, n_alts, split=split
-            )
+            ann_matches = ann_for_allele(ann_all, ann_spellings)
             # SnpEff lists an allele's effects most severe first.
             ann = ann_matches[0] if ann_matches else {}
             picked = csq or {}
             csq_consequence = _value(picked.get("Consequence"))
+            ann_consequence = _value(ann.get("Annotation"))
             pgx = _per_allele(info.get("PHARMGKB"), numbers.get("PHARMGKB"), alt_index)
             pgx_gene, pgx_level, pgx_drugs = _pharmgkb(pgx)
             gene = (
@@ -626,7 +625,7 @@ def indexed_variant_rows(
                 alt,
                 _rsids(vcf_id, csq, pgx),
                 gene,
-                csq_consequence or _value(ann.get("Annotation")),
+                csq_consequence or ann_consequence,
                 _value(picked.get("IMPACT")) or _value(ann.get("Annotation_Impact")),
                 _value(picked.get("HGVSc")) or _value(ann.get("HGVS.c")),
                 unquote(hgvs_p) if hgvs_p else None,  # VEP writes '=' as %3D
@@ -691,7 +690,7 @@ def indexed_variant_rows(
                             allele_entries,
                             info,
                             pipe_formats,
-                            pipe_spellings,
+                            ann_spellings,
                             refreshed=(scores.SPLICEAI, alt)
                             if split and scores.SPLICEAI_MATCH in info
                             else None,
@@ -704,6 +703,7 @@ def indexed_variant_rows(
                 _fraction(_per_allele(info.get(faf95_key), "A", alt_index))
                 if faf95_key
                 else None,
+                *protein.protein_fields(picked, ann, csq_consequence, ann_consequence),
             )
             aggregate = (
                 ce.matched_germline_aggregate(

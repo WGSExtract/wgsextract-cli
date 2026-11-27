@@ -64,7 +64,7 @@ _TABLE_HEADER = """##fileformat=VCFv4.2
 ##contig=<ID=chr2,length=1000>
 ##INFO=<ID=CLNSIG,Number=.,Type=String,Description="ClinVar significance">
 ##INFO=<ID=WGSE_CONF,Number=A,Type=String,Description="Confidence">
-##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Feature">
+##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Feature|Protein_position|DOMAINS">
 ##INFO=<ID=GNOMAD_POPMAX_AF,Number=A,Type=Float,Description="Group maximum AF">
 ##INFO=<ID=GNOMAD_NHOMALT,Number=A,Type=Integer,Description="Homozygote count">
 ##INFO=<ID=GNOMAD_FAF95,Number=A,Type=Float,Description="Group maximum FAF95">
@@ -102,7 +102,7 @@ def variant_tables(work: Path) -> dict[str, Path]:
                     + [
                         f"WGSE_CONF={conf}",
                         f"CSQ={alt}|missense_variant|MODERATE|{gene}|"
-                        + ("ENST4" if rsid == "rs4" else ""),
+                        + ("ENST4|4-5/80|Pfam:PF1" if rsid == "rs4" else ""),
                     ]
                     + (
                         ["GNOMAD_POPMAX_AF=0.125", "GNOMAD_NHOMALT=0", "GNOMAD_FAF95=0"]
@@ -498,6 +498,44 @@ def test_1623_variant_faf95_and_other_allele_annotations_are_queryable(
         status, answer = http.request("GET", f"/variants?{query}")
         assert status == 200, answer
         assert answer["rows"] == [expected]
+    mcp = Mcp("--allow", str(work))
+    try:
+        result = mcp.call(
+            "query_variants",
+            path=str(variant_tables["sqlite"]),
+            rsid="rs4",
+            columns=list(expected),
+        )
+        assert result["structuredContent"]["rows"] == [expected]
+    finally:
+        assert mcp.close() == 0
+
+
+def test_1622_protein_columns_are_typed_and_older_tables_are_readable(
+    tmp_path, work, variant_tables
+):
+    expected = {
+        "gnomad_faf95": 0.0,
+        "protein_position": 4,
+        "protein_position_end": 5,
+        "domains": "Pfam:PF1",
+    }
+    legacy = work / "legacy_variants.sqlite"
+    with contextlib.closing(sqlite3.connect(legacy)) as db, db:
+        db.execute("CREATE TABLE variants (pos INTEGER)")
+        db.execute("INSERT INTO variants VALUES (400)")
+    columns = ",".join(["pos", *expected])
+    with _serve(tmp_path, [work]) as http:
+        for path in [*variant_tables.values(), legacy]:
+            query = urllib.parse.urlencode({"path": str(path), "columns": columns})
+            status, answer = http.request("GET", f"/variants?{query}")
+            assert status == 200, answer
+            row = next(row for row in answer["rows"] if row["pos"] == 400)
+            assert row == ({"pos": 400} if path == legacy else {"pos": 400, **expected})
+            if path != legacy:
+                assert next(row for row in answer["rows"] if row["pos"] == 100) == {
+                    "pos": 100
+                }
     mcp = Mcp("--allow", str(work))
     try:
         result = mcp.call(

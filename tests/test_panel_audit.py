@@ -95,6 +95,10 @@ def test_1287_audit_distinguishes_mixed_scores_reference_and_phase(
     assert table.metrics["rows"] == 3
     if pq:
         audited = pq.read_table(table.path)
+        # #1622 only extends vcf table, not the panel audit export.
+        assert not {"protein_position", "protein_position_end", "domains"}.intersection(
+            audited.column_names
+        )
         assert audited.schema.metadata[b"research_only"] == b"true"
         assert audited["decision"].to_pylist() == [
             "qualifying",
@@ -372,7 +376,13 @@ def test_1617_weight_tiers_use_first_valid_score_and_preserve_missingness(
     }
     table = next(o for o in result.outputs if o.role == "panel_audit_table")
     with Path(table.path).open(encoding="utf-8") as stream:
-        rows = list(csv.DictReader(stream, delimiter="\t"))
+        reader = csv.DictReader(stream, delimiter="\t")
+        # #1660 adds protein columns only to vcf table, even when audit is weighted.
+        assert not {"protein_position", "protein_position_end", "domains"}.intersection(
+            reader.fieldnames or ()
+        )
+        rows = list(reader)
+    assert all(None not in row for row in rows)
     assert [
         float(row["weighted_allele_copies"])
         for row in rows
