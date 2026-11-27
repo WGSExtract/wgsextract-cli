@@ -272,8 +272,10 @@ on another disk, set an absolute path in the primary checkout's
 certification_reference_store = "/data/wgse-certification-reference"
 ```
 
-Keep the store outside linked worktrees. It keeps separate versions when the
-pins change. Setup checks the SHA-256 of the retained release archive, extracted
+Keep the store outside linked worktrees. Reading this optional configuration
+requires Python 3.11 or newer; offline cleanup with the default location still
+works on Python 3.10. The store keeps separate versions when the pins change.
+Setup checks the SHA-256 of the retained release archive, extracted
 assets, pinned chain and catalog FASTA once per version. Certification checks
 that the verified files and indexes have not changed since then; it neither
 downloads nor rehashes unchanged shared data. Treat the linked library as

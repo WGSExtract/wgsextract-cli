@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import py_compile
+import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -71,6 +72,38 @@ def test_1637_cleanup_refuses_store_configured_inside_a_worktree(repo: Path) -> 
     assert run.returncode == 1
     assert "store overlaps a checkout" in run.stderr
     assert (store / "reference.fa").is_file()
+
+
+def test_1637_offline_cleanup_without_tomllib_only_requires_it_for_config(
+    repo: Path, proc: Path
+) -> None:
+    path = topic(repo)
+    script = Path(__file__).resolve().parents[1] / "scripts/cleanup_worktrees.py"
+    command = [
+        sys.executable,
+        "-I",
+        "-B",
+        "-c",
+        "import runpy, sys; from pathlib import Path; sys.modules['tomllib'] = None; "
+        "main = runpy.run_path(sys.argv[1])['main']; "
+        "main.__globals__['PROC'] = Path(sys.argv[2]); raise SystemExit(main([]))",
+        str(script),
+        str(proc),
+    ]
+    audit = subprocess.run(command, cwd=repo, capture_output=True, text=True)
+    assert audit.returncode == 0, audit.stderr
+    assert result(repo, path)["path"] == str(path)
+
+    config = repo / "out/shared/config.toml"
+    write(
+        config,
+        f"certification_reference_store = {json.dumps(str(repo.parent / 'store'))}\n",
+    )
+    audit = subprocess.run(command, cwd=repo, capture_output=True, text=True)
+    assert audit.returncode == 1
+    assert str(config) in audit.stderr
+    assert "requires Python 3.11 or newer" in audit.stderr
+    assert path.is_dir()
 
 
 @pytest.mark.parametrize(

@@ -55,7 +55,7 @@ else:
     )
     reference_store_paths = load_helper(
         "reference_store_paths",
-        "8e53b548a606e249c7ef5090648f082f0854c8fc280c30fc71c97de62465e6f5",
+        "246607235b188988f37a69cc63327ad7563e42ec4533f409032bec63bd8fbaf9",
     )
 
 CleanupError = git_tools.CleanupError

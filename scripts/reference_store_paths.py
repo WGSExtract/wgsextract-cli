@@ -7,8 +7,6 @@ import re
 import subprocess
 from pathlib import Path
 
-import tomllib
-
 
 def registered_worktrees(checkout: Path) -> list[Path]:
     listing = subprocess.check_output(
@@ -30,6 +28,13 @@ def store_path(worktrees: list[Path]) -> Path:
     config = shared / "config.toml"
     try:
         with config.open("rb") as stream:
+            try:
+                import tomllib
+            except ModuleNotFoundError as error:
+                raise ValueError(
+                    f"Reading {config} requires Python 3.11 or newer; "
+                    "rerun with a newer Python interpreter"
+                ) from error
             configured = tomllib.load(stream).get("certification_reference_store")
     except FileNotFoundError:
         configured = None
