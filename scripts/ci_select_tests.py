@@ -33,6 +33,7 @@ CI_TESTS = (
     "tests/test_mypy_policy.py",
     "tests/test_ci_certify.py",
     "tests/test_ci_certify_remote.py",
+    "tests/test_ci_reference_store.py",
     "tests/test_ci_scheduling.py",
     "tests/test_ci_moves.py",
     "tests/test_ci_impact_scopes.py",

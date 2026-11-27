@@ -156,6 +156,8 @@ class ReferenceStore:
         if destination.is_symlink() and destination.resolve() == source:
             return False
         before = fingerprint(destination, checkout)
+        if before[:2] == source_stamp[:2]:
+            return False
         if (
             digest(destination) != expected
             or fingerprint(destination, checkout) != before
@@ -194,6 +196,7 @@ def fingerprint(path: Path, root: Path) -> list[int]:
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode):
         raise ValueError(f"Not a regular reference input: {path}")
+    # ctime also catches in-place edits whose size and mtime were restored.
     return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
 
 

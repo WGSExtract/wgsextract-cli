@@ -243,6 +243,12 @@ def test_914_selector_regressions_do_not_start_the_cli_matrix() -> None:
     assert "tests/test_table_writer.py" not in select_tests(paths)
 
 
+def test_1637_reference_certification_test_edits_stay_in_policy_lane() -> None:
+    path = "tests/test_ci_reference_store.py"
+    assert not routes([path])["cli"]
+    assert path in ci_test_targets([path])
+
+
 def test_1339_shadow_regressions_only_run_in_the_ci_policy_lane() -> None:
     paths = sorted(
         path.relative_to(ROOT).as_posix()

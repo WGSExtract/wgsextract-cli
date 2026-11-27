@@ -165,6 +165,24 @@ def test_1637_migration_only_links_ignored_byte_identical_fastas(
     assert sidecar.read_text() == "local index"
 
 
+def test_1637_migration_leaves_existing_hardlink_and_certification_intact(
+    shared_reference: ReferenceStore,
+) -> None:
+    store = shared_reference
+    source = store.library / "genomes/hs38.fa.gz"
+    local = Path.cwd().parent / "second/reference/genomes/hs38.fa.gz"
+    local.parent.mkdir(parents=True)
+    local.hardlink_to(source)
+    store.record_verified(
+        check_reference_bytes(store.library, store.version, shared=True)
+    )
+
+    assert not store.link_existing_hs38(local)
+    assert not local.is_symlink() and local.samefile(source)
+    prepare_reference(download=False)
+    validate_reference()
+
+
 def test_1637_legacy_certification_validates_the_configured_genome_directory(
     shared_reference: ReferenceStore,
 ) -> None:
