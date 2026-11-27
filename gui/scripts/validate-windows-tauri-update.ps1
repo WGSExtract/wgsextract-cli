@@ -495,11 +495,16 @@ function Start-InstalledApp {
     $psi.CreateNoWindow = $false
     $psi.Environment["GFC_PORT_FILE"] = $PortFile
     $psi.Environment["GFC_TAURI_UPDATE_STATUS_FILE"] = $UpdateStatusFile
+    $psi.Environment["WGSEXTRACT_GUI_APP_DATA_NAME"] = "WGSExtract-gui-update-test"
     if ($RecordVideo) {
         $psi.Environment["GFC_TAURI_E2E_UPDATE_OVERLAY"] = "1"
         $psi.Environment["GFC_TAURI_E2E_STEP_DELAY_SECONDS"] = [string]$VisibleInstallSeconds
     }
     if ($AutoUpdate) {
+        # The update lab opts in explicitly without running first-launch setup.
+        $networkSettingsDirectory = Join-Path $env:LOCALAPPDATA $psi.Environment["WGSEXTRACT_GUI_APP_DATA_NAME"]
+        New-Item -ItemType Directory -Force -Path $networkSettingsDirectory | Out-Null
+        Set-Content -LiteralPath (Join-Path $networkSettingsDirectory "settings.json") -Encoding Ascii -Value '{"networkConsent":"accepted","checkForUpdatesAtLaunch":true}'
         $psi.Environment["GFC_TAURI_AUTO_UPDATE"] = "1"
         if ($RecordVideo) {
             $psi.Environment["GFC_TAURI_AUTO_UPDATE_DELAY_SECONDS"] = [string]$VisibleLaunchSeconds
@@ -508,6 +513,8 @@ function Start-InstalledApp {
         if ($AutoAcceptUpdate) {
             $psi.Environment["GFC_TAURI_AUTO_ACCEPT_UPDATE"] = "1"
         }
+    } else {
+        $psi.Environment["GFC_TAURI_AUTO_UPDATE"] = "0"
     }
     $process = [System.Diagnostics.Process]::Start($psi)
     $script:AppStdoutTask = $process.StandardOutput.ReadToEndAsync()
@@ -813,6 +820,7 @@ try {
     Invoke-Stage -Name "cleanup" -ScriptBlock {
         Stop-InstalledApp -Process $script:appState.process | Out-Null
         Stop-TargetProcesses -AppName $script:appName -AppIdentifier $script:appIdentifier | Out-Null
+        Remove-Tree -LiteralPath (Join-Path $env:LOCALAPPDATA "WGSExtract-gui-update-test")
         if (-not $KeepInstalled) {
             Invoke-QuickUninstall -QuickUninstallPath $script:quickUninstallPath | Out-Null
             foreach ($name in @($script:appName, "WGSExtract", "WGSExtract Web", "WGSExtract Windows WebUI") | Where-Object { $_ } | Select-Object -Unique) {

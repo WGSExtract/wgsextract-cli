@@ -47,6 +47,13 @@
 "app.library.empty" = "Nenhum item de biblioteca foi definido."  # i18n-source-hash:e9b707e7
 "app.loadButton.title" = "Carregar"  # i18n-source-hash:ddcb77ff
 "app.loading.title" = "Carregando..."  # i18n-source-hash:b04ba49f
+"app.network.consentDetail" = "OK permite que a configuração baixe ferramentas e dados públicos de referência, se necessário, e ativa a busca por atualizações ao iniciar. Você pode mudar isso nas configurações."  # i18n-source-hash:99f992cd
+"app.network.consentQuestion" = "Você quer acessar a rede para baixar a biblioteca inicial (e usar os recursos de rede padrão)?"  # i18n-source-hash:f9f90027
+"app.network.launchCheck" = "Verificar atualizações ao iniciar"  # i18n-source-hash:755bb8af
+"app.network.notNow" = "Agora não"  # i18n-source-hash:e4571490
+"app.network.saveError" = "Não foi possível salvar as configurações de rede. Tente novamente."  # i18n-source-hash:7eecfa8b
+"app.network.settingsDetail" = "Verifique no GitHub se há atualizações do app ao iniciar ou suspenda as conexões automáticas com o modo de privacidade. As verificações e os downloads manuais continuam disponíveis."  # i18n-source-hash:1dbc57f6
+"app.network.title" = "Rede e privacidade"  # i18n-source-hash:ac0186fe
 "app.page.empty.title" = "Nenhuma página"  # i18n-source-hash:d269aee1
 "app.pathPicker.chooseButton.title" = "Escolher..."  # i18n-source-hash:1f77e839
 "app.pathPicker.error.title" = "Não foi possível escolher o caminho"  # i18n-source-hash:fa84a44d
@@ -60,7 +67,7 @@
 "app.prerequisites.stillMissing" = "Ainda não está instalado. Instale-o aqui ou você mesmo e clique em Continuar novamente."  # i18n-source-hash:09498e32
 "app.prerequisites.title" = "Falta algo de que este comando precisa"  # i18n-source-hash:560fc1a9
 "app.privacyMode.badge.title" = "PRIVACIDADE"  # i18n-source-hash:2f158034
-"app.privacyMode.badge.tooltip" = "O modo de privacidade está ativado: o app não procura atualizações ao iniciar. Desative-o em Opções padrão da interface, na página Configurações."  # i18n-source-hash:40463462
+"app.privacyMode.badge.tooltip" = "O modo de privacidade está ativado. Altere-o em Rede e privacidade, na página Configurações."  # i18n-source-hash:4009cf49
 "app.privacyMode.label" = "Modo de privacidade"  # i18n-source-hash:c2540489
 "app.privacyMode.tooltip" = "Interrompe a atividade de rede automática do app. Quando ativado, o app não procura atualizações no GitHub ao iniciar; use File > Check for Updates... para verificar você mesmo."  # i18n-source-hash:de492a08
 "app.refresh.warning.format" = "Aviso de atualização: %{error}"  # i18n-source-hash:8e6c1f82

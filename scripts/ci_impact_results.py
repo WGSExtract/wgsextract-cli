@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 from typing import IO, TypedDict
 
@@ -15,14 +16,10 @@ class Result(TypedDict):
     seconds: float
 
 
-def file_results(
+def file_cases(
     junit: Path | IO[bytes], tests: set[str]
-) -> tuple[dict[str, Result], int]:
+) -> Iterator[tuple[str | None, ET.Element]]:
     names = {p.removesuffix(".py").replace("/", "."): p for p in tests}
-    results: dict[str, Result] = defaultdict(
-        lambda: {"passed": 0, "failed": 0, "skipped": 0, "seconds": 0.0}
-    )
-    unmapped = 0
     for case in ET.parse(junit).iter("testcase"):
         name = case.get("classname", "")
         error = case.find("error")
@@ -40,6 +37,17 @@ def file_results(
             while name and file is None:
                 file = names.get(name)
                 name = name.rpartition(".")[0]
+        yield file, case
+
+
+def file_results(
+    junit: Path | IO[bytes], tests: set[str]
+) -> tuple[dict[str, Result], int]:
+    results: dict[str, Result] = defaultdict(
+        lambda: {"passed": 0, "failed": 0, "skipped": 0, "seconds": 0.0}
+    )
+    unmapped = 0
+    for file, case in file_cases(junit, tests):
         if file is None:
             unmapped += 1
             continue

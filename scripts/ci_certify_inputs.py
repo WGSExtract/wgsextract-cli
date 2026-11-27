@@ -12,8 +12,15 @@ import subprocess
 import sys
 import tarfile
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import IO, Any
+
+if __package__ in {None, ""}:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from scripts.ci_reference_store import ReferenceStore, fingerprint, hs38_pin  # noqa: E402
+from scripts.reference_store_paths import is_store_library  # noqa: E402
 
 
 def digest(path: Path) -> str:
@@ -170,9 +177,15 @@ def validate_environments(environments: list[str]) -> None:
         print(f"Verified locked installed packages: {name}", flush=True)
 
 
-def validate_bootstrap(root: Path, archive_name: str, expected: str) -> None:
+def validate_bootstrap(
+    root: Path,
+    archive_name: str,
+    expected: str,
+    *,
+    digest_file: Callable[[Path], str] = digest,
+) -> None:
     archive = root / archive_name
-    if not archive.is_file() or digest(archive) != expected:
+    if not archive.is_file() or digest_file(archive) != expected:
         raise ValueError(
             f"Prepared reference bootstrap archive is missing or not pinned: {archive}; "
             "run just certify-setup --reference"
@@ -202,7 +215,7 @@ def validate_bootstrap(root: Path, archive_name: str, expected: str) -> None:
                 raise ValueError("Unreadable reference bootstrap member")
             destination = root / relative
             expected_digest = digest_stream(source)
-            if not destination.is_file() or digest(destination) != expected_digest:
+            if not destination.is_file() or digest_file(destination) != expected_digest:
                 raise ValueError(
                     f"Prepared reference input differs from bootstrap: {destination}; "
                     "move the conflicting file aside, then run just certify-setup --reference"
@@ -212,36 +225,92 @@ def validate_bootstrap(root: Path, archive_name: str, expected: str) -> None:
         raise ValueError("Reference bootstrap contains no files")
 
 
-def validate_reference() -> None:
+def check_reference_bytes(
+    root: Path, retained: Path, *, shared: bool = False, genomes: Path | None = None
+) -> dict[Path, list[int]]:
     from wgsextract_cli.core.constants import BOOTSTRAP_FILENAME, BOOTSTRAP_SHA256
     from wgsextract_cli.core.microarray.targets import HG19_TO_HG38_CHAIN
-    from wgsextract_cli.core.ref_library.assets import resolve_reference_library
-    from wgsextract_cli.core.ref_library.catalog import get_available_genomes
 
-    root = Path(resolve_reference_library())
-    retained = Path("out/certify/inputs") / BOOTSTRAP_FILENAME
-    validate_bootstrap(root, str(retained.resolve()), BOOTSTRAP_SHA256)
+    files: dict[Path, list[int]] = {}
+
+    def capture(path: Path) -> None:
+        current = fingerprint(path, retained)
+        if files.setdefault(path, current) != current:
+            raise ValueError(f"Reference input changed during verification: {path}")
+
+    def digest_file(path: Path) -> str:
+        if shared:
+            capture(path)
+        value = digest(path)
+        if shared:
+            capture(path)
+        return value
+
+    name, expected = hs38_pin()
+    genomes = genomes if genomes is not None else root / "genomes"
+    if shared:
+        for suffix in ("fai", "gzi"):
+            index = genomes / f"{name}.{suffix}"
+            if not index.is_file() or not index.stat().st_size:
+                raise ValueError(
+                    f"Shared pinned hs38 FASTA index is missing or empty: {index}"
+                )
+            capture(index)
+    validate_bootstrap(
+        root,
+        str(retained / BOOTSTRAP_FILENAME),
+        BOOTSTRAP_SHA256,
+        digest_file=digest_file,
+    )
     chain = root / HG19_TO_HG38_CHAIN.name
-    if not chain.is_file() or digest(chain) != HG19_TO_HG38_CHAIN.sha256:
+    if not chain.is_file() or digest_file(chain) != HG19_TO_HG38_CHAIN.sha256:
         raise ValueError(
             f"Prepared pinned hg19-to-hg38 chain is missing or corrupt: {chain}; "
             "run just certify-setup --reference"
         )
-    hs38 = next(
-        (genome for genome in get_available_genomes() if genome["code"] == "hs38"), None
+    candidates = [genomes / name] if shared else genomes.rglob(name)
+    fasta = next(
+        (
+            path
+            for path in candidates
+            if path.is_file() and digest_file(path) == expected
+        ),
+        None,
     )
-    if hs38 is None or not hs38.get("sha256"):
+    if fasta is None:
         raise ValueError(
-            "Cannot prove installed hs38 reference against a pinned catalog"
-        )
-    candidates = (root / "genomes").rglob(hs38["final"])
-    if not any(
-        path.is_file() and digest(path) == hs38["sha256"] for path in candidates
-    ):
-        raise ValueError(
-            f"Prepared pinned hs38 reference is missing or corrupt in {root / 'genomes'}; "
-            f"move any existing {hs38['final']} FASTA and its indexes aside, "
+            f"Prepared pinned hs38 reference is missing or corrupt in {genomes}; "
+            f"move any existing {name} FASTA and its indexes aside, "
             "then run just certify-setup --reference to obtain the pinned copy"
+        )
+    return files
+
+
+def validate_reference() -> None:
+    from wgsextract_cli.core.config import ensure_settings_loaded
+    from wgsextract_cli.core.ref_library.assets import (
+        reference_genomes_dir,
+        resolve_reference_library,
+    )
+
+    ensure_settings_loaded()
+    store = ReferenceStore.for_checkout(Path.cwd())
+    root = Path(resolve_reference_library())
+    resolved = root.resolve()
+    genomes = Path(reference_genomes_dir(root))
+    if is_store_library(resolved, store.store):
+        if (
+            resolved != store.library
+            or genomes.resolve() != store.library / "genomes"
+            or not store.verified()
+        ):
+            raise ValueError(
+                f"Shared certification reference is unverified or out of date: {root}; "
+                "see the shared reference recovery steps in docs/ci_routing.md"
+            )
+    else:
+        check_reference_bytes(
+            root, Path("out/certify/inputs").absolute(), genomes=genomes
         )
 
 

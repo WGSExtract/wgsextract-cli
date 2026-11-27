@@ -46,6 +46,7 @@ from wgsextract_cli.core.variant_files import (
     ensure_vcf_indexed,
     get_chr_name,
 )
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 from wgsextract_cli.core.warnings import print_warning
 from wgsextract_cli.core.y_contigs import ContigSelection, select_contigs
 
@@ -204,7 +205,7 @@ def _call_haploid_variants(bam: str, ref: str, out_vcf: str) -> int | None:
         run_pipeline(
             [
                 ["bcftools", "mpileup", "-Ou", "-f", ref, bam],
-                ["bcftools", "call", "--ploidy", "1", "-mv", "-Oz", "-o", staged],
+                *uppercase_vcf(["bcftools", "call", "--ploidy", "1", "-mv"], staged),
             ],
             description="Variant calling",
         )

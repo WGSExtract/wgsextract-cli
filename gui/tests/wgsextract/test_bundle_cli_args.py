@@ -592,7 +592,9 @@ class BundleCommandTests(unittest.TestCase):
         cache.write_bytes(activation)
         pixi.unlink()
         (app / "wgsextract_cli" / "main.py").write_text(
-            "import os, shutil, sys\n"
+            "import sys\n"
+            "assert 'subprocess' not in sys.modules\n"
+            "import os, shutil\n"
             "def main():\n"
             "    print(shutil.which('python'))\n"
             "    print(os.environ['CONDA_PREFIX'])\n"

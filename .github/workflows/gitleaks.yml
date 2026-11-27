@@ -20,6 +20,9 @@ jobs:
     name: gitleaks
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      VERSION: 8.30.1
+      SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,14 +30,24 @@ jobs:
           fetch-depth: 0
       # gitleaks-action needs a paid license for organization-owned repos; the
       # gitleaks CLI does not. Scanning the full history takes seconds.
+      - name: Restore the pinned gitleaks archive
+        id: gitleaks-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gitleaks.tar.gz
+          key: gitleaks-linux-x64-v${{ env.VERSION }}-${{ env.SHA256 }}
       - name: Install gitleaks
-        env:
-          VERSION: 8.30.1
-          SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+        shell: bash
         run: |
-          curl -fsSL --retry 5 --retry-all-errors --connect-timeout 20 -o "$RUNNER_TEMP/gitleaks.tar.gz" \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz"
-          echo "${SHA256}  $RUNNER_TEMP/gitleaks.tar.gz" | sha256sum -c -
+          source .github/actions/setup-pixi/fetch-pinned.sh
+          fetch_pinned "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            "$SHA256" "$RUNNER_TEMP/gitleaks.tar.gz"
           tar -xzf "$RUNNER_TEMP/gitleaks.tar.gz" -C "$RUNNER_TEMP" gitleaks
+      - name: Cache the pinned gitleaks archive from main only
+        if: github.ref == 'refs/heads/main' && steps.gitleaks-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/gitleaks.tar.gz
+          key: gitleaks-linux-x64-v${{ env.VERSION }}-${{ env.SHA256 }}
       - name: Run gitleaks
         run: '"$RUNNER_TEMP/gitleaks" git --log-opts=HEAD --redact --no-banner .'

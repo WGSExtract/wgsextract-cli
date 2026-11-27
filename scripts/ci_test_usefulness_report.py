@@ -12,6 +12,7 @@ from pathlib import Path
 from scripts.ci_efficiency_report import ReportGitHub
 from scripts.ci_github import GitHub
 from scripts.ci_merge_group_passes import gh_api
+from scripts.ci_test_budget import TOTAL, Cost, load_baseline, totals
 from scripts.ci_test_usefulness import (
     MARKER,
     TITLE,
@@ -23,9 +24,42 @@ from scripts.ci_test_usefulness import (
     source_changes,
     summarize,
 )
-from scripts.ci_test_usefulness_inputs import collect
+from scripts.ci_test_usefulness_inputs import NightlyBudget, collect
 
 BOT = "github-actions[bot]"
+
+
+def budget_line(repository: str, reports: list[NightlyBudget]) -> str:
+    nightly = max(
+        reports,
+        key=lambda report: (report.at, report.run),
+        default=None,
+    )
+    if nightly is None:
+        return "**Test budget:** No usable full Ubuntu nightly receipt in the window."
+    measured = totals(nightly.modules)
+    targets = load_baseline().targets
+    full, budget = measured[TOTAL], targets[TOTAL]
+    over = []
+    for area, target in sorted(targets.items()):
+        if area == TOTAL:
+            continue
+        cost = measured.get(area, Cost())
+        limits = []
+        if cost.seconds > target.seconds:
+            limits.append(f"{cost.seconds:.0f}/{target.seconds:g}s")
+        if cost.cases > target.cases:
+            limits.append(f"{cost.cases:,}/{target.cases:,} cases")
+        if limits:
+            over.append(f"{area} ({', '.join(limits)})")
+    return (
+        f"**Test budget:** [Ubuntu nightly {nightly.run}]"
+        f"(https://github.com/{repository}/actions/runs/{nightly.run}): "
+        f"{full.seconds:,.0f}/{budget.seconds:,.0f}s and "
+        f"{full.cases:,}/{budget.cases:,} cases; "
+        + ("areas over target: " + "; ".join(over) if over else "no areas over target")
+        + "."
+    )
 
 
 def publish(api: GitHub, body: str) -> int:
@@ -118,7 +152,16 @@ def measure(
     }
     output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     return render(
-        api.repository, run_id, start, end, evidence, rows, changes, pairs, moves
+        api.repository,
+        run_id,
+        start,
+        end,
+        evidence,
+        rows,
+        changes,
+        pairs,
+        moves,
+        budget_line(api.repository, evidence.budgets),
     )
 
 

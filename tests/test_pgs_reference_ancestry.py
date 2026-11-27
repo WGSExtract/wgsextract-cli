@@ -2,13 +2,27 @@
 
 import json
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib
-from tests.test_pgs import _calibrated, _calibrated_world
+from tests.test_pgs import FIXTURES, _calibrated, _calibrated_world, _params
+from wgsextract_cli import api
 from wgsextract_cli.core.results import fingerprint
+
+
+@needs_htslib
+def test_1630_lowercase_vcf_alleles_keep_pgs_dosages(tmp_path: Path) -> None:
+    vcf = tmp_path / "lowercase.vcf"
+    text = (FIXTURES / "variants.vcf").read_text()
+    vcf.write_text(text.replace("\tA\tG\t", "\ta\tg\t").replace("\tC\tT\t", "\tc\tT\t"))
+
+    result = api.score.pgs(replace(_params(tmp_path), input=vcf))
+
+    assert result.metrics["score_sum"] == pytest.approx(1.0)
+    assert result.details["match_counts"] == {"called": 2, "missing": 3, "no_call": 1}
 
 
 @needs_htslib

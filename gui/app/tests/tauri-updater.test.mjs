@@ -7,11 +7,11 @@ globalThis.localStorage = {
   },
   setItem() {},
 };
-globalThis.window = {
+globalThis.window = Object.assign(new EventTarget(), {
   innerHeight: 900,
   setTimeout,
   clearTimeout,
-};
+});
 
 const { createInitialState, state } = await import("../dist/web/src/client/state.js");
 const { checkForUpdates, downloadUpdate, initializeTauriUpdater, installUpdate } = await import("../dist/web/src/client/tauri-updater.js");
@@ -19,6 +19,7 @@ const { checkForUpdates, downloadUpdate, initializeTauriUpdater, installUpdate }
 function resetState() {
   Object.assign(state, createInitialState(), {
     applicationVersion: "1.0.0",
+    networkSettings: { consent: "accepted", privacyMode: false, checkForUpdatesAtLaunch: true },
   });
   delete globalThis.window.__TAURI__;
 }
@@ -125,7 +126,7 @@ test("#1052 Privacy mode keeps startup offline while subscribing to local update
   resetState();
   // The desktop shell asks for the startup check; Privacy mode overrides it.
   state.autoUpdate = true;
-  state.privacyMode = true;
+  state.networkSettings.privacyMode = true;
   let progressHandler;
   const originalSetTimeout = globalThis.window.setTimeout;
   let scheduled = 0;
@@ -212,7 +213,7 @@ async function runStartup(tag, invoke) {
   }
 }
 
-test("an installed app checks for updates at startup unless Privacy mode is on (0.8.9 never offered 0.8.10)", async () => {
+test("#1591 an installed app checks at startup when its launch setting is on", async () => {
   resetState();
   state.autoUpdate = true;
   const commands = [];
@@ -262,7 +263,7 @@ test("turning on Privacy mode before the delayed startup check fires cancels it"
     updater.initializeTauriUpdater();
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(pending.length, 1);
-    state.privacyMode = true;
+    state.networkSettings.privacyMode = true;
     pending[0]();
     await new Promise((resolve) => setImmediate(resolve));
   } finally {

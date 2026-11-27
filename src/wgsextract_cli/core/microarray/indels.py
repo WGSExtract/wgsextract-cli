@@ -197,7 +197,11 @@ def _normalize_sites(
                 continue
             chrom, position, key, ref, alt = line.split("\t")[:5]
             result[key] = replace(
-                sites[key], chrom=chrom, position=int(position), ref=ref, alt=alt
+                sites[key],
+                chrom=chrom,
+                position=int(position),
+                ref=ref.upper(),
+                alt=alt.upper(),
             )
     alleles: dict[tuple[str, int], set[tuple[str, str]]] = defaultdict(set)
     for site in result.values():

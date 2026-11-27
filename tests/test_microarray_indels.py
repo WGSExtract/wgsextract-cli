@@ -233,10 +233,10 @@ def test_vcf_aliases_and_region_limits_never_call_absent_contigs(
 
 
 @needs_tools("bcftools", "samtools")
-def test_left_alignment_collapses_equivalent_probes_but_quarantines_distinct_events(
+def test_1630_soft_masked_left_alignment_collapses_equivalent_probes(
     tmp_path,
 ):
-    fasta = write_fasta(tmp_path / "ref.fa", {"chr1": "CGTC" + "A" * 20 + "TGCA"})
+    fasta = write_fasta(tmp_path / "ref.fa", {"chr1": "CGTc" + "a" * 20 + "TGCA"})
     sites = {
         "P0": IndelSite("chr1", 15, "AA", "A", "I"),
         "P1": IndelSite("chr1", 16, "AA", "A", "I"),

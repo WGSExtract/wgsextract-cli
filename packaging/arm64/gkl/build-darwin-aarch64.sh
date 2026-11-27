@@ -43,28 +43,15 @@ if ! mkdir "$BUILD"; then
     exit 1
 fi
 trap 'rm -rf "$BUILD"' EXIT
+# shellcheck disable=SC1091
+source "$HERE/../../../.github/actions/setup-pixi/fetch-pinned.sh"
 fetch() {
     local name=$1 sha=$2 url=$3
-    local part="$BUILD/$name.part"
-    if [ ! -f "$WORK/$name" ]; then
-        if [ "$DOWNLOAD" != --download ]; then
-            echo "Missing $name in $WORK. Rerun with --download to fetch public source from $url." >&2
-            exit 1
-        fi
-        if ! curl -fsSL "$url" -o "$part"; then
-            rm -f "$part"
-            echo "Download failed for $name; partial transfer discarded." >&2
-            exit 1
-        fi
-        if ! echo "$sha  $part" | shasum -a 256 -c; then
-            rm -f "$part"
-            echo "Checksum mismatch for downloaded $name; partial transfer discarded." >&2
-            exit 1
-        fi
-        mv "$part" "$WORK/$name"
-    elif ! echo "$sha  $WORK/$name" | shasum -a 256 -c; then
-        echo "Bad cached archive $WORK/$name. Delete that file and rerun with --download." >&2
-        exit 1
+    if [ "$DOWNLOAD" = --download ]; then
+        fetch_pinned "$url" "$sha" "$WORK/$name"
+    elif ! pinned_digest_matches "$WORK/$name" "$sha"; then
+        echo "Missing or invalid $name in $WORK. Rerun with --download to fetch public source from $url." >&2
+        return 1
     fi
 }
 fetch gkl-0.8.11.tar.gz 23f1aa7de874e79aedc35901397545e9e406266dfb1584f21300e440806a8950 \

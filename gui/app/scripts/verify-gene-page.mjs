@@ -11,6 +11,7 @@ import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
+import { configureOfflineVerification } from "./offline-verification-settings.mjs";
 
 const root = path.resolve(import.meta.dirname, "../../..");
 const { values } = parseArgs({ options: {
@@ -20,6 +21,7 @@ if (!values.out) throw new Error("Usage: node scripts/verify-gene-page.mjs --out
 const output = path.resolve(values.out);
 assert.ok(output.startsWith(`${path.join(root, "out")}${path.sep}`), "Evidence and fixtures must stay under this checkout's out/.");
 await mkdir(output, { recursive: true });
+await configureOfflineVerification(output);
 const cli = path.resolve(values["cli-root"]);
 const bin = path.join(cli, ".pixi/envs/default", process.platform === "win32" ? "" : "bin");
 const python = path.join(bin, process.platform === "win32" ? "python.exe" : "python");

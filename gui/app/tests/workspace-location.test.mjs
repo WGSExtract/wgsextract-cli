@@ -14,7 +14,7 @@ const { saveConfig } = await import("../dist/web/src/server/config-store.js");
 const { applicationSupportDirectory, normalizeContext } = await import("../dist/web/src/server/paths.js");
 const { prepareBundleWorkspace } = await import("../dist/web/src/server/workspace.js");
 const { appDataWorkspacesDirectory, appSettingsPath, updateAppSettings } = await import("../dist/web/src/server/workspace-location.js");
-const { readPrivacyMode, savePrivacyMode } = await import("../dist/web/src/server/privacy-mode.js");
+const { readNetworkSettings, saveNetworkSettings } = await import("../dist/web/src/server/network-settings.js");
 const { saveUsersWorkspace, usersWorkspaceFor, usersWorkspaceLocationInfo } = await import("../dist/web/src/server/users-workspace.js");
 const { relocateSettingsFile, restoreRewrittenFile } = await import("../dist/web/src/server/settings-relocation.js");
 const { displayWorkspacePath, relocatePath } = await import("../dist/shared/workspace-paths.js");
@@ -566,20 +566,22 @@ test("app settings writers keep each other's changes, and an unreadable settings
   await writeFile(appSettingsPath(), "{ not json");
 
   // An unreadable file may hold the only record of a moved users workspace.
-  assert.equal(await readPrivacyMode(), false);
-  await savePrivacyMode({ enabled: true });
+  assert.equal((await readNetworkSettings()).consent, "pending");
+  await saveNetworkSettings({ consent: "deferred" });
   const kept = (await readdir(folder)).filter((name) => name.startsWith("settings.json.unreadable-"));
   assert.equal(kept.length, 1);
   assert.equal(await readFile(path.join(folder, kept[0]), "utf8"), "{ not json");
-  assert.equal(await readPrivacyMode(), true);
+  await saveNetworkSettings({ privacyMode: true });
+  assert.equal((await readNetworkSettings()).privacyMode, true);
 
   // Concurrent writers (a bundle load recording its users workspace while Privacy mode is toggled) lose nothing.
   await Promise.all([
-    savePrivacyMode({ enabled: false }),
+    saveNetworkSettings({ privacyMode: false }),
     ...Array.from({ length: 5 }, (_, index) => updateAppSettings((current) => ({ ...current, [`writer${index}`]: index }))),
   ]);
   const saved = JSON.parse(await readFile(appSettingsPath(), "utf8"));
   assert.equal(saved.privacyMode, false);
+  assert.equal(saved.networkConsent, "deferred");
   for (let index = 0; index < 5; index++) {
     assert.equal(saved[`writer${index}`], index);
   }
