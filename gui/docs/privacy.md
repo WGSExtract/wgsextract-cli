@@ -6,48 +6,54 @@ your computer.** Your FASTQ, BAM, CRAM, VCF, microarray files, genotypes, and
 variant coordinates are never uploaded by default, and there is no analytics
 tracking or usage telemetry.
 
-This guide explains how network access works in the **WGS Extract desktop app**,
-how it differs from the stricter **CLI back-end**, what external servers can see
-when you check for updates or download public data, and how to run completely
-offline.
+This guide explains how the **WGS Extract desktop app** uses the network
+and how it differs from the **CLI back-end**. It covers what external servers
+can see when you check for updates or download public data, and how to run
+completely offline.
 
 For the full command-by-command audit of the CLI engine, see the
 [CLI Privacy and network access guide](../../docs/privacy.md). For the
 architectural contract between the app and the CLI, see
 [Architecture — Privacy and network boundary](../devdocs/architecture.md#privacy-and-network-boundary).
 
-## How the Desktop App and CLI work together
+## How the desktop app and CLI work together
 
-WGS Extract intentionally separates two different user needs across two layers:
+The **CLI stays offline by default**. A network request needs an explicit
+download or install command, a flag such as `--download`, or an applicable
+opt-in in `config.toml`. The desktop app uses those options for you: when you
+choose **Install and Continue**, for example, it can request the missing public
+data without you typing a command. Lineage and microarray pages also offer
+a per-run download option that is off by default. Neither choice turns on
+persistent CLI auto-downloads or authorizes sending sample-derived data.
 
-1. **The CLI back-end (`wgsextract`) is strictly offline by default.**
-   Ordinary analysis, inspection, and reporting commands never contact the
-   internet, never check for updates, and never install missing files or tools
-   silently. Every CLI network call requires either an explicit install/download
-   subcommand (`ref`, `deps install`, `vep download`) or an explicit opt-in flag
-   (`--download`, `--online`, or `allow_reference_downloads = true`).
-2. **The Desktop App acts as an interactive assistant on your behalf.**
-   Casual (**Basic** mode) desktop users usually want the app to notify them
-   when a newer version is available and to help fetch a missing reference genome
-   or gene map with one click instead of failing with a cryptic error. The
-   desktop app never silently turns on CLI auto-downloads behind your back;
-   instead, it separates network behavior into four transparent tiers.
+## First launch and Network & Privacy
+
+On a fresh install, the app makes no outbound requests before your first
+network choice. **OK** turns on **Check for updates at launch**, which is off
+until you opt in. It also starts setup if it has never run and the app is in
+**Full** mode. On a metered connection, **Automatic** uses **Low**, so setup
+waits for you to start it and confirm the downloads.
+**Not now** opens **Settings → Network & Privacy** without contacting an
+external server. You can use local features with the tools and data already
+installed and choose to run setup or check for updates later.
+
+The app remembers your choice. In **Settings → Network & Privacy**, turn off
+**Check for updates at launch** to stop startup checks, or turn on
+**Privacy mode** to pause automatic network activity. Privacy mode does not
+block explicit actions such as **File → Check for Updates…** or a download
+you request; those actions still follow the [network mode](#network-mode).
+Development builds without an updater key do not check for
+updates. If setup was already complete when you upgraded, the app keeps your
+existing Privacy mode and carries over whether launch checks were active.
 
 ## The four network tiers in the Desktop App
 
 | Tier | Examples | Default | Can it send sample data? | How to control it |
 | --- | --- | --- | --- | --- |
-| **1. Automatic connections** | First-run setup downloads and app release checks at startup | **Off on a fresh install until you choose OK** | **Never** — downloads public files or sends version metadata, OS/arch, IP, and standard HTTP headers | **Settings → Network & Privacy**; **Privacy mode** pauses automatic connections |
+| **1. Automatic connections** | First-run setup downloads and app release checks at startup | **Off on a fresh install until you choose OK** | **Never** — downloads public files or sends version metadata, OS/arch, IP, and standard HTTP headers | **Low** defers large downloads; **Off** blocks network operations; **Privacy mode** pauses automatic connections |
 | **2. Interactive prerequisite prompts** | Clicking **Install and Continue** when a command or [Gene Page](gene-page.md) reports a missing reference genome or Gene Map | **Asks before downloading** — never downloads silently | **Never** — fetches public reference files only | Click **Cancel** or **Continue** instead, or pre-install files beforehand |
 | **3. Explicit management & help actions** | Running **Setup** manually, clicking **Install / Download** on [Reference Data](reference-data.md), [Reference Genomes](reference-genomes.md), or [Tools](tools.md), clicking **Look up sizes**, opening a documentation link, or clicking **Open GitHub issue** | **Off until you click** | **Never** (except a redacted bug report that you preview and submit yourself) | Only runs when you explicitly click the button or link |
 | **4. Sample-derived remote features** | [Remote Genome Viewer](genome-viewer.md#view-files-on-a-remote-server) (**Connect and view remote file**), or realigning a remote `https://` alignment URL | **Always explicit opt-in** (off in Basic & Advanced) | **Yes** — sends requested file paths and genomic byte ranges to the server you chose | Never enabled by default; requires explicit per-action confirmation |
-
-On first launch, **OK** starts setup if it has never run and enables **Check
-for updates at launch**. **Not now** opens **Settings → Network & Privacy**
-without making an outbound request. You can use local features and data, and
-choose to run setup or check for updates later. The app remembers your choice.
-When upgrading an installation that already completed setup, the app keeps
-its existing Privacy mode and carries over whether launch checks were active.
 
 [Open in gene.iobio](gene-page.md#open-in-geneiobio) also requires explicit
 per-launch consent. It opens `gene.iobio.io` in your browser with the selected
@@ -135,8 +141,11 @@ If you work in an air-gapped environment or want **zero** outbound network
 traffic — including no IP-visible update checks:
 
 1. Choose **Not now** at first launch, then set **Network mode** to **Off** in
-   **Settings → Network & Privacy**. To disable only launch checks, turn off
-   **Check for updates at launch** there.
+   **Settings → Network & Privacy**. Avoid opening external links in your
+   browser. **Privacy mode** (shown by the red **PRIVACY** badge) pauses
+   automatic connections but still permits manual network actions unless
+   the network mode blocks them. To disable only startup checks, turn off
+   **Check for updates at launch**.
 2. Keep **Allow missing public-data downloads** turned **off** in
    **Settings → Users Workspace Settings** (this is already the default).
 3. Pre-install the tools, reference genomes, and reference data you need while
