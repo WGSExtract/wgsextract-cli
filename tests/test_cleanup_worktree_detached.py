@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_cleanup_worktrees import cleanup, git, pull, result, write
+from tests.test_cleanup_worktrees import cleanup, git, pull, result, topic, write
 from tests.test_cleanup_worktrees import github as github
 from tests.test_cleanup_worktrees import proc as proc
 from tests.test_cleanup_worktrees import repo as repo
@@ -218,6 +218,48 @@ def test_1393_named_build_outputs_do_not_pin_a_finished_checkout(
     archive = repo / str(record["archive"])
     assert (archive / "out/cert.log").read_text() == "evidence\n"
     assert (archive / "state/last-run.json").read_text() == "{}\n"
+
+
+@pytest.mark.parametrize("blocker", ["unknown-data", "incoming-link", "tracked-edit"])
+def test_1393_prunes_named_outputs_without_retiring_a_retained_checkout(
+    repo: Path, github: Callable[..., None], blocker: str
+) -> None:
+    path = topic(repo)
+    artifact = path / "scratch/build/unused.o"
+    linked = path / "scratch/build/linked.o"
+    write(artifact, "regenerable build output\n")
+    write(linked, "needed build output\n")
+    write(path / "out/cert.log", "keep certification evidence\n")
+    if blocker == "incoming-link":
+        (repo / "needed.o").symlink_to(linked)
+    else:
+        write(path / "out/opaque.data", "work to preserve\n")
+    if blocker == "tracked-edit":
+        write(path / "source.txt", "unpublished work\n")
+    github([pull(path)])
+    args = ("--github", "--disposable-output", "scratch/build/*.o")
+
+    audit = cleanup(repo, *args)
+    assert audit.returncode == 0, audit.stderr
+    assert artifact.is_file()
+
+    run = cleanup(repo, *args, "--apply")
+    assert run.returncode == 0, run.stderr
+    record = result(repo, path)
+    assert path.is_dir()
+    if blocker == "tracked-edit":
+        assert record["reason"] == "dirty-or-untracked"
+        assert artifact.is_file()
+        assert (path / "source.txt").read_text() == "unpublished work\n"
+    else:
+        assert record["reason"] == "output-pruned"
+        assert not artifact.exists()
+        archive = repo / str(record["archive"])
+        assert (archive / "out/cert.log").read_text() == "keep certification evidence\n"
+        if blocker == "incoming-link":
+            assert (repo / "needed.o").read_text() == "needed build output\n"
+        else:
+            assert (path / "out/opaque.data").read_text() == "work to preserve\n"
 
 
 @pytest.mark.parametrize(

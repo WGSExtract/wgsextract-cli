@@ -1,6 +1,8 @@
 """Exercise cleanup while another checkout's generated directories change (#1393)."""
 
+import hashlib
 import os
+import re
 import shlex
 import sys
 from collections.abc import Callable
@@ -29,6 +31,15 @@ from tests.test_cleanup_worktrees import (
 )
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
+
+
+def test_1649_scheduled_cleanup_pin_matches_reviewed_script() -> None:
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
+    template = (scripts / "worktree-inspector/stale-worktrees.luau").read_text()
+    digest = hashlib.sha256((scripts / "cleanup_worktrees.py").read_bytes()).hexdigest()
+    assert re.findall(r"([0-9a-f]{64})  scripts/cleanup_worktrees\.py", template) == [
+        digest
+    ]
 
 
 @pytest.mark.parametrize("linked_parent", [False, True])
@@ -201,13 +212,14 @@ def test_1393_dependency_scan_restarts_without_losing_incoming_links(
         assert run.returncode == 0, run.stderr
         assert result(repo, candidate)["reason"] == "symlink-dependency"
         assert (renamed / "input").read_text() == (candidate / "source.txt").read_text()
+    elif change == "permission":
+        assert run.returncode == 0, run.stderr
+        assert result(repo, candidate)["reason"] == "dependency-unverified"
+        assert manifest(repo)["unreadable_dependency_paths"] == [str(tree)]
+        assert candidate.is_dir()
     else:
         assert run.returncode == 1
         error = str(manifest(repo)["error"])
-        if change == "persistent":
-            assert opens == 3
-            assert "Dependency scan could not finish" in error
-        else:
-            assert opens == 1
-            assert "Permission denied" in error
+        assert opens == 3
+        assert "Dependency scan could not finish" in error
         assert candidate.is_dir()
