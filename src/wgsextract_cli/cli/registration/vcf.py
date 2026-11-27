@@ -431,7 +431,7 @@ def register(
         vcf_subs,
         base_parser,
         "table",
-        "Export one row per ALT with offline annotations, including protein positions and domains, to TSV, Parquet or SQLite.",
+        "Export one row per ALT to TSV, Parquet or SQLite, including reported protein positions, domains and gnomAD FAF95.",
         VcfTableParams,
         cmd_table,
     )

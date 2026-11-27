@@ -58,6 +58,14 @@ Retry the upstream download or supply a licensed local copy. WGS Extract does
 not bypass authentication, accept terms on the user's behalf, or install
 download dependencies automatically.
 
+`wgsextract ref gnomad --release 4.1 --download` builds the schema 4
+`gnomad_hg38.tsv.gz` table from the same pinned joint sites VCFs. It appends
+the per-ALT ancestry-group maximum FAF95 (`fafmax_faf95_max_joint`). The
+mirror files and hashes are unchanged. The build resumes from schema 4
+contig parts and replaces an installed table only after indexing the new
+one. Without `--download`, schema 3 remains usable and a missing index is
+recreated offline.
+
 ## Publishing and activating a snapshot
 
 The `download-resources-1` snapshot is activated for all **41 approved

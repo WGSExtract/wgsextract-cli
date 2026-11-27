@@ -310,8 +310,10 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
         '##INFO=<ID=AF_joint,Number=A,Type=Float,Description="AF">\n'
         '##INFO=<ID=AF_grpmax_joint,Number=A,Type=Float,Description="grpmax AF">\n'
         '##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="homozygotes">\n'
+        '##INFO=<ID=fafmax_faf95_max_joint,Number=A,Type=Float,Description="grpmax FAF95">\n'
         "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
-        "chr1\t100\t.\tA\tG\t.\tPASS\tAF_joint=0.25;AF_grpmax_joint=0.5;nhomalt_joint=1\n"
+        "chr1\t100\t.\tA\tG\t.\tPASS\t"
+        "AF_joint=0.25;AF_grpmax_joint=0.5;nhomalt_joint=1;fafmax_faf95_max_joint=0.125\n"
         "chr1\t200\t.\tC\tT\t.\tPASS\tAF_joint=0.5\n"
     )
     data = gzip.compress(vcf.encode())
@@ -326,8 +328,8 @@ def test_1046_gnomad_stream_restarts_without_duplicate_af_rows(
     table = tmp_path / "library/downloads/gnomad_hg38.tsv.gz"
     with gzip.open(table, "rt") as output:
         assert output.read().splitlines()[-2:] == [
-            "chr1\t100\tA\tG\t0.25\t0.5\t1",
-            "chr1\t200\tC\tT\t0.5\t.\t.",
+            "chr1\t100\tA\tG\t0.25\t0.5\t1\t0.125",
+            "chr1\t200\tC\tT\t0.5\t.\t.\t.",
         ]
     assert ("upstream" in source.paths) is corrupt_second_part
     assert table.with_suffix(table.suffix + ".tbi").is_file()
@@ -344,7 +346,7 @@ def test_1591_gnomad_resumes_saved_contigs_offline(
     library = tmp_path / "library"
     parts = library / "downloads" / f".gnomad_hg38_parts_v{gnomad_af._TABLE_SCHEMA}"
     parts.mkdir(parents=True)
-    row = b"chr1\t100\tA\tG\t0.25\t0.5\t1\n"
+    row = b"chr1\t100\tA\tG\t0.25\t0.5\t1\t0.125\n"
     plain = tmp_path / "chr1.tsv"
     plain.write_bytes(row)
     with (parts / "chr1.tsv.gz").open("wb") as part:
@@ -412,7 +414,7 @@ def test_1591_gnomad_mirror_feeder_only_requires_network_for_missing_raw_parts(
     else:
         assert result.exit_code == 0
         query = run_command(["tabix", str(table), "chr1:100-100"], capture_output=True)
-        assert query.stdout == "chr1\t100\tA\tG\t0.25\t.\t.\n"
+        assert query.stdout == "chr1\t100\tA\tG\t0.25\t.\t.\t.\n"
 
 
 @needs_tools("bcftools", "bgzip")

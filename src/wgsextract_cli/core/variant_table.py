@@ -48,6 +48,11 @@ from wgsextract_cli.core.csq_alleles import (
     for_allele,
     split_origin,
 )
+from wgsextract_cli.core.gnomad_fields import (
+    GNOMAD_FAF95,
+    GNOMAD_NATIVE_FAF95,
+    gnomad_native_faf95,
+)
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
@@ -238,6 +243,12 @@ PANEL_AUDIT_COLUMNS: tuple[Column, ...] = (
         "missing or incomplete.",
     ),
     *scores.SCORE_COLUMNS,
+    Column(
+        "gnomad_faf95",
+        REAL,
+        "Maximum gnomAD ancestry-group filtering allele frequency at 95% confidence "
+        "for this ALT (joint or the supplied standalone callset).",
+    ),
 )
 COLUMNS = (*PANEL_AUDIT_COLUMNS, *protein.COLUMNS)
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
@@ -312,20 +323,6 @@ class VcfHeader:
     info_formats: dict[str, list[str]] = field(default_factory=dict)
 
     @property
-    def protein_annotation_fields(self) -> str:
-        """Which protein annotations the header declares, not coverage."""
-        csq, ann = self.csq_fields or (), self.ann_fields or ()
-        return ",".join(
-            name
-            for name, present in (
-                ("CSQ/Protein_position", protein.CSQ_POSITION in csq),
-                ("ANN/AA.pos / AA.length", protein.ANN_POSITION in ann),
-                ("CSQ/DOMAINS", protein.CSQ_DOMAINS in csq),
-            )
-            if present
-        )
-
-    @property
     def annotations(self) -> list[str]:
         """The annotation sources present, for provenance and the manifest."""
         found = []
@@ -335,7 +332,16 @@ class VcfHeader:
             found.append("snpeff")
         for name, keys in (
             ("clinvar", ("CLNSIG",)),
-            ("gnomad", ("GNOMAD_AF", *_POPMAX_INFO, *_NHOMALT_INFO)),
+            (
+                "gnomad",
+                (
+                    "GNOMAD_AF",
+                    *_POPMAX_INFO,
+                    *_NHOMALT_INFO,
+                    GNOMAD_FAF95,
+                    *GNOMAD_NATIVE_FAF95,
+                ),
+            ),
             ("pharmgkb", ("PHARMGKB",)),
             ("confidence", ("WGSE_CONF",)),
             ("sv_freq", ("SV_FREQ",)),
@@ -581,6 +587,11 @@ def indexed_variant_rows(
 ) -> Iterator[tuple[Row, int, int, str | None]]:
     """Rows with record ordinal, 1-based ALT index and split provenance."""
     numbers = header.info_number
+    faf95_key = (
+        GNOMAD_FAF95 if GNOMAD_FAF95 in numbers else gnomad_native_faf95(numbers)
+    )
+    if faf95_key and numbers.get(faf95_key) != "A":
+        faf95_key = None
     csq_names = header.csq_fields or []
     ann_names = header.ann_fields or []
     scored = bool(scores.NAMES & set(header.annotations))
@@ -777,6 +788,9 @@ def indexed_variant_rows(
                     if scored
                     else unscored
                 ),
+                _fraction(_per_allele(info.get(faf95_key), "A", alt_index))
+                if faf95_key
+                else None,
                 *protein.protein_fields(picked, ann, csq_consequence, ann_consequence),
             )
             yield row, record_index, alt_index, info.get(SPLIT_TAG) if split else None

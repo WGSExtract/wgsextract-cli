@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 from wgsextract_cli.core.table_writer import Column
 
@@ -46,6 +46,19 @@ _POSITION = re.compile(
     r"([1-9][0-9]{0,18})(?:-([1-9][0-9]{0,18}))?(?:/[1-9][0-9]{0,18})?"
 )
 _DOMAIN = re.compile(r"[^:\s]+:[^\s:][^\s]*")
+
+
+def annotation_fields(csq: Sequence[str], ann: Sequence[str]) -> str:
+    """Which protein fields the header declares, regardless of coverage."""
+    return ",".join(
+        f"{source}/{name}"
+        for source, name, fields in (
+            ("CSQ", CSQ_POSITION, csq),
+            ("ANN", ANN_POSITION, ann),
+            ("CSQ", CSQ_DOMAINS, csq),
+        )
+        if name in fields
+    )
 
 
 def protein_fields(

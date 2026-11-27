@@ -213,7 +213,8 @@ class VcfFilterParams(_VcfSliceParams):
 @dataclass(frozen=True, kw_only=True)
 class VcfTableParams(_VcfSliceParams):
     """One row per ALT with offline annotations, as ``<stem>_variants.tsv``
-    (or ``.parquet``) and an SQLite database."""
+    (or ``.parquet``) and SQLite. Includes reported protein positions,
+    domains and gnomAD ancestry-group maximum FAF95 when available."""
 
     COMMAND = "vcf table"
 

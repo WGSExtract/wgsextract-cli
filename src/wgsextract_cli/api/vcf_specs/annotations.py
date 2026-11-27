@@ -111,7 +111,7 @@ class VcfGerpParams(_AnnotatorParams):
 
 @dataclass(frozen=True, kw_only=True)
 class VcfGnomadParams(_AnnotatorParams):
-    """gnomAD allele frequencies and available homozygote counts as
+    """gnomAD allele frequencies, available ancestry-group maximum FAF95 and homozygote counts as
     ``gnomad_annotated.vcf.gz``."""
 
     COMMAND = "vcf gnomad"

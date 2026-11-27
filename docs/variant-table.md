@@ -100,6 +100,7 @@ of the BED file as supplied.
 | `spliceai_max` | real | The highest of the ALT's four SpliceAI delta scores (`DS_AG`, `DS_AL`, `DS_DG`, `DS_DL`, 0–1), for the row's gene when scored. |
 | `phylop`, `gerp` | real, real | PhyloP and GERP++ conservation scores for the position. |
 | `sift_score`, `sift_prediction`, `polyphen_score`, `polyphen_prediction` | real, text, real, text | SIFT and PolyPhen-2 for the chosen transcript (for example `deleterious` 0.01, `probably_damaging` 0.998). |
+| `gnomad_faf95` | real | Maximum filtering allele frequency at 95% confidence across gnomAD ancestry groups for this ALT (`GNOMAD_FAF95` from `vcf gnomad`, or the native group-maximum field). Zero is a reported value; empty means unavailable. |
 | `protein_position`, `protein_position_end` | integer, integer | Start and inclusive end of the reported residue span, 1-based. Equal for a single residue. Only exported for protein-altering effects. |
 | `domains` | text | Overlapping protein features reported by VEP for the chosen transcript, as unique `source:id` entries separated by `&`. |
 
@@ -117,12 +118,19 @@ source VCF and its SHA-256, sample, reference build, region, annotations found,
 [`/v1/variants` and MCP `query_variants`](server.md) can return these
 columns from any of the table formats. They omit fields that are missing.
 
-Newly built `ref gnomad --release 4.1` tables retain the joint dataset's
-`AF_grpmax_joint` and `nhomalt_joint`. `vcf gnomad` carries them into its
-annotated VCF and, with `--max-af`, its confidence table. Older five-column
-gnomAD tables still supply `gnomad_af`, but do not have the two additional
-statistics. To rebuild an installed table, move it and its index aside before
-running `ref gnomad --release 4.1` again (this streams about 900 GB).
+New gnomAD v4.1 tables (schema 4) keep the joint dataset's `AF_grpmax_joint`,
+`nhomalt_joint` and `fafmax_faf95_max_joint`. `vcf gnomad` carries these into
+its annotated VCF and, with `--max-af`, its confidence table. For a native
+standalone exome or genome sites VCF, the corresponding `fafmax_faf95_max`
+describes only that callset. The joint maximum is distinct from overall
+`faf95_joint` and from maximum AF. A missing ALT never falls back to those
+fields or to another callset.
+
+Schema 3 tables still work offline, including index repair, but lack FAF95.
+Older five-column tables only supply `gnomad_af`. If you want FAF95, run
+`wgsextract ref gnomad --release 4.1 --download` (streams about 900 GB), then
+rerun `vcf gnomad` and `vcf table`. A small or missing FAF95 is not proof of
+rarity. This column does not change `vcf gnomad --max-af` or ACMG defaults.
 
 A table of a [`vcf acmg`](acmg.md) VCF keeps the research-only disclaimer
 where its readers look: the `acmg_*` column descriptions, the metadata key
