@@ -20,7 +20,7 @@ from tests.test_clair3 import fake_clair3 as fake_clair3
 from tests.test_clair3 import linux_x86 as linux_x86
 from tests.test_gatk_scatter import gatk as gatk
 from tests.test_parabricks import gpu as gpu
-from tests.test_parabricks import linux as linux
+from tests.test_parabricks import parabricks_x86 as parabricks_x86
 from tests.test_parabricks import posix_only
 from wgsextract_cli import api
 from wgsextract_cli.core.config import settings
