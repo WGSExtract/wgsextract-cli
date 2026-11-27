@@ -119,7 +119,7 @@ function onNetworkChoice(acceptedHere: boolean) {
         return;
     }
     initializeTauriUpdater();
-    if (setupHasNeverRun() && networkAllowed(state.networkSettings, "startup-setup")) {
+    if (setupHasNeverRun()) {
         void runStartupSetup(true);
     }
 }

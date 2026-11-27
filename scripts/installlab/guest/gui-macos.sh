@@ -177,6 +177,9 @@ app_setup() {
 }
 
 tauri_setup() {
+    # This automated setup on a disposable guest explicitly opts into downloads.
+    mkdir -p "$APP_DATA" &&
+        printf '%s\n' '{"networkConsent":"accepted","networkMode":"full","checkForUpdatesAtLaunch":false}' > "$APP_DATA/settings.json" || return 1
     env GUI_FOR_CLI_AUTO_RUN_SETUP=1 GUI_FOR_CLI_SETUP_EVENTS_LOG="$events" \
         WGSEXTRACT_GUI_AUTO_RUN_SETUP=1 WGSEXTRACT_GUI_SETUP_EVENTS_LOG="$events" \
         ${LAB_ARCHIVE_URL:+WGSEXTRACT_ARCHIVE_URL="$CLI_ARCHIVE"} \

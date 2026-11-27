@@ -180,9 +180,10 @@ export function renderNetworkSettings() {
   const { labels, networkSettings } = state;
   const modes = { automatic: labels.networkModeAutomatic, full: labels.networkModeFull, low: labels.networkModeLow, off: labels.networkModeOff };
   const costs = { constrained: labels.networkCostConstrained, unconstrained: labels.networkCostUnconstrained, unknown: labels.networkCostUnknown };
-  const status = formatLabel(labels.networkEffective ?? "", { mode: modes[effectiveNetworkMode(networkSettings)] ?? "" });
+  const effectiveMode = effectiveNetworkMode(networkSettings);
+  const status = formatLabel(labels.networkEffective ?? "", { mode: modes[effectiveMode] ?? "" });
   return `
-    <section class="card" data-network-settings tabindex="-1" aria-labelledby="network-settings-title">
+    <section class="card" data-network-settings data-effective-network-mode="${effectiveMode}" tabindex="-1" aria-labelledby="network-settings-title">
       <h3 id="network-settings-title">${escapeHTML(labels.networkTitle ?? "")}</h3>
       <p class="muted">${escapeHTML(labels.networkSettingsDetail ?? "")}</p>
       <div class="network-settings-options">

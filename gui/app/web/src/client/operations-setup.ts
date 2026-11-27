@@ -7,7 +7,7 @@ import { appendTerminal, appendTerminalOutput, runningActionControllers } from "
 import { findTerminalEntry } from "./terminal-output.js";
 import { persistBundleState } from "./operations-state.js";
 import { resolveSetupPreflight } from "./operations-setup-preflight.js";
-import { effectiveNetworkMode } from "../../../shared/network-settings.js";
+import { effectiveNetworkMode, networkAllowed } from "../../../shared/network-settings.js";
 import { fetchNetworkSettings } from "./network-consent.js";
 import type { SetupRun, SetupStepResult, TerminalEntry } from "../../../shared/types.js";
 
@@ -18,12 +18,13 @@ export async function runSetup(automatic = false) {
     if (state.setupRun?.status === "running") {
         return;
     }
-    const settings = await fetchNetworkSettings().catch(() => state.networkSettings);
+    const settings = await fetchNetworkSettings().catch(() => undefined);
+    if (!settings || !networkAllowed(settings, automatic ? "startup-setup" : "external")) return;
     const mode = effectiveNetworkMode(settings);
-    if (mode === "off" || (automatic && mode === "low")) return;
     const allowLargeDownload = mode === "low" && window.confirm(state.labels.networkConfirmSetup ?? "");
     if (mode === "low" && !allowLargeDownload) return;
     const preflight = await resolveSetupPreflight();
+    if (runningSetup) return;
     if (preflight?.severity === "warning") {
         const setupID = appendTerminal("error", preflight.title ?? state.labels.setupTitle ?? "Setup", preflight.message ?? "");
         state.activeTerminalID = setupID;

@@ -69,8 +69,7 @@ async function initializeTauriUpdaterWhenReady() {
 }
 
 function scheduleStartupUpdate() {
-    if (!startupRequested || startupScheduled || !state.update.supported || !state.autoUpdate ||
-        !networkAllowed(state.networkSettings, "startup-update")) return;
+    if (!startupRequested || startupScheduled || !state.update.supported || !state.autoUpdate) return;
     startupScheduled = true;
     const delay = Math.max(0, Number(state.autoUpdateDelaySeconds) || 0);
     window.setTimeout(() => {
@@ -110,7 +109,6 @@ type UpdateCheckOptions = {
 };
 
 export async function checkForUpdates(options: UpdateCheckOptions = {}) {
-    if (!networkAllowed(state.networkSettings, options.activity ?? "external")) return;
     if (checkPromise) {
         return checkPromise;
     }
@@ -193,7 +191,6 @@ async function runUpdateCheck(options: UpdateCheckOptions) {
 
 export async function downloadUpdate(acceptedBy = "user") {
     const activity = acceptedBy === "auto" ? "startup-download" : "external";
-    if (!networkAllowed(state.networkSettings, activity)) return;
     if (state.update.updateRid == null || state.update.bytesRid != null || state.update.status === "downloading") return;
     // The connection can change while the update check (or auto-install delay) runs.
     const freshSettings = await fetchNetworkSettings().catch(() => undefined);

@@ -127,6 +127,19 @@ test("#1591 an update found on Wi-Fi waits for confirmation after the connection
   assert.equal(state.update.status, "downloaded");
 });
 
+test("#1591 automatic download uses the new unrestricted connection after cached Low", async (t) => {
+  resetState();
+  state.networkSettings.detectedCost = "constrained";
+  state.update.updateRid = 7;
+  state.update.status = "available";
+  t.mock.method(globalThis, "fetch", async () => Response.json({ ...state.networkSettings, detectedCost: "unconstrained" }));
+  setTauriMock(async () => ({ bytesRid: 8, downloadedBytes: 10 }));
+
+  await downloadUpdate("auto");
+
+  assert.equal(state.update.status, "downloaded");
+});
+
 test("does not invoke install without both updater resources", async () => {
   resetState();
   let invoked = false;
@@ -150,13 +163,12 @@ test("#1052 Privacy mode keeps startup offline while subscribing to local update
   state.networkSettings.privacyMode = true;
   let progressHandler;
   const originalSetTimeout = globalThis.window.setTimeout;
-  let scheduled = 0;
-  globalThis.window.setTimeout = () => { scheduled += 1; return 0; };
+  const pending = [];
+  const commands = [];
+  globalThis.window.setTimeout = (callback) => { pending.push(callback); return 0; };
   globalThis.window.__TAURI__ = {
     core: {
-      invoke: async () => {
-        throw new Error("scheduled check should not run");
-      },
+      invoke: async (command) => { commands.push(command); return {}; },
     },
     event: {
       listen: async (event, handler) => {
@@ -173,7 +185,9 @@ test("#1052 Privacy mode keeps startup offline while subscribing to local update
 
     assert.equal(state.update.supported, true);
     assert.equal(typeof progressHandler, "function");
-    assert.equal(scheduled, 0, "Privacy mode must not schedule an update server request");
+    for (const callback of pending.splice(0)) callback();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(commands, []);
     assert.equal(state.update.checked, false);
 
     progressHandler({

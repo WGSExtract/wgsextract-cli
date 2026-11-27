@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
+import { completeLifecycleSetup } from "../../scripts/ui-driver-setup.mjs";
 import { effectiveNetworkMode, networkAllowed } from "../dist/shared/network-settings.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
@@ -281,6 +282,26 @@ test("#1591 maps local OS cost signals, not connectivity, to constrained", async
         }
     }
     assert.equal(await createNetworkCostDetector("linux", async () => { throw new Error("NetworkManager unavailable"); })(), "unknown");
+});
+
+test("#1591 an unmetered interface cannot hide another active interface's unknown cost", async () => {
+    const output = (cost) => [
+        "GENERAL.TYPE:bridge\nGENERAL.STATE:100 (connected)\nGENERAL.METERED:no",
+        "GENERAL.TYPE:wifi\nGENERAL.STATE:100 (connected)\nGENERAL.METERED:unknown",
+        `GENERAL.TYPE:ethernet\nGENERAL.STATE:100 (connected)\nGENERAL.METERED:${cost}`,
+    ].join("\n\n");
+    assert.equal(await createNetworkCostDetector("linux", async () => output("no"))(), "unknown");
+    assert.equal(await createNetworkCostDetector("linux", async () => output("yes"))(), "constrained");
+});
+
+test("#1591 the lifecycle walkthrough confirms manual setup on an unknown-cost connection", browserTestOptions, async (t) => {
+    const { page, setupCalls } = await browserFixture(t, { cost: "unknown" });
+    const prompt = page.getByRole("button", { name: "OK", exact: true });
+
+    await completeLifecycleSetup(page, prompt, operationTimeout);
+
+    assert.equal(setupCalls.length, 1);
+    assert.equal(await page.locator(".setup-global-banner").count(), 0);
 });
 
 test("#1591 unavailable OS detection leaves bulk startup transfers opt-in", async () => {
