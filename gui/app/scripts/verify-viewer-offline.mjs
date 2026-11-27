@@ -36,6 +36,8 @@ if (values.cytobands) {
         + "chr1\t125100000\t248956422\tq44\tgpos100\n");
 }
 const originalFiles = values["read-only"] ? (await readdir(fixtures.library, { recursive: true })).sort() : [];
+// Only the backend needs the disposable home. The browser driver must use the caller's Playwright cache.
+const browserEnvironment = { ...process.env };
 await configureOfflineVerification(output);
 const bundleRoot = path.join(output, "bundle");
 await cp(path.join(root, "gui/examples/WGSExtract"), bundleRoot, { recursive: true });
@@ -81,7 +83,7 @@ try {
         ...(values.genes ? ["--gene-map", path.join(output, "reference/ref/genes_hg38.tsv")] : []),
         ...(values.cytobands ? ["--cytobands", path.join(output, "reference/ref/cytobands_hg38.tsv")] : []),
         ...(values.chromium ? ["--chromium", values.chromium] : []),
-    ], { stdio: "inherit", windowsHide: true });
+    ], { env: browserEnvironment, stdio: "inherit", windowsHide: true });
     const code = await new Promise((resolve, reject) => {
         child.once("error", reject);
         child.once("close", resolve);
