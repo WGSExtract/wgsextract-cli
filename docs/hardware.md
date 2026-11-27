@@ -684,7 +684,7 @@ Long reads work the same way with `wgse-minimap2` 0.4.0 or later (minimap2
   place of minimap2 for ONT, HiFi and other long reads. Its base-level gap fills
   run on the GPU and the rest on the CPU. Short reads (`sr`) stay entirely on the
   CPU.
-- **Gain (measured):** on the RTX 3090 machine above (8 threads), 40k HiFi reads
+- **Slice gains (measured):** on the RTX 3090 machine above (8 threads), 40k HiFi reads
   took 20.4 s against 32.5 s on its CPU backend and 45.6 s with Bioconda's
   minimap2. 47k ONT reads, which spend most of their time chaining, took 100.7 s
   against 111.6 s.
@@ -693,19 +693,18 @@ Long reads work the same way with `wgse-minimap2` 0.4.0 or later (minimap2
   that extra RAM wouldn't fit, it runs on the CPU. On a Mac, `wgse-minimap2`
   still runs on the CPU.
 
-Those gains are for mapping slices from an existing index, not for a
-whole-genome `realign` pipeline. They exclude input decoding, methylation-tag
-preservation, sorting and output encoding; the 21.4 h whole-genome CPU run
-is not a measured CUDA baseline. Whole-genome RTX 3090 qualification is still
-pending in
-[#1122 (Linux CUDA long-read alignment)](https://github.com/WGSExtract/wgsextract-cli/issues/1122).
+On the same Linux host, a streamed whole-genome HG002 ONT `realign` with CUDA
+finished about 8% sooner than upstream CPU minimap2 (15.3 h vs 16.6 h) and
+produced identical sorted decoded-record digests; see
+[whole-genome ONT requirements](resource_estimates.md#whole-genome-ont-requirements)
+for the measured setup, memory, VRAM and disk. The slice gains above are
+mapping-only and exclude input decoding, methylation-tag preservation, sorting
+and output encoding.
 The [native backend notes](../native/README.md#ont-chaining-and-qualification-scope)
 record a newer 93,328-read HG002 ONT CPU profile: sorting and chaining took
 about 64% of CPU time, dual-affine gap alignment 18.3%. Its native CPU records
 matched upstream 2.31 exactly. Real CUDA kernel and synthetic-genome
-failure/fallback tests also passed on the RTX 3090. The measured
-[whole-genome ONT realignment on Windows](resource_estimates.md#whole-genome-ont-requirements)
-covers a different host (RTX 5080) and does not qualify the Linux machine.
+failure/fallback tests also passed on the RTX 3090.
 
 On Linux ARM64 (for example Graviton, Ampere or Cobalt), the linux-aarch64
 `wgse-bwa` package has no GPU backend; its CPU backend runs bwa's steps with
