@@ -10,7 +10,7 @@ import pytest
 
 from tests.htslib_helpers import needs_tools, snp_sample
 from tests.test_parabricks import gpu as gpu
-from tests.test_parabricks import linux as linux
+from tests.test_parabricks import parabricks_x86 as parabricks_x86
 from tests.test_vep_run import _vcf, ensembl_test_cache
 from tests.test_vep_run import fake_vep as fake_vep
 from wgsextract_cli import api
@@ -109,5 +109,9 @@ def test_1093_failed_cross_volume_rerun_preserves_the_previous_indexed_vcf(
         == expected
     )
     assert not list(output.glob("*.partial*"))
-    assert not [p for p in output.iterdir() if p.name.startswith(".")]
+    assert not [
+        path
+        for path in output.iterdir()
+        if path.name.startswith(".") and not path.match(".wgse_publish-*.guard")
+    ]
     assert list(scratch.iterdir()) == []

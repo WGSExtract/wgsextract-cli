@@ -19,9 +19,10 @@ from tests.htslib_helpers import (
 )
 from tests.test_clair3 import clair3_gpu as clair3_gpu
 from tests.test_clair3 import fake_clair3 as fake_clair3
-from tests.test_clair3 import linux_x86 as linux_x86
 from tests.test_clair3 import make_model
 from tests.test_gatk_scatter import gatk as gatk
+from tests.test_parabricks import gpu as gpu
+from tests.test_parabricks import parabricks_x86 as parabricks_x86
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfClair3Params, VcfGatkParams
 from wgsextract_cli.core.reference_evidence import (
@@ -88,9 +89,7 @@ def call(sample, caller, request, sex, region=None, **extra):
     }
     if caller == "gatk":
         return api.vcf.gatk(VcfGatkParams(**common), check=False)
-    # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
-    request.getfixturevalue("linux_x86")
     model = sample.root / "custom"
     if not model.exists():
         make_model(sample.root, "custom")
@@ -182,7 +181,6 @@ def test_clair3_gvcf_cost_is_measured_and_reported_to_gpu_runs_863(
     slower on the CPU and 4.3x with --gpu. Preflight scales its time by that,
     and a --gpu run is told the CPU was faster there but still calls on the
     GPU."""
-    # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
     host = request.getfixturevalue("clair3_gpu") if gpu else None
     results = {
@@ -386,30 +384,12 @@ def test_clair3_missed_deletion_bases_arent_callable_reference_1028(tmp_path, re
     assert state(gvcf, "chr20", 2100) is State.CALLABLE_REFERENCE
 
 
-@pytest.fixture
-def parabricks_host(tmp_path, monkeypatch, ram):
-    """An x86-64 Linux GPU host (RTX 3090, 128 GB) whose pbrun is faked."""
-    import os
-    import platform
-
-    from tests.fake_tools import FakeParabricks
-    from wgsextract_cli.core.parabricks import DEFAULT_IMAGE
-
-    if sys.platform == "win32":
-        pytest.skip("Parabricks runs on Linux; fakes run by shebang")
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
-    ram(128 * 10**9)
-    host = FakeParabricks(tmp_path / "gpu", DEFAULT_IMAGE)
-    monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
-    return host
-
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Parabricks fakes run by shebang")
 @pytest.mark.parametrize("evidence", ["none", "gvcf"])
 @pytest.mark.parametrize("bounded", [False, True])
 @pytest.mark.parametrize("sex", ["Male", "Female"])
 def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
-    sample, parabricks_host, sex, bounded, evidence
+    sample, gpu, sex, bounded, evidence
 ):
     """Issue #1058: vcf deepvariant --gpu refused every whole genome, since
     a man's non-PAR chrX/chrY (and every chrM) isn't diploid. pbrun has
@@ -429,11 +409,9 @@ def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
     assert result.status == "ok", result.error
     runs = {
         "haploid" if "--haploid-contigs" in args else "diploid": intervals
-        for (_, args), intervals in zip(
-            parabricks_host.runs(), parabricks_host.intervals(), strict=True
-        )
+        for (_, args), intervals in zip(gpu.runs(), gpu.intervals(), strict=True)
     }
-    haploid_args = [a for _, a in parabricks_host.runs() if "--haploid-contigs" in a]
+    haploid_args = [a for _, a in gpu.runs() if "--haploid-contigs" in a]
     male = sex == "Male"
     if bounded:
         diploid = [("chr20", 499, 1500), ("chrX", PAR_START - 1, 11000)]

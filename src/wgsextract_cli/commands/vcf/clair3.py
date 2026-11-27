@@ -250,8 +250,6 @@ def _image_clair3_version(image: str) -> tuple[int, ...] | None:
 def verify_gpu() -> GpuSetup | MpsSetup:
     """What --gpu runs on, once this host can run Clair3 on a GPU with the
     memory it asks for; else name what's missing."""
-    image = clair3_gpu_image()
-    setup = _GPU_SETUP.format(image=image)
     machine = platform.machine().lower()
     if sys.platform == "darwin" and machine in ("arm64", "aarch64"):
         return verify_mps()
@@ -261,6 +259,12 @@ def verify_gpu() -> GpuSetup | MpsSetup:
             "or Apple Silicon macOS with the WGSE-built MPS package. "
             "Run without --gpu here."
         )
+    return verify_cuda()
+
+
+def verify_cuda() -> GpuSetup:
+    image = clair3_gpu_image()
+    setup = _GPU_SETUP.format(image=image)
     verify_gpu_docker(setup)
     require_image(
         image,

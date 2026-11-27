@@ -7,10 +7,10 @@ folders mounted into it.
 """
 
 import os
-import platform
 import random
 import shutil
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -24,7 +24,9 @@ from tests.htslib_helpers import (
     write_read_pairs,
 )
 from wgsextract_cli import api
-from wgsextract_cli.core import parabricks
+from wgsextract_cli.commands.vcf import deepvariant
+from wgsextract_cli.commands.vcf.deepvariant_pipeline import models
+from wgsextract_cli.core import native_support, parabricks
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.utils import (
     MissingDependencyError,
@@ -39,13 +41,16 @@ posix_only = pytest.mark.skipif(
 
 
 @pytest.fixture
-def linux(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+def parabricks_x86(monkeypatch):
+    """Simulate a qualified GPU host without changing the OS of local I/O."""
+    monkeypatch.setattr(deepvariant, "require_gpu_host", lambda: None)
+    monkeypatch.setattr(models, "platform", SimpleNamespace(machine=lambda: "x86_64"))
+    monkeypatch.setattr(native_support, "is_linux_arm64", lambda: False)
+    monkeypatch.setattr(parabricks, "sys", SimpleNamespace(platform="linux"))
 
 
 @pytest.fixture
-def gpu(tmp_path, monkeypatch, linux, ram):
+def gpu(tmp_path, monkeypatch, parabricks_x86, ram):
     """A GPU host with an RTX 3090 and 128 GB of RAM: its nvidia-smi and
     Docker come first on PATH."""
     ram(128 * 10**9)
@@ -88,9 +93,8 @@ def test_a_complete_setup_passes(gpu):
     parabricks.verify_parabricks()
 
 
-def test_parabricks_is_linux_only(monkeypatch):
-    monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+def test_parabricks_is_linux_only(monkeypatch, parabricks_x86):
+    monkeypatch.setattr(parabricks, "sys", SimpleNamespace(platform="darwin"))
     with pytest.raises(UsageError, match="Linux only"):
         parabricks.verify_parabricks()
 
@@ -215,7 +219,7 @@ def test_unaligned_bam_read_groups_without_a_sample_get_one(tmp_path, gpu, genom
     ],
 )  # fmt: skip
 def test_gpu_alignment_without_a_parabricks_equivalent_is_refused(
-    tmp_path, linux, options, message
+    tmp_path, parabricks_x86, options, message
 ):
     # Refused before the reference is read: no index needed.
     ref = tmp_path / "ref.fa"
@@ -322,7 +326,7 @@ def test_gpu_calling_reads_a_bed_region_from_its_own_folder(tmp_path, gpu, linke
     assert [(c[0], c[1]) for c in calls] == [("chr1", "1500"), ("chr1", "2200")]
 
 
-def test_gpu_deepvariant_refuses_a_custom_checkpoint(tmp_path, linux):
+def test_gpu_deepvariant_refuses_a_custom_checkpoint(tmp_path, parabricks_x86):
     with pytest.raises(UsageError, match="checkpoint"):
         run_wgsextract(
             "vcf", "deepvariant", "--gpu", "--input", str(tmp_path / "x.bam"),
@@ -579,9 +583,15 @@ def test_gpu_deepvariant_writes_the_gvcf_in_the_same_run_863(tmp_path, gpu):
     assert outputs[INDEX_ROLE].path == gvcf.path + ".tbi"
     assert gvcf.metrics["engine"] == "parabricks-deepvariant"
     assert gvcf.metrics["region"] == "chr1:1000-1100"
-    # Nothing of pbrun's run is left beside them.
-    left = os.listdir(tmp_path / "out")
-    assert sorted(n for n in left if n != "manifests" and not n.endswith(".manifest.json")) == [
+    # The publisher keeps its coordination inode, not any staged artifacts.
+    left = sorted(
+        path.name
+        for path in (tmp_path / "out").iterdir()
+        if path.name != "manifests"
+        and not path.name.endswith(".manifest.json")
+        and not path.match(".wgse_publish-*.guard")
+    )
+    assert left == [
         "deepvariant.g.vcf.gz", "deepvariant.g.vcf.gz.tbi",
         "deepvariant.vcf.gz", "deepvariant.vcf.gz.tbi",
     ]  # fmt: skip

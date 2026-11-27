@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -36,7 +37,7 @@ from tests.test_deepvariant import (
 )
 from tests.test_deps_ready import item, ready
 from tests.test_deps_ready import offline as offline
-from wgsextract_cli.commands.vcf import deepvariant
+from wgsextract_cli.commands.vcf import clair3, clair3_readiness, deepvariant
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.main import main
 
@@ -55,6 +56,14 @@ def ont(tmp_path, fake_clair3):
     """Build reads only after the caller fixture checks launcher support."""
     (tmp_path / "ont").mkdir()
     return snp_sample(tmp_path / "ont", DORADO_RG)
+
+
+@pytest.fixture
+def cuda_readiness(clair3_gpu, monkeypatch):
+    """Use x86 Linux CUDA for readiness without changing the OS of local I/O."""
+    monkeypatch.setattr(clair3_readiness, "verify_gpu", clair3.verify_cuda)
+    monkeypatch.setattr(clair3_readiness, "sys", SimpleNamespace(platform="linux"))
+    return clair3_gpu
 
 
 # Clair3 ----------------------------------------------------------------------
@@ -103,9 +112,9 @@ def test_1183_an_unpinned_clair3_model_is_ready_but_unverified(
 
 @needs_tools("samtools", "bcftools", "tabix")
 def test_1183_clair3_gpu_records_image_driver_and_devices_without_pulling(
-    offline, clair3_gpu, tmp_path, capsys
+    offline, cuda_readiness, tmp_path, capsys
 ):
-    reads = clair3_gpu.reads
+    reads = cuda_readiness.reads
     model = make_model(tmp_path / "models", "my_r1041_model")
 
     code, details = ready(
@@ -120,7 +129,7 @@ def test_1183_clair3_gpu_records_image_driver_and_devices_without_pulling(
     gpu = item(details, "gpu")
     assert (gpu["status"], gpu["version"]) == ("runnable", "550.54.14")
     assert gpu["evidence"]["devices"] == [0]
-    no_pulls(clair3_gpu.docker)
+    no_pulls(cuda_readiness.docker)
 
 
 def _no_docker(gpu) -> None:
@@ -148,11 +157,11 @@ def _no_docker(gpu) -> None:
     ],
 )  # fmt: skip
 def test_1183_clair3_gpu_names_what_the_host_lacks_and_pulls_nothing(
-    offline, clair3_gpu, tmp_path, capsys, monkeypatch, setup, backend, message
+    offline, cuda_readiness, tmp_path, capsys, monkeypatch, setup, backend, message
 ):
     monkeypatch.setenv("PATH", os.environ["PATH"])  # restored after the test
-    setup(clair3_gpu)
-    reads = clair3_gpu.reads
+    setup(cuda_readiness)
+    reads = cuda_readiness.reads
 
     code, details = ready(
         capsys, "vcf", "clair3", "--input", reads.bam, "--ref", reads.ref,
@@ -162,16 +171,16 @@ def test_1183_clair3_gpu_names_what_the_host_lacks_and_pulls_nothing(
     found = item(details, "backend")
     assert (code, found["status"], found["blocking"]) == (3, backend, True)
     assert message in found["detail"]
-    if (clair3_gpu.docker.root.parent / "bin" / "docker").exists():
-        no_pulls(clair3_gpu.docker)
+    if (cuda_readiness.docker.root.parent / "bin" / "docker").exists():
+        no_pulls(cuda_readiness.docker)
 
 
 @needs_tools("samtools", "bcftools", "tabix")
 def test_1183_a_missing_local_image_names_the_explicit_pull(
-    offline, clair3_gpu, tmp_path, capsys
+    offline, cuda_readiness, tmp_path, capsys
 ):
-    clair3_gpu.docker.set(images={})
-    reads = clair3_gpu.reads
+    cuda_readiness.docker.set(images={})
+    reads = cuda_readiness.reads
 
     _, details = ready(
         capsys, "vcf", "clair3", "--input", reads.bam, "--ref", reads.ref, "--gpu",
@@ -180,7 +189,7 @@ def test_1183_a_missing_local_image_names_the_explicit_pull(
     image = item(details, "image")
     assert (image["status"], image["blocking"]) == ("missing", True)
     assert image["fix_text"].startswith("Download it explicitly: docker pull")
-    no_pulls(clair3_gpu.docker)
+    no_pulls(cuda_readiness.docker)
 
 
 # DeepVariant -----------------------------------------------------------------
