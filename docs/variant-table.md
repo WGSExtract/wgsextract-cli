@@ -100,6 +100,8 @@ of the BED file as supplied.
 | `spliceai_max` | real | The highest of the ALT's four SpliceAI delta scores (`DS_AG`, `DS_AL`, `DS_DG`, `DS_DL`, 0–1), for the row's gene when scored. |
 | `phylop`, `gerp` | real, real | PhyloP and GERP++ conservation scores for the position. |
 | `sift_score`, `sift_prediction`, `polyphen_score`, `polyphen_prediction` | real, text, real, text | SIFT and PolyPhen-2 for the chosen transcript (for example `deleterious` 0.01, `probably_damaging` 0.998). |
+| `protein_position`, `protein_position_end` | integer, integer | Start and inclusive end of the reported residue span, 1-based. Equal for a single residue. Only exported for protein-altering effects. |
+| `domains` | text | Overlapping protein features reported by VEP for the chosen transcript, as unique `source:id` entries separated by `&`. |
 
 When a WGSE annotation splits a multi-allelic record, it saves the original
 AD total so the read fraction stays the same. A known split without a
@@ -140,6 +142,30 @@ table keeps one per allele, as VEP's `--pick` would: the one VEP flagged
 `PICK`, else the MANE Select transcript, then the canonical one, then a
 protein-coding one, then the most severe consequence. SnpEff lists the most
 severe effect first, and the table takes that one.
+
+## Protein positions and domains
+
+The table reads only annotations already in the VCF. It uses `Protein_position`
+and `DOMAINS` from the chosen VEP `CSQ`, or `AA.pos / AA.length` from the chosen
+SnpEff `ANN` when that annotation supplies the consequence. It never uses
+another allele or transcript to fill a missing field, infers no positions
+from HGVS, and does not download protein data.
+On split records, a normalized spelling that could belong to another
+original ALT is not used as a fallback without unambiguous allele information.
+
+Positions can be a single residue or a range, with or without a reported
+protein length. Missing, uncertain, malformed and reversed insertion
+coordinates leave both columns empty. Stop and frameshift positions are
+the annotator's coordinates, not the span of every downstream residue affected.
+An empty `domains` cell means no overlap was reported, not that the site has
+no function. Domains are research annotations, not evidence that a variant
+affects an active site or causes disease.
+
+The result manifest's `metrics.protein_annotation_fields` and the SQLite
+and Parquet metadata record which input header fields were declared:
+`CSQ/Protein_position`, `ANN/AA.pos / AA.length` and `CSQ/DOMAINS` (comma
+separated). A declared field may still be empty in every row. `panel audit`
+exports and panel filters are unchanged.
 
 ## Population frequencies
 

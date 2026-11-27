@@ -326,6 +326,7 @@ def run_table(params: VcfTableParams) -> None:
         header = stream.header
         build = (scope.build if scope else None) or _reference_build(header)
         annotations = ",".join(header.annotations)
+        protein_annotation_fields = header.protein_annotation_fields
         research_acmg = "acmg" in header.annotations
         # A full pass over the VCF, so only when SQLite or Parquet keeps it.
         keeps_metadata = sqlite_path is not None or params.table_format == "parquet"
@@ -337,6 +338,7 @@ def run_table(params: VcfTableParams) -> None:
             sample=sample or "",
             region=params.region or "",
             annotations=annotations,
+            protein_annotation_fields=protein_annotation_fields,
             carried_only=str(not params.all_alleles).lower(),
             acmg_disclaimer=acmg.DISCLAIMER if research_acmg else None,
         )
@@ -366,6 +368,7 @@ def run_table(params: VcfTableParams) -> None:
         sample=sample,
         reference_build=build,
         annotations=annotations,
+        protein_annotation_fields=protein_annotation_fields,
         **{f"{name}_rows": n for name, n in frequencies.items()},
     )
     if header.annotations:

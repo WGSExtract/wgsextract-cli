@@ -92,6 +92,10 @@ def test_1287_audit_distinguishes_mixed_scores_reference_and_phase(
     assert table.metrics["rows"] == 3
     if pq:
         audited = pq.read_table(table.path)
+        # #1622 only extends vcf table, not the panel audit export.
+        assert not {"protein_position", "protein_position_end", "domains"}.intersection(
+            audited.column_names
+        )
         assert audited.schema.metadata[b"research_only"] == b"true"
         assert audited["decision"].to_pylist() == [
             "qualifying",

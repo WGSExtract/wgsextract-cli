@@ -212,7 +212,7 @@ class VcfFilterParams(_VcfSliceParams):
 
 @dataclass(frozen=True, kw_only=True)
 class VcfTableParams(_VcfSliceParams):
-    """One row per variant with its annotations, as ``<stem>_variants.tsv``
+    """One row per ALT with offline annotations, as ``<stem>_variants.tsv``
     (or ``.parquet``) and an SQLite database."""
 
     COMMAND = "vcf table"
