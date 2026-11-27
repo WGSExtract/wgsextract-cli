@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -23,7 +24,9 @@ from wgsextract_cli import api
 from wgsextract_cli.core import dev_download_cache, gnomad_af, resource_mirrors
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.network_policy import NetworkRestricted, network_options
+from wgsextract_cli.core.ref_library import segmented
 from wgsextract_cli.core.ref_library.downloads import download_file
+from wgsextract_cli.core.ref_library.segmented import ranged_revision
 from wgsextract_cli.core.utils import run_command
 
 
@@ -417,14 +420,10 @@ def test_1591_gnomad_mirror_feeder_only_requires_network_for_missing_raw_parts(
 def test_1213_cancelled_gnomad_disconnects_stalled_download(
     source, mirror_catalog, tmp_path, monkeypatch, stall
 ):
-    from wgsextract_cli.core.ref_library import segmented
-
     data = b"a" * (2 << 20)
     entry = mirror_catalog(source, data, allowed=stall.endswith("mirror"))
     path = "mirror-0" if stall.endswith("mirror") else "upstream"
     if stall == "segmented-mirror":
-        from wgsextract_cli.core.ref_library.segmented import ranged_revision
-
         source.etags = True
         monkeypatch.setattr(segmented, "ranged_revision", ranged_revision)
         monkeypatch.setattr(segmented, "SEGMENTED_MIN_SIZE", len(data))
@@ -452,11 +451,15 @@ def test_1213_cancelled_gnomad_disconnects_stalled_download(
         )
 
     worker = threading.Thread(target=build, daemon=True)
+    canceller = threading.Thread(target=cancel.cancel, daemon=True)
     worker.start()
     try:
         assert started.wait(5), "gnomAD did not begin streaming"
-        cancel.cancel()
-        worker.join(3)
+        deadline = time.monotonic() + 3
+        canceller.start()
+        canceller.join(max(0, deadline - time.monotonic()))
+        assert not canceller.is_alive(), "gnomAD cancellation request stalled"
+        worker.join(max(0, deadline - time.monotonic()))
         assert not worker.is_alive(), "cancelled gnomAD stream did not return promptly"
         assert result[0].exit_code == 130
         assert disconnected.wait(1), "client did not shut down the stalled response"
@@ -464,9 +467,14 @@ def test_1213_cancelled_gnomad_disconnects_stalled_download(
         assert not [file for file in tmp_path.rglob("*.gz*") if file.is_file()]
         if stall.endswith("mirror"):
             assert list(tmp_path.rglob("part0000.partial*"))
+        if stall == "segmented-mirror":
+            assert source.gets() == [f"bytes=0-{len(data) - 1}"]
+            assert list(tmp_path.rglob("part0000.partial.segments"))
     finally:
         release.set()
         worker.join(5)
+        if canceller.ident is not None:
+            canceller.join(5)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX SIGTERM")
