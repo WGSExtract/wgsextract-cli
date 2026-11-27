@@ -56,6 +56,7 @@ from wgsextract_cli.core.gnomad_fields import (
     gnomad_native_faf95,
 )
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
+from wgsextract_cli.core.regulatory_overlap import CCRE_CLASS
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_depths import AD_TOTAL, allele_depths, count
@@ -252,7 +253,10 @@ PANEL_AUDIT_COLUMNS: tuple[Column, ...] = (
         "for this ALT (joint or the supplied standalone callset).",
     ),
 )
-COLUMNS = (*PANEL_AUDIT_COLUMNS, *protein.COLUMNS)
+_CCRE_COLUMN = Column(
+    "ccre_class", TEXT, "Research only: SCREEN cCRE classes for this ALT."
+)
+COLUMNS = (*PANEL_AUDIT_COLUMNS, *protein.COLUMNS, _CCRE_COLUMN)
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
 
@@ -704,6 +708,7 @@ def indexed_variant_rows(
                 if faf95_key
                 else None,
                 *protein.protein_fields(picked, ann, csq_consequence, ann_consequence),
+                _per_allele(info.get(CCRE_CLASS), numbers.get(CCRE_CLASS), alt_index),
             )
             aggregate = (
                 ce.matched_germline_aggregate(

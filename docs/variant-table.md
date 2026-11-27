@@ -103,6 +103,7 @@ of the BED file as supplied.
 | `gnomad_faf95` | real | Maximum filtering allele frequency at 95% confidence across gnomAD ancestry groups for this ALT (`GNOMAD_FAF95` from `vcf gnomad`, or the native group-maximum field). Zero is a reported value; empty means unavailable. |
 | `protein_position`, `protein_position_end` | integer, integer | Start and inclusive end of the reported residue span, 1-based. Equal for a single residue. Only exported for protein-altering effects. |
 | `domains` | text | Overlapping protein features reported by VEP for the chosen transcript, as unique `source:id` entries separated by `&`. |
+| `ccre_class` | text | **Research use only.** SCREEN cCRE classes overlapping this ALT from [`vcf regulatory`](regulatory-annotation.md), separated by `\|`. Empty if unannotated or no overlap. |
 
 When a WGSE annotation splits a multi-allelic record, it saves the original
 AD total so the read fraction stays the same. A known split without a

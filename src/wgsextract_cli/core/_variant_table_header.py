@@ -10,9 +10,10 @@ from wgsextract_cli.core import acmg
 from wgsextract_cli.core import variant_scores as scores
 from wgsextract_cli.core._variant_table_fields import NHOMALT_INFO, POPMAX_INFO
 from wgsextract_cli.core.gnomad_fields import GNOMAD_FAF95, GNOMAD_NATIVE_FAF95
+from wgsextract_cli.core.regulatory_overlap import CCRE_CLASS
+from wgsextract_cli.core.vcf_header import attributes as header_attributes
 
 _FIELD_LINE = re.compile(r"^##(INFO|FORMAT)=<(.*)>$")
-_ATTRIBUTE = re.compile(r'([^,=\s]+)=("(?:[^"\\]|\\.)*"|[^,]*)')
 _FORMAT_LIST = re.compile(r"Format:\s*(.+)$")
 
 
@@ -49,6 +50,7 @@ class VcfHeader:
                 ),
             ),
             ("pharmgkb", ("PHARMGKB",)),
+            ("regulatory", (CCRE_CLASS,)),
             ("confidence", ("WGSE_CONF",)),
             ("sv_freq", ("SV_FREQ",)),
             ("acmg", (acmg.CLASS,)),
@@ -83,7 +85,7 @@ def parse_header(lines: Iterable[str]) -> VcfHeader:
         if not match:
             continue
         kind, body = match.groups()
-        attributes = dict(_ATTRIBUTE.findall(body))
+        attributes = header_attributes(body)
         key, number = attributes.get("ID"), attributes.get("Number")
         if key is None or number is None:
             continue

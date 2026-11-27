@@ -81,7 +81,7 @@ HEADER_ONLY_COMMANDS = frozenset(
 @dataclass(frozen=True)
 class Annotation:
     attribute: str  # ReferenceLibrary attribute holding the installed file
-    option: str  # the command's own option naming a file instead
+    option: str | None  # the command's own option naming a file instead
     resource: str  # `wgsextract ref <resource>` installs it
     name: str  # shown to people
     per_build: bool = False  # the install takes --build
@@ -108,6 +108,14 @@ ANNOTATION_COMMANDS = {
     ),
     "vcf pharmgkb": Annotation(
         "pharmgkb_vcf", "pharmgkb_file", "pharmgkb", "PharmGKB", builds=("hg38",)
+    ),
+    "vcf regulatory": Annotation(
+        "regulatory_file",
+        None,
+        "regulatory",
+        "ENCODE SCREEN cCRE Registry v4",
+        per_build=True,
+        builds=("hg38",),
     ),
 }
 
@@ -138,6 +146,13 @@ def missing_references(args: argparse.Namespace) -> list[MissingReference]:
     command = str(getattr(args, "_command", "") or "")
     needs = (genome_need(command, args), annotation_need(command, args))
     missing = [need.missing for need in needs if need and need.missing]
+    if command == "vcf chain-annotate" and "regulatory" in {
+        item.strip().lower()
+        for item in (getattr(args, "annotations", "") or "").split(",")
+    }:
+        regulatory = annotation_need("vcf regulatory", args)
+        if regulatory and regulatory.missing:
+            missing.append(regulatory.missing)
     if models := gene_models_need(command, args):
         missing.append(models)
     return missing
@@ -524,27 +539,42 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
     if ref and is_fasta_path(ref) and not Path(ref).is_file():
         return None  # The command reports the missing FASTA itself.
     lib = ReferenceLibrary(ref, None, input_path=vcf)
-    if given := _given_path(args, annotation.option):
-        return AnnotationNeed(annotation, vcf, given, fasta=lib.fasta, build=lib.build)
+    reported_build = lib.build
     installed = getattr(lib, annotation.attribute, None)
+    if annotation.resource == "regulatory":
+        from wgsextract_cli.core import regulatory_data, regulatory_overlap
+        from wgsextract_cli.core.utils import UsageError
+
+        try:
+            regulatory_overlap.require_grch38(vcf)
+        except UsageError:
+            return None  # The command explains why the input build is unsafe.
+        reported_build = regulatory_data.BUILD
+        if installed and not regulatory_data.provenance(Path(installed), verify=True):
+            installed = None
+    if annotation.option:
+        if given := _given_path(args, annotation.option):
+            return AnnotationNeed(
+                annotation, vcf, given, fasta=lib.fasta, build=lib.build
+            )
     if installed:
         return AnnotationNeed(
-            annotation, vcf, str(installed), fasta=lib.fasta, build=lib.build
+            annotation, vcf, str(installed), fasta=lib.fasta, build=reported_build
         )
-    build = canonical_build(lib.build) if lib.build else None
+    build = canonical_build(reported_build) if reported_build else None
     if build not in annotation.builds:
         return None  # The command explains the build it can't annotate.
     install = ["ref", annotation.resource, *_library_option(lib.root)]
     if annotation.per_build:
         install += ["--build", build]
-    if annotation.resource == "gnomad":
+    if annotation.resource in {"gnomad", "regulatory"}:
         install.append("--download")
     return AnnotationNeed(
         annotation,
         vcf,
         None,
         fasta=lib.fasta,
-        build=lib.build,
+        build=reported_build,
         missing=MissingReference(
             id=annotation.resource,
             kind="annotation",

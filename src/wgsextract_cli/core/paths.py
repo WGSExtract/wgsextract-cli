@@ -34,6 +34,14 @@ def absolute_path(path: PathInput) -> Path:
     return Path(absolute.anchor, *parts)
 
 
+def same_path(first: PathInput, second: PathInput) -> bool:
+    """Compare filesystem identity, falling back to names for absent paths."""
+    try:
+        return Path(first).samefile(second)
+    except FileNotFoundError:
+        return absolute_path(first) == absolute_path(second)
+
+
 def windows_local_app_dir(app: str, author: str) -> Path | None:
     """%LOCALAPPDATA%\\<author>\\<app> on Windows, where platformdirs puts per-user
     config and data. platformdirs asks the shell for the folder and ignores the
