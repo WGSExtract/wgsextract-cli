@@ -249,3 +249,87 @@ def test_1622_annotation_allele_identity_survives_splitting(
             alt: ("ENST1", consequence, "6", "6", domain) if alt == owner else ("",) * 5
             for alt in alts.split(",")
         }
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("ref", "alts", "target", "entries", "keep_origin", "annotated"),
+    [
+        pytest.param("A", "C,G", "G", (("G", "1"),), True, True, id="fresh-alt-2"),
+        pytest.param("A", "C,G", "G", (("C", "1"),), True, False, id="retained-alt-1"),
+        pytest.param("AAGT", "AACT,C", "C", (("C", "1"),), True, False, id="ambiguous"),
+        pytest.param(
+            "AT", "ATTT,A", "A", (("-", "1"),), True, True, id="fresh-deletion"
+        ),
+        pytest.param(
+            "A",
+            "C,G,T",
+            "G",
+            (("G", "1"), ("T", "3")),
+            True,
+            False,
+            id="original-numbers",
+        ),
+        pytest.param(
+            "A", "C,G", "G", (("G", "1"), ("C", "1")), True, False, id="mixed-ownership"
+        ),
+        pytest.param(
+            "A", "C,G", "G", (("G", "1"),), False, True, id="tagless-matching"
+        ),
+        pytest.param(
+            "A", "C,G", "G", (("C", "1"),), False, False, id="tagless-nonmatching"
+        ),
+    ],
+)
+def test_1622_vep_numbering_after_split(
+    tmp_path: Path,
+    ref: str,
+    alts: str,
+    target: str,
+    entries: tuple[tuple[str, str], ...],
+    keep_origin: bool,
+    annotated: bool,
+) -> None:
+    source = tmp_path / "source.vcf"
+    source.write_text(
+        _HEADER.replace("DOMAINS", "DOMAINS|ALLELE_NUM")
+        + _record("chr1", "200", ".", ref, alts, "40", "PASS", ".", "GT", "1/2"),
+        encoding="utf-8",
+    )
+    split = tmp_path / "split.vcf"
+    provenance = ["--old-rec-tag", "OLD_MULTIALLELIC"] if keep_origin else []
+    run_command([
+        get_tool_path("bcftools"), "norm", "-m", "-any", *provenance,
+        "-o", str(split), str(source),
+    ])  # fmt: skip
+
+    consequence = "frameshift_variant" if target == "A" else "missense_variant"
+    csq = "CSQ=" + ",".join(
+        f"{allele}|{consequence}|ENST1|1|6|Pfam:PF1|{number}"
+        for allele, number in entries
+    )
+    vep = tmp_path / "vep.vcf"
+    with (
+        split.open(encoding="utf-8") as records,
+        vep.open("w", encoding="utf-8") as out,
+    ):
+        for line in records:
+            if line.startswith("#"):
+                out.write(line)
+                continue
+            fields = line.rstrip("\n").split("\t")
+            if fields[4] == target:
+                fields[7] = csq if fields[7] == "." else f"{fields[7]};{csq}"
+            out.write(_record(*fields))
+
+    api.vcf.table(api.VcfTableParams(input=vep, outdir=tmp_path))
+    rows = _tsv(tmp_path / "vep_variants.tsv")
+    columns = ("transcript_id", "consequence", *_COLUMNS)
+    assert {
+        alt: tuple(row[name] for name in columns) for (_, alt), row in rows.items()
+    } == {
+        alt: ("ENST1", consequence, "6", "6", "Pfam:PF1")
+        if annotated and alt == target
+        else ("",) * 5
+        for alt in alts.split(",")[:2]
+    }

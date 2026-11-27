@@ -117,6 +117,28 @@ def _sibling_spellings(
     return spellings, minimized
 
 
+def _fresh_split_csq(
+    numbered: list[dict[str, str]],
+    ref: str,
+    alt: str,
+    source_ref: str,
+    source_alts: Sequence[str],
+    index: int,
+) -> list[dict[str, str]]:
+    """A fresh VEP run numbers the sole ALT 1, just like retained ALT 1 CSQ."""
+    if any(entry["ALLELE_NUM"] != "1" for entry in numbered):
+        return []
+    siblings, _ = _sibling_spellings(source_ref, source_alts, index)
+    spellings = {
+        allele_key(spelling)
+        for spelling in (alt, vep_allele(ref, (alt,), alt), _minimal_allele(ref, alt))
+        if spelling is not None
+    } - siblings
+    if all(allele_key(entry.get("Allele", "")) in spellings for entry in numbered):
+        return numbered
+    return []
+
+
 def csq_for_allele(
     entries: list[dict[str, str]],
     ref: str,
@@ -135,15 +157,18 @@ def csq_for_allele(
     split = origin is not None and n_alts == 1
     if origin is not None and split:
         source_ref, source_alts, index = origin
-    if len(source_alts) > 1 and any(
-        entry.get("ALLELE_NUM") not in (None, "", ".") for entry in entries
-    ):
-        # bcftools preserves CSQ verbatim, so even a lone ALLELE_NUM=1
-        # belongs to the first original ALT, not to each split record.
-        number = str(index)
-        return [entry for entry in entries if entry.get("ALLELE_NUM") == number]
-
     alt = alts[alt_index - 1]
+    if len(source_alts) > 1:
+        numbered = [
+            entry for entry in entries if entry.get("ALLELE_NUM") not in (None, "", ".")
+        ]
+        if numbered:
+            number = str(index)
+            matches = [entry for entry in numbered if entry["ALLELE_NUM"] == number]
+            if matches or not split:
+                return matches
+            return _fresh_split_csq(numbered, ref, alt, source_ref, source_alts, index)
+
     preferred = vep_allele(ref, alts, alt)
     original_alt = source_alts[index - 1]
     spellings: tuple[str, ...] = (preferred, alt)
