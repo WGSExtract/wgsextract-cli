@@ -17,6 +17,7 @@ import pytest
 from tests.disk_volumes import GIB, Volumes
 from tests.fake_tools import FakeGatk, require_bare_name_fakes
 from tests.htslib_helpers import (
+    caller_output_names,
     needs_tools,
     require_runnable,
     run_wgsextract,
@@ -194,7 +195,7 @@ def test_scatter_gathers_shards_in_reference_order(
         assert "-Xmx4g" in argv[argv.index("--java-options") + 1]
         assert argv[argv.index("--native-pair-hmm-threads") + 1] == "1"
         assert argv[argv.index("--flow-mode") + 1] == "ADVANCED"
-    assert sorted(p.name for p in output.parent.iterdir()) == [
+    assert caller_output_names(output.parent) == [
         "gatk.vcf.gz",
         "gatk.vcf.gz.tbi",
         "manifests",

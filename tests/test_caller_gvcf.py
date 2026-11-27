@@ -2,7 +2,9 @@
 fixture alignments, samtools and bcftools; only the callers are faked."""
 
 import gzip
+import os
 import random
+import stat
 import sys
 from collections import Counter
 from pathlib import Path
@@ -39,6 +41,7 @@ from wgsextract_cli.core.reference_evidence import (
 )
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import Thresholds
+from wgsextract_cli.core.vcf_output import publish_called_vcf
 
 pytestmark = needs_htslib
 
@@ -151,6 +154,49 @@ def test_1654_gvcf_publication_changes_only_allele_sequence_bytes(tmp_path):
     # Query the interior, not the POS: the index must cover the block's END.
     indexed = run_command(["tabix", output, "chr1:9-9"], capture_output=True)
     assert indexed.stdout == expected.splitlines(keepends=True)[0]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits and umask")
+@pytest.mark.parametrize(("vcf_mode", "short_index"), [(0o600, False), (0o644, True)])
+def test_1654_uppercase_rewrite_protects_staging_and_keeps_private_modes(
+    tmp_path, vcf_mode, short_index
+):
+    source = tmp_path / "calls.vcf"
+    source.write_text(
+        "##fileformat=VCFv4.2\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t2\t.\ta\tc\t.\tPASS\t.\n",
+        newline="\n",
+    )
+    final = Path(bgzip_index(source))
+    index = Path(f"{final}.tbi")
+    final.chmod(vcf_mode)
+    index.chmod(0o600)
+    short = final.with_suffix(".tbi")
+    if short_index:
+        index.replace(short)
+    producer = """
+import gzip, stat, sys
+from pathlib import Path
+final = Path(sys.argv[1])
+staged, = set(final.parent.rglob('*.vcf.gz')) - {final}
+assert any(stat.S_IMODE(path.stat().st_mode) & 0o077 == 0
+           for path in (staged, staged.parent))
+with gzip.open(final, 'rb') as previous:
+    sys.stdout.buffer.write(previous.read())
+"""
+    mask = os.umask(0o022)
+    try:
+        publish_called_vcf(
+            str(final), stages=([sys.executable, "-c", producer, str(final)],)
+        )
+    finally:
+        os.umask(mask)
+    assert stat.S_IMODE(final.stat().st_mode) == vcf_mode
+    assert stat.S_IMODE(index.stat().st_mode) == 0o600
+    assert not short.exists()
+    queried = run_command(["tabix", final, "chr1:2-2"], capture_output=True)
+    assert queried.stdout == "chr1\t2\t.\tA\tC\t.\tPASS\t.\n"
 
 
 def test_1654_clair3_keeps_soft_masked_reference_blocks(tmp_path, clair3_gpu):

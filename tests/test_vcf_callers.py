@@ -17,6 +17,7 @@ import pytest
 
 from tests.fake_tools import FakeGatk, require_bare_name_fakes
 from tests.htslib_helpers import (
+    caller_output_names,
     needs_tools,
     require_runnable,
     run_wgsextract,
@@ -181,7 +182,7 @@ def test_gatk_calls_the_snp_from_a_regional_cram(genome, tmp_path):
 
     assert [c[:5] for c in vcf_calls(outdir / "gatk.vcf.gz")] == [genome.call]
     assert (ref_dir / "ref.dict").read_text().startswith("@HD")
-    assert sorted(p.name for p in outdir.iterdir()) == [
+    assert caller_output_names(outdir) == [
         "gatk.vcf.gz",
         "gatk.vcf.gz.tbi",
     ]
@@ -404,7 +405,7 @@ def test_gatk_cuts_a_regional_cram_to_a_bam_it_can_read(genome, gatk, tmp_path, 
     assert result["status"] == "ok", result["error"]
     assert vcf_calls(outdir / "gatk.vcf.gz") == genome.calls
     assert (tmp_path / "ref" / "ref.dict").read_text().startswith("@HD")
-    assert sorted(p.name for p in outdir.iterdir()) == [
+    assert caller_output_names(outdir) == [
         "gatk.vcf.gz",
         "gatk.vcf.gz.tbi",
         "manifests",

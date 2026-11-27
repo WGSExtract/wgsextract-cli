@@ -70,9 +70,7 @@ def _indexes(path: Path) -> list[Path]:
 
 
 @contextlib.contextmanager
-def atomic_output(
-    path: PathInput, *, retire_indexes: bool = True, obsolete: Sequence[Path] = ()
-) -> Iterator[str]:
+def atomic_output(path: PathInput, *, retire_indexes: bool = True) -> Iterator[str]:
     final = Path(path)
     suffix = "".join(final.suffixes)
     base = final.name[: -len(suffix)] if suffix else final.name
@@ -88,8 +86,7 @@ def atomic_output(
 
             raise WGSExtractError(f"Output writer did not produce {final}")
         try:
-            indexes = _indexes(final) if retire_indexes else []
-            for number, index in enumerate([*indexes, *obsolete]):
+            for number, index in enumerate(_indexes(final) if retire_indexes else []):
                 if index.exists() or index.is_symlink():
                     backup = Path(f"{staged}.previous-{number}{index.suffix}")
                     os.replace(index, backup)

@@ -253,6 +253,13 @@ def vcf_body(path: str | Path) -> bytes:
         return b"".join(line for line in stream if not line.startswith(b"#"))
 
 
+def caller_output_names(directory: Path) -> list[str]:
+    """Include leftover scratch files, but exclude persistent publisher locks."""
+    return sorted(
+        p.name for p in directory.iterdir() if not p.match(".wgse_publish-*.guard")
+    )
+
+
 def vcf_calls(vcf: str | Path, region: str | None = None) -> list[tuple[str, ...]]:
     """(CHROM, POS, REF, ALT, GT) of each record of a single-sample VCF, or of
     those in ``region``, read through its index."""

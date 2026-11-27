@@ -23,6 +23,7 @@ from tests.fake_tools import (
     set_gpus,
 )
 from tests.htslib_helpers import (
+    caller_output_names,
     needs_tools,
     require_runnable,
     run_wgsextract,
@@ -255,10 +256,7 @@ def test_clair3_calls_the_region_for_the_reads_sample(
     assert vcf_calls(vcf) == reads.calls[:1]
     samples = run_command(["bcftools", "query", "-l", str(vcf)], capture_output=True)
     assert samples.stdout.split() == ["HG002"]
-    assert sorted(p.name for p in outdir.iterdir()) == [
-        "clair3.vcf.gz",
-        "clair3.vcf.gz.tbi",
-    ]
+    assert caller_output_names(outdir) == ["clair3.vcf.gz", "clair3.vcf.gz.tbi"]
     (run,) = fake_clair3.runs()
     assert run["bed"] == "chr1\t899\t1100\n"
     # contract: Nanopore reads called with the chosen model.
@@ -309,7 +307,7 @@ def test_clair3_reads_cram_31(
     assert run["cram_version"] == ([3, 0] if staged else [3, int(version[-1])])
     assert ("Transcoding CRAM" in caplog.text) == staged
     assert vcf_calls(outdir / "clair3.vcf.gz") == reads.calls[:1]
-    assert sorted(p.name for p in outdir.iterdir()) == [
+    assert caller_output_names(outdir) == [
         "clair3.vcf.gz",
         "clair3.vcf.gz.tbi",
     ]
@@ -339,7 +337,7 @@ def test_clair3_calls_from_paths_with_spaces(
     )  # fmt: skip
 
     assert vcf_calls(outdir / "clair3.vcf.gz") == reads.calls[:1]
-    assert sorted(p.name for p in outdir.iterdir()) == [
+    assert caller_output_names(outdir) == [
         "clair3.vcf.gz",
         "clair3.vcf.gz.tbi",
     ]
@@ -599,7 +597,7 @@ def test_gpu_calls_in_hkus_gpu_image_from_paths_with_spaces(tmp_path, clair3_gpu
 
     outdir = clair3_gpu.out
     assert vcf_calls(outdir / "clair3.vcf.gz") == reads.calls[:1]
-    assert sorted(p.name for p in outdir.iterdir()) == [
+    assert caller_output_names(outdir) == [
         "clair3.vcf.gz",
         "clair3.vcf.gz.tbi",
     ]

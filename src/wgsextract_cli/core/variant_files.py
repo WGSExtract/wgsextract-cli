@@ -86,17 +86,6 @@ def _short_index_sibling(vcf: Path) -> Path | None:
     return None
 
 
-def obsolete_vcf_index_aliases(vcf: Path) -> list[Path]:
-    """Short HTSlib index names to retire when replacing a compressed VCF."""
-    aliases = [vcf.with_suffix(ext) for ext in (".tbi", ".csi")]
-    existing = [alias for alias in aliases if alias.exists() or alias.is_symlink()]
-    if existing and (sibling := _short_index_sibling(vcf)):
-        raise WGSExtractError(
-            f"Cannot replace {vcf}: {sibling.name} shares {existing[0]}."
-        )
-    return existing
-
-
 def is_tabix_order_error(stderr: str | None) -> bool:
     """Whether HTSlib reported a position or contig ordering error."""
     return any(
@@ -283,29 +272,36 @@ def indexed_vcf_publication(
     outputs = {}
     obsolete = []
     final_mode = stat.S_IMODE(final.stat().st_mode) if final.is_file() else None
-    sibling = final.with_suffix(".gz" if final.suffix == ".bgz" else ".bgz")
+    aliases = [
+        alias
+        for ext in (".tbi", ".csi")
+        if (alias := final.with_suffix(ext)).exists() or alias.is_symlink()
+    ]
+    if aliases and (sibling := _short_index_sibling(final)):
+        raise WGSExtractError(
+            f"Cannot replace {final}: {sibling.name} shares {aliases[0]}."
+        )
     for ext in (".tbi", ".csi"):
         index = Path(f"{staged}{ext}")
         destination = Path(f"{final}{ext}")
         if index.is_file():
             # The publisher keeps existing modes. New indexes must not reveal
             # positions from a more restrictive VCF they will now describe.
-            if final_mode is not None and not destination.is_file():
-                index.chmod(stat.S_IMODE(index.stat().st_mode) & final_mode)
+            if not destination.is_file():
+                mode = stat.S_IMODE(index.stat().st_mode)
+                if final_mode is not None:
+                    mode &= final_mode
+                for previous in [*aliases, Path(f"{final}.csi"), Path(f"{final}.tbi")]:
+                    if previous.is_file():
+                        mode &= stat.S_IMODE(previous.stat().st_mode)
+                index.chmod(mode)
             outputs[index] = destination
         else:
             obsolete.append(destination)
-        alternate = final.with_suffix(ext)
-        if not sibling.is_file():
-            obsolete.append(alternate)
-        elif alternate.exists() or alternate.is_symlink():
-            raise WGSExtractError(
-                f"Cannot replace {final}: {sibling.name} shares {alternate}."
-            )
     if not outputs:
         raise WGSExtractError(f"Indexing did not produce an index for {final}.")
     outputs[staged] = final
-    return outputs, obsolete
+    return outputs, [*obsolete, *aliases]
 
 
 def ensure_vcf_prepared(
