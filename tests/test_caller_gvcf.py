@@ -19,7 +19,6 @@ from tests.htslib_helpers import (
 )
 from tests.test_clair3 import clair3_gpu as clair3_gpu
 from tests.test_clair3 import fake_clair3 as fake_clair3
-from tests.test_clair3 import linux_x86 as linux_x86
 from tests.test_clair3 import make_model
 from tests.test_gatk_scatter import gatk as gatk
 from wgsextract_cli import api
@@ -88,9 +87,7 @@ def call(sample, caller, request, sex, region=None, **extra):
     }
     if caller == "gatk":
         return api.vcf.gatk(VcfGatkParams(**common), check=False)
-    # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
-    request.getfixturevalue("linux_x86")
     model = sample.root / "custom"
     if not model.exists():
         make_model(sample.root, "custom")
@@ -182,7 +179,6 @@ def test_clair3_gvcf_cost_is_measured_and_reported_to_gpu_runs_863(
     slower on the CPU and 4.3x with --gpu. Preflight scales its time by that,
     and a --gpu run is told the CPU was faster there but still calls on the
     GPU."""
-    # The fake first: it skips on Windows, which linux_x86 would hide.
     request.getfixturevalue("fake_clair3")
     host = request.getfixturevalue("clair3_gpu") if gpu else None
     results = {
@@ -390,17 +386,18 @@ def test_clair3_missed_deletion_bases_arent_callable_reference_1028(tmp_path, re
 def parabricks_host(tmp_path, monkeypatch, ram):
     """An x86-64 Linux GPU host (RTX 3090, 128 GB) whose pbrun is faked."""
     import os
-    import platform
 
     from tests.fake_tools import FakeParabricks
-    from wgsextract_cli.core.parabricks import DEFAULT_IMAGE
+    from wgsextract_cli.commands.vcf import deepvariant
+    from wgsextract_cli.core import native_support, parabricks
 
     if sys.platform == "win32":
         pytest.skip("Parabricks runs on Linux; fakes run by shebang")
-    monkeypatch.setattr(sys, "platform", "linux")
-    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(deepvariant, "require_gpu_host", lambda: None)
+    monkeypatch.setattr(native_support, "is_linux_arm64", lambda: False)
+    monkeypatch.setattr(parabricks, "sys", SimpleNamespace(platform="linux"))
     ram(128 * 10**9)
-    host = FakeParabricks(tmp_path / "gpu", DEFAULT_IMAGE)
+    host = FakeParabricks(tmp_path / "gpu", parabricks.DEFAULT_IMAGE)
     monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
     return host
 

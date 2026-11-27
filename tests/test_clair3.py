@@ -539,12 +539,13 @@ def test_intel_macos_is_refused(monkeypatch):
 
 
 @pytest.fixture
-def clair3_gpu(request, tmp_path, monkeypatch, linux_x86):
+def clair3_gpu(request, tmp_path, monkeypatch):
     """A GPU host: an RTX 3090 with nothing else on it, Docker's NVIDIA runtime
     and HKU's Clair3 GPU image, whose /opt/bin holds FakeClair3 (2.0.5, or the
     version given by indirect parametrization) and whose PyTorch has CUDA; no
     Clair3 on PATH."""
     require_bare_name_fakes()
+    monkeypatch.setattr(clair3, "verify_gpu", clair3.verify_cuda)
     require_runnable("samtools", "bcftools", "tabix")
     image_bin = tmp_path / "image" / "bin"
     version = getattr(request, "param", "2.0.5")

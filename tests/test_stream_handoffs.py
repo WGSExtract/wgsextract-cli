@@ -10,7 +10,6 @@ import pytest
 from tests.htslib_helpers import needs_tools, sam_to_bam, vcf_calls
 from tests.test_clair3 import clair3_gpu as clair3_gpu
 from tests.test_clair3 import gpu_call, make_model
-from tests.test_clair3 import linux_x86 as linux_x86
 from wgsextract_cli.commands.alignment.output import run_streamed_alignment
 from wgsextract_cli.core.atomic_output import atomic_output_mode
 from wgsextract_cli.core.utils import WGSExtractError, run_command, run_pipeline

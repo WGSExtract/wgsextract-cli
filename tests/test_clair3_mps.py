@@ -14,9 +14,9 @@ from tests.test_caller_ploidy_review import _sample
 from tests.test_clair3 import DORADO_RG, make_model
 from tests.test_clair3 import clair3_gpu as clair3_gpu
 from tests.test_clair3 import fake_clair3 as fake_clair3
-from tests.test_clair3 import linux_x86 as linux_x86
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfClair3Params
+from wgsextract_cli.commands.vcf import clair3
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
@@ -41,8 +41,7 @@ def test_gpu_is_refused_where_clair3_has_no_gpu_build(
 @pytest.fixture
 def mps_clair3(tmp_path, monkeypatch, fake_clair3):
     """The slow caller/device boundary; samtools and bcftools remain real."""
-    monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    monkeypatch.setattr(clair3, "verify_gpu", clair3.verify_mps)
     state = tmp_path / "device.json"
     state.write_text(
         json.dumps(
