@@ -55,14 +55,16 @@ RUN set -e; \
         model="${pair%%:*}"; slug="${pair##*:}"; \
         mkdir -p "/opt/models/${model}/variables"; \
         for file in fingerprint.pb saved_model.pb model.example_info.json variables/variables.data-00000-of-00001 variables/variables.index; do \
-            curl --retry 3 -fsSL "${base}/savedmodels/deepvariant.${slug}.savedmodel/${file}" \
+            curl --retry 3 --retry-all-errors --connect-timeout 15 --max-time 180 --retry-max-time 300 \
+                -fsSL "${base}/savedmodels/deepvariant.${slug}.savedmodel/${file}" \
                 -o "/opt/models/${model}/${file}"; \
         done; \
     done; \
     for pair in wgs:wgs pacbio:pacbio ont_r104:ont; do \
         model="${pair%%:*}"; slug="${pair##*:}"; \
         mkdir -p "/opt/smallmodels/${slug}"; \
-        curl --retry 3 -fsSL "${base}/smallmodels/deepvariant.${slug}.smallmodel/model.keras" \
+        curl --retry 3 --retry-all-errors --connect-timeout 15 --max-time 180 --retry-max-time 300 \
+            -fsSL "${base}/smallmodels/deepvariant.${slug}.smallmodel/model.keras" \
             -o "/opt/smallmodels/${slug}/model.keras"; \
     done; \
     find /opt/models /opt/smallmodels -type f -exec sha256sum {} + > /opt/deepvariant/model-sha256.txt

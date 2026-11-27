@@ -156,7 +156,25 @@ def fetch_dataset(cache: Path) -> Path:
     zipped = cache / "wgsextract-benchmark-hg19-mini.zip"
     if not zipped.exists() or sha256(zipped) != DATASET_SHA256:
         log("Downloading the HG00096 mini genome dataset...")
-        run(["curl", "-fsSL", "-o", str(zipped), DATASET_URL])
+        run(
+            [
+                "curl",
+                "-fsSL",
+                "--remove-on-error",
+                "--retry",
+                "3",
+                "--retry-all-errors",
+                "--connect-timeout",
+                "15",
+                "--max-time",
+                "120",
+                "--retry-max-time",
+                "150",
+                "-o",
+                str(zipped),
+                DATASET_URL,
+            ]
+        )
     if sha256(zipped) != DATASET_SHA256:
         raise SystemExit(f"Dataset checksum mismatch for {zipped}")
     unpacked = cache / "unpacked"

@@ -248,6 +248,7 @@ def report(prs: list[Row], runs: list[Row], start: datetime, end: datetime) -> s
         )
 
     counts: Counter[str] = Counter()
+    rerun_passes: Counter[str] = Counter()
     seconds: Counter[str] = Counter()
     wasted_seconds: Counter[str] = Counter()
     for run in runs:
@@ -255,10 +256,25 @@ def report(prs: list[Row], runs: list[Row], start: datetime, end: datetime) -> s
         stage = run_stage(run, linked_pr)
         cancelled_run = superseded_run = False
         waste: dict[int, bool] = {}
+        failed_on_head = rerun_passed = False
         for attempt in run.get("attempts", [run]):
             created = stamp(attempt["created_at"])
             completed = stamp(attempt["updated_at"])
             cancelled = attempt["conclusion"] == "cancelled"
+            if (
+                run["conclusion"] == "success"
+                and attempt.get("head_sha") == run["head_sha"]
+            ):
+                if attempt["conclusion"] == "failure":
+                    failed_on_head = True
+                elif (
+                    attempt["conclusion"] == "success"
+                    and failed_on_head
+                    and not rerun_passed
+                ):
+                    rerun_passed = True
+                    if start <= completed < end:
+                        rerun_passes[run["path"]] += 1
             superseded = (
                 linked_pr is not None
                 and attempt["conclusion"] != "skipped"
@@ -294,6 +310,11 @@ def report(prs: list[Row], runs: list[Row], start: datetime, end: datetime) -> s
             f"{rework['recertifications']} re-certified heads, {rework['removals']} queue removals.",
             f"- Wasted runs: {counts['wasted']} distinct "
             f"({counts['cancelled']} cancelled, {counts['superseded']} superseded; may overlap).",
+            f"- Same-head rerun passes: {rerun_passes.total()} (latest attempt passed).",
+            *(
+                f"  - `{workflow}`: {count}"
+                for workflow, count in rerun_passes.most_common()
+            ),
             "",
             "| Stage | Hosted runner-hours | On wasted runs |",
             "| --- | ---: | ---: |",
@@ -310,7 +331,10 @@ def report(prs: list[Row], runs: list[Row], start: datetime, end: datetime) -> s
             "necessarily that GitHub cancelled it. Wasted hours count time on those runs, "
             "including work before cancellation. Runner-hours use completed job timestamps "
             "from repository workflows (all use hosted runners) and exclude queue waits. "
-            "Runs created before the one-day lookback are counted only when found in PR area history.",
+            "Same-head rerun passes count runs whose latest attempt is green; they are dated by "
+            "the first successful attempt after a failure, whether or not a PR was merged. "
+            "Older runs are included when found in PR area history or when a successful rerun "
+            "is found in the 30-day rerun window.",
         ]
     )
 
@@ -435,6 +459,27 @@ def collect(api: GitHub, start: datetime, end: datetime) -> tuple[list[Row], lis
         runs_by_id = {
             run["id"]: run for batch in pool.map(day_runs, days) for run in batch
         }
+        # A run can be retried for 30 days. An older creation date must not
+        # hide a rerun that turned green during this report week.
+        history = start - timedelta(days=30)
+
+        def delayed_reruns(day: datetime) -> list[Row]:
+            return [
+                compact_run(run)
+                for run in api.runs_between(
+                    day, day + timedelta(days=1), status="success"
+                )
+                if stamp(run["created_at"]) < lower
+                and run["run_attempt"] > 1
+                and stamp(run["updated_at"]) >= start
+                and run["path"].startswith(".github/workflows/")
+            ]
+
+        older_days = [
+            history + timedelta(days=i) for i in range((lower - history).days)
+        ]
+        for batch in pool.map(delayed_reruns, older_days):
+            runs_by_id.update((run["id"], run) for run in batch)
     heads: dict[tuple[str, str], set[str]] = defaultdict(set)
     for run in runs_by_id.values():
         if run["event"] == "pull_request":

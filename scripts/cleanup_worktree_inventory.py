@@ -62,11 +62,26 @@ def entries(path: Path, excluded: set[Path]) -> Iterator[os.DirEntry[str]]:
 
 def dependency_links(
     root: Path,
-    locations: set[Path],
+    trees: list[Path],
     paths: set[Path],
-    hooks: Iterable[tuple[Path, Path]],
+    hook_paths: Callable[[Path], Iterable[Path]],
+    store: Path,
+    shared_alias: Callable[[Path, Path], Path | None],
 ) -> set[Path]:
     blocked = set()
+    locations = {root}
+    if store.is_dir() and not store.is_relative_to(root):
+        locations.add(store)
+    shared_aliases = {}
+    hooks: list[tuple[Path, Path]] = []
+    for location in trees:
+        if not location.is_dir():
+            continue
+        if not location.is_relative_to(root):
+            locations.add(location)
+        if (alias := shared_alias(location, store)) is not None:
+            shared_aliases[location / "reference"] = alias
+        hooks.extend((location, path) for path in hook_paths(location))
 
     def check_target(link: Path, target: Path, own: Path | None = None) -> None:
         lexical, resolved = Path(os.path.abspath(target)), target.resolve()
@@ -74,6 +89,8 @@ def dependency_links(
             if path == own:
                 continue
             inside = link.is_relative_to(path)
+            if inside and shared_aliases.get(link) == resolved:
+                continue
             if inside != resolved.is_relative_to(path) or (
                 not inside
                 and (
@@ -121,6 +138,18 @@ def dependency_links(
             for entry in children:
                 check_link(entry)
     return blocked
+
+
+def safe_directory(path: Path, mode: int = 0o755) -> None:
+    path.mkdir(mode=mode, exist_ok=True)
+    info = path.lstat()
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.geteuid()
+        or info.st_mode & 0o022
+        or (mode == 0o700 and info.st_mode & 0o077)
+    ):
+        raise ValueError(f"Unsafe output directory: {path}")
 
 
 def stamp(info: os.stat_result) -> Stamp:
@@ -594,6 +623,7 @@ def inventory(
     tracked: set[Path],
     disposable: tuple[tuple[str, ...], ...] = (),
     ignored: Callable[[set[Path]], set[Path]] | None = None,
+    shared_alias: Path | None = None,
 ) -> Inventory:
     inventory = Inventory()
     bytecode: dict[Path, Path] = {}
@@ -630,6 +660,13 @@ def inventory(
     for entry in entries(path, excluded | {path / ".git"}):
         relative = Path(entry.path).relative_to(path)
         if relative in tracked:
+            continue
+        if (
+            relative == Path("reference")
+            and shared_alias is not None
+            and entry.is_symlink()
+            and Path(entry.path).resolve() == shared_alias
+        ):
             continue
         if entry.is_file(follow_symlinks=False) and (
             source := bytecode_source(relative)
