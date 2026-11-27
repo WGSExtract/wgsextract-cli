@@ -21,6 +21,8 @@ from tests.test_clair3 import clair3_gpu as clair3_gpu
 from tests.test_clair3 import fake_clair3 as fake_clair3
 from tests.test_clair3 import make_model
 from tests.test_gatk_scatter import gatk as gatk
+from tests.test_parabricks import gpu as gpu
+from tests.test_parabricks import parabricks_x86 as parabricks_x86
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfClair3Params, VcfGatkParams
 from wgsextract_cli.core.reference_evidence import (
@@ -382,31 +384,12 @@ def test_clair3_missed_deletion_bases_arent_callable_reference_1028(tmp_path, re
     assert state(gvcf, "chr20", 2100) is State.CALLABLE_REFERENCE
 
 
-@pytest.fixture
-def parabricks_host(tmp_path, monkeypatch, ram):
-    """An x86-64 Linux GPU host (RTX 3090, 128 GB) whose pbrun is faked."""
-    import os
-
-    from tests.fake_tools import FakeParabricks
-    from wgsextract_cli.commands.vcf import deepvariant
-    from wgsextract_cli.core import native_support, parabricks
-
-    if sys.platform == "win32":
-        pytest.skip("Parabricks runs on Linux; fakes run by shebang")
-    monkeypatch.setattr(deepvariant, "require_gpu_host", lambda: None)
-    monkeypatch.setattr(native_support, "is_linux_arm64", lambda: False)
-    monkeypatch.setattr(parabricks, "sys", SimpleNamespace(platform="linux"))
-    ram(128 * 10**9)
-    host = FakeParabricks(tmp_path / "gpu", parabricks.DEFAULT_IMAGE)
-    monkeypatch.setenv("PATH", f"{host.bin}{os.pathsep}{os.environ['PATH']}")
-    return host
-
-
+@pytest.mark.skipif(sys.platform == "win32", reason="Parabricks fakes run by shebang")
 @pytest.mark.parametrize("evidence", ["none", "gvcf"])
 @pytest.mark.parametrize("bounded", [False, True])
 @pytest.mark.parametrize("sex", ["Male", "Female"])
 def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
-    sample, parabricks_host, sex, bounded, evidence
+    sample, gpu, sex, bounded, evidence
 ):
     """Issue #1058: vcf deepvariant --gpu refused every whole genome, since
     a man's non-PAR chrX/chrY (and every chrM) isn't diploid. pbrun has
@@ -426,11 +409,9 @@ def test_parabricks_deepvariant_calls_sex_chromosomes_in_ploidy_partitions_1058(
     assert result.status == "ok", result.error
     runs = {
         "haploid" if "--haploid-contigs" in args else "diploid": intervals
-        for (_, args), intervals in zip(
-            parabricks_host.runs(), parabricks_host.intervals(), strict=True
-        )
+        for (_, args), intervals in zip(gpu.runs(), gpu.intervals(), strict=True)
     }
-    haploid_args = [a for _, a in parabricks_host.runs() if "--haploid-contigs" in a]
+    haploid_args = [a for _, a in gpu.runs() if "--haploid-contigs" in a]
     male = sex == "Male"
     if bounded:
         diploid = [("chr20", 499, 1500), ("chrX", PAR_START - 1, 11000)]
