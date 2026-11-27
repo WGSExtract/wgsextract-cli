@@ -44,11 +44,31 @@ function Copy-UrlOrFile {
         Uri = $Source
         OutFile = $Destination
         Headers = @{ "User-Agent" = "wgsextract-cli-installer" }
+        TimeoutSec = 60
     }
     if ((Get-Command Invoke-WebRequest).Parameters.ContainsKey("UseBasicParsing")) {
         $invokeParams.UseBasicParsing = $true
     }
-    Invoke-WebRequest @invokeParams
+    Invoke-BootstrapRequestWithRetry -Parameters $invokeParams -Description "direct Pixi download"
+}
+
+function Invoke-BootstrapRequestWithRetry {
+    param(
+        [hashtable]$Parameters,
+        [string]$Description
+    )
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Invoke-WebRequest @Parameters
+            return
+        }
+        catch {
+            Remove-Item -LiteralPath $Parameters.OutFile -ErrorAction SilentlyContinue
+            Write-Warning "$Description attempt ${attempt}/3 failed: $($_.Exception.Message)"
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Seconds (2 * $attempt)
+        }
+    }
 }
 
 function Resolve-GitHubReleaseAsset {
@@ -97,14 +117,15 @@ function Copy-GitHubReleaseAsset {
     }
 
     $release = $null
-    for ($attempt = 1; $attempt -le 5; $attempt += 1) {
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
         try {
-            $release = Invoke-RestMethod -UseBasicParsing -Uri $Asset.ApiUrl -Headers $headers -TimeoutSec 60
+            $release = Invoke-RestMethod -UseBasicParsing -Uri $Asset.ApiUrl -Headers $headers -TimeoutSec 15
             break
         }
         catch {
-            if ($attempt -eq 5) { throw }
-            Start-Sleep -Seconds (5 * $attempt)
+            Write-Warning "Pixi release metadata attempt ${attempt}/3 failed: $($_.Exception.Message)"
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Seconds (2 * $attempt)
         }
     }
 
@@ -121,17 +142,15 @@ function Copy-GitHubReleaseAsset {
         $assetHeaders["Authorization"] = "Bearer $env:GITHUB_TOKEN"
     }
 
-    for ($attempt = 1; $attempt -le 5; $attempt += 1) {
-        try {
-            Invoke-WebRequest -UseBasicParsing -Uri $releaseAsset.url -Headers $assetHeaders -OutFile $Destination -TimeoutSec 600
-            Write-Step "Downloaded $($Asset.AssetName) from GitHub Releases API release $($release.tag_name)."
-            return
-        }
-        catch {
-            if ($attempt -eq 5) { throw }
-            Start-Sleep -Seconds (5 * $attempt)
-        }
+    $invokeParams = @{
+        Uri = $releaseAsset.url
+        Headers = $assetHeaders
+        OutFile = $Destination
+        TimeoutSec = 60
+        UseBasicParsing = $true
     }
+    Invoke-BootstrapRequestWithRetry -Parameters $invokeParams -Description "Pixi GitHub release API download"
+    Write-Step "Downloaded $($Asset.AssetName) from GitHub Releases API release $($release.tag_name)."
 }
 
 function Add-PathForCurrentProcess {

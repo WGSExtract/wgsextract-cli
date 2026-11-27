@@ -19,13 +19,25 @@ inputs:
 runs:
   using: composite
   steps:
-    # The only Pixi version pin in CI; the cache key below reads it back.
-    - name: Install pinned Pixi
-      uses: prefix-dev/setup-pixi@9936258fee697aff89b3fed6ca1f80a382ef694e # v0.11.3
+    - name: Select the pinned Pixi executable
+      id: binary
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/pixi-binary.sh" plan
+    - name: Restore the pinned Pixi executable
+      id: restore-binary
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        pixi-version: v0.82.0
-        run-install: false
-        cache: false
+        path: ${{ runner.temp }}/ci-pixi/${{ steps.binary.outputs.executable }}
+        key: ${{ steps.binary.outputs.key }}
+    - name: Verify and install pinned Pixi
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/pixi-binary.sh" install
+    - name: Cache the pinned Pixi executable from main only
+      if: github.ref == 'refs/heads/main' && steps.restore-binary.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/ci-pixi/${{ steps.binary.outputs.executable }}
+        key: ${{ steps.binary.outputs.key }}
     - name: Key the non-relocatable Pixi environment
       if: inputs.install == 'true'
       id: key

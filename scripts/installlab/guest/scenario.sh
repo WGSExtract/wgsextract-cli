@@ -59,22 +59,38 @@ sha256_of() {
     fi
 }
 
+fetch() {
+    curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 \
+        --max-time 120 --retry-max-time 150 "$@"
+}
+
+run_installer() (
+    url=$1
+    shift
+    installer="$EVIDENCE/.installer-$$.sh"
+    trap 'rm -f "$installer"' 0
+    # Finish the transfer before running any code; a failed curl in a pipe
+    # can otherwise execute half an installer or leave an empty sh exit 0.
+    fetch -o "$installer" "$url" &&
+        env WGSEXTRACT_NO_OPEN=1 "$@" sh < "$installer"
+)
+
 install_cli() {
     if [ "$SABOTAGE" = "noop-installer" ]; then
         return 0
     fi
-    # Exactly the README command, run from the directory the user is in.
+    # The README installer, read on stdin from the user's working directory.
     cd "$HOME" || return 1
     if [ -n "${LAB_ARCHIVE_URL:-}" ]; then
-        curl -fsSL "$LAB_INSTALLER_URL" | WGSEXTRACT_ARCHIVE_URL="$LAB_ARCHIVE_URL" WGSEXTRACT_NO_OPEN=1 sh
+        run_installer "$LAB_INSTALLER_URL" "WGSEXTRACT_ARCHIVE_URL=$LAB_ARCHIVE_URL"
     else
-        curl -fsSL "$LAB_INSTALLER_URL" | WGSEXTRACT_NO_OPEN=1 sh
+        run_installer "$LAB_INSTALLER_URL"
     fi
 }
 
 fetch_dataset() {
     mkdir -p "$DATA_PARENT" &&
-        curl -fsSL -o "$DATA_PARENT/dataset.tar.gz" "$LAB_DATASET_URL" &&
+        fetch -o "$DATA_PARENT/dataset.tar.gz" "$LAB_DATASET_URL" &&
         actual="$(sha256_of "$DATA_PARENT/dataset.tar.gz")" &&
         echo "sha256 $actual" &&
         [ "$actual" = "$LAB_DATASET_SHA256" ] &&
@@ -125,8 +141,8 @@ fi
 install_release() {
     # What a user who installed that release ran then: its own installer.
     cd "$HOME" || return 1
-    curl -fsSL "https://raw.githubusercontent.com/WGSExtract/wgsextract-cli/$LAB_UPDATE_FROM/install.sh" |
-        WGSEXTRACT_RELEASE_TAG="$LAB_UPDATE_FROM" WGSEXTRACT_NO_OPEN=1 sh
+    run_installer "https://raw.githubusercontent.com/WGSExtract/wgsextract-cli/$LAB_UPDATE_FROM/install.sh" \
+        "WGSEXTRACT_RELEASE_TAG=$LAB_UPDATE_FROM"
 }
 
 mark_user_data() {

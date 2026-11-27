@@ -28,15 +28,14 @@ if "Implementation-Version: 4.6.2.0" not in manifest.splitlines():
 PY
 mkdir -p "$WORK" "$OUT"
 archive="$WORK/gkl-0.8.11.tar.gz"
-if [ ! -f "$archive" ]; then
-    if [ "$DOWNLOAD" != --download ]; then
-        echo "Missing GKL 0.8.11 source ($archive). Rerun with --download to fetch public source from github.com/IntelLabs/GKL." >&2
-        exit 1
-    fi
-    curl -fsSL https://codeload.github.com/IntelLabs/GKL/tar.gz/refs/tags/0.8.11 -o "$archive.part"
-    mv "$archive.part" "$archive"
+# shellcheck disable=SC1091
+source "$HERE/../../.github/actions/setup-pixi/fetch-pinned.sh"
+if [ "$DOWNLOAD" = --download ]; then
+    fetch_pinned https://codeload.github.com/IntelLabs/GKL/tar.gz/refs/tags/0.8.11 "$GKL_SHA256" "$archive"
+elif ! pinned_digest_matches "$archive" "$GKL_SHA256"; then
+    echo "Missing or invalid GKL 0.8.11 source ($archive). Rerun with --download to fetch public source from github.com/IntelLabs/GKL." >&2
+    exit 1
 fi
-echo "$GKL_SHA256  $archive" | sha256sum -c --quiet
 tar -xzf "$archive" -C "$WORK"
 SRC="$WORK/GKL-0.8.11/src/main/native"
 BUILD="$OUT/build"
