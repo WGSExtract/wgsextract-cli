@@ -3,6 +3,33 @@
 import os
 import subprocess
 import sys
+from pathlib import Path
+
+
+def test_1506_version_ignores_a_closed_output_pipe(tmp_path: Path) -> None:
+    config = tmp_path / "empty.toml"
+    config.touch()
+    read_fd, write_fd = os.pipe()
+    os.close(read_fd)
+    try:
+        run = subprocess.run(
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "wgsextract_cli",
+                "--config",
+                str(config),
+                "--version",
+            ],
+            stdout=write_fd,
+            stderr=subprocess.PIPE,
+            timeout=8,
+        )
+    finally:
+        os.close(write_fd)
+    assert run.returncode == 0
+    assert run.stderr == b""
 
 
 def test_piped_output_becomes_utf8() -> None:

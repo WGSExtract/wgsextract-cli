@@ -259,7 +259,7 @@ if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
     }})
 if argv == ["--version"]:
     implementations.update({{
-        "wgsextract_cli.cli.parser", "wgsextract_cli.cli.help", "dataclasses",
+        "argparse", "wgsextract_cli.cli.parser", "wgsextract_cli.cli.help", "dataclasses",
     }})
 if argv in (["--help"], ["--version"]):
     implementations.update({{

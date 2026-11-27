@@ -67,10 +67,7 @@ def test_1087_gui_config_does_not_replace_existing_cli_settings(
     if moved:
         appdata = tmp_path / "desktop"
         appdata.mkdir()
-        monkeypatch.setattr(
-            "wgsextract_cli.core.users_workspace.user_data_dir",
-            lambda *a, **k: str(appdata),
-        )
+        monkeypatch.setenv("WGSEXTRACT_GUI_APP_DATA", str(appdata))
         workspace = tmp_path / "moved workspace"
         (appdata / "settings.json").write_text(
             json.dumps({"usersWorkspaces": {"wgs-extract": str(workspace)}})
@@ -141,10 +138,7 @@ def test_1087_cli_follows_the_desktops_moved_workspace(
 ):
     appdata = tmp_path / "desktop"
     appdata.mkdir()
-    monkeypatch.setattr(
-        "wgsextract_cli.core.users_workspace.user_data_dir",
-        lambda *a, **k: str(appdata),
-    )
+    monkeypatch.setenv("WGSEXTRACT_GUI_APP_DATA", str(appdata))
     chosen = tmp_path / "large disk" / "wgs-extract"
     chosen.mkdir(parents=True)
     if record_key == "bundleWorkspacesDirectory":
@@ -170,9 +164,11 @@ def test_1087_use_default_does_not_resurrect_a_stale_legacy_desktop_location(
 ):
     from wgsextract_cli.core.users_workspace import users_workspace
 
+    monkeypatch.delenv("WGSEXTRACT_GUI_APP_DATA", raising=False)
+    if sys.platform == "win32":
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     monkeypatch.setattr(
-        "wgsextract_cli.core.users_workspace.user_data_dir",
-        lambda app, **kwargs: str(tmp_path / app),
+        "platformdirs.user_data_dir", lambda app, **kwargs: str(tmp_path / app)
     )
     stale = tmp_path / "previous-workspace"
     legacy = tmp_path / "dev.guiforcli.web.embed.wgsextract"
@@ -186,6 +182,53 @@ def test_1087_use_default_does_not_resurrect_a_stale_legacy_desktop_location(
         (current / "settings.json").write_text('{"usersWorkspaces": {}}')
     expected = Path.home() / "wgs-extract" if current_record_exists else stale
     assert users_workspace() == expected
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows desktop settings path")
+def test_1506_version_validates_the_moved_config_under_localappdata(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("WGSEXTRACT_GUI_APP_DATA", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    folder = tmp_path / "WGSExtract-gui"
+    folder.mkdir()
+    moved = tmp_path / "moved"
+    moved.mkdir()
+    (folder / "settings.json").write_text(
+        json.dumps({"usersWorkspaces": {"wgs-extract": str(moved)}})
+    )
+    (moved / "config.toml").write_text("cpu_threads = [")
+
+    version = subprocess.run(
+        [sys.executable, "-m", "wgsextract_cli", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=8,
+    )
+
+    assert version.returncode == 1
+    assert version.stdout == ""
+    assert str(moved / "config.toml") in version.stderr
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows desktop settings path")
+def test_1506_version_discovery_keeps_the_known_folder_fallback(
+    new_install, tmp_path, monkeypatch
+):
+    monkeypatch.delenv("WGSEXTRACT_GUI_APP_DATA", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "different-local"))
+    known = tmp_path / "known"
+    monkeypatch.setattr(
+        "platformdirs.user_data_dir", lambda app, **kwargs: str(known / app)
+    )
+    app = known / "WGSExtract-gui"
+    app.mkdir(parents=True)
+    moved = tmp_path / "moved"
+    (app / "settings.json").write_text(
+        json.dumps({"usersWorkspaces": {"wgs-extract": str(moved)}})
+    )
+
+    assert get_config_path() == moved / "config.toml"
 
 
 def test_1087_interactive_cli_bootstrap_marks_workspace_before_writing_config(
