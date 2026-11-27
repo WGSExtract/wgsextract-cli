@@ -258,10 +258,13 @@ if argv in (["--help"], ["--version"], ["help", "--all", "--json"]):
         "concurrent.futures.thread",
     }})
 if argv == ["--version"]:
-    implementations.update({{"wgsextract_cli.cli.parser", "wgsextract_cli.cli.help"}})
+    implementations.update({{
+        "wgsextract_cli.cli.parser", "wgsextract_cli.cli.help", "dataclasses",
+    }})
 if argv in (["--help"], ["--version"]):
     implementations.update({{
         "wgsextract_cli.cli.bootstrap", "wgsextract_cli.core.output_schema", "logging",
+        "wgsextract_cli.core.execution_context",
     }})
 if argv == ["info", "--help"]:
     implementations.update({{"wgsextract_cli.api.vcf", "wgsextract_cli.api._public"}})

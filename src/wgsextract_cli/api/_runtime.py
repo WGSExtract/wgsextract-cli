@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Protocol, TypeVar
 
 from wgsextract_cli.core import execution_context
-from wgsextract_cli.core.execution_context import ConfigState
+from wgsextract_cli.core._context_state import ConfigState
 from wgsextract_cli.core.network_policy import network_options
 from wgsextract_cli.core.remote_input import check_public, is_url
 from wgsextract_cli.core.results import (
