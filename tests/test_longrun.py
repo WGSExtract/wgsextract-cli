@@ -6,8 +6,10 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -177,3 +179,51 @@ def test_1636_sigterm_stops_worker_and_leaves_stage_retryable(
         os.kill(int(lines[-1]), 0)
     assert "step=benchmark exit=143" in coord.read_text(encoding="utf-8")
     assert _driver(root, "    run.stage('benchmark', ['true'])\n").returncode == 0
+
+
+@pytest.mark.parametrize(
+    ("end_leader", "status"), [("kill -KILL $$", 137), ("exit 7", 7)]
+)
+def test_1638_failed_stage_leader_cannot_leave_worker_running(
+    tmp_path: Path, coord: Path, end_leader: str, status: int
+) -> None:
+    root = tmp_path / "run"
+    ready = tmp_path / "child-ready"
+    command = (
+        '{ echo ready > "$1"; exec sleep 30; } &\n'
+        'echo "$!"\n'
+        'while [[ ! -s "$1" ]]; do sleep 0.01; done\n'
+        f"{end_leader}"
+    )
+    result = _driver(
+        root,
+        "    run.stage('benchmark', ['/bin/bash', '-c', sys.argv[2], 'leader', sys.argv[3]])\n",
+        command,
+        str(ready),
+    )
+    log = root / "benchmark" / "stage.log"
+    pid = int(log.read_text(encoding="utf-8").splitlines()[-1])
+    worker_stopped = False
+    try:
+        assert result.returncode == status
+        deadline = time.monotonic() + 2
+        while True:
+            state = subprocess.run(
+                ["ps", "-o", "stat=", "-p", str(pid)],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            ).stdout.strip()
+            if not state or state.startswith("Z"):
+                worker_stopped = True
+                break
+            assert time.monotonic() < deadline, f"worker {pid} still running: {state}"
+            time.sleep(0.02)
+        assert not (root / "benchmark" / "PASS").exists()
+        assert f"step=benchmark exit={status}" in coord.read_text(encoding="utf-8")
+    finally:
+        if not worker_stopped:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass

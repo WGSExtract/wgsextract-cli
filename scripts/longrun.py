@@ -284,6 +284,7 @@ class LongRun:
 
     def _measure(self, command: Sequence[str], output: int) -> tuple[int, int]:
         child = None
+        status = None
         try:
             # A signal during Popen must not strand a child whose PID we do not yet know.
             self._defer_signal = True
@@ -300,15 +301,20 @@ class LongRun:
                 raise SystemExit(128 + self._pending_signal)
             _, raw, usage = os.wait4(child.pid, 0)
             status = child.returncode = os.waitstatus_to_exitcode(raw)
-        except BaseException:
+        finally:
             self._defer_signal = True
-            if child is not None:
-                try:
-                    os.killpg(child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                child.wait()
-            raise
+            try:
+                if child is not None and status != 0:
+                    # A failed leader may already be reaped while its workers are still alive.
+                    try:
+                        os.killpg(child.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    child.wait()
+            finally:
+                self._defer_signal = False
+        if self._pending_signal:
+            raise SystemExit(128 + self._pending_signal)
         rss = usage.ru_maxrss
         if sys.platform == "darwin":
             rss = (rss + 1023) // 1024
