@@ -90,6 +90,13 @@ Consequence = Annotated[
     ),
 ]
 Base = Annotated[str, Constraints(pattern=r"^[ACGT]+$")]
+Predictor = Literal["revel", "cadd_phred", "alphamissense", "spliceai"]
+PREDICTOR_THRESHOLDS = {
+    "revel": "min_revel",
+    "cadd_phred": "min_cadd_phred",
+    "alphamissense": "min_alphamissense",
+    "spliceai": "min_spliceai",
+}
 
 
 class Clause(TypedDict, total=False):
@@ -101,6 +108,7 @@ class Clause(TypedDict, total=False):
     min_cadd_phred: Annotated[float, Constraints(minimum=0, maximum=100)]
     min_alphamissense: Fraction
     min_spliceai: Fraction
+    weight: Fraction
 
 
 class Filters(TypedDict, total=False):
@@ -109,6 +117,10 @@ class Filters(TypedDict, total=False):
     pass_only: bool
     min_confidence: Literal["high", "moderate", "low"]
     missing_scores: Literal["unscored", "drop"]
+    missing_confidence: Literal["keep", "drop"]
+    missing_filter: Literal["keep", "drop"]
+    score_order: Annotated[list[Predictor], Constraints(minItems=1, uniqueItems=True)]
+    exclude_clinvar_benign: bool
     qualify: Annotated[
         list[Annotated[Clause, Constraints(minProperties=1)]],
         Constraints(minItems=1),
@@ -120,11 +132,20 @@ class _Group(TypedDict):
     genes: Annotated[list[GeneName], Constraints(minItems=1)]
 
 
+class Dosage(TypedDict, total=False):
+    het: Fraction
+    hom: Fraction
+    cis: Fraction
+    trans: Fraction
+    phase_unknown: Fraction
+
+
 class Group(_Group, total=False):
     name: Text
     description: str
     recessive: Annotated[list[GeneName], Constraints(minItems=1)]
     overrides: Filters
+    dosage: Annotated[Dosage, Constraints(minProperties=1)]
 
 
 class _Site(TypedDict):
@@ -216,9 +237,10 @@ SHAPES: dict[object, Shape] = {
     ),
     Clause: Shape(
         "clause",
-        "A variant passes a clause when it passes every key in it.",
+        "A variant passes a clause when it passes every condition in it.",
         additional=False,
     ),
+    Dosage: Shape("dosage", "Per-copy genotype multipliers.", additional=False),
     Site: Shape("site", additional=False),
     Haplotype: Shape("haplotype", additional=False),
     Calibration: Shape("calibration", additional=False),
@@ -541,13 +563,14 @@ def _semantics(panel: Mapping[str, Any]) -> list[Problem]:
             )
         )
     problems += _id_problems(panel)
-    rules = panel.get("defaults", {}).get("qualify")
     for index, group in enumerate(groups):
-        problems += _group_problems(_join("groups", index), group, rules)
+        problems += _group_problems(_join("groups", index), group, panel)
+    if not groups:
+        problems += _qualify_problems(panel.get("defaults", {}), "defaults.qualify")
     problems += _locus_problems(panel)
     for index, haplotype in enumerate(haplotypes):
         problems += _haplotype_problems(_join("haplotypes", index), haplotype)
-    return problems
+    return list(dict.fromkeys(problems))
 
 
 def _id_problems(panel: Mapping[str, Any]) -> list[Problem]:
@@ -571,7 +594,7 @@ def _id_problems(panel: Mapping[str, Any]) -> list[Problem]:
 
 
 def _group_problems(
-    where: str, group: Mapping[str, Any], default_rules: object
+    where: str, group: Mapping[str, Any], panel: Mapping[str, Any]
 ) -> list[Problem]:
     problems: list[Problem] = []
     names = [gene.upper() for gene in group["genes"]]
@@ -593,7 +616,8 @@ def _group_problems(
                     f"{gene} is not one of this group's genes",
                 )
             )
-    if not (group.get("overrides", {}).get("qualify") or default_rules):
+    filters = effective_filters(panel, group)
+    if "qualify" not in filters:
         problems.append(
             Problem(
                 "no_qualify_rule",
@@ -602,6 +626,32 @@ def _group_problems(
                 "defaults.qualify or the group's overrides.qualify",
             )
         )
+    qualify_path = (
+        f"{where}.overrides.qualify"
+        if "qualify" in group.get("overrides", {})
+        else "defaults.qualify"
+    )
+    return problems + _qualify_problems(filters, qualify_path)
+
+
+def _qualify_problems(filters: Mapping[str, Any], path: str) -> list[Problem]:
+    problems = []
+    thresholds = set(PREDICTOR_THRESHOLDS.values())
+    order = filters.get("score_order")
+    listed = {PREDICTOR_THRESHOLDS[name] for name in order} if order else set()
+    for index, clause in enumerate(filters.get("qualify", ())):
+        predictors = thresholds & clause.keys()
+        if clause.keys() <= {"weight"}:
+            message = "a weight needs a qualifying condition"
+        elif (
+            order and predictors and (len(predictors) != 1 or not predictors <= listed)
+        ):
+            message = (
+                "with score_order a score clause must test exactly one listed predictor"
+            )
+        else:
+            continue
+        problems.append(Problem("bad_qualify_rule", _join(path, index), message))
     return problems
 
 

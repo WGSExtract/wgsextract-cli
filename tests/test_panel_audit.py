@@ -1,17 +1,20 @@
 """Research panel genotype, reference evidence and phase."""
 
+import csv
 import gzip
 import json
 import subprocess
+from fractions import Fraction
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
 import pytest
 
 from tests.htslib_helpers import bgzip_index, needs_htslib
-from tests.test_panel_spec import _audit_inputs
+from tests.test_panel_spec import _audit_inputs, _check, _panel, _write
 from wgsextract_cli import api
 from wgsextract_cli.core.dependencies import get_tool_path
+from wgsextract_cli.core.panel_calibration import Opportunity, matched_null
 
 
 @needs_htslib
@@ -201,3 +204,321 @@ def test_1287_deepvariant_blocks_work_in_primary_gvcf(tmp_path: Path) -> None:
     audit = json.loads(Path(report.path).read_text(encoding="utf-8"))
     assert audit["reference_evidence"] == "input"
     assert audit["sites"][0]["status"] == "confident_reference"
+
+
+def _weighted_audit(
+    tmp_path: Path,
+    calls: list[tuple[str, str, str, str]],
+    filters: dict[str, Any],
+    dosage: dict[str, float] | None = None,
+    *,
+    split: bool = False,
+) -> tuple[dict[str, Any], api.Result]:
+    path, source, gvcf = _audit_inputs(tmp_path, phase_set="1")
+    spec = json.loads(path.read_text(encoding="utf-8"))
+    spec.pop("sites")
+    spec.pop("haplotypes")
+    spec["defaults"] = filters
+    if dosage is not None:
+        spec["groups"][0]["dosage"] = dosage
+    path.write_text(json.dumps(spec), encoding="utf-8")
+    with gzip.open(source, "rt", encoding="utf-8") as stream:
+        header, _, columns = stream.read().partition("#CHROM")
+    weighted = tmp_path / "scoring.vcf"
+    weighted.write_text(
+        header.replace("IMPACT|SYMBOL", "IMPACT|SYMBOL|CLIN_SIG")
+        + '##FILTER=<ID=LowQual,Description="Low quality">\n'
+        + '##ALT=<ID=DEL,Description="Symbolic deletion">\n'
+        + "".join(
+            f'##INFO=<ID={name},Number={number},Type=String,Description="{name}">\n'
+            for name, number in [
+                ("WGSE_CLINVAR_ID", "1"),
+                ("WGSE_CLINVAR_GERMLINE", "A"),
+                ("SVTYPE", "1"),
+                ("CLNSIG", "A"),
+                ("CLNREVSTAT", "A"),
+                ("CLNSIGCONF", "A"),
+                ("WGSE_CONF", "A"),
+            ]
+        )
+        + "#CHROM"
+        + columns.splitlines()[0]
+        + "\n"
+        + "".join(
+            f"chr1\t{11796321 + i}\t.\tG\t{alt}\t50\t{flag}\t{info}\tGT:PS\t{sample}\n"
+            for i, (alt, flag, info, sample) in enumerate(calls)
+        ),
+        encoding="utf-8",
+    )
+    if split:
+        split_vcf = tmp_path / "scoring-split.vcf"
+        subprocess.run(
+            [
+                get_tool_path("bcftools") or "bcftools",
+                "norm",
+                "-m",
+                "-any",
+                "--old-rec-tag",
+                "OLD_MULTIALLELIC",
+                "-o",
+                str(split_vcf),
+                str(weighted),
+            ],
+            capture_output=True,
+            check=True,
+        )
+        weighted = split_vcf
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=path,
+            vcf_input=Path(bgzip_index(weighted)),
+            gvcf=gvcf,
+            research_panel=True,
+        )
+    )
+    report = next(o for o in result.outputs if o.role == "panel_audit")
+    details = json.loads(Path(report.path).read_text(encoding="utf-8"))
+    assert details["research_only"]
+    return details["groups"][0], result
+
+
+@pytest.mark.parametrize(
+    ("score_order", "clause", "dosage", "problem"),
+    [
+        (["not_a_score"], {"min_revel": 0.5}, {"hom": 0.5}, "defaults.score_order[0]"),
+        (["revel"], {"min_cadd_phred": 20}, {"cis": 1}, "defaults.qualify[0]"),
+        (
+            ["revel", "cadd_phred"],
+            {"min_revel": 0.5, "min_cadd_phred": 20},
+            {"trans": 0.5},
+            "defaults.qualify[0]",
+        ),
+        (
+            ["revel"],
+            {"min_revel": 0.5, "weight": -0.1},
+            {"het": 0},
+            "defaults.qualify[0].weight",
+        ),
+        (
+            ["revel"],
+            {"min_revel": 0.5, "weight": 0},
+            {"phase_unknown": 1.1},
+            "groups[0].dosage.phase_unknown",
+        ),
+    ],
+)
+def test_1617_panel_check_rejects_invalid_fallback_rules_and_weights(
+    tmp_path: Path,
+    score_order: list[str],
+    clause: dict[str, float],
+    dosage: dict[str, float],
+    problem: str,
+) -> None:
+    panel = _panel()
+    panel["groups"][0].pop("overrides")
+    panel["groups"][0]["dosage"] = dosage
+    panel["defaults"].update(score_order=score_order, qualify=[clause])
+    result = _check(_write(tmp_path, panel, ".toml"))
+    assert result.exit_code == 1
+    details = cast(dict[str, Any], result.details)
+    assert problem in {finding["location"] for finding in details["problems"]}
+
+
+@needs_htslib
+def test_1617_weight_tiers_use_first_valid_score_and_preserve_missingness(
+    tmp_path: Path,
+) -> None:
+    missense = "CSQ=A|missense_variant|MODERATE|MTHFR"
+    high = "CSQ=A|stop_gained|HIGH|MTHFR"
+    group, result = _weighted_audit(
+        tmp_path,
+        [
+            ("A", ".", f"{missense};REVEL=0.9;CADD_PHRED=30", "0/1:."),
+            ("A", "PASS", f"{missense};REVEL=0.6", "0/1:."),
+            ("A", "PASS", f"{missense};REVEL=0.4;CADD_PHRED=30", "0/1:."),
+            ("A", "PASS", f"{missense};CADD_PHRED=30", "0/1:."),
+            ("A", "PASS", f"{missense};REVEL=1.2;CADD_PHRED=30", "0/1:."),
+            ("A", "PASS", high, "0/1:."),
+            ("A", "PASS", missense, "0/1:."),
+            ("A", "LowQual", f"{missense};REVEL=0.9", "0/1:."),
+            ("A", "PASS", f"{missense};REVEL=0.9;WGSE_CONF=low", "0/1:."),
+            ("<DEL>", "PASS", "CSQ=<DEL>|stop_gained|HIGH|MTHFR;SVTYPE=DEL", "0/1:."),
+            ("A", "PASS", f"{high};SVTYPE=DEL", "0/1:."),
+        ],
+        {
+            "min_confidence": "moderate",
+            "missing_confidence": "keep",
+            "missing_filter": "keep",
+            "score_order": ["revel", "cadd_phred"],
+            "qualify": [
+                {"min_revel": 0.5, "weight": 0.5},
+                {"min_revel": 0.8, "weight": 0.75},
+                {"min_cadd_phred": 25, "weight": 0.25},
+                {"impacts": ["HIGH"], "weight": 0},
+            ],
+        },
+    )
+    (gene,) = group["genes"]
+    assert [(a["pos"], a["clause_weight"]) for a in gene["qualifying"]] == [
+        (11796321, 0.75),
+        (11796322, 0.5),
+        (11796324, 0.25),
+        (11796325, 0.25),
+        (11796326, 0),
+    ]
+    assert [(a["pos"], a["missing"]) for a in gene["unscored"]] == [
+        (11796327, ["cadd_phred", "revel"]),
+    ]
+    assert group["burden"]["weighted_allele_copies"] == 1.75
+    assert group["burden"]["qualifying_allele_copies"] == 5
+    assert {"panel_missing_filter", "panel_missing_confidence"} <= {
+        w.code for w in result.warnings
+    }
+    table = next(o for o in result.outputs if o.role == "panel_audit_table")
+    with Path(table.path).open(encoding="utf-8") as stream:
+        reader = csv.DictReader(stream, delimiter="\t")
+        # #1660 adds protein columns only to vcf table, even when audit is weighted.
+        assert not {"protein_position", "protein_position_end", "domains"}.intersection(
+            reader.fieldnames or ()
+        )
+        rows = list(reader)
+    assert all(None not in row for row in rows)
+    assert [
+        float(row["weighted_allele_copies"])
+        for row in rows
+        if row["decision"] == "qualifying"
+    ] == [
+        0.75,
+        0.5,
+        0.25,
+        0.25,
+        0,
+    ]
+
+
+@needs_htslib
+@pytest.mark.parametrize(
+    ("sites", "expected", "weighted_total"),
+    [
+        (["1|0:1", "1|0:1"], ["cis", "cis"], 0.5),
+        (["1|0:1", "0|1:1", "1|0:1"], ["trans", "trans", "trans"], 2.25),
+        (["1|0:1", "0|1:2", "1/.:."], ["phase_unknown"] * 3, 0.375),
+        (["1/2:."], ["trans", "trans"], 1.5),
+        (["1:.", "1/1:.", "0/1:."], ["haploid", "hom", "het"], 2.5),
+    ],
+)
+def test_1617_dosage_classifies_each_alt_once(
+    tmp_path: Path, sites: list[str], expected: list[str], weighted_total: float
+) -> None:
+    group, _ = _weighted_audit(
+        tmp_path,
+        [
+            (
+                "A,C" if gt.startswith("1/2") else "A",
+                "PASS",
+                "CSQ=A|stop_gained|HIGH|MTHFR,C|stop_gained|HIGH|MTHFR",
+                gt,
+            )
+            for gt in sites
+        ],
+        {"qualify": [{"impacts": ["HIGH"]}]},
+        {"het": 0.5, "hom": 0.5, "cis": 0.25, "trans": 0.75, "phase_unknown": 0.125},
+    )
+    (gene,) = group["genes"]
+    assert [a["dosage_category"] for a in gene["qualifying"]] == expected
+    assert gene["weighted_allele_copies"] == weighted_total
+
+
+@needs_htslib
+@pytest.mark.parametrize("direct", [True, False])
+def test_1617_clinvar_veto_requires_allele_bound_nonconflicting_germline_evidence(
+    tmp_path: Path, direct: bool
+) -> None:
+    csq = "CSQ=A|stop_gained|HIGH|MTHFR|benign"
+    review = ";CLNREVSTAT=criteria_provided"
+    bound = ";WGSE_CLINVAR_ID=123"
+
+    def clinical(sig: str) -> str:
+        mark = f";WGSE_CLINVAR_GERMLINE={sig}" if direct else ""
+        return f"{csq};CLNSIG={sig}{review}{bound}{mark}"
+
+    group, result = _weighted_audit(
+        tmp_path,
+        [
+            ("A", "PASS", clinical("Benign"), "0/1:."),
+            ("A", "PASS", clinical("Benign/Likely_benign"), "1/1:."),
+            (
+                "A",
+                "PASS",
+                f"{clinical('Benign')};CLNSIGCONF=Pathogenic(1)",
+                "0/1:.",
+            ),
+            ("A", "PASS", clinical("Pathogenic"), "0/1:."),
+            ("A", "PASS", f"{csq}{review}{bound}", "0/1:."),
+            (
+                "A,C",
+                "PASS",
+                f"{csq},C|stop_gained|HIGH|MTHFR|benign;CLNSIG=Likely_benign,Pathogenic{review},criteria_provided{bound}",
+                "0/1:.",
+            ),
+        ],
+        {"qualify": [{"impacts": ["HIGH"]}], "exclude_clinvar_benign": True},
+    )
+    (gene,) = group["genes"]
+    assert [a["pos"] for a in gene["clinvar_benign_exclusions"]] == (
+        [11796321, 11796322] if direct else []
+    )
+    assert gene["qualifying_allele_copies"] == (4 if direct else 7)
+    assert (
+        "panel_clinvar_annotation_missing" in {w.code for w in result.warnings}
+    ) is not direct
+
+
+@needs_htslib
+def test_1617_split_record_does_not_make_copied_clinvar_id_allele_bound(
+    tmp_path: Path,
+) -> None:
+    group, _ = _weighted_audit(
+        tmp_path,
+        [
+            (
+                "A,C",
+                "PASS",
+                "CSQ=A|stop_gained|HIGH|MTHFR,C|stop_gained|HIGH|MTHFR;"
+                "WGSE_CLINVAR_ID=123;CLNSIG=Benign,Benign;"
+                "CLNREVSTAT=criteria_provided,criteria_provided;WGSE_CLINVAR_GERMLINE=Benign,.",
+                "1/2:.",
+            )
+        ],
+        {"qualify": [{"impacts": ["HIGH"]}], "exclude_clinvar_benign": True},
+        split=True,
+    )
+    (gene,) = group["genes"]
+    assert [a["alt"] for a in gene["clinvar_benign_exclusions"]] == ["A"]
+    assert [a["alt"] for a in gene["qualifying"]] == ["C"]
+
+
+def test_1617_weighted_z_score_does_not_round_away_small_differences() -> None:
+    regions = {
+        gene: Opportunity("1", "autosome", f"NM_{gene}", 3, ((1, 3),), 3, 0)
+        for gene in ("TARGET", "LOWER", "TIE")
+    }
+    stats = matched_null(
+        ["TARGET"],
+        {"TARGET"},
+        regions,
+        {"TARGET": 1, "LOWER": 3, "TIE": 1},
+        bins=2,
+        seed=7,
+        null_sets=100,
+        basis="cds_bp",
+        weighted_scores={
+            "TARGET": Fraction(1),
+            "LOWER": 3 * Fraction("0.3333333333333333"),
+            "TIE": Fraction(1),
+        },
+    )
+    # Draws differ by 10^-16. The displayed mean rounds to 1, but the
+    # target is above the true mean by about one null standard deviation.
+    assert stats["null_mean"] == 1
+    assert stats["z_score"] > 0.75

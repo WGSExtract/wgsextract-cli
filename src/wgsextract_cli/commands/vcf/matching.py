@@ -14,6 +14,7 @@ from urllib.parse import quote
 
 from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_confidence as vc
+from wgsextract_cli.core.csq_alleles import split_origin
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.ref_library.resolver import header_contig_lengths
@@ -40,6 +41,8 @@ from .resource_ref_check import (
     warn_skipped_contigs,
 )
 
+_CLINICAL_TAGS = (ce.IDENTITY, ce.STARS, ce.TIER, ce.GERMLINE)
+
 
 def _write_vcf(
     source: str,
@@ -57,7 +60,7 @@ def _write_vcf(
             line
             for line in text.splitlines()
             if not line.startswith(
-                tuple(f"##INFO=<ID={tag}," for tag in (ce.IDENTITY, ce.STARS, ce.TIER))
+                tuple(f"##INFO=<ID={tag}," for tag in _CLINICAL_TAGS)
             )
         )
     header = parse_header(text.splitlines())
@@ -73,6 +76,7 @@ def _write_vcf(
                 ce.IDENTITY: "ClinVar resource record ID",
                 ce.STARS: "ClinVar review stars; not sequencing confidence",
                 ce.TIER: "ClinVar review tier; not sequencing confidence",
+                ce.GERMLINE: "Allele-bound ClinVar germline aggregate",
             }
         )
     records_written = 0
@@ -90,7 +94,7 @@ def _write_vcf(
             for tag, description in definitions.items():
                 if f"##INFO=<ID={tag}," not in text:
                     kind = "Integer" if tag == ce.STARS else "String"
-                    number = "A" if tag in {ce.STARS, ce.TIER} else "1"
+                    number = "A" if tag in {ce.STARS, ce.TIER, ce.GERMLINE} else "1"
                     emit(
                         f"##INFO=<ID={tag},Number={number},Type={kind},"
                         f'Description="{description}">\n'
@@ -118,10 +122,20 @@ def _write_vcf(
             has_multiallelic |= "," in fields[4]
             info = dict(item.partition("=")[::2] for item in fields[7].split(";"))
             if clinical:
-                for tag in (ce.IDENTITY, ce.STARS, ce.TIER):
+                for tag in _CLINICAL_TAGS:
                     info.pop(tag, None)
                 evidence_rows = []
-                for allele in range(len(fields[4].split(","))):
+                alts = fields[4].split(",")
+                origin = split_origin(info.get(SPLIT_TAG))
+                can_bind = (
+                    len(alts) == 1
+                    and ce.ORIGIN not in info
+                    and (
+                        SPLIT_TAG not in info
+                        or (origin is not None and len(origin[1]) == 1)
+                    )
+                )
+                for allele in range(len(alts)):
                     per_allele = dict(info)
                     for key in ("CLNREVSTAT", "CLNSIG", "CLNSIGCONF"):
                         field_number = info_numbers.get(key)
@@ -132,6 +146,13 @@ def _write_vcf(
                                 values[index] if index < len(values) else "."
                             )
                     evidence_rows.append(ce.review_evidence(per_allele))
+                    if (
+                        can_bind
+                        and (significance := per_allele.get("CLNSIG"))
+                        and significance != "."
+                        and "," not in significance
+                    ):
+                        info[ce.GERMLINE] = significance
                 info[ce.IDENTITY] = fields[2]
                 if any(e["stars"] is not None for e in evidence_rows):
                     info[ce.STARS] = ",".join(
@@ -712,7 +733,7 @@ def normalized_clinvar_resource(source: str, reference: str, work: str) -> str:
     return normalized_resource(
         source,
         reference,
-        ["", [], True],
+        ["", [], True, ce.GERMLINE],
         lambda: _normalize_resource(source, reference, work, True, source),
     )
 
@@ -767,7 +788,7 @@ def normalized_inputs(
         resource = normalized_resource(
             resource_source or source,
             reference,
-            ["", [], True]
+            ["", [], True, ce.GERMLINE]
             if clinical and is_vcf
             else [columns, list(headers), clinical],
             build,

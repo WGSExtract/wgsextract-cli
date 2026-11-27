@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
+from fractions import Fraction
 from os import SEEK_END
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ from wgsextract_cli.commands.vcf.table import VcfStream, table_stem
 from wgsextract_cli.core import exon_callability as ec
 from wgsextract_cli.core import panel_audit as audit
 from wgsextract_cli.core import panel_spec, variant_table
+from wgsextract_cli.core import panel_weights as weights
 from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.dependency_checks import verify_dependencies
@@ -59,6 +61,12 @@ _TABLE_COLUMNS = (
     Column("missing_annotations", "TEXT", "Missing annotations, comma separated."),
     Column("research_only", "INTEGER", panel_spec.DISCLAIMER),
     *variant_table.PANEL_AUDIT_COLUMNS,
+)
+_WEIGHT_COLUMNS = (
+    Column("clause_weight", "REAL", "Largest passing clause weight for this ALT."),
+    Column("dosage_category", "TEXT", "Applied dosage category."),
+    Column("dosage_multiplier", "REAL", "Applied per-copy dosage multiplier."),
+    Column(weights.STATISTIC, "REAL", "This ALT's weighted contribution."),
 )
 
 
@@ -199,24 +207,69 @@ def _groups(
     callable_genes: Mapping[str, dict[str, Any]],
 ) -> list[Sequence[Value]]:
     table: list[Sequence[Value]] = []
+    weighted_table = any(
+        audit.weighted(group["filters"], group.get("dosage", {})) for group in groups
+    )
     for group in groups:
         absent: Counter[str] = Counter()
         states: set[str] = set()
+        filters = group["filters"]
+        dosage = group.get("dosage", {})
+        weighted = audit.weighted(filters, dosage)
+        total_weight = Fraction()
+        total_copies = 0
+        filter_evidence: Counter[str] = Counter()
         for gene in group["genes"]:
             symbol = str(gene.get("symbol", "")).upper()
             callable_gene = callable_genes.get(symbol)
             qualifying: list[audit.Allele] = []
+            hits: list[weights.Hit] = []
+            rows: list[tuple[audit.Allele, audit.Assessment]] = []
             gene["qualifying"] = []
             gene["unscored"] = []
+            if filters.get("exclude_clinvar_benign"):
+                gene["clinvar_benign_exclusions"] = []
             for allele in by_gene.get(symbol, ()):
-                decision, missing = audit.assess(allele, group["filters"])
+                assessment = audit.assess(allele, filters, small_variants_only=weighted)
+                decision, missing = assessment.decision, assessment.missing
+                _filter_evidence(allele, filters, filter_evidence)
+                if assessment.clinvar_veto:
+                    filter_evidence["clinvar_benign_exclusions"] += 1
+                    gene["clinvar_benign_exclusions"].append(
+                        {
+                            **allele.document(()),
+                            "clinvar_id": allele.get("clinvar_id"),
+                            "clinvar_significance": allele.clinvar_aggregate,
+                            "clinvar_review_status": allele.get(
+                                "clinvar_review_status"
+                            ),
+                        }
+                    )
                 if decision is audit.Decision.REJECTED:
                     continue
                 if decision is audit.Decision.QUALIFYING:
                     qualifying.append(allele)
+                    if weighted:
+                        assert assessment.weight is not None
+                        hits.append(
+                            weights.Hit(allele, assessment.weight, len(allele.copies))
+                        )
                 else:
                     absent.update(missing)
-                gene[decision.value].append(allele.document(missing))
+                rows.append((allele, assessment))
+            contributions = weights.score_gene(hits, dosage) if weighted else []
+            details = iter(
+                contribution.document(hit)
+                for hit, contribution in zip(hits, contributions, strict=True)
+            )
+            for allele, assessment in rows:
+                decision, missing = assessment.decision, assessment.missing
+                applied = (
+                    next(details)
+                    if weighted and decision is audit.Decision.QUALIFYING
+                    else {}
+                )
+                gene[decision.value].append({**allele.document(missing), **applied})
                 table.append(
                     (
                         group["id"],
@@ -225,6 +278,13 @@ def _groups(
                         ",".join(missing),
                         1,
                         *allele.row[: len(variant_table.PANEL_AUDIT_COLUMNS)],
+                        *(
+                            tuple(
+                                applied.get(column.name) for column in _WEIGHT_COLUMNS
+                            )
+                            if weighted_table
+                            else ()
+                        ),
                     )
                 )
             phase, biallelic = audit.allele_phase(qualifying)
@@ -250,8 +310,22 @@ def _groups(
                 qualifying_allele_copies=sum(len(a.copies) for a in qualifying),
             )
             states.add(state)
+            if weighted:
+                gene_weight = sum((c.weight for c in contributions), Fraction())
+                gene[weights.STATISTIC] = float(gene_weight)
+                gene["dosage_components"] = weights.components(hits, contributions)
+                total_weight += gene_weight
+                total_copies += gene["qualifying_allele_copies"]
         group["state"] = _aggregate_state(states)
         group["calibration"] = {"state": "not_run"}
+        if weighted:
+            group["burden"] = {
+                "statistic": weights.STATISTIC,
+                "units": weights.UNITS,
+                "qualifying_allele_copies": total_copies,
+                weights.STATISTIC: float(total_weight),
+            }
+        _report_filter_evidence(group, filter_evidence)
         if absent:
             warn(
                 "panel_score_column_missing",
@@ -260,6 +334,62 @@ def _groups(
                 columns=",".join(sorted(absent)),
             )
     return table
+
+
+def _filter_evidence(
+    allele: audit.Allele, filters: Mapping[str, Any], counts: Counter[str]
+) -> None:
+    if (
+        "missing_filter" in filters
+        and filters["pass_only"]
+        and allele.get("filter") is None
+    ):
+        counts["missing_filter"] += 1
+    if (
+        "missing_confidence" in filters
+        and filters.get("min_confidence")
+        and allele.get("confidence") is None
+    ):
+        counts["missing_confidence"] += 1
+    if filters.get("exclude_clinvar_benign"):
+        counts[
+            "clinvar_unmatched"
+            if allele.clinvar_aggregate is None
+            else "clinvar_matched"
+        ] += 1
+
+
+def _report_filter_evidence(group: dict[str, Any], counts: Counter[str]) -> None:
+    filters = group["filters"]
+    for field, gate in (
+        ("missing_filter", "pass_only"),
+        ("missing_confidence", "min_confidence"),
+    ):
+        if field in filters and filters.get(gate):
+            count = counts[field]
+            if count:
+                warn(
+                    f"panel_{field}",
+                    f"Group {group['id']} has observed alleles without {field.removeprefix('missing_')}.",
+                    group=group["id"],
+                    alleles=count,
+                    policy=filters[field],
+                )
+    if filters.get("exclude_clinvar_benign"):
+        for field in (
+            "clinvar_matched",
+            "clinvar_unmatched",
+            "clinvar_benign_exclusions",
+        ):
+            counts.setdefault(field, 0)
+        if not counts["clinvar_matched"]:
+            warn(
+                "panel_clinvar_annotation_missing",
+                f"Group {group['id']} has no usable allele-matched ClinVar annotation in its observed calls.",
+                group=group["id"],
+            )
+    if counts:
+        group["filter_evidence"] = dict(sorted(counts.items()))
 
 
 def _run(
@@ -326,6 +456,10 @@ def _run(
                     stream.header,
                     notes,
                     search_symbols,
+                    clinvar_aggregate=any(
+                        group["filters"].get("exclude_clinvar_benign")
+                        for group in details["groups"]
+                    ),
                 ):
                     if allele.gene in symbols:
                         by_gene[allele.gene].append(allele)
@@ -440,7 +574,12 @@ def _write(
         staged_table, staged_report = Path(work, table.name), Path(work, report.name)
         count = write_table(
             staged_table,
-            _TABLE_COLUMNS,
+            _TABLE_COLUMNS
+            + (
+                _WEIGHT_COLUMNS
+                if any("burden" in group for group in document["groups"])
+                else ()
+            ),
             rows,
             params.table_format,
             metadata=provenance(
