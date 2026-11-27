@@ -161,6 +161,81 @@ def test_1554_wasted_runs_count_once_and_reused_jobs_do_not_add_runner_hours() -
     assert "no eligible merges (n=0)" in body
 
 
+def test_1634_weekly_report_counts_only_first_success_after_same_head_failure() -> None:
+    before = "2026-11-15T23:00:00Z"
+    start = "2026-11-16T00:00:00Z"
+    after = "2026-11-16T01:00:00Z"
+    end = "2026-11-23T00:00:00Z"
+    runs = []
+    for number, first_result, first_sha, first_pass, last_result in [
+        (1, "failure", "first", after, "success"),
+        (2, "action_required", "first", after, "success"),
+        (3, "failure", "another-head", after, "success"),
+        (4, "failure", "first", before, "success"),
+        (5, "failure", "first", after, "failure"),
+    ]:
+        case = run(number, before, after, conclusion=last_result)
+        case["attempts"] = [
+            dict(
+                case,
+                run_attempt=1,
+                conclusion=first_result,
+                head_sha=first_sha,
+                updated_at=before,
+            ),
+            dict(case, run_attempt=2, updated_at=first_pass, conclusion="success"),
+            dict(case, run_attempt=3),
+        ]
+        runs.append(case)
+
+    body = report([], runs, stamp(start), stamp(end))
+    assert "Same-head rerun passes: 1" in body
+    assert "`.github/workflows/pr_ci.yml`: 1" in body
+
+
+def test_1634_weekly_report_recovers_delayed_non_pr_rerun() -> None:
+    start = stamp("2026-11-16T00:00:00Z")
+    end = stamp("2026-11-23T00:00:00Z")
+    created, failed, passed = (
+        "2026-11-13T10:00:00Z",
+        "2026-11-13T11:00:00Z",
+        "2026-11-17T10:00:00Z",
+    )
+    install_lab = dict(
+        run(1634, created, passed, event="workflow_dispatch"),
+        path=".github/workflows/install_lab.yml",
+        run_attempt=2,
+        run_started_at=passed,
+    )
+
+    class FixtureGitHub(GitHub):
+        def runs_between(
+            self,
+            start: datetime,
+            end: datetime,
+            *,
+            workflow: str = "",
+            status: str = "",
+        ) -> list[Row]:
+            return [install_lab] if start <= stamp(created) < end else []
+
+        def request(
+            self, method: str, path: str, data: Row | None = None
+        ) -> Row | list[Row]:
+            if "/pulls?" in path:
+                return []
+            if "/jobs?" in path:
+                return {"jobs": []}
+            if path.endswith("/attempts/1"):
+                return dict(
+                    install_lab, updated_at=failed, conclusion="failure", run_attempt=1
+                )
+            raise AssertionError(path)
+
+    prs, runs = collect(FixtureGitHub("owner/repo"), start, end)
+    assert "`.github/workflows/install_lab.yml`: 1" in report(prs, runs, start, end)
+
+
 def test_1554_reports_prior_head_and_does_not_charge_old_attempt_for_late_rerun() -> (
     None
 ):
@@ -285,8 +360,15 @@ def test_1554_large_check_suite_uses_paginated_runner_jobs() -> None:
     )
 
     class FixtureGitHub(GitHub):
-        def runs_between(self, lower: datetime, upper: datetime) -> list[Row]:
-            return [fixture_run] if lower == start else []
+        def runs_between(
+            self,
+            start: datetime,
+            end: datetime,
+            *,
+            workflow: str = "",
+            status: str = "",
+        ) -> list[Row]:
+            return [fixture_run] if start == stamp(fixture_run["created_at"]) else []
 
         def request(
             self, method: str, path: str, data: Row | None = None

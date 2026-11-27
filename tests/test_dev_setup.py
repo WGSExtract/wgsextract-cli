@@ -4,7 +4,10 @@ import os
 import re
 import shutil
 import subprocess
+from hashlib import sha256
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 
 import pytest
 import tomllib
@@ -14,11 +17,73 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_766_pixi_minimum_matches_ci_pin() -> None:
     manifest = tomllib.loads((ROOT / "pixi.toml").read_text())
-    action = (ROOT / ".github/actions/setup-pixi/action.yml").read_text()
-    pins = re.findall(r"pixi-version:\s*v(\d+\.\d+\.\d+)", action)
+    bootstrap = (ROOT / ".github/actions/setup-pixi/pixi-binary.sh").read_text()
+    pins = re.findall(r"^version=v(\d+\.\d+\.\d+)$", bootstrap, re.MULTILINE)
     assert pins
     assert manifest["workspace"]["requires-pixi"] == f">={pins[0]}"
     assert len(set(pins)) == 1
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX setup")
+def test_1634_pinned_binary_recovers_from_an_outage_without_trusting_cache(
+    tmp_path: Path,
+) -> None:
+    binary = b"pinned tool binary"
+    payload = binary
+    requests = 0
+
+    class Download(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            nonlocal requests
+            requests += 1
+            if requests == 1:
+                self.send_error(504)
+                return
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    destination = tmp_path / "pixi"
+    destination.write_bytes(b"corrupt cached tool")
+    helper = ROOT / ".github/actions/setup-pixi/fetch-pinned.sh"
+    with ThreadingHTTPServer(("127.0.0.1", 0), Download) as server:
+        worker = Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        try:
+            url = f"http://127.0.0.1:{server.server_port}/pixi"
+            argv = [
+                "bash",
+                "-ec",
+                'source "$1"; fetch_pinned "$2" "$3" "$4"',
+                "test-fetch-pinned",
+                str(helper),
+                url,
+                sha256(binary).hexdigest(),
+                str(destination),
+            ]
+            result = subprocess.run(
+                argv, capture_output=True, text=True, check=False, timeout=10
+            )
+            assert result.returncode == 0, result.stderr
+            assert destination.read_bytes() == binary
+            assert requests == 2
+            result = subprocess.run(
+                argv, capture_output=True, text=True, check=False, timeout=10
+            )
+            assert result.returncode == 0, result.stderr
+            assert requests == 2  # A warm verified executable avoids the network.
+            destination.unlink()
+            payload = b"unexpected release content"
+            result = subprocess.run(
+                argv, capture_output=True, text=True, check=False, timeout=10
+            )
+            assert result.returncode != 0
+            assert "SHA-256 mismatch" in result.stdout
+            assert not destination.exists()
+        finally:
+            server.shutdown()
+            worker.join(timeout=5)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX setup")
