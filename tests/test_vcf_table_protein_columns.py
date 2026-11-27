@@ -26,12 +26,12 @@ def test_1622_protein_fields_follow_the_picked_alt_and_transcript(
 ) -> None:
     source = tmp_path / "source.vcf"
     source.write_text(
-        _HEADER
+        _HEADER.replace("DOMAINS", "DOMAINS|ALLELE_NUM")
         + _record(
             "chr1", "100", ".", "AC", "AT,T", "40", "PASS",
             "CSQ=AT|missense_variant|ENST2|1|7/70|Pfam:PF1&Gene3D:3.1&"
-            "Pfam:PF1&missing,AT|missense_variant|ENST1||91|Pfam:OTHER,"
-            "T|frameshift_variant|ENST3|1|51|",
+            "Pfam:PF1&missing|1,AT|missense_variant|ENST1||91|Pfam:OTHER|1,"
+            "T|frameshift_variant|ENST3|1|51||2",
             "GT", "1/2",
         )
         + _record(
@@ -70,7 +70,7 @@ def test_1622_protein_fields_follow_the_picked_alt_and_transcript(
     expected = [
         ("51", "51", ""),
         ("7", "7", "Pfam:PF1&Gene3D:3.1"),
-        ("51", "51", "Pfam:OTHER"),
+        ("3", "3", ""),
         ("", "", ""),
         ("", "", ""),
         ("4", "4", ""),
@@ -88,7 +88,7 @@ def test_1622_protein_fields_follow_the_picked_alt_and_transcript(
     assert rows == [
         (51, 51, None),
         (7, 7, "Pfam:PF1&Gene3D:3.1"),
-        (51, 51, "Pfam:OTHER"),
+        (3, 3, None),
         (None, None, None),
         (None, None, None),
         (4, 4, None),
@@ -148,7 +148,7 @@ def test_1622_coordinates_are_not_guessed_from_uncertain_or_other_annotations(
             "GT", "1/2",
         )
         + _record(
-            "chr1", "250", ".", "AAGT", "AACT", "40", "PASS",
+            "chr1", "250", ".", "ANGT", "ANCT", "40", "PASS",
             "CSQ=C|missense_variant|ENST1|1|6|Pfam:PF1",
             "GT", "0/1",
         ),
@@ -194,3 +194,33 @@ def test_1622_minimized_csq_survives_splitting_without_normalization(
         "Pfam:PF1",
     )
     assert tuple(rows["200", "AATT"][name] for name in _COLUMNS) == ("", "", "")
+
+
+@needs_htslib
+@pytest.mark.parametrize("numbered", [False, True])
+def test_1622_colliding_minimized_csq_requires_an_allele_number(
+    tmp_path: Path, numbered: bool
+) -> None:
+    source = tmp_path / "source.vcf"
+    header = _HEADER.replace("DOMAINS", "DOMAINS|ALLELE_NUM") if numbered else _HEADER
+    annotation = "CSQ=C|missense_variant|ENST1|1|6|Pfam:PF1"
+    source.write_text(
+        header
+        + _record(
+            "chr1", "200", ".", "AAGT", "C,AACT", "40", "PASS",
+            annotation + ("|2" if numbered else ""), "GT", "1/2",
+        ),
+        encoding="utf-8",
+    )  # fmt: skip
+    split = tmp_path / "split.vcf"
+    run_command([
+        get_tool_path("bcftools"), "norm", "-m", "-any", "--old-rec-tag",
+        "OLD_MULTIALLELIC", "-o", str(split), str(source),
+    ])  # fmt: skip
+    for vcf in (source, split):
+        api.vcf.table(api.VcfTableParams(input=vcf, outdir=tmp_path))
+        rows = _tsv(tmp_path / f"{vcf.stem}_variants.tsv")
+        assert tuple(rows["200", "C"][name] for name in _COLUMNS) == ("", "", "")
+        assert tuple(rows["200", "AACT"][name] for name in _COLUMNS) == (
+            ("6", "6", "Pfam:PF1") if numbered else ("", "", "")
+        )

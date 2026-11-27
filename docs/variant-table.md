@@ -150,8 +150,8 @@ and `DOMAINS` from the chosen VEP `CSQ`, or `AA.pos / AA.length` from the chosen
 SnpEff `ANN` when that annotation supplies the consequence. It never uses
 another allele or transcript to fill a missing field, infers no positions
 from HGVS, and does not download protein data.
-On split records, a normalized spelling that could belong to another
-original ALT is not used as a fallback without unambiguous allele information.
+If different ALTs could share a minimized annotation spelling, the table
+does not guess which ALT it describes. VEP's `ALLELE_NUM` can resolve it.
 
 Positions can be a single residue or a range, with or without a reported
 protein length. Missing, uncertain, malformed and reversed insertion

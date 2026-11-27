@@ -17,7 +17,7 @@ from wgsextract_cli.core.vcf_alleles import allele_key
 # Ensembl VEP's test for a structural-variant ALT (<DEL>, breakends), which it
 # names differently; <*> doesn't match it (Parser/VCF.pm, release 113).
 _SV_ALT = re.compile(r"[<\[\]][^*]+[>\]\[]|^\.\w+|\w+\.$")
-_BASES = re.compile(r"[ACGT]+")
+_BASES = re.compile(r"[ACGTN]+")
 
 
 def vep_allele(ref: str, alts: Sequence[str], alt: str) -> str:
@@ -81,6 +81,8 @@ def _use_allele_num(entries: list[dict[str, str]], n_alts: int, split: bool) -> 
 def _by_spelling(
     entries: list[dict[str, str]], field: str, candidates: Sequence[str]
 ) -> list[dict[str, str]]:
+    if not candidates:
+        return []
     keys = tuple(dict.fromkeys(map(allele_key, candidates)))
     if len(keys) == 1:
         return [e for e in entries if field in e and allele_key(e[field]) == keys[0]]
@@ -110,18 +112,21 @@ def _minimal_allele(ref: str, alt: str) -> str | None:
     return alt[start:] or "-"
 
 
-def _sibling_spellings(ref: str, alts: Sequence[str], index: int) -> set[str]:
-    return {
-        allele_key(spelling)
-        for i, sibling in enumerate(alts, start=1)
-        if i != index
-        for spelling in (
-            sibling,
-            vep_allele(ref, alts, sibling),
-            _minimal_allele(ref, sibling),
-        )
-        if spelling is not None
-    }
+def _sibling_spellings(
+    ref: str, alts: Sequence[str], index: int
+) -> tuple[set[str], set[str]]:
+    spellings, minimized = set(), set()
+    for i, sibling in enumerate(alts, start=1):
+        if i == index:
+            continue
+        spellings.add(allele_key(sibling))
+        spelling = allele_key(vep_allele(ref, alts, sibling))
+        spellings.add(spelling)
+        if (compact := _minimal_allele(ref, sibling)) is not None:
+            spellings.add(compact)
+            if compact != spelling:
+                minimized.add(compact)
+    return spellings, minimized
 
 
 def csq_for_allele(
@@ -147,40 +152,36 @@ def csq_for_allele(
 
     alt = alts[alt_index - 1]
     preferred = vep_allele(ref, alts, alt)
+    original_alt = source_alts[index - 1]
     spellings: tuple[str, ...] = (preferred, alt)
-    siblings = None
-    if split:
-        original_alt = source_alts[index - 1]
-        original = vep_allele(source_ref, source_alts, original_alt)
-        # A normalized spelling can also name a sibling ALT's retained CSQ.
-        siblings = _sibling_spellings(source_ref, source_alts, index)
+    siblings: set[str] = set()
+    if len(source_alts) > 1:
+        original = (
+            vep_allele(source_ref, source_alts, original_alt) if split else preferred
+        )
+        siblings, minimized = _sibling_spellings(source_ref, source_alts, index)
+        # Even the standard spelling can name a different ALT if the annotator
+        # instead removed both common ends. With no allele number, don't guess.
+        primary = (original,) if allele_key(original) not in minimized else ()
+        fallback = (original_alt, preferred, alt) if split else (alt,)
         spellings = (
-            original,
+            *primary,
             *(
                 spelling
-                for spelling in (original_alt, *spellings)
+                for spelling in fallback
                 if allele_key(spelling) not in siblings
             ),
         )
-    elif n_alts > 1 and preferred != alt:
-        # A sibling's trimmed spelling can be this ALT's untrimmed spelling.
-        siblings = _sibling_spellings(source_ref, source_alts, index)
-        if allele_key(alt) in siblings:
-            spellings = (preferred,)
     if matches := _by_spelling(entries, "Allele", spellings):
         return matches
     candidates = (
-        (_minimal_allele(source_ref, source_alts[index - 1]), _minimal_allele(ref, alt))
+        (_minimal_allele(source_ref, original_alt), _minimal_allele(ref, alt))
         if split
         else (_minimal_allele(ref, alt),)
     )
-    if any(candidates):
-        if siblings is None:
-            siblings = _sibling_spellings(source_ref, source_alts, index)
-        return _by_spelling(
-            entries, "Allele", tuple(c for c in candidates if c and c not in siblings)
-        )
-    return []
+    return _by_spelling(
+        entries, "Allele", tuple(c for c in candidates if c and c not in siblings)
+    )
 
 
 def allele_entries(
