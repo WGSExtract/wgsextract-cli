@@ -241,10 +241,7 @@ class RefRegulatoryParams(_InLibrary, Params):
         from wgsextract_cli.core import regulatory_data
 
         filled = with_config_defaults(self, only={"ref"})
-        yield from super().implied_paths()
-        yield from regulatory_data.resource_paths(
-            regulatory_data.path(str(filled.library()))
-        )
+        yield from regulatory_data.guarded_paths(filled.ref)
 
 
 @dataclass(frozen=True, kw_only=True)

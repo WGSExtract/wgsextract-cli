@@ -333,17 +333,10 @@ class VcfRegulatoryParams(_AnnotatorParams):
     COMMAND = "vcf regulatory"
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import regulatory_data
+
         filled = with_config_defaults(self, only={"ref"})
-        yield from _regulatory_paths(filled.ref)
-
-
-def _regulatory_paths(ref: Path | None) -> Iterator[tuple[str, Path]]:
-    from wgsextract_cli.core import regulatory_data
-    from wgsextract_cli.core.ref_library.resolver import library_roots
-
-    yield from regulatory_data.resource_paths(
-        regulatory_data.path(library_roots(ref).root)
-    )
+        yield from regulatory_data.guarded_paths(filled.ref)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -493,8 +486,10 @@ class VcfChainAnnotateParams(_VcfFileParams):
         if any(
             ann.strip().lower() == "regulatory" for ann in self.annotations.split(",")
         ):
+            from wgsextract_cli.core import regulatory_data
+
             filled = with_config_defaults(self, only={"ref"})
-            yield from _regulatory_paths(filled.ref)
+            yield from regulatory_data.guarded_paths(filled.ref)
 
     def __post_init__(self) -> None:
         super().__post_init__()

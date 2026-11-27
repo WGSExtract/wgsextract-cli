@@ -11,7 +11,7 @@ import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import cache
-from pathlib import Path
+from pathlib import Path, PurePath, PureWindowsPath
 from tempfile import TemporaryDirectory
 
 from wgsextract_cli.core import read_scope
@@ -27,11 +27,12 @@ BUILD = "hg38"
 URL = "https://downloads.wenglab.org/Registry-V4/GRCh38-cCREs.bed"
 SHA256 = "a292aea64edea7efbef275140b78116efdef1bea5b729dc9e5513421dc868dda"
 TERMS = "https://www.genome.ucsc.edu/ENCODE/terms.html"
+_TABLE = "screen-v4-hg38.bed.gz"
 _TOKEN = re.compile(r"[A-Za-z0-9_.-]+")
 
 
 def path(reflib: str | None) -> Path:
-    return Path(resolve_reference_library(reflib), "downloads", "screen-v4-hg38.bed.gz")
+    return Path(resolve_reference_library(reflib), "downloads", _TABLE)
 
 
 def install_command(table: Path) -> str:
@@ -66,9 +67,29 @@ def marker(path: Path) -> Path:
     return path.with_suffix(path.suffix + ".json")
 
 
-def resource_paths(table: Path) -> Iterator[tuple[str, Path]]:
-    for path in (table.parent, table, index(table), marker(table)):
-        yield "ref", path
+def resource_paths(table: PurePath) -> Iterator[tuple[str, Path]]:
+    for path in (
+        table.parent,
+        table,
+        table.with_suffix(table.suffix + ".tbi"),
+        table.with_suffix(table.suffix + ".json"),
+    ):
+        yield "ref", Path(str(path))
+
+
+def guarded_paths(ref: Path | None) -> Iterator[tuple[str, Path]]:
+    from wgsextract_cli.core.ref_library.resolver import library_roots
+
+    if ref is not None:
+        # The guard consumes this before library_roots can inspect a FASTA.
+        yield "ref", ref
+        windows = PureWindowsPath(ref)
+        if not ref.is_absolute() and windows.drive:
+            # Keep drive and separator semantics when the guard uses a
+            # different path flavour from the host.
+            yield from resource_paths(windows / "downloads" / _TABLE)
+            return
+    yield from resource_paths(path(library_roots(ref).root))
 
 
 def _allowed(table: Path) -> bool:
