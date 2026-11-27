@@ -571,6 +571,12 @@ apply saves its exact commit locally under
 `refs/worktree-cleanup/detached/<head>` so even an unmerged PR tip remains
 recoverable without GitHub. The report gives the recovery ref; for example,
 `git worktree add --detach scratch/recovered <ref>` restores the checkout.
+
+New worktrees on a host with [shared certification references](ci_routing.md#writer-self-certification)
+can use `just certify-setup --link-reference` instead of copying a reference
+directory. The linked library lives outside the worktree; cleanup still
+blocks removal when a symlink from the store or another checkout points into
+the worktree being removed.
 A detached checkout with an in-progress Git operation or older commits
 recoverable only from its HEAD reflog is retained.
 The inspector is restricted to the same direct children of `scratch/`;
