@@ -12,8 +12,59 @@ from wgsextract_cli.commands._extract_helpers import paired_fastq_stream
 from wgsextract_cli.commands.align import read_group, run_streamed_alignment
 from wgsextract_cli.commands.alignment.short_reads import bwa_index_suffixes
 from wgsextract_cli.core import results
+from wgsextract_cli.core.resource_estimates import estimate_resources
 from wgsextract_cli.core.staged_alignment import run_staged_alignment, workspace_path
 from wgsextract_cli.core.utils import WGSExtractError, run_command
+
+
+@needs_tools("bwa", "samtools", "samblaster")
+def test_issue1130_fast_staged_raw_bam_keeps_records_and_budgets_more_disk(tmp_path):
+    reads = _short_reads(tmp_path)
+    run_command(["bwa", "index", reads.ref])
+    mapper = [
+        "bwa", "mem", "-t", "1", "-R", read_group("reads"),
+        Path(reads.ref), Path(reads.r1), Path(reads.r2),
+    ]  # fmt: skip
+    raw_files = []
+    disk = []
+    for profile in ("default", "fast"):
+        output = str(tmp_path / f"{profile}.cram")
+        # Block the next stage to leave the otherwise short-lived BAM on disk.
+        workspace = workspace_path(output)
+        workspace.mkdir(mode=0o700)
+        (workspace / "parts").touch()
+        with pytest.raises(WGSExtractError):
+            run_staged_alignment(
+                [mapper],
+                output,
+                output,
+                memory="16M",
+                fmt="CRAM",
+                ref=reads.ref,
+                index_suffixes=bwa_index_suffixes("bwa"),
+                output_profile=profile,
+            )
+        raw_files.append(workspace / "unsorted.bam")
+        estimate = estimate_resources(
+            "align",
+            input_paths=[reads.r1, reads.r2],
+            output_dir=str(tmp_path),
+            reference=reads.ref,
+            reads=280,
+            staged=True,
+            output_format="CRAM",
+            output_profile=profile,
+        )
+        needed = next(
+            row.estimated_bytes for row in estimate.resources if row.resource == "disk"
+        )
+        assert needed is not None
+        disk.append(needed)
+
+    default_raw, fast_raw = raw_files
+    assert _samtools("view", fast_raw) == _samtools("view", default_raw)
+    assert fast_raw.stat().st_size > default_raw.stat().st_size
+    assert disk[1] - disk[0] >= fast_raw.stat().st_size - default_raw.stat().st_size
 
 
 @needs_tools("bwa", "samtools", "samblaster")

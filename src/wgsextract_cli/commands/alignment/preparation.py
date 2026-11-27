@@ -311,6 +311,7 @@ def _bwa_setup(
                 else None
             ),
             output_format=job.format,
+            output_profile=job.output_profile or "default",
             duplicate_marking=(
                 "gatk-flow"
                 if job.platform == "ultima" and get_tool_path("gatk") is not None

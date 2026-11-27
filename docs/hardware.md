@@ -485,6 +485,13 @@ speedup to other chips, or conclude PairHMM can never remain a bottleneck.
 
 ### Around the aligner
 
+On a four-core Linux HG002 slice, `--output-profile fast` reduced the
+post-alignment time (samblaster, sort and indexed CRAM) by 7.3% while
+increasing CRAM size by 21%. Level-1 BAM was 61.5% faster to encode on its
+own and 12% larger; the fast profile uses it for the raw BAM in staged
+alignment only. Neither timing includes mapping. See the [paired measurements
+and disk allowance](resource_estimates.md#fast-profile-on-a-linux-hg002-slice).
+
 Short reads stream from the aligner through samblaster into `samtools sort`
 (or through `samtools fixmate`, `sort` and `markdup` for single-end reads or
 when samblaster is missing). The last samtools stage writes the `.bai` or

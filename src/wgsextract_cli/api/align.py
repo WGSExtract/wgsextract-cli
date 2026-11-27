@@ -106,8 +106,8 @@ def _output_profile_param() -> Any:
     return param(
         None,
         help="Lossless output: default keeps --format; archive selects CRAM 3.1 "
-        "(GATK >=4.7); calling selects CRAM 3.0. Default: config output_profile, "
-        "else default. See docs/ont.md.",
+        "(GATK >=4.7); calling selects CRAM 3.0; fast writes larger CRAM 3.1 "
+        "files faster. Default: config output_profile, else default. See docs/ont.md.",
         choices=OUTPUT_PROFILES,
         config_key="output_profile",
     )

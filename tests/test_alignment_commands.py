@@ -166,7 +166,7 @@ def test_691_lossless_profiles_are_readable_by_calling_extract_and_info(
     reads = _short_reads(tmp_path)
     records = []
     calls = []
-    for profile in ("default", "archive", "calling"):
+    for profile in ("default", "archive", "calling", "fast"):
         out = tmp_path / profile
         result = api.align.align(
             api.AlignParams(
@@ -190,9 +190,13 @@ def test_691_lossless_profiles_are_readable_by_calling_extract_and_info(
             == profile
         )
         if profile != "default":
-            assert cram_version(str(output)) == (3, 1 if profile == "archive" else 0)
+            assert cram_version(str(output)) == (3, 0 if profile == "calling" else 1)
         if profile == "calling":
             assert not needs_cram30(str(output))
+        if profile == "fast":
+            # contract: #1130 measured the CRAM 3.1 fast preset, not level=1.
+            header = _samtools("view", "-H", "-T", reads.ref, str(output))
+            assert "--output-fmt-option version=3.1 --output-fmt-option fast" in header
         records.append(
             [
                 (*fields[:11], tuple(sorted(fields[11:])))
@@ -222,8 +226,8 @@ def test_691_lossless_profiles_are_readable_by_calling_extract_and_info(
         assert int(_samtools("view", "-c", str(extracted))) == len(records[-1])
         info = api.info.info(api.InfoParams(input=output, ref=reads.ref, cache=False))
         assert info.status == "ok"
-    assert records[0] == records[1] == records[2]
-    assert calls[0] == calls[1] == calls[2]
+    assert all(decoded == records[0] for decoded in records[1:])
+    assert all(called == calls[0] for called in calls[1:])
 
 
 @needs_tools("bwa", "samtools")

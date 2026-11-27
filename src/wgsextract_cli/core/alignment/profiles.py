@@ -6,17 +6,21 @@ from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.utils import UsageError, WGSExtractError
 
-OUTPUT_PROFILES = ("default", "archive", "calling")
+_CRAM_PROFILES = {
+    "archive": (("archive", "version=3.1"), (3, 1)),
+    "calling": (("version=3.0",), (3, 0)),
+    "fast": (("version=3.1", "fast"), (3, 1)),
+}
+OUTPUT_PROFILES = ("default", *_CRAM_PROFILES)
 
 
 def output_profile_options(profile: str) -> list[str]:
-    if profile not in OUTPUT_PROFILES:
-        raise UsageError(f"Unknown output profile: {profile!r}.")
-    options = {
-        "default": (),
-        "archive": ("archive", "version=3.1"),
-        "calling": ("version=3.0",),
-    }[profile]
+    if profile == "default":
+        return []
+    try:
+        options, _ = _CRAM_PROFILES[profile]
+    except KeyError:
+        raise UsageError(f"Unknown output profile: {profile!r}.") from None
     return [arg for option in options for arg in ("--output-fmt-option", option)]
 
 
@@ -33,7 +37,7 @@ def validate_output_profile(profile: str) -> None:
             "Use --output-profile default or install a samtools supporting "
             "the requested CRAM options."
         ) from error
-    expected = (3, 1) if profile == "archive" else (3, 0)
+    _, expected = _CRAM_PROFILES[profile]
     if version != expected:
         raise WGSExtractError(
             f"Installed samtools did not write the CRAM version required by "

@@ -53,13 +53,32 @@ the chr20 timings, accuracy and limits.
 ## Lossless output profile measurements
 
 The opt-in [alignment output profiles](ont.md#lossless-output-profiles)
-were measured on retained ONT slices from
+`archive` and `calling` were measured on retained ONT slices from
 [#431 (ONT realignment disk growth)](https://github.com/WGSExtract/wgsextract-cli/issues/431)
 and a public short-read full genome for
 [#691 (slimmer alignment output)](https://github.com/WGSExtract/wgsextract-cli/issues/691).
 The unchanged installed encoder default was CRAM 3.1 in these runs.
 These are **single shared-host observations**, not established speed ratios
 or changes to the automatic resource estimates.
+
+### Fast profile on a Linux HG002 slice
+
+[#1130 (CRAM and BAM compression timings)](https://github.com/WGSExtract/wgsextract-cli/issues/1130#issuecomment-7213327610)
+compared five paired runs on lin-omarchy with four cores, samtools/HTSlib
+1.24 and 11.18 million HG002 records. Timed outputs were indexed inline.
+Each comparison kept the decoded records in order, including auxiliary tags.
+
+| Comparison | Median paired change in wall time | Output size |
+| --- | ---: | ---: |
+| CRAM 3.1 `fast`, standalone encode | −17.4% | 234 vs 193 MiB (+21%) |
+| CRAM 3.1 `fast`, samblaster → sort → indexed CRAM | −7.3% | 234 vs 193 MiB (+21%) |
+| BAM level 1, standalone encode | −61.5% | 666 vs 597 MiB (+12%) |
+
+These are slice timings, not whole-genome speedups or timings of the staged
+Metal path. `--output-profile fast` uses level 1 only for staged alignment's
+short-lived raw BAM before duplicate marking. It does not change a user BAM,
+samtools sort spill files or the duplicate marker. The staged disk preflight
+increases the raw-BAM allowance only for this profile.
 
 ### Public HG002 30× full genome
 
@@ -285,8 +304,10 @@ Recovery checks only the selected aligner's index files. Large sidecars use
 sampled content and file metadata rather than a full read. If streamed
 extraction left out single-end reads, recovery reports the saved count even
 after extraction scratch files are gone.
-The HG00235x calibration budgets108/115 bytes per short input read for raw/marked
-BAM checkpoints and2 GiB rolling scratch; longer reads scale those allowances. Preflight also
+The HG002 35× calibration budgets 108/115 bytes per short input read for raw/marked
+BAM checkpoints and 2 GiB rolling scratch; longer reads scale those allowances.
+With `--output-profile fast`, the raw BAM allowance rises to 125 bytes per
+short input read, leaving the marked parts and rolling scratch unchanged. Preflight also
 includes the guard's safety reserve once per guarded filesystem, the extraction
 collation phase, and one bounded intermediate merge group. Merge fan-in stays
 at64 regardless of the operating system's file-descriptor limit.

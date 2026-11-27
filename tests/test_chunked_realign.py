@@ -163,7 +163,7 @@ def test_chunked_realign_writes_the_records_of_a_single_pass(
 
 
 @needs_tools("samtools", "minimap2")
-@pytest.mark.parametrize("profile", ["archive", "calling"])
+@pytest.mark.parametrize("profile", ["archive", "calling", "fast"])
 def test_691_chunked_profiles_keep_supplementary_sequence_qualities_and_modifications(
     tmp_path, ont, profile
 ):
@@ -173,7 +173,7 @@ def test_691_chunked_profiles_keep_supplementary_sequence_qualities_and_modifica
     _realign(source, ref, tmp_path / profile, "--output-profile", profile,
              "--chunk-size", _chunk_size(source))  # fmt: skip
     output = tmp_path / profile / "x_aligned.cram"
-    assert cram_version(str(output)) == (3, 1 if profile == "archive" else 0)
+    assert cram_version(str(output)) == (3, 0 if profile == "calling" else 1)
 
     def records(path):
         return [

@@ -365,6 +365,7 @@ def _report_resource_estimates(
                 else None
             ),
             output_format=job.format,
+            output_profile=job.output_profile or "default",
             extract_fastq=need_extract,
             fastq_dir=outdir if job.keep_fastq else configured_temp_directory(),
             duplicate_marking=(

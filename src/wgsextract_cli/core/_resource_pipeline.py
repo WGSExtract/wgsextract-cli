@@ -63,6 +63,7 @@ def estimate_resources(
     platform: str | None = None,
     read_length: float | None = None,
     output_format: str = "BAM",
+    output_profile: str = "default",
     samblaster: bool = True,
     extract_fastq: bool = False,
     fastq_dir: str | None = None,
@@ -223,7 +224,11 @@ def estimate_resources(
         temporary = None if disk_reads is None else disk_reads * SORT_BYTES_PER_READ
         if staged and disk_reads is not None:
             scale = max(1, (read_length or 150) / 150)
-            raw = math.ceil(disk_reads * 108 * scale)
+            # Round above the measured 11.6% increase for planning.
+            raw_bytes_per_read = (
+                125 if output_format == "CRAM" and output_profile == "fast" else 108
+            )
+            raw = math.ceil(disk_reads * raw_bytes_per_read * scale)
             parts = math.ceil(disk_reads * 115 * scale)
             merge_group = min(parts, math.ceil(64 * 2_000_000 * 115 * scale))
             scratch = 2 * GIB
@@ -311,6 +316,11 @@ def estimate_resources(
                 "Disk allows 108/115 bytes per short input read for raw/marked checkpoints "
                 "and 2 GiB rolling scratch (HG002 35x calibration)."
             )
+            if raw_bytes_per_read > 108:
+                notes.append(
+                    "Fast CRAM uses level-1 BAM for its raw checkpoint: disk allows "
+                    f"{raw_bytes_per_read} bytes per short input read for that BAM."
+                )
             from wgsextract_cli.core.staged_alignment import safety_reserve
 
             reserve = safety_reserve(reads)

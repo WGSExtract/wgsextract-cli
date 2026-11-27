@@ -87,7 +87,7 @@ The usual realignment disk-space preflight also applies to streamed ONT reads.
 
 ### Lossless output profiles
 
-`align` and `realign` accept `--output-profile default|archive|calling`.
+`align` and `realign` accept `--output-profile default|archive|calling|fast`.
 The default leaves `--format` and the installed encoder's defaults unchanged.
 The other profiles select CRAM when `--format` is omitted. An explicit
 profile conflicts with `--format BAM` and is refused; use
@@ -99,10 +99,14 @@ instead, explicit `--format BAM` wins and the effective profile is default
 | --- | --- | --- |
 | `archive` | CRAM 3.1, samtools' archive compression | Modern htslib and GATK 4.7+ |
 | `calling` | CRAM 3.0, normal compression | GATK and older htslib-based callers, including DeepVariant |
+| `fast` | CRAM 3.1, samtools' fast compression; larger files | Modern htslib and GATK 4.7+ |
 
-Both are lossless: full supplementary SEQ/QUAL, soft clipping and MM/ML/MN
+All are lossless: full supplementary SEQ/QUAL, soft clipping and MM/ML/MN
 tags are retained. Archive trades encoding time for smaller files; savings
-depend on the reads. Calling avoids DeepVariant's CRAM 3.1 compatibility
+depend on the reads. Fast makes the opposite trade-off: the measured
+[Linux post-alignment slice](resource_estimates.md#fast-profile-on-a-linux-hg002-slice)
+was 7.3% faster and 21% larger. This is separate from the aligner's `--fast`
+preset, which can change alignments. Calling avoids DeepVariant's CRAM 3.1 compatibility
 copy, not every caller's other staging requirements. Native pbmm2 only
 writes BAM: auto selects minimap2 for PacBio CRAM profiles, while explicit
 `--aligner pbmm2` is refused with a profile-specific message.
@@ -134,7 +138,7 @@ wgsextract align --r1 reads_R1.fastq.gz --r2 reads_R2.fastq.gz \
   --ref hs38.fa --output-profile calling
 ```
 
-Set `output_profile = "calling"` (or `"archive"`) in `config.toml` for a
+Set `output_profile = "calling"` (or `"archive"` or `"fast"`) in `config.toml` for a
 persistent default; `--output-profile default` overrides it. The typed API
 and server expose the same `output_profile` option. The result manifest
 records the effective profile in `metrics.output_profile`. Changing the
@@ -142,9 +146,9 @@ profile invalidates realign's completed alignment and chunk resume state.
 Installed samtools is checked for the requested options and version before
 mapping; WGS Extract does not install it.
 
-`info`, extraction and bcftools calling read both profiles. Older
+`info`, extraction and bcftools calling read all profiles. Older
 DeepVariant/Clair3 builds use the existing temporary compatible copy for
-archive output. GATK 4.7 and newer read CRAM 3.1 directly; whole-file
+CRAM 3.1 output. GATK 4.7 and newer read CRAM 3.1 directly; whole-file
 calling with an identified older GATK is refused before making a .dict. Use
 calling output, convert to BAM (`bam to-bam`), or specify `vcf gatk
 --region` for the existing regional BAM conversion.

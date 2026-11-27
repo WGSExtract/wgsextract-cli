@@ -287,8 +287,9 @@ class Settings:
     output_profile: str = setting(
         "default",
         "`align`/`realign`: default keeps --format; archive selects lossless "
-        "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0",
-        choices=("default", "archive", "calling"),
+        "CRAM 3.1 (GATK 4.7+); calling selects compatible CRAM 3.0; "
+        "fast selects faster, larger CRAM 3.1",
+        choices=("default", "archive", "calling", "fast"),
     )
     prefer_native_gpu: bool | None = setting(
         None,
