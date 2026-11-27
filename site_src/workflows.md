@@ -161,6 +161,8 @@ SV and CNV workflows look for larger changes. These can be sensitive to sequenci
 ::: card
 ### Annotation and filtering
 Annotation tools such as VEP add biological context. Download annotation data with the `ref` commands first; `ref spliceai` fetches Ensembl's open hg38 scores, while hg19 needs a manual BaseSpace download. Gene filters need gene maps from `ref gene-map` (hg19/hg38 only). A filtered list is not a diagnosis. Some genes need reads rather than a VCF: `typing` calls CYP2D6, HLA and repeat expansions from a whole-genome BAM/CRAM.
+
+For research on noncoding variants, `vcf regulatory` adds offline [SCREEN cCRE overlap](https://github.com/WGSExtract/wgsextract-cli/blob/main/docs/regulatory-annotation.md){.inline-link} on GRCh38, including promoter-like and enhancer-like elements.
 :::
 :::
 

@@ -310,6 +310,29 @@ def test_1186_server_refuses_unauthorized_grch37_ybrowse_paths(tmp_path, relativ
     assert (status, body["error"]["code"]) == (403, "path_not_allowed"), body
 
 
+@pytest.mark.parametrize(
+    "op", ["ref/regulatory", "vcf/regulatory", "vcf/chain-annotate"]
+)
+def test_1624_screen_refuses_a_downloads_symlink_outside_the_library(tmp_path, op):
+    library = tmp_path / "library"
+    library.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        (library / "downloads").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks are unavailable")
+    request = {"ref": str(library)}
+    if op != "ref/regulatory":
+        request["input"] = str(library / "sample.vcf")
+    if op == "vcf/chain-annotate":
+        request["annotations"] = "regulatory"
+    params = params_from_json(find(op), request)
+    with pytest.raises(RequestError) as error:
+        PathGuard([library]).check(params)
+    assert error.value.code == "path_not_allowed"
+
+
 @pytest.mark.parametrize("op", ["vcf/impute", "ref/imputation"])
 @pytest.mark.parametrize("escape", ["panel-folder", "binary", "marker-path"])
 def test_732_imputation_rejects_escaping_panel_paths(tmp_path, op, escape):

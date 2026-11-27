@@ -27,6 +27,7 @@ from tests.server_path_cases import (
     _path_value,
     _RecordingFlavour,
 )
+from wgsextract_cli.core.config import settings
 from wgsextract_cli.server.operations import (
     PathGuard,
     RequestError,
@@ -76,7 +77,11 @@ def test_path_guard_covers_every_vcf_path(op, field, value):
     # #346: the VCF-file commands became server operations; each file they
     # read or write must be inside an allowed folder, drive-relative included.
     guard = PathGuard([r"C:\data"], pathmod=_RecordingFlavour())
-    allowed = {"vcf_input": r"C:\data\in.vcf.gz", "outdir": r"C:\data"}
+    allowed = {
+        **_base_request(op),
+        "vcf_input": r"C:\data\in.vcf.gz",
+        "outdir": r"C:\data",
+    }
     guard.check(params_from_json(find(op), allowed))
     item = next(f for f in find(op).fields() if f.name == field)
     bad = [value] if typing.get_origin(item.base_type) is tuple else value
@@ -130,6 +135,18 @@ def test_path_guard_covers_every_ref_path(op, field, value):
     with pytest.raises(RequestError) as refused:
         guard.check(params_from_json(find(op), bad))
     assert refused.value.code in ("usage", "path_not_allowed")
+
+
+def test_1663_screen_checks_configured_unc_ref_before_looking_up_library(monkeypatch):
+    unc = r"\\host\share\evil.fa"
+    monkeypatch.setitem(settings, "reference_fasta", unc)
+    filesystem = _RecordingFlavour()
+    guard = PathGuard([_DATA], pathmod=filesystem)
+    filesystem.opened.clear()
+    with pytest.raises(RequestError) as refused:
+        guard.check(params_from_json(find("ref/regulatory"), {}))
+    assert refused.value.code == "path_not_allowed"
+    assert not filesystem.opened
 
 
 @pytest.mark.parametrize(

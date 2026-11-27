@@ -80,6 +80,9 @@ from ..vcf import (
     VcfPrepareParams as VcfPrepareParams,
 )
 from ..vcf import (
+    VcfRegulatoryParams as VcfRegulatoryParams,
+)
+from ..vcf import (
     VcfRevelParams as VcfRevelParams,
 )
 from ..vcf import (

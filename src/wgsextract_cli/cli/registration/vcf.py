@@ -32,6 +32,7 @@ from wgsextract_cli.api.vcf import (
     VcfPhaseParams,
     VcfPhylopParams,
     VcfPrepareParams,
+    VcfRegulatoryParams,
     VcfRevelParams,
     VcfSnpParams,
     VcfSpliceaiParams,
@@ -131,6 +132,9 @@ CERTIFICATION = {
         _REVIEWED,
         "test_pharmgkb.py",
         "PharmGKB annotations checked on fixture variants.",
+    ),
+    "vcf regulatory": tested(
+        _REVIEWED, "test_regulatory.py", "Per-ALT SCREEN overlap checked on fixtures."
     ),
     "vcf info": tested(
         _REVIEWED, "test_vcf_info.py", "VCF statistics and build checks on fixtures."
@@ -272,6 +276,7 @@ NEEDS = {
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
+    "vcf regulatory": _n(MINUTES, *_VCF, "bgzip", optional="samtools"),
     "vcf prepare": _n(MINUTES, *_VCF),
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
@@ -356,6 +361,9 @@ cmd_info = command_handler("wgsextract_cli.commands.vcf.info", "cmd_vcf_info")
 cmd_pharmcat = command_handler("wgsextract_cli.commands.vcf.pharmcat", "cmd_pharmcat")
 cmd_prepare = command_handler("wgsextract_cli.commands.vcf.prepare", "cmd_prepare")
 cmd_pharmgkb = command_handler("wgsextract_cli.commands.vcf.splicing", "cmd_pharmgkb")
+cmd_regulatory = command_handler(
+    "wgsextract_cli.commands.vcf.regulatory", "cmd_regulatory"
+)
 cmd_phase = command_handler("wgsextract_cli.commands.vcf.phasing", "cmd_phase")
 cmd_phylop = command_handler("wgsextract_cli.commands.vcf.population", "cmd_phylop")
 cmd_revel = command_handler("wgsextract_cli.commands.vcf.clinvar_revel", "cmd_revel")
@@ -564,6 +572,12 @@ def register(
             "Annotate VCF with PharmGKB drug metabolism data.",
             VcfPharmgkbParams,
             cmd_pharmgkb,
+        ),
+        (
+            "regulatory",
+            "Annotate GRCh38 variants with offline SCREEN cCRE overlap (research only).",
+            VcfRegulatoryParams,
+            cmd_regulatory,
         ),
         (
             "pharmcat",
