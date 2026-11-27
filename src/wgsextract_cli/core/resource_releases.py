@@ -101,7 +101,13 @@ def _terms(record: ResourceRecord, entry: dict[str, Any] | None) -> None:
 def _with_terms(record: ResourceRecord) -> ResourceRecord:
     entry = _catalog(record.id, record.build)
     _terms(record, entry)
-    if entry is not None and entry["id"] == f"{record.id}-{record.build}":
+    # gnomAD distributes multiple callsets for the same assembly. The catalog's
+    # build-specific URL is for v2.1.1 exomes, not an arbitrary supplied sites VCF.
+    if (
+        entry is not None
+        and record.id != "gnomad"
+        and entry["id"] == f"{record.id}-{record.build}"
+    ):
         record.source_url = entry.get("upstream_url")
     return record
 

@@ -47,6 +47,11 @@ from wgsextract_cli.core.csq_alleles import (
     for_allele,
     split_origin,
 )
+from wgsextract_cli.core.gnomad_fields import (
+    GNOMAD_FAF95,
+    GNOMAD_NATIVE_FAF95,
+    gnomad_native_faf95,
+)
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
@@ -237,6 +242,12 @@ COLUMNS: tuple[Column, ...] = (
         "missing or incomplete.",
     ),
     *scores.SCORE_COLUMNS,
+    Column(
+        "gnomad_faf95",
+        REAL,
+        "Maximum gnomAD ancestry-group filtering allele frequency at 95% confidence "
+        "for this ALT (joint or the supplied standalone callset).",
+    ),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
@@ -319,7 +330,16 @@ class VcfHeader:
             found.append("snpeff")
         for name, keys in (
             ("clinvar", ("CLNSIG",)),
-            ("gnomad", ("GNOMAD_AF", *_POPMAX_INFO, *_NHOMALT_INFO)),
+            (
+                "gnomad",
+                (
+                    "GNOMAD_AF",
+                    *_POPMAX_INFO,
+                    *_NHOMALT_INFO,
+                    GNOMAD_FAF95,
+                    *GNOMAD_NATIVE_FAF95,
+                ),
+            ),
             ("pharmgkb", ("PHARMGKB",)),
             ("confidence", ("WGSE_CONF",)),
             ("sv_freq", ("SV_FREQ",)),
@@ -565,6 +585,11 @@ def indexed_variant_rows(
 ) -> Iterator[tuple[Row, int, int, str | None]]:
     """Rows with record ordinal, 1-based ALT index and split provenance."""
     numbers = header.info_number
+    faf95_key = (
+        GNOMAD_FAF95 if GNOMAD_FAF95 in numbers else gnomad_native_faf95(numbers)
+    )
+    if faf95_key and numbers.get(faf95_key) != "A":
+        faf95_key = None
     csq_names = header.csq_fields or []
     ann_names = header.ann_fields or []
     scored = bool(scores.NAMES & set(header.annotations))
@@ -762,5 +787,8 @@ def indexed_variant_rows(
                     if scored
                     else unscored
                 ),
+                _fraction(_per_allele(info.get(faf95_key), "A", alt_index))
+                if faf95_key
+                else None,
             )
             yield row, record_index, alt_index, info.get(SPLIT_TAG) if split else None
