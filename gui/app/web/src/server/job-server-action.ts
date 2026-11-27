@@ -55,8 +55,9 @@ async function startServerJob(jobServer: JobServer, operation: string, parameter
         if (!address || signal?.aborted) return undefined;
         const jobID = address.clientJobIDs ? id : null;
         await emit({ type: "submission-pending", jobID });
+        const network = await jobServer.networkMode?.();
         if (signal?.aborted) return undefined;
-        const started = await startJob(address, jobID, operation, parameters, card);
+        const started = await startJob(address, jobID, operation, network ? { ...parameters, network } : parameters, card);
         if (started.kind === "accepted") return { address, id: started.job.id };
         if (started.kind === "indeterminate") {
             console.warn(`Could not confirm submission for '${operation}': ${started.reason}`);

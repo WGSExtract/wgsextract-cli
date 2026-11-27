@@ -62,9 +62,13 @@ weakening the CLI's offline guarantees:
 
 The desktop app sits *above* the CLI and invokes the CLI's explicit commands on
 the user's behalf. On a fresh install, it makes no outbound requests before
-the first-launch network choice. **OK** starts setup if needed and enables
-**Check for updates at launch**, which is off by default. **Not now** opens
-**Settings → Network & Privacy** without contacting an external server.
+the first-launch network choice. **OK** starts setup if needed in Full mode
+and enables **Check for updates at launch**, which is off by default.
+**Not now** opens **Settings → Network & Privacy** without contacting an
+external server.
+Automatic mode uses local OS signals to select Low for metered, constrained,
+or unknown-cost connections. Low defers large automatic downloads; Off
+blocks outbound operations. The effective mode is passed to the CLI.
 After that choice, the app distinguishes four kinds of network activity:
 
 | Tier | Policy | Examples |
@@ -79,10 +83,10 @@ After that choice, the app distinguishes four kinds of network activity:
 1. **Never bypass Layer 1 silently:** The GUI must never inject `--download` or
    flip `allow_reference_downloads = true` without explicit user consent.
 2. **Gate automatic connections:** Before the first-launch choice, make no
-   outbound requests. Afterward, honor **Privacy mode** for all automatic
-   activity and the launch-check setting for app release checks. Future
-   catalog update checks must use metadata only and must not fetch the update
-   itself.
+   outbound requests. Afterward, honor the effective network mode, **Privacy
+   mode** for all automatic activity, and the launch-check setting for app
+   release checks. Future catalog update checks must use metadata only and
+   must not fetch the update itself.
 3. **Never send sample metadata in update or catalog checks:** These checks
    must never include filenames, local paths, sample IDs, builds inferred from a
    user's BAM/VCF, or genomic coordinates.

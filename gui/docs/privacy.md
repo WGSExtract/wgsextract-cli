@@ -29,8 +29,10 @@ persistent CLI auto-downloads or authorizes sending sample-derived data.
 ## First launch and Network & Privacy
 
 On a fresh install, the app makes no outbound requests before your first
-network choice. **OK** starts setup if it has never run and turns on **Check
-for updates at launch**, which is off until you opt in.
+network choice. **OK** turns on **Check for updates at launch**, which is off
+until you opt in. It also starts setup if it has never run and the app is in
+**Full** mode. On a metered connection, **Automatic** uses **Low**, so setup
+waits for you to start it and confirm the downloads.
 **Not now** opens **Settings → Network & Privacy** without contacting an
 external server. You can use local features with the tools and data already
 installed and choose to run setup or check for updates later.
@@ -39,7 +41,8 @@ The app remembers your choice. In **Settings → Network & Privacy**, turn off
 **Check for updates at launch** to stop startup checks, or turn on
 **Privacy mode** to pause automatic network activity. Privacy mode does not
 block explicit actions such as **File → Check for Updates…** or a download
-you request. Development builds without an updater key do not check for
+you request; those actions still follow the [network mode](#network-mode).
+Development builds without an updater key do not check for
 updates. If setup was already complete when you upgraded, the app keeps your
 existing Privacy mode and carries over whether launch checks were active.
 
@@ -47,7 +50,7 @@ existing Privacy mode and carries over whether launch checks were active.
 
 | Tier | Examples | Default | Can it send sample data? | How to control it |
 | --- | --- | --- | --- | --- |
-| **1. Automatic connections** | First-run setup downloads and app release checks at startup | **Off on a fresh install until you choose OK** | **Never** — downloads public files or sends version metadata, OS/arch, IP, and standard HTTP headers | **Settings → Network & Privacy**; **Privacy mode** pauses automatic connections |
+| **1. Automatic connections** | First-run setup downloads and app release checks at startup | **Off on a fresh install until you choose OK** | **Never** — downloads public files or sends version metadata, OS/arch, IP, and standard HTTP headers | **Low** defers large downloads; **Off** blocks network operations; **Privacy mode** pauses automatic connections |
 | **2. Interactive prerequisite prompts** | Clicking **Install and Continue** when a command or [Gene Page](gene-page.md) reports a missing reference genome or Gene Map | **Asks before downloading** — never downloads silently | **Never** — fetches public reference files only | Click **Cancel** or **Continue** instead, or pre-install files beforehand |
 | **3. Explicit management & help actions** | Running **Setup** manually, clicking **Install / Download** on [Reference Data](reference-data.md), [Reference Genomes](reference-genomes.md), or [Tools](tools.md), clicking **Look up sizes**, opening a documentation link, or clicking **Open GitHub issue** | **Off until you click** | **Never** (except a redacted bug report that you preview and submit yourself) | Only runs when you explicitly click the button or link |
 | **4. Sample-derived remote features** | [Remote Genome Viewer](genome-viewer.md#view-files-on-a-remote-server) (**Connect and view remote file**), or realigning a remote `https://` alignment URL | **Always explicit opt-in** (off in Basic & Advanced) | **Yes** — sends requested file paths and genomic byte ranges to the server you chose | Never enabled by default; requires explicit per-action confirmation |
@@ -108,15 +111,41 @@ This applies to automatic update checks as well as manual downloads:
   explicit connection and transfer confirmation, keeps your server token out of
   browser-delivered data, and enforces HTTPS certificate validation.
 
+## Network mode
+
+**Settings → Network & Privacy** shows the detected connection cost and the
+mode in use. **Automatic** switches to **Low** when macOS reports a constrained
+or expensive path, Windows reports a metered or roaming profile, or
+NetworkManager reports a metered active connection on Linux. Detection reads
+local operating-system information; it sends no requests. If the cost cannot
+be detected, Automatic uses **Low** so setup and large updates still wait for
+confirmation. This includes the macOS browser development launcher, which
+does not have the native Tauri helper.
+
+- **Full** keeps the usual consent rules for network features.
+- **Low** skips automatic setup and update downloads. Small update checks may
+  still run when enabled. Start setup yourself to confirm its downloads, or
+  choose Full to run other CLI operations that Low refuses as bulk transfers.
+- **Off** blocks CLI transfers, setup downloads, app update checks and
+  downloads, and remote viewer connections. Local analysis still works.
+
+The app passes the effective mode to the CLI for each new command, overriding
+the CLI's `network_mode` setting for commands run from the app. Changing the
+mode or connection does not cancel transfers already in progress.
+**Privacy mode** is separate: it pauses automatic connections without
+blocking requests you make explicitly.
+
 ## How to run completely offline
 
 If you work in an air-gapped environment or want **zero** outbound network
 traffic — including no IP-visible update checks:
 
-1. Choose **Not now** at first launch, or turn on **Privacy mode** in
-   **Settings → Network & Privacy**. The red **PRIVACY** badge shows when
-   Privacy mode is on. Avoid manual network actions, which Privacy mode
-   does not block.
+1. Choose **Not now** at first launch, then set **Network mode** to **Off** in
+   **Settings → Network & Privacy**. Avoid opening external links in your
+   browser. **Privacy mode** (shown by the red **PRIVACY** badge) pauses
+   automatic connections but still permits manual network actions unless
+   the network mode blocks them. To disable only startup checks, turn off
+   **Check for updates at launch**.
 2. Keep **Allow missing public-data downloads** turned **off** in
    **Settings → Users Workspace Settings** (this is already the default).
 3. Pre-install the tools, reference genomes, and reference data you need while

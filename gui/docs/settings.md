@@ -38,12 +38,16 @@ Always visible in both Basic and Advanced mode:
 
 ## Network & Privacy
 
+- **Network mode:** Automatic uses Low on metered or constrained connections,
+  or when the connection cost is unknown. Low defers large downloads; Full
+  keeps the usual consent rules, and Off blocks network operations.
 - **Check for updates at launch:** Off on a fresh install until you choose
   **OK** in the first-launch prompt. It checks GitHub for a newer desktop app.
 - **Privacy mode:** Pauses automatic network activity without changing the
   launch-check preference. A red **PRIVACY** badge shows while it is on.
 
-You can still use **File → Check for Updates...** or run a download yourself.
+Privacy mode still lets you use **File → Check for Updates...** or start a
+download yourself, subject to the selected network mode.
 See [Privacy and network access](privacy.md).
 
 ## Report an Issue

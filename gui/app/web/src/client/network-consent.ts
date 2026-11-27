@@ -68,20 +68,47 @@ export function showNetworkConsent(onChoice: (acceptedHere: boolean) => void) {
 }
 
 let savingSettings = false;
+let settingsVisible = false;
+export async function fetchNetworkSettings() {
+    return api<NetworkSettings>("/api/network-settings");
+}
+
+async function refreshConnectionCost() {
+    const previous = state.networkSettings;
+    const fresh = await fetchNetworkSettings().catch(() => undefined);
+    if (!fresh || savingSettings || state.networkSettings !== previous) return;
+    if (fresh.detectedCost !== previous.detectedCost || fresh.mode !== previous.mode ||
+        fresh.privacyMode !== previous.privacyMode || fresh.checkForUpdatesAtLaunch !== previous.checkForUpdatesAtLaunch) {
+        state.networkSettings = fresh;
+        scheduleRender();
+    }
+}
+
+function refreshVisibleSettings() {
+    if (settingsVisible) void refreshConnectionCost();
+}
+
 export function bindNetworkSettings(root: HTMLElement) {
-    const inputs = [...root.querySelectorAll<HTMLInputElement>("[data-network-setting]")];
+    const inputs = [...root.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-network-setting]")];
+    if (inputs.length > 0 && !settingsVisible) void refreshConnectionCost();
+    settingsVisible = inputs.length > 0;
+    window.addEventListener("focus", refreshVisibleSettings);
+    window.addEventListener("online", refreshVisibleSettings);
+    window.addEventListener("offline", refreshVisibleSettings);
     for (const input of inputs) {
         input.disabled = savingSettings;
         input.addEventListener("change", async () => {
             const key = input.dataset.networkSetting;
-            if (savingSettings || (key !== "privacyMode" && key !== "checkForUpdatesAtLaunch")) return;
+            if (savingSettings || (key !== "privacyMode" && key !== "checkForUpdatesAtLaunch" && key !== "mode")) return;
             savingSettings = true;
             inputs.forEach((item) => { item.disabled = true; });
             try {
-                state.networkSettings = await api<NetworkSettings>("/api/network-settings", { body: { [key]: input.checked } });
+                const value = input instanceof HTMLSelectElement ? input.value : input.checked;
+                state.networkSettings = await api<NetworkSettings>("/api/network-settings", { body: { [key]: value } });
                 scheduleRender();
             } catch {
-                input.checked = state.networkSettings[key];
+                if (input instanceof HTMLSelectElement) input.value = state.networkSettings.mode;
+                else if (key !== "mode") input.checked = state.networkSettings[key];
                 const error = root.querySelector<HTMLElement>("[data-network-settings-error]");
                 if (error) {
                     error.textContent = state.labels.networkSaveError ?? "";
@@ -89,7 +116,7 @@ export function bindNetworkSettings(root: HTMLElement) {
                 }
             } finally {
                 savingSettings = false;
-                root.querySelectorAll<HTMLInputElement>("[data-network-setting]").forEach((item) => { item.disabled = false; });
+                root.querySelectorAll<HTMLInputElement | HTMLSelectElement>("[data-network-setting]").forEach((item) => { item.disabled = false; });
             }
         });
     }

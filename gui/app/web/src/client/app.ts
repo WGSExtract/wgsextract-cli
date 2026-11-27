@@ -120,7 +120,7 @@ function onNetworkChoice(acceptedHere: boolean) {
     }
     initializeTauriUpdater();
     if (setupHasNeverRun()) {
-        void runStartupSetup(false);
+        void runStartupSetup(true);
     }
 }
 async function runStartupSetup(automatic: boolean) {

@@ -504,7 +504,7 @@ function Start-InstalledApp {
         # The update lab opts in explicitly without running first-launch setup.
         $networkSettingsDirectory = Join-Path $env:LOCALAPPDATA $psi.Environment["WGSEXTRACT_GUI_APP_DATA_NAME"]
         New-Item -ItemType Directory -Force -Path $networkSettingsDirectory | Out-Null
-        Set-Content -LiteralPath (Join-Path $networkSettingsDirectory "settings.json") -Encoding Ascii -Value '{"networkConsent":"accepted","checkForUpdatesAtLaunch":true}'
+        Set-Content -LiteralPath (Join-Path $networkSettingsDirectory "settings.json") -Encoding Ascii -Value '{"networkConsent":"accepted","networkMode":"full","checkForUpdatesAtLaunch":true}'
         $psi.Environment["GFC_TAURI_AUTO_UPDATE"] = "1"
         if ($RecordVideo) {
             $psi.Environment["GFC_TAURI_AUTO_UPDATE_DELAY_SECONDS"] = [string]$VisibleLaunchSeconds
