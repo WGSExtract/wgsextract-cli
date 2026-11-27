@@ -387,8 +387,11 @@ def _write_vcf(
     ):
         for line in source:
             cols = line.split("\t", 5)
-            if line.startswith("#") or (int(cols[1]), cols[4].upper()) in accepted:
+            if line.startswith("#"):
                 stream.write(line)
+            elif (int(cols[1]), cols[4].upper()) in accepted:
+                cols[3], cols[4] = cols[3].upper(), cols[4].upper()
+                stream.write("\t".join(cols))
     for index in (Path(f"{path}.tbi"), Path(f"{path}.csi")):
         index.unlink(missing_ok=True)
     with path.open("wb") as out:

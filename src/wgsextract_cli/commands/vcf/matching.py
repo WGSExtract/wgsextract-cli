@@ -30,6 +30,7 @@ from wgsextract_cli.core.variant_files import (
     vcf_chromosomes,
 )
 from wgsextract_cli.core.variant_table import parse_header
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 
 from .matching_tables import select_snv_rows, write_table
 from .resource_ref_check import (
@@ -175,10 +176,15 @@ def _write_vcf(
 
 
 def _left_align(source: str, reference: str, output: str, check_ref: str) -> None:
-    run_command(
-        ["bcftools", "norm", "-f", reference, "-c", check_ref, "-Oz", "-o", output, source],
-        capture_output=True,
-    )  # fmt: skip
+    run_pipeline(
+        uppercase_vcf(
+            ["bcftools", "norm", "-f", reference],
+            output,
+            source=source,
+            check_ref=check_ref,
+        ),
+        description="Normalize annotation query alleles",
+    )
 
 
 def _reference_lengths(reference: str) -> dict[str, int]:
@@ -416,7 +422,7 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
             if line.startswith("#"):
                 continue
             target = line.rstrip().split("\t")
-            ref, alt = target[3:5]
+            ref, alt = (a.upper() for a in target[3:5])
             if (
                 len(ref) < 2
                 or len(ref) != len(alt)
@@ -480,7 +486,7 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
                     continue
                 inserted = db.execute(
                     "INSERT INTO alleles VALUES (?, ?, ?, ?, ?, ?)",
-                    (f[0], int(f[1]), f[3], f[4], end, line.rstrip()),
+                    (f[0], int(f[1]), f[3].upper(), f[4].upper(), end, line.rstrip()),
                 )
                 db.execute(
                     "INSERT INTO spans VALUES (?, ?, ?)",
@@ -495,7 +501,7 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
             if targets:
                 emitted: set[tuple[str, str, str, str]] = set()
                 for target in targets:
-                    ref, alt = target[3:5]
+                    ref, alt = (a.upper() for a in target[3:5])
                     if (
                         len(ref) < 2
                         or len(ref) != len(alt)
@@ -531,17 +537,13 @@ def _compose(query: str, resource: str, work: str, thresholds: vc.Thresholds) ->
                             "SELECT record FROM alleles WHERE chrom=? AND pos=? AND ref=? AND alt=?",
                             (target[0], int(target[1]) + offset, r, a),
                         ).fetchall()
-                        matches = [
-                            str(row[0]).split("\t")
-                            for row in rows
-                            if str(row[0]).split("\t")[3:5] == [r, a]
-                        ]
-                        if len(matches) != 1:
+                        if len(rows) != 1:
                             break
-                        part = matches[0]
-                        parts.append(part)
+                        parts.append(str(rows[0][0]).split("\t"))
                     else:
-                        part_keys = {(int(p[1]), p[3], p[4]) for p in parts}
+                        part_keys = {
+                            (int(p[1]), p[3].upper(), p[4].upper()) for p in parts
+                        }
                         start, end = int(target[1]), int(target[1]) + len(ref) - 1
                         overlaps = db.execute(
                             "SELECT a.pos, a.ref, a.alt, a.record FROM spans s JOIN alleles a ON a.rowid=s.record_id "

@@ -399,8 +399,8 @@ def _native_calls(
         chrom, pos, ref, alt, filtered, gt, dp, gq, pl = line.split("\t")
         for key in by_position.get((chrom, int(pos)), []):
             if (
-                ref != sites[key].ref
-                or alt != sites[key].alt
+                ref.upper() != sites[key].ref
+                or alt.upper() != sites[key].alt
                 or len(re.split(r"[/|]", gt)) != ploidies[key]
                 or policy.rejection(
                     dp, likelihood_gq(gt, pl) if gq == "." else gq, filtered

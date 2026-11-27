@@ -1,0 +1,6 @@
+## Fixes
+
+- `vcf call` writes uppercase REF and ALT sequences even on soft-masked references.
+  Panel watches, ACMG annotations, variant tables and polygenic scores now match
+  lowercase sequence alleles in input VCFs
+  ([#1630, lowercase VCF alleles](https://github.com/WGSExtract/wgsextract-cli/issues/1630)).

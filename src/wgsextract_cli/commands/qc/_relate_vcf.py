@@ -224,8 +224,8 @@ def prepare(
     for site in sites:
         best: tuple[list[str], int | None] | None = None
         for fields in records.get((site.contig, site.pos), []):
-            alts = fields[3].split(",")
-            if fields[2] != site.ref:
+            alts = fields[3].upper().split(",")
+            if fields[2].upper() != site.ref:
                 continue
             if site.alt in alts:
                 best = (fields, alts.index(site.alt) + 1)

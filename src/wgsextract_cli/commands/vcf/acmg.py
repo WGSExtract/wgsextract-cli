@@ -54,6 +54,7 @@ from wgsextract_cli.core.variant_files import (
     vcf_index_chromosomes,
 )
 from wgsextract_cli.core.variant_table import parse_header, pick_csq
+from wgsextract_cli.core.vcf_alleles import allele_key
 
 from ._acmg_fastvep import _FastVep
 from ._acmg_region_note import REGION_HEADER, REGION_INFO, RegionNotes, region_coverage
@@ -311,6 +312,15 @@ def _records(lines: Iterable[str]) -> Iterator[list[str]]:
             yield line.rstrip("\n").split("\t")
 
 
+def _record_key(fields: list[str]) -> tuple[str, str, str, tuple[str, ...]]:
+    return (
+        fields[0],
+        fields[1],
+        allele_key(fields[3]),
+        tuple(map(allele_key, fields[4].split(","))),
+    )
+
+
 def _info_dict(info: str) -> dict[str, str]:
     if info in ("", "."):
         return {}
@@ -410,8 +420,7 @@ def _merge(
         fields = line.rstrip("\n").split("\t")
         tally.records += 1
         fields[7] = _without_ours(fields[7])
-        key = fields[0:2] + fields[3:5]
-        if pending is None or pending[0:2] + pending[3:5] != key:
+        if pending is None or _record_key(pending) != _record_key(fields):
             tally.transcripts["not_classified"] += 1
             sink.write("\t".join(fields) + "\n")
             continue

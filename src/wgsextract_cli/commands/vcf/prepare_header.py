@@ -17,6 +17,7 @@ from wgsextract_cli.core.variant_files import (
     chromosome_rename_mapping,
     header_attributes,
 )
+from wgsextract_cli.core.vcf_alleles import allele_key
 
 DECLARED = "Used by the input VCF without a header line; declared by vcf prepare"
 _CHECK_EVERY = 100_000
@@ -42,6 +43,7 @@ class Scan:
     # Records that come before the one above them in coordinate order.
     out_of_order: int = 0
     multiallelic: int = 0
+    lowercase_alleles: bool = False
     # Records that splitting the multiallelic ones adds.
     extra_alleles: int = 0
     undeclared: dict[str, dict[str, None]] = field(
@@ -49,7 +51,7 @@ class Scan:
     )
 
 
-def scan_records(vcf: str, work: Path) -> Scan:
+def scan_records(vcf: str, work: Path, *, check_case: bool = False) -> Scan:
     """Read every record with bcftools, which also names the INFO, FORMAT and
     FILTER IDs the header doesn't declare."""
     scan = Scan()
@@ -66,7 +68,7 @@ def scan_records(vcf: str, work: Path) -> Scan:
             current, last = "", 0
             with proc.stdout as stream:
                 for line in stream:
-                    chrom, pos_text, _, _, alt, _ = line.split("\t", 5)
+                    chrom, pos_text, _, ref, alt, _ = line.split("\t", 5)
                     pos = int(pos_text)
                     scan.records += 1
                     if not scan.records % _CHECK_EVERY:
@@ -84,6 +86,10 @@ def scan_records(vcf: str, work: Path) -> Scan:
                     if alleles > 1:
                         scan.multiallelic += 1
                         scan.extra_alleles += alleles - 1
+                    if check_case and not scan.lowercase_alleles:
+                        scan.lowercase_alleles = ref != ref.upper() or any(
+                            a != allele_key(a) for a in alt.split(",")
+                        )
         except BaseException:
             proc.kill()
             proc.wait()
