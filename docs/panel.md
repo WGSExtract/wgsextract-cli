@@ -122,7 +122,7 @@ Every group needs `qualify` clauses, from the defaults or its overrides.
 | --- | --- |
 | `max_af` | Keep variants whose gnomAD allele frequency is at most this fraction (0–1). A variant without a frequency is kept and flagged. |
 | `max_popmax_af` | The same for the highest population frequency, where the table has one. |
-| `pass_only` | Only variants whose FILTER is PASS. Default `true`. |
+| `pass_only` | Require FILTER `PASS` unless `missing_filter` allows an unset FILTER. Default `true`. |
 | `min_confidence` | The lowest [confidence label](variant-confidence.md) kept: `high`, `moderate` or `low`. |
 | `missing_filter` | With `pass_only`, `drop` (default) or `keep` records with FILTER `.` (not applied). `keep` still rejects named filters such as `LowQual`. |
 | `missing_confidence` | With `min_confidence`, `drop` (default) or `keep` records with no confidence label. `keep` still rejects labels below the minimum. |
@@ -192,21 +192,22 @@ dosage = { het = 0.5, hom = 1.0, trans = 1.0, cis = 0.5, phase_unknown = 0.5 }
 
 Each qualifying ALT contributes `called copies × clause weight × dosage
 multiplier`. Dosage multipliers range from 0 to 1; an omitted category uses
-1. A diploid homozygous ALT (`hom`) contributes two copies. A complete
-haploid ALT contributes one copy with multiplier 1. A lone diploid
-heterozygote uses `het` unless another incomplete or non-diploid call makes
-the relationship unknown. Two different qualifying ALTs in a complete
-diploid `1/2` call establish `trans` without a phase set. Otherwise,
-heterozygotes use `cis` or `trans` only when all qualifying heterozygotes in
-the gene have the same explicit phase block and no incomplete or complex call
-undermines it. In that block a hit with an opposite-copy partner uses `trans`;
-if all are on one copy, all use `cis`. Different contigs, different blocks,
-unphased multiple hits and partial or polyploid calls use `phase_unknown`
-where no relationship is established. Dosage categories never stack.
-Dosage uses the qualifying ALTs after vetoes, including zero-weight ALTs.
-Its phase rules are stricter than the gene's separate biallelic evidence
-summary, which can report a demonstrated pair even when other hits are
-unresolved.
+1. A complete diploid homozygous ALT (`hom`) contributes two copies. A
+complete haploid ALT contributes one copy with multiplier 1 and doesn't
+affect the dosage category of diploid hits. Incomplete and polyploid calls
+use `phase_unknown` and prevent phase comparisons across records.
+
+Two qualifying ALTs in a complete diploid `1/2` call use `trans` even
+without a phase set or when other calls are unresolved. Otherwise, a lone
+diploid heterozygote uses `het` if there are no qualifying incomplete or
+polyploid calls. Multiple diploid heterozygotes use `cis` or `trans` only
+when all are phased on the same contig in the same explicit phase set and
+there are no qualifying incomplete or polyploid calls. In that block,
+if all are on one copy they use `cis`; if both copies have hits they
+use `trans`. Heterozygotes that meet none of these rules use `phase_unknown`.
+Dosage categories never stack. Only qualifying ALTs are considered after
+vetoes, including zero-weight ALTs. The gene's separate biallelic evidence
+summary can report a demonstrated pair even when other hits are unresolved.
 
 The audit JSON keeps raw copy counts and adds the applied clause weight,
 dosage category, multiplier, and contribution for each qualifying ALT. It
@@ -257,10 +258,11 @@ callability the default exon models cover selected genes on GRCh38 and GRCh37; s
 `--exons` for a local model covering other genes. No gVCF or no exon model for
 a gene means the audit does not infer that its coding bases were read.
 
-Heterozygotes are compared across positions only within a common phase set.
-Two qualifying alternate alleles on the same chromosome copy are `cis`
-(`one_copy` if there is no other evidence); on opposite copies they are
-`trans` (`biallelic`). A gene's phase and a haplotype watch's named allele
+Heterozygotes are compared across positions only within a common phase set;
+two qualifying ALTs in a complete diploid `1/2` call establish `trans`
+without a phase set. Two qualifying ALTs on the same chromosome copy are
+`cis` (`one_copy` if there is no other evidence); on opposite copies they
+are `trans` (`biallelic`). A gene's phase and a haplotype watch's named allele
 match are separate results.
 Haplotype watches show `ambiguous_phase` when more than one orientation is
 possible, even if only one matches the named patterns. For pharmacogenes,
@@ -293,11 +295,11 @@ sex in its calling policy. Missing opportunity or too few matched genes
 does not produce a null statistic. ChrY is excluded from calibration. For XY
 samples, pseudoautosomal and non-pseudoautosomal X genes are matched separately;
 genes whose CDS crosses both are excluded. In haploid X regions, `1` and `1/1`
-each count as one ALT copy. Heterozygous and partial calls contribute no copies
-to calibration; this does not change the ordinary audit counts. The audit
-withholds the statistic if a target length lies outside its chromosome class's
-control range or the expected control total differs by more than 20% from the
-target total.
+each count as one ALT copy. In those regions, heterozygous and partial
+calls contribute no copies to calibration; ordinary audit counts are
+unaffected. The audit withholds the statistic if a target length lies
+outside its chromosome class's control range or the expected control total
+differs by more than 20% from the target total.
 
 The report shows observed copies and genes, the null allele-count histogram
 and matched lengths, mean, population standard deviation, percentile
@@ -310,8 +312,8 @@ For weighted groups, panel genes and controls use the same per-gene scorer
 after the same coding-opportunity gate. Phase for the matched statistic
 uses only alleles that pass that gate, and non-PAR haploid X calls keep the
 one-copy convention. The observed raw count is still shown, alongside the
-weighted score. Weighted groups skip symbolic and breakend ALTs and records
-marked `SVTYPE`; use an annotated small-variant call set, not a
+weighted score. Weighted groups skip symbolic and breakend ALTs and ALTs
+with an `SVTYPE` annotation; use an annotated small-variant call set, not a
 structural-variant or target-CNV call set. Histogram keys are lower
 edges of fixed unit-width bins
 (`[0,1)`, `[1,2)`, …). The empirical tail and percentile use unbinned,
