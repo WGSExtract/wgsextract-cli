@@ -32,10 +32,12 @@ from wgsextract_cli.core.execution_context import (
     ContextThreadPoolExecutor,
     context_thread,
 )
+from wgsextract_cli.core.gnomad_fields import GNOMAD_JOINT_FAF95
 from wgsextract_cli.core.network_policy import NetworkRestricted, require_network
 from wgsextract_cli.core.process_registry import terminate_trees
 from wgsextract_cli.core.ref_library.layout import download_path
 from wgsextract_cli.core.resource_mirrors import mirror_chunks, mirror_for
+from wgsextract_cli.core.results import warn
 from wgsextract_cli.core.utils import (
     WGSExtractError,
     popen,
@@ -53,10 +55,13 @@ GNOMAD_V4_URL = (
 GNOMAD_V4_CONTIGS = [f"chr{c}" for c in (*range(1, 23), "X", "Y")]
 GNOMAD_AF_TABLE = "gnomad_hg38.tsv.gz"
 GNOMAD_V4_REBUILD = "wgsextract ref gnomad --release 4.1 --download"
-_TABLE_SCHEMA = 3
+_TABLE_SCHEMA = 4
+_PRE_FAF_SCHEMA = 3
 _JOINT_HEADER = "## gnomAD v4.1 joint exomes+genomes,"
 _SCHEMA_MARKER = f"; table schema {_TABLE_SCHEMA}"
-_GNOMAD_V4_FIELDS = ("AF_joint", "AF_grpmax_joint", "nhomalt_joint")
+_GNOMAD_V4_FIELDS = (
+    "AF_joint", "AF_grpmax_joint", "nhomalt_joint", GNOMAD_JOINT_FAF95,
+)  # fmt: skip
 _GNOMAD_V4_COLUMNS = ("#CHROM", "POS", "REF", "ALT", "AF", *_GNOMAD_V4_FIELDS[1:])
 # Sites gnomAD itself filtered out count as absent, so rare-variant filtering
 # keeps the user's call rather than trusting an artifact's frequency.
@@ -80,36 +85,50 @@ _GNOMAD_V4_HEADER = (
 class GnomadTableHeader:
     columns: tuple[str, ...]
     joint: bool
-    has_current_schema: bool
+    schema: str
 
     @property
     def is_current(self) -> bool:
-        return self.has_current_schema and self.columns == _GNOMAD_V4_COLUMNS
+        return self.schema == str(_TABLE_SCHEMA) and self.columns == _GNOMAD_V4_COLUMNS
+
+    @property
+    def is_pre_faf(self) -> bool:
+        return (
+            self.schema == str(_PRE_FAF_SCHEMA)
+            and self.columns == _GNOMAD_V4_COLUMNS[:-1]
+        )
+
+
+def gnomad_faf95_upgrade_message() -> str:
+    return (
+        "The installed gnomAD v4.1 table has no ancestry-group maximum FAF95 "
+        f"(gnomad_faf95). To add it, run: {GNOMAD_V4_REBUILD} "
+        "(streams about 900 GB of public gnomAD data)."
+    )
 
 
 def gnomad_table_header(path: str) -> GnomadTableHeader:
     """Read the column names and joint v4.1 build metadata."""
-    joint = has_current_schema = False
+    joint = False
+    schema = ""
     with gzip.open(path, "rt", encoding="utf-8") as table:
         for line in table:
             line = line.rstrip("\r\n")
             if line.startswith("#CHROM\t"):
-                return GnomadTableHeader(
-                    tuple(line.split("\t")), joint, has_current_schema
-                )
+                return GnomadTableHeader(tuple(line.split("\t")), joint, schema)
             if not line.startswith("#"):
                 break
             if line.startswith(_JOINT_HEADER):
                 joint = True
-                has_current_schema |= line.endswith(_SCHEMA_MARKER)
-    return GnomadTableHeader((), joint, has_current_schema)
+                schema = line.rpartition("; table schema ")[2]
+    return GnomadTableHeader((), joint, schema)
 
 
-def _is_current_table(path: str) -> bool:
+def _installed_table_header(path: str) -> GnomadTableHeader:
     try:
-        return gnomad_table_header(path).is_current
+        return gnomad_table_header(path)
     except (OSError, EOFError, UnicodeError):
-        return False
+        return GnomadTableHeader((), False, "")
 
 
 def _index_table(path: str) -> None:
@@ -322,10 +341,13 @@ def build_gnomad_af(
     per-contig parts, which are then concatenated (BGZF allows that) and indexed.
     """
     dest = str(download_path(reflib_dir, GNOMAD_AF_TABLE))
-    if _is_current_table(dest):
+    installed = _installed_table_header(dest)
+    if installed.is_current or (installed.is_pre_faf and not download):
         if not Path(dest + ".tbi").is_file():
             verify_dependencies(["tabix"])
             _index_table(dest)
+        if installed.is_pre_faf:
+            warn("gnomad_faf95_unavailable", gnomad_faf95_upgrade_message(), path=dest)
         logging.info(f"{GNOMAD_AF_TABLE} is already installed.")
         return True
     if not download:
@@ -339,7 +361,7 @@ def build_gnomad_af(
             f"To stream the public VCFs, run: {GNOMAD_V4_REBUILD}"
         )
     verify_dependencies(["bcftools", "bgzip", "tabix"])
-    # Older parts may have only five columns or have unsplit alleles.
+    # Older parts don't have the same columns and may have unsplit alleles.
     parts_dir = str(download_path(reflib_dir, f".gnomad_hg38_parts_v{_TABLE_SCHEMA}"))
     if not Path(dest).exists():
         dest = str(Path(parts_dir).parent / GNOMAD_AF_TABLE)

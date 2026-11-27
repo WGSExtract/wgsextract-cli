@@ -14,7 +14,14 @@ from wgsextract_cli.core.dependency_checks import (
 from wgsextract_cli.core.gnomad_af import (
     GNOMAD_AF_TABLE,
     GNOMAD_V4_REBUILD,
+    gnomad_faf95_upgrade_message,
     gnomad_table_header,
+)
+from wgsextract_cli.core.gnomad_fields import (
+    GNOMAD_FAF95,
+    GNOMAD_JOINT_FAF95,
+    GNOMAD_NATIVE_FAF95,
+    gnomad_native_faf95,
 )
 from wgsextract_cli.core.output_checks import vcf_record_count
 from wgsextract_cli.core.results import current_result, warn
@@ -42,6 +49,10 @@ _GNOMAD_TAGS = {
     "GNOMAD_NHOMALT": (
         "Integer",
         "gnomAD count of homozygous individuals for this ALT",
+    ),
+    GNOMAD_FAF95: (
+        "Float",
+        "gnomAD maximum genetic ancestry group filtering allele frequency at 95% confidence",
     ),
 }
 
@@ -125,7 +136,7 @@ def _annotate_from_phylop_table(
         )
 
 
-def _gnomad_vcf_columns(path: str) -> tuple[list[str], list[str]]:
+def _gnomad_vcf_columns(path: str) -> tuple[list[str], list[str], str | None]:
     text = run_command(["bcftools", "view", "-h", path], capture_output=True).stdout
     tags = parse_header(text.splitlines()).info_number
     sources = {
@@ -141,13 +152,21 @@ def _gnomad_vcf_columns(path: str) -> tuple[list[str], list[str]]:
         if source:
             columns.append(f"INFO/{dest}:=INFO/{source}")
             destinations.append(dest)
-    return columns, destinations
+    faf95_source = gnomad_native_faf95(tags)
+    if faf95_source:
+        columns.append(f"INFO/{GNOMAD_FAF95}:=INFO/{faf95_source}")
+        destinations.append(GNOMAD_FAF95)
+    return columns, destinations, faf95_source
 
 
 def _gnomad_table_columns(fields: tuple[str, ...]) -> tuple[list[str], list[str]]:
     columns = ["CHROM", "POS", "REF", "ALT", "INFO/GNOMAD_AF"]
     destinations = ["GNOMAD_AF"]
-    extras = {"AF_grpmax_joint": "GNOMAD_POPMAX_AF", "nhomalt_joint": "GNOMAD_NHOMALT"}
+    extras = {
+        "AF_grpmax_joint": "GNOMAD_POPMAX_AF",
+        "nhomalt_joint": "GNOMAD_NHOMALT",
+        GNOMAD_JOINT_FAF95: GNOMAD_FAF95,
+    }
     for name in fields[5:]:
         if dest := extras.get(name):
             destinations.append(dest)
@@ -175,12 +194,19 @@ def run_gnomad(params: VcfGnomadParams) -> None:
     ann_out = str(Path(outdir, GNOMAD_ANNOTATED))
     if is_vcf_path(gnomad_file, bcf=False):
         annotation = ensure_vcf_prepared(gnomad_file)
-        columns, destinations = _gnomad_vcf_columns(annotation)
+        columns, destinations, faf95_source = _gnomad_vcf_columns(annotation)
     else:
         annotation = prepare_tabix_annotation(gnomad_file, "gnomAD")
         table_header = gnomad_table_header(annotation)
         columns, destinations = _gnomad_table_columns(table_header.columns)
-        if (
+        faf95_source = GNOMAD_JOINT_FAF95 if GNOMAD_FAF95 in destinations else None
+        if table_header.is_pre_faf:
+            warn(
+                "gnomad_faf95_unavailable",
+                gnomad_faf95_upgrade_message(),
+                path=gnomad_file,
+            )
+        elif (
             table_header.joint or Path(gnomad_file).name == GNOMAD_AF_TABLE
         ) and not table_header.is_current:
             warn(
@@ -189,11 +215,19 @@ def run_gnomad(params: VcfGnomadParams) -> None:
                 f"To rebuild, run: {GNOMAD_V4_REBUILD}",
                 path=gnomad_file,
             )
-    header = [
-        f'##INFO=<ID={dest},Number=A,Type={kind},Description="{description}">'
-        for dest in destinations
-        for kind, description in [_GNOMAD_TAGS[dest]]
-    ]
+    header = []
+    for dest in destinations:
+        kind, description = _GNOMAD_TAGS[dest]
+        if dest == GNOMAD_FAF95 and faf95_source:
+            callset = (
+                "joint exomes+genomes"
+                if faf95_source == GNOMAD_JOINT_FAF95
+                else "standalone"
+            )
+            description += f" ({callset}; source INFO/{faf95_source})"
+        header.append(
+            f'##INFO=<ID={dest},Number=A,Type={kind},Description="{description}">'
+        )
     annotate_vcf(
         ensure_vcf_prepared(input_file),
         annotation,
@@ -203,12 +237,19 @@ def run_gnomad(params: VcfGnomadParams) -> None:
         "gnomAD",
         header,
         threads=params.threads,
-        remove=[f"INFO/{tag}" for tag in _GNOMAD_TAGS if tag not in destinations],
+        # Don't let an older native FAF95 reappear in `vcf table` after reannotation.
+        remove=[
+            f"INFO/{tag}"
+            for tag in (*_GNOMAD_TAGS, *GNOMAD_NATIVE_FAF95)
+            if tag not in destinations
+        ],
         reference=lib.fasta,
         annotation_source=gnomad_file,
     )
 
     record_annotated(ann_out)
+    if faf95_source:
+        current_result().add_metrics(gnomad_faf95_source=faf95_source)
     if params.max_af is None:
         logging.info(LOG_MESSAGES["vcf_gnomad_done"].format(output=ann_out))
         return

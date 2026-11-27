@@ -66,10 +66,20 @@ http_config = subprocess.run(["git", "config", "--name-only", "--get-regexp",
                               "^http[.]"], capture_output=True, text=True)
 if effective_url != url or http_config.returncode != 1:
     raise ValueError("Remote checkout must use unmodified public HTTPS without HTTP overrides")
+worktree = root / "scratch" / ("certify-" + request["sha"])
+prepared_only = request.get("prepared_only", False)
+coordinator = shutil.which("agent-coord")
+resources = ["--cores", str(request["workers"]), "--mem", "8G",
+             "--lock", "wgsextract-certification", "--label", "remote certification"]
+if prepared_only:
+    if not worktree.is_dir():
+        raise ValueError("Remote certification checkout is not prepared; use hosted CI")
+    if coordinator:
+        subprocess.run([coordinator, "check", *resources], check=True,
+                       stdin=subprocess.DEVNULL, timeout=10)
 for revision in (request["sha"], request["base"]):
     subprocess.run(["git", "-c", "credential.helper=", "fetch", "--no-tags",
                     url, revision], check=True, stdin=subprocess.DEVNULL)
-worktree = root / "scratch" / ("certify-" + request["sha"])
 if not worktree.exists():
     subprocess.run(["git", "worktree", "add", "--detach",
                     str(worktree), request["sha"]], check=True)
@@ -83,11 +93,11 @@ if head != request["sha"] or dirty:
 command = ["pixi", "run", "--no-install", "python", "-X", "utf8",
            "scripts/ci_certify_remote_worker.py", request["sha"],
            request["base"], request["layer"], request["platform"], str(request["workers"])]
-coordinator = shutil.which("agent-coord")
+if prepared_only:
+    command.append("--prepared-only")
 if coordinator:
-    command = [coordinator, "run", "--cores", str(request["workers"]), "--mem", "8G",
-               "--lock", "wgsextract-certification", "--label", "remote certification",
-               "--", *command]
+    wait = ["--max-wait", "0"] if prepared_only else []
+    command = [coordinator, "run", *resources, *wait, "--", *command]
 sys.exit(subprocess.run(command, stdin=subprocess.DEVNULL).returncode)
 """
 
@@ -99,6 +109,8 @@ def remote_layer(
     name: str,
     workers: int,
     host: RemoteHost,
+    *,
+    prepared_only: bool = False,
 ) -> tuple[str, str]:
     for revision in (sha, pr["base"]["sha"]):
         if not re.fullmatch(r"[a-f0-9]{40}", revision):
@@ -111,6 +123,7 @@ def remote_layer(
         "layer": name,
         "platform": host.platform,
         "workers": workers,
+        "prepared_only": prepared_only,
     }
     script = f"request = {request!r}\n" + BOOTSTRAP
     directory = Path("out/certify") / sha / f"remote-{host.alias}" / name
@@ -222,7 +235,15 @@ def certify_remote(
             for name in layers:
 
                 def operation(name: str = name) -> tuple[str, str]:
-                    return remote_layer(repository, pr, sha, name, args.workers, host)
+                    return remote_layer(
+                        repository,
+                        pr,
+                        sha,
+                        name,
+                        args.workers,
+                        host,
+                        prepared_only=args.prepared_only,
+                    )
 
                 summary, log = publish_certification(repository, sha, name, operation)
                 summaries.append(f"{name}: {summary} (log `{log}`)")

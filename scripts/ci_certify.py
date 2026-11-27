@@ -566,6 +566,11 @@ def main() -> None:
     mode.add_argument("--generic-only", action="store_true")
     parser.add_argument("--remote", metavar="ALIAS_OR_PLATFORM")
     parser.add_argument("--remote-config", type=Path, default=Path("config.toml"))
+    parser.add_argument(
+        "--prepared-only",
+        action="store_true",
+        help="For a remote run, refuse missing prepared inputs instead of provisioning.",
+    )
     parser.add_argument("--workers", type=int, choices=range(1, 5), default=4)
     args = parser.parse_args()
     repository, pr, sha = pr_head()

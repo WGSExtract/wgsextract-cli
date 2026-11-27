@@ -634,6 +634,7 @@ def test_1289_missing_fields_in_unannotated_vcf_stay_empty(tmp_path):
         row[column]
         for column in (
             "phase_set", "alt_fraction", "transcript_id", "gnomad_popmax_af", "gnomad_nhomalt",
+            "gnomad_faf95",
         )
     )  # fmt: skip
     assert {warning.code for warning in result.warnings} <= {"nothing_annotated"}
