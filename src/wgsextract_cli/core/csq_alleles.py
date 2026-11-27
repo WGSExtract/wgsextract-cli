@@ -10,7 +10,7 @@ functions pick one ALT's entries for `vcf table` and `vcf acmg`.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from wgsextract_cli.core.vcf_alleles import allele_key
 
@@ -18,6 +18,7 @@ from wgsextract_cli.core.vcf_alleles import allele_key
 # names differently; <*> doesn't match it (Parser/VCF.pm, release 113).
 _SV_ALT = re.compile(r"[<\[\]][^*]+[>\]\[]|^\.\w+|\w+\.$")
 _BASES = re.compile(r"[ACGTN]+")
+_ANN_COMPOUND = re.compile(r"([ACGTN]+)-[^:\s]+:[0-9]+_[ACGTN]+>[ACGTN]+", re.I)
 
 
 def vep_allele(ref: str, alts: Sequence[str], alt: str) -> str:
@@ -48,48 +49,35 @@ def csq_entries(raw: str | None, names: Sequence[str]) -> list[dict[str, str]]:
     ]
 
 
-def for_allele(
-    entries: list[dict[str, str]],
-    field: str,
-    candidates: Sequence[str],
-    alt_index: int,
-    n_alts: int,
-    *,
-    split: bool = False,
+def _ann_allele_key(allele: str) -> str:
+    if "-" in allele and (compound := _ANN_COMPOUND.fullmatch(allele)):
+        allele = compound[1]
+    return allele_key(allele)
+
+
+def ann_for_allele(
+    entries: list[dict[str, str]], candidates: Sequence[str]
 ) -> list[dict[str, str]]:
-    """The entries describing one ALT. ``candidates`` are its possible
-    spellings, most specific first: the first that matches anything wins, so
-    VEP's trimmed spelling of one insertion can't also pick up another's.
-
-    A record split from a multi-allelic one (``split``: ``vcf clinvar``/
-    ``gnomad`` split them) may keep every original allele's entries, so it is
-    matched by its original ALLELE_NUM (``alt_index``) or spelling, never
-    given entries just because they all name one allele."""
-    if not entries:
-        return []
-    if _use_allele_num(entries, n_alts, split):
-        return [e for e in entries if e.get("ALLELE_NUM") == str(alt_index)]
-    return _by_spelling(entries, field, candidates)
-
-
-def _use_allele_num(entries: list[dict[str, str]], n_alts: int, split: bool) -> bool:
-    return "ALLELE_NUM" in entries[0] and (
-        n_alts > 1 or (split and {e.get("ALLELE_NUM") for e in entries} != {"1"})
-    )
+    """Match the ALT that owns a simple or compound SnpEff annotation."""
+    return _by_spelling(entries, "Allele", candidates, entry_key=_ann_allele_key)
 
 
 def _by_spelling(
-    entries: list[dict[str, str]], field: str, candidates: Sequence[str]
+    entries: list[dict[str, str]],
+    field: str,
+    candidates: Sequence[str],
+    *,
+    entry_key: Callable[[str], str] = allele_key,
 ) -> list[dict[str, str]]:
-    if not candidates:
+    if not entries or not candidates:
         return []
     keys = tuple(dict.fromkeys(map(allele_key, candidates)))
     if len(keys) == 1:
-        return [e for e in entries if field in e and allele_key(e[field]) == keys[0]]
+        return [e for e in entries if field in e and entry_key(e[field]) == keys[0]]
     by_key: dict[str, list[dict[str, str]]] = {}
     for entry in entries:
         if field in entry:
-            by_key.setdefault(allele_key(entry[field]), []).append(entry)
+            by_key.setdefault(entry_key(entry[field]), []).append(entry)
     for spelling in keys:
         if matches := by_key.get(spelling):
             return matches
@@ -147,8 +135,13 @@ def csq_for_allele(
     split = origin is not None and n_alts == 1
     if origin is not None and split:
         source_ref, source_alts, index = origin
-    if _use_allele_num(entries, n_alts, split):
-        return for_allele(entries, "Allele", (), index, n_alts, split=split)
+    if len(source_alts) > 1 and any(
+        entry.get("ALLELE_NUM") not in (None, "", ".") for entry in entries
+    ):
+        # bcftools preserves CSQ verbatim, so even a lone ALLELE_NUM=1
+        # belongs to the first original ALT, not to each split record.
+        number = str(index)
+        return [entry for entry in entries if entry.get("ALLELE_NUM") == number]
 
     alt = alts[alt_index - 1]
     preferred = vep_allele(ref, alts, alt)

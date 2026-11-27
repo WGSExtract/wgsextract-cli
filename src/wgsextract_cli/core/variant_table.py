@@ -43,9 +43,9 @@ from wgsextract_cli.core._variant_table_fields import to_int as _to_int
 from wgsextract_cli.core._variant_table_fields import value as _value
 from wgsextract_cli.core.csq_alleles import (
     allele_entries,
+    ann_for_allele,
     csq_entries,
     csq_for_allele,
-    for_allele,
     split_origin,
 )
 from wgsextract_cli.core.gnomad_fields import (
@@ -677,9 +677,7 @@ def indexed_variant_rows(
                 )
             csq_matches = csq_for_allele(csq_all, ref, alts, alt_index, origin)
             csq = pick_csq(csq_matches)
-            ann_matches = for_allele(
-                ann_all, "Allele", ann_spellings, index, n_alts, split=split
-            )
+            ann_matches = ann_for_allele(ann_all, ann_spellings)
             # SnpEff lists an allele's effects most severe first.
             ann = ann_matches[0] if ann_matches else {}
             picked = csq or {}

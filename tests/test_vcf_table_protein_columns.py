@@ -175,47 +175,62 @@ def test_1622_coordinates_are_not_guessed_from_uncertain_or_other_annotations(
 
 
 @needs_htslib
-def test_1622_minimized_csq_survives_splitting_without_normalization(
+@pytest.mark.parametrize(
+    ("ref", "alts", "tag", "spelling", "number", "owner"),
+    [
+        ("AAGT", "AACT,C", "CSQ", "C", "1", "AACT"),
+        ("AAGT", "C,AACT", "CSQ", "C", "2", "AACT"),
+        ("AAGT", "AACT,C", "CSQ", "C", "", None),
+        ("AAGT", "AACT,AATT", "CSQ", "C", "", "AACT"),
+        ("AAGT", "AACT,AATT", "CSQ", "AACT", "", "AACT"),
+        ("AT", "A,ATTT", "CSQ", "-", "", "A"),
+        ("A", "T", "ANN", "T-chr1:123456_A>G", "", "T"),
+        ("A", "T,G", "ANN", "T", "", "T"),
+    ],
+    ids=[
+        "csq-retained-first",
+        "csq-retained-second",
+        "csq-ambiguous",
+        "csq-minimized",
+        "csq-untrimmed",
+        "csq-indel",
+        "ann-compound",
+        "ann-simple",
+    ],
+)
+def test_1622_annotation_allele_identity_survives_splitting(
     tmp_path: Path,
+    ref: str,
+    alts: str,
+    tag: str,
+    spelling: str,
+    number: str,
+    owner: str | None,
 ) -> None:
     source = tmp_path / "source.vcf"
-    source.write_text(
-        _HEADER
-        + _record(
-            "chr1", "200", ".", "AAGT", "AACT,AATT", "40", "PASS",
-            "CSQ=C|missense_variant|ENST1|1|6|Pfam:PF1",
-            "GT", "1/2",
-        ),
-        encoding="utf-8",
-    )  # fmt: skip
-    split = tmp_path / "split.vcf"
-    run_command([
-        get_tool_path("bcftools"), "norm", "-m", "-any", "--old-rec-tag",
-        "OLD_MULTIALLELIC", "-o", str(split), str(source),
-    ])  # fmt: skip
-    api.vcf.table(api.VcfTableParams(input=split, outdir=tmp_path))
-    rows = _tsv(tmp_path / "split_variants.tsv")
-    assert tuple(rows["200", "AACT"][name] for name in _COLUMNS) == (
-        "6",
-        "6",
-        "Pfam:PF1",
-    )
-    assert tuple(rows["200", "AATT"][name] for name in _COLUMNS) == ("", "", "")
-
-
-@needs_htslib
-@pytest.mark.parametrize("numbered", [False, True])
-def test_1622_colliding_minimized_csq_requires_an_allele_number(
-    tmp_path: Path, numbered: bool
-) -> None:
-    source = tmp_path / "source.vcf"
-    header = _HEADER.replace("DOMAINS", "DOMAINS|ALLELE_NUM") if numbered else _HEADER
-    annotation = "CSQ=C|missense_variant|ENST1|1|6|Pfam:PF1"
+    header = _HEADER.replace("DOMAINS", "DOMAINS|ALLELE_NUM") if number else _HEADER
+    consequence = "frameshift_variant" if spelling == "-" else "missense_variant"
+    if tag == "CSQ":
+        domain = "Pfam:PF1"
+        annotation = f"CSQ={spelling}|{consequence}|ENST1|1|6|{domain}"
+        if number:
+            annotation += f"|{number}"
+    else:
+        domain = ""
+        entry = (
+            f"{spelling}|{consequence}|MODERATE|GENE|G|transcript|ENST1|"
+            "protein_coding|1/2|c.16A>T|p.Thr6Ser|16/250|16/210|6/70"
+        )
+        if "," not in alts:
+            entry = (
+                "G-chr1:123456_A>T|stop_gained|HIGH|OTHER|G|transcript|ENST9," + entry
+            )
+        annotation = "ANN=" + entry
     source.write_text(
         header
         + _record(
-            "chr1", "200", ".", "AAGT", "C,AACT", "40", "PASS",
-            annotation + ("|2" if numbered else ""), "GT", "1/2",
+            "chr1", "200", ".", ref, alts, "40", "PASS",
+            annotation, "GT", "1/2" if "," in alts else "0/1",
         ),
         encoding="utf-8",
     )  # fmt: skip
@@ -227,7 +242,10 @@ def test_1622_colliding_minimized_csq_requires_an_allele_number(
     for vcf in (source, split):
         api.vcf.table(api.VcfTableParams(input=vcf, outdir=tmp_path))
         rows = _tsv(tmp_path / f"{vcf.stem}_variants.tsv")
-        assert tuple(rows["200", "C"][name] for name in _COLUMNS) == ("", "", "")
-        assert tuple(rows["200", "AACT"][name] for name in _COLUMNS) == (
-            ("6", "6", "Pfam:PF1") if numbered else ("", "", "")
-        )
+        columns = ("transcript_id", "consequence", *_COLUMNS)
+        assert {
+            alt: tuple(row[name] for name in columns) for (_, alt), row in rows.items()
+        } == {
+            alt: ("ENST1", consequence, "6", "6", domain) if alt == owner else ("",) * 5
+            for alt in alts.split(",")
+        }

@@ -159,7 +159,9 @@ SnpEff `ANN` when that annotation supplies the consequence. It never uses
 another allele or transcript to fill a missing field, infers no positions
 from HGVS, and does not download protein data.
 If different ALTs could share a minimized annotation spelling, the table
-does not guess which ALT it describes. VEP's `ALLELE_NUM` can resolve it.
+does not guess which ALT it describes. VEP's `ALLELE_NUM` refers to the
+original ALT order even after splitting. For compound SnpEff annotations,
+the leading allele, not the linked variant, identifies the ALT.
 
 Positions can be a single residue or a range, with or without a reported
 protein length. Missing, uncertain, malformed and reversed insertion
