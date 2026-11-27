@@ -197,10 +197,10 @@ def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
                 log = logging.warning if sys.platform == "win32" else logging.debug
                 log("Process %s could not be terminated.", proc.pid, exc_info=True)
 
-    time.sleep(0.5)
-
     # The launcher can exit on SIGTERM while a descendant ignores it.
+    # Windows taskkill /F already forces termination; there is no grace period.
     if sys.platform != "win32":
+        time.sleep(0.5)
         for pgid in groups:
             try:
                 os.killpg(pgid, signal.SIGKILL)
