@@ -209,6 +209,25 @@ def long_read_fastq_command(path: str, cram_opt: Sequence[str] = ()) -> list[str
     ]
 
 
+def long_read_mapper_input(job: AlignJob, reads: str) -> tuple[list[list[str]], str]:
+    from .read_groups import read_group_descriptions
+
+    if _is_alignment_file(reads):
+        return [
+            long_read_fastq_command(reads, job.input_cram_opt or [])
+        ], read_group_descriptions(reads, job.input_ref)
+    # Normalize FASTQ comments: ONT comments can mix metadata with SAM tags.
+    stages = (
+        []
+        if is_fasta_path(reads)
+        else [
+            ["samtools", "import", "-u", "-T", LONG_READ_TAGS, "-0", reads],
+            ["samtools", "fastq", "-n", "-T", LONG_READ_TAGS, "-"],
+        ]
+    )
+    return stages, job.read_group_description
+
+
 def _long_read_length(reads: str, cram_opt: Sequence[str]) -> float | None:
     """Sampled mean read length, which scales minimap2's long-read buffers."""
     if _is_alignment_file(reads):

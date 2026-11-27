@@ -16,7 +16,7 @@ from wgsextract_cli.commands._messages.realign import CLI_HELP
 CERTIFICATION = {
     "realign": validated(
         "2026-11-25",
-        "HG002 30× SNP/indel qualification and ONT CUDA parity on tested inputs; not all backends or platforms.",
+        "HG002 30× SNP/indel qualification and ONT CUDA parity on tested inputs. The optional bonefish backend is Experimental.",
         ("Linux", "Windows"),
         f"{REPO}/issues/1121#issuecomment-7160085047",
         f"{REPO}/issues/1122#issuecomment-7040247624",
@@ -30,7 +30,7 @@ NEEDS = {
         HOURS,
         *_SAM,
         optional=(
-            "bcftools bgzip bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster"
+            "bcftools bgzip bonefish bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster"
         ),
     ),
 }
