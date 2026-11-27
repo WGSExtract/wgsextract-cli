@@ -23,7 +23,7 @@ from types import ModuleType
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from scripts import cleanup_worktree_activity
+    from scripts import cleanup_worktree_activity, reference_store_paths
     from scripts import cleanup_worktree_git as git_tools
     from scripts import cleanup_worktree_inventory as inventory_files
 
@@ -32,7 +32,7 @@ else:
     # Isolated mode excludes the checkout from the import path. Execute only
     # the checked helper bytes, rather than searching that path for imports.
     def load_helper(name: str, digest: str) -> ModuleType:
-        source = Path(__file__).with_name(f"cleanup_worktree_{name}.py")
+        source = Path(__file__).with_name(f"{name}.py")
         code = source.read_bytes()
         if hashlib.sha256(code).hexdigest() != digest:
             raise SystemExit(f"Worktree {name} helper version mismatch")
@@ -42,17 +42,25 @@ else:
         return module
 
     inventory_files = load_helper(
-        "inventory", "215bbff8f7b84d128b6a97bef6b91a0740cf3806c2de8736c87f0f6465db1d49"
+        "cleanup_worktree_inventory",
+        "680210262c628cc15a61b1cfe1bd8f5abf53377e2c799d8fb59b1389d29e2508",
     )
     activity = load_helper(
-        "activity", "2700ae87bfa047a1668db32a7a592beaf0b3d67013594420400eb31bda1125d1"
+        "cleanup_worktree_activity",
+        "2700ae87bfa047a1668db32a7a592beaf0b3d67013594420400eb31bda1125d1",
     )
     git_tools = load_helper(
-        "git", "3676bff1f83af0c58edda12dd7796aadba0c886906fbb6b2cd37d4d0141668f2"
+        "cleanup_worktree_git",
+        "3676bff1f83af0c58edda12dd7796aadba0c886906fbb6b2cd37d4d0141668f2",
+    )
+    reference_store_paths = load_helper(
+        "reference_store_paths",
+        "8e53b548a606e249c7ef5090648f082f0854c8fc280c30fc71c97de62465e6f5",
     )
 
 CleanupError = git_tools.CleanupError
 git = git_tools.git
+safe_directory = inventory_files.safe_directory
 REPO = "WGSExtract/wgsextract-cli"
 LEGACY_REPO = "theontho/wgsextract-cli"
 PROC = Path("/proc")
@@ -139,18 +147,6 @@ def worktrees(root: Path) -> list[Worktree]:
     return result
 
 
-def safe_directory(path: Path, mode: int = 0o755) -> None:
-    path.mkdir(mode=mode, exist_ok=True)
-    info = path.lstat()
-    if (
-        not stat.S_ISDIR(info.st_mode)
-        or info.st_uid != os.geteuid()
-        or info.st_mode & 0o022
-        or (mode == 0o700 and info.st_mode & 0o077)
-    ):
-        raise CleanupError(f"Unsafe output directory: {path}")
-
-
 def candidate(
     root: Path, tree: Worktree, trees: list[Worktree], include_detached: bool
 ) -> str:
@@ -192,16 +188,15 @@ def link_blocks(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path
 
 
 def scan_links(root: Path, trees: list[Worktree], paths: set[Path]) -> set[Path]:
-    locations = {root}
-    hook_paths: list[tuple[Path, Path]] = []
-    for tree in trees:
-        location = tree.directory.resolve()
-        if not location.is_dir():
-            continue
-        if not location.is_relative_to(root):
-            locations.add(location)
-        hook_paths.extend((location, path) for path in git_tools.hook_paths(location))
-    return inventory_files.dependency_links(root, locations, paths, hook_paths)
+    locations = [tree.directory.resolve() for tree in trees]
+    return inventory_files.dependency_links(
+        root,
+        locations,
+        paths,
+        git_tools.hook_paths,
+        reference_store_paths.store_path(locations),
+        reference_store_paths.worktree_alias,
+    )
 
 
 def inspected_paths(root: Path, paths: set[Path]) -> set[Path]:
@@ -321,7 +316,7 @@ def checked_tracked_files(path: Path, head: str) -> tuple[set[Path], str]:
 
 
 def contents(
-    path: Path, head: str, disposable: tuple[tuple[str, ...], ...]
+    path: Path, head: str, disposable: tuple[tuple[str, ...], ...], store: Path
 ) -> inventory_files.Inventory:
     tracked, reason = checked_tracked_files(path, head)
     if reason:
@@ -331,6 +326,7 @@ def contents(
         tracked,
         disposable,
         lambda names: git_tools.ignored_paths(path, names),
+        reference_store_paths.worktree_alias(path, store),
     )
 
 
@@ -485,12 +481,15 @@ def plan(
 ) -> dict[Path, inventory_files.Inventory]:
     paths = set()
     inventories: dict[Path, inventory_files.Inventory] = {}
+    store = reference_store_paths.store_path(
+        [tree.directory.resolve() for tree in trees]
+    )
     for tree in trees[1:]:
         tree.reason = candidate(root, tree, trees, include_detached)
         if not tree.reason and activity.mounted(tree.directory):
             tree.reason = "contains-mount"
         if not tree.reason:
-            inventory = contents(tree.directory, tree.head, disposable)
+            inventory = contents(tree.directory, tree.head, disposable, store)
             tree.reason = inventory.blocked
             if not tree.reason:
                 tree.disposable_outputs = sorted(map(str, inventory.disposable))
@@ -575,7 +574,10 @@ def apply_tree(
     planned: inventory_files.Inventory,
 ) -> str:
     path = tree.directory
-    inventory = contents(path, tree.head, disposable)
+    store = reference_store_paths.store_path(
+        [entry.directory.resolve() for entry in worktrees(root)]
+    )
+    inventory = contents(path, tree.head, disposable, store)
     if inventory.blocked:
         return inventory.blocked
     keep = bool(tree.retained_reason)
@@ -591,7 +593,7 @@ def apply_tree(
     links = link_blocks(root, worktrees(root), paths)
     if reason := recheck(root, tree, inspector):
         return reason
-    if inventory != contents(path, tree.head, disposable):
+    if inventory != contents(path, tree.head, disposable, store):
         return "changed-during-archive"
     if not keep:
         if links:

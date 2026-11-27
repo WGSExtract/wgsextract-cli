@@ -33,6 +33,46 @@ from tests.test_cleanup_worktrees import (
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux process guards")
 
 
+def test_1637_cleanup_preserves_external_store_and_its_worktree_dependencies(
+    repo: Path, github: Callable[..., None]
+) -> None:
+    ordinary = topic(repo, "ordinary")
+    needed = topic(repo, "needed")
+    write(repo / ".git/info/exclude", "/reference\n")
+    store = repo.parent / "shared references"
+    library = store / ("1" * 64) / "library"
+    write(library / "genomes" / "test.fa", ">test\nACGT\n")
+    write(
+        repo / "out/shared/config.toml",
+        f"certification_reference_store = {json.dumps(str(store))}\n",
+    )
+    (ordinary / "reference").symlink_to(library, target_is_directory=True)
+    (library / "input").symlink_to(needed / "source.txt")
+    github([pull(ordinary), pull(needed, 43)])
+
+    run = cleanup(repo, "--github", "--apply")
+    assert run.returncode == 0, run.stderr
+    assert result(repo, ordinary)["reason"] == "removed"
+    assert result(repo, needed)["reason"] == "symlink-dependency"
+    assert (library / "genomes" / "test.fa").is_file()
+    assert (library / "input").read_text() == "committed changes for needed\n"
+
+
+def test_1637_cleanup_refuses_store_configured_inside_a_worktree(repo: Path) -> None:
+    path = topic(repo)
+    store = path / "out" / "references"
+    write(store / "reference.fa", ">test\nACGT\n")
+    write(
+        repo / "out/shared/config.toml",
+        f"certification_reference_store = {json.dumps(str(store))}\n",
+    )
+
+    run = cleanup(repo)
+    assert run.returncode == 1
+    assert "store overlaps a checkout" in run.stderr
+    assert (store / "reference.fa").is_file()
+
+
 @pytest.mark.parametrize(
     "source_kind", ["orphan", "archived", "unrecognized", "archived-forged-header"]
 )

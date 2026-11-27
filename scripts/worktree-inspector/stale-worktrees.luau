@@ -5,7 +5,7 @@ herdr.every("1d", { name = "stale-worktrees" }, function()
   -- Pin the helper's bytes too, so the approved plan cannot silently run changed code.
   local result = sh(
     "PATH=\"$HOME/.local/bin:$PATH\" agent-coord run --cores 1 --mem 2G --lock worktree-cleanup --max-wait 2m --expect 15m --label stale-worktrees -- sh -c '" ..
-    "echo \"d1728107063d6fee5561cc188fc2ef7a5a753941c9a4bb64218ab9bb63aca51d  scripts/cleanup_worktrees.py\" | /usr/bin/sha256sum --check --quiet" ..
+    "echo \"dbbf5b7716e07373e353bce37bbc1ff6f0062dad886a5c8436e5836f4539f86e  scripts/cleanup_worktrees.py\" | /usr/bin/sha256sum --check --quiet" ..
     " && exec /usr/bin/python3 -I -B scripts/cleanup_worktrees.py --github --inspector --trim-caches --apply'",
     { check = false, timeout = "28m" }
   )

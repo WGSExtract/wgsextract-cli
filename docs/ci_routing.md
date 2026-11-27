@@ -261,23 +261,42 @@ pixi install --locked -e vep-rs
 just certify-setup -e default -e dev -e vep-rs --reference
 ```
 
-Repeated `-e` replaces the default environment list. `--reference` retains the
-bootstrap release archive after verifying its pinned SHA-256, safely extracts
-missing support files, fetches the pinned liftOver chain (with the same mirror
-fallback as CI), and prepares hs38 with the catalog installer. It then
-validates all reference bytes, including the catalog-pinned full genome.
-This can download several GiB; run under the resource coordinator on shared
-hosts. Existing conflicting bootstrap files are not overwritten: the refusal
-identifies the file to move aside before repeating setup.
-An older or modified hs38 FASTA must likewise be moved aside with its indexes
-before rerunning setup; the normal catalog installer reuses an existing FASTA
-rather than replacing it with the pinned copy.
+Repeated `-e` replaces the default environment list. `--reference` prepares the
+pinned bootstrap, liftOver chain and full hs38 FASTA in one host store, then
+symlinks `reference` in the checkout to that library. The store defaults to
+`out/shared/certification-reference/` **in the primary checkout**. To put it
+on another disk, set an absolute path in the primary checkout's
+`out/shared/config.toml` before preparing it:
 
-References use `reference_library` in config.toml, falling back to `reference/`.
-To reuse a machine's existing library across worktrees, configure that path
-using normal CLI configuration rather than copying the multi-GiB genome.
-Each checkout still needs the retained bootstrap archive and wheel archives.
-Generic-only and CI-policy-only certifications do not need reference setup.
+```toml
+certification_reference_store = "/data/wgse-certification-reference"
+```
+
+Keep the store outside linked worktrees. It keeps separate versions when the
+pins change. Setup checks the SHA-256 of the retained release archive, extracted
+assets, pinned chain and catalog FASTA once per version. Certification checks
+that the verified files and indexes have not changed since then; it neither
+downloads nor rehashes unchanged shared data. Treat the linked library as
+read-only: use a separate `--ref` directory for experiments that write to it.
+If a verified reference or index changed, setup and certification refuse to
+reuse it. Stop jobs using that version, move the version directory named in
+the error aside, then rerun `just certify-setup --reference` to rebuild it.
+The initial setup can download several GiB; run it under the resource
+coordinator on shared hosts.
+
+For a new worktree on an already prepared host, `just certify-setup
+--link-reference` links the library offline without preparing wheels. Existing
+libraries are not overwritten. To reuse the shared library, move a local
+`reference/` aside; an explicit `reference_library` must either be the
+worktree's `reference` or point to the pinned library. Legacy libraries
+with a retained per-checkout bootstrap still work, but must be checked from
+scratch on each certification. `just certify-setup --link-hs38 /absolute/path/to/hs38.fa.gz`
+is an offline way to replace an individual ignored FASTA in a linked checkout:
+it checks the full SHA-256, leaves nonmatching files and sidecars alone, and
+should be run only while nothing is writing to that path.
+
+Each checkout still needs its wheel archives. Generic-only and CI-policy-only
+certifications do not need reference setup.
 
 #### Certifying a PR
 
