@@ -8,16 +8,10 @@ import json
 import math
 import re
 from collections import defaultdict
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-
-from scripts.ci_impact_results import file_cases
-from scripts.ci_optional_tools import SUITES
-from scripts.ci_select_tests import CI_TESTS
-from scripts.ci_test_dependencies import DOCS_TEST_MODULES, ROOT
-from scripts.ci_test_tiers import INTEGRATION_MODULES, fast_test
 
 BASELINE = Path(__file__).with_name("ci_test_budget_baseline.json")
 TOTAL = "Full suite"
@@ -53,6 +47,11 @@ class Baseline:
 
 
 def area(path: str) -> str:
+    from scripts.ci_optional_tools import SUITES
+    from scripts.ci_select_tests import CI_TESTS
+    from scripts.ci_test_dependencies import DOCS_TEST_MODULES
+    from scripts.ci_test_tiers import INTEGRATION_MODULES, fast_test
+
     if path in CI_TESTS:
         return "CI policy"
     if path in DOCS_TEST_MODULES:
@@ -84,6 +83,8 @@ def test_files(root: Path) -> set[str]:
 
 
 def junit_costs(data: bytes, tests: set[str]) -> dict[str, Cost]:
+    from scripts.ci_impact_results import file_cases
+
     if (
         len(data) > MAX_JUNIT_BYTES
         or b"\0" in data
@@ -142,11 +143,12 @@ def read_junit(paths: Iterable[Path], tests: set[str]) -> dict[str, Cost]:
     return modules
 
 
-def nightly_costs(
-    report: bytes, archived_scope: bytes, shard_count: bytes = b"1"
-) -> dict[str, Cost]:
+def require_unsharded(shard_count: bytes) -> None:
     if shard_count.strip() != b"1":
         raise ValueError("The budget requires an unsharded nightly artifact")
+
+
+def nightly_costs(report: bytes, archived_scope: bytes) -> dict[str, Cost]:
     scope = full_scope(archived_scope)
     modules = junit_costs(report, scope)
     missing = scope - modules.keys() - REMOTE_ONLY
@@ -259,7 +261,7 @@ def ready_summary(
     return "\n".join(lines) + "\n"
 
 
-def main() -> None:
+def main(argv: Sequence[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--junit", type=Path, action="append", default=[])
     parser.add_argument("--baseline", type=Path, default=BASELINE)
@@ -273,20 +275,25 @@ def main() -> None:
         type=int,
         help="Replace --baseline using JUnit from this successful full Ubuntu nightly",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.calibrate_run is not None:
         if args.nightly_artifact is None or args.junit:
             parser.error("--calibrate-run requires --nightly-artifact, not --junit")
         artifact = args.nightly_artifact
         shard = artifact / "shard-count"
+        try:
+            require_unsharded(shard.read_bytes() if shard.is_file() else b"1")
+        except ValueError as error:
+            parser.error(str(error))
         with (artifact / "pytest.xml").open("rb") as report:
             modules = nightly_costs(
                 report.read(MAX_JUNIT_BYTES + 1),
                 (artifact / "test-scope.json").read_bytes(),
-                shard.read_bytes() if shard.is_file() else b"1",
             )
         write_baseline(make_baseline(args.calibrate_run, modules), args.baseline)
     else:
+        from scripts.ci_test_dependencies import ROOT
+
         files = test_files(ROOT)
         print(
             ready_summary(

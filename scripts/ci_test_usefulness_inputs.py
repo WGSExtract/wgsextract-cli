@@ -20,7 +20,7 @@ from urllib.parse import urlencode
 from scripts.ci_efficiency_report import Row, stamp
 from scripts.ci_github import GitHub
 from scripts.ci_merge_group_passes import gh_api
-from scripts.ci_test_budget import Cost, nightly_costs
+from scripts.ci_test_budget import Cost, nightly_costs, require_unsharded
 from scripts.ci_test_shards import LANES
 
 MAX_BYTES = 16 * 1024 * 1024
@@ -408,10 +408,10 @@ def collect(
         budget = None
         if item.full_ubuntu:
             try:
+                require_unsharded(contents.get("shard-count", b"1"))
                 modules = nightly_costs(
                     contents["pytest.xml"],
                     contents["test-scope.json"],
-                    contents.get("shard-count", b"1"),
                 )
                 if modules:
                     budget = NightlyBudget(item.run, at, modules)

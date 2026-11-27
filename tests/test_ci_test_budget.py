@@ -1,12 +1,10 @@
 """Ready-run cost projections use the same pytest XML as hosted shards."""
 
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
-from scripts.ci_test_budget import make_baseline, read_junit, ready_summary
+from scripts.ci_test_budget import main, make_baseline, read_junit, ready_summary
 
 REGULAR = "tests/test_server_paths_schema.py"
 DOCS = "tests/test_cli_help.py"
@@ -128,32 +126,24 @@ def test_1635_count_only_overage_is_advisory(tmp_path: Path) -> None:
     assert "candidate regression" not in text
 
 
-def test_1635_calibration_refuses_a_lead_shard(tmp_path: Path) -> None:
-    report(tmp_path / "pytest.xml", REGULAR_CASE.format(20))
-    (tmp_path / "test-scope.json").write_text(
-        f'{{"ran": ["{REGULAR}"], "skipped": {{}}}}', encoding="utf-8"
-    )
+def test_1635_calibration_refuses_a_lead_shard_before_reading_junit(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     (tmp_path / "shard-count").write_text("2\n", encoding="utf-8")
     baseline = tmp_path / "baseline.json"
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "scripts.ci_test_budget",
-            "--calibrate-run",
-            "123",
-            "--nightly-artifact",
-            str(tmp_path),
-            "--baseline",
-            str(baseline),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=10,
-        check=False,
-    )
-    assert result.returncode != 0
-    assert "unsharded nightly artifact" in result.stderr
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "--calibrate-run",
+                "123",
+                "--nightly-artifact",
+                str(tmp_path),
+                "--baseline",
+                str(baseline),
+            ]
+        )
+    assert error.value.code == 2
+    assert "unsharded nightly artifact" in capsys.readouterr().err
     assert not baseline.exists()
 
 
