@@ -78,6 +78,75 @@ benchmark inputs and outputs out of Photos libraries and Spotlight-indexed
 folders. Check volume indexing with `mdutil -s /` and thermal pressure with
 `pmset -g therm` before timing; wait for indexing and throttling to settle.
 
+### Long-run benchmark drivers
+
+Use `scripts.longrun.LongRun` from a driver in `scratch/`. It needs Python
+3.10+ on Linux (including WSL) or macOS, and can run scripts with macOS's
+stock Bash. It does not need `/usr/bin/time`. Put each run in its own
+gitignored `out/` directory on an SSD.
+
+For example, from the checkout root, run `python -m scratch.bench slice`
+before `python -m scratch.bench full`. In `scratch/bench.py`:
+
+```python
+import argparse
+from pathlib import Path
+
+from scripts.longrun import LongRun
+
+parser = argparse.ArgumentParser()
+parser.add_argument("mode", choices=("slice", "full"))
+mode = parser.parse_args().mode
+out = Path("out/bench")
+root = out / mode
+with LongRun(root, name="bench-123", target="wgsextract-cli") as run:
+    reference = Path("out/shared/reference.dict")
+    pin = Path("scratch/reference.dict.sha256").read_text().strip()
+    run.check_sha256(reference, pin)
+    run.check_reference(
+        Path("out/shared/reads.cram"), reference, dictionary=True
+    )
+    if mode == "full":
+        run.require_slice(out / "slice")
+    run.stage(mode, ["bash", "scratch/benchmark.sh", mode, str(root)])
+```
+
+- **Check inputs before staging or resuming.** Use a SHA-256 from a
+  trusted source, not a pin computed from the just-downloaded file.
+  `check_reference` uses `samtools view -H` on a local CRAM and checks
+  every `@SQ` name and M5. Pass a pinned `samtools dict` file to verify
+  before staging a large FASTA, or pass a local FASTA without
+  `dictionary=True` to generate the dictionary in place. Still verify
+  that the FASTA you actually use matches the pin. For remote sources,
+  opt in explicitly and check the source version or checksum in the
+  driver; the helper never fetches inputs.
+- **Size first.** Have the slice command run the same workflow on 1–2%
+  of the data. Review `slice/metrics.json` for wall time and peak RSS
+  before estimating the full run; measure peak temp disk and output
+  size in the benchmark itself. RSS is the OS-reported high-water
+  mark for the stage command, not simultaneous use across a process
+  tree. Record slice measurements and full-run estimates on the issue.
+- **Reserve resources and exercise the alert.** Launch heavy work with
+  `agent-coord run` and size the lease from the slice. If the driver
+  has already started outside a lease and needs registering, call
+  `run.hold("--cores", "2", "--mem", "4G")` inside the context; it
+  registers `driver.pid` with the coordinator but does not cap or
+  queue the job. On the target host, smoke-test both a valid run and
+  an intentional missing input. The exit alert names the driver,
+  host, step, exit code and log. If `agent-coord` cannot send, check
+  the launcher's stderr. Keep an external watcher for power loss or
+  `SIGKILL`, which cannot send an exit alert.
+- **Resume deliberately.** Use foreground stage commands that validate
+  their outputs before returning zero and can retry after partial
+  writes. For power-loss recovery, have each command sync its outputs
+  and their directories before returning. The helper appends `stage.log`
+  and syncs `metrics.json` before atomically publishing and syncing
+  `PASS`. The driver updates `handoff.md` for the watcher and holds
+  an OS lock on the run directory. Rerun the same driver in the same
+  directory to skip passed stages. Use a new directory if inputs,
+  commands or parameters change; a `PASS` marker does not fingerprint
+  them or revalidate outputs.
+
 ## Make a change
 
 ```bash

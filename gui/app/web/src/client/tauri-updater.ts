@@ -1,5 +1,6 @@
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
+import { networkAllowed } from "../../../shared/network-settings.js";
 
 type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 type TauriListen = <T>(
@@ -34,10 +35,14 @@ type UpdateProgressEvent = {
 };
 
 let initialized = false;
+let startupRequested = false;
+let startupScheduled = false;
 let checkPromise: Promise<void> | null = null;
 
-export function initializeTauriUpdater() {
+export function initializeTauriUpdater(checkAtLaunch = true) {
+    startupRequested ||= checkAtLaunch;
     if (initialized) {
+        scheduleStartupUpdate();
         return;
     }
     initialized = true;
@@ -54,21 +59,27 @@ async function initializeTauriUpdaterWhenReady() {
         applyProgressEvent(payload);
         scheduleRender();
     });
-    // Privacy mode stops the startup check; File > Check for Updates... still checks when asked.
-    if (state.autoUpdate && !state.privacyMode) {
-        const delay = Math.max(0, Number(state.autoUpdateDelaySeconds) || 0);
-        window.setTimeout(() => {
-            // Privacy mode may have been turned on while the check waited.
-            if (state.privacyMode) {
-                return;
-            }
-            void checkForUpdates({
-                revealOnAvailable: true,
-                autoDownloadAndInstall: Boolean(state.autoAcceptUpdate),
-                quietOnError: true,
-            });
-        }, delay * 1000);
-    }
+    window.addEventListener("wgsextract-gui-check-for-updates", () => {
+        if (networkAllowed(state.networkSettings, "explicit")) {
+            void tauri.core.invoke("gfc_update_check_from_menu").catch(console.error);
+        }
+    });
+    scheduleStartupUpdate();
+}
+
+function scheduleStartupUpdate() {
+    if (!startupRequested || startupScheduled || !state.update.supported || !state.autoUpdate ||
+        !networkAllowed(state.networkSettings, "startup-update")) return;
+    startupScheduled = true;
+    const delay = Math.max(0, Number(state.autoUpdateDelaySeconds) || 0);
+    window.setTimeout(() => {
+        void checkForUpdates({
+            activity: "startup-update",
+            revealOnAvailable: true,
+            autoDownloadAndInstall: Boolean(state.autoAcceptUpdate),
+            quietOnError: true,
+        });
+    }, delay * 1000);
 }
 
 export function isUpdateButtonVisible() {
@@ -90,6 +101,7 @@ export function dismissUpdatePopover() {
 }
 
 type UpdateCheckOptions = {
+    activity?: "startup-update";
     revealOnAvailable?: boolean;
     autoDownloadAndInstall?: boolean;
     /** A startup check nobody asked for: when it fails (offline, say), leave no error button behind. */
@@ -97,6 +109,7 @@ type UpdateCheckOptions = {
 };
 
 export async function checkForUpdates(options: UpdateCheckOptions = {}) {
+    if (!networkAllowed(state.networkSettings, options.activity ?? "explicit")) return;
     if (checkPromise) {
         return checkPromise;
     }
@@ -175,6 +188,7 @@ async function runUpdateCheck(options: UpdateCheckOptions) {
 }
 
 export async function downloadUpdate(acceptedBy = "user") {
+    if (!networkAllowed(state.networkSettings, acceptedBy === "auto" ? "startup-update" : "explicit")) return;
     const tauri = tauriAPI();
     if (!tauri || state.update.updateRid == null || state.update.status === "downloading") {
         return;

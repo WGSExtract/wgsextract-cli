@@ -7,7 +7,8 @@ use crate::update_e2e_overlay;
 
 use super::{env_flag, update_before_exit_hook, write_update_status, AUTO_ACCEPT_UPDATE_ENV};
 
-pub(crate) fn check_for_updates<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
+#[tauri::command]
+pub(crate) fn gfc_update_check_from_menu<R: tauri::Runtime>(app: tauri::AppHandle<R>) {
     tauri::async_runtime::spawn(async move {
         let current_version = app.package_info().version.to_string();
         write_update_status("checking");

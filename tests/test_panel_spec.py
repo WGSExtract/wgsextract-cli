@@ -373,7 +373,10 @@ def test_1287_one_complete_unphased_heterozygote_is_one_copy(tmp_path: Path) -> 
 
 
 @needs_htslib
-def test_1287_split_multiallelic_watch_preserves_both_alleles(tmp_path: Path) -> None:
+@pytest.mark.parametrize(("ref", "alts"), [("G", "A,T"), ("g", "a,t")])
+def test_1287_and_1630_split_watch_preserves_both_alleles(
+    tmp_path: Path, ref: str, alts: str
+) -> None:
     from wgsextract_cli.core.utils import run_command
 
     panel, _, _ = _audit_inputs(tmp_path, phase_set="1")
@@ -383,7 +386,7 @@ def test_1287_split_multiallelic_watch_preserves_both_alleles(tmp_path: Path) ->
     panel = _write(tmp_path, document, ".json")
     raw = tmp_path / "multi.vcf"
     raw.write_text(
-        """##fileformat=VCFv4.2
+        f"""##fileformat=VCFv4.2
 ##contig=<ID=chr1,length=248956422>
 ##INFO=<ID=CSQ,Number=A,Type=String,Description="Format: Allele|Consequence|IMPACT|SYMBOL">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
@@ -391,7 +394,7 @@ def test_1287_split_multiallelic_watch_preserves_both_alleles(tmp_path: Path) ->
 ##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Quality">
 ##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tTEST
-chr1\t11796321\t.\tG\tA,T\t50\tPASS\tCSQ=A|stop_gained|HIGH|MTHFR,T|stop_gained|HIGH|MTHFR\tGT:DP:GQ:AD\t1/2:40:60:0,20,20
+chr1\t11796321\t.\t{ref}\t{alts}\t50\tPASS\tCSQ=A|stop_gained|HIGH|MTHFR,T|stop_gained|HIGH|MTHFR\tGT:DP:GQ:AD\t1/2:40:60:0,20,20
 """,
         encoding="utf-8",
     )

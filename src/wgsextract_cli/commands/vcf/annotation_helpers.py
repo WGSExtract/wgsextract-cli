@@ -31,6 +31,7 @@ from wgsextract_cli.core.utils import (
     WGSExtractError,
     get_resource_threads,
     run_command,
+    run_pipeline,
 )
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG, Thresholds
 from wgsextract_cli.core.variant_depths import ad_total_header, with_ad_totals
@@ -43,6 +44,7 @@ from wgsextract_cli.core.variant_files import (
     vcf_index_chromosomes,
 )
 from wgsextract_cli.core.variant_table import parse_header
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 
 from .basic import record_variants, require_vcf_input
 
@@ -337,10 +339,13 @@ def annotate_vcf(
                 cmd[cmd.index("-c") + 1] = columns
             else:
                 input_vcf = _with_original_ad(input_vcf, work)
-            run_command(
-                ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG,
-                 "-Oz", "-o", split, input_vcf],
-                capture_output=True,
+            run_pipeline(
+                uppercase_vcf(
+                    ["bcftools", "norm", "-m", "-any", "--old-rec-tag", SPLIT_TAG],
+                    split,
+                    source=input_vcf,
+                ),
+                description="Split VCF for allele annotation",
             )  # fmt: skip
             ensure_vcf_indexed(split)
             normalized = normalize_vcf_chromosomes(

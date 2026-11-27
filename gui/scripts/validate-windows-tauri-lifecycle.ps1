@@ -413,6 +413,11 @@ function Start-InstalledApp {
     Remove-Item -LiteralPath $TokenFile -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $SetupLog -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $SetupSummary -ErrorAction SilentlyContinue
+    if (-not $DriveUI -and -not $SkipSetup) {
+        # The headless lab explicitly opts in; the UI walkthrough makes the choice in the dialog.
+        New-Item -ItemType Directory -Force -Path $AppDataDirectory | Out-Null
+        Set-Content -LiteralPath (Join-Path $AppDataDirectory "settings.json") -Encoding Ascii -Value '{"networkConsent":"accepted","checkForUpdatesAtLaunch":false}'
+    }
     $appPath = Join-Path $InstallDirectory "wgsextract-gui.exe"
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $appPath

@@ -8,6 +8,8 @@ set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=fma_guard.sh disable=SC1091
 . "$HERE/fma_guard.sh"
+# shellcheck disable=SC1091
+source "$HERE/../../../.github/actions/setup-pixi/fetch-pinned.sh"
 WINDOWS_RECIPE="$HERE/../../windows/recipes/gkl"
 WORK=$(realpath -m "$1")
 GATK_JAR=$(realpath "$2")
@@ -17,16 +19,9 @@ GKL_SHA256=23f1aa7de874e79aedc35901397545e9e406266dfb1584f21300e440806a8950
 SIMDE_URL=https://github.com/simd-everywhere/simde/archive/refs/tags/v0.8.2.tar.gz
 SIMDE_SHA256=ed2a3268658f2f2a9b5367628a85ccd4cf9516460ed8604eed369653d49b25fb
 
-fetch() { # url sha256 dest
-    if [ ! -f "$3" ]; then
-        curl -fsSL -o "$3.part" "$1"
-        mv "$3.part" "$3"
-    fi
-    echo "$2  $3" | sha256sum -c --quiet
-}
 mkdir -p "$WORK"
-fetch "$GKL_URL" "$GKL_SHA256" "$WORK/gkl-0.8.11.tar.gz"
-fetch "$SIMDE_URL" "$SIMDE_SHA256" "$WORK/simde-0.8.2.tar.gz"
+fetch_pinned "$GKL_URL" "$GKL_SHA256" "$WORK/gkl-0.8.11.tar.gz"
+fetch_pinned "$SIMDE_URL" "$SIMDE_SHA256" "$WORK/simde-0.8.2.tar.gz"
 rm -rf "$WORK/GKL-0.8.11" "$WORK/simde-0.8.2"
 tar -xzf "$WORK/gkl-0.8.11.tar.gz" -C "$WORK"
 tar -xzf "$WORK/simde-0.8.2.tar.gz" -C "$WORK"

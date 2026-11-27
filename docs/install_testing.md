@@ -74,7 +74,7 @@ of failed tests only (`tmp_path_retention_policy = "failed"`).
 | Failure mode | Defence |
 | --- | --- |
 | Leftover state from earlier runs or the developer's own setup (`~/.pixi`, Homebrew tools on `PATH`, caches, `config.toml`, reference data) masks a missing dependency | Every run uses a **new machine cloned from a clean image** and destroys it afterwards: a Tart VM from Cirrus Labs' *vanilla* macOS image (no Homebrew, no tools), or a fresh `ubuntu:24.04` container. Nothing survives between runs, so cleanup on the host is never needed. |
-| Tests fake the expensive parts (fake `pixi`, stub `wgsextract`, `--dry-run`, mocked downloads) | The guest runs the **README command** (`curl -fsSL …/install.sh \| sh`) with the real Pixi bootstrap and real package downloads. Only the source archive and dataset come from the host, over HTTP, so the tree under test is installed exactly like a release. |
+| Tests fake the expensive parts (fake `pixi`, stub `wgsextract`, `--dry-run`, mocked downloads) | The guest runs the **README installer** on stdin with the real Pixi bootstrap and real package downloads. It downloads the script completely before starting the shell, so a transient HTTP failure cannot execute a partial installer. Only the source archive and dataset come from the host, over HTTP, so the tree under test is installed exactly like a release. |
 | "It exited 0" counted as success; a command that does nothing passes | The guest never judges. It records exit codes, logs and outputs; the **host oracle** checks the outputs against values that come from biology, not from a previous run: HG00096's published mtDNA haplogroup (H16a1), recall and precision against its 1000 Genomes genotypes, read and mapping counts measured with the host's own samtools/bcftools. |
 | Steps silently skipped | The oracle **fails closed**: every required step must leave evidence, and a missing step fails the run. A per-run nonce ties the evidence to this run. |
 | Uninstall leaves files, rc edits, caches or config behind | The guest snapshots the machine (home, `/Applications`, `/usr/local`, `/opt`, launch agents, shell rc contents, `PATH`) **before install, after install and after uninstall**. The host diffs them: after uninstall the machine must match the baseline. The after-install snapshot must show the install, which proves the snapshots can see it. |
@@ -88,7 +88,7 @@ of failed tests only (`tmp_path_retention_policy = "failed"`).
 1. Baseline snapshot of a machine with only the documented prerequisites (macOS:
    Xcode Command Line Tools, baked into the base image by `prepare`; Ubuntu:
    `curl`, `ca-certificates`).
-2. `curl -fsSL <installer> | sh` from the user's home directory, as a normal user.
+2. Fetch the installer with bounded retries, then run `sh` with the script on stdin from the user's home directory, as a normal user. Only the download is retried; the installer runs once.
 3. The workload (`guest/workload.sh`) on the HG00096 mini genome: `--help`,
    `deps check`, `ref bootstrap` (a real GitHub release download with digest
    verification), `info` on BAM and CRAM, `extract mt-bam` / `mito-vcf`,

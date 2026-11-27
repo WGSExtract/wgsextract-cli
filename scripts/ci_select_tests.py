@@ -49,6 +49,7 @@ CI_TESTS = (
     "tests/test_ci_cache_prune.py",
     "tests/test_ci_efficiency_report.py",
     "tests/test_ci_test_usefulness.py",
+    "tests/test_ci_test_budget.py",
 )
 SMOKE_TESTS = ("tests/test_microarray_vendor_formats.py", "tests/test_table_writer.py")
 # These helpers replaced imports from test_server.py. Their consumers still
@@ -95,6 +96,7 @@ def ci_path(path: str) -> bool:
             "scripts/check_python_size.py",
             "scripts/python_size_baseline.json",
             "scripts/test_smells.py",
+            "scripts/ci_test_budget_baseline.json",
         }
         or path.startswith(".github/")
         or (path.startswith("scripts/ci_") and path.endswith(".py"))

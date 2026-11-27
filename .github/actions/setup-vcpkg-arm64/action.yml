@@ -1,0 +1,54 @@
+name: Pinned Windows ARM64 vcpkg
+description: Fetch and verify the native vcpkg executable, independently of its ports checkout.
+inputs:
+  root:
+    description: Pinned vcpkg ports checkout to install into, or empty to only warm the download cache.
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Select the pinned vcpkg release asset
+      id: pin
+      shell: bash
+      run: |
+        # Match VCPKG_TOOL_RELEASE_TAG in the pinned ports checkout. The digest
+        # is from the microsoft/vcpkg-tool release's vcpkg-arm64.exe asset.
+        echo 'version=2026-10-29' >> "$GITHUB_OUTPUT"
+        echo 'sha256=f265afafe091f1414ad619d13ddd01f6be3f01a5c83a011a7cd1426287e4ed16' >> "$GITHUB_OUTPUT"
+    - name: Restore the pinned vcpkg executable
+      id: cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/ci-vcpkg/vcpkg-arm64.exe
+        key: vcpkg-windows-arm64-${{ steps.pin.outputs.version }}-${{ steps.pin.outputs.sha256 }}
+    - name: Verify and stage the native vcpkg executable
+      shell: bash
+      env:
+        VERSION: ${{ steps.pin.outputs.version }}
+        SHA256: ${{ steps.pin.outputs.sha256 }}
+        VCPKG_ROOT_DIR: ${{ inputs.root }}
+      run: |
+        if [ -n "$VCPKG_ROOT_DIR" ]; then
+          release=$(tr -d '\r' < "$VCPKG_ROOT_DIR/scripts/vcpkg-tool-metadata.txt" |
+            sed -n 's/^VCPKG_TOOL_RELEASE_TAG=//p')
+          if [ "$release" != "$VERSION" ]; then
+            echo "::error::vcpkg ports expect executable release $release, not pinned release $VERSION."
+            exit 1
+          fi
+        fi
+        bin="$(cygpath -u "$RUNNER_TEMP")/ci-vcpkg"
+        mkdir -p "$bin"
+        source "$GITHUB_ACTION_PATH/../setup-pixi/fetch-pinned.sh"
+        fetch_pinned "https://github.com/microsoft/vcpkg-tool/releases/download/$VERSION/vcpkg-arm64.exe" \
+          "$SHA256" "$bin/vcpkg-arm64.exe"
+        if [ -n "$VCPKG_ROOT_DIR" ]; then
+          cp "$bin/vcpkg-arm64.exe" "$VCPKG_ROOT_DIR/vcpkg.exe"
+          touch "$VCPKG_ROOT_DIR/vcpkg.disable-metrics"
+          "$VCPKG_ROOT_DIR/vcpkg.exe" version --disable-metrics
+        fi
+    - name: Cache the pinned vcpkg executable from main only
+      if: github.ref == 'refs/heads/main' && steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/ci-vcpkg/vcpkg-arm64.exe
+        key: vcpkg-windows-arm64-${{ steps.pin.outputs.version }}-${{ steps.pin.outputs.sha256 }}

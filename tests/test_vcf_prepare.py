@@ -161,6 +161,41 @@ def test_normalize_splits_multiallelics_and_left_aligns_keeping_every_record(
     assert (result.metrics["records_in"], result.metrics["records_out"]) == (7, 8)
 
 
+def test_1630_vcf_normalization_preserves_breakend_contig_case(tmp_path, reference):
+    vcf = tmp_path / "breakend.vcf"
+    vcf.write_text(
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=2000>\n"
+        "##contig=<ID=chr2,length=1500>\n"
+        + FORMAT + INFO + COLUMNS
+        + "chr1\t1\tbreak\tA\ta]chr2:10]\t50\tPASS\tDP=10\tGT\t0/1\n",
+        encoding="utf-8",
+    )  # fmt: skip
+
+    api.vcf.prepare(
+        api.VcfPrepareParams(
+            input=Path(bgzip_index(vcf)),
+            ref=reference,
+            outdir=tmp_path / "out",
+            normalize=True,
+        )
+    )
+
+    (record,) = _records(tmp_path / "out" / "breakend_prepared.vcf.gz")
+    assert record == [
+        "chr1",
+        "1",
+        "break",
+        "A",
+        "A]chr2:10]",
+        "50",
+        "PASS",
+        "DP=10",
+        "GT",
+        "0/1",
+    ]
+
+
 def test_prepared_output_needs_no_further_repairs(tmp_path, reference):
     vcf = _consumer_vcf(tmp_path / "provider.vcf.gz")
     api.vcf.prepare(

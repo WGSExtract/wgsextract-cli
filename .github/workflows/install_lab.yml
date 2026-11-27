@@ -80,7 +80,7 @@ jobs:
         run: python3 scripts/installlab/lab.py run linux ${{ inputs.no_apt_cache && '--no-apt-cache' || '' }} --install-dir "WGS Extract" --out out/installlab/ci-linux-spaced
       - name: Update the latest published release to this tree
         run: |
-          latest=$(curl -fsIL --retry 5 --retry-all-errors --connect-timeout 20 -o /dev/null -w '%{url_effective}' https://github.com/WGSExtract/wgsextract-cli/releases/latest)
+          latest=$(curl -fsIL --retry 3 --retry-all-errors --connect-timeout 15 --max-time 30 --retry-max-time 60 -o /dev/null -w '%{url_effective}' https://github.com/WGSExtract/wgsextract-cli/releases/latest)
           python3 scripts/installlab/lab.py run linux ${{ inputs.no_apt_cache && '--no-apt-cache' || '' }} --update-from "${latest##*/}" --out out/installlab/ci-linux-update
       - name: Save container apt cache
         if: ${{ !inputs.no_apt_cache && github.ref == 'refs/heads/main' && steps.apt-restore.outputs.cache-hit != 'true' }}

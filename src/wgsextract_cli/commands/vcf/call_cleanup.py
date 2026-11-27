@@ -1,5 +1,7 @@
 """Shared cleanup of bcftools calls containing indels."""
 
+from wgsextract_cli.core.vcf_output import uppercase_vcf
+
 
 def indel_cleanup_pipeline(
     ref: str, output: str, threads: str, *, mixed: bool = False
@@ -14,8 +16,8 @@ def indel_cleanup_pipeline(
             "-x", "INFO/BQBZ,INFO/MQSBZ", "-Ou",
         ],
         # VCF requires IUPAC reference codes to resolve to a concrete base (R -> A).
-        [
-            "bcftools", "norm", "--check-ref", "ws", "-f", ref,
-            "--threads", threads, "-Oz", "-o", output,
-        ],
+        *uppercase_vcf(
+            ["bcftools", "norm", "-f", ref],
+            output, threads=threads, check_ref="ws",
+        ),
     ]  # fmt: skip

@@ -437,6 +437,14 @@ def test_914_transitive_docs_reader_has_an_executable_lane() -> None:
     assert routes(paths)["cli"]
 
 
+def test_1636_longrun_only_change_selects_its_subprocess_tests() -> None:
+    paths = ["scripts/longrun.py"]
+    selected = select_tests(paths)
+    assert selected != "all"
+    assert "tests/test_longrun.py" in selected
+    assert routes(paths)["cli"]
+
+
 def test_914_mixed_product_and_generated_docs_cannot_skip_freshness() -> None:
     selected = select_tests(["tests/test_table_writer.py", "site_src/api.md"])
     assert "tests/test_table_writer.py" in selected
