@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from functools import cache
+from hashlib import sha256
 from pathlib import Path
 from statistics import median
 from typing import NamedTuple
@@ -21,6 +22,7 @@ from wgsextract_cli.commands.info.metrics import (
 from wgsextract_cli.commands.info.targets import BedTarget, read_bed, target_depths
 from wgsextract_cli.core.alignment.sequencing import read_group_platforms
 from wgsextract_cli.core.panel import load_annotations
+from wgsextract_cli.core.panel_cnv import CALLER_CONTRACT, expected_coverage_bin, gc_bin
 from wgsextract_cli.core.ref_library.assets import read_fai_lengths
 from wgsextract_cli.core.results import current_result, human_output, warn
 from wgsextract_cli.core.sex_inference import nonpar_bounds
@@ -60,6 +62,12 @@ TABLE = (
     Column("gc_fraction", "REAL", spec=".4f"),
     Column("gc_matched_depth", "REAL", spec=".3f"),
     Column("copy_number_estimate", "REAL", spec=".3f"),
+    Column("gc_bin", "INTEGER", "Caller GC bin (5 percentage points, 0-based)."),
+    Column(
+        "expected_coverage_bin",
+        "INTEGER",
+        "GC-matched baseline depth bin (5x, 0-based).",
+    ),
 )
 
 Region = tuple[str, int, int]
@@ -108,7 +116,7 @@ def _gc_fractions(
     return gc
 
 
-def _check_reads(aln: Alignment) -> None:
+def _check_reads(aln: Alignment) -> str | None:
     header = get_bam_header(aln.path) or ""
     platforms = read_group_platforms(header)
     if len(platforms) > 1 or {"pacbio", "ont"}.intersection(platforms):
@@ -119,6 +127,15 @@ def _check_reads(aln: Alignment) -> None:
         sample = run_body_sample(aln.path, aln.ref_opt if aln.is_cram else [])
         if is_long_read_library(sample.avg_len, header, sample.first_qname):
             raise UsageError("typing target-cnv needs short-read WGS, not long reads.")
+    groups = [
+        [field[3:] for field in line.split("\t")[1:] if field.startswith("SM:")]
+        for line in header.splitlines()
+        if line.startswith("@RG\t")
+    ]
+    if not groups or any(len(names) != 1 for names in groups):
+        return None
+    samples = {names[0] for names in groups}
+    return samples.pop() if len(samples) == 1 and "" not in samples else None
 
 
 @dataclass(frozen=True)
@@ -146,7 +163,7 @@ def _normalized_baselines(
         )
     by_gc = defaultdict[int, list[float]](list)
     for t in covered:
-        by_gc[_gc_bin(gc[_region(t)])].append(t.mean)
+        by_gc[gc_bin(gc[_region(t)])].append(t.mean)
     bins = {}
     for number, values in by_gc.items():
         if (
@@ -156,10 +173,6 @@ def _normalized_baselines(
             mad = median(abs(x - depth) for x in values)
             bins[number] = GcBaseline(depth, mad / depth)
     return diploid, bins, {t.chrom for t in covered}
-
-
-def _gc_bin(fraction: float) -> int:
-    return min(19, int(fraction * 20))
 
 
 def _copy_call(depth: float, baseline: GcBaseline) -> tuple[str, str, float]:
@@ -261,7 +274,7 @@ def _row(
             *coords, "not_applicable", "chrY_in_female", None, expected, None, None,
             t.mean, gc, None, None,
         )  # fmt: skip
-    matched = bins.get(_gc_bin(gc)) if gc is not None else None
+    matched = bins.get(gc_bin(gc)) if gc is not None else None
     if chrom not in {"X", "Y"} and t.chrom not in covered_autosomes:
         reason = reason or "chromosome_baseline_uncovered"
     if mask.overlaps(chrom, t.start, t.end):
@@ -309,7 +322,7 @@ def run_target_cnv(params: TypingTargetCnvParams) -> None:
     targets = read_bed(params.bed, aln.lengths, option="--bed")
     baseline, mask = baseline_and_mask(aln.build, aln.lengths, detailed=params.download)
     reference = aln.require_reference()
-    _check_reads(aln)
+    sample = _check_reads(aln)
     target_mask = IntervalMask.from_rows(_region(t) for t in targets)
     baseline = [t for t in baseline if not target_mask.overlaps(*_region(t))]
     sex = "not_needed"
@@ -323,6 +336,7 @@ def run_target_cnv(params: TypingTargetCnvParams) -> None:
             sex_method=observed.method, sex_confidence=observed.confidence,
         )  # fmt: skip
     result = current_result()
+    result.add_input(aln.path, "input")
     result.add_input(params.bed, "targets_bed")
     result.add_input(reference, "reference_fasta")
     regions = [*baseline, *targets]
@@ -360,8 +374,30 @@ def run_target_cnv(params: TypingTargetCnvParams) -> None:
         "Target copy number is a depth-based screen, not a diagnosis.",
     )
     output = Path(aln.outdir, f"{aln.stem}.target-cnv.tsv")
-    write_table(output, TABLE, rows, "tsv")
-    result.add_output(output, "target_cnv")
+    write_table(
+        output,
+        TABLE,
+        (
+            (
+                *row,
+                gc_bin(row.gc_fraction) if row.gc_fraction is not None else None,
+                expected_coverage_bin(row.gc_matched_depth)
+                if row.gc_matched_depth is not None
+                else None,
+            )
+            for row in rows
+        ),
+        "tsv",
+    )
+    result.add_output(
+        output,
+        "target_cnv",
+        metrics={
+            "caller_contract": CALLER_CONTRACT,
+            "sample": sample,
+            "sha256": sha256(output.read_bytes()).hexdigest(),
+        },
+    )
     human_output(
         f"Target copy number: {called}/{len(rows)} called, {specialist} need a specialist. {output}"
     )

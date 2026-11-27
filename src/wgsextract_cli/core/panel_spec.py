@@ -146,6 +146,8 @@ class Group(_Group, total=False):
     recessive: Annotated[list[GeneName], Constraints(minItems=1)]
     overrides: Filters
     dosage: Annotated[Dosage, Constraints(minProperties=1)]
+    deletion_weight: Fraction
+    duplication_weight: Fraction
 
 
 class _Site(TypedDict):

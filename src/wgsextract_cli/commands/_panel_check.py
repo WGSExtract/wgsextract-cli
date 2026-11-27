@@ -116,6 +116,11 @@ def _groups(
                 "recessive": list(group.get("recessive", [])),
                 "filters": panel_spec.effective_filters(document, group),
                 **({"dosage": group["dosage"]} if "dosage" in group else {}),
+                **{
+                    key: group[key]
+                    for key in ("deletion_weight", "duplication_weight")
+                    if key in group
+                },
             }
         )
     return records, problems

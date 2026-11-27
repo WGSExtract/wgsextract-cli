@@ -56,6 +56,8 @@ _COMPANIONS: dict[tuple[str, str], dict[str, Any]] = {
         "phase_blocks": _DATA + r"\phased.blocks.tsv",
     },
     ("vcf/impute", "vcf_input"): {"input": None, "vcf_input": _FILE},
+    ("panel/audit", "target_cnv"): {"target_cnv_manifest": _FILE},
+    ("panel/audit", "target_cnv_manifest"): {"target_cnv": _FILE},
     ("ref/recheck", "save_answers"): {"online": True},
 }
 

@@ -215,6 +215,68 @@ reports gene-level dosage components and a group total; the allele table
 adds the four per-ALT fields when at least one group uses weights. Without
 the new keys the legacy report and allele table are unchanged.
 
+### Optional target-CNV burden
+
+Set `deletion_weight` and/or `duplication_weight` on a group (0 to 1,
+default 0). A called CN0 contributes twice the deletion weight, CN1 once,
+CN2 neither, and CN3+ contributes one duplication weight regardless of
+the estimated number of extra copies. `panel check` validates the weights
+without reading sample data.
+
+Before reviewing variants or depth calls, choose a control pool independently
+of the observed outcomes. Put both the pool and panel genes in one BED, with
+one exact, nonoverlapping, 0-based half-open RefSeq gene span per row and the
+canonical symbol in column 4. Use this same design and WGS alignment for the
+entire screen. Padded targets, merged spans, partial genes and duplicate
+targets are not accepted. The placement in `panel check` gives exact spans
+on the panel's build. For example:
+
+```console
+wgsextract typing target-cnv --input sample.bam --ref matching.fa.gz \
+  --bed whole_genes_and_controls.bed --outdir depth
+wgsextract panel audit --panel my_panel.toml --vcf-input sample.vcf.gz \
+  --gvcf sample.g.vcf.gz --null-sets 2000 --research-panel \
+  --target-cnv depth/sample.target-cnv.tsv \
+  --target-cnv-manifest depth/manifests/sample.target-cnv.tsv.manifest.json
+```
+
+Both local files are required for nonzero weights. Audit checks the manifest
+against the TSV checksum, caller, assembly, and the alignment's read-group
+sample ID (which must match the VCF sample). Rerun `typing target-cnv` if an
+older manifest lacks this provenance. These inputs are never fetched or sent
+anywhere.
+
+Only medium- or high-confidence calls for unmasked diploid autosomes can
+contribute. Missing, low-confidence, masked and specialist calls are not
+CN2 and cannot contribute. The JSON reports per-gene CNV callability and
+the separate deletion and gain contributions. The allele table stays a
+small-variant table. With `--no-calibration`, audit reports descriptive CNV
+evidence but does not calculate a joint null.
+
+The joint null uses measured, same-sample gVCF coding callability on GRCh38,
+with the same small-variant and CNV scoring on the observed and control
+genes. In addition to existing CDS strata, controls must be in the same 5x
+expected-coverage and five-percentage-point GC bins and pass the same
+GIAB mappability/segmental duplication mask. Expected coverage comes from
+the caller's GC-matched WGS baseline, not the gene's observed depth (the
+signal being tested). Other panel groups' genes are excluded from controls.
+Each joint stratum needs more controls than observed genes to permit
+resampling. If any target lacks acceptable CNV or callable CDS evidence,
+including a CN0 without callable CDS, or if comparable controls are too
+sparse, the joint statistic is withheld. The small-variant-only calibration
+is reported separately.
+
+The joint JSON gives separate observed and null-mean burdens for small
+variants, deletions and gains, and the control null's spread and z-score.
+The control mean and variance use the entire matched pool, not just the
+sampled draws used to display the histogram.
+The one-sided p-value exchanges panel and control labels within the same
+strata. Audit enumerates up to 100,000 assignments exactly; above that it
+samples assignments and reports Monte Carlo uncertainty. The z-score and
+p-value are withheld if the matched control null has zero variance.
+This assumes neither independence between assays nor SNV–CNV phase.
+It is for research only, not diagnosis or evidence of disease association.
+
 ### Genes
 
 A gene is a symbol (any case), an unambiguous synonym, or an HGNC ID

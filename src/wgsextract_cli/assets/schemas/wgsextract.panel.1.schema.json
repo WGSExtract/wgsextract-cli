@@ -251,6 +251,16 @@
         "dosage": {
           "$ref": "#/$defs/dosage",
           "minProperties": 1
+        },
+        "deletion_weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "duplication_weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         }
       },
       "required": [
