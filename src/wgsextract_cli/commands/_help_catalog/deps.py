@@ -21,12 +21,12 @@ ENTRIES: dict[str, CommandHelp] = {
         "wgsextract --json deps ready -- vcf clair3 --input ont.bam --gpu",
     ),
     "deps install": _h(
-        "Installs the tool's Pixi environment beside the CLI's own.",
+        "Installs the tool's Pixi environment or pinned release.",
         "wgsextract deps install gatk",
-        "wgsextract deps install sniffles",
+        "wgsextract deps install dorado --accept-license",
     ),
     "deps uninstall": _h(
-        "Removes the tool's Pixi environment, and the other tools in it.",
+        "Removes the tool's Pixi environment (and its other tools) or release.",
         "wgsextract deps uninstall gatk",
     ),
 }

@@ -217,7 +217,7 @@ def tool_row(row: dict[str, Any], group: str) -> dict[str, Any]:
     binary = managed_binary(tool) if group == "optional" else None
     if binary is not None:
         can_install = status == MISSING and installable(tool)
-        can_uninstall = managed_binaries.is_managed(tool, path)
+        can_uninstall = managed_binaries.is_managed(tool)
         managed_env = "jartools" if (can_install or can_uninstall) else None
         note = unavailable
         if can_install:

@@ -624,13 +624,14 @@ def _runnable_dorado(release, archive: str) -> None:
     from pathlib import Path
 
     top = release.unpack
+    member = top + "bin/" + release.executable.rsplit("/", 1)[-1]
     if sys.platform == "win32":
         exe = Path(os.environ["SystemRoot"], "System32", "whoami.exe").read_bytes()
     else:
         exe = b"#!/bin/sh\necho 2.2.0+test\n"
     if archive.endswith(".zip"):
         with zipfile.ZipFile(archive, "w") as bundle:
-            entry = zipfile.ZipInfo(release.executable)
+            entry = zipfile.ZipInfo(member)
             entry.external_attr = 0o100755 << 16
             bundle.writestr(entry, exe)
             bundle.writestr(f"{top}lib/libtorch.so.2", b"lib")
@@ -644,7 +645,7 @@ def _runnable_dorado(release, archive: str) -> None:
         return
     with tarfile.open(archive, "w:gz") as bundle:
         for name, data in (
-            (release.executable, exe),
+            (member, exe),
             (f"{top}lib/libtorch.so.2", b"x"),
         ):
             info = tarfile.TarInfo(name)
@@ -696,15 +697,21 @@ def test_dorado_installs_only_once_its_licence_is_accepted(
     assert code == 0 and installed["details"]["license"]["url"] == release.license.url
     folder = jar_dir / "dorado"
     assert Path(installed["details"]["path"]) == folder / release.executable
-    assert sorted(p.name for p in folder.iterdir()) == [release.unpack.rstrip("/")]
+    assert sorted(p.name for p in folder.iterdir()) == [release.installed]
     if sys.platform != "win32":  # links inside the release only
-        lib = folder / release.unpack / "lib"
+        lib = folder / release.installed / "lib"
         assert (lib / "libtorch.so").resolve() == (lib / "libtorch.so.2").resolve()
         assert not (lib / "libcudnn.so").is_symlink()
     clear_tool_caches()
 
     row = _row(_json(capsys, "--config", str(cfg), "deps", "list")[1], "dorado")
     assert row["status"] == "installed" and row["can_uninstall"]
+
+    # A reinstall replaces the release in place.
+    code, _ = _json(
+        capsys, "--config", str(cfg), "deps", "install", "dorado", "--accept-license"
+    )
+    assert code == 0 and sorted(p.name for p in folder.iterdir()) == ["release"]
 
     (folder / "my-models").mkdir()
     code, _ = _json(capsys, "--config", str(cfg), "deps", "uninstall", "dorado")
@@ -720,4 +727,35 @@ def test_dorado_pins_a_verified_release_for_each_supported_platform():
     for release in releases.values():
         assert release.url.startswith("https://cdn.oxfordnanoportal.com/")
         assert len(release.sha256) == 64 and release.license is not None
-        assert release.executable.startswith(release.unpack)
+        assert release.executable.startswith(release.installed + "/")
+
+
+def test_a_release_that_writes_outside_its_folder_is_refused(
+    host, tmp_path, monkeypatch, capsys
+):
+    """A member path escaping the release folder stops the install; nothing
+    is written outside."""
+    import zipfile
+
+    release = managed_binary("dorado")
+    if release is None or not release.url.endswith(".zip"):
+        pytest.skip("this host's Dorado release isn't a zip")
+    jar_dir = tmp_path / "jartools"
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(f'jar_directory = "{jar_dir.as_posix()}"\n', encoding="utf-8")
+
+    def fake_download(url, dest, **_kwargs):  # the network boundary
+        with zipfile.ZipFile(dest, "w") as bundle:
+            bundle.writestr(f"{release.unpack}../../escaped.txt", b"no")
+        return True
+
+    monkeypatch.setattr(
+        "wgsextract_cli.core.ref_library.downloads.download_file", fake_download
+    )
+    code, document = _json(
+        capsys, "--config", str(cfg), "deps", "install", "dorado", "--accept-license"
+    )
+
+    assert code != 0 and "unsafe path" in document["error"]["message"]
+    assert not (tmp_path / "escaped.txt").exists()
+    assert not (jar_dir / "escaped.txt").exists()

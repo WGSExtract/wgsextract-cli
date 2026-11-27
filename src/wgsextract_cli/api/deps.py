@@ -1,6 +1,6 @@
 """``deps check`` and ``deps list``: which bioinformatics tools this
 installation finds, where, and in what version; ``deps install`` and
-``deps uninstall``: add or remove an optional tool's Pixi environment.
+``deps uninstall``: add or remove an optional tool.
 
 ``check`` without ``tool`` lists every mandatory and optional tool. The
 result's ``details`` hold ``mandatory`` and ``optional``: one
@@ -16,7 +16,10 @@ built for this platform included, with its ``group`` ("mandatory" or
 "optional"), ``status`` ("installed", "missing" or "unavailable"), its own
 Pixi ``environment`` and the ``environment_tools`` it provides,
 ``can_install`` and ``can_uninstall``, and a ``note`` (how to install it
-yourself, or why it can't be had). It doesn't fail on a missing tool.
+yourself, or why it can't be had). A tool installed from its official release
+carries its ``license`` (``name``, ``terms``, ``url``) when it has a
+restrictive one, and ``license_acceptance_required`` while install needs
+``accept_license``. It doesn't fail on a missing tool.
 
 ``ready`` reports whether a command line (``command_line``, as its argv
 after ``wgsextract``) can run on this computer without the network: each
@@ -35,8 +38,11 @@ names host paths its folder checks can't vet.
 ``install`` downloads and installs the Pixi environment that provides an
 optional tool (``pixi install --locked -e <env>``); ``uninstall`` removes it
 (``pixi clean -e <env>``), and with it the other tools in that environment.
-Tools that come with the CLI itself, or that you install yourself, are
-refused with how to get them."""
+DISCVRSeq installs as one verified JAR, and PLINK 2 on Windows and Dorado from
+their pinned, verified official releases, into the managed tools folder.
+Dorado's licence allows research use only: install refuses (usage error) until
+``accept_license`` is given. Tools that come with the CLI itself, or that you
+install yourself, are refused with how to get them."""
 
 from __future__ import annotations
 

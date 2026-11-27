@@ -2,8 +2,11 @@
 where no Pixi build exists for the platform: PLINK 2 on Windows, and Dorado.
 
 Each release is pinned by URL and SHA-256, downloaded only by an explicit
-``deps install``, and unpacked under ``managed_binary_dir(tool)``. Uninstall
-removes only what install unpacked: that folder may hold the user's files.
+``deps install``, and unpacked under ``managed_binary_dir(tool)``: a release
+folder as ``release`` whatever its version, so a newer pin replaces it. A
+reinstall or uninstall first moves the old copy aside, so a file in use leaves
+it whole. Uninstall removes only what install unpacked: that folder may hold
+the user's files.
 A release under a restrictive licence (Dorado's is research-only) installs only
 once the user accepts it (``deps install TOOL --accept-license``).
 """
@@ -41,8 +44,9 @@ class License:
 @dataclass(frozen=True)
 class ManagedBinary:
     """An official release archive. ``unpack`` is the archive member install
-    unpacks: a file, or a folder ending in ``/``. ``executable`` is the tool's
-    path under ``managed_binary_dir(tool)``."""
+    unpacks: a file, or a folder ending in ``/`` (installed as ``release``).
+    ``executable`` is the tool's path under ``managed_binary_dir(tool)``.
+    ``large`` asks for ``--allow-large-download`` under ``--network low``."""
 
     version: str
     url: str
@@ -51,6 +55,12 @@ class ManagedBinary:
     unpack: str
     executable: str
     license: License | None = None
+    large: bool = True
+
+    @property
+    def installed(self) -> str:
+        """What install leaves in ``managed_binary_dir(tool)``."""
+        return "release" if self.unpack.endswith("/") else self.unpack
 
 
 DORADO_LICENSE = License(
@@ -62,15 +72,14 @@ _DORADO_CDN = "https://cdn.oxfordnanoportal.com/software/analysis/"
 
 
 def _dorado(platform_name: str, archive: str, sha256: str, size: str) -> ManagedBinary:
-    folder = f"dorado-2.2.0-{platform_name}/"
     exe = "dorado.exe" if platform_name == "win64" else "dorado"
     return ManagedBinary(
         version="2.2.0",
         url=f"{_DORADO_CDN}dorado-2.2.0-{platform_name}.{archive}",
         sha256=sha256,
         size_label=size,
-        unpack=folder,
-        executable=f"{folder}bin/{exe}",
+        unpack=f"dorado-2.2.0-{platform_name}/",
+        executable=f"release/bin/{exe}",
         license=DORADO_LICENSE,
     )
 
@@ -91,6 +100,7 @@ MANAGED_BINARIES: dict[str, dict[str, ManagedBinary]] = {
             size_label="~11 MB",
             unpack="plink2.exe",
             executable="plink2.exe",
+            large=False,
         ),
     },
     "dorado": {
@@ -184,6 +194,12 @@ def managed_executable(tool: str) -> str | None:
     return str(path) if path.is_file() else None
 
 
+def is_managed(tool: str) -> bool:
+    """Whether ``deps install`` has unpacked ``tool``, so uninstall can remove
+    it (whichever copy PATH finds first)."""
+    return managed_executable(tool) is not None
+
+
 def _inside(path: Path, folder: Path) -> bool:
     try:
         return path.resolve().is_relative_to(folder.resolve())
@@ -192,11 +208,10 @@ def _inside(path: Path, folder: Path) -> bool:
 
 
 def _wanted(name: str, spec: ManagedBinary) -> bool:
-    return (
-        name.startswith(spec.unpack)
-        if spec.unpack.endswith("/")
-        else name == spec.unpack
-    )
+    name = name.removeprefix("./")
+    if spec.unpack.endswith("/"):
+        return name.startswith(spec.unpack)
+    return name == spec.unpack
 
 
 def _link_inside(link: Path, target: str, into: Path) -> bool:
@@ -210,15 +225,14 @@ def _link_inside(link: Path, target: str, into: Path) -> bool:
 
 
 def _unpack_zip(archive: Path, spec: ManagedBinary, into: Path) -> None:
-    """Unpack ``spec.unpack`` from a zip, keeping Unix modes and the symlinks
-    that stay inside the release."""
+    """Unpack ``spec.unpack`` from a zip, keeping Unix modes and, except on
+    Windows (where links need privileges), the symlinks inside the release."""
     import zipfile
 
     with zipfile.ZipFile(archive) as bundle:
-        names = [i for i in bundle.infolist() if _wanted(i.filename, spec)]
-        if not names:
-            raise KeyError(spec.unpack)
-        for info in names:
+        for info in bundle.infolist():
+            if not _wanted(info.filename, spec):
+                continue
             target = into / PurePosixPath(info.filename)
             if not _inside(target, into):
                 raise WGSExtractError(
@@ -231,10 +245,10 @@ def _unpack_zip(archive: Path, spec: ManagedBinary, into: Path) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             if stat.S_ISLNK(mode):
                 link = bundle.read(info).decode()
-                if _link_inside(target, link, into):
+                if sys.platform != "win32" and _link_inside(target, link, into):
                     target.symlink_to(link)
                 else:
-                    logging.debug(f"Skipped {info.filename} -> {link}: outside.")
+                    logging.debug(f"Skipped the link {info.filename} -> {link}.")
                 continue
             with bundle.open(info) as source, target.open("wb") as out:
                 shutil.copyfileobj(source, out, 1 << 20)
@@ -243,23 +257,35 @@ def _unpack_zip(archive: Path, spec: ManagedBinary, into: Path) -> None:
 
 
 def _unpack_tar(archive: Path, spec: ManagedBinary, into: Path) -> None:
+    """Unpack ``spec.unpack`` from a tarball in one pass (a gzip stream can't
+    seek back), with tarfile's ``data`` filter and links kept only inside."""
     import tarfile
 
     if not hasattr(tarfile, "data_filter"):
-        raise WGSExtractError("Unpacking this release needs Python 3.12 or newer.")
+        raise WGSExtractError(
+            "Unpacking this release needs a Python with tarfile extraction "
+            "filters (3.10.12, 3.11.4, 3.12 or newer)."
+        )
+
+    def keep(member: tarfile.TarInfo, dest: str) -> tarfile.TarInfo | None:
+        link = Path(dest) / member.name
+        if member.issym() and not _link_inside(link, member.linkname, into):
+            logging.debug(f"Skipped the link {member.name} -> {member.linkname}.")
+            return None
+        return tarfile.data_filter(member, dest)
+
     with tarfile.open(archive) as bundle:
-        members = [m for m in bundle.getmembers() if _wanted(m.name, spec)]
-        if not members:
-            raise KeyError(spec.unpack)
+        wanted = (member for member in bundle if _wanted(member.name, spec))
+        bundle.extractall(into, members=wanted, filter=keep)
 
-        def keep(member: tarfile.TarInfo, dest: str) -> tarfile.TarInfo | None:
-            link = Path(dest) / member.name
-            if member.issym() and not _link_inside(link, member.linkname, into):
-                logging.debug(f"Skipped {member.name} -> {member.linkname}: outside.")
-                return None
-            return tarfile.data_filter(member, dest)
 
-        bundle.extractall(into, members=members, filter=keep)
+def _drop_escaping_links(folder: Path) -> None:
+    """Remove links that point outside ``folder`` once every link exists (one
+    made before another it passes through could not be checked when made)."""
+    for path in list(folder.rglob("*")):
+        if path.is_symlink() and not _inside(path, folder):
+            logging.debug(f"Removed the link {path}: it points outside the release.")
+            path.unlink()
 
 
 def _remove(path: Path) -> None:
@@ -267,6 +293,17 @@ def _remove(path: Path) -> None:
         path.unlink()
     elif path.is_dir():
         shutil.rmtree(path)
+
+
+def _set_aside(path: Path) -> Path | None:
+    """Rename ``path`` to ``.old-<name>`` beside it (on Windows this fails,
+    untouched, while a file in it is in use); None when there is no ``path``."""
+    if not (path.exists() or path.is_symlink()):
+        return None
+    aside = path.with_name(f".old-{path.name}")
+    _remove(aside)
+    path.replace(aside)
+    return aside
 
 
 def install(tool: str, spec: ManagedBinary, *, accept_license: bool) -> dict[str, Any]:
@@ -295,11 +332,11 @@ def install(tool: str, spec: ManagedBinary, *, accept_license: bool) -> dict[str
         expected_sha256=spec.sha256,
         use_mirrors=False,
         resolve_release_digest=False,
-        large=not spec.size_label.endswith("MB"),
+        large=spec.large,
     )
     if not ok or not archive.is_file():
         raise WGSExtractError(f"Failed to download {tool} from {spec.url}.")
-    top = spec.unpack.rstrip("/")
+    target = dest / spec.installed
     try:
         _remove(staging)
         staging.mkdir()
@@ -307,12 +344,23 @@ def install(tool: str, spec: ManagedBinary, *, accept_license: bool) -> dict[str
             _unpack_zip(archive, spec, staging)
         else:
             _unpack_tar(archive, spec, staging)
-        unpacked = staging / top
-        executable = staging / spec.executable
+        unpacked = staging / spec.unpack.rstrip("/")
+        if not (unpacked.exists() or unpacked.is_symlink()):
+            raise KeyError(spec.unpack)
+        if unpacked.is_dir():
+            _drop_escaping_links(unpacked)
+        aside = _set_aside(target)
+        try:
+            unpacked.replace(target)
+        except OSError:
+            if aside is not None:
+                aside.replace(target)
+            raise
+        executable = dest / spec.executable
         if executable.is_file():
             executable.chmod(executable.stat().st_mode | 0o755)
-        _remove(dest / top)
-        unpacked.replace(dest / top)
+        if aside is not None:
+            _remove(aside)
     except (KeyError, zipfile.BadZipFile, tarfile.TarError) as error:
         raise WGSExtractError(
             f"The {tool} download from {spec.url} isn't the expected archive: {error}"
@@ -343,15 +391,16 @@ def install(tool: str, spec: ManagedBinary, *, accept_license: bool) -> dict[str
 
 def uninstall(tool: str, spec: ManagedBinary) -> dict[str, Any]:
     """Remove what ``install`` unpacked, then its folder if nothing else is in it."""
-    from wgsextract_cli.core.dependencies import clear_tool_caches, get_tool_path
+    from wgsextract_cli.core.dependencies import clear_tool_caches
 
     folder = managed_binary_dir(tool)
-    found = get_tool_path(tool)
-    if not found or not _inside(Path(found), folder):
+    if not is_managed(tool):
         raise WGSExtractError(f"No WGS Extract-managed {tool} is installed to remove.")
     logging.info(f"Removing {tool} from {folder}...")
     try:
-        _remove(folder / spec.unpack.rstrip("/"))
+        aside = _set_aside(folder / spec.installed)
+        if aside is not None:
+            _remove(aside)
         if not any(folder.iterdir()):
             folder.rmdir()
     except OSError as error:
@@ -365,8 +414,3 @@ def uninstall(tool: str, spec: ManagedBinary) -> dict[str, Any]:
         "tools": [tool],
         "path": str(folder),
     }
-
-
-def is_managed(tool: str, path: str | None) -> bool:
-    """Whether ``path``, where the CLI finds ``tool``, is the managed copy."""
-    return bool(path) and _inside(Path(str(path)), managed_binary_dir(tool))
