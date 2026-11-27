@@ -121,6 +121,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - Implementers hand CI to the supervisor/watcher after pushing; wake a fresh, narrowly scoped agent only for actionable failures or threads. Supervisors message only the responsible active agent, never broadcast to idle agents.
   - Record weekly tokens/AIU per merged PR, context per call, threads and pushes per PR in `out/efficiency/`. Baselines: #763 (review churn), 3–5 threads/PR and ~125 runner-minutes/push; #765 (agent token waste), M1 Pro prompt tokens grew ~6× at ~30 PRs/day and lin-big agents reached 410–434k input tokens/call.
 - **Long runs (whole genomes, or roughly an hour or more).** Lessons from #431 (`out/431/retro.md`):
+  - Start with the [shared long-run driver template](docs/developer_setup.md#long-run-benchmark-drivers).
   - **Off the bug queue:** a long run (whole-genome qualification, hill-climb, benchmark) runs unattended under its driver, watcher and failure alert, and doesn't hold an implementer slot while it waits. The machine's implementers keep working the efficiency and bug queue meanwhile; resource leases, not agents, keep the run and other work from colliding.
   - **Size first:** run 1–2% of the data, record wall time, peak memory, temp disk and output size, and post the scaled-up table on the issue before choosing a host.
   - **Build what's missing first:** if the slice shows the job won't fit or can't resume, fix that as its own PR on small data before starting the full run.

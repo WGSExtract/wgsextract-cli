@@ -107,20 +107,23 @@ class GitHub:
         )
 
     def runs_between(
-        self, start: datetime, end: datetime, *, workflow: str = ""
+        self, start: datetime, end: datetime, *, workflow: str = "", status: str = ""
     ) -> list[dict[str, Any]]:
         """Date-filtered run searches cap at 1,000; split before paginating."""
         interval = f"{start:%Y-%m-%dT%H:%M:%SZ}..{end:%Y-%m-%dT%H:%M:%SZ}"
         endpoint = f"actions/workflows/{workflow}/runs" if workflow else "actions/runs"
-        path = f"{endpoint}?{urlencode({'created': interval})}&per_page=100"
+        filters = {"created": interval}
+        if status:
+            filters["status"] = status
+        path = f"{endpoint}?{urlencode(filters)}&per_page=100"
         first = self.api("GET", path + "&page=1")
         if first["total_count"] >= 1000:
             if (end - start).total_seconds() <= 1:
                 raise RuntimeError("Run search remains capped at one-second resolution")
             middle = start + (end - start) / 2
             return self.runs_between(
-                start, middle, workflow=workflow
-            ) + self.runs_between(middle, end, workflow=workflow)
+                start, middle, workflow=workflow, status=status
+            ) + self.runs_between(middle, end, workflow=workflow, status=status)
         runs: list[dict[str, Any]] = first["workflow_runs"]
         for page in range(2, (first["total_count"] + 99) // 100 + 1):
             runs.extend(self.api("GET", path + f"&page={page}")["workflow_runs"])

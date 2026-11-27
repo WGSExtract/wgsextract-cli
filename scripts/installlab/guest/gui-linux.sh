@@ -74,7 +74,9 @@ APT_OUTAGE="$R/apt-outage.txt"
 . "$HERE/user-apt.sh"
 
 download_installer() {
-    mkdir -p "$HOME/Downloads" && curl -fsSL -o "$DEB" "$LAB_GUI_INSTALLER_URL"
+    mkdir -p "$HOME/Downloads" &&
+        curl -fsSL --retry 3 --retry-all-errors --connect-timeout 15 \
+            --max-time 120 --retry-max-time 150 -o "$DEB" "$LAB_GUI_INSTALLER_URL"
 }
 
 install_app() {

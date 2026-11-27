@@ -2,7 +2,6 @@
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -55,6 +54,9 @@ def launch(cache: Path, pixi: str, args: list[str]) -> None:
             command = [pixi, "run", "--no-install", "--frozen", "wgsextract", *args]
             if os.name != "nt":
                 os.execv(pixi, command)
+
+            import subprocess
+
             raise SystemExit(subprocess.call(command)) from None
         raise SystemExit(
             f"Cannot activate WGS Extract's runtime: {error}. Run Setup again."

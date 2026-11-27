@@ -89,11 +89,18 @@ $verifiedLines = foreach ($line in $lines) {
     if ($line -match '^(?<name>[\w-]+) = \{ url = "(?<url>https://[^"#]+)#sha256=(?<digest>[a-f0-9]{64})" \}$') {
         $name, $url, $digest = $Matches.name, $Matches.url, $Matches.digest
         $payload = Join-Path $cache ([IO.Path]::GetFileName(([uri]$url).AbsolutePath))
-        & "$prefix\Library\bin\curl.exe" --fail --silent --show-error --location `
-            --max-time 300 --output $payload $url
-        if ($LASTEXITCODE) { throw "Pinned PyPI download failed: $name" }
-        if ((Get-FileHash $payload -Algorithm SHA256).Hash -ine $digest) {
-            throw "Pinned PyPI checksum mismatch: $name"
+        $partial = "$payload.part"
+        try {
+            Write-Host "Fetching pinned $name from $url."
+            & "$prefix\Library\bin\curl.exe" --fail --silent --show-error --location --retry 3 `
+                --retry-all-errors --connect-timeout 15 --max-time 120 --retry-max-time 180 --output $partial $url
+            if ($LASTEXITCODE) { throw "Pinned PyPI download failed: $name (curl exit $LASTEXITCODE)" }
+            if ((Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash -ine $digest) {
+                throw "Pinned PyPI checksum mismatch: $name"
+            }
+            Move-Item -LiteralPath $partial -Destination $payload -Force
+        } finally {
+            Remove-Item -LiteralPath $partial -ErrorAction SilentlyContinue
         }
         $relative = "out/pypi/$([IO.Path]::GetFileName($payload))"
         $verifiedPypi[$relative] = $digest
