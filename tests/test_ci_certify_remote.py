@@ -15,7 +15,9 @@ from typing import Any
 
 import pytest
 
+from scripts.ci_certify import host_platform
 from scripts.ci_certify_remote import BOOTSTRAP, REPOSITORY, certify_remote
+from scripts.ci_certify_remote_worker import execute
 from scripts.ci_certify_ssh import CANCEL, PROBE, RESULT, SUPERVISOR, program_line
 
 
@@ -181,6 +183,7 @@ def certify(
             generic_only=generic,
             remote=remote,
             remote_config=config,
+            prepared_only=False,
             workers=1,
         ),
     )
@@ -273,6 +276,21 @@ def test_972_generic_only_posts_only_its_remote_layer(
     assert [status["state"] for status in statuses] == ["pending", "success"]
     assert {status["context"] for status in statuses} == {"local-ci/generic"}
     assert locks == ["lock", "unlock"]
+
+
+def test_1632_prepared_only_worker_refuses_missing_inputs_without_setup(
+    remote_pr: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    usage = shutil.disk_usage(Path.cwd())
+    monkeypatch.setattr(
+        shutil, "disk_usage", lambda _path: usage._replace(free=30 * 1024**3)
+    )
+    # No Pixi executable can run setup or perform a download.
+    monkeypatch.setenv("PATH", str(Path(shutil.which("git") or "").parent))
+    head = remote_pr["head"]["sha"]
+    with pytest.raises(ValueError, match="Missing CI environment"):
+        execute(head, head, "generic", host_platform(), 1, prepared_only=True)
+    assert not Path(".pixi").exists()
 
 
 def test_1495_selects_next_native_windows_host(

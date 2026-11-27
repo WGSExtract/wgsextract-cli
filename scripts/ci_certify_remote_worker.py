@@ -38,7 +38,15 @@ def verify_checkout(sha: str, expected_platform: str) -> str:
     return head
 
 
-def execute(sha: str, base: str, name: str, platform: str, workers: int) -> None:
+def execute(
+    sha: str,
+    base: str,
+    name: str,
+    platform: str,
+    workers: int,
+    *,
+    prepared_only: bool = False,
+) -> None:
     verify_checkout(sha, platform)
     paths = changed_paths(base, sha)
     affected = select_tests(paths)
@@ -53,6 +61,8 @@ def execute(sha: str, base: str, name: str, platform: str, workers: int) -> None
     try:
         validate_environments(environments)
     except ValueError:
+        if prepared_only:
+            raise
         subprocess.run(setup, check=True, stdin=subprocess.DEVNULL)
         validate_environments(environments)
     if (
@@ -69,6 +79,8 @@ def execute(sha: str, base: str, name: str, platform: str, workers: int) -> None
         try:
             validate_reference()
         except ValueError:
+            if prepared_only:
+                raise
             subprocess.run(
                 [*setup, "--reference"], check=True, stdin=subprocess.DEVNULL
             )
@@ -89,9 +101,16 @@ def execute(sha: str, base: str, name: str, platform: str, workers: int) -> None
 
 
 def main() -> int:
+    import argparse
     import json
 
-    sha, base, name, platform, worker_count = sys.argv[1:]
+    parser = argparse.ArgumentParser(description=__doc__)
+    for argument in ("sha", "base", "layer", "platform"):
+        parser.add_argument(argument)
+    parser.add_argument("workers", type=int)
+    parser.add_argument("--prepared-only", action="store_true")
+    args = parser.parse_args()
+    sha, base, name, platform = args.sha, args.base, args.layer, args.platform
     result = {
         "sha_before": "",
         "sha_after": "",
@@ -105,7 +124,9 @@ def main() -> int:
         if name not in {platform, "generic"}:
             raise ValueError(f"Unsupported remote layer {name}")
         result["sha_before"] = verify_checkout(sha, platform)
-        execute(sha, base, name, platform, int(worker_count))
+        execute(
+            sha, base, name, platform, args.workers, prepared_only=args.prepared_only
+        )
         result["state"], code = "success", 0
     except CertificationTestFailure as error:
         print(error, flush=True)

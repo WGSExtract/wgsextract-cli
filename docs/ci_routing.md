@@ -40,8 +40,9 @@ Copilot already reviewed the head, and never checks out or executes PR
 code. The default-branch ruleset also reviews owner drafts when they are opened,
 but not later pushes; agents request a fresh draft review after pushing
 (`gh pr edit N --add-reviewer @copilot`) and handle its threads before
-readiness (#1281). Readiness remains the point where validation starts, not the
-first opportunity for review, so review rounds no longer rerun the matrix.
+readiness (#1281). Trivial site/docs PRs need one review, not both a separate
+independent review and Copilot. Readiness remains the point where validation
+starts, so draft review rounds no longer rerun the matrix.
 Before `gh pr ready`, run `pixi run lint`, the routing/workflow-policy tests,
 relevant product tests and type checks, documentation freshness checks if docs
 changed, and `pixi run pre-commit run gitleaks --all-files` locally. The former
@@ -345,10 +346,37 @@ certifications do not need reference setup.
 
 #### Certifying a PR
 
-Before marking a pushed owner PR ready, run `just certify` on a clean checkout.
+Keep owner PRs in draft while reviewing. Run the scoped local preflight, batch
+fixes, and finish the review of the current pushed SHA before requesting
+certification. Review is settled when the current-head review is complete, no
+newer review is pending, all actionable threads are handled, and no required
+approval is outstanding. The review-start-timeout exception requires a clean
+independent review and a readiness note. Do not certify each round. Attempt each
+eligible layer once on that head, reuse only valid evidence for that SHA, and
+cancel stale work. Do not refresh a mergeable PR merely because main advanced.
+If a necessary fix or refresh changes the SHA, return to draft and settle review
+again before certification or a new ready matrix.
+
+Use the existing ready router, not a separate path allowlist:
+
+| Routed work | Local candidates beyond generic |
+|---|---|
+| CLI source/tests, shared runtime inputs, assets/native files read by CLI tests, or broad fallback | Non-empty CLI lanes: Ubuntu → Linux x64; macOS → macOS ARM64; Windows → Windows x64; ARM64 → Linux ARM64. Routed optional integrations add Linux x64 for CLI changes. |
+| Prose, docs, site or CI policy/workflows without CLI inputs | None. Keep routed docs, site, policy, OS smoke and optional-tool checks hosted if not covered. The owner prose fast path still applies. |
+| GUI/native-only without CLI inputs, or pure moves | Preserve the separate GUI/native gates and hosted move guards. |
+
+Mixed diffs take the union; a policy or site edit cannot mask a CLI input.
+Choose an immediately available slot of the exact native platform with prepared
+inputs. Otherwise record hosted fallback, without provisioning or retrying on
+that head. A local test failure is actionable, not a host-unavailability
+exception. Keep ready admission and the passing current-head hosted `required`
+verdict; jobs without matching evidence still run hosted.
+
+On a clean checkout, use `just certify --generic-only` for generic and
+`just certify --platform-only` on each selected native host.
 On shared Linux hosts use
-`agent-coord run --cores 4 --mem 8G --label "PR certification" -- just certify`.
-`--platform-only` / `--generic-only` divide the layers across machines.
+`agent-coord run --cores 4 --mem 8G --label "PR certification" -- just certify --generic-only`
+for generic (substitute `--platform-only` for the native layer).
 The host platform is detected, never overridden; Linux x64 cannot certify ARM64,
 macOS or Windows. All selected tests run locally in full, without CI's
 passed-test cache. Lint, strict typing, changed-file lint, routed docs/site checks
@@ -464,13 +492,13 @@ coordinate explicitly with anyone else using the machine.
 
 The bootstrap fetches the exact pushed head and base SHAs over public HTTPS
 and creates `~/src/wgsextract-cli/scratch/certify-<head-sha>` as a detached
-worktree if absent. Branch names never enter the remote command. If the run
-refuses for missing environments, explicitly install the locked environments
-in **that worktree**, as in one-time preparation above, then retry. The worker
-runs `certify-setup` if retained wheels or reference inputs need preparation,
-then executes the same native platform or generic commands as local
-certification. Remote input setup may download pinned archives; the test phase
-uses `--no-install`.
+worktree if absent. Branch names never enter the remote command. Remote
+certification uses the same native platform or generic commands as local
+certification. Prepare locked environments and retained inputs separately
+from ready admission; if required inputs are absent, fall back to hosted
+checks rather than provisioning or retrying for that head. Use
+`--prepared-only` for coordinated remote attempts; the test phase uses
+`--no-install`.
 
 The worker's filesystem must start with 30 GiB free. A one-second watchdog
 stops the worker below 26 GiB to preserve the 25 GiB reserve. Loss of SSH or
@@ -1089,10 +1117,11 @@ longer blocks admission. Unknown workflows reserve capacity until they
 complete; the coordinator can cancel unstarted agent runs, not reclaim runners
 from agent jobs already running. `--wait` polls with
 exponential backoff, polling a last time at `--timeout` seconds; `--json`
-prints the counts. The check reserves nothing, so each supervisor admits one
-PR at a time and starts the next check only once the previous PR's ready run
-is visible; concurrent supervisors can overshoot `--max-ready` by at most one
-run each.
+prints the counts. Use spare capacity without delaying queue work or priority
+authors; don't infer spare slots from jobs that haven't fanned out. The check
+reserves nothing: each supervisor waits until its previous admission is
+visible before checking the next one. Concurrent supervisors can overshoot
+`--max-ready` by at most one run each.
 
 #### Fast path for collaborators
 
