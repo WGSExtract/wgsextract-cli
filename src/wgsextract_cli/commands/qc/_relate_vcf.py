@@ -27,8 +27,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from wgsextract_cli.core.reference_evidence import header_declares_gvcf
-from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
+from wgsextract_cli.core.utils import WGSExtractError, popen, run_command, run_pipeline
 from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 
 # Share of the expected non-reference sites a whole-genome sample reaches.
 WGS_MIN_RATIO = 0.8
@@ -76,6 +77,17 @@ def is_sex_contig(contig: str) -> bool:
     return contig.removeprefix("chr") in ("X", "Y")
 
 
+def canonical_sites(path: str, work: Path) -> str:
+    """Somalier itself compares site alleles case-sensitively for alignments."""
+    output = str(work / "custom-sites.vcf.gz")
+    run_pipeline(
+        uppercase_vcf(["bcftools", "view", "--no-version"], output, source=path),
+        description="Normalize custom Somalier sites",
+        stderr_dir=work,
+    )
+    return output
+
+
 def read_sites(path: str) -> list[Site]:
     compressed = path.lower().endswith((".gz", ".bgz"))
     with gzip.open(path, "rt") if compressed else open(path) as f:
@@ -89,7 +101,11 @@ def read_sites(path: str) -> list[Site]:
                 af: float | None = float(info["AF"].split(",")[0])
             except (KeyError, ValueError):
                 af = None
-            sites.append(Site(fields[0], int(fields[1]), fields[3], fields[4], af))
+            sites.append(
+                Site(
+                    fields[0], int(fields[1]), fields[3].upper(), fields[4].upper(), af
+                )
+            )
         return sites
 
 

@@ -5,9 +5,11 @@ a father, a mother, their son and an unrelated woman, each read carrying the
 person's alleles at the sites. somalier, samtools and bcftools run for real.
 """
 
+import gzip
 import hashlib
 import io
 import random
+import re
 import sys
 import tarfile
 from pathlib import Path
@@ -296,11 +298,14 @@ def test_variant_only_vcfs_relate_and_their_sketches_reuse_the_same(family, tmp_
 
 
 @needs_somalier
-def test_a_vcf_and_a_bam_relate(family, tmp_path):
-    """#614 review: a parent's VCF against a child's BAM is still ~0.5."""
+def test_1630_a_vcf_and_a_bam_relate_with_lowercase_sites(family, tmp_path):
+    """Lowercase --sites alleles must not drop genotypes from the parent's VCF."""
     vcf = _variants_vcf(family, tmp_path, "dad")
-
-    result = _relate(family, tmp_path / "out", vcf, "kid.bam", "stranger.bam")
+    sites = tmp_path / "lowercase.vcf"
+    alleles = r"(?<=\t\.\t)[ACGT]\t[ACGT](?=\t)"
+    with gzip.open(family / "sites.vcf.gz", "rt") as source:
+        sites.write_text(re.sub(alleles, lambda m: m[0].lower(), source.read()))
+    result = _relate(family, tmp_path / "out", vcf, "kid.bam", "stranger.bam", sites=Path(bgzip_index(sites)))  # fmt: skip
 
     assert _relatedness(result, "dad", "kid") == pytest.approx(0.5, abs=0.1)
     assert abs(_relatedness(result, "dad", "stranger")) < 0.1

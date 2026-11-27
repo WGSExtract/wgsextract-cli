@@ -129,8 +129,8 @@ def native_probe_sites(
                             matched[key],
                             chrom=chrom,
                             position=int(pos),
-                            ref=ref,
-                            alt=alt,
+                            ref=ref.upper(),
+                            alt=alt.upper(),
                         ),
                     )
                 )
