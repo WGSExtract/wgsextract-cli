@@ -159,8 +159,9 @@ def test_1654_gvcf_publication_changes_only_allele_sequence_bytes(tmp_path):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits and umask")
 @pytest.mark.parametrize(("vcf_mode", "short_index"), [(0o600, False), (0o644, True)])
+@pytest.mark.parametrize("no_xattr", [False, True], ids=["native-os", "no-xattr"])
 def test_1654_uppercase_rewrite_protects_staging_and_keeps_private_modes(
-    tmp_path, vcf_mode, short_index
+    tmp_path, monkeypatch, vcf_mode, short_index, no_xattr
 ):
     source = tmp_path / "calls.vcf"
     source.write_text(
@@ -176,6 +177,13 @@ def test_1654_uppercase_rewrite_protects_staging_and_keeps_private_modes(
     short = final.with_suffix(".tbi")
     if short_index:
         index.replace(short)
+    if no_xattr:
+        # A Linux caller simulation on macOS still uses macOS's actual os module.
+        monkeypatch.setattr(sys, "platform", "linux")
+        for name in ("getxattr", "setxattr", "removexattr"):
+            monkeypatch.delattr(os, name, raising=False)
+        # shutil selected its xattr implementation at import time on Linux.
+        monkeypatch.setattr(os, "listxattr", lambda *args, **kwargs: [], raising=False)
     producer = """
 import gzip, stat, sys
 from pathlib import Path
