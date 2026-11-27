@@ -276,7 +276,7 @@ NEEDS = {
     "vcf gnomad": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
-    "vcf regulatory": _n(MINUTES, *_VCF, "bgzip"),
+    "vcf regulatory": _n(MINUTES, *_VCF, "bgzip", optional="samtools"),
     "vcf prepare": _n(MINUTES, *_VCF),
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
