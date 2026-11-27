@@ -537,46 +537,53 @@ def test_windows_cleanup_falls_back_when_taskkill_times_out(monkeypatch, caplog)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows process-tree regression")
-def test_windows_cleanup_kills_break_ignoring_descendants(tmp_path):
-    child_pid = tmp_path / "child.pid"
-    grandchild_pid = tmp_path / "grandchild.pid"
-    grandchild = (
-        "import os, signal, time; from pathlib import Path; "
-        "signal.signal(signal.SIGBREAK, signal.SIG_IGN); "
-        f"Path({str(grandchild_pid)!r}).write_text(str(os.getpid())); "
-        "time.sleep(60)"
-    )
-    child = (
-        "import os, signal, subprocess, sys, time; from pathlib import Path; "
-        "signal.signal(signal.SIGBREAK, signal.SIG_IGN); "
-        f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
-        f"Path({str(child_pid)!r}).write_text(str(os.getpid())); "
-        "time.sleep(60)"
-    )
-    parent = subprocess.Popen(
-        [
-            sys.executable,
-            "-c",
-            f"import subprocess, sys, time; "
-            f"subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(60)",
-        ],
-        **process_registry.process_group_kwargs(),
-    )
+def test_1643_windows_cleanup_kills_break_ignoring_descendants_in_both_trees(tmp_path):
+    def launch(index):
+        child_pid = tmp_path / f"child-{index}.pid"
+        grandchild_pid = tmp_path / f"grandchild-{index}.pid"
+        grandchild = (
+            "import os, signal, time; from pathlib import Path; "
+            "signal.signal(signal.SIGBREAK, signal.SIG_IGN); "
+            f"Path({str(grandchild_pid)!r}).write_text(str(os.getpid())); "
+            "time.sleep(60)"
+        )
+        child = (
+            "import os, signal, subprocess, sys, time; from pathlib import Path; "
+            "signal.signal(signal.SIGBREAK, signal.SIG_IGN); "
+            f"subprocess.Popen([sys.executable, '-c', {grandchild!r}]); "
+            f"Path({str(child_pid)!r}).write_text(str(os.getpid())); "
+            "time.sleep(60)"
+        )
+        parent = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                f"import subprocess, sys, time; "
+                f"subprocess.Popen([sys.executable, '-c', {child!r}]); time.sleep(60)",
+            ],
+            **process_registry.process_group_kwargs(),
+        )
+        return parent, (child_pid, grandchild_pid)
+
     registry = process_registry.ProcessRegistry()
-    registry.register_process("launcher", parent)
+    parents = []
+    pid_files = []
     descendants = []
     try:
+        for index in range(2):
+            parent, files = launch(index)
+            parents.append(parent)
+            pid_files.extend(files)
+            registry.register_process("launcher", parent)
         deadline = time.monotonic() + 15
-        while not all(
-            path.exists() and path.stat().st_size > 0
-            for path in (child_pid, grandchild_pid)
-        ):
-            assert parent.poll() is None
+        while not all(path.exists() and path.stat().st_size > 0 for path in pid_files):
+            assert all(parent.poll() is None for parent in parents)
             assert time.monotonic() < deadline, "descendants did not initialize"
             time.sleep(0.05)
-        descendants = [int(path.read_text()) for path in (child_pid, grandchild_pid)]
+        descendants = [int(path.read_text()) for path in pid_files]
         registry.cleanup()
-        parent.wait(timeout=5)
+        for parent in parents:
+            parent.wait(timeout=5)
         for pid in descendants:
             listing = subprocess.run(
                 ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
@@ -591,7 +598,9 @@ def test_windows_cleanup_kills_break_ignoring_descendants(tmp_path):
             ), f"descendant {pid} survived cleanup"
         descendants.clear()
     finally:
-        remaining = descendants + ([parent.pid] if parent.poll() is None else [])
+        remaining = descendants + [
+            parent.pid for parent in parents if parent.poll() is None
+        ]
         for pid in remaining:
             subprocess.run(
                 ["taskkill", "/F", "/T", "/PID", str(pid)],
@@ -599,7 +608,8 @@ def test_windows_cleanup_kills_break_ignoring_descendants(tmp_path):
                 check=False,
                 timeout=10,
             )
-        parent.wait(timeout=5)
+        for parent in parents:
+            parent.wait(timeout=5)
 
 
 def test_deps_check_exits_nonzero_when_mandatory_missing(monkeypatch, capsys):

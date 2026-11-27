@@ -158,48 +158,55 @@ def wait_for_pipeline(
     return [proc.wait() for proc in procs]
 
 
+def _terminate_windows_trees(processes: list[subprocess.Popen[Any]]) -> None:
+    command = ["taskkill", "/F", "/T"]
+    pids = [str(proc.pid) for proc in processes if proc.poll() is None]
+    if not pids:
+        return
+    for pid in pids:
+        command.extend(("/PID", pid))
+    label = ", ".join(pids)
+    try:
+        # CTRL_BREAK can exit the launcher while Java descendants keep running,
+        # losing the root needed by /T. Batch PIDs for a single bounded launch.
+        result = subprocess.run(command, capture_output=True, timeout=10, check=False)
+        if result.returncode:
+            logging.warning(
+                "Process tree %s could not be terminated (taskkill exit %s).",
+                label,
+                result.returncode,
+            )
+    except (OSError, subprocess.TimeoutExpired):
+        logging.warning("Process %s could not be terminated.", label, exc_info=True)
+
+
 def terminate_trees(processes: list[subprocess.Popen[Any]]) -> None:
     """Terminate these processes' trees, escalating Unix groups to SIGKILL."""
     if not processes:
         return
-
     groups: set[int] = set()
-    for proc in processes:
-        owned_group = _owned_groups.get(proc)
-        if proc.poll() is None or owned_group is not None:
+    if sys.platform == "win32":
+        _terminate_windows_trees(processes)
+    else:
+        for proc in processes:
+            owned_group = _owned_groups.get(proc)
+            if proc.poll() is not None and owned_group is None:
+                continue
             try:
-                if sys.platform == "win32":
-                    # CTRL_BREAK can exit the launcher while Java descendants
-                    # keep running, losing the root needed by taskkill /T.
-                    result = subprocess.run(
-                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                        capture_output=True,
-                        timeout=10,
-                        check=False,
-                    )
-                    if result.returncode:
-                        logging.warning(
-                            "Process tree %s could not be terminated "
-                            "(taskkill exit %s).",
-                            proc.pid,
-                            result.returncode,
-                        )
+                pgid = owned_group
+                if pgid is None:
+                    pgid = os.getpgid(proc.pid)
+                if pgid == proc.pid:
+                    groups.add(pgid)
+                    os.killpg(pgid, signal.SIGTERM)
                 else:
-                    pgid = owned_group
-                    if pgid is None:
-                        pgid = os.getpgid(proc.pid)
-                    if pgid == proc.pid:
-                        groups.add(pgid)
-                        os.killpg(pgid, signal.SIGTERM)
-                    else:
-                        proc.terminate()
-            except (OSError, subprocess.TimeoutExpired):
-                log = logging.warning if sys.platform == "win32" else logging.debug
-                log("Process %s could not be terminated.", proc.pid, exc_info=True)
+                    proc.terminate()
+            except OSError:
+                logging.debug(
+                    "Process %s could not be terminated.", proc.pid, exc_info=True
+                )
 
-    # The launcher can exit on SIGTERM while a descendant ignores it.
-    # Windows taskkill /F already forces termination; there is no grace period.
-    if sys.platform != "win32":
+        # The launcher can exit on SIGTERM while a descendant ignores it.
         time.sleep(0.5)
         for pgid in groups:
             try:
