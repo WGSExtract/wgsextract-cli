@@ -11,7 +11,7 @@ from wgsextract_cli.core import variant_confidence
 from wgsextract_cli.core.utils import run_command
 from wgsextract_cli.core.variant_table import COLUMN_NAMES, parse_header, variant_rows
 
-from .test_vcf_table import RECORDS, _record, _rows, _tsv
+from .test_vcf_table import HEADER, RECORDS, _record, _rows, _tsv
 
 # Issue 1289: read evidence, phasing and transcript columns. Each caller's own
 # FORMAT conventions: GATK HaplotypeCaller (AD/DP, physical phasing with PGT,
@@ -65,6 +65,45 @@ def _caller_rows(records: list[str], **kwargs) -> dict:
 
 
 READ_COLUMNS = ("alt_fraction", "ad_ref", "ad_alt", "phase_set")
+
+
+@needs_htslib
+@pytest.mark.parametrize("fmt", ["tsv", "parquet"])
+def test_1623_table_exports_only_group_maximum_faf95_per_alt(tmp_path, fmt):
+    parquet = pytest.importorskip("pyarrow.parquet") if fmt == "parquet" else None
+    header = HEADER.replace(
+        "#CHROM",
+        "".join(
+            f'##INFO=<ID={key},Number=A,Type=Float,Description="{key}">\n'
+            for key in (
+                "AF_joint",
+                "faf95_joint",
+                "fafmax_faf95_max_joint",
+                "fafmax_faf95_max",
+            )
+        )
+        + "#CHROM",
+    )
+    vcf = tmp_path / "mixed.vcf"
+    vcf.write_text(
+        header + "chr1\t100\t.\tC\tG,T\t.\tPASS\t"
+        "AF_joint=0.25,0.5;faf95_joint=0.15,0.4;"
+        "fafmax_faf95_max_joint=0,.;fafmax_faf95_max=0.12,0.3\tGT\t1|2\n",
+        newline="\n",
+    )
+    run_wgsextract(
+        "vcf", "table", "--vcf-input", str(vcf), "--outdir", str(tmp_path), "--format", fmt
+    )  # fmt: skip
+    if parquet is not None:
+        table = parquet.read_table(tmp_path / "mixed_variants.parquet")
+        assert table.column("gnomad_faf95").to_pylist() == [0.0, None]
+    else:
+        rows = _tsv(tmp_path / "mixed_variants.tsv")
+        assert [row["gnomad_faf95"] for row in rows.values()] == ["0.0", ""]
+        with sqlite3.connect(tmp_path / "mixed_variants.sqlite") as db:
+            assert db.execute(
+                "SELECT alt, gnomad_faf95 FROM variants ORDER BY alt"
+            ).fetchall() == [("G", 0.0), ("T", None)]
 
 
 def test_1289_gatk_reads_and_phase_blocks():

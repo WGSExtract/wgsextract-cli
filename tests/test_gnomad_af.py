@@ -20,6 +20,8 @@ JOINT_INFO = (
     f"{AF_INFO}"
     '##INFO=<ID=AF_grpmax_joint,Number=A,Type=Float,Description="m">\n'
     '##INFO=<ID=nhomalt_joint,Number=A,Type=Integer,Description="h">\n'
+    '##INFO=<ID=faf95_joint,Number=A,Type=Float,Description="overall">\n'
+    '##INFO=<ID=fafmax_faf95_max_joint,Number=A,Type=Float,Description="joint group max">\n'
 )
 
 
@@ -96,17 +98,18 @@ def test_1419_same_columns_do_not_make_old_gnomad_tables_current(
 
     assert run_command(
         ["tabix", str(table), "chr1:100-100"], capture_output=True
-    ).stdout.splitlines() == ["chr1\t100\tC\tT\t0.25\t0.5\t1"]
+    ).stdout.splitlines() == ["chr1\t100\tC\tT\t0.25\t0.5\t1\t."]
 
 
-def test_1419_gnomad_v4_rebuild_keeps_allele_specific_annotations(
+def test_1623_gnomad_schema3_works_offline_and_upgrades_with_per_alt_faf95(
     tmp_path, monkeypatch
 ):
     joint = _vcf(
         tmp_path / "chr1.vcf",
         "chr1",
         "{c}\t100\t.\tC\tT,G,A\t.\tPASS\t"
-        "AF_joint=0.25,0.5,0;AF_grpmax_joint=0.4,0.75,0;nhomalt_joint=0,3,0\n"
+        "AF_joint=0.25,0.5,0;AF_grpmax_joint=0.4,0.75,0;nhomalt_joint=0,3,0;"
+        "faf95_joint=0.2,0.3,0;fafmax_faf95_max_joint=0,.,0\n"
         "{c}\t200\t.\tG\tA\t.\tAC0\tAF_joint=0.1\n"
         "{c}\t300\t.\tTA\tT\t.\tPASS\tAF_joint=0\n",
         JOINT_INFO,
@@ -150,32 +153,34 @@ def test_1419_gnomad_v4_rebuild_keeps_allele_specific_annotations(
             api.ref.gnomad(check)
         old = downloads / "old.tsv"
         old.write_text(
-            "## gnomAD v4.1 joint exomes+genomes, PASS sites with AF_joint > 0\n"
-            "#CHROM\tPOS\tREF\tALT\tAF\nchr1\t100\tC\tT\t0.25\n"
+            "## gnomAD v4.1 joint exomes+genomes, PASS alleles with AF_joint > 0; table schema 3\n"
+            "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint\n"
+            "chr1\t100\tC\tT\t0.25\t0.4\t0\n"
         )
         with table.open("wb") as out:
             run_command(["bgzip", "-c", str(old)], stdout=out)
-        run_command(["tabix", "-s", "1", "-b", "2", "-e", "2", str(table)])
+        usable = api.ref.gnomad(check)
+        warning = next(
+            w for w in usable.warnings if w.code == "gnomad_faf95_unavailable"
+        )
+        assert "--release 4.1 --download" in warning.message
         original = table.read_bytes(), index.read_bytes()
-        old_parts = downloads / ".gnomad_hg38_parts"
+        old_parts = downloads / ".gnomad_hg38_parts_v3"
         old_parts.mkdir()
         (old_parts / "chr1.tsv.gz").write_bytes(
-            gzip.compress(b"chr1\t101\tC\tT\t0.1\n")
-        )
-        unsplit_parts = downloads / ".gnomad_hg38_parts_v2"
-        unsplit_parts.mkdir()
-        (unsplit_parts / "chr1.tsv.gz").write_bytes(
-            gzip.compress(b"chr1\t100\tC\tT,G,A\t0.25,0.5,0\t0.4,0.75,0\t0,3,0\n")
+            gzip.compress(b"chr1\t101\tC\tT\t0.1\t0.2\t0\n")
         )
 
-        with pytest.raises(api.CommandFailed, match="needs rebuilding.*--download"):
-            api.ref.gnomad(check)
         renamed = downloads / "renamed-archive.tsv.gz"
         renamed.write_bytes(original[0])
         legacy = annotate(renamed, "legacy")
-        assert "gnomad_table_stale" in {warning.code for warning in legacy.warnings}
+        assert "gnomad_faf95_unavailable" in {w.code for w in legacy.warnings}
         result = tmp_path / "legacy" / "gnomad_annotated.vcf.gz"
         assert _query(result, "%ALT:%GNOMAD_AF")[:3] == ["G:.", "T:0.25", "A:."]
+        exported = api.vcf.table(
+            api.VcfTableParams(vcf_input=result, outdir=tmp_path / "legacy")
+        )
+        assert "gnomad_faf95_unavailable" in {w.code for w in exported.warnings}
         assert not server.requests
 
         server.get_errors["chr3.vcf.gz"] = [503] * 3
@@ -209,20 +214,20 @@ def test_1419_gnomad_v4_rebuild_keeps_allele_specific_annotations(
     assert index.is_file()
     with gzip.open(table, "rt", encoding="utf-8") as f:
         assert f.read().splitlines()[1:] == [
-            "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint",
-            "chr1\t100\tC\tT\t0.25\t0.4\t0",
-            "chr1\t100\tC\tG\t0.5\t0.75\t3",
-            "chr2\t50\tA\tG\t0.01\t.\t.",
+            "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint\tfafmax_faf95_max_joint",
+            "chr1\t100\tC\tT\t0.25\t0.4\t0\t0",
+            "chr1\t100\tC\tG\t0.5\t0.75\t3\t.",
+            "chr2\t50\tA\tG\t0.01\t.\t.\t.",
         ]
 
     annotate(table, "table")
-    fmt = "%CHROM:%ID:%ALT:%GNOMAD_AF:%GNOMAD_POPMAX_AF:%GNOMAD_NHOMALT"
-    annotated = ["1:m:G:0.5:0.75:3", "1:m:T:0.25:0.4:0"]
+    fmt = "%CHROM:%ID:%ALT:%GNOMAD_AF:%GNOMAD_POPMAX_AF:%GNOMAD_NHOMALT:%GNOMAD_FAF95"
+    annotated = ["1:m:G:0.5:0.75:3:.", "1:m:T:0.25:0.4:0:0"]
     assert _query(tmp_path / "table" / "gnomad_annotated.vcf.gz", fmt) == [
         *annotated,
-        "1:m:A:.:.:.",
-        "1:f:A:.:.:.",
-        "1:n:T:.:.:.",
+        "1:m:A:.:.:.:.",
+        "1:f:A:.:.:.:.",
+        "1:n:T:.:.:.:.",
     ]
     assert _query(tmp_path / "table" / "gnomad_af_lt_0.2.vcf.gz", "%ID") == [
         "m",
@@ -241,9 +246,9 @@ def test_1419_gnomad_v4_rebuild_keeps_allele_specific_annotations(
 
 @needs_tools("samtools")
 @pytest.mark.parametrize(
-    "split", [True, False], ids=["biallelic", "legacy-multiallelic"]
+    "split", [True, False], ids=["schema4-biallelic", "legacy-multiallelic"]
 )
-def test_1507_cold_gnomad_table_matches_warm_output_with_shifted_indels(
+def test_1623_cold_and_warm_gnomad_match_shifted_indels_with_faf95(
     tmp_path: Path, split: bool
 ) -> None:
     ref = tmp_path / "ref.fa"
@@ -251,16 +256,17 @@ def test_1507_cold_gnomad_table_matches_warm_output_with_shifted_indels(
     run_command(["samtools", "faidx", str(ref)])
     table = tmp_path / "joint.tsv"
     indels = (
-        "1\t10\tAA\tA\t0.01\t0.1\t1\n1\t10\tAA\tAAA\t0.02\t0.2\t2\n"
+        "1\t10\tAA\tA\t0.01\t0.1\t1\t0.09\n1\t10\tAA\tAAA\t0.02\t0.2\t2\t0.15\n"
         if split
         else "1\t10\tAA\tA,AAA\t0.01,0.02\t0.1,0.2\t1,2\n"
     )
+    faf95_col = "\tfafmax_faf95_max_joint" if split else ""
+    extra_faf = "\t0.25" if split else ""
     table.write_text(
-        "## gnomAD v4.1 joint exomes+genomes, PASS alleles; table schema 3\n"
-        "#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint\n"
-        + indels
-        + "1\t50\tG\tT\t0.3\t0.4\t3\n"
-        "missing\t40\tA\tG\t0.4\t0.5\t4\n"
+        f"## gnomAD v4.1 joint exomes+genomes, PASS alleles; table schema {4 if split else 2}\n"
+        f"#CHROM\tPOS\tREF\tALT\tAF\tAF_grpmax_joint\tnhomalt_joint{faf95_col}\n"
+        f"{indels}1\t50\tG\tT\t0.3\t0.4\t3{extra_faf}\n"
+        f"missing\t40\tA\tG\t0.4\t0.5\t4{extra_faf}\n"
     )
     compressed = tmp_path / "joint.tsv.gz"
     with compressed.open("wb") as out:
@@ -295,6 +301,10 @@ def test_1507_cold_gnomad_table_matches_warm_output_with_shifted_indels(
             "ins:0.02:0.2:2",
             "snv:.:.:.",
         ]
+        if split:
+            assert sorted(_query(output, "%ID:%GNOMAD_FAF95")) == [
+                "del:0.09", "ins:0.15", "snv:.",
+            ]  # fmt: skip
     assert data[0] == data[1]
 
 

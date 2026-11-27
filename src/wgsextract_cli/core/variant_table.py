@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field
 from functools import partial
 from typing import TypeVar
 from urllib.parse import unquote
@@ -34,18 +33,26 @@ from urllib.parse import unquote
 from wgsextract_cli.core import acmg
 from wgsextract_cli.core import clinical_evidence as ce
 from wgsextract_cli.core import variant_scores as scores
+from wgsextract_cli.core._variant_table_fields import NHOMALT_INFO as _NHOMALT_INFO
+from wgsextract_cli.core._variant_table_fields import POPMAX_INFO as _POPMAX_INFO
 from wgsextract_cli.core._variant_table_fields import csq_frequency as _csq_frequency
 from wgsextract_cli.core._variant_table_fields import fraction as _fraction
 from wgsextract_cli.core._variant_table_fields import per_allele as _per_allele
 from wgsextract_cli.core._variant_table_fields import to_float as _to_float
 from wgsextract_cli.core._variant_table_fields import to_int as _to_int
 from wgsextract_cli.core._variant_table_fields import value as _value
+from wgsextract_cli.core._variant_table_header import VcfHeader as VcfHeader
+from wgsextract_cli.core._variant_table_header import parse_header as parse_header
 from wgsextract_cli.core.csq_alleles import (
     allele_entries,
     csq_entries,
     csq_for_allele,
     for_allele,
     split_origin,
+)
+from wgsextract_cli.core.gnomad_fields import (
+    GNOMAD_FAF95,
+    gnomad_native_faf95,
 )
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
@@ -237,6 +244,12 @@ COLUMNS: tuple[Column, ...] = (
         "missing or incomplete.",
     ),
     *scores.SCORE_COLUMNS,
+    Column(
+        "gnomad_faf95",
+        REAL,
+        "Maximum gnomAD ancestry-group filtering allele frequency at 95% confidence "
+        "for this ALT (joint or the supplied standalone callset).",
+    ),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
@@ -275,8 +288,6 @@ _UNRANKED = len(_SEVERITY)
 # VEP gnomAD frequency fields, preferred first: genomes (whole-genome
 # sequencing, like ours), then exomes, then the pre-v4 combined field.
 VEP_GNOMAD_AF = ("gnomADg_AF", "gnomADe_AF", "gnomAD_AF")
-_POPMAX_INFO = ("GNOMAD_POPMAX_AF", "AF_grpmax_joint", "AF_grpmax", "AF_popmax")
-_NHOMALT_INFO = ("GNOMAD_NHOMALT", "nhomalt_joint", "nhomalt")
 _POPMAX_CSQ = ("gnomAD_AF_grpmax_joint", "AF_grpmax_joint") + tuple(
     f"{source}_{field}"
     for source in ("gnomADg", "gnomADe", "gnomAD")
@@ -291,86 +302,7 @@ _NHOMALT_CSQ = (
 )
 _PHARMGKB_LEVELS = ("1A", "1B", "2A", "2B", "3", "4")
 
-_FIELD_LINE = re.compile(r"^##(INFO|FORMAT)=<(.*)>$")
-_ATTRIBUTE = re.compile(r'([^,=\s]+)=("(?:[^"\\]|\\.)*"|[^,]*)')
-_FORMAT_LIST = re.compile(r"Format:\s*(.+)$")
 _GT_SPLIT = re.compile(r"[/|]")
-
-
-@dataclass
-class VcfHeader:
-    """What the table needs from a VCF header."""
-
-    info_number: dict[str, str] = field(default_factory=dict)
-    format_number: dict[str, str] = field(default_factory=dict)
-    csq_fields: list[str] | None = None
-    ann_fields: list[str] | None = None
-    samples: list[str] = field(default_factory=list)
-    lines: list[str] = field(default_factory=list)
-    info_formats: dict[str, list[str]] = field(default_factory=dict)
-
-    @property
-    def annotations(self) -> list[str]:
-        """The annotation sources present, for provenance and the manifest."""
-        found = []
-        if self.csq_fields:
-            found.append("vep")
-        if self.ann_fields:
-            found.append("snpeff")
-        for name, keys in (
-            ("clinvar", ("CLNSIG",)),
-            ("gnomad", ("GNOMAD_AF", *_POPMAX_INFO, *_NHOMALT_INFO)),
-            ("pharmgkb", ("PHARMGKB",)),
-            ("confidence", ("WGSE_CONF",)),
-            ("sv_freq", ("SV_FREQ",)),
-            ("acmg", (acmg.CLASS,)),
-        ):
-            if any(key in self.info_number for key in keys):
-                found.append(name)
-        csq = set(self.csq_fields or ())
-        for name, score_keys in scores.ANNOTATIONS:
-            if any(key in self.info_number or key in csq for key in score_keys):
-                found.append(name)
-        return found
-
-
-def _subfield_names(description: str) -> list[str]:
-    """VEP's 'Format: Allele|Consequence|...' or SnpEff's
-    "Functional annotations: 'Allele | Annotation | ...'" as a list of names."""
-    match = _FORMAT_LIST.search(description)
-    names = match.group(1) if match else description.partition(":")[2]
-    return [name.strip(" '\"") for name in names.split("|")]
-
-
-def parse_header(lines: Iterable[str]) -> VcfHeader:
-    """Parse ``##`` header lines and the ``#CHROM`` line."""
-    header = VcfHeader()
-    for line in lines:
-        line = line.rstrip("\r\n")
-        header.lines.append(line)
-        if line.startswith("#CHROM"):
-            header.samples = line.split("\t")[9:]
-            continue
-        match = _FIELD_LINE.match(line)
-        if not match:
-            continue
-        kind, body = match.groups()
-        attributes = dict(_ATTRIBUTE.findall(body))
-        key, number = attributes.get("ID"), attributes.get("Number")
-        if key is None or number is None:
-            continue
-        if kind == "FORMAT":
-            header.format_number[key] = number
-            continue
-        header.info_number[key] = number
-        description = attributes.get("Description", "").strip('"')
-        if key == "CSQ":
-            header.csq_fields = _subfield_names(description)
-        elif key == "ANN":
-            header.ann_fields = _subfield_names(description)
-        elif _FORMAT_LIST.search(description):
-            header.info_formats[key] = _subfield_names(description)
-    return header
 
 
 def _format_fraction(
@@ -566,6 +498,11 @@ def indexed_variant_rows(
 ) -> Iterator[tuple[Row, int, int, str | None, str | None, bool]]:
     """Rows with record/ALT indexes, split provenance and annotation evidence."""
     numbers = header.info_number
+    faf95_key = (
+        GNOMAD_FAF95 if GNOMAD_FAF95 in numbers else gnomad_native_faf95(numbers)
+    )
+    if faf95_key and numbers.get(faf95_key) != "A":
+        faf95_key = None
     csq_names = header.csq_fields or []
     ann_names = header.ann_fields or []
     scored = bool(scores.NAMES & set(header.annotations))
@@ -764,6 +701,9 @@ def indexed_variant_rows(
                     if scored
                     else unscored
                 ),
+                _fraction(_per_allele(info.get(faf95_key), "A", alt_index))
+                if faf95_key
+                else None,
             )
             aggregate = (
                 ce.matched_germline_aggregate(
