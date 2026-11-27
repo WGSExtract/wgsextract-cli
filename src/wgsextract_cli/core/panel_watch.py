@@ -11,6 +11,7 @@ from wgsextract_cli.core.lookup import genotypes
 from wgsextract_cli.core.lookup.identifiers import Locus, contig_key
 from wgsextract_cli.core.panel_spec import parse_position
 from wgsextract_cli.core.variant_confidence import Thresholds
+from wgsextract_cli.core.vcf_alleles import allele_key
 
 
 class Watch:
@@ -62,9 +63,14 @@ class Watch:
                 phase_call=combined,
             )
             if pos.alt is not None:
-                result["query_allele_copies"] = alleles.count(pos.alt)
+                target = allele_key(pos.alt)
+                result["query_allele_copies"] = sum(
+                    allele_key(a) == target for a in alleles
+                )
         elif calls and (
-            len(calls) != 1 or calls[0]["pos"] != pos.pos or calls[0]["ref"] != pos.ref
+            len(calls) != 1
+            or calls[0]["pos"] != pos.pos
+            or allele_key(calls[0]["ref"]) != allele_key(pos.ref)
         ):
             result.update(
                 status=genotypes.NOT_ASSESSED,
@@ -98,17 +104,24 @@ class Watch:
                 "missing_sites": missing,
             }
         ploidy = {len(site["alleles"]) for site in sites}
-        alleles: dict[str, list[str]] = specification["alleles"]
+        alleles = {
+            name: [allele_key(a) for a in bases]
+            for name, bases in specification["alleles"].items()
+        }
+        observed_sites = [[allele_key(a) for a in site["alleles"]] for site in sites]
         if ploidy == {1}:
-            observed = [site["alleles"][0] for site in sites]
-            names = [name for name, bases in alleles.items() if bases == observed]
+            haploid = [bases[0] for bases in observed_sites]
+            names = [name for name, bases in alleles.items() if bases == haploid]
             return {**base, **_resolved(names, "haploid")}
         if ploidy != {2}:
             return {**base, "status": "not_assessed", "reason": "Inconsistent ploidy."}
-        blocks = [_phase_block(i, site) for i, site in enumerate(sites)]
+        blocks = [
+            _phase_block(i, site) if len(set(bases)) > 1 else None
+            for i, (site, bases) in enumerate(zip(sites, observed_sites, strict=True))
+        ]
         informative = {block for block in blocks if block is not None}
         if len(informative) <= 1:
-            observed = [[site["alleles"][i] for site in sites] for i in (0, 1)]
+            observed = [[bases[i] for bases in observed_sites] for i in (0, 1)]
             by_bases = {tuple(bases): name for name, bases in alleles.items()}
             matched = [by_bases.get(tuple(bases)) for bases in observed]
             basis = (
@@ -121,7 +134,7 @@ class Watch:
         candidates = [
             [left, right]
             for left, right in combinations_with_replacement(sorted(alleles), 2)
-            if _compatible(alleles[left], alleles[right], sites, blocks)
+            if _compatible(alleles[left], alleles[right], observed_sites, blocks)
         ]
         return {
             **base,
@@ -137,9 +150,7 @@ def _resolved(names: list[str], basis: str, ploidy: int = 1) -> dict[str, Any]:
     return {"status": "called", "diplotype": names, "phase_basis": basis}
 
 
-def _phase_block(index: int, site: Mapping[str, Any]) -> tuple[str, str] | None:
-    if len(set(site["alleles"])) == 1:
-        return None
+def _phase_block(index: int, site: Mapping[str, Any]) -> tuple[str, str]:
     call = site.get("phase_call") or site["calls"][0]
     if call.get("phased") and (phase_set := call.get("phase_set")):
         return "phase", f"{call['source']}:{phase_set}"
@@ -151,7 +162,8 @@ def _combine_split(
 ) -> dict[str, Any] | None:
     """Reassemble a simple exact-locus split only with complete provenance."""
     copies: list[tuple[int, Mapping[str, Any]]] = []
-    originals: set[str] = set()
+    originals: set[tuple[str, str, str, tuple[str, ...]]] = set()
+    locus_ref = allele_key(locus.ref or "")
     sources = {call["source"] for call in calls}
     if len(sources) != 1:
         return None
@@ -159,19 +171,22 @@ def _combine_split(
         raw = call.get("split_origin")
         if not isinstance(raw, str) or (original := split_origin(raw)) is None:
             return None
-        _, alts, index = original
-        chrom, pos, ref, _ = raw.rsplit("|", 1)[0].split("|")
-        originals.add(raw.rsplit("|", 1)[0])
+        ref, alts, index = original
+        chrom, pos, *_ = raw.split("|")
+        ref_key = allele_key(ref)
+        alt_keys = tuple(map(allele_key, alts))
+        originals.add((chrom, pos, ref_key, alt_keys))
         if (
-            (contig_key(chrom), pos, ref)
-            != (contig_key(locus.chrom), str(locus.start), locus.ref)
+            (contig_key(chrom), pos, ref_key)
+            != (contig_key(locus.chrom), str(locus.start), locus_ref)
             or call["pos"] != locus.start
-            or call["ref"] != locus.ref
-            or call["alts"] != [alts[index - 1]]
+            or allele_key(call["ref"]) != locus_ref
+            or list(map(allele_key, call["alts"])) != [alt_keys[index - 1]]
             or call["state"] not in ("variant", "reference_call")
             or call["confidence"] not in ("high", "moderate")
             or len(call["alleles"]) != 2
-            or not set(call["alleles"]) <= {locus.ref, alts[index - 1]}
+            or not set(map(allele_key, call["alleles"]))
+            <= {locus_ref, alt_keys[index - 1]}
         ):
             return None
         copies.append((index, call))
@@ -185,7 +200,7 @@ def _combine_split(
         (copy, index)
         for index, call in copies
         for copy, base in enumerate(call["alleles"])
-        if base != locus.ref
+        if allele_key(base) != locus_ref
     ]
     if not nonref or len(nonref) > 2:
         return None
@@ -211,12 +226,11 @@ def _combine_split(
 def _compatible(
     left: Sequence[str],
     right: Sequence[str],
-    sites: Sequence[Mapping[str, Any]],
+    observed: Sequence[Sequence[str]],
     blocks: Sequence[tuple[str, str] | None],
 ) -> bool:
     orientation: dict[tuple[str, str], bool] = {}
-    for a, b, site, block in zip(left, right, sites, blocks, strict=True):
-        x, y = site["alleles"]
+    for a, b, (x, y), block in zip(left, right, observed, blocks, strict=True):
         if (a, b) not in ((x, y), (y, x)):
             return False
         if block is not None:
