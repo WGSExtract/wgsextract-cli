@@ -480,6 +480,26 @@ The same guard runs in pre-commit, PR/main lint and exact-head generic
 certification. It uses no network, extra dependencies or environment settings.
 For a separate checkout, use the run-specific `--root`/`--baseline` arguments.
 
+## Network access in new features
+
+Keep the CLI predictable for scripts, server jobs and the desktop app. Use
+local files and caches by default, including in prerequisite checks and
+subprocesses. If public data is missing, name it and point to `--download`
+or a dedicated install command. Respect the CLI's network mode in addition
+to the operation's own opt-in: `low` requires `--allow-large-download`
+for bulk transfers, and `off` blocks outbound operations. A public-data download
+opt-in never permits sending sample files, genotypes or variant coordinates
+to a server. Ask separately and disclose the data and destination before
+the request.
+
+The desktop app handles the prompts and passes the appropriate CLI flags.
+Keep startup requests behind the first-launch choice and the relevant
+**Settings → Network & Privacy** controls. After that choice, distinguish
+automatic activity from actions the user explicitly requests. When adding
+a network path, test that the default does not try DNS or connect, and
+that an allowed request only sends the disclosed data. See the [CLI
+privacy guide](privacy.md) and [desktop privacy guide](../gui/docs/privacy.md).
+
 ## Write tests
 
 A good test fails when the behaviour a user relies on breaks, and survives a refactor that keeps that behaviour.

@@ -8,7 +8,12 @@ When outputting test run results, logs, or stdout captures, **always** put them 
 
 Do not add new environment-variable configuration. Put persistent configuration in config.toml settings, and use command-line parameters for run-specific overrides.
 
-Default operations and options never reach the network. Only explicit network operations (downloads, or commands that inherently need the network) may, and anything else that would contact a server (for example sending a sample's variant positions to a remote index) must be an explicit opt-in that says what is sent where. A command that is missing public reference data must not fetch it silently: it errors, naming the data, and asks the user to rerun with `--download` to confirm the fetch. Anything that sends sample-derived information (positions, genotypes, files) is opt-in only.
+## Network principles
+
+Default CLI operations stay offline. Use explicit network commands or opt-ins that say what goes where; if public data is missing, name it and ask for `--download`.
+Sending sample-derived data always needs a separate opt-in that says what goes where.
+The GUI manages CLI opt-ins within the user's network settings and makes no outbound requests before first-launch consent.
+See [Network access in new features](docs/developer_setup.md#network-access-in-new-features).
 
 ## Discover CLI commands
 

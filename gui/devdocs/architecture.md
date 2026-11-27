@@ -61,11 +61,19 @@ weakening the CLI's offline guarantees:
 ### Layer 2 — Desktop GUI front-end: helpful, transparent, and controllable
 
 The desktop app sits *above* the CLI and invokes the CLI's explicit commands on
-the user's behalf. GUI network activity is strictly classified into four tiers:
+the user's behalf. On a fresh install, it makes no outbound requests before
+the first-launch network choice. **OK** starts setup if needed in Full mode
+and enables **Check for updates at launch**, which is off by default.
+**Not now** opens **Settings → Network & Privacy** without contacting an
+external server.
+Automatic mode uses local OS signals to select Low for metered, constrained,
+or unknown-cost connections. Low defers large automatic downloads; Off
+blocks outbound operations. The effective mode is passed to the CLI.
+After that choice, the app distinguishes four kinds of network activity:
 
 | Tier | Policy | Examples |
 | --- | --- | --- |
-| **1. Automatic update / catalog metadata checks** | Allowed by default in desktop builds for user convenience, **always opt-out via Settings** (a single toggle / offline preference that silences all background checks). Read-only metadata only; never downloads large assets automatically and never transmits sample data. Must disclose IP/HTTP-header visibility in [GUI Privacy](../docs/privacy.md). | App self-update check on launch (#1548, startup update checks and privacy mode); planned update notifications for Reference Data, Reference Genomes, and Tools catalogs. |
+| **1. Automatic connections** | **Privacy mode** in **Settings → Network & Privacy** pauses automatic activity. Setup downloads public files; launch checks require the separate **Check for updates at launch** setting and fetch release metadata only. Neither sends sample data. See [GUI Privacy](../docs/privacy.md) for IP and HTTP-header visibility. | First-run setup after **OK**; app release checks at launch. Catalog update checks are planned, not automatic today. |
 | **2. Interactive missing-prerequisite offers** | Never downloads silently. Before running an action (or opening the Gene Page), the GUI checks local prerequisites offline (`wgsextract ref needs`), stops if required public data is missing, and offers **Cancel / Continue / Install and Continue**. Downloading occurs only on click, via the CLI's explicit install command. | Missing CRAM reference genome; missing RefSeq `gene-map` on Gene Page; missing annotation database for a VCF annotation action. |
 | **3. Explicit management & help actions** | Runs only when the user clicks an explicit button or link. | **Run Setup**, **Install / Download** on Reference Data / Reference Genomes / Tools, confirmed **Look up sizes**, **Open GitHub issue** (redacted & confirmed), clicking rendered documentation links (`https://wgse.bio/...`). |
 | **4. Sample-derived network operations** | **Never default-on** in Basic or Advanced mode. Always requires explicit per-action user confirmation naming the destination host and the sample-derived data (paths/byte ranges) that will be transmitted. | Remote Genome Viewer (**Connect and view remote file**); remote alignment URLs (`realign --input https://...`); any future remote variant/position query. |
@@ -74,12 +82,12 @@ the user's behalf. GUI network activity is strictly classified into four tiers:
 
 1. **Never bypass Layer 1 silently:** The GUI must never inject `--download` or
    flip `allow_reference_downloads = true` without explicit user consent.
-2. **One kill switch for background checks:** As update checks expand from the
-   app itself (#1548, startup update checks and privacy mode) to Reference Data, Reference Genomes, and Tools, every
-   automatic check must obey the same user-facing Settings toggle (and remain
-   strictly metadata-only — notifying the user with a badge/button rather than
-   auto-downloading multi-gigabyte files).
-3. **Never leak sample metadata in update or catalog checks:** Tier 1 checks
+2. **Gate automatic connections:** Before the first-launch choice, make no
+   outbound requests. Afterward, honor the effective network mode, **Privacy
+   mode** for all automatic activity, and the launch-check setting for app
+   release checks. Future catalog update checks must use metadata only and
+   must not fetch the update itself.
+3. **Never send sample metadata in update or catalog checks:** These checks
    must never include filenames, local paths, sample IDs, builds inferred from a
    user's BAM/VCF, or genomic coordinates.
 4. **Clickable documentation links are user-initiated:** Error messages and

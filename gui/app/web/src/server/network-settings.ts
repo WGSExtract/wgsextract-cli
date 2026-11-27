@@ -1,18 +1,32 @@
-import { networkAllowed, type NetworkSettings } from "../../../shared/network-settings.js";
+import { effectiveNetworkMode, networkAllowed, networkPreferences, type NetworkPreference, type NetworkSettings } from "../../../shared/network-settings.js";
 import { HttpError } from "./errors.js";
+import { systemNetworkCost } from "./network-cost/detector.js";
 import { readAppSettings, updateAppSettings } from "./workspace-location.js";
 
-function settingsFrom(saved: Record<string, unknown>): NetworkSettings {
+function isPreference(value: unknown): value is NetworkPreference {
+    return networkPreferences.some((mode) => mode === value);
+}
+
+function settingsFrom(saved: Record<string, unknown>): Omit<NetworkSettings, "detectedCost"> {
     const consent = saved.networkConsent;
     return {
         consent: consent === "accepted" || consent === "deferred" ? consent : "pending",
         privacyMode: saved.privacyMode === true,
         checkForUpdatesAtLaunch: saved.checkForUpdatesAtLaunch === true,
+        mode: isPreference(saved.networkMode) ? saved.networkMode : "automatic",
     };
 }
 
-export async function readNetworkSettings() {
-    return settingsFrom(await readAppSettings());
+export async function readNetworkSettings(): Promise<NetworkSettings> {
+    const [saved, detectedCost] = await Promise.all([readAppSettings(), systemNetworkCost.detect()]);
+    return { ...settingsFrom(saved), detectedCost };
+}
+
+export async function readEffectiveNetworkMode() {
+    const saved = settingsFrom(await readAppSettings());
+    const detectedCost = saved.consent !== "pending" && saved.mode === "automatic"
+        ? await systemNetworkCost.detect() : "unknown";
+    return effectiveNetworkMode({ ...saved, detectedCost });
 }
 
 export async function migrateNetworkSettingsAfterCompletedSetup() {
@@ -25,10 +39,11 @@ export async function migrateNetworkSettingsAfterCompletedSetup() {
 }
 
 export async function saveNetworkSettings(body: Record<string, unknown>) {
-    const { consent, privacyMode, checkForUpdatesAtLaunch } = body;
+    const { consent, privacyMode, checkForUpdatesAtLaunch, mode } = body;
     if ((consent !== undefined && consent !== "accepted" && consent !== "deferred") ||
         (privacyMode !== undefined && typeof privacyMode !== "boolean") ||
-        (checkForUpdatesAtLaunch !== undefined && typeof checkForUpdatesAtLaunch !== "boolean")) {
+        (checkForUpdatesAtLaunch !== undefined && typeof checkForUpdatesAtLaunch !== "boolean") ||
+        (mode !== undefined && !isPreference(mode))) {
         throw new HttpError(400, "Invalid network settings.");
     }
     let recordedChoice = false;
@@ -44,13 +59,17 @@ export async function saveNetworkSettings(body: Record<string, unknown>) {
             ...previous,
             ...(privacyMode !== undefined ? { privacyMode } : {}),
             ...(checkForUpdatesAtLaunch !== undefined ? { checkForUpdatesAtLaunch } : {}),
+            ...(mode !== undefined ? { networkMode: mode } : {}),
         };
     });
-    return { ...settingsFrom(saved), recordedChoice };
+    return { ...settingsFrom(saved), detectedCost: await systemNetworkCost.detect(), recordedChoice };
 }
 
 export async function requireNetworkChoice(activity: Parameters<typeof networkAllowed>[1] = "explicit") {
-    if (!networkAllowed(await readNetworkSettings(), activity)) {
+    const saved = settingsFrom(await readAppSettings());
+    const detectedCost = activity === "startup-setup" || activity === "startup-download"
+        ? await systemNetworkCost.detect() : "unknown";
+    if (!networkAllowed({ ...saved, detectedCost }, activity)) {
         throw new HttpError(403, "This operation is not allowed by Network & Privacy settings.");
     }
 }

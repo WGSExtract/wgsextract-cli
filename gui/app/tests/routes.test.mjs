@@ -13,6 +13,7 @@ const { streamNDJSON } = await import("../dist/web/src/server/ndjson.js");
 const { takeApiToken } = await import("../dist/web/src/server/request-guard.js");
 const { recordWorkspaceMove } = await import("../dist/web/src/server/users-workspace.js");
 const { appSettingsPath } = await import("../dist/web/src/server/workspace-location.js");
+const { systemNetworkCost } = await import("../dist/web/src/server/network-cost/detector.js");
 
 const apiToken = "test-token-0123456789abcdefghijklmnopqrstuvwxyz";
 
@@ -52,7 +53,8 @@ function testManifest() {
   };
 }
 
-async function withTestServer(t, overrides = {}, { fresh = false, onRequestSettled } = {}) {
+async function withTestServer(t, overrides = {}, { fresh = false, onRequestSettled, detectedCost = "unconstrained" } = {}) {
+  t.mock.method(systemNetworkCost, "detect", async () => detectedCost);
   const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-routes-"));
   for (const [key, value] of Object.entries(dataEnvironment(tempRoot))) {
       const original = process.env[key];
@@ -907,6 +909,19 @@ test("#1591 a fresh desktop blocks downloads until a choice, persists it, and pr
   assert.equal((await stale.json()).recordedChoice, false);
   await apiFetch(baseURL, settings, { body: { privacyMode: true } });
   const manifest = await (await apiFetch(baseURL, "/api/manifest")).json();
-  assert.deepEqual(manifest.networkSettings, { consent: "deferred", privacyMode: true, checkForUpdatesAtLaunch: false });
+  assert.equal(manifest.networkSettings.consent, "deferred");
+  assert.equal(manifest.networkSettings.privacyMode, true);
+  assert.equal(manifest.networkSettings.checkForUpdatesAtLaunch, false);
+  assert.equal(manifest.networkSettings.mode, "automatic");
   assert.deepEqual(JSON.parse(await readFile(settingsPath, "utf8")).usersWorkspaces, { "test-bundle": "/kept" });
+});
+
+test("#1591 setup over a metered connection requires confirmation even if the browser sends a request", async (t) => {
+  const { baseURL } = await withTestServer(t, {}, { detectedCost: "constrained" });
+  const route = "/api/setup/stream";
+  assert.equal((await apiFetch(baseURL, route, { body: { automatic: true, allowLargeDownload: true } })).status, 403);
+  assert.equal((await apiFetch(baseURL, route, { body: {} })).status, 403);
+  const confirmed = await apiFetch(baseURL, route, { body: { allowLargeDownload: true } });
+  assert.equal(confirmed.status, 200);
+  assert.equal((await readNDJSON(confirmed)).at(-1).type, "complete");
 });

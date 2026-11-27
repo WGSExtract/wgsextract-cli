@@ -14,6 +14,7 @@ import { appendFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { createRequire } from "node:module";
+import { completeLifecycleSetup } from "./ui-driver-setup.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
@@ -82,12 +83,7 @@ try {
   marker("ok", "await-setup-prompt");
 
   marker("start", "run-setup");
-  await setupPrompt.click();
-  await page.waitForFunction(
-    () => !document.querySelector(".setup-global-banner"),
-    null,
-    { timeout: setupTimeoutMs, polling: 1_000 }
-  );
+  await completeLifecycleSetup(page, setupPrompt, setupTimeoutMs);
   marker("ok", "run-setup");
 
   await page.waitForTimeout(1_500);

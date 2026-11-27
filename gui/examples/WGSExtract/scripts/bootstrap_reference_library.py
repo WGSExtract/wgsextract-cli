@@ -2,9 +2,8 @@
 
 import os
 import sys
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 
 def main() -> None:
@@ -20,10 +19,10 @@ def main() -> None:
         if config.is_file()
         else {}
     )
-    library = (sys.argv[1] if len(sys.argv) > 1 else "") or values.get(
-        "reference_library"
-    )
-    arguments = ["--config", str(config), "ref", "bootstrap"]
+    library = (
+        sys.argv[1].removeprefix("--library=") if len(sys.argv) > 1 else ""
+    ) or values.get("reference_library")
+    arguments = ["--config", str(config), "ref", "bootstrap", *sys.argv[2:]]
     if isinstance(library, str) and library:
         arguments.extend(["--ref", library])
     cli(arguments)

@@ -87,6 +87,9 @@ install_app() {
 
 app_setup() {
     events="$R/setup-events.ndjson"
+    # This automated setup on a disposable guest explicitly opts into downloads.
+    mkdir -p "$APP_DATA" &&
+        printf '%s\n' '{"networkConsent":"accepted","networkMode":"full","checkForUpdatesAtLaunch":false}' > "$APP_DATA/settings.json" || return 1
     # Opening the app; it runs its own setup.
     env GUI_FOR_CLI_AUTO_RUN_SETUP=1 GUI_FOR_CLI_SETUP_EVENTS_LOG="$events" \
         WGSEXTRACT_GUI_AUTO_RUN_SETUP=1 WGSEXTRACT_GUI_SETUP_EVENTS_LOG="$events" \
