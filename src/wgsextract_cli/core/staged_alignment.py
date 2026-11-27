@@ -328,6 +328,11 @@ def run_staged_alignment(
                                 "-@",
                                 compression_threads,
                                 "-b",
+                                *(
+                                    ["--output-fmt-option", "level=1"]
+                                    if fmt == "CRAM" and output_profile == "fast"
+                                    else []
+                                ),
                                 "--no-PG",
                                 "-o",
                                 partial,

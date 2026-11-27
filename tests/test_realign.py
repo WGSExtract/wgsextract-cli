@@ -132,7 +132,11 @@ def test_691_switching_profile_rewrites_cached_realign_output(tmp_path, genome_a
     source, pairs = _old_alignment(tmp_path, genome)
     outdir = tmp_path / "out"
     output = outdir / "x_aligned.cram"
-    for profile, version in (("archive", (3, 1)), ("calling", (3, 0))):
+    for profile, version in (
+        ("archive", (3, 1)),
+        ("fast", (3, 1)),
+        ("calling", (3, 0)),
+    ):
         result = realign_api(
             _args(
                 source,
@@ -146,6 +150,10 @@ def test_691_switching_profile_rewrites_cached_realign_output(tmp_path, genome_a
         assert result.metrics["output_profile"] == profile
         assert cram_version(str(output)) == version
         assert int(_view("view", "-T", ref, "-c", str(output))) == 2 * pairs
+        if profile == "fast":
+            # contract: #1130 uses the fast encoder even when replacing a 3.1 CRAM.
+            header = _view("view", "-H", "-T", ref, str(output))
+            assert "--output-fmt-option version=3.1 --output-fmt-option fast" in header
     mtime = output.stat().st_mtime_ns
     result = realign_api(
         _args(
