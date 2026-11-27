@@ -68,6 +68,29 @@ def worktrees(root: Path) -> list[Worktree]:
     return result
 
 
+def candidate(
+    root: Path, tree: Worktree, trees: list[Worktree], include_detached: bool
+) -> str:
+    path = tree.directory
+    if path.parent != root / "scratch" or path.resolve() != path:
+        return "outside-canonical-scratch"
+    if tree.locked:
+        return "git-locked"
+    if tree.unavailable or not path.is_dir():
+        return "unavailable"
+    if tree.detached and include_detached:
+        if why := detached_block(path, tree.head, tree.branch):
+            return why
+    elif not tree.branch.startswith("refs/heads/") or tree.branch == "refs/heads/main":
+        return "not-a-topic-branch"
+    if any(
+        other.directory != path and other.directory.resolve().is_relative_to(path)
+        for other in trees
+    ):
+        return "contains-registered-worktree"
+    return ""
+
+
 def run(
     root: Path, *args: str, allow_no_matches: bool = False, stdin: bytes | None = None
 ) -> str:

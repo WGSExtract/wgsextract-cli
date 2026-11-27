@@ -45,19 +45,25 @@ RUN_RECORDS = {Path("state/last-run.json"), Path("state/last-failed-run.json")}
 Stamp = tuple[int, int, int, int, int]
 
 
-def entries(path: Path, excluded: set[Path]) -> Iterator[os.DirEntry[str]]:
+def entries(
+    path: Path, excluded: set[Path], unreadable: set[Path] | None = None
+) -> Iterator[os.DirEntry[str]]:
     todo = [path]
     while todo:
         directory = todo.pop()
-        with os.scandir(directory) as children:
-            for entry in children:
-                child = Path(entry.path)
-                if child in excluded:
-                    continue
-                if entry.is_dir(follow_symlinks=False):
-                    todo.append(child)
-                else:
-                    yield entry
+        try:
+            with os.scandir(directory) as children:
+                for entry in children:
+                    child = Path(entry.path)
+                    if child not in excluded:
+                        if entry.is_dir(follow_symlinks=False):
+                            todo.append(child)
+                        else:
+                            yield entry
+        except PermissionError:
+            if unreadable is None:
+                raise
+            unreadable.add(directory)
 
 
 def dependency_links(
@@ -67,6 +73,7 @@ def dependency_links(
     hook_paths: Callable[[Path], Iterable[Path]],
     store: Path,
     shared_alias: Callable[[Path, Path], Path | None],
+    unreadable: set[Path],
 ) -> set[Path]:
     blocked = set()
     locations = {root}
@@ -111,32 +118,39 @@ def dependency_links(
 
     common = root / ".git"
     for location in locations:
-        for entry in entries(location, set()):
-            check_link(entry)
+        for entry in entries(location, set(), unreadable):
             link = Path(entry.path)
-            if (
-                entry.is_symlink()
-                and link.is_relative_to(common)
-                and link != common / "hooks"
-                and entry.is_dir(follow_symlinks=True)
-            ):
-                # The ordinary walk does not follow directory aliases. A
-                # linked metadata directory could hide further dependencies.
-                return paths
+            try:
+                check_link(entry)
+                if (
+                    entry.is_symlink()
+                    and link.is_relative_to(common)
+                    and link != common / "hooks"
+                    and entry.is_dir(follow_symlinks=True)
+                ):
+                    # A linked metadata directory could hide further dependencies.
+                    blocked.update(paths)
+            except PermissionError:
+                unreadable.add(link)
 
     hook_dirs = set()
     for checkout, hooks_path in hooks:
-        check_target(root, hooks_path, own=checkout)
         try:
+            check_target(root, hooks_path, own=checkout)
             directory = hooks_path.resolve(strict=True)
+            if directory.is_dir():
+                hook_dirs.add(directory)
         except (FileNotFoundError, NotADirectoryError):
             continue
-        if directory.is_dir():
-            hook_dirs.add(directory)
+        except PermissionError:
+            unreadable.add(hooks_path)
     for directory in hook_dirs:
-        with os.scandir(directory) as children:
-            for entry in children:
-                check_link(entry)
+        try:
+            with os.scandir(directory) as children:
+                for entry in children:
+                    check_link(entry)
+        except PermissionError:
+            unreadable.add(directory)
     return blocked
 
 
@@ -754,13 +768,8 @@ def prune_cache(path: Path, name: str, expected: Stamp) -> None:
     if not shutil.rmtree.avoids_symlink_attacks:
         raise OSError("Safe cache removal is unavailable")
     relative = Path(name)
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     with ExitStack() as stack:
-        parent = os.open(path, flags)
-        stack.callback(os.close, parent)
-        for part in relative.parts[:-1]:
-            parent = os.open(part, flags, dir_fd=parent)
-            stack.callback(os.close, parent)
+        parent = open_parent(path, relative, stack)
         info = os.stat(relative.name, dir_fd=parent, follow_symlinks=False)
         if not stat.S_ISDIR(info.st_mode) or stamp(info) != expected:
             raise OSError(f"Cache changed before removal: {name}")
@@ -768,13 +777,8 @@ def prune_cache(path: Path, name: str, expected: Stamp) -> None:
 
 
 def prune_output(path: Path, relative: Path, expected: Stamp) -> None:
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     with ExitStack() as stack:
-        parent = os.open(path, flags)
-        stack.callback(os.close, parent)
-        for part in relative.parts[:-1]:
-            parent = os.open(part, flags, dir_fd=parent)
-            stack.callback(os.close, parent)
+        parent = open_parent(path, relative, stack)
         info = os.stat(relative.name, dir_fd=parent, follow_symlinks=False)
         if (
             not stat.S_ISREG(info.st_mode)

@@ -600,6 +600,9 @@ Do not start work in an eligible checkout during cleanup. Symlinks are checked
 in this repository and its registered worktrees, including shared Git
 metadata and each checkout's effective `core.hooksPath`. If a symlinked
 Git metadata directory could hide dependencies, cleanup keeps the candidates.
+Unreadable paths are recorded in `unreadable_dependency_paths` in the private
+report. They may hide links, so cleanup leaves potential deletion targets in
+place with `dependency-unverified`.
 If
 any `hook.<name>.command` is configured, cleanup retains every candidate
 and reports the hook key: arbitrary hook commands can depend on paths that
@@ -741,6 +744,8 @@ install -m 0644 scripts/worktree-inspector/stale-worktrees.luau .herdr/automatio
 ```
 
 The owner must approve the exact plan in Sheprd; agents must not approve it.
+After an update changes the pinned script, install the updated template and
+repeat the exact-plan approval before enabling scheduled cleanup again.
 Confirm `status` shows the next run. To turn scheduling off on that machine,
 use `sheprd-automate disable SCRIPT`, with the script ID from `sheprd-automate
 status`, and confirm no next run is listed. If a run is already active,
