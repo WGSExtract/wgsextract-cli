@@ -75,10 +75,12 @@ def run_clinvar(params: VcfClinvarParams) -> None:
     clinvar_vcf = ensure_vcf_prepared(clinvar_source)
     input_vcf = ensure_vcf_prepared(input_file)
     header = _vcf_header(clinvar_vcf)
+    annotate_columns = (*CLINVAR_COLUMNS, ce.GERMLINE)
     columns = [
         c
-        for c in CLINVAR_COLUMNS
-        if f"##INFO=<ID={c}," in header or c in (ce.IDENTITY, ce.STARS, ce.TIER)
+        for c in annotate_columns
+        if f"##INFO=<ID={c}," in header
+        or c in (ce.IDENTITY, ce.STARS, ce.TIER, ce.GERMLINE)
     ]
     ann_out = str(Path(outdir, CLINVAR_ANNOTATED))
     normalized_clinvar = annotate_vcf(
@@ -93,7 +95,7 @@ def run_clinvar(params: VcfClinvarParams) -> None:
         annotation_source=clinvar_source,
         compose_mnvs=True,
         compose_thresholds=variant_confidence.thresholds_from(params),
-        remove=tuple(f"INFO/{c}" for c in CLINVAR_COLUMNS),
+        remove=tuple(f"INFO/{c}" for c in annotate_columns),
     )
 
     path_out = str(Path(outdir, CLINVAR_PATHOGENIC))

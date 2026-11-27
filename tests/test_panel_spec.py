@@ -439,8 +439,10 @@ def test_1287_audit_requires_explicit_research_opt_in() -> None:
 
 
 @needs_htslib
-def test_1287_null_counts_callable_cds_and_excludes_duplicated_controls(
+@pytest.mark.parametrize("weighted", [False, True])
+def test_1287_1617_null_applies_the_same_filters_to_callable_panel_and_controls(
     tmp_path: Path,
+    weighted: bool,
 ) -> None:
     panel, vcf, gvcf = _audit_inputs(tmp_path, phase_set="1")
     header = ""
@@ -455,6 +457,21 @@ def test_1287_null_counts_callable_cds_and_excludes_duplicated_controls(
         "chr1\t923930\t.\tC\tG\t50\tPASS\tCSQ=G|stop_gained|HIGH|SAMD11\tGT:DP:GQ\t1/1:30:60\n",
         "chr1\t944210\t.\tA\tT\t50\tPASS\tCSQ=T|stop_gained|HIGH|NOC2L\tGT:DP:GQ\t1/1:30:60\n",
     ]
+    if weighted:
+        # The target's trans hits (0.1 + 0.2) × 0.5 tie one control exactly.
+        # The other control shares the presentation bin but has zero burden.
+        control[1] = control[1].replace(
+            "CSQ=T|stop_gained|HIGH|NOC2L\tGT:DP:GQ\t1/1",
+            "CSQ=T|synonymous_variant|LOW|NOC2L\tGT:DP:GQ\t0/1",
+        )
+        document = json.loads(panel.read_text(encoding="utf-8"))
+        document["defaults"]["qualify"] = [
+            {"impacts": ["HIGH"], "weight": 0.1},
+            {"impacts": ["MODERATE"], "min_revel": 0.75, "weight": 0.2},
+            {"impacts": ["LOW"], "weight": 0.3},
+        ]
+        document["groups"][0]["dosage"] = {"trans": 0.5, "het": 0.5}
+        panel.write_text(json.dumps(document), encoding="utf-8")
     counts = tmp_path / "combined.vcf"
     counts.write_text(header + "".join(control + observed), encoding="utf-8")
     indexed = Path(bgzip_index(counts))
@@ -528,8 +545,20 @@ def test_1287_null_counts_callable_cds_and_excludes_duplicated_controls(
     assert null["observed_matched_bp"] == null["null_mean_matched_bp"] == 10
     assert null["control_genes"] == 2
     histogram = null["null_histogram"]
-    assert set(histogram) == {"0", "2"} and sum(histogram.values()) == 100
-    assert null["upper_tail_p"] == pytest.approx((histogram["2"] + 1) / 101)
+    if weighted:
+        assert null["observed_weighted_allele_copies"] == 0.15
+        assert null["statistic"] == "weighted_allele_copies"
+        assert histogram == {"0": 100}
+        assert null["null_mean"] == pytest.approx(
+            0.15 * null["null_mean_allele_copies"]
+        )
+        ties = round(null["null_mean_allele_copies"] * 100)
+        assert 0 < ties < 100
+        assert null["upper_tail_p"] == pytest.approx((ties + 1) / 101)
+        assert null["percentile"] == pytest.approx(100 - ties / 2)
+    else:
+        assert set(histogram) == {"0", "2"} and sum(histogram.values()) == 100
+        assert null["upper_tail_p"] == pytest.approx((histogram["2"] + 1) / 101)
     assert "panel_calibration_underpowered" in warnings
     assert calibrated["calibration_universe"]["segmental_duplication_exclusions"] == [
         "SAMD11"

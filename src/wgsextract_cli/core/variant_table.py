@@ -545,7 +545,7 @@ def variant_rows(
     sample doesn't carry (0/0 calls, the other ALT of a 0/1 multi-allelic
     site, no-calls) are left out.
     """
-    for row, _, _, _ in indexed_variant_rows(
+    for row, _, _, _, _, _ in indexed_variant_rows(
         records,
         header,
         sample_index=sample_index,
@@ -562,8 +562,9 @@ def indexed_variant_rows(
     sample_index: int | None = 0,
     carried_only: bool = True,
     pharmcat: Mapping[str, tuple[str, str]] | None = None,
-) -> Iterator[tuple[Row, int, int, str | None]]:
-    """Rows with record ordinal, 1-based ALT index and split provenance."""
+    clinvar_aggregate: bool = False,
+) -> Iterator[tuple[Row, int, int, str | None, str | None, bool]]:
+    """Rows with record/ALT indexes, split provenance and annotation evidence."""
     numbers = header.info_number
     csq_names = header.csq_fields or []
     ann_names = header.ann_fields or []
@@ -670,6 +671,7 @@ def indexed_variant_rows(
             if gnomad is None:
                 gnomad = _csq_frequency(csq, *VEP_GNOMAD_AF)
             clnsig = _per_allele(info.get("CLNSIG"), numbers.get("CLNSIG"), alt_index)
+            direct_clnsig = clnsig
             if clnsig is None and csq:
                 clnsig = _value(csq.get("CLIN_SIG"))
             hgvs_p = _value(picked.get("HGVSp")) or _value(ann.get("HGVS.p"))
@@ -763,4 +765,20 @@ def indexed_variant_rows(
                     else unscored
                 ),
             )
-            yield row, record_index, alt_index, info.get(SPLIT_TAG) if split else None
+            aggregate = (
+                ce.matched_germline_aggregate(
+                    info, numbers, n_alts, alt_index, clinical, direct_clnsig
+                )
+                if clinvar_aggregate
+                else None
+            )
+            yield (
+                row,
+                record_index,
+                alt_index,
+                info.get(SPLIT_TAG) if split else None,
+                aggregate,
+                "SVTYPE" in info
+                and _per_allele(info["SVTYPE"], numbers.get("SVTYPE"), alt_index)
+                is not None,
+            )

@@ -117,6 +117,34 @@
             "drop"
           ]
         },
+        "missing_confidence": {
+          "enum": [
+            "keep",
+            "drop"
+          ]
+        },
+        "missing_filter": {
+          "enum": [
+            "keep",
+            "drop"
+          ]
+        },
+        "score_order": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "revel",
+              "cadd_phred",
+              "alphamissense",
+              "spliceai"
+            ]
+          },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "exclude_clinvar_benign": {
+          "type": "boolean"
+        },
         "qualify": {
           "type": "array",
           "items": {
@@ -174,9 +202,14 @@
           "type": "number",
           "minimum": 0,
           "maximum": 1
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
         }
       },
-      "description": "A variant passes a clause when it passes every key in it.",
+      "description": "A variant passes a clause when it passes every condition in it.",
       "additionalProperties": false
     },
     "group": {
@@ -214,12 +247,48 @@
         },
         "overrides": {
           "$ref": "#/$defs/filters"
+        },
+        "dosage": {
+          "$ref": "#/$defs/dosage",
+          "minProperties": 1
         }
       },
       "required": [
         "id",
         "genes"
       ],
+      "additionalProperties": false
+    },
+    "dosage": {
+      "type": "object",
+      "properties": {
+        "het": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "hom": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "cis": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "trans": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "phase_unknown": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "description": "Per-copy genotype multipliers.",
       "additionalProperties": false
     },
     "site": {

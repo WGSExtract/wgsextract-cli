@@ -115,6 +115,7 @@ def _groups(
                 "cds_bp": sum(coding),
                 "recessive": list(group.get("recessive", [])),
                 "filters": panel_spec.effective_filters(document, group),
+                **({"dosage": group["dosage"]} if "dosage" in group else {}),
             }
         )
     return records, problems

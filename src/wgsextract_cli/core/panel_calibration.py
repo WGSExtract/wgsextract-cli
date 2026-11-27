@@ -7,11 +7,14 @@ from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
+from math import isfinite
 from statistics import fmean, pstdev
-from typing import Any
+from typing import Any, cast
 
 from wgsextract_cli.core import exon_callability as ec
 from wgsextract_cli.core.lookup.identifiers import contig_key
+from wgsextract_cli.core.panel_weights import STATISTIC, UNITS
 from wgsextract_cli.core.reference_evidence import ReferenceEvidence, Span, State
 from wgsextract_cli.core.sex_inference import nonpar_bounds
 from wgsextract_cli.core.variant_confidence import Thresholds
@@ -193,6 +196,8 @@ def matched_null(
     basis: str,
     expected_syn: Mapping[str, float] | None = None,
     match_expected: bool = True,
+    weighted_scores: Mapping[str, Fraction] | None = None,
+    clinvar_vetoes: Mapping[str, int] | None = None,
 ) -> dict[str, Any]:
     """Sample an equal number of genes in each target bin without replacement.
 
@@ -266,12 +271,14 @@ def matched_null(
             if not _near_range(expected_syn[gene], syn_range):
                 outside_syn.append(gene)
     counts = [allele_counts.get(gene, 0) for gene in targets]
-    observed = sum(counts)
+    observed_copies = sum(counts)
+    observed: int | Fraction = observed_copies
+    zero = Fraction()
     observed_bp = sum(opportunities[gene].matched_bp for gene in targets)
     document: dict[str, Any] = {
         "basis": basis,
         "note": NOTE,
-        "observed_allele_copies": observed,
+        "observed_allele_copies": observed_copies,
         "observed_qualifying_genes": sum(bool(count) for count in counts),
         "observed_matched_bp": observed_bp,
         "target_genes": len(targets),
@@ -294,6 +301,22 @@ def matched_null(
             for key, count in sorted(target_bins.items())
         ],
     }
+    if weighted_scores is not None:
+        observed = sum((weighted_scores.get(gene, zero) for gene in targets), zero)
+        document.update(
+            statistic=STATISTIC,
+            units=UNITS,
+            observed_weighted_allele_copies=float(observed),
+        )
+    if clinvar_vetoes is not None:
+        document["clinvar_benign_exclusions"] = {
+            "target_alleles": sum(clinvar_vetoes.get(gene, 0) for gene in targets),
+            "control_pool_alleles": sum(
+                count
+                for gene, count in clinvar_vetoes.items()
+                if gene in opportunities and gene not in panel_genes
+            ),
+        }
     observed_syn = (
         None if expected_syn is None else sum(expected_syn[g] for g in targets)
     )
@@ -354,21 +377,40 @@ def matched_null(
                 "expected_control_syn": mean_syn,
             }
     rng = random.Random(seed)
-    draws = []
+    draws: list[int | Fraction] = []
     null_bp = 0
     null_syn = 0.0
+    null_copies = 0
     for _ in range(null_sets):
-        copies = 0
+        score: int | Fraction = 0
         for pool, size in pools:
             for gene in rng.sample(pool, size):
-                copies += allele_counts.get(gene, 0)
+                copies = allele_counts.get(gene, 0)
+                null_copies += copies
+                score += (
+                    copies if weighted_scores is None else weighted_scores.get(gene, 0)
+                )
                 null_bp += opportunities[gene].matched_bp
                 if expected_syn is not None:
                     null_syn += expected_syn[gene]
-        draws.append(copies)
+        draws.append(score)
     histogram = Counter(draws)
     mean = fmean(draws)
+    sd = (
+        pstdev(Fraction(draw) for draw in draws)
+        if weighted_scores is not None
+        else pstdev(cast(list[int], draws))
+    )
+    z_score = (
+        float(observed - sum(draws, zero) / null_sets) / sd
+        if weighted_scores is not None and sd
+        else None
+    )
     less = sum(n for copies, n in histogram.items() if copies < observed)
+    binned: Counter[int] = Counter()
+    if weighted_scores is not None:
+        for value, n in histogram.items():
+            binned[value // 1] += n
     return {
         **document,
         "state": "calibrated",
@@ -380,9 +422,24 @@ def matched_null(
             if expected_syn is not None
             else {}
         ),
-        "null_sd": pstdev(draws),
-        "null_histogram": dict(sorted(histogram.items())),
+        "null_sd": sd,
+        "null_histogram": dict(
+            sorted((binned if weighted_scores is not None else histogram).items())
+        ),
+        **(
+            {
+                "null_histogram_bin_width": 1,
+                "null_mean_allele_copies": null_copies / null_sets,
+                "z_score": z_score
+                if z_score is not None and isfinite(z_score)
+                else None,
+            }
+            if weighted_scores is not None
+            else {}
+        ),
         "upper_tail_p": (1 + null_sets - less) / (null_sets + 1),
         "percentile": 100 * (less + histogram[observed] / 2) / null_sets,
-        "underpowered": len(targets) < 10 or mean < 1,
+        "underpowered": len(targets) < 10
+        or null_copies < null_sets
+        or (weighted_scores is not None and not sd),
     }

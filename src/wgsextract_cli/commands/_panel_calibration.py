@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
-from collections import Counter
+from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Any
 
 from wgsextract_cli.api.panel import PanelAuditParams
 from wgsextract_cli.core import exon_callability as ec
 from wgsextract_cli.core import panel_audit as audit
 from wgsextract_cli.core import panel_calibration as calibration
+from wgsextract_cli.core import panel_weights as weights
 from wgsextract_cli.core.lookup.genotypes import VcfSource
 from wgsextract_cli.core.lookup.identifiers import contig_key
 from wgsextract_cli.core.panel_reference import (
@@ -54,6 +56,9 @@ class Calibrator:
     filters: dict[str, Mapping[str, Any]]
     filter_keys: dict[str, str]
     counts: dict[str, Counter[str]]
+    dosage: dict[str, Mapping[str, float]]
+    hits: dict[str, dict[str, list[weights.Hit]]]
+    vetoes: dict[str, Counter[str]]
     basis: str
     thresholds: dict[str, object] | None
     expected_counts: dict[str, float] | None
@@ -76,8 +81,23 @@ class Calibrator:
                 return
             copies = 1
         for key, filters in self.filters.items():
-            if audit.assess(allele, filters)[0] is audit.Decision.QUALIFYING:
+            assessment = audit.assess(
+                allele, filters, small_variants_only=key in self.hits
+            )
+            if assessment.clinvar_veto:
+                self.vetoes[key][allele.gene] += 1
+            if assessment.decision is audit.Decision.QUALIFYING:
                 self.counts[key][allele.gene] += copies
+                if key in self.hits:
+                    assert assessment.weight is not None
+                    self.hits[key][allele.gene].append(
+                        weights.Hit(
+                            allele,
+                            assessment.weight,
+                            copies,
+                            haploid=matched.chrom_class == "X_haploid",
+                        )
+                    )
 
     def finish(
         self,
@@ -101,6 +121,16 @@ class Calibrator:
             "seed": settings["seed"],
             "basis": self.basis,
         }
+        scores = {
+            key: {
+                gene: sum(
+                    (hit.weight for hit in weights.score_gene(hits, self.dosage[key])),
+                    Fraction(),
+                )
+                for gene, hits in by_gene.items()
+            }
+            for key, by_gene in self.hits.items()
+        }
         for group in groups:
             target = sorted(
                 g["symbol"].upper()
@@ -117,9 +147,16 @@ class Calibrator:
                     excluded[gene["given"]] = self.excluded.get(symbol, "no_exon_model")
                 else:
                     excluded[gene["given"]] = str(gene["status"])
-            counts = self.counts[self.filter_keys[group["id"]]]
+            key = self.filter_keys[group["id"]]
+            counts = self.counts[key]
             stats = calibration.matched_null(
-                target, all_symbols, self.opportunities, counts, **kwargs
+                target,
+                all_symbols,
+                self.opportunities,
+                counts,
+                weighted_scores=scores.get(key),
+                clinvar_vetoes=self.vetoes.get(key),
+                **kwargs,
             )
             group["calibration"] = {**stats, "excluded_targets": excluded}
             if stats.get("underpowered") or stats["state"] != "calibrated":
@@ -140,6 +177,8 @@ class Calibrator:
                     counts,
                     expected_syn=self.expected_counts,
                     match_expected=False,
+                    weighted_scores=scores.get(key),
+                    clinvar_vetoes=self.vetoes.get(key),
                     **kwargs,
                 )
                 joint = calibration.matched_null(
@@ -148,6 +187,8 @@ class Calibrator:
                     common,
                     counts,
                     expected_syn=self.expected_counts,
+                    weighted_scores=scores.get(key),
+                    clinvar_vetoes=self.vetoes.get(key),
                     **kwargs,
                 )
                 base_low = baseline.get(
@@ -253,10 +294,12 @@ def prepare(
         sex=sex,
     )
     filters: dict[str, Mapping[str, Any]] = {}
+    dosage: dict[str, Mapping[str, float]] = {}
     filter_keys = {}
     for group in groups:
-        key = json.dumps(group["filters"], sort_keys=True)
+        key = json.dumps([group["filters"], group.get("dosage", {})], sort_keys=True)
         filters[key] = group["filters"]
+        dosage[key] = group.get("dosage", {})
         filter_keys[group["id"]] = key
     calibrator = Calibrator(
         opportunities,
@@ -264,6 +307,17 @@ def prepare(
         filters,
         filter_keys,
         {key: Counter() for key in filters},
+        dosage,
+        {
+            key: defaultdict(list)
+            for key, rules in filters.items()
+            if audit.weighted(rules, dosage[key])
+        },
+        {
+            key: Counter()
+            for key, rules in filters.items()
+            if rules.get("exclude_clinvar_benign")
+        },
         "callable_cds_bp" if evidence else "cds_bp",
         {
             "min_depth": thresholds.min_depth,

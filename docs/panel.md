@@ -2,8 +2,8 @@
 
 A **research panel** is a file that says which genes, sites and allele
 combinations you want to examine, and which filters a variant must pass to
-count. `wgsextract panel check` validates one and resolves its genes. A later
-`panel audit --research-panel` will apply it to a genome
+count. `wgsextract panel check` validates one and resolves its genes.
+`panel audit --research-panel` applies it to a genome
 ([#1287, declarative research panel audit](https://github.com/WGSExtract/wgsextract-cli/issues/1287)).
 
 > **Research use only; not a diagnosis.** A panel records its author's
@@ -105,9 +105,9 @@ alleles = { a = ["C", "T"], b = ["T", "T"], c = ["T", "C"] }
 
 [calibration]                        # all optional
 null_sets = 1000                     # 100 to 100000; default 1000
-match_on = ["callable_cds_bp"]       # the only covariate in this version
+match_on = ["callable_cds_bp"]       # default; see the gnomAD option below
 bins = 20                            # 2 to 100; default 20
-seed = 1287                          # unset: the audit derives one from the panel's SHA-256 and its input
+seed = 1287                          # default 0
 ```
 
 A panel needs at least one group, site or haplotype.
@@ -124,10 +124,14 @@ Every group needs `qualify` clauses, from the defaults or its overrides.
 | `max_popmax_af` | The same for the highest population frequency, where the table has one. |
 | `pass_only` | Only variants whose FILTER is PASS. Default `true`. |
 | `min_confidence` | The lowest [confidence label](variant-confidence.md) kept: `high`, `moderate` or `low`. |
+| `missing_filter` | With `pass_only`, `drop` (default) or `keep` records with FILTER `.` (not applied). `keep` still rejects named filters such as `LowQual`. |
+| `missing_confidence` | With `min_confidence`, `drop` (default) or `keep` records with no confidence label. `keep` still rejects labels below the minimum. |
 | `missing_scores` | What to do when a clause needs a score the variant lacks: `unscored` (list it, never count it; the default) or `drop`. |
+| `score_order` | Optional fallback order from `revel`, `alphamissense`, `cadd_phred`, `spliceai`. An allele uses the first present, valid score, even if it fails that predictor's thresholds. |
+| `exclude_clinvar_benign` | When `true`, veto an otherwise qualifying allele with an unambiguous allele-matched ClinVar germline benign or likely benign aggregate. Default `false`. |
 | `qualify` | Clauses; a variant qualifies when it passes any clause. |
 
-A clause passes when the variant passes every key in it:
+A clause passes when the variant passes every condition in it:
 
 | Key | Passes when |
 | --- | --- |
@@ -135,11 +139,80 @@ A clause passes when the variant passes every key in it:
 | `consequences` | The consequence is one of these Sequence Ontology terms (`missense_variant`). |
 | `min_revel`, `min_alphamissense`, `min_spliceai` | The score is at least this (0–1). |
 | `min_cadd_phred` | The CADD PHRED score is at least this (0–100). |
+| `weight` | Not a condition: a passing clause contributes this weight (0–1, default 1). The ALT takes the largest passing weight. A zero-weight ALT still qualifies and is counted in the raw results. |
 
 Scores use three-valued logic. A failed condition rules out its clause even
 if that clause also needs a missing score. A passing clause qualifies the
 variant regardless of what other clauses say. If no clause passes and one is
 undecided, the variant is `unscored`, listed but never counted by default.
+
+With `score_order`, every score-bearing clause must test exactly one
+predictor from the list. A valid score is finite and in its documented
+range; the presence of a higher-priority score disables clauses for
+lower-priority predictors even when the higher-priority score fails.
+If none is valid, applicable score clauses still use the missing-score logic
+above. Clauses without a score test are independent. Predictor values are
+not interchangeable probabilities. See the [score annotation notes](variant-table.md#in-silico-scores)
+for local inputs and track-specific terms.
+
+The ClinVar veto uses the direct germline `CLNSIG`, ClinVar Variation ID and
+review annotation written by local `vcf clinvar` matching. The evidence
+must be ALT-specific: `vcf clinvar` now writes a per-ALT germline tag so
+scalar fields copied by VCF splitting don't qualify as independent evidence.
+Re-run local `vcf clinvar` matching if an older VCF lacks this evidence.
+It accepts exact benign, likely benign or combined benign/likely benign
+aggregates only. VEP-only `CLIN_SIG`, ambiguous multiallelic fields,
+conflicting assertions, pathogenicity and missing evidence never veto an
+ALT. Missing annotation does not imply benignity. The audit lists vetoed
+ALTs and warns when the group has no usable matched annotation. When a
+missing FILTER or confidence policy is explicit and active, the audit counts
+missing labels on observed group ALTs and warns when it finds any; these
+counts precede other filters. No annotation or downloads are done by these
+options.
+
+### Optional weighted burden
+
+Set `weight` on qualifying clauses or set a group-level `dosage` table to
+enable weighted burden for that group. For example, after a panel's header:
+
+```toml
+[defaults]
+score_order = ["revel", "cadd_phred"]
+qualify = [
+  { min_revel = 0.75, weight = 1.0 },
+  { min_revel = 0.5, weight = 0.5 },
+  { min_cadd_phred = 25, weight = 0.5 }
+]
+
+[[groups]]
+id = "example"
+genes = ["MTHFR"]
+dosage = { het = 0.5, hom = 1.0, trans = 1.0, cis = 0.5, phase_unknown = 0.5 }
+```
+
+Each qualifying ALT contributes `called copies × clause weight × dosage
+multiplier`. Dosage multipliers range from 0 to 1; an omitted category uses
+1. A diploid homozygous ALT (`hom`) contributes two copies. A complete
+haploid ALT contributes one copy with multiplier 1. A lone diploid
+heterozygote uses `het` unless another incomplete or non-diploid call makes
+the relationship unknown. Two different qualifying ALTs in a complete
+diploid `1/2` call establish `trans` without a phase set. Otherwise,
+heterozygotes use `cis` or `trans` only when all qualifying heterozygotes in
+the gene have the same explicit phase block and no incomplete or complex call
+undermines it. In that block a hit with an opposite-copy partner uses `trans`;
+if all are on one copy, all use `cis`. Different contigs, different blocks,
+unphased multiple hits and partial or polyploid calls use `phase_unknown`
+where no relationship is established. Dosage categories never stack.
+Dosage uses the qualifying ALTs after vetoes, including zero-weight ALTs.
+Its phase rules are stricter than the gene's separate biallelic evidence
+summary, which can report a demonstrated pair even when other hits are
+unresolved.
+
+The audit JSON keeps raw copy counts and adds the applied clause weight,
+dosage category, multiplier, and contribution for each qualifying ALT. It
+reports gene-level dosage components and a group total; the allele table
+adds the four per-ALT fields when at least one group uses weights. Without
+the new keys the legacy report and allele table are unchanged.
 
 ### Genes
 
@@ -233,6 +306,22 @@ and matched lengths, mean, population standard deviation, percentile
 null mean below one are flagged as underpowered. The comparison is to other
 genes in **this sample**, not population disease association.
 
+For weighted groups, panel genes and controls use the same per-gene scorer
+after the same coding-opportunity gate. Phase for the matched statistic
+uses only alleles that pass that gate, and non-PAR haploid X calls keep the
+one-copy convention. The observed raw count is still shown, alongside the
+weighted score. Weighted groups skip symbolic and breakend ALTs and records
+marked `SVTYPE`; use an annotated small-variant call set, not a
+structural-variant or target-CNV call set. Histogram keys are lower
+edges of fixed unit-width bins
+(`[0,1)`, `[1,2)`, …). The empirical tail and percentile use unbinned,
+exact sums of the configured decimal weights, so equal scores tie
+regardless of how the copies were combined. `z_score` is null when the
+standard deviation is zero or the result cannot be represented. For weighted
+groups, the low-count warning uses the mean **raw** ALT count; zero variance
+also flags the comparison as underpowered. Copy-number burden is not part
+of this statistic.
+
 ### Optional gnomAD expected-count covariate
 
 `--gnomad-expected`, or `match_on = ["callable_cds_bp", "gnomad_expected_syn"]`
@@ -266,6 +355,7 @@ line and column for a syntax error.
 | `missing_key` | A required key is absent. |
 | `wrong_type` | A value of the wrong type (a string where a number belongs). |
 | `bad_value` | A value out of range, not allowed, empty or in the wrong form. |
+| `bad_qualify_rule` | A weighted clause lacks a condition, or a score clause does not test exactly one predictor from the effective `score_order`. |
 | `duplicate` | A repeated id, gene, site, list item or allele combination. |
 | `empty_panel` | No groups, sites or haplotypes. |
 | `no_qualify_rule` | A group without `qualify` clauses. |
