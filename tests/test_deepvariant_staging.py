@@ -1,5 +1,6 @@
 """Focused deepvariant staging regressions."""
 
+import base64
 import gzip
 import os
 from pathlib import Path
@@ -9,6 +10,7 @@ import pytest
 
 from tests.disk_volumes import GIB, Volumes
 from tests.htslib_helpers import (
+    needs_tools,
     run_wgsextract,
     sam_to_bam,
     vcf_calls,
@@ -53,9 +55,51 @@ from tests.test_deepvariant import (
     ultima_gpu as ultima_gpu,
 )
 from wgsextract_cli.commands.vcf import deepvariant
+from wgsextract_cli.core.alignment.cram_staging import stage_cram30
 from wgsextract_cli.core.utils import (
     WGSExtractError,
+    run_command,
 )
+
+
+@needs_tools("samtools")
+def test_283_staging_keeps_tp_arrays_that_the_old_decoder_corrupts(
+    tmp_path: Path,
+) -> None:
+    # The pinned DeepVariant Ultima image reports "invalid element_size for
+    # tag tp" on read1 of this valid CRAM 3.1's SSE4 rANS-Nx16 block.
+    fixture = Path(__file__).with_name("fixtures") / "ultima-tp-rans.cram.b64"
+    source = tmp_path / "synthetic.cram"
+    source.write_bytes(base64.b64decode(fixture.read_bytes()))
+    run_command(["samtools", "index", source])
+    ref = write_fasta(tmp_path / "ref.fa", {"chr1": "ACGT" * 250})
+    work = tmp_path / "stage"
+    work.mkdir()
+    staged = Path(
+        stage_cram30(
+            str(source), str(ref), str(work), "1", "chr1:1-1000",
+            tool="DeepVariant", why="the old SSE4 rANS decoder corrupts tp",
+        )
+    )  # fmt: skip
+    assert staged.read_bytes()[:6] == b"CRAM\x03\x00"
+    expected_tags = [
+        "tp:B:C,"
+        + ",".join(
+            ["0"] * 4097
+            + [str(v) for v in bytes.fromhex("00020200020000000002020100020100")]
+        ),
+        "tp:B:C,17",
+    ]
+    for reads in (source, staged):
+        output = run_command(
+            ["samtools", "view", "-T", ref, reads, "chr1:1-1000"], capture_output=True
+        )
+        assert [
+            tag
+            for line in output.stdout.splitlines()
+            for tag in line.split("\t")[11:]
+            if tag.startswith("tp:")
+        ] == expected_tags
 
 
 def test_691_calling_profile_reaches_deepvariant_without_a_compatibility_copy(dv):

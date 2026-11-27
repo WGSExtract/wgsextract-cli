@@ -257,13 +257,28 @@ def publish_indexed_vcf(
     ensure_vcf_indexed(staged)
     if verify is not None:
         verify(staged)
+    outputs, obsolete = indexed_vcf_publication(staged, final)
+    published = next(iter(outputs.values()))
+    publish_output_set(outputs, retire=obsolete, checkpoint=checkpoint)
+    return published
+
+
+def indexed_vcf_publication(
+    staged: Path, final: Path
+) -> tuple[dict[Path, Path], list[Path]]:
+    """Map an indexed VCF into an output set, including obsolete index names."""
     outputs = {}
     obsolete = []
+    final_mode = stat.S_IMODE(final.stat().st_mode) if final.is_file() else None
     sibling = final.with_suffix(".gz" if final.suffix == ".bgz" else ".bgz")
     for ext in (".tbi", ".csi"):
         index = Path(f"{staged}{ext}")
         destination = Path(f"{final}{ext}")
         if index.is_file():
+            # The publisher keeps existing modes. New indexes must not reveal
+            # positions from a more restrictive VCF they will now describe.
+            if final_mode is not None and not destination.is_file():
+                index.chmod(stat.S_IMODE(index.stat().st_mode) & final_mode)
             outputs[index] = destination
         else:
             obsolete.append(destination)
@@ -276,10 +291,8 @@ def publish_indexed_vcf(
             )
     if not outputs:
         raise WGSExtractError(f"Indexing did not produce an index for {final}.")
-    published = next(iter(outputs.values()))
     outputs[staged] = final
-    publish_output_set(outputs, retire=obsolete, checkpoint=checkpoint)
-    return published
+    return outputs, obsolete
 
 
 def ensure_vcf_prepared(
