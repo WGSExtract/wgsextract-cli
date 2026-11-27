@@ -155,7 +155,7 @@ def csq_for_allele(
     original_alt = source_alts[index - 1]
     spellings: tuple[str, ...] = (preferred, alt)
     siblings: set[str] = set()
-    if len(source_alts) > 1:
+    if split or len(source_alts) > 1:
         original = (
             vep_allele(source_ref, source_alts, original_alt) if split else preferred
         )
@@ -206,11 +206,18 @@ def allele_entries(
 
 
 def split_origin(raw: str | None) -> tuple[str, list[str], int] | None:
-    """REF, ALTs and this ALT's 1-based index of the record a biallelic one
-    was split from (bcftools norm ``--old-rec-tag``: CHR|POS|REF|ALT|IDX)."""
+    """Original REF, ALTs and 1-based index from bcftools ``--old-rec-tag``.
+
+    The tag is CHR|POS|REF|ALT|IDX when split, but normalization alone can
+    omit IDX. Infer index 1 only when there was a single original ALT.
+    """
     parts = (raw or "").split("|")
-    if len(parts) != 5 or not parts[4].isdigit():
+    if len(parts) not in (4, 5):
         return None
     alts = parts[3].split(",")
+    if len(parts) == 4:
+        return (parts[2], alts, 1) if len(alts) == 1 else None
+    if not parts[4].isdigit():
+        return None
     index = int(parts[4])
     return (parts[2], alts, index) if 1 <= index <= len(alts) else None

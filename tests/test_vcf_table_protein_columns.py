@@ -48,6 +48,11 @@ def test_1622_protein_fields_follow_the_picked_alt_and_transcript(
             "GT", "1/2",
         )
         + _record(
+            "chr1", "270", ".", "AA", "AT", "40", "PASS",
+            "CSQ=AT|missense_variant|ENST2|1|9|Pfam:PF1",
+            "GT", "0/1",
+        )
+        + _record(
             "chr1", "300", ".", "C", "T", "40", "PASS",
             "ANN=T|stop_gained|HIGH|GENE|G|transcript|NM_2|protein_coding|"
             "1/2|c.9G>T|p.Trp3Ter|9/250|9/210|3/70",
@@ -74,6 +79,7 @@ def test_1622_protein_fields_follow_the_picked_alt_and_transcript(
         ("", "", ""),
         ("", "", ""),
         ("4", "4", ""),
+        ("9", "9", "Pfam:PF1"),
         ("3", "3", ""),
     ]
     assert [
@@ -92,6 +98,7 @@ def test_1622_protein_fields_follow_the_picked_alt_and_transcript(
         (None, None, None),
         (None, None, None),
         (4, 4, None),
+        (9, 9, "Pfam:PF1"),
         (3, 3, None),
     ]
     assert str(result.metrics["protein_annotation_fields"]).split(",") == [
