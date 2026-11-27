@@ -67,6 +67,7 @@ _TABLE_HEADER = """##fileformat=VCFv4.2
 ##INFO=<ID=CSQ,Number=.,Type=String,Description="Consequence annotations from Ensembl VEP. Format: Allele|Consequence|IMPACT|SYMBOL|Feature">
 ##INFO=<ID=GNOMAD_POPMAX_AF,Number=A,Type=Float,Description="Group maximum AF">
 ##INFO=<ID=GNOMAD_NHOMALT,Number=A,Type=Integer,Description="Homozygote count">
+##INFO=<ID=GNOMAD_FAF95,Number=A,Type=Float,Description="Group maximum FAF95">
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 ##FORMAT=<ID=PS,Number=1,Type=Integer,Description="Phase set">
 ##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Allelic depths">
@@ -104,7 +105,7 @@ def variant_tables(work: Path) -> dict[str, Path]:
                         + ("ENST4" if rsid == "rs4" else ""),
                     ]
                     + (
-                        ["GNOMAD_POPMAX_AF=0.125", "GNOMAD_NHOMALT=0"]
+                        ["GNOMAD_POPMAX_AF=0.125", "GNOMAD_NHOMALT=0", "GNOMAD_FAF95=0"]
                         if rsid == "rs4"
                         else []
                     )
@@ -478,7 +479,7 @@ def test_mcp_offers_lookups_without_allow_jobs(work, variant_tables):
     assert mcp.close() == 0
 
 
-def test_1289_variant_quality_and_gnomad_columns_are_queryable(
+def test_1623_variant_faf95_and_other_allele_annotations_are_queryable(
     tmp_path, work, variant_tables
 ):
     expected = {
@@ -487,6 +488,7 @@ def test_1289_variant_quality_and_gnomad_columns_are_queryable(
         "transcript_id": "ENST4",
         "gnomad_popmax_af": 0.125,
         "gnomad_nhomalt": 0,
+        "gnomad_faf95": 0.0,
     }
     path = str(variant_tables["tsv"])
     with _serve(tmp_path, [work]) as http:
