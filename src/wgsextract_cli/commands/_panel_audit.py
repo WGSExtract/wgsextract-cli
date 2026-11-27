@@ -58,7 +58,7 @@ _TABLE_COLUMNS = (
     Column("allele_copies", "INTEGER", "Number of called copies of this ALT."),
     Column("missing_annotations", "TEXT", "Missing annotations, comma separated."),
     Column("research_only", "INTEGER", panel_spec.DISCLAIMER),
-    *variant_table.COLUMNS,
+    *variant_table.PANEL_AUDIT_COLUMNS,
 )
 
 
@@ -224,7 +224,7 @@ def _groups(
                         len(allele.copies),
                         ",".join(missing),
                         1,
-                        *allele.row,
+                        *allele.row[: len(variant_table.PANEL_AUDIT_COLUMNS)],
                     )
                 )
             phase, biallelic = audit.allele_phase(qualifying)

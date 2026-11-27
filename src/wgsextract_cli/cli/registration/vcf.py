@@ -439,7 +439,7 @@ def register(
         vcf_subs,
         base_parser,
         "table",
-        "Export variants and their annotations (gene, consequence, ClinVar, gnomAD, genotype, depth, ...) as one row per variant, in a TSV (or Parquet) table and an SQLite database to query.",
+        "Export one row per ALT to TSV, Parquet or SQLite, including reported protein positions, domains and gnomAD FAF95.",
         VcfTableParams,
         cmd_table,
     )
