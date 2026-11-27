@@ -10,3 +10,6 @@
 
 - `deps list` rows list `used_by`, the commands whose runs need or may use
   each tool ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
+- `deps list` reports the computer in `details["host"]`: OS and version,
+  architecture, CPU cores and threads, memory, and free space on each disk
+  holding WGS Extract's folders ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).

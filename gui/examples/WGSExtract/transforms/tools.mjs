@@ -361,7 +361,27 @@ export function items(document) {
     if (!Array.isArray(tools)) {
         throw new Error("wgsextract deps list printed no tool list.");
     }
-    return { items: [...tools].sort(compareTools).map(row) };
+    return { items: [...tools].sort(compareTools).map(row), facts: hostFacts(document.details.host) };
+}
+
+/** The computer the CLI runs on, shown above the table: what deps list's `host` reports. */
+export function hostFacts(host) {
+    if (!host || typeof host !== "object") return [];
+    const cores = [host.cpu_cores && `${host.cpu_cores} cores`, host.cpu_threads && `${host.cpu_threads} threads`].filter(Boolean).join(", ");
+    const facts = [
+        ["Operating system", host.os],
+        ["Architecture", host.architecture],
+        ["CPU", cores],
+        ["Memory", host.memory_total ? `${bytes(host.memory_total)} total, ${bytes(host.memory_available)} available` : ""],
+        ["Free disk", (host.disks ?? []).map((disk) => `${bytes(disk.free)} of ${bytes(disk.total)} (${(disk.used_for ?? []).join(", ")})`).join("; ")],
+    ];
+    return facts.filter(([, value]) => value).map(([label, value]) => ({ label, value: String(value) }));
+}
+
+function bytes(count) {
+    const value = Number(count) || 0;
+    const tib = value / 1024 ** 4;
+    return tib >= 1 ? `${tib.toFixed(2)} TiB` : `${(value / 1024 ** 3).toFixed(1)} GiB`;
 }
 
 const STATUS_ORDER = { installed: 0, missing: 1, unavailable: 2 };

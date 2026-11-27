@@ -79,6 +79,20 @@ def test_list_names_the_commands_that_use_each_tool(host, capsys):
     assert all(isinstance(row["used_by"], list) for row in document["details"]["tools"])
 
 
+def test_list_describes_the_computer(host, capsys):
+    """The Tools page shows the computer the CLI runs on."""
+    _, document = _json(capsys, "deps", "list")
+
+    computer = document["details"]["host"]
+    assert computer["architecture"] in {"x64", "ARM64"}
+    assert computer["os"] and "win32" not in computer["os"]
+    assert computer["cpu_threads"] >= 1
+    assert 0 < computer["memory_available"] <= computer["memory_total"]
+    assert computer["disks"]
+    assert "workspace" in [p for disk in computer["disks"] for p in disk["used_for"]]
+    assert all(0 <= disk["free"] <= disk["total"] for disk in computer["disks"])
+
+
 def test_list_succeeds_where_check_fails_on_a_missing_mandatory_tool(host, capsys):
     """The Tools page shows what's missing rather than an error."""
     check, _ = _json(capsys, "deps", "check")

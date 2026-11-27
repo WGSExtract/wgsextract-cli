@@ -118,6 +118,22 @@ test("Tools rows carry the commands that use each tool, and the page hides manda
     assert.equal(control.hideRows.checked, true);
 });
 
+test("the Tools page shows the computer the CLI runs on, from deps list's host", () => {
+    const host = {
+        os: "Windows 11 (10.0.26300)", architecture: "x64", cpu_threads: 16, cpu_cores: 8,
+        memory_total: 64 * 1024 ** 3, memory_available: 40 * 1024 ** 3,
+        disks: [{ used_for: ["workspace", "temporary files"], free: 2.5 * 1024 ** 4, total: 4 * 1024 ** 4 }],
+    };
+    assert.deepEqual(items({ details: { tools: [], host } }).facts, [
+        { label: "Operating system", value: "Windows 11 (10.0.26300)" },
+        { label: "Architecture", value: "x64" },
+        { label: "CPU", value: "8 cores, 16 threads" },
+        { label: "Memory", value: "64.0 GiB total, 40.0 GiB available" },
+        { label: "Free disk", value: "2.50 TiB of 4.00 TiB (workspace, temporary files)" },
+    ]);
+    assert.deepEqual(items({ details: { tools: [] } }).facts, []);
+});
+
 test("the Tools table needs deps list's tool rows", () => {
     assert.throws(() => items({ details: {} }), /no tool list/);
 });

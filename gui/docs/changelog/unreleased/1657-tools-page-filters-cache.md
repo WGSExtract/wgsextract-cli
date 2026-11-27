@@ -1,5 +1,9 @@
 ## Added
 
+- The Tools page shows the computer the CLI runs on: operating system and
+  version, architecture, CPU cores and threads, memory, and free disk space
+  where WGS Extract keeps its files ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
+
 - The Tools page has a "Hide mandatory and pre-installed" checkbox beside its
   filter, checked by default ([#1657, Tools page follow-ups](https://github.com/WGSExtract/wgsextract-cli/pull/1657)).
 

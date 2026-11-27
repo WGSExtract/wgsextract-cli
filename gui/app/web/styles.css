@@ -2586,6 +2586,30 @@ a.doc-link {
   margin-bottom: 0;
 }
 
+.library-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25em 1.5em;
+  margin: 0;
+}
+
+.library-facts div {
+  display: flex;
+  gap: 0.4em;
+}
+
+.library-facts dt {
+  font-weight: 650;
+}
+
+.library-facts dt::after {
+  content: ":";
+}
+
+.library-facts dd {
+  margin: 0;
+}
+
 .library-hide-rows {
   display: inline-flex;
   align-items: center;

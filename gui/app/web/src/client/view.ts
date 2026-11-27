@@ -529,6 +529,7 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
     const matches = rows.filter((row) => rowMatchesFilter(rowFilterText(row, columns), filter)).length;
     return `
     <div class="library-list">
+      ${renderLibraryFacts(control.facts)}
       <div class="library-list-header">
         <div class="control-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</div>
         ${listed.length
@@ -567,6 +568,16 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
         : `<p class="empty">${escapeHTML(state.labels.libraryEmptyTitle)}</p>`}
     </div>
   `;
+}
+/** Facts a list's data source reports about where it ran (the Tools page: the computer), as a label/value list. */
+export function renderLibraryFacts(facts: unknown): string {
+    const rows = (Array.isArray(facts) ? facts : [])
+        .map((fact) => fact as { label?: unknown; value?: unknown })
+        .filter((fact) => typeof fact.label === "string" && typeof fact.value === "string" && fact.value);
+    if (!rows.length) {
+        return "";
+    }
+    return `<dl class="library-facts">${rows.map((fact) => `<div><dt>${escapeHTML(String(fact.label))}</dt><dd>${escapeHTML(String(fact.value))}</dd></div>`).join("")}</dl>`;
 }
 /** What a table's keyword filter searches: the row's title, tags, status and shown cells, lower case. */
 export function rowFilterText(row: RowSpec, columns: RowColumnSpec[]): string {

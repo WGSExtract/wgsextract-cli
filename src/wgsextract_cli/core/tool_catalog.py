@@ -107,25 +107,37 @@ def required_dependency_tools(include_python: bool = True) -> list[str]:
     return [tool for tool in MANDATORY_TOOLS if tool != "python3"]
 
 
-def host_label() -> str:
-    """This computer's OS and CPU as people say them: "Windows", "macOS on
-    Apple silicon", "Linux ARM64". Never "win32": WGS Extract is 64-bit only."""
-    machine = platform.machine().lower()
-    arm = machine in {"arm64", "aarch64"}
+def host_is_arm64() -> bool:
+    """Whether the computer's CPU is ARM64, not this process's: x64 Python runs
+    emulated on Windows ARM64, and under Rosetta on Apple silicon."""
     if sys.platform == "win32":
-        # The computer's CPU, not this process's: x64 Python runs emulated on ARM64.
         from wgsextract_cli.core.windows_arm64 import (
             IMAGE_FILE_MACHINE_ARM64,
             windows_native_machine,
         )
 
         if (native := windows_native_machine()) is not None:
-            arm = native == IMAGE_FILE_MACHINE_ARM64
-        return "Windows ARM64" if arm else "Windows"
-    if sys.platform == "darwin":
+            return native == IMAGE_FILE_MACHINE_ARM64
+    elif sys.platform == "darwin":
         from wgsextract_cli.core.native_support import _apple_silicon
 
-        return "macOS on Apple silicon" if _apple_silicon() else "macOS on Intel"
+        return _apple_silicon()
+    return platform.machine().lower() in {"arm64", "aarch64"}
+
+
+def host_architecture() -> str:
+    """ "ARM64" or "x64": WGS Extract runs on 64-bit computers only."""
+    return "ARM64" if host_is_arm64() else "x64"
+
+
+def host_label() -> str:
+    """This computer's OS and CPU as people say them: "Windows", "macOS on
+    Apple silicon", "Linux ARM64". Never "win32": WGS Extract is 64-bit only."""
+    arm = host_is_arm64()
+    if sys.platform == "win32":
+        return "Windows ARM64" if arm else "Windows"
+    if sys.platform == "darwin":
+        return "macOS on Apple silicon" if arm else "macOS on Intel"
     if sys.platform.startswith("linux"):
         return "Linux ARM64" if arm else "Linux x64"
     return f"{sys.platform} {platform.machine()}"
