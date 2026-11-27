@@ -215,7 +215,8 @@ def test_issue872_compressed_parts_preserve_duplicate_flags_and_rg_order(
 
 
 @pytest.mark.parametrize(
-    "profile,version", [("archive", b"\x03\x01"), ("calling", b"\x03\x00")]
+    "profile,version",
+    [("archive", b"\x03\x01"), ("calling", b"\x03\x00"), ("fast", b"\x03\x01")],
 )
 @needs_tools("bwa", "samtools", "samblaster")
 def test_issue872_staged_merge_honours_lossless_output_profile(

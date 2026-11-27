@@ -115,7 +115,7 @@ before using it on a whole genome.
 
 ### Lossless output profiles
 
-`align` and `realign` accept `--output-profile default|archive|calling`.
+`align` and `realign` accept `--output-profile default|archive|calling|fast`.
 The default leaves `--format` and the installed encoder's defaults unchanged.
 The other profiles select CRAM when `--format` is omitted. An explicit
 profile conflicts with `--format BAM` and is refused; use
@@ -127,10 +127,14 @@ instead, explicit `--format BAM` wins and the effective profile is default
 | --- | --- | --- |
 | `archive` | CRAM 3.1, samtools' archive compression | Modern htslib and GATK 4.7+ |
 | `calling` | CRAM 3.0, normal compression | GATK and older htslib-based callers, including DeepVariant |
+| `fast` | CRAM 3.1, samtools' fast compression; larger files | Modern htslib and GATK 4.7+ |
 
-Both are lossless: full supplementary SEQ/QUAL, soft clipping and MM/ML/MN
+All are lossless: full supplementary SEQ/QUAL, soft clipping and MM/ML/MN
 tags are retained. Archive trades encoding time for smaller files; savings
-depend on the reads. Calling avoids DeepVariant's CRAM 3.1 compatibility
+depend on the reads. Fast makes the opposite trade-off: the measured
+[Linux post-alignment slice](resource_estimates.md#fast-profile-on-a-linux-hg002-slice)
+was 7.3% faster and 21% larger. This is separate from the aligner's `--fast`
+preset, which can change alignments. Calling avoids DeepVariant's CRAM 3.1 compatibility
 copy, not every caller's other staging requirements. Native pbmm2 only
 writes BAM: auto selects minimap2 for PacBio CRAM profiles, while explicit
 `--aligner pbmm2` is refused with a profile-specific message.
@@ -162,7 +166,7 @@ wgsextract align --r1 reads_R1.fastq.gz --r2 reads_R2.fastq.gz \
   --ref hs38.fa --output-profile calling
 ```
 
-Set `output_profile = "calling"` (or `"archive"`) in `config.toml` for a
+Set `output_profile = "calling"` (or `"archive"` or `"fast"`) in `config.toml` for a
 persistent default; `--output-profile default` overrides it. The typed API
 and server expose the same `output_profile` option. The result manifest
 records the effective profile in `metrics.output_profile`. Changing the
@@ -170,9 +174,9 @@ profile invalidates realign's completed alignment and chunk resume state.
 Installed samtools is checked for the requested options and version before
 mapping; WGS Extract does not install it.
 
-`info`, extraction and bcftools calling read both profiles. Older
+`info`, extraction and bcftools calling read all profiles. Older
 DeepVariant/Clair3 builds use the existing temporary compatible copy for
-archive output. GATK 4.7 and newer read CRAM 3.1 directly; whole-file
+CRAM 3.1 output. GATK 4.7 and newer read CRAM 3.1 directly; whole-file
 calling with an identified older GATK is refused before making a .dict. Use
 calling output, convert to BAM (`bam to-bam`), or specify `vcf gatk
 --region` for the existing regional BAM conversion.
@@ -378,7 +382,8 @@ Silicon, `pixi install -e clair3` installs the pinned package
 ([release and pin](../native/clair3/README.md#packaging-and-release)).
 Models are resolved and checked exactly as on the CPU; the new package
 redistributes **no weights** (ONT Rerio's licence is research-only).
-Whole-genome MPS qualification is still pending.
+This is the WGSE-patched build; [upstream MPS support](https://github.com/WGSExtract/wgsextract-cli/issues/985)
+is tracked separately.
 
 On an M1 Pro (10 cores, 32 GiB; four calling threads), the original-alignment
 public HG002 chr20:10-11 Mb slice produced identical **1,830 sites, alleles,
@@ -395,8 +400,25 @@ reference records identical in every column**. QUAL differed by at most
 0.03; six PL fields and two GQ fields differed by one, without changing GT
 or FILTER. In an awake paired repeat (2026-11-19, `caffeinate`, shared bench
 lock), CPU took **20.36 min** and MPS **15.19 min**: about **1.34x** end to
-end, with the same results. Whole-genome qualification remains pending. See the
-[sizing table and caveats](resource_estimates.md#clair3-on-the-gpu).
+end, with the same results. See the [sizing table and caveats](resource_estimates.md#clair3-on-the-gpu).
+
+On the same M1 Pro, a [whole primary genome run](https://github.com/WGSExtract/wgsextract-cli/issues/1101#issuecomment-7214587498)
+used MPS and native Clair3's opt-in LongPhase intermediate phasing. It ran
+chr1–22, chrX, chrY and chrM separately, taking **8 h 21 min** for calling
+with gVCF, excluding staging. There was no paired whole-genome CPU timing.
+RTG `vcfeval` scored autosomal PASS calls against HG002 GRCh38 GIAB v4.2.1
+with no QUAL tuning:
+
+| GIAB evaluation region | SNV precision / recall / F1 | Indel precision / recall / F1 |
+| --- | --- | --- |
+| Confident | 0.9978 / 0.9951 / 0.9964 | 0.9043 / 0.8345 / 0.8680 |
+| Confident ∩ v3.5 all-difficult | 0.9887 / 0.9886 / 0.9886 | 0.8591 / 0.7656 / 0.8097 |
+
+Matched CPU/MPS chr20–22 runs had identical variant keys and gVCF reference
+records with either phaser. Comparing the separately called whole-genome
+contigs to the grouped CPU run is not a device parity test:
+[reference casing and contig grouping changed](https://github.com/WGSExtract/wgsextract-cli/issues/1101#issuecomment-7215004003),
+including Clair3's candidate cutoffs.
 
 On **x86-64 Linux**, `vcf clair3 --gpu` runs its neural networks on an NVIDIA
 GPU from HKU's CUDA image of the same Clair3
@@ -526,6 +548,53 @@ dna_r10.4.1_e8.2_400bps_sup@v4.0.0`), realigned with `realign` and scored with
 The callers are within a few indels of each other on this slice, so
 DeepVariant stays the default. Results on all of chr20 are under
 [Validation on GIAB HG002](#validation-on-giab-hg002).
+
+#### Clair3 intermediate phasing
+
+`vcf clair3` keeps WhatsHap for the intermediate phasing that feeds
+full-alignment calling. To try LongPhase, pass
+`--use_longphase_for_intermediate_phasing=True` to the **native Clair3
+launcher**, not to `wgsextract vcf clair3`. On Apple Silicon, the native
+`wgse-clair3` launcher also accepts `--device=mps --use_gpu=False` to keep
+the streaming pipeline. Native invocations bypass WGS Extract's preflight.
+This setting is separate from the phaser selection in [`vcf phase`](#phasing).
+
+In the [paired HG002 ONT run](https://github.com/WGSExtract/wgsextract-cli/issues/1124#issuecomment-7175184658)
+on the M1 Pro (Clair3 2.0.5, four threads, gVCF), switching from WhatsHap
+to LongPhase cut the chr20 phasing job from **190.88 to 21.00 s** on CPU.
+For the full chr20–22 call, elapsed time dropped from **38.09 to 35.34 min**
+on CPU and **29.49 to 24.23 min** on MPS. Chr20 PASS-call scores were the
+same on CPU and MPS for each phaser (RTG `vcfeval`, HG002 GRCh38 GIAB v4.2.1):
+
+| GIAB evaluation region | Phaser | SNV precision / recall / F1 | Indel precision / recall / F1 |
+| --- | --- | --- | --- |
+| Confident | WhatsHap | 0.9984 / 0.9963 / 0.9973 | 0.8908 / 0.8175 / 0.8526 |
+| Confident | LongPhase | 0.9986 / 0.9965 / 0.9975 | 0.8894 / 0.8176 / 0.8520 |
+| Confident ∩ v3.5 all-difficult | WhatsHap | 0.9899 / 0.9894 / 0.9896 | 0.8381 / 0.7408 / 0.7865 |
+| Confident ∩ v3.5 all-difficult | LongPhase | 0.9913 / 0.9899 / 0.9906 | 0.8362 / 0.7408 / 0.7856 |
+
+Across chr20–22, gVCF reference records changed with the phaser:
+**6,845,106** with WhatsHap vs **6,848,537** with LongPhase.
+
+A [Linux CPU repeat on chr20 alone](https://github.com/WGSExtract/wgsextract-cli/issues/1124#issuecomment-7216944181)
+used the same HG002 ONT release and model, four threads and gVCF. WhatsHap
+and LongPhase took **31.52 and 24.87 min** end to end; the phase jobs took
+**200.18 and 21.64 s**. Pileup was also slower in the WhatsHap arm, before
+the phaser ran, so the full wall-time difference is not a controlled
+estimate of the phaser's effect.
+
+| GIAB evaluation region | Phaser | SNV precision / recall / F1 | Indel precision / recall / F1 |
+| --- | --- | --- | --- |
+| Confident | WhatsHap | 0.9985 / 0.9965 / 0.9975 | 0.8931 / 0.8167 / 0.8532 |
+| Confident | LongPhase | 0.9987 / 0.9968 / 0.9978 | 0.8907 / 0.8158 / 0.8516 |
+| Confident ∩ v3.6 all-difficult | WhatsHap | 0.9901 / 0.9893 / 0.9897 | 0.8413 / 0.7397 / 0.7872 |
+| Confident ∩ v3.6 all-difficult | LongPhase | 0.9917 / 0.9903 / 0.9910 | 0.8377 / 0.7383 / 0.7849 |
+
+The chr20 gVCF had **3,081,383** WhatsHap reference records and **3,085,105**
+LongPhase reference records, of which **3,078,909** matched in every column.
+The lower indel F1 with LongPhase has not been shown to fall within run-to-run
+variation. These ONT results do not establish a whole-genome saving or
+qualify a PacBio default.
 
 ## Structural variants
 
