@@ -19,6 +19,8 @@ from tests.htslib_helpers import (
     needs_tools,
     run_wgsextract,
     sam_to_bam,
+    soft_mask_reference,
+    vcf_body,
     write_fasta,
 )
 from wgsextract_cli import api
@@ -114,6 +116,17 @@ def _combined_call(bam, ref, out, region, *, types="sv", check=True, **options):
 
 
 # --- Delly ----------------------------------------------------------------------
+
+
+@needs_delly
+def test_1654_delly_keeps_sv_records_on_a_soft_masked_reference(tmp_path):
+    bam, ref = _sample(tmp_path)
+    masked = soft_mask_reference(ref, tmp_path / "masked.fa", 29_000, 33_000)
+    for label, reference in [("plain", ref), ("masked", masked)]:
+        _run("sv", bam, reference, tmp_path / label, "-r", "chr1:20000-40000")
+    masked_vcf = tmp_path / "masked" / "sv.vcf.gz"
+    assert _near_deletion(_records(masked_vcf, "chr1:29000-33000"))
+    assert vcf_body(masked_vcf) == vcf_body(tmp_path / "plain" / "sv.vcf.gz")
 
 
 @needs_delly

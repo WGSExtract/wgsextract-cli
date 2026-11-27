@@ -8,6 +8,8 @@ import pytest
 from tests.disk_volumes import GIB
 from tests.htslib_helpers import (
     run_wgsextract,
+    soft_mask_reference,
+    vcf_body,
     vcf_calls,
 )
 from tests.test_caller_ploidy import sex_par as sex_par
@@ -87,6 +89,18 @@ def test_gvcf_tells_confident_reference_from_bases_without_reads_863(
     assert evidence_state(gvcf.path, "chr1", 1500) is State.CALLABLE_REFERENCE
     assert evidence_state(gvcf.path, "chr1", 1000) is State.VARIANT
     assert not (dv.out / deepvariant.WORK_DIRECTORY).exists()
+
+
+def test_1654_deepvariant_keeps_soft_masked_reference_blocks(dv):
+    plain = call_with_evidence(dv, "chr1:900-1100")
+    dv.sample.ref = soft_mask_reference(dv.sample.ref, dv.tmp / "masked.fa", 900, 1100)
+    dv.out = dv.tmp / "masked"
+    masked = call_with_evidence(dv, "chr1:900-1100")
+
+    for role in ("variants", ROLE):
+        assert vcf_body(masked[role].path) == vcf_body(plain[role].path)
+    assert vcf_calls(masked["variants"].path, "chr1:900-1100") == dv.sample.calls[:1]
+    assert evidence_state(masked[ROLE].path, "chr1", 950) is State.CALLABLE_REFERENCE
 
 
 def test_a_missing_gvcf_is_written_again_by_a_rerun_863(dv):

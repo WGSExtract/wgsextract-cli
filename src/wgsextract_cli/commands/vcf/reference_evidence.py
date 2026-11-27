@@ -13,6 +13,7 @@ subsamples columns deeper than 255 bases with one random stream per process).
 from __future__ import annotations
 
 import bisect
+import gzip
 import logging
 import os
 import re
@@ -39,7 +40,7 @@ from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command, run_pipeline
 from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
-from wgsextract_cli.core.vcf_output import uppercase_vcf
+from wgsextract_cli.core.vcf_output import publish_called_vcf
 
 from .basic import plain_reference
 from .call_cleanup import indel_cleanup_pipeline
@@ -300,39 +301,31 @@ def clip_gvcf(
             return "".join(fetched.stdout.splitlines()[1:]).upper() or "N"
 
         errors = Path(work, "stderr.txt")
-        with open(errors, "w+", encoding="utf-8", newline="\n") as stderr:
-            reader = popen(
-                ["bcftools", "view", "--no-version", source],
-                stdout=subprocess.PIPE,
-                stderr=stderr,
-                text=True,
-            )
-            writer = popen(
-                ["bcftools", "view", "--no-version", "-Oz", "-o", output],
-                stdin=subprocess.PIPE,
-                stderr=stderr,
-                text=True,
-            )
-            assert reader.stdout is not None and writer.stdin is not None
-            broken = False
-            try:
-                for line in reader.stdout:
-                    if not line.startswith("#"):
-                        line = _cut_record(line, spans, owned, base)
-                    writer.stdin.write(line)
-            except BrokenPipeError:
-                broken = True  # The writer failed; its stderr says why.
-            finally:
-                reader.stdout.close()
+        opener = gzip.open if source.lower().endswith((".gz", ".bgz")) else open
+        try:
+            with (
+                opener(source, "rt", encoding="utf-8", errors="surrogateescape", newline="") as reader,
+                Path(output).open("wb") as sink,
+                errors.open("w+", encoding="utf-8", newline="\n") as stderr,
+                popen(["bgzip", "-c"], stdin=subprocess.PIPE, stdout=sink, stderr=stderr) as writer,
+            ):  # fmt: skip
+                assert writer.stdin is not None
+                with suppress(BrokenPipeError):
+                    for line in reader:
+                        if not line.startswith("#"):
+                            line = _cut_record(line, spans, owned, base)
+                        writer.stdin.write(
+                            line.encode("utf-8", errors="surrogateescape")
+                        )
                 with suppress(BrokenPipeError):
                     writer.stdin.close()
-                codes = reader.wait(), writer.wait()
-            if broken or any(codes):
-                stderr.seek(0)
-                raise WGSExtractError(
-                    f"Cutting the gVCF {source} to its partition failed: "
-                    f"{stderr.read().strip()[-500:]}"
-                )
+                if writer.wait():
+                    stderr.seek(0)
+                    raise OSError(stderr.read().strip()[-500:] or "bgzip failed")
+        except (EOFError, OSError) as exc:
+            raise WGSExtractError(
+                f"Cutting the gVCF {source} to its partition failed: {exc}"
+            ) from exc
     ensure_vcf_indexed(output)
 
 
@@ -406,7 +399,7 @@ def gather_gvcf(parts: Sequence[str], work: str, output: str) -> None:
     run_pipeline(
         [
             ["bcftools", "sort", "-T", work, "-Ou", combined],
-            *uppercase_vcf(["bcftools", "norm", "--no-version", "-d", "exact"], output),
+            ["bcftools", "norm", "--no-version", "-d", "exact", "-Oz", "-o", output],
         ],
         description="Reference evidence (gVCF) gather",
     )
@@ -422,21 +415,39 @@ def publish_gvcf(
 ) -> None:
     """Publish a caller's VCF ``source`` as ``output`` (+ .tbi) with the
     provenance header (or ``header_key`` for a variant-only policy).
-    Only the header is rewritten (bcftools
-    reheader copies the records' BGZF blocks), so every record, FILTER and
-    FORMAT field stays as the caller wrote it."""
+    Apart from allele case, the records (including reference blocks)
+    are kept as the caller wrote them."""
     header = run_command(["bcftools", "view", "-h", source], capture_output=True)
     prefix = f"##{header_key}="
     lines = [line for line in header.stdout.splitlines() if not line.startswith(prefix)]  # fmt: skip
     lines.insert(len(lines) - 1, provenance.header(key=header_key))
-    with (
-        tempfile.TemporaryDirectory(dir=scratch_parent(Path(output).parent), prefix=".wgse_gvcf_") as work,
-        atomic_output(output) as staged,
-    ):  # fmt: skip
+    with tempfile.TemporaryDirectory(
+        dir=scratch_parent(Path(output).parent), prefix=".wgse_gvcf_"
+    ) as work:
         text = Path(work, "header.txt")
         text.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-        run_command(["bcftools", "reheader", "-h", str(text), "-o", staged, source])
-        ensure_vcf_indexed(staged)
+        publish_called_vcf(
+            output,
+            stages=(
+                ["bcftools", "reheader", "-h", str(text), source],
+                ["bgzip", "-dc"],
+            ),
+        )
+
+
+def publish_callset(staged: Path, vcf: Path, gvcf: Path) -> None:
+    """Replace the indexed VCF and gVCF as one output set."""
+    from wgsextract_cli.api._runtime import checkpoint
+    from wgsextract_cli.core.atomic_output import publish_output_set
+    from wgsextract_cli.core.variant_files import indexed_vcf_publication
+
+    evidence, stale_evidence = indexed_vcf_publication(staged / gvcf.name, gvcf)
+    calls, stale_calls = indexed_vcf_publication(staged / vcf.name, vcf)
+    publish_output_set(
+        {**evidence, **calls},
+        retire=[*stale_evidence, *stale_calls],
+        checkpoint=checkpoint,
+    )
 
 
 def record_gvcf(output: str) -> None:

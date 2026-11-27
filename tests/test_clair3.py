@@ -41,7 +41,9 @@ from wgsextract_cli.core.utils import (
 )
 
 # Found before fake_pixi replaces PATH.
-CORE_TOOLS = {tool: shutil.which(tool) for tool in ("samtools", "bcftools", "tabix")}
+CORE_TOOLS = {
+    tool: shutil.which(tool) for tool in ("samtools", "bcftools", "bgzip", "tabix")
+}
 DORADO_V500 = "@RG\tID:run_dna_r10.4.1_e8.2_400bps_sup@v5.0.0\tDS:basecall_model=dna_r10.4.1_e8.2_400bps_sup@v5.0.0\n"
 
 

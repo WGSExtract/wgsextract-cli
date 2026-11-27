@@ -296,6 +296,7 @@ def call_partitioned(
         caller_provenance,
         clip_gvcf,
         gather_gvcf,
+        publish_callset,
         publish_gvcf,
         record_gvcf,
     )
@@ -353,7 +354,7 @@ def call_partitioned(
             )
             clip_gvcf(str(raw), intervals, setup.ref, str(cut))
             publish_gvcf(str(cut), str(Path(publish, out_gvcf.name)), provenance)
-            _publish_callset(Path(publish), output, out_gvcf)
+            publish_callset(Path(publish), output, out_gvcf)
         record_variants(
             str(output),
             "variants",
@@ -442,7 +443,7 @@ def call_partitioned(
                 )
                 ensure_vcf_indexed(staged_vcf)
                 publish_gvcf(gathered, str(Path(publish, out_gvcf.name)), provenance)
-                _publish_callset(Path(publish), output, out_gvcf)
+                publish_callset(Path(publish), output, out_gvcf)
     if provenance is None:
         ensure_vcf_indexed(output)
     record_variants(
@@ -452,17 +453,3 @@ def call_partitioned(
     )
     if provenance:
         record_gvcf(str(out_gvcf))
-
-
-def _publish_callset(staged: Path, vcf: Path, gvcf: Path) -> None:
-    from wgsextract_cli.api._runtime import checkpoint
-    from wgsextract_cli.core.atomic_output import publish_output_set
-    from wgsextract_cli.core.variant_files import indexed_vcf_publication
-
-    evidence, stale_evidence = indexed_vcf_publication(staged / gvcf.name, gvcf)
-    calls, stale_calls = indexed_vcf_publication(staged / vcf.name, vcf)
-    publish_output_set(
-        {**evidence, **calls},
-        retire=[*stale_evidence, *stale_calls],
-        checkpoint=checkpoint,
-    )

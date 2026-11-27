@@ -11,27 +11,33 @@ from types import SimpleNamespace
 import pytest
 
 from tests.htslib_helpers import (
+    bgzip_index,
     needs_htslib,
     run_wgsextract,
     sam_to_bam,
+    soft_mask_reference,
+    vcf_body,
     vcf_calls,
     write_fasta,
 )
 from tests.test_clair3 import clair3_gpu as clair3_gpu
 from tests.test_clair3 import fake_clair3 as fake_clair3
-from tests.test_clair3 import make_model
+from tests.test_clair3 import gpu_call, make_model
 from tests.test_gatk_scatter import gatk as gatk
 from tests.test_parabricks import gpu as gpu
 from tests.test_parabricks import parabricks_x86 as parabricks_x86
 from wgsextract_cli import api
 from wgsextract_cli.api.vcf import VcfClair3Params, VcfGatkParams
+from wgsextract_cli.commands.vcf.caller_ploidy import PloidyInterval
+from wgsextract_cli.commands.vcf.reference_evidence import clip_gvcf, publish_gvcf
 from wgsextract_cli.core.reference_evidence import (
     INDEX_ROLE,
     ROLE,
+    Provenance,
     ReferenceEvidence,
     State,
 )
-from wgsextract_cli.core.utils import WGSExtractError
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import Thresholds
 
 pytestmark = needs_htslib
@@ -106,6 +112,60 @@ def state(gvcf, contig, position):
         Thresholds(10, 20, 20, 30), [(contig, position, position)]
     )
     return next(iter(spans)).state
+
+
+def test_1654_gvcf_publication_changes_only_allele_sequence_bytes(tmp_path):
+    header = (
+        "##fileformat=VCFv4.2\n"
+        "##contig=<ID=chr1,length=100>\n"
+        '##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n'
+        '##INFO=<ID=Note,Number=1,Type=String,Description="Note">\n'
+        '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tSample\n"
+    )
+    body = (
+        "chr1\t2\tblock\ta\t<NON_REF>\t.\tPASS\tEND=10;Note=aCgT\tGT\t0/0\n"
+        "chr1\t15\tbnd\tt\tc[chrRemote:20[,g,<ins:mobile>,*\t1.00\tPASS\tNote=t\tGT\t1|2\n"
+    )
+    expected = body.replace("\ta\t", "\tA\t").replace(
+        "\tt\tc[chrRemote:20[,g,", "\tT\tC[chrRemote:20[,G,"
+    )
+    source = tmp_path / "raw.g.vcf"
+    source.write_text(header + body, encoding="utf-8", newline="\n")
+    ref = write_fasta(tmp_path / "masked.fa", {"chr1": "a" * 100})
+    output = str(tmp_path / "cut.g.vcf.gz")
+    clip_gvcf(
+        bgzip_index(source), [PloidyInterval("chr1", 0, 100, 2)], str(ref), output
+    )
+    assert vcf_body(output) == body.encode()
+    short_csi = Path(output).with_suffix(".csi")
+    run_command(["tabix", "-C", "-p", "vcf", output])
+    Path(output + ".csi").replace(short_csi)
+
+    publish_gvcf(
+        output, output, Provenance(engine="test", version="1", quality_model="gq")
+    )
+
+    assert vcf_body(output) == expected.encode()
+    assert not short_csi.exists()
+    # Query the interior, not the POS: the index must cover the block's END.
+    indexed = run_command(["tabix", output, "chr1:9-9"], capture_output=True)
+    assert indexed.stdout == expected.splitlines(keepends=True)[0]
+
+
+def test_1654_clair3_keeps_soft_masked_reference_blocks(tmp_path, clair3_gpu):
+    model = make_model(tmp_path, "custom")
+    plain = clair3_gpu.out
+    gpu_call(clair3_gpu, model, "--reference-evidence", "gvcf")
+    reads = clair3_gpu.reads
+    reads.ref = soft_mask_reference(reads.ref, tmp_path / "masked.fa", 900, 1100)
+    masked = clair3_gpu.out = tmp_path / "masked"
+    gpu_call(clair3_gpu, model, "--reference-evidence", "gvcf")
+
+    for name in ("clair3.vcf.gz", "clair3.g.vcf.gz"):
+        assert vcf_body(masked / name) == vcf_body(plain / name)
+    assert vcf_calls(masked / "clair3.vcf.gz", "chr1:900-1100") == reads.calls[:1]
+    assert state(masked / "clair3.g.vcf.gz", "chr1", 950) is State.CALLABLE_REFERENCE
 
 
 @pytest.mark.parametrize("bounded", [False, True])
@@ -242,12 +302,10 @@ def test_a_clair3_partition_without_reads_reads_uncovered_863(sample, request):
     sys.platform == "win32",
     reason="Windows locks the half-written file instead of failing the write",
 )
-def test_a_gvcf_that_cant_be_written_reports_bcftools_error_863(sample, tmp_path):
-    """#1009 review: when bcftools can't write the cut gVCF (a full disk, or
+def test_a_gvcf_that_cant_be_written_reports_the_write_error_863(sample, tmp_path):
+    """#1009 review: when the cut gVCF can't be written (a full disk, or
     here a folder in its place), the error names the gVCF and carries
-    bcftools' own message, not a bare broken pipe."""
-    from wgsextract_cli.commands.vcf.caller_ploidy import PloidyInterval
-    from wgsextract_cli.commands.vcf.reference_evidence import clip_gvcf
+    the underlying message, not a bare broken pipe."""
 
     rows = ["##fileformat=VCFv4.2", "##contig=<ID=chr20,length=12000>"]
     rows.append("#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\ts")

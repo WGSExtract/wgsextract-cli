@@ -79,9 +79,22 @@ def _short_index_sibling(vcf: Path) -> Path | None:
     for ext in ("gz", "bgz"):
         for letters in itertools.product(*((c, c.upper()) for c in ext)):
             candidate = vcf.with_suffix("." + "".join(letters))
-            if candidate.is_file() and not candidate.samefile(vcf):
+            if candidate.is_file() and (
+                not vcf.exists() or not candidate.samefile(vcf)
+            ):
                 return candidate
     return None
+
+
+def obsolete_vcf_index_aliases(vcf: Path) -> list[Path]:
+    """Short HTSlib index names to retire when replacing a compressed VCF."""
+    aliases = [vcf.with_suffix(ext) for ext in (".tbi", ".csi")]
+    existing = [alias for alias in aliases if alias.exists() or alias.is_symlink()]
+    if existing and (sibling := _short_index_sibling(vcf)):
+        raise WGSExtractError(
+            f"Cannot replace {vcf}: {sibling.name} shares {existing[0]}."
+        )
+    return existing
 
 
 def is_tabix_order_error(stderr: str | None) -> bool:
