@@ -20,7 +20,6 @@ from wgsextract_cli.core.alignment.cram_staging import (
 )
 from wgsextract_cli.core.alignment.metadata import get_bam_header
 from wgsextract_cli.core.alignment.samtools_commands import alignment_index
-from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.containers import (
     image_record,
@@ -62,11 +61,11 @@ from wgsextract_cli.core.space_free_paths import (
     restore_vcf_paths,
     space_free_paths,
 )
-from wgsextract_cli.core.temp_directory import scratch_directory
+from wgsextract_cli.core.temp_directory import move_file, scratch_directory
 from wgsextract_cli.core.tool_catalog import clair3_host_supported
 from wgsextract_cli.core.ultima import read_groups
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
-from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+from wgsextract_cli.core.vcf_output import publish_called_vcf
 
 from .basic import CallerSetup, plain_reference, record_variants, setup_caller
 from .callers import write_region_bed
@@ -507,14 +506,14 @@ def run_clair3(params: VcfClair3Params) -> None:
     gpu = accelerator if isinstance(accelerator, GpuSetup) else None
     mps = accelerator if isinstance(accelerator, MpsSetup) else None
     if gpu:
-        verify_dependencies(["samtools", "bcftools", "tabix"])
+        verify_dependencies(["samtools", "bcftools", "bgzip", "tabix"])
         logging.info(
             f"Running Clair3 on GPU {', '.join(map(str, gpu.devices))} from "
             f"{image_record(gpu.image)['image']}."
         )
     else:
         caller = "wgse-clair3" if mps else CLAIR3
-        verify_dependencies([caller, "samtools", "bcftools", "tabix"])
+        verify_dependencies([caller, "samtools", "bcftools", "bgzip", "tabix"])
         log_dependency_info([caller])
         if mps:
             logging.info(
@@ -683,20 +682,18 @@ def _run_clair3(
             run_work: work,
         }  # fmt: skip
         named = restore_vcf_paths(str(merged), real_paths, work)
-        with safe_output(out_vcf) as staged:
-            run_command(["bcftools", "view", "-Oz", "-o", staged, named])
+        publish_called_vcf(out_vcf, source=named)
         if gvcf:
             evidence = Path(output, "merge_output.gvcf.gz")
             if evidence.is_file():
                 named = restore_vcf_paths(str(evidence), real_paths, work)
-                run_command(["bcftools", "view", "-Oz", "-o", gvcf, named])
+                move_file(named, gvcf)
             elif not _calls_contigs_with_reads(input_file, use_ref, intervals):
                 # Clair3 skips contigs without reads, and with none left writes
                 # a header-only VCF and no gVCF: its bases read as uncovered.
                 run_command(["bcftools", "view", "-h", "-Oz", "-o", gvcf, out_vcf])
             else:
                 raise WGSExtractError("Clair3 failed to produce merge_output.gvcf.gz.")
-    ensure_vcf_indexed(out_vcf)
     if record:
         record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 

@@ -23,6 +23,7 @@ from wgsextract_cli.core.alignment.cram_reference import (
 from wgsextract_cli.core.alignment.cram_staging import (
     region_intervals,
 )
+from wgsextract_cli.core.atomic_output import output_publication_scope
 from wgsextract_cli.core.containers import (
     host_path,
     run_container,
@@ -35,9 +36,10 @@ from wgsextract_cli.core.resource_estimates import (
 from wgsextract_cli.core.steps import Decision, Step, StepJournal
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+from wgsextract_cli.core.vcf_output import publish_called_vcf
 
 from ..caller_ploidy import PloidyInterval, write_intervals
-from ..reference_evidence import publish_gvcf
+from ..reference_evidence import publish_callset, publish_gvcf
 from .models import _container_regions, _dv_env
 from .resources import _postprocess_args
 
@@ -414,10 +416,9 @@ def _run_stages(
                 work.rmdir()
     commands = _stage_commands(plan)
     staged_vcf = work / Path(out_vcf).name
-    # The gVCF and its index are the final stage's outputs too, so a missing
-    # one reruns it; without --reference-evidence its record is as before.
+    # The gVCF and its index are outputs too, so a missing one reruns the stage.
     final_outputs = [out_vcf]
-    final_params: dict[str, Any] = {}
+    final_params: dict[str, Any] = {"allele_case": "uppercase"}
     if provenance:
         final_params["ploidy_policy"] = hashlib.sha256(
             provenance.header().encode()
@@ -529,22 +530,7 @@ def _run_stages(
                     reads=name == "make_examples",
                 )
             if name == "postprocess_variants":
-                for suffix in ("", ".tbi"):
-                    source = Path(str(staged_vcf) + suffix)
-                    if source.exists():
-                        os.replace(source, out_vcf + suffix)
-                if not Path(out_vcf).exists():
-                    raise WGSExtractError("DeepVariant failed to produce output VCF.")
-                ensure_vcf_indexed(out_vcf)
-                if provenance:
-                    publish_gvcf(
-                        out_vcf, out_vcf, provenance, header_key=POLICY_HEADER_KEY
-                    )
-                if evidence:
-                    staged_gvcf = work / GVCF_NAME
-                    if not staged_gvcf.exists():
-                        raise WGSExtractError("DeepVariant didn't write its gVCF.")
-                    publish_gvcf(str(staged_gvcf), *evidence)
+                _publish_variants(staged_vcf, Path(out_vcf), evidence, provenance)
                 continue
             outputs = _stage_files(work, claimed)
             for path in outputs:
@@ -556,3 +542,35 @@ def _run_stages(
         journal.retire(name)
     shutil.rmtree(work, ignore_errors=True)
     return True
+
+
+def _publish_variants(
+    raw: Path,
+    output: Path,
+    evidence: tuple[str, Provenance] | None,
+    provenance: Provenance | None,
+) -> None:
+    if not raw.is_file():
+        raise WGSExtractError("DeepVariant failed to produce output VCF.")
+
+    def publish_calls(target: Path) -> None:
+        if provenance:
+            publish_gvcf(
+                str(raw), str(target), provenance, header_key=POLICY_HEADER_KEY
+            )
+        else:
+            publish_called_vcf(str(target), source=str(raw))
+
+    if evidence is None:
+        publish_calls(output)
+        return
+    raw_gvcf = raw.with_name(GVCF_NAME)
+    if not raw_gvcf.is_file():
+        raise WGSExtractError("DeepVariant didn't write its gVCF.")
+    gvcf = Path(evidence[0])
+    with tempfile.TemporaryDirectory(dir=output.parent, prefix=".wgse_calls_") as work:
+        staged = Path(work)
+        with output_publication_scope():
+            publish_calls(staged / output.name)
+            publish_gvcf(str(raw_gvcf), str(staged / gvcf.name), evidence[1])
+        publish_callset(staged, output, gvcf)

@@ -1464,8 +1464,10 @@ elif tool in ("deepvariant", "haplotypecaller"):
     for chrom, pos in sorted(set(starts), key=lambda s: (order.index(s[0]), s[1])):
         base = subprocess.run([TOOLS["samtools"], "faidx", ref, f"{chrom}:{pos}-{pos}"],
                               capture_output=True, text=True, check=True).stdout
-        base = base.splitlines()[1].upper()
-        alt = "C" if base != "C" else "G"
+        base = base.splitlines()[1]
+        alt = "C" if base.upper() != "C" else "G"
+        if base.islower():
+            alt = alt.lower()
         calls.append(f"{chrom}\t{pos}\t.\t{base}\t{alt}\t50\tPASS\t.\tGT\t1/1")
     out = opt("--out-variants")
     vcf = out

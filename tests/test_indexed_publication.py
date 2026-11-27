@@ -8,14 +8,16 @@ from pathlib import Path
 
 import pytest
 
-from tests.htslib_helpers import needs_tools, snp_sample
+from tests.htslib_helpers import needs_tools, snp_sample, vcf_body
 from tests.test_parabricks import gpu as gpu
 from tests.test_parabricks import parabricks_x86 as parabricks_x86
 from tests.test_vep_run import _vcf, ensembl_test_cache
 from tests.test_vep_run import fake_vep as fake_vep
 from wgsextract_cli import api
+from wgsextract_cli.core.atomic_output import output_publication_scope
 from wgsextract_cli.core.config import settings
-from wgsextract_cli.core.utils import run_command
+from wgsextract_cli.core.utils import WGSExtractError, run_command
+from wgsextract_cli.core.vcf_output import publish_called_vcf
 
 pytestmark = [
     needs_tools("samtools", "bcftools", "bgzip", "tabix"),
@@ -46,13 +48,7 @@ def test_1093_failed_cross_volume_rerun_preserves_the_previous_indexed_vcf(
         final = output / "sample_vep.vcf.gz"
         region = "1:1-100"
     else:
-        gpu_host = request.getfixturevalue("gpu")
-        # Model pbrun's sibling tabix index with the real indexer.
-        with (gpu_host.bin.parent / "image" / "pbrun").open("a") as script:
-            script.write(
-                '\nif tool == "deepvariant":\n'
-                '    subprocess.run([TOOLS["bcftools"], "index", "-t", vcf], check=True)\n'
-            )
+        request.getfixturevalue("gpu")
         sample = snp_sample(tmp_path)
         params = api.VcfDeepvariantParams(
             input=sample.bam, ref=sample.ref, outdir=output, gpu=True, threads=1,
@@ -63,7 +59,10 @@ def test_1093_failed_cross_volume_rerun_preserves_the_previous_indexed_vcf(
         region = "chr1:1000-1100"
     command(params)
     index = Path(str(final) + ".tbi")
-    before = final.read_bytes(), index.read_bytes()
+    files = [final, index]
+    if engine == "parabricks":
+        files += [output / "deepvariant.g.vcf.gz", output / "deepvariant.g.vcf.gz.tbi"]
+    before = [file.read_bytes() for file in files]
     expected = run_command(
         ["bcftools", "query", "-r", region, "-f", "%CHROM:%POS:%ALT\n", final],
         capture_output=True,
@@ -74,12 +73,30 @@ def test_1093_failed_cross_volume_rerun_preserves_the_previous_indexed_vcf(
     else:
         params = replace(params, region="chr1:2000-2100")
     real_replace, real_copy = os.replace, shutil.copy2
+    selected_output = index if component == "index" else final
+    injected = False
+
+    def fail():
+        nonlocal injected
+        injected = True
+        if interrupted:
+            raise KeyboardInterrupt
+        raise OSError(errno.ENOSPC, "disk full")
 
     def cross_volume(source_path, destination):
-        if Path(source_path).is_relative_to(scratch) and not Path(
-            destination
-        ).is_relative_to(scratch):
+        source_path, destination = Path(source_path), Path(destination)
+        if source_path.is_relative_to(scratch) and not destination.is_relative_to(
+            scratch
+        ):
             raise OSError(errno.EXDEV, "separate temporary volume")
+        # Parabricks recompresses into a private destination-local directory.
+        # Fail its final rename, after the old callset has been backed up.
+        if (
+            engine == "parabricks"
+            and destination == selected_output
+            and source_path.name == destination.name
+        ):
+            fail()
         real_replace(source_path, destination)
 
     def failed_copy(source_path, destination, **kwargs):
@@ -87,20 +104,20 @@ def test_1093_failed_cross_volume_rerun_preserves_the_previous_indexed_vcf(
         selected = path.suffix == (".tbi" if component == "index" else ".gz")
         if path.is_relative_to(scratch) and selected:
             Path(destination).write_bytes(b"partial")
-            if interrupted:
-                raise KeyboardInterrupt
-            raise OSError(errno.ENOSPC, "disk full")
+            fail()
         return real_copy(source_path, destination, **kwargs)
 
     monkeypatch.setattr(os, "replace", cross_volume)
-    monkeypatch.setattr(shutil, "copy2", failed_copy)
+    if engine == "vep":
+        monkeypatch.setattr(shutil, "copy2", failed_copy)
     if interrupted:
         with pytest.raises(KeyboardInterrupt):
             command(params, check=False)
     else:
         result = command(params, check=False)
         assert result.status == "failed"
-    assert (final.read_bytes(), index.read_bytes()) == before
+    assert injected
+    assert [file.read_bytes() for file in files] == before
     assert (
         run_command(
             ["bcftools", "query", "-r", region, "-f", "%CHROM:%POS:%ALT\n", final],
@@ -115,3 +132,48 @@ def test_1093_failed_cross_volume_rerun_preserves_the_previous_indexed_vcf(
         if path.name.startswith(".") and not path.match(".wgse_publish-*.guard")
     ]
     assert list(scratch.iterdir()) == []
+
+
+def _lowercase_vcf(path):
+    path.write_text(
+        "##fileformat=VCFv4.2\n##contig=<ID=chr1,length=100>\n"
+        "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+        "chr1\t10\t.\ta\tc\t.\tPASS\t.\n",
+        newline="\n",
+    )
+    return path
+
+
+def test_1654_caller_publication_lock_lasts_until_invocation_exits(tmp_path):
+    import fcntl
+
+    source = _lowercase_vcf(tmp_path / "input.vcf")
+    final = tmp_path / "calls.vcf.gz"
+    with output_publication_scope():
+        publish_called_vcf(str(final), source=str(source))
+        (guard,) = tmp_path.glob(".wgse_publish-*.guard")
+        with guard.open("rb") as other:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    with guard.open("rb") as other:
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def test_1654_hardlinked_vcf_sibling_keeps_its_shared_index(tmp_path):
+    source = _lowercase_vcf(tmp_path / "input.vcf")
+    final = tmp_path / "calls.vcf.gz"
+    with final.open("wb") as stream:
+        run_command(["bgzip", "-c", source], stdout=stream)
+    sibling = final.with_suffix(".bgz")
+    os.link(final, sibling)
+    run_command(["tabix", "-C", "-p", "vcf", final])
+    short = Path(f"{final}.csi").rename(final.with_suffix(".csi"))
+    before = short.read_bytes()
+
+    with pytest.raises(WGSExtractError, match=r"calls\.vcf\.bgz shares .*\.csi"):
+        publish_called_vcf(str(final), source=str(source))
+
+    assert short.read_bytes() == before
+    query = run_command(["tabix", sibling, "chr1:10-10"], capture_output=True)
+    assert query.stdout.encode() == vcf_body(final)
+    assert "\ta\tc\t" in query.stdout

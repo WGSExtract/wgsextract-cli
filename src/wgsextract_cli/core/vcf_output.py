@@ -1,9 +1,46 @@
 """Write BGZF VCFs with uppercase sequence alleles, without re-normalizing."""
 
 import re
+import subprocess
 import sys
+import tempfile
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from pathlib import Path
 
 from wgsextract_cli.core.dependency_checks import get_tool_version
+from wgsextract_cli.core.utils import run_pipeline
+from wgsextract_cli.core.variant_files import publish_indexed_vcf
+
+_UPPERCASE = [sys.executable, str(Path(__file__).with_name("vcf_alleles.py"))]
+
+
+def publish_called_vcf(
+    output: str, *, source: str | None = None, stages: Sequence[list[str]] = ()
+) -> None:
+    """Publish a caller's text VCF (from a file or pipeline) with a fresh index."""
+    uppercase = [*_UPPERCASE, *([source] if source is not None else [])]
+    final = Path(output)
+    with tempfile.TemporaryDirectory(dir=final.parent, prefix=".wgse_call_") as work:
+        staged = Path(work, final.name)
+        with staged.open("wb") as stream:
+            run_pipeline(
+                [*stages, uppercase, ["bgzip", "-c"]],
+                stdin=subprocess.DEVNULL,
+                stdout=stream,
+                description="Normalize caller VCF allele case",
+            )
+        publish_indexed_vcf(staged, final)
+
+
+@contextmanager
+def called_vcf_output(output: str) -> Iterator[str]:
+    """Stage callers that only write to a file, then publish their VCF."""
+    final = Path(output)
+    with tempfile.TemporaryDirectory(dir=final.parent, prefix=".wgse_call_") as work:
+        raw = str(Path(work, final.name))
+        yield raw
+        publish_called_vcf(output, source=raw)
 
 
 def uppercase_vcf(
@@ -33,6 +70,6 @@ def uppercase_vcf(
     check = ["-c", check_ref] if check_ref is not None else []
     return [
         [*command, *check, "-Ov", *inputs],
-        [sys.executable, "-m", "wgsextract_cli.core.vcf_alleles"],
+        _UPPERCASE,
         ["bcftools", "view", "--no-version", "--threads", threads, "-Oz", "-o", output],
     ]

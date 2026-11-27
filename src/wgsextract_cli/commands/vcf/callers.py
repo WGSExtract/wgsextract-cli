@@ -20,7 +20,6 @@ from wgsextract_cli.core.alignment.cram_staging import (
     needs_cram30,
     usable_htsjdk_crai,
 )
-from wgsextract_cli.core.atomic_output import safe_output
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import get_tool_version, verify_dependencies
 from wgsextract_cli.core.native_pairhmm import (
@@ -45,9 +44,8 @@ from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
     run_command,
-    run_pipeline,
 )
-from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+from wgsextract_cli.core.vcf_output import called_vcf_output, publish_called_vcf
 
 from .basic import CallerSetup, plain_reference, record_variants, setup_caller
 from .gatk_scatter import call_scattered, scatter_intervals
@@ -217,7 +215,7 @@ def _gatk_cram_hint(input_file: str, stderr: object) -> str | None:
 
 def run_freebayes(params: VcfFreebayesParams) -> None:
     """``vcf freebayes``: FreeBayes into ``freebayes.vcf.gz``."""
-    verify_dependencies(["freebayes", "bcftools", "tabix", "samtools"])
+    verify_dependencies(["freebayes", "bcftools", "bgzip", "tabix", "samtools"])
     setup = setup_caller(params)
     outdir, ref = setup.outdir, setup.ref
     input_file, region = str(params.input), params.region
@@ -254,10 +252,8 @@ def run_freebayes(params: VcfFreebayesParams) -> None:
             targets = ["--targets", bed] if bed else []
             stages = [["freebayes", "-f", use_ref, *targets, input_file]]
             keep = []
-        with safe_output(out_vcf) as staged:
-            stages.append(["bcftools", "view", *keep, "-Oz", "-o", staged])
-            run_pipeline(stages, description="FreeBayes variant calling")
-    ensure_vcf_indexed(out_vcf)
+        stages.append(["bcftools", "view", *keep, "-Ov"])
+        publish_called_vcf(out_vcf, stages=stages)
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
 
@@ -269,7 +265,7 @@ def _gatk_gpu(params: VcfGatkParams, setup: CallerSetup | None = None) -> None:
         verify_parabricks,
     )
 
-    verify_dependencies(["samtools", "tabix"])
+    verify_dependencies(["samtools", "bgzip", "tabix"])
     verify_parabricks()
     fit = plan_gpu_memory(
         "haplotypecaller", "gatk", check=not params.no_gpu_memory_check
@@ -281,9 +277,8 @@ def _gatk_gpu(params: VcfGatkParams, setup: CallerSetup | None = None) -> None:
         ultima.warn_no_flow_model("Parabricks HaplotypeCaller (--gpu)")
     out_vcf = str(Path(outdir, "gatk.vcf.gz"))
     logging.info(LOG_MESSAGES["vcf_calling_gatk"].format(output=out_vcf))
-    with safe_output(out_vcf) as staged:
+    with called_vcf_output(out_vcf) as staged:
         call_variants("haplotypecaller", input_file, ref, staged, region, fit)
-    ensure_vcf_indexed(out_vcf)
     record_variants(out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region))
 
 
@@ -423,7 +418,7 @@ def _run_gatk(
         _gatk_gpu(params, setup)
         return
     verify_dependencies(
-        ["gatk", "samtools", *(["bcftools", "tabix"] if scatter else [])]
+        ["gatk", "samtools", "bgzip", "tabix", *(["bcftools"] if scatter else [])]
     )
     gatk_command = gatk_command or ["gatk"]
     if (
@@ -526,24 +521,22 @@ def _run_gatk(
             with tempfile.TemporaryDirectory(
                 dir=configured_temp_directory() or outdir, prefix=".wgse_gatk_scatter_"
             ) as work:
-                with safe_output(out_vcf) as staged:
-                    call_scattered(
-                        [
-                            "gatk",
-                            "HaplotypeCaller",
-                            "-R",
-                            java_local_path(ref),
-                            *reads,
-                            *flow_args,
-                            "--sample-ploidy",
-                            str(sample_ploidy),
-                        ],
-                        shards,
-                        staged,
-                        Path(work),
-                        gatk_tmp,
-                    )
-            ensure_vcf_indexed(out_vcf)
+                call_scattered(
+                    [
+                        "gatk",
+                        "HaplotypeCaller",
+                        "-R",
+                        java_local_path(ref),
+                        *reads,
+                        *flow_args,
+                        "--sample-ploidy",
+                        str(sample_ploidy),
+                    ],
+                    shards,
+                    out_vcf,
+                    Path(work),
+                    gatk_tmp,
+                )
             if record:
                 record_variants(
                     out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region)
@@ -583,7 +576,7 @@ def _run_gatk(
             for band in GATK_BANDS.split(","):
                 cmd += ["-GQB", band]
             run_command(cmd)
-            with safe_output(out_vcf) as staged:
+            with called_vcf_output(out_vcf) as staged:
                 run_command(
                     [
                         "gatk",
@@ -599,10 +592,9 @@ def _run_gatk(
                     ]
                 )
         else:
-            with safe_output(out_vcf) as staged:
+            with called_vcf_output(out_vcf) as staged:
                 cmd[cmd.index("-O") + 1] = java_local_path(staged)
                 run_command(cmd)
-        ensure_vcf_indexed(out_vcf)
         if record:
             record_variants(
                 out_vcf, "variants", warn_if_no_variants(out_vcf, ref, region)

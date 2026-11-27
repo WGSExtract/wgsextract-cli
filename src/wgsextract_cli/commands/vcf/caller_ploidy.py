@@ -288,7 +288,7 @@ def call_partitioned(
     the GPU too. Each partition's gVCF is cut at its edges, gathered and
     published as ``<name>.g.vcf.gz`` with its provenance."""
     from wgsextract_cli.commands.vcf.basic import record_variants
-    from wgsextract_cli.core.atomic_output import safe_output
+    from wgsextract_cli.core.atomic_output import output_publication_scope, safe_output
     from wgsextract_cli.core.output_checks import warn_if_no_variants
     from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 
@@ -296,6 +296,7 @@ def call_partitioned(
         caller_provenance,
         clip_gvcf,
         gather_gvcf,
+        publish_callset,
         publish_gvcf,
         record_gvcf,
     )
@@ -344,16 +345,17 @@ def call_partitioned(
             ) as publish,
         ):
             raw, cut = Path(work, "raw.g.vcf.gz"), Path(work, "cut.g.vcf.gz")
-            run(
-                replace(params, outdir=Path(publish)),
-                2,
-                replace(setup, outdir=publish),
-                False,
-                str(raw),
-            )
-            clip_gvcf(str(raw), intervals, setup.ref, str(cut))
-            publish_gvcf(str(cut), str(Path(publish, out_gvcf.name)), provenance)
-            _publish_callset(Path(publish), output, out_gvcf)
+            with output_publication_scope():
+                run(
+                    replace(params, outdir=Path(publish)),
+                    2,
+                    replace(setup, outdir=publish),
+                    False,
+                    str(raw),
+                )
+                clip_gvcf(str(raw), intervals, setup.ref, str(cut))
+                publish_gvcf(str(cut), str(Path(publish, out_gvcf.name)), provenance)
+            publish_callset(Path(publish), output, out_gvcf)
         record_variants(
             str(output),
             "variants",
@@ -391,13 +393,14 @@ def call_partitioned(
             bed = write_intervals(part / "regions.bed", partition)
             raw = part / "raw.g.vcf.gz"
             # The final manifest must name only persistent outputs.
-            run(
-                replace(params, outdir=part, region=bed),
-                ploidy,
-                replace(setup, outdir=str(part)),
-                False,
-                str(raw) if gvcf else None,
-            )
+            with output_publication_scope():
+                run(
+                    replace(params, outdir=part, region=bed),
+                    ploidy,
+                    replace(setup, outdir=str(part)),
+                    False,
+                    str(raw) if gvcf else None,
+                )
             bounded = str(part / "bounded.vcf.gz")
             # Callers may emit variants overlapping an interval edge; each POS
             # belongs to exactly one ploidy partition.
@@ -441,8 +444,11 @@ def call_partitioned(
                     ["bcftools", "sort", "-T", work, "-Oz", "-o", staged_vcf, combined]
                 )
                 ensure_vcf_indexed(staged_vcf)
-                publish_gvcf(gathered, str(Path(publish, out_gvcf.name)), provenance)
-                _publish_callset(Path(publish), output, out_gvcf)
+                with output_publication_scope():
+                    publish_gvcf(
+                        gathered, str(Path(publish, out_gvcf.name)), provenance
+                    )
+                publish_callset(Path(publish), output, out_gvcf)
     if provenance is None:
         ensure_vcf_indexed(output)
     record_variants(
@@ -452,17 +458,3 @@ def call_partitioned(
     )
     if provenance:
         record_gvcf(str(out_gvcf))
-
-
-def _publish_callset(staged: Path, vcf: Path, gvcf: Path) -> None:
-    from wgsextract_cli.api._runtime import checkpoint
-    from wgsextract_cli.core.atomic_output import publish_output_set
-    from wgsextract_cli.core.variant_files import indexed_vcf_publication
-
-    evidence, stale_evidence = indexed_vcf_publication(staged / gvcf.name, gvcf)
-    calls, stale_calls = indexed_vcf_publication(staged / vcf.name, vcf)
-    publish_output_set(
-        {**evidence, **calls},
-        retire=[*stale_evidence, *stale_calls],
-        checkpoint=checkpoint,
-    )

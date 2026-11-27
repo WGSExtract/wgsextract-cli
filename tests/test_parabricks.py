@@ -19,6 +19,8 @@ from tests.htslib_helpers import (
     needs_tools,
     run_wgsextract,
     snp_sample,
+    soft_mask_reference,
+    vcf_body,
     vcf_calls,
     write_fasta,
     write_read_pairs,
@@ -296,6 +298,28 @@ def test_gpu_calling_runs_the_parabricks_caller_over_each_region(
     assert [
         a for a in ("--use-wes-model", "--mode", "pacbio", "ont") if a in args
     ] == mode
+
+
+@posix_only
+@needs_tools("samtools", "bcftools", "bgzip", "tabix")
+@pytest.mark.parametrize("caller", ["deepvariant", "gatk"])
+def test_1654_parabricks_publishes_uppercase_calls(tmp_path, gpu, caller):
+    sample = snp_sample(tmp_path)
+    masked = soft_mask_reference(sample.ref, tmp_path / "masked.fa", 900, 1100)
+    out = tmp_path / "calls"
+
+    run_wgsextract(
+        "vcf", caller, "--gpu", "--input", sample.bam, "--ref", masked,
+        "--outdir", str(out), "--threads", "1", "-r", "chr1:1000-1100",
+    )  # fmt: skip
+
+    vcf = out / f"{caller}.vcf.gz"
+    ref = sample.calls[0][2]
+    alt = "C" if ref != "C" else "G"
+    assert (
+        vcf_body(vcf) == f"chr1\t1000\t.\t{ref}\t{alt}\t50\tPASS\t.\tGT\t1/1\n".encode()
+    )
+    assert vcf_calls(vcf, "chr1:1000-1000") == [("chr1", "1000", ref, alt, "1/1")]
 
 
 @posix_only

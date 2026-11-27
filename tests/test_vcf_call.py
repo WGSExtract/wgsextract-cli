@@ -163,12 +163,12 @@ def test_gvcf_replaces_the_snp_and_indel_vcfs(tmp_path, small_sample):
         (["--reference-evidence", "gvcf"], "bcftools.g.vcf.gz"),
     ],
 )
-def test_1630_soft_masked_calls_keep_the_same_records(
+def test_1630_and_1654_soft_masked_calls_keep_the_same_records(
     tmp_path, small_sample, flags, filename
 ):
     bam, fasta = small_sample
     sequences = {
-        name: seq[:130] + seq[130:170].lower() + seq[170:]
+        name: seq[:90] + seq[90:170].lower() + seq[170:]
         for entry in fasta.read_text().split(">")[1:]
         for name, seq in [entry.splitlines()]
     }

@@ -238,6 +238,28 @@ def snp_sample(
     return Namespace(ref=str(fasta), bam=bam, cram=cram, calls=calls)
 
 
+def soft_mask_reference(reference: str, path: Path, start: int, end: int) -> str:
+    """Copy a tiny fixture FASTA, masking the 1-based inclusive interval."""
+    sequences = {}
+    for entry in Path(reference).read_text().split(">")[1:]:
+        name, *lines = entry.splitlines()
+        seq = "".join(lines)
+        sequences[name] = seq[: start - 1] + seq[start - 1 : end].lower() + seq[end:]
+    return str(write_fasta(path, sequences))
+
+
+def vcf_body(path: str | Path) -> bytes:
+    with gzip.open(path, "rb") as stream:
+        return b"".join(line for line in stream if not line.startswith(b"#"))
+
+
+def caller_output_names(directory: Path) -> list[str]:
+    """Include leftover scratch files, but exclude persistent publisher locks."""
+    return sorted(
+        p.name for p in directory.iterdir() if not p.match(".wgse_publish-*.guard")
+    )
+
+
 def vcf_calls(vcf: str | Path, region: str | None = None) -> list[tuple[str, ...]]:
     """(CHROM, POS, REF, ALT, GT) of each record of a single-sample VCF, or of
     those in ``region``, read through its index."""
