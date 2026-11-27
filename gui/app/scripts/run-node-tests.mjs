@@ -63,7 +63,7 @@ const tests = process.argv.slice(2);
 // stopping whatever uses it. Tests get a throwaway one, so a test that forgets to isolate it can't touch the
 // developer's own installed app.
 const isolatedRoot = mkdtempSync(path.join(tmpdir(), "wgsextract-gui-tests-"));
-const child = spawn(process.execPath, ["--test", ...(tests.length > 0 ? tests : defaultTests)], {
+const child = spawn(process.execPath, ["--test", "--test-timeout=240000", ...(tests.length > 0 ? tests : defaultTests)], {
   stdio: ["ignore", "pipe", "pipe"],
   windowsHide: true,
   env: {

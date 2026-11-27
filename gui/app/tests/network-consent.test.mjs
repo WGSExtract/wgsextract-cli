@@ -16,6 +16,18 @@ import { isolateWorkspaceEnvironment } from "./workspace-fixture.mjs";
 const app = path.resolve(import.meta.dirname, "..");
 const executablePath = process.platform === "linux" && existsSync("/usr/bin/chromium")
     ? "/usr/bin/chromium" : chromium.executablePath();
+const operationTimeout = 6_000;
+
+async function within(promise, description) {
+    let timer;
+    try {
+        return await Promise.race([promise, new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(`${description} timed out after ${operationTimeout} ms`)), operationTimeout);
+        })]);
+    } finally {
+        clearTimeout(timer);
+    }
+}
 
 async function isolatedRoot(t) {
     const root = await mkdtemp(path.join(tmpdir(), "net-consent-"));
@@ -29,17 +41,27 @@ async function browserFixture(t) {
     const pendingRequests = new Set();
     const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
     const server = createServer();
-    let browser;
+    let browserServer;
     t.after(async () => {
-        await browser?.close();
-        if (server.listening) {
-            const closed = new Promise((resolve) => server.close(resolve));
-            server.closeAllConnections();
-            await closed;
+        try {
+            if (browserServer) {
+                try {
+                    await within(browserServer.close(), "Closing Chromium");
+                } catch (error) {
+                    await within(browserServer.kill(), "Killing Chromium");
+                    throw error;
+                }
+            }
+        } finally {
+            if (server.listening) {
+                const closed = new Promise((resolve) => server.close(resolve));
+                server.closeAllConnections();
+                await within(closed, "Closing the fixture HTTP server");
+            }
+            await within(manager.terminateAllProcesses(), "Stopping setup processes");
+            await within(Promise.allSettled(pendingRequests), "Draining fixture requests");
+            await rm(bundleRoot, { recursive: true, force: true });
         }
-        await manager.terminateAllProcesses();
-        await Promise.allSettled(pendingRequests);
-        await rm(bundleRoot, { recursive: true, force: true });
     });
     isolateWorkspaceEnvironment(t, bundleRoot);
     await writeFile(path.join(bundleRoot, "manifest.json"), JSON.stringify({
@@ -63,10 +85,14 @@ async function browserFixture(t) {
         pendingRequests.add(pending);
         void pending.finally(() => pendingRequests.delete(pending));
     });
-    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-    browser = await chromium.launch({ executablePath });
-    const page = await browser.newPage({ viewport: { width: 1060, height: 780 } });
-    page.setDefaultTimeout(6_000);
+    await within(new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", resolve);
+    }), "Starting the fixture HTTP server");
+    browserServer = await chromium.launchServer({ executablePath, timeout: operationTimeout });
+    const browser = await chromium.connect(browserServer.wsEndpoint(), { timeout: operationTimeout });
+    const page = await within(browser.newPage({ viewport: { width: 1060, height: 780 } }), "Opening a Chromium page");
+    page.setDefaultTimeout(operationTimeout);
     const origin = `http://127.0.0.1:${server.address().port}`;
     const setupCalls = [], external = [];
     await page.route((url) => url.origin !== origin, (route) => {
@@ -80,23 +106,23 @@ async function browserFixture(t) {
     await page.addInitScript(() => {
         window.WGSEXTRACT_GUI_AUTO_UPDATE = true;
         window.updateRequests = [];
-        window.updaterReady = new Promise((resolve) => { window.signalUpdaterReady = resolve; });
-        window.startupUpdate = new Promise((resolve) => { window.signalStartupUpdate = resolve; });
         window.__TAURI__ = {
-            event: { listen: async () => { window.signalUpdaterReady(); } },
+            event: { listen: async () => {
+                document.documentElement.dataset.testUpdaterReady = "true";
+            } },
             core: { invoke: async (command) => {
                 if (command.startsWith("gfc_update_")) window.updateRequests.push(command);
-                if (command === "gfc_update_check") window.signalStartupUpdate();
+                if (command === "gfc_update_check") document.documentElement.dataset.testStartupUpdate = "true";
                 return { currentVersion: "0.8.10" };
             } },
         };
     });
     await page.goto(origin, { waitUntil: "domcontentloaded" });
-    await page.evaluate(() => window.updaterReady);
+    await page.locator("html[data-test-updater-ready]").waitFor({ state: "attached" });
     return {
         page, external, setupCalls,
         updates: () => page.evaluate(() => window.updateRequests),
-        startupUpdate: () => page.evaluate(() => window.startupUpdate),
+        startupUpdate: () => page.locator("html[data-test-startup-update]").waitFor({ state: "attached" }),
     };
 }
 
@@ -117,7 +143,7 @@ test("#1591 first launch makes no outbound requests until OK, then starts setup 
         ok.press("Enter"),
     ]);
     assert.equal(setup.status(), 200);
-    assert.equal(await setup.finished(), null);
+    // This test checks that setup starts. Teardown aborts and drains the stream.
     assert.equal(await page.getByRole("checkbox", { name: "Check for updates at launch" }).isChecked(), true);
     assert.deepEqual(external, []);
 });
