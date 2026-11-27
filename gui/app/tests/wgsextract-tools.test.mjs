@@ -82,7 +82,9 @@ test("each Tools row shows its status, whether it is mandatory, and where it com
         assert.match(row.tooltip, /License: .+/, `${row.id} tooltip missing License`);
     }
     assert.match(rows.samtools.tooltip, /Installed path: \/env\/bin\/samtools/);
-    assert.match(rows.plink2.tooltip, /Note: Download PLINK 2 for your system\./);
+    // The note already shows in the row's details column, so the tooltip leaves it out.
+    assert.doesNotMatch(rows.plink2.tooltip, /Note:/);
+    assert.equal(rows.plink2.values.details, "Download PLINK 2 for your system.");
 });
 
 test("Tools rows list installed tools first (mandatory, pre-installed, the rest), then missing, then unavailable", () => {

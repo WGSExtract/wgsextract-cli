@@ -348,7 +348,6 @@ function toolTooltip(tool) {
     };
     const extras = [];
     if (tool.path) extras.push(["Installed path", tool.path]);
-    if (tool.note) extras.push(["Note", tool.note]);
     return formatProvenanceTooltip({ ...meta, extras });
 }
 
