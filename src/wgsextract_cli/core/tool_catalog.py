@@ -76,7 +76,8 @@ INSTALL_HINTS = {
     "https://www.cog-genomics.org/plink/2.0/ and put plink2 on PATH. "
     "It is optional, used only by score pgs --plink2-check.",
     "dorado": "Dorado is ONT's basecaller and isn't installed with WGS Extract: "
-    "download the release for your system from "
+    "its licence allows only research use with Nanopore data, so you accept "
+    "those terms yourself. Download the release for your system from "
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",
@@ -254,6 +255,7 @@ PIXI_TOOL_ENVS = {
     "modkit": "modkit",
     "verifybamid2": "verifybamid2",
     "somalier": "somalier",
+    "plink2": "plink2",
     "whatshap": "phasing",
     "longphase": "phasing",
     "GLIMPSE2_phase": "imputation",

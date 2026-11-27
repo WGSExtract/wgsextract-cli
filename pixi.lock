@@ -7110,6 +7110,43 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/tk-8.6.13-hbeba79b_4.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zlib-ng-2.3.3-h31dac16_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
+  plink2:
+    channels:
+    - url: https://conda.anaconda.org/conda-forge/
+    - url: https://conda.anaconda.org/bioconda/
+    packages:
+      linux-64:
+      - conda: https://conda.anaconda.org/bioconda/linux-64/plink2-2.0.0b1.post4-hea6131b_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libgcc-16.2.0-ha9f2e26_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libgfortran-16.2.0-h69a702a_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libgfortran5-16.2.0-h6b99dfc_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libgomp-16.2.0-he0feb66_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libopenblas-0.3.34-pthreads_hf13c14d_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libstdcxx-16.2.0-h934c35e_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/libzlib-1.3.2-h25fd6f3_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/zstd-1.5.7-hb78ec9c_7.conda
+      linux-aarch64:
+      - conda: https://conda.anaconda.org/bioconda/linux-aarch64/plink2-2.0.0b1.post4-he764272_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/_openmp_mutex-4.5-20_gnu.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libgcc-16.2.0-h205dda4_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libgfortran-16.2.0-he9431aa_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libgfortran5-16.2.0-hc864f27_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libgomp-16.2.0-h8acb6b2_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libopenblas-0.3.34-pthreads_h4148b7d_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libstdcxx-16.2.0-hef695bb_7.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/libzlib-1.3.2-hdc9db2a_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-aarch64/zstd-1.5.7-h9d15635_7.conda
+      osx-64:
+      - conda: https://conda.anaconda.org/bioconda/osx-64/plink2-2.0.0b1.post4-h5f447fe_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-64/libcxx-23.1.6-h88b51c2_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-64/libzlib-1.3.2-hbb4bfdb_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-hbc1a06c_7.conda
+      osx-arm64:
+      - conda: https://conda.anaconda.org/bioconda/osx-arm64/plink2-2.0.0b1.post4-ha47b134_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/libcxx-23.1.6-hc645fd0_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/libzlib-1.3.2-h8088a28_3.conda
+      - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
   smn:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -10060,6 +10097,23 @@ packages:
     - phylip >=3.697,<4.0a0
   size: 2137515
   timestamp: 1754956410165
+- conda: https://conda.anaconda.org/bioconda/linux-64/plink2-2.0.0b1.post4-hea6131b_0.conda
+  sha256: 2f31d6937a971d79bdbc6b60fe4ea95b31ae679762851863a3288c7822c81921
+  md5: 22fe1b2a4222a3abdea5250375d4f4c8
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=14
+  - libopenblas
+  - libstdcxx >=14
+  - libzlib >=1.3.2,<2.0a0
+  - zstd >=1.5.7,<1.6.0a0
+  license: GPL-3.0-or-later AND LGPL-3.0-or-later
+  license_family: GPL3
+  run_exports:
+    weak:
+    - plink2 >=2.0.0b1.post4
+  size: 1992902
+  timestamp: 1794100259661
 - conda: https://conda.anaconda.org/bioconda/linux-64/poa-2.0-h7b50bb2_6.tar.bz2
   sha256: 42432a403d925ff18087ffdabcd433b864a14623d8aad50237ce36dd9757b09a
   md5: 09f8da025ec25fe60e162044ff6b951e
@@ -11493,6 +11547,22 @@ packages:
     - phylip >=3.697,<4.0a0
   size: 2217034
   timestamp: 1754956223820
+- conda: https://conda.anaconda.org/bioconda/linux-aarch64/plink2-2.0.0b1.post4-he764272_0.conda
+  sha256: 9cca22afe7c91ae28f02373cd53b8e13f6547e7b91d1f2d0dbdadb8367d5c6e5
+  md5: 5cbfd3004808667ff2779fc2ea423d35
+  depends:
+  - libgcc >=14
+  - libopenblas
+  - libstdcxx >=14
+  - libzlib >=1.3.2,<2.0a0
+  - zstd >=1.5.7,<1.6.0a0
+  license: GPL-3.0-or-later AND LGPL-3.0-or-later
+  license_family: GPL3
+  run_exports:
+    weak:
+    - plink2 >=2.0.0b1.post4
+  size: 2009164
+  timestamp: 1794100030805
 - conda: https://conda.anaconda.org/bioconda/linux-aarch64/poa-2.0-h661a7b0_6.tar.bz2
   sha256: 9822cda774eced4d1ac49281b9ff30770ac5f770cf3820b2f780e1b9c0d0bf9a
   md5: f11a7bc7bf58097b8bf20006d2cf1373
@@ -13828,6 +13898,21 @@ packages:
     - phylip >=3.697,<4.0a0
   size: 2199948
   timestamp: 1754957208099
+- conda: https://conda.anaconda.org/bioconda/osx-64/plink2-2.0.0b1.post4-h5f447fe_0.conda
+  sha256: 426e44228c0fe110dee64b097039fb7417a0d2369049ecdb5beebb921987bac9
+  md5: 6a28e08f1fcea4e9ce2eb204f4f91c1a
+  depends:
+  - __osx >=10.13
+  - libcxx >=19
+  - libzlib >=1.3.2,<2.0a0
+  - zstd >=1.5.7,<1.6.0a0
+  license: GPL-3.0-or-later AND LGPL-3.0-or-later
+  license_family: GPL3
+  run_exports:
+    weak:
+    - plink2 >=2.0.0b1.post4
+  size: 2065078
+  timestamp: 1794101818551
 - conda: https://conda.anaconda.org/bioconda/osx-64/poa-2.0-h18d8cf3_6.tar.bz2
   sha256: 91095be5db5fee5399c46443f766b0d601d8f55559e30bda3133815c753dd5cc
   md5: 928d8894e9589d7316e23b0b299f37bc
@@ -15120,6 +15205,21 @@ packages:
     - phylip >=3.697,<4.0a0
   size: 2208653
   timestamp: 1754956309763
+- conda: https://conda.anaconda.org/bioconda/osx-arm64/plink2-2.0.0b1.post4-ha47b134_0.conda
+  sha256: ab9725bbc80796f5d716357457029904ba7d344a23dc8ffa12c10336f2062d9c
+  md5: 9564a5898bd9bcd2c174ca7b5afc963f
+  depends:
+  - __osx >=11.0
+  - libcxx >=19
+  - libzlib >=1.3.2,<2.0a0
+  - zstd >=1.5.7,<1.6.0a0
+  license: GPL-3.0-or-later AND LGPL-3.0-or-later
+  license_family: GPL3
+  run_exports:
+    weak:
+    - plink2 >=2.0.0b1.post4
+  size: 1770584
+  timestamp: 1794099654775
 - conda: https://conda.anaconda.org/bioconda/osx-arm64/poa-2.0-hbdacb55_6.tar.bz2
   sha256: c42880864c8733e1f330e93cea04034e6583654faadf1470f6e6e6c8e753ea2e
   md5: 935864acee93698ec8c632b8b8ae916a

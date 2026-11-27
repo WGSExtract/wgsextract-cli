@@ -293,7 +293,10 @@ wgsextract bam merge run1.bam run2.bam --sample HG002 --output HG002.bam
 
 `basecall` turns POD5 signal (a file, or a folder searched recursively) into an
 unaligned BAM with ONT's [Dorado](https://github.com/nanoporetech/dorado), 1.0
-or newer. Dorado is optional and isn't installed with WGS Extract: download the
+or newer. Dorado is optional and isn't installed with WGS Extract. Its licence
+(the Oxford Nanopore Technologies PLC. Public License) grants use only for
+research and only with data from Oxford Nanopore devices, so getting it, and
+accepting those terms, is left to you. Download the
 release for your system, then put its `bin` folder on PATH, set
 `dorado_executable` in config.toml, or pass `--dorado-path`. A missing or older
 Dorado stops the command with that hint before anything runs. FAST5 input is

@@ -172,8 +172,9 @@ def run_uninstall(params: DepsUninstallParams) -> None:
     """``deps uninstall``."""
     details = optional_tools.uninstall(params.tool)
     current_result().set_details(details)
-    if details.get("jar_path"):
-        human_output(f"Removed {params.tool} ({details['jar_path']}).")
+    if details["environment"] == "jartools":
+        removed = details.get("jar_path") or details["path"]
+        human_output(f"Removed {params.tool} ({removed}).")
         return
     human_output(
         f"Removed the Pixi environment '{details['environment']}' "

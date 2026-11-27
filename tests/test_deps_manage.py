@@ -10,6 +10,7 @@ import pytest
 from tests.fake_tools import python_tool
 from wgsextract_cli.core import runtime, windows_arm64
 from wgsextract_cli.core.dependencies import clear_tool_caches
+from wgsextract_cli.core.optional_tools import managed_binary
 from wgsextract_cli.core.tool_catalog import (
     INSTALL_HINTS,
     PIXI_TOOL_ENVS,
@@ -93,9 +94,9 @@ def test_list_marks_tools_this_platform_cannot_have(host, fake_pixi, capsys):
 def test_list_tells_how_to_install_a_tool_the_app_cannot(host, capsys):
     _, document = _json(capsys, "deps", "list")
 
-    plink2 = _row(document, "plink2")
-    assert plink2["status"] == "missing" and not plink2["can_install"]
-    assert plink2["note"] == INSTALL_HINTS["plink2"]
+    dorado = _row(document, "dorado")
+    assert dorado["status"] == "missing" and not dorado["can_install"]
+    assert dorado["note"] == INSTALL_HINTS["dorado"]
 
 
 @pytest.mark.parametrize(
@@ -103,7 +104,7 @@ def test_list_tells_how_to_install_a_tool_the_app_cannot(host, capsys):
     [
         ("samtools", 2, "mandatory"),
         ("fastp", 1, "default Pixi environment"),
-        ("plink2", 1, "cog-genomics.org"),
+        ("dorado", 1, "nanoporetech/dorado"),
         ("no-such-tool", 2, "deps list"),
     ],
 )
@@ -185,14 +186,30 @@ def test_needs_names_a_tool_an_option_asks_for(host, multiqc_env, capsys):
 
 
 def test_needs_leaves_a_tool_the_user_installs_to_them(host, capsys):
-    """plink2 has no environment: the app can only ask the user to install it
+    """dorado has no environment: the app can only ask the user to install it
     and continue."""
-    (item,) = _needs(
-        capsys, "score", "pgs", "--build", "GRCh38", "--pgs-id", "PGS000001",
-        "--plink2-check", "--input", "x.vcf.gz",
-    )  # fmt: skip
+    (item,) = _needs(capsys, "basecall", "--input", "pod5")
 
-    assert item["name"] == "plink2" and item["installArguments"] is None
+    assert item["name"] == "dorado" and item["installArguments"] is None
+
+
+_PLINK2_CHECK = (
+    "score", "pgs", "--build", "GRCh38", "--pgs-id", "PGS000001",
+    "--plink2-check", "--input", "x.vcf.gz",
+)  # fmt: skip
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows downloads plink2")
+def test_plink2_installs_from_its_own_environment(host, fake_pixi, capsys):
+    """score pgs --plink2-check offers plink2's Pixi environment (Linux, macOS)."""
+    fake_pixi.env("plink2", locked=("plink2",), installed=False)
+
+    row = _row(_json(capsys, "deps", "list")[1], "plink2")
+    (item,) = _needs(capsys, *_PLINK2_CHECK)
+
+    assert row["status"] == "missing" and row["can_install"]
+    assert row["environment"] == "plink2"
+    assert item["installArguments"] == ["deps", "install", "plink2"]
 
 
 @posix_pixi
@@ -277,6 +294,8 @@ def test_a_native_release_without_a_pixi_build_is_installed_by_hand(
     release the user installs: missing, with how, not unavailable."""
     if tool not in optional_dependency_tools():
         pytest.skip(f"{tool} isn't supported on this host")
+    if managed_binary(tool):
+        pytest.skip(f"deps install downloads {tool}'s release on this host")
     fake_pixi.env(PIXI_TOOL_ENVS[tool], locked=(), installed=False)
 
     _, document = _json(capsys, "deps", "list")
@@ -518,3 +537,65 @@ def test_needs_offers_granite_install_for_vcf_granite_qc(host, fake_pixi, capsys
     (item,) = _needs(capsys, "vcf", "granite-qc", "--vcf-input", "x.vcf.gz")
     assert item["name"] == "granite"
     assert item["installArguments"] == ["deps", "install", "granite"]
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="the Windows plink2 release")
+def test_plink2_installs_and_uninstalls_from_its_windows_release(
+    host, fake_pixi, tmp_path, monkeypatch, capsys
+):
+    """Bioconda has no win-64 plink2: deps install unpacks the official
+    Windows build into the managed tools folder, and uninstall removes it."""
+    import os
+    import zipfile
+    from pathlib import Path
+
+    from wgsextract_cli.core.optional_tools import MANAGED_BINARIES
+
+    # deps list runs what it finds: a Windows program that runs anywhere
+    # stands in for plink2.exe.
+    runnable = Path(os.environ["SystemRoot"], "System32", "whoami.exe").read_bytes()
+
+    fake_pixi.env("plink2", locked=(), installed=False)
+    jar_dir = tmp_path / "jartools"
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(f'jar_directory = "{jar_dir.as_posix()}"\n', encoding="utf-8")
+    release = MANAGED_BINARIES["plink2"]["win-64"]
+
+    _, before = _json(capsys, "--config", str(cfg), "deps", "list")
+    row = _row(before, "plink2")
+    assert row["status"] == "missing" and row["can_install"]
+    assert release.version in row["note"]
+    (item,) = _needs(capsys, "--config", str(cfg), *_PLINK2_CHECK)
+    assert item["installArguments"][-3:] == ["deps", "install", "plink2"]
+
+    # Mock only the network download boundary: the release's zip holds more
+    # programs than plink2, which alone is unpacked.
+    def fake_download(url, dest, **kwargs):
+        assert url == release.url and kwargs["expected_sha256"] == release.sha256
+        with zipfile.ZipFile(dest, "w") as bundle:
+            bundle.writestr("plink2.exe", runnable)
+            bundle.writestr("ldsc.exe", b"MZ-ldsc")
+        return True
+
+    monkeypatch.setattr(
+        "wgsextract_cli.core.ref_library.downloads.download_file", fake_download
+    )
+    code, installed = _json(capsys, "--config", str(cfg), "deps", "install", "plink2")
+    assert code == 0
+    assert Path(installed["details"]["path"]).parent == jar_dir / "plink2"
+    assert sorted(p.name for p in (jar_dir / "plink2").iterdir()) == ["plink2.exe"]
+    clear_tool_caches()
+
+    row = _row(_json(capsys, "--config", str(cfg), "deps", "list")[1], "plink2")
+    assert row["status"] == "installed" and row["can_uninstall"]
+    assert _needs(capsys, "--config", str(cfg), *_PLINK2_CHECK) == []
+
+    # Uninstall removes what it unpacked, never the user's files beside it.
+    users = jar_dir / "plink2" / "scores.txt"
+    users.write_text("mine", encoding="utf-8")
+    code, _ = _json(capsys, "--config", str(cfg), "deps", "uninstall", "plink2")
+    assert code == 0 and users.is_file()
+    assert not (jar_dir / "plink2" / "plink2.exe").exists()
+    clear_tool_caches()
+    row = _row(_json(capsys, "--config", str(cfg), "deps", "list")[1], "plink2")
+    assert row["status"] == "missing" and row["can_install"]

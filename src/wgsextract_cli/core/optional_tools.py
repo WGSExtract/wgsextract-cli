@@ -6,9 +6,12 @@ pbmm2, pbsv and sniffles in ``pacbio``) is installed with
 ``pixi install --locked -e <env>`` and removed with ``pixi clean -e <env>``,
 which removes every tool that environment provides. Tools in the ``default``
 environment come with the CLI itself and can't be installed or removed on
-their own; tools without an environment (plink2, dorado) are the user's to
-install (``INSTALL_HINTS``), as are tools whose environment has no build for
-this platform but that ship a native release (fastvep, wgse-deepvariant).
+their own. A Java tool (discvrseq) installs as one verified JAR, and a tool
+whose environment has no build for this platform may install from its pinned,
+verified official release (plink2 on Windows), both under ``managed_jar_dir()``.
+Other tools without an environment (dorado) are the user's to install
+(``INSTALL_HINTS``), as are tools whose environment has no build for this
+platform but that ship a native release (fastvep, wgse-deepvariant).
 """
 
 from __future__ import annotations
@@ -46,7 +49,10 @@ from wgsextract_cli.core.utils import (
     UsageError,
     WGSExtractError,
 )
-from wgsextract_cli.core.windows_arm64 import unsupported_windows_arm64_tool
+from wgsextract_cli.core.windows_arm64 import (
+    unsupported_windows_arm64_tool,
+    windows_native_machine,
+)
 
 INSTALLED = "installed"
 MISSING = "missing"
@@ -76,6 +82,50 @@ MANAGED_JAR_TOOLS: dict[str, ManagedJarTool] = {
         size_label="~419 MB",
     ),
 }
+
+
+@dataclass(frozen=True)
+class ManagedBinary:
+    """An official release archive whose executables ``deps install`` unpacks
+    into ``managed_binary_dir(tool)``, where the tool's Pixi environment has no
+    build for the platform."""
+
+    version: str
+    url: str
+    sha256: str
+    size_label: str
+    executables: tuple[str, ...]
+
+
+# By tool, then by Pixi platform. PLINK 2 has no Bioconda win-64 build; its
+# author publishes versioned Windows builds (GPL-3). The generic x86-64 build,
+# not AVX2, runs on any 64-bit Intel or AMD CPU.
+MANAGED_BINARIES: dict[str, dict[str, ManagedBinary]] = {
+    "plink2": {
+        "win-64": ManagedBinary(
+            version="2.0.0-b.1.4 (7 Nov 2026)",
+            url=(
+                "https://s3.amazonaws.com/plink2-assets/beta1/plink2_win64_20261107.zip"
+            ),
+            sha256="0a7c1bff1d5a3a7a01a27f789c4fbd92f7631c7ed27fd376b8c36fe2cf6f3f48",
+            size_label="~11 MB",
+            executables=("plink2.exe",),
+        ),
+    },
+}
+
+
+def _host_platform() -> str | None:
+    """This computer's Pixi platform, where a managed binary may apply."""
+    if sys.platform == "win32" and windows_native_machine() == 0x8664:
+        return "win-64"
+    return None
+
+
+def managed_binary(tool: str) -> ManagedBinary | None:
+    """The release ``deps install`` unpacks for ``tool`` on this computer."""
+    host = _host_platform()
+    return MANAGED_BINARIES.get(tool, {}).get(host) if host else None
 
 
 def own_environment(tool: str) -> str | None:
@@ -113,11 +163,25 @@ def _managed_jar_path(tool: str) -> Path | None:
     return jar_path if _same_or_inside(jar_path, managed_jar_dir()) else None
 
 
+def _managed_binary_path(tool: str) -> Path | None:
+    """The executable ``deps install`` unpacked for ``tool``, when that is
+    the copy the CLI finds (not one on PATH or in a Pixi environment)."""
+    from wgsextract_cli.core.dependencies import (
+        get_tool_path,
+        managed_binary_dir,
+    )
+
+    path = get_tool_path(tool)
+    if not path:
+        return None
+    return Path(path) if _same_or_inside(Path(path), managed_binary_dir(tool)) else None
+
+
 def installable(tool: str) -> bool:
     """Whether ``deps install`` can install ``tool``: either a managed JAR tool
     or a tool with a Pixi environment of its own that this installation can
     manage and whose lockfile doesn't rule this platform out."""
-    if tool in MANAGED_JAR_TOOLS:
+    if tool in MANAGED_JAR_TOOLS or managed_binary(tool):
         return _unavailable_reason(tool) is None
     return (
         own_environment(tool) is not None
@@ -205,6 +269,28 @@ def tool_row(row: dict[str, Any], group: str) -> dict[str, Any]:
             "status": status,
             "environment": jar_env,
             "environment_tools": [tool] if jar_env else [],
+            "can_install": can_install,
+            "can_uninstall": can_uninstall,
+            "note": note,
+        }
+    binary = managed_binary(tool) if group == "optional" else None
+    if binary is not None:
+        can_install = status == MISSING and installable(tool)
+        can_uninstall = bool(path) and _managed_binary_path(tool) is not None
+        managed_env = "jartools" if (can_install or can_uninstall) else None
+        note = unavailable
+        if can_install:
+            note = (
+                f"Downloads the official {tool} {binary.version} release "
+                f"({binary.size_label})."
+            )
+        elif status == MISSING:
+            note = INSTALL_HINTS.get(tool)
+        return row | {
+            "group": group,
+            "status": status,
+            "environment": managed_env,
+            "environment_tools": [tool] if managed_env else [],
             "can_install": can_install,
             "can_uninstall": can_uninstall,
             "note": note,
@@ -334,6 +420,89 @@ def _install_managed_jar(tool: str, spec: ManagedJarTool) -> dict[str, Any]:
     }
 
 
+def _install_managed_binary(tool: str, spec: ManagedBinary) -> dict[str, Any]:
+    """Download ``spec``'s archive, check its SHA-256, and unpack only its
+    named executables into ``managed_binary_dir(tool)``."""
+    import zipfile
+
+    from wgsextract_cli.core.dependencies import (
+        clear_tool_caches,
+        get_tool_path,
+        managed_binary_dir,
+    )
+    from wgsextract_cli.core.ref_library.downloads import download_file
+
+    dest_dir = managed_binary_dir(tool)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    archive = dest_dir / spec.url.rsplit("/", 1)[-1]
+    logging.info(f"Downloading {tool} {spec.version} ({spec.size_label})...")
+    ok = download_file(
+        spec.url,
+        str(archive),
+        expected_sha256=spec.sha256,
+        use_mirrors=False,
+        resolve_release_digest=False,
+        large=False,
+    )
+    if not ok or not archive.is_file():
+        raise WGSExtractError(f"Failed to download {tool} from {spec.url}.")
+    try:
+        with zipfile.ZipFile(archive) as bundle:
+            for name in spec.executables:
+                target = dest_dir / name
+                partial = target.with_name(target.name + ".part")
+                with bundle.open(name) as source, partial.open("wb") as out:
+                    while chunk := source.read(1 << 20):
+                        out.write(chunk)
+                partial.chmod(0o755)
+                partial.replace(target)
+    except (KeyError, zipfile.BadZipFile) as error:
+        raise WGSExtractError(
+            f"The {tool} download from {spec.url} isn't the expected archive: {error}"
+        ) from error
+    except OSError as error:
+        raise WGSExtractError(
+            f"Couldn't unpack {tool} into {dest_dir} (is it running?): {error}"
+        ) from error
+    finally:
+        archive.unlink(missing_ok=True)
+
+    clear_tool_caches()
+    path = get_tool_path(tool)
+    if not path:
+        raise MissingDependencyError(
+            f"Unpacked {tool} into {dest_dir}, but it still isn't found."
+        )
+    return {"tool": tool, "environment": "jartools", "tools": [tool], "path": path}
+
+
+def _uninstall_managed_binary(tool: str, spec: ManagedBinary) -> dict[str, Any]:
+    """Remove only the executables ``deps install`` unpacked, then their
+    folder if nothing else is in it: the folder may hold the user's files."""
+    from wgsextract_cli.core.dependencies import clear_tool_caches, managed_binary_dir
+
+    if _managed_binary_path(tool) is None:
+        raise WGSExtractError(f"No WGS Extract-managed {tool} is installed to remove.")
+    folder = managed_binary_dir(tool)
+    logging.info(f"Removing {tool} from {folder}...")
+    try:
+        for name in spec.executables:
+            (folder / name).unlink(missing_ok=True)
+        if not any(folder.iterdir()):
+            folder.rmdir()
+    except OSError as error:
+        raise WGSExtractError(
+            f"Couldn't remove {tool} from {folder} (is it running?): {error}"
+        ) from error
+    clear_tool_caches()
+    return {
+        "tool": tool,
+        "environment": "jartools",
+        "tools": [tool],
+        "path": str(folder),
+    }
+
+
 def _uninstall_managed_jar(tool: str) -> dict[str, Any]:
     from wgsextract_cli.core.dependencies import clear_tool_caches
 
@@ -360,6 +529,10 @@ def install(tool: str) -> dict[str, Any]:
         if reason := _unavailable_reason(tool):
             raise WGSExtractError(reason)
         return _install_managed_jar(tool, spec)
+    if binary := managed_binary(tool):
+        if reason := _unavailable_reason(tool):
+            raise WGSExtractError(reason)
+        return _install_managed_binary(tool, binary)
     env = _environment_for(tool)
     if reason := _unavailable_reason(tool):
         raise WGSExtractError(reason)
@@ -390,6 +563,8 @@ def uninstall(tool: str) -> dict[str, Any]:
     """Remove a managed JAR or the Pixi environment that provides ``tool``."""
     if tool in MANAGED_JAR_TOOLS:
         return _uninstall_managed_jar(tool)
+    if binary := managed_binary(tool):
+        return _uninstall_managed_binary(tool, binary)
     env = _environment_for(tool)
     if _runs_cli(env):
         raise WGSExtractError(
