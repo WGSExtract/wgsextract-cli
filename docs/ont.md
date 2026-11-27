@@ -574,8 +574,25 @@ same on CPU and MPS for each phaser (RTG `vcfeval`, HG002 GRCh38 GIAB v4.2.1):
 | Confident ∩ v3.5 all-difficult | LongPhase | 0.9913 / 0.9899 / 0.9906 | 0.8362 / 0.7408 / 0.7856 |
 
 Across chr20–22, gVCF reference records changed with the phaser:
-**6,845,106** with WhatsHap vs **6,848,537** with LongPhase. The smaller
-indel F1 with LongPhase has not been shown to fall within run-to-run
+**6,845,106** with WhatsHap vs **6,848,537** with LongPhase.
+
+A [Linux CPU repeat on chr20 alone](https://github.com/WGSExtract/wgsextract-cli/issues/1124#issuecomment-7216944181)
+used the same HG002 ONT release and model, four threads and gVCF. WhatsHap
+and LongPhase took **31.52 and 24.87 min** end to end; the phase jobs took
+**200.18 and 21.64 s**. Pileup was also slower in the WhatsHap arm, before
+the phaser ran, so the full wall-time difference is not a controlled
+estimate of the phaser's effect.
+
+| GIAB evaluation region | Phaser | SNV precision / recall / F1 | Indel precision / recall / F1 |
+| --- | --- | --- | --- |
+| Confident | WhatsHap | 0.9985 / 0.9965 / 0.9975 | 0.8931 / 0.8167 / 0.8532 |
+| Confident | LongPhase | 0.9987 / 0.9968 / 0.9978 | 0.8907 / 0.8158 / 0.8516 |
+| Confident ∩ v3.6 all-difficult | WhatsHap | 0.9901 / 0.9893 / 0.9897 | 0.8413 / 0.7397 / 0.7872 |
+| Confident ∩ v3.6 all-difficult | LongPhase | 0.9917 / 0.9903 / 0.9910 | 0.8377 / 0.7383 / 0.7849 |
+
+The chr20 gVCF had **3,081,383** WhatsHap reference records and **3,085,105**
+LongPhase reference records, of which **3,078,909** matched in every column.
+The lower indel F1 with LongPhase has not been shown to fall within run-to-run
 variation. These ONT results do not establish a whole-genome saving or
 qualify a PacBio default.
 
