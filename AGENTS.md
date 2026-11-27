@@ -8,7 +8,12 @@ When outputting test run results, logs, or stdout captures, **always** put them 
 
 Do not add new environment-variable configuration. Put persistent configuration in config.toml settings, and use command-line parameters for run-specific overrides.
 
-Default operations and options never reach the network. Only explicit network operations (downloads, or commands that inherently need the network) may, and anything else that would contact a server (for example sending a sample's variant positions to a remote index) must be an explicit opt-in that says what is sent where. A command that is missing public reference data must not fetch it silently: it errors, naming the data, and asks the user to rerun with `--download` to confirm the fetch. Anything that sends sample-derived information (positions, genotypes, files) is opt-in only.
+## Network principles
+
+Default CLI operations stay offline. Use explicit network commands or opt-ins that say what goes where; if public data is missing, name it and ask for `--download`.
+Sending sample-derived data always needs a separate opt-in that says what goes where.
+The GUI manages CLI opt-ins within the user's network settings and makes no outbound requests before first-launch consent.
+See [Network access in new features](docs/developer_setup.md#network-access-in-new-features).
 
 ## Discover CLI commands
 
@@ -121,6 +126,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - Implementers hand CI to the supervisor/watcher after pushing; wake a fresh, narrowly scoped agent only for actionable failures or threads. Supervisors message only the responsible active agent, never broadcast to idle agents.
   - Record weekly tokens/AIU per merged PR, context per call, threads and pushes per PR in `out/efficiency/`. Baselines: #763 (review churn), 3–5 threads/PR and ~125 runner-minutes/push; #765 (agent token waste), M1 Pro prompt tokens grew ~6× at ~30 PRs/day and lin-big agents reached 410–434k input tokens/call.
 - **Long runs (whole genomes, or roughly an hour or more).** Lessons from #431 (`out/431/retro.md`):
+  - Start with the [shared long-run driver template](docs/developer_setup.md#long-run-benchmark-drivers).
   - **Off the bug queue:** a long run (whole-genome qualification, hill-climb, benchmark) runs unattended under its driver, watcher and failure alert, and doesn't hold an implementer slot while it waits. The machine's implementers keep working the efficiency and bug queue meanwhile; resource leases, not agents, keep the run and other work from colliding.
   - **Size first:** run 1–2% of the data, record wall time, peak memory, temp disk and output size, and post the scaled-up table on the issue before choosing a host.
   - **Build what's missing first:** if the slice shows the job won't fit or can't resume, fix that as its own PR on small data before starting the full run.

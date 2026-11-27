@@ -208,7 +208,7 @@ if ($Mode -eq "control") {
 }
 
 New-Item -ItemType Directory -Force -Path $Downloads | Out-Null
-Step "download_installer" @("curl.exe", "-fsSL", "-o", $Installer, $lab.LAB_GUI_INSTALLER_URL)
+Step "download_installer" @("curl.exe", "-fsSL", "--remove-on-error", "--retry", "3", "--retry-all-errors", "--connect-timeout", "15", "--max-time", "120", "--retry-max-time", "150", "-o", $Installer, $lab.LAB_GUI_INSTALLER_URL)
 # What a browser does to a download; SmartScreen keys off it.
 Set-Content -LiteralPath $Installer -Stream Zone.Identifier -Value "[ZoneTransfer]`r`nZoneId=3`r`nHostUrl=$($lab.LAB_GUI_INSTALLER_URL)"
 
@@ -255,6 +255,9 @@ $InstallDir = if ($app) { $app.InstallLocation.Trim('"') } else { Join-Path $env
 
 PsStep "setup" {
     $events = Join-Path $R "setup-events.ndjson"
+    # This automated setup on a disposable guest explicitly opts into downloads.
+    New-Item -ItemType Directory -Force -Path $AppData | Out-Null
+    Set-Content -LiteralPath (Join-Path $AppData "settings.json") -Encoding Ascii -Value '{"networkConsent":"accepted","networkMode":"full","checkForUpdatesAtLaunch":false}'
     $appEnv = @{
         GUI_FOR_CLI_AUTO_RUN_SETUP = "1"
         GUI_FOR_CLI_SETUP_EVENTS_LOG = $events

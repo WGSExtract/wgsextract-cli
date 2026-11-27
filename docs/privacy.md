@@ -1,18 +1,20 @@
 # Privacy and network access
 
 > **Scope:** This document covers **WGS Extract CLI** (the command-line
-> back-end, Python API and local server). For the desktop app's privacy model —
-> including automatic update checks, interactive missing-data install prompts,
-> and how the GUI sits atop the strictly offline CLI — see
+> back-end, Python API and local server). For first-launch consent, update
+> checks and interactive download prompts, see
 > [Desktop App Privacy and network access](../gui/docs/privacy.md) and
 > [GUI Architecture — Privacy and network boundary](../gui/devdocs/architecture.md#privacy-and-network-boundary).
 
-Ordinary analysis, inspection and reporting stay on this computer. Defaults
-must not attempt a connection, even when a reference, tree, gene list or
-model is missing. There is no telemetry, usage reporting or background CLI
-update check. The one exception is the desktop app's startup update check,
-which asks GitHub whether a newer release exists and is off in **Privacy
-mode** (below). Missing dependencies are reported, never installed by analysis.
+The CLI is offline by default. Ordinary analysis, inspection and reporting
+do not connect to the internet, even when a reference, tree, gene list or
+model is missing. An outbound request requires an explicit network command
+or an operation-specific opt-in. Permission to download public data is
+separate from permission to send sample-derived information. The CLI has
+no telemetry, usage reporting or background update check, regardless of
+network mode.
+
+Analysis reports missing dependencies without installing them.
 Runtime Pixi invocations use both `--no-install` and `--frozen`: skipping
 installation alone would still allow lockfile resolution and registry queries.
 Incomplete installed runtimes fail with setup guidance, rather than falling back
@@ -38,10 +40,11 @@ other programs.
 
 ## Download and disclosure opt-ins
 
-Explicit download/install commands may use the network. Other commands need
-`--download` before fetching missing public data. Without permission they
-name the missing data and explain how to confirm the download. Installed,
-verified data is reused offline. `--no-download` overrides a persistent opt-in:
+Explicit download/install commands may use the network. Analysis commands
+that can fetch missing public data ask for `--download` rather than fetching
+silently. Without permission they name the missing data and explain how to
+get it. Installed, verified data is reused offline. Where supported,
+`--no-download` overrides a persistent opt-in:
 
 ```toml
 # config.toml; default is false
@@ -59,18 +62,10 @@ chain needed to build the targets is missing.
 `analyze comprehensive` runs these same guarded subcommands. Provision missing
 data first with the download command named in the error, or explicitly opt in
 through `config.toml` before running the comprehensive workflow.
-The desktop exposes the same default-off setting under Settings → advanced
-settings → **Allow missing public-data downloads**, with the request disclosure
-in its tooltip.
-The desktop app makes no outbound requests before the first-launch network
-choice. Choosing **OK** enables launch checks for newer releases. They query
-GitHub's public release feed (`latest.json`) without sending sample
-information. To turn checks off or pause automatic connections, open
-**Settings → Network & Privacy**. **File → Check for Updates…** still checks
-when asked. A development build without an updater key has no feed and never
-checks.
-Lineage and microarray pages also offer an unchecked per-run download option.
-Fresh-install automation plans select it explicitly; ordinary runs do not.
+The desktop exposes the same default-off **Allow missing public-data
+downloads** setting under **Settings → Users Workspace Settings** in
+Advanced mode. See [how the desktop app uses the CLI](../gui/docs/privacy.md#how-the-desktop-app-and-cli-work-together)
+for per-run choices.
 
 The option is shared by the CLI and typed Python/server parameters. The
 read-only MCP surface refuses download permissions. A server job needs both

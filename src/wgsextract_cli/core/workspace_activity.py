@@ -6,23 +6,22 @@ import sys
 from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
 from pathlib import Path
 
 from wgsextract_cli.core.errors import WGSExtractError
 
 
-@dataclass
 class _Lease:
-    name: str | None
-    active: bool = True
+    def __init__(self, name: str | None) -> None:
+        self.name = name
+        self.active = True
 
 
-@dataclass
 class WorkspaceLease:
-    # None: no desktop app has run on this computer, so no marker was published.
-    name: str | None
-    cleanup: ExitStack
+    def __init__(self, name: str | None, cleanup: ExitStack) -> None:
+        # None: no desktop app has run, so no marker was published.
+        self.name = name
+        self.cleanup = cleanup
 
 
 _lease: ContextVar[_Lease | None] = ContextVar("workspace_activity", default=None)

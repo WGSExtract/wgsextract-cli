@@ -19,6 +19,10 @@ const { configSettingChanged, ensureDataSource, openBundleWorkspace, retryDataSo
 const { renderActions, renderConfigSetting, renderDropdownControl, renderPage, renderTextControl } = await import("../dist/web/src/client/view.js");
 const { bindWorkspaceLocationEvents } = await import("../dist/web/src/client/workspace-location.js");
 
+function setupNetworkSettings() {
+  return Promise.resolve(Response.json({ ...state.networkSettings, consent: "accepted", detectedCost: "unconstrained" }));
+}
+
 function resetState() {
   Object.assign(state, createInitialState(), {
     manifest: {
@@ -108,6 +112,7 @@ test("streams setup output into a selectable setup terminal tab", async () => {
   const requests = [];
   const stream = setupStreamResponse();
   globalThis.fetch = (path, options) => {
+    if (path === "/api/network-settings") return setupNetworkSettings();
     requests.push({ path, options });
     if (path === "/api/state/save") {
       return Promise.resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
@@ -225,6 +230,7 @@ test("setup warning completion is not marked as an error tab", async () => {
   const requests = [];
   const stream = setupStreamResponse();
   globalThis.fetch = (path, options) => {
+    if (path === "/api/network-settings") return setupNetworkSettings();
     requests.push({ path, options });
     if (path === "/api/state/save") {
       return Promise.resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
@@ -266,6 +272,7 @@ test("setup stream EOF before complete marks setup failed", async () => {
   const requests = [];
   const stream = setupStreamResponse();
   globalThis.fetch = (path, options) => {
+    if (path === "/api/network-settings") return setupNetworkSettings();
     requests.push({ path, options });
     if (path === "/api/state/save") {
       return Promise.resolve(new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
@@ -375,6 +382,7 @@ test("setup holds data sources while running and reloads failed ones when it end
   const dataSourceRequests = [];
   const stream = setupStreamResponse();
   globalThis.fetch = (path) => {
+    if (path === "/api/network-settings") return setupNetworkSettings();
     if (path === "/api/setup/stream") {
       return Promise.resolve(stream.response);
     }

@@ -80,7 +80,7 @@ fmt:
 typecheck:
     pixi run typecheck
 
-# Retain verified wheels; add --reference for full Ubuntu/macOS reference inputs
+# Retain verified wheels; use --reference to prepare or --link-reference to reuse the host library
 [positional-arguments]
 [unix]
 certify-setup *args:

@@ -26,6 +26,8 @@ export function parseArgs(argv: readonly string[]): Record<string, string | unde
             parsed.host = readValue("--host", ++index);
         else if (arg === "--locale")
             parsed.locale = readValue("--locale", ++index);
+        else if (arg === "--network-cost-executable")
+            parsed.networkCostExecutable = readValue("--network-cost-executable", ++index);
         else if (arg === "--theme")
             parsed.theme = readValue("--theme", ++index);
         else if (arg === "--once")

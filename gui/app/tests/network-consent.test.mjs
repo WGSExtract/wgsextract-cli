@@ -6,10 +6,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { chromium } from "playwright";
+import { completeLifecycleSetup } from "../../scripts/ui-driver-setup.mjs";
+import { effectiveNetworkMode, networkAllowed } from "../dist/shared/network-settings.js";
 import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { migrateNetworkSettingsAfterCompletedSetup, readNetworkSettings } from "../dist/web/src/server/network-settings.js";
+import { createNetworkCostDetector, systemNetworkCost } from "../dist/web/src/server/network-cost/detector.js";
+import { withCliNetworkPolicy } from "../dist/web/src/server/cli-network-policy.js";
 import { appSettingsPath } from "../dist/web/src/server/workspace-location.js";
 import { isolateWorkspaceEnvironment } from "./workspace-fixture.mjs";
 
@@ -38,7 +42,8 @@ async function isolatedRoot(t) {
     return root;
 }
 
-async function browserFixture(t) {
+async function browserFixture(t, { cost = "unconstrained", cli = false } = {}) {
+    t.mock.method(systemNetworkCost, "detect", async () => cost);
     const bundleRoot = await mkdtemp(path.join(tmpdir(), "net-consent-"));
     const pendingRequests = new Set();
     const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
@@ -66,11 +71,21 @@ async function browserFixture(t) {
         }
     });
     isolateWorkspaceEnvironment(t, bundleRoot);
+    if (cli) {
+        const posix = path.join(bundleRoot, "scripts", "posix");
+        const windows = path.join(bundleRoot, "scripts", "windows");
+        await mkdir(posix, { recursive: true });
+        await mkdir(windows, { recursive: true });
+        await writeFile(path.join(posix, "run-wgsextract.sh"), 'case " $* " in *" --network low "*) echo CLI_NETWORK_LOW;; *) exit 2;; esac\n');
+        await writeFile(path.join(windows, "run-wgsextract.ps1"), 'if (($args -join " ") -match "(^| )--network low( |$)") { Write-Output CLI_NETWORK_LOW } else { exit 2 }\n');
+    }
     await writeFile(path.join(bundleRoot, "manifest.json"), JSON.stringify({
         id: "wgs-extract", displayName: "WGS Extract", summary: "Desktop consent fixture.",
         setup: { steps: [{ id: "bootstrap", kind: "pathTool", label: "Bootstrap fixture", value: process.execPath }] },
         pages: [
-            { id: "home", title: "Home", summary: "Available offline.", sections: [{ id: "main" }] },
+            { id: "home", title: "Home", summary: "Available offline.", sections: [{ id: "main", actions: cli ? [{
+                id: "inspect", title: "Inspect fixture", command: { executable: "{{bundleRoot}}/scripts/run-wgsextract.sh", arguments: ["inspect"] },
+            }] : [] }] },
             { id: "settings", title: "Settings", summary: "App preferences.", sections: [{ id: "settings" }] },
         ],
     }));
@@ -80,7 +95,7 @@ async function browserFixture(t) {
     const handle = createRequestHandler({
         ...loaded, apiToken: "browser-consent-test", repoRoot, maxBodyBytes: 1048576,
         distRoot: path.join(app, "dist"), webRoot: path.join(app, "web"), bundleRoot,
-        dynamicActions: new Map(), localizedBundleLoader: { load }, runProcess: manager.runProcess,
+        dynamicActions: new Map(), localizedBundleLoader: { load }, runProcess: withCliNetworkPolicy(manager.runProcess),
     });
     server.on("request", (request, response) => {
         const pending = handle(request, response);
@@ -162,6 +177,7 @@ test("#1591 Not now opens Settings offline and saves an independent launch prefe
     await page.getByText("Available offline.").waitFor();
     assert.deepEqual({ external, setupCalls, updates: await updates() }, { external: [], setupCalls: [], updates: [] });
     await page.evaluate(() => window.dispatchEvent(new Event("wgsextract-gui-check-for-updates")));
+    await page.waitForFunction(() => window.updateRequests.includes("gfc_update_check_from_menu"));
     assert.deepEqual(await updates(), ["gfc_update_check_from_menu"]);
 
     await page.reload();
@@ -169,7 +185,7 @@ test("#1591 Not now opens Settings offline and saves an independent launch prefe
     await page.getByRole("button", { name: "Settings" }).click();
     assert.equal(await checkbox.isChecked(), false);
     assert.deepEqual(await updates(), []);
-    const save = page.waitForResponse((response) => response.url().endsWith("/api/network-settings"));
+    const save = page.waitForResponse((response) => response.url().endsWith("/api/network-settings") && response.request().method() === "POST");
     await checkbox.check();
     assert.equal((await save).status(), 200);
     await page.reload();
@@ -201,16 +217,98 @@ test("#1591 Not now does not start networking when another window already saved 
 });
 
 test("#1591 a completed installation's previous effective startup preference survives migration", async (t) => {
+    t.mock.method(systemNetworkCost, "detect", async () => "unknown");
     await isolatedRoot(t);
     const file = appSettingsPath();
     await mkdir(path.dirname(file), { recursive: true });
     await writeFile(file, JSON.stringify({ privacyMode: true }));
     await migrateNetworkSettingsAfterCompletedSetup();
-    assert.deepEqual(await readNetworkSettings(), { consent: "accepted", privacyMode: true, checkForUpdatesAtLaunch: false });
+    assert.deepEqual(await readNetworkSettings(), { consent: "accepted", privacyMode: true, checkForUpdatesAtLaunch: false, mode: "automatic", detectedCost: "unknown" });
     await writeFile(file, "{}");
     await migrateNetworkSettingsAfterCompletedSetup();
     assert.equal((await readNetworkSettings()).checkForUpdatesAtLaunch, true);
     await writeFile(file, JSON.stringify({ networkConsent: "deferred" }));
     await migrateNetworkSettingsAfterCompletedSetup();
     assert.equal((await readNetworkSettings()).consent, "deferred");
+});
+
+test("#1591 metered first launch defers setup, reports Low in Settings, and runs the CLI in Low", browserTestOptions, async (t) => {
+    const { page, external, setupCalls, startupUpdate } = await browserFixture(t, { cost: "constrained", cli: true });
+    await page.getByRole("button", { name: "OK", exact: true }).click();
+    await startupUpdate();
+    const settings = page.getByRole("region", { name: "Network & Privacy" });
+    const mode = settings.getByRole("combobox", { name: "Network mode" });
+    const status = settings.getByRole("status");
+    assert.equal(await mode.inputValue(), "automatic");
+    assert.match(await status.textContent(), /Metered.*In use: Low/);
+    assert.deepEqual({ external, setupCalls }, { external: [], setupCalls: [] });
+
+    const run = await page.request.post(new URL("/api/run/stream", page.url()).href, {
+        headers: { "x-gfc-token": "browser-consent-test" },
+        data: {
+            action: { pageID: "home", sectionID: "main", actionID: "inspect" },
+            context: { fieldValues: {}, checkedOptions: {}, configValues: {}, rowValues: {} },
+        },
+    });
+    assert.equal(run.status(), 200);
+    assert.match(await run.text(), /CLI_NETWORK_LOW/);
+
+    const saved = page.waitForResponse((response) => response.url().endsWith("/api/network-settings") && response.request().method() === "POST");
+    await mode.selectOption("off");
+    assert.equal((await saved).status(), 200);
+    await status.filter({ hasText: /In use: Off/ }).waitFor();
+    assert.equal(await mode.inputValue(), "off");
+    assert.match(await status.textContent(), /Metered.*In use: Off/);
+    const persisted = await page.request.get(new URL("/api/network-settings", page.url()).href, {
+        headers: { "x-gfc-token": "browser-consent-test" },
+    });
+    assert.equal((await persisted.json()).mode, "off");
+});
+
+test("#1591 maps local OS cost signals, not connectivity, to constrained", async () => {
+    const cases = [
+        ["darwin", [["true false", "constrained"], ["false true", "constrained"], ["false false", "unconstrained"], ["", "unknown"]]],
+        ["win32", [["Fixed False", "constrained"], ["Variable False", "constrained"], ["Unrestricted True", "constrained"], ["Unrestricted False", "unconstrained"], ["Unknown False", "unknown"]]],
+        ["linux", [
+            ["GENERAL.TYPE:wifi\nGENERAL.STATE:100 (connected)\nGENERAL.METERED:yes (guessed)", "constrained"],
+            ["GENERAL.TYPE:ethernet\nGENERAL.STATE:100 (connected)\nGENERAL.METERED:no", "unconstrained"],
+            ["GENERAL.TYPE:loopback\nGENERAL.STATE:100 (connected)\nGENERAL.METERED:no\n\nGENERAL.TYPE:wifi\nGENERAL.STATE:30 (disconnected)\nGENERAL.METERED:yes", "unknown"],
+        ]],
+    ];
+    for (const [platform, signals] of cases) {
+        for (const [output, expected] of signals) {
+            const detect = createNetworkCostDetector(platform, async () => output, "/native");
+            assert.equal(await detect(), expected, `${platform}: ${output}`);
+        }
+    }
+    assert.equal(await createNetworkCostDetector("linux", async () => { throw new Error("NetworkManager unavailable"); })(), "unknown");
+});
+
+test("#1591 an unmetered interface cannot hide another active interface's unknown cost", async () => {
+    const output = (cost) => [
+        "GENERAL.TYPE:bridge\nGENERAL.STATE:100 (connected)\nGENERAL.METERED:no",
+        "GENERAL.TYPE:wifi\nGENERAL.STATE:100 (connected)\nGENERAL.METERED:unknown",
+        `GENERAL.TYPE:ethernet\nGENERAL.STATE:100 (connected)\nGENERAL.METERED:${cost}`,
+    ].join("\n\n");
+    assert.equal(await createNetworkCostDetector("linux", async () => output("no"))(), "unknown");
+    assert.equal(await createNetworkCostDetector("linux", async () => output("yes"))(), "constrained");
+});
+
+test("#1591 the lifecycle walkthrough confirms manual setup on an unknown-cost connection", browserTestOptions, async (t) => {
+    const { page, setupCalls } = await browserFixture(t, { cost: "unknown" });
+    const prompt = page.getByRole("button", { name: "OK", exact: true });
+
+    await completeLifecycleSetup(page, prompt, operationTimeout);
+
+    assert.equal(setupCalls.length, 1);
+    assert.equal(await page.locator(".setup-global-banner").count(), 0);
+});
+
+test("#1591 unavailable OS detection leaves bulk startup transfers opt-in", async () => {
+    const detectedCost = await createNetworkCostDetector("darwin", async () => "false false")();
+    const settings = { consent: "accepted", privacyMode: false, checkForUpdatesAtLaunch: true, mode: "automatic", detectedCost };
+    assert.equal(effectiveNetworkMode(settings), "low");
+    assert.equal(networkAllowed(settings, "startup-setup"), false);
+    assert.equal(networkAllowed(settings, "startup-download"), false);
+    assert.equal(networkAllowed({ ...settings, mode: "full" }, "startup-setup"), true);
 });
