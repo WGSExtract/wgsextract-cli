@@ -101,6 +101,8 @@ of the BED file as supplied.
 | `phylop`, `gerp` | real, real | PhyloP and GERP++ conservation scores for the position. |
 | `sift_score`, `sift_prediction`, `polyphen_score`, `polyphen_prediction` | real, text, real, text | SIFT and PolyPhen-2 for the chosen transcript (for example `deleterious` 0.01, `probably_damaging` 0.998). |
 | `gnomad_faf95` | real | Maximum filtering allele frequency at 95% confidence across gnomAD ancestry groups for this ALT (`GNOMAD_FAF95` from `vcf gnomad`, or the native group-maximum field). Zero is a reported value; empty means unavailable. |
+| `protein_position`, `protein_position_end` | integer, integer | Start and inclusive end of the reported residue span, 1-based. Equal for a single residue. Only exported for protein-altering effects. |
+| `domains` | text | Overlapping protein features reported by VEP for the chosen transcript, as unique `source:id` entries separated by `&`. |
 
 When a WGSE annotation splits a multi-allelic record, it saves the original
 AD total so the read fraction stays the same. A known split without a
@@ -148,6 +150,51 @@ table keeps one per allele, as VEP's `--pick` would: the one VEP flagged
 `PICK`, else the MANE Select transcript, then the canonical one, then a
 protein-coding one, then the most severe consequence. SnpEff lists the most
 severe effect first, and the table takes that one.
+
+## Protein positions and domains
+
+The table reads only annotations already in the VCF. It uses `Protein_position`
+and `DOMAINS` from the chosen VEP `CSQ`, or `AA.pos / AA.length` from the chosen
+SnpEff `ANN` when that annotation supplies the consequence. It never uses
+another allele or transcript to fill a missing field, infers no positions
+from HGVS, and does not download protein data.
+For compound SnpEff annotations, the leading allele, not the linked
+variant, identifies the ALT.
+
+VEP numbers ALTs in the record it sees. Splitting with bcftools preserves
+an existing `CSQ`; annotating after splitting instead numbers the sole ALT
+`1`. `OLD_MULTIALLELIC` records the original alleles, not the order of those
+operations. The table uses these rules when assigning CSQ to an ALT:
+
+| Record | Original record tag | When VEP ran | `ALLELE_NUM` | Spelling | Match |
+| --- | --- | --- | --- | --- | --- |
+| Multiple ALTs, not split | None or stale | On this record | Present | Any | Match the current ALT index. |
+| One ALT, not split or split without provenance | None, or tag with one original ALT | Before or after; indistinguishable | Any | Matches this ALT | Match by spelling, including valid normalized or original spellings. |
+| One ALT, not split or split without provenance | None, or tag with one original ALT | Before or after; indistinguishable | Any | Does not match this ALT | No match; a number alone cannot link an annotation to this ALT. |
+| Split from multiple ALTs | Present | Before split, or after split with original ALT 1 | Number matches original index | Any | Match the original index. For original ALT 1 both numbering schemes agree. |
+| Split from multiple ALTs | Present | Before split | No match by number; at least one number exceeds 1 | Any | No match; a fresh run on one ALT would not number it above 1. |
+| Split from multiple ALTs | Present | After split, inferred for original ALT 2 or later | All reported numbers are 1 | All numbered entries match only this ALT | Match the fresh entries. |
+| Split from multiple ALTs | Present | Before or after; cannot tell | All reported numbers are 1; no original index match | A numbered entry matches a sibling or lacks a unique match | No match; `1` might belong to the first original ALT. |
+| Multiple current or original ALTs | None for unsplit; present for split | Before or after | Absent | Unambiguous for this ALT | Match by spelling, accounting for shared padding and minimization. |
+| Multiple current or original ALTs | None for unsplit; present for split | Before or after | Absent | Ambiguous or nonmatching | No match. |
+
+`OLD_MULTIALLELIC` is meaningful here only on a single-ALT record. If
+some CSQ entries have numbers and others do not, an unnumbered entry
+cannot override a numbered assignment.
+
+Positions can be a single residue or a range, with or without a reported
+protein length. Missing, uncertain, malformed and reversed insertion
+coordinates leave both columns empty. Stop and frameshift positions are
+the annotator's coordinates, not the span of every downstream residue affected.
+An empty `domains` cell means no overlap was reported, not that the site has
+no function. Domains are research annotations, not evidence that a variant
+affects an active site or causes disease.
+
+The result manifest's `metrics.protein_annotation_fields` and the SQLite
+and Parquet metadata record which input header fields were declared:
+`CSQ/Protein_position`, `ANN/AA.pos / AA.length` and `CSQ/DOMAINS` (comma
+separated). A declared field may still be empty in every row. `panel audit`
+exports and panel filters are unchanged.
 
 ## Population frequencies
 

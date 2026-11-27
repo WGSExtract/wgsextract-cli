@@ -10,14 +10,15 @@ functions pick one ALT's entries for `vcf table` and `vcf acmg`.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from wgsextract_cli.core.vcf_alleles import allele_key
 
 # Ensembl VEP's test for a structural-variant ALT (<DEL>, breakends), which it
 # names differently; <*> doesn't match it (Parser/VCF.pm, release 113).
 _SV_ALT = re.compile(r"[<\[\]][^*]+[>\]\[]|^\.\w+|\w+\.$")
-_BASES = re.compile(r"[ACGT]+")
+_BASES = re.compile(r"[ACGTN]+")
+_ANN_COMPOUND = re.compile(r"([ACGTN]+)-[^:\s]+:[0-9]+_[ACGTN]+>[ACGTN]+", re.I)
 
 
 def vep_allele(ref: str, alts: Sequence[str], alt: str) -> str:
@@ -48,48 +49,93 @@ def csq_entries(raw: str | None, names: Sequence[str]) -> list[dict[str, str]]:
     ]
 
 
-def for_allele(
-    entries: list[dict[str, str]],
-    field: str,
-    candidates: Sequence[str],
-    alt_index: int,
-    n_alts: int,
-    *,
-    split: bool = False,
-) -> list[dict[str, str]]:
-    """The entries describing one ALT. ``candidates`` are its possible
-    spellings, most specific first: the first that matches anything wins, so
-    VEP's trimmed spelling of one insertion can't also pick up another's.
+def _ann_allele_key(allele: str) -> str:
+    if "-" in allele and (compound := _ANN_COMPOUND.fullmatch(allele)):
+        allele = compound[1]
+    return allele_key(allele)
 
-    A record split from a multi-allelic one (``split``: ``vcf clinvar``/
-    ``gnomad`` split them) may keep every original allele's entries, so it is
-    matched by its original ALLELE_NUM (``alt_index``) or spelling, never
-    given entries just because they all name one allele."""
-    if not entries:
-        return []
-    if "ALLELE_NUM" in entries[0] and (
-        n_alts > 1 or (split and {e.get("ALLELE_NUM") for e in entries} != {"1"})
-    ):
-        return [e for e in entries if e.get("ALLELE_NUM") == str(alt_index)]
-    if (
-        n_alts == 1
-        and not split
-        and len({allele_key(e[field]) if field in e else None for e in entries}) == 1
-    ):
-        return entries
-    return _by_spelling(entries, field, candidates)
+
+def ann_for_allele(
+    entries: list[dict[str, str]], candidates: Sequence[str]
+) -> list[dict[str, str]]:
+    """Match the ALT that owns a simple or compound SnpEff annotation."""
+    return _by_spelling(entries, "Allele", candidates, entry_key=_ann_allele_key)
 
 
 def _by_spelling(
-    entries: list[dict[str, str]], field: str, candidates: Sequence[str]
+    entries: list[dict[str, str]],
+    field: str,
+    candidates: Sequence[str],
+    *,
+    entry_key: Callable[[str], str] = allele_key,
 ) -> list[dict[str, str]]:
+    if not entries or not candidates:
+        return []
+    keys = tuple(dict.fromkeys(map(allele_key, candidates)))
+    if len(keys) == 1:
+        return [e for e in entries if field in e and entry_key(e[field]) == keys[0]]
     by_key: dict[str, list[dict[str, str]]] = {}
     for entry in entries:
         if field in entry:
-            by_key.setdefault(allele_key(entry[field]), []).append(entry)
-    for spelling in dict.fromkeys(map(allele_key, candidates)):
+            by_key.setdefault(entry_key(entry[field]), []).append(entry)
+    for spelling in keys:
         if matches := by_key.get(spelling):
             return matches
+    return []
+
+
+def _minimal_allele(ref: str, alt: str) -> str | None:
+    """Some producers minimize both shared ends before writing CSQ."""
+    if max(len(ref), len(alt)) == 1 or not _BASES.fullmatch((ref + alt).upper()):
+        return None
+    ref, alt = ref.upper(), alt.upper()
+    end = 0
+    while end < min(len(ref), len(alt)) and ref[-end - 1] == alt[-end - 1]:
+        end += 1
+    if end:
+        ref, alt = ref[:-end], alt[:-end]
+    start = 0
+    while start < min(len(ref), len(alt)) and ref[start] == alt[start]:
+        start += 1
+    return alt[start:] or "-"
+
+
+def _sibling_spellings(
+    ref: str, alts: Sequence[str], index: int
+) -> tuple[set[str], set[str]]:
+    spellings, minimized = set(), set()
+    for i, sibling in enumerate(alts, start=1):
+        if i == index:
+            continue
+        spellings.add(allele_key(sibling))
+        spelling = allele_key(vep_allele(ref, alts, sibling))
+        spellings.add(spelling)
+        if (compact := _minimal_allele(ref, sibling)) is not None:
+            spellings.add(compact)
+            if compact != spelling:
+                minimized.add(compact)
+    return spellings, minimized
+
+
+def _fresh_split_csq(
+    numbered: list[dict[str, str]],
+    ref: str,
+    alt: str,
+    source_ref: str,
+    source_alts: Sequence[str],
+    index: int,
+) -> list[dict[str, str]]:
+    """A fresh VEP run numbers the sole ALT 1, just like retained ALT 1 CSQ."""
+    if any(entry["ALLELE_NUM"] != "1" for entry in numbered):
+        return []
+    siblings, _ = _sibling_spellings(source_ref, source_alts, index)
+    spellings = {
+        allele_key(spelling)
+        for spelling in (alt, vep_allele(ref, (alt,), alt), _minimal_allele(ref, alt))
+        if spelling is not None
+    } - siblings
+    if all(allele_key(entry.get("Allele", "")) in spellings for entry in numbered):
+        return numbered
     return []
 
 
@@ -103,15 +149,57 @@ def csq_for_allele(
     """The CSQ entries of ALT number ``alt_index`` (1-based) of a record;
     ``origin`` is :func:`split_origin` of its INFO, for a record split from a
     multi-allelic one. ``pick_csq`` of them is the variant table's choice."""
-    alt = alts[alt_index - 1]
-    spellings: tuple[str, ...] = (vep_allele(ref, alts, alt), alt)
-    index, n_alts = alt_index, len(alts)
+    if not entries:
+        return []
+    n_alts = len(alts)
+    source_ref, source_alts = ref, alts
+    index = alt_index
     split = origin is not None and n_alts == 1
     if origin is not None and split:
-        o_ref, o_alts, index = origin
-        o_alt = o_alts[index - 1]
-        spellings = (vep_allele(o_ref, o_alts, o_alt), *spellings, o_alt)
-    return for_allele(entries, "Allele", spellings, index, n_alts, split=split)
+        source_ref, source_alts, index = origin
+    alt = alts[alt_index - 1]
+    if len(source_alts) > 1:
+        numbered = [
+            entry for entry in entries if entry.get("ALLELE_NUM") not in (None, "", ".")
+        ]
+        if numbered:
+            number = str(index)
+            matches = [entry for entry in numbered if entry["ALLELE_NUM"] == number]
+            if matches or not split:
+                return matches
+            return _fresh_split_csq(numbered, ref, alt, source_ref, source_alts, index)
+
+    preferred = vep_allele(ref, alts, alt)
+    original_alt = source_alts[index - 1]
+    spellings: tuple[str, ...] = (preferred, alt)
+    siblings: set[str] = set()
+    if split or len(source_alts) > 1:
+        original = (
+            vep_allele(source_ref, source_alts, original_alt) if split else preferred
+        )
+        siblings, minimized = _sibling_spellings(source_ref, source_alts, index)
+        # Even the standard spelling can name a different ALT if the annotator
+        # instead removed both common ends. With no allele number, don't guess.
+        primary = (original,) if allele_key(original) not in minimized else ()
+        fallback = (original_alt, preferred, alt) if split else (alt,)
+        spellings = (
+            *primary,
+            *(
+                spelling
+                for spelling in fallback
+                if allele_key(spelling) not in siblings
+            ),
+        )
+    if matches := _by_spelling(entries, "Allele", spellings):
+        return matches
+    candidates = (
+        (_minimal_allele(source_ref, original_alt), _minimal_allele(ref, alt))
+        if split
+        else (_minimal_allele(ref, alt),)
+    )
+    return _by_spelling(
+        entries, "Allele", tuple(c for c in candidates if c and c not in siblings)
+    )
 
 
 def allele_entries(
@@ -136,11 +224,18 @@ def allele_entries(
 
 
 def split_origin(raw: str | None) -> tuple[str, list[str], int] | None:
-    """REF, ALTs and this ALT's 1-based index of the record a biallelic one
-    was split from (bcftools norm ``--old-rec-tag``: CHR|POS|REF|ALT|IDX)."""
+    """Original REF, ALTs and 1-based index from bcftools ``--old-rec-tag``.
+
+    The tag is CHR|POS|REF|ALT|IDX when split, but normalization alone can
+    omit IDX. Infer index 1 only when there was a single original ALT.
+    """
     parts = (raw or "").split("|")
-    if len(parts) != 5 or not parts[4].isdigit():
+    if len(parts) not in (4, 5):
         return None
     alts = parts[3].split(",")
+    if len(parts) == 4:
+        return (parts[2], alts, 1) if len(alts) == 1 else None
+    if not parts[4].isdigit():
+        return None
     index = int(parts[4])
     return (parts[2], alts, index) if 1 <= index <= len(alts) else None
