@@ -16,6 +16,8 @@ import { isolateWorkspaceEnvironment } from "./workspace-fixture.mjs";
 const app = path.resolve(import.meta.dirname, "..");
 const executablePath = process.platform === "linux" && existsSync("/usr/bin/chromium")
     ? "/usr/bin/chromium" : chromium.executablePath();
+// Match the Playwright launch default used by the viewer tests, independently of page waits.
+const browserStartupTimeout = 30_000;
 const operationTimeout = 6_000;
 
 async function within(promise, description) {
@@ -89,8 +91,8 @@ async function browserFixture(t) {
         server.once("error", reject);
         server.listen(0, "127.0.0.1", resolve);
     }), "Starting the fixture HTTP server");
-    browserServer = await chromium.launchServer({ executablePath, timeout: operationTimeout });
-    const browser = await chromium.connect(browserServer.wsEndpoint(), { timeout: operationTimeout });
+    browserServer = await chromium.launchServer({ executablePath, timeout: browserStartupTimeout });
+    const browser = await chromium.connect(browserServer.wsEndpoint(), { timeout: browserStartupTimeout });
     const page = await within(browser.newPage({ viewport: { width: 1060, height: 780 } }), "Opening a Chromium page");
     page.setDefaultTimeout(operationTimeout);
     const origin = `http://127.0.0.1:${server.address().port}`;
@@ -126,7 +128,7 @@ async function browserFixture(t) {
     };
 }
 
-const browserTestOptions = { skip: !existsSync(executablePath) && "Requires installed Chromium.", timeout: 30_000 };
+const browserTestOptions = { skip: !existsSync(executablePath) && "Requires installed Chromium.", timeout: 120_000 };
 
 test("#1591 first launch makes no outbound requests until OK, then starts setup and checks for updates", browserTestOptions, async (t) => {
     const { page, external, setupCalls, updates, startupUpdate } = await browserFixture(t);
