@@ -190,6 +190,25 @@ def test_acmg_classes_go_into_the_vep_rs_vcf_with_the_disclaimer(tmp_path):
 
 
 @needs_fastvep
+def test_1630_lowercase_alleles_keep_multiallelic_acmg_classes(tmp_path):
+    text = (FIXTURES / "in_vep.vcf").read_text()
+    # The VEP fixture has no ALLELE_NUM, so transcript selection uses CSQ allele text.
+    edited = text.replace("\tA\tC,G\t", "\ta\tc,g\t")
+    inputs = _inputs(tmp_path, edited)
+    sa = _sa_dir(tmp_path)
+
+    result = api.vcf.acmg(_params(tmp_path, sa, **inputs))
+
+    (output,) = (o for o in result.outputs if o.role == "annotated_vcf")
+    classes = _acmg(Path(output.path))[2500]
+    assert all(c != "." for c in classes["ACMG_CLASS"].split(","))
+    assert classes["ACMG_TRANSCRIPT"] == "ENST00000000001,ENST00000000001"
+    (summary,) = (o for o in result.outputs if o.role == "acmg_summary")
+    choices = json.loads(Path(summary.path).read_text())["transcript_choice"]
+    assert choices.get("other_transcript", 0) == 0
+
+
+@needs_fastvep
 @pytest.mark.parametrize("previous_output", [False, True])
 def test_1215_acmg_index_failure_does_not_publish_vcf(
     tmp_path, monkeypatch, previous_output

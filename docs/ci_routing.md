@@ -116,6 +116,49 @@ the last seven days and the main branch's Git history. The map attributes execut
 source files to **test modules**, not to individual cases. A missing
 attribution is unknown, not evidence that the test covers nothing.
 
+### Test-suite growth budget
+
+Hosted Ubuntu ready runs summarize regular pytest JUnit once, combining shards
+where needed. This is advisory and adds no test runs, artifact downloads or
+required checks. Fully certified or cache-skipped tests have no new timing
+evidence. Optional E2E JUnit, other platforms and GUI/native jobs are not part of
+this budget. The weekly review compares actual totals from the newest usable
+full Ubuntu nightly in its window, or reports that none was available. It
+checks unsharded JUnit against the archived scope, excluding remote-only modules.
+
+The budget counts JUnit cases (including skips and parametrizations) and sums
+case seconds, not parallel wall time. Each module belongs to the first matching
+selector bucket: CI policy, docs & CLI reference, optional-tool modules,
+nightly fallback exclusions, CLI integration, or regular CLI. The full suite
+has its own target. The initial [baseline](../scripts/ci_test_budget_baseline.json)
+comes from [Ubuntu nightly 45876381962](https://github.com/WGSExtract/wgsextract-cli/actions/runs/45876381962).
+Runtime targets add 15% (at least 10 seconds) and count targets add 10%, rounded up
+to a multiple of five.
+
+Ready estimates retain baseline costs for unmeasured modules still in the tree
+and substitute measurements for modules that ran. Changes to which cases skip cannot
+earn speedup credit; the candidate check ignores timing changes for these
+modules. Missing or invalid timings make the receipt unusable. The summary
+marks candidate regressions only when an area grows
+to more than 125% of its runtime budget and the full-suite projection also grows.
+Count-only overruns are advisory. Treat estimates as a cue to inspect fixtures
+and execution scope, not proof of a slowdown. Before making the signal blocking,
+validate it on comparable runs, especially the noisy CI-policy bucket. Prefer
+shared fixtures or parametrization that actually reduces cost; the separate
+`test-smells` lint still checks how tests are written.
+
+To propose a rebaseline, download the intact `tests-ubuntu-all` artifact from
+an existing successful, unsharded **full** Ubuntu nightly, then run:
+
+```sh
+gh run download RUN_ID -n tests-ubuntu-all -D out/budget-nightly
+python -m scripts.ci_test_budget --nightly-artifact out/budget-nightly \
+  --calibrate-run RUN_ID
+```
+
+Review the resulting module and target diff; do not rebaseline just to clear an
+individual PR's overrun.
+
 ## PR check routing
 
 | PR changes | Checks selected (in addition to routing and the secret scan) | Estimated runner-minutes/push |

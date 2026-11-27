@@ -98,8 +98,8 @@ class AncestryReference:
             order,
             chrom[order].astype(np.int64),
             pos[order].astype(np.int64),
-            [b.decode() for b in self._arrays["ref"][order]],
-            [b.decode() for b in self._arrays["alt"][order]],
+            [b.decode().upper() for b in self._arrays["ref"][order]],
+            [b.decode().upper() for b in self._arrays["alt"][order]],
         )
 
     def frequencies(self, k: int) -> np.ndarray:

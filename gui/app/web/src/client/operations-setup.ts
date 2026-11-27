@@ -12,7 +12,7 @@ import type { SetupRun, SetupStepResult, TerminalEntry } from "../../../shared/t
 let setupElapsedTimer: ReturnType<typeof setInterval> | null = null;
 let runningSetup: AbortController | null = null;
 
-export async function runSetup() {
+export async function runSetup(automatic = false) {
     if (state.setupRun?.status === "running") {
         return;
     }
@@ -45,7 +45,7 @@ export async function runSetup() {
     try {
         await apiStream<SetupStreamEvent>(
             "/api/setup/stream",
-            { locale: state.localizationCode },
+            { locale: state.localizationCode, automatic },
             (event) => applySetupEvent(event, entry()),
             { signal: controller.signal, label: "Setup stream" },
         );

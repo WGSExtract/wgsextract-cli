@@ -170,13 +170,29 @@ export function renderStandardOptionsAccessory() {
             <option value="sfPro" ${state.webUIFont === "sfPro" ? "selected" : ""}>${escapeHTML(state.labels.webUIFontSFProLabel ?? "SF Pro when available")}</option>
           </select>
         </label>
-        <label class="form-row" title="${escapeAttribute(state.labels.privacyModeTooltip ?? "")}">
-          <span class="row-label">${escapeHTML(state.labels.privacyModeLabel ?? "Privacy mode")}</span>
-          <input type="checkbox" data-privacy-mode-toggle ${state.privacyMode ? "checked" : ""} aria-label="${escapeAttribute(state.labels.privacyModeLabel ?? "Privacy mode")}">
-        </label>
       </div>
     </section>
   `;
+}
+
+export function renderNetworkSettings() {
+  const { labels, networkSettings } = state;
+  return `
+    <section class="card" data-network-settings tabindex="-1" aria-labelledby="network-settings-title">
+      <h3 id="network-settings-title">${escapeHTML(labels.networkTitle ?? "")}</h3>
+      <p class="muted">${escapeHTML(labels.networkSettingsDetail ?? "")}</p>
+      <div class="network-settings-options">
+        <label>
+          <input type="checkbox" data-network-setting="checkForUpdatesAtLaunch" ${networkSettings.checkForUpdatesAtLaunch ? "checked" : ""}>
+          ${escapeHTML(labels.networkLaunchCheck ?? "")}
+        </label>
+        <label title="${escapeAttribute(labels.privacyModeTooltip ?? "")}">
+          <input type="checkbox" data-network-setting="privacyMode" ${networkSettings.privacyMode ? "checked" : ""}>
+          ${escapeHTML(labels.privacyModeLabel ?? "")}
+        </label>
+      </div>
+      <p class="inline-error" data-network-settings-error role="alert" hidden></p>
+    </section>`;
 }
 function languageOptionLabel(option: LocalizedOption) {
   return option.isAITranslated

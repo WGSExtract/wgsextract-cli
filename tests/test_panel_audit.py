@@ -1,5 +1,6 @@
 """Research panel genotype, reference evidence and phase."""
 
+import gzip
 import json
 import subprocess
 from pathlib import Path
@@ -7,7 +8,7 @@ from typing import Literal
 
 import pytest
 
-from tests.htslib_helpers import needs_htslib
+from tests.htslib_helpers import bgzip_index, needs_htslib
 from tests.test_panel_spec import _audit_inputs
 from wgsextract_cli import api
 from wgsextract_cli.core.dependencies import get_tool_path
@@ -97,6 +98,29 @@ def test_1287_audit_distinguishes_mixed_scores_reference_and_phase(
             "qualifying",
             "unscored",
         ]
+
+
+@needs_htslib
+def test_1630_lowercase_vcf_alleles_keep_watched_diplotype(tmp_path: Path) -> None:
+    panel, vcf, _ = _audit_inputs(tmp_path, phase_set="1")
+    with gzip.open(vcf, "rt", encoding="utf-8") as stream:
+        text = stream.read()
+    lower = tmp_path / "lowercase.vcf"
+    lower.write_text(
+        text.replace("\tG\tA\t", "\tg\ta\t").replace("\tC\tT\t", "\tc\tt\t"),
+        encoding="utf-8",
+    )
+
+    result = api.panel.audit(
+        api.PanelAuditParams(
+            panel=panel, vcf_input=Path(bgzip_index(lower)), research_panel=True
+        )
+    )
+
+    report = next(o for o in result.outputs if o.role == "panel_audit")
+    (watch,) = json.loads(Path(report.path).read_text(encoding="utf-8"))["haplotypes"]
+    assert watch["status"] == "called"
+    assert watch["diplotype"] == ["left", "right"]
 
 
 @needs_htslib

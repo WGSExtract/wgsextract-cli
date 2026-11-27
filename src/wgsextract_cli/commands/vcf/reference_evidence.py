@@ -39,6 +39,7 @@ from wgsextract_cli.core.temp_directory import scratch_parent
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command, run_pipeline
 from wgsextract_cli.core.variant_confidence import SYMBOLIC_REFERENCE_ALTS
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 
 from .basic import plain_reference
 from .call_cleanup import indel_cleanup_pipeline
@@ -405,7 +406,7 @@ def gather_gvcf(parts: Sequence[str], work: str, output: str) -> None:
     run_pipeline(
         [
             ["bcftools", "sort", "-T", work, "-Ou", combined],
-            ["bcftools", "norm", "--no-version", "-d", "exact", "-Oz", "-o", output],
+            *uppercase_vcf(["bcftools", "norm", "--no-version", "-d", "exact"], output),
         ],
         description="Reference evidence (gVCF) gather",
     )

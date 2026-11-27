@@ -24,6 +24,7 @@ from wgsextract_cli.core.utils import (
     run_pipeline,
 )
 from wgsextract_cli.core.variant_files import ensure_vcf_indexed, get_chr_name
+from wgsextract_cli.core.vcf_output import uppercase_vcf
 from wgsextract_cli.core.ybrowse import (
     COPYRIGHT,
     SOURCE_URL,
@@ -256,17 +257,10 @@ def call_ybrowse(input_path: str, base: BaseArgs) -> None:
                         str(compressed_targets),
                         "-Ou",
                     ],
-                    [
-                        "bcftools",
-                        "norm",
-                        "-m",
-                        "-any",
-                        "--multi-overlaps",
-                        ".",
-                        "-Oz",
-                        "-o",
+                    *uppercase_vcf(
+                        ["bcftools", "norm", "-m", "-any", "--multi-overlaps", "."],
                         called,
-                    ],
+                    ),
                 ],
                 description="Targeted haploid yBrowse calling",
                 stderr_dir=work,

@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 
+from wgsextract_cli.core.vcf_alleles import allele_key
+
 # Ensembl VEP's test for a structural-variant ALT (<DEL>, breakends), which it
 # names differently; <*> doesn't match it (Parser/VCF.pm, release 113).
 _SV_ALT = re.compile(r"[<\[\]][^*]+[>\]\[]|^\.\w+|\w+\.$")
@@ -23,15 +25,17 @@ def vep_allele(ref: str, alts: Sequence[str], alt: str) -> str:
     loses its shared padding base ('-' when nothing is left). A multi-allelic
     record is trimmed when every allele without a '*' (spanning deletions,
     ``<*>``) starts with the same base, and those '*' alleles keep theirs."""
-    if not _BASES.fullmatch(ref + "".join(alts)) and _SV_ALT.search(",".join(alts)):
+    if not _BASES.fullmatch((ref + "".join(alts)).upper()) and _SV_ALT.search(
+        ",".join(alts)
+    ):
         return alt
     if all(len(a) == len(ref) for a in alts):
         return alt
     if len(alts) > 1:
-        first_bases = {a[:1] for a in (ref, *alts) if "*" not in a}
+        first_bases = {a[:1].upper() for a in (ref, *alts) if "*" not in a}
         if len(first_bases) != 1 or "*" in alt:
             return alt
-    elif ref[:1] != alt[:1]:
+    elif ref[:1].upper() != alt[:1].upper():
         return alt
     return alt[1:] or "-"
 
@@ -46,7 +50,7 @@ def csq_entries(raw: str | None, names: Sequence[str]) -> list[dict[str, str]]:
 
 def for_allele(
     entries: list[dict[str, str]],
-    allele_key: str,
+    field: str,
     candidates: Sequence[str],
     alt_index: int,
     n_alts: int,
@@ -67,11 +71,24 @@ def for_allele(
         n_alts > 1 or (split and {e.get("ALLELE_NUM") for e in entries} != {"1"})
     ):
         return [e for e in entries if e.get("ALLELE_NUM") == str(alt_index)]
-    if n_alts == 1 and not split and len({e.get(allele_key) for e in entries}) == 1:
+    if (
+        n_alts == 1
+        and not split
+        and len({allele_key(e[field]) if field in e else None for e in entries}) == 1
+    ):
         return entries
-    for spelling in dict.fromkeys(candidates):
-        matches = [e for e in entries if e.get(allele_key) == spelling]
-        if matches:
+    return _by_spelling(entries, field, candidates)
+
+
+def _by_spelling(
+    entries: list[dict[str, str]], field: str, candidates: Sequence[str]
+) -> list[dict[str, str]]:
+    by_key: dict[str, list[dict[str, str]]] = {}
+    for entry in entries:
+        if field in entry:
+            by_key.setdefault(allele_key(entry[field]), []).append(entry)
+    for spelling in dict.fromkeys(map(allele_key, candidates)):
+        if matches := by_key.get(spelling):
             return matches
     return []
 
@@ -115,11 +132,7 @@ def allele_entries(
     entries = csq_entries(raw, names)
     if refreshed and tag == refreshed[0]:
         spellings = (refreshed[1], *spellings)
-    for spelling in dict.fromkeys(spellings):
-        matches = [e for e in entries if e.get("ALLELE") == spelling]
-        if matches:
-            return matches
-    return []
+    return _by_spelling(entries, "ALLELE", spellings)
 
 
 def split_origin(raw: str | None) -> tuple[str, list[str], int] | None:
