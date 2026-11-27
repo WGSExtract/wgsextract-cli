@@ -8,6 +8,7 @@ import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
+import { configureOfflineVerification } from "./offline-verification-settings.mjs";
 import { prepareViewerFixtures } from "./prepare-viewer-fixtures.mjs";
 import { cytobandChromosomeLengths } from "../dist/shared/viewer-cytobands.js";
 
@@ -35,6 +36,9 @@ if (values.cytobands) {
         + "chr1\t125100000\t248956422\tq44\tgpos100\n");
 }
 const originalFiles = values["read-only"] ? (await readdir(fixtures.library, { recursive: true })).sort() : [];
+// Only the backend needs the disposable home. The browser driver must use the caller's Playwright cache.
+const browserEnvironment = { ...process.env };
+await configureOfflineVerification(output);
 const bundleRoot = path.join(output, "bundle");
 await cp(path.join(root, "gui/examples/WGSExtract"), bundleRoot, { recursive: true });
 const users = path.join(output, "users");
@@ -79,7 +83,7 @@ try {
         ...(values.genes ? ["--gene-map", path.join(output, "reference/ref/genes_hg38.tsv")] : []),
         ...(values.cytobands ? ["--cytobands", path.join(output, "reference/ref/cytobands_hg38.tsv")] : []),
         ...(values.chromium ? ["--chromium", values.chromium] : []),
-    ], { stdio: "inherit", windowsHide: true });
+    ], { env: browserEnvironment, stdio: "inherit", windowsHide: true });
     const code = await new Promise((resolve, reject) => {
         child.once("error", reject);
         child.once("close", resolve);

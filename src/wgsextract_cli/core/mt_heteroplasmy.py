@@ -190,8 +190,8 @@ def read_calls(path: Path) -> dict[int, list[Call]]:
                     continue
                 calls.setdefault(int(fields[1]), []).append(
                     Call(
-                        ref=fields[3],
-                        alt=alt,
+                        ref=fields[3].upper(),
+                        alt=alt.upper(),
                         genotype=genotype,
                         level=levels.get(index),
                         depth=_whole(values.get("DP")),
@@ -341,7 +341,7 @@ def assess(
     at = evidence_position(int(variant["pos"]), origin)
     if at is None:
         return Assessment(NOT_ASSESSED, ["mt_reference_conflict"])
-    ref, alt = str(variant["ref"]), str(variant["alt"])
+    ref, alt = str(variant["ref"]).upper(), str(variant["alt"]).upper()
     reads = evidence.reads.get(at)
     calls = evidence.calls.get(at, [])
     if (reads and reads.ref.upper() != ref) or any(c.ref[:1] != ref for c in calls):

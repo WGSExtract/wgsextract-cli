@@ -14,6 +14,8 @@ import { createProcessManager } from "./process-runner.js";
 import { takeApiToken } from "./request-guard.js";
 import { createRequestHandler } from "./routes.js";
 import { forgetSetupWithMissingTools } from "./setup-runner.js";
+import { loadBundleState } from "./bundle-state.js";
+import { migrateNetworkSettingsAfterCompletedSetup } from "./network-settings.js";
 import { prepareBundleWorkspace } from "./workspace.js";
 import { moveWorkspace } from "./workspace-move.js";
 import { withWorkspaceUse } from "./workspace-activity.js";
@@ -153,6 +155,10 @@ async function loadBundleRuntime(requestedSource: string, preload: boolean) {
     const sourceManifest = await loadManifestFromRoot(resolvedSourceBundleRoot);
     const resolvedBundleRoot = await prepareBundleWorkspace(sourceManifest, resolvedSourceBundleRoot);
     const manifest = await loadManifestFromRoot(resolvedBundleRoot);
+    if (manifest.id === "wgs-extract") {
+        const status = (await loadBundleState(resolvedBundleRoot)).setupRun?.status;
+        if (status === "ok" || status === "warning") await migrateNetworkSettingsAfterCompletedSetup();
+    }
     await forgetSetupWithMissingTools(manifest, resolvedBundleRoot);
     const runtime = {
         sourceBundleRoot: resolvedSourceBundleRoot,

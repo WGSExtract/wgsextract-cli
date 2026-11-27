@@ -377,10 +377,10 @@ def expand(
         info["PGX_STATE"] = state
         fields[7] = ";".join(k + ("=" + v if v else "") for k, v in info.items())
         output.append(fields)
-    existing = {(f[0], int(f[1]), f[3]) for f in output}
+    existing = {(f[0], int(f[1]), f[3].upper()) for f in output}
     for target in targets:
         chrom, start, ref = target[0], int(target[1]), target[3]
-        if (chrom, start, ref) in existing:
+        if (chrom, start, ref.upper()) in existing:
             continue
         loci = [(chrom, pos) for pos in range(start, start + len(ref))]
         if not all(locus in sequence for locus in loci):

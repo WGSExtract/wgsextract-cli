@@ -51,6 +51,7 @@ from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_depths import AD_TOTAL, allele_depths, count
+from wgsextract_cli.core.vcf_alleles import allele_key
 
 TEXT, INTEGER, REAL = "TEXT", "INTEGER", "REAL"
 
@@ -645,7 +646,9 @@ def indexed_variant_rows(
                 if scored:
                     # The normalized spelling can name another ALT's retained entries.
                     pipe_spellings = (
-                        (original_alt,) if alt in o_alts else (original_alt, alt)
+                        (original_alt,)
+                        if allele_key(alt) in map(allele_key, o_alts)
+                        else (original_alt, alt)
                     )
             csq_matches = csq_for_allele(csq_all, ref, alts, alt_index, origin)
             csq = pick_csq(csq_matches)

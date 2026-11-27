@@ -32,6 +32,7 @@ from wgsextract_cli.core.table_writer import (
 from wgsextract_cli.core.temp_directory import scratch_directory
 from wgsextract_cli.core.utils import UsageError, run_command
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG, thresholds_from
+from wgsextract_cli.core.vcf_alleles import allele_key
 
 from .compare_inputs import (
     ALIGN_ORIGIN,
@@ -160,6 +161,8 @@ def _header(
 
 def _annotate(record: str, calls: list[Call], decision: str, *, atomize: bool) -> str:
     fields = record.split("\t")
+    fields[3] = allele_key(fields[3])
+    fields[4] = ",".join(map(allele_key, fields[4].split(",")))
     tags = {}
     for item in fields[7].split(";"):
         if item not in {".", PARTIAL}:

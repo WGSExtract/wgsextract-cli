@@ -225,7 +225,7 @@ def _alignment_genotypes(
     def one(contig: str) -> list[tuple[int, int, int]]:
         found = []
         for pos, ref, alts, ad in _pileup(aln.path, fasta, regions[contig], contig):
-            names = alts.split(",")
+            names = alts.upper().split(",")
             for i in lookup.get((contig, pos), ()):
                 if ref.upper() != sites.ref[i]:
                     continue
@@ -381,7 +381,7 @@ def vcf_genotypes(
     ref_only = passing = 0
     for line in run_command(query, capture_output=True).stdout.splitlines():
         contig, pos, ref, alts, filt, gt, sample_filter, dp, gq = line.split("\t")
-        names = alts.split(",")
+        names = alts.upper().split(",")
         for i in lookup.get((contig, int(pos)), ()):
             if ref.upper() != sites.ref[i] or i in called:
                 continue

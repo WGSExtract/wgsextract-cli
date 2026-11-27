@@ -658,7 +658,8 @@ class Genotypes:
             ref, alt, gt, filt = rows[0]
             if filt not in (".", "PASS"):
                 return None, "filtered"
-            alleles = [ref, *alt.split(",")]
+            ref = ref.upper()
+            alleles = [ref, *alt.upper().split(",")]
             if not {variant.effect, variant.other}.issubset(alleles):
                 # Explicit reference calls often have ALT='.' or '<NON_REF>'.
                 if not (

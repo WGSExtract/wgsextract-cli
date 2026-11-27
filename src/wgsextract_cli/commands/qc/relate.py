@@ -306,7 +306,12 @@ def _extract(item: Input, sites: str, ref: str | None, work: Path) -> list[Path]
 
 
 def _sketch_inputs(
-    items: list[Input], params: RelateParams, reflib: str, work: Path, threads: int
+    items: list[Input],
+    params: RelateParams,
+    reflib: str,
+    work: Path,
+    threads: int,
+    custom_sites: str | None,
 ) -> None:
     prepared: dict[str, str] = {}
     with contextlib.ExitStack() as stack:
@@ -315,11 +320,7 @@ def _sketch_inputs(
             if item.kind == "sketch":
                 item.sketches = [Path(item.path)]
                 continue
-            sites = (
-                expand_path(params.sites)
-                if params.sites
-                else str(_sites_for(item, reflib))
-            )
+            sites = custom_sites or str(_sites_for(item, reflib))
             ref = _reference(item, params.ref, str(work), stack, prepared)
             jobs.append((item, sites, ref))
         if not jobs:
@@ -761,7 +762,9 @@ def run_relate(params: RelateParams) -> None:
         dir=scratch_parent(outdir), prefix=".wgse_somalier_"
     ) as tmp:
         work = Path(tmp)
-        _sketch_inputs(items, params, reflib, work, threads)
+        if sites is not None:
+            sites = _relate_vcf.canonical_sites(sites, work)
+        _sketch_inputs(items, params, reflib, work, threads, sites)
         _warn_partial_vcfs(items)
         published = _publish(items, outdir / "somalier")
         # Every build's sites file lists the same SNPs and allele frequencies.

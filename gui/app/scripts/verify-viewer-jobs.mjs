@@ -6,9 +6,11 @@ import { fileURLToPath } from "node:url";
 import { localizationLabels, parseTomlStrings } from "../dist/shared/localization.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
+import { configureOfflineVerification } from "./offline-verification-settings.mjs";
 
 /** Reproduce the review regression with the real app, NDJSON stream and a real, bounded Node job. */
 export async function verifyViewerJobs(browser, fixtures, output) {
+  await configureOfflineVerification(output);
   const app = fileURLToPath(new URL("../", import.meta.url));
   const root = path.join(output, "job-fixture");
   await mkdir(path.join(root, "Assets"), { recursive: true });
