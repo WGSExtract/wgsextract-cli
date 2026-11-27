@@ -52,7 +52,7 @@ function testManifest() {
   };
 }
 
-async function withTestServer(t, overrides = {}) {
+async function withTestServer(t, overrides = {}, { fresh = false, onRequestSettled } = {}) {
   const tempRoot = await mkdtemp(path.join(tmpdir(), "wgsextract-gui-routes-"));
   for (const [key, value] of Object.entries(dataEnvironment(tempRoot))) {
       const original = process.env[key];
@@ -66,6 +66,10 @@ async function withTestServer(t, overrides = {}) {
     await rm(tempRoot, { force: true, recursive: true });
   });
   await writeFile(path.join(tempRoot, "index.html"), '<!doctype html><head><meta name="gfc-api-token" content=""></head>\n');
+  if (!fresh) {
+    await mkdir(path.dirname(appSettingsPath()), { recursive: true });
+    await writeFile(appSettingsPath(), JSON.stringify({ networkConsent: "deferred" }));
+  }
 
   const calls = { loadBundle: [], localizedLoads: [], runProcess: [], shutdown: [] };
   const manifest = testManifest();
@@ -104,7 +108,14 @@ async function withTestServer(t, overrides = {}) {
     ...overrides,
   };
 
-  const server = createServer(createRequestHandler(context));
+  const handle = createRequestHandler(context);
+  const server = createServer(onRequestSettled ? async (request, response) => {
+    try {
+      await handle(request, response);
+    } finally {
+      onRequestSettled(request.url);
+    }
+  } : handle);
   t.after(async () => {
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
@@ -701,24 +712,21 @@ test("#1234: a client that stops reading and disconnects mid-move releases the w
   const moveBlocked = new Promise((resolve) => {
     blocked = resolve;
   });
-  let settled;
-  const moveSettled = new Promise((resolve) => {
-    settled = resolve;
-  });
+  const moveSettled = Promise.withResolvers();
   const progress = { type: "progress", text: "x".repeat(256 * 1024) };
   const { baseURL, port } = await withTestServer(t, {
     async moveWorkspace(_target, emit, signal) {
-      try {
-        while (!signal.aborted) {
-          const written = emit(progress);
-          const waiting = await Promise.race([written.then(() => false), new Promise((resolve) => setTimeout(resolve, 50, true))]);
-          if (waiting) blocked();
-          await written;
-        }
+      while (!signal.aborted) {
+        const written = emit(progress);
+        const waiting = await Promise.race([written.then(() => false), new Promise((resolve) => setTimeout(resolve, 50, true))]);
+        if (waiting) blocked();
+        await written;
       }
-      finally {
-        settled();
-      }
+    },
+  }, {
+    onRequestSettled(url) {
+      // Callback completion alone does not mean the outer route has released the move lease.
+      if (url === "/api/workspace-location/move") moveSettled.resolve();
     },
   });
 
@@ -736,7 +744,7 @@ test("#1234: a client that stops reading and disconnects mid-move releases the w
     client.destroy();
   }
 
-  await within(moveSettled, 5000, "the move");
+  await within(moveSettled.promise, 5000, "the move");
   const after = await apiFetch(baseURL, "/api/setup/stream", { body: { locale: "en" } });
   assert.equal(after.status, 200);
   assert.equal((await readNDJSON(after)).at(-1).type, "complete");
@@ -879,30 +887,26 @@ test("the prerequisite routes check the referenced action and install only what 
   ]);
 });
 
-test("Privacy mode is an app-wide setting: another bundle or a reset bundle state never turns it off", async (t) => {
-  const { baseURL, tempRoot } = await withTestServer(t);
+test("#1591 a fresh desktop blocks downloads until a choice, persists it, and preserves other settings", async (t) => {
+  const { baseURL } = await withTestServer(t, {}, { fresh: true });
   const settingsPath = appSettingsPath();
   await mkdir(path.dirname(settingsPath), { recursive: true });
   await writeFile(settingsPath, JSON.stringify({ usersWorkspaces: { "test-bundle": "/kept" } }));
 
-  assert.equal((await apiFetch(baseURL, "/api/privacy-mode", { body: { enabled: "yes" } })).status, 400);
-  const saved = await apiFetch(baseURL, "/api/privacy-mode", { body: { enabled: true } });
-  assert.equal(saved.status, 200);
-  assert.deepEqual(await saved.json(), { privacyMode: true });
-  assert.deepEqual(JSON.parse(await readFile(settingsPath, "utf8")), { usersWorkspaces: { "test-bundle": "/kept" }, privacyMode: true });
+  const settings = "/api/network-settings";
+  assert.equal((await apiFetch(baseURL, settings, { body: { privacyMode: "yes" } })).status, 400);
+  assert.equal((await apiFetch(baseURL, settings, { body: { checkForUpdatesAtLaunch: true } })).status, 409);
+  const setup = "/api/setup/stream";
+  assert.equal((await apiFetch(baseURL, setup, { body: {} })).status, 403);
+  assert.equal((await apiFetch(baseURL, "/api/gene/iobio/open", { body: {} })).status, 403);
 
-  // A bundle that has never saved any state (another bundle, or one whose state.json was reset) still sees it on.
-  const { loadLocalizedBundle } = await import("../dist/web/src/server/bundle-loader.js");
-  const otherBundle = path.join(tempRoot, "other-bundle");
-  await mkdir(otherBundle);
-  await writeFile(path.join(otherBundle, "manifest.json"), JSON.stringify({
-    id: "other-bundle",
-    displayName: "Other Bundle",
-    summary: "Another bundle.",
-    pages: [{ id: "main", title: "Main", summary: "Main page.", sections: [{ id: "main" }] }],
-  }));
-  assert.equal((await loadLocalizedBundle(undefined, path.resolve(".."), otherBundle, otherBundle)).privacyMode, true);
-
-  await apiFetch(baseURL, "/api/privacy-mode", { body: { enabled: false } });
-  assert.equal((await loadLocalizedBundle(undefined, path.resolve(".."), otherBundle, otherBundle)).privacyMode, false);
+  const declined = await apiFetch(baseURL, settings, { body: { consent: "deferred" } });
+  assert.equal((await declined.json()).recordedChoice, true);
+  assert.equal((await apiFetch(baseURL, setup, { body: { automatic: true } })).status, 403);
+  const stale = await apiFetch(baseURL, settings, { body: { consent: "accepted" } });
+  assert.equal((await stale.json()).recordedChoice, false);
+  await apiFetch(baseURL, settings, { body: { privacyMode: true } });
+  const manifest = await (await apiFetch(baseURL, "/api/manifest")).json();
+  assert.deepEqual(manifest.networkSettings, { consent: "deferred", privacyMode: true, checkForUpdatesAtLaunch: false });
+  assert.deepEqual(JSON.parse(await readFile(settingsPath, "utf8")).usersWorkspaces, { "test-bundle": "/kept" });
 });

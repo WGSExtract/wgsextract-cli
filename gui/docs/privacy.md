@@ -37,10 +37,17 @@ WGS Extract intentionally separates two different user needs across two layers:
 
 | Tier | Examples | Default | Can it send sample data? | How to control it |
 | --- | --- | --- | --- | --- |
-| **1. Automatic update checks** | Checking for newer WGS Extract app releases at startup, and planned update checks for Reference Data, Reference Genomes, and Tools catalogs | **On by default** in desktop builds (opt-out) | **Never** — sends only version/catalog metadata, OS/arch, IP, and standard HTTP headers | Turn on **Privacy mode** in **Settings → Standard UI Options**; a red **PRIVACY** badge shows while it is on |
+| **1. Automatic connections** | First-run setup downloads and app release checks at startup | **Off on a fresh install until you choose OK** | **Never** — downloads public files or sends version metadata, OS/arch, IP, and standard HTTP headers | **Settings → Network & Privacy**; **Privacy mode** pauses automatic connections |
 | **2. Interactive prerequisite prompts** | Clicking **Install and Continue** when a command or [Gene Page](gene-page.md) reports a missing reference genome or Gene Map | **Asks before downloading** — never downloads silently | **Never** — fetches public reference files only | Click **Cancel** or **Continue** instead, or pre-install files beforehand |
-| **3. Explicit management & help actions** | Running **Setup**, clicking **Install / Download** on [Reference Data](reference-data.md), [Reference Genomes](reference-genomes.md), or [Tools](tools.md), clicking **Look up sizes**, opening a documentation link, or clicking **Open GitHub issue** | **Off until you click** | **Never** (except a redacted bug report that you preview and submit yourself) | Only runs when you explicitly click the button or link |
+| **3. Explicit management & help actions** | Running **Setup** manually, clicking **Install / Download** on [Reference Data](reference-data.md), [Reference Genomes](reference-genomes.md), or [Tools](tools.md), clicking **Look up sizes**, opening a documentation link, or clicking **Open GitHub issue** | **Off until you click** | **Never** (except a redacted bug report that you preview and submit yourself) | Only runs when you explicitly click the button or link |
 | **4. Sample-derived remote features** | [Remote Genome Viewer](genome-viewer.md#view-files-on-a-remote-server) (**Connect and view remote file**), or realigning a remote `https://` alignment URL | **Always explicit opt-in** (off in Basic & Advanced) | **Yes** — sends requested file paths and genomic byte ranges to the server you chose | Never enabled by default; requires explicit per-action confirmation |
+
+On first launch, **OK** starts setup if it has never run and enables **Check
+for updates at launch**. **Not now** opens **Settings → Network & Privacy**
+without making an outbound request. You can use local features and data, and
+choose to run setup or check for updates later. The app remembers your choice.
+When upgrading an installation that already completed setup, the app keeps
+its existing Privacy mode and carries over whether launch checks were active.
 
 [Open in gene.iobio](gene-page.md#open-in-geneiobio) also requires explicit
 per-launch consent. It opens `gene.iobio.io` in your browser with the selected
@@ -103,11 +110,11 @@ This applies to automatic update checks as well as manual downloads:
 If you work in an air-gapped environment or want **zero** outbound network
 traffic — including no IP-visible update checks:
 
-1. Turn on **Privacy mode** in **Settings → Standard UI Options**. The app then
-   skips its startup update check and shows a red **PRIVACY** badge under its
-   name. **File → Check for Updates...** still checks when you choose it.
-   Future Reference Data, Reference Genomes, and Tools update checks will honor
-   the same switch.
+1. Choose **Not now** at first launch, or turn on **Privacy mode** in
+   **Settings → Network & Privacy**. The red **PRIVACY** badge shows when
+   Privacy mode is on. To disable only launch checks, turn off **Check for
+   updates at launch** there. **File → Check for Updates...** still checks
+   when you choose it.
 2. Keep **Allow missing public-data downloads** turned **off** in
    **Settings → Users Workspace Settings** (this is already the default).
 3. Pre-install the tools, reference genomes, and reference data you need while

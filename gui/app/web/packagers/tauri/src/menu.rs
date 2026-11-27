@@ -176,6 +176,16 @@ pub(crate) fn request_load_bundle<R: tauri::Runtime>(app: &tauri::AppHandle<R>) 
     }
 }
 
+pub(crate) fn request_check_for_updates<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(window) = app.get_webview_window("main") {
+        if let Err(error) =
+            window.eval("window.dispatchEvent(new Event('wgsextract-gui-check-for-updates'))")
+        {
+            eprintln!("Failed to dispatch update check event: {error}");
+        }
+    }
+}
+
 pub(crate) fn app_name<R: tauri::Runtime, M: Manager<R>>(app: &M) -> String {
     app.config()
         .product_name

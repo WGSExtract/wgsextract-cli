@@ -6,7 +6,7 @@ import { evaluatePrecheck, evaluateSetupInstallSizePrecheck, fileStateValues, ru
 import { serveBundleFavicon, serveBundleFile } from "./assets.js";
 import { loadLocaleOptions } from "./bundle-loader.js";
 import { saveBundleState } from "./bundle-state.js";
-import { savePrivacyMode } from "./privacy-mode.js";
+import { readNetworkSettings, requireNetworkChoice, saveNetworkSettings } from "./network-settings.js";
 import { loadConfig, saveConfig } from "./config-store.js";
 import { errorMessage, HttpError } from "./errors.js";
 import { contentType, json, notFound, readJSONBody, serveIndex, staticFile } from "./http.js";
@@ -44,6 +44,12 @@ import { openSystemBrowser } from "./system-browser.js";
 import { genePagePrerequisites, installGenePagePrerequisite, openGenePage } from "./gene-page.js";
 
 type ManifestResponse = Record<string, unknown> & { appVersion?: string; autoRunSetup?: boolean };
+
+const networkChoiceRoutes = new Set([
+    "/api/bundle/load", "/api/viewer/remote/open", "/api/gene/iobio/open", "/api/certification/open",
+    "/api/gene/prerequisites/install/stream", "/api/prerequisites/install/stream",
+    "/api/run/stream", "/api/datasource", "/api/precheck",
+]);
 
 interface LocalizedBundle {
     manifest: BundleManifest;
@@ -419,7 +425,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
             const control = findConfigEditorControl(context.manifest, requiredString(body, "controlID"));
             return saveConfig(control, optionalString(body, "path"), requestObject(body.values ?? {}, "values"), context.bundleRoot);
         }),
-        "/api/privacy-mode": jsonRoute(context, savePrivacyMode),
+        "/api/network-settings": jsonRoute(context, saveNetworkSettings),
         "/api/state/save": jsonRoute(context, async (body) => {
             const patch = parseBundleStatePatch(body.state);
             for (const [controlID, requestedPath] of Object.entries(patch.configFilePaths ?? {})) {
@@ -436,6 +442,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
             const method = request.method ?? "GET";
             const headOnly = method === "HEAD";
             if (url.pathname.startsWith("/viewer-remote-data/")) {
+                await requireNetworkChoice();
                 await remoteViewer.serve(request, response, url.pathname);
                 return;
             }
@@ -453,6 +460,7 @@ export function createRequestHandler(context: RequestHandlerContext) {
             }
             const postRoute = postRoutes[url.pathname];
             if (method === "POST" && postRoute) {
+                if (networkChoiceRoutes.has(url.pathname)) await requireNetworkChoice();
                 if (independentlyGuardedRoutes.has(url.pathname)) {
                     await postRoute(request, response);
                 } else {
@@ -506,6 +514,7 @@ async function handleGet(url: URL, request: IncomingMessage, response: ServerRes
         if (before !== await assertCurrentWorkspace(context)) throw new HttpError(409, "workspaceMoveStale");
         const body = {
             ...withAutoRunSetup(withAppVersion(loaded, context.appVersion)),
+            networkSettings: await readNetworkSettings(),
             workspaceLocation: await usersWorkspaceLocationInfo(context.manifest, usersWorkspaceFor(context.bundleRoot)),
             workspaceMoveRevision: before,
         };
@@ -559,6 +568,7 @@ function rememberDynamicActions(context: RequestHandlerContext, location: Return
 
 async function handleStepStream(request: IncomingMessage, response: ServerResponse, context: RequestHandlerContext, runner: StepRunner) {
     const body = await withCurrentWorkspace(context, () => readBody(request, context), request);
+    if (runner === runSetup) await requireNetworkChoice(body.automatic === true ? "startup-setup" : "explicit");
     const bundle = await context.localizedBundleLoader.load(requestedLocale(body, context.defaultLocale), preferredLocales(request.headers["accept-language"]));
     await withCurrentWorkspace(context, () => streamNDJSON(
         response,

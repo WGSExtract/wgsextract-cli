@@ -3,6 +3,7 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "gfc_report_rendered",
             "gfc_update_check",
+            "gfc_update_check_from_menu",
             "gfc_update_download",
             "gfc_update_install",
         ]),
