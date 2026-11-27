@@ -112,25 +112,11 @@ def managed_jar_dir() -> Path:
     return runtime.app_data_root() / "jartools"
 
 
-def managed_binary_dir(tool: str) -> Path:
-    """Folder where ``deps install`` unpacks ``tool``'s official release
-    (``optional_tools.MANAGED_BINARIES``): ``<managed_jar_dir()>/<tool>``."""
-    return managed_jar_dir() / tool
+def managed_executable(tool: str) -> str | None:
+    """``tool`` as ``deps install`` unpacked it from its official release."""
+    from wgsextract_cli.core.managed_binaries import managed_executable
 
-
-def _managed_binary_executable(tool: str) -> str | None:
-    """``tool``'s executable in ``managed_binary_dir(tool)``, if unpacked there."""
-    from wgsextract_cli.core.optional_tools import MANAGED_BINARIES
-
-    if tool not in MANAGED_BINARIES:
-        return None
-    folder = managed_binary_dir(tool)
-    if not folder.is_dir():
-        return None
-    for name in _tool_executable_names(tool):
-        if found := shutil.which(name, path=str(folder)):
-            return found
-    return None
+    return managed_executable(tool)
 
 
 def find_discvrseq_jar(explicit: str | None = None) -> str | None:
@@ -229,9 +215,7 @@ def _resolve_tool_path(tool: str) -> str | None:
     if tool == "multiqc":
         return _host_pixi_tool_command("multiqc") or _which_tool("multiqc")
     return (
-        _which_tool(tool)
-        or _managed_binary_executable(tool)
-        or _host_pixi_tool_command(tool)
+        _which_tool(tool) or managed_executable(tool) or _host_pixi_tool_command(tool)
     )
 
 

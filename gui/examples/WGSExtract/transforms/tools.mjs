@@ -323,7 +323,7 @@ const TOOL_PROVENANCE = {
         summary: "Oxford Nanopore high-performance POD5 basecaller and modified-base caller.",
         source: "https://github.com/nanoporetech/dorado",
         organization: "Oxford Nanopore Technologies (ONT)",
-        license: "Oxford Nanopore Technologies PLC Public License v1.0 (source-available; check ONT terms for commercial/redistribution limits).",
+        license: "Oxford Nanopore Technologies PLC. Public License Version 2.0 (research use only, with data from Oxford Nanopore devices).",
     },
     discvrseq: {
         summary: "DISCVRSeq GATK4 toolkit providing VariantQC HTML reports for single or multi-VCF QC.",
@@ -376,17 +376,24 @@ function row(tool) {
             environmentTools: (tool.environment_tools ?? []).join(", "),
             action: action(tool),
             note: tool.note ?? "",
+            license: tool.license?.name ?? "",
+            licenseTerms: tool.license?.terms ?? "",
+            licenseUrl: tool.license?.url ?? "",
         },
     };
 }
 
-/** Which button the row offers: install, uninstall, manual (install it yourself), unavailable, or none. */
+/**
+ * Which button the row offers: install, install-licensed (install once the user
+ * accepts the tool's licence), uninstall, manual (install it yourself),
+ * unavailable, or none.
+ */
 function action(tool) {
     if (tool.can_uninstall) {
         return "uninstall";
     }
     if (tool.can_install) {
-        return "install";
+        return tool.license_acceptance_required ? "install-licensed" : "install";
     }
     if (tool.status === "unavailable") {
         return "unavailable";

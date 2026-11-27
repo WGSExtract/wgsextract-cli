@@ -293,11 +293,24 @@ wgsextract bam merge run1.bam run2.bam --sample HG002 --output HG002.bam
 
 `basecall` turns POD5 signal (a file, or a folder searched recursively) into an
 unaligned BAM with ONT's [Dorado](https://github.com/nanoporetech/dorado), 1.0
-or newer. Dorado is optional and isn't installed with WGS Extract. Its licence
-(the Oxford Nanopore Technologies PLC. Public License) grants use only for
-research and only with data from Oxford Nanopore devices, so getting it, and
-accepting those terms, is left to you. Download the
-release for your system, then put its `bin` folder on PATH, set
+or newer. Dorado is optional and is licensed under the **Oxford Nanopore
+Technologies PLC. Public License Version 2.0** (the licence file of release
+2.2.0), which allows use for research purposes only, with data from Oxford
+Nanopore devices.
+
+WGS Extract installs Dorado 2.2.0 once you accept that licence: the Tools
+page's Install button asks first, or run
+`wgsextract deps install dorado --accept-license`. Without
+`--accept-license` the command shows the licence and downloads nothing. It
+downloads ONT's official release for Linux x64 (about 3.5 GB) or ARM64
+(1.8 GB; ONT's default CUDA 12 build), Apple silicon Macs (52 MB) or
+Windows x64 (2.8 GB), checks its pinned SHA-256, and unpacks it into
+`dorado` under the managed tools folder (`jar_directory`). The Linux and
+Windows releases include CUDA libraries. `wgsextract deps uninstall dorado`
+removes that release folder only. `ref needs` never accepts the licence for
+you, so the app's Install and Continue leaves Dorado to the Tools page.
+
+A Dorado you install yourself works too: put its `bin` folder on PATH, set
 `dorado_executable` in config.toml, or pass `--dorado-path`. A missing or older
 Dorado stops the command with that hint before anything runs. FAST5 input is
 refused with the `pod5 convert fast5` command that converts it.

@@ -103,6 +103,12 @@ class DepsInstallParams(Params):
     LOCAL_ONLY = True
 
     tool: str = _tool_param()
+    accept_license: bool = param(
+        False,
+        help="Accept the tool's licence where install requires it (dorado: ONT's "
+        "licence allows research use only).",
+        action="store_true",
+    )
 
 
 @dataclass(frozen=True, kw_only=True)

@@ -10,7 +10,8 @@ import pytest
 from tests.fake_tools import python_tool
 from wgsextract_cli.core import runtime, windows_arm64
 from wgsextract_cli.core.dependencies import clear_tool_caches
-from wgsextract_cli.core.optional_tools import managed_binary
+from wgsextract_cli.core.managed_binaries import MANAGED_BINARIES, managed_binary
+from wgsextract_cli.core.optional_tools import MANAGED_JAR_TOOLS
 from wgsextract_cli.core.tool_catalog import (
     INSTALL_HINTS,
     PIXI_TOOL_ENVS,
@@ -92,11 +93,21 @@ def test_list_marks_tools_this_platform_cannot_have(host, fake_pixi, capsys):
 
 
 def test_list_tells_how_to_install_a_tool_the_app_cannot(host, capsys):
+    manual = [
+        tool
+        for tool in INSTALL_HINTS
+        if tool in optional_dependency_tools()
+        and tool not in PIXI_TOOL_ENVS
+        and tool not in MANAGED_JAR_TOOLS
+        and not managed_binary(tool)
+    ]
+    if not manual:
+        pytest.skip("WGS Extract installs every tool this host can have")
     _, document = _json(capsys, "deps", "list")
 
-    dorado = _row(document, "dorado")
-    assert dorado["status"] == "missing" and not dorado["can_install"]
-    assert dorado["note"] == INSTALL_HINTS["dorado"]
+    row = _row(document, manual[0])
+    assert row["status"] == "missing" and not row["can_install"]
+    assert row["note"] == INSTALL_HINTS[manual[0]]
 
 
 @pytest.mark.parametrize(
@@ -104,7 +115,6 @@ def test_list_tells_how_to_install_a_tool_the_app_cannot(host, capsys):
     [
         ("samtools", 2, "mandatory"),
         ("fastp", 1, "default Pixi environment"),
-        ("dorado", 1, "nanoporetech/dorado"),
         ("no-such-tool", 2, "deps list"),
     ],
 )
@@ -186,8 +196,8 @@ def test_needs_names_a_tool_an_option_asks_for(host, multiqc_env, capsys):
 
 
 def test_needs_leaves_a_tool_the_user_installs_to_them(host, capsys):
-    """dorado has no environment: the app can only ask the user to install it
-    and continue."""
+    """Dorado's licence must be accepted, which ref needs never does for the
+    user: the app asks the user to install it (the Tools page asks first)."""
     (item,) = _needs(capsys, "basecall", "--input", "pod5")
 
     assert item["name"] == "dorado" and item["installArguments"] is None
@@ -549,8 +559,6 @@ def test_plink2_installs_and_uninstalls_from_its_windows_release(
     import zipfile
     from pathlib import Path
 
-    from wgsextract_cli.core.optional_tools import MANAGED_BINARIES
-
     # deps list runs what it finds: a Windows program that runs anywhere
     # stands in for plink2.exe.
     runnable = Path(os.environ["SystemRoot"], "System32", "whoami.exe").read_bytes()
@@ -599,3 +607,104 @@ def test_plink2_installs_and_uninstalls_from_its_windows_release(
     clear_tool_caches()
     row = _row(_json(capsys, "--config", str(cfg), "deps", "list")[1], "plink2")
     assert row["status"] == "missing" and row["can_install"]
+
+
+def _runnable_dorado(release, archive: str) -> None:
+    """Write ``release``'s archive at ``archive``: a dorado that prints its
+    version, a library symlink, and a file outside the release folder."""
+    import io
+    import os
+    import tarfile
+    import zipfile
+    from pathlib import Path
+
+    top = release.unpack
+    if sys.platform == "win32":
+        exe = Path(os.environ["SystemRoot"], "System32", "whoami.exe").read_bytes()
+    else:
+        exe = b"#!/bin/sh\necho 2.2.0+test\n"
+    if archive.endswith(".zip"):
+        with zipfile.ZipFile(archive, "w") as bundle:
+            entry = zipfile.ZipInfo(release.executable)
+            entry.external_attr = 0o100755 << 16
+            bundle.writestr(entry, exe)
+            bundle.writestr(f"{top}lib/libtorch.so.2", b"lib")
+            link = zipfile.ZipInfo(f"{top}lib/libtorch.so")
+            link.external_attr = 0o120777 << 16
+            bundle.writestr(link, "libtorch.so.2")
+            bundle.writestr("README-outside.txt", b"not unpacked")
+        return
+    with tarfile.open(archive, "w:gz") as bundle:
+        for name, data in (
+            (release.executable, exe),
+            (f"{top}lib/libtorch.so.2", b"x"),
+        ):
+            info = tarfile.TarInfo(name)
+            info.size, info.mode = len(data), 0o755
+            bundle.addfile(info, io.BytesIO(data))
+        link = tarfile.TarInfo(f"{top}lib/libtorch.so")
+        link.type, link.linkname = tarfile.SYMTYPE, "libtorch.so.2"
+        bundle.addfile(link)
+
+
+def test_dorado_installs_only_once_its_licence_is_accepted(
+    host, tmp_path, monkeypatch, capsys
+):
+    """Dorado's research-only licence is shown and must be accepted before
+    deps install downloads it; uninstall removes only the release folder."""
+    from pathlib import Path
+
+    release = managed_binary("dorado")
+    if release is None:
+        pytest.skip("no Dorado release for this host")
+    jar_dir = tmp_path / "jartools"
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(f'jar_directory = "{jar_dir.as_posix()}"\n', encoding="utf-8")
+    downloads = []
+
+    def fake_download(url, dest, **kwargs):  # the network boundary
+        assert url == release.url and kwargs["expected_sha256"] == release.sha256
+        downloads.append(url)
+        _runnable_dorado(release, dest)
+        return True
+
+    monkeypatch.setattr(
+        "wgsextract_cli.core.ref_library.downloads.download_file", fake_download
+    )
+
+    row = _row(_json(capsys, "--config", str(cfg), "deps", "list")[1], "dorado")
+    assert row["can_install"] and row["license_acceptance_required"]
+    assert row["license"]["name"] == release.license.name
+    assert "research" in row["note"] and release.license.name in row["note"]
+
+    code, refused = _json(capsys, "--config", str(cfg), "deps", "install", "dorado")
+    assert code == 2 and downloads == []
+    assert "--accept-license" in refused["error"]["message"]
+
+    code, installed = _json(
+        capsys, "--config", str(cfg), "deps", "install", "dorado", "--accept-license"
+    )
+    assert code == 0 and installed["details"]["license"]["url"] == release.license.url
+    folder = jar_dir / "dorado"
+    assert Path(installed["details"]["path"]) == folder / release.executable
+    assert sorted(p.name for p in folder.iterdir()) == [release.unpack.rstrip("/")]
+    clear_tool_caches()
+
+    row = _row(_json(capsys, "--config", str(cfg), "deps", "list")[1], "dorado")
+    assert row["status"] == "installed" and row["can_uninstall"]
+
+    (folder / "my-models").mkdir()
+    code, _ = _json(capsys, "--config", str(cfg), "deps", "uninstall", "dorado")
+    assert code == 0
+    assert [p.name for p in folder.iterdir()] == ["my-models"]
+
+
+def test_dorado_pins_a_verified_release_for_each_supported_platform():
+    """One pinned, licence-gated Dorado release per platform ONT builds for."""
+    releases = MANAGED_BINARIES["dorado"]
+
+    assert sorted(releases) == ["linux-64", "linux-aarch64", "osx-arm64", "win-64"]
+    for release in releases.values():
+        assert release.url.startswith("https://cdn.oxfordnanoportal.com/")
+        assert len(release.sha256) == 64 and release.license is not None
+        assert release.executable.startswith(release.unpack)

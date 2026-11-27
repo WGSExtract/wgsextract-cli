@@ -75,9 +75,11 @@ INSTALL_HINTS = {
     "plink2": "Download PLINK 2 for your system from "
     "https://www.cog-genomics.org/plink/2.0/ and put plink2 on PATH. "
     "It is optional, used only by score pgs --plink2-check.",
-    "dorado": "Dorado is ONT's basecaller and isn't installed with WGS Extract: "
-    "its licence allows only research use with Nanopore data, so you accept "
-    "those terms yourself. Download the release for your system from "
+    "dorado": "Dorado is ONT's basecaller, licensed under the Oxford Nanopore "
+    "Technologies PLC. Public License Version 2.0 for research use only. "
+    "On Linux x64 or ARM64, Apple silicon Macs and Windows x64, install it "
+    "from the Tools page or with 'wgsextract deps install dorado "
+    "--accept-license'. Elsewhere, download the release for your system from "
     "https://github.com/nanoporetech/dorado#installation, unpack it and put its "
     "bin folder on PATH, or set dorado_executable in config.toml (or pass "
     "basecall --dorado-path).",

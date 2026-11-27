@@ -35,6 +35,11 @@ const depsList = {
                 version: "Sniffles2 2.6", environment: "pacbio", environment_tools: ["pbmm2", "pbsv", "sniffles"], can_uninstall: true,
             }),
             tool({ name: "plink2", note: "Download PLINK 2 for your system." }),
+            tool({
+                name: "dorado", environment: "jartools", environment_tools: ["dorado"], can_install: true,
+                license_acceptance_required: true, note: "Downloads the official dorado 2.2.0 release (~2.8 GB).",
+                license: { name: "Example Public License 2.0", terms: "research use only", url: "https://example.org/LICENCE" },
+            }),
             tool({ name: "sambamba", status: "unavailable", note: "sambamba isn't built for win32 AMD64." }),
         ],
     },
@@ -59,6 +64,7 @@ test("the Tools table offers Install, Uninstall or Not available as the CLI says
         gatk: [["tool-install", ""]],
         sniffles: [["tool-uninstall", ""]],
         plink2: [["tool-manual", "Download PLINK 2 for your system."]],
+        dorado: [["tool-install-licensed", ""]],
         sambamba: [["tool-unavailable", "sambamba isn't built for win32 AMD64."]],
     });
 });
@@ -81,6 +87,18 @@ test("each Tools row shows its status, whether it is mandatory, and where it com
     }
     assert.match(rows.samtools.tooltip, /Installed path: \/env\/bin\/samtools/);
     assert.match(rows.plink2.tooltip, /Note: Download PLINK 2 for your system\./);
+});
+
+test("a tool whose licence must be accepted installs only after a confirmation that names it", () => {
+    const install = control.rowActions.find((action) => action.id === "tool-install-licensed");
+    const row = items(depsList).items.find((item) => item.id === "dorado");
+
+    assert.deepEqual(install.command.arguments.slice(-2), ["{{row.name}}", "--accept-license"]);
+    assert.ok(install.confirm?.message);
+    assert.deepEqual(
+        [row.values.license, row.values.licenseTerms, row.values.licenseUrl],
+        ["Example Public License 2.0", "research use only", "https://example.org/LICENCE"],
+    );
 });
 
 test("the Tools table needs deps list's tool rows", () => {
