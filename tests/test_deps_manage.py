@@ -609,9 +609,14 @@ def test_plink2_installs_and_uninstalls_from_its_windows_release(
     assert row["status"] == "missing" and row["can_install"]
 
 
+DANGLING = ("libcudnn.so", "/etc/alternatives/libcudnn_so")
+
+
 def _runnable_dorado(release, archive: str) -> None:
     """Write ``release``'s archive at ``archive``: a dorado that prints its
-    version, a library symlink, and a file outside the release folder."""
+    version, a file outside the release folder and, where symlinks need no
+    privilege (not Windows, whose release has none), a library link and a
+    link to the build machine, as ONT's Linux releases carry."""
     import io
     import os
     import tarfile
@@ -629,10 +634,13 @@ def _runnable_dorado(release, archive: str) -> None:
             entry.external_attr = 0o100755 << 16
             bundle.writestr(entry, exe)
             bundle.writestr(f"{top}lib/libtorch.so.2", b"lib")
-            link = zipfile.ZipInfo(f"{top}lib/libtorch.so")
-            link.external_attr = 0o120777 << 16
-            bundle.writestr(link, "libtorch.so.2")
             bundle.writestr("README-outside.txt", b"not unpacked")
+            if sys.platform == "win32":
+                return
+            for name, target in (("libtorch.so", "libtorch.so.2"), DANGLING):
+                link = zipfile.ZipInfo(f"{top}lib/{name}")
+                link.external_attr = 0o120777 << 16
+                bundle.writestr(link, target)
         return
     with tarfile.open(archive, "w:gz") as bundle:
         for name, data in (
@@ -642,9 +650,10 @@ def _runnable_dorado(release, archive: str) -> None:
             info = tarfile.TarInfo(name)
             info.size, info.mode = len(data), 0o755
             bundle.addfile(info, io.BytesIO(data))
-        link = tarfile.TarInfo(f"{top}lib/libtorch.so")
-        link.type, link.linkname = tarfile.SYMTYPE, "libtorch.so.2"
-        bundle.addfile(link)
+        for name, target in (("libtorch.so", "libtorch.so.2"), DANGLING):
+            link = tarfile.TarInfo(f"{top}lib/{name}")
+            link.type, link.linkname = tarfile.SYMTYPE, target
+            bundle.addfile(link)
 
 
 def test_dorado_installs_only_once_its_licence_is_accepted(
@@ -688,6 +697,10 @@ def test_dorado_installs_only_once_its_licence_is_accepted(
     folder = jar_dir / "dorado"
     assert Path(installed["details"]["path"]) == folder / release.executable
     assert sorted(p.name for p in folder.iterdir()) == [release.unpack.rstrip("/")]
+    if sys.platform != "win32":  # links inside the release only
+        lib = folder / release.unpack / "lib"
+        assert (lib / "libtorch.so").resolve() == (lib / "libtorch.so.2").resolve()
+        assert not (lib / "libcudnn.so").is_symlink()
     clear_tool_caches()
 
     row = _row(_json(capsys, "--config", str(cfg), "deps", "list")[1], "dorado")

@@ -199,8 +199,19 @@ def _wanted(name: str, spec: ManagedBinary) -> bool:
     )
 
 
+def _link_inside(link: Path, target: str, into: Path) -> bool:
+    """Whether the symlink ``link`` -> ``target`` points inside ``into``.
+    ONT's Linux releases carry development links to their build machine
+    (lib/libcudnn.so -> /etc/alternatives/...), which would dangle here:
+    they are left out, never followed."""
+    return not PurePosixPath(target).is_absolute() and _inside(
+        link.parent / target, into
+    )
+
+
 def _unpack_zip(archive: Path, spec: ManagedBinary, into: Path) -> None:
-    """Unpack ``spec.unpack`` from a zip, keeping Unix modes and symlinks."""
+    """Unpack ``spec.unpack`` from a zip, keeping Unix modes and the symlinks
+    that stay inside the release."""
     import zipfile
 
     with zipfile.ZipFile(archive) as bundle:
@@ -220,11 +231,10 @@ def _unpack_zip(archive: Path, spec: ManagedBinary, into: Path) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             if stat.S_ISLNK(mode):
                 link = bundle.read(info).decode()
-                if not _inside(target.parent / link, into):
-                    raise WGSExtractError(
-                        f"{archive.name} links outside itself: {info.filename}"
-                    )
-                target.symlink_to(link)
+                if _link_inside(target, link, into):
+                    target.symlink_to(link)
+                else:
+                    logging.debug(f"Skipped {info.filename} -> {link}: outside.")
                 continue
             with bundle.open(info) as source, target.open("wb") as out:
                 shutil.copyfileobj(source, out, 1 << 20)
@@ -241,7 +251,15 @@ def _unpack_tar(archive: Path, spec: ManagedBinary, into: Path) -> None:
         members = [m for m in bundle.getmembers() if _wanted(m.name, spec)]
         if not members:
             raise KeyError(spec.unpack)
-        bundle.extractall(into, members=members, filter="data")
+
+        def keep(member: tarfile.TarInfo, dest: str) -> tarfile.TarInfo | None:
+            link = Path(dest) / member.name
+            if member.issym() and not _link_inside(link, member.linkname, into):
+                logging.debug(f"Skipped {member.name} -> {member.linkname}: outside.")
+                return None
+            return tarfile.data_filter(member, dest)
+
+        bundle.extractall(into, members=members, filter=keep)
 
 
 def _remove(path: Path) -> None:

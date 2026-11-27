@@ -97,7 +97,7 @@ def _tool_param() -> Any:
 
 @dataclass(frozen=True, kw_only=True)
 class DepsInstallParams(Params):
-    """Download and install the Pixi environment providing an optional tool."""
+    """Download and install an optional tool."""
 
     COMMAND = "deps install"
     LOCAL_ONLY = True
@@ -105,8 +105,7 @@ class DepsInstallParams(Params):
     tool: str = _tool_param()
     accept_license: bool = param(
         False,
-        help="Accept the tool's licence where install requires it (dorado: ONT's "
-        "licence allows research use only).",
+        help="Accept the tool's licence (dorado: research use only).",
         action="store_true",
     )
 
