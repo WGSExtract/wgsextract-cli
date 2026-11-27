@@ -72,16 +72,24 @@ def verify_paths_exist(paths_dict: Mapping[str, PathInput | None]) -> None:
         raise WGSExtractError("\n".join(problems))
 
 
-def _short_index_sibling(vcf: Path) -> Path | None:
-    """Another bgzipped VCF (``x.vcf.gz`` beside ``x.vcf.bgz``, in any case)
-    that HTSlib would pair with ``vcf``'s short index name ``x.vcf.csi``."""
-    base = vcf.with_suffix("").name
+def _same_index_path(first: Path, second: Path) -> bool:
+    try:
+        return first.samefile(second)
+    except FileNotFoundError:
+        # A dangling symlink can still be the same directory entry under
+        # two spellings. If either entry is absent, compare the path names.
+        try:
+            return os.path.samestat(first.lstat(), second.lstat())
+        except FileNotFoundError:
+            return os.path.normcase(first) == os.path.normcase(second)
+
+
+def _short_index_sibling(vcf: Path, index: Path) -> Path | None:
+    """Another compressed VCF that HTSlib could read using this short index."""
     aliases = [
         path
         for path in vcf.parent.iterdir()
-        if path.suffix.lower() in {".gz", ".bgz"}
-        and path.stem.casefold() == base.casefold()
-        and path.is_file()
+        if path.suffix.lower() in {".gz", ".bgz"} and path.is_file()
     ]
     # An alternate spelling on a case-insensitive filesystem is the same
     # directory entry, but a hard link with a different name is not.
@@ -96,7 +104,13 @@ def _short_index_sibling(vcf: Path) -> Path | None:
             None,
         )
     for path in aliases:
-        if path is not own and path.stem == (own.stem if own is not None else base):
+        if path is not own and any(
+            _same_index_path(index, other)
+            for other in (
+                path.with_suffix(index.suffix),
+                append_suffix(path, index.suffix),
+            )
+        ):
             return path
     return None
 
@@ -131,7 +145,9 @@ def ensure_vcf_indexed(vcf_path: PathInput) -> None:
                 mtime = index.stat().st_mtime_ns
             except FileNotFoundError:
                 continue
-            if index == vcf.with_suffix(ext) and (sibling := _short_index_sibling(vcf)):
+            if index == vcf.with_suffix(ext) and (
+                sibling := _short_index_sibling(vcf, index)
+            ):
                 raise WGSExtractError(
                     f"{vcf} and {sibling} share the index name {index}. "
                     "Copy the intended VCF without its indexes to a separate "
@@ -292,10 +308,11 @@ def indexed_vcf_publication(
         for ext in (".tbi", ".csi")
         if (alias := final.with_suffix(ext)).exists() or alias.is_symlink()
     ]
-    if aliases and (sibling := _short_index_sibling(final)):
-        raise WGSExtractError(
-            f"Cannot replace {final}: {sibling.name} shares {aliases[0]}."
-        )
+    for alias in aliases:
+        if sibling := _short_index_sibling(final, alias):
+            raise WGSExtractError(
+                f"Cannot replace {final}: {sibling.name} shares {alias}."
+            )
     for ext in (".tbi", ".csi"):
         index = Path(f"{staged}{ext}")
         destination = Path(f"{final}{ext}")

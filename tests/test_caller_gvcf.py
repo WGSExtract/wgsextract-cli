@@ -41,6 +41,7 @@ from wgsextract_cli.core.reference_evidence import (
 )
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.core.variant_confidence import Thresholds
+from wgsextract_cli.core.variant_files import ensure_vcf_indexed
 from wgsextract_cli.core.vcf_output import publish_called_vcf
 
 pytestmark = needs_htslib
@@ -197,6 +198,44 @@ with gzip.open(final, 'rb') as previous:
     assert not short.exists()
     queried = run_command(["tabix", final, "chr1:2-2"], capture_output=True)
     assert queried.stdout == "chr1\t2\t.\tA\tC\t.\tPASS\t.\n"
+
+
+@pytest.mark.parametrize("index_alias", ["filesystem-case", "symlink", "hardlink"])
+def test_1654_mixed_case_sibling_keeps_shared_short_index(tmp_path, index_alias):
+    source = tmp_path / "calls.vcf"
+    body = "chr1\t2\t.\ta\tc\t.\tPASS\t.\n"
+    source.write_text(
+        "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n" + body,
+        newline="\n",
+    )
+    final = Path(bgzip_index(source))
+    sibling = tmp_path / "CALLS.VCF.bgz"
+    os.link(final, sibling)
+    run_command(["tabix", "-C", "-p", "vcf", final])
+    index = Path(f"{final}.csi").rename(final.with_suffix(".csi"))
+    other_index = sibling.with_suffix(".csi")
+    if not other_index.exists():
+        if index_alias == "filesystem-case":
+            pytest.skip("test directory is case-sensitive")
+        if index_alias == "hardlink":
+            os.link(index, other_index)
+        else:
+            try:
+                other_index.symlink_to(index.name)
+            except OSError as exc:
+                if sys.platform != "win32":
+                    raise
+                pytest.skip(f"symlink creation unavailable: {exc}")
+    before = index.read_bytes()
+
+    with pytest.raises(WGSExtractError, match="share the index name"):
+        ensure_vcf_indexed(final)
+    with pytest.raises(WGSExtractError, match=r"CALLS\.VCF\.bgz shares .*\.csi"):
+        publish_called_vcf(str(final), source=str(final))
+
+    assert index.read_bytes() == other_index.read_bytes() == before
+    queried = run_command(["tabix", sibling, "chr1:2-2"], capture_output=True)
+    assert queried.stdout == body
 
 
 def test_1654_clair3_keeps_soft_masked_reference_blocks(tmp_path, clair3_gpu):
