@@ -41,7 +41,6 @@ from wgsextract_cli.core.native_aligners import (
 )
 from wgsextract_cli.core.native_support import require_native_tool
 from wgsextract_cli.core.paths import java_local_path
-from wgsextract_cli.core.ref_library.assets import is_fasta_path
 from wgsextract_cli.core.resource_estimates import (
     estimate_resources,
     preflight_resources,
@@ -62,17 +61,12 @@ from .output import (
     record_alignment,
     run_streamed_alignment,
 )
-from .read_groups import (
-    _ultima_read_group,
-    read_group,
-    read_group_descriptions,
-    ultima_read_groups,
-)
+from .read_groups import _ultima_read_group, read_group, ultima_read_groups
 from .reads import (
     LONG_READ_TAGS,
     _is_alignment_file,
     _long_read_length,
-    long_read_fastq_command,
+    long_read_mapper_input,
 )
 from .selection import (
     _PBMM2_PRESETS,
@@ -460,23 +454,13 @@ def align_minimap2(
     aligner.record()
     align_cmd = [*aligner.argv(), "-ax", preset, "-t", str(plan.alignment)]
     reads = "-" if upstream else setup.r1
-    # realign --keep-fastq aligns a FASTQ, so it passes its BAM/CRAM's.
     description = job.read_group_description
     if is_long_read(job):
-        if job.r2:
-            raise UsageError("Long reads are single-end: drop --r2.")
         # Soft clipping keeps SEQ and the modification coordinates consistent.
         align_cmd += ["-Y"]
-        if _is_alignment_file(reads):
-            upstream = [long_read_fastq_command(reads, job.input_cram_opt or [])]
-            description = read_group_descriptions(reads, job.input_ref)
-        elif not is_fasta_path(reads):
-            # FASTQ comments can mix ONT runid/ch metadata with SAM tags;
-            # minimap2 -y alone would emit invalid SAM for those comments.
-            upstream = [
-                ["samtools", "import", "-u", "-T", LONG_READ_TAGS, "-0", reads],
-                ["samtools", "fastq", "-n", "-T", LONG_READ_TAGS, "-"],
-            ]
+        read_stages, description = long_read_mapper_input(job, reads)
+        if read_stages:
+            upstream = read_stages
         # FASTA has no qualities (samtools would invent them) and no tags.
         if upstream:
             align_cmd += ["-y"]

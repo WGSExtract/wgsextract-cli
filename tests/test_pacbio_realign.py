@@ -3,11 +3,15 @@
 import gzip
 import os
 import random
+import sys
+from pathlib import Path
 
 import pytest
 
 from tests.fake_tools import python_tool
 from tests.htslib_helpers import needs_tools, run_wgsextract, sam_to_bam, write_fasta
+from wgsextract_cli.api.align import RealignParams, realign
+from wgsextract_cli.core.config import settings
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
 from wgsextract_cli.main import main
@@ -84,6 +88,94 @@ def _records(bam):
 
 def _header(bam):
     return run_command(["samtools", "view", "-H", bam], capture_output=True).stdout
+
+
+@needs_tools("samtools", "bonefish")
+def test_1651_bonefish_realign_writes_indexed_cram_with_modification_tags(
+    tmp_path, genome_ref
+):
+    genome, ref = genome_ref
+    source, reads = _pacbio_bam(tmp_path, genome, kind="cram")
+    out = tmp_path / "out"
+    result = realign(
+        RealignParams(
+            input=Path(source),
+            ref=ref,
+            outdir=out,
+            aligner="bonefish",
+            output_profile="calling",
+            threads=1,
+            memory="256M",
+            no_preflight=True,
+        )
+    )
+
+    aligned = out / "hifi_aligned.cram"
+    assert (out / "hifi_aligned.cram.crai").is_file()
+    decoded = run_command(
+        ["samtools", "view", "-T", ref, "-F", "0x900", aligned], capture_output=True
+    ).stdout
+    records = [line.split("\t") for line in decoded.splitlines()]
+    assert sorted(r[0] for r in records) == sorted(reads)
+    assert [int(r[3]) for r in records] == [501, 4001, 6501]
+    for record in records:
+        seq = _revcomp(record[9]) if int(record[1]) & 16 else record[9]
+        assert seq == reads[record[0]]
+        assert set(MODS.split("\t")) <= set(record[11:])
+    assert "\tPL:PACBIO\tDS:READTYPE=CCS" in _header(aligned)
+    assert result.certification == "Experimental"
+    assert result.metrics["aligner"] == "bonefish"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="bonefish requires WSL on Windows")
+@needs_tools("samtools")
+def test_1651_bonefish_refuses_version_with_partial_record_tag_bug(
+    tmp_path, genome_ref, monkeypatch
+):
+    genome, ref = genome_ref
+    source, _ = _pacbio_bam(tmp_path, genome, kind="ubam")
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    python_tool(
+        fake_bin,
+        "bonefish",
+        "import sys\nassert sys.argv[1:] == ['--version']\nprint('bonefish 0.5.0')\n",
+    )
+    monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+    clear_tool_caches()
+    try:
+        with pytest.raises(UsageError, match="0.5.2.*modification tags"):
+            _realign(source, ref, tmp_path / "out", "--aligner", "bonefish")
+    finally:
+        clear_tool_caches()
+
+
+@needs_tools("samtools", "bonefish")
+def test_1651_bonefish_realign_supplied_fastq_keys_resume_on_inferred_reference(
+    tmp_path, genome_ref, monkeypatch
+):
+    genome, _ = genome_ref
+    library = tmp_path / "library"
+    monkeypatch.setitem(settings, "reference_library", str(library))
+    reads = tmp_path / "common.fastq"
+    seq = genome[500:2500]
+    reads.write_text(f"@read1\n{seq}\n+\n{'I' * len(seq)}\n")
+    out = tmp_path / "out"
+    for contig in ("first", "second"):
+        write_fasta(library / "genomes" / f"{contig}.fa", {contig: genome})
+        source = sam_to_bam(
+            [
+                f"@SQ\tSN:{contig}\tLN:{len(genome)}",
+                f"read1\t0\t{contig}\t501\t60\t2000M\t*\t0\t0\t{seq}\t{'I' * len(seq)}",
+            ],
+            tmp_path / f"{contig}.bam",
+        )
+        run_wgsextract(
+            "realign", "--input", source, "--outdir", str(out), "--r1",
+            str(reads), "--aligner", "bonefish", "--platform", "hifi",
+            "--threads", "1", "--memory", "256M", "--no-preflight",
+        )  # fmt: skip
+        assert _records(out / "common_aligned.bam")[0][2] == contig
 
 
 @needs_tools("samtools", "minimap2", "bgzip")

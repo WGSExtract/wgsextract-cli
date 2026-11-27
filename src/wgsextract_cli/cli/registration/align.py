@@ -16,7 +16,7 @@ from wgsextract_cli.commands._messages.align import CLI_HELP
 CERTIFICATION = {
     "align": validated(
         "2026-11-25",
-        "CPU/CUDA decoded-record parity on 5 million HG002 Illumina read pairs; not an all-backend qualification.",
+        "CPU/CUDA decoded-record parity on 5 million HG002 Illumina read pairs. The optional bonefish backend is Experimental.",
         ("Windows",),
         f"{REPO}/blob/main/docs/windows.md#wgse-bwa-and-optional-nvidia-cuda",
         f"{REPO}/blob/main/tests/test_alignment_commands.py",
@@ -27,7 +27,7 @@ NEEDS = {
     "align": _n(
         HOURS,
         *_SAM,
-        optional="bcftools bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster",
+        optional="bcftools bonefish bwa bwa-mem2 bwa-mem3 curl gatk minimap2 pbmm2 sambamba samblaster",
     ),
 }
 

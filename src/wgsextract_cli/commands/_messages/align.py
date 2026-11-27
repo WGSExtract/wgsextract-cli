@@ -3,7 +3,7 @@
 CLI_HELP = {
     "cmd_align": "Map raw FASTQ reads to a reference genome. This is the primary step to convert raw data into a usable BAM/CRAM file.",
     "arg_se": "Single-End FASTQ file",
-    "arg_long_read": "Use minimap2 for long-read alignment",
+    "arg_long_read": "Treat input as long reads",
 }
 
 LOG_MESSAGES = {
