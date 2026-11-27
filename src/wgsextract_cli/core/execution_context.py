@@ -60,6 +60,8 @@ class ExecutionContext:
     config: ConfigState | None = None
     process_scope: object | None = None
     allow_downloads: bool | None = None
+    network_mode: str | None = None
+    allow_large_download: bool = False
     result_card: bool | None = None  # None: config.toml's result_card
 
 

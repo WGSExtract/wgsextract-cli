@@ -369,21 +369,40 @@ def _with_checksums(files: dict[str, bytes]) -> dict[str, bytes]:
 
 
 @needs_vep_rs
-def test_download_builds_the_vep_rs_cache_from_ensembl_files(tmp_path, monkeypatch):
+@pytest.mark.parametrize("offline_resume_1591", [False, True])
+def test_download_builds_the_vep_rs_cache_from_ensembl_files(
+    tmp_path, monkeypatch, offline_resume_1591
+):
     from tests.disk_volumes import Volumes
     from wgsextract_cli.commands import _vep_resources as vr
 
     # Room for a real build, whatever the test machine has.
     Volumes(monkeypatch).free[tmp_path] = 100
     monkeypatch.setattr(sys.stderr, "isatty", lambda: False)
-    with serving(None, _ensembl_files()) as srv:
+    files = _ensembl_files()
+    if offline_resume_1591:
+        work = tmp_path / "c/vep-rs/.download-homo_sapiens-116_GRCh38"
+        for name, data in files.items():
+            if name.endswith("/CHECKSUMS"):
+                continue
+            folder = work / "core_dumps" if "/mysql/" in name else work
+            folder.mkdir(parents=True, exist_ok=True)
+            dest = folder / Path(name).name
+            dest.write_bytes(data)
+            Path(f"{dest}.ok").touch()
+    with serving(None, files) as srv:
         for mirror in vr.VEP_MIRRORS:
             monkeypatch.setitem(vr.VEP_MIRRORS, mirror, srv.base)
         result = api.vep.download(
             VepDownloadParams(
-                engine="vep-rs", vep_cache=tmp_path / "c", variations=False
+                engine="vep-rs",
+                vep_cache=tmp_path / "c",
+                variations=False,
+                network="off" if offline_resume_1591 else None,
             )
         )
+        if offline_resume_1591:
+            assert not srv.requests
 
     version_dir = tmp_path / "c" / "vep-rs" / "homo_sapiens" / "116_GRCh38"
     assert [o.path for o in result.outputs] == [str(version_dir)]

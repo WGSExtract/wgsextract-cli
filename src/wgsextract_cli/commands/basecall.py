@@ -247,13 +247,14 @@ def run_basecall(params: BasecallParams) -> None:
     model = str(Path(params.model).expanduser()) if model_folder else params.model
     pod5_files(source)
     if not model_folder or codes:
-        from wgsextract_cli.core.network_policy import require_download
+        from wgsextract_cli.core.network_policy import require_download, require_network
 
         require_download(
             "Dorado models (a model name/modification can send POD5 chemistry "
             "metadata and model identifiers to Oxford Nanopore); use --model "
             "with a local model directory and no --modified-bases to stay offline"
         )
+        require_network("Dorado models")
     device = resolve_device(params.device)
     verify_dependencies(["samtools"])
     dorado, version = resolve_dorado(params.dorado_path)

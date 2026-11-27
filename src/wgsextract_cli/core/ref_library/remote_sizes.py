@@ -24,6 +24,7 @@ from urllib.request import Request, urlopen
 
 from wgsextract_cli.core.atomic_output import atomic_write
 from wgsextract_cli.core.execution_context import context_thread
+from wgsextract_cli.core.network_policy import NetworkRestricted, require_network
 
 from .segmented import user_agent
 
@@ -70,6 +71,8 @@ def _ftp_size(url: str) -> int | None:
 def probe_size(url: str) -> int | None:
     """The size of the file at ``url``, or None when the server doesn't say."""
     scheme = urlparse(url).scheme
+    if scheme in ("ftp", "http", "https"):
+        require_network("Reference catalog size lookup", large=False)
     try:
         if scheme == "ftp":
             return _ftp_size(url)
@@ -92,6 +95,7 @@ def _probe_all(urls: list[str]) -> dict[str, int]:
     for url in urls:
         todo.put(url)
     found: dict[str, int] = {}
+    refused: list[NetworkRestricted] = []
     lock = threading.Lock()
     deadline = time.monotonic() + BUDGET_SECONDS
 
@@ -101,7 +105,13 @@ def _probe_all(urls: list[str]) -> dict[str, int]:
                 url = todo.get_nowait()
             except queue.Empty:
                 return
-            if size := probe_size(url):
+            try:
+                size = probe_size(url)
+            except NetworkRestricted as error:
+                with lock:
+                    refused.append(error)
+                return
+            if size:
                 with lock:
                     found[url] = size
 
@@ -113,6 +123,8 @@ def _probe_all(urls: list[str]) -> dict[str, int]:
     for worker in workers:
         worker.join(max(0.0, deadline - time.monotonic()))
     with lock:
+        if refused:
+            raise refused[0]
         return dict(found)
 
 
@@ -125,11 +137,13 @@ def refresh_sizes(library: Path, urls: Iterable[str]) -> dict[str, int]:
         {
             url
             for url in urls
-            if url and now - cache.get(url, {}).get("fetched_at", 0) >= TTL_SECONDS
+            if urlparse(url).scheme in {"ftp", "http", "https"}
+            and now - cache.get(url, {}).get("fetched_at", 0) >= TTL_SECONDS
         }
     )
     if not stale:
         return cached_sizes(library)
+    require_network("Reference catalog size lookup", large=False)
     found = _probe_all(stale)
     logging.info("Found the download size of %d of %d genomes.", len(found), len(stale))
     # A library that doesn't exist yet holds no genomes to cache sizes for.

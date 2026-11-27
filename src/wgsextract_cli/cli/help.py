@@ -10,7 +10,6 @@ NO_COLOR is set (https://no-color.org), so piped output stays plain.
 from __future__ import annotations
 
 import argparse
-import functools
 import os
 import re
 import sys
@@ -36,6 +35,7 @@ from wgsextract_cli.commands.registry import (
 )
 from wgsextract_cli.core.messages import CLI_HELP
 
+from .input_schemas import input_schemas
 from .stdio import enable_windows_vt as _enable_windows_vt
 
 if typing.TYPE_CHECKING:
@@ -461,7 +461,7 @@ def index_json(
         or download, for a 30x genome unless "runtime_text" says otherwise."""
     from wgsextract_cli.commands._certification import command_certification
 
-    schemas = {} if compact else input_schemas()
+    schemas = {} if compact else input_schemas(include_network=global_options is None)
     commands = []
     for entry in entries:
         certification = command_certification(entry.path)
@@ -645,36 +645,6 @@ def _expanded_help(parser: argparse.ArgumentParser, action: argparse.Action) -> 
         return parser._get_formatter()._expand_help(action)
     except (KeyError, TypeError, ValueError):
         return plain_help(action.help)
-
-
-@functools.cache
-def _typed_commands() -> dict[str, Any]:
-    from wgsextract_cli import api
-    from wgsextract_cli.api._params import Params
-
-    classes = (getattr(api, name) for name in api.__all__)
-    return {
-        cls.COMMAND: cls
-        for cls in classes
-        if isinstance(cls, type) and issubclass(cls, Params) and cls.COMMAND
-    }
-
-
-def input_schemas() -> dict[str, dict[str, Any]]:
-    """Command path -> the JSON Schema of its typed Params class, with the
-    CLI flag of each property as "x-cli-flag", or the metavar of a positional
-    argument as "x-cli-positional"."""
-    from wgsextract_cli.api._params import json_schema, param_fields
-
-    schemas = {}
-    for path, cls in _typed_commands().items():
-        schema = json_schema(cls, include_certification=False)
-        schema.pop("$schema", None)
-        for field in param_fields(cls):
-            key = "x-cli-positional" if field.spec.positional else "x-cli-flag"
-            schema["properties"][field.name][key] = max(field.flags, key=len)
-        schemas[path] = schema
-    return schemas
 
 
 def run_help(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:

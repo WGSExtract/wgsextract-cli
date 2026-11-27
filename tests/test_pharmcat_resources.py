@@ -55,6 +55,22 @@ def reference_archive(files: dict[str, bytes]) -> bytes:
     return output.getvalue()
 
 
+def test_1591_pharmcat_reuses_verified_archive_in_off_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reference_files: dict[str, bytes]
+) -> None:
+    archive = reference_archive(reference_files)
+    (tmp_path / ".pharmcat-reference.tar").write_bytes(archive)
+    with closing(RangeServer(archive)) as http:
+        monkeypatch.setattr(resources, "REFERENCE_URL", http.url_for("archive.tar"))
+        monkeypatch.setattr(
+            resources, "REFERENCE_SHA256", hashlib.sha256(archive).hexdigest()
+        )
+        with execution_context.bound(network_mode="off", allow_downloads=True):
+            path = Path(resources.ensure_reference(str(tmp_path)))
+        assert path.read_bytes() == reference_files[resources.REFERENCE_FASTA]
+        assert not http.requests
+
+
 @pytest.mark.parametrize("truncated", [True, False], ids=["truncated", "wrong-bytes"])
 def test_pharmcat_bad_reference_download_is_not_installed(
     tmp_path: Path,

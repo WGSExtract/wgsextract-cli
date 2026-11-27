@@ -41,6 +41,7 @@ from wgsextract_cli.core._tabix_sweep import sweep_local
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.download_progress import CancelEvent
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
+from wgsextract_cli.core.network_policy import require_network
 from wgsextract_cli.core.ref_library.segmented import user_agent
 from wgsextract_cli.core.utils import WGSExtractError
 
@@ -151,6 +152,7 @@ class ByteSource:
         self.etag = self.last_modified = ""
         self.local_identity: tuple[int, int, int, int, int] | None = None
         if self.remote:
+            require_network("Remote annotation byte ranges")
             self.url, self.size, headers = self._head(location)
             self.etag = headers.get("ETag") or ""
             self.last_modified = headers.get("Last-Modified") or ""

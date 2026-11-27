@@ -82,6 +82,35 @@ def test_1148_cytobands_require_explicit_download_and_reuse_offline(
         assert not list(target.parent.glob("*.txt.gz"))
 
 
+def test_1591_cytoband_network_mode_does_not_replace_download_consent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = table("hg38")
+    with serving(data=None) as server:
+        source(monkeypatch, server, "hg38", gzip.compress(body, mtime=0))
+        with pytest.raises(api.CommandFailed, match="--download"):
+            api.ref.cytobands(
+                RefCytobandsParams(
+                    ref=tmp_path, network="low", allow_large_download=True
+                )
+            )
+        with pytest.raises(api.CommandFailed, match="--network off"):
+            api.ref.cytobands(
+                RefCytobandsParams(
+                    ref=tmp_path,
+                    network="off",
+                    download=True,
+                    allow_large_download=True,
+                )
+            )
+        assert not server.requests
+        api.ref.cytobands(
+            RefCytobandsParams(ref=tmp_path, network="low", download=True)
+        )
+        assert (tmp_path / "downloads/cytobands_hg38.tsv").read_bytes() == body
+        assert "cytoBand.txt.gz" in server.get_paths
+
+
 @pytest.mark.parametrize(
     "bad",
     [

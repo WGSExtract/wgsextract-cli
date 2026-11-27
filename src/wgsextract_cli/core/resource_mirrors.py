@@ -43,6 +43,8 @@ def mirror_chunks(
     use_cache: bool = True,
     *,
     assembled: Path | None = None,
+    large: bool = True,
+    keep_staged: bool = False,
 ) -> Iterator[bytes]:
     """Verify each part before yielding; reject a corrupt concatenation too.
 
@@ -50,6 +52,8 @@ def mirror_chunks(
     may retain assembled bytes: only the verified complete prefix is reused.
     Directory is stable per destination so URL-bound partials survive retries.
     Download one <=1.9 GB part at a time, retaining interrupted part state.
+    Streaming callers can retain parts that were already staged until their
+    derived output has been published, without keeping newly fetched parts.
     """
     from wgsextract_cli.core.ref_library.downloads import (
         download_file,
@@ -105,6 +109,7 @@ def mirror_chunks(
             expected_sha256=pinned["sha256"],
             use_mirrors=False,
             use_cache=use_cache,
+            large=large,
         ):
             raise MirrorError(f"could not verify {pinned['url']}")
         if part.stat().st_size != pinned["size"]:
@@ -117,7 +122,8 @@ def mirror_chunks(
                 digest.update(chunk)
                 size += len(chunk)
                 yield chunk
-        part.unlink()
+        if not (keep_staged and complete):
+            part.unlink()
     if digest.hexdigest() != entry["sha256"] or size != entry["size"]:
         raise MirrorError("assembled resource checksum or size mismatch")
 
@@ -129,6 +135,8 @@ def download_mirror(
     cancel_event: CancelEvent | None,
     expected_sha256: str | None,
     use_cache: bool = True,
+    *,
+    large: bool = True,
 ) -> bool:
     target = Path(dest)
     work = Path(dest + ".mirror")
@@ -146,6 +154,7 @@ def download_mirror(
                 progress_callback,
                 use_cache,
                 assembled=staged,
+                large=large,
             ):
                 output.write(chunk)
         staged.replace(target)

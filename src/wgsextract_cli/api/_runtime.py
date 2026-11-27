@@ -9,10 +9,11 @@ import threading
 from collections.abc import Callable, Collection, Iterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol, TypeVar
+from typing import Any, Protocol, TypeVar
 
 from wgsextract_cli.core import execution_context
 from wgsextract_cli.core.execution_context import ConfigState
+from wgsextract_cli.core.network_policy import network_options
 from wgsextract_cli.core.remote_input import check_public, is_url
 from wgsextract_cli.core.results import (
     CommandResult,
@@ -213,7 +214,10 @@ def run_inline(
         else None
     )
     try:
-        with execution_context.bound(allow_downloads=_allows_downloads(filled)):
+        with (
+            network_options(filled.network, filled.allow_large_download),
+            execution_context.bound(allow_downloads=_allows_downloads(filled)),
+        ):
             impl(filled)
     finally:
         remove_if_empty(fresh)
@@ -391,6 +395,7 @@ def _run(
             process_scope=scope,
         ),
         local_reference_lookup(),
+        network_options(params.network, params.allow_large_download),
     ):
         record_certification(result, params.certification_path())
         default_outdir = getattr(params, "outdir", None) is None and not settings.get(
@@ -446,7 +451,7 @@ def _one_vcf_input(params: P) -> P:
     same inputs and params."""
     if not params.VCF_INPUT_OVERRIDES_INPUT:
         return params
-    unread: dict[str, None] = {"input": None}
+    unread: dict[str, Any] = {"input": None}
     if getattr(params, "proband", None) is not None:
         unread["vcf_input"] = None
     elif getattr(params, "vcf_input", None) is None:
