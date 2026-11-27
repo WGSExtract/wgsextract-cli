@@ -19,9 +19,10 @@ import contextlib
 import contextvars
 import os
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, field, replace
-from pathlib import Path
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
+
+from wgsextract_cli.core._context_state import ConfigState, execution
 
 if TYPE_CHECKING:
     import threading
@@ -31,16 +32,6 @@ if TYPE_CHECKING:
         ContextThreadPoolExecutor as ContextThreadPoolExecutor,
     )
     from wgsextract_cli.core.results import CommandResult
-
-
-@dataclass(eq=False)
-class ConfigState:
-    """One configuration: the config.toml it is read from (None: the user's)
-    and the settings read from it."""
-
-    path: Path | None = None
-    values: dict[str, Any] = field(default_factory=dict)
-    loaded: bool = False
 
 
 @dataclass(frozen=True)
@@ -66,33 +57,30 @@ class ExecutionContext:
 
 
 _EMPTY = ExecutionContext()  # frozen, so a safe shared default
-_CURRENT: contextvars.ContextVar[ExecutionContext] = contextvars.ContextVar(
-    "wgsextract_execution_context", default=_EMPTY
-)
 
 
 def current() -> ExecutionContext:
     """The running operation's context (an empty one outside any)."""
-    return _CURRENT.get()
+    return execution.get() or _EMPTY
 
 
 @contextlib.contextmanager
 def bound(**changes: Any) -> Iterator[ExecutionContext]:
     """Run the block with these fields of the current context replaced."""
-    context = replace(_CURRENT.get(), **changes)
-    token = _CURRENT.set(context)
+    context = replace(current(), **changes)
+    token = execution.set(context)
     try:
         yield context
     finally:
-        _CURRENT.reset(token)
+        execution.reset(token)
 
 
 def _reset_in_child() -> None:
     # A forked worker (a process pool) must not call the caller's progress
     # callback or cancel a copy of its token; the parent does both.
-    context = _CURRENT.get()
+    context = current()
     if context.progress is not None or context.cancel is not None:
-        _CURRENT.set(replace(context, progress=None, cancel=None))
+        execution.set(replace(context, progress=None, cancel=None))
 
 
 if hasattr(os, "register_at_fork"):
