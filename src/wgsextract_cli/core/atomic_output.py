@@ -196,7 +196,10 @@ def _preserve_output_permissions(
     ):
         os.chown(staged, info.st_uid, info.st_gid)
     staged.chmod(info.st_mode & 0o777)
-    if not all(hasattr(os, name) for name in ("getxattr", "setxattr", "removexattr")):
+    get_xattr: Callable[[Path, str], bytes] | None = getattr(os, "getxattr", None)
+    set_xattr: Callable[[Path, str, bytes], None] | None = getattr(os, "setxattr", None)
+    remove_xattr: Callable[[Path, str], None] | None = getattr(os, "removexattr", None)
+    if get_xattr is None or set_xattr is None or remove_xattr is None:
         return
 
     acl_name = "system.posix_acl_access"
@@ -204,18 +207,18 @@ def _preserve_output_permissions(
     absent = {getattr(errno, name, None) for name in ("ENODATA", "ENOATTR")}
     absent.discard(None)
     try:
-        acl = os.getxattr(final, acl_name)
+        acl = get_xattr(final, acl_name)
     except OSError as error:
         if error.errno not in absent | unsupported:
             raise
         try:
-            os.removexattr(staged, acl_name)
+            remove_xattr(staged, acl_name)
         except OSError as staged_error:
             if staged_error.errno not in absent | unsupported:
                 raise
     else:
         # A known ACL must not be lost if copying it fails.
-        os.setxattr(staged, acl_name, acl)
+        set_xattr(staged, acl_name, acl)
 
 
 def _publish_output_set(
