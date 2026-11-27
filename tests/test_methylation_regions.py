@@ -16,6 +16,7 @@ from wgsextract_cli.cli import platform_support
 from wgsextract_cli.core.config import save_config
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.methylation_annotations import island_regions, promoter_regions
+from wgsextract_cli.core.results import CommandResult
 from wgsextract_cli.main import main
 
 FIXTURES = Path(__file__).parent / "fixtures" / "methylation_regions"
@@ -78,7 +79,7 @@ def _hp_regions_input(tmp_path, params, *, edge_ps=49001, with_hp=True, with_hp2
     return replace(params, input=bam, partition_hp=True, min_cpgs=1, threads=1)
 
 
-def _hp_tsv_rows(result):
+def _hp_tsv_rows(result: CommandResult) -> dict[tuple[str, str], dict[str, str]]:
     [table] = [
         o.path for o in result.outputs if o.role == "methylation_regions_haplotypes"
     ]
@@ -278,6 +279,143 @@ def island_params(tmp_path):
         preset="cpg-islands",
         outdir=tmp_path / "results",
     )
+
+
+@pytest.fixture
+def imprinted_params(tmp_path: Path) -> methylation.MethylationRegionsParams:
+    fasta = tmp_path / "hg38-chr15.fa"
+    start, end, length = 24_954_856, 24_956_829, 101_991_189
+    # Keep the real GRCh38 contig length and DMR boundaries; bases are synthetic.
+    sequence = bytearray(b"N" * 1_000_000)
+    for pos in (start - 2, start, start + 4, start + 8, end):
+        offset = pos % len(sequence)
+        sequence[offset : offset + 2] = b"CG"
+    with fasta.open("wb") as out:
+        out.write(b">chr15\n")
+        blank = (b"N" * 100 + b"\n") * 10_000
+        for mb in range(length // len(sequence)):
+            if mb == start // len(sequence):
+                out.writelines(
+                    sequence[i : i + 100] + b"\n" for i in range(0, len(sequence), 100)
+                )
+            else:
+                out.write(blank)
+        tail = length % len(sequence)
+        out.write((b"N" * 100 + b"\n") * (tail // 100))
+        out.write(b"N" * (tail % 100) + b"\n")
+    subprocess.run(["samtools", "faidx", str(fasta)], check=True)
+    bed = tmp_path / "calls.bedmethyl"
+    bed.write_text(
+        "".join(
+            f"15\t{pos}\t{pos + 1}\tm\t10\t.\t{pos}\t{pos + 1}\t255,0,0"
+            f"\t10\t{modified * 10}\t{modified}\t{10 - modified}\t0\t0\t0\t0\t0\n"
+            for pos, modified in (
+                (start - 2, 10),
+                (start, 8),
+                (start + 4, 0),
+                (start + 8, 4),
+                (end, 10),
+            )
+        ),
+        newline="\n",
+    )
+    return methylation.MethylationRegionsParams(
+        input=bed,
+        ref=fasta,
+        build="hg38",
+        preset="imprinted-dmrs",
+        outdir=tmp_path / "results",
+    )
+
+
+@needs_samtools
+def test_1583_pooled_imprinted_dmrs_keep_source_boundaries_and_provenance(
+    imprinted_params: methylation.MethylationRegionsParams,
+) -> None:
+    result = methylation.regions(imprinted_params)
+    with Path(result.outputs[0].path).open(encoding="utf-8", newline="") as handle:
+        rows = {row["region"]: row for row in csv.DictReader(handle, delimiter="\t")}
+    assert len(rows) == 14
+    assert "MEG3/DLK1:IG-DMR" not in rows
+    assert rows["MEG3:TSS-DMR"]["status"] == "contig_absent"
+    assert {name for name in rows if name.startswith("GNAS")} == {
+        "GNAS-NESP:TSS-DMR",
+        "GNAS-AS1:TSS-DMR",
+        "GNAS-XL:Ex1-DMR",
+        "GNAS A/B:TSS-DMR",
+    }
+    row = rows["SNURF:TSS-DMR"]
+    assert (row["start"], row["end"]) == ("24954856", "24956829")
+    assert (row["expected_cpgs"], row["qualified_cpgs"], row["valid_calls"]) == (
+        "3",
+        "3",
+        "30",
+    )
+    assert float(row["pooled_percent"]) == 40
+    assert result.details
+    annotation = result.details["annotation"]
+    assert isinstance(annotation, dict)
+    assert annotation["doi"] == "10.1186/s13148-022-01358-9"
+    assert "creativecommons.org/licenses/by/4.0" in annotation["license"]
+    assert annotation["asset_sha256"]
+
+
+@needs_samtools
+@needs_modkit
+def test_1583_haplotagged_imprinted_dmr_reports_delta_without_parent_labels(
+    imprinted_params: methylation.MethylationRegionsParams,
+    tmp_path: Path,
+) -> None:
+    sam, bam = tmp_path / "reads.sam", tmp_path / "reads.bam"
+    sam.write_text(
+        "@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr15\tLN:101991189\n"
+        "@RG\tID:ont\tSM:synthetic\tPL:ONT\n"
+        + "".join(
+            f"read{hp}-{i}\t0\tchr15\t24954857\t60\t12M\t*\t0\t0\tCGAACGAACGAA"
+            f"\tIIIIIIIIIIII\tRG:Z:ont\tMM:Z:C+m,0,0,0;\tML:B:C,{prob},{prob},{prob}"
+            f"\tHP:i:{hp}\tPS:i:24954001\n"
+            for hp, prob, depth in ((1, 255, 5), (2, 0, 7))
+            for i in range(depth)
+        ),
+        newline="\n",
+    )
+    subprocess.run(["samtools", "view", "-b", "-o", str(bam), str(sam)], check=True)
+    subprocess.run(["samtools", "index", str(bam)], check=True)
+    result = methylation.regions(
+        replace(imprinted_params, input=bam, partition_hp=True, threads=1)
+    )
+    rows = _hp_tsv_rows(result)
+    snurf = {part: row for (name, part), row in rows.items() if name == "SNURF:TSS-DMR"}
+    assert set(snurf) == {"combined", "hp1", "hp2", "unphased"}
+    assert snurf["combined"]["phase_status"] == "single_ps"
+    assert snurf["combined"]["shared_qualified_cpgs"] == "3"
+    assert float(snurf["combined"]["pooled_percent"]) == pytest.approx(100 * 5 / 12)
+    assert float(snurf["combined"]["hp1_minus_hp2_pp"]) == 100
+
+
+def test_1583_cli_rejects_t2t_for_imprinted_dmrs_before_reading_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "methylation",
+                "regions",
+                "-i",
+                str(tmp_path / "calls.bedmethyl"),
+                "--ref",
+                str(tmp_path / "hs1.fa"),
+                "--build",
+                "t2t",
+                "--preset",
+                "imprinted-dmrs",
+                "-o",
+                str(tmp_path / "results"),
+            ]
+        )
+    assert error.value.code == 2
+    assert "use --build hg38" in capsys.readouterr().err
+    assert not list((tmp_path / "results").glob("*.methylation.tsv"))
 
 
 @needs_samtools

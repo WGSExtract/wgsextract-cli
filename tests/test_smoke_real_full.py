@@ -26,8 +26,10 @@ from tests.smoke_utils import (
 )
 from wgsextract_cli.core.alignment.metadata import get_vcf_build
 from wgsextract_cli.core.builds import canonical_build
+from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.microarray.templates import _resolve_templates_roots
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
+from wgsextract_cli.core.tool_commands import _tool_command_parts
 from wgsextract_cli.core.variant_files import calculate_bam_md5, vcf_index_chromosomes
 
 
@@ -214,16 +216,17 @@ def _samtools_count(bam: Path, region: str, ref: Path) -> int:
 
 @cache
 def _tool_unusable(tool: str, *args: str) -> bool:
-    if not check_tool(tool):
+    command = get_tool_path(tool)
+    if command is None:
         return True
     try:
         result = subprocess.run(
-            [tool, *args],
+            [*_tool_command_parts(command), *args],
             capture_output=True,
             text=True,
             timeout=10,
         )
-    except subprocess.TimeoutExpired:
+    except (OSError, subprocess.TimeoutExpired):
         return True
     return result.returncode != 0
 

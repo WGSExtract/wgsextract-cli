@@ -62,6 +62,10 @@ GENOME_SIDECARS = (
 )  # fmt: skip
 
 
+def genome_restart_dir(fasta: Path) -> Path:
+    return fasta.with_name(f".{fasta.name}.restart")
+
+
 def reference_dict_path(fasta: PathInput) -> str:
     """Sequence dictionary path GATK/Picard expect: hg38.fa.gz -> hg38.dict."""
     return fasta_prefix(fasta) + ".dict"

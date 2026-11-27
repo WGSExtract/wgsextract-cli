@@ -2,10 +2,10 @@
 
 The Windows recipes run `cram_stop.c`, `bam_seq.c` and `cram_buffers.c` against
 all three patched HTS builds. On Linux/glibc with GCC, run the same tests under
-ASan/UBSan from a fresh, checksum-verified HTSlib 1.24 release archive:
+ASan/UBSan from a fresh, checksum-verified HTSlib 1.25 release archive:
 
 ```sh
-packaging/windows/tests/validate_sanitizers.sh /path/to/htslib-1.24.tar.bz2 out/hts-sanitizers 2
+packaging/windows/tests/validate_sanitizers.sh /path/to/htslib-1.25.tar.bz2 out/hts-sanitizers 2
 ```
 
 The runner requires installed compiler/build dependencies, downloads nothing,
@@ -23,10 +23,10 @@ packaging/windows/tests/validate_cache.sh /path/to/patched-htslib out/cache-inva
 ```
 
 For the optional single-sample bulk-copy experiment, supply pristine bcftools
-1.24 source, the isolated candidate patch, and that sanitizer HTSlib build:
+1.25 source, the isolated candidate patch, and that sanitizer HTSlib build:
 
 ```sh
-packaging/windows/tests/validate_group_copy.sh /path/to/bcftools-1.24 \
+packaging/windows/tests/validate_group_copy.sh /path/to/bcftools-1.25 \
   /path/to/0004-bulk-copy-single-sample.patch out/hts-sanitizers out/group-copy
 ```
 

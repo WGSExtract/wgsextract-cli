@@ -51,9 +51,9 @@ its existing Privacy mode and carries over whether launch checks were active.
 
 [Open in gene.iobio](gene-page.md#open-in-geneiobio) also requires explicit
 per-launch consent. It opens `gene.iobio.io` in your browser with the selected
-gene symbol and build only. WGS Extract does not send any sample files; if you
-choose files on the site, it may expose them to iobio's servers through
-`waygate.iobio.io`.
+gene symbol and build only. The site may send that link to its analytics
+provider. WGS Extract does not send any sample files; if you choose files on
+the site, it may expose them to iobio's servers through `waygate.iobio.io`.
 
 ## What external servers can see (IP address & metadata)
 

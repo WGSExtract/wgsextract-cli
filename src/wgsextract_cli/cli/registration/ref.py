@@ -561,5 +561,6 @@ def register(
         "microarray-targets",
         RefMicroarrayTargetsParams,
         cmd_microarray_targets,
-        "Build the genome-wide hg19 and hg38 microarray targets from the chip templates, or delete them.",
+        "Build hg19 and hg38 microarray targets from the chip templates; "
+        "fetch missing liftOver chains only with --download, or delete the targets.",
     )

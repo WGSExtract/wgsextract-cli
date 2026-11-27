@@ -608,7 +608,7 @@ Platform detection, tagged CPU alignment/realignment, x86-64 DeepVariant
 ONT_R104 calling, optional Clair3 calling (Linux and Apple Silicon), Sniffles SV calling,
 optional modkit CpG methylation and optional read-backed phasing are supported.
 
-### Promoter and CpG island summaries
+### Promoter, CpG island and imprinted DMR summaries
 
 Use `methylation regions` on a coordinate-sorted, strand-combined CpG
 bedMethyl from `methylation pileup`, or on a precomputed modkit-style
@@ -623,6 +623,8 @@ wgsextract methylation regions -i sample.cpg.bedmethyl.gz --ref hg38.fa \
   --build hg38 --preset promoters --outdir reports
 wgsextract methylation regions -i sample.cpg.bedmethyl.gz --ref hg38.fa \
   --build hg38 --preset cpg-islands --outdir reports --download
+wgsextract methylation regions -i sample.cpg.bedmethyl.gz --ref hg38.fa \
+  --build hg38 --preset imprinted-dmrs --outdir reports
 ```
 
 - `promoters` uses primary-chromosome
@@ -642,6 +644,14 @@ wgsextract methylation regions -i sample.cpg.bedmethyl.gz --ref hg38.fa \
   islands, the first run needs explicit `--download`; subsequent runs verify and
   reuse the cached table in the reference library's `methylation/` directory.
   The request sends only the public table name to UCSC, never sample data.
+- `imprinted-dmrs` uses 14 bundled GRCh38 differentially methylated regions
+  (DMRs), including imprinting centers and secondary DMRs. Use `--build hg38`
+  with matching input and FASTA. T2T and GRCh37 are not supported for this
+  preset; it never lifts coordinates over. The preset runs locally with no
+  download and works with both pooled calls and `--partition-hp`.
+  It reports methylation for research, not clinical imprinting results or
+  X-inactivation. These intervals are separate from the broader `qc roh`
+  review regions. HP1 and HP2 do not identify the parent of origin.
 - BED positions are zero-based and half-open. A CpG belongs to a region when
   its reference C is inside, even when its G is outside. Overlapping regions
   each receive the CpG. Primary aliases (`21`, `chr21`, assembly accessions)
@@ -670,6 +680,14 @@ For timing and disk measurements on public HG002 data, see
 [methylation region resource estimates](resource_estimates.md#methylation-regions).
 If you already have a site table and do not need haplotype comparisons,
 summarize that table rather than running modkit again.
+
+The [`imprinted-dmrs` BED](../src/wgsextract_cli/assets/methylation/hg38-imprinted-dmrs-v1.bed)
+adapts [Mackay, Bliek, Kagami et al. (2022), Table 2](https://doi.org/10.1186/s13148-022-01358-9),
+© The Author(s) 2022, under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+The retained coordinates are based on [Monk et al.](https://doi.org/10.1080/15592294.2016.1264561).
+We converted the source positions from 1-based closed to 0-based half-open
+BED and removed footnote markers. The 37 bp `MEG3/DLK1:IG-DMR` row, which
+cites a different coordinate source, is omitted; `MEG3:TSS-DMR` is retained.
 
 ### Split region summaries by haplotype
 

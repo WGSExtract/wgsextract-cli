@@ -443,12 +443,11 @@ few threads it has, so on hs38 no setting fits in less than about 12–13 GiB.
 WGSExtract does not offer minimap2's `-I` (split index): a split index of hs38
 needs `--split-prefix` and a merge pass, and maps more slowly.
 
-The published Linux RTX 3090 ONT/HiFi speedups are slice mapping
-measurements, not whole-genome pipeline estimates. The GPU accelerates gap
-fills, not chaining, decoding, sorting or CRAM encoding. Until
-[#1122 (Linux CUDA long-read alignment)](https://github.com/WGSExtract/wgsextract-cli/issues/1122)
-records a full RTX 3090 realignment, don't use the slice speedup to predict
-whole-genome runtime or reduce host resource budgets.
+The GPU accelerates gap fills, not chaining, decoding, sorting or CRAM
+encoding. For whole-genome runtime, use the
+[Linux x86-64 RTX 3090 whole-genome ONT realign comparison](#whole-genome-ont-requirements) rather than
+extrapolating the ONT/HiFi slice mapping speedups or using them to reduce
+host resource budgets.
 
 ### Linux native ONT qualification
 
@@ -482,9 +481,7 @@ preflight asked for about 211 GiB of output-volume space; that was not a
 measured peak. For planning, use the current
 [host requirement](#whole-genome-host-requirement) (about 221 GiB for that
 chunked run) and the [long-read disk estimates](#long-read-disk), including
-additional sort-spill space for unchunked runs. The
-[full Windows CUDA realignment](#whole-genome-ont-requirements) below does
-not qualify Linux CUDA.
+additional sort-spill space for unchunked runs.
 
 ### Long-read disk
 
@@ -770,6 +767,26 @@ accuracy and caveats are in
 | `vcf deepvariant --ont`, Google's CPU image | Ryzen 5 5600X, 10 | 11.3 h | not recorded | from the 81.4 GB primary-only CRAM 3.0 copy: work directory not recorded, 150 GB was enough; CRAM 3.1 input also needs about 1.95x its size free for a staged CRAM 3.0 copy |
 | `vcf clair3 --gpu` | Ryzen 5 5600X + RTX 3090, 6 | 2.5 h | 15.2 GiB, GPU 6.1 GiB | about 100 GiB temporary (full-alignment tensors, about 1 GiB per 1% of the genome) |
 | `rtg vcfeval` of one whole-genome VCF | 4 | 1 min | 7.2 GB | |
+
+On Linux x86-64, [one whole-genome run per backend](https://github.com/WGSExtract/wgsextract-cli/issues/1122#issuecomment-7205786003)
+used a Ryzen 5 5600X (6 cores / 12 hardware threads, 62 GiB usable RAM),
+RTX 3090, eight threads, 4 GiB chunks and 256 MiB sort memory. Both streamed
+the same public HG002 ONT PAO83395 CRAM and aligned to hs38. Total wall time
+includes streaming, building the hs38 index and writing the CRAM and its
+index, but excludes post-run validation.
+
+| Backend | Align step | Total wall time | Peak process-tree RSS | Peak own VRAM | Peak run-directory disk |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Upstream minimap2 2.31-r1302 | 59,799 s (16.61 h) | 59,806 s (16.61 h) | 16.34 GiB | 0 MiB | 212.16 GiB |
+| CUDA `wgse-minimap2` 0.4.0 | 55,142 s (15.32 h) | 55,149 s (15.32 h) | 21.00 GiB | 954 MiB | 212.26 GiB |
+
+The CUDA run finished 7.8% sooner (1.08× as fast). These runs took place under
+different shared-host loads, so the difference does not isolate CUDA's
+contribution. Both produced 7,931,564 primary records and identical sorted
+decoded-record digests. The CPU measurement is from one fresh, uninterrupted
+run; earlier interrupted attempts are excluded. Memory and disk peaks were
+sampled every five seconds; VRAM is usage attributable to the run, not
+whole-device usage.
 
 On native Windows, [one whole-genome run per backend](https://github.com/WGSExtract/wgsextract-cli/issues/1121#issuecomment-7160085047)
 used a Ryzen 9 9900X3D, RTX 5080, local NTFS storage, eight threads, and

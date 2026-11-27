@@ -29,6 +29,7 @@ from wgsextract_cli.core.dependency_checks import (
 )
 from wgsextract_cli.core.download_progress import format_bytes, redact_urls
 from wgsextract_cli.core.gene_map import are_gene_maps_installed
+from wgsextract_cli.core.network_policy import NetworkRestricted
 from wgsextract_cli.core.paths import absolute_path
 from wgsextract_cli.core.ref_library.assets import (
     fasta_prefix,
@@ -110,6 +111,8 @@ def run_index(params: RefIndexParams) -> None:
             ensure_index(ref, runner=run_command)
 
         logging.info("Indexing complete.")
+    except NetworkRestricted:
+        raise
     except (OSError, subprocess.SubprocessError, WGSExtractError) as e:
         raise WGSExtractError(f"Indexing failed: {e}") from e
     record_changed_files(

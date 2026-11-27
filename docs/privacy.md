@@ -18,6 +18,26 @@ installation alone would still allow lockfile resolution and registry queries.
 Incomplete installed runtimes fail with setup guidance, rather than falling back
 to a potentially different CLI on the host's PATH.
 
+## CLI network mode
+
+Set `network_mode` in `config.toml`, or override it for one invocation with
+`--network full|low|off`.
+
+| Mode | Outbound behavior |
+| --- | --- |
+| `full` (default) | Existing operation-specific opt-ins apply. Selecting `full` alone does not grant consent. |
+| `low` | Bulk transfers also require `--allow-large-download`. These include reference genomes and bootstrap archives, panels, models, annotation databases, package installs, and remote alignment or annotation streams. Small requests such as catalog size probes, release and checksum lookups, and pinned cytoband tables can still run with their usual opt-ins. |
+| `off` | Refuses outbound operations even with `--download`, `--allow-large-download` or a disclosure opt-in. Installed data, cached metadata and checksum-verified staged downloads can still be reused locally. |
+
+The CLI does not detect metered connections; the desktop app or another caller
+can select the mode. The Python API and server accept `network` and
+`allow_large_download` on operation parameters. A server job can be stricter,
+but cannot relax the mode selected when `serve` starts. This setting governs
+outbound operations, not the server's inbound listener or network access by
+other programs.
+
+## Download and disclosure opt-ins
+
 Explicit download/install commands may use the network. Other commands need
 `--download` before fetching missing public data. Without permission they
 name the missing data and explain how to confirm the download. Installed,
@@ -33,6 +53,8 @@ explicit `--download` to fetch missing UCSC `cytoBand` data, even if the
 persistent setting is enabled. The request contains only the hg19/hg38 public
 assembly path on `hgdownload.soe.ucsc.edu`; no sample-derived data is sent.
 The genome viewer uses installed tables only and never requests UCSC data.
+`ref microarray-targets` also requires its own `--download` if a liftOver
+chain needed to build the targets is missing.
 
 `analyze comprehensive` runs these same guarded subcommands. Provision missing
 data first with the download command named in the error, or explicitly opt in
@@ -146,6 +168,7 @@ queries. The separate `vep download` command fetches public data only.
 | --- | --- | --- |
 | `qc ancestry --download` | GitHub WGSExtract releases/CDN | Pinned HGDP+1KG reference filename, not sample ancestry or positions |
 | `microarray --download` | `hgdownload.soe.ucsc.edu`; GitHub WGSExtract releases/CDN as mirror | Whole hg18→hg19 / hg19→hg38 chain filenames; sample coordinates are lifted locally and never sent |
+| `ref microarray-targets --download` | Same UCSC hosts and mirrors as `microarray` | Whole liftOver chains for building public chip targets; the command never reads sample data |
 | `vcf pharmcat --download` | `zenodo.org`, via PharmCAT's reference downloader (record 7288118) | Public GRCh38 reference archive/index filenames, not pharmacogenetic variants or sample files |
 | `ref index --aligner bwa-mem2 --download` | Published hs38DH index on Amazon S3 | Reference index filenames, not read/sample information; without permission the index is built locally if RAM permits |
 | `typing hla --download` | IPD-IMGT/HLA's public distribution, via T1K (GitHub ANHIG/IMGTHLA) | Allele-database identifiers, not reads or HLA calls |
@@ -193,7 +216,7 @@ behavior. Classification describes the baseline, before this change.
 | CRAM decoding by htslib/Java tools | No remote fallback intended | Local-only `REF_PATH` retained; no Java reference-download property; missing references fail |
 | Liftover/chip coordinates | Coordinate conversion is local; missing microarray chains were fetched | **Default-violation** found in review: missing whole-chain downloads now require `microarray --download`; pyliftover receives only local chain files |
 | VEP run/verify, chain-annotate, ClinVar/REVEL/gnomAD/SpliceAI/etc. annotation | Ensembl VEP could fall back to online annotation if its cache directory was missing | Local caches/indexes only; a missing cache now stops `vep run` and names `vep download` |
-| DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required; `--pull=never`; no runtime dependency installation |
+| DeepVariant/Clair3/Parabricks containers and native callers | No registry pull | Installed images/models required. Local compute containers use `--network=none` and `--pull=never` in every mode; no runtime dependency installation. |
 | `ref download`, genome-library install, bootstrap, annotation resources, gene maps, microarray targets, ancestry/AADR/somalier/imputation/yBrowse/gnomAD-SV install, ACMG data preparation | Yes | Explicit network operations; retain downloads and mirrors |
 | Reference/dataset listing/status/verify/count/delete | No | Local metadata; remote sizes only with the opt-in above |
 | `ref index --aligner bwa-mem2` on hs38DH | Yes if published index absent | **Default-violation** found in independent review: fetching prebuilt indexes now requires `--download`; local index building stays available |

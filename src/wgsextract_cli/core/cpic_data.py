@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.core.file_lock import build_lock
-from wgsextract_cli.core.network_policy import require_download
+from wgsextract_cli.core.network_policy import NetworkRestricted, require_download
 from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.utils import WGSExtractError
@@ -138,6 +138,8 @@ def ensure(library: Path | None = None) -> Path:
                 expected_sha256=PIN["sha256"],
                 resolve_release_digest=False,
             )
+        except NetworkRestricted:
+            raise
         except (OSError, WGSExtractError) as error:
             ok = False
             logging.debug("CPIC download failed: %s", error)

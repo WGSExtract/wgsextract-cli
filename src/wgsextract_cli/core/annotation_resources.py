@@ -21,6 +21,7 @@ from wgsextract_cli.core.download_progress import (
     format_bytes,
 )
 from wgsextract_cli.core.gnomad_af import build_gnomad_af
+from wgsextract_cli.core.network_policy import require_network
 from wgsextract_cli.core.pharmgkb import download_pharmgkb
 from wgsextract_cli.core.ref_library.layout import download_path, downloads_dir
 from wgsextract_cli.core.utils import (
@@ -378,6 +379,7 @@ def download_revel(
 
 
 def _matches_published_md5(path: str, url: str) -> bool:
+    require_network("CADD checksum lookup", large=False)
     """Whether path matches the <url>.md5 file published next to it."""
     with urlopen(url + ".md5", timeout=60) as response:
         expected: str = response.read().decode().split()[0].lower()

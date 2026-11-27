@@ -242,10 +242,12 @@
 "gene.iobio.cancel" = "Annuler"  # i18n-source-hash:77dfd213
 "gene.iobio.error" = "Impossible d’ouvrir gene.iobio dans votre navigateur."  # i18n-source-hash:df6f8532
 "gene.iobio.licence" = "gene.iobio est gratuit pour un usage universitaire ou personnel ; tout autre usage (y compris commercial) nécessite une licence de Frameshift Genomics (info@frameshift.io). Ne pas utiliser à des fins cliniques."  # i18n-source-hash:509bbb29
+"gene.iobio.loadFiles" = "Sur le site, choisissez « Load → Specify files ». Le sélecteur accepte les BAM avec leur BAI, les CRAM avec leur CRAI et les VCF compressés (.vcf.gz) avec leur TBI ou CSI."  # i18n-source-hash:31032bc6
 "gene.iobio.open" = "Accepter et ouvrir gene.iobio"  # i18n-source-hash:b814d43d
-"gene.iobio.privacy" = "Cette action ouvre gene.iobio.io dans votre navigateur et transmet le symbole du gène (%{gene}) et la version du génome de référence (%{build}). Ces informations peuvent être sensibles. WGS Extract n’envoie ni fichiers d’échantillons, ni chemins de fichiers, ni identifiants d’échantillons. Si vous choisissez un fichier BAM ou VCF et son index sur ce site, il peut les exposer aux serveurs iobio via waygate.iobio.io. Votre accord est enregistré localement, sans conserver le gène ni la version de référence."  # i18n-source-hash:4eba5694
+"gene.iobio.privacy" = "Cette action ouvre gene.iobio.io dans votre navigateur et transmet le symbole du gène (%{gene}) et la version du génome de référence (%{build}). Ces informations peuvent être sensibles et le site peut transmettre le lien à son service de mesure d’audience. WGS Extract n’envoie ni fichiers d’échantillons, ni chemins de fichiers, ni identifiants d’échantillons. Si vous choisissez des fichiers locaux sur ce site, il peut les exposer aux serveurs iobio via waygate.iobio.io. Votre accord est enregistré localement, sans conserver le gène ni la version de référence."  # i18n-source-hash:789e46c6
 "gene.iobio.review" = "Licence et confidentialité de gene.iobio…"  # i18n-source-hash:fb9dc96b
 "gene.iobio.title" = "Ouvrir dans gene.iobio ?"  # i18n-source-hash:0bc72654
+"gene.iobio.unsupportedFile" = "non accepté par le sélecteur de fichiers du site"  # i18n-source-hash:dc6a4107
 "gene.legendBelow" = "Sous le seuil"  # i18n-source-hash:064474a5
 "gene.legendCallable" = "Exploitable"  # i18n-source-hash:3b55289f
 "gene.legendUnknown" = "Pas de données de couverture"  # i18n-source-hash:d4af56c3

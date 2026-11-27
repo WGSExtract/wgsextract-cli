@@ -15,7 +15,7 @@ source:
   - url: https://github.com/lh3/minimap2/archive/refs/tags/v2.31.tar.gz
     sha256: bff334a0e4512644e2f3e29944aeec408f49450f4f74dc39fe89e5273869255b
     target_directory: minimap2
-  - url: https://zlib.net/fossils/zlib-1.3.1.tar.gz
+  - url: https://github.com/madler/zlib/releases/download/v1.3.1/zlib-1.3.1.tar.gz
     sha256: 9a93b2b7dfdac77ceba5a558a580e74667dd6fede4585b91eefb60f03b72df23
     target_directory: zlib
 

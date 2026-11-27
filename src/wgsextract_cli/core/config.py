@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 import sys
 import threading
@@ -11,7 +10,6 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast, overload
 
 from wgsextract_cli.core.errors import WGSExtractError
 from wgsextract_cli.core.execution_context import ConfigState, bound, current
-from wgsextract_cli.core.paths import expand_path, windows_local_app_dir
 from wgsextract_cli.core.workspace_activity import relocated_config_path, workspace_use
 
 if TYPE_CHECKING:
@@ -27,6 +25,8 @@ def _normalize_path_setting(value: Any) -> Any:
     if isinstance(value, Path):
         return str(value.expanduser())
     if isinstance(value, str):
+        from wgsextract_cli.core.paths import expand_path
+
         return expand_path(value)
     return value
 
@@ -153,6 +153,7 @@ def _warn_unknown(keys: Iterable[str], known: Iterable[str], where: str) -> None
     keys = sorted(keys)
     if not keys:
         return
+    import logging
     from difflib import get_close_matches
 
     candidates = list(known)
@@ -168,6 +169,8 @@ def _warn_unknown(keys: Iterable[str], known: Iterable[str], where: str) -> None
 
 def get_config_dir() -> Path:
     """Get the standard user configuration directory for this app."""
+    from wgsextract_cli.core.paths import windows_local_app_dir
+
     if directory := windows_local_app_dir(APP_NAME, APP_AUTHOR):
         return directory
     from platformdirs import user_config_dir
@@ -207,6 +210,11 @@ def config_args(*, keep_awake: bool | None = None) -> list[str]:
 
     selected = _state().path
     args = ["--config", str(selected)] if selected else []
+    context = current()
+    if context.network_mode is not None:
+        args += ["--network", context.network_mode]
+    if context.allow_large_download:
+        args.append("--allow-large-download")
     if keep_awake or (keep_awake is False and settings.get("keep_awake", False)):
         args.append("--keep-awake" if keep_awake else "--no-keep-awake")
     # An internal step's card would describe the step; its caller writes its own.
@@ -286,6 +294,8 @@ def load_config() -> dict[str, Any]:
             and workspace_config.is_file()
             and config_path.resolve() != workspace_config.resolve()
         ):
+            import logging
+
             logging.warning(
                 "Multiple configuration files exist: using existing CLI config %s; "
                 "ignoring workspace config %s. Use --config PATH to choose explicitly.",
@@ -297,6 +307,8 @@ def load_config() -> dict[str, Any]:
         try:
             config = _read_toml(config_path, settings_errors=True)
         except OSError as e:
+            import logging
+
             logging.warning(f"Ignoring unreadable config {config_path}: {e}")
     if not config:
         return config
@@ -310,6 +322,8 @@ def load_config() -> dict[str, Any]:
     )
 
     for legacy_key in LEGACY_SETTINGS & config.keys():
+        import logging
+
         logging.debug(f"Ignoring obsolete setting {legacy_key!r} in {config_path}")
         del config[legacy_key]
 

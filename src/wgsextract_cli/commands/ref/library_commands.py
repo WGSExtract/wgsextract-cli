@@ -373,9 +373,9 @@ def cmd_library(args: argparse.Namespace) -> None:
     print("WGS Extract Reference Library Manager")
     print(f"Library Path: {reflib_dir}")
     print("=" * 80)
-    print("Select an option:")
+    print("Choose a genome or resource to download:")
     print(" 0) Exit")
-    print(" G) Gene Map (GRCh37/GRCh38)")
+    print(" G) Gene Map (GRCh37/GRCh38; delete prompt if installed)")
     for key, (name, _) in _MENU_DOWNLOADS.items():
         suffix = "" if key == "K" or "GRCh38" in name else " (GRCh37/GRCh38)"
         print(f" {key}) {name}{suffix}")
@@ -421,10 +421,10 @@ def cmd_library(args: argparse.Namespace) -> None:
         elif status == "incomplete":
             print(f"\n{genome['final']} is incomplete.")
             action = input("[R]esume, [D]elete, or [C]ancel? ").strip().lower()
-            if action == "c":
-                return
             if action == "d":
                 _delete_genome(genome, reflib_dir)
+                return
+            if action not in ("r", "resume"):
                 return
         _install_genome(genome, reflib_dir, restart=restart)
     except (ValueError, EOFError, KeyboardInterrupt):
@@ -434,8 +434,8 @@ def cmd_library(args: argparse.Namespace) -> None:
 def _install_from_mirrors(
     mirrors: Sequence[Mapping[str, str]], reflib_dir: str
 ) -> None:
-    """Install from the first mirror that works. A later mirror starts afresh:
-    its file may differ (NIH's hs38DH is uncompressed), so no partial is resumed."""
+    """Install from the first mirror that works, keeping each mirror's partial
+    separate: its bytes may differ (NIH's hs38DH is uncompressed)."""
     for i, genome in enumerate(mirrors):
         if i:
             logging.warning(

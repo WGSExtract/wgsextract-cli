@@ -16,6 +16,7 @@ from dataclasses import MISSING, dataclass
 from pathlib import Path
 from typing import Any, ClassVar, Literal, TypeVar
 
+from wgsextract_cli.core.network_options import NETWORK_MODES
 from wgsextract_cli.core.remote_input import is_url
 from wgsextract_cli.core.settings_schema import SETTINGS
 from wgsextract_cli.core.utils import UsageError
@@ -242,6 +243,19 @@ class Params:
     whose saves are atomic and the same from any run (a cache), so a
     read-only library call making them still runs beside others.
     """
+
+    network: str | None = param(
+        None,
+        help="Outbound network mode; server jobs cannot relax the server's mode.",
+        choices=NETWORK_MODES,
+        shared=True,
+    )
+    allow_large_download: bool = param(
+        False,
+        help="Confirm bulk transfers in low network mode; other opt-ins still apply.",
+        action="store_true",
+        shared=True,
+    )
 
     COMMAND: ClassVar[str] = ""
     CLI_COMMAND: ClassVar[str] = ""

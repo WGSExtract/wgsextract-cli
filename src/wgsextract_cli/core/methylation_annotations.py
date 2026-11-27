@@ -27,7 +27,12 @@ TRANSCRIPT_RULE = (
     "ties by accession, with unaccessioned transcripts ordered by GFF feature ID"
 )
 BUILDS = ("hg38", "t2t")
-PRESETS = ("promoters", "cpg-islands")
+IMPRINTED_DMRS = "imprinted-dmrs"
+PRESETS = ("promoters", "cpg-islands", IMPRINTED_DMRS)
+_IMPRINTED_DMRS_ASSET = "hg38-imprinted-dmrs-v1.bed"
+_IMPRINTED_DMRS_SHA256 = (
+    "81ca2c3902d97d2d9d725d0cfe1f741afe50cd344a244ed3a4a465d56f8ddf74"
+)
 
 
 @dataclass(frozen=True)
@@ -149,7 +154,7 @@ def load_regions(
                 regions.extend(promoter_regions(lines, lengths, upstream, downstream))
         metadata.update(chrom_data["promoters"])
         metadata["transcript_rule"] = TRANSCRIPT_RULE
-    else:
+    elif preset == "cpg-islands":
         hg38 = build == "hg38"
         name = hg38_island_path().name if hg38 else "t2t-islands.bed.gz"
         data = _hg38_islands() if hg38 else _asset(name)
@@ -168,5 +173,29 @@ def load_regions(
                 "sha256": HG38_ISLAND_SHA256 if hg38 else HS1_ISLAND_SHA256,
             }
         )
+    elif preset == IMPRINTED_DMRS:
+        data = _asset(_IMPRINTED_DMRS_ASSET)
+        digest = hashlib.sha256(data).hexdigest()
+        if digest != _IMPRINTED_DMRS_SHA256:
+            raise WGSExtractError(
+                f"Checksum mismatch for bundled {_IMPRINTED_DMRS_ASSET}. "
+                "Reinstall WGS Extract from a verified release."
+            )
+        asset_digests[_IMPRINTED_DMRS_ASSET] = digest
+        for line in data.decode("utf-8").splitlines():
+            if line and not line.startswith("#"):
+                chrom, start, end, name = line.split("\t")
+                regions.append(Region(chrom, int(start), int(end), name))
+        metadata.update(
+            source="Mackay et al. (2022), Table 2",
+            doi="10.1186/s13148-022-01358-9",
+            url="https://pmc-oa-opendata.s3.amazonaws.com/PMC9641836.1/PMC9641836.1.xml",
+            sha256="e7b5d4016567aad9a9e5b445f3ff84b7c5c53c9f753cf33479909feb59b62c72",
+            license="https://creativecommons.org/licenses/by/4.0/",
+            version="imprinted-dmrs v1 (GRCh38)",
+            interpretation="Research only; not a clinical imprinting or X-inactivation assessment.",
+        )
+    else:
+        raise UsageError(f"Unknown methylation region preset: {preset}.")
     metadata["asset_sha256"] = asset_digests
     return regions, metadata

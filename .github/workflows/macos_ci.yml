@@ -43,7 +43,7 @@ jobs:
       os: macos
       runner: macos-latest
       timeout-minutes: 59
-      environments: default dev vep-rs fastvep
+      environments: default dev vep-rs fastvep delly
       reference: true
       tests: ${{ inputs.tests || 'all' }}
       matrix: ${{ inputs.matrix || needs.nightly.outputs.matrix }}

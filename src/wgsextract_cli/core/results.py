@@ -43,7 +43,7 @@ from wgsextract_cli.core.artifacts import (
     RunRecord,
 )
 from wgsextract_cli.core.certification import CertificationLabel
-from wgsextract_cli.core.errors import CodedError, ErrorKind, ResultError
+from wgsextract_cli.core.errors import CodedError
 from wgsextract_cli.core.output_schema import Constraints
 from wgsextract_cli.core.provenance_records import (
     Fingerprint as Fingerprint,
@@ -83,6 +83,7 @@ EXIT_USAGE = 2
 EXIT_MISSING_DEPENDENCY = 3
 
 Status = Literal["ok", "failed", "cancelled"]
+ErrorKind = Literal["failure", "usage", "missing_dependency", "cancelled"]
 _COMPRESSION_SUFFIXES = (".gz", ".bgz", ".zst", ".bz2", ".xz")
 _SECRET_NAME = re.compile(r"token|secret|password|passwd|credential|api[_-]?key", re.I)
 
@@ -218,6 +219,15 @@ def redact_argv(argv: Sequence[str]) -> list[str]:
         hide_next = secret
         redacted.append(_redact_strings(arg))
     return redacted
+
+
+@dataclass
+class ResultError:
+    kind: ErrorKind
+    message: str
+    code: Annotated[str, Constraints(pattern="^[a-z][a-z0-9_]*$")] | None = field(
+        default=None, metadata={"omit_none": True}
+    )
 
 
 @dataclass

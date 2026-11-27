@@ -22,6 +22,7 @@ def _vcf(path, records, *, chrom="chr1", length=80, metadata="", samples=("NA",)
         '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n'
         '##FORMAT=<ID=MIN_DP,Number=1,Type=Integer,Description="Minimum depth">\n'
         '##FORMAT=<ID=GQ,Number=1,Type=Integer,Description="Genotype quality">\n'
+        '##FORMAT=<ID=FT,Number=1,Type=String,Description="Genotype filter">\n'
         '##INFO=<ID=END,Number=1,Type=Integer,Description="End">\n'
         '##INFO=<ID=CSQ,Number=.,Type=String,Description="Format: Allele|Consequence|SYMBOL|ALLELE_NUM">\n'
         '##FILTER=<ID=LowQual,Description="Low quality">\n'
@@ -371,6 +372,184 @@ def test_compare_1295_bed_is_applied_after_left_alignment(tmp_path):
         capture_output=True,
     ).stdout
     assert intersection.splitlines() == ["chr1\t1\tCA\tC\t11"]
+
+
+def test_compare_1582_atomizes_mnps_without_losing_original_dosage(tmp_path):
+    ref = tmp_path / "GRCh38.fa"
+    ref.write_text(">chr1\nCAAAAAAA" + "AC" * 36 + "\n", encoding="utf-8")
+    run_command(["samtools", "faidx", ref])
+    build = "##reference=GRCh38\n"
+    a = _vcf(
+        tmp_path / "a.vcf",
+        [
+            "7\t.\tAA\tA\t.\tPASS\t.\tGT\t0/1",
+            "9\t.\tAC\tGT,GG\t.\tPASS\tCSQ=GT|missense_variant|GENE|1\tGT\t1|2",
+            "13\t.\tAC\tGT,<NON_REF>\t.\tPASS\t.\tGT\t1/2",
+            "17\t.\tAC\tGT\t.\tPASS\t.\tGT:FT\t0/1:LowQual",
+        ],
+        metadata=build,
+    )
+    b = _vcf(
+        tmp_path / "b.vcf",
+        [
+            "1\t.\tCA\tC\t.\tPASS\t.\tGT\t0/1",
+            "9\t.\tA\tG\t.\tPASS\t.\tGT\t1/1",
+            "10\t.\tC\tG,T\t.\tPASS\t.\tGT\t1/2",
+            "13\t.\tA\tG\t.\tPASS\t.\tGT\t0/1",
+            "14\t.\tC\tT\t.\tPASS\t.\tGT\t0/1",
+            "17\t.\tA\tG\t.\tPASS\t.\tGT\t0/1",
+        ],
+        chrom="1",
+        metadata=build,
+    )
+    outdir = tmp_path / "comparison"
+    params = api.VcfCompareParams(
+        callset=_inputs(a, b),
+        outdir=outdir,
+        emit_vcf=True,
+        emit_variants=True,
+        ref=ref,
+        allow_unverified_build=True,
+    )
+    api.vcf.compare(params)
+    table = outdir / "compare.variants.tsv"
+    assert [(r["pos"], r["alt"]) for r in _rows(table) if r["support"] == "2"] == [
+        ("1", "C")
+    ]
+    result = api.vcf.compare(replace(params, atomize=True))
+    assert result.details["normalization"] == "atomize_left_align"
+    assert [
+        (r["pos"], r["alt"], r["a_state"], r["a_dosage"], r["b_dosage"])
+        for r in _rows(table)
+    ] == [
+        ("1", "C", "carried", "1", "1"),
+        ("9", "G", "carried", "2", "2"),
+        ("10", "G", "carried", "1", "1"),
+        ("10", "T", "carried", "1", "1"),
+        ("13", "G", "partial_alt", "1", "1"),
+        ("14", "T", "partial_alt", "1", "1"),
+        ("17", "G", "filtered", "", "1"),
+    ]
+    summary = json.loads((outdir / "compare.summary.json").read_text(encoding="utf-8"))
+    total = next(r for r in summary["pairs"] if r["variant_type"] == "all")
+    assert (total["shared_alt"], total["gt_compared"], total["gt_equal"]) == (6, 4, 4)
+    anchor = outdir / "compare.anchor.vcf.gz"
+    projected = run_command(
+        ["bcftools", "query", "-r", "chr1:9-10", "-f", "%POS\t%CSQ[\t%GT]\n", anchor],
+        capture_output=True,
+    ).stdout
+    assert projected.splitlines() == ["9\t.\t1|1", "10\t.\t.|1", "10\t.\t1|."]
+
+
+def test_compare_1582_does_not_carry_primitives_from_uncalled_alts(tmp_path):
+    ref = tmp_path / "GRCh38.fa"
+    ref.write_text(">chr1\n" + "AC" * 40 + "\n", encoding="utf-8")
+    run_command(["samtools", "faidx", ref])
+    a = _vcf(tmp_path / "a.vcf", ["9\t.\tAC\tG,GTC\t.\tPASS\t.\tGT\t0/1"])
+    b = _vcf(tmp_path / "b.vcf", ["9\t.\tA\tAT\t.\tPASS\t.\tGT\t0/1"])
+    outdir = tmp_path / "comparison"
+    api.vcf.compare(
+        api.VcfCompareParams(
+            callset=_inputs(a, b),
+            atomize=True,
+            allow_unverified_build=True,
+            emit_partition_vcfs=True,
+            outdir=outdir,
+            ref=ref,
+        )
+    )
+    query = run_command(
+        [
+            "bcftools",
+            "query",
+            "-f",
+            "%POS\t%REF\t%ALT\n",
+            outdir / "compare.only_b.vcf.gz",
+        ],
+        capture_output=True,
+    ).stdout
+    assert query.splitlines() == ["9\tA\tAT"]
+
+
+def test_compare_1582_partition_vcfs_follow_observed_pairs(callsets, tmp_path):
+    a, b, gvcf = callsets
+    outdir = tmp_path / "comparison"
+    params = api.VcfCompareParams(
+        callset=_inputs(a, b),
+        sample=("a=NA",),
+        reference_evidence="gvcf",
+        gvcf=(f"b={gvcf}",),
+        emit_partition_vcfs=True,
+        outdir=outdir,
+    )
+    result = api.vcf.compare(params)
+    expected = {
+        "shared": ["10\tG\tcarried,carried", "10\tT\tcarried,carried"],
+        "only_a": [
+            "20\tG\tcarried,uncovered",
+            "30\tC\tcarried,no_call",
+            "40\tC\tcarried,callable_reference",
+            "50\tC\tcarried,low_quality_reference",
+            "60\tC\tcarried,other_alt",
+            "70\tC\tcarried,filtered",
+        ],
+        "only_b": ["55\tG\tnot_assessed,carried", "60\tG\tother_alt,carried"],
+    }
+    roles = {output.role for output in result.outputs}
+    for name, rows in expected.items():
+        path = outdir / f"compare.{name}.vcf.gz"
+        assert {f"compare_{name}", f"compare_{name}_index"} <= roles
+        query = run_command(
+            [
+                "bcftools",
+                "query",
+                "-r",
+                "chr1:1-80",
+                "-f",
+                "%POS\t%ALT\t%WGSE_COMPARE_STATE\n",
+                path,
+            ],
+            capture_output=True,
+        ).stdout
+        assert query.splitlines() == rows
+        assert not run_command(
+            ["bcftools", "query", "-l", path], capture_output=True
+        ).stdout
+    assert not (outdir / "compare.anchor.vcf.gz").exists()
+    api.vcf.compare(replace(params, emit_partition_vcfs=False))
+    assert not list(outdir.glob("compare.*.vcf.gz*"))
+
+
+def test_compare_1582_atomized_sites_use_intact_gvcf_blocks(tmp_path):
+    ref = tmp_path / "GRCh38.fa"
+    ref.write_text(">chr1\n" + "AC" * 40 + "\n", encoding="utf-8")
+    run_command(["samtools", "faidx", ref])
+    build = "##reference=GRCh38\n"
+    a = _vcf(tmp_path / "a.vcf", ["9\t.\tAC\tGT\t.\tPASS\t.\tGT\t0/1"], metadata=build)
+    b = _vcf(
+        tmp_path / "b.g.vcf",
+        ["1\t.\tA\t<NON_REF>\t.\tPASS\tEND=80\tGT:MIN_DP:GQ\t0/0:30:60"],
+        metadata=build + "##source=HaplotypeCaller\n",
+    )
+    outdir = tmp_path / "comparison"
+    api.vcf.compare(
+        api.VcfCompareParams(
+            callset=_inputs(a, b),
+            ref=ref,
+            atomize=True,
+            outdir=outdir,
+            allow_unverified_build=True,
+            mode="unique",
+            include=("a",),
+            exclude=("b",),
+            reference_evidence="gvcf",
+            region="chr1:10",
+        )
+    )
+    assert [
+        (r["pos"], r["b_state"], r["decision"])
+        for r in _rows(outdir / "compare.variants.tsv")
+    ] == [("10", "callable_reference", "retained")]
 
 
 def test_compare_1295_truncated_bed_reports_invalid_scope(callsets, tmp_path):

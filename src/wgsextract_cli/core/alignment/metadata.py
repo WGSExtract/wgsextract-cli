@@ -2,6 +2,7 @@ import logging
 import subprocess
 from collections.abc import Sequence
 from os import PathLike, fspath
+from pathlib import Path
 
 from wgsextract_cli.core.builds import (
     build_from_chr1_length,
@@ -19,6 +20,21 @@ from wgsextract_cli.core.ref_library.models import sequence_lengths
 from wgsextract_cli.core.utils import run_command
 
 
+def _bcftools_vcf_header(path: str) -> str:
+    from wgsextract_cli.core.dependencies import get_tool_path
+
+    try:
+        if bcftools := get_tool_path("bcftools"):
+            result = run_command(
+                [bcftools, "view", "-h", path], capture_output=True, check=False
+            )
+            if result.returncode == 0:
+                return result.stdout
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError):
+        logging.debug("Unable to read VCF header with bcftools.", exc_info=True)
+    return ""
+
+
 def get_bam_header(
     bam_path: PathInput, cram_opt: Sequence[str] | PathInput | None = None
 ) -> str:
@@ -32,24 +48,7 @@ def get_bam_header(
     is_vcf = is_vcf_path(bam_path) or bam_path.lower().endswith(".bgz")
 
     if is_vcf:
-        try:
-            bcftools = get_tool_path("bcftools")
-            if bcftools is None:
-                return ""
-            cmd = [bcftools, "view", "-h", bam_path]
-            # Execute without check=True to avoid printing red error logs if it fails
-            result = run_command(cmd, capture_output=True, check=False)
-            if result.returncode == 0:
-                return result.stdout
-        except (
-            OSError,
-            subprocess.SubprocessError,
-            RuntimeError,
-            ValueError,
-            TypeError,
-        ):
-            logging.debug("Unable to read VCF header with bcftools.", exc_info=True)
-        return ""
+        return _bcftools_vcf_header(bam_path)
 
     samtools = get_tool_path("samtools")
     if samtools is None:
@@ -99,18 +98,26 @@ def get_bam_header(
         return ""
 
 
+def vcf_detection_header(vcf_path: str, header: str | None = None) -> str:
+    """Prefer the on-disk text for assembly inference. Re-serializing a VCF
+    with bcftools can drop nonstandard but informative assembly declarations."""
+    from wgsextract_cli.core.artifact_facts import read_header
+    from wgsextract_cli.core.variant_files import is_vcf_path
+
+    path = Path(vcf_path)
+    if (
+        is_vcf_path(path, bcf=False) or path.suffix.lower() == ".bgz"
+    ) and path.is_file():
+        source = read_header(path, "vcf")
+        if source and source.startswith("##fileformat=VCF"):
+            return source
+    return header if header is not None else _bcftools_vcf_header(vcf_path)
+
+
 def get_vcf_build(vcf_path: str, *, header: str | None = None) -> str | None:
     """Resolve the VCF build from its header, falling back to body evidence."""
     try:
-        if header is None:
-            from wgsextract_cli.core.dependencies import get_tool_path
-
-            bcftools = get_tool_path("bcftools")
-            if bcftools is None:
-                return None
-            header = run_command(
-                [bcftools, "view", "-h", vcf_path], capture_output=True
-            ).stdout
+        header = vcf_detection_header(vcf_path, header)
         # The ##contig lengths identify the assembly whatever the file names
         # it (chm13, human_g1k_v37, ...); the text search is the fallback.
         detected = build_from_chr1_length(sequence_lengths(header)) or (

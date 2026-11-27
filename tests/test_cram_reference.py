@@ -3,11 +3,15 @@
 import gzip
 import os
 import shutil
+from pathlib import Path
 
 import pytest
 
+from tests.fake_tools import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import needs_tools, sam_to_bam, write_fasta
+from tests.http_server import serving
 from wgsextract_cli.core.alignment.cram_reference import cram_reference_cache
+from wgsextract_cli.core.network_policy import network_options
 from wgsextract_cli.core.utils import WGSExtractError, run_command
 
 
@@ -72,3 +76,50 @@ def test_1061_missing_ur_decodes_from_local_reference(tmp_path, monkeypatch, suf
     ):
         pytest.fail("A mismatched reference must not reach the native reader")
     assert list(work.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("mode", "confirm_bulk", "remote_input", "allowed"),
+    [
+        ("off", True, True, False),
+        ("full", False, False, False),
+        ("low", True, False, False),
+        ("low", False, True, False),
+        ("low", True, True, True),
+    ],
+)
+def test_1591_legacy_native_url_fallback_obeys_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    confirm_bulk: bool,
+    remote_input: bool,
+    allowed: bool,
+) -> None:
+    require_bare_name_fakes()
+    curl = shutil.which("curl")
+    if not curl:
+        pytest.skip("curl unavailable for legacy HTSlib transport probe")
+    monkeypatch.setenv("PATH", str(tmp_path), prepend=os.pathsep)
+    monkeypatch.setenv("NO_PROXY", "*")
+    with serving(data=b"reference") as http:
+        # Older HTSlib uses libcurl to follow the CRAM header's reference URL.
+        command = [curl, "-fsS", "--max-time", "5"]
+        fallback = http.url_for("reference.fa")
+        http.files["reads.cram"] = b"remote reads"
+        python_tool(
+            tmp_path,
+            "samtools",
+            "import subprocess, sys\n"
+            f"url = sys.argv[-1] if sys.argv[-1].startswith('http://') else {fallback!r}\n"
+            f"raise SystemExit(subprocess.call({command!r} + [url]))",
+        )
+        reads = http.url_for("reads.cram") if remote_input else "reads.cram"
+        with network_options(mode, confirm_bulk):
+            run = run_command(["samtools", "view", reads], True, check=False)
+        if allowed:
+            assert run.stdout == "remote reads"
+            assert http.get_paths == ["reads.cram"]
+        else:
+            assert run.returncode != 0
+            assert not http.requests

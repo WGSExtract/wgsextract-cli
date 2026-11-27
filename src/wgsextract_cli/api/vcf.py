@@ -187,7 +187,7 @@ def compare(
     cancel: CancelToken | None = None,
     check: bool = True,
 ) -> CommandResult:
-    """Write local allele concordance tables and optionally an indexed anchor VCF."""
+    """Write local allele concordance tables and optional indexed VCF exports."""
     from wgsextract_cli.commands.vcf.compare import run_compare
 
     return execute(params, run_compare, progress=progress, cancel=cancel, check=check)

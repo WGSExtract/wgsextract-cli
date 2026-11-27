@@ -34,6 +34,7 @@ from wgsextract_cli.core.acmg_regions import (
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.download_progress import CancelEvent, format_bytes
 from wgsextract_cli.core.execution_context import ContextThreadPoolExecutor
+from wgsextract_cli.core.network_policy import NetworkRestricted
 from wgsextract_cli.core.ref_library import download_file
 from wgsextract_cli.core.utils import (
     WGSExtractError,
@@ -701,6 +702,8 @@ def build(
         try:
             func(*args)
             return True
+        except NetworkRestricted:
+            raise
         except (OSError, HTTPException, WGSExtractError) as e:
             logging.error("%s failed: %s", name, e)
             failed[name] = str(e)

@@ -2410,6 +2410,10 @@ a.doc-link {
   background: rgb(0 0 0 / 55%);
 }
 
+.gene-iobio-files {
+  overflow-wrap: anywhere;
+}
+
 .gene-iobio-actions {
   display: flex;
   flex-wrap: wrap;

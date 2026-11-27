@@ -16,10 +16,11 @@ from pathlib import Path, PureWindowsPath
 
 from wgsextract_cli.core import mini_genome
 from wgsextract_cli.core.aadr_resources import aadr_2m_path
-from wgsextract_cli.core.file_lock import exclusive_lock, held
+from wgsextract_cli.core.file_lock import exclusive_lock, held, shared_file_lock
 from wgsextract_cli.core.ref_library.assets import (
     GENOME_SIDECARS,
     annotation_vcf_names,
+    genome_restart_dir,
     reference_dict_path,
 )
 from wgsextract_cli.core.ref_library.layout import download_dirs
@@ -174,8 +175,8 @@ _GENOME_BUILD_LOCKS = (".bwa-index.lock", ".dense-sa.lock")
 def genome_paths(fasta: Path) -> list[Path]:
     """What a genome leaves beside its FASTA: the FASTA, a partial download,
     its indexes (samtools, bwa, bwa-mem2 and wgse-bwa's dense suffix arrays),
-    its sequence dictionary and their run manifests, and an interrupted index
-    build's staging folders. Not its N counts, which the library bootstrap
+    its sequence dictionary and their run manifests, and staging from an
+    interrupted replacement or index build. Not its N counts, which the library bootstrap
     ships for every catalog genome."""
     made = [
         fasta,
@@ -196,6 +197,7 @@ def genome_paths(fasta: Path) -> list[Path]:
                 *arrays,
                 *sorted(fasta.parent.glob(f"{name}.wgse-sa*")),
                 *_staging_folders(fasta),
+                genome_restart_dir(fasta),
             ]
         )
     )
@@ -230,20 +232,24 @@ def remove_genome(folder: Path, name: str) -> dict[Path, int]:
     (``genome_paths``); return each deleted path with the bytes it freed.
 
     Only entries of ``folder`` itself are deleted, a link as the link. A
-    folder among them other than an index build's staging folder, or an index
-    another run is building, is refused before anything is deleted."""
+    folder among them other than recognized staging, or a reference another
+    run is replacing or indexing, is refused before anything is deleted."""
     plain = name == Path(name).name == PureWindowsPath(name).name
     if not plain or name in ("", ".", ".."):
         raise UsageError(f"{name!r} is not a genome file name.")
     if not folder.is_dir():
         return {}
     fasta = Path(os.path.realpath(folder), name)
+    replacement = genome_restart_dir(fasta)
     locks = [Path(f"{fasta}{suffix}") for suffix in _GENOME_BUILD_LOCKS]
     guards = [Path(f"{lock}.guard") for lock in locks]
     ours = [guard for guard in guards if not guard.exists()]
     deleted = False
     try:
         with contextlib.ExitStack() as stack:
+            stack.enter_context(
+                shared_file_lock(replacement, timeout=10, follow_symlinks=False)
+            )
             # Holding each lock's guard keeps a builder from starting meanwhile.
             for lock in locks:
                 stack.enter_context(exclusive_lock(lock, timeout=10))
@@ -253,7 +259,7 @@ def remove_genome(folder: Path, name: str) -> dict[Path, int]:
                         f" ({lock}); delete {name} once it has finished."
                     )
             found = [p for p in genome_paths(fasta) if p.exists() or p.is_symlink()]
-            staging = set(_staging_folders(fasta))
+            staging = {*_staging_folders(fasta), replacement}
             for path in found:
                 if path.is_dir() and not path.is_symlink() and path not in staging:
                     raise WGSExtractError(f"{path} is a folder; not deleting {name}.")

@@ -290,8 +290,8 @@ def platform_commands(
     if not smoke:
         environments = {
             "linux-x64": ["default", "dev", "vep-rs", "fastvep"],
-            "macos-arm64": ["default", "dev", "vep-rs", "fastvep"],
-            "macos-x64": ["default", "dev", "vep-rs", "fastvep"],
+            "macos-arm64": ["default", "dev", "vep-rs", "fastvep", "delly"],
+            "macos-x64": ["default", "dev", "vep-rs", "fastvep", "delly"],
             "windows-x64": ["default", "dev", "gatk", "vep-rs", "fastvep"],
             "linux-arm64": ["default", "dev", "vep", "fastvep"],
         }[host]
@@ -538,6 +538,8 @@ def required_environments(
     if name == "generic" or not cli or not targets:
         return environments
     environments += ["vep" if host == "linux-arm64" else "vep-rs", "fastvep"]
+    if host in {"macos-arm64", "macos-x64"}:
+        environments.append("delly")
     if host == "windows-x64":
         environments.append("gatk")
     if targets == "all" or "tests/test_imputation.py" in targets:

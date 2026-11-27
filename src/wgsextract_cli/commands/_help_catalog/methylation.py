@@ -16,6 +16,8 @@ ENTRIES: dict[str, CommandHelp] = {
         "With --partition-hp, writes .methylation.hp.tsv (or .parquet) instead.",
         "wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa "
         "--build hg38 --preset promoters",
+        "wgsextract methylation regions -i ont.cpg.bedmethyl.gz --ref hg38.fa "
+        "--build hg38 --preset imprinted-dmrs",
         "wgsextract methylation regions -i haplotagged.bam --ref hg38.fa "
         "--build hg38 --preset promoters --partition-hp --phase-blocks phased.blocks.tsv",
     ),

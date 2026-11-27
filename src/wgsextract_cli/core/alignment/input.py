@@ -11,9 +11,11 @@ from wgsextract_cli.core.utils import WGSExtractError, run_command
 def validate_alignment_input(path: PathInput) -> None:
     from os import fspath
 
+    from wgsextract_cli.core.network_policy import require_network
     from wgsextract_cli.core.remote_input import is_url
 
     if is_url(path):
+        require_network("Remote BAM/CRAM input")
         _quickcheck(fspath(path))  # htslib reads its header and EOF by range.
         return
     file = Path(path).expanduser()

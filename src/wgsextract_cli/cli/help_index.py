@@ -35,6 +35,7 @@ def registry_key(root: Path = PACKAGE_ROOT) -> str:
             "core/certification.py",
             "core/config.py",
             "core/messages.py",
+            "core/network_options.py",
             "core/settings_schema.py",
         )
     )
