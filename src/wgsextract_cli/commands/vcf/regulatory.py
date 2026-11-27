@@ -6,7 +6,7 @@ from wgsextract_cli.api.vcf import VcfRegulatoryParams
 from wgsextract_cli.core import regulatory_data, regulatory_overlap
 from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependency_checks import verify_dependencies
-from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.paths import same_path
 from wgsextract_cli.core.results import current_result
 from wgsextract_cli.core.utils import UsageError, WGSExtractError, popen, run_command
 
@@ -59,7 +59,7 @@ def run_regulatory(params: VcfRegulatoryParams) -> None:
     regulatory_overlap.require_grch38(input_file)
     table = regulatory_data.path(lib.root)
     final = Path(outdir, REGULATORY_ANNOTATED)
-    if absolute_path(input_file) == absolute_path(final):
+    if same_path(input_file, final):
         raise UsageError(
             "vcf regulatory would overwrite its input; choose another --outdir."
         )

@@ -18,7 +18,7 @@ from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
 from wgsextract_cli.core.output_checks import vcf_record_count
-from wgsextract_cli.core.paths import absolute_path
+from wgsextract_cli.core.paths import absolute_path, same_path
 from wgsextract_cli.core.ref_library.assets import input_stem
 from wgsextract_cli.core.ref_library.resolver import ReferenceLibrary
 from wgsextract_cli.core.results import (
@@ -271,7 +271,7 @@ def _run_annotation(
     if journal.dry_run:
         return
     if decision.run:
-        if absolute_path(output) == absolute_path(source):
+        if same_path(output, source):
             raise UsageError(f"Annotation step '{ann}' would overwrite its input.")
         with journal.running(decision) as handle:
             Path(output).parent.mkdir(parents=True, exist_ok=True)
@@ -342,7 +342,7 @@ def _scope_step(
     )  # fmt: skip
     decision = journal.decide(step)
     if decision.run and not journal.dry_run:
-        if absolute_path(output) == absolute_path(source):
+        if same_path(output, source):
             raise UsageError("Region selection would overwrite its input.")
         with journal.running(decision) as handle:
             outdir.mkdir(parents=True, exist_ok=True)
@@ -380,13 +380,6 @@ def _work_dir(path: Path, protected: list[Path], cleanup: list[Path]) -> Path:
     return path
 
 
-def _same_path(output: Path, source: str | Path) -> bool:
-    path = absolute_path(source)
-    return output == path or (
-        output.exists() and path.exists() and output.samefile(path)
-    )
-
-
 def _plan_manifest_stem(
     outdir: Path,
     params: VcfChainAnnotateParams,
@@ -401,7 +394,7 @@ def _plan_manifest_stem(
         *vcf_indexes(input_file), *(dataset(ann, lib) for ann in annotations),
         lib.cadd_indel_file if "cadd" in annotations else None,
     )  # fmt: skip
-    if any(path is not None and _same_path(manifest, path) for path in protected):
+    if any(path is not None and same_path(manifest, path) for path in protected):
         raise UsageError(
             "The dry-run manifest would overwrite an input; choose another --outdir."
         )
@@ -509,7 +502,7 @@ def run_chain_annotate(
     input_file = require_vcf_input(params)
     outdir = absolute_path(params.outdir or absolute_path(input_file).parent)
     final_out = outdir / "chain_annotated.vcf.gz"
-    if _same_path(final_out, input_file):
+    if same_path(final_out, input_file):
         raise UsageError(
             "vcf chain-annotate would overwrite its input; choose another --outdir."
         )

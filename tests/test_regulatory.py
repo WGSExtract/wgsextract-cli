@@ -248,3 +248,24 @@ def test_1624_refseq_and_reannotation_preserve_unrelated_utf8(
     assert "CCRE_CLASS=PLS" in result
     assert "TEXT=café" in result
     assert 'Description="café"' in result
+
+
+def test_1663_refuses_to_replace_input_through_symlinked_outdir(
+    tmp_path: Path, imported: Path
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(source, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks are unavailable")
+    vcf = source / "regulatory_annotated.vcf.gz"
+    original = gzip.compress(_vcf(source).read_bytes())
+    vcf.write_bytes(original)
+
+    with pytest.raises(api.CommandFailed, match=r"overwrite its input.*--outdir"):
+        api.vcf.regulatory(
+            VcfRegulatoryParams(input=vcf, ref=imported, outdir=alias, network="off")
+        )
+    assert vcf.read_bytes() == original
