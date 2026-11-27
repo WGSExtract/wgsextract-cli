@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
@@ -10,19 +11,20 @@ from wgsextract_cli import __version__
 if TYPE_CHECKING:
     from argparse import ArgumentParser
 
+_VERSION_TEXT = f"wgsextract {__version__}"
+
 
 def register_version(parser: ArgumentParser) -> None:
-    parser.add_argument(
-        "--version", action="version", version=f"wgsextract {__version__}"
-    )
+    parser.add_argument("--version", action="version", version=_VERSION_TEXT)
 
 
 def show_version() -> None:
-    from argparse import ArgumentParser
-
-    parser = ArgumentParser(prog="wgsextract", add_help=False)
-    register_version(parser)
-    parser.parse_args(["--version"])
+    try:
+        (sys.stdout or sys.stderr).write(_VERSION_TEXT + "\n")
+    except (AttributeError, OSError):
+        # Match argparse when stdout is unavailable or the pipe closes.
+        pass
+    raise SystemExit(0)
 
 
 def version_only(argv: Sequence[str]) -> bool:
