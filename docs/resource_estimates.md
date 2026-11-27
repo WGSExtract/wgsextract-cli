@@ -677,17 +677,16 @@ writes every full-alignment tensor before predicting any (below).
 On Apple Silicon, the WGSE-built `wgse-clair3` caller instead selects **MPS
 inference with CPU streaming/scaling**, including gVCF. It uses CPU-path
 temporary-space and time estimates, not the CUDA tensor budget or NVIDIA
-memory thresholds. These time estimates are conservative placeholders, not
-measured MPS whole-genome times. MPS availability and the patched package
-are mandatory preflight checks; no automatic fallback or installation.
-Package publication/Pixi pinning is done (`macos-clair3-1`); whole-genome
-qualification is pending; see [the package release](../native/clair3/README.md#packaging-and-release).
+memory thresholds. The CLI's CPU-path estimates are not calibrated for MPS.
+MPS availability and the patched package are mandatory preflight checks;
+there is no automatic fallback or installation. See the
+[pinned package](../native/clair3/README.md#packaging-and-release).
 
 **M1 Pro sizing, 2026-11-18/19:** 10 cores, 32 GiB, four calling threads,
 Clair3 2.0.5/PyTorch 2.14.1, original-alignment public HG002 ONT reads,
 `r1041_e82_400bps_sup_v400`, through the real CLI with gVCF. Only chr20 was
 streamed from the public CRAM, once, into a shared 3.7 GiB BAM; the same
-local BAM/reference/model served both runs. No whole-genome run was made.
+local BAM/reference/model served both runs.
 The table is the awake paired repeat on 2026-11-19 with the published
 `macos-clair3-1` package: `caffeinate`, CPU then MPS in one turn of the shared
 bench lock (no other timed work; one-minute load 15–33 at the CPU run's start,
@@ -720,6 +719,22 @@ preflight estimate (~0.18 GiB); reserve space from measurements, not that
 estimate alone. Before paired whole genomes, check large-contig/gather memory
 and staging disk, and use run-scoped sleep prevention and failure
 notifications.
+
+**M1 Pro whole primary genome:** The [HG002 ONT MPS + LongPhase run](https://github.com/WGSExtract/wgsextract-cli/issues/1101#issuecomment-7214587498)
+used four caller threads, gVCF, Clair3 2.0.5 and `macos-clair3-2`. It called
+chr1–22, chrX, chrY and chrM serially in separate native-caller runs, excluding
+unplaced and decoy contigs. Measured totals exclude pauses and failed attempts.
+
+| Phase | Total elapsed | Peak sampled process-tree RSS | Disk |
+| --- | ---: | ---: | ---: |
+| Stage public CRAM into indexed per-contig BAMs | 358.58 min | Not measured | 14.17 GiB largest BAM |
+| Call variants with MPS and LongPhase | 500.53 min (8 h 21 min) | 8.46 GiB | 1.27 GiB peak caller temp; 1.30 GiB total VCF + gVCF |
+
+These are per-contig workflow measurements, not estimates of a single
+whole-genome CLI invocation. Sampled tree RSS can double-count shared pages
+and does not measure unified GPU-memory use. The whole-genome CPU baseline
+was not measured, so the paired chr20 speedup cannot be applied to this run.
+See the [accuracy results](ont.md#clair3-optional).
 
 ### Clair3's temporary space
 
