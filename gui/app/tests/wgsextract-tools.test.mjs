@@ -35,7 +35,7 @@ const depsList = {
                 version: "Sniffles2 2.6", environment: "pacbio", environment_tools: ["pbmm2", "pbsv", "sniffles"], can_uninstall: true,
             }),
             tool({ name: "plink2", note: "Download PLINK 2 for your system." }),
-            tool({ name: "sambamba", status: "unavailable", note: "sambamba isn't built for win32 AMD64." }),
+            tool({ name: "sambamba", status: "unavailable", note: "sambamba isn't available on Windows: only Linux uses it." }),
         ],
     },
 };
@@ -59,7 +59,7 @@ test("the Tools table offers Install, Uninstall or Not available as the CLI says
         gatk: [["tool-install", ""]],
         sniffles: [["tool-uninstall", ""]],
         plink2: [["tool-manual", "Download PLINK 2 for your system."]],
-        sambamba: [["tool-unavailable", "sambamba isn't built for win32 AMD64."]],
+        sambamba: [["tool-unavailable", "sambamba isn't available on Windows: only Linux uses it."]],
     });
 });
 
@@ -73,7 +73,7 @@ test("each Tools row shows its status, whether it is mandatory, and where it com
     assert.deepEqual(rows.gatk.tags.map((tag) => tag.title), ["optional"]);
     assert.equal(rows.samtools.values.details, "samtools 1.24");
     assert.equal(rows.fastp.values.environment, "default");
-    assert.equal(rows.sambamba.values.details, "sambamba isn't built for win32 AMD64.");
+    assert.equal(rows.sambamba.values.details, "sambamba isn't available on Windows: only Linux uses it.");
     // The uninstall confirmation names every tool the environment takes with it.
     assert.equal(rows.sniffles.values.environmentTools, "pbmm2, pbsv, sniffles");
     for (const row of Object.values(rows)) {

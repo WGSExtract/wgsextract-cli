@@ -4,6 +4,7 @@ offer "Install and Continue" before a run, as it does for a missing genome."""
 
 import json
 import os
+import platform
 import sys
 from pathlib import Path
 
@@ -13,8 +14,12 @@ from tests.fake_tools import python_tool
 from wgsextract_cli.core import runtime, windows_arm64
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.tool_catalog import (
+    HOST_ONLY_TOOLS,
     INSTALL_HINTS,
     PIXI_TOOL_ENVS,
+    PLATFORM_ONLY_TOOLS,
+    UNAVAILABLE_WHY,
+    host_label,
     optional_dependency_tools,
     platform_unavailable_tools,
 )
@@ -103,10 +108,45 @@ def test_list_marks_tools_this_platform_cannot_have(host, fake_pixi, capsys):
 
     pbmm2 = _row(document, "pbmm2")
     assert pbmm2["status"] == "unavailable" and not pbmm2["can_install"]
-    assert "pbmm2" in pbmm2["note"]
+    assert pbmm2["note"] == (
+        f"pbmm2 isn't available on {host_label()}: "
+        "PacBio publishes it on Bioconda for Linux x64 only."
+    )
     for tool in platform_unavailable_tools():
         row = _row(document, tool)
         assert row["status"] == "unavailable" and not row["can_install"], tool
+        assert row["note"].startswith(f"{tool} isn't available on {host_label()}: ")
+
+
+def test_every_platform_limited_tool_says_why():
+    """The Tools page explains "not available" with the reason, not just the
+    platform, so every tool some computer can't have needs one."""
+    limited = {
+        tool
+        for tool, platforms in PLATFORM_ONLY_TOOLS.items()
+        if set(platforms) != {"linux", "darwin", "win32"}
+    } | set(HOST_ONLY_TOOLS)
+    assert limited <= set(UNAVAILABLE_WHY)
+
+
+@pytest.mark.parametrize(
+    ("system", "machine", "label"),
+    [
+        ("win32", "AMD64", "Windows"),
+        ("win32", "ARM64", "Windows ARM64"),
+        ("darwin", "arm64", "macOS on Apple silicon"),
+        ("darwin", "x86_64", "macOS on Intel"),
+        ("linux", "x86_64", "Linux x64"),
+        ("linux", "aarch64", "Linux ARM64"),
+    ],
+)
+def test_host_label_names_the_computer_as_people_do(
+    monkeypatch, system, machine, label
+):
+    """WGS Extract is 64-bit only, so Windows is never "win32"."""
+    monkeypatch.setattr(sys, "platform", system)
+    monkeypatch.setattr(platform, "machine", lambda: machine)
+    assert host_label() == label
 
 
 def test_list_tells_how_to_install_a_tool_the_app_cannot(host, capsys):
