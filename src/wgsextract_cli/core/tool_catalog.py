@@ -113,9 +113,19 @@ def host_label() -> str:
     machine = platform.machine().lower()
     arm = machine in {"arm64", "aarch64"}
     if sys.platform == "win32":
+        # The computer's CPU, not this process's: x64 Python runs emulated on ARM64.
+        from wgsextract_cli.core.windows_arm64 import (
+            IMAGE_FILE_MACHINE_ARM64,
+            windows_native_machine,
+        )
+
+        if (native := windows_native_machine()) is not None:
+            arm = native == IMAGE_FILE_MACHINE_ARM64
         return "Windows ARM64" if arm else "Windows"
     if sys.platform == "darwin":
-        return "macOS on Apple silicon" if arm else "macOS on Intel"
+        from wgsextract_cli.core.native_support import _apple_silicon
+
+        return "macOS on Apple silicon" if _apple_silicon() else "macOS on Intel"
     if sys.platform.startswith("linux"):
         return "Linux ARM64" if arm else "Linux x64"
     return f"{sys.platform} {platform.machine()}"
@@ -156,8 +166,8 @@ UNAVAILABLE_WHY = {
     "sniffles": _BIOCONDA_ONLY,
     "run_clair3.sh": "Bioconda builds Clair3 2.0.5+ for Linux and Apple silicon "
     "Macs only",
-    "run_deepvariant": "Google's DeepVariant image is x86-64 only; ARM64 "
-    "computers use WGS Extract's native wgse-deepvariant instead",
+    "run_deepvariant": "Google's DeepVariant image is x86-64 only; Apple "
+    "silicon Macs use WGS Extract's native wgse-deepvariant instead",
     "wgse-deepvariant": "DeepVariant builds only on Linux, so WGS Extract's "
     "native build is for Linux x64 and Apple silicon Macs",
     "GLIMPSE2_phase": _GLIMPSE2,

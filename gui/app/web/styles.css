@@ -2586,6 +2586,12 @@ a.doc-link {
   margin-bottom: 0;
 }
 
+.library-hide-rows {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+}
+
 .library-filter {
   width: min(100%, 24em);
 }

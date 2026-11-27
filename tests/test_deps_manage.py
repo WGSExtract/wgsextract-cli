@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 from tests.fake_tools import python_tool
-from wgsextract_cli.core import runtime, windows_arm64
+from wgsextract_cli.core import native_support, runtime, windows_arm64
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.tool_catalog import (
     HOST_ONLY_TOOLS,
@@ -68,6 +68,15 @@ def _json(capsys, *argv: str) -> tuple[int, dict]:
 
 def _row(document: dict, tool: str) -> dict:
     return next(row for row in document["details"]["tools"] if row["name"] == tool)
+
+
+def test_list_names_the_commands_that_use_each_tool(host, capsys):
+    """The desktop app hides, in Basic mode, tools only Advanced commands use."""
+    _, document = _json(capsys, "deps", "list")
+
+    assert "vcf variantqc" in _row(document, "discvrseq")["used_by"]
+    assert "vcf info" in _row(document, "bcftools")["used_by"]
+    assert all(isinstance(row["used_by"], list) for row in document["details"]["tools"])
 
 
 def test_list_succeeds_where_check_fails_on_a_missing_mandatory_tool(host, capsys):
@@ -143,9 +152,17 @@ def test_every_platform_limited_tool_says_why():
 def test_host_label_names_the_computer_as_people_do(
     monkeypatch, system, machine, label
 ):
-    """WGS Extract is 64-bit only, so Windows is never "win32"."""
+    """WGS Extract is 64-bit only, so Windows is never "win32". The computer's
+    own CPU counts, so emulated x64 Python on ARM64 still says ARM64."""
+    arm = machine.lower() in {"arm64", "aarch64"}
     monkeypatch.setattr(sys, "platform", system)
-    monkeypatch.setattr(platform, "machine", lambda: machine)
+    monkeypatch.setattr(platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(
+        windows_arm64, "windows_native_machine", lambda: 0xAA64 if arm else 0x8664
+    )
+    monkeypatch.setattr(native_support, "_apple_silicon", lambda: arm)
+    if system == "linux":
+        monkeypatch.setattr(platform, "machine", lambda: machine)
     assert host_label() == label
 
 

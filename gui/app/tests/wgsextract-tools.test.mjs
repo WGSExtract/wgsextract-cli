@@ -107,6 +107,15 @@ test("a table's keyword filter keeps rows holding every typed word, in any case"
     assert.ok(!rowMatchesFilter(text, "openjdk missing"));
 });
 
+test("Tools rows carry the commands that use each tool, and the page hides mandatory and pre-installed by default", () => {
+    const rows = items({ details: { tools: [tool({ name: "discvrseq", used_by: ["vcf variantqc"] }), tool({ name: "tar" })] } }).items;
+    assert.deepEqual(rows.map((row) => row.values.usedBy), ["vcf variantqc", ""]);
+    assert.equal(control.rowCommandsValue, "usedBy");
+    assert.equal(control.rowTemplate.values.usedBy, "{{usedBy}}");
+    assert.deepEqual(control.hideRows.tags, ["mandatory", "pre-installed"]);
+    assert.equal(control.hideRows.checked, true);
+});
+
 test("the Tools table needs deps list's tool rows", () => {
     assert.throws(() => items({ details: {} }), /no tool list/);
 });

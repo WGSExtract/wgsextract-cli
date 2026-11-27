@@ -21,12 +21,27 @@ export function precheckLabels() {
 }
 
 let dataSourceGeneration = 0;
+/** Bumped when one data source is dropped, so a load already under way for it can't refill the cache. */
+const keyGenerations = new Map<string, number>();
 
 export function clearDataSourceCache() {
     dataSourceGeneration += 1;
     state.dataSourcePayloads.clear();
     state.dataSourceErrors.clear();
     state.loadingDataSources.clear();
+}
+
+/** Drops the cached results (and errors and loads under way) of the data sources `drop` picks, so they load again. */
+export function invalidateDataSources(drop: (key: string) => boolean) {
+    const keys = new Set([...state.dataSourcePayloads.keys(), ...state.dataSourceErrors.keys(), ...state.loadingDataSources]);
+    for (const key of keys) {
+        if (drop(key)) {
+            keyGenerations.set(key, (keyGenerations.get(key) ?? 0) + 1);
+            state.dataSourcePayloads.delete(key);
+            state.dataSourceErrors.delete(key);
+            state.loadingDataSources.delete(key);
+        }
+    }
 }
 
 export function ensureDataSource(key: string, source: ManifestLocation, context: CommandContext) {
@@ -40,9 +55,11 @@ export function ensureDataSource(key: string, source: ManifestLocation, context:
     state.dataSourceErrors.delete(key);
     state.loadingDataSources.add(key);
     const generation = dataSourceGeneration;
+    const keyGeneration = keyGenerations.get(key) ?? 0;
+    const current = () => generation === dataSourceGeneration && keyGeneration === (keyGenerations.get(key) ?? 0);
     api<DataSourcePayload>("/api/datasource", { method: "POST", body: { source, context } })
         .then((payload) => {
-        if (generation !== dataSourceGeneration
+        if (!current()
             || Object.keys(payload.displayPaths ?? {}).some((id) => state.fieldValues[id] !== context.fieldValues?.[id])) {
             return;
         }
@@ -51,12 +68,12 @@ export function ensureDataSource(key: string, source: ManifestLocation, context:
         state.dataSourceErrors.delete(key);
     })
         .catch((error) => {
-        if (generation === dataSourceGeneration) {
+        if (current()) {
             state.dataSourceErrors.set(key, errorMessage(error));
         }
     })
         .finally(() => {
-        if (generation === dataSourceGeneration) {
+        if (current()) {
             state.loadingDataSources.delete(key);
             scheduleRender();
         }

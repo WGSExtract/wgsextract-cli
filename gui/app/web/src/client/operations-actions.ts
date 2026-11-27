@@ -11,6 +11,7 @@ import { actionNoticeKey } from "./result-view.js";
 import { openGenomeViewer } from "./genome-viewer-launcher.js";
 import { checkExistingOutput, holdBackAlreadyRun } from "./operations-already-run.js";
 import { clearFileStateCache } from "./operations-data.js";
+import { invalidateAfterAction } from "./list-cache.js";
 import { prerequisitesInstalled } from "./operations-prerequisites.js";
 import type { ActionReference, ActionSpec, CommandContext, CommandSpec, LastResultDocumentPaths, TerminalEntry, ValueMap } from "../../../shared/types.js";
 
@@ -121,6 +122,7 @@ export async function streamCommand(
     options: { onOutput?: (text: string) => void; signal?: AbortSignal } = {},
 ): Promise<number | null> {
     const command = action.command ? displayCommand(action.command, context) : "";
+    const pageID = state.activePageID;
     const runningID = appendTerminal(
         "command",
         action.title,
@@ -183,7 +185,7 @@ export async function streamCommand(
     finally {
         options.signal?.removeEventListener("abort", forwardAbort);
         runningActionControllers.delete(runningID);
-        state.dataSourcePayloads.clear();
+        invalidateAfterAction(action, pageID);
         clearFileStateCache();
         scheduleRender();
     }

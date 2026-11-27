@@ -11,7 +11,7 @@ import { renderSetupStatusSection, renderStandardOptionsAccessory } from "./view
 import { renderSettingFolderMoveDialog, renderWorkspaceLocationSection } from "./view/workspace-location.js";
 export { renderSetupGlobalStatusBar, renderSetupPromptDialog, setupHasNeverRun, setupNeedsAttention, setupPageID, setupPromptMessage, } from "./view/setup.js";
 import { renderUpdateNavigationItem } from "./view/update.js";
-import { actionTitledForUIMode, isShownInUIMode, visibleActions, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
+import { actionTitledForUIMode, basicCommandPrefixes, commandRunBy, isShownInUIMode, visibleActions, visibleControls, visibleOptions, visiblePages, visibleRows, visibleSections, type UIMode } from "../../../shared/ui-mode.js";
 import type { BundleManifest, BundlePage, CommandContext, LocalizedOption, ControlOption, ControlSpec, ManifestLocation, PageSection, PendingConfirmation, RowColumnSpec, RowSpec, ConfigSetting, ValueMap } from "../../../shared/types.js";
 function requiredManifest(): BundleManifest {
     if (!state.manifest) {
@@ -487,10 +487,36 @@ export function renderInfoGrid(control: ControlSpec) {
     </div>
   `;
 }
+/** A list's rows for this mode: Basic leaves out rows only Advanced's commands use (`rowCommandsValue`). */
+export function modeRows(control: ControlSpec, manifest: BundleManifest | null, mode: UIMode): RowSpec[] {
+    const rows = visibleRows(hydrateRows(control), mode);
+    const value = typeof control.rowCommandsValue === "string" ? control.rowCommandsValue : "";
+    if (mode !== "basic" || !value || !manifest) {
+        return rows;
+    }
+    const prefixes = basicCommandPrefixes(manifest, control);
+    return rows.filter((row) => {
+        const commands = String(row.values?.[value] ?? "").split(",").map((command) => command.trim()).filter(Boolean);
+        return !commands.length || commands.some((command) => commandRunBy(command, prefixes));
+    });
+}
+
+/** The tag ids the list's "hide" checkbox covers, when it's checked (as it is until the user unchecks it). */
+export function hiddenRowTags(control: ControlSpec, checked: boolean | undefined): string[] {
+    const hide = control.hideRows as { tags?: unknown; checked?: unknown } | undefined;
+    if (!hide || !Array.isArray(hide.tags) || !(checked ?? hide.checked !== false)) {
+        return [];
+    }
+    return hide.tags.map(String);
+}
+
 export function renderLibraryList(control: ControlSpec, context: CommandContext, location: ManifestLocation) {
-    const rows = visibleRows(hydrateRows(control), state.uiMode);
-    const columns = (control.columns ?? []).filter((column) => isShownInUIMode(column, state.uiMode));
+    const listed = modeRows(control, state.manifest, state.uiMode);
     const key = `control:${control.id}`;
+    const hiddenTags = hiddenRowTags(control, state.libraryHideRows.get(key));
+    const rows = listed.filter((row) => !(row.tags ?? []).some((tag) => hiddenTags.includes(String(tag.id ?? ""))));
+    const hide = control.hideRows as { label?: unknown } | undefined;
+    const columns = (control.columns ?? []).filter((column) => isShownInUIMode(column, state.uiMode));
     if (state.loadingDataSources.has(key) && !state.dataSourcePayloads.has(key)) {
         return `
       <div class="library-list">
@@ -505,16 +531,19 @@ export function renderLibraryList(control: ControlSpec, context: CommandContext,
     <div class="library-list">
       <div class="library-list-header">
         <div class="control-label">${escapeHTML(control.label)}${renderTooltip(control.tooltip)}</div>
-        ${rows.length
+        ${listed.length
         ? `<input type="search" class="library-filter" data-library-filter="${escapeAttribute(key)}"
               value="${escapeAttribute(filter)}" placeholder="${escapeAttribute(state.labels.libraryFilterLabel)}"
               aria-label="${escapeAttribute(state.labels.libraryFilterLabel)}">`
         : ""}
+        ${listed.length && hide && typeof hide.label === "string"
+        ? `<label class="library-hide-rows"><input type="checkbox" data-library-hide-rows="${escapeAttribute(key)}" ${hiddenTags.length ? "checked" : ""}> ${escapeHTML(hide.label)}</label>`
+        : ""}
       </div>
-      ${rows.length
+      ${listed.length
         ? `<p class="empty" role="status" data-library-no-matches="${escapeAttribute(key)}" ${matches ? "hidden" : ""}>${escapeHTML(state.labels.libraryNoMatchesTitle)}</p>`
         : ""}
-      ${rows.length
+      ${listed.length
         ? `<div class="table-wrap" data-scroll-key="${escapeAttribute(key)}" tabindex="0" role="region" aria-label="${escapeAttribute(control.label)}"><table>
               <thead><tr>
                 ${columns.map((column) => `<th>${escapeHTML(column.title)}</th>`).join("")}

@@ -395,6 +395,7 @@ function row(tool) {
         tooltip: toolTooltip(tool),
         values: {
             name: tool.name,
+            usedBy: (tool.used_by ?? []).join(","),
             details: installed ? tool.version ?? "" : tool.note ?? "",
             environment: source(tool),
             environmentTools: (tool.environment_tools ?? []).join(", "),

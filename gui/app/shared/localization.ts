@@ -334,6 +334,9 @@ function localizeControl(control: ControlSpec, table: StringMap): ControlSpec {
             values: mapValues(recordValue(item.values) ?? item, (value) => localizedText(String(value), table)),
         })),
         rowActions: (control.rowActions ?? []).map((action) => localizeAction(action, table)),
+        ...(control.hideRows && typeof control.hideRows === "object"
+            ? { hideRows: localizeFields(control.hideRows as Record<string, unknown>, table, ["label"]) }
+            : {}),
         settings: (control.settings ?? []).map((setting) => localizeSetting(setting, table)),
     };
     if (control.rowTemplate) {

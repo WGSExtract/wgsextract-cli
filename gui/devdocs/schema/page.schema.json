@@ -123,6 +123,21 @@
           "default": []
         },
         "dataSource": { "$ref": "#/$defs/dataSource" },
+        "hideRows": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["label", "tags"],
+          "description": "libraryList: a checkbox beside the filter that hides rows carrying any of these tag ids.",
+          "properties": {
+            "label": { "type": "string" },
+            "tags": { "type": "array", "items": { "type": "string" } },
+            "checked": { "type": "boolean", "default": true, "description": "Whether the checkbox starts checked." }
+          }
+        },
+        "rowCommandsValue": {
+          "type": "string",
+          "description": "libraryList: the row value listing, comma-separated, the CLI commands that use the row's item. Basic mode hides a row whose commands only Advanced's actions run."
+        },
         "configFile": { "$ref": "#/$defs/configFile" },
         "settings": {
           "type": "array",
