@@ -2433,6 +2433,23 @@ a.doc-link {
   width: fit-content;
 }
 
+.network-mode-picker {
+  flex-wrap: wrap;
+}
+
+.network-mode-picker > span {
+  flex-shrink: 0;
+}
+
+.network-mode-picker select {
+  width: auto;
+  max-width: 100%;
+}
+
+.network-cost-status {
+  margin: 0;
+}
+
 .gene-form {
   display: grid;
   grid-template-columns: minmax(10rem, max-content) minmax(0, 40rem);

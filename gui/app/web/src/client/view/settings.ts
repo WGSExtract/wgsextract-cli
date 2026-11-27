@@ -186,13 +186,13 @@ export function renderNetworkSettings() {
       <h3 id="network-settings-title">${escapeHTML(labels.networkTitle ?? "")}</h3>
       <p class="muted">${escapeHTML(labels.networkSettingsDetail ?? "")}</p>
       <div class="network-settings-options">
-        <label>
-          ${escapeHTML(labels.networkMode ?? "")}
+        <label class="network-mode-picker">
+          <span>${escapeHTML(labels.networkMode ?? "")}</span>
           <select data-network-setting="mode" aria-describedby="network-cost-status">
             ${networkPreferences.map((mode) => `<option value="${mode}" ${networkSettings.mode === mode ? "selected" : ""}>${escapeHTML(modes[mode] ?? "")}</option>`).join("")}
           </select>
         </label>
-        <p class="muted" id="network-cost-status" role="status">${escapeHTML(costs[networkSettings.detectedCost] ?? "")} · ${escapeHTML(status)}</p>
+        <p class="muted network-cost-status" id="network-cost-status" role="status">${escapeHTML(costs[networkSettings.detectedCost] ?? "")} · ${escapeHTML(status)}</p>
         <label>
           <input type="checkbox" data-network-setting="checkForUpdatesAtLaunch" ${networkSettings.checkForUpdatesAtLaunch ? "checked" : ""}>
           ${escapeHTML(labels.networkLaunchCheck ?? "")}
