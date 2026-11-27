@@ -1,6 +1,5 @@
 import contextlib
 import hashlib
-import itertools
 import logging
 import os
 import re
@@ -76,13 +75,29 @@ def verify_paths_exist(paths_dict: Mapping[str, PathInput | None]) -> None:
 def _short_index_sibling(vcf: Path) -> Path | None:
     """Another bgzipped VCF (``x.vcf.gz`` beside ``x.vcf.bgz``, in any case)
     that HTSlib would pair with ``vcf``'s short index name ``x.vcf.csi``."""
-    for ext in ("gz", "bgz"):
-        for letters in itertools.product(*((c, c.upper()) for c in ext)):
-            candidate = vcf.with_suffix("." + "".join(letters))
-            if candidate.is_file() and (
-                not vcf.exists() or not candidate.samefile(vcf)
-            ):
-                return candidate
+    base = vcf.with_suffix("").name
+    aliases = [
+        path
+        for path in vcf.parent.iterdir()
+        if path.suffix.lower() in {".gz", ".bgz"}
+        and path.stem.casefold() == base.casefold()
+        and path.is_file()
+    ]
+    # An alternate spelling on a case-insensitive filesystem is the same
+    # directory entry, but a hard link with a different name is not.
+    own = next((path for path in aliases if path.name == vcf.name), None)
+    if own is None and vcf.is_file():
+        own = next(
+            (
+                path
+                for path in aliases
+                if path.name.casefold() == vcf.name.casefold() and path.samefile(vcf)
+            ),
+            None,
+        )
+    for path in aliases:
+        if path is not own and path.stem == (own.stem if own is not None else base):
+            return path
     return None
 
 

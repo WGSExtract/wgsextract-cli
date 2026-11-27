@@ -8,7 +8,6 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 
-from wgsextract_cli.core.atomic_output import output_publication_scope
 from wgsextract_cli.core.dependency_checks import get_tool_version
 from wgsextract_cli.core.utils import run_pipeline
 from wgsextract_cli.core.variant_files import publish_indexed_vcf
@@ -31,9 +30,7 @@ def publish_called_vcf(
                 stdout=stream,
                 description="Normalize caller VCF allele case",
             )
-        # A caller may publish inside its private directory before gathering.
-        with output_publication_scope():
-            publish_indexed_vcf(staged, final)
+        publish_indexed_vcf(staged, final)
 
 
 @contextmanager

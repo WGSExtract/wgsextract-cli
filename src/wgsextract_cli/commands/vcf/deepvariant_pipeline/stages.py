@@ -23,6 +23,7 @@ from wgsextract_cli.core.alignment.cram_reference import (
 from wgsextract_cli.core.alignment.cram_staging import (
     region_intervals,
 )
+from wgsextract_cli.core.atomic_output import output_publication_scope
 from wgsextract_cli.core.containers import (
     host_path,
     run_container,
@@ -569,6 +570,7 @@ def _publish_variants(
     gvcf = Path(evidence[0])
     with tempfile.TemporaryDirectory(dir=output.parent, prefix=".wgse_calls_") as work:
         staged = Path(work)
-        publish_calls(staged / output.name)
-        publish_gvcf(str(raw_gvcf), str(staged / gvcf.name), evidence[1])
+        with output_publication_scope():
+            publish_calls(staged / output.name)
+            publish_gvcf(str(raw_gvcf), str(staged / gvcf.name), evidence[1])
         publish_callset(staged, output, gvcf)
