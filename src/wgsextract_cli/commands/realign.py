@@ -288,6 +288,10 @@ def run(params: RealignParams) -> None:
         _check_long_read_options(job)
     # Reject bad aligner/platform/preset combinations before hours of extraction.
     selected_aligner = align_cmd.select_aligner(job)
+    if selected_aligner == "bonefish":
+        from .alignment.bonefish import record_bonefish_certification
+
+        record_bonefish_certification()
     if selected_aligner == "pbmm2" and configured_temp_directory() and not job.gpu:
         raise UsageError(
             "Native pbmm2's internal sorter does not support --tmp-dir. Use --aligner minimap2 or omit the temporary-directory setting."
@@ -298,6 +302,13 @@ def run(params: RealignParams) -> None:
     ):
         signature = calculate_bam_md5(job.input, None)
     target = resolve_reference(job.ref, signature) if job.ref or signature else None
+    if selected_aligner == "bonefish":
+        # A supplied FASTQ can be the same while --input selects another build.
+        # Fingerprint the actual target before accepting a journal hit.
+        target = _long_read_reference(job, target)
+        if target is None:
+            raise UsageError("bonefish realignment needs a target FASTA: pass --ref.")
+        job.ref = target
     if job.aligner == "bwa-mem2" and target and Path(target).is_file():
         align_cmd.ensure_fasta_index(target)
         # wgse-bwa-mem3 standing in, and wgse-bwa-mem2 0.5.0 and later, map

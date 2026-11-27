@@ -423,7 +423,8 @@ def _run_steps(
             threads=threads,
             memory=memory,
         )
-        needs = _minimap2_needs(job, [job.r1], target, threads, memory)
+        if minimap2:
+            needs = _minimap2_needs(job, [job.r1], target, threads, memory)
     else:
         disk = _disk_requirements(
             job.input,

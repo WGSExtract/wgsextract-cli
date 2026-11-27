@@ -85,6 +85,34 @@ signature matches, **before** its read names are probed. A failed CRAM read-name
 is an error, never a silent fallback to paired short-read extraction.
 The usual realignment disk-space preflight also applies to streamed ONT reads.
 
+### Experimental CPU backend: bonefish
+
+Pass `--aligner bonefish` to `align` or `realign` for ONT DNA or PacBio HiFi.
+The default aligner selection is unchanged. For example:
+
+```sh
+wgsextract align --r1 reads.fastq.gz --platform ont --aligner bonefish --ref hs38.fa
+wgsextract realign --input reads.cram --platform hifi --aligner bonefish \
+  --input-ref original.fa --ref hs38.fa --format CRAM
+```
+
+Install [bonefish 0.5.2 or later](https://github.com/DylanCosto/bonefish/releases/tag/v0.5.2)
+and put `bonefish` on `PATH` with samtools 1.13 or later. WGSE checks the
+versions and does not download them. The upstream release has Linux
+x86-64/arm64 (glibc 2.28+) and Apple Silicon binaries. On Windows use the
+Linux CLI inside WSL, or use minimap2 natively. The Bioconda 0.5.0 build
+predates the modification-tag fix and is not supported.
+
+WGSE selects bonefish's `dna` for ONT (`--preset map-ont`) and `hifi` for
+HiFi (`--preset map-hifi` or `ccs`). The DNA scoring is closer to minimap2's
+`lr:hq` than to `map-ont`, so mapped locations and MAPQ can differ. CLR,
+RNA, short reads and `--gpu` are not supported with this backend. WGSE
+streams the same tagged, primary reads as its minimap2 path and uses samtools
+to produce a sorted and indexed BAM or CRAM, including the lossless CRAM
+profiles. Bonefish runs in one pass (`--chunk-size` does not apply); a failed
+mapping step restarts from the beginning. See [hardware](hardware.md#experimental-bonefish)
+before using it on a whole genome.
+
 ### Lossless output profiles
 
 `align` and `realign` accept `--output-profile default|archive|calling|fast`.

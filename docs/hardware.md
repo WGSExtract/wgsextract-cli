@@ -90,6 +90,18 @@ ONT read groups/UUID read names select minimap2 `map-ont`; CPU alignment
 and sorting retain MM/ML. See [ONT](ont.md) for methylation, Sniffles,
 Clair3 basecaller-matched models, phasing and qualification limits.
 
+#### Experimental bonefish
+
+The opt-in CPU `--aligner bonefish` path builds a bonefish index in memory
+from the reference FASTA on each run; it does not reuse a minimap2 `.mmi`.
+It needs a single index part (reference at most 8 billion bases) to stream
+reads. WGSE caps mapping batches at 10 million query bases and uses its
+normal samtools sorter. `--memory` controls sorting, not the mapper's total
+RAM; do not use the minimap2 memory estimate to size a bonefish run.
+Upstream reports under 9 GB for its mapper alone on human DNA at 4 threads
+with `-K 10M`; add room for the OS and samtools, and measure a slice before
+committing to a whole-genome run. See [ONT alignment](ont.md#experimental-cpu-backend-bonefish).
+
 ### Automatic short-read selection
 
 `--aligner auto` (the default) aligns short reads with bwa-mem2 when all of

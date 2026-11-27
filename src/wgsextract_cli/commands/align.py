@@ -370,6 +370,11 @@ def run(job: AlignJob) -> None:
         align_pbmm2(job)
     elif aligner == "minimap2":
         align_minimap2(job)
+    elif aligner == "bonefish":
+        from .alignment.bonefish import align_bonefish, record_bonefish_certification
+
+        record_bonefish_certification()
+        align_bonefish(job)
     else:
         align_bwa(job)
 
