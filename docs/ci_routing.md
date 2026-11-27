@@ -1119,8 +1119,10 @@ executable cache separately from the project environment; every consumer
 checks the digest, and a cold download has bounded retries. The action
 validator rejects direct `prefix-dev/setup-pixi` steps. Pixi-binary-only build
 jobs pass `install: "false"` to skip project environment caching. A
-binary-only Windows ARM64 job keeps its cache warm on a schedule without
-starting native qualifications. Manual mirror/bwa qualification jobs
+binary-only Windows ARM64 job keeps the Pixi and vcpkg caches warm on a
+schedule without starting native qualifications. The vcpkg bootstrap verifies
+the native executable against its own digest and checks that its release tag
+matches the pinned ports checkout. Manual mirror/bwa qualification jobs
 and the Copilot setup use the same read-only CLI environment cache rather
 than creating additional partial environment sets.
 Release verification installs its immutable tag's environment without caching;

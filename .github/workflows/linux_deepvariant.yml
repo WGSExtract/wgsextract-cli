@@ -101,8 +101,9 @@ jobs:
         run: |
           mkdir -p out/stage
           # Google distributes the models under DeepVariant's BSD-3-Clause licence.
-          curl -fsSL -o out/DeepVariant-LICENSE \
-            https://raw.githubusercontent.com/google/deepvariant/v1.10.0/LICENSE
+          source .github/actions/setup-pixi/fetch-pinned.sh
+          fetch_pinned https://raw.githubusercontent.com/google/deepvariant/v1.10.0/LICENSE \
+            bc1799b64e61b08b4172c4020adf219735ec8c35cfb6f5eea239ab23b78b9b2e out/DeepVariant-LICENSE
           weights=wgse-deepvariant-weights-1.10.0
           mkdir -p "out/stage/$weights"
           cp -R out/weights/. "out/stage/$weights/"

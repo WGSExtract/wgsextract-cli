@@ -22,6 +22,7 @@ on:
       - tests/test_pixi_hash_restore.py
       - .github/workflows/windows_arm64.yml
       - .github/actions/setup-pixi/**
+      - .github/actions/setup-vcpkg-arm64/**
       - "!**/*.md"
 
 permissions:
@@ -32,10 +33,10 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  seed-pixi:
+  seed-build-tools:
     if: github.event_name == 'schedule'
     runs-on: windows-11-arm
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,6 +44,7 @@ jobs:
       - uses: ./.github/actions/setup-pixi
         with:
           install: "false"
+      - uses: ./.github/actions/setup-vcpkg-arm64
   calling-control:
     if: github.event_name == 'workflow_dispatch' && inputs.calling_control_only
     uses: ./.github/workflows/windows_arm64_calling_control.yml
@@ -76,18 +78,19 @@ jobs:
         with:
           install: "false"
       - name: Check out pinned MSVC dependency recipes
+        id: vcpkg-ports
         if: matrix.recipe != 'python' && matrix.recipe != 'python-source' && matrix.recipe != 'samblaster' && matrix.recipe != 'openjdk' && matrix.recipe != 'fastqc' && matrix.recipe != 'haplogrep3' && matrix.recipe != 'haplocheck' && matrix.recipe != 'setuptools'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: microsoft/vcpkg
           ref: 9a5dfef5d1a0438a7d24856a85bd60f309d355e9
           path: scratch/vcpkg
-      - name: Bootstrap the build-only dependency manager
-        if: matrix.recipe != 'python' && matrix.recipe != 'python-source' && matrix.recipe != 'samblaster' && matrix.recipe != 'openjdk' && matrix.recipe != 'fastqc' && matrix.recipe != 'haplogrep3' && matrix.recipe != 'haplocheck' && matrix.recipe != 'setuptools'
-        shell: pwsh
-        run: |
-          & scratch/vcpkg/bootstrap-vcpkg.bat -disableMetrics
-          if ($LASTEXITCODE) { throw "Pinned vcpkg bootstrap failed" }
+          persist-credentials: false
+      - name: Bootstrap the pinned build-only dependency manager
+        if: steps.vcpkg-ports.outcome == 'success'
+        uses: ./.github/actions/setup-vcpkg-arm64
+        with:
+          root: scratch/vcpkg
       - name: Package native components
         shell: pwsh
         run: |

@@ -13,6 +13,7 @@ pinned_digest_matches() {
 
 fetch_pinned() {
   local url=$1 expected=$2 destination=$3 partial=$3.part status
+  local transfer_seconds=${4:-45} retry_seconds=${5:-90}
   if pinned_digest_matches "$destination" "$expected"; then
     echo "Using verified cached ${destination##*/}."
     return 0
@@ -23,7 +24,7 @@ fetch_pinned() {
   fi
   echo "Fetching $url (up to five attempts)."
   curl -fsSL --retry 4 --retry-all-errors --connect-timeout 10 \
-    --max-time 45 --retry-max-time 90 -o "$partial" "$url" || {
+    --max-time "$transfer_seconds" --retry-max-time "$retry_seconds" -o "$partial" "$url" || {
     status=$?
     rm -f "$partial"
     echo "::error::Fetch of $url failed (curl exit $status)."
