@@ -27,6 +27,8 @@ mod app_update;
 mod backend;
 mod menu;
 mod native_picker;
+#[cfg(target_os = "macos")]
+mod network_cost;
 mod update_e2e_overlay;
 
 use menu::{
@@ -54,6 +56,12 @@ fn gfc_report_rendered(clock: tauri::State<'_, StartupClock>, page_ms: f64) {
 }
 
 fn main() {
+    #[cfg(target_os = "macos")]
+    if env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new("--network-cost")) {
+        network_cost::print_snapshot();
+        return;
+    }
+
     #[cfg(unix)]
     unsafe {
         libc::signal(

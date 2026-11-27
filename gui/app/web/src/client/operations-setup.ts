@@ -7,6 +7,8 @@ import { appendTerminal, appendTerminalOutput, runningActionControllers } from "
 import { findTerminalEntry } from "./terminal-output.js";
 import { persistBundleState } from "./operations-state.js";
 import { resolveSetupPreflight } from "./operations-setup-preflight.js";
+import { effectiveNetworkMode } from "../../../shared/network-settings.js";
+import { fetchNetworkSettings } from "./network-consent.js";
 import type { SetupRun, SetupStepResult, TerminalEntry } from "../../../shared/types.js";
 
 let setupElapsedTimer: ReturnType<typeof setInterval> | null = null;
@@ -16,6 +18,11 @@ export async function runSetup(automatic = false) {
     if (state.setupRun?.status === "running") {
         return;
     }
+    const settings = await fetchNetworkSettings().catch(() => state.networkSettings);
+    const mode = effectiveNetworkMode(settings);
+    if (mode === "off" || (automatic && mode === "low")) return;
+    const allowLargeDownload = mode === "low" && window.confirm(state.labels.networkConfirmSetup ?? "");
+    if (mode === "low" && !allowLargeDownload) return;
     const preflight = await resolveSetupPreflight();
     if (preflight?.severity === "warning") {
         const setupID = appendTerminal("error", preflight.title ?? state.labels.setupTitle ?? "Setup", preflight.message ?? "");
@@ -45,7 +52,7 @@ export async function runSetup(automatic = false) {
     try {
         await apiStream<SetupStreamEvent>(
             "/api/setup/stream",
-            { locale: state.localizationCode, automatic },
+            { locale: state.localizationCode, automatic, allowLargeDownload },
             (event) => applySetupEvent(event, entry()),
             { signal: controller.signal, label: "Setup stream" },
         );

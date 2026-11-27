@@ -1,11 +1,12 @@
 import { escapeAttribute, escapeHTML } from "../dom.js";
-import { renderIcon, renderIconTitle } from "../model.js";
+import { formatLabel, renderIcon, renderIconTitle } from "../model.js";
 import { state } from "../state.js";
 import { setupToolSummary } from "./setup-tool-summary.js";
 import { formatDurationMs } from "../../../../shared/rendering.js";
 import { setupStepsForPlatform } from "../../../../shared/setup-platforms.js";
 import { isSetupStepKind, setupStepKindLabelKeys } from "../../../../shared/setup-step-kinds.js";
 import type { LocalizedOption, SetupRun, SetupStep, SetupStepResult } from "../../../../shared/types.js";
+import { effectiveNetworkMode, networkPreferences } from "../../../../shared/network-settings.js";
 
 export function renderSetupStatusSection() {
   const steps = setupStepsForPlatform(state.manifest?.setup?.steps ?? []);
@@ -37,7 +38,7 @@ export function renderSetupStatusSection() {
         <div class="setup-actions">
           <button type="button" class="action-button secondary" data-open-bundle-workspace title="${escapeAttribute(state.labels.openBundleWorkspaceTooltip ?? "")}">${renderIcon("folder", undefined, "📁")}${escapeHTML(state.labels.openBundleWorkspaceTitle ?? "Open Bundle Workspace")}</button>
         ${hasSteps
-          ? `<button type="button" class="action-button primary" data-run-setup ${isRunning ? "disabled" : ""}>${isRunning ? `<span class="mini-spinner" aria-hidden="true"></span>` : renderIcon("play.fill", undefined, "▶")}${escapeHTML(isRunning ? state.labels.setupRunningTitle ?? "Running setup..." : runButtonTitle)}</button>`
+          ? `<button type="button" class="action-button primary" data-run-setup ${isRunning || effectiveNetworkMode(state.networkSettings) === "off" ? "disabled" : ""}>${isRunning ? `<span class="mini-spinner" aria-hidden="true"></span>` : renderIcon("play.fill", undefined, "▶")}${escapeHTML(isRunning ? state.labels.setupRunningTitle ?? "Running setup..." : runButtonTitle)}</button>`
           : ""}
         ${isRunning
           ? `<button type="button" class="action-button secondary" data-cancel-setup>${escapeHTML(state.labels.terminalCancelButtonTitle ?? "Cancel")}</button>`
@@ -177,11 +178,21 @@ export function renderStandardOptionsAccessory() {
 
 export function renderNetworkSettings() {
   const { labels, networkSettings } = state;
+  const modes = { automatic: labels.networkModeAutomatic, full: labels.networkModeFull, low: labels.networkModeLow, off: labels.networkModeOff };
+  const costs = { constrained: labels.networkCostConstrained, unconstrained: labels.networkCostUnconstrained, unknown: labels.networkCostUnknown };
+  const status = formatLabel(labels.networkEffective ?? "", { mode: modes[effectiveNetworkMode(networkSettings)] ?? "" });
   return `
     <section class="card" data-network-settings tabindex="-1" aria-labelledby="network-settings-title">
       <h3 id="network-settings-title">${escapeHTML(labels.networkTitle ?? "")}</h3>
       <p class="muted">${escapeHTML(labels.networkSettingsDetail ?? "")}</p>
       <div class="network-settings-options">
+        <label>
+          ${escapeHTML(labels.networkMode ?? "")}
+          <select data-network-setting="mode" aria-describedby="network-cost-status">
+            ${networkPreferences.map((mode) => `<option value="${mode}" ${networkSettings.mode === mode ? "selected" : ""}>${escapeHTML(modes[mode] ?? "")}</option>`).join("")}
+          </select>
+        </label>
+        <p class="muted" id="network-cost-status" role="status">${escapeHTML(costs[networkSettings.detectedCost] ?? "")} · ${escapeHTML(status)}</p>
         <label>
           <input type="checkbox" data-network-setting="checkForUpdatesAtLaunch" ${networkSettings.checkForUpdatesAtLaunch ? "checked" : ""}>
           ${escapeHTML(labels.networkLaunchCheck ?? "")}

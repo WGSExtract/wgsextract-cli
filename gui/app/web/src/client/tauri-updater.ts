@@ -1,6 +1,7 @@
 import { scheduleRender } from "./rerender.js";
 import { state } from "./state.js";
 import { networkAllowed } from "../../../shared/network-settings.js";
+import { fetchNetworkSettings } from "./network-consent.js";
 
 type TauriInvoke = <T>(command: string, args?: Record<string, unknown>) => Promise<T>;
 type TauriListen = <T>(
@@ -60,9 +61,9 @@ async function initializeTauriUpdaterWhenReady() {
         scheduleRender();
     });
     window.addEventListener("wgsextract-gui-check-for-updates", () => {
-        if (networkAllowed(state.networkSettings, "explicit")) {
-            void tauri.core.invoke("gfc_update_check_from_menu").catch(console.error);
-        }
+        void fetchNetworkSettings().then((settings) => {
+            if (networkAllowed(settings, "external")) return tauri.core.invoke("gfc_update_check_from_menu");
+        }).catch(console.error);
     });
     scheduleStartupUpdate();
 }
@@ -109,7 +110,7 @@ type UpdateCheckOptions = {
 };
 
 export async function checkForUpdates(options: UpdateCheckOptions = {}) {
-    if (!networkAllowed(state.networkSettings, options.activity ?? "explicit")) return;
+    if (!networkAllowed(state.networkSettings, options.activity ?? "external")) return;
     if (checkPromise) {
         return checkPromise;
     }
@@ -120,6 +121,8 @@ export async function checkForUpdates(options: UpdateCheckOptions = {}) {
 }
 
 async function runUpdateCheck(options: UpdateCheckOptions) {
+    const freshSettings = await fetchNetworkSettings().catch(() => undefined);
+    if (!freshSettings || !networkAllowed(freshSettings, options.activity ?? "external")) return;
     const tauri = tauriAPI();
     if (!tauri) {
         state.update.supported = false;
@@ -152,9 +155,10 @@ async function runUpdateCheck(options: UpdateCheckOptions) {
             scheduleRender();
             if (options.autoDownloadAndInstall) {
                 await waitForAutoActionDelay();
-                await downloadUpdate("auto");
-                await waitForAutoActionDelay();
-                await installUpdate();
+                if (await downloadUpdate("auto")) {
+                    await waitForAutoActionDelay();
+                    await installUpdate();
+                }
             }
             return;
         }
@@ -188,7 +192,12 @@ async function runUpdateCheck(options: UpdateCheckOptions) {
 }
 
 export async function downloadUpdate(acceptedBy = "user") {
-    if (!networkAllowed(state.networkSettings, acceptedBy === "auto" ? "startup-update" : "explicit")) return;
+    const activity = acceptedBy === "auto" ? "startup-download" : "external";
+    if (!networkAllowed(state.networkSettings, activity)) return;
+    if (state.update.updateRid == null || state.update.bytesRid != null || state.update.status === "downloading") return;
+    // The connection can change while the update check (or auto-install delay) runs.
+    const freshSettings = await fetchNetworkSettings().catch(() => undefined);
+    if (!freshSettings || !networkAllowed(freshSettings, activity)) return;
     const tauri = tauriAPI();
     if (!tauri || state.update.updateRid == null || state.update.status === "downloading") {
         return;
@@ -212,6 +221,7 @@ export async function downloadUpdate(acceptedBy = "user") {
         state.update.status = "downloaded";
         state.update.percent = 100;
         state.update.message = "Download complete. Ready to install.";
+        return true;
     } catch (error) {
         state.update.status = "error";
         state.update.message = error instanceof Error ? error.message : String(error);

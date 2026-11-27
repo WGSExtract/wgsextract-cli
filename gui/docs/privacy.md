@@ -105,16 +105,38 @@ This applies to automatic update checks as well as manual downloads:
   explicit connection and transfer confirmation, keeps your server token out of
   browser-delivered data, and enforces HTTPS certificate validation.
 
+## Network mode
+
+**Settings → Network & Privacy** shows the detected connection cost and the
+mode in use. **Automatic** switches to **Low** when macOS reports a constrained
+or expensive path, Windows reports a metered or roaming profile, or
+NetworkManager reports a metered active connection on Linux. Detection reads
+local operating-system information; it sends no requests. If the cost cannot
+be detected, Automatic uses **Low** so setup and large updates still wait for
+confirmation. This includes the macOS browser development launcher, which
+does not have the native Tauri helper.
+
+- **Full** keeps the usual consent rules for network features.
+- **Low** skips automatic setup and update downloads. Small update checks may
+  still run when enabled. Start setup yourself to confirm its downloads, or
+  choose Full to run other CLI operations that Low refuses as bulk transfers.
+- **Off** blocks CLI transfers, setup downloads, app update checks and
+  downloads, and remote viewer connections. Local analysis still works.
+
+The app passes the effective mode to the CLI for each new command, overriding
+the CLI's `network_mode` setting for commands run from the app. Changing the
+mode or connection does not cancel transfers already in progress.
+**Privacy mode** is separate: it pauses automatic connections without
+blocking requests you make explicitly.
+
 ## How to run completely offline
 
 If you work in an air-gapped environment or want **zero** outbound network
 traffic — including no IP-visible update checks:
 
-1. Choose **Not now** at first launch, or turn on **Privacy mode** in
-   **Settings → Network & Privacy**. The red **PRIVACY** badge shows when
-   Privacy mode is on. To disable only launch checks, turn off **Check for
-   updates at launch** there. **File → Check for Updates...** still checks
-   when you choose it.
+1. Choose **Not now** at first launch, then set **Network mode** to **Off** in
+   **Settings → Network & Privacy**. To disable only launch checks, turn off
+   **Check for updates at launch** there.
 2. Keep **Allow missing public-data downloads** turned **off** in
    **Settings → Users Workspace Settings** (this is already the default).
 3. Pre-install the tools, reference genomes, and reference data you need while
