@@ -79,6 +79,10 @@ ENTRIES: dict[str, CommandHelp] = {
         "wgsextract ref cytobands --build hg19 --download",
         "wgsextract ref cytobands --build hg38",
     ),
+    "ref regulatory": _h(
+        f"{_LIBRARY}/downloads/screen-v4-hg38.bed.gz, tabix index and provenance.",
+        "wgsextract ref regulatory --download",
+    ),
     "ref gene-map": _h(
         f"{_LIBRARY}: the hg19 and hg38 gene maps and their indexed RefSeq "
         "transcript and exon models, transcripts_<build>.bed.gz, for the genome "

@@ -117,6 +117,10 @@ ENTRIES: dict[str, CommandHelp] = {
         _ANNOTATED.format(name="pharmgkb"),
         f"wgsextract vcf pharmgkb {_VCF_IN}",
     ),
+    "vcf regulatory": _h(
+        _ANNOTATED.format(name="regulatory"),
+        f"wgsextract vcf regulatory {_VCF_IN}",
+    ),
     "vcf phylop": _h(
         _SCORED.format(name="phylop"),
         f"wgsextract vcf phylop {_VCF_IN}",

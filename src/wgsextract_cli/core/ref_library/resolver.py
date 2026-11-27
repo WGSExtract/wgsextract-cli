@@ -373,6 +373,14 @@ class ReferenceLibrary:
         )
 
     @property
+    def regulatory_file(self) -> str | None:
+        """Complete installed SCREEN track, before its content verification."""
+        from wgsextract_cli.core import regulatory_data
+
+        table = regulatory_data.path(self.root)
+        return str(table) if regulatory_data.provenance(table) else None
+
+    @property
     def ploidy_file(self) -> str | None:
         """Find the confirmed build's ploidy file, or build-agnostic ploidy.txt."""
         build = self.confirmed_build

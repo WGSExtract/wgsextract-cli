@@ -48,10 +48,12 @@ from wgsextract_cli.core.csq_alleles import (
     split_origin,
 )
 from wgsextract_cli.core.imputed_vcf import IMPUTED_TAG
+from wgsextract_cli.core.regulatory_overlap import CCRE_CLASS
 from wgsextract_cli.core.table_writer import Column
 from wgsextract_cli.core.variant_confidence import SPLIT_TAG
 from wgsextract_cli.core.variant_depths import AD_TOTAL, allele_depths, count
 from wgsextract_cli.core.vcf_alleles import allele_key
+from wgsextract_cli.core.vcf_header import attributes as header_attributes
 
 TEXT, INTEGER, REAL = "TEXT", "INTEGER", "REAL"
 
@@ -237,6 +239,11 @@ COLUMNS: tuple[Column, ...] = (
         "missing or incomplete.",
     ),
     *scores.SCORE_COLUMNS,
+    Column(
+        "ccre_class",
+        TEXT,
+        "Research only: SCREEN cCRE classes for this ALT, separated by '|'.",
+    ),
 )
 COLUMN_NAMES = tuple(column.name for column in COLUMNS)
 Row = tuple[str | int | float | None, ...]
@@ -292,7 +299,6 @@ _NHOMALT_CSQ = (
 _PHARMGKB_LEVELS = ("1A", "1B", "2A", "2B", "3", "4")
 
 _FIELD_LINE = re.compile(r"^##(INFO|FORMAT)=<(.*)>$")
-_ATTRIBUTE = re.compile(r'([^,=\s]+)=("(?:[^"\\]|\\.)*"|[^,]*)')
 _FORMAT_LIST = re.compile(r"Format:\s*(.+)$")
 _GT_SPLIT = re.compile(r"[/|]")
 
@@ -321,6 +327,7 @@ class VcfHeader:
             ("clinvar", ("CLNSIG",)),
             ("gnomad", ("GNOMAD_AF", *_POPMAX_INFO, *_NHOMALT_INFO)),
             ("pharmgkb", ("PHARMGKB",)),
+            ("regulatory", (CCRE_CLASS,)),
             ("confidence", ("WGSE_CONF",)),
             ("sv_freq", ("SV_FREQ",)),
             ("acmg", (acmg.CLASS,)),
@@ -355,7 +362,7 @@ def parse_header(lines: Iterable[str]) -> VcfHeader:
         if not match:
             continue
         kind, body = match.groups()
-        attributes = dict(_ATTRIBUTE.findall(body))
+        attributes = header_attributes(body)
         key, number = attributes.get("ID"), attributes.get("Number")
         if key is None or number is None:
             continue
@@ -762,5 +769,6 @@ def indexed_variant_rows(
                     if scored
                     else unscored
                 ),
+                _per_allele(info.get(CCRE_CLASS), numbers.get(CCRE_CLASS), alt_index),
             )
             yield row, record_index, alt_index, info.get(SPLIT_TAG) if split else None
