@@ -765,3 +765,22 @@ def prune_cache(path: Path, name: str, expected: Stamp) -> None:
         if not stat.S_ISDIR(info.st_mode) or stamp(info) != expected:
             raise OSError(f"Cache changed before removal: {name}")
         shutil.rmtree(Path("/proc/self/fd") / str(parent) / relative.name)
+
+
+def prune_output(path: Path, relative: Path, expected: Stamp) -> None:
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    with ExitStack() as stack:
+        parent = os.open(path, flags)
+        stack.callback(os.close, parent)
+        for part in relative.parts[:-1]:
+            parent = os.open(part, flags, dir_fd=parent)
+            stack.callback(os.close, parent)
+        info = os.stat(relative.name, dir_fd=parent, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.geteuid()
+            or info.st_nlink != 1
+            or stamp(info) != expected
+        ):
+            raise OSError(f"Disposable output changed before removal: {relative}")
+        os.unlink(relative.name, dir_fd=parent)

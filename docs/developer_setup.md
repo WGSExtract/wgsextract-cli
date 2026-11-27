@@ -625,6 +625,10 @@ additional ignored artifacts you can recreate. The pattern matches from the
 worktree root under `out/`, `tmp/`, or `scratch/`; `*` does not cross a `/`.
 Preview without `--apply` and check `disposable_outputs` in the private report.
 Matching files that cannot be archived as small text evidence are discarded.
+In a retained checkout that otherwise passes the same Git, PR and activity
+checks, the report lists independent files in `planned_outputs`; `--apply`
+deletes those files without removing the checkout. Incoming links protect
+individual files as well as whole checkouts.
 A match does not override tracked or unignored
 changes, cache verification, links, sensitive names, or the usual worktree
 safety checks. It does not recursively approve matching directories.

@@ -6,11 +6,66 @@ import os
 import re
 import stat
 import subprocess
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
 class CleanupError(Exception):
     """State could not safely be verified."""
+
+
+@dataclass
+class Worktree:
+    path: str
+    head: str
+    branch: str
+    locked: bool
+    unavailable: bool
+    detached: bool = False
+    reason: str = "not-assessed"
+    pr: int | None = None
+    recovery: str | None = None
+    archive: str | None = None
+    retained_reason: str = ""
+    planned_caches: list[str] = field(default_factory=list)
+    pruned_caches: list[str] = field(default_factory=list)
+    pruning_cache: str | None = None
+    disposable_outputs: list[str] = field(default_factory=list)
+    planned_outputs: list[str] = field(default_factory=list)
+    pruned_outputs: list[str] = field(default_factory=list)
+    pruning_output: str | None = None
+
+    @property
+    def directory(self) -> Path:
+        return Path(self.path)
+
+
+def worktrees(root: Path) -> list[Worktree]:
+    result = []
+    for record in git(root, "worktree", "list", "--porcelain", "-z").split("\0\0"):
+        if not record:
+            continue
+        entries = dict(line.partition(" ")[::2] for line in record.split("\0"))
+        path = entries["worktree"]
+        if not Path(path).is_absolute():
+            raise CleanupError("Git reported a non-absolute worktree path")
+        result.append(
+            Worktree(
+                path,
+                entries.get("HEAD", ""),
+                entries.get("branch", ""),
+                "locked" in entries,
+                "prunable" in entries or "bare" in entries,
+                "detached" in entries,
+            )
+        )
+    if (
+        not result
+        or result[0].directory != root
+        or result[0].branch != "refs/heads/main"
+    ):
+        raise CleanupError("Run from this repository's primary checkout on main")
+    return result
 
 
 def run(
