@@ -270,6 +270,10 @@ The joint JSON gives separate observed and null-mean burdens for small
 variants, deletions and gains, and the control null's spread and z-score.
 The control mean and variance use the entire matched pool, not just the
 sampled draws used to display the histogram.
+The joint null is flagged as underpowered if the group has fewer than ten
+targets, the matched null averages fewer than one contributing gene per
+draw, or its control variance is zero. Rescaling positive weights alone
+does not change the count of contributing genes.
 The one-sided p-value exchanges panel and control labels within the same
 strata. Audit enumerates up to 100,000 assignments exactly; above that it
 samples assignments and reports Monte Carlo uncertainty. The z-score and

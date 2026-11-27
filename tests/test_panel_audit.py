@@ -562,3 +562,46 @@ def test_1664_cnv_p_and_z_do_not_depend_on_drawing_rare_controls(
     else:
         assert stats["upper_tail_p"] is None
         assert stats["z_score"] is None
+
+
+@pytest.mark.parametrize(("events", "underpowered"), [(10, False), (1, True)])
+def test_1664_cnv_power_depends_on_contributing_genes_not_weight(
+    events: int,
+    underpowered: bool,
+) -> None:
+    targets = [f"TARGET{i}" for i in range(10)]
+    genes = [*targets, *(f"CONTROL{i}" for i in range(20))]
+    opportunities = {
+        gene: Opportunity("1", "autosome", f"NM_{gene}", 3, ((1, 3),), 3, 0)
+        for gene in genes
+    }
+
+    def run(weight: Fraction) -> dict[str, Any]:
+        return matched_null(
+            targets,
+            set(targets),
+            opportunities,
+            {},
+            bins=2,
+            seed=7,
+            null_sets=100,
+            basis="callable_cds_bp",
+            weighted_scores={},
+            cnv=CnvMatch(
+                strata=dict.fromkeys(genes, (2, 5, "unmasked")),
+                components={
+                    gene: (
+                        weight if index < len(targets) + events else Fraction(),
+                        Fraction(),
+                    )
+                    for index, gene in enumerate(genes)
+                },
+            ),
+        )
+
+    full, scaled = run(Fraction(1)), run(Fraction(1, 10))
+    assert full["null_mean_contributing_genes"] == events / 2
+    assert scaled["null_mean_contributing_genes"] == events / 2
+    assert full["underpowered"] is scaled["underpowered"] is underpowered
+    assert full["z_score"] == scaled["z_score"]
+    assert full["upper_tail_p"] == scaled["upper_tail_p"]

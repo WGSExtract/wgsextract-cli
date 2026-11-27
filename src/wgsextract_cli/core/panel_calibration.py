@@ -232,18 +232,19 @@ def _permutation_tail(
 
 def _control_moments(
     pools: Sequence[tuple[list[str], int]], scores: Mapping[str, Fraction]
-) -> tuple[Fraction, Fraction]:
-    mean = variance = zero = Fraction()
+) -> tuple[Fraction, Fraction, Fraction]:
+    mean = variance = contributing_genes = zero = Fraction()
     for pool, size in pools:
         n = len(pool)
         values = [scores[gene] for gene in pool]
         center = sum(values, zero) / n
         mean += size * center
+        contributing_genes += Fraction(size * sum(bool(value) for value in values), n)
         # Finite-population correction for each sample without replacement.
         variance += Fraction(size * (n - size), n - 1) * (
             sum((score**2 for score in values), zero) / n - center**2
         )
-    return mean, variance
+    return mean, variance, contributing_genes
 
 
 def _sqrt_fraction(value: Fraction) -> float:
@@ -515,7 +516,8 @@ def matched_null(
         draws.append(score)
     histogram = Counter(draws)
     if joint_scores is not None:
-        center, variance = _control_moments(pools, joint_scores)
+        center, variance, contributing_genes = _control_moments(pools, joint_scores)
+        sparse_null = contributing_genes < 1
         mean = float(center)
         sd = _sqrt_fraction(variance)
         zero_variance = not variance
@@ -526,6 +528,7 @@ def matched_null(
             else None
         )
     else:
+        sparse_null = null_copies < null_sets
         mean = fmean(draws)
         center = (
             cast(Fraction, sum(draws, zero)) / null_sets
@@ -582,6 +585,7 @@ def matched_null(
             "null_mean_small_variant_burden": float(center - deletion - duplication),
             "null_mean_deletion_burden": float(deletion),
             "null_mean_duplication_burden": float(duplication),
+            "null_mean_contributing_genes": float(contributing_genes),
         }
     return {
         **document,
@@ -613,6 +617,6 @@ def matched_null(
         **tail,
         "percentile": 100 * (less + histogram[observed] / 2) / null_sets,
         "underpowered": len(targets) < 10
-        or (null_copies < null_sets if cnv is None else mean < 1)
+        or sparse_null
         or (weighted_scores is not None and zero_variance),
     }
