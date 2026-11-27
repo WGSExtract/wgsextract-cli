@@ -66,7 +66,7 @@ $installer = Join-Path $InstallDir "install_windows.bat"
 if ($Sabotage -eq "noop-installer") {
     Step "install" @("cmd.exe", "/c", "exit 0")
 } else {
-    Step "installer_download" @("curl.exe", "-fsSL", "-o", $installer, $lab.LAB_INSTALLER_URL) $InstallDir
+    Step "installer_download" @("curl.exe", "-fsSL", "--remove-on-error", "--retry", "3", "--retry-all-errors", "--connect-timeout", "15", "--max-time", "120", "--retry-max-time", "150", "-o", $installer, $lab.LAB_INSTALLER_URL) $InstallDir
     Step "install" @($installer) $InstallDir
 }
 Update-SessionEnvironment
@@ -74,7 +74,7 @@ Save-Snapshot "after_install"
 
 $datasetArchive = Join-Path $DataParent "dataset.tar.gz"
 New-Item -ItemType Directory -Force -Path $DataParent | Out-Null
-Step "dataset" @("curl.exe", "-fsSL", "-o", $datasetArchive, $lab.LAB_DATASET_URL)
+Step "dataset" @("curl.exe", "-fsSL", "--remove-on-error", "--retry", "3", "--retry-all-errors", "--connect-timeout", "15", "--max-time", "120", "--retry-max-time", "150", "-o", $datasetArchive, $lab.LAB_DATASET_URL)
 $actual = (Get-FileHash -LiteralPath $datasetArchive -Algorithm SHA256 -ErrorAction SilentlyContinue).Hash
 if ($actual -ine $lab.LAB_DATASET_SHA256) {
     Write-Text (Join-Path $Evidence "dataset.rc") "1"

@@ -50,13 +50,14 @@ class FixtureGitHub(GitHub):
         self.issues: list[dict[str, Any]] = []
 
     def runs_between(
-        self, start: datetime, end: datetime, *, workflow: str = ""
+        self, start: datetime, end: datetime, *, workflow: str = "", status: str = ""
     ) -> list[dict[str, Any]]:
         return [
             r
             for r in self.runs
             if start <= stamp(r["created_at"]) <= end
             and r["path"].endswith("/" + workflow)
+            and (not status or r["conclusion"] == status)
         ]
 
     def api(self, method: str, path: str, data: dict[str, Any] | None = None) -> Any:

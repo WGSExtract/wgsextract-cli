@@ -7,6 +7,9 @@ on:
         description: Run only the native Windows x64 public VCF control
         type: boolean
         default: false
+  schedule:
+    # Cache entries unused for seven days are evicted; keep this job binary-only.
+    - cron: "23 3 * * 1,4"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
     paths:
@@ -29,11 +32,22 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  seed-pixi:
+    if: github.event_name == 'schedule'
+    runs-on: windows-11-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-pixi
+        with:
+          install: "false"
   calling-control:
     if: github.event_name == 'workflow_dispatch' && inputs.calling_control_only
     uses: ./.github/workflows/windows_arm64_calling_control.yml
   qualify:
-    if: github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
+    if: github.event_name != 'schedule' && github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
     runs-on: windows-11-arm
     timeout-minutes: 60
     strategy:
@@ -98,7 +112,7 @@ jobs:
 
   pipeline:
     needs: qualify
-    if: always() && !cancelled() && github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
+    if: always() && !cancelled() && github.event_name != 'schedule' && github.event.pull_request.draft != true && (github.event_name != 'workflow_dispatch' || !inputs.calling_control_only)
     runs-on: windows-11-arm
     timeout-minutes: 15
     steps:

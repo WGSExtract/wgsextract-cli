@@ -1113,13 +1113,16 @@ keys, so UCSC outages cannot break the migration. Main seeds the canonical
 checksum-only key from either a verified fallback or a verified download;
 no new run-id keys are written.
 
-Every workflow installs Pixi through `.github/actions/setup-pixi`, which holds
-CI's only Pixi version pin; `scripts/validate_github_actions.py` rejects direct
-`prefix-dev/setup-pixi` steps. Pixi-binary-only build jobs pass `install:
-"false"`, which also skips project caching: restoring an unused old environment
-would keep it alive. Manual mirror/bwa qualification jobs and the Copilot setup
-use the same read-only CLI cache rather than creating additional partial
-environment sets.
+Every workflow installs Pixi through `.github/actions/setup-pixi`, which pins
+the release executable by version, platform and SHA-256. Main seeds the
+executable cache separately from the project environment; every consumer
+checks the digest, and a cold download has bounded retries. The action
+validator rejects direct `prefix-dev/setup-pixi` steps. Pixi-binary-only build
+jobs pass `install: "false"` to skip project environment caching. A
+binary-only Windows ARM64 job keeps its cache warm on a schedule without
+starting native qualifications. Manual mirror/bwa qualification jobs
+and the Copilot setup use the same read-only CLI environment cache rather
+than creating additional partial environment sets.
 Release verification installs its immutable tag's environment without caching;
 an unpublished old tag can predate today's local CI helper actions, so Pixi
 comes from the run's own commit before the tag is checked out.
