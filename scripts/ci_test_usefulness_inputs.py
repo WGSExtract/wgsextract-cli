@@ -20,6 +20,7 @@ from urllib.parse import urlencode
 from scripts.ci_efficiency_report import Row, stamp
 from scripts.ci_github import GitHub
 from scripts.ci_merge_group_passes import gh_api
+from scripts.ci_test_budget import Cost, nightly_costs
 from scripts.ci_test_shards import LANES
 
 MAX_BYTES = 16 * 1024 * 1024
@@ -69,9 +70,17 @@ class Report:
     cases: tuple[Case, ...]
 
 
+@dataclass(frozen=True)
+class NightlyBudget:
+    run: int
+    at: datetime
+    modules: dict[str, Cost]
+
+
 @dataclass
 class Evidence:
     reports: list[Report] = field(default_factory=list)
+    budgets: list[NightlyBudget] = field(default_factory=list)
     map_sha: str | None = None
     coverage: dict[str, set[str]] = field(default_factory=dict)
     expired: int = 0
@@ -282,6 +291,7 @@ class Selected:
     stage: str
     platform: str
     failed_run: bool
+    full_ubuntu: bool = False
 
 
 def sample(work: list[Selected]) -> list[Selected]:
@@ -381,14 +391,37 @@ def collect(
                 lane,
                 ARTIFACT_OS[artifact["name"]],
                 run.get("conclusion") == "failure",
+                lane == "nightly"
+                and run["path"].split("@", 1)[0] == ".github/workflows/ubuntu_ci.yml"
+                and artifact["name"] == "tests-ubuntu-all"
+                and run.get("conclusion") == "success",
             )
         )
 
-    def read(item: Selected) -> tuple[list[Report], int]:
+    def read(item: Selected) -> tuple[list[Report], int, NightlyBudget | None]:
         artifact = item.artifact
+        at = stamp(artifact["created_at"])
+        names = (
+            JUNIT | {"shard-count", "test-scope.json"} if item.full_ubuntu else JUNIT
+        )
+        contents = members(api.repository, artifact, names, download)
+        budget = None
+        if item.full_ubuntu:
+            try:
+                modules = nightly_costs(
+                    contents["pytest.xml"],
+                    contents["test-scope.json"],
+                    contents.get("shard-count", b"1"),
+                )
+                if modules:
+                    budget = NightlyBudget(item.run, at, modules)
+            except (KeyError, ValueError, ET.ParseError):
+                pass  # Unusable budget evidence can still inform test usefulness.
         result = []
         unmapped = 0
-        for suite, xml in members(api.repository, artifact, JUNIT, download).items():
+        for suite, xml in contents.items():
+            if suite not in JUNIT:
+                continue
             cases, missing = junit(xml, tests)
             unmapped += missing
             result.append(
@@ -399,17 +432,19 @@ def collect(
                     item.stage,
                     item.platform,
                     suite,
-                    stamp(artifact["created_at"]),
+                    at,
                     cases,
                 )
             )
-        return result, unmapped
+        return result, unmapped, budget
 
     chosen = sample(work)
     evidence.sampled_out = len(work) - len(chosen)
     with ThreadPoolExecutor(max_workers=6) as pool:
-        for reports, missing in pool.map(read, chosen):
+        for reports, missing, budget in pool.map(read, chosen):
             evidence.reports.extend(reports)
+            if budget is not None:
+                evidence.budgets.append(budget)
             evidence.without_junit += not reports
             evidence.unmapped += missing
     return evidence
