@@ -111,7 +111,14 @@ def _variantqc_input(vcf: Path, outdir: Path, cleanup: ExitStack) -> str:
         try:
             ensure_vcf_indexed(vcf)
         except WGSExtractError as e:
-            if isinstance(e, MissingDependencyError):
+            # As prepare_input_vcf: only a failed tabix run or write falls
+            # back to a copy. A missing tool, a VCF that changed while being
+            # indexed (an old TBI could then look fresh) or a shared index
+            # name stops.
+            failure = (OSError, subprocess.SubprocessError)
+            if isinstance(e, MissingDependencyError) or not isinstance(
+                e.__cause__, failure
+            ):
                 raise
             logging.info(f"Using a working copy: {e}")
         if _fresh_tbi(vcf):
