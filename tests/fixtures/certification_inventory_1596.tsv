@@ -146,7 +146,7 @@ vcf sv-freq	Tested
 vcf table	Tested
 vcf to-fasta	Tested
 vcf trio	Tested
-vcf variantqc	Experimental
+vcf variantqc	Validated
 vep delete	Tested
 vep download	Experimental
 vep run	Tested
