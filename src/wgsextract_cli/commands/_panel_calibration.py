@@ -13,6 +13,7 @@ from wgsextract_cli.api.panel import PanelAuditParams
 from wgsextract_cli.core import exon_callability as ec
 from wgsextract_cli.core import panel_audit as audit
 from wgsextract_cli.core import panel_calibration as calibration
+from wgsextract_cli.core import panel_cnv
 from wgsextract_cli.core import panel_weights as weights
 from wgsextract_cli.core.lookup.genotypes import VcfSource
 from wgsextract_cli.core.lookup.identifiers import contig_key
@@ -55,6 +56,7 @@ class Calibrator:
     excluded: dict[str, str]
     filters: dict[str, Mapping[str, Any]]
     filter_keys: dict[str, str]
+    cnv_filter_keys: dict[str, str]
     counts: dict[str, Counter[str]]
     dosage: dict[str, Mapping[str, float]]
     hits: dict[str, dict[str, list[weights.Hit]]]
@@ -103,6 +105,8 @@ class Calibrator:
         self,
         groups: Sequence[dict[str, Any]],
         settings: Mapping[str, Any],
+        *,
+        cnv: panel_cnv.Evidence | None,
     ) -> dict[str, object]:
         all_symbols = {
             gene["symbol"].upper()
@@ -159,6 +163,8 @@ class Calibrator:
                 **kwargs,
             )
             group["calibration"] = {**stats, "excluded_targets": excluded}
+            if cnv is not None and panel_cnv.enabled(group):
+                self._combined(group, all_symbols, cnv, scores, kwargs)
             if stats.get("underpowered") or stats["state"] != "calibrated":
                 warn(
                     "panel_calibration_underpowered",
@@ -244,6 +250,105 @@ class Calibrator:
             ),
         }
 
+    def _combined(
+        self,
+        group: dict[str, Any],
+        panel_genes: set[str],
+        cnv: panel_cnv.Evidence,
+        scores: Mapping[str, Mapping[str, Fraction]],
+        settings: Mapping[str, Any],
+    ) -> None:
+        report = group["cnv_calibration"]
+        callability = report["callability"]
+        if self.thresholds is None:
+            report.update(state="unavailable", reason="missing_gvcf_callability")
+            self._warn_combined(group)
+            return
+        strata = {}
+        excluded_joint = {}
+        excluded_controls: Counter[str] = Counter()
+        for symbol, call in cnv.calls.items():
+            opportunity = self.opportunities.get(symbol)
+            if call.stratum is not None and call.region is not None and opportunity:
+                chrom, start, end = call.region
+                if opportunity.chrom == chrom and all(
+                    start < low <= high <= end for low, high in opportunity.segments
+                ):
+                    strata[symbol] = call.stratum
+                    continue
+                excluded_joint[symbol] = "cds_outside_target"
+            else:
+                excluded_joint[symbol] = call.exclusion or self.excluded.get(
+                    symbol, "no_exon_model"
+                )
+            if symbol not in panel_genes:
+                excluded_controls[excluded_joint[symbol]] += 1
+        expected = self.expected_counts
+        eligible = set(strata)
+        if expected is not None:
+            missing_expected = eligible - expected.keys()
+            eligible.difference_update(missing_expected)
+            if count := len(missing_expected - panel_genes):
+                excluded_controls["missing_expected_count"] += count
+        callability["joint_control_genes"] = len(eligible - panel_genes)
+        callability["excluded_control_counts"] = dict(sorted(excluded_controls.items()))
+        target = []
+        joint_excluded = dict(callability["excluded_targets"])
+        for gene in group["genes"]:
+            symbol = str(gene.get("symbol") or "").upper()
+            if symbol in strata:
+                target.append(symbol)
+            elif gene["given"] not in joint_excluded:
+                joint_excluded[gene["given"]] = excluded_joint.get(
+                    symbol, "no_exon_model"
+                )
+        callability["joint_excluded_targets"] = joint_excluded
+        callability["joint_callable_target_genes"] = len(target)
+        stats: dict[str, Any]
+        if joint_excluded:
+            stats = {"state": "unavailable", "reason": "incomplete_target_evidence"}
+        else:
+            key = self.cnv_filter_keys[group["id"]]
+            if missing := sorted(set(target) - eligible):
+                stats = {
+                    "state": "unavailable",
+                    "reason": "missing_target_expected_count",
+                    "unmatched_targets": missing,
+                }
+            else:
+                stats = calibration.matched_null(
+                    sorted(target),
+                    panel_genes,
+                    {symbol: self.opportunities[symbol] for symbol in eligible},
+                    self.counts[key],
+                    weighted_scores=scores[key],
+                    clinvar_vetoes=self.vetoes.get(key),
+                    expected_syn=expected,
+                    cnv=calibration.CnvMatch(
+                        strata,
+                        {
+                            symbol: cnv.calls[symbol].components(group)
+                            for symbol in eligible
+                        },
+                    ),
+                    **settings,
+                )
+        if stats["state"] != "calibrated":
+            stats.pop("observed_combined_burden", None)
+        report.update(stats)
+        self._warn_combined(group)
+
+    @staticmethod
+    def _warn_combined(group: dict[str, Any]) -> None:
+        stats = group["cnv_calibration"]
+        if stats["state"] != "calibrated" or stats.get("underpowered"):
+            warn(
+                "panel_cnv_calibration_underpowered",
+                f"Group {group['id']} lacks a well-powered joint CNV comparison.",
+                group=group["id"],
+                reason=stats.get("reason"),
+            )
+
 
 def prepare(
     params: PanelAuditParams,
@@ -296,22 +401,31 @@ def prepare(
     filters: dict[str, Mapping[str, Any]] = {}
     dosage: dict[str, Mapping[str, float]] = {}
     filter_keys = {}
+    cnv_filter_keys = {}
+    cnv_scoring_keys = set()
     for group in groups:
         key = json.dumps([group["filters"], group.get("dosage", {})], sort_keys=True)
         filters[key] = group["filters"]
         dosage[key] = group.get("dosage", {})
         filter_keys[group["id"]] = key
+        if panel_cnv.enabled(group):
+            cnv_key = key if audit.weighted(filters[key], dosage[key]) else f"cnv:{key}"
+            cnv_filter_keys[group["id"]] = cnv_key
+            filters[cnv_key] = filters[key]
+            dosage[cnv_key] = dosage[key]
+            cnv_scoring_keys.add(cnv_key)
     calibrator = Calibrator(
         opportunities,
         excluded,
         filters,
         filter_keys,
+        cnv_filter_keys,
         {key: Counter() for key in filters},
         dosage,
         {
             key: defaultdict(list)
             for key, rules in filters.items()
-            if audit.weighted(rules, dosage[key])
+            if key in cnv_scoring_keys or audit.weighted(rules, dosage[key])
         },
         {
             key: Counter()

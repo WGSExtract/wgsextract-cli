@@ -14,7 +14,7 @@ from tests.htslib_helpers import bgzip_index, needs_htslib
 from tests.test_panel_spec import _audit_inputs, _check, _panel, _write
 from wgsextract_cli import api
 from wgsextract_cli.core.dependencies import get_tool_path
-from wgsextract_cli.core.panel_calibration import Opportunity, matched_null
+from wgsextract_cli.core.panel_calibration import CnvMatch, Opportunity, matched_null
 
 
 @needs_htslib
@@ -522,3 +522,86 @@ def test_1617_weighted_z_score_does_not_round_away_small_differences() -> None:
     # target is above the true mean by about one null standard deviation.
     assert stats["null_mean"] == 1
     assert stats["z_score"] > 0.75
+
+
+@pytest.mark.parametrize("rare_control", [False, True])
+@pytest.mark.parametrize("weight", ["1", "1e-200", "5e-324"])
+def test_1664_cnv_p_and_z_do_not_depend_on_drawing_rare_controls(
+    rare_control: bool,
+    weight: str,
+) -> None:
+    genes = ["TARGET", *(f"CONTROL{i}" for i in range(200))]
+    regions = {
+        gene: Opportunity("1", "autosome", f"NM_{gene}", 3, ((1, 3),), 3, 0)
+        for gene in genes
+    }
+    stats = matched_null(
+        ["TARGET"],
+        {"TARGET"},
+        regions,
+        {},
+        bins=2,
+        seed=0,
+        null_sets=100,
+        basis="callable_cds_bp",
+        weighted_scores={},
+        cnv=CnvMatch(
+            strata=dict.fromkeys(genes, (2, 5, "unmasked")),
+            components={
+                gene: (burden * Fraction(weight), Fraction())
+                for gene, burden in zip(
+                    genes, [2, int(rare_control), *([0] * 199)], strict=True
+                )
+            },
+        ),
+    )
+    if rare_control:
+        assert stats["upper_tail_p"] == pytest.approx(1 / 201)
+        assert stats["null_mean"] == pytest.approx(float(Fraction(weight) / 200), abs=0)
+        assert stats["z_score"] == pytest.approx(399 / 199**0.5)
+    else:
+        assert stats["upper_tail_p"] is None
+        assert stats["z_score"] is None
+
+
+@pytest.mark.parametrize(("events", "underpowered"), [(10, False), (1, True)])
+def test_1664_cnv_power_depends_on_contributing_genes_not_weight(
+    events: int,
+    underpowered: bool,
+) -> None:
+    targets = [f"TARGET{i}" for i in range(10)]
+    genes = [*targets, *(f"CONTROL{i}" for i in range(20))]
+    opportunities = {
+        gene: Opportunity("1", "autosome", f"NM_{gene}", 3, ((1, 3),), 3, 0)
+        for gene in genes
+    }
+
+    def run(weight: Fraction) -> dict[str, Any]:
+        return matched_null(
+            targets,
+            set(targets),
+            opportunities,
+            {},
+            bins=2,
+            seed=7,
+            null_sets=100,
+            basis="callable_cds_bp",
+            weighted_scores={},
+            cnv=CnvMatch(
+                strata=dict.fromkeys(genes, (2, 5, "unmasked")),
+                components={
+                    gene: (
+                        weight if index < len(targets) + events else Fraction(),
+                        Fraction(),
+                    )
+                    for index, gene in enumerate(genes)
+                },
+            ),
+        )
+
+    full, scaled = run(Fraction(1)), run(Fraction(1, 10))
+    assert full["null_mean_contributing_genes"] == events / 2
+    assert scaled["null_mean_contributing_genes"] == events / 2
+    assert full["underpowered"] is scaled["underpowered"] is underpowered
+    assert full["z_score"] == scaled["z_score"]
+    assert full["upper_tail_p"] == scaled["upper_tail_p"]

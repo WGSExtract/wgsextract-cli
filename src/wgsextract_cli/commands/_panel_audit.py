@@ -19,7 +19,7 @@ from wgsextract_cli.commands._panel_check import inspect_panel
 from wgsextract_cli.commands.vcf.table import VcfStream, table_stem
 from wgsextract_cli.core import exon_callability as ec
 from wgsextract_cli.core import panel_audit as audit
-from wgsextract_cli.core import panel_spec, variant_table
+from wgsextract_cli.core import panel_cnv, panel_spec, variant_table
 from wgsextract_cli.core import panel_weights as weights
 from wgsextract_cli.core import reference_evidence as evidence
 from wgsextract_cli.core.atomic_output import publish_output_set
@@ -403,6 +403,23 @@ def _run(
     spec, notes, details = inspect_panel(params.panel, annotation_build)
     if (declared := spec.get("build")) is not None and declared != build:
         raise UsageError(f"Panel build {declared} does not match input build {build}.")
+    cnv: panel_cnv.Evidence | None = None
+    uses_cnv = any(panel_cnv.enabled(group) for group in details["groups"])
+    if uses_cnv:
+        if params.target_cnv is None or params.target_cnv_manifest is None:
+            raise UsageError(
+                "CNV weights require --target-cnv and --target-cnv-manifest."
+            )
+        cnv = panel_cnv.load(
+            params.target_cnv, params.target_cnv_manifest, source.sample, notes
+        )
+        current_result().add_input(params.target_cnv, "target_cnv")
+        current_result().add_input(params.target_cnv_manifest, "target_cnv_manifest")
+        panel_cnv.describe_groups(details["groups"], cnv)
+    elif params.target_cnv is not None:
+        raise UsageError(
+            "--target-cnv requires a positive deletion_weight or duplication_weight."
+        )
     thresholds = thresholds_from(params)
     gvcf, reference = _gvcf(params, source, build, work)
     symbols = {
@@ -476,7 +493,7 @@ def _run(
         settings["seed"] = (
             params.seed if params.seed is not None else settings.get("seed", 0)
         )
-        calibration = calibrator.finish(details["groups"], settings)
+        calibration = calibrator.finish(details["groups"], settings, cnv=cnv)
     if spec.get("sites") or spec.get("haplotypes"):
         if (
             gvcf is not None
@@ -518,6 +535,7 @@ def _run(
         "exon_model": model,
         "calibration_universe": calibration,
         "reference_evidence": reference.origin if reference else None,
+        **({"target_cnv": cnv.describe()} if cnv is not None else {}),
     }
     _write(params, source, build, outdir, document, rows)
 
