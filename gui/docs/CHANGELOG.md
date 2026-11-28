@@ -100,6 +100,9 @@ Unreleased changes are tracked in [fragments](changelog/unreleased/README.md).
   which predates the new network-mode options. Local commands still run in
   Low Data and Off modes; the bundled CLI uses its own download consent
   ([#1674, bundled CLI setup](https://github.com/WGSExtract/wgsextract-cli/issues/1674)).
+- After a desktop app upgrade, Setup now offers to install the CLI version
+  required by the app. On Windows, a failed CLI upgrade restores the previous
+  installation. Your workspace and settings stay in place.
 
 ## [0.8.10] - 2026-11-24
 
