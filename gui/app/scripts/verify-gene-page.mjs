@@ -11,6 +11,7 @@ import { loadLocalizedBundle } from "../dist/web/src/server/bundle-loader.js";
 import { createProcessManager } from "../dist/web/src/server/process-runner.js";
 import { createRequestHandler } from "../dist/web/src/server/routes.js";
 import { registerUsersWorkspace } from "../dist/web/src/server/users-workspace.js";
+import { offlineCliAppDir } from "./offline-cli-runtime.mjs";
 import { configureOfflineVerification } from "./offline-verification-settings.mjs";
 
 const root = path.resolve(import.meta.dirname, "../../..");
@@ -97,6 +98,7 @@ await writeFile(path.join(bundleRoot, "state.json"), JSON.stringify({
     configFilePaths: { wgs_settings: config }, fieldValues: { bam_path: bam, vcf_path: vcf },
     uiMode: "advanced", setupExpanded: false, setupRun: { status: "succeeded", results: [] },
 }));
+const cliRuntime = await offlineCliAppDir(cli);
 const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
 const load = () => loadLocalizedBundle("en", path.join(root, "gui"), bundleRoot, bundleRoot);
 const loaded = await load();
@@ -104,7 +106,7 @@ const handler = createRequestHandler({
     ...loaded, apiToken: "offline-verification-only", bundleRoot, repoRoot: path.join(root, "gui"),
     distRoot: path.join(root, "gui/app/dist"), webRoot: path.join(root, "gui/app/web"),
     maxBodyBytes: 1048576, dynamicActions: new Map(),
-    runProcess: (script, args, options) => manager.runProcess(script, args, { ...options, env: { ...options.env, WGSEXTRACT_APP_DIR: cli } }),
+    runProcess: (script, args, options) => manager.runProcess(script, args, { ...options, env: { ...options.env, WGSEXTRACT_APP_DIR: cliRuntime.appDir } }),
     localizedBundleLoader: { load }, enableDevReload: false, addDevReloadClient() {},
 });
 const server = createServer(handler);
@@ -217,4 +219,5 @@ try {
     await manager.terminateAllProcesses();
     server.closeAllConnections();
     await new Promise((resolve) => server.close(resolve));
+    await cliRuntime.dispose();
 }
