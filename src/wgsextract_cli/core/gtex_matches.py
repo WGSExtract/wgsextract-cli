@@ -1,6 +1,7 @@
 """Write a long TSV of exact GRCh38 GTEx variant–gene–tissue associations."""
 
 import csv
+import shutil
 import sqlite3
 import subprocess
 from pathlib import Path
@@ -15,7 +16,9 @@ COLUMNS = (
 )  # fmt: skip
 
 
-def write_matches(vcf: str, output: Path, db: sqlite3.Connection) -> dict[str, int]:
+def write_matches(
+    vcf: str, output: Path, destination: Path, db: sqlite3.Connection
+) -> dict[str, int]:
     aliases = primary_grch38_aliases()
     contigs: dict[str, bool] = {}
     records = matched_records = matched_alts = associations = 0
@@ -27,6 +30,8 @@ def write_matches(vcf: str, output: Path, db: sqlite3.Connection) -> dict[str, i
             text=True,
         ) as query,
     ):
+        if destination.is_file():
+            shutil.copymode(destination, output)
         writer = csv.writer(stream, delimiter="\t", lineterminator="\n")
         writer.writerow(COLUMNS)
         assert query.stdout is not None

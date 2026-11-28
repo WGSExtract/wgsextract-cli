@@ -56,12 +56,14 @@ def record_sidecar_source(
     resource_releases.record_pinned("gtex", gtex_data.BUILD, table)
 
 
-def write_sidecar(input_file: str, table: Path, staged: Path) -> dict[str, int]:
+def write_sidecar(
+    input_file: str, table: Path, staged: Path, destination: Path
+) -> dict[str, int]:
     with gtex_data.open_track(table, verify=True, cancel=cancel_event()) as (
         db,
         source,
     ):
-        metrics = gtex_matches.write_matches(input_file, staged, db)
+        metrics = gtex_matches.write_matches(input_file, staged, destination, db)
     record_sidecar_source(table, source, metrics)
     return metrics
 
@@ -73,7 +75,7 @@ def run_gtex(params: VcfGtexParams) -> None:
     table, output = gtex_data.path(lib.root), Path(outdir, GTEX_TSV)
     protect_output(output, input_file, table, gtex_data.receipt_path(table))
     with atomic_output(output, retire_indexes=False) as staged:
-        write_sidecar(input_file, table, Path(staged))
+        write_sidecar(input_file, table, Path(staged), output)
     current_result().add_output(output, "gtex_eqtl_associations")
 
 

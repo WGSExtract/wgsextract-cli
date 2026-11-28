@@ -6,6 +6,7 @@ import io
 import json
 import os
 import sqlite3
+import stat
 import tarfile
 from contextlib import closing
 from pathlib import Path
@@ -310,6 +311,38 @@ def test_1662_failed_gtex_chain_rebuild_keeps_sidecar_and_can_retry(
     )
     assert retry.metrics["gtex_associations"] == 4
     assert sidecar.read_bytes() != previous_sidecar
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX file modes")
+@pytest.mark.parametrize("chain", [False, True], ids=["standalone", "chain"])
+def test_1662_gtex_rebuild_keeps_private_sidecar_mode(
+    tmp_path, sample, gtex_bundle, chain
+):
+    library = tmp_path / "library"
+    api.ref.gtex(api.RefGtexParams(ref=library, download=True))
+    common = {"input": sample, "ref": library, "outdir": tmp_path, "network": "off"}
+    sidecar = tmp_path / ("chain_gtex_eqtl.tsv" if chain else "gtex_eqtl.tsv")
+    previous_umask = os.umask(0o022)
+    try:
+        if chain:
+            api.vcf.chain_annotate(
+                api.VcfChainAnnotateParams(**common, annotations="gtex")
+            )
+        else:
+            api.vcf.gtex(api.VcfGtexParams(**common))
+        assert stat.S_IMODE(sidecar.stat().st_mode) == 0o644
+        sidecar.chmod(0o600)
+        if chain:
+            api.vcf.chain_annotate(
+                api.VcfChainAnnotateParams(
+                    **common, annotations="gtex", force_steps=("gtex",)
+                )
+            )
+        else:
+            api.vcf.gtex(api.VcfGtexParams(**common))
+        assert stat.S_IMODE(sidecar.stat().st_mode) == 0o600
+    finally:
+        os.umask(previous_umask)
 
 
 def test_1662_failed_sidecar_rename_rolls_back_the_chain_vcf(

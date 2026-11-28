@@ -559,7 +559,7 @@ def _publish_chain(
         metrics = {}
         if table is not None:
             tsv = outputs.enter_context(atomic_output(sidecar, retire_indexes=False))
-            metrics = write_sidecar(str(vcf), table, Path(tsv))
+            metrics = write_sidecar(str(vcf), table, Path(tsv), sidecar)
         indexes = {
             Path(str(vcf) + ext): Path(str(final) + ext) for ext in (".tbi", ".csi")
         }
