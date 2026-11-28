@@ -14,6 +14,10 @@ function appUpdateRow(): AppUpdateRow {
     if (!state.networkSettings.allowUpdateChecks || effectiveNetworkMode(state.networkSettings) === "off") {
         return { status: "pending", label: labels.setupStepUpdateCheckOffTitle ?? "Off", glyph: "–" };
     }
+    // A newer version found stays the step's result, even if downloading or installing it then failed.
+    if (update.availableVersion && update.status !== "checking") {
+        return { status: "warning", label: labels.setupStepUpdateAvailableTitle ?? "Update available", glyph: "!" };
+    }
     switch (update.status) {
         case "checking":
             return { status: "running", label: labels.setupStepRunningTitle ?? "Running", glyph: `<span class="mini-spinner" aria-hidden="true"></span>` };
@@ -26,6 +30,10 @@ function appUpdateRow(): AppUpdateRow {
             return { status: "failed", label: labels.setupStepFailedTitle ?? "Failed", glyph: "×" };
         case "none":
             if (update.checked) return { status: "ok", label: labels.setupStepOkTitle ?? "OK", glyph: "✓" };
+            break;
+        case "idle":
+            // A failed startup check stays quiet in the sidebar (no error button), but Setup reports it.
+            if (update.checked) return { status: "failed", label: labels.setupStepFailedTitle ?? "Failed", glyph: "×" };
             break;
     }
     return { status: "pending", label: labels.setupStepPendingTitle ?? "Pending", glyph: "○" };

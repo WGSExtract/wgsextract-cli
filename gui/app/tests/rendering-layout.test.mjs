@@ -249,6 +249,13 @@ test("setup's first step reports the app's own update check", async () => {
   assert.deepEqual(appRow(), ["warning", "Update available"]);
   Object.assign(state.update, { status: "error" });
   assert.deepEqual(appRow(), ["failed", "Failed"]);
+  // A failed startup check is quiet in the sidebar, but Setup reports it.
+  Object.assign(state.update, { checked: true, status: "idle" });
+  assert.deepEqual(appRow(), ["failed", "Failed"]);
+  // A found update stays reported after its download fails.
+  Object.assign(state.update, { status: "error", availableVersion: "0.9.1" });
+  assert.deepEqual(appRow(), ["warning", "Update available"]);
+  Object.assign(state.update, { status: "none", availableVersion: "" });
   state.networkSettings.allowUpdateChecks = false;
   assert.deepEqual(appRow(), ["pending", "Off"]);
   Object.assign(state.networkSettings, { allowUpdateChecks: true, mode: "off" });
@@ -287,6 +294,12 @@ test("the app version turns red when out of date, and a development run always i
   assert.deepEqual(version(), ["", "Version 0.9.0"]);
   state.update.status = "available";
   assert.deepEqual(version(), [" out-of-date", "Version 0.9.0"]);
+  // A failed download or install, or checking again, keeps the version the check found.
+  Object.assign(state.update, { status: "error", availableVersion: "0.9.1" });
+  assert.deepEqual(version(), [" out-of-date", "Version 0.9.0"]);
+  Object.assign(state.update, { status: "checking" });
+  assert.deepEqual(version(), [" out-of-date", "Version 0.9.0"]);
+  Object.assign(state.update, { status: "none", availableVersion: "" });
   Object.assign(state, { appVersionDev: true });
   state.update.status = "none";
   assert.deepEqual(version(), [" out-of-date", "Version 0.9.0 Dev"]);

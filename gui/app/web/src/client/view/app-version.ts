@@ -12,9 +12,12 @@ export function displayedAppVersion() {
     return `${version} ${state.labels.appVersionDevLabel ?? "Dev"}`;
 }
 
-/** Out of date: a newer release is available, or always, for a development run. */
+/**
+ * Out of date: a newer release is available, or always, for a development run. A failed download or install, or
+ * checking again, keeps the version it found, so the warning stays.
+ */
 export function isAppVersionOutOfDate() {
-    return state.appVersionDev || updatePending.has(state.update.status);
+    return state.appVersionDev || updatePending.has(state.update.status) || Boolean(state.update.availableVersion);
 }
 
 export function renderAppVersion() {
