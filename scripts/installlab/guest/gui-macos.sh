@@ -215,9 +215,8 @@ use_workspace() {
 
 app_actions() {
     use_workspace
-    if [ -n "${LAB_ARCHIVE_URL:-}" ]; then
-        install_mini_genome_ploidy "$USERS_WORKSPACE" "$HERE" || return 1
-    fi
+    reference_workspace=${USERS_ARGS:+$USERS_WORKSPACE}
+    install_mini_genome_ploidy "${reference_workspace:-$WORKSPACE}" "$HERE" || return 1
     if is_tauri; then
         resources="$APP/Contents/Resources"
         WGSEXTRACT_GUI_APP_DATA_NAME="${APP_DATA##*/}" \
