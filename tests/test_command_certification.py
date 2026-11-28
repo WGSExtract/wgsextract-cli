@@ -16,8 +16,25 @@ from wgsextract_cli.core.certification import CertificationLevel
 from wgsextract_cli.core.results import load_schema
 from wgsextract_cli.main import main
 
+APPROVED_INVENTORY = Path(__file__).parent / "fixtures/certification_inventory_1596.tsv"
 
-def test_1596_all_commands_have_reviewed_certification(capsys):
+
+def test_1596_compact_help_matches_the_approved_certification_inventory(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # https://github.com/WGSExtract/wgsextract-cli/issues/1596#issuecomment-7183272426
+    rows = APPROVED_INVENTORY.read_text(encoding="utf-8").splitlines()
+    expected = {path: level for path, _, level in (row.partition("\t") for row in rows)}
+    assert len(rows) == len(expected) == 153
+    main(["help", "--all", "--json"])
+    commands = json.loads(capsys.readouterr().out)["commands"]
+    actual = {command["path"]: command["certification"] for command in commands}
+    assert {path: actual.get(path) for path in expected} == expected
+
+
+def test_1596_all_commands_have_reviewed_certification(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     main(["help", "--all", "--json", "--full"])
     document = json.loads(capsys.readouterr().out)
     commands = document["commands"]
@@ -46,8 +63,8 @@ def test_1596_all_commands_have_reviewed_certification(capsys):
 @needs_htslib
 @pytest.mark.parametrize("suppress", [False, True])
 def test_1596_certification_notice_is_configurable_but_manifest_keeps_level(
-    tmp_path, capsys, suppress
-):
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], suppress: bool
+) -> None:
     config = tmp_path / "config.toml"
     config.write_text(
         "certification_notices = false\n" if suppress else "", encoding="utf-8"

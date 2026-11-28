@@ -1,0 +1,153 @@
+align	Validated
+analyze batch-gen	Tested
+analyze comprehensive	Tested
+bam identify	Tested
+bam index	Tested
+bam merge	Tested
+bam sort	Tested
+bam to-bam	Tested
+bam to-cram	Tested
+bam to-ubam	Tested
+bam unalign	Tested
+bam unindex	Tested
+bam unsort	Tested
+basecall	Experimental
+benchmark	Tested
+cohort summarize	Tested
+config	Tested
+deps check	Tested
+deps install	Experimental
+deps list	Tested
+deps ready	Tested
+deps uninstall	Experimental
+example-genome download	Experimental
+example-genome list	Tested
+extract bam-subset	Tested
+extract custom	Tested
+extract mito-fasta	Tested
+extract mito-vcf	Tested
+extract mt-bam	Tested
+extract region	Tested
+extract unmapped	Tested
+extract y-mt-extract	Tested
+extract ydna-bam	Tested
+extract ydna-vcf	Tested
+fastq archive	Tested
+fastq restore	Tested
+help	Tested
+info	Tested
+info calculate-coverage	Tested
+info chip	Tested
+info coverage-sample	Tested
+info gene	Tested
+lineage mt-haplogroup	Tested
+lineage y-haplogroup	Tested
+lineage y-private	Experimental
+lineage y-str	Tested
+lookup	Tested
+methylation pileup	Tested
+methylation regions	Validated
+microarray	Validated
+panel audit	Experimental
+panel bed	Tested
+panel check	Tested
+pet-align	Tested
+qc ancestry	Experimental
+qc contamination	Tested
+qc fake-data	Tested
+qc fastp	Tested
+qc fastqc	Tested
+qc multiqc	Tested
+qc multiqc-metrics	Tested
+qc relate	Tested
+qc roh	Tested
+qc vcf	Tested
+realign	Validated
+ref aadr	Experimental
+ref acmg-data	Experimental
+ref alphamissense	Tested
+ref ancestry	Tested
+ref bootstrap	Tested
+ref cadd	Tested
+ref clinvar	Tested
+ref count-ns	Tested
+ref cytobands	Tested
+ref dbsnp	Tested
+ref dense-sa	Tested
+ref download	Tested
+ref gene-map	Tested
+ref gerp	Tested
+ref gnomad	Tested
+ref gnomad-sv	Tested
+ref imputation	Tested
+ref index	Validated
+ref library	Tested
+ref microarray-targets	Tested
+ref needs	Tested
+ref pharmgkb	Tested
+ref phylop	Tested
+ref recheck	Experimental
+ref revel	Tested
+ref somalier	Tested
+ref spliceai	Tested
+ref status	Tested
+ref test-genome	Tested
+ref verify	Tested
+ref ybrowse	Tested
+repair ftdna-bam	Tested
+repair ftdna-vcf	Tested
+report	Tested
+report-delta	Tested
+report-issue	Tested
+sample set	Tested
+sample show	Tested
+sample unset	Tested
+score pgs	Experimental
+serve	Tested
+sign create	Tested
+sign verify	Tested
+typing cyp2d6	Experimental
+typing hla	Experimental
+typing paraphase	Experimental
+typing smn	Experimental
+typing str	Validated
+typing target-cnv	Tested
+vcf acmg	Experimental
+vcf alphamissense	Tested
+vcf annotate	Tested
+vcf cadd	Tested
+vcf call	Tested
+vcf callability	Tested
+vcf chain-annotate	Tested
+vcf clair3	Validated
+vcf clinvar	Tested
+vcf cnv	Experimental
+vcf compare	Validated
+vcf deepvariant	Validated
+vcf filter	Tested
+vcf freebayes	Tested
+vcf gatk	Tested
+vcf gerp	Tested
+vcf gnomad	Tested
+vcf granite-qc	Experimental
+vcf impute	Validated
+vcf indel	Validated
+vcf info	Tested
+vcf pharmcat	Experimental
+vcf pharmgkb	Tested
+vcf phase	Validated
+vcf phylop	Tested
+vcf prepare	Tested
+vcf revel	Tested
+vcf snp	Validated
+vcf spliceai	Tested
+vcf sv	Validated
+vcf sv-freq	Tested
+vcf table	Tested
+vcf to-fasta	Tested
+vcf trio	Tested
+vcf variantqc	Experimental
+vep delete	Tested
+vep download	Experimental
+vep run	Tested
+vep verify	Tested
