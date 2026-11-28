@@ -4,7 +4,7 @@ title: 'WGS Extract GUI documentation map'
 description: 'Documentation map for WGS Extract GUI: the app, bundles, distribution, and static site generation.'
 eyebrow: 'Documentation'
 heading: 'Where to go next.'
-lede: 'Start with v0.8.10 downloads or one-command developer setup. Workflow details, distribution, and schemas live close to the code.'
+lede: 'Start with v0.9.0 downloads or one-command developer setup. Workflow details, distribution, and schemas live close to the code.'
 actions: 'User Documentation|docs/index.html|primary; Developer Docs|devdocs/index.html; GUI Architecture|architecture.html'
 footer_title: 'Documentation map'
 footer_text: 'End-user guides live in gui/docs/; developer and bundle docs live in gui/devdocs/.'
@@ -43,7 +43,7 @@ Setup prepares missing user-level uv, Node, and Rust tools, locked dependencies,
 
 ::: card
 {{ kicker: Releases }}
-### Current app and CLI: v0.8.10
+### Current app and CLI: v0.9.0
 Each WGSExtract CLI release carries the app's installers and the CLI it bundles, with one set of release notes. App releases up to v0.6.6 stay on the former gui-for-cli repository. The changelog tracks the move to one Tauri app, native Windows setup, macOS notarization, and bundle improvements.
 
 {{ link: Open releases|https://github.com/WGSExtract/wgsextract-cli/releases|inline-link }}
