@@ -138,7 +138,10 @@ CERTIFICATION = {
         _REVIEWED, "test_regulatory.py", "Per-ALT SCREEN overlap checked on fixtures."
     ),
     "vcf gtex": tested(
-        _REVIEWED, "test_gtex.py", "Exact-ALT GTEx associations checked on fixtures."
+        "2026-11-27",
+        "test_gtex.py",
+        "Exact-ALT GTEx associations checked on fixtures and HG002 GRCh38.",
+        f"{REPO}/issues/1662#issuecomment-7234989350",
     ),
     "vcf info": tested(
         _REVIEWED, "test_vcf_info.py", "VCF statistics and build checks on fixtures."

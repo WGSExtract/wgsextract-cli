@@ -153,9 +153,10 @@ CERTIFICATION = {
         _REVIEWED, "test_regulatory.py", "SCREEN track acquisition checked on fixtures."
     ),
     "ref gtex": tested(
-        _REVIEWED,
+        "2026-11-27",
         "test_gtex.py",
-        "Pinned GTEx archive installation checked on fixtures.",
+        "Pinned GTEx archive installation checked on fixtures and the full release.",
+        f"{REPO}/issues/1662#issuecomment-7234989350",
     ),
     "ref clinvar": tested(
         _REVIEWED,

@@ -25,7 +25,7 @@ def test_1596_compact_help_matches_the_approved_certification_inventory(
     # https://github.com/WGSExtract/wgsextract-cli/issues/1596#issuecomment-7183272426
     rows = APPROVED_INVENTORY.read_text(encoding="utf-8").splitlines()
     expected = {path: level for path, _, level in (row.partition("\t") for row in rows)}
-    assert len(rows) == len(expected) == 153
+    assert len(rows) == len(expected) == 155
     main(["help", "--all", "--json"])
     commands = json.loads(capsys.readouterr().out)["commands"]
     actual = {command["path"]: command["certification"] for command in commands}
