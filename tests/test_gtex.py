@@ -270,7 +270,9 @@ def test_1662_ref_gtex_rejects_and_repairs_corruption(
                 db.execute("UPDATE association SET pip=0.25 WHERE pos=20")
     with pytest.raises(api.CommandFailed, match=r"missing or damaged"):
         api.ref.gtex(api.RefGtexParams(ref=library, network="off"))
-    annotate = api.VcfGtexParams(input=sample, ref=library, network="off")
+    annotate = api.VcfGtexParams(
+        input=sample, ref=library, outdir=tmp_path, network="off"
+    )
     with pytest.raises(api.CommandFailed, match=r"missing or damaged"):
         api.vcf.gtex(annotate)
     assert not (tmp_path / "gtex_eqtl.tsv").exists()
