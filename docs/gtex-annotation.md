@@ -11,11 +11,11 @@ wgsextract vcf gtex --input sample.vcf.gz --outdir annotations
 the final variants from a chain, include `gtex` by name, for example
 `vcf chain-annotate --input sample.vcf.gz --annotations regulatory,gtex`.
 GTEx is not in the default chain. The chain's `chain_gtex_eqtl.tsv` reflects
-any region selection and other annotation steps. A successful rerun without
-`gtex` removes an unchanged sidecar recorded by that chain, not an unrelated
-file with the same name. The chain refuses to replace or remove a sidecar
-that aliases a configured input. Move an unrecorded or modified sidecar
-aside before rerunning with `gtex`. The chain does not add GTEx INFO fields
+any region selection and other annotation steps. A rerun without `gtex`
+leaves the old sidecar untouched; it may no longer describe the final VCF.
+A GTEx rebuild replaces the TSV only after it has been written successfully,
+and the chain rejects a sidecar path that aliases a configured input.
+The chain does not add GTEx INFO fields
 to its VCF or GTEx columns to `--to-table` output. The step journal tracks the
 VCF and sidecar together; use `--force-step gtex` to regenerate the pair.
 

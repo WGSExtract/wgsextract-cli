@@ -5,6 +5,7 @@ import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import asdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -50,7 +51,6 @@ from .clinvar_revel import CLINVAR_ANNOTATED, REVEL_ANNOTATED
 from .deleteriousness import CADD_ANNOTATED, GERP_ANNOTATED
 from .gtex import (
     GTEX_TSV,
-    ChainSidecarGuard,
     input_generations,
     protect_output,
     record_sidecar_source,
@@ -540,12 +540,13 @@ def _publish_chain(
     table: Path | None,
     sidecar: Path,
     *,
-    retire_sidecar: bool = False,
     checkpoint: Callable[[], None] | None = None,
-    validate_backup: Callable[[Path], None] | None = None,
-) -> tuple[dict[str, int], tuple[int, ...] | None]:
-    with TemporaryDirectory(prefix=".chain-publish-", dir=final.parent) as stage:
-        vcf, tsv = Path(stage, final.name), Path(stage, sidecar.name)
+) -> dict[str, int]:
+    with (
+        TemporaryDirectory(prefix=".chain-publish-", dir=final.parent) as stage,
+        ExitStack() as outputs,
+    ):
+        vcf = Path(stage, final.name)
         if source == input_file:
             # With only GTEx selected there may be no compressed VCF step.
             run_command(["bcftools", "view", "--no-version", "-Oz", "-o", vcf, source])
@@ -555,32 +556,21 @@ def _publish_chain(
             for ext in (".tbi", ".csi"):
                 if Path(source + ext).exists():
                     shutil.copy2(source + ext, str(vcf) + ext)
-        files = {}
         metrics = {}
-        generation = None
         if table is not None:
-            metrics = write_sidecar(str(vcf), table, tsv)
-            files[tsv] = sidecar
-            # Rename can change ctime, but not the staged file's identity or mtime.
-            staged = tsv.stat()
-            generation = (
-                staged.st_dev,
-                staged.st_ino,
-                staged.st_size,
-                staged.st_mtime_ns,
-            )
+            tsv = outputs.enter_context(atomic_output(sidecar, retire_indexes=False))
+            metrics = write_sidecar(str(vcf), table, Path(tsv))
         indexes = {
             Path(str(vcf) + ext): Path(str(final) + ext) for ext in (".tbi", ".csi")
         }
-        files.update((src, dst) for src, dst in indexes.items() if src.exists())
+        files = {src: dst for src, dst in indexes.items() if src.exists()}
         files[vcf] = final
         publish_output_set(
             files,
-            retire=[*indexes.values(), *([sidecar] if retire_sidecar else [])],
+            retire=list(indexes.values()),
             checkpoint=checkpoint,
-            guarded={sidecar: validate_backup} if validate_backup else None,
         )
-    return metrics, generation
+    return metrics
 
 
 def _publish_gtex(
@@ -591,7 +581,6 @@ def _publish_gtex(
     table: Path,
     sidecar: Path,
     protect_sidecar: Callable[[], None],
-    validate_backup: Callable[[Path], None],
 ) -> None:
     source_indexes = vcf_indexes(source) if source != input_file else ()
     inputs: dict[str, str | Path] = {
@@ -622,19 +611,13 @@ def _publish_gtex(
     if journal.dry_run:
         return
     if decision.run:
-        # A failed attempt must not remove the last successfully published pair.
+        # A retry must not remove previous outputs before their replacements exist.
         with journal.running(decision, keep_partial=True) as handle:
-            metrics, generation = _publish_chain(
-                source,
-                input_file,
-                final,
-                table,
-                sidecar,
-                checkpoint=unchanged,
-                validate_backup=validate_backup,
+            handle.metrics.update(
+                _publish_chain(
+                    source, input_file, final, table, sidecar, checkpoint=unchanged
+                )
             )
-            handle.metrics.update(metrics)
-            handle.add_output(sidecar, generation=generation)
             for path in vcf_indexes(str(final)):
                 handle.add_output(path)
     else:
@@ -670,22 +653,30 @@ def run_chain_annotate(
         raise UsageError(
             "vcf chain-annotate would overwrite its input; choose another --outdir."
         )
-    result = current_result()
-    if not params.dry_run:
-        result.expect_output(final_out)
     md5_sig = (
         calculate_bam_md5(input_file, None)
         if input_file.lower().endswith((".bam", ".cram"))
         else None
     )
     lib = ReferenceLibrary(params.ref, md5_sig, input_path=input_file)
+    sidecar = outdir / _GTEX_SIDECAR
+    sidecar_inputs = _chain_inputs(
+        params, input_file, lib, sorted(set(annotations) | _VCF_STEPS.keys())
+    )
+
+    def protect_sidecar() -> None:
+        protect_output(sidecar, *sidecar_inputs, final_out)
+
+    protect_sidecar()
+    result = current_result()
+    if not params.dry_run:
+        result.expect_output(final_out)
     if "regulatory" in annotations:
         regulatory_overlap.require_grch38(input_file)
         table = regulatory_data.path(lib.root)
         if not regulatory_data.provenance(table, verify=True):
             raise WGSExtractError(regulatory_data.missing(table))
     gtex_table = None
-    sidecar = outdir / _GTEX_SIDECAR
     if "gtex" in annotations:
         require_grch38(input_file, "GTEx")
         gtex_table = gtex_data.path(lib.root)
@@ -709,21 +700,6 @@ def run_chain_annotate(
         outdir / _JOURNAL, params.COMMAND, resume_policy(params)
     ) as journal:
         try:
-            sidecar_inputs = _chain_inputs(
-                params, input_file, lib, sorted(set(annotations) | _VCF_STEPS.keys())
-            )
-            guard = ChainSidecarGuard(journal, sidecar, [*sidecar_inputs, final_out])
-            if gtex_table is not None or sidecar.exists() or sidecar.is_symlink():
-                guard.check()
-            if (
-                gtex_table is not None
-                and not guard.owned
-                and (sidecar.exists() or sidecar.is_symlink())
-            ):
-                raise UsageError(
-                    f"{sidecar.name} is not a recorded chain output; "
-                    "move it aside or choose another --outdir."
-                )
             source = _run_steps(
                 journal,
                 params,
@@ -744,24 +720,14 @@ def run_chain_annotate(
                     final_out,
                     gtex_table,
                     sidecar,
-                    guard.check,
-                    guard.validate_backup,
+                    protect_sidecar,
                 )
             elif journal.dry_run:
                 journal.decide(
                     Step("publish", inputs={"vcf": source}, outputs=[final_out])
                 )
             else:
-                _publish_chain(
-                    source,
-                    input_file,
-                    final_out,
-                    None,
-                    sidecar,
-                    retire_sidecar=guard.owned,
-                    checkpoint=guard.check if guard.owned else None,
-                    validate_backup=guard.validate_backup if guard.owned else None,
-                )
+                _publish_chain(source, input_file, final_out, None, sidecar)
             if journal.dry_run:
                 if params.to_table:
                     journal.decide(Step("table", inputs={"vcf": final_out}))

@@ -20,10 +20,10 @@ from tests.fake_tools import python_tool, require_bare_name_fakes
 from tests.htslib_helpers import bgzip_index, needs_tools, sam_to_bam
 from wgsextract_cli.core import config
 from wgsextract_cli.core.alignment import bwa_index as bwa_index
-from wgsextract_cli.core.atomic_output import atomic_output, publish_output_set
+from wgsextract_cli.core.atomic_output import atomic_output
 from wgsextract_cli.core.dependencies import clear_tool_caches
 from wgsextract_cli.core.file_lock import build_lock, exclusive_lock
-from wgsextract_cli.core.utils import UsageError, WGSExtractError, run_command
+from wgsextract_cli.core.utils import WGSExtractError, run_command
 from wgsextract_cli.main import main
 
 
@@ -45,50 +45,6 @@ def test_atomic_writer_failure_keeps_previous_output_and_index(tmp_path):
         Path(staged).write_bytes(b"completed output")
     assert output.read_bytes() == b"completed output"
     assert not index.exists()
-
-
-@pytest.mark.parametrize("phase", ["late-create", "late-replace", "rollback"])
-def test_1662_guarded_publication_preserves_a_file_placed_during_rename(
-    tmp_path, monkeypatch, phase
-):
-    primary = tmp_path / "chain_annotated.vcf.gz"
-    sidecar = tmp_path / "chain_gtex_eqtl.tsv"
-    input_file = tmp_path / "external.tsv"
-    staged_vcf, staged_tsv = tmp_path / "new.vcf.gz", tmp_path / "new.tsv"
-    primary.write_bytes(b"previous VCF")
-    staged_vcf.write_bytes(b"new VCF")
-    staged_tsv.write_bytes(b"new associations")
-    input_file.write_bytes(b"user input")
-    retire = phase == "late-replace"
-    if retire:
-        sidecar.write_bytes(b"previous associations")
-    replace = Path.replace
-
-    def replace_during_race(path, target):
-        if phase != "rollback" and path == primary:
-            replace(input_file, sidecar)
-        if phase == "rollback" and path == staged_vcf:
-            raise UsageError("Chain publication interrupted.")
-        if phase == "rollback" and path == sidecar:
-            replace(input_file, sidecar)
-        return replace(path, target)
-
-    def check_backup(backup):
-        if backup.read_bytes() != b"previous associations":
-            raise UsageError("The sidecar changed during publication.")
-
-    monkeypatch.setattr(Path, "replace", replace_during_race)
-    files = (
-        {staged_vcf: primary} if retire else {staged_tsv: sidecar, staged_vcf: primary}
-    )
-    with pytest.raises(UsageError, match="publication"):
-        publish_output_set(
-            files,
-            retire=[sidecar] if retire else [],
-            guarded={sidecar: check_backup},
-        )
-    assert primary.read_bytes() == b"previous VCF"
-    assert sidecar.read_bytes() == b"user input"
 
 
 def test_atomic_mode_still_cleans_partial_outputs_from_direct_writers(tmp_path):

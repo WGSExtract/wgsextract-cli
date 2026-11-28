@@ -230,13 +230,14 @@ def test_1662_exact_alt_retains_tissue_gene_set_and_effect(
         assert rerun.details["steps"][0]["action"] == "skip"
         assert rerun.metrics["gtex_associations"] == len(expected)
     if mode == "scoped-screen-chain":
+        previous_sidecar = sidecar.read_bytes()
         api.vcf.gtex(api.VcfGtexParams(**common))
         api.vcf.chain_annotate(
             api.VcfChainAnnotateParams(
                 **common, annotations="regulatory", region="1:20-20"
             )
         )
-        assert not sidecar.exists()
+        assert sidecar.read_bytes() == previous_sidecar
         assert (output / "gtex_eqtl.tsv").is_file()
         sidecar.write_bytes(b"User data, not a GTEx output\n")
         api.vcf.chain_annotate(
@@ -273,6 +274,42 @@ def test_1662_chain_refuses_to_delete_a_configured_phylop_input(
             api.VcfChainAnnotateParams(**common, annotations="phylop")
         )
     assert sidecar.read_bytes() == source.read_bytes() == phylop
+
+
+def test_1662_failed_gtex_chain_rebuild_keeps_sidecar_and_can_retry(
+    tmp_path, sample, gtex_bundle
+):
+    library = tmp_path / "library"
+    install = api.RefGtexParams(ref=library, download=True)
+    api.ref.gtex(install)
+    out = tmp_path / "chain"
+    common = {
+        "input": sample, "ref": library, "outdir": out, "annotations": "gtex",
+        "network": "off",
+    }  # fmt: skip
+    api.vcf.chain_annotate(api.VcfChainAnnotateParams(**common))
+    sidecar = out / "chain_gtex_eqtl.tsv"
+    final = out / "chain_annotated.vcf.gz"
+    previous_sidecar, previous_vcf = sidecar.read_bytes(), final.read_bytes()
+    status = api.ref.status(api.RefStatusParams(ref=library))
+    with closing(sqlite3.connect(status.details["gtex"]["file"])) as db, db:
+        db.execute("UPDATE association SET pip=0.25 WHERE pos=20")
+
+    with pytest.raises(api.CommandFailed, match="missing or damaged"):
+        api.vcf.chain_annotate(
+            api.VcfChainAnnotateParams(
+                **common, region="1:10-10", force_steps=("gtex",)
+            )
+        )
+    assert sidecar.read_bytes() == previous_sidecar
+    assert final.read_bytes() == previous_vcf
+
+    api.ref.gtex(install)
+    retry = api.vcf.chain_annotate(
+        api.VcfChainAnnotateParams(**common, region="1:10-10")
+    )
+    assert retry.metrics["gtex_associations"] == 4
+    assert sidecar.read_bytes() != previous_sidecar
 
 
 def test_1662_gtex_bad_checksum_does_not_install(tmp_path, gtex_bundle):
