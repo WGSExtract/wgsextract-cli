@@ -26,6 +26,8 @@ class Watchdog:
             str(SCRIPT),
             "--host",
             "unreachable.invalid",
+            "--url",
+            "http://review-host.invalid:8765/api/health",
             "--retry-delay",
             "0",
             "--agent-coord",
@@ -81,6 +83,25 @@ def watchdog(tmp_path: Path) -> Watchdog:
         path.write_text("#!/bin/sh\nset -eu\n" + body)
         path.chmod(0o755)
     return Watchdog(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "args",
+    [[], ["--host", "unreachable.invalid"], ["--url", "http://127.0.0.1:1/api/health"]],
+)
+def test_watchdog_requires_both_destinations(
+    watchdog: Watchdog, args: list[str]
+) -> None:
+    state = watchdog.root / "state"
+    result = subprocess.run(
+        [str(SCRIPT), "--state-file", str(state / "watchdog"), *args],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 2
+    assert "--host" in result.stderr and "--url" in result.stderr
+    assert not state.exists()
 
 
 @pytest.mark.parametrize(

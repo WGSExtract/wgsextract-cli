@@ -748,7 +748,7 @@ disable the socket and stop the service; pause the Sheprd schedule as well.
 
 Scheduled cleanup is off by default. The plan in `scripts/worktree-inspector/`
 is a template outside Sheprd's automation directory. Enable it only on a
-Linux machine you choose (for example, `lin-big-omarchy`), as the owner of the
+Linux machine you choose, as the owner of the
 primary checkout on `main`. Leave it off on other hosts. First verify the
 installed inspector and its busy/clear results as described above. Make sure
 the owner's Sheprd automation service is running, `agent-coord` is available,
