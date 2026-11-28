@@ -48,17 +48,10 @@ async function browserFixture(t, { cost = "unconstrained", cli = false } = {}) {
     const pendingRequests = new Set();
     const manager = createProcessManager({ maxOutputBytes: 1048576, maxErrorBytes: 65536 });
     const server = createServer();
-    let browserServer;
+    let browserContext;
     t.after(async () => {
         try {
-            if (browserServer) {
-                try {
-                    await within(browserServer.close(), "Closing Chromium");
-                } catch (error) {
-                    await within(browserServer.kill(), "Killing Chromium");
-                    throw error;
-                }
-            }
+            if (browserContext) await within(browserContext.close(), "Closing Chromium");
         } finally {
             if (server.listening) {
                 const closed = new Promise((resolve) => server.close(resolve));
@@ -106,9 +99,12 @@ async function browserFixture(t, { cost = "unconstrained", cli = false } = {}) {
         server.once("error", reject);
         server.listen(0, "127.0.0.1", resolve);
     }), "Starting the fixture HTTP server");
-    browserServer = await chromium.launchServer({ executablePath, timeout: browserStartupTimeout });
-    const browser = await chromium.connect(browserServer.wsEndpoint(), { timeout: browserStartupTimeout });
-    const page = await within(browser.newPage({ viewport: { width: 1060, height: 780 } }), "Opening a Chromium page");
+    // Use Chromium's first tab; don't create another renderer through a remote connection during startup.
+    browserContext = await chromium.launchPersistentContext("", {
+        executablePath, timeout: browserStartupTimeout, viewport: { width: 1060, height: 780 },
+    });
+    const [page] = browserContext.pages();
+    assert.ok(page, "Chromium started without an initial page");
     page.setDefaultTimeout(operationTimeout);
     const origin = `http://127.0.0.1:${server.address().port}`;
     const setupCalls = [], external = [];
