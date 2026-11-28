@@ -661,9 +661,11 @@ def run_chain_annotate(
     )
     lib = ReferenceLibrary(params.ref, md5_sig, input_path=input_file)
     sidecar = outdir / _GTEX_SIDECAR
-    sidecar_inputs = _chain_inputs(
-        params, input_file, lib, sorted(set(annotations) | _VCF_STEPS.keys())
-    )
+    sidecar_inputs = (
+        _chain_inputs(params, input_file, lib, sorted(set(annotations) | _VCF_STEPS.keys()))
+        if "gtex" in annotations or sidecar.exists() or sidecar.is_symlink()
+        else []
+    )  # fmt: skip
 
     def protect_sidecar() -> None:
         protect_output(sidecar, *sidecar_inputs, final_out)
