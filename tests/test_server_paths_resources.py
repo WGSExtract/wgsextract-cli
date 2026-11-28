@@ -333,12 +333,19 @@ def test_1624_screen_refuses_a_downloads_symlink_outside_the_library(tmp_path, o
     assert error.value.code == "path_not_allowed"
 
 
-@pytest.mark.parametrize("op", ["ref/gtex", "vcf/gtex", "vcf/chain-annotate"])
-def test_1662_gtex_refuses_track_symlink_outside_library(tmp_path, op):
+@pytest.mark.parametrize(
+    ("op", "receipt"),
+    [("ref/gtex", False), ("vcf/gtex", True), ("vcf/chain-annotate", True)],
+)
+def test_1662_gtex_refuses_track_and_receipt_symlinks_outside_library(
+    tmp_path, op, receipt
+):
     from wgsextract_cli.core import gtex_data
 
     library = tmp_path / "library"
     track = gtex_data.path(str(library))
+    if receipt:
+        track = gtex_data.receipt_path(track)
     track.parent.mkdir(parents=True)
     outside = tmp_path / "outside.sqlite"
     outside.touch()

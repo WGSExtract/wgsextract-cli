@@ -11,6 +11,7 @@ from tempfile import TemporaryDirectory
 from typing import Literal
 
 from wgsextract_cli import __version__
+from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams, VcfTableParams
 from wgsextract_cli.core import gtex_data, regulatory_data, regulatory_overlap
 from wgsextract_cli.core._confidence_rules import thresholds_from
@@ -400,6 +401,7 @@ def _plan_manifest_stem(
     protected = (
         input_file, params.bed, params.ref, lib.fasta, lib.fai,
         *vcf_indexes(input_file), *(dataset(ann, lib) for ann in annotations),
+        gtex_data.receipt_path(gtex_data.path(lib.root)) if "gtex" in annotations else None,
         lib.cadd_indel_file if "cadd" in annotations else None,
     )  # fmt: skip
     if any(path is not None and same_path(manifest, path) for path in protected):
@@ -570,6 +572,7 @@ def _publish_gtex(
     inputs: dict[str, str | Path] = {
         "vcf": source,
         "track": table,
+        "track_provenance": gtex_data.receipt_path(table),
         **{f"index:{p.name}": p for p in source_indexes},
     }
     generations = _input_generations(inputs)
@@ -603,7 +606,10 @@ def _publish_gtex(
             for path in vcf_indexes(str(final)):
                 handle.add_output(path)
     else:
-        with gtex_data.open_track(table, verify=True) as (_, provenance):
+        with gtex_data.open_track(table, verify=True, cancel=cancel_event()) as (
+            _,
+            provenance,
+        ):
             unchanged()
             record_sidecar_source(
                 table,
@@ -646,17 +652,24 @@ def run_chain_annotate(
         table = regulatory_data.path(lib.root)
         if not regulatory_data.provenance(table, verify=True):
             raise WGSExtractError(regulatory_data.missing(table))
-    gtex_table = None
+    gtex_table = gtex_receipt = None
     sidecar = outdir / _GTEX_SIDECAR
     if "gtex" in annotations:
         require_grch38(input_file, "GTEx")
         gtex_table = gtex_data.path(lib.root)
+        gtex_receipt = gtex_data.receipt_path(gtex_table)
         if not gtex_data.installed(gtex_table):
             raise WGSExtractError(gtex_data.missing(gtex_table))
-        protect_output(final_out, gtex_table)
+        protect_output(final_out, gtex_table, gtex_receipt)
     if gtex_table is not None or sidecar.exists() or sidecar.is_symlink():
         protect_output(
-            sidecar, input_file, params.bed, lib.fasta, gtex_table, final_out
+            sidecar,
+            input_file,
+            params.bed,
+            lib.fasta,
+            gtex_table,
+            gtex_receipt,
+            final_out,
         )
     if params.dry_run:
         result.set_manifest_stem(

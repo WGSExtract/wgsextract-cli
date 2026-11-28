@@ -548,7 +548,7 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
     reported_build = lib.build
     installed = getattr(lib, annotation.attribute, None)
     if annotation.resource in {"regulatory", "gtex"}:
-        from wgsextract_cli.core import regulatory_data, regulatory_overlap
+        from wgsextract_cli.core import gtex_data, regulatory_data, regulatory_overlap
         from wgsextract_cli.core.utils import UsageError
         from wgsextract_cli.core.vcf_build import require_grch38
 
@@ -564,6 +564,12 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
             annotation.resource == "regulatory"
             and installed
             and not regulatory_data.provenance(Path(installed), verify=True)
+        ):
+            installed = None
+        if (
+            annotation.resource == "gtex"
+            and installed
+            and not gtex_data.installed(Path(installed), verify=True)
         ):
             installed = None
     if annotation.option:

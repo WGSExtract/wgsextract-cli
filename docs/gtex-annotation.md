@@ -38,8 +38,8 @@ are one-based; the latter is the position in the original ALT list.
 `afc` is the published signed allelic fold-change estimate for the matched
 ALT, in GTEx's reported scale. It is not flipped or inferred, and is blank
 when not reported. A no-match result has only the column header. The
-manifest records match counts, source URL, archive SHA-256, release and
-attribution.
+manifest records match counts, source URL, archive and database SHA-256
+checksums, release and attribution.
 
 These are research annotations from a fine-mapped summary. They are not a
 list of all significant cis-eQTL pairs and do not establish an effect in
@@ -52,7 +52,8 @@ the person whose VCF was annotated, causality or ACMG evidence.
 from Google Cloud Storage (174 MB, 50 tissue tables). The archive is pinned
 to SHA-256 `294891d94fa04556963fb67434ca33bf5f92a236d4f05ea208c3d9b4b13f211f`.
 There is no transfer of sample data and no controlled-access GTEx data
-are used. Without `--download`, `ref gtex` verifies the installed database.
+are used. Without `--download`, `ref gtex` verifies the installed database
+against its JSON checksum receipt. Annotation verifies that checksum too.
 `ref status` reports whether it is present, and `ref needs` shows how to
 install it. Annotation never fetches a missing or damaged track.
 

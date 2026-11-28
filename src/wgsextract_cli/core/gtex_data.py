@@ -1,19 +1,21 @@
 """Install and open the pinned GRCh38 GTEx v10 SuSiE eQTL summary."""
 
+import hashlib
 import json
 import logging
 import math
 import re
 import shlex
 import sqlite3
+import stat
 import tarfile
 from collections.abc import Iterator
-from contextlib import closing, contextmanager
-from pathlib import Path, PureWindowsPath
+from contextlib import ExitStack, closing, contextmanager
+from pathlib import Path, PurePath, PureWindowsPath
 from tempfile import TemporaryDirectory
 
 from wgsextract_cli.core import read_scope, resource_releases
-from wgsextract_cli.core.atomic_output import atomic_output
+from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.download_progress import CancelEvent
 from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
@@ -33,6 +35,14 @@ def path(reflib: str | None) -> Path:
     return Path(resolve_reference_library(reflib), "downloads", _DATABASE)
 
 
+def receipt_path(table: PurePath) -> Path:
+    return Path(str(table) + ".json")
+
+
+def _paths(table: PurePath) -> tuple[Path, ...]:
+    return Path(str(table.parent)), Path(str(table)), receipt_path(table)
+
+
 def guarded_paths(ref: Path | None) -> Iterator[tuple[str, Path]]:
     from wgsextract_cli.core.ref_library.resolver import library_roots
 
@@ -41,13 +51,9 @@ def guarded_paths(ref: Path | None) -> Iterator[tuple[str, Path]]:
         yield "ref", ref
         windows = PureWindowsPath(ref)
         if not ref.is_absolute() and windows.drive:
-            downloads = windows / "downloads"
-            yield "ref", Path(str(downloads))
-            yield "ref", Path(str(downloads / _DATABASE))
+            yield from (("ref", p) for p in _paths(windows / "downloads" / _DATABASE))
             return
-    table = path(library_roots(ref).root)
-    yield "ref", table.parent
-    yield "ref", table
+    yield from (("ref", p) for p in _paths(path(library_roots(ref).root)))
 
 
 def missing(table: Path) -> str:
@@ -58,7 +64,7 @@ def missing(table: Path) -> str:
 
 
 def _allowed(table: Path) -> bool:
-    return read_scope.may_follow(table.parent) and read_scope.may_follow(table)
+    return all(read_scope.may_follow(item) for item in _paths(table))
 
 
 def _source() -> dict[str, str]:
@@ -73,21 +79,59 @@ def _source() -> dict[str, str]:
     }
 
 
+def _generation(path: Path) -> tuple[int, int, int, int, int]:
+    info = path.stat()
+    if not stat.S_ISREG(info.st_mode):
+        raise OSError(f"{path} is not a regular file")
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def _sha256(path: Path, cancel: CancelEvent | None = None) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(4 << 20), b""):
+            if cancel and cancel.is_set():
+                raise WGSExtractError("Cancelled.")
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 @contextmanager
 def open_track(
-    table: Path, *, verify: bool = False
+    table: Path, *, verify: bool = False, cancel: CancelEvent | None = None
 ) -> Iterator[tuple[sqlite3.Connection, dict[str, str]]]:
     """Read one immutable generation; the installer replaces, never edits it."""
     if not _allowed(table):
         raise WGSExtractError(
             f"GTEx track is outside allowed reference folders: {table}"
         )
-    try:
-        uri = table.absolute().as_uri() + "?mode=ro&immutable=1"
-        with closing(sqlite3.connect(uri, uri=True)) as db:
-            db.execute("PRAGMA trusted_schema=OFF")
+    receipt = receipt_path(table)
+
+    def generations() -> tuple[tuple[int, int, int, int, int], ...]:
+        try:
+            return _generation(table), _generation(receipt)
+        except OSError as exc:
+            raise WGSExtractError(missing(table)) from exc
+
+    with ExitStack() as connection:
+        try:
+            generation = generations()
             source = _source()
-            receipt = db.execute("SELECT source, associations FROM receipt").fetchone()
+            document = json.loads(receipt.read_text(encoding="utf-8"))
+            digest = (
+                document.get("database_sha256") if isinstance(document, dict) else None
+            )
+            if (
+                not isinstance(digest, str)
+                or not re.fullmatch(r"[a-f0-9]{64}", digest)
+                or any(document.get(key) != value for key, value in source.items())
+                or verify
+                and digest != _sha256(table, cancel)
+            ):
+                raise WGSExtractError(missing(table))
+            uri = table.absolute().as_uri() + "?mode=ro&immutable=1"
+            db = connection.enter_context(closing(sqlite3.connect(uri, uri=True)))
+            db.execute("PRAGMA trusted_schema=OFF")
             sample = db.execute(
                 "SELECT chrom, pos, ref, alt, ordinal, tissue, gene, gene_name, "
                 "cs, pip, afc FROM association LIMIT 1"
@@ -95,26 +139,22 @@ def open_track(
             if (
                 db.execute("PRAGMA user_version").fetchone()[0] != _SCHEMA
                 or not sample
-                or not receipt
-                or receipt[0] != json.dumps(source, sort_keys=True)
-                or not isinstance(receipt[1], int)
-                or receipt[1] < 1
-                or verify
-                and (
-                    db.execute("PRAGMA quick_check(1)").fetchone() != ("ok",)
-                    or db.execute("SELECT count(*) FROM association").fetchone()
-                    != (receipt[1],)
-                )
+                or generation != generations()
             ):
                 raise WGSExtractError(missing(table))
-            yield db, source
-    except sqlite3.Error as exc:
-        raise WGSExtractError(missing(table)) from exc
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            raise WGSExtractError(missing(table)) from exc
+        try:
+            yield db, {**source, "database_sha256": digest}
+        except sqlite3.Error as exc:
+            raise WGSExtractError(missing(table)) from exc
+        if generation != generations():
+            raise WGSExtractError(missing(table))
 
 
-def installed(table: Path) -> bool:
+def installed(table: Path, *, verify: bool = False) -> bool:
     try:
-        with open_track(table):
+        with open_track(table, verify=verify):
             return True
     except WGSExtractError:
         return False
@@ -159,7 +199,6 @@ def _load(archive: Path, db: sqlite3.Connection, cancel: CancelEvent | None) -> 
             tissue TEXT, gene TEXT, gene_name TEXT, cs INTEGER, pip REAL, afc REAL,
             PRIMARY KEY (chrom, pos, ref, alt, ordinal)
         ) WITHOUT ROWID;
-        CREATE TABLE receipt (source TEXT NOT NULL, associations INTEGER NOT NULL);
         """
     )
     db.execute(f"PRAGMA user_version={_SCHEMA}")
@@ -205,10 +244,6 @@ def _load(archive: Path, db: sqlite3.Connection, cancel: CancelEvent | None) -> 
                     ordinal += len(rows)
     if not ordinal:
         raise ValueError("the archive contains no SuSiE associations")
-    db.execute(
-        "INSERT INTO receipt VALUES (?,?)",
-        (json.dumps(_source(), sort_keys=True), ordinal),
-    )
     db.commit()
 
 
@@ -237,16 +272,20 @@ def install(table: Path, *, cancel: CancelEvent | None = None) -> None:
         ):
             raise WGSExtractError(f"Could not download and verify {LABEL} (SHA-256).")
         logging.info("Indexing the GTEx tissue summaries for offline lookup.")
-        with atomic_output(table, retire_indexes=False) as staged:
-            try:
-                with closing(sqlite3.connect(staged)) as db:
-                    _load(archive, db, cancel)
-            except (
-                ArrowException,
-                tarfile.TarError,
-                sqlite3.Error,
-                OSError,
-                TypeError,
-                ValueError,
-            ) as exc:
-                raise WGSExtractError(f"Could not prepare {LABEL}: {exc}") from exc
+        staged = Path(stage, table.name)
+        receipt = receipt_path(staged)
+        try:
+            with closing(sqlite3.connect(staged)) as db:
+                _load(archive, db, cancel)
+            document = {**source, "database_sha256": _sha256(staged, cancel)}
+            receipt.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        except (
+            ArrowException,
+            tarfile.TarError,
+            sqlite3.Error,
+            OSError,
+            TypeError,
+            ValueError,
+        ) as exc:
+            raise WGSExtractError(f"Could not prepare {LABEL}: {exc}") from exc
+        publish_output_set({receipt: receipt_path(table), staged: table})

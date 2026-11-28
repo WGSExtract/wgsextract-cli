@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.vcf import VcfGtexParams
 from wgsextract_cli.core import gtex_data, gtex_matches, resource_releases
 from wgsextract_cli.core.atomic_output import atomic_output
@@ -29,11 +30,15 @@ def record_sidecar_source(
     result.set_details({"gtex_source": source})
     result.add_metrics(**metrics)
     result.add_input(table, "gtex_track")
+    result.add_input(gtex_data.receipt_path(table), "gtex_track_provenance")
     resource_releases.record_pinned("gtex", gtex_data.BUILD, table)
 
 
 def write_sidecar(input_file: str, table: Path, staged: Path) -> dict[str, int]:
-    with gtex_data.open_track(table, verify=True) as (db, source):
+    with gtex_data.open_track(table, verify=True, cancel=cancel_event()) as (
+        db,
+        source,
+    ):
         metrics = gtex_matches.write_matches(input_file, staged, db)
     record_sidecar_source(table, source, metrics)
     return metrics
@@ -44,7 +49,7 @@ def run_gtex(params: VcfGtexParams) -> None:
     input_file, outdir, lib = annotation_context(params, GTEX_TSV)
     require_grch38(input_file, "GTEx")
     table, output = gtex_data.path(lib.root), Path(outdir, GTEX_TSV)
-    protect_output(output, input_file, table)
+    protect_output(output, input_file, table, gtex_data.receipt_path(table))
     with atomic_output(output, retire_indexes=False) as staged:
         write_sidecar(input_file, table, Path(staged))
     current_result().add_output(output, "gtex_eqtl_associations")

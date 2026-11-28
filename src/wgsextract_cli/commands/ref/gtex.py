@@ -10,14 +10,15 @@ from wgsextract_cli.core.utils import WGSExtractError
 
 def run_gtex(params: RefGtexParams) -> None:
     table = gtex_data.path(str(params.library()))
+    cancel = cancel_event()
     published = False
     try:
-        with gtex_data.open_track(table, verify=True) as (_, source):
+        with gtex_data.open_track(table, verify=True, cancel=cancel) as (_, source):
             pass
     except WGSExtractError:
-        if not params.download:
+        if not params.download or (cancel and cancel.is_set()):
             raise
-        gtex_data.install(table, cancel=cancel_event())
+        gtex_data.install(table, cancel=cancel)
         with gtex_data.open_track(table) as (_, source):
             pass
         published = True
@@ -27,6 +28,7 @@ def run_gtex(params: RefGtexParams) -> None:
     resource_releases.record_pinned("gtex", gtex_data.BUILD, table)
     record = result.add_output if published else result.add_input
     record(table, "gtex_track")
+    record(gtex_data.receipt_path(table), "gtex_track_provenance")
 
 
 cmd_gtex = cli_handler(RefGtexParams, run_gtex)

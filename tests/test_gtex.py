@@ -4,6 +4,7 @@ import csv
 import hashlib
 import io
 import json
+import os
 import sqlite3
 import tarfile
 from contextlib import closing
@@ -248,13 +249,25 @@ def test_1662_gtex_bad_checksum_does_not_install(tmp_path, gtex_bundle):
     assert not Path(status.details["gtex"]["file"]).exists()
 
 
-def test_1662_ref_gtex_can_repair_an_incomplete_install(tmp_path, sample, gtex_bundle):
+@pytest.mark.parametrize(
+    "corruption", ["missing-association", "changed-pip", "missing-checksum"]
+)
+def test_1662_ref_gtex_rejects_and_repairs_corruption(
+    tmp_path, sample, gtex_bundle, corruption
+):
     library = tmp_path / "library"
     install = api.RefGtexParams(ref=library, download=True)
     api.ref.gtex(install)
     status = api.ref.status(api.RefStatusParams(ref=library))
-    with closing(sqlite3.connect(status.details["gtex"]["file"])) as db, db:
-        db.execute("DELETE FROM association WHERE pos=20")
+    track = Path(status.details["gtex"]["file"])
+    if corruption == "missing-checksum":
+        track.with_suffix(".sqlite.json").unlink()
+    else:
+        with closing(sqlite3.connect(track)) as db, db:
+            if corruption == "missing-association":
+                db.execute("DELETE FROM association WHERE pos=20")
+            else:
+                db.execute("UPDATE association SET pip=0.25 WHERE pos=20")
     with pytest.raises(api.CommandFailed, match=r"missing or damaged"):
         api.ref.gtex(api.RefGtexParams(ref=library, network="off"))
     annotate = api.VcfGtexParams(input=sample, ref=library, network="off")
@@ -264,6 +277,11 @@ def test_1662_ref_gtex_can_repair_an_incomplete_install(tmp_path, sample, gtex_b
     api.ref.gtex(install)
     result = api.vcf.gtex(annotate)
     assert result.metrics["gtex_associations"] == 5
+    with (tmp_path / "gtex_eqtl.tsv").open(encoding="utf-8", newline="") as stream:
+        (repaired,) = (
+            row for row in csv.DictReader(stream, delimiter="\t") if row["pos"] == "20"
+        )
+    assert repaired["pip"] == "1.0"
 
 
 def test_1662_gtex_refuses_grch37_without_replacing_sidecar(tmp_path, sample):
@@ -278,3 +296,18 @@ def test_1662_gtex_refuses_grch37_without_replacing_sidecar(tmp_path, sample):
     ):
         api.vcf.gtex(api.VcfGtexParams(input=sample, ref=tmp_path, network="off"))
     assert old.read_text(encoding="utf-8") == "previous successful output\n"
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="requires named pipes")
+def test_1662_ref_status_refuses_a_non_file_receipt(tmp_path, gtex_bundle):
+    library = tmp_path / "library"
+    api.ref.gtex(api.RefGtexParams(ref=library, download=True))
+    status = api.ref.status(api.RefStatusParams(ref=library))
+    receipt = Path(status.details["gtex"]["file"]).with_suffix(".sqlite.json")
+    receipt.unlink()
+    os.mkfifo(receipt)
+    rc, stdout, err = run_cli(
+        ["--json", "ref", "status", "--ref", str(library)], timeout=15
+    )
+    assert rc == 0, err
+    assert not json.loads(stdout)["details"]["gtex"]["installed"]

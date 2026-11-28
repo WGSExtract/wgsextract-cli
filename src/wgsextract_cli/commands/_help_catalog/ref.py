@@ -84,7 +84,7 @@ ENTRIES: dict[str, CommandHelp] = {
         "wgsextract ref regulatory --download",
     ),
     "ref gtex": _h(
-        f"{_LIBRARY}/downloads/gtex-v10-susie-eqtl-hg38.sqlite.",
+        f"{_LIBRARY}/downloads/gtex-v10-susie-eqtl-hg38.sqlite and checksum receipt.",
         "wgsextract ref gtex --download",
     ),
     "ref gene-map": _h(
