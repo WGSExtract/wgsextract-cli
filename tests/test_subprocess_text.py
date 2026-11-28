@@ -14,7 +14,7 @@ import signal
 import subprocess
 import sys
 import threading
-from contextlib import suppress
+from contextlib import ExitStack, suppress
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -53,6 +53,52 @@ def test_compare_1697_closes_stderr_after_launcher_has_exited(tmp_path, monkeypa
     ):
         raise UsageError("Conflicting REF bases")
     assert not timed_out.exists(), "cleanup waited for the child to release stderr"
+
+
+def test_compare_1697_preserves_usage_error_when_stderr_never_closes(
+    tmp_path, monkeypatch
+):
+    class StuckDrain:
+        daemon = False
+        waited = False
+
+        def start(self):
+            pass
+
+        def join(self, timeout=None):
+            assert timeout is not None and 0 < timeout <= 30
+            assert not self.waited, "cleanup kept waiting on a stuck reader"
+            self.waited = True
+
+        def is_alive(self):
+            return True
+
+    def launch_reader(_command, *, stdout, stderr):
+        process = popen([sys.executable, "-c", "pass"], stdout=stdout, stderr=stderr)
+        process.wait(timeout=5)
+        return process
+
+    drain = StuckDrain()
+    original = UsageError("Conflicting REF bases")
+    with ExitStack() as pipes:
+
+        def start_drain(_target, *, args, daemon=False):
+            nonlocal stderr
+            stderr = pipes.enter_context(args[0])
+            drain.daemon = daemon
+            return drain
+
+        stderr = None
+        monkeypatch.setattr(compare_inputs, "context_thread", start_drain)
+        monkeypatch.setattr(compare_inputs, "popen", launch_reader)
+        with pytest.raises(UsageError) as error:
+            with compare_inputs.vcf_stream(tmp_path / "normalized.bcf") as stdout:
+                raise original
+        assert error.value is original
+        assert drain.waited
+        assert drain.daemon
+        assert stdout.closed
+        assert stderr is not None and not stderr.closed
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires a POSIX shell and waitpid")

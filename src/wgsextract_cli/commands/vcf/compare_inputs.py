@@ -233,21 +233,27 @@ def vcf_stream(path: Path) -> Iterator[IO[str]]:
         reader = None
         try:
             assert process.stdout is not None and process.stderr is not None
-            thread = context_thread(_drain_errors, args=(process.stderr, errors))
+            thread = context_thread(
+                _drain_errors, args=(process.stderr, errors), daemon=True
+            )
             thread.start()
             reader = thread
             with io.TextIOWrapper(process.stdout, encoding="utf-8") as stream:
                 yield stream
             status = process.wait()
+            while reader.is_alive():
+                reader.join(timeout=0.5)
         except BaseException:
             # The launcher's process group may still hold stderr open after it exits.
             terminate_trees([process])
             process.wait()
-            raise
-        finally:
             if reader is not None:
-                while reader.is_alive():
-                    reader.join(timeout=0.5)
+                reader.join(timeout=5)
+                if reader.is_alive():
+                    # The drain owns this pipe. Popen.__exit__ would block trying
+                    # to close it while the drain is still reading.
+                    process.stderr = None
+            raise
         if status:
             detail = errors.decode("utf-8", errors="replace").strip()
             raise WGSExtractError(f"Could not read {path}: {detail}")
