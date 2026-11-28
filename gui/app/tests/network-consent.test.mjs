@@ -154,35 +154,49 @@ test("#1674 bootstrap accepts both the pinned CLI and the network-aware tree", a
     await writeFile(path.join(source, "__init__.py"), '__version__ = "0.8.10"\n');
     await writeFile(path.join(source, "core", "network_policy.py"), "");
     const windows = process.platform === "win32";
-    const script = path.join(root, `bootstrap-reference-library.${windows ? "ps1" : "sh"}`);
+    const extension = windows ? "ps1" : "sh";
+    const script = path.join(root, `bootstrap-reference-library.${extension}`);
+    const localScript = path.join(root, `run-wgsextract.${extension}`);
     const optionsModule = path.join(source, "core", "network_options.py");
     const invocation = windows
-        ? ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script]]
-        : ["/bin/sh", [script]];
+        ? ["powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]]
+        : ["/bin/sh", []];
     const [executable, args] = invocation;
     await writeFile(script, windows
         ? 'if ($args.Count -ne 0) { exit 2 }; Write-Output "BOOTSTRAPPED"\n'
         : 'if [ "$#" -ne 0 ]; then exit 2; fi; echo BOOTSTRAPPED\n');
+    await writeFile(localScript, windows
+        ? 'if (($args -join " ") -ne "info") { exit 2 }; Write-Output "LOCAL_RESULT"\n'
+        : 'if [ "$*" != info ]; then exit 2; fi; echo LOCAL_RESULT\n');
     const manager = createProcessManager({ maxOutputBytes: 1024, maxErrorBytes: 1024 });
     t.after(() => manager.terminateAllProcesses());
     const run = withCliNetworkPolicy(manager.runProcess);
-    const launch = (...flags) => run(executable, [...args, ...flags], { cwd: root, env: { ...process.env, WGSEXTRACT_APP_DIR: appDir } });
+    const warnings = [];
+    const launch = (target, flags, variable, value) => run(executable, [...args, target, ...flags], {
+        cwd: root, env: { ...process.env, [windows ? variable.toLowerCase() : variable]: value },
+        onStderr: (text) => warnings.push(text),
+    });
+    const bootstrap = (...flags) => launch(script, flags, "WGSEXTRACT_APP_DIR", appDir);
     await saveNetworkSettings({ consent: "accepted" });
     await saveNetworkSettings({ mode: "full" });
-    assert.match((await launch()).stdout, /BOOTSTRAPPED/);
+    assert.match((await bootstrap()).stdout, /BOOTSTRAPPED/);
 
     await saveNetworkSettings({ mode: "low" });
-    await assert.rejects(launch(), { status: 403 });
-    assert.match((await launch("--allow-large-download")).stdout, /BOOTSTRAPPED/);
-    await saveNetworkSettings({ mode: "off" });
-    await assert.rejects(launch("--allow-large-download"), { status: 403 });
+    assert.match((await bootstrap("--allow-large-download")).stdout, /BOOTSTRAPPED/);
+    for (const mode of ["low", "off"]) {
+        await saveNetworkSettings({ mode });
+        warnings.length = 0;
+        const result = await launch(localScript, ["info"], "WGSEXTRACT_GUI_APP_DATA", appData);
+        assert.match(result.stdout, /LOCAL_RESULT/);
+        assert.match(warnings.join(""), /cannot enforce Low Data or Off.*downloads still require/);
+    }
 
     await writeFile(optionsModule, "");
     await writeFile(script, windows
         ? 'if (($args -join " ") -eq "--allow-large-download --network low") { Write-Output "BOOTSTRAPPED" } else { exit 2 }\n'
         : 'case "$*" in "--allow-large-download --network low") echo BOOTSTRAPPED;; *) exit 2;; esac\n');
     await saveNetworkSettings({ mode: "low" });
-    assert.match((await launch("--allow-large-download")).stdout, /BOOTSTRAPPED/);
+    assert.match((await bootstrap("--allow-large-download")).stdout, /BOOTSTRAPPED/);
 });
 
 test("#1591 first launch makes no outbound requests until OK, then starts setup and checks for updates", browserTestOptions, async (t) => {

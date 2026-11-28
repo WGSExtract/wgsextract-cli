@@ -31,7 +31,7 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
     let stopper: AbortController | undefined;
     let currentAddress: JobServerAddress | undefined;
 
-    async function start(): Promise<JobServerAddress | undefined> {
+    async function start(env: NodeJS.ProcessEnv): Promise<JobServerAddress | undefined> {
         const controller = new AbortController();
         stopper = controller;
         // {{appPid}} lets the server exit when the app dies, even when it is killed.
@@ -88,7 +88,7 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
             // new jobs can tighten or relax their own policy without restarting it.
             runProcess(executable, networkMode ? cliNetworkArguments(args, "full") : args, {
                 cwd: bundleRoot,
-                env: { ...process.env, ...bundleEnvironment(bundleRoot) },
+                env,
                 signal: controller.signal,
                 maxOutputBytes: 64 * 1024,
                 onStdout,
@@ -108,11 +108,12 @@ export function createJobServer(spec: JobServerSpec, bundleRoot: string, runProc
     return {
         ...(networkMode ? { networkMode } : {}),
         address: () => {
+            const env = { ...process.env, ...bundleEnvironment(bundleRoot) };
             // This CLI cannot apply per-job network modes. Use the guarded command fallback.
-            if (networkMode && isLegacyBundledCli(spec.command.executable, spec.command.arguments ?? [], { ...process.env, ...bundleEnvironment(bundleRoot) }, bundleRoot)) {
+            if (networkMode && isLegacyBundledCli(spec.command.executable, spec.command.arguments ?? [], env, bundleRoot)) {
                 return Promise.resolve(undefined);
             }
-            starting ??= start();
+            starting ??= start(env);
             return starting;
         },
         stop: (onlyAddress) => {

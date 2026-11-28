@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import type { NetworkMode } from "../../../shared/network-settings.js";
 import type { RunProcess } from "../../../shared/types.js";
-import { HttpError } from "./errors.js";
 import { readEffectiveNetworkMode } from "./network-settings.js";
 
 const cliName = /(?:^|[\\/])(?:wgsextract(?:\.exe|\.cmd)?|run-wgsextract\.(?:sh|ps1))$/i;
@@ -28,10 +27,17 @@ export function isBootstrapLibrary(executable: string, args: string[]) {
     return isWrappedCommand(executable, args, bootstrapName);
 }
 
+function launchEnvValue(env: NodeJS.ProcessEnv, name: string) {
+    if (process.platform !== "win32") return env[name];
+    // Node passes the lexicographically first spelling of a duplicate Windows variable.
+    const key = Object.keys(env).sort().find((key) => key.toUpperCase() === name);
+    return key === undefined ? undefined : env[key];
+}
+
 export function isLegacyBundledCli(executable: string, args: string[], env: NodeJS.ProcessEnv, cwd = process.cwd()) {
     if (!isWrappedCommand(executable, args, cliWrapperName) && !isBootstrapLibrary(executable, args)) return false;
-    const appData = env.WGSEXTRACT_GUI_APP_DATA;
-    const appDir = env.WGSEXTRACT_APP_DIR || (appData && path.join(appData, "runtime", "wgsextract-cli", "app"));
+    const appData = launchEnvValue(env, "WGSEXTRACT_GUI_APP_DATA");
+    const appDir = launchEnvValue(env, "WGSEXTRACT_APP_DIR") || (appData && path.join(appData, "runtime", "wgsextract-cli", "app"));
     if (!appDir) return false;
     const source = path.resolve(cwd, appDir, "src", "wgsextract_cli");
     // The pinned v0.8.10 and the development tree report the same version.
@@ -57,8 +63,10 @@ export function withCliNetworkPolicy(runProcess: RunProcess): RunProcess {
         }
         // Setup already enforces consent and supplies this flag only after confirmation.
         const confirmedBootstrap = bootstrap && args.includes("--allow-large-download");
-        if (mode !== "full" && !(mode === "low" && confirmedBootstrap)) {
-            throw new HttpError(403, "The installed WGS Extract CLI cannot enforce this network mode. Update the CLI to run this operation.");
+        if (mode !== "full") {
+            const warning = "The bundled WGS Extract CLI cannot enforce Low Data or Off mode; downloads still require the CLI's own consent.";
+            if (options.onStderr) await options.onStderr(`${warning}\n`);
+            else console.warn(warning);
         }
         return runProcess(executable, confirmedBootstrap ? args.filter((arg) => arg !== "--allow-large-download") : args, options);
     };
