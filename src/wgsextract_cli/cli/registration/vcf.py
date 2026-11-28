@@ -24,6 +24,7 @@ from wgsextract_cli.api.vcf import (
     VcfGerpParams,
     VcfGnomadParams,
     VcfGraniteQcParams,
+    VcfGtexParams,
     VcfImputeParams,
     VcfIndelParams,
     VcfInfoParams,
@@ -135,6 +136,12 @@ CERTIFICATION = {
     ),
     "vcf regulatory": tested(
         _REVIEWED, "test_regulatory.py", "Per-ALT SCREEN overlap checked on fixtures."
+    ),
+    "vcf gtex": tested(
+        "2026-11-27",
+        "test_gtex.py",
+        "Exact-ALT GTEx associations checked on fixtures and HG002 GRCh38.",
+        f"{REPO}/issues/1662#issuecomment-7234989350",
     ),
     "vcf info": tested(
         _REVIEWED, "test_vcf_info.py", "VCF statistics and build checks on fixtures."
@@ -283,6 +290,7 @@ NEEDS = {
     "vcf sv-freq": _n(MINUTES, "bcftools", "bgzip", "tabix", optional="samtools"),
     "vcf pharmgkb": _n(MINUTES, *_VCF, optional="bgzip samtools"),
     "vcf regulatory": _n(MINUTES, *_VCF, "bgzip", optional="samtools"),
+    "vcf gtex": _n(MINUTES, "bcftools", optional="samtools"),
     "vcf prepare": _n(MINUTES, *_VCF),
     "vcf to-fasta": _n(MINUTES, "bcftools", "bgzip", "samtools", "tabix"),
     "vcf trio": _n(MINUTES, *_CALL, optional="bgzip"),
@@ -370,6 +378,7 @@ cmd_pharmgkb = command_handler("wgsextract_cli.commands.vcf.splicing", "cmd_phar
 cmd_regulatory = command_handler(
     "wgsextract_cli.commands.vcf.regulatory", "cmd_regulatory"
 )
+cmd_gtex = command_handler("wgsextract_cli.commands.vcf.gtex", "cmd_gtex")
 cmd_phase = command_handler("wgsextract_cli.commands.vcf.phasing", "cmd_phase")
 cmd_phylop = command_handler("wgsextract_cli.commands.vcf.population", "cmd_phylop")
 cmd_revel = command_handler("wgsextract_cli.commands.vcf.clinvar_revel", "cmd_revel")
@@ -584,6 +593,12 @@ def register(
             "Annotate GRCh38 variants with offline SCREEN cCRE overlap (research only).",
             VcfRegulatoryParams,
             cmd_regulatory,
+        ),
+        (
+            "gtex",
+            "Write exact-ALT GRCh38 GTEx v10 SuSiE eQTL matches.",
+            VcfGtexParams,
+            cmd_gtex,
         ),
         (
             "pharmcat",

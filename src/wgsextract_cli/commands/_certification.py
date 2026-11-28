@@ -43,13 +43,13 @@ class Certification:
 
 
 def tested(
-    reviewed: str, test: str, summary: str = "Covered by fixture tests."
+    reviewed: str, test: str, summary: str = "Covered by fixture tests.", *links: str
 ) -> Certification:
     return Certification(
         CertificationLevel.TESTED,
         summary,
         reviewed,
-        (f"{REPO}/blob/main/tests/{test}",),
+        (f"{REPO}/blob/main/tests/{test}", *links),
     )
 
 

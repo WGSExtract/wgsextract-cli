@@ -169,12 +169,14 @@ def publish_output_set(
     *,
     retire: Sequence[Path] = (),
     checkpoint: Callable[[], None] | None = None,
+    finalize: Callable[[], None] | None = None,
 ) -> None:
     """Publish validated files staged on the destination volume.
 
     All destinations and obsolete companions in ``retire`` must share a
     parent. List the primary file last so it is absent while its companions
-    are being replaced or removed.
+    are being replaced or removed. If supplied, ``finalize`` runs before
+    backups are discarded, so its failure also rolls back the output set.
     """
     files = list(staged_to_final.items())
     if files:
@@ -183,7 +185,7 @@ def publish_output_set(
         with contextlib.ExitStack() as local:
             scope = _publication_locks.get()
             (local if scope is None else scope).enter_context(lock)
-            _publish_output_set(files, retire, primary.parent, checkpoint)
+            _publish_output_set(files, retire, primary.parent, checkpoint, finalize)
 
 
 def _preserve_output_permissions(
@@ -226,6 +228,7 @@ def _publish_output_set(
     retire: Sequence[Path],
     parent: Path,
     checkpoint: Callable[[], None] | None,
+    finalize: Callable[[], None] | None,
 ) -> None:
     from wgsextract_cli.core.utils import WGSExtractError
 
@@ -268,6 +271,8 @@ def _publish_output_set(
         for staged, final in files:
             publishing.append((staged, final))
             staged.replace(final)
+        if finalize is not None:
+            finalize()
     except BaseException:
         try:
             # Cancellation can arrive just after a rename returns.

@@ -117,6 +117,9 @@ ANNOTATION_COMMANDS = {
         per_build=True,
         builds=("hg38",),
     ),
+    "vcf gtex": Annotation(
+        "gtex_file", None, "gtex", "GTEx v10 SuSiE eQTL", builds=("hg38",)
+    ),
 }
 
 
@@ -146,13 +149,16 @@ def missing_references(args: argparse.Namespace) -> list[MissingReference]:
     command = str(getattr(args, "_command", "") or "")
     needs = (genome_need(command, args), annotation_need(command, args))
     missing = [need.missing for need in needs if need and need.missing]
-    if command == "vcf chain-annotate" and "regulatory" in {
-        item.strip().lower()
-        for item in (getattr(args, "annotations", "") or "").split(",")
-    }:
-        regulatory = annotation_need("vcf regulatory", args)
-        if regulatory and regulatory.missing:
-            missing.append(regulatory.missing)
+    if command == "vcf chain-annotate":
+        names = {
+            item.strip().lower()
+            for item in (getattr(args, "annotations", "") or "").split(",")
+        }
+        for name in ("regulatory", "gtex"):
+            if name in names:
+                need = annotation_need(f"vcf {name}", args)
+                if need and need.missing:
+                    missing.append(need.missing)
     if models := gene_models_need(command, args):
         missing.append(models)
     return missing
@@ -541,16 +547,30 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
     lib = ReferenceLibrary(ref, None, input_path=vcf)
     reported_build = lib.build
     installed = getattr(lib, annotation.attribute, None)
-    if annotation.resource == "regulatory":
-        from wgsextract_cli.core import regulatory_data, regulatory_overlap
+    if annotation.resource in {"regulatory", "gtex"}:
+        from wgsextract_cli.core import gtex_data, regulatory_data, regulatory_overlap
         from wgsextract_cli.core.utils import UsageError
+        from wgsextract_cli.core.vcf_build import require_grch38
 
         try:
-            regulatory_overlap.require_grch38(vcf)
+            if annotation.resource == "gtex":
+                require_grch38(vcf, "GTEx")
+            else:
+                regulatory_overlap.require_grch38(vcf)
         except UsageError:
             return None  # The command explains why the input build is unsafe.
-        reported_build = regulatory_data.BUILD
-        if installed and not regulatory_data.provenance(Path(installed), verify=True):
+        reported_build = "hg38"
+        if (
+            annotation.resource == "regulatory"
+            and installed
+            and not regulatory_data.provenance(Path(installed), verify=True)
+        ):
+            installed = None
+        if (
+            annotation.resource == "gtex"
+            and installed
+            and not gtex_data.installed(Path(installed), verify=True)
+        ):
             installed = None
     if annotation.option:
         if given := _given_path(args, annotation.option):
@@ -567,7 +587,7 @@ def annotation_need(command: str, args: argparse.Namespace) -> AnnotationNeed | 
     install = ["ref", annotation.resource, *_library_option(lib.root)]
     if annotation.per_build:
         install += ["--build", build]
-    if annotation.resource in {"gnomad", "regulatory"}:
+    if annotation.resource in {"gnomad", "regulatory", "gtex"}:
         install.append("--download")
     return AnnotationNeed(
         annotation,

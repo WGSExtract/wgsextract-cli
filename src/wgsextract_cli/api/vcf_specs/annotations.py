@@ -327,6 +327,21 @@ class VcfAlphamissenseParams(_AnnotatorParams):
 
 
 @dataclass(frozen=True, kw_only=True)
+class VcfGtexParams(_VcfFileParams):
+    """Write research GTEx v10 SuSiE exact-ALT matches to ``gtex_eqtl.tsv``."""
+
+    COMMAND = "vcf gtex"
+
+    ref: Path | None = ref_param()
+
+    def implied_paths(self) -> Iterator[tuple[str, Path]]:
+        from wgsextract_cli.core import gtex_data
+
+        filled = with_config_defaults(self, only={"ref"})
+        yield from gtex_data.guarded_paths(filled.ref)
+
+
+@dataclass(frozen=True, kw_only=True)
 class VcfRegulatoryParams(_AnnotatorParams):
     """Research-only SCREEN cCRE overlap per ALT in ``regulatory_annotated.vcf.gz``."""
 
@@ -440,7 +455,7 @@ class VcfPharmcatParams(_VcfFileParams, DownloadParams):
 class VcfChainAnnotateParams(_VcfFileParams):
     """Several annotations applied in turn, as ``chain_annotated.vcf.gz``;
     steps whose tool or data is missing are skipped with a warning, except
-    explicitly requested SCREEN overlap. A step journal supports resuming."""
+    explicitly requested SCREEN or GTEx tracks. A step journal supports resuming."""
 
     COMMAND = "vcf chain-annotate"
 
@@ -448,8 +463,8 @@ class VcfChainAnnotateParams(_VcfFileParams):
     threads: int | None = threads_param()
     annotations: str = param(
         "clinvar,revel,phylop,gnomad,vep",
-        help="Comma-separated list of distinct annotations to apply in order (default: "
-        "clinvar,revel,phylop,gnomad,vep).",
+        help="Distinct comma-separated annotations (default: clinvar,revel,phylop,gnomad,vep). "
+        "Include gtex to write a separate TSV for the final variants.",
     )
     keep_intermediates: bool = param(
         False,
@@ -468,7 +483,7 @@ class VcfChainAnnotateParams(_VcfFileParams):
     force_steps: tuple[str, ...] | None = force_steps_param(
         (
             "select", "clinvar", "revel", "phylop", "cadd", "gerp", "gnomad",
-            "spliceai", "alphamissense", "pharmgkb", "regulatory", "vep", "trim",
+            "spliceai", "alphamissense", "pharmgkb", "regulatory", "vep", "trim", "gtex",
         ),
         aliases=("--force-steps",),
     )  # fmt: skip
@@ -483,13 +498,17 @@ class VcfChainAnnotateParams(_VcfFileParams):
     )
 
     def implied_paths(self) -> Iterator[tuple[str, Path]]:
-        if any(
-            ann.strip().lower() == "regulatory" for ann in self.annotations.split(",")
-        ):
+        names = {ann.strip().lower() for ann in self.annotations.split(",")}
+        if "regulatory" in names:
             from wgsextract_cli.core import regulatory_data
 
             filled = with_config_defaults(self, only={"ref"})
             yield from regulatory_data.guarded_paths(filled.ref)
+        if "gtex" in names:
+            from wgsextract_cli.core import gtex_data
+
+            filled = with_config_defaults(self, only={"ref"})
+            yield from gtex_data.guarded_paths(filled.ref)
 
     def __post_init__(self) -> None:
         super().__post_init__()

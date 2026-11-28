@@ -79,6 +79,7 @@ ref gene-map	Tested
 ref gerp	Tested
 ref gnomad	Tested
 ref gnomad-sv	Tested
+ref gtex	Tested
 ref imputation	Tested
 ref index	Validated
 ref library	Tested
@@ -130,6 +131,7 @@ vcf gatk	Tested
 vcf gerp	Tested
 vcf gnomad	Tested
 vcf granite-qc	Experimental
+vcf gtex	Tested
 vcf impute	Validated
 vcf indel	Validated
 vcf info	Tested

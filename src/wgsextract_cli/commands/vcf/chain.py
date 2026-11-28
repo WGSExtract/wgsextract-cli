@@ -4,16 +4,20 @@ import shutil
 import subprocess
 import sys
 from collections import Counter
+from collections.abc import Callable
+from contextlib import ExitStack
 from dataclasses import asdict
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Literal
 
 from wgsextract_cli import __version__
+from wgsextract_cli.api._runtime import cancel_event
 from wgsextract_cli.api.vcf import VcfChainAnnotateParams, VcfTableParams
-from wgsextract_cli.core import regulatory_data, regulatory_overlap
+from wgsextract_cli.core import gtex_data, regulatory_data, regulatory_overlap
 from wgsextract_cli.core._confidence_rules import thresholds_from
 from wgsextract_cli.core.artifacts import ChildRun, ended_as, lineage_args
-from wgsextract_cli.core.atomic_output import atomic_output
+from wgsextract_cli.core.atomic_output import atomic_output, publish_output_set
 from wgsextract_cli.core.config import config_args
 from wgsextract_cli.core.dependencies import get_tool_path
 from wgsextract_cli.core.dependency_checks import verify_dependencies
@@ -36,6 +40,7 @@ from wgsextract_cli.core.utils import (
     run_command,
 )
 from wgsextract_cli.core.variant_files import calculate_bam_md5, ensure_vcf_indexed
+from wgsextract_cli.core.vcf_build import require_grch38
 from wgsextract_cli.core.workspace_activity import forward_workspace_admission
 
 from .._vep_engines import VepEngine, configured_engine
@@ -44,12 +49,20 @@ from .basic import record_variants, require_vcf_input, vcf_input_handler
 from .chain_scope import ChainScope, resolve_scope, select_records, vcf_indexes
 from .clinvar_revel import CLINVAR_ANNOTATED, REVEL_ANNOTATED
 from .deleteriousness import CADD_ANNOTATED, GERP_ANNOTATED
+from .gtex import (
+    GTEX_TSV,
+    input_generations,
+    protect_output,
+    record_sidecar_source,
+    write_sidecar,
+)
 from .population import GNOMAD_ANNOTATED, PHYLOP_ANNOTATED
 from .regulatory import REGULATORY_ANNOTATED
 from .splicing import ALPHAMISSENSE_ANNOTATED, PHARMGKB_ANNOTATED, SPLICEAI_ANNOTATED
 from .table import run_table
 
 _JOURNAL = "chain_annotate.steps.json"
+_GTEX_SIDECAR = "chain_" + GTEX_TSV
 
 # annotation -> (ReferenceLibrary attribute holding its data, step output name)
 _VCF_STEPS = {
@@ -108,7 +121,8 @@ def dataset(ann: str, lib: ReferenceLibrary) -> str | None:
             return None
         cache = vep_step_engine(lib).cache_root(Path(lib.vep_cache))
         return str(cache) if cache.is_dir() else None
-    return getattr(lib, _VCF_STEPS[ann][0], None) or None
+    attribute = "gtex_file" if ann == "gtex" else _VCF_STEPS[ann][0]
+    return getattr(lib, attribute, None) or None
 
 
 def _step_resource_args(ann: str, lib: ReferenceLibrary) -> list[str]:
@@ -159,11 +173,13 @@ def _annotations(params: VcfChainAnnotateParams) -> list[str]:
     ]
     if not annotations:
         raise WGSExtractError("No valid annotations provided in --annotations.")
-    unknown = [a for a in annotations if a != "vep" and a not in _VCF_STEPS]
+    unknown = [
+        a for a in annotations if a not in {"vep", "gtex"} and a not in _VCF_STEPS
+    ]
     if unknown:
         raise WGSExtractError(
             f"Unknown annotation type(s): {', '.join(unknown)}. Valid: "
-            f"{', '.join([*_VCF_STEPS, 'vep'])}"
+            f"{', '.join([*_VCF_STEPS, 'vep', 'gtex'])}"
         )
     repeated = [ann for ann, count in Counter(annotations).items() if count > 1]
     if repeated:
@@ -389,16 +405,37 @@ def _plan_manifest_stem(
 ) -> Path:
     stem = outdir / "chain_annotate.plan"
     manifest = manifest_dir_for(outdir) / (stem.name + MANIFEST_SUFFIX)
-    protected = (
-        input_file, params.bed, params.ref, lib.fasta, lib.fai,
-        *vcf_indexes(input_file), *(dataset(ann, lib) for ann in annotations),
-        lib.cadd_indel_file if "cadd" in annotations else None,
-    )  # fmt: skip
+    protected = _chain_inputs(params, input_file, lib, annotations)
     if any(path is not None and same_path(manifest, path) for path in protected):
         raise UsageError(
             "The dry-run manifest would overwrite an input; choose another --outdir."
         )
     return stem
+
+
+def _chain_inputs(
+    params: VcfChainAnnotateParams,
+    input_file: str,
+    lib: ReferenceLibrary,
+    annotations: list[str],
+) -> list[str | Path | None]:
+    tracks = [dataset(ann, lib) for ann in annotations]
+    if "cadd" in annotations:
+        tracks.append(lib.cadd_indel_file)
+    paths: list[str | Path | None] = [
+        input_file, params.bed, params.ref, lib.fasta, lib.fai,
+        *vcf_indexes(input_file), *tracks,
+    ]  # fmt: skip
+    for path in (params.bed, lib.fasta, *tracks):
+        if path:
+            paths.extend(vcf_indexes(str(path)))
+            paths.append(f"{path}.gzi")
+    if "gtex" in annotations:
+        paths.append(gtex_data.receipt_path(gtex_data.path(lib.root)))
+    if "regulatory" in annotations:
+        track = regulatory_data.path(lib.root)
+        paths.extend((regulatory_data.index(track), regulatory_data.marker(track)))
+    return paths
 
 
 def _run_steps(
@@ -411,6 +448,7 @@ def _run_steps(
     child_args: list[str],
     step_dirs: list[Path],
     scope: ChainScope | None,
+    gtex_table: Path | None,
 ) -> str:
     ready: list[tuple[int, str]] = []
     for position, ann in enumerate(annotations, start=1):
@@ -425,7 +463,7 @@ def _run_steps(
             )
         else:
             ready.append((position, ann))
-    if not ready:
+    if not ready and gtex_table is None:
         raise WGSExtractError(
             "No annotation was applied: every requested step was skipped."
         )
@@ -436,6 +474,7 @@ def _run_steps(
             source,
             params.bed,
             lib.fasta,
+            gtex_table,
             *(dataset(ann, lib) for _, ann in ready),
         )
         if path is not None
@@ -484,11 +523,120 @@ def _run_steps(
             trim_dir = _work_dir(outdir / "chain_trim", protected, step_dirs)
             source = _scope_step(journal, "trim", source, trim_dir, params, scope)
     if not journal.dry_run:
+        applied = [ann for _, ann in ready]
+        if gtex_table is not None:
+            applied.append("gtex")
         current_result().add_metrics(
-            annotations_applied=",".join(ann for _, ann in ready),
+            annotations_applied=",".join(applied),
             annotations_skipped=len(annotations) - len(ready),
         )
     return source
+
+
+def _publish_chain(
+    source: str,
+    input_file: str,
+    final: Path,
+    table: Path | None,
+    sidecar: Path,
+    *,
+    checkpoint: Callable[[], None] | None = None,
+) -> dict[str, int]:
+    with (
+        TemporaryDirectory(prefix=".chain-publish-", dir=final.parent) as stage,
+        ExitStack() as outputs,
+    ):
+        vcf = Path(stage, final.name)
+        if source == input_file:
+            # With only GTEx selected there may be no compressed VCF step.
+            run_command(["bcftools", "view", "--no-version", "-Oz", "-o", vcf, source])
+            run_command(["tabix", "-p", "vcf", vcf])
+        else:
+            shutil.copy2(source, vcf)
+            for ext in (".tbi", ".csi"):
+                if Path(source + ext).exists():
+                    shutil.copy2(source + ext, str(vcf) + ext)
+        metrics = {}
+        if table is not None:
+            tsv = outputs.enter_context(atomic_output(sidecar, retire_indexes=False))
+            metrics = write_sidecar(str(vcf), table, Path(tsv), sidecar)
+        indexes = {
+            Path(str(vcf) + ext): Path(str(final) + ext) for ext in (".tbi", ".csi")
+        }
+        files = {src: dst for src, dst in indexes.items() if src.exists()}
+        files[vcf] = final
+        publish_output_set(
+            files,
+            retire=list(indexes.values()),
+            checkpoint=checkpoint,
+            finalize=outputs.close if table is not None else None,
+        )
+    return metrics
+
+
+def _publish_gtex(
+    journal: StepJournal,
+    source: str,
+    input_file: str,
+    final: Path,
+    table: Path,
+    sidecar: Path,
+    protect_sidecar: Callable[[], None],
+) -> None:
+    source_indexes = vcf_indexes(source) if source != input_file else ()
+    inputs: dict[str, str | Path] = {
+        "vcf": source,
+        "track": table,
+        "track_provenance": gtex_data.receipt_path(table),
+        **{f"index:{p.name}": p for p in source_indexes},
+    }
+    generations = input_generations(inputs)
+
+    def unchanged() -> None:
+        protect_sidecar()
+        if input_generations(inputs) != generations:
+            raise WGSExtractError(
+                "A GTEx chain input changed during annotation. Rerun the chain."
+            )
+
+    decision = journal.decide(
+        Step(
+            "gtex",
+            inputs=inputs,
+            # Journal completion re-reads paths; key reuse to the generation we used.
+            params={"input_generations": generations},
+            outputs=[final, sidecar],
+            tools=["bcftools", "tabix"],
+        )
+    )
+    if journal.dry_run:
+        return
+    if decision.run:
+        # A retry must not remove previous outputs before their replacements exist.
+        with journal.running(decision, keep_partial=True) as handle:
+            handle.metrics.update(
+                _publish_chain(
+                    source, input_file, final, table, sidecar, checkpoint=unchanged
+                )
+            )
+            for path in vcf_indexes(str(final)):
+                handle.add_output(path)
+    else:
+        with gtex_data.open_track(table, verify=True, cancel=cancel_event()) as (
+            _,
+            provenance,
+        ):
+            unchanged()
+            record_sidecar_source(
+                table,
+                provenance,
+                {
+                    key: value
+                    for key, value in decision.metrics.items()
+                    if key.startswith("gtex_") and isinstance(value, int)
+                },
+            )
+    current_result().add_output(sidecar, "gtex_eqtl_associations")
 
 
 def run_chain_annotate(
@@ -506,20 +654,39 @@ def run_chain_annotate(
         raise UsageError(
             "vcf chain-annotate would overwrite its input; choose another --outdir."
         )
-    result = current_result()
-    if not params.dry_run:
-        result.expect_output(final_out)
     md5_sig = (
         calculate_bam_md5(input_file, None)
         if input_file.lower().endswith((".bam", ".cram"))
         else None
     )
     lib = ReferenceLibrary(params.ref, md5_sig, input_path=input_file)
+    sidecar = outdir / _GTEX_SIDECAR
+    sidecar_inputs = (
+        _chain_inputs(params, input_file, lib, sorted(set(annotations) | _VCF_STEPS.keys()))
+        if "gtex" in annotations or sidecar.exists() or sidecar.is_symlink()
+        else []
+    )  # fmt: skip
+
+    def protect_sidecar() -> None:
+        protect_output(sidecar, *sidecar_inputs, final_out)
+
+    protect_sidecar()
+    result = current_result()
+    if not params.dry_run:
+        result.expect_output(final_out)
     if "regulatory" in annotations:
         regulatory_overlap.require_grch38(input_file)
         table = regulatory_data.path(lib.root)
         if not regulatory_data.provenance(table, verify=True):
             raise WGSExtractError(regulatory_data.missing(table))
+    gtex_table = None
+    if "gtex" in annotations:
+        require_grch38(input_file, "GTEx")
+        gtex_table = gtex_data.path(lib.root)
+        gtex_receipt = gtex_data.receipt_path(gtex_table)
+        if not gtex_data.installed(gtex_table):
+            raise WGSExtractError(gtex_data.missing(gtex_table))
+        protect_output(final_out, gtex_table, gtex_receipt)
     if params.dry_run:
         result.set_manifest_stem(
             _plan_manifest_stem(outdir, params, input_file, lib, annotations)
@@ -539,28 +706,35 @@ def run_chain_annotate(
             source = _run_steps(
                 journal,
                 params,
-                annotations,
+                [ann for ann in annotations if ann != "gtex"],
                 input_file,
                 outdir,
                 lib,
                 child_args,
                 step_dirs,
                 scope,
+                gtex_table,
             )
-            if journal.dry_run:
-                # The chain always publishes and optionally exports after the
-                # resumable annotation steps, even when it reused every step.
+            if gtex_table is not None:
+                _publish_gtex(
+                    journal,
+                    source,
+                    input_file,
+                    final_out,
+                    gtex_table,
+                    sidecar,
+                    protect_sidecar,
+                )
+            elif journal.dry_run:
                 journal.decide(
                     Step("publish", inputs={"vcf": source}, outputs=[final_out])
                 )
+            else:
+                _publish_chain(source, input_file, final_out, None, sidecar)
+            if journal.dry_run:
                 if params.to_table:
                     journal.decide(Step("table", inputs={"vcf": final_out}))
                 return
-            with atomic_output(final_out) as staged:
-                shutil.copy2(source, staged)
-                for ext in (".tbi", ".csi"):
-                    if Path(source + ext).exists():
-                        shutil.copy2(source + ext, staged + ext)
             logging.info(f"Chain annotation complete: {final_out}")
             count = vcf_record_count(final_out)
             record_variants(str(final_out), "annotated_vcf", count)

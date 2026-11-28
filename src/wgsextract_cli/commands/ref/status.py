@@ -8,13 +8,16 @@ from pathlib import Path
 from typing import Any
 
 from wgsextract_cli.api._cli import cli_handler
-from wgsextract_cli.api.ref import RefStatusParams
+from wgsextract_cli.api._params import with_config_defaults
+from wgsextract_cli.api.ref import RefGtexParams, RefStatusParams
 from wgsextract_cli.core import (
     acmg_data,
     ancestry_reference,
     bwa_mem2,
     dbsnp,
     gnomad_sv,
+    gtex_data,
+    read_scope,
     regulatory_data,
     sample_workspace,
     somalier_resources,
@@ -109,6 +112,12 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
     aadr_file = aadr_2m_path(reflib)
     aadr = {"installed": aadr_file.is_file(), "file": str(aadr_file)}
     screen = regulatory_data.path(reflib)
+    gtex_params = with_config_defaults(RefGtexParams(ref=params.ref), only={"ref"})
+    gtex = gtex_data.path(
+        str(gtex_params.library())
+        if gtex_params.ref is None or read_scope.may_follow(gtex_params.ref)
+        else reflib
+    )
 
     return {
         "referenceLibrary": {
@@ -143,6 +152,7 @@ def _build_ref_status(params: RefStatusParams) -> dict[str, Any]:
             "installed": regulatory_data.provenance(screen) is not None,
             "file": str(screen),
         },
+        "gtex": {"installed": gtex_data.installed(gtex), "file": str(gtex)},
         "ybrowse": _ybrowse_status(reflib),
         "ybrowseGrch37": _ybrowse_status(reflib, "hg19"),
         "geneMap": {
@@ -220,6 +230,7 @@ def ref_status_values(status: dict[str, Any]) -> dict[str, str]:
         "library.somalierInstalled": _json_bool(status["somalier"]["installed"]),
         "library.ancestryInstalled": _json_bool(status["ancestry"]["installed"]),
         "library.regulatoryInstalled": _json_bool(status["regulatory"]["installed"]),
+        "library.gtexInstalled": _json_bool(status["gtex"]["installed"]),
         **{
             f"library.gnomadSv_{key}Installed": _json_bool(value)
             for key, value in status["gnomadSv"].items()
@@ -271,6 +282,7 @@ def print_ref_status(status: dict[str, Any]) -> None:
     ]
     human_output(f"gnomAD SV tables: {', '.join(sv_tables) or 'not installed'}")
     human_output(f"SCREEN cCRE Registry v4: {_path_status(status['regulatory'])}")
+    human_output(f"{gtex_data.LABEL}: {_path_status(status['gtex'])}")
     human_output(f"yBrowse GRCh38: {_path_status(status['ybrowse'])}")
     human_output(f"yBrowse GRCh37 (lifted): {_path_status(status['ybrowseGrch37'])}")
     human_output(f"Microarray targets: {_path_status(status['annotationVcf'])}")

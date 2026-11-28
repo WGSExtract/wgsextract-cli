@@ -10,14 +10,12 @@ import shutil
 import subprocess
 from collections.abc import Iterator
 from contextlib import contextmanager
-from functools import cache
 from pathlib import Path, PurePath, PureWindowsPath
 from tempfile import TemporaryDirectory
 
 from wgsextract_cli.core import read_scope
 from wgsextract_cli.core.atomic_output import publish_output_set
 from wgsextract_cli.core.download_progress import CancelEvent
-from wgsextract_cli.core.methylation_annotations import Chromosome, chromosomes
 from wgsextract_cli.core.ref_library.assets import resolve_reference_library
 from wgsextract_cli.core.ref_library.downloads import download_file
 from wgsextract_cli.core.utils import WGSExtractError, popen, run_command
@@ -94,13 +92,6 @@ def guarded_paths(ref: Path | None) -> Iterator[tuple[str, Path]]:
 
 def _allowed(table: Path) -> bool:
     return all(read_scope.may_follow(file) for _, file in resource_paths(table))
-
-
-@cache
-def primary_aliases() -> dict[str, Chromosome]:
-    return {
-        alias.upper(): chrom for chrom in chromosomes(BUILD) for alias in chrom.aliases
-    }
 
 
 @contextmanager

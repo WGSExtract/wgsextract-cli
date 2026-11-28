@@ -30,6 +30,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "vcf/compare": {"callset": [f"a={_FILE}", f"b={_FILE}"]},
     "vcf/impute": {"input": _FILE, "ref": _DATA},
     "vcf/regulatory": {"ref": _DATA},
+    "vcf/gtex": {"ref": _DATA},
     "panel/audit": {"research_panel": True},
     "panel/bed": {"genes": ["BRCA1"]},
     "qc/vcf": {"input": _FILE},
@@ -39,6 +40,7 @@ _BASE_REQUESTS: dict[str, dict[str, Any]] = {
     "ref/acmg-data": {"ref": _DATA},
     "ref/imputation": {"ref": _DATA},
     "ref/regulatory": {"ref": _DATA},
+    "ref/gtex": {"ref": _DATA},
     "ref/ybrowse": {"ref": _DATA},
     "report": {"input": _FILE},
     "sample/show": {"input": _FILE},
@@ -124,7 +126,7 @@ _ALIGN_REQUESTS = {
 _VCF_FILE_OPS = (
     "annotate", "filter", "table", "to-fasta", "trio", "clinvar", "revel",
     "phylop", "cadd", "gerp", "gnomad", "spliceai", "alphamissense", "pharmgkb",
-    "pharmcat", "regulatory", "chain-annotate",
+    "pharmcat", "regulatory", "gtex", "chain-annotate",
 )  # fmt: skip
 _VCF_PATHS = [
     (f"vcf/{name}", item)
