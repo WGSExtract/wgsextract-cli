@@ -494,7 +494,7 @@ def test_a_host_with_too_little_ram_is_refused(tmp_path, gpu, genome, ram):
 @pytest.mark.parametrize(
     ("total", "available"),
     [
-        # #365: lin-big's 62 GB, most of it in use by other programs.
+        # #365: 62 GB of RAM, most of it in use by other programs.
         (62 * 10**9, 20 * 1024**3),
         # Enough to align, but a whole 30x genome's sort peaked at 41 GiB.
         (62 * 10**9, 38 * 1024**3),

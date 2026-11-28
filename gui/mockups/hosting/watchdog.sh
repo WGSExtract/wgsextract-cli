@@ -100,7 +100,7 @@ if healthy; then
 fi
 ssh_failed=0
 ssh -o BatchMode=yes -o ConnectTimeout=15 -- "$host" '
-    /usr/bin/python3 /Users/wgse/mockup-server/app/gui/mockups/hosting/recover.py
+    /usr/bin/python3 "$HOME/mockup-server/app/gui/mockups/hosting/recover.py"
 ' || ssh_failed=1
 sleep "$retry_delay"
 if healthy; then

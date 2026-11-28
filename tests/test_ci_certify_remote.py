@@ -469,20 +469,20 @@ def test_1495_selects_next_native_windows_host(
 ) -> None:
     config = tmp_path / "config.toml"
     config.write_text(
-        '[[certification.hosts]]\nalias = "minipc"\nplatform = "windows-x64"\n'
-        '[[certification.hosts]]\nalias = "seraph"\nplatform = "windows-x64"\n'
+        '[[certification.hosts]]\nalias = "windows-offline"\nplatform = "windows-x64"\n'
+        '[[certification.hosts]]\nalias = "windows-fixture"\nplatform = "windows-x64"\n'
     )
     statuses, locks = transport(
         monkeypatch,
         remote_pr,
-        unavailable="minipc",
+        unavailable="windows-offline",
         result_platform="windows-x64",
         layer="windows-x64",
     )
     certify(remote_pr, remote="windows-x64", config=config)
     assert [status["state"] for status in statuses] == ["pending", "success"]
     assert statuses[-1]["context"] == "local-ci/windows-x64"
-    assert statuses[-1]["description"].startswith("seraph ")
+    assert statuses[-1]["description"].startswith("windows-fixture ")
     assert locks == ["lock", "unlock"]
 
 

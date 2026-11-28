@@ -64,7 +64,7 @@ or changes to the automatic resource estimates.
 ### Fast profile on a Linux HG002 slice
 
 [#1130 (CRAM and BAM compression timings)](https://github.com/WGSExtract/wgsextract-cli/issues/1130#issuecomment-7213327610)
-compared five paired runs on lin-omarchy with four cores, samtools/HTSlib
+compared five paired runs on a Linux x86-64 host with four cores, samtools/HTSlib
 1.24 and 11.18 million HG002 records. Timed outputs were indexed inline.
 Each comparison kept the decoded records in order, including auxiliary tags.
 
@@ -84,7 +84,7 @@ increases the raw-BAM allowance only for this profile.
 
 The input was Google's public HG002 NovaSeq PCR-free 30× BAM: 43,667,905,004
 bytes, 723,327,664 records, against full hs38DH (3,366 reference contigs).
-On lin-mid (Linux x86-64, hostname lin-omarchy), samtools/htslib 1.24 encoded
+On a Linux x86-64 host, samtools/HTSlib 1.24 encoded
 the same coordinate-sorted input with four additional threads and the
 product's profile options. **Write time includes encoding and indexing
 only**, not mapping or sorting. `vcf snp --threads 4 --parallel --ploidy 2`
@@ -139,7 +139,7 @@ SNP record hashed identically across profiles. All realigned-slice records
 also matched source checksums, including MM/ML/MN methylation tags.
 This tests direct reader compatibility, **not ONT calling accuracy**.
 
-Evidence from 2026-11-15 is retained on lin-mid under `out/691/`:
+Evidence from 2026-11-15 is retained under `out/691/` in the validation checkout:
 `full/`, `ont/`, `original-ont/` contain commands, timing/RSS JSON and logs,
 result tables and identical-call hashes; `ont-checksums.tsv` records ONT
 sequence/tag preservation. The full run used coordinator lease L6448

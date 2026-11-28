@@ -174,8 +174,8 @@ with the private DNS name or address used by reviewers:
 
 All configured addresses for one server use the same database. Notes, replies
 and resolutions save immediately; refresh another browser or reopen its Notes
-panel to see changes. Hosted pages never store notes in browser localStorage, including
-during an API outage or an update restart. A marker injected into each HTML
+panel to see changes. Hosted pages never store notes in browser localStorage,
+including during an API outage or an update restart. A marker injected into each HTML
 page and `version.js` selects server-only storage, independently of the hostname.
 If the API is unavailable, the page says “Review server unavailable, retrying;
 notes can't be saved yet”, blocks saves and keeps the editor draft open.
@@ -232,11 +232,11 @@ For additional listening authorities use repeatable `--allow-host HOST:PORT`.
 ### Review a local branch without pushing to GitHub
 
 The direct-push repository is separate from the GitHub mirror. You need SSH
-access as **wgse** on the review host; an HTTP connection alone cannot publish
+access as the review account on the host; an HTTP connection alone cannot publish
 branches. In your working checkout, once:
 
 ```sh
-git remote add review 'ssh://wgse@<review-host>/Users/wgse/mockup-server/local.git'
+git remote add review '<review-user>@<review-host>:mockup-server/local.git'
 ```
 
 Commit your in-progress mockup edits locally, then push the current branch:
@@ -281,8 +281,8 @@ then add `--local-repo out/mockups/local.git` to the server command above.
 Run on the host (or copy a backup to a local `out/` folder first):
 
 ```sh
-python3 gui/mockups/serve.py --db /Users/wgse/mockup-server/notes.db \
-  --export-feedback /Users/wgse/mockup-server/export
+python3 gui/mockups/serve.py --db "$HOME/mockup-server/notes.db" \
+  --export-feedback "$HOME/mockup-server/export"
 ```
 
 `export/<page>.json` belongs in main's `gui/mockups/feedback/`.
@@ -302,15 +302,13 @@ per-page files with the CLI.
 
 ### Reproduce the unattended setup
 
-On a macOS review host you control, these examples use a dedicated `wgse`
-account (UID 502) and `/Users/wgse/mockup-server/`. If your account has another
-UID, pass `--domain user/<uid>` to the installer and use that domain in
-`launchctl` commands. Python 3.9+ and git must already exist.
-Run as the review account, substituting the private hostname:
+On a macOS review host you control, run as the review account, substituting
+the private hostname. The deployment defaults to `~/mockup-server` in that
+account's launchd `user` domain. Python 3.9+ and git must already exist.
 
 ```sh
-mkdir -p /Users/wgse/mockup-server
-cd /Users/wgse/mockup-server
+mkdir -p "$HOME/mockup-server"
+cd "$HOME/mockup-server"
 git clone --bare https://github.com/WGSExtract/wgsextract-cli repo.git
 git clone --branch main https://github.com/WGSExtract/wgsextract-cli app
 /usr/bin/python3 app/gui/mockups/serve.py --db notes.db \
@@ -330,15 +328,15 @@ a failed launchd restart is retried even when the checkout has not advanced agai
 For a manual switch after merge:
 
 ```sh
-git -C /Users/wgse/mockup-server/app fetch origin main
-git -C /Users/wgse/mockup-server/app checkout main ||
-  git -C /Users/wgse/mockup-server/app checkout -b main FETCH_HEAD
-git -C /Users/wgse/mockup-server/app merge --ff-only FETCH_HEAD
-launchctl kickstart -k user/502/org.wgsextract.mockups
+git -C "$HOME/mockup-server/app" fetch origin main
+git -C "$HOME/mockup-server/app" checkout main ||
+  git -C "$HOME/mockup-server/app" checkout -b main FETCH_HEAD
+git -C "$HOME/mockup-server/app" merge --ff-only FETCH_HEAD
+launchctl kickstart -k "user/$(id -u)/org.wgsextract.mockups"
 ```
 
 `hosting/server.plist.template` and `hosting/install.py` install three jobs
-in `~/Library/LaunchAgents`, bootstrapped into **user/502**, not gui/502:
+in `~/Library/LaunchAgents`, bootstrapped into `user/<uid>`, not `gui/<uid>`:
 
 - `org.wgsextract.mockups`: RunAtLoad + KeepAlive, port 8765, low-priority I/O.
 - `org.wgsextract.mockups.backup`: 03:15 local time nightly; SQLite's online
@@ -351,7 +349,7 @@ hook. Re-run it when upgrading an existing deployment to enable direct pushes.
 Run `python3 app/gui/mockups/hosting/backup.py` for an immediate backup.
 For restore, boot out the server first, preserve the current DB and its
 `-wal`/`-shm` files, copy the chosen backup to `notes.db`, and bootstrap again.
-Check with `launchctl print user/502/org.wgsextract.mockups` and
+Check with `launchctl print "user/$(id -u)/org.wgsextract.mockups"` and
 `curl http://127.0.0.1:8765/api/health`.
 
 On a Linux machine that can reach the review host, install the watchdog as the
@@ -361,7 +359,7 @@ current user. Substitute `@HOST@` with a noninteractive SSH destination and
 ```sh
 mkdir -p ~/.local/lib/mockup-server ~/.config/systemd/user
 install -m 755 gui/mockups/hosting/watchdog.sh ~/.local/lib/mockup-server/watchdog.sh
-sed -e 's|@HOST@|wgse@<review-host>|g' \
+sed -e 's|@HOST@|<review-user>@<review-host>|g' \
     -e 's|@HEALTH_URL@|http://<review-host>:8765/api/health|g' \
     gui/mockups/hosting/mockup-server-watchdog.service \
     > ~/.config/systemd/user/mockup-server-watchdog.service

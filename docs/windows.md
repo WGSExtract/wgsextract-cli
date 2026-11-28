@@ -399,7 +399,7 @@ memory checks fail, or you pass `--no-prefer-native-gpu` (or set
 on the CPU. `--native-aligners off` uses stock minimap2. Short reads stay on
 the CPU. The CPU backend does not need the NVIDIA driver or CUDA Toolkit.
 
-On Seraph (Ryzen 9 9900X3D, RTX 5080), eight-thread `realign` to hs38
+On a Windows host with a Ryzen 9 9900X3D and RTX 5080, eight-thread `realign` to hs38
 produced the same 118,687 decoded records with upstream minimap2 2.31 and
 automatic CUDA; both retained all 86,935 primary read payloads including
 MM/ML. The test read 23 windows of 1.5 Mb from the public HG002 ONT CRAM

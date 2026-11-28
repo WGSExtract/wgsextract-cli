@@ -7,6 +7,7 @@ You have a large budget and a lot of time to do things correctly.  Favor 'the be
 When outputting test run results, logs, or stdout captures, **always** put them in a gitignored `out/` or `tmp/` directory (or a subdirectory within them). Never output these files to the repository root.  Make scratch or temp scripts in the `scratch/` dir.
 
 Do not add new environment-variable configuration. Put persistent configuration in config.toml settings, and use command-line parameters for run-specific overrides.
+Keep workstation names, private addresses and machine-specific paths in local configuration, not in the repository. Use neutral examples and describe benchmark hardware without naming individual hosts.
 
 ## Network principles
 
@@ -79,7 +80,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   4. the oldest open milestone
   5. the rest of the roadmap tracking issue
   - Skip issues labelled `check-later` (parked by an owner, for example waiting on a future release or an owner decision), and don't list them as blocked or waiting in status reports. An owner removes the label to bring one back.
-- **Machine labels.** A `machine-*` label (for example `machine-lin-3090`) claims an issue for one machine. The label's description names the agent that owns it: the agent on that machine, or the supervisor that drives it remotely (for example, on Azure VMs).
+- **Machine labels.** A `machine-<host>` label claims an issue for one machine. Its description names the agent that owns it: the agent on that machine, or the supervisor that drives it remotely.
   - An issue carries at most one machine label. Every other agent skips a labelled issue; an owner moves it by swapping the label. To coordinate, comment on the issue.
   - **Only that machine can do it:** label the issue in advance (for example, it needs that machine's GPU). The label stays on even while nobody works on it.
   - **Any machine can do it:** unlabelled issues are open to every machine. Add your machine's label when you start actively working on one. Remove it when you stop or can't continue, so another machine can take it.
@@ -121,7 +122,7 @@ Long-running work is driven by a supervisor agent that works through GitHub issu
   - Write `out/<issue>/handoff.md` with state, commits, checks/log paths, blockers and next action. Before retiring a waiting agent, get the supervisor's acknowledgement of watcher/lease ownership and the resume trigger.
   - Wait outside model context: use a background shell blocking on `gh run watch RUN --exit-status`, a resource lease or a result-file watcher, with completion/failure notification. Don't loop over status reads or capped wait tools; keep attached watchers owned until completion or explicitly adopted.
   - Implementers hand CI to the supervisor/watcher after pushing; wake a fresh, narrowly scoped agent only for actionable failures or threads. Supervisors message only the responsible active agent, never broadcast to idle agents.
-  - Record weekly tokens/AIU per merged PR, context per call, threads and pushes per PR in `out/efficiency/`. Baselines: #763 (review churn), 3–5 threads/PR and ~125 runner-minutes/push; #765 (agent token waste), M1 Pro prompt tokens grew ~6× at ~30 PRs/day and lin-big agents reached 410–434k input tokens/call.
+  - Record weekly tokens/AIU per merged PR, context per call, threads and pushes per PR in `out/efficiency/`. Baselines: #763 (review churn), 3–5 threads/PR and ~125 runner-minutes/push; #765 (agent token waste), the Mac supervisor's prompt tokens grew ~6× at ~30 PRs/day and Linux agents reached 410–434k input tokens/call.
 - **Long runs (whole genomes, or roughly an hour or more).** Lessons from #431 (`out/431/retro.md`):
   - Start with the [shared long-run driver template](docs/developer_setup.md#long-run-benchmark-drivers).
   - **Off the bug queue:** a long run (whole-genome qualification, hill-climb, benchmark) runs unattended under its driver, watcher and failure alert, and doesn't hold an implementer slot while it waits. The machine's implementers keep working the efficiency and bug queue meanwhile; resource leases, not agents, keep the run and other work from colliding.

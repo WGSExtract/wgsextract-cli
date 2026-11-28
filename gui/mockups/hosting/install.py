@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import plistlib
 import subprocess
 from pathlib import Path
@@ -60,11 +61,11 @@ def install(root: Path, agents: Path, domain: str, hosts: list[str]) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("/Users/wgse/mockup-server"))
+    parser.add_argument("--root", type=Path, default=Path.home() / "mockup-server")
     parser.add_argument(
         "--agents", type=Path, default=Path.home() / "Library/LaunchAgents"
     )
-    parser.add_argument("--domain", default="user/502")
+    parser.add_argument("--domain", help="launchd domain (default: user/<current UID>)")
     parser.add_argument(
         "--allow-host",
         action="append",
@@ -73,4 +74,6 @@ if __name__ == "__main__":
         help="HTTP authority allowed for the review server (repeat to add more)",
     )
     args = parser.parse_args()
-    install(args.root, args.agents, args.domain, args.allow_host)
+    install(
+        args.root, args.agents, args.domain or f"user/{os.getuid()}", args.allow_host
+    )

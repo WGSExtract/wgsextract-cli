@@ -445,15 +445,15 @@ Register SSH aliases and their native platforms in a controller-side
 
 ```toml
 [[certification.hosts]]
-alias = "seraph"
+alias = "windows-host"
 platform = "windows-x64"
 
 [[certification.hosts]]
-alias = "minipc"
+alias = "windows-backup"
 platform = "windows-x64"
 
 [[certification.hosts]]
-alias = "mahyar-pro-14"
+alias = "mac-host"
 platform = "macos-arm64"
 ```
 
